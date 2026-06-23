@@ -18,7 +18,7 @@ Auto-update na `/flow:done` se nedělá modifikací plugin-commandu — místo t
 
 ## User Story
 
-Jako Maude maintainer chci na `maude.iagh.cz/roadmap` vidět hezkou timeline všech fází — co je doneseno (s datem), co se právě dělá, co je v plánu, co je icebox — aby návštěvníci sajtu viděli vývoj projektu na jedné stránce a já abych nemusel ručně synchronizovat sajt po každém `/flow:done`.
+Jako Maude maintainer chci na `maude.sh/roadmap` vidět hezkou timeline všech fází — co je doneseno (s datem), co se právě dělá, co je v plánu, co je icebox — aby návštěvníci sajtu viděli vývoj projektu na jedné stránce a já abych nemusel ručně synchronizovat sajt po každém `/flow:done`.
 
 ## Problem
 

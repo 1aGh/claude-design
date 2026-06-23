@@ -18,7 +18,7 @@ Allow: /
 User-agent: Google-Extended
 Allow: /
 
-Sitemap: https://maude.iagh.cz/sitemap.xml
+Sitemap: https://maude.sh/sitemap.xml
 `;
 
 export function GET() {

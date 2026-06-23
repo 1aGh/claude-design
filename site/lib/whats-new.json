@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-23T14:02:55.252Z",
+  "generated": "2026-06-23T16:41:31.555Z",
   "version": "0.30.0",
   "entries": [
     {
@@ -9,7 +9,7 @@
       "kind": "feature",
       "title": "Maude is now a desktop app",
       "summary": "Install Maude for macOS or Windows — download, open, sign in with GitHub, and start designing, with no terminal at any step. It keeps itself up to date in the background: when a new version is ready you'll see “Maude updated · restart to apply,” and one click puts you on the latest. No npm, no command line.",
-      "learnMore": "https://maude.iagh.cz/desktop",
+      "learnMore": "https://maude.sh/desktop",
       "surface": "design-ui"
     },
     {

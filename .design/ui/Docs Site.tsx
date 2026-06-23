@@ -174,7 +174,7 @@ function ArtboardLanding() {
   return (
     <div className="ab">
       <a href="#land-h1" className="skip">Skip to content</a>
-      <AbSku id="DS-01" label="MARKETPLACE LANDING" file="maude.iagh.cz/" />
+      <AbSku id="DS-01" label="MARKETPLACE LANDING" file="maude.sh/" />
       <TopNav active="plugins" />
       <div className="land">
 

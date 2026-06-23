@@ -105,7 +105,7 @@ Three v1 use cases:
 - **VHS install** captured for 22 s; Cut A's slot is 7–8 s →
   `playbackRate={2.75}` compresses on the Remotion side without
   re-encoding the source MP4.
-- **Docs scene** caught a 2 s blank-white flash before `maude.iagh.cz`
+- **Docs scene** caught a 2 s blank-white flash before `maude.sh`
   finished painting; `startFrom={60}` skipped the flash.
 - **Critical lesson:** `startFrom` is in **frames at composition fps**,
   NOT seconds. `startFrom={2}` at 30 fps = 0.067 s (basically nothing).
@@ -255,7 +255,7 @@ Final caption strings (verbatim, ASCII only):
 | tui-edit | `Edit. Reload. Same canvas.` |
 | comments | `Comments anchored to pixels. No exports.` |
 | annotations | `Draw on the canvas. Hand it off.` |
-| docs | `Docs at maude.iagh.cz.` |
+| docs | `Docs at maude.sh.` |
 
 Final benefit-card copy (headline / subline):
 
@@ -330,7 +330,7 @@ Final benefit-card copy (headline / subline):
 - Card-C (75.0 s sample): "Human reads. AI iterates." — accent on "iterates.", subline "Both sides speak the same canvas." ✓
 - Card-D (80.5 s sample): "Your repo. Yours forever." — accent on "Yours forever.", subline "No telemetry. No signup. No book a demo button." (verbatim site echo) ✓
 - Outro (82.5 s): `npm i -g @1agh/maude` legible (note: outro carries pre-existing v1 copy from phase 15.1 — kept as-is per v2.1 scope; `bun add -g` would be on-brand for a future polish pass)
-- LowerThird captions overlay cleanly on every capture scene; tested via t10 (canvas-hero "Cmd+Click. The file Claude needs."), t13 (tui-edit "Edit. Reload. Same canvas."), t15 (comments "Comments anchored to pixels. No exports."), t16 (annotations "Draw on the canvas. Hand it off."), t17 (docs "Docs at maude.iagh.cz.").
+- LowerThird captions overlay cleanly on every capture scene; tested via t10 (canvas-hero "Cmd+Click. The file Claude needs."), t13 (tui-edit "Edit. Reload. Same canvas."), t15 (comments "Comments anchored to pixels. No exports."), t16 (annotations "Draw on the canvas. Hand it off."), t17 (docs "Docs at maude.sh.").
 - tui-new + tui-edit split-screen frames render with 1 px DS-rule between halves + corner labels (`TUI` / `DEV SERVER`).
 - DS reveal renders specimen swatches + type-scale ladder clearly at 50–75 % through clip.
 - Annotation lines drawn by spec 12-annotations persist on the canvas across later scenes (comments + annotations show real red ink between artboards). Not a bug — that's authentic state continuity from a single dev-server session.

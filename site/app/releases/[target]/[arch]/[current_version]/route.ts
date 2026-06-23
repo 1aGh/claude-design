@@ -3,7 +3,7 @@
 // The desktop app's updater (apps/desktop/src-tauri/tauri.conf.json →
 // plugins.updater.endpoints) requests:
 //
-//   GET https://maude.iagh.cz/releases/{{target}}/{{arch}}/{{current_version}}
+//   GET https://maude.sh/releases/{{target}}/{{arch}}/{{current_version}}
 //
 // where `target` ∈ darwin | windows | linux, `arch` ∈ x86_64 | aarch64 | …, and
 // `current_version` is the running build's version. This route reads the GitHub

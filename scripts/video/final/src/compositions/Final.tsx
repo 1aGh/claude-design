@@ -101,7 +101,7 @@ const CAPTIONS: Partial<Record<keyof typeof SCENES, string>> = {
   tuiEdit: 'Edit. Reload. Same canvas.',
   comments: 'Comments anchored to pixels. No exports.',
   annotations: 'Draw on the canvas. Hand it off.',
-  docs: 'Docs at maude.iagh.cz.',
+  docs: 'Docs at maude.sh.',
 };
 
 const xfade = () => (
@@ -204,7 +204,7 @@ export const Final = () => (
       {xfade()}
 
       <TransitionSeries.Sequence durationInFrames={SCENES.docs}>
-        <BrowserChrome src="scene-docs.mp4" urlBar="maude.iagh.cz" />
+        <BrowserChrome src="scene-docs.mp4" urlBar="maude.sh" />
       </TransitionSeries.Sequence>
       {xfade()}
 
