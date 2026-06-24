@@ -138,6 +138,21 @@ jobs:
           fi
           pnpm --filter @maude/desktop tauri build
 
+          # tauri notarizes + staples the .app, but only *signs* the .dmg
+          # container (it is NOT notarized). A browser-downloaded (quarantined)
+          # unnotarized dmg still trips Gatekeeper on mount ("Apple cannot check
+          # it for malicious software"), so notarize + staple the dmg itself.
+          # Only in the signed path — the unset above clears APPLE_CERTIFICATE
+          # in the unsigned/dev path, so this is skipped there.
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            DMG=$(ls apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg | head -1)
+            echo "Notarizing dmg container: $DMG"
+            xcrun notarytool submit "$DMG" \
+              --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+            xcrun stapler staple "$DMG"
+            xcrun stapler validate "$DMG"
+          fi
+
       # ── Windows: build + Authenticode sign (when WINDOWS_CERTIFICATE present) ────
       - name: Build Tauri app (.msi)
         if: matrix.os == 'windows-2022'
