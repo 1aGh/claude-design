@@ -1,7 +1,16 @@
 {
-  "generated": "2026-06-24T09:17:57.321Z",
-  "version": "0.32.0",
+  "generated": "2026-06-24T15:10:05.958Z",
+  "version": "0.32.1",
   "entries": [
+    {
+      "id": "desktop-ai-chat-fix",
+      "version": "0.32.1",
+      "date": "2026-06-24",
+      "kind": "fix",
+      "title": "AI chat now opens in the desktop app",
+      "summary": "If the Assistant panel said AI editing wasn't ready even when Claude Code and the plugins were all installed, that's fixed. The desktop app now includes everything the chat needs and runs on your own installed Claude — open the Assistant (the ✦ in the menubar, or ⌘⇧A) and it just works.",
+      "surface": "design-ui"
+    },
     {
       "id": "ai-editing-readiness-check",
       "version": "0.32.0",
