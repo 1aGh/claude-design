@@ -12,6 +12,7 @@ import {
   LoopDiagram,
   StatPanel,
 } from '@/components/mdcc/diagrams';
+import { DownloadNative } from '@/components/mdcc/download-native';
 import { FlowLoop } from '@/components/mdcc/flow-loop';
 import './mdcc/diagrams/_diagrams.css';
 
@@ -21,6 +22,7 @@ export function getMDXComponents(components?: MDXComponents) {
     pre: CodeBlock,
     Callout,
     FlowLoop,
+    DownloadNative,
     // phase-17 docs diagram primitives — auto-available in every .mdx
     ArchitectureMap,
     CommandFlow,

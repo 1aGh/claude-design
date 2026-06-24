@@ -1857,29 +1857,75 @@ a.mdcc-tl-card:hover {
 }
 .mdcc-dl-primary {
   display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--space-3) var(--space-6);
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
   background: var(--accent);
   color: var(--accent-fg);
   border: 1px solid var(--accent);
   border-radius: var(--radius-md);
   text-decoration: none;
   box-shadow: var(--shadow-lg);
-  transition: background var(--dur-flip) var(--ease-out);
+  transition:
+    background var(--dur-flip) var(--ease-out),
+    transform var(--dur-flip) var(--ease-out);
 }
 .mdcc-dl-primary:hover {
   background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+/* platform glyph (Apple / Windows / Tux) — inherits the button text colour */
+.mdcc-dl-glyph {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+}
+.mdcc-dl-primary-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
 }
 .mdcc-dl-primary-label {
   font-family: var(--font-body);
   font-size: var(--type-md);
   font-weight: 620;
+  line-height: 1.15;
 }
 .mdcc-dl-primary-file {
   font-family: var(--font-mono);
   font-size: var(--type-xs);
   opacity: 0.85;
+}
+/* download arrow — nudges down on hover (the download affordance) */
+.mdcc-dl-arrow {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex-shrink: 0;
+  margin-left: var(--space-5);
+  opacity: 0.7;
+  transition:
+    transform var(--dur-flip) var(--ease-out),
+    opacity var(--dur-flip) var(--ease-out);
+}
+.mdcc-dl-primary:hover .mdcc-dl-arrow {
+  opacity: 1;
+  transform: translateY(2px);
+}
+/* compact variant — the docs-home DownloadNative CTA */
+.mdcc-dl--compact {
+  margin-top: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mdcc-dl-primary,
+  .mdcc-dl-arrow {
+    transition: none;
+  }
+  .mdcc-dl-primary:hover,
+  .mdcc-dl-primary:hover .mdcc-dl-arrow {
+    transform: none;
+  }
 }
 .mdcc-dl-alt {
   display: flex;

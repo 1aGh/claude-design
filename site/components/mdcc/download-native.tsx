@@ -1,12 +1,11 @@
 'use client';
 
-import { type KnownPlatform, PlatformGlyph, usePlatform } from '@/components/mdcc/platform';
+import { type KnownPlatform, PlatformGlyph, usePlatform } from './platform';
 
-// Platform-detected download button (Phase 32 / Task 3). Detects the visitor's OS
-// and promotes the matching installer; the other platforms stay available as
-// secondary links. The hrefs hit /desktop/download/<platform>, a tiny redirect
-// that resolves the latest matching asset on the GitHub Release (falls back to the
-// releases page). Rendered client-side because OS detection needs `navigator`.
+// Compact download CTA for the docs home (`/docs`). Same platform detection +
+// glyph as the desktop-page DownloadButton, trimmed to a single primary button
+// plus a quiet "other platforms · about the app" line. The hrefs hit the
+// /desktop/download/<platform> redirect (newest matching asset on the Release).
 
 const ORDER: KnownPlatform[] = ['macos', 'windows', 'linux'];
 const LABEL: Record<KnownPlatform, string> = {
@@ -25,19 +24,18 @@ const FILE: Record<KnownPlatform, string> = {
   linux: '.deb · Debian/Ubuntu',
 };
 
-export function DownloadButton() {
+export function DownloadNative() {
   const platform = usePlatform();
-  // Default to macOS for unknown/SSR so the primary CTA is never empty.
   const primary: KnownPlatform = platform === 'unknown' ? 'macos' : platform;
   const others = ORDER.filter((p) => p !== primary);
 
   return (
-    <div className="mdcc-dl">
+    <div className="mdcc-dl mdcc-dl--compact" data-native-download>
       <a className="mdcc-dl-primary" href={`/desktop/download/${primary}`}>
         <PlatformGlyph platform={primary} />
         <span className="mdcc-dl-primary-text">
           <span className="mdcc-dl-primary-label">{LABEL[primary]}</span>
-          <span className="mdcc-dl-primary-file">{FILE[primary]}</span>
+          <span className="mdcc-dl-primary-file">{FILE[primary]} · free, no signup</span>
         </span>
         <svg className="mdcc-dl-arrow" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path
@@ -57,9 +55,7 @@ export function DownloadButton() {
           </a>
         ))}
         <span aria-hidden="true">·</span>
-        <a href="https://github.com/1aGh/maude/releases/latest" target="_blank" rel="noreferrer">
-          All downloads
-        </a>
+        <a href="/desktop">About the desktop app</a>
       </div>
     </div>
   );

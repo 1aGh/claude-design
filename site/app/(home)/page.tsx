@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { CopyButton } from '@/components/mdcc/copy-button';
 import { DemoVideo } from '@/components/mdcc/demo-video';
+import { DownloadNative } from '@/components/mdcc/download-native';
 import { SkuLabel } from '@/components/mdcc/sku-label';
 import stats from '@/lib/stats.json';
 
@@ -124,6 +125,8 @@ export default function HomePage() {
               Watch the intro <span className="mdcc-watch-dur">0:38</span>
             </a>
           </div>
+          <p className="mdcc-hero-fineprint">Or skip the terminal — get the native desktop app:</p>
+          <DownloadNative />
         </div>
 
         <section className="mdcc-install" aria-label="Install snippet">

@@ -2,6 +2,7 @@
 //
 //   GET /desktop/download/macos    → 302 to the latest .dmg on the GitHub Release
 //   GET /desktop/download/windows  → 302 to the latest .msi
+//   GET /desktop/download/linux    → 302 to the latest .deb
 //
 // Asset filenames carry the version (Maude_0.30.0_x64_en-US.msi), so there's no
 // version-less URL to link directly. This resolves the newest matching asset at
@@ -18,6 +19,10 @@ const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;
 const PLATFORM_EXT: Record<string, string[]> = {
   macos: ['.dmg'],
   windows: ['.msi'],
+  // Linux ships a .deb (the AppImage target was dropped — the Bun-static sidecar
+  // breaks linuxdeploy). `.AppImage` kept as a fallback match in case a future
+  // release re-introduces it.
+  linux: ['.deb', '.AppImage'],
 };
 
 interface GhAsset {
