@@ -15,12 +15,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { resolveClaudePath } from './acp/probe.ts';
+import { resolveAdapterEntry, resolveClaudePath } from './acp/probe.ts';
 
 export type ReadinessStatus = 'present' | 'missing' | 'unknown';
 
 export interface ReadinessItem {
-  id: 'claude' | 'maude' | 'plugins' | 'agent-browser';
+  id: 'claude' | 'maude' | 'plugins' | 'agent-browser' | 'adapter';
   /** Short human label for the row. */
   label: string;
   /** Required items gate `ready`; optional ones never block it. */
@@ -213,6 +213,24 @@ export async function probeReadiness(): Promise<ReadinessReport> {
     remediation: agentBrowser
       ? undefined
       : 'Optional. Install `agent-browser` for screenshot evidence during `/design:edit`.',
+  });
+
+  // The chat bridge itself: the adapter must be resolvable on disk. This is what
+  // actually gates the chat panel (probeAcpAvailability → resolveAdapterEntry),
+  // distinct from the user-environment checks above. Shown so a build that ships
+  // without the staged adapter closure surfaces here instead of leaving every
+  // other row green while chat reports "bridge is not installed" (the v0.31–0.32
+  // desktop bug; see apps/desktop/scripts/stage-resources.mjs).
+  const adapter = resolveAdapterEntry();
+  items.push({
+    id: 'adapter',
+    label: 'Claude agent bridge',
+    required: true,
+    status: adapter ? 'present' : 'missing',
+    detail: adapter ? 'Bundled — the chat panel can spawn it.' : 'Not bundled in this build.',
+    remediation: adapter
+      ? undefined
+      : 'The Claude agent bridge is missing from this build — reinstall or update Maude. If you built it yourself, ensure the desktop staging step bundled `@agentclientprotocol/claude-agent-acp`.',
   });
 
   const ready = items.filter((i) => i.required).every((i) => i.status === 'present');

@@ -41,6 +41,10 @@ describe('AcpBridge — round-trip + subscription guardrail', () => {
       const streamed = JSON.stringify(updates);
       expect(streamed).toContain('apiKey=<unset>');
       expect(streamed).not.toContain('sk-must-be-scrubbed');
+      // DDR-123 guardrail #2 — the bridge pins the adapter to the user's own
+      // `claude` (here MAUDE_CLAUDE_BIN = this bun) via CLAUDE_CODE_EXECUTABLE, so
+      // it never falls back to the unshipped ~210 MB native binary.
+      expect(streamed).toContain(`claudeExe=${process.execPath}`);
     } finally {
       await bridge.stop();
     }

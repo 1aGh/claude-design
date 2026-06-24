@@ -114,14 +114,41 @@ describe('readiness — resolveOnPath', () => {
 });
 
 describe('readiness — report shape', () => {
-  test('always returns the four items with stable ids and a boolean ready', async () => {
+  test('always returns the five items with stable ids and a boolean ready', async () => {
     const report = await probeReadiness();
-    expect(report.items.map((i) => i.id)).toEqual(['claude', 'maude', 'plugins', 'agent-browser']);
+    expect(report.items.map((i) => i.id)).toEqual([
+      'claude',
+      'maude',
+      'plugins',
+      'agent-browser',
+      'adapter',
+    ]);
     expect(typeof report.ready).toBe('boolean');
   });
 
   test('agent-browser is optional and never gates ready', async () => {
     const ab = (await probeReadiness()).items.find((i) => i.id === 'agent-browser')!;
     expect(ab.required).toBe(false);
+  });
+
+  test('adapter row tracks the real chat gate (resolveAdapterEntry) and is required', async () => {
+    const saved = process.env.MAUDE_ACP_ADAPTER_ENTRY;
+    try {
+      // Point the override at a real file → the bridge is "bundled".
+      process.env.MAUDE_ACP_ADAPTER_ENTRY = import.meta.path;
+      const present = (await probeReadiness()).items.find((i) => i.id === 'adapter')!;
+      expect(present.required).toBe(true);
+      expect(present.status).toBe('present');
+
+      // Point it at a missing path → the row goes missing with remediation, the
+      // honest signal the v0.31–0.32 builds lacked (all other rows green, chat dead).
+      process.env.MAUDE_ACP_ADAPTER_ENTRY = join(tmpdir(), 'no-such-acp-adapter-xyz');
+      const missing = (await probeReadiness()).items.find((i) => i.id === 'adapter')!;
+      expect(missing.status).toBe('missing');
+      expect(missing.remediation).toBeDefined();
+    } finally {
+      if (saved === undefined) delete process.env.MAUDE_ACP_ADAPTER_ENTRY;
+      else process.env.MAUDE_ACP_ADAPTER_ENTRY = saved;
+    }
   });
 });

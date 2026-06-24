@@ -132,13 +132,30 @@ export class AcpBridge {
     if (!adapterEntry) {
       throw new Error('The Claude agent bridge is not installed in this build.');
     }
-    if (!resolveClaudePath()) {
+    const claudePath = resolveClaudePath();
+    if (!claudePath) {
       throw new Error("Claude Code isn't connected — run `claude` in a terminal and `/login`.");
     }
 
     // DDR-123 guardrail #1 — strip ANTHROPIC_API_KEY so the child stays on the
     // user's subscription. This is the whole compliance story; do not weaken it.
     const env = scrubAgentEnv(process.env);
+    // DDR-123 guardrail #2 — pin the adapter to the user's OWN `claude` CLI.
+    // `claude-agent-acp`'s `claudeCliPath()` honors CLAUDE_CODE_EXECUTABLE and
+    // ONLY otherwise falls back to the ~210 MB native Claude binary shipped as a
+    // platform-specific OPTIONAL dep of @anthropic-ai/claude-agent-sdk. The
+    // desktop bundle deliberately stages just the adapter's JS closure (not that
+    // native binary — see apps/desktop/scripts/stage-resources.mjs), so without
+    // this pin the packaged adapter would throw "native binary not found". Driving
+    // the user's installed CLI is also the documented intent: it keeps the turn on
+    // their subscription rather than the SDK's embedded runtime.
+    env.CLAUDE_CODE_EXECUTABLE = claudePath;
+    // Least-privilege: the adapter child never talks to the dev-server's GitHub
+    // token bridge (only apps/studio/github/token.ts does), so drop the loopback
+    // keychain-bridge handle from its env. Keeps a hijacked-PATH `claude` (which
+    // would require pre-existing RCE) from reading the user's GitHub token.
+    delete env.MAUDE_TOKEN_ENDPOINT;
+    delete env.MAUDE_TOKEN_KEY;
     // Model + effort selection — config, NOT credentials, so they're added back.
     this.activeModel = this.desiredModel;
     this.activeEffort = this.desiredEffort;
