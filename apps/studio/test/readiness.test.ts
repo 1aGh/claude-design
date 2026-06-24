@@ -1,7 +1,8 @@
 // Readiness probe (DDR-128) — plugin-registry scan + PATH resolution. The
 // login-shell fallback's full correctness is proven on the packaged `.app`
 // (native-verification ceiling); here we cover the registry-scan branches, the
-// no-throw contracts, and the report shape.
+// no-throw contracts, and the report shape. The probe is async (the fallback shells
+// out off the event loop — DDR-128 hardening), so everything awaits.
 
 import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
@@ -33,29 +34,31 @@ function fixtureClaudeDir(opts: { markets?: unknown; installed?: unknown }): str
   return dir;
 }
 
-function withClaudeDir<T>(dir: string, fn: () => T): T {
+async function withClaudeDir<T>(dir: string, fn: () => Promise<T> | T): Promise<T> {
   const saved = process.env.CLAUDE_CONFIG_DIR;
   process.env.CLAUDE_CONFIG_DIR = dir;
   try {
-    return fn();
+    return await fn();
   } finally {
     if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = saved;
   }
 }
 
-const pluginsItem = (dir: string) =>
-  withClaudeDir(dir, () => probeReadiness()).items.find((i) => i.id === 'plugins')!;
+const pluginsItem = async (dir: string) =>
+  (await withClaudeDir(dir, () => probeReadiness())).items.find((i) => i.id === 'plugins')!;
 
 describe('readiness — plugin registry scan', () => {
-  test('both plugins + marketplace present → plugins item is present, no remediation', () => {
-    const item = pluginsItem(fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_BOTH }));
+  test('both plugins + marketplace present → plugins item is present, no remediation', async () => {
+    const item = await pluginsItem(
+      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_BOTH })
+    );
     expect(item.status).toBe('present');
     expect(item.remediation).toBeUndefined();
   });
 
-  test('only design@maude installed → missing, names the absent flow@maude + offers the fix', () => {
-    const item = pluginsItem(
+  test('only design@maude installed → missing, names the absent flow@maude + offers the fix', async () => {
+    const item = await pluginsItem(
       fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_DESIGN_ONLY })
     );
     expect(item.status).toBe('missing');
@@ -63,13 +66,13 @@ describe('readiness — plugin registry scan', () => {
     expect(item.remediation).toContain('/plugin install');
   });
 
-  test('registry absent → unknown (Claude Code internal contract; never throws)', () => {
-    const item = pluginsItem(fixtureClaudeDir({}));
+  test('registry absent → unknown (Claude Code internal contract; never throws)', async () => {
+    const item = await pluginsItem(fixtureClaudeDir({}));
     expect(item.status).toBe('unknown');
   });
 
-  test('plugin presence is the gate — a foreign-repo marketplace does not change a both-installed verdict', () => {
-    const item = pluginsItem(
+  test('plugin presence is the gate — a foreign-repo marketplace does not change a both-installed verdict', async () => {
+    const item = await pluginsItem(
       fixtureClaudeDir({
         markets: { other: { source: { repo: 'someone/else' } } },
         installed: INSTALLED_BOTH,
@@ -80,22 +83,22 @@ describe('readiness — plugin registry scan', () => {
 });
 
 describe('readiness — resolveOnPath', () => {
-  test('finds a binary that is on PATH', () => {
-    const hit = resolveOnPath('sh');
+  test('finds a binary that is on PATH', async () => {
+    const hit = await resolveOnPath('sh');
     expect(hit).not.toBeNull();
     expect(existsSync(hit!)).toBe(true);
   });
 
-  test('returns null for a bogus binary without throwing', () => {
-    expect(resolveOnPath('maude-definitely-not-real-xyz')).toBeNull();
+  test('returns null for a bogus binary without throwing', async () => {
+    expect(await resolveOnPath('maude-definitely-not-real-xyz')).toBeNull();
   });
 
-  test('login-shell fallback recovers a binary hidden from the app PATH', () => {
+  test('login-shell fallback recovers a binary hidden from the app PATH', async () => {
     const saved = process.env.PATH;
     try {
       // Simulate the truncated/empty GUI env so Bun.which misses and the fallback fires.
       process.env.PATH = '';
-      const hit = resolveOnPath('sh');
+      const hit = await resolveOnPath('sh');
       // When a login shell is usable it must recover an absolute, real path. In a
       // sandbox with no usable login shell the fallback returns null — we don't fail
       // on that, but a non-null result must be a real absolute path.
@@ -111,14 +114,14 @@ describe('readiness — resolveOnPath', () => {
 });
 
 describe('readiness — report shape', () => {
-  test('always returns the four items with stable ids and a boolean ready', () => {
-    const report = probeReadiness();
+  test('always returns the four items with stable ids and a boolean ready', async () => {
+    const report = await probeReadiness();
     expect(report.items.map((i) => i.id)).toEqual(['claude', 'maude', 'plugins', 'agent-browser']);
     expect(typeof report.ready).toBe('boolean');
   });
 
-  test('agent-browser is optional and never gates ready', () => {
-    const ab = probeReadiness().items.find((i) => i.id === 'agent-browser')!;
+  test('agent-browser is optional and never gates ready', async () => {
+    const ab = (await probeReadiness()).items.find((i) => i.id === 'agent-browser')!;
     expect(ab.required).toBe(false);
   });
 });

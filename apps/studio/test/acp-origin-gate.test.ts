@@ -70,6 +70,14 @@ describe('ACP bridge origin gate', () => {
       expect(typeof preJson.ready).toBe('boolean');
       expect(Array.isArray(preJson.items)).toBe(true);
       expect(await status(canvas, '/_api/preflight')).toBe(403);
+      // A cross-origin drive-by GET is Origin-rejected before the probe can shell
+      // out — DDR-128 DoS hardening (ethical-hacker F1). Same-origin/loopback (no
+      // Origin header, asserted above) stays 200.
+      const crossOrigin = await fetch(`${main}/_api/preflight`, {
+        headers: { Origin: 'https://evil.example' },
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(crossOrigin.status).toBe(403);
     } finally {
       await killProc(proc);
     }

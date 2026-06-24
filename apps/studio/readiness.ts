@@ -44,19 +44,37 @@ export interface ReadinessReport {
  * fallback recovers a binary the app env can't see when the Rust resolution missed.
  * Unix-only fallback (Windows GUI apps inherit the user PATH). Returns an absolute
  * path or null. `bin` is always a hardcoded literal — never user input.
+ *
+ * Async + `Bun.spawn` (not `spawnSync`): the fallback shells out for up to 5 s, so a
+ * synchronous spawn would block the single-threaded dev-server event loop for the
+ * whole probe — a real freeze on a fresh machine where the binary is missing
+ * (DDR-128 hardening, ethical-hacker F1). Awaiting yields the loop; the 5 s kill
+ * bounds a misconfigured rc.
  */
-export function resolveOnPath(bin: string): string | null {
+export async function resolveOnPath(bin: string): Promise<string | null> {
   const direct = Bun.which(bin);
   if (direct) return direct;
   if (process.platform === 'win32') return null;
   try {
     const shell = process.env.SHELL || '/bin/sh';
-    const res = Bun.spawnSync([shell, '-ilc', `command -v ${bin} 2>/dev/null`], {
+    const proc = Bun.spawn([shell, '-ilc', `command -v ${bin} 2>/dev/null`], {
       stdin: 'ignore',
+      stdout: 'pipe',
       stderr: 'ignore',
-      timeout: 5000,
     });
-    const out = res.stdout?.toString() ?? '';
+    const killer = setTimeout(() => {
+      try {
+        proc.kill(9);
+      } catch {
+        /* already gone */
+      }
+    }, 5000);
+    let out: string;
+    try {
+      out = await new Response(proc.stdout).text();
+    } finally {
+      clearTimeout(killer);
+    }
     // Instant-prompt frameworks (powerlevel10k) can print to stdout on interactive
     // start, so take the last line that is an absolute path to a real file.
     const hit = out
@@ -122,14 +140,20 @@ function scanPlugins(): PluginScan {
 }
 
 /**
- * Side-effect-free readiness report. Cheap enough to call on every onboarding mount
- * or chat-panel open; `resolveOnPath`'s login-shell fallback only fires when
- * `Bun.which` misses (i.e. rarely, once the sidecar PATH is corrected).
+ * Side-effect-free readiness report. The three binary probes run concurrently so a
+ * fresh machine (where the login-shell fallback fires) resolves in ~one shell round
+ * trip, not three sequential ones. The backing route gates cross-origin callers
+ * (DDR-128 hardening) so this can't be turned into a spawn-storm from a drive-by page.
  */
-export function probeReadiness(): ReadinessReport {
+export async function probeReadiness(): Promise<ReadinessReport> {
+  const [claude, maude, agentBrowser] = await Promise.all([
+    (async () => resolveClaudePath() ?? (await resolveOnPath('claude')))(),
+    resolveOnPath('maude'),
+    resolveOnPath('agent-browser'),
+  ]);
+
   const items: ReadinessItem[] = [];
 
-  const claude = resolveClaudePath() ?? resolveOnPath('claude');
   items.push({
     id: 'claude',
     label: 'Claude Code (the `claude` CLI)',
@@ -143,7 +167,6 @@ export function probeReadiness(): ReadinessReport {
       : 'Install Claude Code, then run `claude` and `/login` once. AI editing runs on your own Pro/Max subscription — never API billing.',
   });
 
-  const maude = resolveOnPath('maude');
   items.push({
     id: 'maude',
     label: 'maude CLI',
@@ -179,7 +202,6 @@ export function probeReadiness(): ReadinessReport {
         : 'In Claude Code: `/plugin marketplace add 1aGh/maude`, then `/plugin install design@maude` and `/plugin install flow@maude`.',
   });
 
-  const agentBrowser = resolveOnPath('agent-browser');
   items.push({
     id: 'agent-browser',
     label: 'agent-browser (optional)',

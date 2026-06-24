@@ -56,7 +56,11 @@ Plugin registration and `claude` login stay **guide-only** — neither can be sa
 
 ## Security posture
 
-- v1 adds **no new attack surface beyond a read-only `~/.claude/` filesystem read**: no writes, no network calls beyond loopback, no environment mutation. The login-shell probe spawns a shell to resolve a binary path — bounded, no user-controlled command string.
+Reviewed at close-out by the `/flow:done` defender + attacker fan-out (reports: `.ai/logs/security-reviews/ddr-128-readiness-defender.md` PASS WITH SUGGESTIONS, `…-readiness-attacker.md` 1 MEDIUM — both fixed before commit).
+
+- **The read-only `~/.claude/` scan + the `/_api/preflight` report are clean:** no writes, no info leak (resolved binary paths are consumed as booleans, never serialized), no XSS (report strings are server-authored constants, React-escaped), `<bin>` is always a hardcoded literal (no shell injection), and the route is main-origin-only (absent from `CANVAS_SAFE_API` + `startCanvasServer`, asserted in `acp-origin-gate.test.ts`).
+- **Correction to the original claim** ("no new attack surface beyond a read-only `~/.claude/` read" — *incomplete*): the Rust login-shell PATH resolution (T0) **executes the user's shell rc** (`$SHELL -ilc`) on every GUI/auto-start launch, not just in a terminal, and widens the sidecar/adapter PATH. This is the user's own dotfiles (pre-existing trust), but the *behavior* — rc runs at Finder/Dock/login-item boot — is new. Bounded: fixed command literal, stdin `/dev/null`, 5 s timeout, `$SHELL` is the user's own.
+- **Fixed before commit (attacker F1, MEDIUM — DoS):** `/_api/preflight` originally used a **synchronous** `Bun.spawnSync` login-shell fallback with no Origin gate, so on a fresh machine (binary missing) a single call blocked the event loop ~5 s/binary, and a cross-site drive-by `fetch` to the loopback port could spawn-storm the server. Now: the fallback is **async `Bun.spawn`** (yields the loop) with the three probes run **concurrently**, and the route is **Origin-gated** (`sameOriginWrite` — a cross-origin GET is 403'd before any spawn). Same-origin/loopback callers (no Origin header) are unaffected.
 - The deferred PATH-link (Decision 4) is the only mutation and is opt-in + reversible; it ships its own consent prompt.
 - This does **not** touch the open DDR-126/DDR-109 main-origin-CSP follow-up — the readiness UI renders on the main origin like the rest of the shell; it introduces no privileged command reachable from the (remote loopback) origin.
 

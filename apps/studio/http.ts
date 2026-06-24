@@ -10,7 +10,6 @@ import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 
 import { probeAcpAvailability } from './acp/probe.ts';
 import { deleteChat, listChats, readChatMessages } from './acp/transcript.ts';
-import { probeReadiness } from './readiness.ts';
 import type { Api } from './api.ts';
 import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
@@ -25,6 +24,7 @@ import { createGitHubEndpoints } from './github/endpoints.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
 import { DEV_SERVER_ROOT } from './paths.ts';
+import { probeReadiness } from './readiness.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
 import { linkHub } from './sync/hub-link.ts';
 import { loadWhatsNew } from './whats-new.ts';
@@ -575,10 +575,15 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     // dependency chain (claude CLI · maude CLI · maude marketplace + plugins in the
     // paired Claude Code · optional agent-browser) with per-item remediation; it
     // installs/mutates nothing. MAIN-ORIGIN ONLY — absent from CANVAS_SAFE_API +
-    // startCanvasServer routes, so the untrusted canvas iframe is 403'd. The
-    // onboarding readiness card + the ChatPanel not-connected explainer read this.
-    '/_api/preflight': () =>
-      Response.json(probeReadiness(), { headers: { 'Cache-Control': 'no-store' } }),
+    // startCanvasServer routes, so the untrusted canvas iframe is 403'd. The probe
+    // can shell out (login-shell fallback), so a cross-origin Origin-reject also
+    // fronts it — a drive-by page can't fire the loopback endpoint to spawn-storm
+    // the dev-server (DDR-128 hardening). The onboarding readiness card + the
+    // ChatPanel not-connected explainer + the Help-menu modal read this.
+    '/_api/preflight': async (req: Request) => {
+      if (!sameOriginWrite(req)) return new Response('cross-origin rejected', { status: 403 });
+      return Response.json(await probeReadiness(), { headers: { 'Cache-Control': 'no-store' } });
+    },
 
     // Phase 31 (DDR-123) — `/design:chat` focus hook. `maude design chat-open`
     // POSTs here; we emit a bus event the shell turns into "open the Assistant
