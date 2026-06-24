@@ -27,6 +27,57 @@ pub struct SidecarState {
 
 const MAX_RESTARTS: u32 = 3;
 
+/// Resolve the user's real PATH by asking their login shell, so a Finder/Dock-
+/// launched `.app` can reach `claude` / `maude` even though it inherited the
+/// truncated launchd PATH (DDR-128). Unix-only — Windows GUI apps already inherit
+/// the user PATH. Best-effort: returns `None` on any failure and the caller leaves
+/// the inherited PATH in place.
+///
+/// `-ilc` runs an interactive login shell so BOTH `.zprofile` (login) and `.zshrc`
+/// (interactive — where Homebrew/asdf/nvm users usually export PATH) are sourced.
+/// The value is bracketed with markers because instant-prompt frameworks
+/// (powerlevel10k) write to stdout on interactive start; we extract only the slice
+/// between the markers. Runs on a worker thread with a 5 s timeout so a slow or
+/// input-blocking rc can never wedge app startup (stdin is /dev/null for the same
+/// reason).
+#[cfg(unix)]
+fn resolve_login_path() -> Option<String> {
+    use std::process::{Command, Stdio};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let out = Command::new(&shell)
+            .args(["-ilc", "command printf '__MAUDE_PATH__%s__MAUDE_END__' \"$PATH\""])
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output();
+        let _ = tx.send(out);
+    });
+
+    let output = match rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(Ok(o)) => o,
+        _ => return None,
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let start = stdout.find("__MAUDE_PATH__")? + "__MAUDE_PATH__".len();
+    let rest = &stdout[start..];
+    let end = rest.find("__MAUDE_END__")?;
+    let path = rest[..end].trim();
+    if path.is_empty() {
+        None
+    } else {
+        Some(path.to_string())
+    }
+}
+
+#[cfg(not(unix))]
+fn resolve_login_path() -> Option<String> {
+    None
+}
+
 /// Spawn the dev-server sidecar and store the child in managed state. Drains the
 /// command's event stream; on unexpected termination (not a quit), respawns with
 /// linear backoff up to `MAX_RESTARTS`. Re-entrant: the respawn path calls back in.
@@ -42,6 +93,21 @@ pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
         // The webview IS the UI — suppress the dev-server's default
         // open-the-browser-on-boot behavior (server.ts honors NO_OPEN).
         .env("NO_OPEN", "1");
+
+    // DDR-128 — a `.app` launched from Finder/Dock inherits the truncated launchd
+    // PATH (`/usr/bin:/bin:…`), NOT the user's shell PATH. The sidecar would then
+    // fail to find `claude` (the ACP adapter spawns it) and `maude` (the paired
+    // `claude`'s `/design:edit` shells out to `maude design <verb>`), so AI editing
+    // silently dies in the bundled app while working under `tauri dev` (which
+    // inherits the terminal's full PATH). Resolve the login-shell PATH once and
+    // pass it through; everything downstream (Bun.which, the adapter, the paired
+    // claude) then sees the real PATH. Best-effort: on failure we leave PATH
+    // untouched (no regression). The /_api/preflight readiness probe reports what's
+    // still genuinely missing on top of this.
+    if let Some(login_path) = resolve_login_path() {
+        eprintln!("[maude] sidecar PATH ← login shell ({} entries)", login_path.split(':').count());
+        command = command.env("PATH", login_path);
+    }
 
     // Pass through the canvas-origin-split override (DDR-063) so a WKWebView that
     // can't load the cross-origin canvas iframe can be debugged / fall back to

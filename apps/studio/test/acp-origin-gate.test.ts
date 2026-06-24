@@ -61,6 +61,15 @@ describe('ACP bridge origin gate', () => {
       expect((await focusPost.json()).ok).toBe(true);
       expect(await status(main, '/_api/acp/focus')).toBe(405); // GET not allowed
       expect(await status(canvas, '/_api/acp/focus')).toBe(403); // off the canvas origin
+
+      // (5) DDR-128 — /_api/preflight readiness probe: main-origin 200 with the
+      // {ready, items[]} shape; 403 on the untrusted canvas origin (dual-allowlist).
+      const pre = await fetch(`${main}/_api/preflight`, { signal: AbortSignal.timeout(2000) });
+      expect(pre.status).toBe(200);
+      const preJson = await pre.json();
+      expect(typeof preJson.ready).toBe('boolean');
+      expect(Array.isArray(preJson.items)).toBe(true);
+      expect(await status(canvas, '/_api/preflight')).toBe(403);
     } finally {
       await killProc(proc);
     }

@@ -769,3 +769,53 @@
     }
   }
 }
+
+/* DDR-128 — AI-editing readiness list (ReadinessList.jsx). Shared by the onboarding
+   readiness strip and the ChatPanel not-connected explainer. Detect-and-guide:
+   present rows reassure, missing rows carry a copy-paste fix, optional rows stay
+   muted (never alarming). */
+@layer components {
+  .rdy { display: flex; flex-direction: column; gap: var(--space-3); }
+  .rdy-list {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-direction: column; gap: var(--space-2);
+  }
+  .rdy-row {
+    display: flex; gap: var(--space-2); align-items: flex-start;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+    background: var(--bg-2); text-align: left;
+  }
+  .rdy-ic { flex-shrink: 0; margin-top: 1px; }
+  .rdy-row--present .rdy-ic { color: var(--status-success); }
+  .rdy-row--missing .rdy-ic { color: var(--status-error); }
+  .rdy-row--unknown .rdy-ic { color: var(--status-info); }
+  /* optional, missing → muted, not alarming */
+  .rdy-row--opt.rdy-row--missing .rdy-ic { color: var(--fg-3); }
+  .rdy-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .rdy-label { font-size: var(--type-sm); font-weight: 600; color: var(--fg-0); }
+  .rdy-detail { font-size: var(--type-xs); color: var(--fg-2); line-height: var(--lh-xs); }
+  .rdy-fix {
+    margin-top: var(--space-2); display: flex; gap: var(--space-2);
+    align-items: flex-start;
+    font-size: var(--type-xs); color: var(--fg-1); line-height: var(--lh-xs);
+  }
+  .rdy-fix-tx { min-width: 0; }
+  .rdy code {
+    font-family: var(--font-mono); font-size: var(--type-xs);
+    color: var(--fg-0); background: var(--bg-3);
+    padding: 1px 5px; border-radius: var(--radius-xs);
+    overflow-wrap: anywhere;
+  }
+  .rdy-copy {
+    flex-shrink: 0; cursor: pointer;
+    font-size: var(--type-xs); color: var(--fg-2);
+    background: transparent; border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xs); padding: 1px 6px;
+  }
+  .rdy-copy:hover { color: var(--fg-0); background: var(--bg-3); }
+  .rdy-foot { display: flex; justify-content: flex-end; }
+  /* Help ▸ Check AI editing readiness… modal (reuses .help-modal chrome). */
+  .rdy-modal { max-width: 520px; }
+  .rdy-modal-note { margin: 0 0 var(--space-3); color: var(--fg-2); font-size: var(--type-sm); line-height: var(--lh-md); }
+}

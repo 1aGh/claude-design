@@ -12,6 +12,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import ReadinessList, { useReadiness } from './ReadinessList.jsx';
 import {
   cloneRepo,
   createProject,
@@ -143,6 +144,39 @@ function CrashOptIn() {
   );
 }
 
+// AI-editing readiness (Phase 33 / DDR-128). NON-BLOCKING: the bundled core
+// (canvas browser, version history, sharing) works with zero install, so this is a
+// quiet, collapsible strip — never a gate. It surfaces what AI editing additionally
+// needs (a paired Claude Code with the maude plugins + the `maude` CLI) so a missing
+// piece is visible instead of a silent no-op when the user later types /design:edit.
+// Stays silent until the probe answers (endpoint unreachable → render nothing).
+function AiReadiness() {
+  const { report, loading, refresh } = useReadiness();
+  if (!report) return null;
+  const ready = report.ready;
+  return (
+    <details className="ob-readiness">
+      <summary className="ob-readiness-sum">
+        <span className={`ob-readiness-dot ob-readiness-dot--${ready ? 'ok' : 'warn'}`} aria-hidden="true" />
+        <span className="ob-readiness-lede">
+          {ready ? 'AI editing is ready' : 'AI editing needs a couple of things'}
+        </span>
+        <span className="ob-readiness-hint">
+          {ready ? 'optional — view details' : 'optional · the rest of Maude works without it'}
+        </span>
+      </summary>
+      <div className="ob-readiness-body">
+        <p className="ob-readiness-note">
+          Everything else — the canvas browser, version history, sharing — works right now. AI
+          editing additionally pairs with a Claude Code you already have installed and runs on your
+          own Pro/Max subscription.
+        </p>
+        <ReadinessList report={report} loading={loading} refresh={refresh} />
+      </div>
+    </details>
+  );
+}
+
 // ── A · Welcome (door picker) ────────────────────────────────────────────────
 function Welcome({ onGithub, onLocal, onHub, signing }) {
   return (
@@ -181,6 +215,7 @@ function Welcome({ onGithub, onLocal, onHub, signing }) {
         </button>
       </div>
       <p className="ob-foot-note">Maude never touches the terminal. Everything here happens in the app.</p>
+      <AiReadiness />
       <CrashOptIn />
     </main>
   );

@@ -18,6 +18,7 @@ import DiffView from './panels/DiffView.jsx';
 import GitPanel from './panels/GitPanel.jsx';
 import IdentityBar from './panels/IdentityBar.jsx';
 import OnboardingWizard from './panels/OnboardingWizard.jsx';
+import { ReadinessDialog } from './panels/ReadinessList.jsx';
 import RepoBranchSwitcher from './panels/RepoBranchSwitcher.jsx';
 import { appIsFirstRun, isNativeApp, onUpdateReady, restartToUpdate } from './github.js';
 import { COLLAB_TOUR } from './tour/collab-tour.js';
@@ -2249,6 +2250,7 @@ function HelpDropdown({ onAction, onClose }) {
         // Publish → Pull cycle — a non-technical, native-app concern. A web-studio
         // dev already knows git, so it's hidden there (DDR-119).
         ...(isNativeApp() ? [{ id: 'collab-tour', label: 'How sharing works' }] : []),
+        ...(isNativeApp() ? [{ id: 'readiness', label: 'Check AI editing readiness…' }] : []),
         { id: 'whatsnew', label: "What's new" },
       ]}
     />
@@ -2367,6 +2369,7 @@ function Menubar({
   onTogglePresent,
   postToActiveCanvas,
   onOpenWhatsNew,
+  onOpenReadiness,
   whatsNewCount,
   artboardCount = 0,
   presence = null,
@@ -2630,6 +2633,7 @@ function Menubar({
             else if (id === 'help') onOpenHelp?.();
             else if (id === 'tour') onStartTour?.();
             else if (id === 'collab-tour') onStartCollabTour?.();
+            else if (id === 'readiness') onOpenReadiness?.();
             else if (id === 'whatsnew') onOpenWhatsNew?.();
           }}
           onClose={() => setOpenMenu(null)}
@@ -5578,6 +5582,7 @@ function App() {
   const [showHidden, setShowHidden] = useState(() => readBoolStore(SHOW_HIDDEN_STORE, false));
   const [sectionsExpanded, setSectionsExpanded] = useState(() => readJsonStore(SECTIONS_STORE, {}));
   const [helpOpen, setHelpOpen] = useState(false);
+  const [readinessOpen, setReadinessOpen] = useState(false);
   // ? cheat-sheet (DS components-shortcuts-overlay) — separate from the deep
   // Help modal (F1), which keeps commands & flows.
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -7138,6 +7143,7 @@ function App() {
           presentMode={presentMode}
           onTogglePresent={togglePresent}
           postToActiveCanvas={postToActiveCanvas}
+          onOpenReadiness={() => setReadinessOpen(true)}
           onOpenWhatsNew={whatsNew.openPanel}
           whatsNewCount={whatsNew.unseen.length}
           artboardCount={activeArtboards}
@@ -7430,6 +7436,7 @@ function App() {
         }}
       />
       <WhatsNewPanel wn={whatsNew} onStartTour={startTour} />
+      <ReadinessDialog open={readinessOpen} onClose={() => setReadinessOpen(false)} />
       {usageNudge && !tourSteps && !collabNudge && (
         <div className="mdcc-tour-nudge" role="status" aria-live="polite">
           <div className="mdcc-tour-nudge__body">

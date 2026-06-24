@@ -25,6 +25,16 @@ The **desktop app** is Maude with no terminal. Download it, sign in with GitHub,
 
 Disk: ~250 MB. The optional AI editing pairs with a [Claude Code](/docs/design) you already have installed and runs on your own Pro/Max subscription — never API billing.
 
+### What AI editing needs
+
+The canvas browser, version history, and collaboration work the moment you open the app — no extra setup. **AI editing** is the one capability that reaches outside the app: its chat panel drives your paired Claude Code, so that Claude Code needs the Maude pieces installed:
+
+- the **`maude` CLI** on your PATH (`npm i -g @1agh/maude`) — `/design:edit` shells out to it;
+- the **Maude plugins** in Claude Code — `/plugin marketplace add 1aGh/maude`, then `/plugin install design@maude` and `/plugin install flow@maude`;
+- a logged-in **`claude`** (`claude` → `/login`), running on your own Pro/Max subscription.
+
+You don't have to hunt for any of this: the first-run welcome screen has an **AI editing** readiness strip that checks each piece and shows a copy-paste fix for anything missing, and the chat panel surfaces the same breakdown with a **Re-check** button. None of it blocks the rest of the app.
+
 ## Auto-update
 
 Maude polls a signed release feed, downloads new versions in the background, and shows a non-blocking banner:
@@ -52,4 +62,4 @@ The desktop app connects to a self-hosted [hub](/docs/hub) from the onboarding w
 - **Git versioning, no git** — See changes, Save a version, Publish, Get latest, browse History, compare visual before/after.
 - **Sign in with GitHub** — device flow → OS keychain; start private projects, share by username.
 - **Live collaboration** — branch-scoped multiplayer over your own hub.
-- **AI editing** — a chat panel that drives your paired Claude Code.
+- **AI editing** — a chat panel that drives your paired Claude Code (needs the Maude plugins + `maude` CLI in that Claude Code; the readiness strip walks you through it).

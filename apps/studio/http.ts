@@ -10,6 +10,7 @@ import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 
 import { probeAcpAvailability } from './acp/probe.ts';
 import { deleteChat, listChats, readChatMessages } from './acp/transcript.ts';
+import { probeReadiness } from './readiness.ts';
 import type { Api } from './api.ts';
 import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
@@ -569,6 +570,15 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     // decide between the enabled panel and the not-connected explainer.
     '/_api/acp/status': () =>
       Response.json(probeAcpAvailability(), { headers: { 'Cache-Control': 'no-store' } }),
+
+    // DDR-128 — first-open AI-editing readiness. Read-only probe of the AI-editing
+    // dependency chain (claude CLI · maude CLI · maude marketplace + plugins in the
+    // paired Claude Code · optional agent-browser) with per-item remediation; it
+    // installs/mutates nothing. MAIN-ORIGIN ONLY — absent from CANVAS_SAFE_API +
+    // startCanvasServer routes, so the untrusted canvas iframe is 403'd. The
+    // onboarding readiness card + the ChatPanel not-connected explainer read this.
+    '/_api/preflight': () =>
+      Response.json(probeReadiness(), { headers: { 'Cache-Control': 'no-store' } }),
 
     // Phase 31 (DDR-123) — `/design:chat` focus hook. `maude design chat-open`
     // POSTs here; we emit a bus event the shell turns into "open the Assistant

@@ -1617,6 +1617,18 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .ob-crash-optin { display: flex; align-items: flex-start; gap: var(--space-2); max-width: 560px; margin: var(--space-3) 0 0; color: var(--fg-2); font-size: var(--type-xs); line-height: var(--lh-md); cursor: pointer; text-align: left; }
 .ob-crash-optin input { margin-top: 2px; flex: 0 0 auto; accent-color: var(--accent); cursor: pointer; }
 
+/* AI-editing readiness strip (Phase 33 / DDR-128) — non-blocking, collapsible. */
+.ob-readiness { max-width: 560px; margin: var(--space-3) 0 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-1); text-align: left; }
+.ob-readiness-sum { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); cursor: pointer; list-style: none; font-size: var(--type-sm); color: var(--fg-1); }
+.ob-readiness-sum::-webkit-details-marker { display: none; }
+.ob-readiness-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; }
+.ob-readiness-dot--ok { background: var(--status-success); }
+.ob-readiness-dot--warn { background: var(--status-warning, var(--status-info)); }
+.ob-readiness-lede { font-weight: 600; color: var(--fg-0); }
+.ob-readiness-hint { margin-left: auto; color: var(--fg-3); font-size: var(--type-xs); }
+.ob-readiness-body { padding: 0 var(--space-3) var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
+.ob-readiness-note { margin: 0; color: var(--fg-2); font-size: var(--type-xs); line-height: var(--lh-md); }
+
 .ob-create { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--space-4); width: 100%; max-width: 720px; text-align: left; padding: var(--space-5); border: 1px solid color-mix(in oklab, var(--accent) 45%, transparent); border-radius: var(--radius-lg); background: linear-gradient(180deg, var(--accent-tint) 0%, transparent 80%), var(--bg-1); cursor: pointer; color: inherit; transition: border-color var(--dur-soft) var(--ease-out); }
 .ob-create:hover { border-color: var(--accent); }
 .ob-create:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

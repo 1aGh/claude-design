@@ -23,6 +23,7 @@ import {
 
 import { createAcpConnection, makeAcpAdapter } from './acp-runtime.js';
 import { Markdown } from './chat-markdown.jsx';
+import ReadinessList, { useReadiness } from './ReadinessList.jsx';
 
 // ── inline icons (separate panel files carry their own, like GitPanel) ──
 const Spark = ({ size = 16 }) => (
@@ -330,16 +331,18 @@ function Composer({ activeCanvas, model, setModel, effort, setEffort }) {
   );
 }
 
-function NotConnected({ reason, claudeMissing }) {
+function NotConnected({ reason, claudeMissing, readiness, readinessLoading, onRecheck }) {
   return (
     <div className="chat-disabled">
       <span className="chat-disabled-mark">
         <Spark size={28} />
       </span>
-      <div className="chat-disabled-title">Claude Code isn't connected</div>
+      <div className="chat-disabled-title">AI editing isn't ready yet</div>
       <div className="chat-disabled-sub">
         {reason ? <p>{reason}</p> : null}
-        {claudeMissing ? (
+        {readiness ? (
+          <p>AI editing pairs with a Claude Code you have installed. Here's what it still needs:</p>
+        ) : claudeMissing ? (
           <p>
             Install it with <code>npm i -g @anthropic-ai/claude-code</code>, then run{' '}
             <code>claude</code> and <code>/login</code> in a terminal.
@@ -350,6 +353,9 @@ function NotConnected({ reason, claudeMissing }) {
           </p>
         )}
       </div>
+      {readiness ? (
+        <ReadinessList report={readiness} loading={readinessLoading} refresh={onRecheck} />
+      ) : null}
       <div className="chat-trust">
         <div className="chat-trust-row">
           <Check /> Runs on your Pro/Max subscription
@@ -481,30 +487,44 @@ export default function ChatPanel({
 
   // Availability is global (is claude installed) — a single probe, no connection.
   const [status, setStatus] = useState({ available: null, reason: undefined, claudeMissing: false });
-  useEffect(() => {
-    let alive = true;
-    fetch('/_api/acp/status')
-      .then((r) => r.json())
-      .then((d) => {
-        if (alive)
+  const probeStatus = useCallback(
+    () =>
+      fetch('/_api/acp/status')
+        .then((r) => r.json())
+        .then((d) =>
           setStatus({
             available: d.available,
             reason: d.reason,
             claudeMissing: !!d.adapterEntry && !d.claudePath,
-          });
-      })
-      .catch(() => {
-        if (alive)
+          })
+        )
+        .catch(() =>
           setStatus({
             available: false,
             reason: 'Could not reach the Claude bridge.',
             claudeMissing: false,
-          });
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+          })
+        ),
+    []
+  );
+  useEffect(() => {
+    probeStatus();
+  }, [probeStatus]);
+
+  // DDR-128 — when not connected, surface the full readiness breakdown (claude ·
+  // maude · plugins) in the not-connected explainer. Only probes when actually
+  // disconnected; Re-check re-probes BOTH the readiness report and the bridge
+  // status, so installing the missing pieces and re-checking can unlock the panel
+  // without reopening it (the persistent re-check surface).
+  const {
+    report: readiness,
+    loading: readinessLoading,
+    refresh: refreshReadiness,
+  } = useReadiness(status.available === false);
+  const recheck = useCallback(() => {
+    refreshReadiness();
+    return probeStatus();
+  }, [refreshReadiness, probeStatus]);
 
   // Recents (for the switcher).
   const [chats, setChats] = useState([]);
@@ -741,7 +761,13 @@ export default function ChatPanel({
       ) : null}
       <div className="st-rp-body st-rp-body--chat">
         {status.available === false ? (
-          <NotConnected reason={status.reason} claudeMissing={status.claudeMissing} />
+          <NotConnected
+            reason={status.reason}
+            claudeMissing={status.claudeMissing}
+            readiness={readiness}
+            readinessLoading={readinessLoading}
+            onRecheck={recheck}
+          />
         ) : (
           openChatIds.map((id) => {
             const conn = connsRef.current.get(id);

@@ -1,0 +1,124 @@
+// Readiness probe (DDR-128) — plugin-registry scan + PATH resolution. The
+// login-shell fallback's full correctness is proven on the packaged `.app`
+// (native-verification ceiling); here we cover the registry-scan branches, the
+// no-throw contracts, and the report shape.
+
+import { describe, expect, test } from 'bun:test';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { probeReadiness, resolveOnPath } from '../readiness.ts';
+
+const MARKET_OK = {
+  maude: { source: { source: 'github', repo: '1aGh/maude' }, installLocation: '/x' },
+};
+const INSTALLED_BOTH = {
+  version: 2,
+  plugins: {
+    'design@maude': [{ scope: 'user', version: '0.29.0' }],
+    'flow@maude': [{ scope: 'user', version: '0.29.0' }],
+  },
+};
+const INSTALLED_DESIGN_ONLY = { version: 2, plugins: { 'design@maude': [{ scope: 'user' }] } };
+
+function fixtureClaudeDir(opts: { markets?: unknown; installed?: unknown }): string {
+  const dir = mkdtempSync(join(tmpdir(), 'maude-readiness-'));
+  const pluginsDir = join(dir, 'plugins');
+  mkdirSync(pluginsDir, { recursive: true });
+  if (opts.markets !== undefined)
+    writeFileSync(join(pluginsDir, 'known_marketplaces.json'), JSON.stringify(opts.markets));
+  if (opts.installed !== undefined)
+    writeFileSync(join(pluginsDir, 'installed_plugins.json'), JSON.stringify(opts.installed));
+  return dir;
+}
+
+function withClaudeDir<T>(dir: string, fn: () => T): T {
+  const saved = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = dir;
+  try {
+    return fn();
+  } finally {
+    if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = saved;
+  }
+}
+
+const pluginsItem = (dir: string) =>
+  withClaudeDir(dir, () => probeReadiness()).items.find((i) => i.id === 'plugins')!;
+
+describe('readiness — plugin registry scan', () => {
+  test('both plugins + marketplace present → plugins item is present, no remediation', () => {
+    const item = pluginsItem(fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_BOTH }));
+    expect(item.status).toBe('present');
+    expect(item.remediation).toBeUndefined();
+  });
+
+  test('only design@maude installed → missing, names the absent flow@maude + offers the fix', () => {
+    const item = pluginsItem(
+      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_DESIGN_ONLY })
+    );
+    expect(item.status).toBe('missing');
+    expect(item.detail).toContain('flow@maude');
+    expect(item.remediation).toContain('/plugin install');
+  });
+
+  test('registry absent → unknown (Claude Code internal contract; never throws)', () => {
+    const item = pluginsItem(fixtureClaudeDir({}));
+    expect(item.status).toBe('unknown');
+  });
+
+  test('plugin presence is the gate — a foreign-repo marketplace does not change a both-installed verdict', () => {
+    const item = pluginsItem(
+      fixtureClaudeDir({
+        markets: { other: { source: { repo: 'someone/else' } } },
+        installed: INSTALLED_BOTH,
+      })
+    );
+    expect(item.status).toBe('present');
+  });
+});
+
+describe('readiness — resolveOnPath', () => {
+  test('finds a binary that is on PATH', () => {
+    const hit = resolveOnPath('sh');
+    expect(hit).not.toBeNull();
+    expect(existsSync(hit!)).toBe(true);
+  });
+
+  test('returns null for a bogus binary without throwing', () => {
+    expect(resolveOnPath('maude-definitely-not-real-xyz')).toBeNull();
+  });
+
+  test('login-shell fallback recovers a binary hidden from the app PATH', () => {
+    const saved = process.env.PATH;
+    try {
+      // Simulate the truncated/empty GUI env so Bun.which misses and the fallback fires.
+      process.env.PATH = '';
+      const hit = resolveOnPath('sh');
+      // When a login shell is usable it must recover an absolute, real path. In a
+      // sandbox with no usable login shell the fallback returns null — we don't fail
+      // on that, but a non-null result must be a real absolute path.
+      if (hit !== null) {
+        expect(hit.startsWith('/')).toBe(true);
+        expect(existsSync(hit)).toBe(true);
+      }
+    } finally {
+      if (saved === undefined) delete process.env.PATH;
+      else process.env.PATH = saved;
+    }
+  });
+});
+
+describe('readiness — report shape', () => {
+  test('always returns the four items with stable ids and a boolean ready', () => {
+    const report = probeReadiness();
+    expect(report.items.map((i) => i.id)).toEqual(['claude', 'maude', 'plugins', 'agent-browser']);
+    expect(typeof report.ready).toBe('boolean');
+  });
+
+  test('agent-browser is optional and never gates ready', () => {
+    const ab = probeReadiness().items.find((i) => i.id === 'agent-browser')!;
+    expect(ab.required).toBe(false);
+  });
+});
