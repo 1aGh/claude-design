@@ -1,7 +1,7 @@
 {
   "version": "v0.31.0",
   "nodeRange": ">=20",
-  "publishedDate": "2026-06-23",
+  "publishedDate": "2026-06-24",
   "contributors": 1,
   "plugins": {
     "design": {
@@ -73,14 +73,14 @@
     "design/categories.mdx": "2026-05-29",
     "design/index.mdx": "2026-06-12",
     "design/multi-ds.mdx": "2026-05-29",
-    "desktop/index.mdx": "2026-06-23",
+    "desktop/index.mdx": "2026-06-24",
     "flow.mdx": "2026-06-11",
     "getting-started.mdx": "2026-06-11",
     "hub/deploy.mdx": "2026-06-05",
     "hub/index.mdx": "2026-05-30",
     "hub/linking.mdx": "2026-06-23",
     "hub/pricing.mdx": "2026-05-28",
-    "index.mdx": "2026-06-11",
+    "index.mdx": "2026-06-24",
     "recipes/expo.mdx": "2026-05-30",
     "recipes/monorepo.mdx": "2026-05-23",
     "recipes/nextjs.mdx": "2026-05-23",
