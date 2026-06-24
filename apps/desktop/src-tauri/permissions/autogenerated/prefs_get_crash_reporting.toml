@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-prefs-get-crash-reporting"
+description = "Enables the prefs_get_crash_reporting command without any pre-configured scope."
+commands.allow = ["prefs_get_crash_reporting"]
+
+[[permission]]
+identifier = "deny-prefs-get-crash-reporting"
+description = "Denies the prefs_get_crash_reporting command without any pre-configured scope."
+commands.deny = ["prefs_get_crash_reporting"]
