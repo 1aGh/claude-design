@@ -35,6 +35,9 @@
     "targets": "all",
     "createUpdaterArtifacts": true,
     "externalBin": ["binaries/maude-server"],
+    "macOS": {
+      "entitlements": "entitlements.plist"
+    },
     "resources": {
       "resources/apps/studio": "apps/studio",
       "resources/plugins/design/templates": "plugins/design/templates"
