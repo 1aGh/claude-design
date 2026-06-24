@@ -59,7 +59,12 @@ need(join(STUDIO, 'canvas-lib.tsx'), 'apps/studio/canvas-lib.tsx');
 cpSync(STUDIO, OUT_STUDIO, {
   recursive: true,
   filter: (src) => {
-    const rel = src.slice(STUDIO.length); // '' for root, '/â€¦' for children
+    // Normalize to forward slashes — on Windows `src` uses backslashes, so the
+    // `/node_modules` etc. prefix checks below would never match and the whole
+    // dep tree would leak into the staged bundle (it did, pre-fix: harmless
+    // .msi bloat until the realpath-aware ACP copy below started colliding with
+    // a leaked pnpm junction → ERR_FS_CP_EINVAL on the Windows leg).
+    const rel = src.slice(STUDIO.length).replace(/\\/g, '/'); // '' for root, '/…' for children
     if (rel === '') return true;
     if (rel.startsWith('/node_modules') || rel.startsWith('/target')) return false;
     if (/^\/dist\/maude-/.test(rel)) return false; // per-platform build binaries
