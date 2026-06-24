@@ -1,14 +1,24 @@
-name: Build desktop app (macOS .dmg + Windows .msi + Linux .AppImage/.deb)
+name: Build desktop app (macOS .dmg + Windows .msi + Linux .deb)
 
 # Phase 26 / DDR-106 — build the Maude native shell (Tauri v2) into installers.
 # Phase 32 / Task 2 — extended to a macOS + Windows matrix with auto-update
-# artifacts. Linux (.AppImage + .deb) added as a third leg — Tauri renders the
-# UI through WebKitGTK there (not WKWebView/WebView2), and the leg installs the
-# WebKitGTK 4.1 toolchain before `tauri build`. Linux has no Gatekeeper/
-# SmartScreen, so the bundle is unsigned by design (only the ed25519 updater
-# signature is applied — AppImage self-update still verifies; .deb does not
-# self-update). Sidecar binaries for linux-x64 already ship from
-# build-binaries.yml, and the /releases feed already routes the `linux` target.
+# artifacts. Linux (.deb) added as a third leg — Tauri renders the UI through
+# WebKitGTK there (not WKWebView/WebView2), and the leg installs the WebKitGTK
+# 4.1 toolchain before `tauri build`. Linux has no Gatekeeper/SmartScreen, so
+# the .deb is unsigned by design.
+#
+# Why .deb and not AppImage: Tauri's AppImage bundler runs linuxdeploy, whose
+# gtk plugin resolves shared-lib deps for every ELF in the AppDir via `ldd`.
+# Our Bun-compiled `maude-server` sidecar is effectively statically linked, so
+# `ldd` exits 1 ("not a dynamic executable") and the pinned linuxdeploy 1-alpha
+# treats that as fatal (core dump, exit 134) — see the verbose log on run
+# 28083203877. The .deb bundler touches neither linuxdeploy nor ldd (it just
+# packages the binary + resources and auto-generates the libwebkit2gtk Depends),
+# and .deb is the native Ubuntu format anyway. Trade-off: .deb does NOT
+# self-update (only AppImage carries the updater artifact). Re-introducing a
+# self-updating AppImage means shipping a newer linuxdeploy into the tauri cache
+# that tolerates the static sidecar — tracked as a follow-up.
+# Sidecar binaries for linux-x64 already ship from build-binaries.yml.
 #
 # Each leg bundles the compiled dev-server binary as a Tauri sidecar. Build order
 # is load-bearing: the dev-server binary must exist at apps/studio/dist/maude-<slug>
@@ -58,13 +68,13 @@ jobs:
             sidecar_dist: dist/maude-win32-x64.exe
             artifact_name: maude-desktop-windows-x64
             bundle_glob: apps/desktop/src-tauri/target/release/bundle/msi/*.msi
-          - os: ubuntu-22.04 # oldest supported runner = widest glibc baseline for the AppImage
+          - os: ubuntu-22.04 # oldest supported runner = widest glibc baseline for the .deb
             label: linux-x64
             target: bun-linux-x64
             sidecar_slug: linux-x64
             sidecar_dist: dist/maude-linux-x64
             artifact_name: maude-desktop-linux-x64
-            bundle_glob: apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+            bundle_glob: apps/desktop/src-tauri/target/release/bundle/deb/*.deb
     steps:
       - uses: actions/checkout@v6
         with:
@@ -184,52 +194,42 @@ jobs:
             pnpm --filter @maude/desktop tauri build
           }
 
-      # ── Linux: install the WebKitGTK toolchain, then build (.AppImage + .deb) ────
+      # ── Linux: install the WebKitGTK toolchain, then build (.deb) ───────────────
       - name: Install Linux build dependencies
         if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           # Tauri v2's documented Ubuntu prerequisites. webkit2gtk-4.1 is the v2
-          # webview (4.0 is v1); libayatana-appindicator3 backs the tray; patchelf
-          # + librsvg are needed by the AppImage bundler. libfuse2 lets the
-          # linuxdeploy AppImage tooling FUSE-mount (GitHub runners ship FUSE3,
-          # not the libfuse2 the AppImage runtime needs) — belt-and-suspenders
-          # alongside APPIMAGE_EXTRACT_AND_RUN below.
+          # webview (4.0 is v1); libayatana-appindicator3 backs the tray. The deb
+          # bundler reads these to auto-generate the package's Depends.
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
             libgtk-3-dev \
             librsvg2-dev \
             libayatana-appindicator3-dev \
-            libfuse2 \
-            patchelf \
             build-essential \
-            file \
-            wget
+            file
 
-      - name: Build Tauri app (.AppImage + .deb)
+      - name: Build Tauri app (.deb)
         if: matrix.os == 'ubuntu-22.04'
         shell: bash
         env:
           MAUDE_SIDECAR_SLUG: ${{ matrix.sidecar_slug }}
-          # linuxdeploy + its plugins are themselves AppImages; on GitHub runners
-          # they can't FUSE-mount, so `tauri build` dies with the opaque
-          # "failed to run linuxdeploy". APPIMAGE_EXTRACT_AND_RUN makes every
-          # AppImage extract to a tmpdir and run instead of mounting (FUSE-free).
-          # NO_STRIP avoids the companion failure where linuxdeploy's strip pass
-          # chokes on the bundled GTK/sidecar binaries.
-          APPIMAGE_EXTRACT_AND_RUN: '1'
-          NO_STRIP: 'true'
-          # Updater signing (ed25519) — produces the .AppImage.tar.gz.sig the feed
-          # serves. There is no Linux code-signing equivalent of Apple/Authenticode,
-          # so the bundle is unsigned by design (same graceful-degradation contract
-          # as the unsigned .dmg/.msi legs).
+          # tauri.conf.json sets createUpdaterArtifacts:true + an updater pubkey,
+          # so Tauri requires the matching private key as a global precondition
+          # even though .deb is NOT an updater target (only AppImage is) — without
+          # it the build errors "public key found, but no private key" AFTER the
+          # .deb is already bundled. Supplying the key satisfies the check; no
+          # updater artifact is produced for .deb, so the package stays unsigned
+          # (Linux has no Gatekeeper/Authenticode equivalent).
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          # Restrict to appimage,deb: skip the rpm target (config is targets:"all")
-          # so the leg doesn't need rpmbuild tooling. AppImage carries the updater
-          # artifact; .deb is the common direct-download package.
-          pnpm --filter @maude/desktop tauri build --bundles appimage,deb
+          # Restrict to the deb target (config is targets:"all"): the AppImage
+          # bundler trips on the static Bun sidecar via linuxdeploy/ldd (see the
+          # header comment), and rpm would need rpmbuild tooling. deb is the
+          # native Ubuntu package and needs neither.
+          pnpm --filter @maude/desktop tauri build --bundles deb
 
       - name: Locate primary installer
         id: installer
@@ -262,7 +262,4 @@ jobs:
             apps/desktop/src-tauri/target/release/bundle/msi/*.msi.sig
             apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
             apps/desktop/src-tauri/target/release/bundle/nsis/*.sig
-            apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
-            apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz
-            apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz.sig
             apps/desktop/src-tauri/target/release/bundle/deb/*.deb
