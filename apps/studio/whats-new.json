@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "ai-editing-readiness-check",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "See what AI editing needs",
+      "summary": "The welcome screen and the Assistant panel now show whether AI editing is ready — and if Claude Code, the maude CLI, or the Maude plugins are missing, they hand you the exact step to fix it. Check it any time under Help → Check AI editing readiness.",
+      "surface": "design-ui"
+    },
+    {
       "id": "native-desktop-app",
       "version": "0.31.0",
       "date": "2026-06-23",

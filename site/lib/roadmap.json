@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-24T04:34:22.217Z",
+  "generated": "2026-06-24T07:18:31.196Z",
   "currentPhase": null,
   "phases": [
     {
@@ -175,6 +175,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — mirror ai-banner.tsx, build-roadmap.mjs, and the HelpModal in client/app.jsx rather t...",
       "planPath": ".ai/plans/archive/feature-in-app-whats-new-tour.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-onboarding-readiness-check",
+      "title": "Feature: First-open AI-editing readiness check (desktop onboarding)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is native-app + dev-server work (Tauri/Rust shell + Bun dev-server route + React...",
+      "planPath": ".ai/plans/archive/feature-onboarding-readiness-check.md",
       "archived": true,
       "phaseKey": null
     },
@@ -947,17 +958,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "feature-onboarding-readiness-check",
-      "title": "Feature: First-open AI-editing readiness check (desktop onboarding)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is native-app + dev-server work (Tauri/Rust shell + Bun dev-server route + React...",
-      "planPath": ".ai/plans/feature-onboarding-readiness-check.md",
-      "archived": false,
-      "phaseKey": null
     },
     {
       "id": "feature-orchestration-layer",

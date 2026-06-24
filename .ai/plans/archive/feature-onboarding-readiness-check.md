@@ -102,3 +102,13 @@ Governed by **[DDR-128](../decisions/DDR-128-first-open-readiness-check-detect-a
 - **Non-blocking** — readiness attaches to the AI-editing capability, never gates the doors (preserves "land in a working project").
 - **Login-shell probe** — the single highest-risk correctness item; the macOS GUI-PATH ≠ shell-PATH trap produces false negatives if probed naively.
 - **Deferred:** bundling the `maude` CLI + opt-in PATH-link (DDR-128 Decision 4) is the cleanest future one-click (no npm, app already ships a binary) — explicitly NOT in this plan.
+
+---
+
+## Retro
+
+- **Tracing the runtime before coding paid off.** Following the ACP path (`bridge.ts` spawns the adapter with the inherited env) surfaced that the real bug was the **sidecar inheriting the truncated launchd PATH**, not just an inaccurate report. That turned a "report-only" feature into an actual fix (DDR-128 Decision 3 revised mid-execution) and was the highest-value moment of the work. **Lesson for `/plan`:** when a feature's value depends on a runtime env (PATH, shell, spawn inheritance), add a "trace the actual runtime env one layer below the stated scope" task *before* the UI tasks.
+- **The `/flow:done` adversarial fan-out earned its keep.** The implementation shipped a synchronous `Bun.spawnSync` login-shell fallback with no Origin gate — on a fresh machine that blocks the dev-server event loop ~5 s/binary, and a drive-by page could spawn-storm it (ethical-hacker F1, MEDIUM). Fixed before close-out (async `Bun.spawn` + concurrent probes + `sameOriginWrite` gate + a regression test). Verify-by-attacker caught a real bug the author missed.
+- **Reuse kept the diff small.** `sameOriginWrite`, the `help-modal-*` chrome, and one shared `ReadinessList` across three surfaces (onboarding strip · ChatPanel · Help modal) meant little net-new UI. Matches the "reuse libs but in Maude's style" prior.
+- **The dist-churn trap bit repeatedly.** Every server-booting test self-heals `dist/` to unminified dev bundles; had to `git checkout dist/` + release-rebuild several times. The "rebuild `--release` before any dist commit" rule is load-bearing — worth keeping front-of-mind in any dev-server feature.
+- **Verification ceiling honored.** The native `.app` PATH-fix behavior (Finder launch) is owed to the user; built the `.app` and a sandbox-launch recipe (`PATH=/usr/bin:/bin` + `SHELL=/usr/bin/false` + empty `CLAUDE_CONFIG_DIR`) so the fresh-user empty state can be previewed without uninstalling anything.
