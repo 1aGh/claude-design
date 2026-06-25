@@ -154,7 +154,9 @@ export class AcpBridge {
     // token bridge (only apps/studio/github/token.ts does), so drop the loopback
     // keychain-bridge handle from its env. Keeps a hijacked-PATH `claude` (which
     // would require pre-existing RCE) from reading the user's GitHub token.
+    // biome-ignore lint/performance/noDelete: security env-scrub — the key must be fully removed from the child's env, not set to `undefined` (which can leak through as `X=` on spawn).
     delete env.MAUDE_TOKEN_ENDPOINT;
+    // biome-ignore lint/performance/noDelete: security env-scrub — see above; `delete` is the intentional primitive here.
     delete env.MAUDE_TOKEN_KEY;
     // Model + effort selection — config, NOT credentials, so they're added back.
     this.activeModel = this.desiredModel;
