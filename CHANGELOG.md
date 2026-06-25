@@ -1,5 +1,22 @@
 # @1agh/maude
 
+## 0.34.0
+
+### Minor Changes
+
+- ab3a90f: Wire the bookend debate layer (DDR-130) into **all** loop bookends, not just the security pilot. The opt-in multi-agent debate now fires across:
+
+  - **START / divergent** — `/flow:plan` (BUILDER/SHIPPER/BREAKER draft competing approaches before the plan is written), `/flow:setup-prd` (USER-ADVOCATE/SHIPPER contest product direction + MVP scope), `/design:setup-ds` (aesthetic direction).
+  - **END / adversarial** — `/flow:validate-security` (attacker↔defender), plus the `/design:critic` + `/design:new` panel merge now reconciles conflicting cross-discipline blockers into one ordered list (reduce-pass, every user) and escalates to a live design-team that revises stances when `orchestration.designTeam` is enabled.
+  - **RESEARCH** — `/flow:bug-rca` competes candidate root causes as falsifiable hypotheses, and `ux-research-agent` recommendations can be cross-checked.
+  - **Tripwire** — `/flow:quick` escalates a load-bearing check on changes that only look trivial.
+
+  Every wiring is a guarded branch: with `orchestration.mode:off` or the experimental agent-teams flag absent, behavior is byte-for-byte unchanged (plus the always-available reduce-pass). The reduce-vs-relay invariant holds — relay is native agent-teams only, never hand-rolled in markdown.
+
+### Patch Changes
+
+- c724d5d: Security hardening of the bookend debate layer (DDR-130), found by running its own `/flow:validate-security` relay debate against itself. Closed two HIGH findings: (F1) the `flow:investigator` seat no longer carries network-egress tools (`WebSearch`/`WebFetch` stripped; `Bash` constrained to read-only local diagnostics with no secret read) so it can't colocate the untrusted-ingest + private-read + egress trifecta; web fact-checking routes to `design:ux-research-agent`, which never ingests a code diff. (F2) the debate-protocol lead now treats every seat's output as inert attributed data — it quotes a seat's `recommendation`/`top_risk` into plans/canvases but never executes or constructs a tool call from it, closing the output-handling confused-deputy.
+
 ## 0.33.0
 
 ### Minor Changes
