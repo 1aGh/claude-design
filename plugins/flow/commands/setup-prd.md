@@ -37,6 +37,16 @@ Ask the user about:
 
 If the user has already described the project in conversation, extract answers from context instead of re-asking.
 
+### 1.5 Product-direction debate (optional — `orchestration.mode`)
+
+A single-pass PRD bakes in the first framing. `/flow:setup-prd` is a **START / divergent** bookend — when eligible, contest the product direction + MVP scope before writing. Read `orchestration.*` from `.ai/workflows.config.json` (DDR-130; absent → `reduce`).
+
+- **`relay` tier** (`mode:auto` + `bookends.diverge.enabled != false` + native agent-teams capability `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` detected): load **`flow:debate-protocol`** and seat **`flow:user-advocate`** (who is served, confused, or excluded — voice: customer) and **`flow:shipper`** (what survives scope + effort — voice: minimalist; the MVP-discipline lens). Seats open **blind** on "what should this product BE, and what's the smallest MVP that delivers it"; short-circuit collapses on agreement; on a real fork they cross-challenge (stance revision) and emit one decision.
+- **`reduce` tier / no capability**: the same seats as parallel report-back subagents + a consolidator (read-only over outputs).
+- **`mode:off`**: skip — single-pass PRD, **unchanged**.
+
+Render **one** `AskUserQuestion` (recommended direction first) per `flow:question-protocol`, or report "converged — <direction>, no choice needed". The chosen direction + MVP scope feed **Step 2 (Write the PRD)** — do NOT fork it. The debate NEVER prompts the user directly and NEVER hand-rolls relay in markdown.
+
 ### 2. Write the PRD
 
 Create the document with these sections:

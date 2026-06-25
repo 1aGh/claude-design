@@ -115,7 +115,13 @@ Read `orchestration.mode` from `.ai/workflows.config.json` (absent → `auto`). 
 3. **Resolves conflicts** — where fixing critic A's blocker would reintroduce critic B's (contrast ↔ aspiration, density ↔ negative-space, motion ↔ reduced-motion): emit ONE resolution per conflict (which constraint dominates per the DS hard-stops, a11y always wins; or a *conditional* that satisfies both, e.g. "gradient confined to the upper band so the text plate keeps 4.5:1").
 4. Emits a single ordered list (a11y > ds-tokens > others, conflicts resolved) into PANEL.md's **Reconciled blocker list**.
 
-**This is the `reduce` tier — strictly read-over-outputs.** It MUST NOT route one critic's report into another critic as a prompt, re-spawn critics, or fabricate a critique (that would be the `relay` design-team tier, which is gated behind `orchestration.designTeam.enabled` + its measured oscillation gate — a follow-up, NOT this command). It only reduces finished verdicts into one coherent list. See `flow:debate-protocol` (reduce-vs-relay).
+**This is the `reduce` tier — strictly read-over-outputs.** It MUST NOT route one critic's report into another critic as a prompt, re-spawn critics, or fabricate a critique — that is the `relay` design-team tier (step 6.2). It only reduces finished verdicts into one coherent list. See `flow:debate-protocol` (reduce-vs-relay).
+
+### 6.2 Relay design-team — live reconciliation (optional — `orchestration.designTeam`)
+
+For maximum reconciliation quality, escalate the reduce-pass to a **live design-team** when all hold: `orchestration.designTeam.enabled == true`, native agent-teams capability (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`) detected, AND the panel produced **≥ `orchestration.designTeam.minConflicts`** cross-discipline conflicting blockers (fixing critic A's reintroduces critic B's). Then, via **`flow:debate-protocol`**, the conflicting critics convene as a native team and **revise their stances after hearing each other** — e.g. `a11y-critic` narrows its contrast constraint to the text band so `signature-moment-critic` can keep the bold hero, and `motion-critic` drops its reduced-motion blocker once the revised moment is compositor-only. The reconciled (often blocker-free) list replaces the step-6.1 output.
+
+This is the ONLY place `/design:critic` uses the `relay` tier; it fires only on genuine cross-discipline conflict (the stakes-gate), never on a single-discipline panel. When `designTeam.enabled` is false or no conflict crosses the threshold, the step-6.1 reduce-pass stands. The team NEVER prompts the user; the reduce-vs-relay line holds — only the native runtime relays.
 
 ### 7. Print summary
 

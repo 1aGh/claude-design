@@ -85,6 +85,8 @@ The skill detects the sub-mode internally (first-bootstrap / additional-ds / re-
 
 ### Step 3 — Skill runs its discovery + scaffold
 
+> **Direction is a START / divergent bookend (DDR-130).** When `orchestration.mode` is not `off` and native agent-teams are available, the Stage 3 refinement + Stage 4 moodboard direction decision is the place to contest the aesthetic before ~15k LOC of scaffold. The skill's Stage 4 already diverges (2–3 blind variant sub-agents); with the debate layer eligible it additionally routes the direction call through **`flow:debate-protocol`** — `flow:user-advocate` (who is this for / who's excluded) + `flow:builder` (boldest viable aesthetic) + `signature-moment-critic` (aspiration) — surfacing one framed direction. Never blocks; `mode:off` → today's flow, unchanged.
+
 See `plugins/design/skills/design-system/SKILL.md` "Bootstrap flow" for the canonical spec. Briefly:
 
 1. Pre-Flight (light) — node ≥ 20, git, write permission, config exists (else auto-onboard). **AskUserQuestion availability probe** (Phase 19 / DDR-044): the skill fires one trivial AskUserQuestion before Stage 0; if it returns `InputValidationError` or permission denial (e.g. don't-ask mode), Stages 0 + 3 switch to numbered-prose-in-chat for the rest of the session. Spec + copy-paste prose templates in `plugins/design/skills/design-system/SKILL.md` ("Tool-availability check" callout, just before Stage 0).

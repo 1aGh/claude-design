@@ -84,6 +84,16 @@ git log --oneline -20 -- [relevant-paths]
 - Is this a logic error, edge case, or missing validation?
 - Are there related issues or symptoms?
 
+### 4.5 Hypothesis debate (optional — `orchestration.mode`)
+
+A single investigator finds one plausible cause and stops (confirmation bias). `/flow:bug-rca` is a **RESEARCH** bookend — when eligible, compete the candidate causes instead. Read `orchestration.*` from `.ai/workflows.config.json` (DDR-130; absent → `reduce`).
+
+- **`relay` tier** (`mode:auto` + `bookends.research.enabled != false` + native agent-teams capability `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` detected): load **`flow:debate-protocol`** and seat one **`flow:investigator`** per live candidate root cause (cap 3 — e.g. "it's the cache-invalidation" vs "it's the race in sync/index.ts" vs "it's ABI drift"). Each must produce **falsifiable evidence** — the observation that confirms it AND the one that kills it. Seats cross-challenge like a scientific debate, attacking each other's hypotheses with disconfirming evidence. Terminates when **evidence eliminates hypotheses**, not when voices agree: a hypothesis with no disconfirming evidence survives; if two survive, report the experiment that distinguishes them.
+- **`reduce` tier / no capability**: run the investigators as parallel report-back subagents; a consolidator reduces their verdicts (read-only over outputs — no live cross-talk).
+- **`mode:off`**: skip — single-pass Step 4 investigation, **unchanged**.
+
+The surviving hypothesis (or the distinguishing experiment) feeds the **Root Cause** section of the output. The debate NEVER prompts the user directly and NEVER hand-rolls relay in markdown.
+
 ### 5. Assess Impact
 
 - What users/systems are affected?

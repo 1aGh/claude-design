@@ -197,6 +197,16 @@ Capture all discovery results in the plan's **Design Decisions** section (see te
 - Are there security or performance implications?
 - If using a design system: do the chosen components support all required states (loading, empty, error, disabled)?
 
+### 5.5 Divergent debate (optional — `orchestration.mode`)
+
+Read `orchestration.*` from `.ai/workflows.config.json` (DDR-130; absent → treat as `reduce`). `/flow:plan` is a **START / divergent** bookend — the place a feature's approach is most worth contesting. When eligible, it drafts competing approaches and hands you one framed decision before Step 6.
+
+- **`relay` tier** (`mode:auto` + `bookends.diverge.enabled != false` + native agent-teams capability `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` detected): load the **`flow:debate-protocol`** skill and convene the divergent seats — **BUILDER** (most ambitious viable approach, voice: naive-junior), **SHIPPER** (what survives scope + the existing system, voice: minimalist), **BREAKER** (what breaks across the maintenance horizon, voice: grump). The protocol greps relevant DDRs/retros into the opening prompt (retrieval-grounding), seats open **blind**, and the short-circuit collapses to "converged" when they agree (cost ≈ one reduce-pass). On a genuine fork the seats cross-challenge (stance revision) and the protocol emits one decision payload.
+- **`reduce` tier / no capability**: run the same divergent seats as parallel report-back subagents in one message, then a single consolidator reduces their proposals (read-only over outputs — no live cross-talk).
+- **`mode:off` / `bookends.diverge.enabled:false`**: skip this step entirely — today's single-pass planning, **unchanged**.
+
+Render **one** `AskUserQuestion` (recommended approach first) per `flow:question-protocol`, or report "converged — <approach>, no choice needed" on short-circuit. Auto-mode → recommended. The chosen approach + the grounded research feed **Step 6 (Write the Plan)** as its approach decision — do NOT fork or duplicate Step 6. Stakes-gate applies: a streamlined **Simple** plan (Complexity Detection) skips the debate (invoking `/flow:plan` is already the stakes signal; a borderline plan short-circuits cheaply). The debate NEVER prompts the user directly and NEVER hand-rolls relay in markdown.
+
 ### 6. Write the Plan
 
 Create the plan file in the appropriate location (see Output note above) with this structure:
