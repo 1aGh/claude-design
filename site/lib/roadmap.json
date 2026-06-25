@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-24T10:52:14.127Z",
+  "generated": "2026-06-25T12:43:42.453Z",
   "currentPhase": null,
   "phases": [
     {
@@ -961,11 +961,11 @@
     },
     {
       "id": "feature-orchestration-layer",
-      "title": "Feature: Multi-agent orchestration layer — Pilot (`/flow:plan --deep`)",
+      "title": "Feature: Multi-agent debate layer — bookend debate teams (flow + design)",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is plugin-internals work (markdown commands/agents + JSON schema + a dynamic-work...",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is plugin-internals work (markdown commands/agents/skills + JSON schema) — NOT a...",
       "planPath": ".ai/plans/feature-orchestration-layer.md",
       "archived": false,
       "phaseKey": null

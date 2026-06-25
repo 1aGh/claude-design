@@ -1,40 +1,46 @@
-# Feature: Multi-agent orchestration layer — Pilot (`/flow:plan --deep`)
+# Feature: Multi-agent debate layer — bookend debate teams (flow + design)
 
-Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. **This is plugin-internals work (markdown commands/agents + JSON schema + a dynamic-workflow script) — NOT a UI feature.** No DS/canvas/a11y/scenario gates apply; validation is the plugin-spec ladder (reachability · parity · `bash -n` · `node --check` · schema validity · fence parity), mirroring the showcase-grounded-canvas-generation plan (archived 2026-06-22).
+Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. **This is plugin-internals work (markdown commands/agents/skills + JSON schema) — NOT a UI feature.** No DS/canvas/a11y/scenario gates apply; validation is the plugin-spec ladder (reachability · parity · `bash -n` · schema validity · fence parity), mirroring the showcase-grounded-canvas-generation plan (archived 2026-06-22).
+
+> **Design provenance.** The methodology below is the converged output of a three-round, four-perspective design debate (architecture · devil's-advocate · Claude-Code-feature · daily-user) plus a second four-perspective panel on team composition (casting · right-sizing · personality-skeptic · outcome-owner). Where this plan asserts a rule (e.g. "cast by stake, not temperament"; "reduce vs relay"; "auto at the bookends"), it is the settled result of that debate, not a fresh opinion. The DDR (Task 1) records the reasoning so it survives.
 
 ## Description
 
-Add an **opt-in, capability-gated** multi-agent orchestration layer to the flow plugin that mirrors how a real team produces a decision: **DIVERGE** (brainstorm several approaches) → **ADJUDICATE** (a judge scores + synthesizes) → **ONE batched a/b/c human decision** → **CONVERGE** (implement) → **GATE** (hold production-ready). Today the diverge + adjudicate steps happen invisibly in the orchestrator's head; this layer makes agents do the larger part and surfaces the user exactly one informed choice.
+Add an **opt-in, capability-gated, auto-at-the-bookends** multi-agent **debate** layer to the flow and design plugins, built on **native Claude Code agent teams** with **no custom orchestration/messaging layer**. It mirrors how a real team produces a decision — several people with *different stakes* argue, the strongest objection survives, and one informed choice reaches the human.
 
-**This plan delivers only the first pilot** + the shared scaffolding it needs: `/flow:plan --deep` implemented as a dynamic workflow that drafts 2–4 competing technical approaches (via `flow:solution-architect`), fact-checks their cited claims (via `flow:research-verifier`), adjudicates them (via `flow:synthesis-judge`), and collapses the result to a single `AskUserQuestion` (a/b/c + recommended) before the existing plan-writing step runs. The standard single-pass `/flow:plan` is unchanged and remains the default. Broader rollout (teams for `/flow:done` security debate, `/flow:setup-prd` brainstorm, `design:setup-ds` research-verify, adversarial-QA, quality-gate hooks, `/goal` GATE) is enumerated under **Follow-up phases** and explicitly OUT of scope here.
+The layer concentrates debate at the **bookends** of the dev/design loop — `brainstorm → plan → execute → validate → done` — because that is exactly where multi-perspective argument pays in the human world: divergent debate at the **start** (what should we build / how) and adversarial debate at the **end** (is this actually safe / done / good). The **middle (`execute`) stays solo.** A third shape, **research**, covers hypothesis work (`/flow:bug-rca`, `ux-research`).
+
+**This plan delivers the eval-gated pilot** + the shared scaffolding the whole layer needs: the always-available **reduce-pass floor** (every user, no experimental flag), the `orchestration.*` config, the **net-new cast** (stake-seats), the **shared debate mechanism** (stakes-gate → blind opening → short-circuit → synthesis, with rotating dissent + retrieval-grounding), and the **first proving ground** — the `/flow:validate-security` adversarial debate — plus the **n=8 security eval** that is the explicit **go/no-go gate** for turning live debate on more broadly. Rolling `mode:auto` on for the remaining bookends is enumerated under **Follow-up phases** and gated on the eval clearing.
 
 ## User Story
 
-As a developer starting a non-trivial feature, I want `/flow:plan --deep` to have several specialist agents independently draft and cross-check competing approaches and then hand me one well-framed a/b/c decision, so that the resulting plan is production-grade in one pass instead of after several rounds of my manual review — while the cheap single-pass `/flow:plan` stays the default for routine work.
+As a developer (or designer) working a feature through the flow/design loop, I want the **start** and **end** of the loop to convene a small team of agents with genuinely different stakes that argue out the real fork and hand me one well-framed decision (or silently agree and move on) — so that plans are production-grade in one pass and validations catch what a single agreeable reviewer misses — while routine work and the `execute` middle stay fast and solo, and while I (a downstream user who never enabled the experimental teams flag) still get a strictly better multi-perspective pass than today with **zero setup**.
 
 ## Problem
 
-`/flow:plan` today (verified in `plugins/flow/commands/plan.md`) is **single-pass with zero adversarial verification**: it researches libraries once, commits to one implicit approach, and never drafts or weighs alternatives. Library/gotcha claims in the "Research" step are unverified. The user's only real lever is to reject the whole plan and re-run. Maude's 21 agents are almost entirely **critics** (convergent, "absence-of-badness"); there is no **divergent** (propose competing approaches) or **adjudicative** (judge + synthesize) capability anywhere in the system. The exact place this hurts most is upfront planning.
+`/flow:plan`, `/flow:validate-security`, `/flow:bug-rca`, `/design:critic` today are **single-pass or parallel-panel with zero cross-talk**: critics emit independent verdicts and an orchestrator *sums* them. Maude's 21 agents are almost entirely **critics** — convergent, "absence-of-badness." There is no **divergent** capability (propose competing directions), no **adversarial** capability (a seat whose win-condition is the artifact *failing*), and no **research** capability (compete hypotheses, end on evidence). The exact places this hurts are the loop's bookends. And because critics never *revise a stance after hearing another*, the system can only do set-arithmetic over fixed verdicts — it cannot surface the *conditional* form of a constraint (e.g. "the contrast floor only binds on the text band, so the bold hero can stay").
 
 ## Solution
 
-Introduce the diverge→adjudicate pattern as an **additive** mode, primitive-agnostic and capability-gated:
+Introduce **bookend debate** as an **additive, primitive-agnostic, capability-gated** layer with a strict **two-tier capability ladder**, auto-engaged at the bookends:
 
-- **Primary path** (when Claude Code dynamic workflows are available): `/flow:plan --deep` runs `plugins/flow/workflows/plan-deep.workflow.mjs` via the `Workflow` tool. The workflow holds the loop (fan-out architects → cross-check claims → judge), keeps intermediate drafts in script variables (off the main context), and returns a structured result.
-- **Floor path** (workflows unavailable/disabled): the same pattern degrades to a plain parallel-subagent fan-out the orchestrator runs inline — always available, just less context-efficient.
-- **Default path** (no `--deep`, or `orchestration` absent): today's single-pass `/flow:plan`, byte-for-byte unchanged.
+- **DEFAULT tier — `reduce` (every user, flag-off, cheap):** today's parallel panel **+ a reduce-pass** — one consolidator subagent that **reads** the N independent verdicts and **resolves contradictions into one ordered list**. It is read-only over the critics' *outputs*: it never invents a critique, never speaks as a persona, **never routes one agent's words into another agent's input**. This is just good orchestration and ships immediately to everyone with nothing to configure.
+- **DEBATE tier — `relay` (native agent teams, flag-on, premium):** when `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is enabled, the bookend convenes a **native agent team** whose unique value is **stance revision** — a seat changing its position after hearing another's argument (the one thing `reduce` structurally cannot do). The runtime carries the messages; **we never hand-roll a SendMessage/consensus loop in plugin markdown.**
+- **`orchestration.mode: auto`** auto-attempts a bookend debate, **capability-detected**: flag-on → `relay` team; flag-off → `reduce` panel; never nags, never force-enables the flag, **never spends premium tokens the user did not authorize via the env flag.**
 
-The workflow **cannot** take mid-run user input (dynamic-workflow constraint), so it returns the option set and the **`AskUserQuestion` happens in the command, after the workflow returns** — one batched a/b/c per `flow:question-protocol`. The chosen approach feeds the existing "Write the Plan" step; everything downstream of plan-writing is untouched.
+Two gates in series keep "always auto" from becoming "always expensive":
+1. **Stakes-gate (pre-debate):** is this decision worth contesting? (reversibility × blast-radius × effort). Low-stakes → solo-decide, no debate. The team SIZE scales with cost-of-being-wrong, not topic glamour.
+2. **Short-circuit (post-blind-opening):** seats write opening positions **blind** (independent contexts); escalate to a full live debate **only when openings genuinely disagree**. Agreement → collapse to "converged, decided," cost ≈ one reduce-pass.
 
-New roles are reusable as **both** subagent and (later) agent-team teammate, since none pins `hooks`/`mcpServers`/`permissionMode` (those are ignored for plugin subagents anyway).
+The decision the team produces is rendered by the **command (lead)**, never inside the team — one batched `AskUserQuestion` per `flow:question-protocol` (the recommended option first), or a "converged — here's the decision, no choice needed" report on short-circuit. Auto-mode fallback picks the recommended option.
 
 ## Metadata
 
 - **Type**: New Capability
-- **Complexity**: High (cross-cutting: config schema + 3 new agents + a workflow script + command wiring + a DDR; new orchestration concept)
-- **App/Package**: `plugins/flow` (Maude self-dogfood — flow running on its own repo)
-- **Affected Systems**: flow config schema, flow agents, flow commands (`plan`), a new `plugins/flow/workflows/` dir, `flow:question-protocol` usage, CLAUDE.md flow docs
-- **Dependencies**: Claude Code dynamic workflows (Pro+; `/config` toggle) for the primary path — **soft** dependency, capability-probed with a subagent fallback. No new npm/runtime deps.
+- **Complexity**: High (cross-cutting: config schema + a shared debate-mechanism skill + 4–5 new agents + command wiring on the security bookend + an eval harness + a DDR; new orchestration concept built on an experimental native feature)
+- **App/Package**: `plugins/flow` + `plugins/design` (Maude self-dogfood — flow/design running on their own repo)
+- **Affected Systems**: flow config schema, flow + design agents, `/flow:validate-security` (pilot consumer), `/design:critic` consolidation (reduce-pass), `flow:question-protocol` usage, CLAUDE.md flow docs
+- **Dependencies**: Native **agent teams** (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, experimental, off-by-default, **cannot be force-enabled by a plugin**) for the `relay` tier — **soft** dependency, capability-probed, with the `reduce` tier as the always-available floor. No new npm/runtime deps. No custom workflow runtime.
 
 ---
 
@@ -42,58 +48,117 @@ New roles are reusable as **both** subagent and (later) agent-team teammate, sin
 
 ### Must-Read Files
 
-> When consuming this section during `/flow:execute`, **read every file listed here in parallel in a single assistant message**.
+> When consuming this section during `/flow:execute`, **read every file listed here in parallel in a single assistant message.**
 
-- `plugins/flow/.claude-plugin/config.schema.json` (whole file) — Why: add the `orchestration` top-level block. Note `additionalProperties: false` at root and the `security` block (lines 236–259) as the mirror pattern (nested object, `enabled` defaults, enums).
-- `plugins/flow/commands/plan.md` (whole file, 385 lines) — Why: the command being extended. `--deep` slots in near Step 0 / Scope Check; the existing "Write the Plan" (Step 6) is the join point — deep mode feeds it the chosen approach and leaves it otherwise intact.
-- `plugins/flow/agents/test-coverage.md` (whole file) — Why: the canonical agent-file shape to mirror (frontmatter `name`/`description`/`tools` only; body = role + hard rules + scope + structured Report block). No `model`/`skills`/`mcpServers` pins.
-- `plugins/flow/agents/ethical-hacker.md` — Why: the precedent for a research/verification agent that holds `WebSearch` in `tools` (research-verifier mirrors its tool set).
-- `plugins/flow/skills/question-protocol/SKILL.md` (whole file) — Why: the structured-question shape (`source`/`question`/`type`/`options`/`default`/`required`/`context`) the `synthesis-judge` emits and the command renders as one `AskUserQuestion`.
-- `plugins/flow/hooks/hooks.json` — Why: confirms only `SessionStart` is wired today; relevant because quality-gate hooks (`Stop`/`TaskCompleted`) are a **follow-up**, NOT this plan — do not touch hooks.json here.
-- `CLAUDE.md` → "Plugin command naming" + "Flow plugin: `<project>` placeholder convention" + "Published npm surface" — Why: naming rules for the new agents, the project-agnostic constraint (no Maude-specific values baked into flow), and the fact that `plugins/flow/**` ships via the **marketplace clone, not npm** (so the new `workflows/` dir needs NO `package.json` `files` entry).
+- `plugins/flow/.claude-plugin/config.schema.json` (whole file) — Why: add the `orchestration` top-level block. The `security` block (verified at lines 236–259) is the mirror pattern (nested object, `additionalProperties:false`, `enabled`/enum defaults, every key documented). Root is `additionalProperties:false` with `required:["name"]` — add to `properties`, **never** to `required`.
+- `plugins/flow/agents/test-coverage.md` (whole file) — Why: the canonical agent-file shape to mirror (frontmatter `name`/`description`/`tools` only; body = role + hard rules + scope + fenced structured Report block).
+- `plugins/flow/agents/ethical-hacker.md` + `plugins/flow/agents/security-auditor.md` (whole files) — Why: these ARE the ATTACKER + DEFENDER seats (reused, not re-created). They already read `security.severityFloor`/`scope` from config and carry the adversarial pairing the pilot promotes to a 2-seat debate. The new agents mirror their tool sets and config-reading discipline.
+- `plugins/flow/commands/validate-security.md` (whole file) — Why: the **pilot consumer**. The 2-seat debate slots into its existing `security-auditor` + `ethical-hacker` fan-out; everything downstream is untouched.
+- `plugins/flow/skills/question-protocol/SKILL.md` (whole file) — Why: the structured-question shape (`source`/`question`/`type`/`options`/`default`/`required`/`context`) the lead renders as the single `AskUserQuestion`. Subagents/teammates NEVER call `AskUserQuestion` — the command does.
+- `plugins/design/commands/critic.md` (whole file) — Why: the existing parallel-critic panel + `PANEL.md` consolidation is where the **reduce-pass** lands first (immediate value, flag-off). Confirms today's "sum-of-verdicts" gap the reduce-pass closes.
+- `plugins/flow/hooks/hooks.json` — Why: confirms only `SessionStart` is wired today; the `TeammateIdle`/`TaskCreated`/`TaskCompleted` team hooks are a **follow-up** (quality-gate enforcement), NOT this plan — do not touch hooks.json here.
+- **Native docs (authoritative for the `relay` tier):** `https://code.claude.com/docs/en/agent-teams` and `https://code.claude.com/docs/en/agents`. Key facts encoded in this plan: teams are experimental + off-by-default + lead-spawned via natural language (no deterministic API); teammates message each other + share a task list; **teammate roles reuse subagent `.md` defs incl. plugin scope** (`tools`+`model` honored, body appended) but **`skills`/`mcpServers` frontmatter are NOT applied to a teammate** (it loads skills/MCP from project+user settings); 3–5 teammates ideal; no nested teams; lead fixed; token cost scales linearly; docs name "research and review" + "scientific debate … disprove each other's theories … consensus" as the #1 use case.
+- `CLAUDE.md` → "Plugin command naming" + "Flow plugin: `<project>` placeholder convention" + "Published npm surface" — Why: naming rules for the new agents; the project-agnostic constraint (no Maude-specific values baked into flow); `plugins/flow/**` ships via the **marketplace clone, not npm** (the new agents/skill need NO `package.json` `files` entry).
 - `.ai/decisions/DDR-004-flow-command-naming-prefix-convention.md` + `DDR-006-plugin-namespace-in-name-frontmatter.md` — Why: agents declare `name: flow:<slug>`; the group-`<verb>` filename rule is for **commands**, not agents (existing agents use bare slugs: `test-coverage`, `security-auditor`).
 
 ### Files to Create
 
-- `plugins/flow/agents/solution-architect.md` — divergent role: drafts ONE concrete technical approach for an assigned angle.
-- `plugins/flow/agents/research-verifier.md` — due-diligence role: adversarially fact-checks cited library/API/gotcha claims, keep/drop per claim.
-- `plugins/flow/agents/synthesis-judge.md` — adjudicator: scores the proposals + verdicts, synthesizes a winner, emits the a/b/c option payload.
-- `plugins/flow/workflows/plan-deep.workflow.mjs` — the dynamic-workflow script orchestrating the three phases.
-- `.ai/decisions/DDR-<next>-additive-gated-orchestration-layer.md` — the decision record (number = highest in `.ai/decisions/` + 1; DDR-106 is the latest known → expect **DDR-107**, verify before creating).
+- `plugins/flow/agents/builder.md` — divergent stake: **"the most ambitious viable approach."** Default voice: *naive junior* (cracks the premise — "why is this even true?"). Optimizes architecture/ambition. Counters premature convergence.
+- `plugins/flow/agents/shipper.md` — divergent stake: **"what survives scope, effort, and the existing system."** Default voice: *minimalist* (scope-cut). Counters gold-plating, reinvention, plans that don't fit the repo.
+- `plugins/flow/agents/breaker.md` — divergent/dissent stake: **"what breaks — across the maintenance horizon, not just at merge"** (absorbs the Sisyphus/TCO lens). Default voice: *grump / regression-risk skeptic*. Counters groupthink + deferred breakage. Also the default occupant of the **rotating dissent** role.
+- `plugins/flow/agents/user-advocate.md` — stake: **"who lives with this — who is served, confused, or excluded."** Default voice: *customer*. (Distinct from the internal-legibility "naive junior" seat — this is the end-user's experience of the running product.)
+- `plugins/flow/agents/investigator.md` — research stake: **"my candidate cause/claim is X — here is the evidence that confirms OR kills it."** Default voice: *skeptic*. Terminates the research debate when evidence **eliminates hypotheses**, not when voices agree.
+- `plugins/flow/skills/debate-protocol/SKILL.md` — the **shared mechanism**: stakes-gate → retrieval-grounding (inject relevant DDRs/retros into the opening prompt) → **blind** opening positions → short-circuit → cross-challenge (with mandatory rotating dissent) → lead synthesis → one `AskUserQuestion`. Plus the **capability ladder** (detect flag → `relay` native team vs `reduce` panel) and the **reduce-vs-relay line** (read finished verdicts = allowed; route one agent's words into another's input = forbidden in markdown, only the runtime may relay).
+- `.ai/decisions/DDR-130-bookend-debate-layer.md` — the decision record (number = highest in `.ai/decisions/` + 1; latest is **DDR-129** → expect **DDR-130**; verify before creating).
 
 ### Patterns to Follow
 
-- **Agent frontmatter** (from `test-coverage.md:1-5`): exactly `name`, `description`, `tools`. Nothing else. Body opens with a one-line role statement, then `## Hard rules` / `## Scope` / `## Report` with a fenced output block.
-- **Non-proactive descriptions** — these agents must NOT be auto-delegated by unrelated tasks. Write each `description` to say it is invoked **only** by the deep-plan workflow / orchestrator (avoid "use proactively" / "MUST BE USED" trigger phrases). Contrast with `test-coverage.md` which is intentionally proactive.
-- **Structured JSON tail** — every critic/agent in this repo ends its report with a machine-readable fenced JSON verdict the orchestrator parses (see `test-coverage.md:66-81` Report block; design critics emit a final `{...}` verdict). The three new agents follow suit so the workflow's `schema:` option can validate their returns.
-- **Workflow script shape** (from the `Workflow` tool contract): `export const meta = {name, description, phases:[...]}` as a **pure literal**, then body using `phase()` / `agent(prompt,{agentType,schema,label,phase})` / `parallel()` / `pipeline()`. `Date.now()`/`Math.random()` are unavailable. Concurrency cap 16, total cap 1000 (we use ≤6). Plain JS, ESM `export`, top-level `await` allowed.
-- **Config block** (mirror `security`, schema lines 236–259): nested object, `additionalProperties:false`, `enabled` boolean `default:false`, descriptive `description` on every key.
-- **Project-agnostic** — flow is generic. The `orchestration` knob and agents must carry NO Maude-specific values; angles/thresholds are generic defaults a downstream repo inherits.
+- **Agent frontmatter** (from `test-coverage.md:1-5`): exactly `name`, `description`, `tools`. Nothing else. Body opens with a one-line stake statement, then `## Hard rules` / `## Scope` / `## Report` with a fenced JSON verdict block.
+- **Non-proactive descriptions** — these agents must NOT be auto-delegated by unrelated tasks. Write each `description` to say it is invoked **only** by the debate-protocol skill / bookend orchestrator (avoid "use proactively" / "MUST BE USED" phrases). Contrast `test-coverage.md`, which is intentionally proactive.
+- **Structured JSON tail + binary verdict** — every seat ends its report with a fenced JSON verdict the lead parses, and **a single binary `verdict` field** (e.g. `approve|revise|block`) so the merge-test (below) is computable. Mirrors how the design critics emit a final `{...}` verdict the auto-fix loop reads.
+- **Cast by stake, voice for conviction** — each agent file's BODY carries the durable, decision-agnostic half: the **stake** (the orthogonal failure it alone catches) + its **default voice** (a named persona handle that elicits a committed, less-hedged stance). The **spawn prompt** carries the volatile half: the specific decision, the shared (DDR-grounded) context, the round, and (in cross-challenge) the other openings. Same split the critics already use (body = framework, prompt = `canvas_path`/`feedback`/`iter_n`).
+- **Reuse as teammate roles** — per the agent-teams docs, these `.md` files work BOTH as report-back subagents (`reduce` tier) AND as live teammates (`relay` tier) unchanged. Keep them self-contained: do NOT lean on `skills`/`mcpServers` frontmatter (ignored for teammates) — read what you need via `tools`.
+- **Project-agnostic (flow)** — flow runs on arbitrary repos. The stakes, voices, gate thresholds, and `orchestration.*` defaults carry NO Maude-specifics. Design's debate MAY be Maude-flavored (it ships Maude's DS critics); that asymmetry is intended.
+- **Config block** (mirror `security`, lines 236–259): nested object, `additionalProperties:false`, documented keys, opt-in defaults.
 
 ---
 
 ## Design / Architecture Decisions
 
-### The capability ladder (which path runs)
+### The bookend model (where debate fires)
 
-`/flow:plan` resolves the mode in this order:
+| Loop stage | Shape | Fires? | Why |
+| --- | --- | --- | --- |
+| brainstorm / plan (`/flow:plan`, `/flow:setup-prd`, `/design:setup-ds`) | **DIVERGENT** ("what's BEST", no artifact yet) | auto | fails by premature convergence — needs seats that pull the option space apart |
+| execute (`/flow:execute`, `/flow:quick`) | — | **SOLO** (by rule) | the middle carries out a decision already made; no fork |
+| validate / done (`/flow:validate-security`, `/design:critic`) | **ADVERSARIAL** ("is it actually safe/done/good", artifact exists) | auto | fails by motivated blindness — needs a seat whose win-condition is the artifact failing |
+| research (`/flow:bug-rca`, `ux-research`) | **RESEARCH** ("what's TRUE") | auto | fails by confirmation — ends when evidence eliminates hypotheses, not when voices agree |
+| `/flow:quick` | tripwire | escalate-only | the dangerous change is the one that *looks* trivial; a cheap stakes-gate escalates a 2-seat tripwire only when it smells load-bearing (auth/data/migration/shared module/public API) |
 
-1. **`--deep` flag present** OR `orchestration.workflows.enabled == true` → attempt deep mode. Otherwise → **standard single-pass** (unchanged; stop here).
-2. Deep mode requested → **capability-probe dynamic workflows**: are they enabled (not `disableWorkflows`, plan supports them)? The probe is a soft check — if the `Workflow` tool is usable, take the **Primary path** (run `plan-deep.workflow.mjs`).
-3. Workflows unavailable/disabled → **Floor path**: orchestrator spawns `flow:solution-architect` ×N + `flow:research-verifier` as parallel subagents in one message, then `flow:synthesis-judge` as a follow-up subagent. Same agents, same outputs, no workflow runtime.
-4. Either deep path then surfaces **one** `AskUserQuestion` and joins the existing "Write the Plan" step.
+### The two-tier capability ladder (reduce vs relay)
 
-This is the "additive, off → unchanged" guarantee: with `orchestration` absent and no `--deep`, not one byte of today's behavior changes.
+The **only** thing a live team adds over today's panel is **stance revision**. That insight draws the load-bearing line:
 
-### Why workflows-first, teams-deferred (for the DDR)
+- **`reduce` (default, everyone):** a consolidator **reads** the N finished verdict JSONs and dedupes/ranks/resolves contradictions into one ordered list. Read-only over outputs. **Never** invents a critique, speaks as a persona, or feeds one agent's words into another's input.
+- **`relay` (flag-on, premium, native only):** the experimental runtime carries messages between teammates so a seat can revise after hearing another. **One-line test:** does the step only *read finished verdicts* (`reduce`, allowed) or *route one agent's words into another agent's input and iterate* (`relay` — allowed ONLY when the native runtime does it, NEVER hand-rolled in markdown)? **The moment a critique becomes another critique's prompt in our own code, we have built the team simulator we refuse to build.**
 
-- **Workflows** fit diverge→adjudicate exactly: deterministic loop, intermediate drafts off-context, resumable, cross-checking is a first-class pattern (mirrors bundled `/deep-research`'s "vote per claim, drop those that fail cross-check"). No experimental flag.
-- **Agent teams** are experimental + off-by-default (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`) and shine only when the user wants to **watch/steer a live debate** — reserved for `/flow:done` security debate in a follow-up. v1 ships the `orchestration.teams` schema stub only.
-- **The a/b/c must be post-workflow.** Dynamic workflows take no mid-run user input; the workflow returns the option set, the command renders the decision. Encode this as a hard invariant.
+"Always auto" lives on **both** sides of this line: flag-off → auto `reduce`; flag-on → auto `relay`. Same posture, different mechanism. The plugin never force-enables the flag and never spends premium tokens the user didn't authorize.
 
-### Open question to resolve during execute (Risk R1)
+### The cast (seats = stakes; personality = voice)
 
-Confirm `Workflow({scriptPath: "${CLAUDE_PLUGIN_ROOT}/workflows/plan-deep.workflow.mjs"})` loads a plugin-shipped script (the marketplace clone places the file on disk, so it should). If plugin-workflow auto-registration also exposes it as a saved command, that's a bonus, not a requirement. **The Floor path (Task-7 subagent fallback) makes R1 non-blocking** — if scriptPath loading fails, deep mode still works via subagents.
+**Governing rule:** *cast by stake to size the room; fill each chair with a named voice for conviction; a voice never earns a chair on its own — only an orthogonal failure-mode does.* **Falsifiable merge-test:** log each seat's binary verdict across N runs; if two seats agree on the verdict >~90% of the time, they are one seat in two hats — **merge them**, regardless of how different their prose reads. A forced dissenter that flips to disagree ~100% is also a red flag (theater).
+
+**Standing seats (stakes):**
+
+| Seat | Failure it alone catches | Default voice | Status |
+| --- | --- | --- | --- |
+| `flow:builder` | premature convergence / unambitious | naive junior | net-new |
+| `flow:shipper` | hidden cost / won't ship cheap | minimalist | net-new |
+| `flow:breaker` | breaks (incl. maintenance horizon — absorbs Sisyphus) | grump / regression-risk skeptic | net-new (also default rotating-dissent occupant) |
+| `flow:user-advocate` | wrong thing / who's excluded | customer | net-new |
+| `flow:investigator` | not true / unverified by evidence | skeptic | net-new |
+| ATTACKER = `ethical-hacker` | exploitable by design | zealot | **reuse** |
+| DEFENDER = `security-auditor` | control won't hold | grump | **reuse** |
+| design critic panel + `signature-moment-critic` | mediocre / WCAG / token-discipline | — | **reuse** |
+
+**Dispositions of the brainstormed archetypes** (recorded so they don't get re-proposed): naive junior → BUILDER voice / conditional internal-legibility seat in build+design contexts only · grump/morous → BREAKER+DEFENDER voice ("regression-risk skeptic", auditable, not a mood) · devil's advocate → **mandatory ROTATING dissent role on the non-proposer**, not a chair · **Sisyphus → BREAKER maintenance-horizon lens** (no decision found where TCO flips a call BREAKER+SHIPPER jointly miss) · **historian → RETRIEVAL STEP** (grep relevant DDRs/retros into the opening prompt; it supplies priors all seats reason from, it never contradicts a verdict — not a debater) · customer → USER-ADVOCATE voice · zealot/minimalist → voices (DEFENDER/BUILDER purist; SHIPPER scope-cut), not chairs. **Net-new standing seats: 5.** Everything else is a voice, the rotating role, a retrieval step, or a reuse.
+
+### Per-use-case roster (the shippable composition)
+
+| Use case | Shape | Seats (stake → voice) | Guest-expert slot |
+| --- | --- | --- | --- |
+| `/flow:plan` | START | BUILDER→naive-junior · SHIPPER→minimalist · BREAKER→grump | +domain expert if novel subsystem |
+| `/flow:setup-prd` | START | USER-ADVOCATE→customer · SHIPPER→minimalist | +customer-segment expert |
+| `/design:setup-ds` | START | USER-ADVOCATE→customer · BUILDER→DS-coherence · signature-moment→aspiration | +domain-aesthetic expert |
+| `/flow:validate-security` | END | ATTACKER (ethical-hacker)→zealot · DEFENDER (security-auditor)→grump | +threat-domain (auth/crypto) |
+| `/design:critic` | END | design-critic always; +a11y if interactive; +1 specialist routed by canvas | router IS the guest |
+| `/flow:bug-rca` | RESEARCH | INVESTIGATOR→skeptic + 1 hypothesis-holder per live hypothesis (cap 3) | +subsystem expert |
+| `ux-research` | RESEARCH | INVESTIGATOR→skeptic · USER-ADVOCATE→customer | +domain researcher |
+| `/flow:quick` | tripwire | BREAKER→grump (escalate-only) | — |
+
+**Repertory + one guest:** the structural seats are a fixed, reused company (calibration + cost + legibility); the orchestrator hires **one** domain-expert guest per decision. Dissent rotates onto the non-proposer each run. `execute` = solo.
+
+### The mechanism (shared across all bookends — the `debate-protocol` skill)
+
+1. **Stakes-gate** — classify reversibility × blast-radius × effort. Below floor → solo-decide, no debate. Sets team size (2 reversible → 4 irreversible/high-blast, cap from the docs' 3–5 ideal).
+2. **Retrieval-grounding** — grep the relevant DDRs/retros (and, for `relay`, the artifact/diff) into the shared opening prompt so every seat opens already-grounded (this is where "historian" lives).
+3. **Blind opening positions** — each seat writes its stance independently (separate contexts under `relay`; one message-batch of parallel subagents under `reduce`). Each emits `{recommendation, confidence, top_risk, verdict}`.
+4. **Short-circuit** — if openings agree and no `top_risk` contradicts another, **stop**: report "converged, decided," cost ≈ one reduce-pass. Escalate to full debate ONLY on genuine disagreement. **The escalation rate must be observable** — if >~50% of bookend runs escalate, the openings aren't independent enough; re-tune.
+5. **Cross-challenge** (escalated only) — `relay`: native team, seats revise after hearing each other, with **mandatory dissent** (the non-proposer must steel-man against any consensus). `reduce`: the consolidator resolves the fixed verdicts (no revision).
+6. **Lead synthesis** — the command (not a seat) preserves real disagreement and collapses real agreement; **never introduces a recommendation no seat argued**. Emits the `question-protocol` payload.
+7. **One `AskUserQuestion`** — rendered by the command (recommended option first); auto-mode → recommended. The team/debate NEVER prompts the user directly.
+
+### "Always auto", honestly (and project-agnostic)
+
+`orchestration.mode` defaults to `auto`. `auto` = fire the bookend's shape iff (capability detected for `relay`, else `reduce`) AND (stakes-gate clears) AND (short-circuit found a fork). **For ~every downstream user the experimental flag is off, so `auto` means exactly today's behavior plus the cheap reduce-pass — nothing to configure, no nag, no premium spend.** `default:true` is therefore honest. Flow seats are domain-free; design seats may be Maude-flavored.
+
+### Eval-first governance (why the rollout is gated)
+
+Live debate is built on an experimental feature and costs linear tokens, so we prove it before turning it on broadly. **The pilot ships the `reduce` floor to everyone immediately** (pure win, no flag), then **proves `relay` on the one bookend with crisp ground truth — security** via an n=8 eval (Task 8). Only if debate measurably beats the panel there do we flip `mode:auto` on for the other bookends (Follow-up). `/design:critic` as a live team is itself gated on a separate measured condition (≥30% conflict-oscillation in the instrumented `/design:edit --perfect` loop AND a reduce-pass demonstrably failing to break it) — until then it is a reduce-pass feature, not a team.
+
+### Why native-only, no custom layer
+
+Agent teams are the blessed native primitive for exactly this ("scientific debate … disprove each other's theories"). A hand-rolled flag-off relay (feeding A's verdict into B as a prompt) would re-implement SendMessage + the shared task list in markdown, badly, with none of the runtime's guarantees — and violate the user's explicit "no custom layer unless strictly necessary." Flag-off ⇒ `reduce` only. The `relay` tier is 100% native teams. We ship **no** `.workflow.mjs` and **no** messaging engine.
 
 ---
 
@@ -101,126 +166,121 @@ Confirm `Workflow({scriptPath: "${CLAUDE_PLUGIN_ROOT}/workflows/plan-deep.workfl
 
 Execute in order. Each task is atomic and testable.
 
-### Task 1: CREATE DDR — additive gated orchestration layer
+### Task 1: CREATE DDR — bookend debate layer
 
-- **Do**: Run `/flow:record-ddr` (or author directly) `.ai/decisions/DDR-<next>-additive-gated-orchestration-layer.md`. Capture: the diverge→adjudicate→1-decision→converge→gate pattern; the capability ladder (single → subagents → workflows → teams); **why additive/opt-in/capability-gated** (teams experimental, high-frequency commands stay subagent-default for cost); workflows-first / teams-deferred rationale; the post-workflow-a/b/c invariant; the follow-up rollout list. Cross-link the showcase-grounded plan as the "markdown plugin-spec, no code gates" validation precedent.
-- **Pattern**: Existing DDRs in `.ai/decisions/` (e.g. DDR-061 orchestration-speed, DDR-127 showcase-grounded).
-- **Gotcha**: DDR number = `ls .ai/decisions/ | grep -oE 'DDR-[0-9]+' | sort -V | tail -1` + 1. Don't hardcode 107 without checking.
-- **Validate**: File exists; cross-links resolve (`grep -o 'DDR-[0-9]*' the new file` → each referenced file exists).
+- **Do**: Author `.ai/decisions/DDR-130-bookend-debate-layer.md`. Capture: the bookend model (diverge-start / adversarial-end / research / execute-solo); the **reduce-vs-relay** line and the one-line test; the **two-tier capability ladder** (`auto` on both sides of the flag; plugin can't force the experimental flag; never spend unauthorized premium tokens); **cast by stake, voice for conviction** + the >90%-verdict-agreement merge-test; the archetype dispositions (Sisyphus→BREAKER lens, historian→retrieval step, devil's-advocate→rotating role); the **stakes-gate + short-circuit** two-gate cost model; **eval-first** governance (security n=8 go/no-go; design `/design:critic` gated on measured oscillation); **native-only / no custom layer**. Cross-link the showcase-grounded plan as the "markdown plugin-spec, no code gates" validation precedent.
+- **Pattern**: Existing DDRs in `.ai/decisions/` (e.g. DDR-127 showcase-grounded, DDR-061 orchestration-speed).
+- **Gotcha**: DDR number = `ls .ai/decisions/ | grep -oE 'DDR-[0-9]+' | sort -V | tail -1` + 1 (latest is **DDR-129**). Verify before writing.
+- **Validate**: File exists; `grep -o 'DDR-[0-9]*' the-new-file` → each referenced DDR file exists.
 
 ### Task 2: ADD `orchestration` block to flow config schema
 
-- **Do**: In `plugins/flow/.claude-plugin/config.schema.json`, add a top-level `orchestration` property (object, `additionalProperties:false`) with two sub-objects:
-  - `workflows`: `{ enabled (bool, default false), deepPlanAngles (int 2–4, default 3, "how many solution-architect angles the deep-plan workflow drafts"), verifyResearch (bool, default true, "run research-verifier to fact-check cited claims before they reach the plan") }`.
-  - `teams`: `{ enabled (bool, default false) }` + a `description` noting it is **reserved for follow-up phases (e.g. /flow:done security debate); v1 ships schema only, no consuming command**.
-  - Parent `description`: "Opt-in multi-agent orchestration (diverge→adjudicate→decide→converge). Additive: absent or all-false → flow commands use today's single-pass / parallel-subagent behavior unchanged. No hard dependency on experimental Claude Code features."
-- **Pattern**: The `security` block (lines 236–259) — same nesting depth, `enabled` default `false`, every key documented.
-- **Gotcha**: Root has `additionalProperties:false` — adding the key in `properties` is sufficient; do NOT add it to `required` (opt-in). Keep generic — no Maude-specific defaults.
-- **Validate**: `jq . plugins/flow/.claude-plugin/config.schema.json >/dev/null` (valid JSON); `node -e "const Ajv=require('ajv/dist/2020').default; new Ajv({strict:false}).compile(require('./plugins/flow/.claude-plugin/config.schema.json')); console.log('schema compiles')"` (valid JSON Schema 2020-12 — same Ajv `cli/lib/config-lint.mjs` uses).
+- **Do**: In `plugins/flow/.claude-plugin/config.schema.json`, add a top-level `orchestration` property (object, `additionalProperties:false`):
+  - `mode`: enum `["auto","reduce","off"]`, default `"auto"` (`auto` = `relay` if the experimental teams flag is detected else `reduce`; `reduce` = always panel+reduce, never a live team; `off` = today's raw single-pass / sum-of-verdicts).
+  - `bookends`: object with `diverge` / `adversarial` / `research`, each `{ enabled (bool, default true) }` — per-shape opt-out.
+  - `maxSeats`: int 2–4, default 4 (hard cap; stakes-gate picks where in 2–4 to land).
+  - `escalationCeiling`: number 0–1, default 0.5 (observability knob: if the measured short-circuit escalation rate exceeds this, the protocol warns that openings aren't independent enough).
+  - `designTeam`: `{ enabled (bool, default false), minConflicts (int, default 2) }` — `/design:critic` live-team tier, **off until its measured gate clears** (note this in the `description`).
+  - Parent `description`: "Opt-in, capability-gated bookend debate (diverge→adversarial→research). Additive: with the experimental agent-teams flag off (the default for ~all users), `auto`/`reduce` degrade to today's parallel panel + a read-only reduce-pass — nothing to configure, no premium spend. No hard dependency on experimental Claude Code features."
+- **Pattern**: The `security` block (lines 236–259).
+- **Gotcha**: Root is `additionalProperties:false`, `required:["name"]` — add to `properties`, NOT `required`. Inner sub-objects ALSO need `additionalProperties:false`. No Maude-specific defaults.
+- **Validate**: `jq . plugins/flow/.claude-plugin/config.schema.json >/dev/null`; `node -e "const Ajv=require('ajv/dist/2020').default; new Ajv({strict:false}).compile(require('./plugins/flow/.claude-plugin/config.schema.json')); console.log('schema compiles')"`.
 
-### Task 3: CREATE `flow:solution-architect` agent
+### Task 3: CREATE the `flow:debate-protocol` skill (the shared mechanism)
 
-- **Do**: `plugins/flow/agents/solution-architect.md`. Frontmatter: `name: flow:solution-architect`; `tools: Read, Grep, Glob, Bash` (read-only — proposes, never implements; NO Edit/Write); `description` = narrow, non-proactive ("Divergent planning specialist. Invoked ONLY by the deep-plan workflow / orchestrator to draft ONE concrete technical approach for an assigned angle. Not for general use."). Body: given `{feature, codebase_context, angle}` where angle ∈ `mvp-first | robust-first | risk-first`, inspect the codebase read-only and produce ONE concrete approach — architecture sketch, key files to touch/create, task sequencing, the trade-off it optimizes, explicit risks, and **every external/library claim it relies on listed separately** (so the verifier can check them). End with a fenced JSON verdict: `{ angle, summary, key_decisions[], files[], risks[], cited_claims[], est_complexity }`.
-- **Pattern**: `test-coverage.md` structure; read-only tool set like the critics.
-- **Gotcha**: The angle is an INPUT passed per-invocation, not hardcoded — the same agent runs N times with different angles. Description must not contain proactive trigger phrases (would cause accidental auto-delegation).
-- **Validate**: `grep -q '^name: flow:solution-architect' …`; frontmatter has no `model:`/`skills:`/`mcpServers:`; fenced JSON block present.
+- **Do**: `plugins/flow/skills/debate-protocol/SKILL.md`. Frontmatter per the flow skill convention (`name: flow:debate-protocol`, description, etc.). Body specifies the 7-step mechanism (stakes-gate → retrieval-grounding → blind opening → short-circuit → cross-challenge → lead synthesis → one `AskUserQuestion`), the **capability ladder** (detect `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` → spawn a native team in natural language for `relay`, else run parallel subagents + reduce-pass for `reduce`), the **reduce-vs-relay one-line test** + the explicit prohibition on hand-rolled relay in markdown, the **rotating-dissent** rule, the **merge-test** (>90% verdict agreement → seats are one), and the **post-debate `AskUserQuestion` invariant** (the team never prompts; the command renders one batched decision). Generic — no Maude-specifics; reads `orchestration.*` from config.
+- **Pattern**: `plugins/flow/skills/question-protocol/SKILL.md` (the sibling protocol skill) for shape + the `<project>`/config-read convention.
+- **Gotcha**: This skill is the single source of truth for the mechanism — bookend commands LOAD it, they don't re-spell it. It must read every knob from `orchestration.*` (never hardcode thresholds). Per the agent-teams docs, `skills` frontmatter is NOT applied to teammates — so this skill governs the LEAD/orchestrator, and seat behavior lives in the agent `.md` bodies (Task 4), not here.
+- **Validate**: `grep -q '^name: flow:debate-protocol'`; fence parity even; the reduce-vs-relay test + the rotating-dissent rule + the `AskUserQuestion`-in-command invariant are all present.
 
-### Task 4: CREATE `flow:research-verifier` agent
+### Task 4: CREATE the 5 net-new cast agents
 
-- **Do**: `plugins/flow/agents/research-verifier.md`. Frontmatter: `name: flow:research-verifier`; `tools: Read, Grep, Glob, Bash, WebSearch, WebFetch`; non-proactive `description` ("Due-diligence fact-checker. Invoked ONLY by the deep-plan workflow / orchestrator to adversarially verify cited library/API/gotcha claims. Not for general use."). Body: take a list of `cited_claims` (from the architects), and for EACH claim independently attempt to **verify against authoritative sources** (prefer the `context7` MCP for library docs when available in the session — note it inherits ambient MCP tools; fall back to WebFetch/WebSearch on official docs). Vote per claim: `verified | refuted | unverifiable`, with the source. Mirror `/deep-research`: claims that fail cross-check are flagged so the judge can drop approaches that lean on them. End with fenced JSON: `{ verdicts: [{claim, status, source, note}], summary: {verified, refuted, unverifiable} }`.
-- **Pattern**: `ethical-hacker.md` (the existing agent that carries `WebSearch` and does adversarial research).
-- **Gotcha**: Plugin subagents IGNORE `mcpServers` frontmatter — do NOT try to pin `context7` there. The agent uses whatever MCP/web tools are ambient in the session; if none are available it returns `unverifiable` (degrades, never blocks). State this in the body.
-- **Validate**: `grep -q '^name: flow:research-verifier'`; `tools:` includes `WebSearch, WebFetch`; no `mcpServers:` pin.
+- **Do**: Create `plugins/flow/agents/{builder,shipper,breaker,user-advocate,investigator}.md`. Each: frontmatter `name: flow:<slug>`, read-only `tools` (`Read, Grep, Glob, Bash`; INVESTIGATOR adds `WebSearch, WebFetch` like `ethical-hacker`), **non-proactive** `description` naming the debate-protocol/bookend as the only caller. Body = one-line **stake** + **default voice** + `## Hard rules` (blind opening; emit `{recommendation, confidence, top_risk, verdict}`; never call `AskUserQuestion`; BREAKER additionally scores the maintenance horizon — the absorbed Sisyphus lens) + `## Scope` + `## Report` fenced JSON. Use the stake/voice table in Design above verbatim.
+- **Pattern**: `test-coverage.md` shape; `ethical-hacker.md` tool set for INVESTIGATOR; read-only like the critics.
+- **Gotcha**: The voice is a prompt-handle for conviction, NOT a temperament that changes the verdict logic — keep the stake auditable (e.g. BREAKER's body says "regression-risk skeptic," not "be grumpy"). Description must carry no proactive trigger phrase. Keep self-contained (no `skills`/`mcpServers` reliance — ignored when run as a teammate). Single binary `verdict` field is mandatory (feeds the merge-test).
+- **Validate**: `grep -l '^name: flow:' plugins/flow/agents/{builder,shipper,breaker,user-advocate,investigator}.md` → 5 hits; none has `model:`/`skills:`/`mcpServers:`; each has a fenced JSON tail with a `verdict` key.
 
-### Task 5: CREATE `flow:synthesis-judge` agent
+### Task 5: SHIP the `reduce`-pass floor into `/design:critic` consolidation
 
-- **Do**: `plugins/flow/agents/synthesis-judge.md`. Frontmatter: `name: flow:synthesis-judge`; `tools: Read, Grep` (reasons over inputs passed in; read-only); non-proactive `description` ("Adjudicator. Invoked ONLY by the deep-plan workflow / orchestrator to score competing approaches and emit one decision payload. Reusable across diverge→adjudicate flows. Not for general use."). Body: given the architect proposals + the research verdicts, **score each approach** on weighted criteria (fit-to-codebase, risk, simplicity, share-of-claims-verified), **discount approaches that depend on refuted claims**, pick a winner, graft the best ideas from runners-up into a synthesized recommendation, and emit a **decision payload in `flow:question-protocol` shape**: 2–4 options (a/b/c…), a `default`/recommended option, and a one-line rationale per option + the synthesized approach. End with fenced JSON: `{ ranked:[{option_label, approach_ref, score, why}], recommended, synthesis, question_payload:{source:"plan-deep", question, type:"choice", options[], default, required:true, context} }`.
-- **Pattern**: `question-protocol/SKILL.md` question object shape (`source`/`question`/`type`/`options`/`default`/`required`/`context`).
-- **Gotcha**: The judge does NOT call `AskUserQuestion` (subagents can't — it's UI-bound, and per protocol subagents never ask directly). It only **produces the payload**; the command renders it. Keep options ≤4 (AskUserQuestion limit).
-- **Validate**: `grep -q '^name: flow:synthesis-judge'`; JSON tail contains `question_payload` with `options` length 2–4.
+- **Do**: Wire the reduce-pass into the existing `/design:critic` panel consolidation (the `PANEL.md` step in `plugins/design/commands/critic.md`): after the N critics emit verdicts, run **one** consolidator pass (subagent or inline) that READS all verdict JSONs and emits a single reconciled, de-duplicated, conflict-resolved ordered blocker list — replacing today's raw "sum of blockers." This is the always-available DEFAULT tier; it ships to everyone with the experimental flag off and changes the design-edit loop from "serial blocker-chasing" to "one coherent list." Read-only over outputs (the reduce-vs-relay line); it must NOT route one critic's words into another critic's input.
+- **Pattern**: The existing `critic.md` consolidation/`PANEL.md` merge; the reduce-vs-relay rule in the `debate-protocol` skill.
+- **Gotcha**: This is the one task that delivers value with NO dependency on agent teams — keep it strictly `reduce` (no live cross-talk, no stance revision). Do not gate it on the eval; it's a pure win.
+- **Validate**: `bash -n` on any shell added; a dry read confirms the consolidator only reads finished verdicts; fence parity in `critic.md` preserved.
 
-### Task 6: CREATE the `plan-deep` dynamic-workflow script
+### Task 6: WIRE the `/flow:validate-security` adversarial bookend (the proving ground)
 
-- **Do**: `plugins/flow/workflows/plan-deep.workflow.mjs`. Start with `export const meta = { name:'flow-plan-deep', description:'Draft competing technical approaches, cross-check their claims, adjudicate to one decision', phases:[{title:'Diverge'},{title:'Verify'},{title:'Adjudicate'}] }` (pure literal). Body reads `args` (`{feature, codebase_context, angles, verifyResearch}`):
-  - **Diverge**: `parallel(angles.map(a => () => agent(architectPrompt(feature, codebase_context, a), {agentType:'flow:solution-architect', phase:'Diverge', label:`arch:${a}`, schema: ARCH_SCHEMA})))` — N approaches concurrently.
-  - **Verify** (only if `verifyResearch`): collect the union of `cited_claims` across proposals, then `agent(verifyPrompt(claims), {agentType:'flow:research-verifier', phase:'Verify', schema: VERIFY_SCHEMA})`.
-  - **Adjudicate**: `agent(judgePrompt(proposals, verdicts), {agentType:'flow:synthesis-judge', phase:'Adjudicate', schema: JUDGE_SCHEMA})`.
-  - `return { proposals, verdicts, decision: judge }`. Define the three JSON schemas inline as object literals.
-- **Pattern**: The `Workflow` tool contract examples (review-changes pipeline). Use `parallel()` for the barrier (judge needs all proposals + verdicts together — a genuine barrier).
-- **Gotcha**: (a) `meta` must be a pure literal — no computed values. (b) The script takes **no user input** — it returns the decision payload; the a/b/c is rendered by the command (Task 7). (c) `agent()` returns `null` on skip/death → `.filter(Boolean)` proposals before judging. (d) ESM `export` + top-level `await`; injected globals (`agent`/`parallel`/`phase`) are undefined at `node --check` time but syntax-only check passes.
-- **Validate**: `node --check plugins/flow/workflows/plan-deep.workflow.mjs` (ESM syntax OK); grep confirms `export const meta` is the first statement and `phases` lists the 3 titles used by `phase()`/`opts.phase`.
+- **Do**: Edit `plugins/flow/commands/validate-security.md` to convene the 2-seat ADVERSARIAL debate via the `debate-protocol` skill: ATTACKER (`ethical-hacker`) proposes the chained exploit → DEFENDER (`security-auditor`) rebuts with the mitigating control → ATTACKER rebuts whether the chain survives the control. Capability ladder applies: flag-on → native 2-seat team (stance revision: does the chain survive?); flag-off → today's parallel pair + reduce-pass. Stakes-gate + short-circuit honored. One `AskUserQuestion`/report rendered by the command; `security.severityFloor`/`scope` still read as today. Default path (mode `off` / no capability) = today's behavior, byte-for-byte.
+- **Pattern**: `validate-security.md`'s existing `security-auditor` + `ethical-hacker` fan-out; the `debate-protocol` skill (Task 3).
+- **Gotcha**: This is the FIRST and (this plan) ONLY live-debate consumer — it's the eval's subject. Do NOT wire the other bookends here (Follow-up, gated on Task 8). The 2-seat cap is deliberate (a precision duel, not an ensemble).
+- **Validate**: `bash -n` on shell snippets; `grep -n 'AskUserQuestion' validate-security.md` shows it command-side only; a dry read confirms mode `off` path is unchanged; reachability test passes.
 
-### Task 7: WIRE `--deep` into `/flow:plan` + the single a/b/c
-
-- **Do**: Edit `plugins/flow/commands/plan.md`:
-  1. `argument-hint`: `"feature description [--deep]"`.
-  2. Add a `## Deep mode (optional — `--deep`)` section after **Step 0 / Scope Check**, before Scenario Assessment, specifying the **capability ladder** (Design section above): detect `--deep` or `orchestration.workflows.enabled`; capability-probe workflows; **Primary path** = `Workflow({scriptPath:"${CLAUDE_PLUGIN_ROOT}/workflows/plan-deep.workflow.mjs", args:{feature, codebase_context, angles, verifyResearch}})` where `angles` derives from `orchestration.workflows.deepPlanAngles` (default 3 → `["mvp-first","robust-first","risk-first"]`); **Floor path** = spawn `flow:solution-architect` ×N + `flow:research-verifier` as parallel subagents, then `flow:synthesis-judge`; **Default path** = skip section entirely.
-  3. After either deep path returns the `decision.question_payload`, render **one** `AskUserQuestion` (a/b/c + recommended as the first option) per `flow:question-protocol`. Auto-mode fallback (AskUserQuestion unavailable): pick `default`.
-  4. Feed the chosen approach + the synthesis + the verified-claims-only research into the existing **"Write the Plan" (Step 6)** as its grounding — do NOT duplicate or fork Step 6.
-  5. One-line cost notice when deep runs ("deep mode spawned N architects + verifier + judge").
-- **Pattern**: How `plan.md` already invokes `Skill(flow:skill-loader)` at Step 0 and references `flow:question-protocol`; how design commands gate `AskUserQuestion` with an auto-mode default.
-- **Gotcha**: The default (no-`--deep`) path must remain literally unchanged — the new section is a guarded branch that no-ops when not triggered. Don't let `--deep` leak into the feature slug used by canvas detection. The `AskUserQuestion` is in the **command**, never inside the workflow.
-- **Validate**: `bash -n` on any shell snippet added; `grep -n 'AskUserQuestion' plugins/flow/commands/plan.md` shows it in the deep section only; a dry read confirms the default path is untouched (diff scoped to additions).
-
-### Task 8: DOCS — CLAUDE.md note + CATEGORIES + reachability sanity
+### Task 7: DOCS — CLAUDE.md + CATEGORIES + reachability
 
 - **Do**:
-  - Add a short subsection to `CLAUDE.md` (flow architecture area) — "Multi-agent orchestration (opt-in)": the diverge→adjudicate pattern, the `orchestration.*` knob, the three new agents, and that `/flow:plan --deep` is the first consumer; point future work at the **Follow-up phases** in this plan.
-  - `plugins/flow/CATEGORIES.md`: `/flow:plan` stays `daily`; `--deep` is a **mode flag, not a new command** → add a one-line note under the plan row, do NOT add a new command row or new group. The three agents are not commands → no CATEGORIES entry (agents aren't catalogued there).
-  - Confirm the new `plugins/flow/workflows/` dir needs **no** `package.json` `files` entry (ships via marketplace clone, not npm — per CLAUDE.md "Published npm surface").
-- **Pattern**: The "Pattern priors come first" / "Showcase" notes recently added to CLAUDE.md (concise, pointer-style).
-- **Gotcha**: Keep CLAUDE.md addition tight (pointer, not spec — the spec is this plan + the DDR). Don't bake Maude-specifics into the flow plugin files themselves.
-- **Validate**: `grep -q 'orchestration' CLAUDE.md`; CATEGORIES still lists `plan` once under `daily`.
+  - Add a "Multi-agent bookend debate (opt-in)" subsection to `CLAUDE.md` (flow architecture area): the bookend model, the reduce/relay tiers, `orchestration.*`, the 5 net-new seats + the `debate-protocol` skill, that `/flow:validate-security` is the first consumer, and a pointer to the **Follow-up phases** here for the rollout.
+  - `plugins/flow/CATEGORIES.md`: no new command rows (debate rides inside existing commands); add a one-line note. Agents aren't catalogued there.
+  - Confirm the new `agents/` + `skills/debate-protocol/` need **no** `package.json` `files` entry (marketplace clone, not npm).
+- **Pattern**: The concise pointer-style notes recently added to CLAUDE.md ("Pattern priors", "Showcase").
+- **Gotcha**: Keep the CLAUDE.md addition tight (pointer, not spec — the spec is this plan + the DDR). No Maude-specifics baked into flow files.
+- **Validate**: `grep -q 'bookend debate' CLAUDE.md`; CATEGORIES unchanged structurally.
+
+### Task 8: THE SECURITY EVAL — the go/no-go gate (gates Follow-up rollout)
+
+- **Do**: Build + run the n=8 blind eval that decides whether `relay` debate beats the `reduce` panel. Corpus: 8 past changes touching auth/input/network — **4 with a seeded known-real finding** (from a fixed CVE-class bug or a caught-in-review issue), **4 clean**. Two arms: **B** = current parallel `security-auditor`+`ethical-hacker` → reduce-pass; **C** = same two agents, 2-turn debate (Task 6). Objective 2×2 per case (no human judge): **detection rate** (caught the seeded finding) + **false-positive rate** (blocked a clean case). ~16 runs. **Ship rule:** keep/expand debate ONLY if C raises detection OR cuts false-positives vs B; a tie kills `relay` even for security (fall back to `reduce` everywhere). Record the result + the measured short-circuit **escalation rate** in the DDR.
+- **Pattern**: A lightweight harness under `.ai/` (this repo's dogfood workspace), not shipped to npm. Mirrors the showcase plan's "live-dogfood is the one thing static gates can't prove."
+- **Gotcha**: Design deliberately gets NO debate-vs-panel eval (no seedable ground truth) — that absence is itself the argument design stays `reduce` until the separate oscillation gate clears. Don't block the Task 5 reduce floor on this eval; only the `relay` rollout is gated.
+- **Validate**: Eval harness runs; the 2×2 table is produced; the go/no-go + escalation rate are recorded in DDR-130.
 
 ### Task 9: VALIDATE — plugin-spec gate ladder
 
-- **Do**: Run the full plugin-spec validation (this feature has no code/test/build/UI surface, mirroring the showcase-grounded plan's gate set).
+- **Do**: Run the full plugin-spec validation (no code/test/build/UI surface, mirroring the showcase-grounded plan's gate set).
 - **Validate**:
-  1. `node --test cli/lib/plugin-cli-reachability.test.mjs` — passes (the new command branch uses `Workflow`/Agent tools + `${CLAUDE_PLUGIN_ROOT}/workflows/...`, NOT a banned raw `bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/*.sh"` call).
+  1. `node --test cli/lib/plugin-cli-reachability.test.mjs` — passes (debate wiring uses Agent/team spawn + the skill, NOT a banned raw `bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/*.sh"`).
   2. `jq . plugins/flow/.claude-plugin/config.schema.json >/dev/null` + Ajv compile (Task 2).
-  3. `node --check plugins/flow/workflows/plan-deep.workflow.mjs`.
-  4. `bash -n` clean on every shell block added to `plan.md`.
-  5. Markdown fence parity preserved in `plan.md` (even ``` count).
-  6. `scripts/check-version-parity.sh` — green (untouched; no version fields changed — confirm parity is 0-delta).
-  7. New agents discoverable: `grep -l '^name: flow:' plugins/flow/agents/{solution-architect,research-verifier,synthesis-judge}.md` → 3 hits.
+  3. `bash -n` clean on every shell block added to `validate-security.md` / `critic.md`.
+  4. Markdown fence parity preserved in every edited `.md`.
+  5. `scripts/check-version-parity.sh` — green (no version fields changed).
+  6. New agents discoverable: `grep -l '^name: flow:' plugins/flow/agents/{builder,shipper,breaker,user-advocate,investigator}.md` → 5 hits; skill `grep -q '^name: flow:debate-protocol'`.
+  7. Agent `name:` ↔ any `agentType`/spawn reference match (a grep assertion — a rename breaks silently otherwise).
 
 ---
 
 ## Validation (summary)
 
-This is a **markdown + JSON-schema + ESM-workflow plugin-spec change** — the generic `lint/typecheck/test/build` + 5-platform scenario + a11y/design gates are **N/A** (no app code, no UI, no untrusted-input/exec surface → security fan-out also N/A). The authoritative gates are Task 9's ladder. The one thing the static gates **cannot** prove is the end-to-end live deep run (workflow loads via scriptPath → 3 agents fire → one a/b/c renders → plan writes); that needs a real dogfood session and is called out as **R1/Acceptance** below.
+This is a **markdown + JSON-schema + skill/agent plugin-spec change** — the generic `lint/typecheck/test/build` + 5-platform scenario + a11y/design gates are **N/A** (no app code, no UI). The authoritative static gates are Task 9's ladder. The two things static gates **cannot** prove are (a) a live `relay` bookend end-to-end (team spawns → seats argue → one decision renders) and (b) whether debate is actually *better* — both are covered by **Task 8's eval** + a real dogfood session, and called out under Acceptance/R1 below.
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] `orchestration` block added to flow config schema; Ajv compiles it; `additionalProperties:false` honored; not in `required`.
-- [ ] Three agent files created with `name: flow:{solution-architect,research-verifier,synthesis-judge}`, read-only tool sets, **non-proactive** descriptions, fenced-JSON tails.
-- [ ] `plan-deep.workflow.mjs` created; `node --check` clean; `meta` pure literal with the 3 phases.
-- [ ] `/flow:plan --deep` wired with the capability ladder (Primary workflow / Floor subagent / Default unchanged) and exactly **one** post-workflow `AskUserQuestion`.
-- [ ] **Default `/flow:plan` (no `--deep`) is byte-for-byte unchanged** (verify the diff is purely additive/guarded).
-- [ ] DDR recorded (next number) with cross-links resolving.
-- [ ] CLAUDE.md orchestration note + CATEGORIES note added; no new command row/group; no `package.json` `files` change.
-- [ ] Task 9 gate ladder green (reachability · schema · `node --check` · `bash -n` · fence parity · version parity).
-- [ ] **Live dogfood (R1):** in a real session with dynamic workflows enabled, `/flow:plan --deep "<some feature>"` runs the workflow, surfaces one a/b/c, and writes a plan grounded in the chosen approach. (If workflows unavailable, the Floor subagent path produces the same.) — *the one criterion the static gates can't cover; may be deferred to a user run like the showcase plan's live-dogfood.*
-- [ ] No DDR-worthy decision left unrecorded; flow plugin stays project-agnostic (no Maude-specifics baked in).
+- [ ] `orchestration` block added to flow config schema; Ajv compiles it; `additionalProperties:false` at every level; not in `required`; `mode` default `auto`.
+- [ ] `flow:debate-protocol` skill created: the 7-step mechanism + capability ladder + **reduce-vs-relay test** + rotating dissent + the **`AskUserQuestion`-in-command** invariant; reads all knobs from `orchestration.*`.
+- [ ] 5 net-new agents created (`builder`, `shipper`, `breaker`, `user-advocate`, `investigator`) with `name: flow:<slug>`, read-only tools, **non-proactive** descriptions, stake+voice bodies, and a fenced JSON tail with a binary `verdict`.
+- [ ] **`reduce`-pass floor shipped into `/design:critic`** — one consolidator producing a reconciled blocker list; strictly read-over-outputs (no relay); works with the experimental flag OFF for every user.
+- [ ] `/flow:validate-security` wired as the 2-seat adversarial bookend via the skill; capability-laddered; one command-side `AskUserQuestion`; **mode `off` / no-capability path byte-for-byte unchanged.**
+- [ ] **No hand-rolled relay** anywhere — verify no markdown routes one agent's verdict into another agent's input; flag-off ⇒ `reduce` only.
+- [ ] DDR-130 recorded (cross-links resolve) with the reduce-vs-relay line, the cast rule + archetype dispositions, the two-gate cost model, and eval-first governance.
+- [ ] CLAUDE.md bookend-debate note + CATEGORIES note added; no new command row/group; no `package.json` `files` change.
+- [ ] Task 9 gate ladder green (reachability · schema · `bash -n` · fence parity · version parity · agents discoverable · name↔spawn match).
+- [ ] **Security eval (R1):** Task 8's n=8 2×2 run; detection + false-positive + escalation rate recorded in DDR-130; go/no-go on the broader `relay` rollout stated. (`reduce` floor ships regardless; only the `relay` expansion is gated.)
+- [ ] Flow plugin stays project-agnostic (stakes/voices/thresholds carry no Maude-specifics); design debate's Maude-flavoring is intentional and isolated to design files.
 
 ---
 
-## Follow-up phases (OUT of scope — do NOT build here)
+## Follow-up phases (OUT of scope — gated on Task 8's eval)
 
-Noted so the rollout is legible; each is its own future plan:
+Noted so the rollout is legible; each is its own future plan, and the live-`relay` ones are **gated on the security eval clearing**:
 
-1. **`/flow:done` security debate (agent teams)** — promote the existing `security-auditor` + `ethical-hacker` parallel pair to a steerable team that adversarially challenges each other's "safe" verdicts (the flagship debate use-case). Consumes `orchestration.teams`.
-2. **`/flow:setup-prd` brainstorm** — `flow:product-strategist` + `flow:devils-advocate` divergent team to fight single-pass PRD generation (today: 0 research, 0 agents).
-3. **`design:setup-ds` research-verify** — wire `flow:research-verifier` (or a design variant) to fact-check `ux-research-agent` recommendations (today: single-pass, unverified).
-4. **`flow:adversarial-qa`** — a "try to break it" QA agent for `/flow:scenario` + `/design:smoke` (today: happy-path only).
-5. **Quality-gate hooks** — add `Stop`/`SubagentStop`/`TaskCompleted` entries to `plugins/flow/hooks/hooks.json` to hold a quality bar (production-ready GATE), plus optional `/goal` wiring in `/flow:execute`.
-6. **`memory` field on critics/verifiers** — cross-session learning for the new agents once they've proven out.
-7. **Roster audit** — consolidate the three design-system agents' shared rule-core; evaluate the two a11y agents.
+1. **Flip `mode:auto` on for the START divergent bookends** — `/flow:plan` (BUILDER/SHIPPER/BREAKER), `/flow:setup-prd` (USER-ADVOCATE/SHIPPER), `/design:setup-ds` (USER-ADVOCATE/BUILDER/signature-moment). Plan auto-debates by default (invoking plan IS the stakes-gate; short-circuit collapses the rare trivial plan cheaply).
+2. **RESEARCH bookends** — `/flow:bug-rca` (INVESTIGATOR + per-hypothesis holders, cap 3; ends on evidence) and `ux-research` (INVESTIGATOR + USER-ADVOCATE fact-checking recommendations).
+3. **`/design:critic` live team** — gated on its OWN measured condition: instrument `/design:edit --perfect`; require ≥30% conflict-driven oscillation AND a reduce-pass demonstrably failing to break a specific oscillation a 2-turn exchange breaks. Until then it stays the Task 5 reduce-pass.
+4. **`/flow:quick` tripwire** — the escalate-only BREAKER seat for the false-trivial change (stakes-gate fires it only on load-bearing smell). Amends the "no team on per-iteration commands" guardrail in the bounded, escalate-only form.
+5. **Quality-gate team hooks** — `TeammateIdle`/`TaskCreated`/`TaskCompleted` in `plugins/flow/hooks/hooks.json` to enforce the production-ready bar.
+6. **Conditional internal-legibility seat** — promote "naive junior" from a BUILDER voice to a standing seat in build+design contexts (its object — the next engineer's experience of the code — is orthogonal to BUILDER's "what's best"); ship only if it passes the >90% merge-test against BUILDER.
+7. **Roster audit** — re-run the merge-test on all seats after they've proven out; consolidate any pair that agrees on the verdict >90%.
 
 ---
 
 ## Confidence
 
-**7/10** for one-pass implementation. The markdown/agent/schema/workflow files mirror existing, well-understood patterns (test-coverage agent shape, security config block, the documented Workflow contract). The residual uncertainty is (a) R1 — plugin-shipped workflow loading via `scriptPath` (mitigated to non-blocking by the Floor subagent path), and (b) the end-to-end live deep run, which only a real session proves. Everything static is high-confidence.
+**7/10** for one-pass implementation of the pilot. The schema/agent/skill files mirror existing, well-understood patterns (security config block, `test-coverage`/`ethical-hacker` agent shape, `question-protocol` skill), and the `reduce` floor (Task 5) is a high-confidence pure win with no experimental dependency. Residual uncertainty: (a) the `relay` tier rides an **experimental, off-by-default** native feature with known limits (no in-process resume, slow shutdown, task-status lag) — mitigated by the `reduce` floor making it strictly additive; (b) whether live debate measurably beats the panel — which is exactly what **Task 8's eval exists to answer before any broad rollout.** Everything static is high-confidence; the bet that `relay` is worth turning on broadly is deliberately deferred to evidence.
