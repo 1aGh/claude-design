@@ -3,6 +3,7 @@ import { type CurrentPhase, type Phase, RoadmapTimeline } from '@/components/mdc
 import roadmapJson from '@/lib/roadmap.json';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/roadmap' },
   title: 'Roadmap · Maude',
   description: 'Past, present, and planned phases of Maude development.',
 };

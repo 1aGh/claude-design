@@ -6,6 +6,7 @@ import roadmapJson from '@/lib/roadmap.json';
 import whatsNewJson from '@/lib/whats-new.json';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/changelog' },
   title: 'Changelog & Roadmap · Maude',
   description: 'One timeline — what shipped, what is in progress, and what is planned.',
 };

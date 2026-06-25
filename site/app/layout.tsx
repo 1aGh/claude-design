@@ -2,6 +2,8 @@ import { Analytics } from '@vercel/analytics/next';
 import { RootProvider } from 'fumadocs-ui/provider/next';
 import type { Metadata } from 'next';
 import { Inter, Inter_Tight, JetBrains_Mono } from 'next/font/google';
+import { appName, gitConfig, siteUrl } from '@/lib/shared';
+import stats from '@/lib/stats.json';
 import './global.css';
 
 // maude type system — Inter (body/UI), Inter Tight (display headings),
@@ -27,9 +29,49 @@ const interTight = Inter_Tight({
   display: 'swap',
 });
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+// Site-wide structured data (schema.org). Disambiguates "Maude" (this Claude
+// Code toolkit) from the many other "Maude" entities — the rewriting-logic
+// language, getmaude.com, etc. — for search engines and AI answer engines.
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${siteUrl}/#website`,
+      url: `${siteUrl}/`,
+      name: 'Maude',
+      description: 'Vibe-design & vibe-code workflows for Claude Code.',
+      inLanguage: 'en',
+      publisher: { '@id': `${siteUrl}/#person` },
+    },
+    {
+      '@type': 'Person',
+      '@id': `${siteUrl}/#person`,
+      name: 'Michal Dovrtěl',
+      url: `${siteUrl}/about`,
+      sameAs: [`https://github.com/${gitConfig.user}`],
+    },
+    {
+      '@type': 'SoftwareApplication',
+      '@id': `${siteUrl}/#software`,
+      name: appName,
+      alternateName: '@1agh/maude',
+      applicationCategory: 'DeveloperApplication',
+      applicationSubCategory: 'Claude Code plugin',
+      operatingSystem: 'macOS, Windows, Linux',
+      softwareVersion: stats.version.replace(/^v/, ''),
+      description:
+        'Two Claude Code plugins (design + flow), one CLI, and an optional self-hosted sync hub. design iterates HTML/JSX canvases; flow runs the agentic plan → ship loop. Open-source, MIT, no telemetry.',
+      url: `${siteUrl}/`,
+      downloadUrl: 'https://www.npmjs.com/package/@1agh/maude',
+      codeRepository: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
+      license: 'https://opensource.org/licenses/MIT',
+      isAccessibleForFree: true,
+      author: { '@id': `${siteUrl}/#person` },
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    },
+  ],
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -58,6 +100,11 @@ export default function Layout({ children }: LayoutProps<'/'>) {
       suppressHydrationWarning
     >
       <body className="flex flex-col min-h-screen">
+        <script
+          type="application/ld+json"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: static, build-time JSON-LD structured data
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
         <a className="mdcc-skip-link" href="#main-content">
           Skip to main
         </a>

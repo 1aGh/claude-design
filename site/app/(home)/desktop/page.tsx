@@ -5,6 +5,7 @@ import stats from '@/lib/stats.json';
 import { DownloadButton } from './download-button';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/desktop' },
   title: 'Download Maude for desktop',
   description:
     'Install the Maude desktop app for macOS and Windows. Canvas browser, git versioning, GitHub sign-in, and live collaboration — no terminal required. It keeps itself up to date.',

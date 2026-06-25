@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { SkuLabel } from '@/components/mdcc/sku-label';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/about' },
   title: 'About the maker',
   description:
     "Hi I'm Michal and I build things. Maude is a small set of vibe-design and vibe-code workflows for Claude Code.",

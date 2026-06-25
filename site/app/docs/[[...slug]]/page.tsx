@@ -12,7 +12,7 @@ import { notFound } from 'next/navigation';
 import { PageMetaFooter } from '@/components/mdcc/page-meta-footer';
 import { type Crumb, SkuBreadcrumb } from '@/components/mdcc/sku-breadcrumb';
 import { getMDXComponents } from '@/components/mdx';
-import { gitConfig } from '@/lib/shared';
+import { gitConfig, siteUrl } from '@/lib/shared';
 import { getPageImage, getPageMarkdownUrl, source } from '@/lib/source';
 import stats from '@/lib/stats.json';
 
@@ -57,28 +57,46 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   const crumbs = buildCrumbs(params.slug);
   const sku = skuFor(params.slug);
 
+  const breadcrumbLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: crumbs.map((crumb, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: crumb.label,
+      ...(crumb.href ? { item: new URL(crumb.href, siteUrl).href } : {}),
+    })),
+  };
+
   return (
-    <DocsPage toc={page.data.toc} full={page.data.full}>
-      <SkuBreadcrumb crumbs={crumbs} sku={sku} />
-      <DocsTitle>{page.data.title}</DocsTitle>
-      <DocsDescription className="mb-0">{page.data.description}</DocsDescription>
-      <div className="flex flex-row gap-2 items-center border-b pb-6">
-        <MarkdownCopyButton markdownUrl={markdownUrl} />
-        <ViewOptionsPopover markdownUrl={markdownUrl} githubUrl={editUrl} />
-      </div>
-      <DocsBody>
-        <MDX
-          components={getMDXComponents({
-            a: createRelativeLink(source, page),
-          })}
-        />
-      </DocsBody>
-      <PageMetaFooter
-        editUrl={editUrl}
-        sku={sku}
-        updated={(stats.pageUpdated as Record<string, string>)[page.path]}
+    <>
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: static, build-time JSON-LD structured data
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
       />
-    </DocsPage>
+      <DocsPage toc={page.data.toc} full={page.data.full}>
+        <SkuBreadcrumb crumbs={crumbs} sku={sku} />
+        <DocsTitle>{page.data.title}</DocsTitle>
+        <DocsDescription className="mb-0">{page.data.description}</DocsDescription>
+        <div className="flex flex-row gap-2 items-center border-b pb-6">
+          <MarkdownCopyButton markdownUrl={markdownUrl} />
+          <ViewOptionsPopover markdownUrl={markdownUrl} githubUrl={editUrl} />
+        </div>
+        <DocsBody>
+          <MDX
+            components={getMDXComponents({
+              a: createRelativeLink(source, page),
+            })}
+          />
+        </DocsBody>
+        <PageMetaFooter
+          editUrl={editUrl}
+          sku={sku}
+          updated={(stats.pageUpdated as Record<string, string>)[page.path]}
+        />
+      </DocsPage>
+    </>
   );
 }
 
@@ -94,6 +112,7 @@ export async function generateMetadata(props: PageProps<'/docs/[[...slug]]'>): P
   return {
     title: page.data.title,
     description: page.data.description,
+    alternates: { canonical: page.url },
     openGraph: {
       images: getPageImage(page).url,
     },

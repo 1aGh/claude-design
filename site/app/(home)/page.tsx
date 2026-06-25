@@ -1,9 +1,14 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { CopyButton } from '@/components/mdcc/copy-button';
 import { DemoVideo } from '@/components/mdcc/demo-video';
 import { DownloadNative } from '@/components/mdcc/download-native';
 import { SkuLabel } from '@/components/mdcc/sku-label';
 import stats from '@/lib/stats.json';
+
+export const metadata: Metadata = {
+  alternates: { canonical: '/' },
+};
 
 const INSTALL_SNIPPET = `# 0. install the CLI (skills use it)
 npm i -g @1agh/maude
