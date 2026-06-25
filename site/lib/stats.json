@@ -11,8 +11,8 @@
     },
     "flow": {
       "commands": 30,
-      "skills": 18,
-      "agents": 7
+      "skills": 19,
+      "agents": 12
     },
     "maude": {
       "subcommands": 16

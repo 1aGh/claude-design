@@ -298,6 +298,86 @@ User-perceived response time ceiling for primary interactions.
 
 ISO 639-1 codes the UI ships in (e.g. `["cs", "en"]`). Empty = monolingual.
 
+## `orchestration`
+
+**Type:** `object`
+
+Opt-in, capability-gated bookend debate (diverge→adversarial→research). Additive: with the experimental agent-teams flag off (the default for ~all users), `auto`/`reduce` degrade to today's parallel panel + a read-only reduce-pass — nothing to configure, no premium spend. No hard dependency on experimental Claude Code features. See DDR-130.
+
+### `orchestration.mode`
+
+**Type:** enum: `"auto"` │ `"reduce"` │ `"off"` · **Default:** `"auto"`
+
+`auto` = use a live native agent-team (relay) when the CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS capability is detected, else the read-only reduce-pass; gated further by the stakes-gate + short-circuit. `reduce` = always parallel panel + reduce-pass, never a live team. `off` = today's raw single-pass / sum-of-verdicts, byte-for-byte unchanged.
+
+**Allowed values:**
+
+- `"auto"`
+- `"reduce"`
+- `"off"`
+
+### `orchestration.bookends`
+
+**Type:** `object`
+
+Per-shape opt-out. Debate fires only at the loop's bookends; the middle (execute) stays solo.
+
+#### `orchestration.bookends.diverge`
+
+**Type:** `object`
+
+START / divergent debate (what's BEST, no artifact yet) — e.g. plan, setup-prd, setup-ds.
+
+##### `orchestration.bookends.diverge.enabled`
+
+**Type:** `boolean` · **Default:** `true`
+
+#### `orchestration.bookends.adversarial`
+
+**Type:** `object`
+
+END / adversarial debate (is it actually safe/done/good, artifact exists) — e.g. validate-security, design critic gate.
+
+##### `orchestration.bookends.adversarial.enabled`
+
+**Type:** `boolean` · **Default:** `true`
+
+#### `orchestration.bookends.research`
+
+**Type:** `object`
+
+RESEARCH debate (what's TRUE — ends when evidence eliminates hypotheses) — e.g. bug-rca, ux-research.
+
+##### `orchestration.bookends.research.enabled`
+
+**Type:** `boolean` · **Default:** `true`
+
+### `orchestration.maxSeats`
+
+**Type:** `integer` · **Default:** `4` · **Min:** `2` · **Max:** `4`
+
+Hard cap on debate seats. The stakes-gate picks where in 2–4 to land (2 for reversible calls, up to 4 for irreversible / high-blast-radius).
+
+### `orchestration.escalationCeiling`
+
+**Type:** `number` · **Default:** `0.5` · **Min:** `0` · **Max:** `1`
+
+Observability knob. If the measured short-circuit escalation rate (fraction of bookend runs that escalate from blind openings to a full debate) exceeds this, the protocol warns that the openings aren't independent enough and the escalation should be re-tuned.
+
+### `orchestration.designTeam`
+
+**Type:** `object`
+
+`/design:critic` live-team (relay) tier. Off until its measured gate clears: ≥ `minConflicts` cross-discipline conflicting blockers AND a reduce-pass demonstrably failing to break the oscillation. Until then `/design:critic` uses the read-only reduce-pass.
+
+#### `orchestration.designTeam.enabled`
+
+**Type:** `boolean` · **Default:** `false`
+
+#### `orchestration.designTeam.minConflicts`
+
+**Type:** `integer` · **Default:** `2` · **Min:** `2`
+
 ## `security`
 
 **Type:** `object`
