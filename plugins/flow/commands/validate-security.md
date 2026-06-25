@@ -44,9 +44,18 @@ This is the standalone sibling of `/flow:validate-a11y` and `/flow:validate-visu
    ```
    If `$REUSE` is non-empty (a report fresh within 1 h for this exact HEAD), print `"Reusing security review <reportPath> (HEAD <head-sha>)."`, surface its verdict, and **skip spawning `security-auditor` + `ethical-hacker`**. Otherwise run the protocol below, then record the result in Aggregate.
 
+## Adversarial debate (optional — `orchestration.mode`)
+
+Read `orchestration.*` from `.ai/workflows.config.json` (DDR-130; absent → treat as `reduce`, i.e. today's behavior). This is an **END / adversarial** bookend, so it is eligible for the debate layer:
+
+- **`relay` tier** — when `orchestration.mode` is `auto` AND `orchestration.bookends.adversarial.enabled` is not `false` AND the native agent-teams capability (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`) is detected: load the **`flow:debate-protocol`** skill and run a 2-seat adversarial debate instead of the plain parallel spawn. The seats are the SAME agents — `ethical-hacker` = ATTACKER, `security-auditor` = DEFENDER — but they **relay**: ATTACKER proposes the chained exploit → DEFENDER rebuts with the mitigating control → ATTACKER rebuts whether the chain *survives* that control. The protocol's stakes-gate + blind-opening + short-circuit apply (a clean diff short-circuits to today's verdict at ≈ one reduce-pass). "Does the chain survive the control?" — stance revision — is the net-new value over the parallel panel. The reconciled findings feed the SAME **Aggregate** step below.
+- **`reduce` tier / `mode:off` / no capability / `bookends.adversarial.enabled:false`** — skip this section and run **Run protocol** exactly as today (parallel spawn + aggregate). **This is the default for every user without the experimental flag — behavior is unchanged.**
+
+Per `flow:debate-protocol`, the debate NEVER prompts the user and NEVER hand-rolls message relay in markdown (the native runtime carries the turns; if teams are unavailable, fall through to the parallel `reduce` path). `security.severityFloor`/`scope`/`includeAi` are read and applied exactly as in Pre-flight regardless of tier. Cap is 2 seats (a precision duel, not an ensemble).
+
 ## Run protocol
 
-**Spawn `security-auditor` and `ethical-hacker` in parallel.** Use a single message with two Task tool calls so they run concurrently. Both consume the same diff scope.
+Unless the adversarial debate above handled this run, **spawn `security-auditor` and `ethical-hacker` in parallel.** Use a single message with two Task tool calls so they run concurrently. Both consume the same diff scope.
 
 ```
 Task tool → subagent_type: security-auditor

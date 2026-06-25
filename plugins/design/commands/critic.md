@@ -99,9 +99,23 @@ Write `<designRoot>/_history/<slug>/critique/<NNN>-PANEL.md` (schema in `skills/
 
 - TL;DR (total blockers/warnings, verdict)
 - Blockers grouped by category, sorted by count
+- **Reconciled blocker list** (the reduce-pass output — step 6.1; falls back to the raw grouped list when `orchestration.mode:off`)
 - Per-critic table with link to individual report
 - Top blockers across panel (sorted: a11y > ds-tokens > others)
 - Final JSON verdict block (panel-level)
+
+### 6.1 Reduce-pass — reconcile conflicting blockers (DDR-130)
+
+Today's grouping is a raw *sum* of independent verdicts, so the `/design:edit` loop chases conflicting blockers serially and oscillates (signature-moment adds drama → a11y rejects on contrast → motion re-flags). The reduce-pass collapses that into **one reconciled, ordered blocker list** before the edit loop runs.
+
+Read `orchestration.mode` from `.ai/workflows.config.json` (absent → `auto`). **`mode:off` → skip this step** (the raw grouped list stands; behavior unchanged). Otherwise run **one** consolidator pass (inline or a single subagent) that:
+
+1. **Reads** every critic's emitted verdict JSON + `top_blockers` (read-only over the finished reports).
+2. **De-duplicates** blockers multiple critics flag → one entry that lists the flagging critics.
+3. **Resolves conflicts** — where fixing critic A's blocker would reintroduce critic B's (contrast ↔ aspiration, density ↔ negative-space, motion ↔ reduced-motion): emit ONE resolution per conflict (which constraint dominates per the DS hard-stops, a11y always wins; or a *conditional* that satisfies both, e.g. "gradient confined to the upper band so the text plate keeps 4.5:1").
+4. Emits a single ordered list (a11y > ds-tokens > others, conflicts resolved) into PANEL.md's **Reconciled blocker list**.
+
+**This is the `reduce` tier — strictly read-over-outputs.** It MUST NOT route one critic's report into another critic as a prompt, re-spawn critics, or fabricate a critique (that would be the `relay` design-team tier, which is gated behind `orchestration.designTeam.enabled` + its measured oscillation gate — a follow-up, NOT this command). It only reduces finished verdicts into one coherent list. See `flow:debate-protocol` (reduce-vs-relay).
 
 ### 7. Print summary
 

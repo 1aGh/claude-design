@@ -253,17 +253,17 @@ This is a **markdown + JSON-schema + skill/agent plugin-spec change** — the ge
 
 ## Acceptance Criteria
 
-- [ ] `orchestration` block added to flow config schema; Ajv compiles it; `additionalProperties:false` at every level; not in `required`; `mode` default `auto`.
-- [ ] `flow:debate-protocol` skill created: the 7-step mechanism + capability ladder + **reduce-vs-relay test** + rotating dissent + the **`AskUserQuestion`-in-command** invariant; reads all knobs from `orchestration.*`.
-- [ ] 5 net-new agents created (`builder`, `shipper`, `breaker`, `user-advocate`, `investigator`) with `name: flow:<slug>`, read-only tools, **non-proactive** descriptions, stake+voice bodies, and a fenced JSON tail with a binary `verdict`.
-- [ ] **`reduce`-pass floor shipped into `/design:critic`** — one consolidator producing a reconciled blocker list; strictly read-over-outputs (no relay); works with the experimental flag OFF for every user.
-- [ ] `/flow:validate-security` wired as the 2-seat adversarial bookend via the skill; capability-laddered; one command-side `AskUserQuestion`; **mode `off` / no-capability path byte-for-byte unchanged.**
-- [ ] **No hand-rolled relay** anywhere — verify no markdown routes one agent's verdict into another agent's input; flag-off ⇒ `reduce` only.
-- [ ] DDR-130 recorded (cross-links resolve) with the reduce-vs-relay line, the cast rule + archetype dispositions, the two-gate cost model, and eval-first governance.
-- [ ] CLAUDE.md bookend-debate note + CATEGORIES note added; no new command row/group; no `package.json` `files` change.
-- [ ] Task 9 gate ladder green (reachability · schema · `bash -n` · fence parity · version parity · agents discoverable · name↔spawn match).
-- [ ] **Security eval (R1):** Task 8's n=8 2×2 run; detection + false-positive + escalation rate recorded in DDR-130; go/no-go on the broader `relay` rollout stated. (`reduce` floor ships regardless; only the `relay` expansion is gated.)
-- [ ] Flow plugin stays project-agnostic (stakes/voices/thresholds carry no Maude-specifics); design debate's Maude-flavoring is intentional and isolated to design files.
+- [x] `orchestration` block added to flow config schema; Ajv compiles it; `additionalProperties:false` at every level; not in `required`; `mode` default `auto`.
+- [x] `flow:debate-protocol` skill created: the 7-step mechanism + capability ladder + **reduce-vs-relay test** + rotating dissent + the **`AskUserQuestion`-in-command** invariant; reads all knobs from `orchestration.*`.
+- [x] 5 net-new agents created (`builder`, `shipper`, `breaker`, `user-advocate`, `investigator`) with `name: flow:<slug>`, read-only tools, **non-proactive** descriptions, stake+voice bodies, and a fenced JSON tail with a binary `verdict`.
+- [x] **`reduce`-pass floor shipped into `/design:critic`** — one consolidator producing a reconciled blocker list; strictly read-over-outputs (no relay); works with the experimental flag OFF for every user.
+- [x] `/flow:validate-security` wired as the 2-seat adversarial bookend via the skill; capability-laddered; one command-side `AskUserQuestion`; **mode `off` / no-capability path byte-for-byte unchanged.**
+- [x] **No hand-rolled relay** anywhere — verify no markdown routes one agent's verdict into another agent's input; flag-off ⇒ `reduce` only.
+- [x] DDR-130 recorded (cross-links resolve) with the reduce-vs-relay line, the cast rule + archetype dispositions, the two-gate cost model, and eval-first governance.
+- [x] CLAUDE.md bookend-debate note + CATEGORIES note added; no new command row/group; no `package.json` `files` change.
+- [x] Task 9 gate ladder green (reachability · schema · `bash -n` · fence parity · version parity · agents discoverable · name↔spawn match).
+- [ ] **Security eval (R1):** Task 8's n=8 2×2 run; detection + false-positive + escalation rate recorded in DDR-130; go/no-go on the broader `relay` rollout stated. (`reduce` floor ships regardless; only the `relay` expansion is gated.) — *deferred to a dogfood session (measurement, not a file write).*
+- [x] Flow plugin stays project-agnostic (stakes/voices/thresholds carry no Maude-specifics); design debate's Maude-flavoring is intentional and isolated to design files.
 
 ---
 
@@ -284,3 +284,13 @@ Noted so the rollout is legible; each is its own future plan, and the live-`rela
 ## Confidence
 
 **7/10** for one-pass implementation of the pilot. The schema/agent/skill files mirror existing, well-understood patterns (security config block, `test-coverage`/`ethical-hacker` agent shape, `question-protocol` skill), and the `reduce` floor (Task 5) is a high-confidence pure win with no experimental dependency. Residual uncertainty: (a) the `relay` tier rides an **experimental, off-by-default** native feature with known limits (no in-process resume, slow shutdown, task-status lag) — mitigated by the `reduce` floor making it strictly additive; (b) whether live debate measurably beats the panel — which is exactly what **Task 8's eval exists to answer before any broad rollout.** Everything static is high-confidence; the bet that `relay` is worth turning on broadly is deliberately deferred to evidence.
+
+---
+
+## Retro
+
+- **The methodology was itself produced by the methodology.** This plan's design (bookends, reduce-vs-relay, cast-by-stake) came from three rounds of a 4-perspective debate with genuine cross-challenge and concessions (DIRECTOR folded 4→2 seats; SKEPTIC moved from "rare+explicit" to "auto-at-bookends"; CONTRARIAN conceded Sisyphus). The convergence-through-argument *was* the proof of concept — a single pass would have shipped the first panel's over-conservative "rare + explicit `--debate`."
+- **Worked:** scoping the pilot eval-first. Shipping the `reduce` floor to everyone immediately (a pure win, no flag) while gating the expensive `relay` rollout on an n=8 measurement kept the buildable surface additive and inert-by-default — Tasks 1–4 changed zero behavior, so the pause-gate before the shipped-command wiring (5–6) was natural and low-risk.
+- **Worked:** the plugin-spec gate ladder (reachability · jq+Ajv · `bash -n` · fence parity · version parity · agents-discoverable) is the right gate for markdown/JSON plugin work — the generic lint/typecheck/test/build/scenario/a11y gates are all N/A and the plan said so up front, so `/validate` didn't waste cycles.
+- **Didn't fully land:** Task 8 (the security eval) is a measurement requiring the experimental `relay` tier, not a file write — it can't be "executed" in a static session and is deferred to a real dogfood run. The go/no-go for the broad `mode:auto` rollout therefore stays open; one Acceptance criterion (R1) is intentionally unchecked, mirroring the showcase-grounded plan's deferred live-dogfood.
+- **For next `/plan`:** when a plan's core proof is a runtime measurement (an eval, a live debate), make that an explicit *separate* deliverable up front rather than a task in the build sequence — it has a different lifecycle (needs a flag, a corpus, a dogfood session) and shouldn't block the additive artifacts from shipping.

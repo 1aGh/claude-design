@@ -37,6 +37,8 @@ Verb-as-complete-action. Terse names. Includes `validate` and `release` which al
 | `/flow:release` | Walk the project's release runbook with explicit confirmation per step. | Cutting a release. |
 | `/flow:help` | Auto-generated grouped index (this catalog, live from frontmatter). | When you forget a command name. |
 
+> **Bookend debate layer (DDR-130) adds no new commands.** The opt-in multi-agent debate rides *inside* existing commands at the loop's bookends (`plan`/`setup-prd`/`validate-security`/`bug-rca`, design `setup-ds`/`critic`), gated by `orchestration.*` in `.ai/workflows.config.json`. The seats (`builder`, `shipper`, `breaker`, `user-advocate`, `investigator`) are agents, not commands — not catalogued here. See `plugins/flow/skills/debate-protocol/SKILL.md`.
+
 ### utils — sub-commands
 
 Internal verbs called from inside other commands. Not primary user actions, but exposed as slash commands so they can be invoked standalone when debugging.

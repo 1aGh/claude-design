@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-25T12:43:42.453Z",
+  "generated": "2026-06-25T13:23:31.099Z",
   "currentPhase": null,
   "phases": [
     {
@@ -186,6 +186,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is native-app + dev-server work (Tauri/Rust shell + Bun dev-server route + React...",
       "planPath": ".ai/plans/archive/feature-onboarding-readiness-check.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-orchestration-layer",
+      "title": "Feature: Multi-agent debate layer — bookend debate teams (flow + design)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is plugin-internals work (markdown commands/agents/skills + JSON schema) — NOT a...",
+      "planPath": ".ai/plans/archive/feature-orchestration-layer.md",
       "archived": true,
       "phaseKey": null
     },
@@ -958,17 +969,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "feature-orchestration-layer",
-      "title": "Feature: Multi-agent debate layer — bookend debate teams (flow + design)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is plugin-internals work (markdown commands/agents/skills + JSON schema) — NOT a...",
-      "planPath": ".ai/plans/feature-orchestration-layer.md",
-      "archived": false,
-      "phaseKey": null
     }
   ]
 }

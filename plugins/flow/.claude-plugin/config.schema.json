@@ -233,6 +233,73 @@
         }
       }
     },
+    "orchestration": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Opt-in, capability-gated bookend debate (diverge→adversarial→research). Additive: with the experimental agent-teams flag off (the default for ~all users), `auto`/`reduce` degrade to today's parallel panel + a read-only reduce-pass — nothing to configure, no premium spend. No hard dependency on experimental Claude Code features. See DDR-130.",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["auto", "reduce", "off"],
+          "default": "auto",
+          "description": "`auto` = use a live native agent-team (relay) when the CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS capability is detected, else the read-only reduce-pass; gated further by the stakes-gate + short-circuit. `reduce` = always parallel panel + reduce-pass, never a live team. `off` = today's raw single-pass / sum-of-verdicts, byte-for-byte unchanged."
+        },
+        "bookends": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Per-shape opt-out. Debate fires only at the loop's bookends; the middle (execute) stays solo.",
+          "properties": {
+            "diverge": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "START / divergent debate (what's BEST, no artifact yet) — e.g. plan, setup-prd, setup-ds.",
+              "properties": {
+                "enabled": { "type": "boolean", "default": true }
+              }
+            },
+            "adversarial": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "END / adversarial debate (is it actually safe/done/good, artifact exists) — e.g. validate-security, design critic gate.",
+              "properties": {
+                "enabled": { "type": "boolean", "default": true }
+              }
+            },
+            "research": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "RESEARCH debate (what's TRUE — ends when evidence eliminates hypotheses) — e.g. bug-rca, ux-research.",
+              "properties": {
+                "enabled": { "type": "boolean", "default": true }
+              }
+            }
+          }
+        },
+        "maxSeats": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 4,
+          "default": 4,
+          "description": "Hard cap on debate seats. The stakes-gate picks where in 2–4 to land (2 for reversible calls, up to 4 for irreversible / high-blast-radius)."
+        },
+        "escalationCeiling": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5,
+          "description": "Observability knob. If the measured short-circuit escalation rate (fraction of bookend runs that escalate from blind openings to a full debate) exceeds this, the protocol warns that the openings aren't independent enough and the escalation should be re-tuned."
+        },
+        "designTeam": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "`/design:critic` live-team (relay) tier. Off until its measured gate clears: ≥ `minConflicts` cross-discipline conflicting blockers AND a reduce-pass demonstrably failing to break the oscillation. Until then `/design:critic` uses the read-only reduce-pass.",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "minConflicts": { "type": "integer", "minimum": 2, "default": 2 }
+          }
+        }
+      }
+    },
     "security": {
       "type": "object",
       "additionalProperties": false,
