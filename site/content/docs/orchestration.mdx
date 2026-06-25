@@ -1,0 +1,96 @@
+---
+title: Multi-agent debate
+description: An opt-out debate layer that convenes a small team of agents with different stakes at the start and end of the flow/design loop, hands you one framed decision, and degrades cleanly to a cheap panel when native agent-teams aren't enabled.
+---
+
+The flow and design plugins can convene a small **team of agents with genuinely different stakes** at the moments where multi-perspective argument pays — the **bookends** of the loop. It mirrors how a real team produces a decision: several people argue, the strongest objection survives, and one informed choice reaches you. The middle of the loop (writing code) stays solo.
+
+It is **opt-out**: on by default, capability-gated, and additive. With nothing configured you get the cheap panel; with the experimental agent-teams flag on you get the live debate; one config line turns it off. Canonical decision: [DDR-130](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-130-bookend-debate-layer.md).
+
+## Where it fires — the bookends
+
+| Loop stage | Shape | Commands | What's debated |
+| --- | --- | --- | --- |
+| **Start** | Divergent ("what's BEST") | `/flow:plan`, `/flow:setup-prd`, `/design:setup-ds` | competing approaches / product direction / aesthetic direction, drafted before anything is written |
+| **End** | Adversarial ("is it safe / done / good") | `/flow:validate-security`, `/design:critic`, `/design:new` | a seat whose win-condition is the artifact *failing*; conflicting blockers reconciled into one list |
+| **Research** | Hypothesis ("what's TRUE") | `/flow:bug-rca`, `ux-research` | candidate root causes compete on falsifiable evidence; the debate ends when evidence eliminates hypotheses, not when voices agree |
+| **Tripwire** | Escalate-only | `/flow:quick` | a cheap load-bearing check on changes that only *look* trivial |
+| Middle | — | `/flow:execute` | **solo** — carrying out a decision already made |
+
+## Two tiers, auto-selected
+
+The only thing a live team adds over a plain parallel panel is **stance revision** — a seat changing its position after hearing another. That draws the line between the two tiers:
+
+- **`reduce` (every install, no flag).** The seats run as parallel subagents that report back; one consolidator **reads** their verdicts and reconciles contradictions into a single ordered list. Read-only over outputs — it never routes one agent's words into another's input. This is what `/design:critic` uses to turn "a sum of conflicting blockers" into one coherent, de-conflicted list.
+- **`relay` (native agent-teams).** When the experimental flag is on, the seats convene as a **native Claude Code agent team** and message each other — so a seat can revise. The runtime carries the messages; the plugins never hand-roll a debate loop in markdown.
+
+Two gates keep "on by default" from being "always expensive": a **stakes-gate** (is this decision worth contesting? trivial calls skip it) and a **short-circuit** (the seats open *blind*; a full debate only runs when they genuinely disagree — agreement collapses to "converged" at roughly the cost of one panel).
+
+## What you need to turn it on
+
+| You want… | Do this |
+| --- | --- |
+| The **reduce** panel (multi-perspective, reconciled, no live teams) | **Nothing.** It's on by default the moment the plugin is installed. |
+| The **live `relay` debate** (agent teams that revise stances) | Enable native agent teams in your Claude Code settings: `"env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" }` in `~/.claude/settings.json` (global) or your repo's `.claude/settings.json`. The plugin **cannot** set this for you — it's a per-user environment capability. |
+| To **turn it off** or dial it down | Add an `orchestration` block to `.ai/workflows.config.json` (see below). |
+
+There is **nothing to add to `workflows.config.json` to turn the debate on** — an absent block is treated as `mode:auto`. You add the block only to change the default.
+
+## Configuration (opt-out)
+
+All knobs live under `orchestration` in `.ai/workflows.config.json`. Every one has a default; the block is optional.
+
+```json
+{
+  "orchestration": {
+    "mode": "auto",
+    "bookends": {
+      "diverge": { "enabled": true },
+      "adversarial": { "enabled": true },
+      "research": { "enabled": true }
+    },
+    "maxSeats": 4,
+    "escalationCeiling": 0.5,
+    "designTeam": { "enabled": true, "minConflicts": 2 }
+  }
+}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `mode` | `auto` | `auto` = relay when the agent-teams flag is on, else the reduce panel. `reduce` = always the panel, never a live team. `off` = disable the debate entirely (today's single-pass behavior, byte-for-byte). |
+| `bookends.{diverge,adversarial,research}.enabled` | `true` | Silence one whole shape (e.g. `"diverge": { "enabled": false }` to skip start-of-loop debate). |
+| `maxSeats` | `4` | Hard cap on debate seats; the stakes-gate picks 2 for reversible calls, up to 4 for high-blast ones. |
+| `escalationCeiling` | `0.5` | If more than this fraction of bookend runs escalate from blind openings to a full debate, you're warned the openings aren't independent enough. |
+| `designTeam.enabled` / `minConflicts` | `true` / `2` | The `/design:critic` live-team tier: critics convene and revise stances when ≥ `minConflicts` cross-discipline blockers conflict. Set `enabled:false` to keep `/design:critic` on the reduce panel only. |
+
+**To turn the whole layer off:**
+
+```json
+{ "orchestration": { "mode": "off" } }
+```
+
+## The cast — stakes, not personalities
+
+Seats are cast by the **orthogonal failure mode** each one alone catches; the named "personality" is just the voice that stake argues in (a memorable handle elicits a more committed, less-hedged stance). Five are net-new and project-agnostic; the rest are existing reviewers re-seated.
+
+| Seat | Catches | Voice |
+| --- | --- | --- |
+| `flow:builder` | unambitious / first-plausible-answer | naive junior |
+| `flow:shipper` | hidden cost, won't ship cheap | minimalist |
+| `flow:breaker` | breaks (incl. the maintenance horizon) | regression-risk skeptic |
+| `flow:user-advocate` | wrong thing / who's excluded | customer |
+| `flow:investigator` | not true / unverified by evidence | skeptic |
+| `ethical-hacker` + `security-auditor` | exploitable / control won't hold | attacker + defender |
+| the design critic panel | mediocre / WCAG / token drift | — |
+
+A falsifiable rule keeps the roster honest: if two seats agree on the verdict more than ~90% of the time across runs, they're one seat in two hats — merge them.
+
+## Security posture
+
+The debate layer reads repo content (diffs, issues, prior decisions) into agent prompts and can spawn agents with shell and web tools — so it is itself a prompt-injection surface, and it's treated as one. Running the layer's own `/flow:validate-security` debate against it surfaced and closed two findings (recorded in DDR-130):
+
+- **No single seat colocates the trifecta.** A seat that ingests the untrusted diff/issue does not also hold a network-egress tool — the `flow:investigator` carries no web tools and runs shell as read-only local diagnostics only, so injected content can't be exfiltrated through it. Web fact-checking runs in a seat that never sees a code diff.
+- **The lead treats seat output as inert data.** A seat's recommendation is quoted into the plan or canvas, never executed or turned into a tool call — closing the confused-deputy where a laundered-injection string could otherwise steer the artifact.
+
+The `reduce` tier is read-only over outputs and needs no special trust. The `relay` tier runs entirely on Claude Code's native agent-teams runtime; the plugins never marshal untrusted agent output through their own string-templating. See [Is maude safe?](/docs/security) for the wider threat model.

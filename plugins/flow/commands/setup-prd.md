@@ -39,7 +39,7 @@ If the user has already described the project in conversation, extract answers f
 
 ### 1.5 Product-direction debate (optional — `orchestration.mode`)
 
-A single-pass PRD bakes in the first framing. `/flow:setup-prd` is a **START / divergent** bookend — when eligible, contest the product direction + MVP scope before writing. Read `orchestration.*` from `.ai/workflows.config.json` (DDR-130; absent → `reduce`).
+A single-pass PRD bakes in the first framing. `/flow:setup-prd` is a **START / divergent** bookend — when eligible, contest the product direction + MVP scope before writing. Read `orchestration.*` from `.ai/workflows.config.json` (DDR-130; **opt-out** — absent → `auto`, ON by default; `mode:off` disables).
 
 - **`relay` tier** (`mode:auto` + `bookends.diverge.enabled != false` + native agent-teams capability `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` detected): load **`flow:debate-protocol`** and seat **`flow:user-advocate`** (who is served, confused, or excluded — voice: customer) and **`flow:shipper`** (what survives scope + effort — voice: minimalist; the MVP-discipline lens). Seats open **blind** on "what should this product BE, and what's the smallest MVP that delivers it"; short-circuit collapses on agreement; on a real fork they cross-challenge (stance revision) and emit one decision.
 - **`reduce` tier / no capability**: the same seats as parallel report-back subagents + a consolidator (read-only over outputs).

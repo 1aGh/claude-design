@@ -63,7 +63,7 @@ If any check fails → redirect to `plan-feature`.
 
 ### 1.5 Load-bearing tripwire (optional — `orchestration.mode`)
 
-The dangerous "quick" change is the one that *looks* trivial but isn't. Read `orchestration.*` from `.ai/workflows.config.json` (DDR-130; absent → `reduce`). Unless `mode:off`, run the **`flow:debate-protocol`** stakes-gate: if the change smells **load-bearing** — touches auth, data / migrations, a shared module, a public API, or anything on the §Guardrails list — escalate a cheap **2-seat tripwire** (`flow:breaker` + the `relay`-tier dissent when native agent-teams are available) asking "is this actually trivial?".
+The dangerous "quick" change is the one that *looks* trivial but isn't. Read `orchestration.*` from `.ai/workflows.config.json` (DDR-130; **opt-out** — absent → `auto`, ON by default). Unless `mode:off`, run the **`flow:debate-protocol`** stakes-gate: if the change smells **load-bearing** — touches auth, data / migrations, a shared module, a public API, or anything on the §Guardrails list — escalate a cheap **2-seat tripwire** (`flow:breaker` + the `relay`-tier dissent when native agent-teams are available) asking "is this actually trivial?".
 
 - Tripwire says **load-bearing** → stop and redirect to `/flow:plan` (it deserves the full divergent debate), or surface the risk and let the user decide.
 - Tripwire **clears** (or `mode:off`) → proceed to Step 2 solo, **unchanged**.

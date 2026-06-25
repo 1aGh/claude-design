@@ -3,17 +3,6 @@
   "name": "maude",
   "language": "en",
   "theme": "agnostic",
-  "orchestration": {
-    "mode": "auto",
-    "bookends": {
-      "diverge": { "enabled": true },
-      "adversarial": { "enabled": true },
-      "research": { "enabled": true }
-    },
-    "maxSeats": 4,
-    "escalationCeiling": 0.5,
-    "designTeam": { "enabled": true, "minConflicts": 2 }
-  },
   "paths": {
     "prd": ".ai/maude-prd.md",
     "designSystem": ".ai/maude-design-system.md",

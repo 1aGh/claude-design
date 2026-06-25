@@ -236,13 +236,13 @@
     "orchestration": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Opt-in, capability-gated bookend debate (diverge→adversarial→research). Additive: with the experimental agent-teams flag off (the default for ~all users), `auto`/`reduce` degrade to today's parallel panel + a read-only reduce-pass — nothing to configure, no premium spend. No hard dependency on experimental Claude Code features. See DDR-130.",
+      "description": "Opt-OUT, capability-gated bookend debate (diverge→adversarial→research). The debate is ON by default: an absent `orchestration` block is treated as `mode:auto`, so the layer engages everywhere — a live native agent-team (`relay`) when the CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS flag is enabled, else a cheap read-only `reduce` panel. Add this block ONLY to dial it down or off. No hard dependency on experimental Claude Code features (degrades to `reduce` without the flag). See DDR-130.",
       "properties": {
         "mode": {
           "type": "string",
           "enum": ["auto", "reduce", "off"],
           "default": "auto",
-          "description": "`auto` = use a live native agent-team (relay) when the CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS capability is detected, else the read-only reduce-pass; gated further by the stakes-gate + short-circuit. `reduce` = always parallel panel + reduce-pass, never a live team. `off` = today's raw single-pass / sum-of-verdicts, byte-for-byte unchanged."
+          "description": "Opt-out default `auto` (absent block == `auto`). `auto` = live native agent-team (relay) when the CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS capability is detected, else the read-only reduce-pass; gated further by the stakes-gate + short-circuit. `reduce` = always parallel panel + reduce-pass, never a live team. `off` = disable the debate entirely; today's raw single-pass / sum-of-verdicts, byte-for-byte unchanged."
         },
         "bookends": {
           "type": "object",
@@ -292,9 +292,9 @@
         "designTeam": {
           "type": "object",
           "additionalProperties": false,
-          "description": "`/design:critic` live-team (relay) tier. Off until its measured gate clears: ≥ `minConflicts` cross-discipline conflicting blockers AND a reduce-pass demonstrably failing to break the oscillation. Until then `/design:critic` uses the read-only reduce-pass.",
+          "description": "`/design:critic` live-team (relay) tier — opt-out, ON by default. The conflicting critics convene as a native team and revise stances when the experimental flag is on AND the panel produced ≥ `minConflicts` cross-discipline conflicting blockers; otherwise the read-only reduce-pass stands. Set `enabled:false` to keep `/design:critic` on the reduce-pass only.",
           "properties": {
-            "enabled": { "type": "boolean", "default": false },
+            "enabled": { "type": "boolean", "default": true },
             "minConflicts": { "type": "integer", "minimum": 2, "default": 2 }
           }
         }

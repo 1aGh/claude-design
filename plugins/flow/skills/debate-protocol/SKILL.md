@@ -23,11 +23,11 @@ The middle of the loop (`execute`) stays **solo**. `/flow:quick` gets only the e
 
 Read `orchestration.*` from `.ai/workflows.config.json` (all knobs; never hardcode thresholds):
 
-- `mode` — `auto` (relay-if-capable else reduce) · `reduce` (never a live team) · `off` (today's raw sum-of-verdicts, run nothing here).
-- `bookends.{diverge,adversarial,research}.enabled` — per-shape opt-out.
-- `maxSeats` (2–4 cap) · `escalationCeiling` (escalation-rate warning threshold) · `designTeam.{enabled,minConflicts}`.
+- `mode` — **opt-out, default `auto`.** `auto` (relay-if-capable else reduce) · `reduce` (panel + consolidator, never a live team) · `off` (today's raw single-pass / sum-of-verdicts, run nothing here). **An absent `orchestration` block (or absent `mode`) is treated as `auto` — the debate is ON by default; a user adds the block ONLY to dial it down (`reduce`) or off (`off`).**
+- `bookends.{diverge,adversarial,research}.enabled` — per-shape opt-out (default `true`; set `false` to silence one shape).
+- `maxSeats` (2–4 cap) · `escalationCeiling` (escalation-rate warning threshold) · `designTeam.{enabled (opt-out, default true),minConflicts}`.
 
-Absent config or `mode:off` → run the command's pre-debate behavior unchanged. A downstream repo with the experimental flag off and no config gets `reduce` automatically — nothing to configure.
+**Resolution:** absent block / `mode:auto` → debate ON (live `relay` when the experimental agent-teams flag is detected, else the `reduce` panel). `mode:off` → run the command's pre-debate behavior unchanged. So a downstream repo that just installs the plugin gets the debate by default — `reduce` if it never enabled the experimental flag (cheap, no live teams), `relay` the moment it does. Nothing to configure to turn it **on**; one line (`"orchestration": { "mode": "off" }`) to turn it **off**.
 
 ## The capability ladder — `reduce` vs `relay`
 
