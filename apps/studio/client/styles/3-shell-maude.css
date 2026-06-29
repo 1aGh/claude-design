@@ -125,6 +125,15 @@
   transition: background var(--dur-soft) var(--ease-out), color var(--dur-soft) var(--ease-out);
 }
 .st-iconbtn:hover { background: var(--bg-3); color: var(--fg-0); }
+/* Refresh-files button: spin the reload glyph while the tree re-reads so the
+ * action visibly registers even when /_index-data returns instantly. Disabled
+ * state stays full-opacity (it's a "busy" beat, not an unavailable control). */
+.st-refresh:disabled { cursor: default; opacity: 1; }
+.st-refresh.is-spinning svg { animation: st-refresh-spin 0.6s linear infinite; transform-origin: 50% 50%; }
+@keyframes st-refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .st-refresh.is-spinning svg { animation: none; }
+}
 
 /* ─── Presence avatars (menubar) ──────────────────────────────────────────── */
 .st-presence { display: flex; align-items: center; }

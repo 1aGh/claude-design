@@ -449,10 +449,11 @@ const STICONS = {
       <polyline points="3 12.8 3 13.6 13 13.6 13 12.8" />
     </>
   ),
+  // lucide `rotate-cw`, scaled from the 24px source into our 16px viewBox.
   reload: (
     <>
-      <path d="M3.2 8a5 5 0 1 1 1.4 3.5" />
-      <polyline points="3.2 11.4 3.2 8 6.6 8" />
+      <path d="M14 8a6 6 0 1 1-2-4.47L14 5.33" />
+      <path d="M14 2v3.33h-3.33" />
     </>
   ),
   help: (
@@ -1383,6 +1384,8 @@ function Sidebar({
   onToggleSection,
   onNewBoard,
   onDeleteBoard,
+  onRefresh,
+  refreshing,
   collapsed,
   onCollapse,
   width,
@@ -1457,6 +1460,19 @@ function Sidebar({
           >
             <StIcon name="plus" size={15} />
           </button>
+          {onRefresh && (
+            <button
+              type="button"
+              className={'st-iconbtn st-refresh' + (refreshing ? ' is-spinning' : '')}
+              data-tip="Refresh files · ⇧⌘R"
+              aria-label="Refresh files"
+              aria-busy={refreshing || undefined}
+              disabled={refreshing}
+              onClick={() => onRefresh()}
+            >
+              <StIcon name="reload" size={15} />
+            </button>
+          )}
           <span
             className="st-live"
             data-tip={wsConnected ? 'live · file index synced' : 'reconnecting…'}
@@ -6303,6 +6319,50 @@ function App() {
 
   const reloadTree = useCallback(() => loadTree(), [loadTree]);
 
+  // User-facing tree refresh with a visible spin. The header button and ⌘⇧R call
+  // this so the reload icon spins for at least one beat — even when /_index-data
+  // returns instantly — so the action registers visually ("something is
+  // happening"). The min-duration race keeps the spin from flashing for one
+  // frame on a fast read; the ref guard ignores re-entrant clicks. The passive
+  // focus backstop below uses the plain reloadTree (no icon to animate).
+  const [treeRefreshing, setTreeRefreshing] = useState(false);
+  const treeRefreshingRef = useRef(false);
+  const refreshTree = useCallback(async () => {
+    if (treeRefreshingRef.current) return;
+    treeRefreshingRef.current = true;
+    setTreeRefreshing(true);
+    try {
+      await Promise.all([loadTree(), new Promise((r) => setTimeout(r, 550))]);
+    } finally {
+      treeRefreshingRef.current = false;
+      setTreeRefreshing(false);
+    }
+  }, [loadTree]);
+
+  // Backstop for the desktop sidecar: re-list the tree whenever the window
+  // regains focus. The fs-watch → canvas-list-update auto-refresh can drop
+  // events in a `bun --compile` standalone binary (recursive fs.watch is
+  // unreliable there) and across a sidecar respawn / WS reconnect, leaving a
+  // stale tree after a canvas was created from the ACP chat or a terminal.
+  // `/_index-data` is a cheap read and people tab away to the agent and back, so
+  // this turns "switch projects to force a refresh" into "just come back to the
+  // window". Debounced so a rapid blur/focus burst coalesces to one re-read.
+  useEffect(() => {
+    let t = null;
+    const onFocus = () => {
+      if (t) clearTimeout(t);
+      t = setTimeout(() => {
+        t = null;
+        reloadTree();
+      }, 150);
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      if (t) clearTimeout(t);
+    };
+  }, [reloadTree]);
+
   // Phase 22 — create a blank brief board from the tree header. POSTs to the
   // main-origin-only /_api/canvas (the untrusted canvas iframe can't reach it),
   // then refreshes the tree and opens the new board so it's immediately the
@@ -6784,6 +6844,15 @@ function App() {
         setPaletteOpen((v) => !v);
         return;
       }
+      // Cmd+Shift+R — refresh the FILES tree (re-read /_index-data). The fs-watch
+      // → canvas-list-update auto-refresh can miss events in the compiled desktop
+      // sidecar (recursive fs.watch is unreliable in a bun --compile binary), and
+      // ⌘R is taken by canvas-iframe reload, so this is the manual escape hatch.
+      if (meta && e.shiftKey && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault();
+        refreshTree();
+        return;
+      }
       // Cmd+R — reload active iframe (override browser reload)
       if (meta && (e.key === 'r' || e.key === 'R')) {
         e.preventDefault();
@@ -6933,6 +7002,7 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [
     reloadActive,
+    refreshTree,
     selected,
     activePath,
     focusedCommentId,
@@ -7216,6 +7286,8 @@ function App() {
             onToggleSection={toggleSection}
             onNewBoard={createBoard}
             onDeleteBoard={deleteBoard}
+            onRefresh={refreshTree}
+            refreshing={treeRefreshing}
             collapsed={!sidebarOpen}
             onCollapse={() => setSidebarOpen(false)}
             width={sbSize.w}
