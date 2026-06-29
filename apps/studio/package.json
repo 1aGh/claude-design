@@ -31,10 +31,10 @@
   },
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "0.49.0",
-    "@agentclientprotocol/sdk": "0.28.1",
+    "@agentclientprotocol/sdk": "1.0.0",
     "@assistant-ui/react": "0.14.23",
     "@hocuspocus/provider": "^4.0.0",
-    "dom-to-pptx": "^1.1.10",
+    "dom-to-pptx": "^2.0.1",
     "dom-to-svg": "^0.12.2",
     "isomorphic-git": "^1.38.5",
     "jszip": "^3.10.1",
