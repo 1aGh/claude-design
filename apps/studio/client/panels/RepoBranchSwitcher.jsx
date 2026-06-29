@@ -74,6 +74,7 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
   const [busy, setBusy] = useState(false);
   const [switching, setSwitching] = useState('');
   const [err, setErr] = useState('');
+  const [query, setQuery] = useState('');
   const rootRef = useRef(null);
 
   useEffect(() => {
@@ -97,7 +98,7 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
 
   useEffect(() => {
     if (!open && !newDraft) return undefined;
-    const onDoc = (e) => { if (rootRef.current && !rootRef.current.contains(e.target)) { setOpen(false); setNewDraft(false); } };
+    const onDoc = (e) => { if (rootRef.current && !rootRef.current.contains(e.target)) { setOpen(false); setNewDraft(false); setQuery(''); } };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open, newDraft]);
@@ -110,8 +111,16 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
   const branch = liveBranch || status.branch || 'main';
   const onShared = SHARED.has(branch);
   const sharedName = branches.find((b) => SHARED.has(b.name))?.name || 'main';
-  const drafts = branches.filter((b) => !SHARED.has(b.name));
+  // Recents-first: the draft you last committed to floats to the top — far more
+  // useful than alphabetical when a project has a long tail of backup/* branches.
+  const byRecent = (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0) || a.name.localeCompare(b.name);
+  const q = query.trim().toLowerCase();
+  const matchesQuery = (b) => !q || b.name.toLowerCase().includes(q);
+  const allDrafts = branches.filter((b) => !SHARED.has(b.name)).sort(byRecent);
+  const drafts = allDrafts.filter(matchesQuery);
   const otherDrafts = drafts.filter((b) => b.name !== branch);
+  // Only surface the filter box once the list is long enough to warrant it.
+  const showSearch = allDrafts.length > 6;
   const projectName = project || basename(recents[0] || 'Project');
 
   // Web studio (browser, CLI-launched inside a repo): the switcher is awareness
@@ -238,13 +247,19 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
                   </span>
                   <Icon name="check" size={14} className="rb-pop-check" />
                 </button>
-                {drafts.length > 0 && <div className="rb-pop-grouplabel">Drafts</div>}
+                {allDrafts.length > 0 && <div className="rb-pop-grouplabel">Drafts</div>}
+                {showSearch && (
+                  <div className="rb-search">
+                    <input className="input rb-search-input" type="text" value={query} placeholder="Search drafts…" aria-label="Search drafts" onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }} />
+                  </div>
+                )}
                 {drafts.map((b) => (
                   <button type="button" key={b.name} className="rb-pop-item" role="menuitem" onClick={() => switchDraft(b.name)}>
                     <span className="rb-pop-icon rb-pop-icon--draft"><Icon name="draft" size={14} /></span>
                     <span className="rb-pop-tx"><span className="rb-pop-name">{b.name}</span></span>
                   </button>
                 ))}
+                {showSearch && q && drafts.length === 0 && <div className="rb-pop-empty">No drafts match “{query.trim()}”.</div>}
               </>
             ) : (
               <>
@@ -273,12 +288,18 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
                     <span className="rb-pop-sub">what everyone sees</span>
                   </span>
                 </button>
+                {showSearch && (
+                  <div className="rb-search">
+                    <input className="input rb-search-input" type="text" value={query} placeholder="Search drafts…" aria-label="Search drafts" onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }} />
+                  </div>
+                )}
                 {otherDrafts.map((b) => (
                   <button type="button" key={b.name} className="rb-pop-item" role="menuitem" onClick={() => switchDraft(b.name)}>
                     <span className="rb-pop-icon rb-pop-icon--draft"><Icon name="draft" size={14} /></span>
                     <span className="rb-pop-tx"><span className="rb-pop-name">{b.name}</span></span>
                   </button>
                 ))}
+                {showSearch && q && otherDrafts.length === 0 && <div className="rb-pop-empty">No drafts match “{query.trim()}”.</div>}
               </>
             )}
 
@@ -314,7 +335,7 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
             <span>{folding ? <>Adding <b>{folding}</b> to the Shared version…</> : <>Opening <b>{switching}</b>…</>}</span>
           </div>
         ) : (
-          <button type="button" className={'rb-trigger' + (open ? ' is-open' : '')} aria-expanded={open} aria-haspopup="menu" aria-controls="rb-switch-pop" onClick={() => { setOpen((v) => !v); setNewDraft(false); }} title={`${projectName} · ${onShared ? 'Shared version' : branch}`}>
+          <button type="button" className={'rb-trigger' + (open ? ' is-open' : '')} aria-expanded={open} aria-haspopup="menu" aria-controls="rb-switch-pop" onClick={() => { setOpen((v) => { if (v) setQuery(''); return !v; }); setNewDraft(false); }} title={`${projectName} · ${onShared ? 'Shared version' : branch}`}>
             <span className="rb-trigger-icon"><Icon name="folder" size={14} /></span>
             <span className="rb-trigger-proj">{projectName}</span>
             <span className="rb-trigger-sep" aria-hidden="true">·</span>

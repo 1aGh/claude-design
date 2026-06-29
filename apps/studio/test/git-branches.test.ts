@@ -38,6 +38,12 @@ test('lists the default branch as current', async () => {
   expect(['main', 'master']).toContain(branches[0].name);
 });
 
+test('carries a last-commit time so the UI can sort by recents', async () => {
+  const branches = await gitListBranches(dir);
+  expect(typeof branches[0].updatedAt).toBe('number');
+  expect(branches[0].updatedAt).toBeGreaterThan(0);
+});
+
 test('creates a new draft off HEAD and switches to it', async () => {
   const res = await gitCreateBranch(dir, 'nav-redesign');
   expect(res.ok).toBe(true);

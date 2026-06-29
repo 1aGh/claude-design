@@ -1742,6 +1742,10 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .rb-pop-item.is-current .rb-pop-sub { color: var(--fg-1); }
 .rb-pop-check { color: var(--accent); flex: 0 0 auto; }
 .rb-pop-sep { height: 1px; background: var(--border-default); margin: var(--space-2); }
+/* draft filter — shown only once the draft list is long enough to warrant it. */
+.rb-search { padding: var(--space-1) var(--space-2) var(--space-2); }
+.rb-search-input { width: 100%; }
+.rb-pop-empty { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); padding: var(--space-2) var(--space-3); }
 /* fold-back CTA (Task 7) — the one filled action in the Version section. Compact:
  * type-sm title + type-xs sub + tight padding, so it reads as a strong row, not a
  * giant banner. */

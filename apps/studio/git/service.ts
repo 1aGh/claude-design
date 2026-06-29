@@ -437,25 +437,50 @@ export async function gitDiscard(
 export interface GitBranch {
   name: string;
   current: boolean;
+  /** Last-commit time on this branch, unix seconds — drives the "recents" sort in
+   *  the switcher. 0 when unknown (resolution failed / empty branch). */
+  updatedAt: number;
 }
 
-/** List local branches (drafts). Returns [] when `dir` isn't a repo. */
+/** List local branches (drafts), each carrying its last-commit time so the UI can
+ *  sort by recents. Returns [] when `dir` isn't a repo. */
 export async function gitListBranches(dir: string): Promise<GitBranch[]> {
   if (!isRepo(dir)) return [];
   try {
     if (USE_SYSTEM_GIT) {
       const cur = (await runGit(dir, ['rev-parse', '--abbrev-ref', 'HEAD'])).stdout.trim();
-      const r = await runGit(dir, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']);
+      // Tab-separated so a branch name (no tabs/newlines, charset-guarded) can't
+      // collide with the delimiter; committerdate:unix is the recents key.
+      const r = await runGit(dir, [
+        'for-each-ref',
+        '--format=%(refname:short)%09%(committerdate:unix)',
+        'refs/heads',
+      ]);
       if (r.code !== 0) return [];
       return r.stdout
         .split('\n')
         .map((s) => s.trim())
         .filter(Boolean)
-        .map((name) => ({ name, current: name === cur }));
+        .map((line) => {
+          const [name, ts] = line.split('\t');
+          return { name, current: name === cur, updatedAt: Number(ts) || 0 };
+        });
     }
     const cur = (await git.currentBranch({ fs, dir, fullname: false })) ?? null;
     const names = await git.listBranches({ fs, dir });
-    return names.map((name) => ({ name, current: name === cur }));
+    return Promise.all(
+      names.map(async (name) => {
+        let updatedAt = 0;
+        try {
+          const oid = await git.resolveRef({ fs, dir, ref: name });
+          const { commit } = await git.readCommit({ fs, dir, oid });
+          updatedAt = commit.committer?.timestamp || 0;
+        } catch {
+          /* empty / unresolvable branch — sorts last */
+        }
+        return { name, current: name === cur, updatedAt };
+      })
+    );
   } catch {
     return [];
   }
