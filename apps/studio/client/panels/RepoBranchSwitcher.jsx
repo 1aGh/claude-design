@@ -35,6 +35,10 @@ function Icon({ name, size = 16, className }) {
     plus: (<><line x1="8" y1="3" x2="8" y2="13" /><line x1="3" y1="8" x2="13" y2="8" /></>),
     // "lift this draft up into the Shared version" — the fold-back action.
     'arrow-up-to-line': (<><line x1="3.5" y1="3" x2="12.5" y2="3" /><line x1="8" y1="13" x2="8" y2="6" /><polyline points="5 8.5 8 5.5 11 8.5" /></>),
+    // a teammate's draft that lives on the remote, not downloaded yet.
+    cloud: <path d="M4.5 12h6a2.5 2.5 0 0 0 .3-5A3.5 3.5 0 0 0 4 6.4 2.8 2.8 0 0 0 4.5 12z" />,
+    // refresh drafts — a circular arrow.
+    refresh: (<><path d="M12.5 8a4.5 4.5 0 1 1-1.3-3.2" /><polyline points="12.8 2.5 12.8 5 10.3 5" /></>),
     spinner: <path d="M8 2.2a5.8 5.8 0 1 0 5.8 5.8" />,
   }[name];
   return (
@@ -50,15 +54,36 @@ function basename(p) {
 function slugify(s) {
   return s.trim().toLowerCase().replace(/[^a-z0-9._/-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
+// Plain "as of …" label for the last Refresh. Coarse on purpose — it's a freshness
+// hint, not a clock. `at` is unix seconds; 0/falsey → no label.
+function relativeTime(at) {
+  if (!at) return '';
+  const s = Math.max(0, Math.floor(Date.now() / 1000) - at);
+  if (s < 45) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
+}
 async function getJson(url) {
   const r = await fetch(url);
   return r.json();
 }
-async function postJson(url, body) {
-  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  let json = null;
-  try { json = await r.json(); } catch { /* no body */ }
-  return { ok: r.ok, status: r.status, json };
+async function postJson(url, body, opts = {}) {
+  // A network-bound POST (Refresh) gets an abort timeout so a wedged server can't
+  // leave the UI spinning forever — the caller surfaces a plain "timed out".
+  const ctrl = opts.timeoutMs ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), opts.timeoutMs) : null;
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctrl?.signal });
+    let json = null;
+    try { json = await r.json(); } catch { /* no body */ }
+    return { ok: r.ok, status: r.status, json };
+  } catch (e) {
+    if (e?.name === 'AbortError') return { ok: false, status: 0, json: null, timedOut: true };
+    return { ok: false, status: 0, json: null, error: String(e?.message || e) };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export default function RepoBranchSwitcher({ project, liveBranch }) {
@@ -75,6 +100,9 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
   const [switching, setSwitching] = useState('');
   const [err, setErr] = useState('');
   const [query, setQuery] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [fetchedAt, setFetchedAt] = useState(0); // unix seconds of last Refresh
+  const [downloading, setDownloading] = useState(false); // switching onto a remote-only draft
   const rootRef = useRef(null);
 
   useEffect(() => {
@@ -156,14 +184,32 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
     );
   }
 
-  async function switchDraft(name) {
+  async function switchDraft(name, where) {
     setOpen(false);
     if (name === branch) return;
     setSwitching(name === sharedName ? 'the shared version' : name);
+    setDownloading(where === 'remote'); // a remote-only draft is downloaded on switch
     setErr('');
     const r = await postJson('/_api/git/checkout', { name });
     if (r.ok && r.json?.ok) window.location.reload();
-    else { setErr(r.json?.error || 'Could not switch.'); setSwitching(''); }
+    else { setErr(r.json?.error || 'Could not switch.'); setSwitching(''); setDownloading(false); }
+  }
+
+  // "Refresh drafts" — fetch all remote heads so a teammate's new draft surfaces,
+  // then re-read the list. Explicit gesture (never auto-run); token is server-held.
+  async function refreshDrafts() {
+    if (refreshing) return;
+    setRefreshing(true); setErr('');
+    const r = await postJson('/_api/git/fetch', {}, { timeoutMs: 45000 });
+    if (r.ok && r.json?.ok) {
+      if (r.json.fetchedAt) setFetchedAt(r.json.fetchedAt);
+      try { const b = await getJson('/_api/git/branches'); setBranches(b.branches || []); } catch { /* keep prior list */ }
+    } else if (r.timedOut) {
+      setErr('Refresh timed out — check your connection and try again.');
+    } else {
+      setErr(r.status === 401 ? 'Sign in with GitHub to refresh.' : r.json?.error || 'Could not refresh drafts.');
+    }
+    setRefreshing(false);
   }
 
   async function createDraft() {
@@ -209,6 +255,24 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
 
   const slug = slugify(draftName);
   const currentDraft = onShared ? null : branches.find((b) => b.current);
+
+  // One switchable draft row. A `remote`-only draft (a teammate's, or one pushed
+  // from another machine) gets a cloud glyph + "not downloaded yet" — switching
+  // downloads it (the service creates a local tracking branch).
+  const draftRow = (b) => {
+    const remote = b.where === 'remote';
+    return (
+      <button type="button" key={b.name} className="rb-pop-item" role="menuitem" onClick={() => switchDraft(b.name, b.where)}>
+        <span className={'rb-pop-icon ' + (remote ? 'rb-pop-icon--remote' : 'rb-pop-icon--draft')}>
+          <Icon name={remote ? 'cloud' : 'draft'} size={14} />
+        </span>
+        <span className="rb-pop-tx">
+          <span className="rb-pop-name">{b.name}</span>
+          {remote && <span className="rb-pop-sub">from your team · not downloaded yet</span>}
+        </span>
+      </button>
+    );
+  };
 
   return (
     <div className="rb-dock-wrap">
@@ -257,12 +321,7 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
                     <input className="input rb-search-input" type="text" value={query} placeholder="Search drafts…" aria-label="Search drafts" onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }} />
                   </div>
                 )}
-                {drafts.map((b) => (
-                  <button type="button" key={b.name} className="rb-pop-item" role="menuitem" onClick={() => switchDraft(b.name)}>
-                    <span className="rb-pop-icon rb-pop-icon--draft"><Icon name="draft" size={14} /></span>
-                    <span className="rb-pop-tx"><span className="rb-pop-name">{b.name}</span></span>
-                  </button>
-                ))}
+                {drafts.map(draftRow)}
                 {showSearch && q && drafts.length === 0 && !sharedMatchesQuery && <div className="rb-pop-empty">Nothing matches “{query.trim()}”.</div>}
               </>
             ) : (
@@ -299,15 +358,18 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
                     </span>
                   </button>
                 )}
-                {otherDrafts.map((b) => (
-                  <button type="button" key={b.name} className="rb-pop-item" role="menuitem" onClick={() => switchDraft(b.name)}>
-                    <span className="rb-pop-icon rb-pop-icon--draft"><Icon name="draft" size={14} /></span>
-                    <span className="rb-pop-tx"><span className="rb-pop-name">{b.name}</span></span>
-                  </button>
-                ))}
+                {otherDrafts.map(draftRow)}
                 {showSearch && q && otherDrafts.length === 0 && !sharedMatchesQuery && <div className="rb-pop-empty">Nothing matches “{query.trim()}”.</div>}
               </>
             )}
+
+            <button type="button" className="rb-pop-item rb-pop-item--action" role="menuitem" onClick={refreshDrafts} disabled={refreshing}>
+              <span className={'rb-pop-icon' + (refreshing ? ' rb-pop-icon--spin' : '')}><Icon name={refreshing ? 'spinner' : 'refresh'} size={14} /></span>
+              <span className="rb-pop-tx">
+                <span className="rb-pop-name">{refreshing ? 'Refreshing…' : 'Refresh drafts'}</span>
+                <span className="rb-pop-sub">{fetchedAt ? `as of ${relativeTime(fetchedAt)}` : "check the team's remote for new drafts"}</span>
+              </span>
+            </button>
 
             <button type="button" className="rb-pop-item rb-pop-item--action" role="menuitem" onClick={() => { setOpen(false); setNewDraft(true); }}>
               <span className="rb-pop-icon"><Icon name="plus" size={14} /></span>
@@ -338,7 +400,7 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
         {switching ? (
           <div className="rb-switching" role="status" aria-live="polite">
             <Icon name="spinner" size={14} className="rb-spin" />
-            <span>{folding ? <>Adding <b>{folding}</b> to the Shared version…</> : <>Opening <b>{switching}</b>…</>}</span>
+            <span>{folding ? <>Adding <b>{folding}</b> to the Shared version…</> : downloading ? <>Downloading <b>{switching}</b>…</> : <>Opening <b>{switching}</b>…</>}</span>
           </div>
         ) : (
           <button type="button" className={'rb-trigger' + (open ? ' is-open' : '')} aria-expanded={open} aria-haspopup="menu" aria-controls="rb-switch-pop" onClick={() => { setOpen((v) => { if (v) setQuery(''); return !v; }); setNewDraft(false); }} title={`${projectName} · ${onShared ? 'Shared version' : branch}`}>

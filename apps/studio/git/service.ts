@@ -434,53 +434,126 @@ export async function gitDiscard(
 // `.git/HEAD` watcher already turns into a Yjs flush + reload prompt (DDR-051) —
 // this module does NOT duplicate that.
 
+/** The default remote a managed Maude project tracks (DDR-111 clone). */
+const DEFAULT_REMOTE = 'origin';
+
+/** True when a remote's URL is HTTP(S) — the only transport isomorphic-git can
+ *  speak. An ssh/git/file remote (e.g. `git@github.com:org/repo.git`) MUST go
+ *  through the system git binary, which uses the user's ssh-agent / credential
+ *  helper. Null/missing url → treat as non-HTTP so we fall back to system git. */
+async function isHttpRemote(dir: string, remote: string): Promise<boolean> {
+  const url =
+    (await git.getConfig({ fs, dir, path: `remote.${remote}.url` }).catch(() => null)) || '';
+  return /^https?:\/\//i.test(url);
+}
+
+/** Non-empty, trimmed lines of a git stdout block. */
+function splitLines(stdout: string): string[] {
+  return stdout
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** Fold a remote-tracking ref into the merged draft map: a name already seen
+ *  locally becomes `both` (recents = the newer of the two commit times); a name
+ *  seen only on the remote becomes a `remote`-only draft. */
+function mergeRemote(merged: Map<string, GitBranch>, name: string, updatedAt: number): void {
+  const existing = merged.get(name);
+  if (existing) {
+    merged.set(name, {
+      ...existing,
+      where: 'both',
+      updatedAt: Math.max(existing.updatedAt, updatedAt),
+    });
+  } else {
+    merged.set(name, { name, current: false, updatedAt, where: 'remote' });
+  }
+}
+
 export interface GitBranch {
   name: string;
   current: boolean;
   /** Last-commit time on this branch, unix seconds — drives the "recents" sort in
    *  the switcher. 0 when unknown (resolution failed / empty branch). */
   updatedAt: number;
+  /** Where this draft lives. `local` = only here, `remote` = only on the team's
+   *  remote (not downloaded yet — switching creates a tracking branch), `both` =
+   *  present in both. The UI labels `remote` drafts "from your team". */
+  where: 'local' | 'remote' | 'both';
 }
 
-/** List local branches (drafts), each carrying its last-commit time so the UI can
- *  sort by recents. Returns [] when `dir` isn't a repo. */
+/** List drafts (branches) — LOCAL plus the remote-tracking refs already on disk
+ *  (populated by the original clone / a prior fetch; a fresh teammate draft only
+ *  appears after `gitFetchRemote`). Each carries its last-commit time so the UI
+ *  can sort by recents, and a `where` tag so it can mark remote-only drafts.
+ *  Returns [] when `dir` isn't a repo. */
 export async function gitListBranches(dir: string): Promise<GitBranch[]> {
   if (!isRepo(dir)) return [];
   try {
+    const merged = new Map<string, GitBranch>();
     if (USE_SYSTEM_GIT) {
       const cur = (await runGit(dir, ['rev-parse', '--abbrev-ref', 'HEAD'])).stdout.trim();
       // Tab-separated so a branch name (no tabs/newlines, charset-guarded) can't
       // collide with the delimiter; committerdate:unix is the recents key.
-      const r = await runGit(dir, [
-        'for-each-ref',
-        '--format=%(refname:short)%09%(committerdate:unix)',
-        'refs/heads',
-      ]);
-      if (r.code !== 0) return [];
-      return r.stdout
-        .split('\n')
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .map((line) => {
-          const [name, ts] = line.split('\t');
-          return { name, current: name === cur, updatedAt: Number(ts) || 0 };
+      const fmt = '--format=%(refname:short)%09%(committerdate:unix)';
+      const local = await runGit(dir, ['for-each-ref', fmt, 'refs/heads']);
+      if (local.code !== 0) return [];
+      for (const line of splitLines(local.stdout)) {
+        const [name, ts] = line.split('\t');
+        merged.set(name, {
+          name,
+          current: name === cur,
+          updatedAt: Number(ts) || 0,
+          where: 'local',
         });
-    }
-    const cur = (await git.currentBranch({ fs, dir, fullname: false })) ?? null;
-    const names = await git.listBranches({ fs, dir });
-    return Promise.all(
-      names.map(async (name) => {
-        let updatedAt = 0;
-        try {
-          const oid = await git.resolveRef({ fs, dir, ref: name });
-          const { commit } = await git.readCommit({ fs, dir, oid });
-          updatedAt = commit.committer?.timestamp || 0;
-        } catch {
-          /* empty / unresolvable branch — sorts last */
+      }
+      // Remote refs come back as "origin/<name>" — strip the prefix, skip origin/HEAD.
+      const remote = await runGit(dir, ['for-each-ref', fmt, `refs/remotes/${DEFAULT_REMOTE}`]);
+      if (remote.code === 0) {
+        for (const line of splitLines(remote.stdout)) {
+          const [full, ts] = line.split('\t');
+          const name = full.startsWith(`${DEFAULT_REMOTE}/`)
+            ? full.slice(DEFAULT_REMOTE.length + 1)
+            : full;
+          if (!name || name === 'HEAD') continue;
+          mergeRemote(merged, name, Number(ts) || 0);
         }
-        return { name, current: name === cur, updatedAt };
+      }
+      return [...merged.values()];
+    }
+    // iso engine (default): merge local heads with refs/remotes/<remote>/*.
+    const cur = (await git.currentBranch({ fs, dir, fullname: false })) ?? null;
+    const at = async (ref: string): Promise<number> => {
+      try {
+        const oid = await git.resolveRef({ fs, dir, ref });
+        const { commit } = await git.readCommit({ fs, dir, oid });
+        return commit.committer?.timestamp || 0;
+      } catch {
+        return 0; // empty / unresolvable ref — sorts last
+      }
+    };
+    const localNames = await git.listBranches({ fs, dir });
+    await Promise.all(
+      localNames.map(async (name) => {
+        merged.set(name, {
+          name,
+          current: name === cur,
+          updatedAt: await at(name),
+          where: 'local',
+        });
       })
     );
+    // Remote enumeration is best-effort: a repo with no remote yields [].
+    const remoteNames = (
+      await git.listBranches({ fs, dir, remote: DEFAULT_REMOTE }).catch(() => [])
+    ).filter((n) => n && n !== 'HEAD');
+    await Promise.all(
+      remoteNames.map(async (name) => {
+        mergeRemote(merged, name, await at(`refs/remotes/${DEFAULT_REMOTE}/${name}`));
+      })
+    );
+    return [...merged.values()];
   } catch {
     return [];
   }
@@ -523,21 +596,43 @@ export async function gitCheckout(dir: string, name: string): Promise<GitBranchR
   if (!isSafeGitPositional(name)) return { ok: false, error: 'Invalid draft name.' };
   try {
     if (USE_SYSTEM_GIT) {
+      // System git DWIMs `git checkout <name>` into a tracking branch when <name>
+      // exists on exactly one remote, so the local + remote-only cases share a path.
       const r = await runGit(dir, ['checkout', name]);
       if (r.code !== 0) {
         const blob = `${r.stderr} ${r.stdout}`.toLowerCase();
         if (blob.includes('would be overwritten') || blob.includes('local changes'))
           return { ok: false, error: 'Save your changes before switching drafts.' };
+        if (
+          blob.includes('did not match') ||
+          blob.includes('pathspec') ||
+          blob.includes('invalid reference')
+        )
+          return { ok: false, error: "Couldn't find that draft — try Refresh." };
         return { ok: false, error: r.stderr.trim() || 'Could not switch drafts.' };
       }
     } else {
-      await git.checkout({ fs, dir, ref: name });
+      // iso-git does NOT DWIM: a local ref checks out directly, but a remote-only
+      // draft must be created as a tracking branch from refs/remotes/<remote>/<name>.
+      const localNames = await git.listBranches({ fs, dir });
+      if (localNames.includes(name)) {
+        await git.checkout({ fs, dir, ref: name });
+      } else {
+        const remoteNames = await git
+          .listBranches({ fs, dir, remote: DEFAULT_REMOTE })
+          .catch(() => []);
+        if (!remoteNames.includes(name))
+          return { ok: false, error: "Couldn't find that draft — try Refresh." };
+        await git.checkout({ fs, dir, ref: name, remote: DEFAULT_REMOTE, track: true });
+      }
     }
     return { ok: true, branch: name };
   } catch (e) {
     const msg = errMsg(e);
     if (/overwrit|local change|conflict/i.test(msg))
       return { ok: false, error: 'Save your changes before switching drafts.' };
+    if (/not ?found|did not match|resolve/i.test(msg))
+      return { ok: false, error: "Couldn't find that draft — try Refresh." };
     return { ok: false, error: msg };
   }
 }
@@ -828,6 +923,83 @@ async function pullSystem(
     return { ok: false, conflict: true, files: files.length ? files : undefined };
   }
   return { ok: false, error: r.stderr.trim() || 'Get latest failed.' };
+}
+
+// ── fetch (Refresh drafts) ──────────────────────────────────────────────────
+
+export interface GitFetchResult {
+  ok: boolean;
+  /** Unix seconds the refresh completed — the UI shows it as "as of <time>". */
+  fetchedAt?: number;
+  /** See GitPushResult.authRequired — a tokenless refresh on the iso engine. */
+  authRequired?: boolean;
+  error?: string;
+}
+
+/** Refresh the team's drafts: fetch ALL remote heads (no singleBranch) so brand-new
+ *  teammate drafts surface in `gitListBranches`. Prunes deleted remotes. Same
+ *  optional-token model as gitPull. Explicit user gesture only — never auto-run. */
+export async function gitFetchRemote(
+  dir: string,
+  token: string | undefined,
+  opts: { remote?: string } = {}
+): Promise<GitFetchResult> {
+  if (!isRepo(dir)) return { ok: false, error: 'This project is not versioned yet.' };
+  const remote = opts.remote || DEFAULT_REMOTE;
+  if (!isSafeGitPositional(remote)) return { ok: false, error: 'Invalid remote name.' };
+  // iso-git's transport is HTTP(S) only — an ssh/git/file remote (or the forced
+  // system engine) MUST go through the git binary, which uses the user's ssh-agent
+  // / credential helper and needs no GitHub token. Detect the protocol up front.
+  const isHttp = await isHttpRemote(dir, remote);
+  try {
+    if (USE_SYSTEM_GIT || !isHttp) {
+      // System git: only attach the GitHub token header for an HTTPS remote; an
+      // ssh/git remote authenticates with the user's own key (token would be moot).
+      const args = isHttp ? tokenHeaderArgs(token) : [];
+      args.push('fetch', '--prune', remote);
+      const r = await runGit(dir, args);
+      if (r.code === 127)
+        return {
+          ok: false,
+          error: 'Refresh needs the git command-line tool for this project’s connection.',
+        };
+      if (r.code !== 0) {
+        const blob = `${r.stderr}\n${r.stdout}`.toLowerCase();
+        if (isHttp && /auth|denied|credential|terminal prompts disabled/.test(blob))
+          return { ok: false, authRequired: true, error: 'Sign in with GitHub to refresh.' };
+        if (
+          /permission denied|publickey|host key|authenticity|could not read from remote/.test(blob)
+        )
+          return {
+            ok: false,
+            error: 'Couldn’t reach the remote — check your connection or SSH key.',
+          };
+        return { ok: false, error: r.stderr.trim() || 'Could not refresh drafts.' };
+      }
+    } else {
+      if (!token)
+        return { ok: false, authRequired: true, error: 'Sign in with GitHub to refresh.' };
+      await git.fetch({
+        fs,
+        http,
+        dir,
+        remote,
+        prune: true,
+        onAuth: () => ({ username: token, password: '' }),
+      });
+    }
+    return { ok: true, fetchedAt: Math.floor(Date.now() / 1000) };
+  } catch (e) {
+    const msg = errMsg(e);
+    if (/unrecognized transport|unsupported|protocol/i.test(msg))
+      return {
+        ok: false,
+        error: 'Refresh needs the git command-line tool for this project’s connection.',
+      };
+    if (/auth|denied|credential|401|403/i.test(msg))
+      return { ok: false, authRequired: true, error: 'Sign in with GitHub to refresh.' };
+    return { ok: false, error: msg };
+  }
 }
 
 // ── resolve (finish a Get-latest merge that hit a conflict) ─────────────────
@@ -1215,7 +1387,11 @@ export async function remoteAheadBehind(
   token: string | undefined,
   remote = 'origin'
 ): Promise<{ ahead: number; behind: number }> {
-  if (USE_SYSTEM_GIT) return remoteAheadBehindSystem(dir, token, remote);
+  // iso-git can't fetch an ssh/git remote — route those (and the forced system
+  // engine) through the git binary so the status ahead/behind probe never throws
+  // "unrecognized transport protocol: ssh" on an SSH-cloned project.
+  if (USE_SYSTEM_GIT || !(await isHttpRemote(dir, remote)))
+    return remoteAheadBehindSystem(dir, token, remote);
   const branch = (await git.currentBranch({ fs, dir, fullname: false })) || 'main';
   await git.fetch({
     fs,

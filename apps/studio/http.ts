@@ -925,6 +925,18 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       return gitJson(await gitApi.fold(body));
     },
 
+    // "Refresh drafts" — token-bearing fetch (all remote heads) so a teammate's
+    // new draft surfaces. Same main-origin + loopback gate as /_api/git/pull.
+    '/_api/git/fetch': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('refresh requires a local request', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await gitApi.fetchRemote(body));
+    },
+
     '/_api/git/commit': async (req: Request) => {
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))

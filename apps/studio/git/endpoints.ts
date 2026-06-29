@@ -22,6 +22,7 @@ import {
   gitCreateBranch,
   gitDiff,
   gitDiscard,
+  gitFetchRemote,
   gitFoldDraft,
   gitListBranches,
   gitLog,
@@ -76,6 +77,8 @@ export interface GitEndpoints {
   checkout(body: unknown): Promise<GitEndpointResult>;
   // "Add this draft to the Shared version" — token-bearing (it publishes).
   fold(body: unknown): Promise<GitEndpointResult>;
+  // "Refresh drafts" — token-bearing fetch so new remote drafts surface.
+  fetchRemote(body: unknown): Promise<GitEndpointResult>;
 }
 
 export function createGitEndpoints(ctx: Context): GitEndpoints {
@@ -296,6 +299,19 @@ export function createGitEndpoints(ctx: Context): GitEndpoints {
     return { status: 502, json: { ok: false, error: res.error ?? 'Could not add the draft.' } };
   }
 
+  async function fetchRemote(body: unknown): Promise<GitEndpointResult> {
+    // Token resolution mirrors fold/pull: body token → keychain bridge → undefined
+    // → authRequired. Explicit user gesture only (the UI "Refresh drafts" button).
+    const token = readToken(body) ?? (await getGithubToken()) ?? undefined;
+    const b = (body ?? {}) as { remote?: unknown };
+    if (b.remote != null && safeRemoteArg(b.remote) === undefined) return bad('Invalid remote.');
+    const res = await gitFetchRemote(dir, token, { remote: safeRemoteArg(b.remote) });
+    if (res.ok) return { status: 200, json: { ok: true, fetchedAt: res.fetchedAt } };
+    if (res.authRequired)
+      return { status: 401, json: { ok: false, authRequired: true, error: res.error } };
+    return { status: 502, json: { ok: false, error: res.error ?? 'Could not refresh drafts.' } };
+  }
+
   return {
     status,
     commit,
@@ -309,6 +325,7 @@ export function createGitEndpoints(ctx: Context): GitEndpoints {
     createBranch,
     checkout,
     fold,
+    fetchRemote,
   };
 }
 

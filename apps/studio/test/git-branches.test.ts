@@ -8,16 +8,25 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { gitCheckout, gitCreateBranch, gitFoldDraft, gitListBranches } from '../git/service.ts';
+import {
+  gitCheckout,
+  gitCreateBranch,
+  gitFetchRemote,
+  gitFoldDraft,
+  gitListBranches,
+} from '../git/service.ts';
 
 let dir: string;
 
-function sh(args: string[]): void {
+function shIn(cwd: string, args: string[]): void {
   const p = Bun.spawnSync(['git', ...args], {
-    cwd: dir,
+    cwd,
     env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' },
   });
   if (p.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${p.stderr.toString()}`);
+}
+function sh(args: string[]): void {
+  shIn(dir, args);
 }
 
 beforeEach(() => {
@@ -99,6 +108,83 @@ test('fold: merges the draft into the Shared version locally; a tokenless publis
   expect((await gitListBranches(dir)).find((b) => b.current)?.name).toBe(shared);
   // …and the draft still exists (not deleted on a failed publish).
   expect((await gitListBranches(dir)).some((b) => b.name === 'nav')).toBe(true);
+});
+
+// ── remote drafts (phase: surface remote branches) ───────────────────────────
+
+/** Stand up a bare "remote" with main + a teammate draft, clone it locally (system
+ *  git, no network — a file:// remote), and return the clone dir. The clone has a
+ *  LOCAL main plus refs/remotes/origin/{main,teammate-draft}. */
+function cloneWithRemoteDraft(): { remote: string; clone: string } {
+  const remote = mkdtempSync(join(tmpdir(), 'maude-remote-'));
+  shIn(remote, ['init', '-q', '--bare']);
+  sh(['remote', 'add', 'origin', remote]);
+  const head = (
+    Bun.spawnSync(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { cwd: dir }).stdout.toString() ||
+    'main'
+  ).trim();
+  sh(['push', '-q', 'origin', head]);
+  sh(['checkout', '-q', '-b', 'teammate-draft']);
+  writeFileSync(join(dir, 'team.txt'), 'team work\n');
+  sh(['add', '.']);
+  sh(['commit', '-q', '-m', 'team work']);
+  sh(['push', '-q', 'origin', 'teammate-draft']);
+  sh(['checkout', '-q', head]); // leave the source repo back on the shared version
+  const clone = mkdtempSync(join(tmpdir(), 'maude-clone-'));
+  shIn(clone, ['clone', '-q', remote, '.']);
+  return { remote, clone };
+}
+
+test('surfaces a remote-only draft and tags where=remote / where=both', async () => {
+  const { clone } = cloneWithRemoteDraft();
+  const branches = await gitListBranches(clone);
+  const team = branches.find((b) => b.name === 'teammate-draft');
+  const shared = branches.find((b) => ['main', 'master'].includes(b.name));
+  expect(team?.where).toBe('remote'); // only on the remote in a fresh clone
+  expect(team?.current).toBe(false);
+  expect(shared?.where).toBe('both'); // checked out locally AND on the remote
+  expect(shared?.current).toBe(true);
+  rmSync(clone, { recursive: true, force: true });
+});
+
+test('switches onto a remote-only draft by creating a local tracking branch', async () => {
+  const { clone } = cloneWithRemoteDraft();
+  const res = await gitCheckout(clone, 'teammate-draft');
+  expect(res.ok).toBe(true);
+  const after = await gitListBranches(clone);
+  const team = after.find((b) => b.name === 'teammate-draft');
+  expect(team?.current).toBe(true);
+  expect(team?.where).toBe('both'); // now local AND remote
+  expect(existsSync(join(clone, 'team.txt'))).toBe(true); // the draft's content landed
+  rmSync(clone, { recursive: true, force: true });
+});
+
+test('checkout of a never-fetched draft asks for a Refresh, not a raw error', async () => {
+  const res = await gitCheckout(dir, 'ghost-remote-draft');
+  expect(res.ok).toBe(false);
+  expect(res.error).toMatch(/refresh/i);
+});
+
+test('fetch of an HTTPS remote without a token reports authRequired (iso engine)', async () => {
+  // iso-git can't use a system credential helper, so a tokenless HTTPS refresh
+  // short-circuits to authRequired BEFORE any network call.
+  sh(['remote', 'add', 'origin', 'https://github.com/example/repo.git']);
+  const r = await gitFetchRemote(dir, undefined);
+  expect(r.ok).toBe(false);
+  expect(r.authRequired).toBe(true);
+});
+
+test('an ssh remote routes to system git, never the iso transport error', async () => {
+  // iso-git speaks HTTP(S) only; an ssh remote must go through the git binary
+  // (user's ssh-agent, no token). A .invalid host fails fast at DNS — no network.
+  process.env.GIT_SSH_COMMAND =
+    'ssh -o BatchMode=yes -o ConnectTimeout=2 -o StrictHostKeyChecking=no';
+  sh(['remote', 'add', 'origin', 'git@nonexistent.invalid:team/app.git']);
+  const r = await gitFetchRemote(dir, undefined);
+  process.env.GIT_SSH_COMMAND = '';
+  expect(r.ok).toBe(false);
+  expect(r.authRequired).toBeFalsy(); // ssh failure is not a GitHub sign-in prompt
+  expect(r.error || '').not.toMatch(/unrecognized transport/i); // didn't fall into iso
 });
 
 test('rejects creating a draft that already exists', async () => {

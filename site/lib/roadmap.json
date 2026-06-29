@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-25T15:43:19.154Z",
+  "generated": "2026-06-29T14:54:04.124Z",
   "currentPhase": null,
   "phases": [
     {
@@ -969,6 +969,17 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
+    },
+    {
+      "id": "feature-remote-drafts-in-switcher",
+      "title": "Feature: Surface remote branches (drafts) in the native draft switcher",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-remote-drafts-in-switcher.md",
+      "archived": false,
+      "phaseKey": null
     }
   ]
 }

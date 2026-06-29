@@ -85,6 +85,8 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/git/branch',
         '/_api/git/checkout',
         '/_api/git/fold',
+        // Remote drafts: token-bearing fetch — MAIN-ORIGIN ONLY.
+        '/_api/git/fetch',
         // Phase 28 (E3) — every /_api/github/* route is MAIN-ORIGIN ONLY (absent
         // from CANVAS_SAFE_API + startCanvasServer's `routes` map) and token-bearing.
         // The untrusted canvas iframe origin must never reach identity/create-repo/
