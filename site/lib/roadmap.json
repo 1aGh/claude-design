@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-29T14:54:04.124Z",
+  "generated": "2026-06-29T15:17:52.861Z",
   "currentPhase": null,
   "phases": [
     {
@@ -969,6 +969,17 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
+    },
+    {
+      "id": "feature-git-perf-identity-and-remote-cache",
+      "title": "Feature: Fast repo open / switch — cache GitHub identity + de-thrash the remote probe",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-git-perf-identity-and-remote-cache.md",
+      "archived": false,
+      "phaseKey": null
     },
     {
       "id": "feature-remote-drafts-in-switcher",

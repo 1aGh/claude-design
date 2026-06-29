@@ -19,6 +19,7 @@ import git from 'isomorphic-git';
 import type { Context } from '../context.ts';
 import { gitClone } from '../git/service.ts';
 import { hasDesign, scaffoldDesign } from '../scaffold-design.ts';
+import { clearCached, readCached, tokenHash, writeCached } from './identity-cache.ts';
 import {
   createRepo,
   GitHubApiError,
@@ -145,11 +146,34 @@ export function createGitHubEndpoints(ctx: Context): GitHubEndpoints {
     }
   }
 
+  // Fetch a fresh profile and rewrite the cache; swallow errors so a background
+  // revalidation can NEVER reject the request promise. A revoked/rotated token
+  // (401) during revalidation drops the entry so the next call re-fetches/re-prompts.
+  async function revalidateIdentity(key: string, token: string): Promise<void> {
+    try {
+      writeCached(key, await getIdentity(token));
+    } catch (e) {
+      if (e instanceof GitHubApiError && e.status === 401) clearCached();
+      // any other failure (network blip, etc.) — keep the last-known cache as-is.
+    }
+  }
+
+  // SWR (DDR-132): serve the per-user disk cache instantly on a key (token-hash)
+  // match and revalidate in the background, so a sidecar respawn on repo switch
+  // still paints the identity with no "Checking GitHub…" round-trip. First-ever
+  // call (cache miss) does one fresh fetch + write.
   async function identity(): Promise<GitHubEndpointResult> {
-    return withToken(async (token) => ({
-      status: 200,
-      json: { ok: true, ...(await getIdentity(token)) },
-    }));
+    return withToken(async (token) => {
+      const key = tokenHash(token);
+      const cached = readCached(key);
+      if (cached) {
+        void revalidateIdentity(key, token); // fire-and-forget; never awaited
+        return { status: 200, json: { ok: true, ...cached } };
+      }
+      const fresh = await getIdentity(token);
+      writeCached(key, fresh);
+      return { status: 200, json: { ok: true, ...fresh } };
+    });
   }
 
   async function repos(): Promise<GitHubEndpointResult> {

@@ -437,15 +437,61 @@ export async function gitDiscard(
 /** The default remote a managed Maude project tracks (DDR-111 clone). */
 const DEFAULT_REMOTE = 'origin';
 
-/** True when a remote's URL is HTTP(S) — the only transport isomorphic-git can
- *  speak. An ssh/git/file remote (e.g. `git@github.com:org/repo.git`) MUST go
- *  through the system git binary, which uses the user's ssh-agent / credential
- *  helper. Null/missing url → treat as non-HTTP so we fall back to system git. */
-async function isHttpRemote(dir: string, remote: string): Promise<boolean> {
-  const url =
-    (await git.getConfig({ fs, dir, path: `remote.${remote}.url` }).catch(() => null)) || '';
-  return /^https?:\/\//i.test(url);
+/** How we'll transport-fetch a remote, derived from its URL:
+ *   - `http`   → isomorphic-git (HTTP-only) OR system git with a token header.
+ *   - `ssh`    → system git only (user's own creds: ssh-agent / local objects),
+ *     NEVER a token. Covers ssh / git / file / local-path remotes — they transfer
+ *     git objects, they do not execute commands.
+ *   - `none`   → no remote configured; nothing to fetch (benign).
+ *   - `unsafe` → REFUSE — never hand to the git binary. The `ext::` / `fd::` /
+ *     `transport::` helpers make `git fetch` run an ARBITRARY SHELL COMMAND from the
+ *     config URL. A poisoned `.git/config` (which rides a folder/clone and no
+ *     file-review sees) would otherwise be RCE the moment the unattended status
+ *     poll fires. Also catches unknown schemes. See DDR-131 hardening + the
+ *     adversarial review of 75a2f0d. */
+type RemoteTransport = 'http' | 'ssh' | 'none' | 'unsafe';
+
+function classifyRemoteUrl(url: string): RemoteTransport {
+  const u = (url || '').trim();
+  if (!u) return 'none';
+  // Transport helpers embed `::` (ext::, fd::, transport::) → arbitrary command. Reject first.
+  if (u.includes('::')) return 'unsafe';
+  if (/^https?:\/\//i.test(u)) return 'http';
+  if (/^(?:ssh|git|file):\/\//i.test(u)) return 'ssh';
+  if (/^(?:\/|\.\.?\/|~\/)/.test(u)) return 'ssh'; // bare local path (object transfer, no exec)
+  // scp-like `user@host:path` (no scheme).
+  if (/^[\w.+-]+@[\w.-]+:[^/]/.test(u)) return 'ssh';
+  return 'unsafe'; // unknown scheme / bare word — don't guess
 }
+
+/** Read a remote's configured URL (empty string when missing). */
+async function readRemoteUrl(dir: string, remote: string): Promise<string> {
+  return (await git.getConfig({ fs, dir, path: `remote.${remote}.url` }).catch(() => null)) || '';
+}
+
+/** The GitHub PAT (keychain) may ONLY be attached to a request bound for GitHub —
+ *  never to an arbitrary HTTPS host an attacker put in `remote.origin.url` (PAT
+ *  exfil / SSRF). HTTP(S) urls only; ssh carries no token regardless. */
+function isTrustedTokenHost(url: string): boolean {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return h === 'github.com' || h.endsWith('.github.com');
+  } catch {
+    return false;
+  }
+}
+
+/** Defense-in-depth for any `runGit` that resolves a config remote URL: disable the
+ *  command-EXECUTING transports at the git layer too (`classifyRemoteUrl` already
+ *  refuses them before we spawn — this is the backstop). Deliberately does NOT
+ *  block `file`/local object transfer (legitimate local-repo fetch), only the
+ *  shell-spawning helpers. */
+const HARDENED_REMOTE_FLAGS = [
+  '-c',
+  'protocol.ext.allow=never',
+  '-c',
+  'protocol.fd.allow=never',
+];
 
 /** Non-empty, trimmed lines of a git stdout block. */
 function splitLines(stdout: string): string[] {
@@ -663,6 +709,7 @@ export async function gitFoldDraft(
 ): Promise<GitFoldResult> {
   if (!isRepo(dir)) return { ok: false, error: 'This project is not versioned yet.' };
   if (!isSafeGitPositional(draftName)) return { ok: false, error: 'Invalid draft name.' };
+  invalidateRemoteProbe(dir); // a fold changes ahead/behind — re-probe next status
   const remote = opts.remote || 'origin';
   const branches = await gitListBranches(dir);
   const shared = branches.find((b) => SHARED_BRANCHES.has(b.name))?.name;
@@ -755,6 +802,7 @@ export async function gitPush(
   opts: { remote?: string; ref?: string } = {}
 ): Promise<GitPushResult> {
   if (!isRepo(dir)) return { ok: false, error: 'This project is not versioned yet.' };
+  invalidateRemoteProbe(dir); // a publish changes ahead/behind — re-probe next status
   const remote = opts.remote || 'origin';
   return USE_SYSTEM_GIT
     ? pushSystem(dir, token, remote, opts.ref)
@@ -867,6 +915,7 @@ export async function gitPull(
   opts: { remote?: string; ref?: string } = {}
 ): Promise<GitPullResult> {
   if (!isRepo(dir)) return { ok: false, error: 'This project is not versioned yet.' };
+  invalidateRemoteProbe(dir); // a pull changes ahead/behind — re-probe next status
   return USE_SYSTEM_GIT
     ? pullSystem(dir, token, opts.remote || 'origin', opts.ref)
     : pullIso(dir, token, opts.remote || 'origin', opts.ref);
@@ -947,16 +996,23 @@ export async function gitFetchRemote(
   if (!isRepo(dir)) return { ok: false, error: 'This project is not versioned yet.' };
   const remote = opts.remote || DEFAULT_REMOTE;
   if (!isSafeGitPositional(remote)) return { ok: false, error: 'Invalid remote name.' };
-  // iso-git's transport is HTTP(S) only — an ssh/git/file remote (or the forced
-  // system engine) MUST go through the git binary, which uses the user's ssh-agent
-  // / credential helper and needs no GitHub token. Detect the protocol up front.
-  const isHttp = await isHttpRemote(dir, remote);
+  // SECURITY (DDR-131 hardening): classify the configured remote URL BEFORE spawning
+  // git. iso-git speaks HTTP(S) only, so an ssh/git remote must go to the system
+  // binary — but a command-executing (`ext::`) / local (`file://`) URL must be
+  // REFUSED, never handed to `git fetch` (it would run as the user). And the GitHub
+  // token may only ride a github.com HTTPS request, never an attacker-chosen host.
+  const url = await readRemoteUrl(dir, remote);
+  const transport = classifyRemoteUrl(url);
+  if (transport === 'none') return { ok: false, error: 'This project has no remote to refresh.' };
+  if (transport === 'unsafe')
+    return { ok: false, error: 'Maude can only refresh github.com (HTTPS or SSH) projects.' };
+  const trustedHttp = transport === 'http' && isTrustedTokenHost(url);
   try {
-    if (USE_SYSTEM_GIT || !isHttp) {
-      // System git: only attach the GitHub token header for an HTTPS remote; an
-      // ssh/git remote authenticates with the user's own key (token would be moot).
-      const args = isHttp ? tokenHeaderArgs(token) : [];
-      args.push('fetch', '--prune', remote);
+    if (USE_SYSTEM_GIT || transport === 'ssh') {
+      // System git: attach the token header ONLY for a trusted-host HTTPS remote; an
+      // ssh remote authenticates with the user's own key (no token).
+      const args = trustedHttp ? tokenHeaderArgs(token) : [];
+      args.push(...HARDENED_REMOTE_FLAGS, 'fetch', '--prune', remote);
       const r = await runGit(dir, args);
       if (r.code === 127)
         return {
@@ -965,7 +1021,7 @@ export async function gitFetchRemote(
         };
       if (r.code !== 0) {
         const blob = `${r.stderr}\n${r.stdout}`.toLowerCase();
-        if (isHttp && /auth|denied|credential|terminal prompts disabled/.test(blob))
+        if (transport === 'http' && /auth|denied|credential|terminal prompts disabled/.test(blob))
           return { ok: false, authRequired: true, error: 'Sign in with GitHub to refresh.' };
         if (
           /permission denied|publickey|host key|authenticity|could not read from remote/.test(blob)
@@ -977,6 +1033,9 @@ export async function gitFetchRemote(
         return { ok: false, error: r.stderr.trim() || 'Could not refresh drafts.' };
       }
     } else {
+      // iso engine, HTTP(S). Never send the GitHub token to a non-GitHub host.
+      if (!isTrustedTokenHost(url))
+        return { ok: false, error: 'Maude can only refresh github.com projects.' };
       if (!token)
         return { ok: false, authRequired: true, error: 'Sign in with GitHub to refresh.' };
       await git.fetch({
@@ -1379,20 +1438,87 @@ async function localUnpushed(dir: string, branch: string | null, remote: string)
 
 // ── remote ahead/behind (Get latest nudge) ─────────────────────────────────
 
+interface AheadBehind {
+  ahead: number;
+  behind: number;
+}
+
+// In-memory TTL cache + in-flight dedupe for the network probe (DDR-132). A
+// Changes-panel toggle, a 60 s tick, and effect re-runs all call status?remote=1;
+// without this they each fire a fresh `git fetch`. The cache is per FRESH process
+// — a repo switch respawns the sidecar (fresh process ⇒ one fresh probe), which is
+// exactly the desired semantics, so it deliberately never persists to disk.
+const REMOTE_PROBE_TTL_MS = 45_000;
+const probeCache = new Map<string, { at: number; val: AheadBehind }>();
+const probeInflight = new Map<string, Promise<AheadBehind>>();
+
+/** Drop any cached/in-flight probe for `dir` so the next status re-fetches —
+ *  called after a push/pull/fold so the "Get latest" nudge updates immediately. */
+export function invalidateRemoteProbe(dir: string): void {
+  const prefix = `${dir}\0`;
+  for (const k of probeCache.keys()) if (k.startsWith(prefix)) probeCache.delete(k);
+  for (const k of probeInflight.keys()) if (k.startsWith(prefix)) probeInflight.delete(k);
+}
+
+/** Resolve the current branch with the active engine — local-only, no network. */
+async function currentBranchOf(dir: string): Promise<string> {
+  if (USE_SYSTEM_GIT) {
+    const r = await runGit(dir, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    return r.stdout.trim() || 'main';
+  }
+  return (await git.currentBranch({ fs, dir, fullname: false })) || 'main';
+}
+
 /** Fetch the tracking remote and count commits ahead (local-only) / behind
  *  (remote-only). `behind > 0` is what surfaces the "Get latest" banner. Network;
- *  callers guard with try/catch so an offline poll never breaks local status. */
+ *  callers guard with try/catch so an offline poll never breaks local status.
+ *
+ *  TTL-cached + in-flight-deduped per `dir\0remote\0branch` (DDR-132): a value
+ *  younger than the TTL is served without a fetch, and concurrent callers share
+ *  one in-flight promise. Only the RESOLVED value is cached — a throw clears the
+ *  in-flight slot so a later call retries (failures are never cached). */
 export async function remoteAheadBehind(
   dir: string,
   token: string | undefined,
   remote = 'origin'
-): Promise<{ ahead: number; behind: number }> {
-  // iso-git can't fetch an ssh/git remote — route those (and the forced system
-  // engine) through the git binary so the status ahead/behind probe never throws
-  // "unrecognized transport protocol: ssh" on an SSH-cloned project.
-  if (USE_SYSTEM_GIT || !(await isHttpRemote(dir, remote)))
-    return remoteAheadBehindSystem(dir, token, remote);
-  const branch = (await git.currentBranch({ fs, dir, fullname: false })) || 'main';
+): Promise<AheadBehind> {
+  const branch = await currentBranchOf(dir);
+  const key = `${dir}\0${remote}\0${branch}`;
+  const hit = probeCache.get(key);
+  if (hit && Date.now() - hit.at < REMOTE_PROBE_TTL_MS) return hit.val;
+  const existing = probeInflight.get(key);
+  if (existing) return existing;
+  const p = remoteAheadBehindUncached(dir, token, remote, branch)
+    .then((val) => {
+      probeCache.set(key, { at: Date.now(), val });
+      return val;
+    })
+    .finally(() => {
+      probeInflight.delete(key);
+    });
+  probeInflight.set(key, p);
+  return p;
+}
+
+async function remoteAheadBehindUncached(
+  dir: string,
+  token: string | undefined,
+  remote: string,
+  branch: string
+): Promise<AheadBehind> {
+  // SECURITY (DDR-131 hardening): this probe runs UNATTENDED (status?remote=1 on a
+  // 60s tick / post-action), so it's the highest-value RCE sink — classify the
+  // remote URL before touching the git binary. A command-executing (`ext::`) or
+  // local (`file://`) URL is refused (return 0/0, no spawn); the token rides only a
+  // github.com HTTPS request, never an attacker-chosen host.
+  const url = await readRemoteUrl(dir, remote);
+  const transport = classifyRemoteUrl(url);
+  if (transport === 'none' || transport === 'unsafe') return { ahead: 0, behind: 0 };
+  const trustedHttp = transport === 'http' && isTrustedTokenHost(url);
+  if (USE_SYSTEM_GIT || transport === 'ssh')
+    return remoteAheadBehindSystem(dir, trustedHttp ? token : undefined, remote, branch);
+  // iso engine, HTTP(S): never fetch (or send the token) to a non-GitHub host.
+  if (!trustedHttp) return { ahead: 0, behind: 0 };
   await git.fetch({
     fs,
     http,
@@ -1425,14 +1551,16 @@ export async function remoteAheadBehind(
 async function remoteAheadBehindSystem(
   dir: string,
   token: string | undefined,
-  remote: string
+  remote: string,
+  branch: string
 ): Promise<{ ahead: number; behind: number }> {
-  const branch = (await runGit(dir, ['rev-parse', '--abbrev-ref', 'HEAD'])).stdout.trim() || 'main';
   if (!isSafeGitPositional(remote) || !isSafeGitPositional(branch)) {
     throw new Error('invalid remote or branch');
   }
-  const args = tokenHeaderArgs(token);
-  args.push('fetch', remote, branch);
+  // Token only when the caller vetted a trusted HTTPS host; harden the transport
+  // allowlist at the git layer too (defense-in-depth behind classifyRemoteUrl).
+  const args = token ? tokenHeaderArgs(token) : [];
+  args.push(...HARDENED_REMOTE_FLAGS, 'fetch', remote, branch);
   const f = await runGit(dir, args);
   if (f.code !== 0) throw new Error(f.stderr.trim() || 'fetch failed');
   const counts = await runGit(dir, [
