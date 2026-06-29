@@ -439,16 +439,15 @@ const DEFAULT_REMOTE = 'origin';
 
 /** How we'll transport-fetch a remote, derived from its URL:
  *   - `http`   → isomorphic-git (HTTP-only) OR system git with a token header.
- *   - `ssh`    → system git only (user's own creds: ssh-agent / local objects),
- *     NEVER a token. Covers ssh / git / file / local-path remotes — they transfer
- *     git objects, they do not execute commands.
+ *   - `ssh`    → system git only (user's own ssh-agent creds), NEVER a token.
+ *     Covers `ssh://` / `git://` / the scp-like `git@github.com:org/repo` form.
  *   - `none`   → no remote configured; nothing to fetch (benign).
  *   - `unsafe` → REFUSE — never hand to the git binary. The `ext::` / `fd::` /
  *     `transport::` helpers make `git fetch` run an ARBITRARY SHELL COMMAND from the
  *     config URL. A poisoned `.git/config` (which rides a folder/clone and no
  *     file-review sees) would otherwise be RCE the moment the unattended status
- *     poll fires. Also catches unknown schemes. See DDR-131 hardening + the
- *     adversarial review of 75a2f0d. */
+ *     poll fires. Also refuses `file://` / local-path (local-read vector) and any
+ *     unknown scheme. See DDR-131 hardening + the adversarial review of 75a2f0d. */
 type RemoteTransport = 'http' | 'ssh' | 'none' | 'unsafe';
 
 function classifyRemoteUrl(url: string): RemoteTransport {
@@ -457,11 +456,13 @@ function classifyRemoteUrl(url: string): RemoteTransport {
   // Transport helpers embed `::` (ext::, fd::, transport::) → arbitrary command. Reject first.
   if (u.includes('::')) return 'unsafe';
   if (/^https?:\/\//i.test(u)) return 'http';
-  if (/^(?:ssh|git|file):\/\//i.test(u)) return 'ssh';
-  if (/^(?:\/|\.\.?\/|~\/)/.test(u)) return 'ssh'; // bare local path (object transfer, no exec)
-  // scp-like `user@host:path` (no scheme).
+  if (/^(?:ssh|git):\/\//i.test(u)) return 'ssh';
+  // scp-like `user@host:path` (no scheme) — the common `git@github.com:org/repo` form.
   if (/^[\w.+-]+@[\w.-]+:[^/]/.test(u)) return 'ssh';
-  return 'unsafe'; // unknown scheme / bare word — don't guess
+  // file://, bare local paths, and anything else: REFUSE. A managed project tracks
+  // a github.com http/ssh remote; a local/file transport is both unusual and a
+  // local-read vector, so we don't hand it to the git binary at all.
+  return 'unsafe';
 }
 
 /** Read a remote's configured URL (empty string when missing). */
@@ -486,12 +487,7 @@ function isTrustedTokenHost(url: string): boolean {
  *  refuses them before we spawn — this is the backstop). Deliberately does NOT
  *  block `file`/local object transfer (legitimate local-repo fetch), only the
  *  shell-spawning helpers. */
-const HARDENED_REMOTE_FLAGS = [
-  '-c',
-  'protocol.ext.allow=never',
-  '-c',
-  'protocol.fd.allow=never',
-];
+const HARDENED_REMOTE_FLAGS = ['-c', 'protocol.ext.allow=never', '-c', 'protocol.fd.allow=never'];
 
 /** Non-empty, trimmed lines of a git stdout block. */
 function splitLines(stdout: string): string[] {

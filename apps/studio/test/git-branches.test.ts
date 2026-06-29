@@ -14,6 +14,7 @@ import {
   gitFetchRemote,
   gitFoldDraft,
   gitListBranches,
+  remoteAheadBehind,
 } from '../git/service.ts';
 
 let dir: string;
@@ -185,6 +186,42 @@ test('an ssh remote routes to system git, never the iso transport error', async 
   expect(r.ok).toBe(false);
   expect(r.authRequired).toBeFalsy(); // ssh failure is not a GitHub sign-in prompt
   expect(r.error || '').not.toMatch(/unrecognized transport/i); // didn't fall into iso
+});
+
+// ── transport-injection hardening (adversarial review of 75a2f0d) ────────────
+
+test('SECURITY: refuses to fetch an `ext::` (command-executing) remote — no spawn, no RCE', async () => {
+  // A poisoned .git/config remote url. `git fetch origin` would resolve this and
+  // run the shell command; classifyRemoteUrl must refuse BEFORE any spawn.
+  const sentinel = join(dir, 'PWNED');
+  sh(['remote', 'add', 'origin', `ext::sh -c "touch ${sentinel}"`]);
+  const r = await gitFetchRemote(dir, 'tok_should_not_be_used');
+  expect(r.ok).toBe(false);
+  expect(r.error).toMatch(/github\.com/i); // "can only refresh github.com…"
+  expect(existsSync(sentinel)).toBe(false); // the payload NEVER executed
+});
+
+test('SECURITY: the unattended ahead/behind probe refuses an `ext::` remote (0/0, no spawn)', async () => {
+  const sentinel = join(dir, 'PWNED2');
+  sh(['remote', 'add', 'origin', `ext::sh -c "touch ${sentinel}"`]);
+  const ab = await remoteAheadBehind(dir, 'tok_should_not_be_used');
+  expect(ab).toEqual({ ahead: 0, behind: 0 });
+  expect(existsSync(sentinel)).toBe(false);
+});
+
+test('SECURITY: refuses a file:// / local-path remote (local-read vector, no spawn)', async () => {
+  sh(['remote', 'add', 'origin', 'file:///etc/passwd']);
+  const r = await gitFetchRemote(dir, 'tok');
+  expect(r.ok).toBe(false);
+  expect(r.error).toMatch(/github\.com/i); // refused by policy, never handed to git
+});
+
+test('SECURITY: does not send the GitHub token to a non-GitHub HTTPS host', async () => {
+  // A non-github HTTPS remote must NOT receive the keychain PAT (exfil/SSRF).
+  sh(['remote', 'add', 'origin', 'https://evil.example.com/repo.git']);
+  const r = await gitFetchRemote(dir, 'tok_secret');
+  expect(r.ok).toBe(false);
+  expect(r.error).toMatch(/github\.com/i); // refused, token never attached
 });
 
 test('rejects creating a draft that already exists', async () => {

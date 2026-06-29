@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "remote-drafts-in-switcher",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Open any draft, including your team's",
+      "summary": "The version switcher now shows drafts that live on your team's shared remote — not only the ones already on this computer. They're marked “from your team,” and picking one downloads it for you. Hit Refresh to pull in a draft someone just made, search to find one in a long list, and your most recently worked-on drafts sort to the top. Works whether your project connects over SSH or HTTPS.",
+      "surface": "design-ui"
+    },
+    {
       "id": "desktop-ai-chat-fix",
       "version": "0.32.1",
       "date": "2026-06-24",
