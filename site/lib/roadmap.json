@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-29T15:17:52.861Z",
+  "generated": "2026-06-29T16:39:52.424Z",
   "currentPhase": null,
   "phases": [
     {
@@ -208,6 +208,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — most of the machinery already exists; this is a surgical split + a three-file reconci...",
       "planPath": ".ai/plans/archive/feature-per-user-camera-split-and-runtime-state-cleanup.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-remote-drafts-in-switcher",
+      "title": "Feature: Surface remote branches (drafts) in the native draft switcher",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-remote-drafts-in-switcher.md",
       "archived": true,
       "phaseKey": null
     },
@@ -978,17 +989,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-git-perf-identity-and-remote-cache.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-remote-drafts-in-switcher",
-      "title": "Feature: Surface remote branches (drafts) in the native draft switcher",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-remote-drafts-in-switcher.md",
       "archived": false,
       "phaseKey": null
     }

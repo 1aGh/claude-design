@@ -201,3 +201,13 @@ Not a cross-platform UI surface — native desktop dock only (web path is read-o
 - [ ] Committed bundle rebuilt `--release`; binary not committed
 - [ ] DDR recorded; roadmap/site regen committed in the same change
 - [ ] Code follows project conventions, no regressions
+
+---
+
+## Retro
+
+- **The adversarial seat earned its keep.** The defender (`security-auditor`) traced all five focus areas "clean — PASS." The attacker (`ethical-hacker`) found a **CRITICAL RCE the same change introduced**: routing any non-HTTP `remote.origin.url` to the system git binary let `ext::sh -c …` in a poisoned `.git/config` execute via the *unattended* 60s ahead/behind poll. The lesson the defender encoded too: the argv *name* guard was airtight, so the defender checked it and moved on — the exploit was the URL *value* the name dereferences to. Always run the attacker pass on anything that shells out, even when the obvious guard looks solid.
+- **"ssh-safe fetch" was the opposite of safe.** Reaching for the system binary to fix an iso-git transport gap quietly traded the iso sandbox (pure-JS, executes nothing) for a binary that executes config-named transports. When you bypass a sandbox "just for this case," enumerate what else rides that path (`ext::`/`fd::`/`file://`), don't assume "non-HTTP ≈ ssh."
+- **Concurrent sessions on a shared `main` are a recurring tax.** Three separate collisions this cycle: the user's `st-refresh` work, then a *live* second session implementing the perf plan (DDR-132) **into the same `service.ts`** while this `/done` ran — its test file was renamed under me mid-edit, and its commit swept in my half-finished security edits. Recovery: a worktree off HEAD for a clean isolated fix, then — once the perf session committed — reconciling on `main`. Net rule reinforced: **for anything touching shared dev-server files, work in a worktree from the start** (the existing memory), and on a shared tree commit only your own files atomically.
+- **Convergence is a signal.** The perf session's rewritten probe-cache test, the adversarial review, and my own second instinct all independently landed on "local/`file://` remote ⇒ unsafe." The brief mid-edit where I loosened it to keep an *older* version of their test green was the only wrong turn — when three independent sources agree on a constraint, that's the answer.
+- **Process tweak for `/plan` + `/execute`:** when a feature shells out to `git`/a binary on attacker-influenceable input (a repo's own config), pre-commit to the adversarial pass in the plan's Validation section (this plan did — and it caught the RCE). Worth making that a standing checklist item for any "route to the system binary" task.
