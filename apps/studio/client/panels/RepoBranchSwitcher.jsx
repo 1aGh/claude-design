@@ -119,6 +119,10 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
   const allDrafts = branches.filter((b) => !SHARED.has(b.name)).sort(byRecent);
   const drafts = allDrafts.filter(matchesQuery);
   const otherDrafts = drafts.filter((b) => b.name !== branch);
+  // The Shared version is "main"/"master" in git terms, so a search for "main"
+  // should surface it even though it isn't a draft — match on the branch name OR
+  // the user-facing label so it never reads as a phantom "no matches".
+  const sharedMatchesQuery = !q || sharedName.toLowerCase().includes(q) || 'shared version'.includes(q);
   // Only surface the filter box once the list is long enough to warrant it.
   const showSearch = allDrafts.length > 6;
   const projectName = project || basename(recents[0] || 'Project');
@@ -259,7 +263,7 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
                     <span className="rb-pop-tx"><span className="rb-pop-name">{b.name}</span></span>
                   </button>
                 ))}
-                {showSearch && q && drafts.length === 0 && <div className="rb-pop-empty">No drafts match “{query.trim()}”.</div>}
+                {showSearch && q && drafts.length === 0 && !sharedMatchesQuery && <div className="rb-pop-empty">Nothing matches “{query.trim()}”.</div>}
               </>
             ) : (
               <>
@@ -281,17 +285,19 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
                   </span>
                 </button>
                 <div className="rb-pop-grouplabel">Switch to</div>
-                <button type="button" className="rb-pop-item" role="menuitem" onClick={() => switchDraft(sharedName)}>
-                  <span className="rb-pop-icon rb-pop-icon--shared"><Icon name="share" size={14} /></span>
-                  <span className="rb-pop-tx">
-                    <span className="rb-pop-name">Shared version</span>
-                    <span className="rb-pop-sub">what everyone sees</span>
-                  </span>
-                </button>
                 {showSearch && (
                   <div className="rb-search">
-                    <input className="input rb-search-input" type="text" value={query} placeholder="Search drafts…" aria-label="Search drafts" onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }} />
+                    <input className="input rb-search-input" type="text" value={query} placeholder="Search versions…" aria-label="Search versions" onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }} />
                   </div>
+                )}
+                {sharedMatchesQuery && (
+                  <button type="button" className="rb-pop-item" role="menuitem" onClick={() => switchDraft(sharedName)}>
+                    <span className="rb-pop-icon rb-pop-icon--shared"><Icon name="share" size={14} /></span>
+                    <span className="rb-pop-tx">
+                      <span className="rb-pop-name">Shared version</span>
+                      <span className="rb-pop-sub">what everyone sees{q && SHARED.has(sharedName) ? ` · ${sharedName}` : ''}</span>
+                    </span>
+                  </button>
                 )}
                 {otherDrafts.map((b) => (
                   <button type="button" key={b.name} className="rb-pop-item" role="menuitem" onClick={() => switchDraft(b.name)}>
@@ -299,7 +305,7 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
                     <span className="rb-pop-tx"><span className="rb-pop-name">{b.name}</span></span>
                   </button>
                 ))}
-                {showSearch && q && otherDrafts.length === 0 && <div className="rb-pop-empty">No drafts match “{query.trim()}”.</div>}
+                {showSearch && q && otherDrafts.length === 0 && !sharedMatchesQuery && <div className="rb-pop-empty">Nothing matches “{query.trim()}”.</div>}
               </>
             )}
 
