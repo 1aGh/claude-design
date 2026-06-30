@@ -1,7 +1,34 @@
 {
-  "generated": "2026-06-24T15:10:05.958Z",
-  "version": "0.32.1",
+  "generated": "2026-06-30T22:58:45.400Z",
+  "version": "0.36.1",
   "entries": [
+    {
+      "id": "desktop-onboarding-fixes",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "A smoother first run",
+      "summary": "Onboarding got a polish. If you're already signed in, the GitHub step now says Continue instead of asking you to sign in again, and your signed-in status shows reliably. Cancelling the sign-in code screen frees the button right away, “Merge this branch → main” shows progress while it runs, and a brand-new project opens to a starter canvas instead of an empty workspace.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "git-native-switcher",
+      "version": "0.36.0",
+      "date": "2026-06-30",
+      "kind": "feature",
+      "title": "The version switcher now speaks Git",
+      "summary": "The bottom-left switcher uses plain Git names now — your branches by name, main as the default branch everyone shares, and a one-click “Merge this branch → main.” It opens instantly even on repos with hundreds of branches (it uses your installed Git when you have it), and “Pull a local copy” lists every repo you can reach on GitHub — including ones shared through your team or organization.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "remote-drafts-in-switcher",
+      "version": "0.36.0",
+      "date": "2026-06-30",
+      "kind": "feature",
+      "title": "Open any draft, including your team's",
+      "summary": "The version switcher now shows drafts that live on your team's shared remote — not only the ones already on this computer. They're marked “from your team,” and picking one downloads it for you. Hit Refresh to pull in a draft someone just made, search to find one in a long list, and your most recently worked-on drafts sort to the top. Works whether your project connects over SSH or HTTPS.",
+      "surface": "design-ui"
+    },
     {
       "id": "desktop-ai-chat-fix",
       "version": "0.32.1",
