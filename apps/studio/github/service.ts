@@ -204,28 +204,45 @@ export async function inviteCollaborator(
   return { invited: res.status === 201 };
 }
 
-/** Repos the user owns or collaborates on, most-recently-updated first. */
+/** Repos the user owns, collaborates on, OR can reach via org/team membership,
+ *  most-recently-updated first. `organization_member` is the fix for the common
+ *  "I'm on a team but only one repo shows" case (DDR-133) — without it GitHub omits
+ *  every repo the user reaches purely through an org. Paginated up to PAGE_CAP so a
+ *  user with many repos still sees the full (or most-recent PAGE_CAP×100) set. */
 export async function listUserRepos(token: string): Promise<RepoSummary[]> {
-  const res = await api(
-    token,
-    '/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator'
-  );
-  const repos = (await res.json()) as Array<{
-    name: string;
-    full_name: string;
-    owner: { login: string };
-    private: boolean;
-    html_url: string;
-    clone_url: string;
-    updated_at: string;
-  }>;
-  return repos.map((r) => ({
-    name: r.name,
-    full_name: r.full_name,
-    owner: r.owner.login,
-    private: r.private,
-    html_url: r.html_url,
-    clone_url: r.clone_url,
-    updated_at: r.updated_at,
-  }));
+  const PER_PAGE = 100;
+  const PAGE_CAP = 5; // 500 most-recently-updated repos — beyond this is a non-case
+  const out: RepoSummary[] = [];
+  for (let page = 1; page <= PAGE_CAP; page++) {
+    const res = await api(
+      token,
+      `/user/repos?per_page=${PER_PAGE}&page=${page}&sort=updated` +
+        '&affiliation=owner,collaborator,organization_member'
+    );
+    const repos = (await res.json()) as Array<{
+      name: string;
+      full_name: string;
+      owner: { login: string };
+      private: boolean;
+      html_url: string;
+      clone_url: string;
+      updated_at: string;
+    }>;
+    // Defensive (security review): a non-2xx body slips past as a non-array — stop
+    // rather than burn the remaining PAGE_CAP calls iterating `undefined`.
+    if (!Array.isArray(repos)) break;
+    for (const r of repos) {
+      out.push({
+        name: r.name,
+        full_name: r.full_name,
+        owner: r.owner.login,
+        private: r.private,
+        html_url: r.html_url,
+        clone_url: r.clone_url,
+        updated_at: r.updated_at,
+      });
+    }
+    if (repos.length < PER_PAGE) break; // short page ⇒ last page
+  }
+  return out;
 }

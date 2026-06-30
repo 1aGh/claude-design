@@ -3,16 +3,19 @@
 // REDESIGNED to match .design/ui/RepoBranchSwitcher.tsx: not a top header — a
 // compact ONE-LINE dock at the BOTTOM of the sidebar (mounted directly above the
 // IdentityBar avatar, so the two form one bottom dock — the gi-rail/gi-menu
-// anatomy). The trigger reads "📁 <project> · <version> ⌃" and opens ONE popup
-// UPWARD with a Project section (recents + Open another folder…) and a Version
-// section (Shared version / drafts / the fold-back CTA / New draft).
+// anatomy). The trigger reads "📁 <project> · <branch> ⌃" and opens ONE popup
+// UPWARD with a Project section (recents + Open another folder…) and a Branch
+// section (default branch / other branches / the merge-to-default CTA / New branch).
 //
-// Vocabulary contract: a git branch is a "draft", main/master is the "Shared
-// version" — no branch/checkout/main/merge jargon. Project switch → open_local_project
-// (Tauri) reloads the webview; draft switch → POST /_api/git/checkout then reload
-// (the git-lifecycle HEAD-watcher flushes Yjs first — DDR-051, not duplicated here);
-// "Add this draft to the Shared version" → POST /_api/git/fold. Renders nothing
-// until the project is a git repo. CSS (rb-*) in 3-shell-maude.css.
+// Vocabulary contract (DDR-133 — git-native for this surface, superseding the
+// DDR-110/119 plain-language layer for the developer persona): branches show their
+// real names, main/master is "the default branch", the fold action is "Merge this
+// branch → main". Project switch → open_local_project (Tauri) reloads the webview;
+// branch switch → POST /_api/git/checkout then reload (the git-lifecycle HEAD-watcher
+// flushes Yjs first — DDR-051, not duplicated here); "Merge → main" → POST
+// /_api/git/fold; "Fetch remote branches" → POST /_api/git/fetch. The local branch
+// list is re-asserted from disk on every popup open (DDR-133) so a flaky network never
+// blanks it. Renders nothing until the project is a git repo. CSS in 3-shell-maude.css.
 
 import { useEffect, useRef, useState } from 'react';
 
@@ -53,6 +56,10 @@ function basename(p) {
 }
 function slugify(s) {
   return s.trim().toLowerCase().replace(/[^a-z0-9._/-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+}
+// Stable data-testid slug for a branch name (desktop-e2e targets testids, not classes).
+function tid(name) {
+  return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 // Plain "as of …" label for the last Refresh. Coarse on purpose — it's a freshness
 // hint, not a clock. `at` is unix seconds; 0/falsey → no label.
@@ -124,6 +131,17 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
     return () => { alive = false; };
   }, [native]);
 
+  // DDR-133: the local branch list is disk-only and instant — re-assert it every
+  // time the popup opens (independent of any network Refresh), and clear a stale
+  // error (e.g. a prior "Refresh timed out") so a flaky network can never leave the
+  // dropdown looking empty or broken on the next open.
+  useEffect(() => {
+    if (!open || !native || !status?.repo) return;
+    setErr('');
+    reloadBranches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   useEffect(() => {
     if (!open && !newDraft) return undefined;
     const onDoc = (e) => { if (rootRef.current && !rootRef.current.contains(e.target)) { setOpen(false); setNewDraft(false); setQuery(''); } };
@@ -184,30 +202,39 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
     );
   }
 
+  // Re-read the local branch list from disk (no network — instant). The popup-open
+  // effect and a successful fetch both call this so the list is always current.
+  async function reloadBranches() {
+    try { const b = await getJson('/_api/git/branches'); setBranches(b.branches || []); }
+    catch { /* not a repo / offline — keep the prior list, never blank it */ }
+  }
+
   async function switchDraft(name, where) {
     setOpen(false);
     if (name === branch) return;
-    setSwitching(name === sharedName ? 'the shared version' : name);
-    setDownloading(where === 'remote'); // a remote-only draft is downloaded on switch
+    setSwitching(name);
+    setDownloading(where === 'remote'); // a remote-only branch is downloaded on switch
     setErr('');
     const r = await postJson('/_api/git/checkout', { name });
     if (r.ok && r.json?.ok) window.location.reload();
     else { setErr(r.json?.error || 'Could not switch.'); setSwitching(''); setDownloading(false); }
   }
 
-  // "Refresh drafts" — fetch all remote heads so a teammate's new draft surfaces,
-  // then re-read the list. Explicit gesture (never auto-run); token is server-held.
+  // "Fetch remote branches" — fetch all remote heads so a teammate's new branch
+  // surfaces, then re-read the list. Explicit gesture (never auto-run); token is
+  // server-held. A failure surfaces as an in-popup notice (DDR-133) — it NEVER
+  // clears the local list, which stays rendered from disk.
   async function refreshDrafts() {
     if (refreshing) return;
     setRefreshing(true); setErr('');
     const r = await postJson('/_api/git/fetch', {}, { timeoutMs: 45000 });
     if (r.ok && r.json?.ok) {
       if (r.json.fetchedAt) setFetchedAt(r.json.fetchedAt);
-      try { const b = await getJson('/_api/git/branches'); setBranches(b.branches || []); } catch { /* keep prior list */ }
-    } else if (r.timedOut) {
-      setErr('Refresh timed out — check your connection and try again.');
+      await reloadBranches();
+    } else if (r.timedOut || r.json?.timedOut) {
+      setErr('Couldn’t reach the remote — your local branches are still listed above.');
     } else {
-      setErr(r.status === 401 ? 'Sign in with GitHub to refresh.' : r.json?.error || 'Could not refresh drafts.');
+      setErr(r.status === 401 || r.json?.authRequired ? 'Sign in with GitHub to fetch remote branches.' : r.json?.error || 'Could not fetch remote branches.');
     }
     setRefreshing(false);
   }
@@ -229,7 +256,7 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
     const r = await postJson('/_api/git/fold', { name: branch });
     if (r.ok && r.json?.ok) window.location.reload();
     else {
-      setErr(r.status === 401 ? 'Sign in with GitHub to publish the Shared version.' : r.json?.error || 'Could not add the draft.');
+      setErr(r.status === 401 ? `Sign in with GitHub to merge into ${sharedName}.` : r.json?.error || 'Could not merge the branch.');
       setFolding('');
     }
   }
@@ -256,19 +283,32 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
   const slug = slugify(draftName);
   const currentDraft = onShared ? null : branches.find((b) => b.current);
 
+  // Search-miss (DDR-133, Task 4): a typed name that matches no LOCAL or already-
+  // fetched remote branch offers an explicit remote search (the bounded fetch),
+  // instead of a dead-end "nothing matches". The local list above stays rendered.
+  const searchMissRow = (
+    <>
+      <div className="rb-pop-empty">No branch matches “{query.trim()}”.</div>
+      <button type="button" className="rb-pop-item rb-pop-item--action" role="menuitem" onClick={refreshDrafts} disabled={refreshing}>
+        <span className={'rb-pop-icon' + (refreshing ? ' rb-pop-icon--spin' : '')}><Icon name={refreshing ? 'spinner' : 'refresh'} size={14} /></span>
+        <span className="rb-pop-tx"><span className="rb-pop-name">{refreshing ? 'Searching the remote…' : 'Search the remote for it'}</span></span>
+      </button>
+    </>
+  );
+
   // One switchable draft row. A `remote`-only draft (a teammate's, or one pushed
   // from another machine) gets a cloud glyph + "not downloaded yet" — switching
   // downloads it (the service creates a local tracking branch).
   const draftRow = (b) => {
     const remote = b.where === 'remote';
     return (
-      <button type="button" key={b.name} className="rb-pop-item" role="menuitem" onClick={() => switchDraft(b.name, b.where)}>
+      <button type="button" key={b.name} data-testid={`branch-row-${tid(b.name)}`} className="rb-pop-item" role="menuitem" onClick={() => switchDraft(b.name, b.where)}>
         <span className={'rb-pop-icon ' + (remote ? 'rb-pop-icon--remote' : 'rb-pop-icon--draft')}>
           <Icon name={remote ? 'cloud' : 'draft'} size={14} />
         </span>
         <span className="rb-pop-tx">
           <span className="rb-pop-name">{b.name}</span>
-          {remote && <span className="rb-pop-sub">from your team · not downloaded yet</span>}
+          {remote && <span className="rb-pop-sub">remote · not downloaded yet</span>}
         </span>
       </button>
     );
@@ -278,7 +318,7 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
     <div className="rb-dock-wrap">
       <div className="rb-dock" ref={rootRef}>
         {open && (
-          <div className="rb-pop rb-pop--up" id="rb-switch-pop" role="menu" aria-label="Switch project or version">
+          <div className="rb-pop rb-pop--up" id="rb-switch-pop" role="menu" aria-label="Switch project or version" data-testid="repo-switcher-popup">
             {/* ── Project ── */}
             <div className="rb-pop-hd">Project</div>
             {native && recents.length > 0 ? (
@@ -303,79 +343,81 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
             )}
 
             <div className="rb-pop-sep" />
-            <div className="rb-pop-hd">Version</div>
+            <div className="rb-pop-hd">Branch</div>
 
             {onShared ? (
               <>
-                <button type="button" className="rb-pop-item is-current" role="menuitem" aria-current="true" onClick={() => switchDraft(sharedName)}>
+                <button type="button" data-testid={`branch-row-${tid(sharedName)}`} className="rb-pop-item is-current" role="menuitem" aria-current="true" onClick={() => switchDraft(sharedName)}>
                   <span className="rb-pop-icon rb-pop-icon--shared"><Icon name="share" size={14} /></span>
                   <span className="rb-pop-tx">
-                    <span className="rb-pop-name">Shared version</span>
-                    <span className="rb-pop-sub">what everyone sees</span>
+                    <span className="rb-pop-name">{sharedName}</span>
+                    <span className="rb-pop-sub">default branch · what everyone sees</span>
                   </span>
                   <Icon name="check" size={14} className="rb-pop-check" />
                 </button>
-                {allDrafts.length > 0 && <div className="rb-pop-grouplabel">Drafts</div>}
+                {allDrafts.length > 0 && <div className="rb-pop-grouplabel">Other branches</div>}
                 {showSearch && (
                   <div className="rb-search">
-                    <input className="input rb-search-input" type="text" value={query} placeholder="Search drafts…" aria-label="Search drafts" onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }} />
+                    <input className="input rb-search-input" type="text" value={query} placeholder="Search branches…" aria-label="Search branches" onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }} />
                   </div>
                 )}
                 {drafts.map(draftRow)}
-                {showSearch && q && drafts.length === 0 && !sharedMatchesQuery && <div className="rb-pop-empty">Nothing matches “{query.trim()}”.</div>}
+                {showSearch && q && drafts.length === 0 && !sharedMatchesQuery && searchMissRow}
               </>
             ) : (
               <>
-                {/* On a draft — it's the current row, and the one strong action is
-                    folding it back into the Shared version (Task 7). */}
+                {/* On a branch — it's the current row, and the one strong action is
+                    merging it into the default branch (DDR-133 fold). */}
                 <button type="button" className="rb-pop-item is-current" role="menuitem" aria-current="true">
                   <span className="rb-pop-icon rb-pop-icon--draft"><Icon name="draft" size={14} /></span>
                   <span className="rb-pop-tx">
                     <span className="rb-pop-name">{currentDraft?.name || branch}</span>
-                    <span className="rb-pop-sub">your draft</span>
+                    <span className="rb-pop-sub">your branch</span>
                   </span>
                   <Icon name="check" size={14} className="rb-pop-check" />
                 </button>
-                <button type="button" className="rb-fold" role="menuitem" onClick={() => { setOpen(false); setFoldConfirm(true); }}>
+                <button type="button" data-testid="switcher-merge" className="rb-fold" role="menuitem" onClick={() => { setOpen(false); setFoldConfirm(true); }}>
                   <span className="rb-fold-icon"><Icon name="arrow-up-to-line" size={15} /></span>
                   <span className="rb-fold-tx">
-                    <span className="rb-fold-title">Add this draft to the Shared version</span>
-                    <span className="rb-fold-sub">make it the version everyone works from</span>
+                    <span className="rb-fold-title">Merge this branch → {sharedName}</span>
+                    <span className="rb-fold-sub">into the default branch everyone shares</span>
                   </span>
                 </button>
-                <div className="rb-pop-grouplabel">Switch to</div>
+                <div className="rb-pop-grouplabel">Switch branch</div>
                 {showSearch && (
                   <div className="rb-search">
-                    <input className="input rb-search-input" type="text" value={query} placeholder="Search versions…" aria-label="Search versions" onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }} />
+                    <input className="input rb-search-input" type="text" value={query} placeholder="Search branches…" aria-label="Search branches" onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }} />
                   </div>
                 )}
                 {sharedMatchesQuery && (
-                  <button type="button" className="rb-pop-item" role="menuitem" onClick={() => switchDraft(sharedName)}>
+                  <button type="button" data-testid={`branch-row-${tid(sharedName)}`} className="rb-pop-item" role="menuitem" onClick={() => switchDraft(sharedName)}>
                     <span className="rb-pop-icon rb-pop-icon--shared"><Icon name="share" size={14} /></span>
                     <span className="rb-pop-tx">
-                      <span className="rb-pop-name">Shared version</span>
-                      <span className="rb-pop-sub">what everyone sees{q && SHARED.has(sharedName) ? ` · ${sharedName}` : ''}</span>
+                      <span className="rb-pop-name">{sharedName}</span>
+                      <span className="rb-pop-sub">default branch · what everyone sees</span>
                     </span>
                   </button>
                 )}
                 {otherDrafts.map(draftRow)}
-                {showSearch && q && otherDrafts.length === 0 && !sharedMatchesQuery && <div className="rb-pop-empty">Nothing matches “{query.trim()}”.</div>}
+                {showSearch && q && otherDrafts.length === 0 && !sharedMatchesQuery && searchMissRow}
               </>
             )}
 
-            <button type="button" className="rb-pop-item rb-pop-item--action" role="menuitem" onClick={refreshDrafts} disabled={refreshing}>
+            <button type="button" data-testid="switcher-fetch" className="rb-pop-item rb-pop-item--action" role="menuitem" onClick={refreshDrafts} disabled={refreshing}>
               <span className={'rb-pop-icon' + (refreshing ? ' rb-pop-icon--spin' : '')}><Icon name={refreshing ? 'spinner' : 'refresh'} size={14} /></span>
               <span className="rb-pop-tx">
-                <span className="rb-pop-name">{refreshing ? 'Refreshing…' : 'Refresh drafts'}</span>
-                <span className="rb-pop-sub">{fetchedAt ? `as of ${relativeTime(fetchedAt)}` : "check the team's remote for new drafts"}</span>
+                <span className="rb-pop-name">{refreshing ? 'Fetching…' : 'Fetch remote branches'}</span>
+                <span className="rb-pop-sub">{fetchedAt ? `as of ${relativeTime(fetchedAt)}` : 'check the remote for new branches'}</span>
               </span>
             </button>
 
-            <button type="button" className="rb-pop-item rb-pop-item--action" role="menuitem" onClick={() => { setOpen(false); setNewDraft(true); }}>
+            {err && !switching && <div className="rb-pop-notice" role="alert">{err}</div>}
+
+            <button type="button" data-testid="switcher-new-branch" className="rb-pop-item rb-pop-item--action" role="menuitem" onClick={() => { setOpen(false); setNewDraft(true); }}>
               <span className="rb-pop-icon"><Icon name="plus" size={14} /></span>
               <span className="rb-pop-tx">
-                <span className="rb-pop-name">New draft</span>
-                <span className="rb-pop-sub">a separate line of work, just yours for now</span>
+                <span className="rb-pop-name">New branch</span>
+                <span className="rb-pop-sub">a separate line of work off the current branch</span>
               </span>
             </button>
           </div>
@@ -384,51 +426,51 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
         {newDraft && (
           <div className="rb-newdraft rb-newdraft--up">
             <label className="rb-newdraft-field">
-              <span className="rb-newdraft-label">Name your draft</span>
-              <input className="input rb-newdraft-input" type="text" value={draftName} placeholder="Nav redesign" aria-label="Draft name" autoFocus onChange={(e) => setDraftName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && slug) createDraft(); if (e.key === 'Escape') { setNewDraft(false); setDraftName(''); } }} />
-              {slug && <span className="rb-pop-sub">Creates a draft called <b>{slug}</b></span>}
+              <span className="rb-newdraft-label">Name your branch</span>
+              <input className="input rb-newdraft-input" data-testid="switcher-new-branch-input" type="text" value={draftName} placeholder="nav-redesign" aria-label="Branch name" autoFocus onChange={(e) => setDraftName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && slug) createDraft(); if (e.key === 'Escape') { setNewDraft(false); setDraftName(''); } }} />
+              {slug && <span className="rb-pop-sub">Creates branch <b>{slug}</b></span>}
             </label>
             {err && <span className="rb-newdraft-err">{err}</span>}
             <div className="rb-newdraft-actions">
               <button type="button" className="btn btn--ghost btn--sm" onClick={() => { setNewDraft(false); setDraftName(''); setErr(''); }} disabled={busy}>Cancel</button>
-              <button type="button" className="btn btn--primary btn--sm" onClick={createDraft} disabled={busy || !slug}><Icon name="draft" size={13} /> {busy ? 'Creating…' : 'Create draft'}</button>
+              <button type="button" data-testid="switcher-new-branch-create" className="btn btn--primary btn--sm" onClick={createDraft} disabled={busy || !slug}><Icon name="draft" size={13} /> {busy ? 'Creating…' : 'Create branch'}</button>
             </div>
-            <p className="rb-newdraft-hint">A draft is your own copy to try things in. Add it to the Shared version when you're happy, or throw it away — nothing else changes.</p>
+            <p className="rb-newdraft-hint">A branch is your own line of work off the current branch. Merge it into {sharedName} when you're happy, or throw it away — nothing else changes.</p>
           </div>
         )}
 
         {switching ? (
           <div className="rb-switching" role="status" aria-live="polite">
             <Icon name="spinner" size={14} className="rb-spin" />
-            <span>{folding ? <>Adding <b>{folding}</b> to the Shared version…</> : downloading ? <>Downloading <b>{switching}</b>…</> : <>Opening <b>{switching}</b>…</>}</span>
+            <span>{folding ? <>Merging <b>{folding}</b> → {sharedName}…</> : downloading ? <>Downloading <b>{switching}</b>…</> : <>Opening <b>{switching}</b>…</>}</span>
           </div>
         ) : (
-          <button type="button" className={'rb-trigger' + (open ? ' is-open' : '')} aria-expanded={open} aria-haspopup="menu" aria-controls="rb-switch-pop" onClick={() => { setOpen((v) => { if (v) setQuery(''); return !v; }); setNewDraft(false); }} title={`${projectName} · ${onShared ? 'Shared version' : branch}`}>
+          <button type="button" data-testid="repo-switcher-trigger" className={'rb-trigger' + (open ? ' is-open' : '')} aria-expanded={open} aria-haspopup="menu" aria-controls="rb-switch-pop" onClick={() => { setOpen((v) => { if (v) setQuery(''); return !v; }); setNewDraft(false); }} title={`${projectName} · ${branch}`}>
             <span className="rb-trigger-icon"><Icon name="folder" size={14} /></span>
             <span className="rb-trigger-proj">{projectName}</span>
             <span className="rb-trigger-sep" aria-hidden="true">·</span>
             <span className={'rb-trigger-ver' + (onShared ? '' : ' is-draft')}>
               <Icon name={onShared ? 'share' : 'draft'} size={12} />
-              <span className="rb-trigger-ver-name">{onShared ? 'Shared version' : branch}</span>
+              <span className="rb-trigger-ver-name">{branch}</span>
             </span>
             <Icon name="chevron-up" size={13} className="rb-trigger-caret" />
           </button>
         )}
-        {err && !newDraft && !switching && <div className="rb-switcher-err" role="alert">{err}</div>}
+        {err && !open && !newDraft && !switching && <div className="rb-switcher-err" role="alert">{err}</div>}
       </div>
 
-      {/* Fold-back confirm — the one modal in this surface. Plain words, no merge UI. */}
+      {/* Merge-to-default confirm — the one modal in this surface. No 3-way merge UI. */}
       {foldConfirm && (
         <div className="rb-scrim" role="presentation" onClick={() => setFoldConfirm(false)}>
           <div className="rb-sheet" role="dialog" aria-modal="true" aria-labelledby="rb-sheet-title" aria-describedby="rb-sheet-body" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Escape') setFoldConfirm(false); }}>
             <span className="rb-sheet-icon"><Icon name="arrow-up-to-line" size={20} /></span>
-            <h2 className="rb-sheet-title" id="rb-sheet-title">Add this draft to the Shared version</h2>
-            <p className="rb-sheet-body" id="rb-sheet-body">Everything in <b>“{currentDraft?.name || branch}”</b> will become part of the Shared version everyone sees.</p>
-            <p className="rb-sheet-meta">Everyone else picks it up the next time they Pull changes, and this draft is then removed. Nothing else changes.</p>
+            <h2 className="rb-sheet-title" id="rb-sheet-title">Merge this branch → {sharedName}</h2>
+            <p className="rb-sheet-body" id="rb-sheet-body">Everything in <b>“{currentDraft?.name || branch}”</b> becomes part of <b>{sharedName}</b> — the default branch everyone shares.</p>
+            <p className="rb-sheet-meta">Teammates pick it up the next time they Get latest, and this branch is then deleted. Nothing else changes.</p>
             {err && <p className="rb-newdraft-err">{err}</p>}
             <div className="rb-sheet-actions">
               <button type="button" className="btn btn--ghost" onClick={() => { setFoldConfirm(false); setErr(''); }}>Cancel</button>
-              <button type="button" className="btn btn--primary" onClick={foldDraft}><Icon name="arrow-up-to-line" size={15} /> Add to the Shared version</button>
+              <button type="button" data-testid="switcher-merge-confirm" className="btn btn--primary" onClick={foldDraft}><Icon name="arrow-up-to-line" size={15} /> Merge → {sharedName}</button>
             </div>
           </div>
         </div>

@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "git-native-switcher",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "The version switcher now speaks Git",
+      "summary": "The bottom-left switcher uses plain Git names now — your branches by name, main as the default branch everyone shares, and a one-click “Merge this branch → main.” It opens instantly even on repos with hundreds of branches (it uses your installed Git when you have it), and “Pull a local copy” lists every repo you can reach on GitHub — including ones shared through your team or organization.",
+      "surface": "design-ui"
+    },
+    {
       "id": "remote-drafts-in-switcher",
       "version": null,
       "date": null,

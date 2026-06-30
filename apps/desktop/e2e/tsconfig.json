@@ -3,13 +3,29 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM"],
-    "types": ["node", "@wdio/globals/types", "@wdio/mocha-framework", "expect-webdriverio"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "node",
+      "@wdio/globals/types",
+      "@wdio/mocha-framework",
+      "expect-webdriverio"
+    ],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["wdio.conf.ts", "scenarios/**/*.ts", "helpers/**/*.ts"]
+  "include": [
+    "fixtures/**/*.ts",
+    "helpers/**/*.ts",
+    "scenarios/**/*.ts",
+    "wdio.conf.ts",
+    "wdio.git.conf.ts",
+    "wdio.lifecycle.conf.ts",
+    "wdio.switchrepos.conf.ts"
+  ]
 }

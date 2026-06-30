@@ -1,7 +1,7 @@
 {
   "name": "@1agh/maude",
   "version": "0.35.0",
-  "description": "Marketplace of Claude Code plugins by Michal Dovrtěl: `design` (canvas-first design iteration) + `flow` (generic agentic workflow loop with .ai second brain). Ships the `maude` CLI (with `mdcc` legacy alias) to scaffold workspace, run the design dev server, and manage configs.",
+  "description": "Marketplace of Claude Code plugins by Michal Dovrt\u011bl: `design` (canvas-first design iteration) + `flow` (generic agentic workflow loop with .ai second brain). Ships the `maude` CLI (with `mdcc` legacy alias) to scaffold workspace, run the design dev server, and manage configs.",
   "type": "module",
   "engines": {
     "node": ">=20",
@@ -24,6 +24,7 @@
     "build:desktop": "PATH=\"$HOME/.cargo/bin:$PATH\" pnpm --filter @maude/desktop tauri build",
     "test:e2e:desktop:build": "PATH=\"$HOME/.cargo/bin:$PATH\" pnpm --filter @maude/desktop tauri build --debug --config src-tauri/tauri.e2e.conf.json",
     "test:e2e:desktop": "pnpm --filter @maude/desktop-e2e e2e",
+    "test:e2e:desktop:git": "pnpm --filter @maude/desktop-e2e e2e:git",
     "build": "pnpm -r --if-present --filter '!@maude/desktop' '!@maude/desktop-e2e' run build",
     "build:binary": "bun run apps/studio/build.ts --release",
     "test": "node --test --test-reporter=spec cli/**/*.test.mjs",
@@ -42,7 +43,9 @@
     "video:render": "cd scripts/video/final && pnpm run render",
     "video:studio": "cd scripts/video/final && pnpm run studio",
     "postinstall": "node cli/install.cjs",
-    "prepublishOnly": "bash scripts/check-version-parity.sh && bash apps/studio/bin/check-runtime-bundles.sh"
+    "prepublishOnly": "bash scripts/check-version-parity.sh && bash apps/studio/bin/check-runtime-bundles.sh",
+    "test:e2e:desktop:lifecycle": "pnpm --filter @maude/desktop-e2e e2e:lifecycle",
+    "test:e2e:desktop:switchrepos": "pnpm --filter @maude/desktop-e2e e2e:switchrepos"
   },
   "optionalDependencies": {
     "@1agh/maude-darwin-arm64": "0.35.0",
@@ -75,7 +78,7 @@
     "url": "https://github.com/1aGh/maude/issues"
   },
   "license": "MIT",
-  "author": "Michal Dovrtěl (1aGh)",
+  "author": "Michal Dovrt\u011bl (1aGh)",
   "keywords": [
     "claude-code",
     "claude-marketplace",

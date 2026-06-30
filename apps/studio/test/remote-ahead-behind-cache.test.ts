@@ -64,6 +64,18 @@ test('invalidateRemoteProbe forces a fresh evaluation (new object)', async () =>
   expect(Object.is(a, c)).toBe(false); // new reference ⇒ re-ran after invalidation
 });
 
+test('SECURITY (DDR-133 F1): the unattended probe never fetches a non-github HTTP remote', async () => {
+  // Repoint origin to a non-github HTTPS host (a poisoned `.git/config` riding a clone).
+  // With system git auto-preferred (DDR-133), the host-allowlist must gate this probe
+  // BEFORE the engine branch — otherwise an http transport reached `git fetch` against
+  // ANY host on the unattended 45s poll (SSRF / presence beacon). The guard returns
+  // {0,0} with NO spawn; a regression would attempt the fetch and reject/hang here.
+  git(work, ['remote', 'set-url', 'origin', 'https://evil.example.invalid/repo.git']);
+  invalidateRemoteProbe(work);
+  const r = await remoteAheadBehind(work, 'tok_must_never_be_sent');
+  expect(r).toEqual({ ahead: 0, behind: 0 });
+});
+
 test('concurrent callers coalesce onto one shared in-flight result', async () => {
   const [a, b, c] = await Promise.all([
     remoteAheadBehind(work, undefined),

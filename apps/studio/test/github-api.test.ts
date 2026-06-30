@@ -142,8 +142,31 @@ describe('GitHub REST request construction', () => {
       clone_url: 'c',
       updated_at: '2026-06-18T00:00:00Z',
     });
-    expect(calls[0].url).toContain('affiliation=owner,collaborator');
+    expect(calls[0].url).toContain('affiliation=owner,collaborator,organization_member');
     expect(calls[0].url).toContain('sort=updated');
+  });
+
+  test('listUserRepos paginates until a short page (DDR-133)', async () => {
+    const fullPage = (n: number) =>
+      Array.from({ length: 100 }, (_, i) => ({
+        name: `r${n}-${i}`,
+        full_name: `octocat/r${n}-${i}`,
+        owner: { login: 'octocat' },
+        private: false,
+        html_url: 'h',
+        clone_url: 'c',
+        updated_at: '2026-06-18T00:00:00Z',
+      }));
+    let page = 0;
+    const calls = stubFetch(() => {
+      page += 1;
+      // page 1 + 2 are full (100), page 3 is short (1) ⇒ loop stops after page 3.
+      return json(page < 3 ? fullPage(page) : [fullPage(page)[0]]);
+    });
+    const repos = await listUserRepos('t');
+    expect(repos.length).toBe(201);
+    expect(calls.length).toBe(3);
+    expect(calls[1].url).toContain('page=2');
   });
 
   test('401 maps to "sign-in expired", 403 rate-limit, 404 not-found', async () => {

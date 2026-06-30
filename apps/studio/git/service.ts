@@ -32,6 +32,56 @@ import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 
 const USE_SYSTEM_GIT = /^(1|true|on|yes)$/i.test(process.env.MAUDE_USE_SYSTEM_GIT ?? '');
+// DDR-133 (DDR-107 end-state): auto-prefer a detected system `git` for the NETWORK
+// paths (gitFetchRemote / remoteAheadBehind — native fetch is instant + uses the
+// user's own credential helper / SSH agent) AND the READ paths (status / list-
+// branches / log / diff / show / unpushed / current-branch). The pure-JS iso engine
+// is genuinely slow on a real-world repo — and worse, `git.statusMatrix` /
+// `git.listBranches` can throw on some trees ("No obj for …") and wedge the 10 s
+// Bun.serve idle window, which is exactly what made the switcher's branch list
+// vanish + the dropdown hang. System git's `status --porcelain` / `for-each-ref`
+// are instant and don't have that failure mode. iso remains the fallback when no
+// `git` is on PATH (the zero-setup promise) and still backs the WRITE paths
+// (commit / checkout / branch / fold / push / pull) unless forced. MAUDE_USE_SYSTEM_GIT=1
+// forces system git everywhere; MAUDE_NO_SYSTEM_GIT=1 pins everything to iso
+// (escape hatch / deterministic test engine).
+// Read live (not a module-load const) so a test can scope MAUDE_NO_SYSTEM_GIT around
+// a single assertion to deterministically exercise the iso engine without leaking.
+const noSystemGit = (): boolean => /^(1|true|on|yes)$/i.test(process.env.MAUDE_NO_SYSTEM_GIT ?? '');
+let systemGitProbe: Promise<boolean> | undefined;
+/** True when a usable `git` binary is on PATH. Memoized per process — the sidecar
+ *  respawns per repo (DDR-132), so one `git --version` probe per process is correct
+ *  and cheap. The probe NEVER relaxes the DDR-131 transport gate: callers classify
+ *  the remote URL first; this only picks which engine runs an already-vetted op. */
+function systemGitAvailable(): Promise<boolean> {
+  if (USE_SYSTEM_GIT) return Promise.resolve(true);
+  if (noSystemGit()) return Promise.resolve(false);
+  if (!systemGitProbe) {
+    systemGitProbe = runGit(process.cwd(), ['--version'], undefined, 4000)
+      .then((r) => r.code === 0 && /git version/i.test(r.stdout))
+      .catch(() => false);
+  }
+  return systemGitProbe;
+}
+
+const TIMED_OUT = Symbol('maude-git-timeout');
+/** Race `p` against a timeout. Returns `TIMED_OUT` if the deadline wins; a late
+ *  rejection from the losing promise is swallowed so it never surfaces as an
+ *  unhandledRejection. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
+  p.catch(() => {});
+  let timer: ReturnType<typeof setTimeout>;
+  const t = new Promise<typeof TIMED_OUT>((res) => {
+    timer = setTimeout(() => res(TIMED_OUT), ms);
+  });
+  return Promise.race([p, t]).finally(() => clearTimeout(timer));
+}
+
+/** Bounds for the two unbounded network paths (DDR-133). A stalled remote must
+ *  surface a fast, friendly result instead of hanging the popup / the unattended
+ *  status poll. */
+const FETCH_TIMEOUT_MS = 12_000;
+const PROBE_TIMEOUT_MS = 8_000;
 
 /** One changed file as the Changes panel renders it. `status` maps to the M/A/D/U
  *  badge (DDR-075 status hues): modified→M, added→A, deleted→D, untracked→U. */
@@ -214,13 +264,21 @@ interface RunResult {
   code: number;
   stdout: string;
   stderr: string;
+  /** True when `timeoutMs` elapsed and the child was killed (DDR-133). */
+  timedOut?: boolean;
 }
 
 /** Run `git <args>` in `dir`. `tokenRemote` (when given) replaces the `origin`
  *  URL's userinfo with the token for this one invocation via `-c` config so the
  *  PAT never lands in the on-disk remote URL or the process title's argv beyond
- *  the ephemeral child. */
-function runGit(dir: string, args: string[], env?: Record<string, string>): Promise<RunResult> {
+ *  the ephemeral child. `timeoutMs` (DDR-133) hard-kills a stalled child so the
+ *  network paths can never hang the UI / the unattended poll. */
+function runGit(
+  dir: string,
+  args: string[],
+  env?: Record<string, string>,
+  timeoutMs?: number
+): Promise<RunResult> {
   return new Promise((resolveRun) => {
     const child = spawn('git', args, {
       cwd: dir,
@@ -229,14 +287,28 @@ function runGit(dir: string, args: string[], env?: Record<string, string>): Prom
     });
     let stdout = '';
     let stderr = '';
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (timeoutMs && timeoutMs > 0) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGKILL');
+      }, timeoutMs);
+    }
     child.stdout.on('data', (d) => {
       stdout += d.toString();
     });
     child.stderr.on('data', (d) => {
       stderr += d.toString();
     });
-    child.on('error', (e) => resolveRun({ code: 127, stdout, stderr: String(e) }));
-    child.on('close', (code) => resolveRun({ code: code ?? 1, stdout, stderr }));
+    child.on('error', (e) => {
+      if (timer) clearTimeout(timer);
+      resolveRun({ code: 127, stdout, stderr: String(e), timedOut });
+    });
+    child.on('close', (code) => {
+      if (timer) clearTimeout(timer);
+      resolveRun({ code: timedOut ? 124 : (code ?? 1), stdout, stderr, timedOut });
+    });
   });
 }
 
@@ -247,7 +319,9 @@ export async function gitStatus(dir: string, opts: GitStatusOpts = {}): Promise<
     return { repo: false, branch: null, files: [], clean: true, unpushed: 0 };
   }
   const prefix = normPrefix(opts.designPrefix);
-  const result = USE_SYSTEM_GIT ? await statusSystem(dir, prefix) : await statusIso(dir, prefix);
+  const result = (await systemGitAvailable())
+    ? await statusSystem(dir, prefix)
+    : await statusIso(dir, prefix);
 
   // Local "saved but not published" count — no network (uses the cached
   // remote-tracking ref). Lets the panel offer Publish even on a clean tree.
@@ -534,7 +608,7 @@ export async function gitListBranches(dir: string): Promise<GitBranch[]> {
   if (!isRepo(dir)) return [];
   try {
     const merged = new Map<string, GitBranch>();
-    if (USE_SYSTEM_GIT) {
+    if (await systemGitAvailable()) {
       const cur = (await runGit(dir, ['rev-parse', '--abbrev-ref', 'HEAD'])).stdout.trim();
       // Tab-separated so a branch name (no tabs/newlines, charset-guarded) can't
       // collide with the delimiter; committerdate:unix is the recents key.
@@ -551,10 +625,13 @@ export async function gitListBranches(dir: string): Promise<GitBranch[]> {
         });
       }
       // Remote refs come back as "origin/<name>" — strip the prefix, skip origin/HEAD.
+      // NB: `%(refname:short)` collapses the symbolic ref refs/remotes/origin/HEAD to
+      // the bare remote name ("origin"), so skip that too or it shows as a phantom branch.
       const remote = await runGit(dir, ['for-each-ref', fmt, `refs/remotes/${DEFAULT_REMOTE}`]);
       if (remote.code === 0) {
         for (const line of splitLines(remote.stdout)) {
           const [full, ts] = line.split('\t');
+          if (!full || full === DEFAULT_REMOTE) continue; // origin/HEAD short form
           const name = full.startsWith(`${DEFAULT_REMOTE}/`)
             ? full.slice(DEFAULT_REMOTE.length + 1)
             : full;
@@ -978,6 +1055,8 @@ export interface GitFetchResult {
   fetchedAt?: number;
   /** See GitPushResult.authRequired — a tokenless refresh on the iso engine. */
   authRequired?: boolean;
+  /** The fetch exceeded FETCH_TIMEOUT_MS and was bounded (DDR-133). */
+  timedOut?: boolean;
   error?: string;
 }
 
@@ -1003,13 +1082,31 @@ export async function gitFetchRemote(
   if (transport === 'unsafe')
     return { ok: false, error: 'Maude can only refresh github.com (HTTPS or SSH) projects.' };
   const trustedHttp = transport === 'http' && isTrustedTokenHost(url);
+  // Token/host POLICY is engine-independent (DDR-133): an HTTPS remote must be
+  // github.com (token-host = fetch-host — never lend the PAT to another host) and
+  // requires sign-in; an ssh remote uses the user's own key against whatever host
+  // they configured. The engine choice below only decides HOW a vetted fetch runs.
+  if (transport === 'http' && !trustedHttp)
+    return { ok: false, error: 'Maude can only refresh github.com projects.' };
+  // Tokenless github HTTPS: the iso engine can't authenticate (→ sign in), but system
+  // git uses the developer's own credential helper, so only block when there's no
+  // system git to fall back on (DDR-133). With system git, a tokenless fetch Just Works.
+  if (transport === 'http' && !token && !(await systemGitAvailable()))
+    return { ok: false, authRequired: true, error: 'Sign in with GitHub to refresh.' };
   try {
-    if (USE_SYSTEM_GIT || transport === 'ssh') {
-      // System git: attach the token header ONLY for a trusted-host HTTPS remote; an
-      // ssh remote authenticates with the user's own key (no token).
+    if ((await systemGitAvailable()) || transport === 'ssh') {
+      // System git (auto-preferred when present — DDR-133): attach the token header
+      // ONLY for a trusted-host HTTPS remote (else fall back to the user's own
+      // credential helper); an ssh remote authenticates with the user's own key.
       const args = trustedHttp ? tokenHeaderArgs(token) : [];
       args.push(...HARDENED_REMOTE_FLAGS, 'fetch', '--prune', remote);
-      const r = await runGit(dir, args);
+      const r = await runGit(dir, args, undefined, FETCH_TIMEOUT_MS);
+      if (r.timedOut)
+        return {
+          ok: false,
+          timedOut: true,
+          error: 'Refresh timed out — check your connection and try again.',
+        };
       if (r.code === 127)
         return {
           ok: false,
@@ -1029,19 +1126,24 @@ export async function gitFetchRemote(
         return { ok: false, error: r.stderr.trim() || 'Could not refresh drafts.' };
       }
     } else {
-      // iso engine, HTTP(S). Never send the GitHub token to a non-GitHub host.
-      if (!isTrustedTokenHost(url))
-        return { ok: false, error: 'Maude can only refresh github.com projects.' };
-      if (!token)
-        return { ok: false, authRequired: true, error: 'Sign in with GitHub to refresh.' };
-      await git.fetch({
-        fs,
-        http,
-        dir,
-        remote,
-        prune: true,
-        onAuth: () => ({ username: token, password: '' }),
-      });
+      // iso engine: github HTTPS with a token (guaranteed by the policy guards above).
+      const fetched = await withTimeout(
+        git.fetch({
+          fs,
+          http,
+          dir,
+          remote,
+          prune: true,
+          onAuth: () => ({ username: token ?? '', password: '' }),
+        }),
+        FETCH_TIMEOUT_MS
+      );
+      if (fetched === TIMED_OUT)
+        return {
+          ok: false,
+          timedOut: true,
+          error: 'Refresh timed out — check your connection and try again.',
+        };
     }
     return { ok: true, fetchedAt: Math.floor(Date.now() / 1000) };
   } catch (e) {
@@ -1253,7 +1355,9 @@ function mineCopyPath(rel: string): string {
  *  design tree). */
 export async function gitLog(dir: string, limit = 30, filepath?: string): Promise<GitLogEntry[]> {
   if (!isRepo(dir)) return [];
-  return USE_SYSTEM_GIT ? logSystem(dir, limit, filepath) : logIso(dir, limit, filepath);
+  return (await systemGitAvailable())
+    ? logSystem(dir, limit, filepath)
+    : logIso(dir, limit, filepath);
 }
 
 async function logIso(dir: string, limit: number, filepath?: string): Promise<GitLogEntry[]> {
@@ -1313,7 +1417,7 @@ export async function gitDiff(
 ): Promise<GitDiffEntry[]> {
   if (!isRepo(dir)) return [];
   const prefix = normPrefix(opts.designPrefix);
-  return USE_SYSTEM_GIT ? diffSystem(dir, sha, prefix) : diffIso(dir, sha, prefix);
+  return (await systemGitAvailable()) ? diffSystem(dir, sha, prefix) : diffIso(dir, sha, prefix);
 }
 
 async function diffIso(dir: string, sha: string, prefix: string): Promise<GitDiffEntry[]> {
@@ -1380,7 +1484,7 @@ export async function gitShowFile(
   const rel = repoRelPath.replace(/\\/g, '/');
   if (!isContainedRepoPath(dir, rel)) return null;
   try {
-    if (USE_SYSTEM_GIT) {
+    if (await systemGitAvailable()) {
       const r = await runGit(dir, ['show', `${sha}:${rel}`]);
       return r.code === 0 ? r.stdout : null;
     }
@@ -1404,7 +1508,7 @@ async function localUnpushed(dir: string, branch: string | null, remote: string)
   // server-derived today, but never interpolate an unguarded positional into git
   // argv (defense-in-depth so a future caller can't re-open the injection class).
   if (!isSafeGitPositional(branch) || !isSafeGitPositional(remote)) return 0;
-  if (USE_SYSTEM_GIT) {
+  if (await systemGitAvailable()) {
     const r = await runGit(dir, ['rev-list', '--count', `${remote}/${branch}..HEAD`]);
     if (r.code === 0) return Number(r.stdout.trim()) || 0;
     // No tracking ref — count all commits if a remote exists, else 0.
@@ -1458,7 +1562,7 @@ export function invalidateRemoteProbe(dir: string): void {
 
 /** Resolve the current branch with the active engine — local-only, no network. */
 async function currentBranchOf(dir: string): Promise<string> {
-  if (USE_SYSTEM_GIT) {
+  if (await systemGitAvailable()) {
     const r = await runGit(dir, ['rev-parse', '--abbrev-ref', 'HEAD']);
     return r.stdout.trim() || 'main';
   }
@@ -1511,20 +1615,33 @@ async function remoteAheadBehindUncached(
   const transport = classifyRemoteUrl(url);
   if (transport === 'none' || transport === 'unsafe') return { ahead: 0, behind: 0 };
   const trustedHttp = transport === 'http' && isTrustedTokenHost(url);
-  if (USE_SYSTEM_GIT || transport === 'ssh')
+  // SECURITY (DDR-133 fix — adversarial review F1): the host-allowlist MUST gate this
+  // UNATTENDED probe BEFORE the engine branch, mirroring gitFetchRemote (`:1089`). With
+  // system git now auto-preferred, an http transport otherwise reached the system path
+  // for ANY host — turning a poisoned non-github `remote.origin.url` into an unattended
+  // `git fetch` SSRF/beacon (the old `!trustedHttp` guard sat AFTER the engine branch,
+  // so it only ever protected the now-dead iso path). github-only for http; ssh uses the
+  // user's own key (DDR-131-accepted, same as the explicit Refresh).
+  if (transport === 'http' && !trustedHttp) return { ahead: 0, behind: 0 };
+  if ((await systemGitAvailable()) || transport === 'ssh')
     return remoteAheadBehindSystem(dir, trustedHttp ? token : undefined, remote, branch);
-  // iso engine, HTTP(S): never fetch (or send the token) to a non-GitHub host.
-  if (!trustedHttp) return { ahead: 0, behind: 0 };
-  await git.fetch({
-    fs,
-    http,
-    dir,
-    remote,
-    ref: branch,
-    singleBranch: true,
-    tags: false,
-    onAuth: () => ({ username: token ?? '', password: '' }),
-  });
+  // iso engine, HTTP(S) to github (trustedHttp guaranteed by the guard above).
+  // Bounded (DDR-133): a timeout THROWS so the wrapper never caches it — the next
+  // poll retries, and local status is unaffected (caller try/catches).
+  const fetched = await withTimeout(
+    git.fetch({
+      fs,
+      http,
+      dir,
+      remote,
+      ref: branch,
+      singleBranch: true,
+      tags: false,
+      onAuth: () => ({ username: token ?? '', password: '' }),
+    }),
+    PROBE_TIMEOUT_MS
+  );
+  if (fetched === TIMED_OUT) throw new Error('remote probe timed out');
   const localOid = await git.resolveRef({ fs, dir, ref: branch });
   const remoteOid = await git
     .resolveRef({ fs, dir, ref: `refs/remotes/${remote}/${branch}` })
@@ -1557,7 +1674,8 @@ async function remoteAheadBehindSystem(
   // allowlist at the git layer too (defense-in-depth behind classifyRemoteUrl).
   const args = token ? tokenHeaderArgs(token) : [];
   args.push(...HARDENED_REMOTE_FLAGS, 'fetch', remote, branch);
-  const f = await runGit(dir, args);
+  const f = await runGit(dir, args, undefined, PROBE_TIMEOUT_MS);
+  if (f.timedOut) throw new Error('remote probe timed out');
   if (f.code !== 0) throw new Error(f.stderr.trim() || 'fetch failed');
   const counts = await runGit(dir, [
     'rev-list',

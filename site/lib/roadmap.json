@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-29T17:18:45.809Z",
+  "generated": "2026-06-30T08:46:19.641Z",
   "currentPhase": null,
   "phases": [
     {
@@ -164,6 +164,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-git-perf-identity-and-remote-cache.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-git-switcher-fast-and-trustworthy",
+      "title": "Feature: Git version-switcher — fast, trustworthy, git-native",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-git-switcher-fast-and-trustworthy.md",
       "archived": true,
       "phaseKey": null
     },
@@ -991,6 +1002,17 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
+    },
+    {
+      "id": "feature-desktop-e2e-scenario-harness",
+      "title": "Feature: Desktop E2E scenario harness (Tauri + WebdriverIO, repo-internal skill)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-desktop-e2e-scenario-harness.md",
+      "archived": false,
+      "phaseKey": null
     }
   ]
 }

@@ -168,11 +168,20 @@ test('checkout of a never-fetched draft asks for a Refresh, not a raw error', as
 
 test('fetch of an HTTPS remote without a token reports authRequired (iso engine)', async () => {
   // iso-git can't use a system credential helper, so a tokenless HTTPS refresh
-  // short-circuits to authRequired BEFORE any network call.
-  sh(['remote', 'add', 'origin', 'https://github.com/example/repo.git']);
-  const r = await gitFetchRemote(dir, undefined);
-  expect(r.ok).toBe(false);
-  expect(r.authRequired).toBe(true);
+  // short-circuits to authRequired BEFORE any network call. Pin iso for this
+  // assertion (DDR-133: with system git available a tokenless fetch instead uses the
+  // dev's credential helper — that path is covered by the git-lifecycle e2e).
+  const prev = process.env.MAUDE_NO_SYSTEM_GIT;
+  process.env.MAUDE_NO_SYSTEM_GIT = '1';
+  try {
+    sh(['remote', 'add', 'origin', 'https://github.com/example/repo.git']);
+    const r = await gitFetchRemote(dir, undefined);
+    expect(r.ok).toBe(false);
+    expect(r.authRequired).toBe(true);
+  } finally {
+    if (prev === undefined) delete process.env.MAUDE_NO_SYSTEM_GIT;
+    else process.env.MAUDE_NO_SYSTEM_GIT = prev;
+  }
 });
 
 test('an ssh remote routes to system git, never the iso transport error', async () => {

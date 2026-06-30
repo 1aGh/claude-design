@@ -3166,6 +3166,7 @@ function StatusBar({
             (changesCount > 0 ? ' has-changes' : unpushed > 0 ? ' has-unpushed' : '')
           }
           onClick={onOpenChanges}
+          data-testid="open-changes"
           data-tip="Open Changes · ⌘⇧G"
           data-tip-pos="top"
           aria-label="Open Changes panel"

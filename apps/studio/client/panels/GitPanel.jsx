@@ -411,6 +411,7 @@ export default function GitPanel({
       <button
         type="button"
         className="btn btn--primary gp-publish"
+        data-testid="git-publish"
         data-tour="publish"
         disabled={!!busy}
         onClick={() =>
@@ -435,6 +436,7 @@ export default function GitPanel({
       className={'st-rpanel gp-panel' + (resizing ? ' is-resizing' : '')}
       style={width ? { width, flexBasis: width } : undefined}
       aria-label="Changes"
+      data-testid="git-panel"
     >
       <div className="gp-head">
         <div className="gp-panel-hd">
@@ -494,6 +496,7 @@ export default function GitPanel({
                   <button
                     type="button"
                     className="btn btn--sm"
+                    data-testid="git-get-latest"
                     disabled={!!busy}
                     onClick={() =>
                       run('getLatest', onGetLatest, {
@@ -559,6 +562,7 @@ export default function GitPanel({
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm"
+                  data-testid="git-get-latest"
                   data-tour="pull"
                   disabled={!!busy}
                   onClick={() =>
@@ -639,6 +643,7 @@ export default function GitPanel({
               </label>
               <textarea
                 className="gp-msg"
+                data-testid="git-commit-message"
                 placeholder="Describe what changed in this version…"
                 aria-label="Describe what changed in this version"
                 rows={2}
@@ -665,6 +670,7 @@ export default function GitPanel({
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm"
+                  data-testid="git-save-all"
                   disabled={!message.trim() || !!busy}
                   title="Save every change"
                   onClick={async () => {

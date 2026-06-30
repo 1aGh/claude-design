@@ -2,11 +2,14 @@
   "name": "@maude/desktop-e2e",
   "private": true,
   "version": "0.0.0",
-  "description": "DOM-driven E2E scenarios for the bundled Maude desktop app (Tauri + WebdriverIO @wdio/tauri-service). Drives the real WKWebView via data-testid — see the repo-internal `desktop-e2e` skill. NOT published; not part of the default build/test fan-out.",
+  "description": "DOM-driven E2E scenarios for the bundled Maude desktop app (Tauri + WebdriverIO @wdio/tauri-service). Drives the real WKWebView via data-testid \u2014 see the repo-internal `desktop-e2e` skill. NOT published; not part of the default build/test fan-out.",
   "type": "module",
   "scripts": {
     "e2e": "wdio run ./wdio.conf.ts",
-    "e2e:build": "cd .. && pnpm tauri build --debug"
+    "e2e:git": "wdio run ./wdio.git.conf.ts",
+    "e2e:build": "cd .. && pnpm tauri build --debug",
+    "e2e:lifecycle": "wdio run ./wdio.lifecycle.conf.ts",
+    "e2e:switchrepos": "wdio run ./wdio.switchrepos.conf.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
