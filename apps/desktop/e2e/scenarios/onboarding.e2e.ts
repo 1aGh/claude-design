@@ -42,9 +42,7 @@ async function ensureWelcome(): Promise<void> {
 describe('native-onboarding (native-desktop)', function () {
   before(async function () {
     if (!ONBOARDING) this.skip(); // wrong config (no first-run / stubs) — not applicable
-    startReport(
-      'native-onboarding (native-desktop) — first-run wizard → studio, zero terminal'
-    );
+    startReport('native-onboarding (native-desktop) — first-run wizard → studio, zero terminal');
     await browser.setTimeout({ script: 60_000 });
   });
 

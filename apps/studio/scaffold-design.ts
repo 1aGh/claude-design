@@ -139,7 +139,7 @@ export function scaffoldDesign(dir: string, name?: string): ScaffoldResult {
     writeFileSync(
       join(designDir, 'ui', 'Welcome.meta.json'),
       `${JSON.stringify(STARTER_CANVAS_META, null, 2)}\n`,
-      'utf8',
+      'utf8'
     );
     // `system/` is genuinely empty until /design:setup-ds — keep it in git.
     writeFileSync(join(designDir, 'system', '.gitkeep'), '', 'utf8');
