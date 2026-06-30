@@ -15,6 +15,7 @@ import {
   isNativeApp,
   isSignedIn,
   onDeviceCode,
+  onSignedIn,
   openVerification,
   signIn,
   signOut,
@@ -116,7 +117,14 @@ export default function IdentityBar() {
         const signed = await isSignedIn();
         if (!alive) return;
         if (signed) {
-          const r = await fetchIdentity();
+          let r = await fetchIdentity();
+          // A valid keychain token can still hit a transient identity-fetch failure at
+          // mount (bridge not ready / GitHub 5xx / rate-limit) — retry before falling back
+          // to the signed-out CTA so we don't flash "Sign in" at a signed-in user.
+          for (let i = 0; i < 2 && alive && !(r.ok && r.json?.ok); i += 1) {
+            await new Promise((res) => setTimeout(res, 800));
+            r = await fetchIdentity();
+          }
           if (!alive) return;
           if (r.ok && r.json?.ok) {
             setIdentity({ login: r.json.login, name: r.json.name, avatar_url: r.json.avatar_url });
@@ -130,6 +138,23 @@ export default function IdentityBar() {
     return () => {
       alive = false;
       unlistenRef.current?.then?.((fn) => fn?.());
+    };
+  }, [native]);
+
+  // Live-update when sign-in completes in ANOTHER surface (the wizard's Door A emits
+  // `github://signed-in`). Without this the rail can sit on "Sign in" with a valid token
+  // until a full reload. Flip to signed-in off the event's login, then enrich the profile.
+  useEffect(() => {
+    if (!native) return undefined;
+    const p = onSignedIn(async (login) => {
+      setIdentity((cur) => cur || { login, name: null, avatar_url: null });
+      setState('in');
+      const r = await fetchIdentity();
+      if (r.ok && r.json?.ok)
+        setIdentity({ login: r.json.login, name: r.json.name, avatar_url: r.json.avatar_url });
+    });
+    return () => {
+      p?.then?.((fn) => fn?.());
     };
   }, [native]);
 

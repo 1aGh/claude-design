@@ -343,7 +343,7 @@ export default function GitPanel({
       if (res.authRequired)
         setBanner({
           variant: 'info',
-          text: res.error || 'Sign in with GitHub to publish — coming soon.',
+          text: res.error || 'Sign in with GitHub to publish.',
         });
       else if (res.conflict)
         // A push conflict (non-fast-forward) prompts a Get-latest; a Get-latest

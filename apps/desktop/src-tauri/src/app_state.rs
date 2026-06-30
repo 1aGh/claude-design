@@ -21,6 +21,14 @@ use tauri::Manager;
 
 const MAX_RECENT: usize = 10;
 
+// Set once a project has been opened in THIS process run (via set_last_project). The
+// debug-only MAUDE_FORCE_ONBOARDING affordance reads it so that completing an onboarding
+// door DISMISSES the wizard to the studio instead of re-rendering it forever — it forces
+// first-run only until the user actually opens a project this run.
+#[cfg(debug_assertions)]
+static PROJECT_OPENED_THIS_RUN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 #[derive(Default, Serialize, Deserialize)]
 pub struct AppState {
     #[serde(default)]
@@ -85,6 +93,16 @@ pub fn last_project(app: &tauri::AppHandle) -> Option<PathBuf> {
 
 /// First run (show the wizard) = there is no usable remembered project.
 pub fn is_first_run(app: &tauri::AppHandle) -> bool {
+    // Dev/test affordance (debug builds only): force the onboarding wizard to render
+    // regardless of remembered state, so `pnpm dev:desktop:onboarding` can walk the
+    // first-run flow without moving app-state files on disk. Gated on `debug_assertions`,
+    // so it is NEVER honored in the release `.app`.
+    #[cfg(debug_assertions)]
+    if std::env::var("MAUDE_FORCE_ONBOARDING").map(|v| !v.is_empty()).unwrap_or(false) {
+        // Force the wizard only until the user opens a project THIS run; once a door
+        // completes (set_last_project), let it dismiss to the studio instead of looping.
+        return !PROJECT_OPENED_THIS_RUN.load(std::sync::atomic::Ordering::Relaxed);
+    }
     // An explicit project target via the `MAUDE_PROJECT_ROOT` override (e2e/tests,
     // or a power-user launching at a known project) means the app was told what to
     // open — so it's not a first run, and the onboarding wizard must not render over
@@ -105,6 +123,9 @@ pub fn set_last_project(app: &tauri::AppHandle, path: &Path) {
     st.recent_projects.insert(0, s);
     st.recent_projects.truncate(MAX_RECENT);
     save(app, &st);
+    // A project was opened this run — lets MAUDE_FORCE_ONBOARDING dismiss the wizard.
+    #[cfg(debug_assertions)]
+    PROJECT_OPENED_THIS_RUN.store(true, std::sync::atomic::Ordering::Relaxed);
     // Keep the legacy marker in sync so any older read path still resolves.
     if let Some(marker) = legacy_marker(app) {
         if let Some(dir) = marker.parent() {

@@ -76,6 +76,16 @@ fn install_signal_handler(handle: tauri::AppHandle) {
 /// or `None` if the user cancelled. The clone lands in `<dir>/<repo-name>`.
 #[tauri::command]
 async fn pick_directory(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    // E2E (debug builds only): a native folder picker can't be DOM-driven, so the
+    // harness injects the chosen path via MAUDE_E2E_PICK_DIR instead of opening the OS
+    // dialog. Gated on `debug_assertions`, so it is NEVER compiled into the release
+    // `.app` (which has no WebDriver server either). See the `desktop-e2e` skill.
+    #[cfg(debug_assertions)]
+    if let Ok(p) = std::env::var("MAUDE_E2E_PICK_DIR") {
+        if !p.is_empty() {
+            return Ok(Some(p));
+        }
+    }
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog().file().pick_folder(move |folder| {
         let path = folder

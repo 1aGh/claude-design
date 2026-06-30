@@ -14,7 +14,7 @@
 // the one honest hard thing, centered.
 //
 // Vocabulary is the canonical set ONLY (teaching-model table) — no raw git terms:
-//   Save changes locally · Publish for everyone · Pull changes · Draft · Shared version.
+//   Save version · Publish · Get latest · branch · Shared version (matches the shipped buttons).
 
 import CollabModelInfographic from '../panels/CollabModelInfographic.jsx';
 
@@ -43,8 +43,8 @@ export const COLLAB_TOUR = [
   {
     target: "[data-tour='pull']",
     changes: true,
-    title: 'Pull changes',
-    body: 'When teammates publish, Pull brings their work onto your computer so you’re both looking at the same thing.',
+    title: 'Get latest',
+    body: 'When teammates publish, Get latest brings their work onto your computer so you’re both looking at the same thing.',
     placement: 'left',
   },
   {

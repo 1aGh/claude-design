@@ -200,6 +200,28 @@ fn http_client() -> Result<reqwest::Client, String> {
 /// 3. Store the token in the OS keychain (never on disk) and return the **login**.
 #[tauri::command]
 pub async fn github_sign_in(app: AppHandle) -> Result<String, String> {
+    // E2E (debug builds only): the device flow opens the system browser + polls GitHub —
+    // neither DOM-drivable nor deterministic. With MAUDE_E2E_FAKE_GITHUB_LOGIN set, show a
+    // deterministic device-code modal, "authorize" after a beat, then report the fake
+    // login — no browser, no network, no keychain write. Gated on `debug_assertions`, so
+    // it is NEVER in the release `.app`. See the `desktop-e2e` skill.
+    #[cfg(debug_assertions)]
+    if let Ok(login) = std::env::var("MAUDE_E2E_FAKE_GITHUB_LOGIN") {
+        if !login.is_empty() {
+            let _ = app.emit(
+                "github://device-code",
+                DeviceCodeEvent {
+                    user_code: "E2E-CODE".to_string(),
+                    verification_uri: "https://github.com/login/device".to_string(),
+                    expires_in: 900,
+                },
+            );
+            sleep(Duration::from_millis(2500)).await;
+            let _ = app.emit("github://signed-in", &login);
+            return Ok(login);
+        }
+    }
+
     let client_id = client_id()?;
     let client = http_client()?;
 

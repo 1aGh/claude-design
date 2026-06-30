@@ -21,6 +21,7 @@
     "dev": "bun run apps/studio/server.ts --port 4555",
     "dev:site": "pnpm --filter @maude/site dev --port 4398",
     "dev:desktop": "PATH=\"$HOME/.cargo/bin:$PATH\" pnpm --filter @maude/desktop tauri dev",
+    "dev:desktop:onboarding": "PATH=\"$HOME/.cargo/bin:$PATH\" MAUDE_FORCE_ONBOARDING=1 pnpm --filter @maude/desktop tauri dev",
     "build:desktop": "PATH=\"$HOME/.cargo/bin:$PATH\" pnpm --filter @maude/desktop tauri build",
     "test:e2e:desktop:build": "PATH=\"$HOME/.cargo/bin:$PATH\" pnpm --filter @maude/desktop tauri build --debug --config src-tauri/tauri.e2e.conf.json",
     "test:e2e:desktop": "pnpm --filter @maude/desktop-e2e e2e",
@@ -45,7 +46,8 @@
     "postinstall": "node cli/install.cjs",
     "prepublishOnly": "bash scripts/check-version-parity.sh && bash apps/studio/bin/check-runtime-bundles.sh",
     "test:e2e:desktop:lifecycle": "pnpm --filter @maude/desktop-e2e e2e:lifecycle",
-    "test:e2e:desktop:switchrepos": "pnpm --filter @maude/desktop-e2e e2e:switchrepos"
+    "test:e2e:desktop:switchrepos": "pnpm --filter @maude/desktop-e2e e2e:switchrepos",
+    "test:e2e:desktop:onboarding": "pnpm --filter @maude/desktop-e2e e2e:onboarding"
   },
   "optionalDependencies": {
     "@1agh/maude-darwin-arm64": "0.36.1",

@@ -50,3 +50,7 @@ Phase-29 (E4) milestone acceptance scenario — a non-technical collaborator ins
 1. Build the release `.app`: `cd apps/desktop && pnpm tauri build` (or the CI `build-desktop.yml` artifact).
 2. Move any existing `~/Library/Application Support/<maude bundle id>/app-state.json` + `last-project.txt` aside to simulate a fresh install.
 3. Launch `Maude.app`, follow steps 1–8, screen-record.
+
+## Automated coverage (added 2026-06-30)
+
+The wizard is no longer manual-only. **`apps/desktop/e2e/scenarios/onboarding.e2e.ts`** (+ `wdio.onboarding.conf.ts`, `pnpm test:e2e:desktop:onboarding`) DOM-drives the first-run wizard via two debug-only stubs (`#[cfg(debug_assertions)]`, never in the release `.app`): `MAUDE_E2E_PICK_DIR` (folder picker) and `MAUDE_E2E_FAKE_GITHUB_LOGIN` (device flow — deterministic `E2E-CODE`, no browser/network/keychain). It covers steps 1–2 (wizard + three doors), Door A's device-code → signed-in transition (step 3–4, stubbed), and a full **Door B** path (open folder → "Set up Maude here" → the studio opens on a **seeded starter canvas** — the empty-studio gap is now closed by `scaffold-design.ts`). Still manual: the **real** GitHub OAuth + real clone (Door A end-to-end, steps 4–5 against live GitHub), Door C hub, and the re-launch fast-path (step 8). Requires an **active display** — see the `desktop-e2e` skill's "No active display" gotcha.

@@ -18,6 +18,7 @@
     "wdio.conf.ts",
     "wdio.git.conf.ts",
     "wdio.lifecycle.conf.ts",
-    "wdio.switchrepos.conf.ts"
+    "wdio.switchrepos.conf.ts",
+    "wdio.onboarding.conf.ts"
   ]
 }

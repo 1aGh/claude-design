@@ -417,7 +417,7 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
               <span className="rb-pop-icon"><Icon name="plus" size={14} /></span>
               <span className="rb-pop-tx">
                 <span className="rb-pop-name">New branch</span>
-                <span className="rb-pop-sub">a separate line of work off the current branch</span>
+                <span className="rb-pop-sub">a separate line of work off what you're looking at now</span>
               </span>
             </button>
           </div>
@@ -435,11 +435,11 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
               <button type="button" className="btn btn--ghost btn--sm" onClick={() => { setNewDraft(false); setDraftName(''); setErr(''); }} disabled={busy}>Cancel</button>
               <button type="button" data-testid="switcher-new-branch-create" className="btn btn--primary btn--sm" onClick={createDraft} disabled={busy || !slug}><Icon name="draft" size={13} /> {busy ? 'Creating…' : 'Create branch'}</button>
             </div>
-            <p className="rb-newdraft-hint">A branch is your own line of work off the current branch. Merge it into {sharedName} when you're happy, or throw it away — nothing else changes.</p>
+            <p className="rb-newdraft-hint">A branch is your own line of work off what you're looking at now. Merge it into {sharedName} when you're happy, or throw it away — nothing else changes.</p>
           </div>
         )}
 
-        {switching ? (
+        {(switching || folding) ? (
           <div className="rb-switching" role="status" aria-live="polite">
             <Icon name="spinner" size={14} className="rb-spin" />
             <span>{folding ? <>Merging <b>{folding}</b> → {sharedName}…</> : downloading ? <>Downloading <b>{switching}</b>…</> : <>Opening <b>{switching}</b>…</>}</span>
@@ -466,7 +466,7 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
             <span className="rb-sheet-icon"><Icon name="arrow-up-to-line" size={20} /></span>
             <h2 className="rb-sheet-title" id="rb-sheet-title">Merge this branch → {sharedName}</h2>
             <p className="rb-sheet-body" id="rb-sheet-body">Everything in <b>“{currentDraft?.name || branch}”</b> becomes part of <b>{sharedName}</b> — the default branch everyone shares.</p>
-            <p className="rb-sheet-meta">Teammates pick it up the next time they Get latest, and this branch is then deleted. Nothing else changes.</p>
+            <p className="rb-sheet-meta">Your work is now part of {sharedName}, kept in History. Teammates pick it up the next time they Get latest, and the empty branch is cleared away — nothing is lost.</p>
             {err && <p className="rb-newdraft-err">{err}</p>}
             <div className="rb-sheet-actions">
               <button type="button" className="btn btn--ghost" onClick={() => { setFoldConfirm(false); setErr(''); }}>Cancel</button>

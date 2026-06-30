@@ -37,6 +37,8 @@ export const openVerification = () =>
   invoke('github_open_verification', { url: 'https://github.com/login/device' });
 /** Show the device code as soon as the shell has it. Returns an unlisten promise. */
 export const onDeviceCode = (cb) => listen('github://device-code', cb);
+/** Fire when sign-in completes (any surface) so other surfaces can flip live. cb(login). */
+export const onSignedIn = (cb) => listen('github://signed-in', cb);
 
 // ── dev-server endpoints ────────────────────────────────────────────────────────
 async function api(path, opts = {}) {

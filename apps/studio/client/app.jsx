@@ -7623,8 +7623,9 @@ function App() {
           loadLog={gitLoadLog}
           onClose={() => setDiffTarget(null)}
           onRestore={async (file) => {
-            await gitDiscard([file]);
-            setDiffTarget(null);
+            const res = await gitDiscard([file]);
+            if (res?.ok) setDiffTarget(null);
+            else window.alert(res?.error || 'Could not restore that version. Try again.');
           }}
           onResolve={async (choice) => {
             // phase-28 (E3): apply the chosen side via /_api/git/resolve, which

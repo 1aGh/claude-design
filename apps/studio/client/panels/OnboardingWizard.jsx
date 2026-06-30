@@ -178,26 +178,26 @@ function AiReadiness() {
 }
 
 // ── A · Welcome (door picker) ────────────────────────────────────────────────
-function Welcome({ onGithub, onLocal, onHub, signing }) {
+function Welcome({ onGithub, onLocal, onHub, signing, signedIn, identity }) {
   return (
     <main className="ob-main">
       <header className="ob-head">
         <span className="ob-eyebrow">Welcome</span>
         <h1>How would you like to start?</h1>
-        <p>Most people sign in with GitHub — it's the simplest way to work with a team.</p>
+        <p>{signedIn ? `You're signed in as @${identity?.login || 'GitHub'}. Open a project, or start a new one.` : "Most people sign in with GitHub — it's the simplest way to work with a team."}</p>
       </header>
       <div className="ob-doors">
-        <button type="button" className="ob-door ob-door--primary" aria-label="Continue with GitHub — recommended" onClick={onGithub} disabled={signing}>
+        <button type="button" data-testid="ob-door-github" className="ob-door ob-door--primary" aria-label="Continue with GitHub — recommended" onClick={onGithub} disabled={signing}>
           <span className="ob-door-icon ob-door-icon--gh"><GitHubMark size={26} /></span>
           <span className="ob-door-tx">
             <span className="ob-door-title">Continue with GitHub<span className="ob-door-tag">Recommended</span></span>
             <span className="ob-door-sub">Start a shared project, or open one a teammate shared with you.</span>
           </span>
           <span className="ob-door-cta">
-            <span className="btn btn--primary ob-door-btn"><GitHubMark size={15} /> {signing ? 'Starting…' : 'Sign in with GitHub'}</span>
+            <span className="btn btn--primary ob-door-btn"><GitHubMark size={15} /> {signing ? 'Starting…' : signedIn ? 'Continue' : 'Sign in with GitHub'}</span>
           </span>
         </button>
-        <button type="button" className="ob-door" aria-label="Open a folder on this computer" onClick={onLocal}>
+        <button type="button" data-testid="ob-door-local" className="ob-door" aria-label="Open a folder on this computer" onClick={onLocal}>
           <span className="ob-door-icon"><Icon name="folder-open" size={22} /></span>
           <span className="ob-door-tx">
             <span className="ob-door-title">Open a folder on this computer</span>
@@ -205,7 +205,7 @@ function Welcome({ onGithub, onLocal, onHub, signing }) {
           </span>
           <span className="ob-door-go" aria-hidden="true"><Icon name="chevron-right" size={16} /></span>
         </button>
-        <button type="button" className="ob-door ob-door--advanced" aria-label="Connect to a team hub — advanced" onClick={onHub}>
+        <button type="button" data-testid="ob-door-hub" className="ob-door ob-door--advanced" aria-label="Connect to a team hub — advanced" onClick={onHub}>
           <span className="ob-door-icon ob-door-icon--quiet"><Icon name="server" size={18} /></span>
           <span className="ob-door-tx">
             <span className="ob-door-title">Connect to a team hub <span className="ob-door-adv">Advanced</span></span>
@@ -214,7 +214,7 @@ function Welcome({ onGithub, onLocal, onHub, signing }) {
           <span className="ob-door-go" aria-hidden="true"><Icon name="chevron-right" size={15} /></span>
         </button>
       </div>
-      <p className="ob-foot-note">Maude never touches the terminal. Everything here happens in the app.</p>
+      <p className="ob-foot-note">Browse, version, and collaborate — all in the app, no terminal.</p>
       <AiReadiness />
       <CrashOptIn />
     </main>
@@ -223,7 +223,7 @@ function Welcome({ onGithub, onLocal, onHub, signing }) {
 
 function BackBar({ onBack }) {
   return (
-    <button type="button" className="ob-back" onClick={onBack}>
+    <button type="button" data-testid="ob-back" className="ob-back" onClick={onBack}>
       <Icon name="back" size={14} /> Back
     </button>
   );
@@ -272,7 +272,7 @@ function GitHubDoor({ identity, onBack }) {
         <h1>Open a project, or start a new one</h1>
         <p>Pick up a shared project below, or create a fresh one — it's private until you invite someone.</p>
       </header>
-      <button type="button" className="ob-create" aria-label="Start a new project" onClick={() => setCreating(true)}>
+      <button type="button" data-testid="ob-github-create" className="ob-create" aria-label="Start a new project" onClick={() => setCreating(true)}>
         <span className="ob-create-icon"><Icon name="plus" size={20} /></span>
         <span className="ob-create-tx">
           <span className="ob-create-title">Start a new project</span>
@@ -280,12 +280,12 @@ function GitHubDoor({ identity, onBack }) {
         </span>
         <span className="btn btn--primary ob-create-btn"><Icon name="arrow-right" size={15} /> Create</span>
       </button>
-      <div className="ob-section-label">Shared with you</div>
+      <div className="ob-section-label">Your projects</div>
       {err && <div className="callout callout--error ob-callout"><span className="ob-callout-glyph" style={{ color: 'var(--status-error)' }}><Icon name="x" /></span><span>{err}</span></div>}
       {repos === null && <div className="ob-foot-note">Loading your projects…</div>}
-      {repos && repos.length === 0 && !err && <div className="ob-foot-note">No shared projects yet — create one to get started.</div>}
+      {repos && repos.length === 0 && !err && <div className="ob-foot-note">No projects yet — create one to get started.</div>}
       {repos && repos.length > 0 && (
-        <div className="ob-repolist" role="group" aria-label="Shared projects you can open">
+        <div className="ob-repolist" role="group" aria-label="Projects you can open">
           {repos.map((r) => {
             const isBusy = busy === r.full_name;
             return (
@@ -417,12 +417,12 @@ function LocalDoor({ onBack }) {
           {err && <div className="callout callout--error ob-callout"><span className="ob-callout-glyph" style={{ color: 'var(--status-error)' }}><Icon name="x" /></span><span>{err}</span></div>}
           <div className="ob-form-actions">
             <button type="button" className="btn btn--ghost" onClick={() => setNeedsSetup(null)} disabled={busy}>Pick a different folder</button>
-            <button type="button" className="btn btn--primary" onClick={setupHere} disabled={busy}><Icon name="folder" size={15} /> {busy ? 'Setting up…' : 'Set up Maude here'}</button>
+            <button type="button" data-testid="ob-local-setup" className="btn btn--primary" onClick={setupHere} disabled={busy}><Icon name="folder" size={15} /> {busy ? 'Setting up…' : 'Set up Maude here'}</button>
           </div>
         </>
       ) : (
         <>
-          <button type="button" className="ob-drop" onClick={choose} disabled={busy} aria-label="Choose a project folder">
+          <button type="button" data-testid="ob-local-choose" className="ob-drop" onClick={choose} disabled={busy} aria-label="Choose a project folder">
             <span className="ob-drop-glyph"><Icon name="folder-open" size={34} /></span>
             <span className="ob-drop-title">{busy ? 'Opening…' : 'Choose a project folder'}</span>
             <span className="ob-drop-or">click to browse</span>
@@ -506,11 +506,11 @@ function DeviceCodeModal({ device, onClose }) {
   return (
     <div className="gi-modal" role="dialog" aria-modal="true" aria-label="Sign in with GitHub" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
       <div className="gi-scrim" aria-hidden="true" onClick={onClose} />
-      <div className="gi-dialog gi-dialog--code">
+      <div className="gi-dialog gi-dialog--code" data-testid="ob-device-modal">
         <div className="gi-dc-head">
           <span className="gi-dc-marks"><GitHubMark size={26} /></span>
           <h2>Sign in with GitHub</h2>
-          <p>Maude opened GitHub in your browser. Enter this code to connect your account.</p>
+          <p>Maude opened GitHub in your browser. Enter the code there to connect — you'll grant Maude access to create and manage your project repos.</p>
         </div>
         <ol className="gi-dc-steps">
           <li>
@@ -523,7 +523,7 @@ function DeviceCodeModal({ device, onClose }) {
           <li><span className="gi-dc-step-n">2</span><span className="gi-dc-step-tx">Enter this code to connect Maude</span></li>
         </ol>
         <div className="gi-code">
-          <span className="gi-code-val">{device.user_code}</span>
+          <span className="gi-code-val" data-testid="ob-device-code">{device.user_code}</span>
           <button type="button" className="btn btn--ghost gi-code-copy" onClick={copyCode} aria-label="Copy the code"><Icon name="copy" size={15} /> {copied ? 'Copied' : 'Copy'}</button>
         </div>
         <div className="gi-dc-status" aria-live="polite"><span className="gi-pulse" aria-hidden="true" /><span>Waiting for you to authorize in your browser…</span></div>
@@ -542,6 +542,7 @@ export default function OnboardingWizard() {
   const [device, setDevice] = useState(null);
   const [err, setErr] = useState('');
   const unlistenRef = useRef(null);
+  const cancelledRef = useRef(false);
 
   // If already signed in (re-onboarding), skip the sign-in step on the GitHub door.
   useEffect(() => {
@@ -560,16 +561,18 @@ export default function OnboardingWizard() {
 
   async function handleGithub() {
     if (signedIn) { setDoor('github'); return; }
+    cancelledRef.current = false;
     setErr(''); setSigning(true); setDevice(null);
     try {
       unlistenRef.current = onDeviceCode((p) => setDevice(p));
       const login = await signIn();
+      if (cancelledRef.current) return; // user hit Cancel — don't auto-advance on a late resolve
       const r = await fetchIdentity();
       setIdentity(r.ok && r.json?.ok ? { login: r.json.login, name: r.json.name } : { login });
       setSignedIn(true);
       setDoor('github');
     } catch (e) {
-      setErr(String(e?.message || e || "Sign-in didn't finish. Please try again."));
+      if (!cancelledRef.current) setErr(String(e?.message || e || "Sign-in didn't finish. Please try again."));
     } finally {
       setSigning(false);
       setDevice(null);
@@ -581,10 +584,10 @@ export default function OnboardingWizard() {
   if (!native) return null;
 
   return (
-    <div className="ob-overlay" role="dialog" aria-modal="true" aria-label="Welcome to Maude">
+    <div className="ob-overlay" data-testid="onboarding-wizard" role="dialog" aria-modal="true" aria-label="Welcome to Maude">
       <div className="ob-shell">
         <Rail signedInAs={signedIn ? identity?.login : null} />
-        {door === 'welcome' && <Welcome signing={signing} onGithub={handleGithub} onLocal={() => setDoor('local')} onHub={() => setDoor('hub')} />}
+        {door === 'welcome' && <Welcome signing={signing} signedIn={signedIn} identity={identity} onGithub={handleGithub} onLocal={() => setDoor('local')} onHub={() => setDoor('hub')} />}
         {door === 'github' && <GitHubDoor identity={identity} onBack={() => setDoor('welcome')} />}
         {door === 'local' && <LocalDoor onBack={() => setDoor('welcome')} />}
         {door === 'hub' && <HubDoor onBack={() => setDoor('welcome')} />}
@@ -592,7 +595,7 @@ export default function OnboardingWizard() {
       {err && door === 'welcome' && (
         <div className="ob-toast callout callout--error" role="alert"><span className="ob-callout-glyph" style={{ color: 'var(--status-error)' }}><Icon name="x" /></span><span>{err}</span></div>
       )}
-      {device && <DeviceCodeModal device={device} onClose={() => setDevice(null)} />}
+      {device && <DeviceCodeModal device={device} onClose={() => { cancelledRef.current = true; setSigning(false); setDevice(null); }} />}
     </div>
   );
 }
