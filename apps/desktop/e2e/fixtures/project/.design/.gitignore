@@ -1,0 +1,4 @@
+# Maude runtime state regenerated whenever the desktop-e2e harness boots this
+# fixture project (DDR-115 taxonomy). Only the versioned canvas inputs
+# (config.json, ui/*.tsx, *.meta.json) belong in git.
+_*

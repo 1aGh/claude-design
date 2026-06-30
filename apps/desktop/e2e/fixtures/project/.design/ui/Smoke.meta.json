@@ -1,0 +1,18 @@
+{
+  "title": "Smoke",
+  "subtitle": "desktop E2E pilot fixture — deterministic static canvas",
+  "brief": "Minimal canvas for the app-boots-and-renders-canvas scenario. Static by design (no animation) so the harness asserts a stable DOM. Do not add motion/token deps.",
+  "platform": "desktop",
+  "sections": [
+    {
+      "id": "smoke",
+      "title": "Maude desktop E2E · SMOKE",
+      "artboards": [
+        { "id": "smoke", "label": "SMOKE/01 · RENDER", "width": 480, "height": 320 }
+      ]
+    }
+  ],
+  "created": "2026-06-29",
+  "css_mode": "inline",
+  "layout": { "artboards": [{ "id": "smoke", "x": 0, "y": 0 }] }
+}

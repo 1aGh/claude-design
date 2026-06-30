@@ -20,6 +20,7 @@
     "allow-app-recent-projects",
     "allow-restart-to-update",
     "allow-prefs-get-crash-reporting",
-    "allow-prefs-set-crash-reporting"
+    "allow-prefs-set-crash-reporting",
+    "wdio-webdriver:default"
   ]
 }

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/1aGh/maude/main/apps/studio/config.schema.json",
+  "name": "e2e-fixture",
+  "designRoot": ".design",
+  "rootClass": "mdcc",
+  "canvasGroups": [{ "label": "UI kit", "path": "ui" }],
+  "extensions": [],
+  "completenessProfile": "standard",
+  "activeFamilies": ["accent", "status", "mono"],
+  "designSystems": []
+}

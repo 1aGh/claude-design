@@ -1093,10 +1093,23 @@ function FileRow({ file, activePath, onOpen, onDelete, openCount: oc, depth, kin
   // Delete only real canvases in a deletable group (onDelete is undefined for the
   // DS group + runtime files); the server enforces the rest.
   const canDelete = isCanvas && typeof onDelete === 'function' && kind !== 'runtime';
+  // Stable hook for the desktop E2E harness (data-testid convention — see the
+  // `desktop-e2e` skill): canvas rows only, slug derived from the relative path
+  // (e.g. `ui/Smoke.tsx` → `canvas-row-ui-smoke`).
+  const testId = isCanvas
+    ? 'canvas-row-' +
+      file.path
+        .replace(/^\.[^/]+\//, '') // strip the leading designRoot dot-folder (.design/)
+        .replace(CANVAS_EXT_RE, '')
+        .replace(/[^a-z0-9]+/gi, '-')
+        .toLowerCase()
+        .replace(/^-+|-+$/g, '')
+    : undefined;
   const row = (
     <button
       type="button"
       role="treeitem"
+      data-testid={testId}
       aria-selected={isSel}
       aria-disabled={inert ? 'true' : undefined}
       tabIndex={isSel ? 0 : -1}
@@ -1569,7 +1582,7 @@ function Sidebar({
         </div>
       </div>
 
-      <div className="st-tree" role="tree" aria-label="Project file tree">
+      <div className="st-tree" role="tree" aria-label="Project file tree" data-testid="canvas-list">
         {filteredGroups.map((g) => {
           // Hide gitignored runtime / orphan-only project sections by default.
           // Active search overrides — if the user typed a query, they want hits
@@ -2764,6 +2777,7 @@ function Viewport({
             src={canvasUrl(t.path, cfg)}
             className={t.path === activePath ? 'active' : ''}
             data-path={t.path}
+            data-testid={t.path === activePath ? 'canvas-frame' : undefined}
             onLoad={() => onIframeLoad?.(t.path)}
             // T2 (9.1-A) — only sandbox + delegate clipboard when the canvas is
             // served cross-origin (canvasOrigin present = the split is on). In

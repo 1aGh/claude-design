@@ -1,0 +1,8 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "com.maude.app.e2e",
+  "bundle": {
+    "targets": ["app"],
+    "createUpdaterArtifacts": false
+  }
+}

@@ -139,7 +139,7 @@ pub(crate) fn write_minimal_design(dir: &std::path::Path) -> std::io::Result<()>
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // Single-instance MUST be registered first (DDR-106): a second launch
         // focuses the existing window rather than opening a duplicate.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -294,7 +294,18 @@ pub fn run() {
                 updater::check_now(window.app_handle().clone());
             }
             _ => {}
-        })
+        });
+
+    // Desktop E2E (DOM-driven scenario tests via @wdio/tauri-service): register the
+    // embedded W3C WebDriver server LAST and ONLY in debug builds. `debug_assertions`
+    // is on for `tauri dev` AND `tauri build --debug` (the e2e test bundle) but OFF
+    // for the shipped release, so the production `.app` never starts a WebDriver
+    // server. Registered after single-instance so DDR-106's focus behavior is
+    // unaffected. See the `desktop-e2e` skill + the harness in apps/desktop/e2e/.
+    #[cfg(debug_assertions)]
+    let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
+
+    let app = builder
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 

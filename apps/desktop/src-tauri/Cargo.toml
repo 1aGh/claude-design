@@ -44,3 +44,11 @@ tiny_http = "0.12"
 open = "5"
 # Random shared-secret key for the loopback token bridge (already in the tree via rustls).
 getrandom = "0.2"
+# Desktop E2E (DOM-driven, @wdio/tauri-service): embedded W3C WebDriver server for
+# driving the real WKWebView in scenario tests. Registered ONLY under
+# `#[cfg(debug_assertions)]` in lib.rs, so the shipped release `.app` never runs it
+# (the crate is a compile-time dep so its `wdio-webdriver:default` permission still
+# resolves for capability validation in both profiles, but `init()` is never called
+# in release). See .ai/plans/feature-desktop-e2e-scenario-harness.md + the
+# `desktop-e2e` skill.
+tauri-plugin-wdio-webdriver = "1.2.0"

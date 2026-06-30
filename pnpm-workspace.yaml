@@ -6,6 +6,10 @@ packages:
   - apps/studio
   - apps/hub
   - apps/desktop
+  # Desktop E2E harness (WebdriverIO @wdio/tauri-service). Its own member so its
+  # deps install; no `build` script → skipped by the root `build` fan-out, and the
+  # root `test` doesn't fan out to packages. See the `desktop-e2e` skill.
+  - apps/desktop/e2e
 # pnpm 9+ requires explicit opt-in for postinstall scripts.
 # Biome ships native binaries via @biomejs/cli-* optional deps; the postinstall
 # is the official install path. Enable.
@@ -15,9 +19,16 @@ packages:
 # Both ship native binaries via the same postinstall pattern.
 allowBuilds:
   '@biomejs/biome': true
-  esbuild: true
-  sharp: true
   # Phase 9 — @hocuspocus/extension-sqlite pulls in better-sqlite3, which
   # compiles native C++ bindings against the host platform during install.
   # See apps/hub/ and .ai/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md.
   better-sqlite3: true
+  # WebdriverIO (apps/desktop/e2e) pulls edgedriver/geckodriver as transitive deps,
+  # but the desktop harness uses @wdio/tauri-service's embedded provider — it drives
+  # the WKWebView directly and needs NEITHER a Firefox nor an Edge browser-driver
+  # binary, so deny their download postinstall scripts. (If Windows-WebView2 e2e
+  # later needs msedgedriver, @wdio/tauri-service auto-manages it — revisit then.)
+  edgedriver: false
+  esbuild: true
+  geckodriver: false
+  sharp: true

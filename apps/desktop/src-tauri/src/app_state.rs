@@ -85,6 +85,14 @@ pub fn last_project(app: &tauri::AppHandle) -> Option<PathBuf> {
 
 /// First run (show the wizard) = there is no usable remembered project.
 pub fn is_first_run(app: &tauri::AppHandle) -> bool {
+    // An explicit project target via the `MAUDE_PROJECT_ROOT` override (e2e/tests,
+    // or a power-user launching at a known project) means the app was told what to
+    // open — so it's not a first run, and the onboarding wizard must not render over
+    // it. Mirrors resolve_project_root()'s precedence (env first). Harmless in
+    // release: the env var is an existing documented override.
+    if std::env::var("MAUDE_PROJECT_ROOT").map(|v| !v.is_empty()).unwrap_or(false) {
+        return false;
+    }
     last_project(app).is_none()
 }
 
