@@ -1,5 +1,32 @@
 # @1agh/maude
 
+## 0.36.0
+
+### Minor Changes
+
+- Make the native version-switcher fast, trustworthy, and git-native on real developer repos (DDR-133) — the follow-up the two 2026-06-29 plans (DDR-131 remote drafts, DDR-132 caches) deferred.
+
+  - **Detect-and-prefer system `git`** for the network paths (fetch / ahead-behind), finally landing DDR-107's deferred end-state. A memoized `git --version` probe selects the engine; native `git fetch` / `for-each-ref` are instant on a developer machine. Isomorphic-git stays the fallback for the zero-setup persona, and the DDR-131 transport gate still decides whether a spawn is allowed. Escape hatch: `MAUDE_NO_SYSTEM_GIT=1`.
+  - **Bounded network ops, off the first-paint path.** `gitFetchRemote` (~12 s) and `remoteAheadBehind` (~8 s) now have server-side timeouts and never block initial paint — fixing the ~30 s stall on app reopen and the "Refresh timed out" on bigger repos.
+  - **UI decoupled from the network.** The popup always re-reads the disk-only local branch list on open, so the dropdown no longer "disappears" after a failed refresh; fetch failures are a dismissable in-popup notice, never the persistent dock-level error.
+  - **Repo discovery** now includes org/team repos (`organization_member`) and paginates, so "Pull a local copy" shows every repo you can reach — not just one.
+  - **Vocabulary pivot to git-native terms** — `main` / branches / "Merge this branch → main" — replacing the plain-language "Shared version / draft" layer on this surface (supersedes DDR-110/119 here).
+
+- Surface **remote drafts** (branches that exist on the remote but not locally) in the native draft switcher (DDR-131). Previously the switcher listed only local branches, so a teammate's draft — or one you pushed from another machine — never appeared, and the new search box misleadingly returned "Nothing matches" for a branch you knew existed.
+
+  Now every draft shows up as one row tagged by where it lives (`local` / `remote` / `both`); switching to a remote-only draft auto-creates a local tracking branch (`git checkout --track`), so you never have to drop to a terminal. An explicit **Refresh** affordance fetches brand-new remote drafts on demand (ssh-safe, behind a user gesture — never an auto-fetch on popup open) with an "as of <relative time>" staleness hint. The switcher also gained search + a recents sort, and the file tree now refreshes manually via a spin button / ⌘⇧R.
+
+### Patch Changes
+
+- Make opening, restarting, and switching repos in the native studio feel instant (DDR-132). A repo switch respawns the dev-server sidecar as a fresh process, so every open used to do a fresh GitHub round-trip ("Checking GitHub…") plus a network `git fetch` for the ahead/behind nudge.
+
+  Two caches fix this without weakening the token invariant:
+
+  - **GitHub identity — per-user SWR disk cache.** `{ login, name, avatar_url }` is cached to `~/.maude/github-identity.json` keyed by a hash of the token (sha256, first 16 hex — the token itself is **never** written). Identity now paints immediately from disk while a background revalidation refreshes the file; a token/account change is a different key ⇒ one fresh fetch.
+  - **Remote ahead/behind probe — in-memory TTL cache + in-flight dedupe.** Memoized per `repoRoot + branch` (~45 s TTL) with concurrent callers coalesced onto one promise, killing the re-fetch storm from panel toggles and effect re-runs within a repo session.
+
+  The loopback token bridge is deliberately left uncached (the keychain stays the single source of truth).
+
 ## 0.35.0
 
 ### Minor Changes

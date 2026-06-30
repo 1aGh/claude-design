@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "git-native-switcher",
-      "version": null,
-      "date": null,
+      "version": "0.36.0",
+      "date": "2026-06-30",
       "kind": "feature",
       "title": "The version switcher now speaks Git",
       "summary": "The bottom-left switcher uses plain Git names now — your branches by name, main as the default branch everyone shares, and a one-click “Merge this branch → main.” It opens instantly even on repos with hundreds of branches (it uses your installed Git when you have it), and “Pull a local copy” lists every repo you can reach on GitHub — including ones shared through your team or organization.",
@@ -12,8 +12,8 @@
     },
     {
       "id": "remote-drafts-in-switcher",
-      "version": null,
-      "date": null,
+      "version": "0.36.0",
+      "date": "2026-06-30",
       "kind": "feature",
       "title": "Open any draft, including your team's",
       "summary": "The version switcher now shows drafts that live on your team's shared remote — not only the ones already on this computer. They're marked “from your team,” and picking one downloads it for you. Hit Refresh to pull in a draft someone just made, search to find one in a long list, and your most recently worked-on drafts sort to the top. Works whether your project connects over SSH or HTTPS.",
