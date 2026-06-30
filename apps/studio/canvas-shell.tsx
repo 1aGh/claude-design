@@ -47,6 +47,12 @@ import {
   useViewportControllerContext,
   type ViewportControllerHandle,
 } from './canvas-lib.tsx';
+import {
+  buildEditSourceRecord,
+  type EditSourceApplyFn,
+  type EditSourceOp,
+  type EditSourcePayload,
+} from './commands/edit-source-command.ts';
 import { type AlignMode, alignLabel, equalSpacingLabel } from './commands/equal-spacing-command.ts';
 import {
   ContextMenuProvider,
@@ -92,7 +98,7 @@ import {
   useSelectionSet,
 } from './use-selection-set.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
-import { useUndoStack } from './use-undo-stack.tsx';
+import { useUndoSinks, useUndoStack } from './use-undo-stack.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Styles — halos render as `position: fixed` siblings of the canvas. Reading
@@ -1372,6 +1378,28 @@ function CanvasRouter({
   const annotSel = useAnnotationSelection();
   const ctxMenu = useContextMenu();
   const undoStack = useUndoStack();
+  const undoSinks = useUndoSinks();
+  // Latest undo stack, read inside long-lived listeners (text-edit dblclick)
+  // without making them a hook dependency — avoids re-binding on every undo op.
+  const undoStackRef = useRef(undoStack);
+  undoStackRef.current = undoStack;
+
+  // Phase: inline-edit undo (DDR-103/104 follow-up). Wire the `editSourceApplyFn`
+  // sink so an `edit-source` command's do()/undo() reaches the main-origin-only
+  // `/_api/edit-*` write — which the untrusted canvas iframe can't call (DDR-054).
+  // It posts `dgn:'apply-edit'` to the parent shell, which performs the write.
+  useEffect(() => {
+    const applyFn: EditSourceApplyFn = (apply) => {
+      try {
+        window.parent.postMessage({ dgn: 'apply-edit', ...apply }, '*');
+      } catch {
+        /* detached / cross-origin teardown — nothing to apply */
+      }
+    };
+    undoSinks.setSink('editSourceApplyFn', applyFn);
+    return () => undoSinks.setSink('editSourceApplyFn', undefined);
+  }, [undoSinks]);
+
   // Shell View-menu zoom bridge (dgn:'zoom') — same controller the zoom pill uses.
   const zoomController = useViewportControllerContext();
   // Shell View-menu chrome-visibility bridge (dgn:'view-chrome') — minimap /
@@ -1520,6 +1548,35 @@ function CanvasRouter({
         }
         return;
       }
+      // Inline-edit undo (DDR-103/104 follow-up). The shell's inspector posts
+      // this AFTER it has applied a CSS / attribute edit (`/_api/edit-css` /
+      // `/_api/edit-attr`), so we RECORD it onto the in-canvas undo stack
+      // (append without re-running do() — the edit already landed) and Cmd+Z
+      // can invert it. Inline TEXT edits originate in this iframe and record
+      // themselves directly (see commitEdit). PARENT-ORIGIN ONLY (DDR-054):
+      // a hostile canvas self-post must not be able to plant fake undo entries.
+      if (m.dgn === 'record-edit') {
+        if (e.source !== window.parent) return;
+        const p = (m as { payload?: Partial<EditSourcePayload> }).payload;
+        if (
+          p &&
+          (p.op === 'css' || p.op === 'text' || p.op === 'attr') &&
+          typeof p.canvas === 'string' &&
+          typeof p.id === 'string'
+        ) {
+          undoStack.record(
+            buildEditSourceRecord({
+              op: p.op as EditSourceOp,
+              canvas: p.canvas,
+              id: p.id,
+              key: typeof p.key === 'string' ? p.key : '',
+              before: typeof p.before === 'string' ? p.before : null,
+              after: typeof p.after === 'string' ? p.after : null,
+            })
+          );
+        }
+        return;
+      }
       if (m.dgn === 'request-layers') {
         postLayersTree((m as { artboardId?: string }).artboardId ?? null);
         return;
@@ -1605,11 +1662,25 @@ function CanvasRouter({
       if (text === original.trim()) return;
       const cdId = elx.getAttribute('data-cd-id');
       if (!cdId) return;
+      const file = deriveFile();
       try {
-        window.parent.postMessage({ dgn: 'edit-text', id: cdId, file: deriveFile(), text }, '*');
+        window.parent.postMessage({ dgn: 'edit-text', id: cdId, file, text }, '*');
       } catch {
         /* detached / cross-origin */
       }
+      // Record onto the in-canvas undo stack so Cmd+Z reverts the rewrite. The
+      // edit already posted above (record, don't re-run do()). before/after are
+      // the trimmed bodies the edit-text endpoint persists.
+      undoStackRef.current.record(
+        buildEditSourceRecord({
+          op: 'text',
+          canvas: file,
+          id: cdId,
+          key: '',
+          before: original.trim(),
+          after: text,
+        })
+      );
     }
     const onDbl = (e: MouseEvent): void => {
       if (editing) return;

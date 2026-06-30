@@ -71,6 +71,16 @@ export interface CommandSinks {
   layoutPatchFn?: unknown;
   /** Wired by `AnnotationsLayer`. */
   strokesPutFn?: unknown;
+  /**
+   * Wired by `CanvasShell` (canvas-shell.tsx). Applies a single inline source
+   * edit (CSS / text / attr) by posting `dgn:'apply-edit'` to the parent shell,
+   * which owns the main-origin-only `/_api/edit-*` write (DDR-054 — the canvas
+   * iframe can't call those routes directly). Drives undo/redo of inspector
+   * CSS edits, inline text rewrites, and custom-attribute edits, which write
+   * the canvas `.tsx` source and were previously unrecoverable (no command, no
+   * snapshot). See `commands/edit-source-command.ts`.
+   */
+  editSourceApplyFn?: unknown;
 }
 
 export type CommandBuilder<P = unknown> = (

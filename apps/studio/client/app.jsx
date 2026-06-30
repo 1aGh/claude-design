@@ -4156,7 +4156,7 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex,
   );
 }
 
-function CssKnobs({ el, cfg, onOptimistic }) {
+function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onUndoRedo }) {
   const editable = !!el.id;
   const computed = el.computed || {};
   // Phase 12.3 — optimistic local overlay over the selection's authored / custom
@@ -4248,47 +4248,88 @@ function CssKnobs({ el, cfg, onOptimistic }) {
       value,
     });
   };
+  // Record an inline edit onto the canvas undo stack (Cmd+Z). The edit has
+  // already POSTed `/_api/edit-*`; the canvas iframe APPENDS the record (no
+  // re-run). `before`/`after` null = the prop/attr was/becomes unset.
+  const record = (op, key, before, after) => {
+    onRecordEdit?.({
+      op,
+      canvas: el.file,
+      id: el.id,
+      key,
+      before: before == null || before === '' ? null : before,
+      after: after == null || after === '' ? null : after,
+    });
+  };
   const commit = (property, raw) => {
     const value = (raw || '').trim();
     if (!editable || !value) return;
-    if (value === (authored[property] ?? '').trim()) return; // no-op
+    const before = authored[property] ?? null;
+    if (value === (before ?? '').trim()) return; // no-op
     optimistic(property, value);
     setA(property, value); // reflect in the panel immediately (no reload → no reselect)
     post('/_api/edit-css', { canvas: el.file, id: el.id, property, value }, property);
+    record('css', property, before, value);
   };
   // A custom CSS property (Advanced) — same write, but the panel surfaces it from
   // the customStyles map, so overlay THERE.
   const commitCustom = (property, raw) => {
     const value = (raw || '').trim();
-    if (!editable || !property.trim() || !value) return;
-    optimistic(property.trim(), value);
-    setC(property.trim(), value);
-    post('/_api/edit-css', { canvas: el.file, id: el.id, property: property.trim(), value }, property.trim());
+    const prop = property.trim();
+    if (!editable || !prop || !value) return;
+    const before = customStyles[prop] ?? null;
+    optimistic(prop, value);
+    setC(prop, value);
+    post('/_api/edit-css', { canvas: el.file, id: el.id, property: prop, value }, prop);
+    record('css', prop, before, value);
   };
   const commitAttr = (attr, raw) => {
     const a = (attr || '').trim();
     const value = (raw || '').trim();
     if (!editable || !a || !value) return;
+    const before = attrs[a] ?? null;
     setT(a, value);
     post('/_api/edit-attr', { canvas: el.file, id: el.id, attr: a, value }, `@${a}`);
+    record('attr', a, before, value);
   };
   // Phase 12.3 — reset (remove the inline prop / attr → back to class/inherited).
   const reset = (property) => {
     if (!editable) return;
+    const before = authored[property] ?? null;
     optimistic(property, null);
     setA(property, null);
     post('/_api/edit-css', { canvas: el.file, id: el.id, property, reset: true }, property);
+    record('css', property, before, null);
   };
   const resetCustom = (property) => {
     if (!editable) return;
+    const before = customStyles[property] ?? null;
     optimistic(property, null);
     setC(property, null);
     post('/_api/edit-css', { canvas: el.file, id: el.id, property, reset: true }, property);
+    record('css', property, before, null);
   };
   const resetAttr = (attr) => {
     if (!editable) return;
+    const before = attrs[attr] ?? null;
     setT(attr, null);
     post('/_api/edit-attr', { canvas: el.file, id: el.id, attr, reset: true }, `@${attr}`);
+    record('attr', attr, before, null);
+  };
+  // Cmd+Z / Cmd+Shift+Z (or Cmd+Y) inside the inspector forwards to the canvas
+  // undo stack — Figma-parity: a property field reverts the last DOCUMENT edit,
+  // not field text. Without this, an edit committed with focus still in the
+  // inspector couldn't be undone (the iframe's own keydown never sees the key).
+  const onKnobKeyDown = (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === 'z') {
+      e.preventDefault();
+      onUndoRedo?.(e.shiftKey ? 'redo' : 'undo');
+    } else if (k === 'y') {
+      e.preventDefault();
+      onUndoRedo?.('redo');
+    }
   };
   // Phase 12.3 (W2.2) — Figma/Webflow scrub: drag a number field horizontally to
   // change its value. Live preview via optimistic apply on every move (no source
@@ -4726,7 +4767,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
   const attrRows = Object.entries(attrs);
 
   return (
-    <div className="st-cp" key={el.id} data-tour="css-panel">
+    <div className="st-cp" key={el.id} data-tour="css-panel" onKeyDown={onKnobKeyDown}>
       <div className="st-cp-id">
         <span className="st-cp-idtag">
           {el.tag || 'element'}
@@ -5272,6 +5313,8 @@ function InspectorPanel({
   onHoverLayer,
   cfg,
   onOptimistic,
+  onRecordEdit,
+  onUndoRedo,
   tab: tabProp,
   onTabChange,
   width,
@@ -5445,7 +5488,13 @@ function InspectorPanel({
             )}
           </>
         ) : (
-          <CssKnobs el={el} cfg={cfg} onOptimistic={onOptimistic} />
+          <CssKnobs
+            el={el}
+            cfg={cfg}
+            onOptimistic={onOptimistic}
+            onRecordEdit={onRecordEdit}
+            onUndoRedo={onUndoRedo}
+          />
         )}
       </div>
     </aside>
@@ -6538,6 +6587,47 @@ function App() {
             if (!j.ok) console.warn('[edit-text]', j.error || 'failed');
           })
           .catch(() => {});
+      } else if (m.dgn === 'apply-edit' && m.id && (m.op === 'css' || m.op === 'text' || m.op === 'attr')) {
+        // Inline-edit undo/redo (DDR-103/104 follow-up). The canvas iframe's
+        // `edit-source` command can't call the main-origin-only `/_api/edit-*`
+        // routes (DDR-054), so it asks us to re-apply the before/after value.
+        // `value` null = reset (remove the inline prop / attr). For CSS we also
+        // optimistically repaint so the revert shows before the HMR reload.
+        const op = m.op;
+        const value = typeof m.value === 'string' ? m.value : null;
+        let url;
+        let body;
+        if (op === 'css') {
+          url = '/_api/edit-css';
+          body =
+            value == null
+              ? { canvas: m.canvas, id: m.id, property: m.key, reset: true }
+              : { canvas: m.canvas, id: m.id, property: m.key, value };
+          applyOptimisticStyle({ id: m.id, prop: m.key, value });
+        } else if (op === 'attr') {
+          url = '/_api/edit-attr';
+          body =
+            value == null
+              ? { canvas: m.canvas, id: m.id, attr: m.key, reset: true }
+              : { canvas: m.canvas, id: m.id, attr: m.key, value };
+        } else {
+          url = '/_api/edit-text';
+          body = { canvas: m.canvas, id: m.id, text: value ?? '' };
+        }
+        editApplyChainRef.current = editApplyChainRef.current
+          .catch(() => {})
+          .then(() =>
+            fetch(url, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(body),
+            })
+              .then((r) => r.json().catch(() => ({})))
+              .then((j) => {
+                if (!j.ok) console.warn('[apply-edit]', op, j.error || 'failed');
+              })
+              .catch(() => {})
+          );
       } else if (m.dgn === 'layers-tree') {
         // Phase 12 Task 4 — browsable layers tree for the active artboard.
         setLayersTree({ artboardId: m.artboardId, nodes: Array.isArray(m.tree) ? m.tree : [] });
@@ -6791,6 +6881,28 @@ function App() {
     [activePath]
   );
 
+  // Inline-edit undo (DDR-103/104 follow-up). The inspector calls this after it
+  // POSTs `/_api/edit-css` / `/_api/edit-attr`, so the canvas iframe records the
+  // edit on its undo stack and Cmd+Z can invert it. The iframe gates this to
+  // parent-origin posts (DDR-054). See `commands/edit-source-command.ts`.
+  const recordSourceEdit = useCallback(
+    (payload) => {
+      if (!activePath || activePath === SYSTEM_TAB || !payload) return;
+      const el = iframesRef.current.get(activePath);
+      if (el && el.contentWindow) {
+        try {
+          el.contentWindow.postMessage({ dgn: 'record-edit', payload }, '*');
+        } catch {}
+      }
+    },
+    [activePath]
+  );
+
+  // Serializes `apply-edit` source writes from canvas undo/redo so a rapid
+  // multi-Cmd+Z on the same property lands on disk in dispatch order (the
+  // iframe sink is fire-and-forget, so without this the POSTs could race).
+  const editApplyChainRef = useRef(Promise.resolve());
+
   const resolveComment = useCallback((id) => {
     wsSend({ type: 'comments-patch', id, patch: { status: 'resolved' } });
   }, []);
@@ -6858,6 +6970,19 @@ function App() {
         e.preventDefault();
         setPaletteOpen((v) => !v);
         return;
+      }
+      // Cmd+Z / Cmd+Shift+Z / Cmd+Y — forward to the active canvas's undo stack
+      // when focus is in the shell chrome (not a text field, not the canvas
+      // iframe). Inside the canvas iframe the canvas owns Cmd+Z; inside an editable
+      // field native undo wins (the inspector's CssKnobs forwards on its own). This
+      // makes inspector CSS / inline text / attr edits undoable from anywhere.
+      if (meta && !e.altKey && (e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y')) {
+        if (!inEditable && !inCanvasIframe && activePath && activePath !== SYSTEM_TAB) {
+          e.preventDefault();
+          const redo = e.key === 'y' || e.key === 'Y' || e.shiftKey;
+          postToActiveCanvas({ dgn: redo ? 'redo' : 'undo' });
+          return;
+        }
       }
       // Cmd+Shift+R — refresh the FILES tree (re-read /_index-data). The fs-watch
       // → canvas-list-update auto-refresh can miss events in the compiled desktop
@@ -7387,6 +7512,8 @@ function App() {
               onTabChange={setInspectorTab}
               onClose={() => setInspectorOpen(false)}
               onOptimistic={applyOptimisticStyle}
+              onRecordEdit={recordSourceEdit}
+              onUndoRedo={(dir) => postToActiveCanvas({ dgn: dir })}
               layersTree={layersTree}
               onSelectLayer={(n) =>
                 postToActiveCanvas({

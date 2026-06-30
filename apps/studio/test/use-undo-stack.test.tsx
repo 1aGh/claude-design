@@ -155,6 +155,36 @@ describe('use-undo-stack / runner side-effects', () => {
   });
 });
 
+describe('use-undo-stack / record (already-applied edits)', () => {
+  test('record() appends WITHOUT running do()', async () => {
+    const v = captureProvider(undefined, { layoutPatchFn: () => {} });
+    v.record(rec('inline-edit', 'X'));
+    // undo() is enqueued after record(), so awaiting it flushes record first.
+    await v.undo();
+    expect(doSpy).toHaveBeenCalledTimes(0); // record never runs do()
+    expect(undoSpy).toHaveBeenCalledTimes(1);
+    expect(undoSpy.mock.calls[0]?.[0]).toBe('X');
+  });
+
+  test('record() then redo() (after undo) re-runs do()', async () => {
+    const v = captureProvider(undefined, { layoutPatchFn: () => {} });
+    v.record(rec('e', 'Y'));
+    await v.undo();
+    await v.redo();
+    expect(doSpy).toHaveBeenCalledTimes(1); // only redo's do(), not the record
+    expect(doSpy.mock.calls[0]?.[0]).toBe('Y');
+  });
+
+  test('record() clears the redo future', async () => {
+    const v = captureProvider(undefined, { layoutPatchFn: () => {} });
+    await v.push(rec('a', 'A')); // doSpy: 1
+    await v.undo(); // future = [a]
+    v.record(rec('b', 'B')); // clears future
+    await v.redo(); // future empty → no-op, no extra do()
+    expect(doSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('use-undo-stack / cross-canvas persistence', () => {
   test('history under a canvasFile survives a fresh provider mount with the same canvasFile', async () => {
     // First mount: push 2 records.

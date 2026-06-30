@@ -51,6 +51,14 @@ export interface UndoStackValue {
    * Awaiting the returned promise is optional.
    */
   push: (record: CommandRecord) => Promise<void>;
+  /**
+   * Record an ALREADY-APPLIED command — appends to `past` + clears `future`
+   * WITHOUT running `do()`. Use when the side-effect happened outside the
+   * stack (e.g. an inspector CSS commit / inline text edit that already POSTed
+   * `/_api/edit-*`), so re-running `do()` would double-apply. `undo()` / `redo()`
+   * still drive the command's `undo()` / `do()` normally afterwards.
+   */
+  record: (record: CommandRecord) => void;
   /** Undo the top of `past`. No-op when empty. */
   undo: () => Promise<void>;
   /** Redo the top of `future`. No-op when empty. */
@@ -69,6 +77,7 @@ const UndoStackContext = createContext<UndoStackValue | null>(null);
 
 const NOOP_VALUE: UndoStackValue = {
   push: () => Promise.resolve(),
+  record: () => {},
   undo: () => Promise.resolve(),
   redo: () => Promise.resolve(),
   clear: () => {},
@@ -213,6 +222,16 @@ export function UndoStackProvider({
     [enqueue, build, reportError, bumpLabel, writeState]
   );
 
+  const record = useCallback(
+    (rec: CommandRecord): void => {
+      void enqueue(async () => {
+        writeState(undoReducer(stateRef.current, { type: 'push', record: rec }));
+        bumpLabel(rec.label);
+      });
+    },
+    [enqueue, writeState, bumpLabel]
+  );
+
   const undo = useCallback(
     (): Promise<void> =>
       enqueue(async () => {
@@ -306,6 +325,7 @@ export function UndoStackProvider({
   const value = useMemo<UndoStackValue>(
     () => ({
       push,
+      record,
       undo,
       redo,
       clear,
@@ -318,7 +338,7 @@ export function UndoStackProvider({
     // `lastTick` (bumped by every push/undo/redo/clear) as the proxy so the
     // memoized canUndo/canRedo readouts re-evaluate on each transition.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [push, undo, redo, clear, lastLabel, lastTick]
+    [push, record, undo, redo, clear, lastLabel, lastTick]
   );
 
   return (
