@@ -190,14 +190,21 @@ describe('CanvasSyncAgent — cold start reconciliation', () => {
     agent = makeAgent({ adopt: true });
     await agent.reconcile();
 
-    // Hub changes the value.
+    // Hub changes the value — stamp it explicitly newer than the disk so the
+    // newest-wins reconcile is deterministic. An un-pinned `applyHtmlToDoc` stamp
+    // is `Date.now()` (ms-truncated) while the disk mtime is sub-ms `statSync`:
+    // in isolation they land in the same ms → tie → hub; under parallel-suite
+    // load they straddle a ms boundary → disk looks newer → local, flaking this
+    // assertion. Sibling tests pin timestamps for exactly this reason.
     applyHtmlToDoc(docA, '<button>hub-v2</button>');
+    docA.getMap('syncMeta').set('bodyEditAt', Date.now() + 60_000);
 
     // Disk reverts to a stale local-only state.
     writeFileSync(paths().html, '<button>local-v3</button>');
     await agent.reconcile();
 
-    // Hub state won this time.
+    // Hub state won this time — adopt was consumed, so the second reconcile runs
+    // normal newest-wins, and the (explicitly newer) hub body wins.
     expect(htmlFromDoc(docB)).toBe('<button>hub-v2</button>');
   });
 
