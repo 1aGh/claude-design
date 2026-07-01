@@ -76,3 +76,19 @@ describe('CSRF Origin guard — /_api/ai/* presence-bridge routes (phase-30)', (
     });
   }
 });
+
+// Phase 12.1 / DDR-138: /_api/reorder is a source-write (node-move). It MUST
+// carry the same sameOriginWrite guard as the other edit-* write routes so a
+// forged cross-origin POST can't drive a structural reorder of the user's .tsx.
+// Source-level assertion (same "don't boot a server" rationale as above).
+describe('CSRF Origin guard — /_api/reorder source-write route (DDR-138)', () => {
+  const src = readFileSync(fileURLToPath(new URL('../http.ts', import.meta.url)), 'utf8');
+
+  test('/_api/reorder is wired with the sameOriginWrite CSRF guard', () => {
+    const start = src.indexOf("'/_api/reorder':");
+    expect(start).toBeGreaterThan(-1);
+    const after = src.indexOf("'/_api/", start + 1);
+    const block = src.slice(start, after === -1 ? undefined : after);
+    expect(block).toContain('sameOriginWrite(req)');
+  });
+});

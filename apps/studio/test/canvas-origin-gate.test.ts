@@ -67,6 +67,11 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/edit-css',
         '/_api/edit-text',
         '/_api/edit-attr',
+        // Phase 12.1 (DDR-138) — node-move reorder is a source-write, MAIN-ORIGIN
+        // ONLY. The canvas iframe requests a reorder over the dgn:* bus; the shell
+        // performs the write. A GET here 403s at the gate (route unreachable on
+        // this origin), not 405 from the handler.
+        '/_api/reorder',
         // Phase 27 (E2) — every /_api/git/* route is MAIN-ORIGIN ONLY: absent from
         // CANVAS_SAFE_API + startCanvasServer's `routes` map. A GET from the
         // canvas origin must 403 at the gate (not 405 from a reached handler),

@@ -415,6 +415,307 @@ export function applyTextEdit(
 }
 
 // ---------------------------------------------------------------------------
+// Node-move reorder (DDR-138, phase-12.1). Moving a whole JSXElement to a new
+// sibling/parent position — the one structural edit `editAttribute`/`editText`
+// don't do. Remove the element's line-span + insert a re-indented copy at an
+// anchor derived from `refId` + `position`. A same-parent reorder is the
+// degenerate case where source/target indent match (no re-indent). Reparenting
+// works because we re-indent (not raw magic-string.move). Guardrails refuse
+// structurally-unsafe moves; a post-move reparse gate guarantees we never write
+// corrupt source. The move response recomputes the moved element's positional
+// id (matches what the pipeline assigns on the next pass) + surfaces its
+// author-semantic `data-dc-element` handle so the client can re-settle the
+// selection through the id churn.
+
+export type MovePosition = 'before' | 'after' | 'inside-start' | 'inside-end';
+
+export interface MoveResult extends EditResult {
+  /** Recomputed positional id of the moved element (== the DOM `data-cd-id`
+   *  after the next pipeline pass). Best-effort — null if not resolvable. */
+  movedId: string | null;
+  /** The moved element's `data-dc-element` value (DDR-007), if it has one — a
+   *  stable re-select key that survives the id churn byte-for-byte. */
+  semanticId: string | null;
+}
+
+/** Read a plain-string JSX attribute value off an opening element (null when
+ *  absent or not a string literal). */
+function getStringAttr(opening: AnyNode, name: string): string | null {
+  const attr = findAttribute(opening, name);
+  if (!attr) return null;
+  const v = attr.value;
+  if (v == null) return '';
+  if (v.type === 'Literal' || v.type === 'StringLiteral') return String(v.value);
+  return null;
+}
+
+/** Info about the line a byte offset sits on: the whitespace indentation, where
+ *  it begins, and whether a newline immediately precedes it. */
+function lineStartInfo(
+  source: string,
+  pos: number
+): { indent: string; indentStart: number; newlineBefore: boolean } {
+  let i = pos;
+  while (i > 0 && (source[i - 1] === ' ' || source[i - 1] === '\t')) i--;
+  return {
+    indent: source.slice(i, pos),
+    indentStart: i,
+    newlineBefore: i > 0 && source[i - 1] === '\n',
+  };
+}
+
+/** Detect the file's indentation unit (tab vs N spaces). Canvases are Prettier
+ *  2-space by default; fall back to that. */
+function detectIndentUnit(source: string): string {
+  if (/\n\t/.test(source)) return '\t';
+  const m = /\n( +)\S/.exec(source);
+  return m ? m[1] : '  ';
+}
+
+/** Re-indent an element's source text from `fromIndent` (its old line indent) to
+ *  `toIndent` (the target depth). The first line carries no leading indent in
+ *  `elText` (it starts at the element), so only continuation lines shift, by the
+ *  same delta, preserving the element's internal structure. */
+function reindentBlock(elText: string, fromIndent: string, toIndent: string): string {
+  if (fromIndent === toIndent) return elText;
+  const lines = elText.split('\n');
+  return lines
+    .map((line, i) => {
+      if (i === 0) return line;
+      const lead = /^[ \t]*/.exec(line)?.[0] ?? '';
+      const rest = line.slice(lead.length);
+      if (rest === '') return line; // blank line — leave as-is
+      const rel = lead.startsWith(fromIndent) ? lead.slice(fromIndent.length) : lead;
+      return toIndent + rel + rest;
+    })
+    .join('\n');
+}
+
+/** Normalize element text for duplicate-tolerant matching: trim each line so
+ *  re-indentation differences don't defeat the match. */
+function normalizeForMatch(t: string): string {
+  return t
+    .split('\n')
+    .map((l) => l.trim())
+    .join('\n');
+}
+
+/** Walk the program with the SAME component + jsxIndex bookkeeping the pipeline
+ *  uses (canvas-pipeline.ts walkInjectIds), collecting every JSXElement with the
+ *  id it will be assigned. Reused to recompute the moved element's post-move id. */
+function collectElements(program: AnyNode): Array<{ id: string; node: AnyNode }> {
+  interface Frame {
+    componentName: string;
+    jsxIndex: number;
+  }
+  const stack: Frame[] = [{ componentName: '', jsxIndex: 0 }];
+  const out: Array<{ id: string; node: AnyNode }> = [];
+
+  function visit(node: AnyNode): void {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const c of node) visit(c);
+      return;
+    }
+    if (typeof node.type !== 'string') return;
+
+    const newComp = componentNameOf(node);
+    let pushed = false;
+    if (newComp !== null) {
+      stack.push({ componentName: newComp, jsxIndex: 0 });
+      pushed = true;
+    }
+
+    if (node.type === 'JSXElement') {
+      const frame = stack[stack.length - 1] as Frame;
+      const idx = frame.jsxIndex;
+      frame.jsxIndex += 1;
+      out.push({ id: computeId(frame.componentName, idx), node });
+      if (node.openingElement) visit(node.openingElement.attributes);
+      visit(node.children);
+      if (pushed) stack.pop();
+      return;
+    }
+
+    for (const k of Object.keys(node)) {
+      if (k === 'loc' || k === 'range' || k === 'start' || k === 'end' || k === 'type') continue;
+      visit(node[k]);
+    }
+    if (pushed) stack.pop();
+  }
+
+  visit(program);
+  return out;
+}
+
+/**
+ * Move the element with `data-cd-id === id` to a position relative to the element
+ * with `data-cd-id === refId`. Async wrapper: read, apply, atomic write under the
+ * per-file mutex — identical persistence to `editAttribute`.
+ */
+export async function moveElement(
+  canvasAbsPath: string,
+  id: string,
+  refId: string,
+  position: MovePosition
+): Promise<MoveResult> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, { canvas: canvasAbsPath, id });
+    }
+    const source = await file.text();
+    const next = applyMove(canvasAbsPath, source, id, refId, position);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
+/** Pure variant of `moveElement` — exposed for tests. Never mutates disk. */
+export function applyMove(
+  canvasAbsPath: string,
+  source: string,
+  id: string,
+  refId: string,
+  position: MovePosition
+): MoveResult {
+  if (id === refId) {
+    throw new CanvasEditError('cannot move an element relative to itself', {
+      canvas: canvasAbsPath,
+      id,
+    });
+  }
+
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    const first = parsed.errors[0];
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${first?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id }
+    );
+  }
+
+  const moved = findOpening(parsed.program, id);
+  if (!moved) {
+    throw new CanvasEditError(`data-cd-id "${id}" not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id,
+    });
+  }
+  const ref = findOpening(parsed.program, refId);
+  if (!ref) {
+    throw new CanvasEditError(`reference data-cd-id "${refId}" not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id: refId,
+    });
+  }
+
+  const movedEl = moved.element;
+  const refEl = ref.element;
+  const mStart = movedEl.start as number;
+  const mEnd = movedEl.end as number;
+  const rStart = refEl.start as number;
+  const rEnd = refEl.end as number;
+
+  // Guardrail: the reference must not live inside the moved element's subtree —
+  // that would splice the node into itself.
+  if (rStart >= mStart && rEnd <= mEnd) {
+    throw new CanvasEditError('cannot move an element into its own subtree', {
+      canvas: canvasAbsPath,
+      id,
+    });
+  }
+
+  const inside = position === 'inside-start' || position === 'inside-end';
+  if (inside && (refEl.openingElement?.selfClosing || !refEl.closingElement)) {
+    throw new CanvasEditError(
+      `target "${refId}" is self-closing — cannot nest an element inside it`,
+      { canvas: canvasAbsPath, id: refId }
+    );
+  }
+
+  const indentUnit = detectIndentUnit(source);
+  const elText = source.slice(mStart, mEnd);
+  const movedLine = lineStartInfo(source, mStart);
+  const removeStart = movedLine.newlineBefore ? movedLine.indentStart - 1 : movedLine.indentStart;
+
+  // Resolve the target indent + insertion anchor per position.
+  let targetIndent: string;
+  let anchor: number;
+  let insertText: string;
+
+  if (position === 'after') {
+    targetIndent = lineStartInfo(source, rStart).indent;
+    const reText = reindentBlock(elText, movedLine.indent, targetIndent);
+    anchor = rEnd;
+    insertText = `\n${targetIndent}${reText}`;
+  } else if (position === 'before') {
+    const rLine = lineStartInfo(source, rStart);
+    targetIndent = rLine.indent;
+    const reText = reindentBlock(elText, movedLine.indent, targetIndent);
+    if (rLine.newlineBefore) {
+      anchor = rLine.indentStart - 1;
+      insertText = `\n${targetIndent}${reText}`;
+    } else {
+      anchor = rLine.indentStart;
+      insertText = `${targetIndent}${reText}\n`;
+    }
+  } else if (position === 'inside-start') {
+    targetIndent = lineStartInfo(source, rStart).indent + indentUnit;
+    const reText = reindentBlock(elText, movedLine.indent, targetIndent);
+    anchor = refEl.openingElement.end as number;
+    insertText = `\n${targetIndent}${reText}`;
+  } else {
+    // inside-end — insert as the last child, before the closing tag's own line.
+    targetIndent = lineStartInfo(source, rStart).indent + indentUnit;
+    const reText = reindentBlock(elText, movedLine.indent, targetIndent);
+    const cStart = refEl.closingElement.start as number;
+    const cLine = lineStartInfo(source, cStart);
+    if (cLine.newlineBefore) {
+      anchor = cLine.indentStart - 1;
+      insertText = `\n${targetIndent}${reText}`;
+    } else {
+      anchor = cStart;
+      insertText = `${reText}`;
+    }
+  }
+
+  const s = new MagicString(source);
+  s.remove(removeStart, mEnd);
+  s.appendLeft(anchor, insertText);
+  const out = s.toString();
+
+  // Reparse gate: never write source that doesn't parse. This is the catch-all
+  // that lets us keep the guardrail set small.
+  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (check.errors && check.errors.length > 0) {
+    const first = check.errors[0];
+    throw new CanvasEditError(
+      `move would produce invalid source (${first?.message ?? 'parse error'}); aborted`,
+      { canvas: canvasAbsPath, id }
+    );
+  }
+
+  // Re-settle hints. semanticId survives the move verbatim; movedId is the
+  // recomputed positional id (matches the post-reload DOM).
+  const semanticId = getStringAttr(movedEl.openingElement, 'data-dc-element');
+  let movedId: string | null = null;
+  const wanted = normalizeForMatch(reindentBlock(elText, movedLine.indent, targetIndent));
+  for (const { id: eid, node } of collectElements(check.program)) {
+    if (normalizeForMatch(out.slice(node.start as number, node.end as number)) === wanted) {
+      movedId = eid;
+      break;
+    }
+  }
+
+  return { source: out, delta: out.length - source.length, movedId, semanticId };
+}
+
+// ---------------------------------------------------------------------------
 // Edit shapes.
 
 function editStringAttr(s: MagicString, opening: AnyNode, name: string, value: string): void {

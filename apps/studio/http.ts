@@ -126,7 +126,7 @@ export function cspForCanvasShell(html: string, mainOrigin?: string): string {
 
 /**
  * CSRF guard for the main-origin source-write routes (edit-css / edit-text /
- * edit-attr). Those routes are reachable only from the shell, which is
+ * edit-attr / reorder). Those routes are reachable only from the shell, which is
  * same-origin — but `readJson` enforces no `Content-Type`, so a cross-site page
  * could otherwise forge a `text/plain` CORS *simple-request* POST to
  * `http://localhost:<port>/_api/edit-*` (no preflight) and drive a write into
@@ -1179,6 +1179,39 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       }
       return Response.json(
         { ok: true, delta: result.delta },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    '/_api/reorder': async (req: Request) => {
+      // Phase 12.1 (DDR-138) — node-move reorder. POST body
+      // { canvas, id, refId, position } → moves the element with data-cd-id `id`
+      // to `position` ('before'|'after'|'inside-start'|'inside-end') relative to
+      // `refId` (reparent-capable) via api.reorder → moveElement. Snapshots the
+      // pre-move source for /design:rollback. Same MAIN-ORIGIN-ONLY trust boundary
+      // as /_api/edit-css + /_api/edit-text + /_api/edit-attr: intentionally absent
+      // from CANVAS_SAFE_API + startCanvasServer's route allowlist (DDR-054) — the
+      // untrusted canvas iframe requests a reorder over the dgn:* bus and the shell
+      // (main origin) performs this privileged write.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        id?: unknown;
+        refId?: unknown;
+        position?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.reorder(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, delta: result.delta, movedId: result.movedId, semanticId: result.semanticId },
         { status: 200, headers: { 'Cache-Control': 'no-store' } }
       );
     },

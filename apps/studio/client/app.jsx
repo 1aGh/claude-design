@@ -5148,6 +5148,18 @@ const LAYER_TYPE_ICON = {
   box: 'box',
 };
 
+// Phase 12.1 (DDR-138) — pointer Y → drop position within a layer row. Top/bottom
+// quarters reorder as a sibling (before/after); the middle nests INTO the row
+// (reparent, inside-end). Any element can be a drop target — the server guards
+// self-closing / own-subtree moves and reparse-gates the result.
+function dropPositionFromEvent(e) {
+  const r = e.currentTarget.getBoundingClientRect();
+  const f = (e.clientY - r.top) / (r.height || 1);
+  if (f < 0.25) return 'before';
+  if (f > 0.75) return 'after';
+  return 'inside';
+}
+
 function LayerRow({
   node,
   depth,
@@ -5158,31 +5170,102 @@ function LayerRow({
   onSelect,
   onHover,
   onToggleVisibility,
+  onReorder,
+  dragState,
+  setDragState,
+  siblings,
+  pos,
 }) {
   const key = `${node.id}:${node.index}`;
   const hasKids = node.children && node.children.length > 0;
   const isCollapsed = collapsed.has(key);
   const isSel = node.id === selectedId;
   const isHidden = hidden?.has(key);
+  const isDragging = dragState?.key === key;
+  const drop = dragState && dragState.overKey === key ? dragState.position : null;
   return (
     <>
       <div
         className={
-          'st-layer st-layer--row' + (isSel ? ' is-sel' : '') + (isHidden ? ' is-hidden' : '')
+          'st-layer st-layer--row' +
+          (isSel ? ' is-sel' : '') +
+          (isHidden ? ' is-hidden' : '') +
+          (isDragging ? ' is-dragging' : '') +
+          (drop ? ` is-drop-${drop}` : '')
         }
         style={{ paddingLeft: 6 + depth * 14 }}
         role="treeitem"
         aria-selected={isSel}
         aria-expanded={hasKids ? !isCollapsed : undefined}
+        aria-grabbed={onReorder ? isDragging : undefined}
         tabIndex={0}
         title={`${node.tag} · ${node.type}`}
+        draggable={onReorder ? true : undefined}
         onClick={() => onSelect(node)}
         onMouseEnter={() => onHover(node)}
         onMouseLeave={() => onHover(null)}
+        onDragStart={
+          onReorder
+            ? (e) => {
+                e.stopPropagation();
+                // A payload is required for the drag to start in some browsers.
+                try {
+                  e.dataTransfer.setData('text/plain', node.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                } catch {}
+                setDragState({ key, node, overKey: null, position: null });
+              }
+            : undefined
+        }
+        onDragOver={
+          onReorder
+            ? (e) => {
+                if (!dragState || dragState.key === key) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                const position = dropPositionFromEvent(e);
+                if (dragState.overKey !== key || dragState.position !== position) {
+                  setDragState({ ...dragState, overKey: key, position });
+                }
+              }
+            : undefined
+        }
+        onDrop={
+          onReorder
+            ? (e) => {
+                if (!dragState || dragState.key === key) return;
+                e.preventDefault();
+                const position = dropPositionFromEvent(e);
+                const dragged = dragState.node;
+                setDragState(null);
+                onReorder(dragged, node, position);
+              }
+            : undefined
+        }
+        onDragEnd={onReorder ? () => setDragState(null) : undefined}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             onSelect(node);
+            return;
+          }
+          // Alt+Arrow keyboard reorder (drag isn't keyboard-reachable; the tree is
+          // role="tree"). Up/Down reorder among siblings; Right nests into the
+          // previous sibling as its last child. See DDR-138.
+          if (onReorder && e.altKey && Array.isArray(siblings)) {
+            if (e.key === 'ArrowUp' && pos > 0) {
+              e.preventDefault();
+              e.stopPropagation();
+              onReorder(node, siblings[pos - 1], 'before');
+            } else if (e.key === 'ArrowDown' && pos < siblings.length - 1) {
+              e.preventDefault();
+              e.stopPropagation();
+              onReorder(node, siblings[pos + 1], 'after');
+            } else if (e.key === 'ArrowRight' && pos > 0) {
+              e.preventDefault();
+              e.stopPropagation();
+              onReorder(node, siblings[pos - 1], 'inside-end');
+            }
           }
         }}
       >
@@ -5221,7 +5304,7 @@ function LayerRow({
         ) : null}
       </div>
       {hasKids && !isCollapsed
-        ? node.children.map((c) => (
+        ? node.children.map((c, ci) => (
             <LayerRow
               key={`${c.id}:${c.index}`}
               node={c}
@@ -5233,6 +5316,11 @@ function LayerRow({
               onSelect={onSelect}
               onHover={onHover}
               onToggleVisibility={onToggleVisibility}
+              onReorder={onReorder}
+              dragState={dragState}
+              setDragState={setDragState}
+              siblings={node.children}
+              pos={ci}
             />
           ))
         : null}
@@ -5311,6 +5399,7 @@ function InspectorPanel({
   layersTree,
   onSelectLayer,
   onHoverLayer,
+  onReorderLayer,
   cfg,
   onOptimistic,
   onRecordEdit,
@@ -5334,6 +5423,22 @@ function InspectorPanel({
   // Phase 12.3 (W3.1) — per-layer visibility toggle. Live-only (display:none via
   // the optimistic apply bus); not persisted to source. Keyed by `${id}:${index}`.
   const [hiddenLayers, setHiddenLayers] = useState(() => new Set());
+  // Phase 12.1 (DDR-138) — drag-to-reorder state (lifted so every row sees the
+  // same drop target) + an aria-live announcement for keyboard moves.
+  const [dragState, setDragState] = useState(null);
+  const [reorderMsg, setReorderMsg] = useState('');
+  const handleReorder = onReorderLayer
+    ? (dragged, ref, position) => {
+        const verb =
+          position === 'before'
+            ? `before ${ref.label}`
+            : position === 'after'
+              ? `after ${ref.label}`
+              : `into ${ref.label}`;
+        setReorderMsg(`Moved ${dragged.label} ${verb}`);
+        onReorderLayer(dragged.id, ref.id, position);
+      }
+    : undefined;
   const toggleCollapse = (key) =>
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -5454,22 +5559,37 @@ function InspectorPanel({
           <>
             <div className="st-rp-hd">Layers{layersTree?.nodes?.length ? '' : ' · ancestry'}</div>
             {layersTree?.nodes?.length ? (
-              <div role="tree" aria-label="Artboard layers">
-                {layersTree.nodes.map((n) => (
-                  <LayerRow
-                    key={`${n.id}:${n.index}`}
-                    node={n}
-                    depth={0}
-                    selectedId={el.id}
-                    collapsed={collapsed}
-                    hidden={hiddenLayers}
-                    onToggle={toggleCollapse}
-                    onSelect={(node) => onSelectLayer?.(node)}
-                    onHover={(node) => onHoverLayer?.(node)}
-                    onToggleVisibility={toggleVisibility}
-                  />
-                ))}
-              </div>
+              <>
+                {handleReorder ? (
+                  <div className="st-rp-hint" aria-hidden="true">
+                    Drag a layer to reorder · Alt+↑/↓ to move · Alt+→ to nest
+                  </div>
+                ) : null}
+                <div role="tree" aria-label="Artboard layers">
+                  {layersTree.nodes.map((n, ni) => (
+                    <LayerRow
+                      key={`${n.id}:${n.index}`}
+                      node={n}
+                      depth={0}
+                      selectedId={el.id}
+                      collapsed={collapsed}
+                      hidden={hiddenLayers}
+                      onToggle={toggleCollapse}
+                      onSelect={(node) => onSelectLayer?.(node)}
+                      onHover={(node) => onHoverLayer?.(node)}
+                      onToggleVisibility={toggleVisibility}
+                      onReorder={handleReorder}
+                      dragState={dragState}
+                      setDragState={setDragState}
+                      siblings={layersTree.nodes}
+                      pos={ni}
+                    />
+                  ))}
+                </div>
+                <div className="sr-only" role="status" aria-live="polite">
+                  {reorderMsg}
+                </div>
+              </>
             ) : Array.isArray(el.dom_path) && el.dom_path.length ? (
               el.dom_path.map((node, i) => (
                 <div
@@ -5516,6 +5636,11 @@ function App() {
   useEffect(() => {
     selectedRef.current = selected;
   }, [selected]);
+  // Phase 12.1 (DDR-138) — after a reorder writes source, the HMR reload remounts
+  // the canvas and the positional data-cd-id of the moved element (and everything
+  // after it) renumbers. Stash the re-settle target { file, movedId, artboardId }
+  // so the dgn:'loaded' handler re-selects the moved element by its NEW id.
+  const pendingReorderRef = useRef(null);
   // Phase 12 Task 4 — Layers tree for the active artboard (posted by canvas-shell).
   const [layersTree, setLayersTree] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -6749,25 +6874,54 @@ function App() {
               el.contentWindow.postMessage({ dgn: 'comment-focus', id: focusedCommentId }, '*');
             } catch {}
           }
-          // Phase 12.3 (W1.1) — an edit-css/edit-attr commit triggers the file
-          // watcher's HMR reload, which remounts the canvas and drops the
-          // in-canvas selection halo. Re-select the same element by its stable
-          // data-cd-id so the user keeps focus on what they're editing. The
-          // canvas-shell `select-by-id` handler re-emits select-set, which keeps
-          // the Inspector panel + halo in sync. Guarded to the active file.
-          const sel = selectedRef.current;
-          if (sel && sel.id && sel.file === m.file) {
+          // Phase 12.1 (DDR-138) — a reorder just wrote source: the moved
+          // element's positional data-cd-id renumbered, so re-selecting by the
+          // PRE-move id would land on the wrong node. Re-select by the recomputed
+          // movedId instead (null ⇒ leave selection to the user, never guess), and
+          // rebuild the layers tree so the panel reflects the new order.
+          const pend = pendingReorderRef.current;
+          if (pend && pend.file === m.file) {
+            pendingReorderRef.current = null;
             try {
               el.contentWindow.postMessage(
-                {
-                  dgn: 'select-by-id',
-                  id: sel.id,
-                  artboardId: sel.artboardId ?? null,
-                  index: sel.index ?? 0,
-                },
+                { dgn: 'request-layers', artboardId: pend.artboardId ?? null },
                 '*'
               );
             } catch {}
+            if (pend.movedId) {
+              try {
+                el.contentWindow.postMessage(
+                  {
+                    dgn: 'select-by-id',
+                    id: pend.movedId,
+                    artboardId: pend.artboardId ?? null,
+                    index: 0,
+                  },
+                  '*'
+                );
+              } catch {}
+            }
+          } else {
+            // Phase 12.3 (W1.1) — an edit-css/edit-attr commit triggers the file
+            // watcher's HMR reload, which remounts the canvas and drops the
+            // in-canvas selection halo. Re-select the same element by its stable
+            // data-cd-id so the user keeps focus on what they're editing. The
+            // canvas-shell `select-by-id` handler re-emits select-set, which keeps
+            // the Inspector panel + halo in sync. Guarded to the active file.
+            const sel = selectedRef.current;
+            if (sel && sel.id && sel.file === m.file) {
+              try {
+                el.contentWindow.postMessage(
+                  {
+                    dgn: 'select-by-id',
+                    id: sel.id,
+                    artboardId: sel.artboardId ?? null,
+                    index: sel.index ?? 0,
+                  },
+                  '*'
+                );
+              } catch {}
+            }
           }
         }
       } else if (m.dgn === 'export-request' && m.id && m.payload) {
@@ -6902,6 +7056,47 @@ function App() {
   // multi-Cmd+Z on the same property lands on disk in dispatch order (the
   // iframe sink is fire-and-forget, so without this the POSTs could race).
   const editApplyChainRef = useRef(Promise.resolve());
+
+  // Phase 12.1 (DDR-138) — commit a Layers-panel drag/keyboard reorder. The shell
+  // is main-origin, so it calls the privileged /_api/reorder directly (the CSS/
+  // text edits go the other way — canvas requests, shell writes; here the gesture
+  // originates in the shell). Serialized on the same chain as apply-edit so a
+  // reorder can't race an in-flight edit write to the same file.
+  const reorderLayer = useCallback(
+    (draggedId, refId, position) => {
+      if (!draggedId || !refId || draggedId === refId) return;
+      const sel = selectedRef.current;
+      const one = Array.isArray(sel) ? sel[0] : sel;
+      // resolveCanvasAbs accepts the bare slug or the designRel-prefixed file.
+      const canvas = one?.canvas || one?.file || activePath;
+      if (!canvas) return;
+      const file = one?.file || activePath;
+      const artboardId = layersTree?.artboardId ?? one?.artboardId ?? null;
+      editApplyChainRef.current = editApplyChainRef.current
+        .catch(() => {})
+        .then(() =>
+          fetch('/_api/reorder', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ canvas, id: draggedId, refId, position }),
+          })
+            .then((r) => r.json().catch(() => ({})))
+            .then((j) => {
+              if (!j.ok) {
+                console.warn('[reorder]', j.error || 'failed');
+                return;
+              }
+              // The write triggers an HMR reload; the dgn:'loaded' handler
+              // re-selects the moved element by its recomputed id + rebuilds the
+              // tree. movedId is best-effort — null means "leave selection to the
+              // user" (never re-select by the stale pre-move id).
+              pendingReorderRef.current = { file, movedId: j.movedId || null, artboardId };
+            })
+            .catch(() => {})
+        );
+    },
+    [activePath, layersTree]
+  );
 
   const resolveComment = useCallback((id) => {
     wsSend({ type: 'comments-patch', id, patch: { status: 'resolved' } });
@@ -7531,6 +7726,7 @@ function App() {
                   index: n ? n.index : 0,
                 })
               }
+              onReorderLayer={reorderLayer}
               width={rpSize.w}
               resizing={dragSide === 'rp'}
             />

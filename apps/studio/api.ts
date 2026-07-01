@@ -10,10 +10,13 @@ import { renderBriefBoard, validateCanvasName } from './canvas-create.ts';
 import {
   CanvasEditError,
   editAttribute,
+  moveElement,
+  type MovePosition,
   removeAttribute,
   editText as runEditText,
 } from './canvas-edit.ts';
 import type { Context } from './context.ts';
+import { createHistory } from './history.ts';
 
 // Directories that never hold user-facing canvases. Exported so the
 // external-canvas watcher (`canvas-list-watch.ts`) shares one source instead of
@@ -180,6 +183,17 @@ export type EditOpResult =
   | { ok: true; delta: number }
   | { ok: false; status: number; error: string };
 
+/**
+ * Phase 12.1 (DDR-138) — result of a node-move reorder. Carries the re-settle
+ * hints the client uses to re-select the moved element through the positional
+ * `data-cd-id` churn: `movedId` (recomputed positional id == the post-reload DOM
+ * id, best-effort) and `semanticId` (the moved element's `data-dc-element`, which
+ * survives the move verbatim — the reliable key when present).
+ */
+export type ReorderOpResult =
+  | { ok: true; delta: number; movedId: string | null; semanticId: string | null }
+  | { ok: false; status: number; error: string };
+
 export interface Api {
   // File tree
   fileSlug(file: string): string;
@@ -248,6 +262,15 @@ export interface Api {
     attr?: unknown;
     value?: unknown;
   }): Promise<EditOpResult>;
+  // Phase 12.1 (DDR-138) — node-move reorder (POST /_api/reorder). Main-origin
+  // only. Moves the element with data-cd-id `id` to `position` relative to
+  // `refId` (reparent-capable), snapshotting pre-move for /design:rollback.
+  reorder(input: {
+    canvas?: unknown;
+    id?: unknown;
+    refId?: unknown;
+    position?: unknown;
+  }): Promise<ReorderOpResult>;
   // Aggregate data
   buildIndexData(): Promise<unknown>;
   buildSystemData(dsName?: string | null): Promise<unknown>;
@@ -1374,6 +1397,59 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  // Phase 12.1 (DDR-138) — snapshot stack so a reorder is undoable via
+  // /design:rollback (a positional move has no value-inverse the edit-source
+  // undo command can re-apply, so it rides `_history` instead).
+  const history = createHistory(ctx);
+
+  const MOVE_POSITIONS = new Set(['before', 'after', 'inside-start', 'inside-end']);
+
+  async function reorder(input: {
+    canvas?: unknown;
+    id?: unknown;
+    refId?: unknown;
+    position?: unknown;
+  }): Promise<ReorderOpResult> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const id = typeof input.id === 'string' ? input.id.trim() : '';
+    if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid data-cd-id' };
+    const refId = typeof input.refId === 'string' ? input.refId.trim() : '';
+    if (!CD_ID_RE.test(refId)) {
+      return { ok: false, status: 400, error: 'invalid reference data-cd-id' };
+    }
+    const position = input.position;
+    if (typeof position !== 'string' || !MOVE_POSITIONS.has(position)) {
+      return { ok: false, status: 400, error: 'invalid position' };
+    }
+    if (id === refId) {
+      return { ok: false, status: 422, error: 'cannot move an element relative to itself' };
+    }
+    try {
+      // Pre-move snapshot BEFORE the write so /design:rollback restores the
+      // pre-reorder source. Best-effort — a snapshot failure must not block the
+      // move (matches the sync layer's fail-open snapshot posture for local edits).
+      // writeSnapshot derives the `_history/<slug>/` dir via fileSlug, which
+      // mangles a designRoot-RELATIVE path (`ui/Foo.tsx` → `ui-foo`) — passing the
+      // absolute path would produce a mangled full-path slug /design:rollback
+      // (slug.sh) could never find.
+      try {
+        const before = await Bun.file(r.abs).text();
+        await history.writeSnapshot(path.relative(paths.designRoot, r.abs), before, 'pre-reorder');
+      } catch {
+        /* snapshot is a safety net, not a gate */
+      }
+      const res = await moveElement(r.abs, id, refId, position as MovePosition);
+      return { ok: true, delta: res.delta, movedId: res.movedId, semanticId: res.semanticId };
+    } catch (err) {
+      return {
+        ok: false,
+        status: 422,
+        error: err instanceof CanvasEditError ? err.message : 'reorder failed',
+      };
+    }
+  }
+
   async function saveCanvasState(file: string, state: Record<string, unknown>) {
     if (!state || typeof state !== 'object') return;
     const safe: Record<string, unknown> = {};
@@ -1783,6 +1859,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     editCss,
     editText,
     editAttr,
+    reorder,
     buildIndexData,
     buildSystemData,
     loadExportHistory,
