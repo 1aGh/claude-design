@@ -5149,12 +5149,55 @@ const LAYER_TYPE_ICON = {
 };
 
 
+// Optimistic layers-tree reorder — move the node with `draggedId` relative to
+// `refId` (before / after a sibling, or inside-end as a last child). Pure: clones
+// the node array and returns a new one, so React re-renders. Ids are distinct
+// here (repeated/list nodes can't be dragged), so first-match-by-id is safe.
+// Returns the input unchanged if either node isn't found (the HMR rebuild will
+// reconcile).
+function moveLayerNode(nodes, draggedId, refId, position) {
+  if (!Array.isArray(nodes) || draggedId === refId) return nodes;
+  const clone = JSON.parse(JSON.stringify(nodes));
+  let dragged = null;
+  const remove = (arr) => {
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i].id === draggedId) {
+        dragged = arr[i];
+        arr.splice(i, 1);
+        return true;
+      }
+      if (arr[i].children && remove(arr[i].children)) return true;
+    }
+    return false;
+  };
+  remove(clone);
+  if (!dragged) return nodes;
+  const insert = (arr) => {
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i].id === refId) {
+        if (position === 'inside-end') {
+          arr[i].children = arr[i].children || [];
+          arr[i].children.push(dragged);
+        } else {
+          arr.splice(position === 'before' ? i : i + 1, 0, dragged);
+        }
+        return true;
+      }
+      if (arr[i].children && insert(arr[i].children)) return true;
+    }
+    return false;
+  };
+  return insert(clone) ? clone : nodes;
+}
+
 function LayerRow({
   node,
   depth,
   selectedId,
+  selectedIndex,
   collapsed,
   hidden,
+  repeatedIds,
   onToggle,
   onSelect,
   onHover,
@@ -5168,8 +5211,16 @@ function LayerRow({
   const key = `${node.id}:${node.index}`;
   const hasKids = node.children && node.children.length > 0;
   const isCollapsed = collapsed.has(key);
-  const isSel = node.id === selectedId;
+  // Match the specific INSTANCE (id + occurrence index), not every element that
+  // shares this source id — otherwise a `.map`ed element highlights all its
+  // clones at once. Fall back to id-only when the selection carries no index.
+  const isSel =
+    node.id === selectedId && (selectedIndex == null || node.index === selectedIndex);
   const isHidden = hidden?.has(key);
+  // Repeated (list) element — one source node rendered N times; not individually
+  // reorderable. Dimmed + non-draggable, with a hint (see startLayerDrag).
+  const repeated = !!repeatedIds?.has(node.id);
+  const canDrag = onReorder && !repeated;
   // Phase 12.1 — the row being dragged FLOATS with the cursor (same model as the
   // in-canvas drag): a transform follows the pointer, its layout box stays
   // reserved (empty slot at the origin), and pointer-events:none lets the row
@@ -5197,18 +5248,22 @@ function LayerRow({
           (isHidden ? ' is-hidden' : '') +
           (ring ? ' is-drop-inside' : '')
         }
-        style={{ paddingLeft: 6 + depth * 14, ...dragStyle }}
+        style={{ paddingLeft: 6 + depth * 14, ...(repeated ? { opacity: 0.55 } : null), ...dragStyle }}
         role="treeitem"
         aria-selected={isSel}
         aria-expanded={hasKids ? !isCollapsed : undefined}
-        aria-grabbed={onReorder ? isDragging : undefined}
+        aria-grabbed={canDrag ? isDragging : undefined}
         tabIndex={0}
-        title={`${node.tag} · ${node.type}`}
+        title={
+          repeated
+            ? `${node.tag} · ${node.type} · repeated from a list — reorder in code`
+            : `${node.tag} · ${node.type}`
+        }
         data-layer-key={key}
         onClick={() => onSelect(node)}
         onMouseEnter={() => onHover(node)}
         onMouseLeave={() => onHover(null)}
-        onPointerDown={onReorder ? (e) => onRowPointerDown(e, node, key) : undefined}
+        onPointerDown={canDrag ? (e) => onRowPointerDown(e, node, key) : undefined}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
@@ -5218,7 +5273,7 @@ function LayerRow({
           // Alt+Arrow keyboard reorder (drag isn't keyboard-reachable; the tree is
           // role="tree"). Up/Down reorder among siblings; Right nests into the
           // previous sibling as its last child. See DDR-138.
-          if (onReorder && e.altKey && Array.isArray(siblings)) {
+          if (canDrag && e.altKey && Array.isArray(siblings)) {
             if (e.key === 'ArrowUp' && pos > 0) {
               e.preventDefault();
               e.stopPropagation();
@@ -5276,8 +5331,10 @@ function LayerRow({
               node={c}
               depth={depth + 1}
               selectedId={selectedId}
+              selectedIndex={selectedIndex}
               collapsed={collapsed}
               hidden={hidden}
+              repeatedIds={repeatedIds}
               onToggle={onToggle}
               onSelect={onSelect}
               onHover={onHover}
@@ -5405,6 +5462,25 @@ function InspectorPanel({
         onReorderLayer(dragged.id, ref.id, position);
       }
     : undefined;
+  // Ids that appear MORE THAN ONCE in the tree are repeated instances of a single
+  // source node (a `.map(...)` / loop). They can't be reordered individually —
+  // they're one JSX node inside an expression, and moving it would corrupt the
+  // loop — so the tree marks them non-draggable (LayerRow dims them + a hint) and
+  // the drag skips them as source AND target.
+  const repeatedLayerIds = (() => {
+    const count = new Map();
+    (function walk(nodes) {
+      (nodes || []).forEach((n) => {
+        count.set(n.id, (count.get(n.id) || 0) + 1);
+        walk(n.children);
+      });
+    })(layersTree?.nodes);
+    const set = new Set();
+    count.forEach((c, id) => {
+      if (c > 1) set.add(id);
+    });
+    return set;
+  })();
   // Pointer-based drag-to-reorder in the Layers tree — same model as the
   // in-canvas drag: the row FLOATS with the cursor (transform, slot reserved), a
   // blue divider (or nest ring) marks the drop, and the move commits only on
@@ -5412,6 +5488,7 @@ function InspectorPanel({
   const layerDragRef = useRef(null);
   const startLayerDrag = (e, node, key) => {
     if (!handleReorder || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (repeatedLayerIds.has(node.id)) return; // repeated (list) element — not reorderable
     const startX = e.clientX;
     const startY = e.clientY;
     // Forbid dropping a node into itself or its own subtree.
@@ -5441,15 +5518,27 @@ function InspectorPanel({
       let target = null;
       const rowEl = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('[data-layer-key]');
       const tKey = rowEl?.getAttribute('data-layer-key');
-      if (rowEl && tKey && !forbidden.has(tKey)) {
-        const tNode = byKey.get(tKey);
-        if (tNode) {
+      const tNode = tKey ? byKey.get(tKey) : null;
+      // Skip forbidden (self/subtree), a clone of the dragged node (same id →
+      // no-op), and repeated (list) elements (can't insert relative to a looped
+      // node without corrupting the expression).
+      if (
+        rowEl &&
+        tKey &&
+        tNode &&
+        !forbidden.has(tKey) &&
+        tNode.id !== node.id &&
+        !repeatedLayerIds.has(tNode.id)
+      ) {
+        {
           const r = rowEl.getBoundingClientRect();
           const f = (ev.clientY - r.top) / (r.height || 1);
           const canNest = !!(tNode.children && tNode.children.length);
           let position = f < 0.5 ? 'before' : 'after';
           let ring = false;
-          if (canNest && f >= 0.4 && f <= 0.6) {
+          // Wide middle band (25–75%) so nesting is actually reachable on short
+          // tree rows; the outer quarters reorder as siblings (before/after).
+          if (canNest && f >= 0.25 && f <= 0.75) {
             position = 'inside-end';
             ring = true;
           }
@@ -5622,8 +5711,10 @@ function InspectorPanel({
                       node={n}
                       depth={0}
                       selectedId={el.id}
+                      selectedIndex={el.index}
                       collapsed={collapsed}
                       hidden={hiddenLayers}
+                      repeatedIds={repeatedLayerIds}
                       onToggle={toggleCollapse}
                       onSelect={(node) => onSelectLayer?.(node)}
                       onHover={(node) => onHoverLayer?.(node)}
@@ -7156,6 +7247,12 @@ function App() {
       if (!canvas) return;
       const file = one?.file || activePath;
       const artboardId = layersTree?.artboardId ?? one?.artboardId ?? null;
+      // Optimistically reorder the layers tree so the panel reflects the move
+      // instantly; the HMR rebuild (request-layers, dgn:'loaded') confirms it a
+      // beat later. Ids here are distinct (repeated/list nodes are non-draggable).
+      setLayersTree((prev) =>
+        prev ? { ...prev, nodes: moveLayerNode(prev.nodes, draggedId, refId, position) } : prev
+      );
       editApplyChainRef.current = editApplyChainRef.current
         .catch(() => {})
         .then(() =>
