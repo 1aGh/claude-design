@@ -322,24 +322,25 @@ const HALO_CSS = `
   border-radius: 1px;
   cursor: text;
 }
-/* Phase 12.1 (DDR-138) — in-canvas drag-to-reorder. Dragging a SELECTED element
-   live-reorders the DOM (insertBefore) so its siblings reflow in real time
-   (Figma / dnd-kit style) — the reflow IS the preview, no placeholder line. The
-   dragged element gets a "lifted" cue while it moves; on drop the shell writes
-   the source move. pointer-events:none is toggled inline during the drag so
-   elementFromPoint sees the siblings underneath, not the dragged node.
+/* Phase 12.1 (DDR-138) — in-canvas drag-to-reorder (Figma-style). Dragging a
+   SELECTED element floats it with the cursor (via transform, applied inline —
+   its box stays reserved so the origin shows empty space, and it stays in the
+   zoomed world so styling + scale are preserved). A blue DIVIDER shows the
+   insertion point between siblings; a dashed RING shows a container it will nest
+   into. The DOM only changes on drop (no mid-drag reflow → no jank).
    NOTE: keep this comment backtick-free — it is inside the HALO_CSS template
    literal and a stray backtick closes it (DDR-067 §6). */
-[data-cd-id].dc-cv-reorder-lift {
-  opacity: 0.55;
-  outline: 2px solid var(--maude-hud-accent, #0d99ff);
-  outline-offset: 1px;
-  cursor: grabbing;
+.dc-cv-reorder-divider {
+  position: fixed;
+  z-index: 8;
+  pointer-events: none;
+  display: none;
+  background: var(--maude-hud-accent, #0d99ff);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--maude-chrome-bg-0, #ffffff);
 }
-/* Drop-target container highlight — shown while the pointer is over a DIFFERENT
-   parent than the dragged node's, so you can see which container you're about to
-   drop into before the (delayed) reflow commits. Outline only — no layout shift,
-   no content occlusion. */
+/* Drop-target container ring — shown while the pointer is over the middle of a
+   container the dragged node would nest INTO. Outline only — no layout shift. */
 [data-cd-id].dc-cv-reorder-into {
   outline: 2px dashed var(--maude-hud-accent, #0d99ff);
   outline-offset: -2px;
@@ -2300,21 +2301,16 @@ function SelectionHalos() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ReorderDrag (Phase 12.1, DDR-138) — in-canvas drag-to-reorder, Figma-style.
-// Grab the SELECTED element itself (no handle) and drag: the dragged node moves
-// LIVE among the DOM via insertBefore, so the browser reflows in real time —
-// which handles row / column / wrap / grid layouts for free (no per-layout math,
-// no placeholder line). The drop is ZONE-based on the element under the pointer:
-// outer bands → before/after it (reorder among siblings, or reparent OUT when it
-// sits at an outer level); the middle of a container → nest INSIDE it (reparent
-// IN). While the pointer stays inside the dragged node's own parent, the target
-// is climbed to that parent's direct child, so hovering a sibling's inner content
-// still reorders the sibling (no elementFromPoint deep-hit). The reshuffle is
-// DEBOUNCED (~150 ms settle) so a fast pass-through doesn't churn the layout, and
-// each move is FLIP-animated (siblings slide; skipped under prefers-reduced-
-// motion). On release we read the dragged node's final neighbours, map them to a
-// source move, and post `dgn:'reorder-request'` to the shell (DDR-054: untrusted
-// canvas REQUESTS, main-origin shell WRITES). The source write triggers a soft
-// HMR remount that re-renders the committed order, discarding the live preview.
+// Grab the SELECTED element and drag: it FLOATS with the cursor (a `transform`
+// applied inline, so its layout box stays reserved — the origin shows empty
+// space — and it stays inside the zoomed world, keeping its styling + scale; we
+// divide the screen delta by the element's own zoom so it tracks 1:1). A blue
+// DIVIDER marks the insertion point between siblings (vertical for a row parent,
+// horizontal for a column/block one); a dashed RING marks a container it would
+// nest INTO. The DOM does NOT change during the drag — only on DROP does the
+// node move + a `dgn:'reorder-request'` go to the shell (DDR-054: untrusted
+// canvas REQUESTS, main-origin shell WRITES → source write → HMR remount renders
+// the committed order). No mid-drag reflow means no jank / ping-pong.
 //
 // Headless: a document-capture pointerdown that only ACTS when a bare drag
 // starts on the single selected element with the move tool — a plain click and
@@ -2327,24 +2323,6 @@ function reorderCdId(node: Node | null): string | null {
   const el = node as Element;
   if (el.closest('.dc-cv-halo, .dc-cv-group-bbox, .dgn-pin')) return null;
   return el.getAttribute('data-cd-id');
-}
-
-/** After a live reflow, map the dragged node's final DOM neighbours to a source
- *  move (before/after a sibling, or inside-start when it became a lone child). */
-function reorderDropFromNeighbours(
-  el: Element
-): { refId: string; position: 'before' | 'after' | 'inside-start' } | null {
-  let prev = el.previousElementSibling;
-  while (prev && !reorderCdId(prev)) prev = prev.previousElementSibling;
-  const prevId = reorderCdId(prev);
-  if (prevId) return { refId: prevId, position: 'after' };
-  let next = el.nextElementSibling;
-  while (next && !reorderCdId(next)) next = next.nextElementSibling;
-  const nextId = reorderCdId(next);
-  if (nextId) return { refId: nextId, position: 'before' };
-  const parentId = reorderCdId(el.parentElement);
-  if (parentId) return { refId: parentId, position: 'inside-start' };
-  return null;
 }
 
 /** Suppress the synthetic click that fires after a drag so the drag doesn't
@@ -2374,41 +2352,21 @@ function ReorderDrag() {
   toolRef.current = tool;
 
   useEffect(() => {
-    type Plan = { container: HTMLElement; ref: HTMLElement | null };
+    type Target = { kind: 'before' | 'after' | 'inside'; el: HTMLElement; container: HTMLElement };
     type Drag = {
       pointerId: number;
       startX: number;
       startY: number;
       el: HTMLElement;
       cdId: string;
-      origParent: Node | null;
-      origNext: Node | null;
+      zoom: number;
+      prevStyle: string | null;
       dragging: boolean;
-      plan: Plan | null;
-      committed: boolean;
+      target: Target | null;
     };
     let drag: Drag | null = null;
-    let settleTimer: ReturnType<typeof setTimeout> | null = null;
     let highlightEl: HTMLElement | null = null;
-    // After a commit, ignore new plans for a beat: a cross-parent move shifts the
-    // layout, which changes what's under the pointer — without this cooldown the
-    // element ping-pongs between containers ("kousaný" reparent). Client code, so
-    // Date.now() is fine here.
-    let cooldownUntil = 0;
-    const reduceMotion =
-      typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    // The reshuffle waits this long after the pointer settles on a NEW target
-    // before it commits — a deliberate beat so a fast pass-through doesn't churn
-    // the layout, and the move reads as intentional (dogfood ask).
-    const SETTLE_MS = 150;
-    const COOLDOWN_MS = 280;
-
-    const clearSettle = () => {
-      if (settleTimer != null) {
-        clearTimeout(settleTimer);
-        settleTimer = null;
-      }
-    };
+    let dividerEl: HTMLDivElement | null = null;
 
     const setHighlight = (el: HTMLElement | null) => {
       if (highlightEl === el) return;
@@ -2417,76 +2375,96 @@ function ReorderDrag() {
       if (highlightEl) highlightEl.classList.add('dc-cv-reorder-into');
     };
 
+    const hideDivider = () => {
+      if (dividerEl) dividerEl.style.display = 'none';
+    };
+    const showDivider = (t: Target) => {
+      if (!dividerEl) {
+        dividerEl = document.createElement('div');
+        dividerEl.className = 'dc-cv-reorder-divider';
+        dividerEl.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(dividerEl);
+      }
+      const r = t.el.getBoundingClientRect();
+      const pcs = getComputedStyle(t.container);
+      const isRow = pcs.display.includes('flex') && pcs.flexDirection.startsWith('row');
+      const el = dividerEl;
+      el.style.display = 'block';
+      if (isRow) {
+        const cx = t.kind === 'before' ? r.left : r.right;
+        el.style.left = `${Math.round(cx) - 1}px`;
+        el.style.top = `${Math.round(r.top)}px`;
+        el.style.width = '2px';
+        el.style.height = `${Math.round(r.height)}px`;
+      } else {
+        const cy = t.kind === 'before' ? r.top : r.bottom;
+        el.style.left = `${Math.round(r.left)}px`;
+        el.style.top = `${Math.round(cy) - 1}px`;
+        el.style.width = `${Math.round(r.width)}px`;
+        el.style.height = '2px';
+      }
+    };
+
     // An element can be NESTED INTO only if it already holds element children —
     // avoids dropping a node inside a leaf (`<span>text</span>`); before/after
     // still works on leaves.
     const canNest = (el: HTMLElement): boolean => el.childElementCount > 0;
 
-    // FLIP: record affected siblings' rects, do the DOM move, then transition each
-    // from its old box to its new one so the reshuffle slides instead of snapping.
-    const commitReflow = (d: Drag, plan: Plan) => {
-      if (plan.ref === d.el) return; // no-op / illegal self-anchor
-      const src = d.el.parentElement;
-      const affected: HTMLElement[] = [];
-      const collect = (c: HTMLElement | null) => {
-        if (!c) return;
-        for (const k of [].slice.call(c.children) as HTMLElement[]) {
-          if (k !== d.el && affected.indexOf(k) < 0) affected.push(k);
-        }
-      };
-      collect(src);
-      if (plan.container !== src) collect(plan.container);
-      const first = new Map<HTMLElement, DOMRect>();
-      if (!reduceMotion) {
-        for (const k of affected) first.set(k, k.getBoundingClientRect());
+    // Where would the node drop right now? Pure read — never mutates the DOM
+    // (that only happens on drop), which is what keeps the drag jank-free.
+    const computeTarget = (x: number, y: number, d: Drag): Target | null => {
+      let E = document.elementFromPoint(x, y)?.closest('[data-cd-id]') as HTMLElement | null;
+      while (E && (E === d.el || d.el.contains(E))) {
+        E = E.parentElement ? (E.parentElement.closest('[data-cd-id]') as HTMLElement | null) : null;
       }
-      const dFirst = reduceMotion ? null : d.el.getBoundingClientRect();
+      if (!E || !reorderCdId(E)) return null;
+      // While inside the dragged node's own parent, climb to that parent's direct
+      // child so hovering a sibling's inner content still targets the sibling
+      // (no deep-hit). Outside it, E stays deep → reparent OUT / INTO others.
+      let anchor: HTMLElement = E;
+      const sib = d.el.parentElement;
+      if (sib?.contains(E)) {
+        let s: HTMLElement | null = E;
+        while (s && s.parentElement !== sib) s = s.parentElement as HTMLElement | null;
+        if (s && s !== d.el && reorderCdId(s)) anchor = s;
+      }
+      const parent = anchor.parentElement;
+      const pcs = parent ? getComputedStyle(parent) : null;
+      const isRow = !!pcs && pcs.display.includes('flex') && pcs.flexDirection.startsWith('row');
+      const r = anchor.getBoundingClientRect();
+      const frac = isRow ? (x - r.left) / (r.width || 1) : (y - r.top) / (r.height || 1);
+      if (canNest(anchor) && frac >= 0.35 && frac <= 0.65 && !d.el.contains(anchor)) {
+        return { kind: 'inside', el: anchor, container: anchor };
+      }
+      if (!parent || parent === d.el || d.el.contains(parent)) return null;
+      return { kind: frac < 0.5 ? 'before' : 'after', el: anchor, container: parent };
+    };
+
+    const targetToDrop = (
+      t: Target
+    ): { refId: string; position: 'before' | 'after' | 'inside-end' } | null => {
+      if (t.kind === 'inside') {
+        const id = reorderCdId(t.container);
+        return id ? { refId: id, position: 'inside-end' } : null;
+      }
+      const id = reorderCdId(t.el);
+      return id ? { refId: id, position: t.kind } : null;
+    };
+
+    // On drop, move the node to match the target for an immediate result; the
+    // source write + HMR remount then re-render the committed order.
+    const applyDrop = (el: HTMLElement, t: Target) => {
       try {
-        if (plan.ref) plan.container.insertBefore(d.el, plan.ref);
-        else plan.container.appendChild(d.el);
+        if (t.kind === 'inside') t.container.appendChild(el);
+        else if (t.kind === 'before') t.container.insertBefore(el, t.el);
+        else {
+          let ref = t.el.nextElementSibling;
+          if (ref === el) ref = el.nextElementSibling;
+          t.container.insertBefore(el, ref);
+        }
       } catch {
-        return;
+        /* detached — remount re-syncs */
       }
-      d.committed = true;
-      d.plan = plan;
-      cooldownUntil = Date.now() + COOLDOWN_MS; // settle before allowing the next move
-      setHighlight(null); // the move landed — clear the drop-target ring
-      if (reduceMotion) return;
-      const play = (k: HTMLElement, f: DOMRect) => {
-        const l = k.getBoundingClientRect();
-        const dx = f.left - l.left;
-        const dy = f.top - l.top;
-        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
-        k.style.transition = 'none';
-        k.style.transform = `translate(${dx}px, ${dy}px)`;
-        k.setAttribute('data-dc-reorder-flip', '1');
-      };
-      for (const k of affected) play(k, first.get(k) as DOMRect);
-      if (dFirst) play(d.el, dFirst);
-      requestAnimationFrame(() => {
-        for (const k of affected) {
-          if (!k.getAttribute('data-dc-reorder-flip')) continue;
-          k.style.transition = 'transform 170ms cubic-bezier(0.2, 0, 0, 1)';
-          k.style.transform = '';
-        }
-        if (d.el.getAttribute('data-dc-reorder-flip')) {
-          d.el.style.transition = 'transform 170ms cubic-bezier(0.2, 0, 0, 1)';
-          d.el.style.transform = '';
-        }
-      });
-    };
-
-    const clearFlip = (root: Document) => {
-      for (const k of [].slice.call(root.querySelectorAll('[data-dc-reorder-flip]')) as HTMLElement[]) {
-        k.style.transition = '';
-        k.style.transform = '';
-        k.removeAttribute('data-dc-reorder-flip');
-      }
-    };
-
-    const endStyles = (el: HTMLElement) => {
-      el.style.pointerEvents = '';
-      el.classList.remove('dc-cv-reorder-lift');
     };
 
     const onDown = (e: PointerEvent) => {
@@ -2508,11 +2486,10 @@ function ReorderDrag() {
         startY: e.clientY,
         el,
         cdId,
-        origParent: el.parentNode,
-        origNext: el.nextSibling,
+        zoom: 1,
+        prevStyle: null,
         dragging: false,
-        plan: null,
-        committed: false,
+        target: null,
       };
     };
 
@@ -2522,99 +2499,55 @@ function ReorderDrag() {
       if (!d.dragging) {
         if (!crossedDragThreshold(d.startX, d.startY, e.clientX, e.clientY)) return;
         d.dragging = true;
-        d.el.style.pointerEvents = 'none'; // so elementFromPoint sees the target beneath
-        d.el.classList.add('dc-cv-reorder-lift');
+        // Start floating: the element tracks the cursor via `transform`, so its
+        // layout box stays reserved (origin shows empty space) and it stays in
+        // the zoomed world (styling + scale intact). Divide the screen delta by
+        // the element's own zoom (screen size / natural size) so it tracks 1:1.
+        const rect = d.el.getBoundingClientRect();
+        d.zoom = d.el.offsetWidth ? rect.width / d.el.offsetWidth : 1;
+        d.prevStyle = d.el.getAttribute('style');
+        if (getComputedStyle(d.el).position === 'static') d.el.style.position = 'relative';
+        d.el.style.zIndex = '9990';
+        d.el.style.pointerEvents = 'none'; // so elementFromPoint sees what's beneath
+        d.el.style.opacity = '0.9';
+        d.el.style.cursor = 'grabbing';
+        d.el.style.boxShadow = '0 10px 28px rgba(0, 0, 0, 0.28)';
+        d.el.style.willChange = 'transform';
+        d.el.style.transition = 'none';
       }
-      const x = e.clientX;
-      const y = e.clientY;
-      // Resolve the target E: the deepest stamped element under the pointer that
-      // isn't the dragged node or its descendant (climb out of both).
-      let E = document.elementFromPoint(x, y)?.closest('[data-cd-id]') as HTMLElement | null;
-      while (E && (E === d.el || d.el.contains(E))) {
-        E = E.parentElement ? (E.parentElement.closest('[data-cd-id]') as HTMLElement | null) : null;
-      }
-      if (!E || !reorderCdId(E)) return; // keep the last plan
-      // Prefer the dragged node's OWN sibling level: while the pointer is inside
-      // the dragged node's current parent, climb E up to that parent's direct
-      // child. So hovering a sibling's inner content still targets the sibling
-      // (clean row/column reorder, no deep-hit) — and the sibling's middle can
-      // still nest INTO it. Outside the current parent, E stays deep so you can
-      // reparent OUT (hover an ancestor's edge) or INTO another container.
-      let anchor: HTMLElement = E;
-      const sibContainer = d.el.parentElement;
-      if (sibContainer?.contains(E)) {
-        let s: HTMLElement | null = E;
-        while (s && s.parentElement !== sibContainer) s = s.parentElement as HTMLElement | null;
-        if (s && s !== d.el && reorderCdId(s)) anchor = s;
-      }
-      // Zone within `anchor` on its parent's flow axis: outer bands → before/after
-      // (reorder, or reparent-OUT when anchor sits at an outer level); middle of a
-      // container → nest INSIDE (reparent-IN).
-      const parent = anchor.parentElement;
-      const pcs = parent ? getComputedStyle(parent) : null;
-      const isRow = !!pcs && pcs.display.includes('flex') && pcs.flexDirection.startsWith('row');
-      const r = anchor.getBoundingClientRect();
-      const frac = isRow ? (x - r.left) / (r.width || 1) : (y - r.top) / (r.height || 1);
-      let plan: Plan | null = null;
-      if (canNest(anchor) && frac >= 0.35 && frac <= 0.65 && !d.el.contains(anchor)) {
-        plan = { container: anchor, ref: null }; // append as last child (nest in)
-      } else if (parent) {
-        let ref: HTMLElement | null =
-          frac < 0.5 ? anchor : (anchor.nextElementSibling as HTMLElement | null);
-        if (ref === d.el) ref = d.el.nextElementSibling as HTMLElement | null;
-        plan = { container: parent, ref };
-      }
-      if (!plan?.container || plan.container === d.el || d.el.contains(plan.container)) {
+      const tx = (e.clientX - d.startX) / d.zoom;
+      const ty = (e.clientY - d.startY) / d.zoom;
+      d.el.style.transform = `translate(${tx}px, ${ty}px)`;
+      // Preview only — never touch the DOM here.
+      const target = computeTarget(e.clientX, e.clientY, d);
+      d.target = target;
+      if (!target) {
         setHighlight(null);
-        return;
+        hideDivider();
+      } else if (target.kind === 'inside') {
+        hideDivider();
+        setHighlight(target.container);
+      } else {
+        setHighlight(null);
+        showDivider(target);
       }
-      // Ring the target container when it's a DIFFERENT parent than the dragged
-      // node's current one (reparent / nest) so the destination is visible before
-      // the reflow lands; a plain same-parent reorder gets no ring (the live
-      // reflow already shows it).
-      setHighlight(plan.container !== d.el.parentElement ? plan.container : null);
-      // Just committed a move? Let the layout + pointer settle before reacting to
-      // a new plan — stops the cross-parent ping-pong.
-      if (Date.now() < cooldownUntil) return;
-      // Debounce: only (re)start the settle timer when the intended drop changes.
-      if (d.plan && d.plan.container === plan.container && d.plan.ref === plan.ref) return;
-      d.plan = plan;
-      clearSettle();
-      const target = plan;
-      settleTimer = setTimeout(() => {
-        settleTimer = null;
-        if (drag === d && d.dragging) commitReflow(d, target);
-      }, SETTLE_MS);
     };
 
     const onUp = (e: PointerEvent) => {
       const d = drag;
       drag = null;
-      clearSettle();
       setHighlight(null);
+      hideDivider();
       if (!d || e.pointerId !== d.pointerId) return;
       if (!d.dragging) return; // a plain click — leave it to native handlers
-      // A quick drag may release before the settle timer fired — commit the
-      // pending plan now so the reorder still lands.
-      if (d.plan && !d.committed) commitReflow(d, d.plan);
-      endStyles(d.el);
-      const doc = d.el.ownerDocument ?? document;
-      // Let the slide finish, then strip the transient FLIP inline styles (a
-      // successful drop remounts from source and clears them anyway).
-      setTimeout(() => clearFlip(doc), 220);
-      if (!d.committed) return; // never moved — nothing to write
+      // Un-float: restore the element's exact original inline style.
+      if (d.prevStyle == null) d.el.removeAttribute('style');
+      else d.el.setAttribute('style', d.prevStyle);
+      if (!d.target) return; // dropped on empty space — no move
+      const drop = targetToDrop(d.target);
+      if (!drop) return;
+      applyDrop(d.el, d.target); // immediate result; the remount confirms it
       suppressNextCanvasClick();
-      const drop = reorderDropFromNeighbours(d.el);
-      if (!drop) {
-        if (d.origParent) {
-          try {
-            d.origParent.insertBefore(d.el, d.origNext);
-          } catch {
-            /* node detached — a remount will re-sync */
-          }
-        }
-        return;
-      }
       window.parent.postMessage(
         { dgn: 'reorder-request', id: d.cdId, refId: drop.refId, position: drop.position },
         '*'
@@ -2625,8 +2558,11 @@ function ReorderDrag() {
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     return () => {
-      clearSettle();
       setHighlight(null);
+      if (dividerEl) {
+        dividerEl.remove();
+        dividerEl = null;
+      }
       document.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
