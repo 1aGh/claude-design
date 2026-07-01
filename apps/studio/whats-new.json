@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "new-project-menu-and-local",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Start a project from the menu — or fully local",
+      "summary": "New Project… is now in the File menu (⌘N), not just onboarding. And you can create a project on This computer only — a plain local git repo with no GitHub and no remote, that you can publish later. It works even when you're signed out.",
+      "surface": "design-ui"
+    },
+    {
       "id": "desktop-onboarding-fixes",
       "version": "0.36.2",
       "date": "2026-06-30",

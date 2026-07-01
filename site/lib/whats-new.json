@@ -1,11 +1,20 @@
 {
-  "generated": "2026-06-30T22:58:45.400Z",
-  "version": "0.36.1",
+  "generated": "2026-07-01T11:41:12.353Z",
+  "version": "0.36.2",
   "entries": [
     {
-      "id": "desktop-onboarding-fixes",
+      "id": "new-project-menu-and-local",
       "version": null,
       "date": null,
+      "kind": "feature",
+      "title": "Start a project from the menu — or fully local",
+      "summary": "New Project… is now in the File menu (⌘N), not just onboarding. And you can create a project on This computer only — a plain local git repo with no GitHub and no remote, that you can publish later. It works even when you're signed out.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "desktop-onboarding-fixes",
+      "version": "0.36.2",
+      "date": "2026-06-30",
       "kind": "fix",
       "title": "A smoother first run",
       "summary": "Onboarding got a polish. If you're already signed in, the GitHub step now says Continue instead of asking you to sign in again, and your signed-in status shows reliably. Cancelling the sign-in code screen frees the button right away, “Merge this branch → main” shows progress while it runs, and a brand-new project opens to a starter canvas instead of an empty workspace.",
