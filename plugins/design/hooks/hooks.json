@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/dev-server/bin/preflight.sh --quiet --warn-only",
+            "command": "PKG=\"${CLAUDE_PLUGIN_ROOT}/../..\"; if [ -f \"$PKG/cli/lib/preflight.mjs\" ]; then (cd \"$PKG\" && node cli/lib/preflight.mjs --plugin design --warn-only); elif command -v maude >/dev/null 2>&1; then maude preflight --plugin design --warn-only; fi",
             "timeout": 8
           }
         ]
