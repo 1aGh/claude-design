@@ -317,6 +317,46 @@ const HALO_CSS = `
   border-radius: 1px;
   cursor: text;
 }
+/* Phase 12.1 (DDR-138) — in-canvas drag-to-reorder. A grab handle rides the
+   top-left of the single-selected element's halo; dragging it posts a
+   dgn:'reorder-request' to the shell (main-origin performs the write). The
+   insertion overlays mirror the Layers-panel idiom: an accent line for a sibling
+   drop (before/after), an accent ring for a nest (inside). All are chrome —
+   pointer-events:none except the grip itself. */
+.dc-cv-reorder-grip {
+  position: fixed;
+  z-index: 6;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--maude-chrome-bg-0, #ffffff);
+  border-radius: 4px;
+  background: var(--maude-hud-accent, #0d99ff);
+  color: var(--maude-chrome-bg-0, #ffffff);
+  font-size: 10px;
+  line-height: 1;
+  cursor: grab;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.dc-cv-reorder-grip:active { cursor: grabbing; }
+.dc-cv-reorder-line {
+  position: fixed;
+  z-index: 6;
+  pointer-events: none;
+  display: none;
+  background: var(--maude-hud-accent, #0d99ff);
+  border-radius: 1px;
+}
+.dc-cv-reorder-line.dc-cv-reorder-ring {
+  background: transparent;
+  border: 2px solid var(--maude-hud-accent, #0d99ff);
+  box-shadow: inset 0 0 0 9999px color-mix(in oklab, var(--maude-hud-accent, #0d99ff) 12%, transparent);
+  border-radius: 2px;
+}
 `.trim();
 
 function ensureHaloStyles(): void {
@@ -1808,6 +1848,7 @@ function CanvasRouter({
       <ElementMarqueeOverlay />
       <HoverHalo el={hoverEl} />
       <SelectionHalos />
+      <ReorderGrip />
       <GroupBbox />
       <EqualSpacingHandles />
       <ContextualToolbar />
@@ -2267,6 +2308,205 @@ function SelectionHalos() {
   }, [selected]);
 
   return <div ref={containerRef} aria-hidden="true" />;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ReorderGrip (Phase 12.1, DDR-138) — in-canvas drag-to-reorder. When exactly
+// one stamped (`data-cd-id`) element is selected, a grab handle rides its halo's
+// top-left corner. Dragging the handle hit-tests the element under the pointer,
+// resolves a flow-aware drop (before/after a sibling, or nest inside a
+// container), paints an insertion overlay, and on release posts a
+// `dgn:'reorder-request'` to the parent shell — which performs the main-origin
+// `/_api/reorder` write (DDR-054: the untrusted canvas REQUESTS, the shell
+// WRITES — same lane as inline text/CSS edits). Self-contained: it adds NO
+// input-router branch, so select / pan / marquee / annotation gestures are
+// untouched. Kept off `classify()` deliberately (bare/Cmd drags are both spoken
+// for; a halo handle can't collide).
+
+type ReorderPosition = 'before' | 'after' | 'inside-start' | 'inside-end';
+
+function computeReorderDrop(
+  targetEl: Element,
+  clientX: number,
+  clientY: number
+): { refId: string; position: ReorderPosition } | null {
+  const refId = targetEl.getAttribute('data-cd-id');
+  if (!refId) return null;
+  const r = (targetEl as HTMLElement).getBoundingClientRect();
+  if (r.width === 0 && r.height === 0) return null;
+  // Flow direction of the target's PARENT decides the axis: a row flex reads
+  // left/right; column/block reads top/bottom (so "above" means what the eye
+  // expects). Middle band nests into a container; a leaf's middle collapses to
+  // the nearer edge (nothing to nest into).
+  const parent = targetEl.parentElement;
+  const cs = parent ? getComputedStyle(parent) : null;
+  const isRow = !!cs && cs.display.includes('flex') && cs.flexDirection.startsWith('row');
+  const frac = isRow ? (clientX - r.left) / (r.width || 1) : (clientY - r.top) / (r.height || 1);
+  const isContainer = targetEl.children.length > 0;
+  if (frac < 0.3) return { refId, position: 'before' };
+  if (frac > 0.7) return { refId, position: 'after' };
+  if (isContainer) return { refId, position: 'inside-end' };
+  return { refId, position: frac < 0.5 ? 'before' : 'after' };
+}
+
+function ReorderGrip() {
+  const { selected } = useSelectionSet();
+  const gripRef = useRef<HTMLButtonElement | null>(null);
+  const lineRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{
+    id: string;
+    el: Element;
+    drop: { refId: string; position: ReorderPosition } | null;
+  } | null>(null);
+
+  // Only a single stamped element is reorderable. Artboard selections (no id)
+  // and multi-select show no grip.
+  const one = selected.length === 1 ? selected[0] : null;
+  const cdId = one && typeof one.id === 'string' ? one.id : null;
+
+  // rAF: keep the grip pinned to the selected element's top-left through pan/zoom
+  // (same follow pattern as SelectionHalos). Frozen while a drag holds capture.
+  useEffect(() => {
+    const g = gripRef.current;
+    if (!cdId || !one) {
+      if (g) g.style.display = 'none';
+      return;
+    }
+    let raf: number | null = null;
+    const follow = () => {
+      raf = requestAnimationFrame(follow);
+      if (!g || dragRef.current) return;
+      const el = resolveSelectionEl(document, one);
+      const r = el ? (el as HTMLElement).getBoundingClientRect() : null;
+      if (!r || (r.width === 0 && r.height === 0)) {
+        g.style.display = 'none';
+      } else {
+        g.style.display = 'flex';
+        g.style.left = `${Math.round(r.left)}px`;
+        g.style.top = `${Math.round(r.top)}px`;
+      }
+    };
+    raf = requestAnimationFrame(follow);
+    return () => {
+      if (raf != null) cancelAnimationFrame(raf);
+    };
+  }, [cdId, one]);
+
+  const hideLine = () => {
+    const l = lineRef.current;
+    if (l) l.style.display = 'none';
+  };
+
+  const paintLine = (targetEl: Element, position: ReorderPosition) => {
+    const l = lineRef.current;
+    if (!l) return;
+    const r = (targetEl as HTMLElement).getBoundingClientRect();
+    const parent = targetEl.parentElement;
+    const cs = parent ? getComputedStyle(parent) : null;
+    const isRow = !!cs && cs.display.includes('flex') && cs.flexDirection.startsWith('row');
+    l.style.display = 'block';
+    if (position === 'inside-end' || position === 'inside-start') {
+      l.className = 'dc-cv-reorder-line dc-cv-reorder-ring';
+      l.style.left = `${Math.round(r.left)}px`;
+      l.style.top = `${Math.round(r.top)}px`;
+      l.style.width = `${Math.round(r.width)}px`;
+      l.style.height = `${Math.round(r.height)}px`;
+    } else if (isRow) {
+      l.className = 'dc-cv-reorder-line';
+      const x = position === 'before' ? r.left : r.right;
+      l.style.left = `${Math.round(x) - 1}px`;
+      l.style.top = `${Math.round(r.top)}px`;
+      l.style.width = '2px';
+      l.style.height = `${Math.round(r.height)}px`;
+    } else {
+      l.className = 'dc-cv-reorder-line';
+      const y = position === 'before' ? r.top : r.bottom;
+      l.style.left = `${Math.round(r.left)}px`;
+      l.style.top = `${Math.round(y) - 1}px`;
+      l.style.width = `${Math.round(r.width)}px`;
+      l.style.height = '2px';
+    }
+  };
+
+  const onGripDown = (e: {
+    pointerId: number;
+    preventDefault: () => void;
+    stopPropagation: () => void;
+  }) => {
+    if (!cdId || !one) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = resolveSelectionEl(document, one);
+    if (!el) return;
+    const g = gripRef.current;
+    dragRef.current = { id: cdId, el, drop: null };
+    try {
+      g?.setPointerCapture(e.pointerId);
+    } catch {}
+
+    const onMove = (ev: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      // Hide our own chrome so elementFromPoint returns the canvas element
+      // underneath, not the grip.
+      const saved = g ? g.style.pointerEvents : '';
+      if (g) g.style.pointerEvents = 'none';
+      const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+      if (g) g.style.pointerEvents = saved;
+      const targetEl = hit?.closest?.('[data-cd-id]') as HTMLElement | null;
+      if (
+        !targetEl ||
+        targetEl === d.el ||
+        d.el.contains(targetEl) ||
+        targetEl.closest('.dc-cv-halo, .dc-cv-group-bbox, .dgn-pin, .dc-cv-reorder-grip')
+      ) {
+        d.drop = null;
+        hideLine();
+        return;
+      }
+      const drop = computeReorderDrop(targetEl, ev.clientX, ev.clientY);
+      if (!drop || drop.refId === d.id) {
+        d.drop = null;
+        hideLine();
+        return;
+      }
+      d.drop = drop;
+      paintLine(targetEl, drop.position);
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      const d = dragRef.current;
+      dragRef.current = null;
+      hideLine();
+      if (d?.drop) {
+        window.parent.postMessage(
+          { dgn: 'reorder-request', id: d.id, refId: d.drop.refId, position: d.drop.position },
+          '*'
+        );
+      }
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        ref={gripRef}
+        className="dc-cv-reorder-grip"
+        aria-label="Drag to reorder this element"
+        title="Drag to move this element (reorder / nest)"
+        onPointerDown={onGripDown}
+      >
+        ⠿
+      </button>
+      <div ref={lineRef} className="dc-cv-reorder-line" aria-hidden="true" />
+    </>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

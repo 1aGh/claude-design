@@ -5641,6 +5641,11 @@ function App() {
   // after it) renumbers. Stash the re-settle target { file, movedId, artboardId }
   // so the dgn:'loaded' handler re-selects the moved element by its NEW id.
   const pendingReorderRef = useRef(null);
+  // Latest `reorderLayer` (defined far below), read from the stale-closure
+  // onMessage handler when the in-canvas grip posts dgn:'reorder-request'
+  // (same freshness idiom as selectedRef; avoids a render-time TDZ on the
+  // later useCallback).
+  const reorderLayerRef = useRef(null);
   // Phase 12 Task 4 — Layers tree for the active artboard (posted by canvas-shell).
   const [layersTree, setLayersTree] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -6756,6 +6761,24 @@ function App() {
       } else if (m.dgn === 'layers-tree') {
         // Phase 12 Task 4 — browsable layers tree for the active artboard.
         setLayersTree({ artboardId: m.artboardId, nodes: Array.isArray(m.tree) ? m.tree : [] });
+      } else if (m.dgn === 'reorder-request') {
+        // Phase 12.1 (DDR-138) — the in-canvas ReorderGrip (untrusted canvas
+        // iframe) can't reach the main-origin-only /_api/reorder (DDR-054), so it
+        // REQUESTS a move; the shell performs the privileged write via reorderLayer
+        // (same lane as edit-text → /_api/edit-text). Honor it ONLY from the ACTIVE
+        // canvas (a background tab's untrusted canvas must not mutate source), and
+        // only for well-formed ids/position (reorderLayer + the server re-validate).
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        const okShape =
+          typeof m.id === 'string' &&
+          typeof m.refId === 'string' &&
+          (m.position === 'before' ||
+            m.position === 'after' ||
+            m.position === 'inside-start' ||
+            m.position === 'inside-end');
+        if (e.source === activeWin && okShape) {
+          reorderLayerRef.current?.(m.id, m.refId, m.position);
+        }
       } else if (m.dgn === 'open-inspector') {
         // Phase 12 — context-menu "Inspect" / tool-palette Inspect opens the right panel.
         openRightPanel('inspector');
@@ -7097,6 +7120,11 @@ function App() {
     },
     [activePath, layersTree]
   );
+  // Keep the ref the (stale-closure) onMessage reorder-request handler reads
+  // pointed at the latest reorderLayer.
+  useEffect(() => {
+    reorderLayerRef.current = reorderLayer;
+  }, [reorderLayer]);
 
   const resolveComment = useCallback((id) => {
     wsSend({ type: 'comments-patch', id, patch: { status: 'resolved' } });

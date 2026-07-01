@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "drag-to-reorder",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Drag to reorder elements",
+      "summary": "Rearrange a canvas by hand. Drag a layer in the Layers panel — above, below, or into another element — or grab the handle on a selected element right on the canvas and drop it where you want. A reorder rewrites your .tsx source and is undoable (⌘-rollback). Keyboard too: with a layer focused, Alt+↑/↓ moves it past a sibling and Alt+→ nests it.",
+      "surface": "design-ui"
+    },
+    {
       "id": "new-project-menu-and-local",
       "version": "0.37.0",
       "date": "2026-07-01",
