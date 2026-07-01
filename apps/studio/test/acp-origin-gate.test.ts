@@ -11,8 +11,19 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { isLoopbackHost } from '../ws.ts';
+import { isLoopbackHost, isSameOriginWs } from '../ws.ts';
 import { bootServer, killProc, makeSandbox, nextPort } from './_helpers.ts';
+
+// A minimal Request stand-in — `new Request()` strips forbidden headers like
+// `Host`, so drive the gate through a header-getter shim instead.
+function wsReq(host: string | null, origin: string | null): Request {
+  return {
+    headers: {
+      get: (n: string) =>
+        n.toLowerCase() === 'host' ? host : n.toLowerCase() === 'origin' ? origin : null,
+    },
+  } as unknown as Request;
+}
 
 async function readCanvasOrigin(designRoot: string): Promise<string> {
   for (let i = 0; i < 40; i++) {
@@ -50,6 +61,16 @@ describe('ACP bridge origin gate', () => {
       // headers) passes the loopback guard then fails the WS upgrade → 400,
       // which proves the route branch exists (a 404 would mean it's unwired).
       expect(await status(main, '/_ws/acp')).toBe(400);
+
+      // (3b) CSWSH gate — a cross-origin drive-by CANNOT open /_ws/acp even over
+      // loopback: an Origin that isn't this same loopback server is 403'd BEFORE
+      // the upgrade. WS handshakes bypass SOP, and the bridge spawns the user's
+      // `claude` + drives edits, so Host-loopback alone is not enough.
+      const driveBy = await fetch(`${main}/_ws/acp`, {
+        headers: { Origin: 'https://evil.example' },
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(driveBy.status).toBe(403);
 
       // (4) /_api/acp/focus (the /design:chat hook) — POST-only on the main
       // origin, 403 on the canvas origin.
@@ -91,5 +112,22 @@ describe('ACP bridge origin gate', () => {
     expect(isLoopbackHost('evil.example.com')).toBe(false);
     expect(isLoopbackHost('10.0.0.5:4399')).toBe(false);
     expect(isLoopbackHost(null)).toBe(false);
+  });
+
+  test('isSameOriginWs — CSWSH gate: only same-loopback-port Origins (or none) pass', () => {
+    // No Origin (CLI / tests / non-browser) → allowed.
+    expect(isSameOriginWs(wsReq('localhost:4399', null))).toBe(true);
+    // Same loopback host + port (native panel + same-origin `maude design serve`
+    // tab both navigate to http://localhost:<serverport>) → allowed.
+    expect(isSameOriginWs(wsReq('localhost:4399', 'http://localhost:4399'))).toBe(true);
+    expect(isSameOriginWs(wsReq('127.0.0.1:4399', 'http://127.0.0.1:4399'))).toBe(true);
+    // localhost ≡ 127.0.0.1 on the same port → allowed (same server).
+    expect(isSameOriginWs(wsReq('localhost:4399', 'http://127.0.0.1:4399'))).toBe(true);
+    // Cross-origin drive-by (remote host) → rejected — the CSWSH close.
+    expect(isSameOriginWs(wsReq('localhost:4399', 'https://evil.example'))).toBe(false);
+    // Same host, DIFFERENT local port (attacker's own dev server) → rejected.
+    expect(isSameOriginWs(wsReq('localhost:4399', 'http://localhost:3000'))).toBe(false);
+    // Opaque/null origin (sandboxed iframe, file://) → rejected.
+    expect(isSameOriginWs(wsReq('localhost:4399', 'null'))).toBe(false);
   });
 });

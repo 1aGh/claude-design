@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-01T12:03:21.143Z",
+  "generated": "2026-07-01T21:01:35.619Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1013,6 +1013,17 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
+    },
+    {
+      "id": "feature-acp-slash-command-autocomplete",
+      "title": "Feature: ACP composer slash-command autocomplete + inline highlight",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan continues the Phase 31 (DDR-123) native ACP chat panel and builds directly o...",
+      "planPath": ".ai/plans/feature-acp-slash-command-autocomplete.md",
+      "archived": false,
+      "phaseKey": null
     },
     {
       "id": "phase-12.1-layers-reorder",

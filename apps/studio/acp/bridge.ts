@@ -12,6 +12,7 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 import {
+  type AvailableCommand,
   type Client,
   ClientSideConnection,
   ndJsonStream,
@@ -33,6 +34,12 @@ export interface AcpBridgeOptions {
   onUpdate: (update: SessionUpdate) => void;
   /** Informational: a tool permission was auto-approved (transparency for the UI). */
   onPermission?: (req: RequestPermissionRequest) => void;
+  /**
+   * The agent's slash-command catalogue (`available_commands_update`) — drives
+   * the composer autocomplete + inline command pill. Fires whenever the agent
+   * (re)publishes the list; the manager caches the latest and pushes it to the UI.
+   */
+  onCommands?: (commands: AvailableCommand[]) => void;
 }
 
 type Spawned = ReturnType<typeof Bun.spawn>;
@@ -201,6 +208,12 @@ export class AcpBridge {
 
     const client: Client = {
       sessionUpdate: (params: SessionNotification) => {
+        // The command catalogue is chrome, not chat — surface it to the UI but
+        // keep it out of the rendered turn + the persisted transcript.
+        if (params.update.sessionUpdate === 'available_commands_update') {
+          this.opts.onCommands?.(params.update.availableCommands ?? []);
+          return;
+        }
         this.opts.onUpdate(params.update);
         void this.appendTranscript({ role: 'agent', update: params.update });
       },
@@ -252,6 +265,20 @@ export class AcpBridge {
     });
     await this.appendTranscript({ role: 'stop', stopReason: response.stopReason });
     return { stopReason: response.stopReason };
+  }
+
+  /**
+   * Warm the adapter for a chat WITHOUT sending a prompt — spawns `claude`
+   * (if not already up) and creates the session, so the agent publishes its
+   * `available_commands_update` before the user's first message. Triggered when
+   * the user starts typing a slash command (see ChatPanel), not on panel open,
+   * so the "opening costs nothing" default holds until there's real intent.
+   * Best-effort: callers swallow errors (autocomplete degrades to the static list).
+   */
+  async warmUp(chatId: string): Promise<void> {
+    if (this.conn && this.configChanged()) await this.stop();
+    await this.ensureStarted();
+    await this.sessionFor(chatId);
   }
 
   /** Cancel the in-flight turn (no-op if nothing is running). */

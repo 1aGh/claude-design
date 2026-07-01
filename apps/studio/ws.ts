@@ -81,6 +81,43 @@ export function isLoopbackHost(host: string | null): boolean {
   return h === '127.0.0.1' || h === '::1' || h === 'localhost';
 }
 
+/** Port component of a `host[:port]` / `[::1]:port` string ('' if default-port). */
+function hostPort(host: string): string {
+  const h = host.trim();
+  if (h.startsWith('[')) {
+    const close = h.indexOf(']');
+    return close !== -1 ? h.slice(close + 1).replace(/^:/, '') : '';
+  }
+  const colon = h.lastIndexOf(':');
+  return colon !== -1 ? h.slice(colon + 1) : '';
+}
+
+/**
+ * CSWSH gate for the privileged ACP WebSocket. Loopback-Host is NOT enough: a
+ * WS handshake bypasses the same-origin policy, so a cross-origin drive-by page
+ * (`http://evil.com`, or the user's own `http://localhost:3000` dev server) can
+ * open `ws://localhost:<port>/_ws/acp` — and the bridge spawns the user's
+ * `claude` + drives file edits. A browser ALWAYS sends `Origin` on a cross-doc
+ * WS connect; a non-browser client (CLI / tests) omits it. Allow when Origin is
+ * absent, or when it is a loopback host on the SAME port as the request — which
+ * is exactly what the native panel and a same-origin `maude design serve` tab
+ * send (both navigate to `http://localhost:<serverport>`). Reject everything
+ * else. Mirrors the `sameOriginWrite` (http.ts) discipline for the WS upgrade.
+ */
+export function isSameOriginWs(req: Request): boolean {
+  const origin = req.headers.get('origin');
+  if (!origin) return true; // non-browser (CLI / tests) — browsers send Origin on WS
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host; // host[:port]; `Origin: null` → throws → reject
+  } catch {
+    return false;
+  }
+  const reqHost = req.headers.get('host');
+  if (!isLoopbackHost(originHost) || !isLoopbackHost(reqHost)) return false;
+  return hostPort(originHost) === hostPort(reqHost ?? '');
+}
+
 export interface Ws {
   handler: WebSocketHandler<WsData>;
   broadcast(payload: unknown): void;

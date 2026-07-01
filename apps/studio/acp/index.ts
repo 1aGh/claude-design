@@ -6,6 +6,7 @@
 
 import { join } from 'node:path';
 
+import type { AvailableCommand } from '@agentclientprotocol/sdk';
 import type { ServerWebSocket } from 'bun';
 
 import type { Context } from '../context.ts';
@@ -19,10 +20,13 @@ const VALID_EFFORT = new Set(['fast', 'balanced', 'thorough']);
 const VALID_MODELS = new Set(['opus', 'sonnet', 'haiku']);
 
 /**
- * Browser → server frames: `{ t: 'prompt', text, canvas? }`, `{ t: 'cancel' }`.
+ * Browser → server frames: `{ t: 'prompt', text, canvas? }`, `{ t: 'cancel' }`,
+ * `{ t: 'warm', chat?, model?, effort? }` (spawn + create the session so the agent
+ * publishes its slash-command catalogue — no prompt sent).
  * Server → browser frames: `ready` (availability on open), `connected` (session
- * live), `update` (each streamed session/update), `turn-end`, `permission`,
- * `error`.
+ * live), `update` (each streamed session/update), `commands` (the agent's
+ * `available_commands_update` catalogue — cached + replayed on open), `turn-end`,
+ * `permission`, `error`.
  */
 export interface Acp {
   onOpen(ws: ServerWebSocket<WsData>): void;
@@ -34,6 +38,11 @@ export interface Acp {
 
 export function createAcp(ctx: Context): Acp {
   const bridges = new Map<string, AcpBridge>();
+  // Latest slash-command catalogue seen from ANY bridge this process lifetime.
+  // Replayed to a freshly-opened socket so the composer autocomplete is instant
+  // on the second panel-open without re-warming. Not persisted (static list in
+  // the client covers a cold process); avoids DDR-115 runtime-state churn.
+  let latestCommands: AvailableCommand[] = [];
 
   function send(ws: ServerWebSocket<WsData>, payload: unknown): void {
     try {
@@ -41,6 +50,24 @@ export function createAcp(ctx: Context): Acp {
     } catch {
       /* dead socket — close handler cleans up */
     }
+  }
+
+  /** Get-or-create the per-socket bridge, wiring its update/permission/command sinks. */
+  function getOrCreateBridge(ws: ServerWebSocket<WsData>): AcpBridge {
+    let bridge = bridges.get(ws.data.id);
+    if (!bridge) {
+      bridge = new AcpBridge({
+        repoRoot: ctx.paths.repoRoot,
+        onUpdate: (update) => send(ws, { t: 'update', update }),
+        onPermission: (req) => send(ws, { t: 'permission', toolCall: req.toolCall }),
+        onCommands: (commands) => {
+          latestCommands = commands;
+          send(ws, { t: 'commands', commands });
+        },
+      });
+      bridges.set(ws.data.id, bridge);
+    }
+    return bridge;
   }
 
   // Chats are repo-level (NOT per-canvas) — `_chat/<chatId>.jsonl`. The id is
@@ -60,15 +87,7 @@ export function createAcp(ctx: Context): Acp {
     model: string | null,
     effort: AcpEffort
   ): Promise<void> {
-    let bridge = bridges.get(ws.data.id);
-    if (!bridge) {
-      bridge = new AcpBridge({
-        repoRoot: ctx.paths.repoRoot,
-        onUpdate: (update) => send(ws, { t: 'update', update }),
-        onPermission: (req) => send(ws, { t: 'permission', toolCall: req.toolCall }),
-      });
-      bridges.set(ws.data.id, bridge);
-    }
+    const bridge = getOrCreateBridge(ws);
     bridge.setTranscriptPath(transcriptPathFor(chatId));
     bridge.setConfig(model, effort);
     try {
@@ -81,10 +100,33 @@ export function createAcp(ctx: Context): Acp {
     }
   }
 
+  /**
+   * Warm-up: spawn + create the session (no prompt) so the agent publishes its
+   * command catalogue. Best-effort — a failure just means the composer falls back
+   * to the static command list until the first real turn.
+   */
+  async function handleWarm(
+    ws: ServerWebSocket<WsData>,
+    chatId: string,
+    model: string | null,
+    effort: AcpEffort
+  ): Promise<void> {
+    const bridge = getOrCreateBridge(ws);
+    bridge.setConfig(model, effort);
+    try {
+      await bridge.warmUp(sanitizeChatId(chatId));
+    } catch {
+      /* best-effort — no error frame; autocomplete degrades gracefully */
+    }
+  }
+
   return {
     onOpen(ws) {
       const probe = probeAcpAvailability();
       send(ws, { t: 'ready', available: probe.available, reason: probe.reason });
+      // Replay the last-known command catalogue so autocomplete is instant on a
+      // re-open (no re-warm needed within a dev-server lifetime).
+      if (latestCommands.length) send(ws, { t: 'commands', commands: latestCommands });
     },
 
     onMessage(ws, raw) {
@@ -103,15 +145,18 @@ export function createAcp(ctx: Context): Acp {
         effort?: unknown;
       };
 
+      const chatId = typeof frame.chat === 'string' && frame.chat ? frame.chat : 'default';
+      const model =
+        typeof frame.model === 'string' && VALID_MODELS.has(frame.model) ? frame.model : null;
+      const effort: AcpEffort =
+        typeof frame.effort === 'string' && VALID_EFFORT.has(frame.effort)
+          ? (frame.effort as AcpEffort)
+          : 'balanced';
+
       if (frame.t === 'prompt' && typeof frame.text === 'string') {
-        const chatId = typeof frame.chat === 'string' && frame.chat ? frame.chat : 'default';
-        const model =
-          typeof frame.model === 'string' && VALID_MODELS.has(frame.model) ? frame.model : null;
-        const effort: AcpEffort =
-          typeof frame.effort === 'string' && VALID_EFFORT.has(frame.effort)
-            ? (frame.effort as AcpEffort)
-            : 'balanced';
         void handlePrompt(ws, frame.text, chatId, model, effort);
+      } else if (frame.t === 'warm') {
+        void handleWarm(ws, chatId, model, effort);
       } else if (frame.t === 'cancel') {
         void bridges.get(ws.data.id)?.cancel();
       }

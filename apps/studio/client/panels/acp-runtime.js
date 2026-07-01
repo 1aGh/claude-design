@@ -1,6 +1,7 @@
 // Phase 31 (DDR-123) — client glue between assistant-ui's local runtime and the
 // dev-server ACP bridge (`/_ws/acp`). One persistent socket per ChatPanel mount;
-// the bridge lazy-spawns the user's `claude` on the first prompt, so just opening
+// the bridge lazy-spawns the user's `claude` on the first prompt (or the first
+// `warm()` — sent when the user starts typing a slash command), so just opening
 // the panel costs nothing. A custom `ChatModelAdapter` translates the bridge's
 // JSON frames into the streamed assistant message parts assistant-ui renders.
 
@@ -24,6 +25,12 @@ export function createAcpConnection() {
   // menubar Assistant badge + the "finished" notification.
   const busyListeners = new Set();
   let busy = false;
+
+  // Slash-command catalogue (`available_commands_update`, cached server-side and
+  // pushed as a `commands` frame) — drives the composer autocomplete + inline
+  // command pill. Arrives on open (replay) and/or after warm()/first turn.
+  const commandListeners = new Set();
+  let commands = [];
 
   function emitStatus() {
     for (const fn of statusListeners) fn({ ...status });
@@ -68,6 +75,13 @@ export function createAcpConnection() {
       emitStatus();
       return;
     }
+    // The command catalogue arrives outside any turn (on open / warm-up) — surface
+    // it independently of the prompt-turn handler.
+    if (frame.t === 'commands') {
+      commands = Array.isArray(frame.commands) ? frame.commands : [];
+      for (const fn of commandListeners) fn(commands);
+      return;
+    }
     // Everything else belongs to the active prompt turn.
     trackActivity(frame);
     if (turnHandler) turnHandler(frame);
@@ -110,6 +124,34 @@ export function createAcpConnection() {
       activityListeners.add(fn);
       fn([...activeTools.values()]);
       return () => activityListeners.delete(fn);
+    },
+
+    /** Subscribe to the slash-command catalogue; replays the current list. */
+    onCommands(fn) {
+      commandListeners.add(fn);
+      fn(commands);
+      return () => commandListeners.delete(fn);
+    },
+
+    /**
+     * Warm the adapter WITHOUT prompting so the agent publishes its command
+     * catalogue. Fired when the user starts typing a slash command. Best-effort;
+     * a dead socket just leaves autocomplete on the static list.
+     */
+    async warm(chatId, model, effort) {
+      try {
+        await ensureOpen();
+        ws?.send(
+          JSON.stringify({
+            t: 'warm',
+            chat: chatId || undefined,
+            model: model || undefined,
+            effort: effort || undefined,
+          })
+        );
+      } catch {
+        /* socket unavailable — non-fatal */
+      }
     },
 
     /**

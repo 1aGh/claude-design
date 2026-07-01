@@ -726,6 +726,119 @@
     flex: 1;
   }
 
+  /* ── Slash-command autocomplete + inline highlight ────────────────────────
+     The composer becomes command-aware: typing "/" opens `.chat-cmd-menu`
+     (populated from the static list ∪ the live ACP catalogue), and a recognized
+     command renders as a `.chat-cmd-pill` INSIDE the input via a mirror overlay. */
+
+  /* Relative anchor so the popover floats above the composer box. */
+  .chat-cmd-anchor {
+    position: relative;
+  }
+
+  /* Mirror-overlay: a text layer behind a transparent-text textarea. The mirror
+     is the visible text; the textarea owns the caret + input. Their box models
+     MUST stay identical (padding / font / line-height / wrap) or the pill drifts. */
+  .chat-input-wrap {
+    position: relative;
+    display: block;
+  }
+  .chat-input-mirror {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    padding: var(--space-3) var(--space-4);
+    font-family: var(--font-body);
+    font-size: var(--type-sm);
+    line-height: var(--lh-base);
+    letter-spacing: 0;
+    color: var(--fg-0);
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .chat-input--overlay {
+    position: relative;
+    z-index: 1;
+    line-height: var(--lh-base);
+    letter-spacing: 0;
+    color: transparent;
+    caret-color: var(--fg-0);
+    background: transparent;
+  }
+  /* The recognized-command pill. NO padding/margin/letter-spacing — those would
+     change glyph advance and desync the mirror from the textarea caret. The 2px
+     box-shadow fakes padding without touching layout. */
+  .chat-cmd-pill {
+    background: var(--accent-tint);
+    color: var(--accent);
+    border-radius: var(--radius-xs);
+    box-shadow: 0 0 0 2px var(--accent-tint);
+  }
+
+  /* Autocomplete popover — opens upward (composer sits at the panel bottom). */
+  .chat-cmd-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + var(--space-2));
+    z-index: 20;
+    max-height: 280px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: var(--space-1);
+    background: var(--bg-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+  }
+  .chat-cmd-item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    width: 100%;
+    text-align: left;
+    appearance: none;
+    border: 0;
+    background: transparent;
+    border-radius: var(--radius-xs);
+    padding: var(--space-2) var(--space-3);
+    cursor: pointer;
+    color: var(--fg-1);
+  }
+  .chat-cmd-item:hover,
+  .chat-cmd-item.is-active {
+    background: var(--bg-3);
+  }
+  .chat-cmd-name {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    color: var(--accent);
+  }
+  .chat-cmd-name--flow {
+    color: var(--presence-agent);
+  }
+  .chat-cmd-desc {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--type-xs);
+    color: var(--fg-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-cmd-arg {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    color: var(--fg-3);
+  }
+
   /* Streaming → Stop bar */
   .chat-stopbar {
     display: flex;

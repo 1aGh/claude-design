@@ -17,6 +17,8 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useComposer,
+  useComposerRuntime,
   useLocalRuntime,
   useThread,
 } from '@assistant-ui/react';
@@ -24,6 +26,13 @@ import {
 import { createAcpConnection, makeAcpAdapter } from './acp-runtime.js';
 import { Markdown } from './chat-markdown.jsx';
 import ReadinessList, { useReadiness } from './ReadinessList.jsx';
+import {
+  buildCommandModel,
+  filterCommands,
+  matchLeadingCommand,
+  normalizeName,
+  STATIC_COMMANDS,
+} from './slash-commands.js';
 
 // ── inline icons (separate panel files carry their own, like GitPanel) ──
 const Spark = ({ size = 16 }) => (
@@ -283,8 +292,157 @@ function QuickActions() {
   );
 }
 
-function Composer({ activeCanvas, model, setModel, effort, setEffort }) {
+// Merge the static bootstrap list with the live ACP catalogue (pushed over the
+// connection). Returns `{ all, existsSet }` — see slash-commands.js.
+function useSlashCommands(conn) {
+  const [live, setLive] = useState([]);
+  useEffect(() => conn.onCommands(setLive), [conn]);
+  return useMemo(() => buildCommandModel(STATIC_COMMANDS, live), [live]);
+}
+
+// Autocomplete menu — opens upward above the composer while a slash command is
+// being typed. Keyboard-driven from the composer (see Composer); mouse hover +
+// click supported. onMouseDown (not onClick) so picking beats the textarea blur.
+function CommandPopover({ items, activeIndex, onPick, onHover }) {
+  if (!items.length) return null;
+  return (
+    <div className="chat-cmd-menu" role="listbox" data-testid="chat-cmd-menu">
+      {items.map((c, i) => (
+        <button
+          key={c.name}
+          type="button"
+          role="option"
+          aria-selected={i === activeIndex}
+          data-testid={`chat-cmd-item-${c.name.replace(/[^a-z0-9]+/gi, '-')}`}
+          className={`chat-cmd-item${i === activeIndex ? ' is-active' : ''}`}
+          onMouseEnter={() => onHover(i)}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onPick(c);
+          }}
+        >
+          <span className={`chat-cmd-name chat-cmd-name--${c.group}`}>/{c.name}</span>
+          {c.description ? <span className="chat-cmd-desc">{c.description}</span> : null}
+          {c.argHint ? <span className="chat-cmd-arg">{c.argHint}</span> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Inline command highlight via a mirror-overlay: a div behind a transparent-text
+// textarea renders the same text, wrapping the leading command token in a pill —
+// but ONLY when that token is a command that exists (the badge gate). The mirror
+// MUST match the textarea's box model exactly (see .chat-input / .chat-input-mirror
+// in 6-acp-chat.css) or the pill drifts off the text.
+function HighlightedInput({ existsSet }) {
+  const text = useComposer((c) => c.text);
+  const mirrorRef = useRef(null);
+  const match = matchLeadingCommand(text);
+  const token = match ? normalizeName(match.token) : '';
+  const highlight = !!(match && token && existsSet.has(token));
+
+  let mirror;
+  if (highlight) {
+    const leadingWs = text.match(/^\s*/)[0];
+    const cmd = `/${match.token}`;
+    const rest = text.slice(leadingWs.length + cmd.length);
+    mirror = (
+      <>
+        {leadingWs}
+        <span className="chat-cmd-pill">{cmd}</span>
+        {rest}
+      </>
+    );
+  } else {
+    // Trailing newline needs a zero-width guard so the mirror keeps the last line.
+    mirror = text.endsWith('\n') ? `${text}​` : text;
+  }
+
+  return (
+    <div className="chat-input-wrap">
+      <div className="chat-input-mirror" aria-hidden="true" ref={mirrorRef}>
+        {mirror}
+      </div>
+      <ComposerPrimitive.Input
+        className="chat-input chat-input--overlay"
+        submitMode="ctrlEnter"
+        placeholder="Ask Claude to change this canvas…"
+        onScroll={(e) => {
+          if (mirrorRef.current) mirrorRef.current.scrollTop = e.currentTarget.scrollTop;
+        }}
+      />
+    </div>
+  );
+}
+
+function Composer({ activeCanvas, model, setModel, effort, setEffort, conn, chatId }) {
   const canvasName = prettyCanvas(activeCanvas);
+  const { all, existsSet } = useSlashCommands(conn);
+  const composerRuntime = useComposerRuntime();
+  const text = useComposer((c) => c.text);
+
+  const match = matchLeadingCommand(text);
+  const [dismissed, setDismissed] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const menuOpen = !!(match && match.typing) && !dismissed;
+  const items = useMemo(
+    () => (menuOpen ? filterCommands(all, match.token) : []),
+    [menuOpen, all, match?.token]
+  );
+
+  // Reset selection + un-dismiss whenever the typed token changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setActiveIndex(0);
+    setDismissed(false);
+  }, [match?.token]);
+
+  // Warm the adapter the first time the user starts a slash command, so the live
+  // catalogue arrives without a full prompt. Guarded to fire once per mount.
+  const warmedRef = useRef(false);
+  useEffect(() => {
+    if (menuOpen && !warmedRef.current) {
+      warmedRef.current = true;
+      conn.warm(chatId, model, effort);
+    }
+  }, [menuOpen, conn, chatId, model, effort]);
+
+  const pick = useCallback(
+    (cmd) => {
+      composerRuntime.setText(`/${cmd.name} `);
+      setDismissed(false);
+      setActiveIndex(0);
+    },
+    [composerRuntime]
+  );
+
+  const onKeyDownCapture = useCallback(
+    (e) => {
+      if (!menuOpen || !items.length) return;
+      // Swallow navigation keys before they reach the textarea (capture phase +
+      // stopPropagation) so the menu drives them, not the caret / submit.
+      const swallow = () => {
+        e.preventDefault();
+        e.stopPropagation();
+      };
+      if (e.key === 'ArrowDown') {
+        swallow();
+        setActiveIndex((i) => (i + 1) % items.length);
+      } else if (e.key === 'ArrowUp') {
+        swallow();
+        setActiveIndex((i) => (i - 1 + items.length) % items.length);
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        swallow();
+        pick(items[Math.min(activeIndex, items.length - 1)]);
+      } else if (e.key === 'Escape') {
+        swallow();
+        setDismissed(true);
+      }
+    },
+    [menuOpen, items, activeIndex, pick]
+  );
+
   return (
     <div className="chat-composer">
       <ThreadPrimitive.If running={false}>
@@ -293,14 +451,20 @@ function Composer({ activeCanvas, model, setModel, effort, setEffort }) {
             Editing: <b>{canvasName}</b>
           </div>
         ) : null}
-        {/* One box: textarea on top, a bottom toolbar (model · effort · send). */}
-        <ComposerPrimitive.Root className="chat-box">
-          <ComposerPrimitive.Input
-            className="chat-input"
-            submitMode="ctrlEnter"
-            placeholder="Ask Claude to change this canvas…"
-          />
-          <div className="chat-toolbar">
+        {/* One box: textarea on top, a bottom toolbar (model · effort · send).
+            The anchor is relative so the command popover can float above it. */}
+        <div className="chat-cmd-anchor" onKeyDownCapture={onKeyDownCapture}>
+          {menuOpen ? (
+            <CommandPopover
+              items={items}
+              activeIndex={activeIndex}
+              onPick={pick}
+              onHover={setActiveIndex}
+            />
+          ) : null}
+          <ComposerPrimitive.Root className="chat-box">
+            <HighlightedInput existsSet={existsSet} />
+            <div className="chat-toolbar">
             <select
               className="chat-select"
               value={model}
@@ -330,7 +494,8 @@ function Composer({ activeCanvas, model, setModel, effort, setEffort }) {
               <SendArrow />
             </ComposerPrimitive.Send>
           </div>
-        </ComposerPrimitive.Root>
+          </ComposerPrimitive.Root>
+        </div>
         <div className="chat-foot">
           <span>⌘↵ to send</span>
           <span className="chat-foot-spacer" />
@@ -476,6 +641,8 @@ function ChatThread({
             setModel={setModel}
             effort={effort}
             setEffort={setEffort}
+            conn={conn}
+            chatId={chatId}
           />
         </ThreadPrimitive.Root>
       </div>

@@ -31,7 +31,7 @@ import { createHttp } from './http.ts';
 import { createInspect } from './inspect.ts';
 import { startHeapWatch } from './mem.ts';
 import { createSyncRuntime } from './sync/index.ts';
-import { createWs, isLoopbackHost, parseCollabSlug, type WsData } from './ws.ts';
+import { createWs, isLoopbackHost, isSameOriginWs, parseCollabSlug, type WsData } from './ws.ts';
 
 // Phase 19 / DDR-044 — covers the marketplace-cache-install gap where
 // node_modules/ ships empty (git clone honors .gitignore). Auto-installs +
@@ -169,6 +169,12 @@ function startServer(port: number): BunServer {
       if (pathname === '/_ws/acp') {
         if (!isLoopbackHost(req.headers.get('host'))) {
           return new Response('ACP chat is loopback-only', { status: 403 });
+        }
+        // CSWSH defense: a WS handshake bypasses SOP, so loopback-Host alone would
+        // let a cross-origin drive-by open this privileged socket (spawns `claude`,
+        // drives edits). Reject any Origin that isn't this same loopback server.
+        if (!isSameOriginWs(req)) {
+          return new Response('ACP chat is same-origin only', { status: 403 });
         }
         const ok = srv.upgrade(req, {
           data: {
