@@ -324,6 +324,41 @@
     line-height: var(--lh-sm);
     max-width: 240px;
   }
+  /* One-time "Create new design system" CTA — the prominent accent button in the
+     empty state (prefills /design:setup-ds). Sits above the muted suggestion list. */
+  .chat-empty-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    width: 100%;
+    margin-top: var(--space-2);
+    font-family: var(--font-body);
+    font-size: var(--type-sm);
+    font-weight: 600;
+    color: var(--accent-fg);
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3) var(--space-4);
+    cursor: pointer;
+    transition:
+      background var(--dur-soft) var(--ease-out),
+      border-color var(--dur-soft) var(--ease-out);
+  }
+  .chat-empty-cta:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
+  .chat-empty-cta:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
+  }
+  .chat-empty-cta-ic {
+    display: inline-flex;
+    color: currentColor;
+  }
   .chat-sugs {
     display: flex;
     flex-direction: column;

@@ -66,6 +66,15 @@ const SendArrow = ({ size = 16 }) => (
     />
   </svg>
 );
+// Token swatches — reads as "design system"; used on the empty-state DS CTA.
+const Swatches = ({ size = 15 }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <rect x="2" y="2" width="5" height="5" rx="1" fill="currentColor" />
+    <rect x="9" y="2" width="5" height="5" rx="1" fill="currentColor" opacity="0.55" />
+    <rect x="2" y="9" width="5" height="5" rx="1" fill="currentColor" opacity="0.55" />
+    <rect x="9" y="9" width="5" height="5" rx="1" fill="currentColor" opacity="0.3" />
+  </svg>
+);
 
 // Persistent quick-action verbs (prefill the composer; never fire blind). The
 // one-time `/design:setup-ds` is offered contextually in the empty state, not here.
@@ -233,6 +242,19 @@ function ChatEmpty() {
       <div className="chat-empty-sub">
         Ask for a change, a critique, or a new screen — Claude runs on your own subscription.
       </div>
+      {/* One-time contextual CTA: bootstrap a design system. Prefills the guided
+          wizard (name is required, so we never fire it blind — the composer opens
+          ready for the slug). Canvas verbs live in the persistent quick-action row. */}
+      <ThreadPrimitive.Suggestion
+        prompt="/design:setup-ds "
+        send={false}
+        className="chat-empty-cta"
+      >
+        <span className="chat-empty-cta-ic">
+          <Swatches size={15} />
+        </span>
+        Create new design system
+      </ThreadPrimitive.Suggestion>
       <div className="chat-sugs">
         {SUGGESTIONS.map((s) => (
           <ThreadPrimitive.Suggestion key={s} prompt={s} send={false} className="chat-sug">
