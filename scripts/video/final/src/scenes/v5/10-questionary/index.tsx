@@ -24,7 +24,7 @@ import {
  * The discovery runs as a messenger thread — sharp, designer-grade questions
  * (not generic), real answers. As each answer lands the REAL captured moodboard
  * grows another band in sync. The thread ends with the AI: "Here's your
- * moodboard." as the board completes. Grounded: /design:setup-ds + .design/_moodboard/*.
+ * moodboard." as the board completes. Grounded: /design:setup-ds + .design/ui/<ds>-moodboard.tsx.
  * VO: "It opens like a real designer would — sharp questions, real research,
  * and a moodboard that commits to a direction."
  */
