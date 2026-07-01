@@ -336,6 +336,15 @@ const HALO_CSS = `
   outline-offset: 1px;
   cursor: grabbing;
 }
+/* Drop-target container highlight — shown while the pointer is over a DIFFERENT
+   parent than the dragged node's, so you can see which container you're about to
+   drop into before the (delayed) reflow commits. Outline only — no layout shift,
+   no content occlusion. */
+[data-cd-id].dc-cv-reorder-into {
+  outline: 2px dashed var(--maude-hud-accent, #0d99ff);
+  outline-offset: -2px;
+  border-radius: 2px;
+}
 `.trim();
 
 function ensureHaloStyles(): void {
@@ -2380,18 +2389,32 @@ function ReorderDrag() {
     };
     let drag: Drag | null = null;
     let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    let highlightEl: HTMLElement | null = null;
+    // After a commit, ignore new plans for a beat: a cross-parent move shifts the
+    // layout, which changes what's under the pointer — without this cooldown the
+    // element ping-pongs between containers ("kousaný" reparent). Client code, so
+    // Date.now() is fine here.
+    let cooldownUntil = 0;
     const reduceMotion =
       typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     // The reshuffle waits this long after the pointer settles on a NEW target
     // before it commits — a deliberate beat so a fast pass-through doesn't churn
     // the layout, and the move reads as intentional (dogfood ask).
     const SETTLE_MS = 150;
+    const COOLDOWN_MS = 280;
 
     const clearSettle = () => {
       if (settleTimer != null) {
         clearTimeout(settleTimer);
         settleTimer = null;
       }
+    };
+
+    const setHighlight = (el: HTMLElement | null) => {
+      if (highlightEl === el) return;
+      if (highlightEl) highlightEl.classList.remove('dc-cv-reorder-into');
+      highlightEl = el;
+      if (highlightEl) highlightEl.classList.add('dc-cv-reorder-into');
     };
 
     // An element can be NESTED INTO only if it already holds element children —
@@ -2426,6 +2449,8 @@ function ReorderDrag() {
       }
       d.committed = true;
       d.plan = plan;
+      cooldownUntil = Date.now() + COOLDOWN_MS; // settle before allowing the next move
+      setHighlight(null); // the move landed — clear the drop-target ring
       if (reduceMotion) return;
       const play = (k: HTMLElement, f: DOMRect) => {
         const l = k.getBoundingClientRect();
@@ -2540,8 +2565,17 @@ function ReorderDrag() {
         plan = { container: parent, ref };
       }
       if (!plan?.container || plan.container === d.el || d.el.contains(plan.container)) {
+        setHighlight(null);
         return;
       }
+      // Ring the target container when it's a DIFFERENT parent than the dragged
+      // node's current one (reparent / nest) so the destination is visible before
+      // the reflow lands; a plain same-parent reorder gets no ring (the live
+      // reflow already shows it).
+      setHighlight(plan.container !== d.el.parentElement ? plan.container : null);
+      // Just committed a move? Let the layout + pointer settle before reacting to
+      // a new plan — stops the cross-parent ping-pong.
+      if (Date.now() < cooldownUntil) return;
       // Debounce: only (re)start the settle timer when the intended drop changes.
       if (d.plan && d.plan.container === plan.container && d.plan.ref === plan.ref) return;
       d.plan = plan;
@@ -2557,6 +2591,7 @@ function ReorderDrag() {
       const d = drag;
       drag = null;
       clearSettle();
+      setHighlight(null);
       if (!d || e.pointerId !== d.pointerId) return;
       if (!d.dragging) return; // a plain click — leave it to native handlers
       // A quick drag may release before the settle timer fired — commit the
@@ -2591,6 +2626,7 @@ function ReorderDrag() {
     window.addEventListener('pointerup', onUp);
     return () => {
       clearSettle();
+      setHighlight(null);
       document.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
