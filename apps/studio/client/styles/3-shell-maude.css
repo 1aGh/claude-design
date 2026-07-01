@@ -519,13 +519,19 @@
 /* a hidden layer stays dim + keeps its eye visible (so it can be re-shown) */
 .st-layer.is-hidden { opacity: 0.45; }
 .st-layer.is-hidden .st-layer-eye { opacity: 1; color: var(--fg-2); }
-/* Phase 12.1 (DDR-138) — drag-to-reorder affordances. Static box-shadow lines
-   (no animation → nothing to gate under prefers-reduced-motion): a top/bottom
-   accent line for a sibling drop (before/after), a full ring + tint for a nest
-   (inside). */
-.st-layer--row.is-dragging { opacity: 0.4; }
-.st-layer--row.is-drop-before { box-shadow: inset 0 2px 0 0 var(--accent); }
-.st-layer--row.is-drop-after { box-shadow: inset 0 -2px 0 0 var(--accent); }
+/* Phase 12.1 (DDR-138) — drag-to-reorder affordances (same model as the in-canvas
+   drag): the dragged row floats with the cursor via an inline transform (its slot
+   stays reserved). A fixed blue DIVIDER marks a sibling drop (before/after); a
+   ring + tint marks a nest (inside). */
+.st-layer-divider {
+  position: fixed;
+  z-index: 60;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px var(--bg-0);
+}
 .st-layer--row.is-drop-inside { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-tint); }
 .st-rp-hint { font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); padding: 4px var(--space-2) 6px; letter-spacing: var(--tracking-wide); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

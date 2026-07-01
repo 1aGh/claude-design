@@ -5148,17 +5148,6 @@ const LAYER_TYPE_ICON = {
   box: 'box',
 };
 
-// Phase 12.1 (DDR-138) — pointer Y → drop position within a layer row. Top/bottom
-// quarters reorder as a sibling (before/after); the middle nests INTO the row
-// (reparent, inside-end). Any element can be a drop target — the server guards
-// self-closing / own-subtree moves and reparse-gates the result.
-function dropPositionFromEvent(e) {
-  const r = e.currentTarget.getBoundingClientRect();
-  const f = (e.clientY - r.top) / (r.height || 1);
-  if (f < 0.25) return 'before';
-  if (f > 0.75) return 'after';
-  return 'inside';
-}
 
 function LayerRow({
   node,
@@ -5171,8 +5160,8 @@ function LayerRow({
   onHover,
   onToggleVisibility,
   onReorder,
+  onRowPointerDown,
   dragState,
-  setDragState,
   siblings,
   pos,
 }) {
@@ -5181,8 +5170,24 @@ function LayerRow({
   const isCollapsed = collapsed.has(key);
   const isSel = node.id === selectedId;
   const isHidden = hidden?.has(key);
+  // Phase 12.1 — the row being dragged FLOATS with the cursor (same model as the
+  // in-canvas drag): a transform follows the pointer, its layout box stays
+  // reserved (empty slot at the origin), and pointer-events:none lets the row
+  // under the pointer be hit-tested. A blue divider (rendered by the tree) marks
+  // where it drops; a ring marks a container it would nest into.
   const isDragging = dragState?.key === key;
-  const drop = dragState && dragState.overKey === key ? dragState.position : null;
+  const ring = dragState?.target?.key === key && dragState.target.ring;
+  const dragStyle = isDragging
+    ? {
+        transform: `translate(${dragState.dx}px, ${dragState.dy}px)`,
+        opacity: 0.9,
+        zIndex: 20,
+        position: 'relative',
+        pointerEvents: 'none',
+        cursor: 'grabbing',
+        boxShadow: '0 6px 18px rgba(0, 0, 0, 0.28)',
+      }
+    : null;
   return (
     <>
       <div
@@ -5190,59 +5195,20 @@ function LayerRow({
           'st-layer st-layer--row' +
           (isSel ? ' is-sel' : '') +
           (isHidden ? ' is-hidden' : '') +
-          (isDragging ? ' is-dragging' : '') +
-          (drop ? ` is-drop-${drop}` : '')
+          (ring ? ' is-drop-inside' : '')
         }
-        style={{ paddingLeft: 6 + depth * 14 }}
+        style={{ paddingLeft: 6 + depth * 14, ...dragStyle }}
         role="treeitem"
         aria-selected={isSel}
         aria-expanded={hasKids ? !isCollapsed : undefined}
         aria-grabbed={onReorder ? isDragging : undefined}
         tabIndex={0}
         title={`${node.tag} · ${node.type}`}
-        draggable={onReorder ? true : undefined}
+        data-layer-key={key}
         onClick={() => onSelect(node)}
         onMouseEnter={() => onHover(node)}
         onMouseLeave={() => onHover(null)}
-        onDragStart={
-          onReorder
-            ? (e) => {
-                e.stopPropagation();
-                // A payload is required for the drag to start in some browsers.
-                try {
-                  e.dataTransfer.setData('text/plain', node.id);
-                  e.dataTransfer.effectAllowed = 'move';
-                } catch {}
-                setDragState({ key, node, overKey: null, position: null });
-              }
-            : undefined
-        }
-        onDragOver={
-          onReorder
-            ? (e) => {
-                if (!dragState || dragState.key === key) return;
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-                const position = dropPositionFromEvent(e);
-                if (dragState.overKey !== key || dragState.position !== position) {
-                  setDragState({ ...dragState, overKey: key, position });
-                }
-              }
-            : undefined
-        }
-        onDrop={
-          onReorder
-            ? (e) => {
-                if (!dragState || dragState.key === key) return;
-                e.preventDefault();
-                const position = dropPositionFromEvent(e);
-                const dragged = dragState.node;
-                setDragState(null);
-                onReorder(dragged, node, position);
-              }
-            : undefined
-        }
-        onDragEnd={onReorder ? () => setDragState(null) : undefined}
+        onPointerDown={onReorder ? (e) => onRowPointerDown(e, node, key) : undefined}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
@@ -5317,8 +5283,8 @@ function LayerRow({
               onHover={onHover}
               onToggleVisibility={onToggleVisibility}
               onReorder={onReorder}
+              onRowPointerDown={onRowPointerDown}
               dragState={dragState}
-              setDragState={setDragState}
               siblings={node.children}
               pos={ci}
             />
@@ -5439,6 +5405,90 @@ function InspectorPanel({
         onReorderLayer(dragged.id, ref.id, position);
       }
     : undefined;
+  // Pointer-based drag-to-reorder in the Layers tree — same model as the
+  // in-canvas drag: the row FLOATS with the cursor (transform, slot reserved), a
+  // blue divider (or nest ring) marks the drop, and the move commits only on
+  // release. Same-origin shell, so it's all local (no dgn bus).
+  const layerDragRef = useRef(null);
+  const startLayerDrag = (e, node, key) => {
+    if (!handleReorder || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    // Forbid dropping a node into itself or its own subtree.
+    const forbidden = new Set([key]);
+    (function walk(n) {
+      (n.children || []).forEach((c) => {
+        forbidden.add(`${c.id}:${c.index}`);
+        walk(c);
+      });
+    })(node);
+    // key → node, to resolve the row under the pointer.
+    const byKey = new Map();
+    (function walk(nodes) {
+      (nodes || []).forEach((n) => {
+        byKey.set(`${n.id}:${n.index}`, n);
+        walk(n.children);
+      });
+    })(layersTree?.nodes);
+    let started = false;
+    const onMove = (ev) => {
+      if (!started) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 4) return;
+        started = true;
+      }
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      let target = null;
+      const rowEl = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('[data-layer-key]');
+      const tKey = rowEl?.getAttribute('data-layer-key');
+      if (rowEl && tKey && !forbidden.has(tKey)) {
+        const tNode = byKey.get(tKey);
+        if (tNode) {
+          const r = rowEl.getBoundingClientRect();
+          const f = (ev.clientY - r.top) / (r.height || 1);
+          const canNest = !!(tNode.children && tNode.children.length);
+          let position = f < 0.5 ? 'before' : 'after';
+          let ring = false;
+          if (canNest && f >= 0.4 && f <= 0.6) {
+            position = 'inside-end';
+            ring = true;
+          }
+          target = {
+            key: tKey,
+            node: tNode,
+            position,
+            ring,
+            x: r.left,
+            y: position === 'before' ? r.top : r.bottom,
+            w: r.width,
+          };
+        }
+      }
+      const next = { key, node, dx, dy, target };
+      layerDragRef.current = next;
+      setDragState(next);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      const d = layerDragRef.current;
+      layerDragRef.current = null;
+      setDragState(null);
+      if (started && d?.target) {
+        // Swallow the click that trails a drag so it doesn't also select a row.
+        const sup = (ce) => {
+          ce.preventDefault();
+          ce.stopImmediatePropagation();
+          document.removeEventListener('click', sup, true);
+        };
+        document.addEventListener('click', sup, true);
+        setTimeout(() => document.removeEventListener('click', sup, true), 300);
+        handleReorder(d.node, d.target.node, d.target.position);
+      }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
   const toggleCollapse = (key) =>
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -5579,13 +5629,24 @@ function InspectorPanel({
                       onHover={(node) => onHoverLayer?.(node)}
                       onToggleVisibility={toggleVisibility}
                       onReorder={handleReorder}
+                      onRowPointerDown={startLayerDrag}
                       dragState={dragState}
-                      setDragState={setDragState}
                       siblings={layersTree.nodes}
                       pos={ni}
                     />
                   ))}
                 </div>
+                {dragState?.target && !dragState.target.ring ? (
+                  <div
+                    className="st-layer-divider"
+                    aria-hidden="true"
+                    style={{
+                      left: dragState.target.x,
+                      top: dragState.target.y - 1,
+                      width: dragState.target.w,
+                    }}
+                  />
+                ) : null}
                 <div className="sr-only" role="status" aria-live="polite">
                   {reorderMsg}
                 </div>
