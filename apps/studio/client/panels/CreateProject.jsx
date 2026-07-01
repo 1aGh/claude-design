@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { cloneRepo, createProject, initDesign, invite, listRepos, openLocalProject, pickDirectory } from '../github.js';
+import { cloneRepo, createLocalProject, createProject, initDesign, invite, listRepos, openLocalProject, pickDirectory } from '../github.js';
 
 function Icon({ name, size = 16 }) {
   const p = {
@@ -57,6 +57,12 @@ function Icon({ name, size = 16 }) {
       </>
     ),
     spinner: <path d="M8 2.2a5.8 5.8 0 1 0 5.8 5.8" />,
+    laptop: (
+      <>
+        <rect x="3" y="3.5" width="10" height="7" rx="1" />
+        <path d="M1.5 13h13l-1.2-1.8H2.7z" />
+      </>
+    ),
   }[name];
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={name === 'spinner' ? 'cp-spin' : undefined}>
@@ -66,12 +72,12 @@ function Icon({ name, size = 16 }) {
 }
 
 const TITLES = {
-  new: ['Create a new project', 'A private project on GitHub, set up for you.'],
+  new: ['Create a new project', 'On GitHub, or just locally on your computer.'],
   get: ['Pull a local copy', 'Pick a project, choose where to save it, and open it here.'],
   share: ['Share this project', 'Invite a teammate by their GitHub username.'],
 };
 
-export default function CreateProject({ view, identity, onClose }) {
+export default function CreateProject({ view, identity, signedIn, onClose }) {
   const [title, sub] = TITLES[view] || TITLES.new;
   return (
     <div className="cp-modal" role="dialog" aria-modal="true" aria-label={title} onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
@@ -86,7 +92,7 @@ export default function CreateProject({ view, identity, onClose }) {
             <Icon name="x" size={15} />
           </button>
         </div>
-        {view === 'new' && <NewView identity={identity} onClose={onClose} />}
+        {view === 'new' && <NewView identity={identity} signedIn={signedIn} onClose={onClose} />}
         {view === 'get' && <GetView />}
         {view === 'share' && <ShareView onClose={onClose} />}
       </div>
@@ -94,20 +100,24 @@ export default function CreateProject({ view, identity, onClose }) {
   );
 }
 
-function NewView({ identity, onClose }) {
+function NewView({ identity, signedIn, onClose }) {
   const [name, setName] = useState('');
+  // 'github' = new repo on GitHub (needs sign-in); 'local' = just a local git repo,
+  // no remote. Default to local when signed out (GitHub isn't available then).
+  const [where, setWhere] = useState(signedIn ? 'github' : 'local');
   const [isPrivate, setIsPrivate] = useState(true);
   const [desc, setDesc] = useState('');
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState('');
   const [err, setErr] = useState('');
 
+  const local = where === 'local';
   const slug = name.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
   const owner = identity?.login || 'you';
 
-  // New project = create the GitHub repo AND a ready-to-design local project, then
-  // open it. You pick where to save it (like a real "new project"), then design
-  // and Publish when ready.
+  // New project = a ready-to-design local project, then open it. GitHub mode also
+  // creates the remote repo + sets origin; local mode is git init only (publish later).
+  // You pick where to save it, then design and Publish when ready.
   async function submit() {
     setErr('');
     setBusy(true);
@@ -115,8 +125,14 @@ function NewView({ identity, onClose }) {
       setStep('Choose where to save it…');
       const parentDir = await pickDirectory();
       if (!parentDir) { setBusy(false); setStep(''); return; } // cancelled
-      setStep('Creating your project on GitHub…');
-      const r = await createProject({ name, private: isPrivate, description: desc, parentDir });
+      let r;
+      if (local) {
+        setStep('Setting up your local project…');
+        r = await createLocalProject({ name, parentDir });
+      } else {
+        setStep('Creating your project on GitHub…');
+        r = await createProject({ name, private: isPrivate, description: desc, parentDir });
+      }
       if (!(r.ok && r.json?.ok)) {
         setErr(r.json?.error || 'Couldn’t create the project. Try again.');
         setBusy(false);
@@ -135,30 +151,48 @@ function NewView({ identity, onClose }) {
   return (
     <>
       <div className="cp-body">
+        <div className="cp-field">
+          <span className="cp-field-label">Where</span>
+          <div className="seg cp-seg" role="group" aria-label="Where to create the project">
+            <button type="button" aria-pressed={!local} disabled={!signedIn} title={signedIn ? undefined : 'Sign in with GitHub first'} onClick={() => setWhere('github')}><Icon name="globe" size={14} /> GitHub</button>
+            <button type="button" aria-pressed={local} onClick={() => setWhere('local')}><Icon name="laptop" size={14} /> This computer only</button>
+          </div>
+          <span className="cp-field-help">
+            {local
+              ? 'A local git repo on your computer — no GitHub, no remote. You can publish it later.'
+              : signedIn
+                ? 'A repo on your GitHub account, cloned to your computer.'
+                : 'Sign in with GitHub (bottom-left) to publish. For now you can create a local project.'}
+          </span>
+        </div>
         <label className="cp-field">
           <span className="cp-field-label">Project name</span>
           <input className="input cp-input" type="text" value={name} placeholder="Acme Rebrand" aria-label="Project name" onChange={(e) => setName(e.target.value)} />
-          {slug && <span className="cp-field-help">Creates <b>github.com/{owner}/{slug}</b></span>}
+          {slug && <span className="cp-field-help">{local ? <>Creates a project folder <b>{slug}</b></> : <>Creates <b>github.com/{owner}/{slug}</b></>}</span>}
         </label>
-        <div className="cp-field">
-          <span className="cp-field-label">Who can see it</span>
-          <div className="seg cp-seg" role="group" aria-label="Project visibility">
-            <button type="button" aria-pressed={isPrivate} onClick={() => setIsPrivate(true)}><Icon name="lock" size={14} /> Private</button>
-            <button type="button" aria-pressed={!isPrivate} onClick={() => setIsPrivate(false)}><Icon name="globe" size={14} /> Public</button>
-          </div>
-          <span className="cp-field-help">{isPrivate ? 'Only you and people you invite. The safe default.' : 'Anyone on the internet can see this project.'}</span>
-        </div>
-        <label className="cp-field">
-          <span className="cp-field-label">Description <span className="cp-optional">optional</span></span>
-          <textarea className="textarea cp-textarea" rows={2} value={desc} placeholder="What is this project for?" aria-label="Project description" onChange={(e) => setDesc(e.target.value)} />
-        </label>
+        {!local && (
+          <>
+            <div className="cp-field">
+              <span className="cp-field-label">Who can see it</span>
+              <div className="seg cp-seg" role="group" aria-label="Project visibility">
+                <button type="button" aria-pressed={isPrivate} onClick={() => setIsPrivate(true)}><Icon name="lock" size={14} /> Private</button>
+                <button type="button" aria-pressed={!isPrivate} onClick={() => setIsPrivate(false)}><Icon name="globe" size={14} /> Public</button>
+              </div>
+              <span className="cp-field-help">{isPrivate ? 'Only you and people you invite. The safe default.' : 'Anyone on the internet can see this project.'}</span>
+            </div>
+            <label className="cp-field">
+              <span className="cp-field-label">Description <span className="cp-optional">optional</span></span>
+              <textarea className="textarea cp-textarea" rows={2} value={desc} placeholder="What is this project for?" aria-label="Project description" onChange={(e) => setDesc(e.target.value)} />
+            </label>
+          </>
+        )}
         {err && <div className="callout callout--error"><span className="cp-cl-glyph" style={{ color: 'var(--status-error)' }}><Icon name="x" /></span><span>{err}</span></div>}
       </div>
       <div className="cp-ft">
         <span className="cp-spacer" />
         <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
         <button type="button" className="btn btn--primary" onClick={submit} disabled={busy || !slug}>
-          <Icon name="plus" size={15} /> {busy ? step || 'Creating…' : 'Create project'}
+          <Icon name="plus" size={15} /> {busy ? step || 'Creating…' : local ? 'Create local project' : 'Create project'}
         </button>
       </div>
     </>

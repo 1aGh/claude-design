@@ -99,6 +99,9 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/github/invite',
         '/_api/github/clone',
         '/_api/github/create-project',
+        // Local-only project create (mkdir + git init + scaffold) — writes to disk,
+        // no token; MAIN-ORIGIN ONLY, so the canvas origin must 403 at the gate.
+        '/_api/project/create-local',
         '/_api/design/init',
         // Phase 29 (E4) Door C — the hub-link credential write is MAIN-ORIGIN ONLY;
         // the untrusted canvas origin must never reach it (it writes the global

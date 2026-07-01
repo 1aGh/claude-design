@@ -161,14 +161,13 @@ export default function IdentityBar() {
     };
   }, [native]);
 
-  // Native File ▸ New Project… (menu.rs emits `menu://new-project`). Mirror the
-  // account-menu "New project": open the create dialog when signed in, else start
-  // GitHub sign-in — a new project is created on the user's GitHub account.
+  // Native File ▸ New Project… (menu.rs emits `menu://new-project`). Open the create
+  // dialog once the GitHub check settled — even when signed out, since it offers a
+  // local-only project (no GitHub needed); the dialog gates the GitHub option itself.
   useEffect(() => {
     if (!native) return undefined;
     const p = onMenuNewProject(() => {
-      if (stateRef.current === 'in') setView('new');
-      else if (stateRef.current === 'out') handleSignIn();
+      if (stateRef.current !== 'loading') setView('new');
     });
     return () => {
       p?.then?.((fn) => fn?.());
@@ -330,7 +329,7 @@ export default function IdentityBar() {
         </div>
       )}
 
-      {view && <CreateProject view={view} identity={identity} onClose={() => setView(null)} />}
+      {view && <CreateProject view={view} identity={identity} signedIn={state === 'in'} onClose={() => setView(null)} />}
     </div>
   );
 }

@@ -107,6 +107,7 @@ export interface GitHubEndpoints {
   repos(): Promise<GitHubEndpointResult>;
   createRepo(body: unknown): Promise<GitHubEndpointResult>;
   createProject(body: unknown): Promise<GitHubEndpointResult>;
+  createLocalProject(body: unknown): Promise<GitHubEndpointResult>;
   invite(body: unknown): Promise<GitHubEndpointResult>;
   clone(body: unknown): Promise<GitHubEndpointResult>;
   initDesign(body: unknown): Promise<GitHubEndpointResult>;
@@ -346,6 +347,46 @@ export function createGitHubEndpoints(ctx: Context): GitHubEndpoints {
     });
   }
 
+  // "Just a local git repo, no GitHub remote" — same as createProject minus the
+  // network: mkdir + git init (defaultBranch main) + .design scaffold, NO token, NO
+  // createRepo, NO setRemote. The user can publish it later. Reuses the same slug +
+  // parent-dir validation as createProject, and the route is main-origin/loopback
+  // gated (http.ts) + absent from CANVAS_SAFE_API (dual-allowlist) like its sibling.
+  async function createLocalProject(body: unknown): Promise<GitHubEndpointResult> {
+    const b = (body ?? {}) as { name?: unknown; parentDir?: unknown };
+    const slug = slugifyRepoName(b.name);
+    if (!slug) return bad('Enter a project name (letters, numbers, hyphens).');
+    if (!validParentDir(b.parentDir))
+      return bad('Pick a folder on your computer to save the project in.');
+    const target = join(b.parentDir, slug);
+    if (existsSync(target)) {
+      return {
+        status: 409,
+        json: { ok: false, error: `A folder named “${slug}” already exists there.` },
+      };
+    }
+    const humanName = typeof b.name === 'string' ? b.name.trim() : slug;
+    try {
+      mkdirSync(target, { recursive: true });
+      await git.init({ fs, dir: target, defaultBranch: 'main' });
+      const s = scaffoldDesign(target, humanName);
+      if (!s.ok)
+        return {
+          status: 500,
+          json: { ok: false, error: s.error ?? 'Could not set up the project.' },
+        };
+    } catch (e) {
+      return {
+        status: 500,
+        json: {
+          ok: false,
+          error: e instanceof Error ? e.message : 'Could not set up the project.',
+        },
+      };
+    }
+    return { status: 200, json: { ok: true, path: target } };
+  }
+
   // Fallback for "open a folder/repo that isn't a Maude project yet" — scaffold a
   // bootable .design/ into an existing folder so it can open (no GitHub, no token).
   async function initDesign(body: unknown): Promise<GitHubEndpointResult> {
@@ -368,6 +409,7 @@ export function createGitHubEndpoints(ctx: Context): GitHubEndpoints {
     repos,
     createRepo: createRepoHandler,
     createProject,
+    createLocalProject,
     invite,
     clone,
     initDesign,

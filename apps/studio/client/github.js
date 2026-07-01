@@ -67,6 +67,8 @@ export const createRepo = (body) => api('/_api/github/create-repo', { method: 'P
 export const invite = (username) => api('/_api/github/invite', { method: 'POST', body: JSON.stringify({ username }) });
 export const cloneRepo = (body) => api('/_api/github/clone', { method: 'POST', body: JSON.stringify(body) });
 export const createProject = (body) => api('/_api/github/create-project', { method: 'POST', body: JSON.stringify(body) });
+/** Create a local-only project (git init + .design scaffold, no GitHub remote). body: { name, parentDir }. */
+export const createLocalProject = (body) => api('/_api/project/create-local', { method: 'POST', body: JSON.stringify(body) });
 export const initDesign = (dir) => api('/_api/design/init', { method: 'POST', body: JSON.stringify({ dir }) });
 /** Phase 29 (E4) Door C — connect to a team hub (saves the global hub credential). */
 export const hubLink = (body) => api('/_api/hub/link', { method: 'POST', body: JSON.stringify(body) });
