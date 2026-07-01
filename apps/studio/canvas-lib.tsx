@@ -539,6 +539,19 @@ function patchCanvasMeta(patch: {
       })),
     };
   }
+  // Mirror the patch into the in-iframe meta snapshot. `getInitial` (viewport +
+  // layout) reads `window.__canvas_meta__`, which is otherwise populated ONCE at
+  // page load — so after a settle, a soft HMR remount (any module edit: text,
+  // reorder, agent edit) would re-read the STALE page-load camera and reset the
+  // pan/zoom. Keeping the snapshot current means the remount restores the live
+  // camera. General fix, not reorder-specific. (DDR-138 dogfood.)
+  const w = window as unknown as {
+    __canvas_meta__?: { viewport?: ViewportState; layout?: { artboards: PersistedArtboardLayout[] } };
+  };
+  if (w.__canvas_meta__ && typeof w.__canvas_meta__ === 'object') {
+    if (sanitized.viewport) w.__canvas_meta__.viewport = sanitized.viewport;
+    if (sanitized.layout) w.__canvas_meta__.layout = sanitized.layout;
+  }
   // Stamp the self-write timestamp BEFORE the fetch so the round-trip
   // (PATCH → server write → fs:json broadcast → iframe message) lands
   // safely inside the echo window even on a fast network.
