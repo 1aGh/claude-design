@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-30T23:02:24.432Z",
+  "generated": "2026-07-01T12:03:21.143Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1013,6 +1013,17 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
+    },
+    {
+      "id": "phase-12.1-layers-reorder",
+      "title": "Feature: Drag-to-reorder elements — layer panel + in-canvas (Phase 12.1)",
+      "status": "icebox",
+      "shipTarget": "ICEBOX",
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan is the deferred phase-12.1 that DDR-103 spun off from Phase 12 (\"Layers drag...",
+      "planPath": ".ai/plans/phase-12.1-layers-reorder.md",
+      "archived": false,
+      "phaseKey": "12.1"
     }
   ]
 }
