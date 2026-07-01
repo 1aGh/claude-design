@@ -1,5 +1,15 @@
 # @1agh/maude
 
+## 0.37.0
+
+### Minor Changes
+
+- f9f475e: You can now start a project two new ways in the desktop app. **`File ▸ New Project…`** (`Cmd+N`) is in the native menu bar — the create flow was previously reachable only from onboarding and the account menu. And the New Project dialog gained a **"This computer only"** option: a plain local git repo (`git init` + `.design/` scaffold, no GitHub, no remote) that you can publish later — so you can design without a GitHub account. Signed out? The menu still opens the dialog; the GitHub option waits for sign-in, local is always available. Backed by a new local-only `POST /_api/project/create-local` endpoint that stays main-origin-only (dual-allowlist, asserted in the canvas-origin gate test). (DDR-137.)
+
+### Patch Changes
+
+- b2de321: `/design:setup-ds`'s Stage-4 design-language moodboard is now saved as a **persistent, commentable UI canvas** at `.design/ui/<ds>-moodboard.tsx` instead of a throwaway file that was discarded after the direction gate. It shows up in `/design:browse` and the canvas list, survives the bootstrap so you can revisit it, and takes comments like any other canvas. In variant mode the 2–3 explored directions are composed as `<DCArtboard>`s **side by side in that one canvas**, so you can compare and comment per-direction. The moodboard is still never written under `system/<ds>/`. (DDR-136, amends DDR-080.)
+
 ## 0.36.2
 
 ### Patch Changes
