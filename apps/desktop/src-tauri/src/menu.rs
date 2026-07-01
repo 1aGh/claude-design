@@ -1,8 +1,11 @@
-// Native OS menu (DDR-106 Task 6). Minimal in phase-26: App menu (About + Quit)
-// and File ▸ Open Project…. The full menu grows in later phases.
+// Native OS menu (DDR-106 Task 6). App menu (About + Quit) and File ▸ New
+// Project… / Open Project…. The full menu grows in later phases.
 
 use tauri::menu::{AboutMetadataBuilder, Menu, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{AppHandle, Runtime};
+
+/// Menu-item id for the File ▸ New Project… action.
+pub const MENU_NEW_PROJECT: &str = "new_project";
 
 /// Menu-item id for the File ▸ Open Project… action.
 pub const MENU_OPEN_PROJECT: &str = "open_project";
@@ -20,10 +23,16 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .quit()
         .build()?;
 
+    let new_project = MenuItemBuilder::with_id(MENU_NEW_PROJECT, "New Project…")
+        .accelerator("CmdOrCtrl+N")
+        .build(app)?;
     let open_project = MenuItemBuilder::with_id(MENU_OPEN_PROJECT, "Open Project…")
         .accelerator("CmdOrCtrl+O")
         .build(app)?;
-    let file_menu = SubmenuBuilder::new(app, "File").item(&open_project).build()?;
+    let file_menu = SubmenuBuilder::new(app, "File")
+        .item(&new_project)
+        .item(&open_project)
+        .build()?;
 
     MenuBuilder::new(app).items(&[&app_menu, &file_menu]).build()
 }

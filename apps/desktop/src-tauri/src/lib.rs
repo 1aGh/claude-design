@@ -25,7 +25,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::Mutex;
 
-use tauri::{Manager, RunEvent, WindowEvent};
+use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_dialog::DialogExt;
 
 use sidecar::SidecarState;
@@ -180,6 +180,13 @@ pub fn run() {
         ])
         .menu(menu::build_menu)
         .on_menu_event(|app, event| {
+            if event.id().as_ref() == menu::MENU_NEW_PROJECT {
+                // File ▸ New Project… — hand off to the webview, which owns the
+                // create-project dialog (name + visibility → POST create-project →
+                // git init + design scaffold → open). IdentityBar listens for this.
+                let _ = app.emit("menu://new-project", ());
+                return;
+            }
             if event.id().as_ref() == menu::MENU_OPEN_PROJECT {
                 let app = app.clone();
                 // Pick a project folder, remember it, and relaunch pointed at it.

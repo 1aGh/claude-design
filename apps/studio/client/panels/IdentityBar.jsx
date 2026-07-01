@@ -15,6 +15,7 @@ import {
   isNativeApp,
   isSignedIn,
   onDeviceCode,
+  onMenuNewProject,
   onSignedIn,
   openVerification,
   signIn,
@@ -108,6 +109,8 @@ export default function IdentityBar() {
   const [copied, setCopied] = useState(false);
   const unlistenRef = useRef(null);
   const railRef = useRef(null);
+  const stateRef = useRef(state);
+  stateRef.current = state; // keep current for the (subscribe-once) menu listener
 
   useEffect(() => {
     let alive = true;
@@ -152,6 +155,20 @@ export default function IdentityBar() {
       const r = await fetchIdentity();
       if (r.ok && r.json?.ok)
         setIdentity({ login: r.json.login, name: r.json.name, avatar_url: r.json.avatar_url });
+    });
+    return () => {
+      p?.then?.((fn) => fn?.());
+    };
+  }, [native]);
+
+  // Native File ▸ New Project… (menu.rs emits `menu://new-project`). Mirror the
+  // account-menu "New project": open the create dialog when signed in, else start
+  // GitHub sign-in — a new project is created on the user's GitHub account.
+  useEffect(() => {
+    if (!native) return undefined;
+    const p = onMenuNewProject(() => {
+      if (stateRef.current === 'in') setView('new');
+      else if (stateRef.current === 'out') handleSignIn();
     });
     return () => {
       p?.then?.((fn) => fn?.());

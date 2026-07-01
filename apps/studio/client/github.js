@@ -39,6 +39,8 @@ export const openVerification = () =>
 export const onDeviceCode = (cb) => listen('github://device-code', cb);
 /** Fire when sign-in completes (any surface) so other surfaces can flip live. cb(login). */
 export const onSignedIn = (cb) => listen('github://signed-in', cb);
+/** Fire when the native File ▸ New Project… menu item is chosen. Returns an unlisten promise. */
+export const onMenuNewProject = (cb) => listen('menu://new-project', cb);
 
 // ── dev-server endpoints ────────────────────────────────────────────────────────
 async function api(path, opts = {}) {
