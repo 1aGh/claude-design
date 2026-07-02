@@ -561,8 +561,12 @@ function collectElementsFull(
     jsxIndex: number;
   }
   const stack: Frame[] = [{ componentName: '', jsxIndex: 0 }];
-  const out: Array<{ id: string; componentName: string; isFrameRoot: boolean; tag: string | null }> =
-    [];
+  const out: Array<{
+    id: string;
+    componentName: string;
+    isFrameRoot: boolean;
+    tag: string | null;
+  }> = [];
   function tagOf(node: AnyNode): string | null {
     const n = node?.openingElement?.name;
     if (n?.type === 'JSXIdentifier' && typeof n.name === 'string') return n.name;
@@ -620,10 +624,14 @@ function collectElementsFull(
  * element (one usage → can't split). Reordering elements WITHIN a reused
  * component's definition isn't reachable via drag (edit the component source).
  */
-function resolveUsageId(program: AnyNode, domId: string, occurrenceIndex: number | undefined): string {
+function resolveUsageId(
+  program: AnyNode,
+  domId: string,
+  occurrenceIndex: number | undefined
+): string {
   const all = collectElementsFull(program);
   const target = all.find((e) => e.id === domId);
-  if (!target || !target.componentName) return domId;
+  if (!target?.componentName) return domId;
   const usages = all.filter((e) => e.tag === target.componentName);
   if (usages.length <= 1) return domId; // single usage (or `.map`) — not splittable
   const i =
@@ -652,7 +660,10 @@ export async function moveElement(
   return withLock(canvasAbsPath, async () => {
     const file = Bun.file(canvasAbsPath);
     if (!(await file.exists())) {
-      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, { canvas: canvasAbsPath, id });
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id,
+      });
     }
     const source = await file.text();
     const next = applyMove(canvasAbsPath, source, id, refId, position, idIndex, refIndex);

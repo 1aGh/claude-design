@@ -63,7 +63,10 @@ export function createReorderCommand(init: {
  * /_api/reorder before telling the canvas), so push via `record()` — appends
  * WITHOUT re-running do().
  */
-export function buildReorderRecord(payload: ReorderPayload, label?: string): CommandRecord<ReorderPayload> {
+export function buildReorderRecord(
+  payload: ReorderPayload,
+  label?: string
+): CommandRecord<ReorderPayload> {
   return { kind: REORDER_KIND, label: label ?? 'move element', payload };
 }
 

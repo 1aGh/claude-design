@@ -10,8 +10,8 @@ import { renderBriefBoard, validateCanvasName } from './canvas-create.ts';
 import {
   CanvasEditError,
   editAttribute,
-  moveElement,
   type MovePosition,
+  moveElement,
   removeAttribute,
   editText as runEditText,
 } from './canvas-edit.ts';
@@ -279,7 +279,11 @@ export interface Api {
   // file content swap from the in-memory revert log — immune to the positional
   // data-cd-id churn a reorder causes (inverse-descriptor undo would go stale).
   // Refuses (409) when the canvas changed since the reorder (external edit).
-  reorderRevert(input: { canvas?: unknown; seq?: unknown; dir?: unknown }): Promise<ReorderRevertResult>;
+  reorderRevert(input: {
+    canvas?: unknown;
+    seq?: unknown;
+    dir?: unknown;
+  }): Promise<ReorderRevertResult>;
   // Aggregate data
   buildIndexData(): Promise<unknown>;
   buildSystemData(dsName?: string | null): Promise<unknown>;
@@ -1499,14 +1503,22 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const seq = typeof input.seq === 'number' ? input.seq : Number.NaN;
     const entry = Number.isInteger(seq) ? reorderLog.get(seq) : undefined;
     if (!entry || entry.abs !== r.abs) {
-      return { ok: false, status: 404, error: 'reorder not found (server restarted or log rotated)' };
+      return {
+        ok: false,
+        status: 404,
+        error: 'reorder not found (server restarted or log rotated)',
+      };
     }
     try {
       const current = await Bun.file(r.abs).text();
       const expect = dir === 'undo' ? entry.after : entry.before;
       const write = dir === 'undo' ? entry.before : entry.after;
       if (current !== expect) {
-        return { ok: false, status: 409, error: 'canvas changed since this reorder — undo skipped' };
+        return {
+          ok: false,
+          status: 409,
+          error: 'canvas changed since this reorder — undo skipped',
+        };
       }
       ctx.bus.emit('activity:suppress', path.relative(paths.designRoot, r.abs));
       await Bun.write(r.abs, write);

@@ -53,8 +53,8 @@ import {
   type EditSourceOp,
   type EditSourcePayload,
 } from './commands/edit-source-command.ts';
-import { buildReorderRecord, type ReorderRevertFn } from './commands/reorder-command.ts';
 import { type AlignMode, alignLabel, equalSpacingLabel } from './commands/equal-spacing-command.ts';
+import { buildReorderRecord, type ReorderRevertFn } from './commands/reorder-command.ts';
 import {
   ContextMenuProvider,
   type ContextRegistry,
@@ -463,7 +463,9 @@ function serializeArtboardTree(root: Element): LayerNode[] {
 // window survives the soft HMR, so the tracked artboard persists across it.
 function getLastLayersArtboardId(): string | null {
   try {
-    return (window as unknown as { __maudeLastLayersArt?: string | null }).__maudeLastLayersArt ?? null;
+    return (
+      (window as unknown as { __maudeLastLayersArt?: string | null }).__maudeLastLayersArt ?? null
+    );
   } catch {
     return null;
   }
@@ -474,7 +476,8 @@ function postLayersTree(artboardId: string | null | undefined): void {
   const root = document.querySelector(`[data-dc-screen="${CSS.escape(artboardId)}"]`);
   if (!root) return;
   try {
-    (window as unknown as { __maudeLastLayersArt?: string | null }).__maudeLastLayersArt = artboardId;
+    (window as unknown as { __maudeLastLayersArt?: string | null }).__maudeLastLayersArt =
+      artboardId;
   } catch {
     /* no window */
   }
@@ -1664,9 +1667,8 @@ function CanvasRouter({
       // a hostile canvas self-post must not be able to plant fake undo entries.
       if (m.dgn === 'record-edit') {
         if (e.source !== window.parent) return;
-        const p = (
-          m as { payload?: Partial<EditSourcePayload> & { seq?: number; label?: string } }
-        ).payload;
+        const p = (m as { payload?: Partial<EditSourcePayload> & { seq?: number; label?: string } })
+          .payload;
         // Phase 12.1 — a landed reorder (drag / keyboard move). The shell POSTed
         // /_api/reorder already; record so Cmd+Z reverts via the server's log.
         if (p && (p as { op?: string }).op === 'reorder') {
@@ -2541,7 +2543,9 @@ function ReorderDrag() {
     const computeTarget = (x: number, y: number, d: Drag): Target | null => {
       let E = document.elementFromPoint(x, y)?.closest('[data-cd-id]') as HTMLElement | null;
       while (E && (E === d.el || d.el.contains(E))) {
-        E = E.parentElement ? (E.parentElement.closest('[data-cd-id]') as HTMLElement | null) : null;
+        E = E.parentElement
+          ? (E.parentElement.closest('[data-cd-id]') as HTMLElement | null)
+          : null;
       }
       if (!E || !reorderCdId(E)) return null;
       // While inside the dragged node's own parent, climb to that parent's direct
@@ -2679,7 +2683,7 @@ function ReorderDrag() {
       d.settle = null;
       d.settleKey = null;
       const t = d.target;
-      if (!t || !t.el.isConnected) return;
+      if (!t?.el.isConnected) return;
       const drop = targetToDrop(t);
       if (!drop) return;
       animateReflow(d.el, () => applyDrop(d.el, t));
