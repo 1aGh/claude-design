@@ -5215,6 +5215,7 @@ function LayerRow({
   dragState,
   siblings,
   pos,
+  parentNode,
 }) {
   const key = `${node.id}:${node.index}`;
   const hasKids = node.children && node.children.length > 0;
@@ -5277,19 +5278,25 @@ function LayerRow({
           // Alt+Arrow keyboard reorder (drag isn't keyboard-reachable; the tree is
           // role="tree"). Up/Down reorder among siblings; Right nests into the
           // previous sibling as its last child. See DDR-138.
-          if (canDrag && e.altKey && Array.isArray(siblings)) {
-            if (e.key === 'ArrowUp' && pos > 0) {
+          // Alt+↑/↓ reorder among siblings; Alt+→ nests into the previous sibling;
+          // Alt+← UN-NESTS (outdent) — moves the node out to just after its parent.
+          if (canDrag && e.altKey) {
+            if (e.key === 'ArrowUp' && Array.isArray(siblings) && pos > 0) {
               e.preventDefault();
               e.stopPropagation();
               onReorder(node, siblings[pos - 1], 'before');
-            } else if (e.key === 'ArrowDown' && pos < siblings.length - 1) {
+            } else if (e.key === 'ArrowDown' && Array.isArray(siblings) && pos < siblings.length - 1) {
               e.preventDefault();
               e.stopPropagation();
               onReorder(node, siblings[pos + 1], 'after');
-            } else if (e.key === 'ArrowRight' && pos > 0) {
+            } else if (e.key === 'ArrowRight' && Array.isArray(siblings) && pos > 0) {
               e.preventDefault();
               e.stopPropagation();
               onReorder(node, siblings[pos - 1], 'inside-end');
+            } else if (e.key === 'ArrowLeft' && parentNode) {
+              e.preventDefault();
+              e.stopPropagation();
+              onReorder(node, parentNode, 'after'); // outdent: move out, after the parent
             }
           }
         }}
@@ -5348,6 +5355,7 @@ function LayerRow({
               dragState={dragState}
               siblings={node.children}
               pos={ci}
+              parentNode={node}
             />
           ))
         : null}
@@ -5738,7 +5746,7 @@ function InspectorPanel({
               <>
                 {handleReorder ? (
                   <div className="st-rp-hint" aria-hidden="true">
-                    Drag a layer to reorder · Alt+↑/↓ to move · Alt+→ to nest
+                    Drag a layer to reorder · Alt+↑/↓ move · Alt+→ nest · Alt+← un-nest
                   </div>
                 ) : null}
                 <div role="tree" aria-label="Artboard layers">
@@ -5840,6 +5848,7 @@ function App() {
   // target stale ids; the Layers tree gates new drags on this until the rebuilt
   // tree (with correct ids) arrives. Cleared by the layers-tree message.
   const layersBusyRef = useRef(false);
+  const layersBusyTimerRef = useRef(null);
   // Phase 12 Task 4 — Layers tree for the active artboard (posted by canvas-shell).
   const [layersTree, setLayersTree] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -6955,7 +6964,12 @@ function App() {
       } else if (m.dgn === 'layers-tree') {
         // Phase 12 Task 4 — browsable layers tree for the active artboard.
         setLayersTree({ artboardId: m.artboardId, nodes: Array.isArray(m.tree) ? m.tree : [] });
-        layersBusyRef.current = false; // fresh tree (correct ids) landed — drags OK again
+        // fresh tree (correct ids) landed — drags OK again
+        layersBusyRef.current = false;
+        if (layersBusyTimerRef.current) {
+          clearTimeout(layersBusyTimerRef.current);
+          layersBusyTimerRef.current = null;
+        }
       } else if (m.dgn === 'reorder-request') {
         // Phase 12.1 (DDR-138) — the in-canvas ReorderGrip (untrusted canvas
         // iframe) can't reach the main-origin-only /_api/reorder (DDR-054), so it
@@ -7298,8 +7312,15 @@ function App() {
       );
       // Gate the next layers-panel drag until the rebuilt tree lands — the write
       // churns positional ids, so a rapid 2nd drag on the optimistic tree would
-      // carry stale ids. Cleared by the incoming layers-tree message.
+      // carry stale ids. Cleared by the incoming layers-tree message, with a
+      // hard timeout fallback so the list can NEVER stay frozen if that message
+      // doesn't arrive (a no-op reorder, no HMR, etc.).
       layersBusyRef.current = true;
+      if (layersBusyTimerRef.current) clearTimeout(layersBusyTimerRef.current);
+      layersBusyTimerRef.current = setTimeout(() => {
+        layersBusyRef.current = false;
+        layersBusyTimerRef.current = null;
+      }, 700);
       editApplyChainRef.current = editApplyChainRef.current
         .catch(() => {})
         .then(() =>
