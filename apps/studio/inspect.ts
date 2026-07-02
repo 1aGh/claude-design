@@ -266,11 +266,21 @@ export function createInspect(
     } else {
       state.selected = null;
     }
-    // Write-through into the per-canvas memory, keyed by the selection's own
-    // file (full payload incl. html — this IS the active canvas's rich copy).
-    if (state.selected != null) {
+    // Write-through into the per-canvas memory (full payload incl. html — this
+    // IS the active canvas's rich copy). Keyed by the ACTIVE canvas, and only
+    // when the selection's own file matches it: the client gates select posts to
+    // `e.source === activeWin` (app.jsx), but an ACTIVE untrusted canvas (a peer's
+    // canvas reviewed in hub mode, DDR-054) could still claim `file: <another
+    // trusted canvas>` and plant it into that canvas's slot for later delivery to
+    // the auto-approving agent. A selection can only legitimately belong to the
+    // canvas the user is looking at, so a mismatched `file` is a cross-canvas
+    // plant — drop the write-through (attacker Finding 2 residual).
+    if (state.selected != null && state.active) {
       const first = Array.isArray(state.selected) ? state.selected[0] : state.selected;
-      if (first?.file) state.selections[deriveCanvasSlug(first.file)] = state.selected;
+      const activeSlug = deriveCanvasSlug(state.active);
+      if (first?.file && deriveCanvasSlug(first.file) === activeSlug) {
+        state.selections[activeSlug] = state.selected;
+      }
     }
     state.last_change = new Date().toISOString();
     scheduleSave();

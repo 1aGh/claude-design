@@ -92,6 +92,19 @@ describe('per-canvas selections — restore on switch', () => {
     expect(inspect.state.selections['ui/fixture']).toBe(inspect.state.selected);
   });
 
+  test('a cross-canvas plant (selection.file != active) is NOT stored (attacker F2 residual)', async () => {
+    // An active untrusted canvas posts a selection claiming a DIFFERENT canvas's
+    // file — it must not land in that canvas's slot for later agent delivery.
+    const { inspect } = await mkRig();
+    inspect.setActive(A);
+    inspect.setSelected(selFor(B, 'planted')); // A is active, payload claims B
+    expect(inspect.state.selections['ui/second']).toBeUndefined();
+    expect(inspect.state.selections['ui/fixture']).toBeUndefined();
+    // Later opening B must not resurrect the plant.
+    inspect.setActive(B);
+    expect(inspect.state.selected).toBeNull();
+  });
+
   test('single-entry array still collapses to a bare object (Phase 4.1 contract)', async () => {
     const { inspect } = await mkRig();
     inspect.setActive(A);
