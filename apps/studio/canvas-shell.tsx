@@ -2480,6 +2480,9 @@ function ReorderDrag() {
     let drag: Drag | null = null;
     let highlightEl: HTMLElement | null = null;
     let dividerEl: HTMLDivElement | null = null;
+    // The last committed drop, kept so a shell 'reorder-failed' can undo the
+    // optimistic DOM move (the write was rejected → nothing persisted).
+    let lastCommit: { el: HTMLElement; parent: HTMLElement; next: Element | null } | null = null;
 
     const setHighlight = (el: HTMLElement | null) => {
       if (highlightEl === el) return;
@@ -2552,11 +2555,19 @@ function ReorderDrag() {
         return { kind: 'inside', el: anchor, container: anchor };
       }
       const parent = anchor.parentElement;
-      if (!parent || parent === d.el || d.el.contains(parent)) return null;
-      const pcs = getComputedStyle(parent);
-      const isRow = pcs.display.includes('flex') && pcs.flexDirection.startsWith('row');
       const r = anchor.getBoundingClientRect();
+      const pcs = parent ? getComputedStyle(parent) : null;
+      const isRow = !!pcs && pcs.display.includes('flex') && pcs.flexDirection.startsWith('row');
       const frac = isRow ? (x - r.left) / (r.width || 1) : (y - r.top) / (r.height || 1);
+      // Nest zone: the middle third of a CONTAINER (element that holds children)
+      // nests INTO it. This is the only way to drop a node into a non-empty
+      // container — before/after only ever inserts as a SIBLING, so without it a
+      // node accidentally lifted to the root could never be dragged back into a
+      // child div. Leaves keep the full 50/50 (no nest band eating the target).
+      if (anchor.childElementCount > 0 && frac >= 0.34 && frac <= 0.66 && !d.el.contains(anchor)) {
+        return { kind: 'inside', el: anchor, container: anchor };
+      }
+      if (!parent || parent === d.el || d.el.contains(parent)) return null;
       return { kind: frac < 0.5 ? 'before' : 'after', el: anchor, container: parent };
     };
 
@@ -2719,6 +2730,12 @@ function ReorderDrag() {
       if (!cdId || !one) return;
       const el = resolveSelectionEl(document, one) as HTMLElement | null;
       if (!el) return;
+      // Repeated (`.map`ed / looped) element: its data-cd-id appears on more than
+      // one node, so it's a SINGLE source node inside an expression. Moving it
+      // can't be expressed as a JSX edit (the server 422s: "empty parenthesized
+      // expression") — so don't start a drag that could only ever be rejected +
+      // leave a phantom. Matches the Layers panel, which greys these out.
+      if (document.querySelectorAll(`[data-cd-id="${CSS.escape(cdId)}"]`).length > 1) return;
       const t = e.target;
       if (!(t instanceof Node) || !el.contains(t)) return;
       // Candidate — do NOT claim yet (a plain click must still work). We only
@@ -2826,6 +2843,10 @@ function ReorderDrag() {
         drop = d.applied; // DOM already sits there from the preview
       }
       if (!drop) return; // dropped on empty space, never previewed — no move
+      // Remember where this node came FROM: if the shell reports the write was
+      // rejected (dgn:'reorder-failed'), we put it back so a phantom move that
+      // never persisted doesn't linger until the next canvas switch.
+      lastCommit = d.origin ? { el: d.el, parent: d.origin.parent, next: d.origin.next } : null;
       suppressNextCanvasClick();
       window.parent.postMessage(
         { dgn: 'reorder-request', id: d.cdId, refId: drop.refId, position: drop.position },
@@ -2833,13 +2854,28 @@ function ReorderDrag() {
       );
     };
 
+    // The shell rejected the last reorder — revert the optimistic DOM move.
+    const onReorderFailed = (e: MessageEvent) => {
+      if (e.source !== window.parent) return;
+      const m = e.data as { dgn?: string } | null;
+      if (m?.dgn !== 'reorder-failed' || !lastCommit) return;
+      try {
+        lastCommit.parent.insertBefore(lastCommit.el, lastCommit.next);
+      } catch {
+        /* origin detached — a subsequent load re-syncs */
+      }
+      lastCommit = null;
+    };
+
     document.addEventListener('pointerdown', onDown, true);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('message', onReorderFailed);
     return () => {
       if (drag) clearSettle(drag);
       setHighlight(null);
+      window.removeEventListener('message', onReorderFailed);
       if (dividerEl) {
         dividerEl.remove();
         dividerEl = null;

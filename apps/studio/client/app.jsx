@@ -7447,6 +7447,20 @@ function App() {
             .then((j) => {
               if (!j.ok) {
                 console.warn('[reorder]', j.error || 'failed');
+                // The move was REJECTED (e.g. a .map()ed/looped element, or a
+                // reparent that would break the JSX) — but the canvas already
+                // applied it optimistically (applyDrop) and the layers panel via
+                // moveLayerNode. Nothing was written, so without a revert the user
+                // sees a phantom change that vanishes on the next canvas switch
+                // ("it didn't save") and Cmd+Z has no entry to undo. Tell the
+                // canvas to put the node back; its observer re-posts the tree, so
+                // the panel reverts too.
+                postToActiveCanvas({ dgn: 'reorder-failed' });
+                layersBusyRef.current = false;
+                if (layersBusyTimerRef.current) {
+                  clearTimeout(layersBusyTimerRef.current);
+                  layersBusyTimerRef.current = null;
+                }
                 return;
               }
               // The write triggers an HMR reload; the dgn:'loaded' handler
