@@ -278,9 +278,11 @@ export function makeAcpAdapter(conn, getChatId, getModel, getEffort, getAttachme
       // hardening): the turn keeps the context it had when the user hit Enter,
       // immune to the user switching canvases while it runs. The same object
       // drives the visible composer chip (DDR-140 reveal — what you see is
-      // what rides); the fenced block carries locators only, never DOM html.
+      // what rides); the bracket lines carry locators only, never DOM html.
+      // APPENDED after the typed text (paste-chip semantics) so the user's own
+      // words stay first — chat titles and history read naturally.
       const frozen = getContext?.();
-      const text = frozen?.block ? `${frozen.block}\n\n${typed}` : typed;
+      const text = frozen?.block ? `${typed}\n\n${frozen.block}` : typed;
 
       const parts = [];
       const toolIndex = new Map();

@@ -202,8 +202,12 @@ export function createInspect(
     if (!Array.isArray(tabs)) return;
     state.open_tabs = tabs.filter((t): t is string => typeof t === 'string');
     // GC selection memory for closed canvases — a closed tab's parked
-    // selection has no consumer and would otherwise accrete forever.
+    // selection has no consumer and would otherwise accrete forever. Keep the
+    // CURRENT active canvas too: the single-canvas shell sends `tabs` with only
+    // the incoming canvas BEFORE `active` parks the outgoing one, so without
+    // this the outgoing canvas's memory would depend on message ordering.
     const keep = new Set(state.open_tabs.map((t) => deriveCanvasSlug(t)));
+    if (state.active) keep.add(deriveCanvasSlug(state.active));
     for (const slug of Object.keys(state.selections)) {
       if (!keep.has(slug)) delete state.selections[slug];
     }

@@ -44,10 +44,12 @@ function readLines(file: string): Array<Record<string, unknown>> {
   }
 }
 
-/** First user line, truncated — the chat's display title. */
+/** First user line, truncated — the chat's display title. Context-attachment
+ *  lines are stripped first, so a chat never titles itself `[maude-context …`
+ *  (the 2026-07-03 dogfood finding). */
 function deriveTitle(lines: Array<Record<string, unknown>>): string {
   const firstUser = lines.find((l) => l.role === 'user' && typeof l.text === 'string');
-  const text = (firstUser?.text as string) ?? '';
+  const text = stripContextBlock((firstUser?.text as string) ?? '');
   const trimmed = text.replace(/\s+/g, ' ').trim();
   return trimmed ? trimmed.slice(0, 60) : 'New chat';
 }
@@ -86,18 +88,31 @@ export function deleteChat(designRoot: string, chatId: string): boolean {
 }
 
 /**
- * UI-projection strip of the frozen `<maude-context>` prefix a chat-context
- * send prepends (feature-acp-context-hardening). PROJECTION ONLY — the on-disk
- * jsonl keeps the raw prompt (it's the audit record of what steered the
- * auto-approving agent); the rendered bubble shows just what the user typed.
- * `role:'bootstrap'` brief entries are skipped by this reader by construction
- * (only user/stop/agent roles are consumed below).
+ * UI-projection strip of the frozen chat-context a send attaches
+ * (feature-acp-context-hardening). PROJECTION ONLY — the on-disk jsonl keeps
+ * the raw prompt (it's the audit record of what steered the auto-approving
+ * agent); the rendered bubble/title shows just what the user typed. Handles
+ * both formats: the current TRAILING `[maude-context …]` (+ `[selected: …]`)
+ * bracket lines, and the legacy leading `<maude-context>` fence (2026-07-02,
+ * one release window). `role:'bootstrap'` brief entries are skipped by this
+ * reader by construction (only user/stop/agent roles are consumed below).
  */
 function stripContextBlock(text: string): string {
-  if (!text.startsWith('<maude-context')) return text;
-  const end = text.indexOf('</maude-context>');
-  if (end === -1) return text;
-  return text.slice(end + '</maude-context>'.length).replace(/^\s+/, '');
+  let out = text;
+  if (out.startsWith('<maude-context')) {
+    const end = out.indexOf('</maude-context>');
+    if (end !== -1) out = out.slice(end + '</maude-context>'.length).replace(/^\s+/, '');
+  }
+  const i = out.indexOf('\n[maude-context ');
+  if (i !== -1) {
+    const tail = out.slice(i + 1);
+    // Only strip when the remainder is EXACTLY the context block (all lines are
+    // bracket lines) — a user merely quoting `[maude-context …]` mid-text stays.
+    if (/^\[maude-context [^\n]*\](\n\[selected:[^\n]*\])*\s*$/.test(tail)) {
+      out = out.slice(0, i).replace(/\s+$/, '');
+    }
+  }
+  return out;
 }
 
 /**

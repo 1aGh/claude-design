@@ -140,6 +140,25 @@ describe('per-canvas selections — lifecycle', () => {
     expect(inspect.state.selected).toBeNull();
   });
 
+  test('single-canvas shell ordering (tabs BEFORE active) never GCs the outgoing canvas', async () => {
+    // The shell replaces the tab and sends `tabs` with ONLY the incoming canvas
+    // before `active` parks the outgoing one — the exact wire order of app.jsx
+    // openTab effects. The outgoing canvas's memory must survive the round trip.
+    const { inspect } = await mkRig();
+    inspect.setActive(A);
+    inspect.setOpenTabs([A]);
+    inspect.setSelected(selFor(A));
+
+    inspect.setOpenTabs([B]); // switch A→B: tabs first…
+    inspect.setActive(B); //    …then active (parks A)
+    expect(inspect.state.selections['ui/fixture']).toBeDefined();
+
+    inspect.setOpenTabs([A]); // switch back B→A: tabs first…
+    inspect.setActive(A); //    …then active (restores A)
+    expect(asOne(inspect.state.selected).selector).toBe('h1');
+    expect(asOne(inspect.state.selected).file).toBe(A);
+  });
+
   test('closing a tab GCs its parked selection', async () => {
     const { inspect } = await mkRig();
     inspect.setActive(A);

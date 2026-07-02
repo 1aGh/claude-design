@@ -112,6 +112,25 @@ describe('deleteChat', () => {
 });
 
 describe('context-hardening projection (feature-acp-context-hardening)', () => {
+  test('trailing [maude-context] bracket lines are stripped from bubble AND title', () => {
+    const text =
+      'udelej ten nadpis větší o 40%\n\n' +
+      '[maude-context canvas=".design/ui/Pricing.tsx" mtime=1234]\n' +
+      '[selected: h2 "Every feature, side by side." data-cd-id=a1b2c3d4 index=0]';
+    const designRoot = seed('ct', [{ ts: 1, role: 'user', text }]);
+    const msgs = readChatMessages(designRoot, 'ct');
+    expect(msgs[0]?.parts[0]?.text).toBe('udelej ten nadpis větší o 40%');
+    // The 2026-07-03 dogfood finding: the chat used to TITLE itself with the
+    // raw context block.
+    expect(listChats(designRoot)[0]?.title).toBe('udelej ten nadpis větší o 40%');
+  });
+
+  test('a user merely quoting [maude-context …] mid-text is untouched', () => {
+    const text = 'co dela ten [maude-context canvas="x"] radek?\na jeste neco';
+    const designRoot = seed('cq', [{ ts: 1, role: 'user', text }]);
+    expect(readChatMessages(designRoot, 'cq')[0]?.parts[0]?.text).toBe(text);
+  });
+
   test('leading <maude-context> fence is stripped from the rendered user bubble', () => {
     const block =
       '<maude-context canvas=".design/ui/P.tsx" mtime="1" stale="false" count="1">\n' +

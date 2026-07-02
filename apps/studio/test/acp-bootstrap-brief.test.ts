@@ -21,9 +21,18 @@ describe('buildStudioBrief — content guardrails', () => {
     expect(brief).toContain('`.design/`');
     expect(brief).toContain('/design:');
     expect(brief).toContain('maude design <verb>');
-    expect(brief).toContain('<maude-context>');
+    expect(brief).toContain('[maude-context');
     expect(brief).toContain('_active.json');
     expect(brief).toContain('stale');
+  });
+
+  test('slash workflows are gated on explicit user intent — direct edits are the default', () => {
+    // 2026-07-03 dogfood: "prefer /design:*" steered a trivial +40% font tweak
+    // into the full edit pipeline (server, screenshots, critics). The brief must
+    // point at direct file edits as the default path.
+    expect(brief).toContain('edit the canvas file directly');
+    expect(brief).toContain('only when the user explicitly asks');
+    expect(brief.toLowerCase()).not.toContain('prefer the `/design:');
   });
 
   test('frames canvas-derived data as untrusted DATA', () => {

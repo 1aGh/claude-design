@@ -6482,7 +6482,38 @@ function App() {
           if (m.type === 'snapshot' && m.state) {
             setSelected((prev) => mergeSelClientFields(m.state.selected, prev));
           } else if (m.type === 'selected') {
-            setSelected((prev) => mergeSelClientFields(m.selected, prev));
+            // feature-acp-context-hardening — a canvas switch RESTORES the
+            // per-canvas selection server-side and broadcasts it here. The
+            // dgn:'loaded' re-select (Phase 12.3 path below) only works when
+            // this frame lands BEFORE the new iframe loads; on a fast cached
+            // mount it lands after, so re-apply the halo from THIS edge too.
+            // Guarded to restore-transitions (prev missing / different id or
+            // file) so the select-set echo of our own re-select can't loop.
+            const incoming = m.selected;
+            const one = Array.isArray(incoming) ? incoming[0] : incoming;
+            const prevSel = selectedRef.current;
+            const prevOne = Array.isArray(prevSel) ? prevSel[0] : prevSel;
+            setSelected((prev) => mergeSelClientFields(incoming, prev));
+            if (
+              one?.id &&
+              one.file &&
+              (!prevOne || prevOne.id !== one.id || prevOne.file !== one.file)
+            ) {
+              const frame = iframesRef.current.get(one.file);
+              if (frame?.contentWindow) {
+                try {
+                  frame.contentWindow.postMessage(
+                    {
+                      dgn: 'select-by-id',
+                      id: one.id,
+                      artboardId: one.artboardId ?? null,
+                      index: one.index ?? 0,
+                    },
+                    '*'
+                  );
+                } catch {}
+              }
+            }
           } else if (m.type === 'comments' && typeof m.file === 'string') {
             setCommentsByFile((prev) => ({ ...prev, [m.file]: m.comments || [] }));
           } else if (m.type === 'ai-activity' && typeof m.file === 'string') {

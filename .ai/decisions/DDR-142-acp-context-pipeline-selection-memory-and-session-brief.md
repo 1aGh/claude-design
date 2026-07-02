@@ -13,9 +13,18 @@
 
 Every selection is stamped `canvas_mtime` at capture (`enrich()`). Restore-on-switch compares against the current file mtime; a mismatch marks each element `stale: true`. Consumers must re-anchor (`data-dc-element` → selector+index) or degrade to canvas-wide — `data-cd-id` is POSITIONAL (`Bun.hash(component:idx)`), so after a foreign edit it can silently resolve to a DIFFERENT element (the silent-corruption risk that made this gate non-negotiable). Parked non-active entries carry `html: ''` (size cap — locators survive, the 4000-char payload doesn't multiply across canvases).
 
-## Decision 3 — Chat context is FROZEN AT SEND, visible, and locators-only
+## Decision 3 — Chat context is FROZEN AT SEND, visible, locators-only, and paste-chip-shaped
 
-`buildChatContext` (client/panels/chat-context.js) produces ONE object driving both the composer chip and the fenced `<maude-context>` block the adapter prepends to the outgoing prompt — chip ≡ payload by construction (DDR-140). The block carries locators only (`data-cd-id`, selector, index, tag, text ≤ 120, mtime, stale) — **never `selected.html`**: canvas DOM is untrusted (DDR-054) and the agent auto-approves (F2); it reads the element from disk itself, which is fresher anyway. All interpolated values are sanitized (`<>"`` + controls stripped) so canvas-controlled strings can't break out of the fence. The chip is removable; dismissal re-arms when the context changes. The transcript UI projection strips the fence from user bubbles; **the on-disk jsonl keeps the raw prompt** — it is the audit record.
+`buildChatContext` (client/panels/chat-context.js) produces ONE object driving both the composer chip and the context lines the adapter attaches to the outgoing prompt — chip ≡ payload by construction (DDR-140). **Format (amended 2026-07-03 after dogfood):** compact bracket lines **APPENDED after the typed text** — like a pasted file path, not a fenced XML block:
+
+```
+udelej ten nadpis větší o 40%
+
+[maude-context canvas=".design/ui/Pricing.tsx" mtime=1234]
+[selected: h2 "Every feature, side by side." data-cd-id=a1b2c3d4 selector="…" index=0]
+```
+
+The original prepended `<maude-context>` fence polluted chat titles (deriveTitle read the raw first line) and read as workflow ceremony. Append keeps the user's words first; `deriveTitle` + the bubble projection additionally strip the block (both formats, legacy fence included) — **the on-disk jsonl keeps the raw prompt** as the audit record. The lines carry locators only (`data-cd-id`, selector, index, tag, text ≤ 120, mtime, stale) — **never `selected.html`**: canvas DOM is untrusted (DDR-054) and the agent auto-approves (F2); it reads the element from disk itself, which is fresher anyway. Sanitization strips newlines + brackets + `<>"` from interpolated values, so a canvas-controlled string can never form a context line of its own. The chip is removable; dismissal re-arms when the context changes.
 
 ## Decision 4 — Session bootstrap brief: static, generated, system-role, transcript-audited
 
@@ -25,7 +34,7 @@ Every new ACP session gets a studio-environment brief via `newSession._meta.syst
 - **Environment orientation only** — no behavioral/git policy that could override the user's own CLAUDE.md (the spawned `claude` already reads it via cwd).
 - **Audited:** mirrored into `_chat/<id>.jsonl` as `role:'bootstrap'` on the session's first real turn; UI readers skip the role. Invisible-to-user is UX; invisible-to-audit would be a security regression for an auto-approving agent.
 
-The brief carries the pointer that closes the reported failure at the instruction layer: *"per-message context arrives as `<maude-context>`; do NOT assume `_active.json.selected` matches the message."*
+The brief carries the pointer that closes the reported failure at the instruction layer: *"per-message context arrives as trailing `[maude-context …]` lines; do NOT assume `_active.json.selected` matches the message."* **Amended 2026-07-03:** the brief must not steer tool ceremony — the original "prefer `/design:*` flows" line sent a trivial +40% font tweak through the full edit pipeline (dev-server checks, screenshots, critics). Now: direct file edits are the default; `/design:*` workflows only when the user explicitly asks for that depth.
 
 ## Rejected
 
