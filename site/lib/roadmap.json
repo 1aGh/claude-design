@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-02T11:17:19.539Z",
+  "generated": "2026-07-02T15:07:28.355Z",
   "currentPhase": null,
   "phases": [
     {
@@ -353,6 +353,17 @@
       "planPath": ".ai/plans/archive/phase-12-in-canvas-css-and-layers.md",
       "archived": true,
       "phaseKey": "12"
+    },
+    {
+      "id": "phase-12.1-layers-reorder",
+      "title": "Feature: Drag-to-reorder elements — layer panel + in-canvas (Phase 12.1)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan is the deferred phase-12.1 that DDR-103 spun off from Phase 12 (\"Layers drag...",
+      "planPath": ".ai/plans/archive/phase-12.1-layers-reorder.md",
+      "archived": true,
+      "phaseKey": "12.1"
     },
     {
       "id": "phase-12.2-css-panel-ux",
@@ -1035,17 +1046,6 @@
       "planPath": ".ai/plans/feature-video-animation-layer.md",
       "archived": false,
       "phaseKey": null
-    },
-    {
-      "id": "phase-12.1-layers-reorder",
-      "title": "Feature: Drag-to-reorder elements — layer panel + in-canvas (Phase 12.1)",
-      "status": "icebox",
-      "shipTarget": "ICEBOX",
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan is the deferred phase-12.1 that DDR-103 spun off from Phase 12 (\"Layers drag...",
-      "planPath": ".ai/plans/phase-12.1-layers-reorder.md",
-      "archived": false,
-      "phaseKey": "12.1"
     }
   ]
 }

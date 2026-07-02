@@ -16,7 +16,7 @@
       "date": null,
       "kind": "feature",
       "title": "Drag to reorder elements",
-      "summary": "Rearrange a canvas by hand. Drag a layer in the Layers panel — above, below, or into another element — or just drag the element itself on the canvas: its neighbours reflow live as you move, Figma-style, and it drops where you leave it. A reorder rewrites your .tsx source and is undoable (⌘-rollback). Keyboard too: with a layer focused, Alt+↑/↓ moves it past a sibling and Alt+→ nests it.",
+      "summary": "Rearrange a canvas by hand. Drag the element itself on the canvas — drop on the top/left half to go above, the bottom/right half to go below, or the middle of a box to drop inside it — and the layout reflows LIVE while you hold, Figma-style, with the neighbours gliding into place; Esc puts it back. Or drag in the Layers panel, which now mirrors the canvas both ways as you move. Even instances of the same reusable component (a board's columns, repeated cards) reorder now. Every reorder rewrites your .tsx source and undoes with ⌘Z / redoes with ⌘⇧Z. Keyboard: with the panel focused, ↑/↓ walk the selection, Alt+↑/↓ move within the parent, Alt+Shift+↑/↓ move across.",
       "surface": "design-ui"
     },
     {

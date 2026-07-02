@@ -225,3 +225,21 @@ Run these to confirm zero regressions:
 - [ ] DDR-138 recorded; `phase-12.1` archived + roadmap regen (`pnpm --filter @maude/site gen:roadmap`) committed
 - [ ] Pending "What's New" entry appended
 - [ ] No regression to Phase 12 click-to-select / CSS / text-edit paths
+
+---
+
+## Retro (2026-07-02 — closed via /flow:done)
+
+**What shipped vs planned.** The plan was Milestone A (Layers-panel + `moveElement` engine) + Milestone B (in-canvas drag). It shipped, then a long user dogfood loop turned this into ~2× the planned scope — all committed to `main`, all live-verified via agent-browser synthetic pointers. Net feature: drag-to-reorder on both surfaces with a Figma-grade floating drag, 500 ms settle live-reflow + FLIP-glide neighbours, Esc-cancel, ⌘Z/⌘⇧Z undo, whole-element 50/50 drop zones + nest-into-container, a live MutationObserver sync between canvas ↔ Layers, a selection-driven keyboard model, and **reordering reused-component instances** (occurrence-index → parent `<Component>` usage). Decisions captured in **DDR-138** (base) + **DDR-139** (reuse + follow-ups).
+
+**What worked.**
+- Booting a same-origin sandbox (`MAUDE_CANVAS_ORIGIN_SPLIT=0`) + driving synthetic `PointerEvent`s via agent-browser `eval` was the only way to verify a drag gesture the harness can't otherwise reach — and it caught real bugs a screenshot never would (viewport-reset-on-remount, positional-id staleness, the observer bailing on soft-HMR module reset).
+- Isolating the root cause before fixing paid off repeatedly: the "wrong element moves" bug was a *positional* data-cd-id (`selBefore: Delta [X]` → `selAfter: Alpha [X]`); the layers desync was the observer's `lastLayersArtboardId` being a module `let` that soft-HMR reset to null; the reused-component block was a shared component-internal id. Each was a 2-line fix once named.
+- Direct POST to `/_api/reorder` to isolate server vs client (the reused-component drag "worked in DOM, didn't persist" turned out to be a client sending occurrence indices computed *after* applyDrop reflowed the shared-id nodes).
+
+**What didn't / friction.**
+- I committed several times without running `biome check` — `/flow:done` caught format/import/optional-chain errors that CI (`biome check .`) would have failed. **Lesson: run `bunx biome check <changed files>` before every commit, not just at close-out.**
+- agent-browser session flakiness (wandered to a random URL once; menu-click misses; stale element refs after React re-render) cost several re-runs. Re-querying DOM after every state change + one-shot bash blocks (setup+test together) mitigated it.
+- Repeated wrong-dir `bun run server.ts` boots (needs `cd apps/studio &&` inside the subshell) — a recurring self-inflicted 30-s tax.
+
+**For next /plan or /execute.** A "verify a canvas gesture" recipe (boot same-origin sandbox → synthetic pointer eval → assert DOM + disk + re-select) belongs in the design-plugin docs; it's now been reinvented across several sessions. And a pre-commit biome gate in the execute loop would have saved the close-out fixup.
