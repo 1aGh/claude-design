@@ -1,6 +1,8 @@
 // Active-canvas state, selected-element tracking, and HTML injection
 // (inspector overlay + canvas runtime). See plan Task 7 + DDR-007.
 
+import path from 'node:path';
+
 import type { Context } from './context.ts';
 
 export interface SelectedElement {
@@ -32,6 +34,19 @@ export interface SelectedElement {
    * derives it server-side from `file` (stripping `<designRoot>/` prefix + `.tsx`).
    */
   canvas?: string;
+  /**
+   * Canvas-file mtime (ms) at capture — the drift-gate stamp
+   * (feature-acp-context-hardening). `data-cd-id` is POSITIONAL, not content
+   * identity, so a selection restored after another agent edited the canvas
+   * must not be trusted blindly. 0 = mtime unavailable.
+   */
+  canvas_mtime?: number;
+  /**
+   * Set on restore-from-`selections` when the canvas changed since capture
+   * (mtime mismatch). Consumers re-anchor via `data-dc-element`/selector or
+   * degrade to canvas-wide — never trust the positional id when stale.
+   */
+  stale?: boolean;
 }
 
 /**
@@ -47,6 +62,16 @@ export interface ActiveState {
   active: string | null;
   open_tabs: string[];
   selected: SelectedValue;
+  /**
+   * Per-canvas selection memory, keyed by canvas slug
+   * (feature-acp-context-hardening). Additive: `selected` above stays the
+   * ACTIVE canvas's mirror, so every legacy reader (prep.sh SEL_VALID,
+   * /design:edit step 3, handoff tooling) keeps working unchanged — the same
+   * back-compat philosophy as the Phase 4.1 obj→arr widening. Non-active
+   * entries carry `html: ''` (size cap — locators survive, the 4000-char
+   * payload doesn't multiply across N canvases).
+   */
+  selections: Record<string, SelectedValue>;
   last_change: string | null;
   session_started: string;
   active_comments?: unknown[];
@@ -71,6 +96,7 @@ const NEW = (): ActiveState => ({
   active: null,
   open_tabs: [],
   selected: null,
+  selections: {},
   last_change: null,
   session_started: new Date().toISOString(),
 });
@@ -113,24 +139,74 @@ export function createInspect(
       const raw = await Bun.file(ctx.paths.activeFile).text();
       const prev = JSON.parse(raw);
       Object.assign(state, prev, { session_started: new Date().toISOString() });
+      // Pre-selections _active.json (or a hand-edited one) → keep the invariant.
+      if (!state.selections || typeof state.selections !== 'object') state.selections = {};
     } catch {
       // first boot
     }
   }
 
+  /** Canvas-file mtime for the drift-gate stamp. `file` is repoRoot-relative
+   *  (designRel-prefixed, as the iframe reports it). Best-effort 0. */
+  function mtimeFor(file: string): number {
+    try {
+      const rel = (file || '').replace(/^\/+/, '');
+      if (!rel) return 0;
+      const mt = Bun.file(path.join(ctx.paths.repoRoot, rel)).lastModified;
+      return Number.isFinite(mt) ? mt : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Size cap for parked (non-active) selections — locators survive, the
+   *  4000-char outerHTML doesn't multiply across N canvases. */
+  function stripHtml(sel: SelectedValue): SelectedValue {
+    if (sel == null) return sel;
+    const strip = (e: SelectedElement): SelectedElement => ({ ...e, html: '' });
+    return Array.isArray(sel) ? sel.map(strip) : strip(sel);
+  }
+
+  /** Restore the incoming canvas's parked selection, drift-gated: a canvas
+   *  edited since capture gets `stale: true` on every element (positional
+   *  data-cd-id must not be trusted across another writer's edit). */
+  function restoreFor(file: string): SelectedValue {
+    const parked = state.selections[deriveCanvasSlug(file)];
+    if (parked == null) return null;
+    const current = mtimeFor(file);
+    const gate = (e: SelectedElement): SelectedElement =>
+      e.canvas_mtime && current && e.canvas_mtime !== current ? { ...e, stale: true } : e;
+    return Array.isArray(parked) ? parked.map(gate) : gate(parked);
+  }
+
   function setActive(file: string) {
     if (typeof file !== 'string') return;
     if (state.active === file) return;
+    // Park the outgoing canvas's selection (html-stripped) instead of losing
+    // it — the root fix for "switch canvas → agent loses my selection"
+    // (feature-acp-context-hardening).
+    if (state.active && state.selected != null) {
+      state.selections[deriveCanvasSlug(state.active)] = stripHtml(state.selected);
+    }
     state.active = file || null;
-    state.selected = null;
+    state.selected = file ? restoreFor(file) : null;
     state.last_change = new Date().toISOString();
     scheduleSave();
     ctx.bus.emit('active', state.active);
+    // Clients (StatusBar, shell halo, chat context chip) must see the restored
+    // selection, not assume the pre-switch null.
+    ctx.bus.emit('selected', state.selected);
   }
 
   function setOpenTabs(tabs: string[]) {
     if (!Array.isArray(tabs)) return;
     state.open_tabs = tabs.filter((t): t is string => typeof t === 'string');
+    // GC selection memory for closed canvases — a closed tab's parked
+    // selection has no consumer and would otherwise accrete forever.
+    const keep = new Set(state.open_tabs.map((t) => deriveCanvasSlug(t)));
+    for (const slug of Object.keys(state.selections)) {
+      if (!keep.has(slug)) delete state.selections[slug];
+    }
     state.last_change = new Date().toISOString();
     scheduleSave();
   }
@@ -151,6 +227,7 @@ export function createInspect(
       html: String(sel.html || '').slice(0, 4000),
       ts: new Date().toISOString(),
       v,
+      canvas_mtime: mtimeFor(file),
       ...(id ? { id, canvas: deriveCanvasSlug(file) } : {}),
     };
   }
@@ -158,6 +235,9 @@ export function createInspect(
   function setSelected(sel: SetSelectedInput) {
     if (sel == null) {
       state.selected = null;
+      // Explicit deselect clears the active canvas's parked memory too — a
+      // deliberate act, not a context loss.
+      if (state.active) delete state.selections[deriveCanvasSlug(state.active)];
     } else if (Array.isArray(sel)) {
       const enriched = sel
         .filter(
@@ -174,6 +254,12 @@ export function createInspect(
       state.selected = enrich(sel);
     } else {
       state.selected = null;
+    }
+    // Write-through into the per-canvas memory, keyed by the selection's own
+    // file (full payload incl. html — this IS the active canvas's rich copy).
+    if (state.selected != null) {
+      const first = Array.isArray(state.selected) ? state.selected[0] : state.selected;
+      if (first?.file) state.selections[deriveCanvasSlug(first.file)] = state.selected;
     }
     state.last_change = new Date().toISOString();
     scheduleSave();

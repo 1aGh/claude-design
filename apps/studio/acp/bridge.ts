@@ -30,6 +30,12 @@ import { resolveAdapterEntry, resolveAgentRuntime, resolveClaudePath } from './p
 export interface AcpBridgeOptions {
   /** Absolute repo root the ACP session runs in (where `.design/` + the CLI operate). */
   repoRoot: string;
+  /**
+   * Static studio-environment brief appended to every new session's system
+   * prompt (feature-acp-context-hardening; built by bootstrap-brief.ts).
+   * Absent → no injection (tests / non-studio embedders).
+   */
+  studioBrief?: string;
   /** Streamed `session/update` notifications relayed to the browser. */
   onUpdate: (update: SessionUpdate) => void;
   /** Informational: a tool permission was auto-approved (transparency for the UI). */
@@ -57,6 +63,28 @@ const EFFORT_THINKING_TOKENS: Record<string, number | null> = {
 
 export type AcpEffort = keyof typeof EFFORT_THINKING_TOKENS;
 
+/**
+ * Build the `session/new` params, carrying the studio brief as a system-prompt
+ * APPEND (feature-acp-context-hardening). Exported for the upgrade-guard test:
+ * the `_meta.systemPrompt` contract is adapter-INTERNAL — the installed
+ * `claude-agent-acp@0.49.x` spreads an object form over its `claude_code`
+ * preset (acp-agent.js `newSession`), and the SDK's `zNewSessionRequest`
+ * declares `_meta` (zod.gen), so the field rides the wire validated. An
+ * adapter/SDK bump that drops either side must fail the presence test LOUDLY,
+ * not silently un-brief every session. Fallback if that ever happens: prepend
+ * the brief as a first-turn text block (see the plan's Task 3b).
+ */
+export function newSessionParams(
+  repoRoot: string,
+  studioBrief?: string
+): { cwd: string; mcpServers: never[]; _meta?: Record<string, unknown> } {
+  return {
+    cwd: repoRoot,
+    mcpServers: [],
+    ...(studioBrief ? { _meta: { systemPrompt: { append: studioBrief } } } : {}),
+  };
+}
+
 /** Pick the most-permissive allow option, or null if the agent offered none. */
 function pickAllowOption(params: RequestPermissionRequest) {
   const options = params.options ?? [];
@@ -76,6 +104,8 @@ export class AcpBridge {
   // the session, so claude remembers that chat while the app is open.
   private sessions = new Map<string, string>(); // chatId → sessionId
   private currentSession: string | null = null; // the in-flight prompt's session
+  /** Sessions whose bootstrap brief already hit the transcript (audit record). */
+  private briefLogged = new Set<string>();
   private starting: Promise<void> | null = null;
   /** Per-chat transcript file (`_chat/<id>.jsonl`); set per prompt. */
   private transcriptPath: string | null = null;
@@ -129,7 +159,9 @@ export class AcpBridge {
     const existing = this.sessions.get(chatId);
     if (existing) return existing;
     if (!this.conn) throw new Error('ACP adapter not started');
-    const created = await this.conn.newSession({ cwd: this.opts.repoRoot, mcpServers: [] });
+    const created = await this.conn.newSession(
+      newSessionParams(this.opts.repoRoot, this.opts.studioBrief)
+    );
     this.sessions.set(chatId, created.sessionId);
     return created.sessionId;
   }
@@ -258,6 +290,15 @@ export class AcpBridge {
     const sessionId = await this.sessionFor(chatId);
     this.currentSession = sessionId;
 
+    // Audit record (feature-acp-context-hardening, BREAKER guard): the brief
+    // steers an auto-approving agent, so invisible-to-user must not mean
+    // invisible-to-transcript. Logged on the session's FIRST real turn (the
+    // first turn it could steer — warmUp has no transcript path yet); UI
+    // renderers skip role:'bootstrap'.
+    if (this.opts.studioBrief && !this.briefLogged.has(sessionId)) {
+      this.briefLogged.add(sessionId);
+      await this.appendTranscript({ role: 'bootstrap', text: this.opts.studioBrief });
+    }
     await this.appendTranscript({ role: 'user', text });
     const response = await conn.prompt({
       sessionId,
@@ -303,6 +344,7 @@ export class AcpBridge {
     this.proc = null;
     this.conn = null;
     this.sessions.clear();
+    this.briefLogged.clear();
     this.currentSession = null;
   }
 

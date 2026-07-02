@@ -107,6 +107,47 @@ describe('_active.json round-trip', () => {
     }
   });
 
+  test('selections map mirrors the active canvas selection on disk (context hardening)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const ws = await openWs(port);
+      ws.send(JSON.stringify({ type: 'active', file: '.design/ui/fixture.html' }));
+      ws.send(
+        JSON.stringify({
+          type: 'select',
+          selection: {
+            file: '.design/ui/fixture.html',
+            selector: 'h1',
+            tag: 'h1',
+            classes: '',
+            text: 'fixture',
+            dom_path: ['html', 'body', 'h1'],
+            bounds: null,
+            html: '<h1>fixture</h1>',
+          },
+        })
+      );
+      await Bun.sleep(150);
+
+      const state = (await Bun.file(join(designRoot, '_active.json')).json()) as {
+        selected: { selector: string; canvas_mtime?: number };
+        selections: Record<string, { selector: string; html: string }>;
+      };
+      // Additive schema: `selected` unchanged for legacy readers, `selections`
+      // carries the per-canvas memory; active canvas's entry mirrors `selected`.
+      expect(state.selected.selector).toBe('h1');
+      expect(state.selections['ui/fixture']?.selector).toBe('h1');
+      expect(state.selections['ui/fixture']?.html).toBe('<h1>fixture</h1>');
+      // Drift-gate stamp present (fixture file exists on disk).
+      expect(state.selected.canvas_mtime).toBeGreaterThan(0);
+      ws.close();
+    } finally {
+      await killProc(proc);
+    }
+  });
+
   test('selection without id stays v=1 (legacy HTML canvas / shell chrome click)', async () => {
     const { root, designRoot } = makeSandbox();
     const port = nextPort();

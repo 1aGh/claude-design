@@ -86,6 +86,21 @@ export function deleteChat(designRoot: string, chatId: string): boolean {
 }
 
 /**
+ * UI-projection strip of the frozen `<maude-context>` prefix a chat-context
+ * send prepends (feature-acp-context-hardening). PROJECTION ONLY — the on-disk
+ * jsonl keeps the raw prompt (it's the audit record of what steered the
+ * auto-approving agent); the rendered bubble shows just what the user typed.
+ * `role:'bootstrap'` brief entries are skipped by this reader by construction
+ * (only user/stop/agent roles are consumed below).
+ */
+function stripContextBlock(text: string): string {
+  if (!text.startsWith('<maude-context')) return text;
+  const end = text.indexOf('</maude-context>');
+  if (end === -1) return text;
+  return text.slice(end + '</maude-context>'.length).replace(/^\s+/, '');
+}
+
+/**
  * Convert the raw transcript into clean per-turn messages: user lines become
  * user messages; the agent updates between them aggregate into one assistant
  * message (text + tool parts; `available_commands_update` / `usage_update` /
@@ -108,7 +123,10 @@ export function readChatMessages(designRoot: string, chatId: string): ChatMessag
   for (const line of lines) {
     if (line.role === 'user' && typeof line.text === 'string') {
       flush();
-      messages.push({ role: 'user', parts: [{ type: 'text', text: line.text }] });
+      messages.push({
+        role: 'user',
+        parts: [{ type: 'text', text: stripContextBlock(line.text) }],
+      });
       continue;
     }
     if (line.role === 'stop') {

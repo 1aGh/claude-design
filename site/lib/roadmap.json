@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-02T15:07:28.355Z",
+  "generated": "2026-07-02T21:33:20.139Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1035,6 +1035,17 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
+    },
+    {
+      "id": "feature-acp-context-hardening",
+      "title": "Feature: ACP context hardening — per-canvas selection, frozen-at-send chat context, session bootstrap brief",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-acp-context-hardening.md",
+      "archived": false,
+      "phaseKey": null
     },
     {
       "id": "feature-video-animation-layer",

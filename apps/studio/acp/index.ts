@@ -13,6 +13,7 @@ import { isCanvasFile } from '../activity.ts';
 import type { AiActivity } from '../collab/ai-activity.ts';
 import type { Context } from '../context.ts';
 import type { WsData } from '../ws.ts';
+import { buildStudioBrief } from './bootstrap-brief.ts';
 import { AcpBridge, type AcpEffort } from './bridge.ts';
 import { probeAcpAvailability } from './probe.ts';
 
@@ -145,6 +146,12 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
       if (tracker) trackers.set(ws.data.id, tracker);
       bridge = new AcpBridge({
         repoRoot: ctx.paths.repoRoot,
+        // Static, config-derived environment brief for every new session
+        // (feature-acp-context-hardening; see bootstrap-brief.ts guardrails).
+        studioBrief: buildStudioBrief({
+          designRel: ctx.paths.designRel,
+          projectLabel: ctx.projectLabel,
+        }),
         onUpdate: (update) => {
           tracker?.onUpdate(update);
           send(ws, { t: 'update', update });

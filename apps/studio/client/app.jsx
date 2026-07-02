@@ -8145,6 +8145,7 @@ function App() {
                   ? activePath
                   : null
               }
+              selected={selected}
               width={rpSize.w}
               resizing={dragSide === 'rp'}
               onClose={() => setAssistantOpen(false)}

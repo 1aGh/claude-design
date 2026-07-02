@@ -264,7 +264,7 @@ function expandPasteChips(text, map) {
  * parts, preserving the order in which the agent emits them. `available_commands_update`
  * and `usage_update` are intentionally dropped (chrome noise, not chat content).
  */
-export function makeAcpAdapter(conn, getChatId, getModel, getEffort, getAttachments) {
+export function makeAcpAdapter(conn, getChatId, getModel, getEffort, getAttachments, getContext) {
   return {
     async *run({ messages, abortSignal }) {
       // Let any in-flight clipboard-image upload finish so its chip expands to a
@@ -272,8 +272,15 @@ export function makeAcpAdapter(conn, getChatId, getModel, getEffort, getAttachme
       // image and hits Enter immediately).
       const att = getAttachments?.();
       if (att?.pending?.size) await Promise.allSettled([...att.pending]);
-      const text = expandPasteChips(lastUserText(messages), att?.map);
-      if (!text) return;
+      const typed = expandPasteChips(lastUserText(messages), att?.map);
+      if (!typed) return;
+      // Freeze the canvas/selection context AT SEND (feature-acp-context-
+      // hardening): the turn keeps the context it had when the user hit Enter,
+      // immune to the user switching canvases while it runs. The same object
+      // drives the visible composer chip (DDR-140 reveal — what you see is
+      // what rides); the fenced block carries locators only, never DOM html.
+      const frozen = getContext?.();
+      const text = frozen?.block ? `${frozen.block}\n\n${typed}` : typed;
 
       const parts = [];
       const toolIndex = new Map();

@@ -24,6 +24,7 @@ import {
 } from '@assistant-ui/react';
 
 import { createAcpConnection, makeAcpAdapter } from './acp-runtime.js';
+import { buildChatContext } from './chat-context.js';
 import { Markdown } from './chat-markdown.jsx';
 import ReadinessList, { useReadiness } from './ReadinessList.jsx';
 import {
@@ -537,7 +538,18 @@ function HighlightedInput({ existsSet, attachmentsRef, onAttachChange }) {
   );
 }
 
-function Composer({ activeCanvas, model, setModel, effort, setEffort, conn, chatId, attachmentsRef }) {
+function Composer({
+  activeCanvas,
+  chatCtx,
+  onCtxDismiss,
+  model,
+  setModel,
+  effort,
+  setEffort,
+  conn,
+  chatId,
+  attachmentsRef,
+}) {
   const canvasName = prettyCanvas(activeCanvas);
   const { all, existsSet } = useSlashCommands(conn);
   const composerRuntime = useComposerRuntime();
@@ -628,7 +640,30 @@ function Composer({ activeCanvas, model, setModel, effort, setEffort, conn, chat
   return (
     <div className="chat-composer">
       <ThreadPrimitive.If running={false}>
-        {canvasName ? (
+        {/* Context attachment chip (feature-acp-context-hardening) — the visible
+            reveal of the fenced <maude-context> block the send will prepend
+            (built from the SAME buildChatContext result, so chip ≡ payload).
+            Removable (DDR-140); a stale selection warns instead of hiding. */}
+        {chatCtx ? (
+          <div
+            className={`chat-ctx${chatCtx.stale ? ' chat-ctx--stale' : ''}`}
+            data-testid="chat-context-chip"
+          >
+            <span className="chat-ctx-label">
+              ◆ {chatCtx.chipLabel}
+              {chatCtx.stale ? ' — canvas changed since selection' : ''}
+            </span>
+            <button
+              type="button"
+              className="chat-ctx-x"
+              aria-label="Remove canvas context from this message"
+              title="Remove canvas context from this message"
+              onClick={onCtxDismiss}
+            >
+              ×
+            </button>
+          </div>
+        ) : canvasName ? (
           <div className="chat-ctx">
             Editing: <b>{canvasName}</b>
           </div>
@@ -803,6 +838,7 @@ function ChatThread({
   modelRef,
   effortRef,
   activeCanvas,
+  selected,
   model,
   setModel,
   effort,
@@ -813,6 +849,27 @@ function ChatThread({
   // adapter awaits `pending` then expands `map` before sending; the composer writes
   // both on paste.
   const attachmentsRef = useRef({ map: new Map(), pending: new Set() });
+  // Canvas/selection context attachment (feature-acp-context-hardening). One
+  // buildChatContext result drives BOTH the composer chip and the frozen block
+  // the adapter prepends at send. The ref is what the adapter reads (freeze =
+  // read-once at send); the state re-renders the chip. Dismissing the chip
+  // (DDR-140 — the attachment is removable) suppresses the context until it
+  // CHANGES (new selection / canvas), which re-arms it.
+  const [chatCtx, setChatCtx] = useState(null);
+  const [ctxDismissed, setCtxDismissed] = useState(false);
+  const contextRef = useRef(null);
+  const ctxDismissedRef = useRef(false);
+  useEffect(() => {
+    const c = buildChatContext({ canvas: activeCanvas, selected });
+    setChatCtx(c);
+    contextRef.current = c;
+    setCtxDismissed(false);
+    ctxDismissedRef.current = false;
+  }, [activeCanvas, selected]);
+  const dismissCtx = useCallback(() => {
+    setCtxDismissed(true);
+    ctxDismissedRef.current = true;
+  }, []);
   const adapter = useMemo(
     () =>
       makeAcpAdapter(
@@ -820,7 +877,8 @@ function ChatThread({
         () => chatId,
         () => modelRef.current || null,
         () => effortRef.current,
-        () => attachmentsRef.current
+        () => attachmentsRef.current,
+        () => (ctxDismissedRef.current ? null : contextRef.current)
       ),
     [conn, chatId, modelRef, effortRef]
   );
@@ -844,6 +902,8 @@ function ChatThread({
           <QuickActions />
           <Composer
             activeCanvas={activeCanvas}
+            chatCtx={ctxDismissed ? null : chatCtx}
+            onCtxDismiss={dismissCtx}
             model={model}
             setModel={setModel}
             effort={effort}
@@ -861,6 +921,7 @@ function ChatThread({
 // ── panel root ──
 export default function ChatPanel({
   activeCanvas,
+  selected,
   width,
   resizing,
   onClose,
@@ -1179,6 +1240,7 @@ export default function ChatPanel({
                 modelRef={modelRef}
                 effortRef={effortRef}
                 activeCanvas={activeCanvas}
+                selected={selected}
                 model={model}
                 setModel={setModel}
                 effort={effort}

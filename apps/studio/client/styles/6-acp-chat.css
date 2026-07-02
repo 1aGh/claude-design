@@ -624,6 +624,37 @@
     color: var(--fg-1);
     font-weight: 600;
   }
+  /* Context attachment chip (feature-acp-context-hardening) — the visible
+     reveal of the frozen <maude-context> block; label + a remove ×. */
+  .chat-ctx-label {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 2px var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--bg-2);
+    color: var(--fg-1);
+  }
+  .chat-ctx--stale .chat-ctx-label {
+    border-color: var(--warn, hsl(38 92% 50%));
+    color: var(--warn, hsl(38 92% 50%));
+  }
+  .chat-ctx-x {
+    flex: none;
+    padding: 0 var(--space-1);
+    border: 0;
+    background: none;
+    color: var(--fg-2);
+    font-size: var(--type-sm);
+    line-height: 1;
+    cursor: pointer;
+  }
+  .chat-ctx-x:hover {
+    color: var(--fg-0);
+  }
 
   /* Composer box — textarea on top, a bottom toolbar (model · effort · send),
      Zed-style. One border + focus ring around the whole box. */
