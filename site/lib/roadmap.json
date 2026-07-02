@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-02T21:33:20.139Z",
+  "generated": "2026-07-02T22:51:32.528Z",
   "currentPhase": null,
   "phases": [
     {
@@ -98,6 +98,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan touches the export pipeline that was just hardened (graceful Playwright-miss...",
       "planPath": ".ai/plans/archive/export-pipeline-fixes.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-acp-context-hardening",
+      "title": "Feature: ACP context hardening — per-canvas selection, frozen-at-send chat context, session bootstrap brief",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-acp-context-hardening.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1037,13 +1048,13 @@
       "phaseKey": "19"
     },
     {
-      "id": "feature-acp-context-hardening",
-      "title": "Feature: ACP context hardening — per-canvas selection, frozen-at-send chat context, session bootstrap brief",
+      "id": "feature-acp-plugin-auto-bootstrap",
+      "title": "Feature: ACP plugin auto-bootstrap — zero-install design (+flow) in the Maude Desktop chat",
       "status": "planned",
       "shipTarget": null,
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-acp-context-hardening.md",
+      "planPath": ".ai/plans/feature-acp-plugin-auto-bootstrap.md",
       "archived": false,
       "phaseKey": null
     },
