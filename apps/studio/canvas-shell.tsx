@@ -932,14 +932,23 @@ function CanvasCore({
 // inverse — artboards kept their own DS theme and following was opt-in — which
 // produced the recurring "canvas dark / chrome light" mismatch.)
 //
-// DS theme-wrapper conventions vary (`.mdcc[data-theme]`, `.app[data-theme]`,
-// bare `[data-theme]`, …) and there's no reliable config flag, so we DETECT it
-// with a hidden computed-style probe: stamp a throwaway nested <div> with each
-// candidate `<class>[data-theme=light|dark]` and keep the first whose resolved
-// `--bg-0` differs between light and dark. Because the probe tests a NON-root
-// element, "supported" is exactly "stamping one artboard will work" — a DS that
-// only themes `:root[data-theme]` correctly reports unsupported (you genuinely
-// can't theme a single artboard there).
+// DS theme-wrapper conventions vary (`.maude[data-theme]`, `.mdcc[data-theme]`,
+// `.app[data-theme]`, bare `[data-theme]`, …) and there's no reliable config
+// flag, so we DETECT it with a hidden computed-style probe: stamp a throwaway
+// nested <div> with each candidate `<class>[data-theme=light|dark]` and keep the
+// first whose resolved `--bg-0` differs between light and dark. Because the probe
+// tests a NON-root element, "supported" is exactly "stamping one artboard will
+// work" — a DS that only themes `:root[data-theme]` correctly reports unsupported
+// (you genuinely can't theme a single artboard there).
+//
+// Candidate classes are DERIVED FROM THE LIVE DOM (2026-07-02): the DS's own
+// rootClass wrapper is already in the artboard content carrying `[data-theme]`
+// (e.g. `<div class="maude" data-theme="dark">`), so we read those class strings
+// straight off the page instead of guessing. A hardcoded guess list (`['', 'mdcc',
+// 'app']`) missed EVERY DS whose rootClass wasn't in it — including this repo's own
+// `.maude` — which greyed out Light/Dark on a DS that fully ships both themes. The
+// historical guesses stay as a trailing fallback for a canvas whose wrapper hasn't
+// mounted yet at probe time.
 
 interface DsThemeSupport {
   supported: boolean;
@@ -968,9 +977,23 @@ function detectDsThemeSupport(): DsThemeSupport {
       host.removeChild(el);
       return v;
     };
-    // Bare attribute first (cleanest), then the common class conventions.
+    // Derive candidate wrapper classes from the DS wrappers already in the DOM
+    // (elements carrying `data-theme` are the DS rootClass wrappers), trying both
+    // the full className ("maude di-root") and each individual token ("maude",
+    // "di-root"). Bare `''` first (cleanest), historical guesses last as a
+    // pre-mount fallback. A Set de-dupes; insertion order keeps DOM-derived first.
+    const candidates = new Set<string>(['']);
+    for (const el of Array.from(document.querySelectorAll('[data-theme]'))) {
+      const cn = (el as HTMLElement).className;
+      if (typeof cn === 'string' && cn.trim()) {
+        candidates.add(cn.trim());
+        for (const tok of cn.trim().split(/\s+/)) candidates.add(tok);
+      }
+    }
+    candidates.add('mdcc');
+    candidates.add('app');
     let found = fallback;
-    for (const cls of ['', 'mdcc', 'app']) {
+    for (const cls of candidates) {
       const light = read(cls, 'light');
       const dark = read(cls, 'dark');
       if (light && dark && light !== dark) {
