@@ -143,7 +143,7 @@ DCTX=$(maude cache get design-context "$TARGET_DS/$TOKENS_SHA" 2>/dev/null)
 [ -n "$DCTX" ] && echo "→ DS context cache HIT ($TARGET_DS/$TOKENS_SHA)" || echo "→ DS context cache MISS — read the CSS once, then write the pack (see edit.md §1.5 recipe)"
 ```
 
-On a hit, hand the cached `classNames` / `tokenNames` / `libExports` to `frontend-design` and the DS-conformance critics directly. On a miss, `Read` the files once, then `printf '%s' "$PACK_JSON" | maude cache put design-context "$TARGET_DS/$TOKENS_SHA"` (identical pack shape to edit.md) so the next `/design:new` or `/design:edit` against this unchanged DS hits.
+On a hit, hand the cached `classNames` / `tokenNames` / `libExports` — plus the DDR-141 brand fields `logoSpecimenPath` / `iconographySpecimenPath` / `assetNames` — to `frontend-design` and the DS-conformance critics directly. On a miss, `Read` the files once, then `printf '%s' "$PACK_JSON" | maude cache put design-context "$TARGET_DS/$TOKENS_SHA"` (identical pack shape to edit.md) so the next `/design:new` or `/design:edit` against this unchanged DS hits. Note the brand fields carry *paths + names* for cheap re-resolution — the logo mark **content** is still Read fresh at step 5a/5b (it must be inlined in the envelope, and the specimen may change without touching the pack's three sha'd sources).
 
 ### 1.6 Resolve mode (normal · blank · ingest)
 
@@ -348,7 +348,14 @@ fi
 
 **Explicit `--opt-out` and plain-language signals still win** (steps 1–2 precede the DS default). A11y is enforced at every scope regardless. The DS default just means "born expressive ⇒ canvases default to `aesthetic`" instead of the universal hardcoded `palette`.
 
-The resolved `SCOPE` is persisted on the canvas's `.meta.json` `opt_out_scope` field (step 11) and passed to every critic in the auto-fix loop (step 10).
+**Resolve the DS-fidelity policy alongside the scope (DDR-141).** `config.dsFidelity` decides the *severity* of reuse findings (invented brand mark, reinvented components, parallel shell) at the resolved scope — `advisory` (default) keeps them warnings; `strict` promotes them to blockers the auto-fix loop must clear. Same axis as `opt_out_scope`, not a competing switch: a resolved scope of `full` (explicit free-use) wins over `strict`.
+
+```bash
+DS_FIDELITY=$(jq -r '.dsFidelity // "advisory"' "$CFG" 2>/dev/null || echo advisory)
+[[ "$SCOPE" == "full" ]] && DS_FIDELITY="advisory"   # explicit free-use beats project policy (DDR-141)
+```
+
+The resolved `SCOPE` is persisted on the canvas's `.meta.json` `opt_out_scope` field (step 11) and passed — together with `DS_FIDELITY` — to every critic in the auto-fix loop (step 10) and to `design-system-keeper` (step 9.5).
 
 ### 4.5. UX patterns research (cache-first)
 
@@ -510,9 +517,24 @@ if [[ -n "$SHOWCASE_PATH" ]]; then
 else
   SHOWCASE_BLOCK="(none — DS ships no showcase; compose the shell from the DS readme + component priors)"$'\n'
 fi
+
+# ── Tier-0 prior (identity): BRAND ASSETS — the canonical logo + icon vocabulary (DDR-141) ──
+# The DS ships its brand identity as preview specimens (logo.*, iconography.*) plus an optional
+# assets/ tree. Without this block, aspiration directive 10 ("brand mark at human scale") is an
+# order to INVENT a logo — the exact failure the ds-awareness RCA documents. Never fatal: a DS
+# with no brand specimens simply gets the "(none …)" marker and a fresh mark is legitimate.
+LOGO_SPECIMEN=$(ls "$DS_ROOT"/preview/logo.{tsx,jsx,svg,html} 2>/dev/null | head -1)
+ICON_SPECIMEN=$(ls "$DS_ROOT"/preview/iconography.{tsx,jsx,html} 2>/dev/null | head -1)
+ASSET_FILES=$(ls "$DS_ROOT/assets/" 2>/dev/null | head -20)
+
+BRAND_BLOCK=""
+[ -n "$LOGO_SPECIMEN" ] && BRAND_BLOCK+="- LOGO (canonical mark): $LOGO_SPECIMEN"$'\n'
+[ -n "$ICON_SPECIMEN" ] && BRAND_BLOCK+="- ICONOGRAPHY (canonical icon family — grid, stroke, corners, shipped glyphs): $ICON_SPECIMEN"$'\n'
+[ -n "$ASSET_FILES" ]   && BRAND_BLOCK+="- ASSETS tree ($DS_ROOT/assets/): $(printf '%s' "$ASSET_FILES" | tr '\n' ' ')"$'\n'
+[ -z "$BRAND_BLOCK" ]   && BRAND_BLOCK="(none — DS ships no logo/iconography specimen; a brand mark, if the brief needs one, is legitimately new — route it through the draw pipeline)"$'\n'
 ```
 
-The `PRIORS_LIST`, `PREVIEW_LIST`, and `SHOWCASE_BLOCK` strings are interpolated verbatim into the envelope's `## Pattern priors` section (step 5b heredoc) — `SHOWCASE_BLOCK` is the **Tier-0** subsection (above canvases + components). `$SHOWCASE_RESOLUTION` is carried to the envelope footer + step-12 print so the user sees whether shell-grounding applied or fell back. If `PRIORS_LIST` + `PREVIEW_LIST` are both empty AND `SHOWCASE_BLOCK` is the "(none…)" marker, write the one-line note ("First canvas in this DS — no priors to lift from.") and continue.
+The `PRIORS_LIST`, `PREVIEW_LIST`, `SHOWCASE_BLOCK`, and `BRAND_BLOCK` strings are interpolated verbatim into the envelope's `## Pattern priors` section (step 5b heredoc) — `SHOWCASE_BLOCK` (placement) and `BRAND_BLOCK` (identity) are the **Tier-0** subsections (above canvases + components). **Content, not just paths (DDR-141):** before writing the envelope, `Read` the resolved `$SHOWCASE_PATH` and `$LOGO_SPECIMEN` files and inline what the generator must lift — the showcase's shell skeleton (region arrangement + chrome class roots, summarized) and the logo specimen's mark markup (verbatim, into the Brand-assets subsection). A path listing alone is a bibliography the generator can't lift from — that asymmetry vs. the edit path was the pre-DDR-141 failure. `$SHOWCASE_RESOLUTION` is carried to the envelope footer + step-12 print so the user sees whether shell-grounding applied or fell back; brand-asset resolution rides the same footer (step-12 `Brand grounding:` line). If `PRIORS_LIST` + `PREVIEW_LIST` are both empty AND `SHOWCASE_BLOCK` + `BRAND_BLOCK` are both "(none…)" markers, write the one-line note ("First canvas in this DS — no priors to lift from.") and continue.
 
 #### 5b. Persist envelope as audit artifact
 
@@ -547,6 +569,13 @@ The `design-system-keeper` agent (step 9.5) audits compliance with this directiv
 
 This specimen is the DS's authoritative <platform> product shell — the established arrangement of chrome (nav / sidebar / toolbar / main / status). For any **full-screen surface** in this canvas, ADOPT its spatial skeleton and chrome material: same region placement, same shell framing, same hairline/elevation/radius treatment. Do NOT re-derive a new product shell. Reinventing the shell is the exception, not the default — leave a one-line JSX comment explaining what this surface needs that the showcase shell couldn't give. (If the line above reads "(none …)", this DS ships no showcase for this platform — compose the shell freely from the DS readme + the component priors below.) This is **reference, not a wireframe** — adopt the skeleton, but you still own element-level decisions and the signature moment; do not transcribe the showcase region-by-region.
 
+### Brand assets — canonical identity (REUSE, do not invent) (DDR-141)
+<BRAND_BLOCK from step 5a — resolved logo/iconography specimen paths + assets/ inventory. If empty, the literal "(none — …)" marker.>
+
+<the logo specimen's mark markup, INLINED verbatim here by the orchestrator (Read $LOGO_SPECIMEN) — the generator lifts this, it does not redraw it>
+
+The logo above IS the brand mark. Aspiration directive 10 ("brand mark featured at human scale") refers to THIS mark, rendered from the inlined markup (or a documented variant from assets/) — never a newly drawn one. Icons come from the iconography family named above: match its grid, stroke weight, and corner treatment; a glyph the set doesn't ship is drawn to those family rules with a one-line JSX comment naming the gap. (If the marker reads "(none …)", the DS ships no brand specimens — a new mark is legitimate; route genuine new art through the draw pipeline, step 9.6.)
+
 ### Existing canvases (same DS, with class roots)
 <for each .tsx in <DESIGN_ROOT>/<NEW_CANVAS_DIR>/ matching this DS, NOT the new canvas — see step 5 collection recipe>
 - <path> (<.meta.json.subtitle>) — class roots: <comma-separated list extracted via the recipe>
@@ -571,7 +600,10 @@ This specimen is the DS's authoritative <platform> product shell — the establi
 - tokens: <TOKENS_REL>
 - platform: <mobile | desktop>
 - platform_showcase: <abs path to ui_kits-<platform>-showcase.tsx, or "none">   ← from step 5a; the shell skeleton frontend-design adopts for full-screen surfaces ($SHOWCASE_RESOLUTION names whether it matched or fell back)
+- brand_logo: <abs path to preview/logo.*, or "none">           ← from step 5a (DDR-141); the canonical mark, inlined in the Brand assets subsection above
+- brand_iconography: <abs path to preview/iconography.*, or "none">   ← from step 5a (DDR-141); the icon family every glyph must match
 - opt_out_scope: <palette | aesthetic | full>   ← from step 4, propagated into the generation prompt so the generator knows how much DS latitude it has
+- ds_fidelity: <advisory | strict>              ← from step 4 (DDR-141); strict = reinventing a shipped specimen is a blocker (scope full overrides to advisory)
 - ux_research_payload: <abs path or empty>      ← from step 4.5, passed to frontend-design as a reference bundle
 
 ## Opt-out interpretation (only when scope > palette)
@@ -816,6 +848,10 @@ ds_root:                 "<abs path to DS_ROOT>"
 existing_canvases:       <EXISTING_JSON>
 preview_components_root: "<abs path to DS_ROOT/preview>"
 platform_showcase_path:  "<abs path to SHOWCASE_PATH from step 5a, or empty if none>"
+brand_logo_path:         "<abs path to LOGO_SPECIMEN from step 5a, or empty if none>"
+brand_iconography_path:  "<abs path to ICON_SPECIMEN from step 5a, or empty if none>"
+opt_out_scope:           "<SCOPE from step 4>"
+ds_fidelity:             "<DS_FIDELITY from step 4>"
 token_guide_path:        "<abs path to DS_ROOT/README.md>"
 output_path:             "<abs path to KEEPER_OUT>"
 iter_n:                  1
@@ -845,7 +881,9 @@ WANTS_MARK=$(grep -iqE "logo|wordmark|brand mark|illustration|hero (art|graphic)
 
 **Skip** when neither fires, OR when the only SVG is a trivial inline icon already covered by the DS icon set (a single `<path>` 24-grid glyph used as button chrome) — re-drawing those via the engine is overhead, not value. Per the plan's gotcha: route for *genuine* marks only.
 
-**When it fires**, for each custom mark, spawn `draw-agent` in **inline** mode targeting the just-generated canvas:
+**Canonical-mark substitution FIRST (DDR-141).** When the detected mark is a brand logo / wordmark AND step 5a resolved a `$LOGO_SPECIMEN`, do NOT reroute to `draw-agent` — the DS already ships the canonical mark, and rebuilding the invention "better" just launders it into a verified artifact. Instead, replace the hand-written `<svg>` with the specimen's mark markup (lift verbatim from `$LOGO_SPECIMEN`; adapt only size/placement via existing tokens/classes) and stamp the substitution in the final print (`Brand mark: substituted canonical <LOGO_SPECIMEN basename>`). `draw-agent` is for genuinely NEW art the DS doesn't ship — illustrations, diagrams, and missing icon glyphs (drawn to the iconography family rules from the envelope's Brand-assets subsection).
+
+**When it fires** (non-logo marks, or no logo specimen exists), for each custom mark, spawn `draw-agent` in **inline** mode targeting the just-generated canvas:
 ```
 Agent(
   description: "draw <type> mark for <Name>",
@@ -891,7 +929,7 @@ This exists because the user signaled exploration — they should get to see ite
 
 **The iter-1 spawn prompts were already drafted during the step-9 background-screenshot window (Phase C / DDR-061)** — by the time the capture job completes you hold the prepped batch, so iter-1 critic spawn fires immediately after the reality check rather than starting prompt-prep cold.
 
-**Pass `opt_out_scope` to every critic in the panel.** Each `Agent` invocation's prompt MUST include the scope verbatim alongside `canvas_path`, `screenshot_path`, etc. Each critic agent reads `opt_out_scope` and adjusts severity per its own spec — `design-critic` / `graphic-design-critic` / `typography-critic` / `signature-moment-critic` downgrade matching DS-rule blockers to warnings; `a11y-critic` / `frontend-critic` / `copy-critic` ignore the parameter (their blockers are universal).
+**Pass `opt_out_scope` AND `ds_fidelity` to every critic in the panel.** Each `Agent` invocation's prompt MUST include both verbatim alongside `canvas_path`, `screenshot_path`, etc. Each critic agent reads `opt_out_scope` and adjusts severity per its own spec — `design-critic` / `graphic-design-critic` / `typography-critic` / `signature-moment-critic` downgrade matching DS-rule blockers to warnings; `a11y-critic` / `frontend-critic` / `copy-critic` ignore the parameter (their blockers are universal). `ds_fidelity` (DDR-141) is consumed by `design-system-keeper` and `brand-critic`: under `strict`, reuse findings (invented brand mark, reinvented component/icon family, parallel shell) arrive as **blockers** and count toward the loop's correctness gate — the loop cannot exit `SOLID` while a shipped specimen stays reinvented. Under `advisory` (default) they stay warnings — today's behavior, zero regression.
 
 **Pass the DS context inline too (B16 — avoid re-reads).** `/design:new` already resolved the design system in step 1. Hand each critic the resolved values in its spawn prompt — `root_class: <ROOT_CLASS>`, `tokens_path: <abs DS_TOKENS>`, `components_css: <abs DS_ROOT/preview/_components.css>`, `ds_root: <abs DS_ROOT>`, `ds_name: <TARGET_DS>`, `theme: <THEME>` — so the critics that need DS conformance context (`design-critic`, `graphic-design-critic`, `typography-critic`) don't each re-`Read` `.design/config.json` + the tokens CSS. Subagents inherit CLAUDE.md + MCP + skills but NOT this conversation, so the resolved DS context must travel in the prompt.
 
@@ -899,7 +937,7 @@ This exists because the user signaled exploration — they should get to see ite
 
 | Mode | max_iter | aspiration_target | Minimum panel |
 |---|---:|---:|---|
-| **Default (= `--perfect`)** | **8** | **4.5 / 5** | `signature-moment-critic` + `design-critic` + `frontend-critic` + `a11y-critic` (if interactive) |
+| **Default (= `--perfect`)** | **8** | **4.5 / 5** | `signature-moment-critic` + `design-critic` + `frontend-critic` + `a11y-critic` (if interactive) + `brand-critic` (if the DS ships brand assets — step 5a `LOGO_SPECIMEN`/`ICON_SPECIMEN` non-empty; DDR-141) |
 | `--perfect --all` | 8 | 4.5 / 5 | **every** critic in `${CLAUDE_PLUGIN_ROOT}/agents/` |
 | `--perfect-iter N` | N | 4.5 / 5 | same minimum panel as default |
 | `--quick` | 2 | 4.0 / 5 | `signature-moment-critic` only |
@@ -946,7 +984,9 @@ For a new canvas:
   Mode: {--perfect (default) | --perfect-iter N | --quick | --no-critic}
   Artboard density: {N (per brief) | N (chosen via AskUserQuestion) | N (Auto Mode default — brief did not name a count)} {if N ≥ 8: "— pan/zoom may stutter on trackpad; /design:edit \"reduce to M\" if heavy"}
   Opt-out scope: {palette (default) | aesthetic | full} {if inferred from brief: "(inferred from brief — user confirmed via AskUserQuestion)"}
+  DS fidelity: {advisory (default) | strict — reuse violations gate the loop | strict → advisory (opt-out=full on this canvas)}
   Shell grounding: {$SHOWCASE_RESOLUTION — e.g. "matched desktop (ui_kits-desktop-showcase.tsx)" | "fell back to ui_kits-desktop-showcase.tsx as shell reference (DS ships no mobile showcase)" | "none — DS ships no showcase"}
+  Brand grounding: {logo: preview/logo.tsx (inlined) · iconography: preview/iconography.tsx | none — DS ships no brand specimens} {if step 9.6 substituted: "· Brand mark: substituted canonical <basename>"}
   UX research: {cache hit — reusing <date> | fresh — <N>s wall-clock | fallback (LLM-knowledge) — review IA | unavailable — generation on DS + brief only}
   Critic panel ({default = signature-moment + design + frontend + a11y; --quick = signature-moment only;
                 --perfect --all = full set; --no-critic = (none)}; scope-downgraded blockers tagged as warnings):

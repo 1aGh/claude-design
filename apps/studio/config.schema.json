@@ -134,6 +134,12 @@
       "description": "How chromatically/decoratively expressive the DS is. Inferred by ux-research-agent from brand character during /design:setup-ds (NOT a picker), then anchors the structural knobs (accentStrategy, shadow/decor) and sets the default opt_out_scope for canvases under this DS (restrained|confident → palette, expressive → aesthetic, maximalist → full). Default 'restrained' is the legacy/no-bootstrap fallback only — a bootstrapped DS always writes the inferred value. Per DDR-073.",
       "default": "restrained"
     },
+    "dsFidelity": {
+      "type": "string",
+      "enum": ["advisory", "strict"],
+      "description": "How hard DS reuse is enforced during canvas generation/edit. 'advisory' (default) = reuse findings (invented brand mark/icons, reinvented components, parallel product shell) surface as warnings. 'strict' = when the DS ships a canonical specimen (logo, iconography, component, platform showcase), reinventing it is a blocker the auto-fix loop must clear. Orthogonal to opt_out_scope on the SAME axis of 'how much the DS binds': a canvas's explicit opt_out_scope=full always wins over strict (explicit free-use beats project policy). A11y is independent of this knob. Per DDR-141.",
+      "default": "advisory"
+    },
     "designSystems": {
       "type": "array",
       "description": "Design systems available in this project. Single-DS projects have one entry; multi-DS projects (marketing vs. admin vs. mobile) list each here. Each canvas's .meta.json declares which DS it uses via the 'designSystem' field. The System view's DS picker iterates this array.",

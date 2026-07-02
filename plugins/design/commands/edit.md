@@ -87,12 +87,22 @@ case "$ARGUMENTS" in
   *shadow*|*SHADOW*|*Shadow*|\
   *background*|*BACKGROUND*|\
   *className*|*class\ name*|\
-  *font-*|*tracking*|*leading*|\
+  *font*|*tracking*|*leading*|\
   *opacity*|*OPACITY*|\
-  *hover*|*HOVER*|*focus*|*FOCUS*)
+  *hover*|*HOVER*|*focus*|*FOCUS*|\
+  *barv*|*Barv*|*BARV*|\
+  *odsazen*|*Odsazen*|*mezer*|*Mezer*|\
+  *okraj*|*Okraj*|*rámeč*|*ramec*|\
+  *zaobl*|*Zaobl*|*stín*|*Stín*|*stin*|\
+  *pozad*|*Pozad*|*písm*|*pism*|*Písm*|\
+  *průhled*|*pruhled*|*třída*|*trid*)
     LOAD_CSS=1
     ;;
 esac
+# ↑ The Czech verbs (barva, odsazení, mezery, okraj, rámeček, zaoblení, stín, pozadí,
+# písmo, průhlednost, třída) are load-bearing, not decoration — the ds-awareness RCA
+# found Czech style feedback silently missed the EN-only list, so those edits ran with
+# ZERO DS vocabulary and the generator improvised off-system (DDR-141).
 
 # Selection-anchored edits also benefit — they're nearly always style/structure.
 if [ "${SEL_VALID:-0}" = "1" ]; then
@@ -168,9 +178,28 @@ if [ "$ADD_SURFACE" = "1" ] && [ "${ACTIVE##*.}" = "tsx" ]; then
     echo "→ add-surface edit but DS ships no showcase — placing surface from component priors + DS readme"
   fi
 fi
+
+# ── Brand-touching edits: pre-load the DS logo + iconography specimens (DDR-141) ──
+# When the feedback touches the brand mark or icons (EN + CZ cues), the orchestrator needs
+# the CANONICAL specimens in context — otherwise it redraws/invents. Add-surface edits get
+# them too (a new full-screen surface typically places the mark).
+BRAND_EDIT=0
+grep -qiE 'logo|wordmark|brand|značk|znack|ikon|icon|glyph' <<< "$ARGUMENTS" && BRAND_EDIT=1
+if { [ "$BRAND_EDIT" = "1" ] || [ "$ADD_SURFACE" = "1" ]; } && [ "${ACTIVE##*.}" = "tsx" ]; then
+  BR_DS=$(jq -r '.designSystem // "project"' "$META_PATH" 2>/dev/null || echo "project")
+  BR_PREVIEW=$(jq -r ".designSystems[] | select(.name==\"$BR_DS\") | .path" "$CFG" 2>/dev/null || echo "system/$BR_DS")
+  BR_DIR="$REPO_ROOT/$DESIGN_ROOT/$BR_PREVIEW/preview"
+  BR_LOGO=$(ls "$BR_DIR"/logo.{tsx,jsx,svg,html} 2>/dev/null | head -1)
+  BR_ICON=$(ls "$BR_DIR"/iconography.{tsx,jsx,html} 2>/dev/null | head -1)
+  [ -n "$BR_LOGO" ] && echo "→ pre-loading canonical brand mark: $BR_LOGO"
+  [ -n "$BR_ICON" ] && echo "→ pre-loading iconography family: $BR_ICON"
+  [ -z "$BR_LOGO$BR_ICON" ] && [ "$BRAND_EDIT" = "1" ] && echo "→ brand edit but DS ships no logo/iconography specimen — new art is legitimate (route via step 4.6)"
+fi
 ```
 
 **What the orchestrator does with those paths:**
+
+- **Brand pre-load (DDR-141):** when `→ pre-loading canonical brand mark: …` / `→ pre-loading iconography family: …` printed, `Read` those specimens and pass them to the edit prompt as the **identity reference** — any brand mark the edit places or touches IS the specimen's mark (lift its markup; adapt only size/placement), and any icon matches the iconography family's grid/stroke/corner rules. Never redraw the mark from memory.
 
 - **Add-surface pre-load:** when `→ pre-loading platform showcase: …` printed, `Read` that showcase TSX and pass it to `frontend-design` as the **placement reference** — the new surface must adopt the showcase's shell arrangement (nav / sidebar / toolbar / main / status), same chrome material, instead of inventing a new shell. It is reference, not a wireframe — the new surface still owns its own content. Skip the load (and this read) for surgical / cosmetic edits.
   - **Artboard-isolation hard-stop (carry into the `frontend-design` prompt for any add-surface / new-artboard edit):** the new `<DCArtboard>` is a fixed-size surface — never author it with viewport length units (`vw`/`vh`/`*-screen`/`h-[100vh]`) or viewport `@media` width queries / Tailwind responsive prefixes (`md:`/`lg:`), which resolve against the studio canvas stage and reflow the mock when the panel/sidebar/window resizes. Use fixed px / `%` / `h-full`, or `@container`+`cqw/cqh` for artboard-relative responsiveness. One artboard = one form factor (add a second artboard for another breakpoint). Full rule: `/design:new` envelope → "Artboard isolation". `design-system-keeper` Pass A.7 warns on violations.
@@ -182,7 +211,10 @@ fi
   # Build the pack JSON from the parsed vocabulary, then store it:
   #   { "dsName": "...", "classNames": [...from _components.css...],
   #     "tokenNames": [...--tokens from colors_and_type.css...],
-  #     "libExports": [...exported names from canvas-lib.tsx...] }
+  #     "libExports": [...exported names from canvas-lib.tsx...],
+  #     "logoSpecimenPath": "<preview/logo.* or null>",              // DDR-141 brand inventory —
+  #     "iconographySpecimenPath": "<preview/iconography.* or null>", // paths + names only; mark
+  #     "assetNames": [...filenames under <ds>/assets/, if any...] }  // CONTENT is Read fresh
   printf '%s' "$PACK_JSON" | maude cache put design-context "$DS_NAME/$TOKENS_SHA"
   ```
 
@@ -366,6 +398,7 @@ WANTS_DRAW=$(grep -iqE "(draw|create|add|nakresli|přidej|vytvoř)[^.]*(logo|wor
 **Skip** (fall through to the normal hand-edit in step 5) when:
 - The request is a tweak to an **existing** element ("make the icon bigger", "change the logo color") — that's a scoped edit, not new art.
 - The mark is a trivial **icon-set glyph** the DS already provides (just reference the set; don't engine-build a one-`<path>` chrome icon).
+- **The mark is the brand logo/wordmark AND the DS ships a canonical specimen** (the step-1.5 brand pre-load resolved `$BR_LOGO`) — **substitute the canonical mark** (lift its markup from the specimen; adapt only size/placement via tokens/classes), don't draw a new one. Redrawing a mark the DS already ships is the invention-laundering path DDR-141 closes; `draw-agent` is for art the DS does NOT ship.
 - The feedback doesn't name a mark type at all.
 
 **When `WANTS_DRAW=1` and it's genuine new art**, spawn `draw-agent` inline against the active canvas (it owns the plan→generate→rank→verify loop), then jump to step 7 (confirmation screenshot) — skip the manual step 5 edit:
@@ -487,7 +520,7 @@ fi
 
 When `RUN_KEEPER=1`, spawn ds-keeper in parallel with the critic panel (step 8), same envelope shape as `/design:new` step 9.5. Output → `$HIST/$N_KEEPER-ds-keeper.md`. Findings merge into the iter-1 panel summary; self-promoted blockers (mass drift) get priority in the auto-fix loop. Same failure handling as `/design:new` step 9.5 — agent failure does not block the panel.
 
-**Pass `platform_showcase_path` to the keeper** so its Pass A.6 (product-shell reuse, DDR-127) can check whether a substantial edit reinvented the shell. Resolve it cheaply here even when the step-1.5 add-surface pre-load didn't run (a non-add-surface edit can still cross the diff threshold):
+**Pass `platform_showcase_path` + the DDR-141 brand/fidelity inputs to the keeper** so Pass A.6 (product-shell reuse, DDR-127) and Pass A.8 (brand-asset reuse, DDR-141) can check whether a substantial edit reinvented the shell or the brand identity. Resolve them cheaply here even when the step-1.5 pre-loads didn't run (a non-add-surface edit can still cross the diff threshold):
 
 ```bash
 SC_DS=$(jq -r '.designSystem // "project"' "$META_PATH" 2>/dev/null || echo "project")
@@ -496,7 +529,22 @@ SC_PLATFORM=$(jq -r '.platform // "desktop"' "$META_PATH" 2>/dev/null || echo "d
 SC_PREVIEW=$(jq -r ".designSystems[] | select(.name==\"$SC_DS\") | .path" "$CFG" 2>/dev/null || echo "system/$SC_DS")
 KEEPER_SHOWCASE=$(ls "$REPO_ROOT/$DESIGN_ROOT/$SC_PREVIEW/preview/ui_kits-${SC_PLATFORM}-showcase.tsx" 2>/dev/null | head -1)
 [ -z "$KEEPER_SHOWCASE" ] && KEEPER_SHOWCASE=$(ls "$REPO_ROOT/$DESIGN_ROOT/$SC_PREVIEW/preview/ui_kits-"*-showcase.tsx 2>/dev/null | head -1)
-# Add to the keeper-spawn prompt:  platform_showcase_path: "$KEEPER_SHOWCASE"  (empty → Pass A.6 no-ops)
+
+# DDR-141 — brand specimens + fidelity policy (scope full overrides strict; see /design:new step 4)
+KEEPER_LOGO=$(ls "$REPO_ROOT/$DESIGN_ROOT/$SC_PREVIEW/preview"/logo.{tsx,jsx,svg,html} 2>/dev/null | head -1)
+KEEPER_ICON=$(ls "$REPO_ROOT/$DESIGN_ROOT/$SC_PREVIEW/preview"/iconography.{tsx,jsx,html} 2>/dev/null | head -1)
+DS_FIDELITY=$(jq -r '.dsFidelity // "advisory"' "$CFG" 2>/dev/null || echo advisory)
+# Scope may not be resolved yet at 7.5 (full resolution order lives in 8b) — read the
+# same sources here: --opt-out flag wins, else the canvas sidecar; default palette.
+K_SCOPE=$(grep -oE -- '--opt-out=(palette|aesthetic|full)' <<< "$ARGUMENTS" | cut -d= -f2)
+[ -z "$K_SCOPE" ] && K_SCOPE=$(jq -r '.opt_out_scope // "palette"' "$META_PATH" 2>/dev/null || echo palette)
+[ "$K_SCOPE" = "full" ] && DS_FIDELITY="advisory"
+# Add to the keeper-spawn prompt:
+#   platform_showcase_path: "$KEEPER_SHOWCASE"   (empty → Pass A.6 no-ops)
+#   brand_logo_path:        "$KEEPER_LOGO"       (empty → Pass A.8 no-ops)
+#   brand_iconography_path: "$KEEPER_ICON"
+#   opt_out_scope:          "$K_SCOPE"
+#   ds_fidelity:            "$DS_FIDELITY"
 ```
 
 ### 8. Auto-critic + auto-fix loop (default — opt out with `--no-critic`)
@@ -521,6 +569,8 @@ If the fast-path runs but ds-keeper produces 0 token-usage findings, the orchest
 #### 8b. Standard routing
 
 **Resolve opt-out scope first.** Order: (1) `--opt-out=<scope>` flag in `$ARGUMENTS` wins; (2) else read `<active>.meta.json` `opt_out_scope` field; (3) else the DS default from `config.aestheticAmbition` (DDR-073 — `maximalist` → `full`, `expressive` → `aesthetic`, `restrained`/`confident`/missing → `palette`), via `jq -r '.aestheticAmbition // "restrained"' "${DESIGN_ROOT:-.design}/config.json"`; (4) else default `palette`. Pass the resolved scope to every critic in the panel via the input envelope. Each critic adjusts severity per its own spec — `design-critic` / `graphic-design-critic` / `typography-critic` / `signature-moment-critic` downgrade matching DS-rule blockers to warnings; `a11y-critic` / `frontend-critic` / `copy-critic` ignore the parameter (their blockers are universal). Persist the resolved scope back to `.meta.json` if it changed.
+
+**Resolve `ds_fidelity` alongside it (DDR-141):** `jq -r '.dsFidelity // "advisory"'` from `.design/config.json`; a resolved scope of `full` overrides to `advisory` (explicit free-use beats project policy — one axis, not two competing switches). Pass it to `design-system-keeper` + `brand-critic` in the same envelope: under `strict`, their reuse findings (invented brand mark, reinvented component/icon family, parallel shell) are **blockers** that count toward the loop's correctness gate; under `advisory` (default) they stay warnings — today's behavior.
 
 **See `skills/design/SKILL.md` "Auto-critic loop" + "Opt-out scope" for full spec.** Klíčové:
 
