@@ -188,9 +188,10 @@ interface CanvasCacheEntry {
   sig: string;
   etag: string;
   js: string;
-  /** Absolute paths of the relative `.css` imports inlined into this build —
+  /** Absolute paths of the relative imports inlined into this build (`.css` +
+   *  local `.tsx/.ts` modules, incl. unresolved extensionless candidates) —
    *  re-statted each request to recompute `sig` without re-reading the source. */
-  cssDeps: string[];
+  deps: string[];
 }
 const canvasCache = new Map<string, CanvasCacheEntry>();
 
@@ -214,34 +215,70 @@ const RUNTIME_BOOT_ID = `${Date.now().toString(36)}${Math.random().toString(36).
 // gets the stale bundle even after the HMR hard-reload. (DDR-067.)
 let CHROME_EPOCH = 0;
 
-/** Relative `.css` import specifiers in a canvas source → absolute paths (the
- *  files Bun.build inlines). Bare / virtual specifiers (`@maude/…`, npm) are
- *  skipped — only on-disk relative CSS affects the inlined output. Resolved
- *  paths are clamped to `designRoot`: a canvas source is attacker-influenced
- *  under linked mode (DDR-054), and these paths are `stat`-ed for mtime, so a
- *  `../../../etc/…` specifier must not let the freshness probe reach outside the
- *  design tree. Legit DS imports (`../../system/<ds>/…`) stay inside designRoot. */
-function cssDepsFromSource(source: string, canvasAbsPath: string, designRoot: string): string[] {
+/** Relative import specifiers in a canvas source → absolute paths (the files
+ *  Bun.build inlines): sibling `.css`, and — RC6 of
+ *  rca/issue-canvas-hmr-optimistic-update-consistency — imported local
+ *  `.tsx/.ts/.jsx/.js` modules, which are inlined exactly like CSS (only
+ *  RUNTIME_PACKAGES stay external, canvas-build.ts), so an edit to an imported
+ *  sibling must bust the mtime-keyed cache the same way. Extensionless
+ *  specifiers contribute EVERY resolution candidate (`.tsx`, `.ts`, …,
+ *  `index.tsx`); missing candidates stat as 0, so a dep file APPEARING later
+ *  also changes the signature. One level only — no transitive graph (the
+ *  import-graph HMR re-emit is a tracked follow-up). Bare / virtual specifiers
+ *  (`@maude/…`, npm) are skipped. Resolved paths are clamped to `designRoot`:
+ *  a canvas source is attacker-influenced under linked mode (DDR-054), and
+ *  these paths are `stat`-ed for mtime, so a `../../../etc/…` specifier must
+ *  not let the freshness probe reach outside the design tree. Legit DS imports
+ *  (`../../system/<ds>/…`) stay inside designRoot. */
+export function localDepsFromSource(
+  source: string,
+  canvasAbsPath: string,
+  designRoot: string
+): string[] {
   const dir = dirname(canvasAbsPath);
   const root = resolve(designRoot);
   const deps: string[] = [];
-  const re = /import\s+["']([^"']+\.css)["']/g;
-  let m: RegExpExecArray | null = re.exec(source);
-  while (m !== null) {
-    if (m[1].startsWith('.')) {
-      const abs = resolve(dir, m[1]);
-      if (abs === root || abs.startsWith(root + sep)) deps.push(abs);
+  const seen = new Set<string>();
+  const push = (abs: string) => {
+    if (abs !== root && !abs.startsWith(root + sep)) return; // clamp (DDR-054)
+    if (seen.has(abs)) return;
+    seen.add(abs);
+    deps.push(abs);
+  };
+  const specRes = [
+    /\bimport\s+["']([^"']+)["']/g, // side-effect: import './x.css'
+    /\bfrom\s+["']([^"']+)["']/g, // import … from / export … from
+    /\bimport\(\s*["']([^"']+)["']\s*\)/g, // dynamic import('./x')
+  ];
+  for (const re of specRes) {
+    for (let m = re.exec(source); m !== null; m = re.exec(source)) {
+      const spec = m[1];
+      if (!spec?.startsWith('.')) continue;
+      const base = resolve(dir, spec);
+      if (/\.(css|tsx|ts|jsx|js)$/i.test(spec)) {
+        push(base);
+      } else {
+        for (const cand of [
+          `${base}.tsx`,
+          `${base}.ts`,
+          `${base}.jsx`,
+          `${base}.js`,
+          resolve(base, 'index.tsx'),
+          resolve(base, 'index.ts'),
+        ])
+          push(cand);
+      }
     }
-    m = re.exec(source);
   }
   return deps;
 }
 
-/** mtime signature over the .tsx + its inlined CSS deps. A missing/unreadable
- *  file contributes 0 — a delete is itself a change, so the signature differs. */
-function canvasFreshnessSig(tsxAbsPath: string, cssDeps: string[]): string {
+/** mtime signature over the .tsx + every inlined relative dep (`.css` + local
+ *  modules). A missing/unreadable file contributes 0 — a delete is itself a
+ *  change (and a later create too), so the signature differs. */
+function canvasFreshnessSig(tsxAbsPath: string, deps: string[]): string {
   const parts: string[] = [];
-  for (const p of [tsxAbsPath, ...cssDeps]) {
+  for (const p of [tsxAbsPath, ...deps]) {
     const mt = Bun.file(p).lastModified;
     parts.push(`${p}@${Number.isFinite(mt) ? mt : 0}`);
   }
@@ -271,11 +308,11 @@ async function serveCanvasTsx(
   // HMR reload (mode:'module') re-served the stale inlined CSS — the edit only
   // surfaced once the .tsx itself changed (DDR-064 dogfooding finding).
   let cached = canvasCache.get(absPath);
-  const sig = canvasFreshnessSig(absPath, cached?.cssDeps ?? []);
+  const sig = canvasFreshnessSig(absPath, cached?.deps ?? []);
 
   if (!cached || cached.sig !== sig) {
     const source = await file.text();
-    const cssDeps = cssDepsFromSource(source, absPath, ctx.paths.designRoot);
+    const deps = localDepsFromSource(source, absPath, ctx.paths.designRoot);
     let result: Awaited<ReturnType<typeof buildCanvasModule>>;
     try {
       result = await buildCanvasModule(absPath, source, {
@@ -297,13 +334,13 @@ async function serveCanvasTsx(
     // Recompute the signature against the freshly-parsed deps — this very edit
     // may have added or removed a `.css` import.
     cached = {
-      sig: canvasFreshnessSig(absPath, cssDeps),
+      sig: canvasFreshnessSig(absPath, deps),
       // Fold in the boot id (restart) + chrome epoch (live edit) so a chrome
       // change busts the browser's cached transpile even when the canvas source
       // (hence result.etag) is unchanged. See RUNTIME_BOOT_ID / CHROME_EPOCH.
       etag: `${result.etag}-${RUNTIME_BOOT_ID}-${CHROME_EPOCH}`,
       js: result.js,
-      cssDeps,
+      deps,
     };
     canvasCache.set(absPath, cached);
     // Persist the locator map. Awaited so the inspector / Phase-12 layers

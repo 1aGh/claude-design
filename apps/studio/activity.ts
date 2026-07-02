@@ -19,6 +19,9 @@ import type { Context } from './context.ts';
 /** Idle debounce — fs silence longer than this flips a file `active` → `idle`. */
 export const ACTIVITY_IDLE_MS = 3000;
 
+/** Default user-write suppression window (see ActivityOptions.suppressTtlMs). */
+export const SUPPRESS_TTL_MS = 2500;
+
 /** LRU cap on the per-file text stash used by the Task 7 region diff. */
 const STASH_CAP = 50;
 
@@ -104,6 +107,8 @@ export interface ActivityOptions {
   idleMs?: number;
   /** Disable the Task 7 per-artboard diff (file-level only). Default: enabled. */
   diff?: boolean;
+  /** Override the user-write suppression window (tests pass a small value). */
+  suppressTtlMs?: number;
 }
 
 export function createActivity(ctx: Context, opts: ActivityOptions = {}): Activity {
@@ -115,13 +120,16 @@ export function createActivity(ctx: Context, opts: ActivityOptions = {}): Activi
   // Last-seen file text, for the Task 7 region diff. Insertion-ordered Map = LRU.
   const lastText = new Map<string, string>();
   // Phase 12.1 — writes the USER just made through the shell (drag / keyboard
-  // reorder + its undo/redo) must NOT light the "editing" rim: the overlay means
-  // "an agent works here" (DDR-029), and flashing it on the user's own direct
-  // manipulation reads as interference. The write path emits `activity:suppress`
-  // with the designRoot-relative path right before writing; the next fs:any for
-  // that file (within the TTL) is swallowed. One-shot + TTL so a crashed write
-  // can't mute a file forever.
-  const SUPPRESS_TTL_MS = 2500;
+  // reorder, inspector CSS/text/attr edits + their undo/redo) must NOT light the
+  // "editing" rim: the overlay means "an agent works here" (DDR-029), and
+  // flashing it on the user's own direct manipulation reads as interference.
+  // The write path emits `activity:suppress` with the designRoot-relative path
+  // right before writing; EVERY fs:any for that file inside the TTL window is
+  // swallowed (RC2, rca/issue-canvas-hmr-optimistic-update-consistency — the
+  // old one-shot delete let the 2nd event of a same-file write burst through:
+  // slider drags and reorder spam produce several debounced fs:any per arm).
+  // The TTL bounds the mute so a crashed write can't silence a file forever.
+  const suppressTtlMs = opts.suppressTtlMs ?? SUPPRESS_TTL_MS;
   const suppressed = new Map<string, number>();
 
   function emit(file: string) {
@@ -202,13 +210,14 @@ export function createActivity(ctx: Context, opts: ActivityOptions = {}): Activi
     if (!isCanvasFile(rel)) return;
     const until = suppressed.get(rel);
     if (until != null) {
-      suppressed.delete(rel); // one-shot
       if (Date.now() < until) {
-        // User-originated write — keep the diff baseline fresh so the NEXT
-        // (agent) edit still region-scopes correctly, but skip the rim.
+        // User-originated write window — keep the diff baseline fresh so the
+        // NEXT (agent) edit still region-scopes correctly, but skip the rim.
+        // The entry stays armed until the TTL expires or the writer disarms.
         if (diffEnabled) void refineArtboards(rel);
         return;
       }
+      suppressed.delete(rel); // expired — clean up and fall through to mark()
     }
     mark(rel);
     if (diffEnabled) void refineArtboards(rel);
@@ -216,7 +225,7 @@ export function createActivity(ctx: Context, opts: ActivityOptions = {}): Activi
 
   const offSuppress = ctx.bus.on('activity:suppress', (rel: string) => {
     if (typeof rel !== 'string' || !rel) return;
-    suppressed.set(rel.replace(/\\/g, '/'), Date.now() + SUPPRESS_TTL_MS);
+    suppressed.set(rel.replace(/\\/g, '/'), Date.now() + suppressTtlMs);
   });
 
   // The write path arms `activity:suppress` BEFORE the write (so it catches the

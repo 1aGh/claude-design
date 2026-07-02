@@ -559,7 +559,10 @@ function patchCanvasMeta(patch: {
   // pan/zoom. Keeping the snapshot current means the remount restores the live
   // camera. General fix, not reorder-specific. (DDR-138 dogfood.)
   const w = window as unknown as {
-    __canvas_meta__?: { viewport?: ViewportState; layout?: { artboards: PersistedArtboardLayout[] } };
+    __canvas_meta__?: {
+      viewport?: ViewportState;
+      layout?: { artboards: PersistedArtboardLayout[] };
+    };
   };
   if (w.__canvas_meta__ && typeof w.__canvas_meta__ === 'object') {
     if (sanitized.viewport) w.__canvas_meta__.viewport = sanitized.viewport;
@@ -660,6 +663,20 @@ function prefersReducedMotion(): boolean {
 function fitRectIntoHost(rect: ArtboardRect, hostEl: HTMLElement, pad = 24): ViewportState {
   return computeFit([rect], hostEl, pad);
 }
+
+// RC3 (rca/issue-canvas-hmr-optimistic-update-consistency) — the LIVE camera,
+// hoisted above the `key=attempt` remount boundary. softReload() swaps the
+// canvas module by remounting a fresh React subtree (canvas-comment-mount.tsx,
+// clean-slate `key`), which tears down useViewportController and re-runs the
+// one-shot getInitial(). The snapshot that init used to read
+// (`__canvas_meta__.viewport` via readCanvasMeta) is mirrored only on the
+// 500 ms settle, so an edit landing mid-gesture snapped the camera back to a
+// stale pan/zoom — the reported "zoom reset while an artboard is edited".
+// canvas-lib is an externalized runtime module (canvas-build.ts): the SAME
+// module instance survives the canvas re-import, so the camera parked here
+// outlives the subtree. A full page load clears it — correct, view.json seeds
+// then. Written on every applyViewport (exact — no settle/publish lag).
+let liveViewport: ViewportState | null = null;
 
 export function useViewportController(opts: ViewportControllerOptions): ViewportControllerHandle {
   const {
@@ -787,6 +804,7 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
         zoom: clampZoom(next.zoom),
       };
       vpRef.current = clamped;
+      liveViewport = clamped; // RC3 — survives the soft-reload remount
       writeTransform(clamped);
       schedulePublish();
       scheduleSettle();
@@ -1415,6 +1433,10 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   }, []);
 
   const getInitial = useCallback((): ViewportState | null => {
+    // RC3 — after a soft-reload remount, resume the live camera parked at
+    // module scope (exact, no settle lag) before falling back to the meta
+    // snapshot. Null on a fresh page load, so view.json still seeds there.
+    if (liveViewport) return { ...liveViewport };
     const meta = readCanvasMeta();
     const v = meta?.viewport;
     if (v && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.zoom)) {

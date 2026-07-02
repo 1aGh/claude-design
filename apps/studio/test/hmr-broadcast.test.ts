@@ -95,6 +95,50 @@ describe('hmr-broadcast / debouncing', () => {
   });
 });
 
+describe('hmr-broadcast / multi-file bursts (RC4)', () => {
+  test('a burst touching two canvases broadcasts one message PER file', async () => {
+    // The old single-slot pendingMsg kept only the LAST file of a <50ms burst —
+    // the other open canvas never got its module reload and sat stale until a
+    // manual hard refresh (rca/issue-canvas-hmr-optimistic-update-consistency).
+    const ctx = mkCtx();
+    const got: HmrMessage[] = [];
+    const h = createHmrBroadcaster(ctx, (m) => got.push(m));
+    ctx.bus.emit('fs:any', 'ui/A.tsx');
+    ctx.bus.emit('fs:any', 'ui/B.tsx');
+    await awaitNextFlush();
+    expect(got).toHaveLength(2);
+    expect(new Set(got.map((m) => m.file))).toEqual(new Set(['ui/A.tsx', 'ui/B.tsx']));
+    for (const m of got) expect(m.mode).toBe('module');
+    h.stop();
+  });
+
+  test('a pending hard supersedes the whole per-file queue', async () => {
+    const ctx = mkCtx();
+    const got: HmrMessage[] = [];
+    const h = createHmrBroadcaster(ctx, (m) => got.push(m));
+    ctx.bus.emit('fs:any', 'ui/A.tsx');
+    ctx.bus.emit('fs:any', 'ui/B.tsx');
+    ctx.bus.emit('fs:any', '_lib/canvas-lib.tsx');
+    await awaitNextFlush();
+    expect(got).toHaveLength(1);
+    expect(got[0]?.mode).toBe('hard');
+    h.stop();
+  });
+
+  test('same-file meta echo never downgrades a queued module reload', async () => {
+    const ctx = mkCtx();
+    const got: HmrMessage[] = [];
+    const h = createHmrBroadcaster(ctx, (m) => got.push(m));
+    ctx.bus.emit('fs:any', 'ui/A.tsx');
+    ctx.bus.emit('fs:any', 'ui/A.meta.json');
+    await awaitNextFlush();
+    const forA = got.filter((m) => m.file === 'ui/A.tsx');
+    expect(forA).toHaveLength(1);
+    expect(forA[0]?.mode).toBe('module');
+    h.stop();
+  });
+});
+
 describe('hmr-broadcast / stop', () => {
   test('stop() prevents further broadcasts', async () => {
     const ctx = mkCtx();

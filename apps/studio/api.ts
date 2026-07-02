@@ -1339,6 +1339,36 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   // 8-hex lowercase, the shape `computeId` (canvas-edit.ts) stamps on data-cd-id.
   const CD_ID_RE = /^[0-9a-f]{8}$/;
 
+  // RC1 (rca/issue-canvas-hmr-optimistic-update-consistency) — every inline
+  // edit is USER-originated (inspector CSS knobs, inline text, attr panel, and
+  // their undo/redo which re-POST the same endpoints), so it must not light the
+  // "agent works here" rim. Mirror the reorder pattern (below): arm the
+  // suppression BEFORE the write so it catches the debounced fs:any, disarm on
+  // a no-op (delta 0 = no write) or throw so a failed edit can't mute the next
+  // genuine agent edit's rim.
+  async function suppressedEdit(
+    abs: string,
+    run: () => Promise<{ delta: number; changed?: boolean }>,
+    errLabel: string
+  ): Promise<EditOpResult> {
+    const rel = path.relative(paths.designRoot, abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const res = await run();
+      // `changed === false` = the op collapsed to a no-op and nothing hit disk —
+      // NOT `delta === 0`, which an equal-length replacement also produces.
+      if (res.changed === false) ctx.bus.emit('activity:unsuppress', rel);
+      return { ok: true, delta: res.delta };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: 422,
+        error: err instanceof CanvasEditError ? err.message : errLabel,
+      };
+    }
+  }
+
   async function editCss(input: {
     canvas?: unknown;
     id?: unknown;
@@ -1362,16 +1392,11 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     // Phase 12.3 — `reset: true` REMOVES the inline property (back to class /
     // inherited). No value needed; a missing key is a no-op (delta 0).
     if (input.reset === true) {
-      try {
-        const res = await removeAttribute(r.abs, id, `style.${camel}`);
-        return { ok: true, delta: res.delta };
-      } catch (err) {
-        return {
-          ok: false,
-          status: 422,
-          error: err instanceof CanvasEditError ? err.message : 'reset failed',
-        };
-      }
+      return suppressedEdit(
+        r.abs,
+        () => removeAttribute(r.abs, id, `style.${camel}`),
+        'reset failed'
+      );
     }
     const value = typeof input.value === 'string' ? input.value : '';
     if (!value.trim()) return { ok: false, status: 400, error: 'value required' };
@@ -1380,16 +1405,11 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     // quotes/backslashes/newlines so it can never break out of the string, and
     // React accepts string values for every style prop — so `var(--accent)`,
     // `#fff`, `8px`, `700`, `1.5` all ride verbatim.
-    try {
-      const res = await editAttribute(r.abs, id, `style.${camel}`, JSON.stringify(value));
-      return { ok: true, delta: res.delta };
-    } catch (err) {
-      return {
-        ok: false,
-        status: 422,
-        error: err instanceof CanvasEditError ? err.message : 'edit failed',
-      };
-    }
+    return suppressedEdit(
+      r.abs,
+      () => editAttribute(r.abs, id, `style.${camel}`, JSON.stringify(value)),
+      'edit failed'
+    );
   }
 
   async function editText(input: {
@@ -1403,16 +1423,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid data-cd-id' };
     if (typeof input.text !== 'string') return { ok: false, status: 400, error: 'text required' };
     if (input.text.length > 5000) return { ok: false, status: 413, error: 'text too long' };
-    try {
-      const res = await runEditText(r.abs, id, input.text);
-      return { ok: true, delta: res.delta };
-    } catch (err) {
-      return {
-        ok: false,
-        status: 422,
-        error: err instanceof CanvasEditError ? err.message : 'edit failed',
-      };
-    }
+    const text = input.text;
+    return suppressedEdit(r.abs, () => runEditText(r.abs, id, text), 'edit failed');
   }
 
   async function editAttr(input: {
@@ -1441,34 +1453,16 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
     // Phase 12.3 — `reset: true` REMOVES the custom attribute. No-op if absent.
     if (input.reset === true) {
-      try {
-        const res = await removeAttribute(r.abs, id, attr);
-        return { ok: true, delta: res.delta };
-      } catch (err) {
-        return {
-          ok: false,
-          status: 422,
-          error: err instanceof CanvasEditError ? err.message : 'reset failed',
-        };
-      }
+      return suppressedEdit(r.abs, () => removeAttribute(r.abs, id, attr), 'reset failed');
     }
     const value = typeof input.value === 'string' ? input.value : '';
     if (!value.trim()) return { ok: false, status: 400, error: 'value required' };
     if (value.length > 256) return { ok: false, status: 413, error: 'value too long' };
-    try {
-      // Non-`style.` attr name → editAttribute writes a plain quoted JSX attribute.
-      // Pass the value RAW: editStringAttr quotes/escapes it itself (JSON.stringify
-      // on replace, escapeAttr on insert) — pre-stringifying here double-encoded
-      // the value (`data-x="\"ok\""`; knob-smoke finding, 2026-06-12).
-      const res = await editAttribute(r.abs, id, attr, value);
-      return { ok: true, delta: res.delta };
-    } catch (err) {
-      return {
-        ok: false,
-        status: 422,
-        error: err instanceof CanvasEditError ? err.message : 'edit failed',
-      };
-    }
+    // Non-`style.` attr name → editAttribute writes a plain quoted JSX attribute.
+    // Pass the value RAW: editStringAttr quotes/escapes it itself (JSON.stringify
+    // on replace, escapeAttr on insert) — pre-stringifying here double-encoded
+    // the value (`data-x="\"ok\""`; knob-smoke finding, 2026-06-12).
+    return suppressedEdit(r.abs, () => editAttribute(r.abs, id, attr, value), 'edit failed');
   }
 
   // Phase 12.1 (DDR-138) — snapshot stack so a reorder is undoable via

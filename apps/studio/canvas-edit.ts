@@ -170,6 +170,13 @@ export interface EditResult {
   source: string;
   /** Number of bytes the edit changed (positive = grew, negative = shrunk). */
   delta: number;
+  /**
+   * Whether a disk write actually happened. Set by the disk-op wrappers only
+   * (pure apply* variants leave it undefined). Callers must NOT infer this from
+   * `delta` — an equal-length replacement (e.g. text "Alpha" → "Gamma") is a
+   * real write with delta 0 (RC1 rim-suppression finding).
+   */
+  changed?: boolean;
 }
 
 /**
@@ -193,12 +200,12 @@ export async function editAttribute(
     }
     const source = await file.text();
     const next = applyEdit(canvasAbsPath, source, id, attr, value);
-    if (next.source === source) return { source, delta: 0 };
+    if (next.source === source) return { source, delta: 0, changed: false };
     const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
     await Bun.write(tmp, next.source);
     const { rename } = await import('node:fs/promises');
     await rename(tmp, canvasAbsPath);
-    return next;
+    return { ...next, changed: true };
   });
 }
 
@@ -225,12 +232,12 @@ export async function removeAttribute(
     }
     const source = await file.text();
     const next = applyRemove(canvasAbsPath, source, id, attr);
-    if (next.source === source) return { source, delta: 0 };
+    if (next.source === source) return { source, delta: 0, changed: false };
     const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
     await Bun.write(tmp, next.source);
     const { rename } = await import('node:fs/promises');
     await rename(tmp, canvasAbsPath);
-    return next;
+    return { ...next, changed: true };
   });
 }
 
@@ -298,12 +305,12 @@ export async function editText(
     }
     const source = await file.text();
     const next = applyTextEdit(canvasAbsPath, source, id, text);
-    if (next.source === source) return { source, delta: 0 };
+    if (next.source === source) return { source, delta: 0, changed: false };
     const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
     await Bun.write(tmp, next.source);
     const { rename } = await import('node:fs/promises');
     await rename(tmp, canvasAbsPath);
-    return next;
+    return { ...next, changed: true };
   });
 }
 

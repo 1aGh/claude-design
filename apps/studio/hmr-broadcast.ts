@@ -63,11 +63,29 @@ export function createHmrBroadcaster(
   broadcast: (msg: HmrMessage) => void
 ): HmrBroadcaster {
   let pending: ReturnType<typeof setTimeout> | null = null;
-  let pendingMsg: HmrMessage | null = null;
+  // RC4 (rca/issue-canvas-hmr-optimistic-update-consistency) — one pending
+  // message PER FILE, plus a shared bucket for file-less messages (`hard` is
+  // global). The old single-slot pendingMsg meant a <50 ms multi-file burst
+  // (an agent turn touching several canvases) broadcast only the LAST file:
+  // every other open canvas missed its reload and sat stale until a manual
+  // hard refresh.
+  const GLOBAL_KEY = '\0global'; // NUL prefix — can't collide with an on-disk rel path
+  const pendingByKey = new Map<string, HmrMessage>();
+  // meta is the lightest signal — it doesn't trigger a reload, just re-fetches
+  // the sidecar. CSS still ranks above it so a same-window CSS write wins over
+  // a meta echo; hard tops everything.
+  const rank: Record<HmrMessage['mode'], number> = { meta: 0, css: 1, module: 2, hard: 3 };
 
   function flush() {
-    if (pendingMsg) broadcast(pendingMsg);
-    pendingMsg = null;
+    // A pending `hard` supersedes the per-file queue — every open canvas does a
+    // full reload anyway, so the softer messages would be redundant churn.
+    const hard = pendingByKey.get(GLOBAL_KEY);
+    if (hard?.mode === 'hard') {
+      broadcast(hard);
+    } else {
+      for (const msg of pendingByKey.values()) broadcast(msg);
+    }
+    pendingByKey.clear();
     pending = null;
   }
 
@@ -80,21 +98,11 @@ export function createHmrBroadcaster(
   }
 
   function enqueue(msg: HmrMessage) {
-    // Coalesce: hard > module > css. If a hard reload is queued, ignore any
-    // softer follow-up within the debounce window.
-    if (pendingMsg) {
-      // meta is the lightest signal — it doesn't trigger a reload, just
-      // re-fetches the sidecar. CSS still ranks above it so a same-window
-      // CSS write wins over a meta echo.
-      const rank: Record<HmrMessage['mode'], number> = { meta: 0, css: 1, module: 2, hard: 3 };
-      if (rank[msg.mode] < rank[pendingMsg.mode]) {
-        // Keep the existing (harder) message; just refresh the timer.
-      } else {
-        pendingMsg = msg;
-      }
-    } else {
-      pendingMsg = msg;
-    }
+    const key = msg.mode === 'hard' ? GLOBAL_KEY : (msg.file ?? GLOBAL_KEY);
+    const prev = pendingByKey.get(key);
+    // Same-key coalescing keeps the strongest mode (refreshing the payload for
+    // equal rank, so the latest version token wins).
+    if (!prev || rank[msg.mode] >= rank[prev.mode]) pendingByKey.set(key, msg);
     if (pending) clearTimeout(pending);
     pending = setTimeout(flush, DEBOUNCE_MS);
   }
@@ -109,7 +117,7 @@ export function createHmrBroadcaster(
       offAny();
       if (pending) clearTimeout(pending);
       pending = null;
-      pendingMsg = null;
+      pendingByKey.clear();
     },
   };
 }

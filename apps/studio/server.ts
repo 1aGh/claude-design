@@ -100,7 +100,10 @@ const gitLifecycle = createGitLifecycle(ctx, collab.registry);
 const activity = createActivity(ctx);
 // Phase 31 (DDR-123) — ACP chat bridge manager. Owns one claude-agent-acp
 // subprocess per /_ws/acp socket; main-origin + loopback only (wired below).
-const acp = createAcp(ctx);
+// Gets the ai-activity registry so agent edits raise the same "Claude is
+// editing" banner + presence as /design:edit (RC5,
+// rca/issue-canvas-hmr-optimistic-update-consistency).
+const acp = createAcp(ctx, aiActivity);
 const ws = createWs(ctx, api, inspect, collab, activity, acp);
 const http = createHttp(ctx, api, inspect, aiActivity);
 const fsWatch = createFsWatch(ctx);
