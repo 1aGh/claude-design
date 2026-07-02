@@ -177,3 +177,34 @@ describe('POST /_api/reorder-revert — Cmd+Z round-trip', () => {
     }
   });
 });
+
+// Adversarial F3 (DDR-139): a REJECTED reorder must NOT deposit a _history
+// snapshot — the pre-move snapshot + revert-log are written only on a confirmed
+// write, so a stream of failing requests can't disk-fill _history.
+describe('POST /_api/reorder — a rejected move writes no snapshot', () => {
+  test('an unknown-refId reorder 422s and leaves _history empty', async () => {
+    const { root, designRoot } = makeSandbox();
+    mkdirSync(join(designRoot, 'ui'), { recursive: true });
+    writeFileSync(join(designRoot, 'ui', 'List.tsx'), CANVAS_SRC);
+    const port = nextPort();
+    const main = `http://localhost:${port}`;
+    const proc = await bootServer(root, port);
+    try {
+      const [aId] = await divIdsByLine(main, designRoot);
+      const bad = await fetch(`${main}/_api/reorder`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', id: aId, refId: 'deadbeef', position: 'after' }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(bad.status).toBe(422); // refId not found → moveElement throws
+      // No pre-reorder snapshot was written (the move never landed).
+      const histDir = join(designRoot, '_history', 'ui-list');
+      const snaps = existsSync(histDir)
+        ? readdirSync(histDir).filter((f) => f.endsWith('.json'))
+        : [];
+      expect(snaps.length).toBe(0);
+    } finally {
+      await killProc(proc);
+    }
+  });
+});

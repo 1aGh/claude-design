@@ -219,9 +219,19 @@ export function createActivity(ctx: Context, opts: ActivityOptions = {}): Activi
     suppressed.set(rel.replace(/\\/g, '/'), Date.now() + SUPPRESS_TTL_MS);
   });
 
+  // The write path arms `activity:suppress` BEFORE the write (so it catches the
+  // debounced fs:any). If the write turns out to be a no-op or throws, it disarms
+  // via this event — otherwise a failed/spam reorder would swallow the NEXT
+  // genuine (agent / synced-peer) edit's rim (adversarial F2).
+  const offUnsuppress = ctx.bus.on('activity:unsuppress', (rel: string) => {
+    if (typeof rel !== 'string' || !rel) return;
+    suppressed.delete(rel.replace(/\\/g, '/'));
+  });
+
   function stop() {
     off();
     offSuppress();
+    offUnsuppress();
     for (const t of idleTimers.values()) clearTimeout(t);
     idleTimers.clear();
     lastText.clear();

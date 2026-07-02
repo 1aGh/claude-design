@@ -7042,13 +7042,13 @@ function App() {
         // Phase 12.1 follow-up — Cmd+Z/Cmd+Shift+Z on a reorder. The canvas undo
         // stack (untrusted iframe) can't reach the main-origin-only
         // /_api/reorder-revert, so it REQUESTS; the shell writes. Active canvas
-        // only — same guard as reorder-request below.
+        // only. SECURITY (adversarial F4): pin the target to `activePath` — do NOT
+        // forward m.canvas (an untrusted iframe could name a different canvas); the
+        // undo stack is per active canvas anyway, and the server's seq→entry.abs +
+        // 409 content-match are the backstop.
         const rvWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
-        const rvShape =
-          typeof m.canvas === 'string' &&
-          typeof m.seq === 'number' &&
-          (m.dir === 'undo' || m.dir === 'redo');
-        if (e.source === rvWin && rvShape) {
+        const rvShape = typeof m.seq === 'number' && (m.dir === 'undo' || m.dir === 'redo');
+        if (e.source === rvWin && rvShape && activePath) {
           layersBusyRef.current = true;
           if (layersBusyTimerRef.current) clearTimeout(layersBusyTimerRef.current);
           layersBusyTimerRef.current = setTimeout(() => {
@@ -7058,7 +7058,7 @@ function App() {
           fetch('/_api/reorder-revert', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ canvas: m.canvas, seq: m.seq, dir: m.dir }),
+            body: JSON.stringify({ canvas: activePath, seq: m.seq, dir: m.dir }),
           })
             .then((r) => r.json().catch(() => ({})))
             .then((j) => {
@@ -7403,10 +7403,15 @@ function App() {
       if (draggedId === refId && (idIndex ?? 0) === (refIndex ?? 0)) return;
       const sel = selectedRef.current;
       const one = Array.isArray(sel) ? sel[0] : sel;
-      // resolveCanvasAbs accepts the bare slug or the designRel-prefixed file.
-      const canvas = one?.canvas || one?.file || activePath;
+      // SECURITY (DDR-139 / adversarial F1): a reorder ALWAYS applies to the
+      // ACTIVE canvas — both the in-canvas drag and the Layers panel operate on
+      // what the user is viewing. Pin the target to `activePath`; never derive it
+      // from `selection.canvas`, which an untrusted iframe can spoof (an ungated
+      // dgn:'select' followed by dgn:'reorder-request') to retarget the write to
+      // a DIFFERENT canvas (confused deputy, breaks DDR-054/DDR-138 containment).
+      const canvas = activePath;
       if (!canvas) return;
-      const file = one?.file || activePath;
+      const file = activePath;
       const artboardId = layersTree?.artboardId ?? one?.artboardId ?? null;
       // Optimistically reorder the layers tree so the panel reflects the move
       // instantly; the HMR rebuild (request-layers, dgn:'loaded') confirms it a

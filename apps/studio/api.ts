@@ -1454,26 +1454,33 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     if (id === refId && (idIndex ?? 0) === (refIndex ?? 0)) {
       return { ok: false, status: 422, error: 'cannot move an element relative to itself' };
     }
+    const rel = path.relative(paths.designRoot, r.abs);
+    // Arm the "user did this — don't light the agent-editing rim" suppression
+    // BEFORE the write so it catches the debounced fs:any. It's disarmed below if
+    // the move turns out to be a no-op or throws (adversarial F2 — else a
+    // failed/spam reorder would swallow the next genuine edit's rim).
+    ctx.bus.emit('activity:suppress', rel);
     try {
-      // Pre-move snapshot BEFORE the write so /design:rollback restores the
-      // pre-reorder source. Best-effort — a snapshot failure must not block the
-      // move (matches the sync layer's fail-open snapshot posture for local edits).
-      // writeSnapshot derives the `_history/<slug>/` dir via fileSlug, which
-      // mangles a designRoot-RELATIVE path (`ui/Foo.tsx` → `ui-foo`) — passing the
-      // absolute path would produce a mangled full-path slug /design:rollback
-      // (slug.sh) could never find.
       const before = await Bun.file(r.abs).text();
+      const res = await moveElement(r.abs, id, refId, position as MovePosition, idIndex, refIndex);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        // No-op move (the reparse-clean edit collapsed to the same source) — no
+        // write happened, so disarm the rim suppression and DON'T snapshot/log
+        // (adversarial F2 + F3: never deposit a _history blob for a non-write).
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true, delta: 0, movedId: res.movedId, semanticId: res.semanticId, seq: 0 };
+      }
+      // A real write landed. Snapshot the pre-move source for /design:rollback
+      // (RELATIVE path → `_history/<slug>/`; the absolute path would mangle the
+      // slug slug.sh can't find) — best-effort. Log {before, after} under a seq so
+      // Cmd+Z can revert by whole-file swap (inverse descriptors go stale as
+      // positional ids churn).
       try {
-        await history.writeSnapshot(path.relative(paths.designRoot, r.abs), before, 'pre-reorder');
+        await history.writeSnapshot(rel, before, 'pre-reorder');
       } catch {
         /* snapshot is a safety net, not a gate */
       }
-      // The user is doing this by hand — don't light the "agent works here" rim.
-      ctx.bus.emit('activity:suppress', path.relative(paths.designRoot, r.abs));
-      const res = await moveElement(r.abs, id, refId, position as MovePosition, idIndex, refIndex);
-      // Log {before, after} under a seq so Cmd+Z can revert by whole-file swap —
-      // inverse move descriptors would go stale (positional ids churn per write).
-      const after = await Bun.file(r.abs).text();
       const seq = ++reorderSeq;
       reorderLog.set(seq, { abs: r.abs, before, after });
       while (reorderLog.size > REORDER_LOG_CAP) {
@@ -1483,6 +1490,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       }
       return { ok: true, delta: res.delta, movedId: res.movedId, semanticId: res.semanticId, seq };
     } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel); // move threw, no write — disarm
       return {
         ok: false,
         status: 422,
@@ -1520,8 +1528,14 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
           error: 'canvas changed since this reorder — undo skipped',
         };
       }
-      ctx.bus.emit('activity:suppress', path.relative(paths.designRoot, r.abs));
-      await Bun.write(r.abs, write);
+      const rel = path.relative(paths.designRoot, r.abs);
+      ctx.bus.emit('activity:suppress', rel);
+      try {
+        await Bun.write(r.abs, write);
+      } catch (e) {
+        ctx.bus.emit('activity:unsuppress', rel); // write failed — disarm the rim suppression
+        throw e;
+      }
       return { ok: true, dir };
     } catch {
       return { ok: false, status: 500, error: 'revert failed' };
