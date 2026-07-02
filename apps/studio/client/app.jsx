@@ -5874,6 +5874,40 @@ function App() {
   useEffect(() => {
     selectedRef.current = selected;
   }, [selected]);
+  // feature-acp-context-hardening — halo re-apply retry ladder. A single
+  // select-by-id post races the fresh iframe: dgn:'loaded' fires from the
+  // inline inspector script at HTML-parse time, BEFORE the React canvas-shell
+  // mounts its message listener (module fetch + mount takes 100ms–seconds), so
+  // a one-shot post silently evaporates and the restored selection never gets
+  // its halo back. Re-post on a fixed ladder; each attempt aborts when the
+  // user meanwhile selected something else. select-by-id is idempotent
+  // (replace-same → select-set echo → ws guard sees same id → no re-schedule),
+  // so the ladder can't loop.
+  const haloRestoreTimersRef = useRef([]);
+  const scheduleHaloRestore = useCallback((one) => {
+    if (!one?.id || !one.file) return;
+    for (const t of haloRestoreTimersRef.current) clearTimeout(t);
+    haloRestoreTimersRef.current = [50, 450, 1200, 2500, 5000].map((delay) =>
+      setTimeout(() => {
+        const cur = selectedRef.current;
+        const c1 = Array.isArray(cur) ? cur[0] : cur;
+        if (!c1 || c1.id !== one.id || c1.file !== one.file) return; // superseded
+        const frame = iframesRef.current.get(one.file);
+        if (!frame?.contentWindow) return;
+        try {
+          frame.contentWindow.postMessage(
+            {
+              dgn: 'select-by-id',
+              id: one.id,
+              artboardId: one.artboardId ?? null,
+              index: one.index ?? 0,
+            },
+            '*'
+          );
+        } catch {}
+      }, delay)
+    );
+  }, []);
   // Phase 12.1 (DDR-138) — after a reorder writes source, the HMR reload remounts
   // the canvas and the positional data-cd-id of the moved element (and everything
   // after it) renumbers. Stash the re-settle target { file, movedId, artboardId }
@@ -6499,20 +6533,7 @@ function App() {
               one.file &&
               (!prevOne || prevOne.id !== one.id || prevOne.file !== one.file)
             ) {
-              const frame = iframesRef.current.get(one.file);
-              if (frame?.contentWindow) {
-                try {
-                  frame.contentWindow.postMessage(
-                    {
-                      dgn: 'select-by-id',
-                      id: one.id,
-                      artboardId: one.artboardId ?? null,
-                      index: one.index ?? 0,
-                    },
-                    '*'
-                  );
-                } catch {}
-              }
+              scheduleHaloRestore(one);
             }
           } else if (m.type === 'comments' && typeof m.file === 'string') {
             setCommentsByFile((prev) => ({ ...prev, [m.file]: m.comments || [] }));
@@ -7270,19 +7291,13 @@ function App() {
             // data-cd-id so the user keeps focus on what they're editing. The
             // canvas-shell `select-by-id` handler re-emits select-set, which keeps
             // the Inspector panel + halo in sync. Guarded to the active file.
-            const sel = selectedRef.current;
+            // Retry-laddered: dgn:'loaded' fires from the inline inspector script
+            // BEFORE the React canvas-shell mounts its listener, so a one-shot
+            // post is lost on fresh iframes (canvas-switch restore case).
+            const sel0 = selectedRef.current;
+            const sel = Array.isArray(sel0) ? sel0[0] : sel0;
             if (sel && sel.id && sel.file === m.file) {
-              try {
-                el.contentWindow.postMessage(
-                  {
-                    dgn: 'select-by-id',
-                    id: sel.id,
-                    artboardId: sel.artboardId ?? null,
-                    index: sel.index ?? 0,
-                  },
-                  '*'
-                );
-              } catch {}
+              scheduleHaloRestore(sel);
             }
           }
         }
