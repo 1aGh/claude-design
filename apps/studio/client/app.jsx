@@ -5211,12 +5211,8 @@ function LayerRow({
   onHover,
   onToggleVisibility,
   onReorder,
-  onArrowSelect,
   onRowPointerDown,
   dragState,
-  siblings,
-  pos,
-  parentNode,
 }) {
   const key = `${node.id}:${node.index}`;
   const hasKids = node.children && node.children.length > 0;
@@ -5271,40 +5267,11 @@ function LayerRow({
         onMouseLeave={() => onHover(null)}
         onPointerDown={canDrag ? (e) => onRowPointerDown(e, node, key) : undefined}
         onKeyDown={(e) => {
+          // Enter/Space select; ↑/↓ (+ modifiers) are handled at the tree
+          // container (selection-driven — survives the HMR re-render).
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             onSelect(node);
-            return;
-          }
-          if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-          const dir = e.key === 'ArrowDown' ? 1 : -1;
-          // ↑/↓ (no modifier) — navigate the selection through the flattened
-          // visible tree (into nested lists), like a file browser.
-          if (!e.altKey) {
-            e.preventDefault();
-            onArrowSelect?.(node, dir);
-            return;
-          }
-          if (!canDrag || !Array.isArray(siblings)) return; // repeated/root can't move
-          e.preventDefault();
-          e.stopPropagation();
-          const expanded = (n) => n && n.children && n.children.length && !collapsed.has(`${n.id}:${n.index}`);
-          if (!e.shiftKey) {
-            // Alt+↑/↓ — reorder ONLY within the same parent (stop at the edges).
-            if (dir < 0 && pos > 0) onReorder(node, siblings[pos - 1], 'before');
-            else if (dir > 0 && pos < siblings.length - 1) onReorder(node, siblings[pos + 1], 'after');
-            return;
-          }
-          // Alt+Shift+↑/↓ — move through the flattened order: cross the parent
-          // boundary (out at first/last) and dive into an adjacent open container.
-          if (dir > 0) {
-            const next = siblings[pos + 1];
-            if (next) onReorder(node, next, expanded(next) ? 'inside-start' : 'after');
-            else if (parentNode) onReorder(node, parentNode, 'after'); // last → pop out below parent
-          } else {
-            const prev = siblings[pos - 1];
-            if (prev) onReorder(node, prev, expanded(prev) ? 'inside-end' : 'before');
-            else if (parentNode) onReorder(node, parentNode, 'before'); // first → pop out above parent
           }
         }}
       >
@@ -5358,12 +5325,8 @@ function LayerRow({
               onHover={onHover}
               onToggleVisibility={onToggleVisibility}
               onReorder={onReorder}
-              onArrowSelect={onArrowSelect}
               onRowPointerDown={onRowPointerDown}
               dragState={dragState}
-              siblings={node.children}
-              pos={ci}
-              parentNode={node}
             />
           ))
         : null}
@@ -5486,27 +5449,62 @@ function InspectorPanel({
         onReorderLayer(dragged.id, ref.id, position);
       }
     : undefined;
-  // ↑/↓ (no modifier) navigate the SELECTION through the flattened visible tree
-  // (descending into nested lists), like a file tree. Selects the prev/next
-  // visible node and focuses its row.
-  const arrowSelect = (currentNode, dir) => {
+  // Flatten the VISIBLE tree (respecting collapse) with each node's depth,
+  // parent, siblings, and index — the basis for keyboard nav + moves.
+  const flattenVisibleLayers = () => {
     const flat = [];
-    (function walk(nodes) {
-      (nodes || []).forEach((n) => {
-        flat.push(n);
-        if (n.children && n.children.length && !collapsed.has(`${n.id}:${n.index}`)) walk(n.children);
+    (function walk(nodes, depth, parentNode) {
+      (nodes || []).forEach((n, i) => {
+        flat.push({ node: n, depth, parentNode, siblings: nodes, pos: i });
+        if (n.children && n.children.length && !collapsed.has(`${n.id}:${n.index}`))
+          walk(n.children, depth + 1, n);
       });
-    })(layersTree?.nodes);
-    const i = flat.findIndex((n) => n.id === currentNode.id && n.index === currentNode.index);
+    })(layersTree?.nodes, 0, null);
+    return flat;
+  };
+  // The keyboard cursor is the SELECTED element (NOT DOM focus, which the HMR
+  // re-render churns). ↑/↓ move the selection through the flattened tree;
+  // Alt+↑/↓ reorder within the parent; Alt+Shift+↑/↓ reorder across the parent
+  // boundary (out at first/last, into an adjacent open container). After a move
+  // the reorder re-selects the moved element (movedId), so the cursor follows
+  // and the next press keeps working — the fix for "Alt+arrow works once".
+  const onTreeKeyDown = (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    if (!el) return;
+    const flat = flattenVisibleLayers();
+    const i = flat.findIndex((f) => f.node.id === el.id && f.node.index === el.index);
     if (i < 0) return;
-    const t = flat[i + dir];
-    if (!t) return;
-    onSelectLayer?.(t);
-    const tKey = `${t.id}:${t.index}`;
-    requestAnimationFrame(() => {
-      const el = document.querySelector(`[data-layer-key="${tKey}"]`);
-      if (el) el.focus();
-    });
+    const dir = e.key === 'ArrowDown' ? 1 : -1;
+    const cur = flat[i];
+    if (!e.altKey) {
+      const t = flat[i + dir];
+      if (t) {
+        e.preventDefault();
+        onSelectLayer?.(t.node);
+      }
+      return;
+    }
+    if (!handleReorder || repeatedLayerIds.has(cur.node.id) || !Array.isArray(cur.siblings)) return;
+    e.preventDefault();
+    const expanded = (n) =>
+      n && n.children && n.children.length && !collapsed.has(`${n.id}:${n.index}`);
+    if (!e.shiftKey) {
+      // Within-parent reorder; stop at the first/last sibling.
+      if (dir < 0 && cur.pos > 0) handleReorder(cur.node, cur.siblings[cur.pos - 1], 'before');
+      else if (dir > 0 && cur.pos < cur.siblings.length - 1)
+        handleReorder(cur.node, cur.siblings[cur.pos + 1], 'after');
+      return;
+    }
+    // Cross-parent reorder (flattened traversal).
+    if (dir > 0) {
+      const next = cur.siblings[cur.pos + 1];
+      if (next) handleReorder(cur.node, next, expanded(next) ? 'inside-start' : 'after');
+      else if (cur.parentNode) handleReorder(cur.node, cur.parentNode, 'after');
+    } else {
+      const prev = cur.siblings[cur.pos - 1];
+      if (prev) handleReorder(cur.node, prev, expanded(prev) ? 'inside-end' : 'before');
+      else if (cur.parentNode) handleReorder(cur.node, cur.parentNode, 'before');
+    }
   };
   // Ids that appear MORE THAN ONCE in the tree are repeated instances of a single
   // source node (a `.map(...)` / loop). They can't be reordered individually —
@@ -5532,6 +5530,7 @@ function InspectorPanel({
   // blue divider (or nest ring) marks the drop, and the move commits only on
   // release. Same-origin shell, so it's all local (no dgn bus).
   const layerDragRef = useRef(null);
+  const layerTreeRef = useRef(null);
   const startLayerDrag = (e, node, key) => {
     if (!handleReorder || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     if (layersBusyRef?.current) return; // a prior reorder is still landing (ids churning)
@@ -5800,7 +5799,15 @@ function InspectorPanel({
                     Drag or ↑/↓ select · Alt+↑/↓ move · Alt+Shift+↑/↓ move across
                   </div>
                 ) : null}
-                <div role="tree" aria-label="Artboard layers">
+                {/* Keyboard nav/move handled at the container (tabIndex=0), driven
+                    by the SELECTION not row focus — survives the HMR re-render. */}
+                <div
+                  role="tree"
+                  aria-label="Artboard layers"
+                  tabIndex={0}
+                  ref={layerTreeRef}
+                  onKeyDown={onTreeKeyDown}
+                >
                   {layersTree.nodes.map((n, ni) => (
                     <LayerRow
                       key={`${n.id}:${n.index}`}
@@ -5812,15 +5819,15 @@ function InspectorPanel({
                       hidden={hiddenLayers}
                       repeatedIds={repeatedLayerIds}
                       onToggle={toggleCollapse}
-                      onSelect={(node) => onSelectLayer?.(node)}
+                      onSelect={(node) => {
+                        onSelectLayer?.(node);
+                        layerTreeRef.current?.focus();
+                      }}
                       onHover={(node) => onHoverLayer?.(node)}
                       onToggleVisibility={toggleVisibility}
                       onReorder={handleReorder}
-                      onArrowSelect={arrowSelect}
                       onRowPointerDown={startLayerDrag}
                       dragState={dragState}
-                      siblings={layersTree.nodes}
-                      pos={ni}
                     />
                   ))}
                 </div>
@@ -5901,9 +5908,6 @@ function App() {
   // tree (with correct ids) arrives. Cleared by the layers-tree message.
   const layersBusyRef = useRef(false);
   const layersBusyTimerRef = useRef(null);
-  // Moved element's post-write id — the layers-tree handler refocuses its row
-  // after the rebuild so consecutive keyboard moves don't lose focus.
-  const pendingLayerFocusRef = useRef(null);
   // Phase 12 Task 4 — Layers tree for the active artboard (posted by canvas-shell).
   const [layersTree, setLayersTree] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -7025,19 +7029,32 @@ function App() {
           clearTimeout(layersBusyTimerRef.current);
           layersBusyTimerRef.current = null;
         }
-        // Keyboard-move continuity: put focus back on the moved row (its id
-        // changed with the rebuild) so the next Alt+arrow lands without
-        // re-clicking. Only when focus is still in the tree (or was dropped to
-        // body by the remount) — never steal it from another control.
-        const focusId = pendingLayerFocusRef.current;
-        if (focusId) {
-          pendingLayerFocusRef.current = null;
-          requestAnimationFrame(() => {
-            const ae = document.activeElement;
-            const inTree = !ae || ae === document.body || (ae.closest && ae.closest('[role="tree"]'));
-            const row = document.querySelector(`[data-layer-key^="${focusId}:"]`);
-            if (inTree && row) row.focus();
-          });
+        // Phase 12.1 — a reorder writes source → SOFT HMR (no dgn:'loaded' fires,
+        // so the loaded-handler re-select never runs). The live observer's fresh
+        // tree is our signal instead: re-select the moved element by its NEW
+        // positional id (movedId) so the selection halo + the keyboard cursor
+        // follow it. Without this the next Alt+arrow acts on the STALE id, which
+        // positionally now points at a different element. Only act once the tree
+        // actually CONTAINS movedId — an in-canvas drag posts a PREVIEW tree
+        // first (old ids, pre-write); consuming then would re-select nothing and
+        // burn the pending ref before the real post-HMR tree lands.
+        const pend = pendingReorderRef.current;
+        if (pend && pend.movedId) {
+          const has = (function find(nodes) {
+            return (nodes || []).some((n) => n.id === pend.movedId || find(n.children));
+          })(m.tree);
+          if (has) {
+            pendingReorderRef.current = null;
+            const win = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+            if (win) {
+              try {
+                win.postMessage(
+                  { dgn: 'select-by-id', id: pend.movedId, artboardId: m.artboardId ?? null, index: 0 },
+                  '*'
+                );
+              } catch {}
+            }
+          }
         }
       } else if (m.dgn === 'reorder-revert') {
         // Phase 12.1 follow-up — Cmd+Z/Cmd+Shift+Z on a reorder. The canvas undo
@@ -7437,7 +7454,6 @@ function App() {
               // tree. movedId is best-effort — null means "leave selection to the
               // user" (never re-select by the stale pre-move id).
               pendingReorderRef.current = { file, movedId: j.movedId || null, artboardId };
-              pendingLayerFocusRef.current = j.movedId || null;
               // Record onto the canvas undo stack so Cmd+Z reverts the move via
               // the server's reorder log (id-churn-proof whole-file swap).
               if (typeof j.seq === 'number') {

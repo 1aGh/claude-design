@@ -451,10 +451,33 @@ function serializeArtboardTree(root: Element): LayerNode[] {
   return walk(root);
 }
 
+// The artboard whose Layers tree the shell is currently showing. Set every time
+// we post a tree (request-layers / selection); the live MutationObserver
+// (LayersLiveSync) re-posts THIS artboard whenever its DOM structure changes, so
+// the panel mirrors the canvas both ways (drag/keyboard reorder + HMR reload)
+// with FRESH data-cd-ids — no stale-optimistic-tree drift.
+//
+// Stored on `window` (NOT a module `let`): a source edit triggers a SOFT HMR
+// that re-evaluates this module — a module-scoped var would reset to null and
+// the observer would bail right when it matters (post-reorder). The iframe
+// window survives the soft HMR, so the tracked artboard persists across it.
+function getLastLayersArtboardId(): string | null {
+  try {
+    return (window as unknown as { __maudeLastLayersArt?: string | null }).__maudeLastLayersArt ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function postLayersTree(artboardId: string | null | undefined): void {
   if (typeof document === 'undefined' || !artboardId) return;
   const root = document.querySelector(`[data-dc-screen="${CSS.escape(artboardId)}"]`);
   if (!root) return;
+  try {
+    (window as unknown as { __maudeLastLayersArt?: string | null }).__maudeLastLayersArt = artboardId;
+  } catch {
+    /* no window */
+  }
   try {
     window.parent.postMessage(
       { dgn: 'layers-tree', artboardId, tree: serializeArtboardTree(root) },
@@ -463,6 +486,45 @@ function postLayersTree(artboardId: string | null | undefined): void {
   } catch {
     /* detached / cross-origin */
   }
+}
+
+// Live-sync the Layers panel to the canvas DOM. A structural change anywhere in
+// the artboard (an in-canvas reorder's live reflow, a drop, or the HMR remount
+// after ANY source write) re-serializes + re-posts the tracked artboard's tree.
+// Chrome-only churn (halo / divider / pins / activity rim, all appended to body)
+// is ignored so we don't thrash. Debounced; the tree walk skips dev-server chrome
+// already (serializeArtboardTree).
+const LAYERS_CHROME_SEL =
+  '.dc-cv-halo, .dc-cv-group-bbox, .dgn-pin, .dc-cv-reorder-divider, .dc-cv-reorder-into, .dc-activity-rim, .dc-activity-scan, .dc-cv-reorder-lift';
+
+function LayersLiveSync() {
+  useEffect(() => {
+    if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
+    const isChrome = (n: Node): boolean =>
+      n.nodeType === 1 && !!(n as Element).closest?.(LAYERS_CHROME_SEL);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const obs = new MutationObserver((records) => {
+      let structural = false;
+      for (const r of records) {
+        if (r.type !== 'childList') continue;
+        if (r.target.nodeType === 1 && (r.target as Element).closest?.(LAYERS_CHROME_SEL)) continue;
+        const touched = [...r.addedNodes, ...r.removedNodes];
+        if (touched.length && touched.every(isChrome)) continue; // pure chrome churn
+        structural = true;
+        break;
+      }
+      const art = getLastLayersArtboardId();
+      if (!structural || !art) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => postLayersTree(art), 90);
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      if (timer) clearTimeout(timer);
+      obs.disconnect();
+    };
+  }, []);
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1869,6 +1931,7 @@ function CanvasRouter({
       <HoverHalo el={hoverEl} />
       <SelectionHalos />
       <ReorderDrag />
+      <LayersLiveSync />
       <GroupBbox />
       <EqualSpacingHandles />
       <ContextualToolbar />
