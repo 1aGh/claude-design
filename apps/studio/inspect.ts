@@ -147,12 +147,19 @@ export function createInspect(
   }
 
   /** Canvas-file mtime for the drift-gate stamp. `file` is repoRoot-relative
-   *  (designRel-prefixed, as the iframe reports it). Best-effort 0. */
+   *  (designRel-prefixed, as the iframe reports it). Best-effort 0. Clamp to
+   *  designRoot: `file` originates in the (untrusted, DDR-054) canvas via the
+   *  origin-checked postMessage relay, and we `stat` it — a `../../../etc/…`
+   *  must not turn this into a filesystem existence/mtime oracle (defender S1;
+   *  mirrors localDepsFromSource's clamp). */
   function mtimeFor(file: string): number {
     try {
       const rel = (file || '').replace(/^\/+/, '');
       if (!rel) return 0;
-      const mt = Bun.file(path.join(ctx.paths.repoRoot, rel)).lastModified;
+      const abs = path.resolve(ctx.paths.designRoot, path.relative(ctx.paths.designRel, rel));
+      const root = path.resolve(ctx.paths.designRoot);
+      if (abs !== root && !abs.startsWith(root + path.sep)) return 0;
+      const mt = Bun.file(abs).lastModified;
       return Number.isFinite(mt) ? mt : 0;
     } catch {
       return 0;

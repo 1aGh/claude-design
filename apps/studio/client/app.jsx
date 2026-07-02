@@ -6972,6 +6972,24 @@ function App() {
         }
         return;
       }
+      // SECURITY (attacker Finding 2, mirrors the phase-28 F-2 reorder/present
+      // gate at the handlers below): selection posts are honored ONLY from the
+      // ACTIVE canvas's window. Every open canvas iframe shares one
+      // `canvasOrigin`, so the origin check above can't tell the foreground
+      // canvas from a background/synced one — and a selection carries an
+      // attacker-chosen `file` that the server trusts verbatim and write-throughs
+      // into the persistent per-canvas `selections` map, then rides into the
+      // auto-approving ACP agent's frozen context. A background (untrusted, DDR-054)
+      // canvas must not be able to plant a selection with no user gesture. The
+      // user can only click the visible active canvas, so a non-active source is
+      // never a legitimate selection.
+      if (m.dgn === 'select' || m.dgn === 'select-set' || m.dgn === 'clear-select') {
+        const activeWin =
+          activePath && activePath !== SYSTEM_TAB
+            ? iframesRef.current.get(activePath)?.contentWindow
+            : null;
+        if (e.source !== activeWin) return;
+      }
       if (m.dgn === 'select' && m.selection) {
         wsSend({ type: 'select', selection: m.selection });
         setSelected(m.selection);

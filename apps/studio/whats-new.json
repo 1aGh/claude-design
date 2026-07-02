@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "acp-context-hardening",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "The Assistant keeps your canvas in view",
+      "summary": "Selection now sticks per canvas: pick an element, switch to another canvas and back, and it's still selected — no more losing your place. Every message you send to the Assistant carries the canvas and element you had chosen, frozen at send time and shown as a chip above the box, so switching canvases while Claude works never leaves it guessing what you meant. And a fresh chat already knows it's running inside the Maude studio, so you can just say \"make this bigger\" and go.",
+      "surface": "design-ui"
+    },
+    {
       "id": "acp-composer-paste-and-send",
       "version": null,
       "date": null,
