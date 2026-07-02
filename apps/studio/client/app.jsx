@@ -5211,6 +5211,7 @@ function LayerRow({
   onHover,
   onToggleVisibility,
   onReorder,
+  onArrowSelect,
   onRowPointerDown,
   dragState,
   siblings,
@@ -5275,29 +5276,35 @@ function LayerRow({
             onSelect(node);
             return;
           }
-          // Alt+Arrow keyboard reorder (drag isn't keyboard-reachable; the tree is
-          // role="tree"). Up/Down reorder among siblings; Right nests into the
-          // previous sibling as its last child. See DDR-138.
-          // Alt+↑/↓ reorder among siblings; Alt+→ nests into the previous sibling;
-          // Alt+← UN-NESTS (outdent) — moves the node out to just after its parent.
-          if (canDrag && e.altKey) {
-            if (e.key === 'ArrowUp' && Array.isArray(siblings) && pos > 0) {
-              e.preventDefault();
-              e.stopPropagation();
-              onReorder(node, siblings[pos - 1], 'before');
-            } else if (e.key === 'ArrowDown' && Array.isArray(siblings) && pos < siblings.length - 1) {
-              e.preventDefault();
-              e.stopPropagation();
-              onReorder(node, siblings[pos + 1], 'after');
-            } else if (e.key === 'ArrowRight' && Array.isArray(siblings) && pos > 0) {
-              e.preventDefault();
-              e.stopPropagation();
-              onReorder(node, siblings[pos - 1], 'inside-end');
-            } else if (e.key === 'ArrowLeft' && parentNode) {
-              e.preventDefault();
-              e.stopPropagation();
-              onReorder(node, parentNode, 'after'); // outdent: move out, after the parent
-            }
+          if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+          const dir = e.key === 'ArrowDown' ? 1 : -1;
+          // ↑/↓ (no modifier) — navigate the selection through the flattened
+          // visible tree (into nested lists), like a file browser.
+          if (!e.altKey) {
+            e.preventDefault();
+            onArrowSelect?.(node, dir);
+            return;
+          }
+          if (!canDrag || !Array.isArray(siblings)) return; // repeated/root can't move
+          e.preventDefault();
+          e.stopPropagation();
+          const expanded = (n) => n && n.children && n.children.length && !collapsed.has(`${n.id}:${n.index}`);
+          if (!e.shiftKey) {
+            // Alt+↑/↓ — reorder ONLY within the same parent (stop at the edges).
+            if (dir < 0 && pos > 0) onReorder(node, siblings[pos - 1], 'before');
+            else if (dir > 0 && pos < siblings.length - 1) onReorder(node, siblings[pos + 1], 'after');
+            return;
+          }
+          // Alt+Shift+↑/↓ — move through the flattened order: cross the parent
+          // boundary (out at first/last) and dive into an adjacent open container.
+          if (dir > 0) {
+            const next = siblings[pos + 1];
+            if (next) onReorder(node, next, expanded(next) ? 'inside-start' : 'after');
+            else if (parentNode) onReorder(node, parentNode, 'after'); // last → pop out below parent
+          } else {
+            const prev = siblings[pos - 1];
+            if (prev) onReorder(node, prev, expanded(prev) ? 'inside-end' : 'before');
+            else if (parentNode) onReorder(node, parentNode, 'before'); // first → pop out above parent
           }
         }}
       >
@@ -5351,6 +5358,7 @@ function LayerRow({
               onHover={onHover}
               onToggleVisibility={onToggleVisibility}
               onReorder={onReorder}
+              onArrowSelect={onArrowSelect}
               onRowPointerDown={onRowPointerDown}
               dragState={dragState}
               siblings={node.children}
@@ -5465,6 +5473,9 @@ function InspectorPanel({
   const [reorderMsg, setReorderMsg] = useState('');
   const handleReorder = onReorderLayer
     ? (dragged, ref, position) => {
+        // Gate keyboard + drop moves while a prior reorder is still landing — the
+        // write churns positional ids, so acting on the stale tree would misfire.
+        if (layersBusyRef?.current) return;
         const verb =
           position === 'before'
             ? `before ${ref.label}`
@@ -5475,6 +5486,28 @@ function InspectorPanel({
         onReorderLayer(dragged.id, ref.id, position);
       }
     : undefined;
+  // ↑/↓ (no modifier) navigate the SELECTION through the flattened visible tree
+  // (descending into nested lists), like a file tree. Selects the prev/next
+  // visible node and focuses its row.
+  const arrowSelect = (currentNode, dir) => {
+    const flat = [];
+    (function walk(nodes) {
+      (nodes || []).forEach((n) => {
+        flat.push(n);
+        if (n.children && n.children.length && !collapsed.has(`${n.id}:${n.index}`)) walk(n.children);
+      });
+    })(layersTree?.nodes);
+    const i = flat.findIndex((n) => n.id === currentNode.id && n.index === currentNode.index);
+    if (i < 0) return;
+    const t = flat[i + dir];
+    if (!t) return;
+    onSelectLayer?.(t);
+    const tKey = `${t.id}:${t.index}`;
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-layer-key="${tKey}"]`);
+      if (el) el.focus();
+    });
+  };
   // Ids that appear MORE THAN ONCE in the tree are repeated instances of a single
   // source node (a `.map(...)` / loop). They can't be reordered individually —
   // they're one JSX node inside an expression, and moving it would corrupt the
@@ -5746,7 +5779,7 @@ function InspectorPanel({
               <>
                 {handleReorder ? (
                   <div className="st-rp-hint" aria-hidden="true">
-                    Drag a layer to reorder · Alt+↑/↓ move · Alt+→ nest · Alt+← un-nest
+                    Drag or ↑/↓ select · Alt+↑/↓ move · Alt+Shift+↑/↓ move across
                   </div>
                 ) : null}
                 <div role="tree" aria-label="Artboard layers">
@@ -5765,6 +5798,7 @@ function InspectorPanel({
                       onHover={(node) => onHoverLayer?.(node)}
                       onToggleVisibility={toggleVisibility}
                       onReorder={handleReorder}
+                      onArrowSelect={arrowSelect}
                       onRowPointerDown={startLayerDrag}
                       dragState={dragState}
                       siblings={layersTree.nodes}
