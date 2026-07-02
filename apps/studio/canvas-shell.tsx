@@ -2499,6 +2499,58 @@ function ReorderDrag() {
       return id ? { refId: id, position: t.kind } : null;
     };
 
+    // FLIP the siblings a reflow displaces so they GLIDE to their new slots
+    // instead of jumping: record first-positions, run the DOM move, invert via
+    // transform, then play to zero. Scoped to direct children of the affected
+    // parent(s); descendants ride along. The dragged node is excluded — it has
+    // its own cursor-following transform. Deltas divide by each element's own
+    // zoom (screen px → world px), same math as the float. Respects
+    // prefers-reduced-motion (skips straight to the end state).
+    const REFLOW_MS = 180;
+    const animateReflow = (moved: HTMLElement, act: () => void) => {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        act();
+        return;
+      }
+      const first = new Map<HTMLElement, DOMRect>();
+      const collect = (parent: Element | null) => {
+        if (!parent) return;
+        for (const c of Array.from(parent.children)) {
+          const el = c as HTMLElement;
+          if (el === moved || first.has(el)) continue;
+          first.set(el, el.getBoundingClientRect());
+        }
+      };
+      collect(moved.parentElement);
+      act();
+      collect(moved.parentElement); // reparent case — new siblings shift too
+      const anims: Array<{ el: HTMLElement; prevTransform: string; prevTransition: string }> = [];
+      for (const [el, r0] of first) {
+        if (!el.isConnected) continue;
+        const r1 = el.getBoundingClientRect();
+        const dx = r0.left - r1.left;
+        const dy = r0.top - r1.top;
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+        const zoom = el.offsetWidth ? r1.width / el.offsetWidth : 1;
+        anims.push({ el, prevTransform: el.style.transform, prevTransition: el.style.transition });
+        el.style.transition = 'none';
+        el.style.transform = `translate(${dx / zoom}px, ${dy / zoom}px)`;
+      }
+      if (!anims.length) return;
+      void document.body.offsetWidth; // flush the inverted state
+      for (const a of anims) {
+        a.el.style.transition = `transform ${REFLOW_MS}ms ease`;
+        a.el.style.transform = 'translate(0px, 0px)';
+      }
+      setTimeout(() => {
+        for (const a of anims) {
+          if (!a.el.isConnected) continue;
+          a.el.style.transition = a.prevTransition;
+          a.el.style.transform = a.prevTransform;
+        }
+      }, REFLOW_MS + 40);
+    };
+
     // Move the node to match the target (used by the settle preview AND the
     // final drop); the source write + HMR remount then re-render the committed
     // order.
@@ -2544,7 +2596,7 @@ function ReorderDrag() {
       if (!t || !t.el.isConnected) return;
       const drop = targetToDrop(t);
       if (!drop) return;
-      applyDrop(d.el, t);
+      animateReflow(d.el, () => applyDrop(d.el, t));
       d.applied = drop;
       d.el.style.transform = 'none';
       const rect = d.el.getBoundingClientRect();
@@ -2563,9 +2615,10 @@ function ReorderDrag() {
     // restore its exact inline style. Nothing is committed.
     const cancelDrag = (d: Drag) => {
       clearSettle(d);
-      if (d.applied && d.origin) {
+      const origin = d.origin;
+      if (d.applied && origin) {
         try {
-          d.origin.parent.insertBefore(d.el, d.origin.next);
+          animateReflow(d.el, () => origin.parent.insertBefore(d.el, origin.next));
         } catch {
           /* origin gone — remount re-syncs */
         }
@@ -2695,7 +2748,8 @@ function ReorderDrag() {
       // otherwise the last settled preview (the layout the user is LOOKING at).
       let drop = d.target ? targetToDrop(d.target) : null;
       if (drop && d.target) {
-        applyDrop(d.el, d.target); // immediate result; the remount confirms it
+        const t = d.target;
+        animateReflow(d.el, () => applyDrop(d.el, t)); // immediate result; the remount confirms it
       } else if (d.applied) {
         drop = d.applied; // DOM already sits there from the preview
       }
