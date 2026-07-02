@@ -1426,6 +1426,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     id?: unknown;
     refId?: unknown;
     position?: unknown;
+    idIndex?: unknown;
+    refIndex?: unknown;
   }): Promise<ReorderOpResult> {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
@@ -1439,7 +1441,13 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     if (typeof position !== 'string' || !MOVE_POSITIONS.has(position)) {
       return { ok: false, status: 400, error: 'invalid position' };
     }
-    if (id === refId) {
+    // Occurrence index of a reused-component instance (which rendered copy). 0/absent
+    // for a normal element; moveElement maps it to the parent USAGE.
+    const idIndex = Number.isInteger(input.idIndex) ? (input.idIndex as number) : undefined;
+    const refIndex = Number.isInteger(input.refIndex) ? (input.refIndex as number) : undefined;
+    // A same-id move CAN be valid now: two instances of the same reused component
+    // resolve to DIFFERENT usage elements. Only bail when they're the same instance.
+    if (id === refId && (idIndex ?? 0) === (refIndex ?? 0)) {
       return { ok: false, status: 422, error: 'cannot move an element relative to itself' };
     }
     try {
@@ -1458,7 +1466,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       }
       // The user is doing this by hand — don't light the "agent works here" rim.
       ctx.bus.emit('activity:suppress', path.relative(paths.designRoot, r.abs));
-      const res = await moveElement(r.abs, id, refId, position as MovePosition);
+      const res = await moveElement(r.abs, id, refId, position as MovePosition, idIndex, refIndex);
       // Log {before, after} under a seq so Cmd+Z can revert by whole-file swap —
       // inverse move descriptors would go stale (positional ids churn per write).
       const after = await Bun.file(r.abs).text();

@@ -549,15 +549,105 @@ function collectElements(program: AnyNode): Array<{ id: string; node: AnyNode }>
 }
 
 /**
+ * Every JSX element with its enclosing-component frame + tag. Superset of
+ * collectElements used to resolve a reused-component INSTANCE to its parent
+ * USAGE (see resolveUsageId).
+ */
+function collectElementsFull(
+  program: AnyNode
+): Array<{ id: string; componentName: string; isFrameRoot: boolean; tag: string | null }> {
+  interface Frame {
+    componentName: string;
+    jsxIndex: number;
+  }
+  const stack: Frame[] = [{ componentName: '', jsxIndex: 0 }];
+  const out: Array<{ id: string; componentName: string; isFrameRoot: boolean; tag: string | null }> =
+    [];
+  function tagOf(node: AnyNode): string | null {
+    const n = node?.openingElement?.name;
+    if (n?.type === 'JSXIdentifier' && typeof n.name === 'string') return n.name;
+    return null;
+  }
+  function visit(node: AnyNode): void {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const c of node) visit(c);
+      return;
+    }
+    if (typeof node.type !== 'string') return;
+    const newComp = componentNameOf(node);
+    let pushed = false;
+    if (newComp !== null) {
+      stack.push({ componentName: newComp, jsxIndex: 0 });
+      pushed = true;
+    }
+    if (node.type === 'JSXElement') {
+      const frame = stack[stack.length - 1] as Frame;
+      const idx = frame.jsxIndex;
+      frame.jsxIndex += 1;
+      out.push({
+        id: computeId(frame.componentName, idx),
+        componentName: frame.componentName,
+        isFrameRoot: idx === 0,
+        tag: tagOf(node),
+      });
+      if (node.openingElement) visit(node.openingElement.attributes);
+      visit(node.children);
+      if (pushed) stack.pop();
+      return;
+    }
+    for (const k of Object.keys(node)) {
+      if (k === 'loc' || k === 'range' || k === 'start' || k === 'end' || k === 'type') continue;
+      visit(node[k]);
+    }
+    if (pushed) stack.pop();
+  }
+  visit(program);
+  return out;
+}
+
+/**
+ * Resolve a reused-component INSTANCE id to the parent's `<Component>` USAGE id.
+ *
+ * A component used N times (`<Column/>` … `<Column/>`) renders N DOM nodes that
+ * all carry ONE data-cd-id — the id of an element INSIDE the component's
+ * definition. That id can't be moved (there's only one, inside the loop-free
+ * component body). But each USAGE in the parent is a distinct, movable JSX
+ * element. So when `domId` names an element that lives inside a component with
+ * multiple usages, map it to the `occurrenceIndex`-th usage (the occurrence index
+ * of ANY element in the component equals the instance index = the usage index).
+ * Falls through to `domId` for a normal element, or a `.map()`ed single-usage
+ * element (one usage → can't split). Reordering elements WITHIN a reused
+ * component's definition isn't reachable via drag (edit the component source).
+ */
+function resolveUsageId(program: AnyNode, domId: string, occurrenceIndex: number | undefined): string {
+  const all = collectElementsFull(program);
+  const target = all.find((e) => e.id === domId);
+  if (!target || !target.componentName) return domId;
+  const usages = all.filter((e) => e.tag === target.componentName);
+  if (usages.length <= 1) return domId; // single usage (or `.map`) — not splittable
+  const i =
+    typeof occurrenceIndex === 'number' && occurrenceIndex >= 0 && occurrenceIndex < usages.length
+      ? occurrenceIndex
+      : 0;
+  return usages[i]?.id ?? domId;
+}
+
+/**
  * Move the element with `data-cd-id === id` to a position relative to the element
  * with `data-cd-id === refId`. Async wrapper: read, apply, atomic write under the
  * per-file mutex — identical persistence to `editAttribute`.
+ *
+ * `idIndex` / `refIndex` are the DOM occurrence indices — which rendered instance
+ * of a reused component the id refers to (0 for a normal, single-render element).
  */
 export async function moveElement(
   canvasAbsPath: string,
   id: string,
   refId: string,
-  position: MovePosition
+  position: MovePosition,
+  idIndex?: number,
+  refIndex?: number
 ): Promise<MoveResult> {
   return withLock(canvasAbsPath, async () => {
     const file = Bun.file(canvasAbsPath);
@@ -565,7 +655,7 @@ export async function moveElement(
       throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, { canvas: canvasAbsPath, id });
     }
     const source = await file.text();
-    const next = applyMove(canvasAbsPath, source, id, refId, position);
+    const next = applyMove(canvasAbsPath, source, id, refId, position, idIndex, refIndex);
     if (next.source === source) return next;
     const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
     await Bun.write(tmp, next.source);
@@ -581,15 +671,10 @@ export function applyMove(
   source: string,
   id: string,
   refId: string,
-  position: MovePosition
+  position: MovePosition,
+  idIndex?: number,
+  refIndex?: number
 ): MoveResult {
-  if (id === refId) {
-    throw new CanvasEditError('cannot move an element relative to itself', {
-      canvas: canvasAbsPath,
-      id,
-    });
-  }
-
   const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
   if (parsed.errors && parsed.errors.length > 0) {
     const first = parsed.errors[0];
@@ -597,6 +682,18 @@ export function applyMove(
       `oxc-parser failed on ${canvasAbsPath}: ${first?.message ?? 'unknown'}`,
       { canvas: canvasAbsPath, id }
     );
+  }
+
+  // Map reused-component INSTANCE ids to their parent USAGE elements before the
+  // move (a shared internal id isn't movable per-instance; the usage is).
+  id = resolveUsageId(parsed.program, id, idIndex);
+  refId = resolveUsageId(parsed.program, refId, refIndex);
+
+  if (id === refId) {
+    throw new CanvasEditError('cannot move an element relative to itself', {
+      canvas: canvasAbsPath,
+      id,
+    });
   }
 
   const moved = findOpening(parsed.program, id);

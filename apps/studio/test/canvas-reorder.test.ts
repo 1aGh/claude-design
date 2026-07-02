@@ -168,3 +168,44 @@ describe('canvas-edit / applyMove — guardrails', () => {
     );
   });
 });
+
+// Reused-component instance reorder (phase-12.1 follow-up). Three <Col> usages
+// render three DOM nodes that share ONE data-cd-id (the id of the element inside
+// Col's body). Passing the DOM occurrence index maps the move onto the parent's
+// distinct <Col> USAGE elements, so the columns actually reorder.
+const REUSE = `function Col({ t }) {
+  return <div id="col"><span id="lbl">{t}</span></div>;
+}
+function Demo() {
+  return (
+    <section>
+      <Col t="one" />
+      <Col t="two" />
+      <Col t="three" />
+    </section>
+  );
+}`;
+
+describe('canvas-edit / applyMove — reused-component instances', () => {
+  test('occurrence index maps a shared id to the parent <Col> usage', () => {
+    const ids = cdIds(REUSE);
+    const colId = ids.col as string; // the shared component-internal id (3 instances)
+    // Move instance 0 (t="one") AFTER instance 2 (t="three") → order two, three, one.
+    const res = applyMove(CANVAS, REUSE, colId, colId, 'after', 0, 2);
+    const titles = [...res.source.matchAll(/t="([^"]+)"/g)].map((m) => m[1]);
+    expect(titles).toEqual(['two', 'three', 'one']);
+  });
+
+  test('same shared id + same occurrence index is still a self-move', () => {
+    const colId = cdIds(REUSE).col as string;
+    expect(() => applyMove(CANVAS, REUSE, colId, colId, 'after', 1, 1)).toThrow(/itself/);
+  });
+
+  test('resolves from a DEEP element inside the component too', () => {
+    const ids = cdIds(REUSE);
+    const lblId = ids.lbl as string; // <span> inside Col — also shared across instances
+    const res = applyMove(CANVAS, REUSE, lblId, lblId, 'before', 2, 0);
+    const titles = [...res.source.matchAll(/t="([^"]+)"/g)].map((m) => m[1]);
+    expect(titles).toEqual(['three', 'one', 'two']);
+  });
+});

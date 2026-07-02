@@ -2472,6 +2472,9 @@ function ReorderDrag() {
       settleKey: string | null;
       /** The last PREVIEWED (already reflowed) drop, committed on release. */
       applied: { refId: string; position: 'before' | 'after' | 'inside-end' } | null;
+      /** Stamped [data-cd-id] nodes in their ORIGINAL order — for computing a
+       *  reused instance's occurrence index even after the DOM reflowed. */
+      snapshot: Element[] | null;
     };
     // Hover a stable spot this long and the layout reflows LIVE (the node moves
     // there while still floating with the cursor) — you see the result before
@@ -2730,12 +2733,6 @@ function ReorderDrag() {
       if (!cdId || !one) return;
       const el = resolveSelectionEl(document, one) as HTMLElement | null;
       if (!el) return;
-      // Repeated (`.map`ed / looped) element: its data-cd-id appears on more than
-      // one node, so it's a SINGLE source node inside an expression. Moving it
-      // can't be expressed as a JSX edit (the server 422s: "empty parenthesized
-      // expression") — so don't start a drag that could only ever be rejected +
-      // leave a phantom. Matches the Layers panel, which greys these out.
-      if (document.querySelectorAll(`[data-cd-id="${CSS.escape(cdId)}"]`).length > 1) return;
       const t = e.target;
       if (!(t instanceof Node) || !el.contains(t)) return;
       // Candidate — do NOT claim yet (a plain click must still work). We only
@@ -2758,6 +2755,7 @@ function ReorderDrag() {
         settle: null,
         settleKey: null,
         applied: null,
+        snapshot: null,
       };
     };
 
@@ -2778,6 +2776,9 @@ function ReorderDrag() {
         d.origin = d.el.parentElement
           ? { parent: d.el.parentElement, next: d.el.nextElementSibling }
           : null;
+        // Snapshot the original stamped-node order NOW — occurrence indices must
+        // reflect the pre-drag layout, not the reflowed one.
+        d.snapshot = [...document.querySelectorAll('[data-cd-id]')];
         d.prevStyle = d.el.getAttribute('style');
         if (getComputedStyle(d.el).position === 'static') d.el.style.position = 'relative';
         d.el.style.zIndex = '9990';
@@ -2848,8 +2849,31 @@ function ReorderDrag() {
       // never persisted doesn't linger until the next canvas switch.
       lastCommit = d.origin ? { el: d.el, parent: d.origin.parent, next: d.origin.next } : null;
       suppressNextCanvasClick();
+      // Occurrence index of each node among its like-id siblings, read from the
+      // PRE-drag snapshot (the live DOM already reflowed). For a reused component
+      // (many DOM nodes share one internal id) the server maps this to the
+      // parent's distinct <Component> usage; 0 for a normal element.
+      const occ = (node: Element | null): number => {
+        if (!node || !d.snapshot) return 0;
+        const id = node.getAttribute('data-cd-id');
+        const at = d.snapshot.indexOf(node);
+        if (!id || at < 0) return 0;
+        let c = 0;
+        for (let k = 0; k < at; k++) {
+          if (d.snapshot[k]?.getAttribute('data-cd-id') === id) c++;
+        }
+        return c;
+      };
+      const refNode = d.target?.kind === 'inside' ? d.target.container : (d.target?.el ?? null);
       window.parent.postMessage(
-        { dgn: 'reorder-request', id: d.cdId, refId: drop.refId, position: drop.position },
+        {
+          dgn: 'reorder-request',
+          id: d.cdId,
+          refId: drop.refId,
+          position: drop.position,
+          idIndex: occ(d.el),
+          refIndex: occ(refNode),
+        },
         '*'
       );
     };

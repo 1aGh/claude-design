@@ -1201,6 +1201,8 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         id?: unknown;
         refId?: unknown;
         position?: unknown;
+        idIndex?: unknown;
+        refIndex?: unknown;
       }>(req, 8 * 1024);
       if (!body) return new Response('body required', { status: 400 });
       const result = await api.reorder(body);

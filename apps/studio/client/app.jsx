@@ -5205,7 +5205,6 @@ function LayerRow({
   selectedIndex,
   collapsed,
   hidden,
-  repeatedIds,
   onToggle,
   onSelect,
   onHover,
@@ -5223,10 +5222,11 @@ function LayerRow({
   const isSel =
     node.id === selectedId && (selectedIndex == null || node.index === selectedIndex);
   const isHidden = hidden?.has(key);
-  // Repeated (list) element — one source node rendered N times; not individually
-  // reorderable. Dimmed + non-draggable, with a hint (see startLayerDrag).
-  const repeated = !!repeatedIds?.has(node.id);
-  const canDrag = onReorder && !repeated;
+  // A shared data-cd-id (reused component instance) IS reorderable now — the
+  // server maps the occurrence index to the parent <Component> usage — so these
+  // are no longer greyed/blocked. A `.map()`ed single-usage element still can't
+  // split; that move is refused server-side and reverts.
+  const canDrag = !!onReorder;
   // Phase 12.1 — the row being dragged FLOATS with the cursor (same model as the
   // in-canvas drag): a transform follows the pointer, its layout box stays
   // reserved (empty slot at the origin), and pointer-events:none lets the row
@@ -5250,17 +5250,13 @@ function LayerRow({
         className={
           'st-layer st-layer--row' + (isSel ? ' is-sel' : '') + (isHidden ? ' is-hidden' : '')
         }
-        style={{ paddingLeft: 6 + depth * 14, ...(repeated ? { opacity: 0.55 } : null), ...dragStyle }}
+        style={{ paddingLeft: 6 + depth * 14, ...dragStyle }}
         role="treeitem"
         aria-selected={isSel}
         aria-expanded={hasKids ? !isCollapsed : undefined}
         aria-grabbed={canDrag ? isDragging : undefined}
         tabIndex={0}
-        title={
-          repeated
-            ? `${node.tag} · ${node.type} · repeated from a list — reorder in code`
-            : `${node.tag} · ${node.type}`
-        }
+        title={`${node.tag} · ${node.type}`}
         data-layer-key={key}
         onClick={() => onSelect(node)}
         onMouseEnter={() => onHover(node)}
@@ -5319,7 +5315,6 @@ function LayerRow({
               selectedIndex={selectedIndex}
               collapsed={collapsed}
               hidden={hidden}
-              repeatedIds={repeatedIds}
               onToggle={onToggle}
               onSelect={onSelect}
               onHover={onHover}
@@ -5446,7 +5441,12 @@ function InspectorPanel({
               ? `after ${ref.label}`
               : `into ${ref.label}`;
         setReorderMsg(`Moved ${dragged.label} ${verb}`);
-        onReorderLayer(dragged.id, ref.id, position);
+        // Pass occurrence indices so a reused-component instance maps to its
+        // parent <Component> usage server-side (same-id instances are distinct).
+        onReorderLayer(dragged.id, ref.id, position, {
+          idIndex: dragged.index,
+          refIndex: ref.index,
+        });
       }
     : undefined;
   // Flatten the VISIBLE tree (respecting collapse) with each node's depth,
@@ -5484,7 +5484,7 @@ function InspectorPanel({
       }
       return;
     }
-    if (!handleReorder || repeatedLayerIds.has(cur.node.id) || !Array.isArray(cur.siblings)) return;
+    if (!handleReorder || !Array.isArray(cur.siblings)) return;
     e.preventDefault();
     const expanded = (n) =>
       n && n.children && n.children.length && !collapsed.has(`${n.id}:${n.index}`);
@@ -5506,25 +5506,6 @@ function InspectorPanel({
       else if (cur.parentNode) handleReorder(cur.node, cur.parentNode, 'before');
     }
   };
-  // Ids that appear MORE THAN ONCE in the tree are repeated instances of a single
-  // source node (a `.map(...)` / loop). They can't be reordered individually —
-  // they're one JSX node inside an expression, and moving it would corrupt the
-  // loop — so the tree marks them non-draggable (LayerRow dims them + a hint) and
-  // the drag skips them as source AND target.
-  const repeatedLayerIds = (() => {
-    const count = new Map();
-    (function walk(nodes) {
-      (nodes || []).forEach((n) => {
-        count.set(n.id, (count.get(n.id) || 0) + 1);
-        walk(n.children);
-      });
-    })(layersTree?.nodes);
-    const set = new Set();
-    count.forEach((c, id) => {
-      if (c > 1) set.add(id);
-    });
-    return set;
-  })();
   // Pointer-based drag-to-reorder in the Layers tree — same model as the
   // in-canvas drag: the row FLOATS with the cursor (transform, slot reserved), a
   // blue divider (or nest ring) marks the drop, and the move commits only on
@@ -5534,7 +5515,6 @@ function InspectorPanel({
   const startLayerDrag = (e, node, key) => {
     if (!handleReorder || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     if (layersBusyRef?.current) return; // a prior reorder is still landing (ids churning)
-    if (repeatedLayerIds.has(node.id)) return; // repeated (list) element — not reorderable
     const startX = e.clientX;
     const startY = e.clientY;
     // Forbid dropping a node into itself or its own subtree.
@@ -5624,7 +5604,10 @@ function InspectorPanel({
           targetDepth = depth;
         }
         // Guard: no self, no dragged-subtree, no repeated (list) target.
-        if (refIt && refIt.id !== node.id && !forbidden.has(refIt.key) && !repeatedLayerIds.has(refIt.id)) {
+        // forbidden already holds the dragged node's own key + its subtree, so a
+        // different INSTANCE of the same reused component (same id, other key) is
+        // still a valid target.
+        if (refIt && refIt.key !== key && !forbidden.has(refIt.key)) {
           const y = prev ? rows[gap - 1].rect.bottom : rows[0].rect.top;
           const left = rowLeft + BASE + targetDepth * INDENT;
           target = { refId: refIt.id, position, node: refIt.node, y, left, w: Math.max(24, rowRight - left) };
@@ -5817,7 +5800,6 @@ function InspectorPanel({
                       selectedIndex={el.index}
                       collapsed={collapsed}
                       hidden={hiddenLayers}
-                      repeatedIds={repeatedLayerIds}
                       onToggle={toggleCollapse}
                       onSelect={(node) => {
                         onSelectLayer?.(node);
@@ -7100,7 +7082,10 @@ function App() {
             m.position === 'inside-start' ||
             m.position === 'inside-end');
         if (e.source === activeWin && okShape) {
-          reorderLayerRef.current?.(m.id, m.refId, m.position);
+          reorderLayerRef.current?.(m.id, m.refId, m.position, {
+            idIndex: Number.isInteger(m.idIndex) ? m.idIndex : undefined,
+            refIndex: Number.isInteger(m.refIndex) ? m.refIndex : undefined,
+          });
         }
       } else if (m.dgn === 'open-inspector') {
         // Phase 12 — context-menu "Inspect" / tool-palette Inspect opens the right panel.
@@ -7409,8 +7394,13 @@ function App() {
   // originates in the shell). Serialized on the same chain as apply-edit so a
   // reorder can't race an in-flight edit write to the same file.
   const reorderLayer = useCallback(
-    (draggedId, refId, position) => {
-      if (!draggedId || !refId || draggedId === refId) return;
+    (draggedId, refId, position, occ) => {
+      const idIndex = Number.isInteger(occ?.idIndex) ? occ.idIndex : undefined;
+      const refIndex = Number.isInteger(occ?.refIndex) ? occ.refIndex : undefined;
+      // A same-id move is valid for two INSTANCES of a reused component (distinct
+      // occurrence indices → distinct usages); only a true self-move is a no-op.
+      if (!draggedId || !refId) return;
+      if (draggedId === refId && (idIndex ?? 0) === (refIndex ?? 0)) return;
       const sel = selectedRef.current;
       const one = Array.isArray(sel) ? sel[0] : sel;
       // resolveCanvasAbs accepts the bare slug or the designRel-prefixed file.
@@ -7441,7 +7431,7 @@ function App() {
           fetch('/_api/reorder', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ canvas, id: draggedId, refId, position }),
+            body: JSON.stringify({ canvas, id: draggedId, refId, position, idIndex, refIndex }),
           })
             .then((r) => r.json().catch(() => ({})))
             .then((j) => {
@@ -7454,8 +7444,11 @@ function App() {
                 // sees a phantom change that vanishes on the next canvas switch
                 // ("it didn't save") and Cmd+Z has no entry to undo. Tell the
                 // canvas to put the node back; its observer re-posts the tree, so
-                // the panel reverts too.
+                // the panel reverts too. For a LAYERS-panel reorder (no canvas DOM
+                // move to observe) also re-request the tree to drop the optimistic
+                // moveLayerNode.
                 postToActiveCanvas({ dgn: 'reorder-failed' });
+                postToActiveCanvas({ dgn: 'request-layers', artboardId });
                 layersBusyRef.current = false;
                 if (layersBusyTimerRef.current) {
                   clearTimeout(layersBusyTimerRef.current);
