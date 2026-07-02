@@ -50,7 +50,7 @@
       "newComponentDir": "system/maude/preview"
     }
   ],
-  "defaultDesignSystem": "project",
+  "defaultDesignSystem": "maude",
   "handoffTargets": [
     {
       "label": "shadcn registry",
