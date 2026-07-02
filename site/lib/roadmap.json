@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-01T21:01:35.619Z",
+  "generated": "2026-07-02T11:17:19.539Z",
   "currentPhase": null,
   "phases": [
     {
@@ -98,6 +98,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan touches the export pipeline that was just hardened (graceful Playwright-miss...",
       "planPath": ".ai/plans/archive/export-pipeline-fixes.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-acp-slash-command-autocomplete",
+      "title": "Feature: ACP composer slash-command autocomplete + inline highlight",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan continues the Phase 31 (DDR-123) native ACP chat panel and builds directly o...",
+      "planPath": ".ai/plans/archive/feature-acp-slash-command-autocomplete.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1015,13 +1026,13 @@
       "phaseKey": "19"
     },
     {
-      "id": "feature-acp-slash-command-autocomplete",
-      "title": "Feature: ACP composer slash-command autocomplete + inline highlight",
+      "id": "feature-video-animation-layer",
+      "title": "Feature: Video & animation layer — Remotion-authored video comps (in-house bundled) + capture-first GIF/MP4 export",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan continues the Phase 31 (DDR-123) native ACP chat panel and builds directly o...",
-      "planPath": ".ai/plans/feature-acp-slash-command-autocomplete.md",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-video-animation-layer.md",
       "archived": false,
       "phaseKey": null
     },

@@ -1300,6 +1300,7 @@ Resolved 2026-05-12 via `/flow:maintain-docs` Step 3b → `flow:skill-loader` �
 | -------------- | ------ | ---- | ----- |
 | Yjs | terminal-skills MCP | `yjs` | v1.0 collab backbone (Phase 8 LAN, Phase 9 hub). Covers Y.Doc / shared types / WebsocketProvider / awareness / IndexedDB offline. |
 | Playwright | terminal-skills MCP | `playwright-testing` | Planned dev-only dep for visual regression (per PRD §Testing). Covers config, page objects, API mocking, visual snapshots, a11y axe integration. |
+| Remotion / mediabunny / gifenc / WebCodecs | web research 2026-07-02 (terminal-skills MCP not connected) | — | Resolved via 3 research agents for `feature-video-animation-layer` plan: findings + sources condensed into the plan's Documentation section. HYBRID adopted (user-ratified): remotion+player+transitions bundled in-house for authoring/preview (free ≤3-person tier; disclosure for 4+ orgs); export via own capture spine + mediabunny (MPL-2.0) + gifenc (MIT) — no @remotion/renderer/web-renderer. At execute time load Remotion's official LLM system prompt (https://www.remotion.dev/docs/ai/system-prompt) + mediabunny docs (https://mediabunny.dev). |
 
 Still unresolved (no MCP match, no built-in skill):
 
