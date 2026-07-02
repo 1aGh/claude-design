@@ -12,6 +12,11 @@
 # else the canvas's import graph lost the token CSS and every var()-driven rule
 # is dead — the specimen mounts with content but renders unstyled).
 #
+# Also runs an ADVISORY artboard-isolation lint over ui/ canvases: `@media`
+# width queries + viewport units (vw/vh/*-screen) resolve against the studio
+# canvas stage, not the fixed artboard box, so they reflow the mock when the
+# panel/sidebar/window resizes. Warns only — never fails the exit code.
+#
 # Usage:
 #   smoke.sh [--root <repo>]
 #            [--out-dir <dir>]
@@ -237,6 +242,41 @@ lint_specimen_imports() {
   fi
 }
 
+# Static artboard-isolation lint (advisory). An artboard is a fixed-size design
+# surface, but `@media` width queries + viewport units (vh/vw/vmin/vmax + the
+# dynamic svh/dvh/lvh family, incl. Tailwind's *-screen utilities) resolve
+# against the IFRAME VIEWPORT — i.e. the studio's canvas stage — not the
+# artboard box. So a ui/ mock that uses them reflows when the Assistant panel /
+# sidebar / window resizes, even at a fixed zoom. `container-type` on
+# .dc-artboard-body (canvas-lib ENGINE_CSS) gives an isolated responsive path
+# via @container + cqw/cqh; viewport units still escape by spec. This warns —
+# it never fails the exit code (existing DS canvases legitimately use vw/vh in
+# full-bleed specimens, and the fix is an author rewrite, not a smoke gate).
+# Scopes ui/ canvases + their sibling .css only (preview specimens render
+# standalone, so viewport units there are fine). Sets ISO_WARN.
+ISO_WARN=0
+lint_artboard_isolation() {
+  local f n=0 hits total=0 pat
+  # Length units (vh/vw/…), Tailwind *-screen utilities, raw viewport @media.
+  pat='[0-9.]+(vh|vw|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw)([^a-z]|$)|(min-|max-)?[hw]-screen|@media[[:space:]]*\((min|max)-width'
+  [ -d "$DESIGN_ROOT/ui" ] || { echo "→ artboard-isolation lint: no ui/ dir — skipped" >&2; return; }
+  while IFS= read -r f; do
+    [ -e "$f" ] || continue
+    case "$(basename "$f")" in _*) continue ;; esac
+    hits=$(grep -cnE "$pat" "$f" 2>/dev/null || true)
+    [ "${hits:-0}" -gt 0 ] || continue
+    n=$((n + 1)); total=$((total + hits))
+    printf 'ISO-WARN   %s — %s viewport-escape(s) (@media/vw/vh/*-screen leak to the studio stage)\n' "${f#$DESIGN_ROOT/}" "$hits" >&2
+    printf '| ⚠ ISO | `%s` | — | %s viewport-escape(s) — use %%%%/px or @container+cqw |\n' "${f#$DESIGN_ROOT/}" "$hits" >> "$MD"
+  done < <(find "$DESIGN_ROOT/ui" -type f \( -name '*.tsx' -o -name '*.css' \) 2>/dev/null | sort)
+  ISO_WARN=$n
+  if [ "$n" -eq 0 ]; then
+    echo "→ artboard-isolation lint: clean" >&2
+  else
+    echo "⚠ artboard-isolation lint: $n file(s), $total viewport-escape(s) — advisory, see report" >&2
+  fi
+}
+
 # Probe a canvas via agent-browser. Returns three lines on stdout:
 #   <status>   one of OK / BLANK / ERROR
 #   <detail>   short summary string
@@ -371,6 +411,8 @@ printf 'status\tfile\tscreenshot\tdetail\n' > "$TSV"
 if [ "$INCLUDE_SYSTEM" = "1" ] && [ -d "$DESIGN_ROOT/system" ]; then
   lint_specimen_imports
 fi
+# Artboard-isolation lint always runs (ui/ canvases are always in scope). Advisory.
+lint_artboard_isolation
 
 FAILED=0
 N=0
@@ -434,6 +476,10 @@ TOTAL_FAIL=$((FAILED + LINT_FAILED))
     echo "**Result:** ✓ all $COUNT canvases rendered styled; import-graph lint clean."
   else
     echo "**Result:** ✗ $FAILED / $COUNT canvases failed render/style; $LINT_FAILED import-graph lint violation(s)."
+  fi
+  if [ "${ISO_WARN:-0}" -gt 0 ]; then
+    echo
+    echo "> ⚠ **Artboard isolation:** $ISO_WARN ui/ file(s) use viewport-escaping CSS (\`@media\`/\`vw\`/\`vh\`/\`*-screen\`) that reflows with the studio chrome. Advisory — not a failure. Replace with fixed px / \`%\` / \`@container\`+\`cqw\`."
   fi
 } >> "$MD"
 

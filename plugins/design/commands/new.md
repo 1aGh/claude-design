@@ -578,6 +578,12 @@ This specimen is the DS's authoritative <platform> product shell — the establi
 - aesthetic: gradients, off-ladder radii, alt type pairings, decorative SVG/emoji are PERMITTED inside the canvas-local namespace. Tokens link + rootClass envelope still required.
 - full:      DS is advisory; type/radii/aesthetic up to the canvas. Envelope still required.
 - A11y is independent — keep WCAG AA compliance regardless of scope.
+
+## Artboard isolation (HARD-STOP — applies at EVERY opt-out scope)
+Each `<DCArtboard>` is a **fixed-size design surface**. Its content MUST render identically regardless of the studio chrome (Assistant panel, sidebar, window size) and of pan/zoom. Do NOT use CSS that resolves against the browser viewport — inside an artboard the viewport is the studio's canvas stage, not the artboard box, so these silently reflow the mock when the workspace resizes:
+- **No viewport length units** — `vw` / `vh` / `vmin` / `vmax` / `svh` / `dvh` / `lvh` (and the `*vw` variants), including Tailwind `min-h-screen` / `h-screen` / `w-screen` / `h-[100vh]` / `text-[4vw]`. Size to a fixed design width, `%`, or `h-full` against the artboard body.
+- **No viewport `@media` width queries** for layout — neither raw `@media (min-width: …)` nor Tailwind responsive prefixes (`sm:` / `md:` / `lg:` / `xl:` / `2xl:`). One artboard = one form factor; make a *second* `<DCArtboard>` for another breakpoint instead of reflowing one.
+- **Need responsiveness inside a single artboard?** Use container queries — `@container` + `cqw` / `cqh` — they resolve against the artboard body (canvas-lib sets `container-type: inline-size` there), so they stay isolated. `position: fixed` is fine (the canvas world re-roots it).
 EOF
 ```
 

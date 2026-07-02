@@ -187,6 +187,38 @@ SHOWCASE_SHELL=$(grep -oE '(data-dc-element|className|class)="[^"]+"' "$PLATFORM
 
 **Severity:** **info** when the candidate shares ≥ 1 shell root (partial reuse — a nudge, not a finding); **warning** when it shares **zero** roots across a ≥ 2-region shell (full reinvention). This pass is deliberately conservative — shell detection is fuzzier than per-class matching, so a single false-positive "you reinvented the shell" is worse than a missed nudge. Never self-promote Pass A.6 to blocker on its own; it only contributes to the existing `pattern-mass-reinvention` stack count when a full-shell reinvention coincides with ≥ 3 Pass-A reinventions.
 
+## Pass A.7 — Artboard-isolation scan
+
+**Goal:** an artboard is a **fixed-size design surface** — its content must be inert to the studio chrome (Assistant panel / sidebar / window resize) and to pan/zoom. But three CSS constructs resolve against the **iframe viewport** (= the studio's canvas stage), not the fixed `.dc-artboard` box, so a mock that uses them silently reflows when the workspace resizes even at a constant zoom:
+
+1. **Viewport length units** — `vw`, `vh`, `vmin`, `vmax`, and the dynamic `svh`/`dvh`/`lvh`/`svw`/`dvw`/`lvw` family (incl. Tailwind `min-h-screen` / `h-screen` / `w-screen` / arbitrary `h-[100vh]` / `text-[4vw]`). These escape **by spec** — no ancestor `transform` / `container-type` re-roots them.
+2. **Viewport `@media` width queries** — raw `@media (min-width: …)` / `(max-width: …)` in template-literal CSS **and** Tailwind responsive prefixes (`sm:` / `md:` / `lg:` / `xl:` / `2xl:`), which compile to the same width media queries.
+3. Not this pass's job, but noted: `position: fixed` is already re-rooted by the transformed `.dc-world` ancestor, so it does **not** escape — don't flag it.
+
+The correct isolated responsive path is `@container` + `cqw`/`cqh` (canvas-lib sets `container-type: inline-size` on `.dc-artboard-body`, so container queries resolve against the artboard), or plain fixed px / `%` / `h-full` against the sized artboard body.
+
+**Step 1 — Scan the candidate (its `.tsx` + any co-located `.css`):**
+
+```bash
+# Length units + Tailwind *-screen + raw viewport @media.
+grep -nE '[0-9.]+(vh|vw|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw)([^a-z]|$)|(min-|max-)?[hw]-screen|@media[[:space:]]*\((min|max)-width' \
+  "$CANVAS_PATH" $(dirname "$CANVAS_PATH")/*.css 2>/dev/null
+# Tailwind responsive layout prefixes (softer signal — see severity).
+grep -nE '\b(sm|md|lg|xl|2xl):' "$CANVAS_PATH" 2>/dev/null | head
+```
+
+**Step 2 — Surface findings.** Each finding format:
+
+```
+- artboard-isolation | line N — `min-height: 100vh` (or `md:grid-cols-3`, `clamp(1rem, 4vw, 2rem)`)
+  Resolves against the studio canvas stage, not the artboard — reflows when the panel/sidebar/window resizes.
+  Replace with fixed px / `%` / `h-full`, or `@container` + `cqw/cqh` for artboard-relative responsiveness
+  (the artboard body is already a `container-type: inline-size` root). If this artboard is intentionally a
+  full-bleed / responsive preview, leave a one-line JSX comment saying so.
+```
+
+**Severity:** **warning** for viewport length units + `*-screen` + raw `@media` width (unambiguous escapes). **info** for Tailwind responsive prefixes (pervasive; a nudge toward `@container`, not a finding — don't count them toward promotion). Never self-promote Pass A.7 to blocker; a mock legitimately may be a full-bleed specimen. It contributes one to the existing `pattern-mass-reinvention` stack **only** when ≥ 3 length-unit/`@media` escapes coincide with ≥ 3 Pass-A reinventions on the same canvas.
+
 ## Pass B — Token-usage audit
 
 **Goal:** for every `var(--TOKEN)` usage in the candidate canvas, check that the property it sits on matches the role the DS Token usage guide assigns to that token. Surface mismatches as warnings.
@@ -258,6 +290,10 @@ _<ISO ts> · canvas: `{canvas_path}` · ds: `{ds_name}`_
 
 {The single shell-reinvention finding if it fired, in the Step 4 format. If skipped: "Pass A.6 skipped (no platform showcase | candidate is not a full-screen shell | candidate IS the showcase)." If reused: "Candidate reuses the `ui_kits-<platform>-showcase` shell roots — no reinvention."}
 
+## Pass A.7 — Artboard-isolation scan
+
+{Per-finding entries in the Step 2 format. If no findings: "No viewport-escaping CSS — mock content stays inert to the studio chrome."}
+
 ## Pass B — Token-usage audit
 
 {Per-finding entries in the format from Step 4 of Pass B. If no findings: "All `var(--*)` usages align with the Token usage guide."}
@@ -282,7 +318,8 @@ _<ISO ts> · canvas: `{canvas_path}` · ds: `{ds_name}`_
   ],
   "top_warnings": [
     { "category": "pattern-reinvention", "line": 142, "summary": "`.pcard` re-derives `.dc-card` from Canvas Viewport.tsx", "fix": "Lift `.dc-card` directly or comment why a divergence is intentional." },
-    { "category": "ds-tokens", "line": 87, "summary": "`background-color: var(--accent-active)` — token is reserved for text/links per Token usage guide", "fix": "Replace with var(--accent)." }
+    { "category": "ds-tokens", "line": 87, "summary": "`background-color: var(--accent-active)` — token is reserved for text/links per Token usage guide", "fix": "Replace with var(--accent)." },
+    { "category": "artboard-isolation", "line": 12, "summary": "`min-h-screen` resolves against the studio stage, not the artboard — reflows on panel/sidebar resize", "fix": "Use `h-full` / fixed px, or `@container`+`cqh` for artboard-relative sizing." }
   ],
   "passed": (X == 0),
   "opt_out_applied": "n/a"

@@ -256,6 +256,19 @@ const ENGINE_CSS = `
   flex: 1;
   position: relative;
   overflow: hidden;
+  /* Artboard-isolation root. An artboard is a fixed-size design surface — its
+     content must NOT react to the studio chrome (panel/sidebar/window resize)
+     or to pan/zoom. But @media, vw/vh, and position:fixed in mock CSS resolve
+     against the iframe viewport (= the studio's canvas stage), not this box —
+     so widening the Assistant panel narrows the iframe and reflows the mock
+     even though the world zoom never changed. A transformed ancestor (dc-world)
+     already re-roots position:fixed; container-type re-roots the responsive
+     path: authors get artboard-relative @container queries + cqw/cqh units that
+     stay put. Viewport units still escape by spec (no CSS can re-root them) —
+     the smoke lint + design-system-keeper flag those, and the design:new +
+     frontend-design guidance steers mocks off them. (NB: no backticks in this
+     comment — it lives inside the ENGINE_CSS template literal.) */
+  container-type: inline-size;
 }
 button.dc-artboard-label {
   appearance: none;
