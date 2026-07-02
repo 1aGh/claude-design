@@ -191,7 +191,11 @@ export type EditOpResult =
  * survives the move verbatim — the reliable key when present).
  */
 export type ReorderOpResult =
-  | { ok: true; delta: number; movedId: string | null; semanticId: string | null }
+  | { ok: true; delta: number; movedId: string | null; semanticId: string | null; seq: number }
+  | { ok: false; status: number; error: string };
+
+export type ReorderRevertResult =
+  | { ok: true; dir: 'undo' | 'redo' }
   | { ok: false; status: number; error: string };
 
 export interface Api {
@@ -271,6 +275,11 @@ export interface Api {
     refId?: unknown;
     position?: unknown;
   }): Promise<ReorderOpResult>;
+  // Undo/redo a prior reorder by seq (Cmd+Z from the canvas undo stack). Whole-
+  // file content swap from the in-memory revert log — immune to the positional
+  // data-cd-id churn a reorder causes (inverse-descriptor undo would go stale).
+  // Refuses (409) when the canvas changed since the reorder (external edit).
+  reorderRevert(input: { canvas?: unknown; seq?: unknown; dir?: unknown }): Promise<ReorderRevertResult>;
   // Aggregate data
   buildIndexData(): Promise<unknown>;
   buildSystemData(dsName?: string | null): Promise<unknown>;
@@ -377,6 +386,14 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   const onCommentsChanged = hooks.onCommentsChanged;
   const onAnnotationsChanged = hooks.onAnnotationsChanged;
   const { paths, cfg } = ctx;
+
+  // Phase 12.1 — in-memory reorder revert log (Cmd+Z for drag/keyboard moves).
+  // Whole-file {before, after} per reorder, keyed by a monotonic seq the client
+  // stores in its undo record. Ephemeral by design: a server restart drops it
+  // (undo answers 404 and the canvas stack entry is a no-op, honest failure).
+  const REORDER_LOG_CAP = 50;
+  const reorderLog = new Map<number, { abs: string; before: string; after: string }>();
+  let reorderSeq = 0;
 
   function fileSlug(file: string): string {
     return canvasSlugFromRel(file, paths.designRel);
@@ -1433,20 +1450,61 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       // mangles a designRoot-RELATIVE path (`ui/Foo.tsx` → `ui-foo`) — passing the
       // absolute path would produce a mangled full-path slug /design:rollback
       // (slug.sh) could never find.
+      const before = await Bun.file(r.abs).text();
       try {
-        const before = await Bun.file(r.abs).text();
         await history.writeSnapshot(path.relative(paths.designRoot, r.abs), before, 'pre-reorder');
       } catch {
         /* snapshot is a safety net, not a gate */
       }
+      // The user is doing this by hand — don't light the "agent works here" rim.
+      ctx.bus.emit('activity:suppress', path.relative(paths.designRoot, r.abs));
       const res = await moveElement(r.abs, id, refId, position as MovePosition);
-      return { ok: true, delta: res.delta, movedId: res.movedId, semanticId: res.semanticId };
+      // Log {before, after} under a seq so Cmd+Z can revert by whole-file swap —
+      // inverse move descriptors would go stale (positional ids churn per write).
+      const after = await Bun.file(r.abs).text();
+      const seq = ++reorderSeq;
+      reorderLog.set(seq, { abs: r.abs, before, after });
+      while (reorderLog.size > REORDER_LOG_CAP) {
+        const oldest = reorderLog.keys().next().value;
+        if (oldest === undefined) break;
+        reorderLog.delete(oldest);
+      }
+      return { ok: true, delta: res.delta, movedId: res.movedId, semanticId: res.semanticId, seq };
     } catch (err) {
       return {
         ok: false,
         status: 422,
         error: err instanceof CanvasEditError ? err.message : 'reorder failed',
       };
+    }
+  }
+
+  async function reorderRevert(input: {
+    canvas?: unknown;
+    seq?: unknown;
+    dir?: unknown;
+  }): Promise<ReorderRevertResult> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const dir = input.dir;
+    if (dir !== 'undo' && dir !== 'redo') return { ok: false, status: 400, error: 'invalid dir' };
+    const seq = typeof input.seq === 'number' ? input.seq : Number.NaN;
+    const entry = Number.isInteger(seq) ? reorderLog.get(seq) : undefined;
+    if (!entry || entry.abs !== r.abs) {
+      return { ok: false, status: 404, error: 'reorder not found (server restarted or log rotated)' };
+    }
+    try {
+      const current = await Bun.file(r.abs).text();
+      const expect = dir === 'undo' ? entry.after : entry.before;
+      const write = dir === 'undo' ? entry.before : entry.after;
+      if (current !== expect) {
+        return { ok: false, status: 409, error: 'canvas changed since this reorder — undo skipped' };
+      }
+      ctx.bus.emit('activity:suppress', path.relative(paths.designRoot, r.abs));
+      await Bun.write(r.abs, write);
+      return { ok: true, dir };
+    } catch {
+      return { ok: false, status: 500, error: 'revert failed' };
     }
   }
 
@@ -1860,6 +1918,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     editText,
     editAttr,
     reorder,
+    reorderRevert,
     buildIndexData,
     buildSystemData,
     loadExportHistory,

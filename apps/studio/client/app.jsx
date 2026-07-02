@@ -5635,26 +5635,44 @@ function InspectorPanel({
       layerDragRef.current = next;
       setDragState(next);
     };
-    const onUp = () => {
+    const teardown = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('keydown', onKey, true);
+    };
+    // Swallow the click that trails a drag so it doesn't also select a row.
+    const suppressClick = () => {
+      const sup = (ce) => {
+        ce.preventDefault();
+        ce.stopImmediatePropagation();
+        document.removeEventListener('click', sup, true);
+      };
+      document.addEventListener('click', sup, true);
+      setTimeout(() => document.removeEventListener('click', sup, true), 300);
+    };
+    const onUp = () => {
+      teardown();
       const d = layerDragRef.current;
       layerDragRef.current = null;
       setDragState(null);
       if (started && d?.target) {
-        // Swallow the click that trails a drag so it doesn't also select a row.
-        const sup = (ce) => {
-          ce.preventDefault();
-          ce.stopImmediatePropagation();
-          document.removeEventListener('click', sup, true);
-        };
-        document.addEventListener('click', sup, true);
-        setTimeout(() => document.removeEventListener('click', sup, true), 300);
+        suppressClick();
         handleReorder(d.node, d.target.node, d.target.position);
       }
     };
+    // Esc — abort the drag: the row snaps back, nothing commits.
+    const onKey = (ke) => {
+      if (ke.key !== 'Escape') return;
+      ke.preventDefault();
+      ke.stopImmediatePropagation();
+      teardown();
+      layerDragRef.current = null;
+      setDragState(null);
+      if (started) suppressClick();
+    };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('keydown', onKey, true);
   };
   const toggleCollapse = (key) =>
     setCollapsed((prev) => {
@@ -5883,6 +5901,9 @@ function App() {
   // tree (with correct ids) arrives. Cleared by the layers-tree message.
   const layersBusyRef = useRef(false);
   const layersBusyTimerRef = useRef(null);
+  // Moved element's post-write id — the layers-tree handler refocuses its row
+  // after the rebuild so consecutive keyboard moves don't lose focus.
+  const pendingLayerFocusRef = useRef(null);
   // Phase 12 Task 4 — Layers tree for the active artboard (posted by canvas-shell).
   const [layersTree, setLayersTree] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -7004,6 +7025,48 @@ function App() {
           clearTimeout(layersBusyTimerRef.current);
           layersBusyTimerRef.current = null;
         }
+        // Keyboard-move continuity: put focus back on the moved row (its id
+        // changed with the rebuild) so the next Alt+arrow lands without
+        // re-clicking. Only when focus is still in the tree (or was dropped to
+        // body by the remount) — never steal it from another control.
+        const focusId = pendingLayerFocusRef.current;
+        if (focusId) {
+          pendingLayerFocusRef.current = null;
+          requestAnimationFrame(() => {
+            const ae = document.activeElement;
+            const inTree = !ae || ae === document.body || (ae.closest && ae.closest('[role="tree"]'));
+            const row = document.querySelector(`[data-layer-key^="${focusId}:"]`);
+            if (inTree && row) row.focus();
+          });
+        }
+      } else if (m.dgn === 'reorder-revert') {
+        // Phase 12.1 follow-up — Cmd+Z/Cmd+Shift+Z on a reorder. The canvas undo
+        // stack (untrusted iframe) can't reach the main-origin-only
+        // /_api/reorder-revert, so it REQUESTS; the shell writes. Active canvas
+        // only — same guard as reorder-request below.
+        const rvWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        const rvShape =
+          typeof m.canvas === 'string' &&
+          typeof m.seq === 'number' &&
+          (m.dir === 'undo' || m.dir === 'redo');
+        if (e.source === rvWin && rvShape) {
+          layersBusyRef.current = true;
+          if (layersBusyTimerRef.current) clearTimeout(layersBusyTimerRef.current);
+          layersBusyTimerRef.current = setTimeout(() => {
+            layersBusyRef.current = false;
+            layersBusyTimerRef.current = null;
+          }, 700);
+          fetch('/_api/reorder-revert', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ canvas: m.canvas, seq: m.seq, dir: m.dir }),
+          })
+            .then((r) => r.json().catch(() => ({})))
+            .then((j) => {
+              if (!j.ok) console.warn('[reorder-revert]', j.error || 'failed');
+            })
+            .catch(() => {});
+        }
       } else if (m.dgn === 'reorder-request') {
         // Phase 12.1 (DDR-138) — the in-canvas ReorderGrip (untrusted canvas
         // iframe) can't reach the main-origin-only /_api/reorder (DDR-054), so it
@@ -7374,11 +7437,20 @@ function App() {
               // tree. movedId is best-effort — null means "leave selection to the
               // user" (never re-select by the stale pre-move id).
               pendingReorderRef.current = { file, movedId: j.movedId || null, artboardId };
+              pendingLayerFocusRef.current = j.movedId || null;
+              // Record onto the canvas undo stack so Cmd+Z reverts the move via
+              // the server's reorder log (id-churn-proof whole-file swap).
+              if (typeof j.seq === 'number') {
+                postToActiveCanvas({
+                  dgn: 'record-edit',
+                  payload: { op: 'reorder', canvas, seq: j.seq, label: 'move element' },
+                });
+              }
             })
             .catch(() => {})
         );
     },
-    [activePath, layersTree]
+    [activePath, layersTree, postToActiveCanvas]
   );
   // Keep the ref the (stale-closure) onMessage reorder-request handler reads
   // pointed at the latest reorderLayer.

@@ -81,6 +81,12 @@ export interface CommandSinks {
    * snapshot). See `commands/edit-source-command.ts`.
    */
   editSourceApplyFn?: unknown;
+  /**
+   * Wired by `CanvasShell`. Reverts/re-applies a Phase 12.1 element reorder by
+   * posting `dgn:'reorder-revert'` to the parent shell, which owns the
+   * main-origin-only `/_api/reorder-revert` write. See `commands/reorder-command.ts`.
+   */
+  reorderRevertFn?: unknown;
 }
 
 export type CommandBuilder<P = unknown> = (

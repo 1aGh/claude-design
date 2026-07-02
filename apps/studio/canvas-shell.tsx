@@ -53,6 +53,7 @@ import {
   type EditSourceOp,
   type EditSourcePayload,
 } from './commands/edit-source-command.ts';
+import { buildReorderRecord, type ReorderRevertFn } from './commands/reorder-command.ts';
 import { type AlignMode, alignLabel, equalSpacingLabel } from './commands/equal-spacing-command.ts';
 import {
   ContextMenuProvider,
@@ -1429,6 +1430,21 @@ function CanvasRouter({
     return () => undoSinks.setSink('editSourceApplyFn', undefined);
   }, [undoSinks]);
 
+  // Phase 12.1 — reorder undo. Same origin-split shape as editSourceApplyFn:
+  // the reorder-revert write is main-origin-only, so the command's do()/undo()
+  // posts `dgn:'reorder-revert'` and the shell calls /_api/reorder-revert.
+  useEffect(() => {
+    const revertFn: ReorderRevertFn = (revert) => {
+      try {
+        window.parent.postMessage({ dgn: 'reorder-revert', ...revert }, '*');
+      } catch {
+        /* detached / cross-origin teardown — nothing to revert */
+      }
+    };
+    undoSinks.setSink('reorderRevertFn', revertFn);
+    return () => undoSinks.setSink('reorderRevertFn', undefined);
+  }, [undoSinks]);
+
   // Shell View-menu zoom bridge (dgn:'zoom') — same controller the zoom pill uses.
   const zoomController = useViewportControllerContext();
   // Shell View-menu chrome-visibility bridge (dgn:'view-chrome') — minimap /
@@ -1586,7 +1602,22 @@ function CanvasRouter({
       // a hostile canvas self-post must not be able to plant fake undo entries.
       if (m.dgn === 'record-edit') {
         if (e.source !== window.parent) return;
-        const p = (m as { payload?: Partial<EditSourcePayload> }).payload;
+        const p = (
+          m as { payload?: Partial<EditSourcePayload> & { seq?: number; label?: string } }
+        ).payload;
+        // Phase 12.1 — a landed reorder (drag / keyboard move). The shell POSTed
+        // /_api/reorder already; record so Cmd+Z reverts via the server's log.
+        if (p && (p as { op?: string }).op === 'reorder') {
+          if (typeof p.canvas === 'string' && typeof p.seq === 'number') {
+            undoStack.record(
+              buildReorderRecord(
+                { canvas: p.canvas, seq: p.seq },
+                typeof p.label === 'string' ? p.label : undefined
+              )
+            );
+          }
+          return;
+        }
         if (
           p &&
           (p.op === 'css' || p.op === 'text' || p.op === 'attr') &&
@@ -2307,10 +2338,12 @@ function SelectionHalos() {
 // divide the screen delta by the element's own zoom so it tracks 1:1). A blue
 // DIVIDER marks the insertion point between siblings (vertical for a row parent,
 // horizontal for a column/block one); a dashed RING marks a container it would
-// nest INTO. The DOM does NOT change during the drag — only on DROP does the
-// node move + a `dgn:'reorder-request'` go to the shell (DDR-054: untrusted
-// canvas REQUESTS, main-origin shell WRITES → source write → HMR remount renders
-// the committed order). No mid-drag reflow means no jank / ping-pong.
+// nest INTO. Hover a stable target for SETTLE_MS and the layout reflows LIVE
+// (the node moves there, still floating — you see the result before committing);
+// per-mousemove the DOM never changes, so there's no jank / ping-pong. DROP
+// commits via `dgn:'reorder-request'` to the shell (DDR-054: untrusted canvas
+// REQUESTS, main-origin shell WRITES → source write → HMR remount renders the
+// committed order); ESC aborts and restores the origin.
 //
 // Headless: a document-capture pointerdown that only ACTS when a bare drag
 // starts on the single selected element with the move tool — a plain click and
@@ -2357,13 +2390,28 @@ function ReorderDrag() {
       pointerId: number;
       startX: number;
       startY: number;
+      lastX: number;
+      lastY: number;
+      grabDX: number;
+      grabDY: number;
       el: HTMLElement;
       cdId: string;
       zoom: number;
       prevStyle: string | null;
       dragging: boolean;
       target: Target | null;
+      /** Where the node lived at lift — for the Esc restore. */
+      origin: { parent: HTMLElement; next: Element | null } | null;
+      /** Pending settle timer — fires the live-reflow preview. */
+      settle: ReturnType<typeof setTimeout> | null;
+      settleKey: string | null;
+      /** The last PREVIEWED (already reflowed) drop, committed on release. */
+      applied: { refId: string; position: 'before' | 'after' | 'inside-end' } | null;
     };
+    // Hover a stable spot this long and the layout reflows LIVE (the node moves
+    // there while still floating with the cursor) — you see the result before
+    // committing. Drop commits; Esc restores the origin.
+    const SETTLE_MS = 500;
     let drag: Drag | null = null;
     let highlightEl: HTMLElement | null = null;
     let dividerEl: HTMLDivElement | null = null;
@@ -2451,8 +2499,9 @@ function ReorderDrag() {
       return id ? { refId: id, position: t.kind } : null;
     };
 
-    // On drop, move the node to match the target for an immediate result; the
-    // source write + HMR remount then re-render the committed order.
+    // Move the node to match the target (used by the settle preview AND the
+    // final drop); the source write + HMR remount then re-render the committed
+    // order.
     const applyDrop = (el: HTMLElement, t: Target) => {
       try {
         if (t.kind === 'inside') t.container.appendChild(el);
@@ -2465,6 +2514,75 @@ function ReorderDrag() {
       } catch {
         /* detached — remount re-syncs */
       }
+    };
+
+    // Is the target where the node ALREADY sits? True after a settle preview
+    // moved it — without this the timer would re-fire forever and the divider
+    // would point at the node's own slot.
+    const isCurrentPosition = (t: Target, d: Drag): boolean => {
+      if (t.kind === 'before')
+        return t.container === d.el.parentElement && t.el === d.el.nextElementSibling;
+      if (t.kind === 'after')
+        return t.container === d.el.parentElement && t.el === d.el.previousElementSibling;
+      return t.container === d.el.parentElement && t.container.lastElementChild === d.el;
+    };
+
+    const clearSettle = (d: Drag) => {
+      if (d.settle != null) clearTimeout(d.settle);
+      d.settle = null;
+      d.settleKey = null;
+    };
+
+    // The live reflow: move the node to the hovered target NOW (the origin gap
+    // closes, a gap opens at the target) while it keeps floating under the
+    // cursor — re-anchor the transform to the node's new layout slot so it
+    // doesn't visually jump.
+    const applyPreview = (d: Drag) => {
+      d.settle = null;
+      d.settleKey = null;
+      const t = d.target;
+      if (!t || !t.el.isConnected) return;
+      const drop = targetToDrop(t);
+      if (!drop) return;
+      applyDrop(d.el, t);
+      d.applied = drop;
+      d.el.style.transform = 'none';
+      const rect = d.el.getBoundingClientRect();
+      d.zoom = d.el.offsetWidth ? rect.width / d.el.offsetWidth : 1;
+      const tx = (d.lastX - d.grabDX - rect.left) / d.zoom;
+      const ty = (d.lastY - d.grabDY - rect.top) / d.zoom;
+      d.el.style.transform = `translate(${tx}px, ${ty}px)`;
+      // Keep onMove's (client - start)/zoom math consistent from the new anchor.
+      d.startX = d.lastX - tx * d.zoom;
+      d.startY = d.lastY - ty * d.zoom;
+      setHighlight(null);
+      hideDivider();
+    };
+
+    // Esc — abort the drag: put the node back where it was lifted from and
+    // restore its exact inline style. Nothing is committed.
+    const cancelDrag = (d: Drag) => {
+      clearSettle(d);
+      if (d.applied && d.origin) {
+        try {
+          d.origin.parent.insertBefore(d.el, d.origin.next);
+        } catch {
+          /* origin gone — remount re-syncs */
+        }
+      }
+      if (d.prevStyle == null) d.el.removeAttribute('style');
+      else d.el.setAttribute('style', d.prevStyle);
+      setHighlight(null);
+      hideDivider();
+      suppressNextCanvasClick();
+      drag = null;
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !drag || !drag.dragging) return;
+      e.preventDefault();
+      e.stopImmediatePropagation(); // don't also clear the selection
+      cancelDrag(drag);
     };
 
     const onDown = (e: PointerEvent) => {
@@ -2484,12 +2602,20 @@ function ReorderDrag() {
         pointerId: e.pointerId,
         startX: e.clientX,
         startY: e.clientY,
+        lastX: e.clientX,
+        lastY: e.clientY,
+        grabDX: 0,
+        grabDY: 0,
         el,
         cdId,
         zoom: 1,
         prevStyle: null,
         dragging: false,
         target: null,
+        origin: null,
+        settle: null,
+        settleKey: null,
+        applied: null,
       };
     };
 
@@ -2505,6 +2631,11 @@ function ReorderDrag() {
         // the element's own zoom (screen size / natural size) so it tracks 1:1.
         const rect = d.el.getBoundingClientRect();
         d.zoom = d.el.offsetWidth ? rect.width / d.el.offsetWidth : 1;
+        d.grabDX = d.startX - rect.left;
+        d.grabDY = d.startY - rect.top;
+        d.origin = d.el.parentElement
+          ? { parent: d.el.parentElement, next: d.el.nextElementSibling }
+          : null;
         d.prevStyle = d.el.getAttribute('style');
         if (getComputedStyle(d.el).position === 'static') d.el.style.position = 'relative';
         d.el.style.zIndex = '9990';
@@ -2515,21 +2646,37 @@ function ReorderDrag() {
         d.el.style.willChange = 'transform';
         d.el.style.transition = 'none';
       }
+      d.lastX = e.clientX;
+      d.lastY = e.clientY;
       const tx = (e.clientX - d.startX) / d.zoom;
       const ty = (e.clientY - d.startY) / d.zoom;
       d.el.style.transform = `translate(${tx}px, ${ty}px)`;
-      // Preview only — never touch the DOM here.
+      // Indicator + settle scheduling only — the DOM moves when a target stays
+      // stable for SETTLE_MS (the live-reflow preview), never per-mousemove.
       const target = computeTarget(e.clientX, e.clientY, d);
-      d.target = target;
-      if (!target) {
+      const current = target ? isCurrentPosition(target, d) : false;
+      d.target = target && !current ? target : null;
+      if (!d.target) {
+        clearSettle(d);
         setHighlight(null);
         hideDivider();
-      } else if (target.kind === 'inside') {
-        hideDivider();
-        setHighlight(target.container);
       } else {
-        setHighlight(null);
-        showDivider(target);
+        const t = d.target;
+        if (t.kind === 'inside') {
+          hideDivider();
+          setHighlight(t.container);
+        } else {
+          setHighlight(null);
+          showDivider(t);
+        }
+        const key = `${t.kind}:${reorderCdId(t.kind === 'inside' ? t.container : t.el) ?? ''}`;
+        if (key !== d.settleKey) {
+          if (d.settle != null) clearTimeout(d.settle);
+          d.settleKey = key;
+          d.settle = setTimeout(() => {
+            if (drag === d && d.dragging) applyPreview(d);
+          }, SETTLE_MS);
+        }
       }
     };
 
@@ -2540,13 +2687,19 @@ function ReorderDrag() {
       hideDivider();
       if (!d || e.pointerId !== d.pointerId) return;
       if (!d.dragging) return; // a plain click — leave it to native handlers
+      clearSettle(d);
       // Un-float: restore the element's exact original inline style.
       if (d.prevStyle == null) d.el.removeAttribute('style');
       else d.el.setAttribute('style', d.prevStyle);
-      if (!d.target) return; // dropped on empty space — no move
-      const drop = targetToDrop(d.target);
-      if (!drop) return;
-      applyDrop(d.el, d.target); // immediate result; the remount confirms it
+      // Commit priority: a fresh (un-settled) target under the cursor wins;
+      // otherwise the last settled preview (the layout the user is LOOKING at).
+      let drop = d.target ? targetToDrop(d.target) : null;
+      if (drop && d.target) {
+        applyDrop(d.el, d.target); // immediate result; the remount confirms it
+      } else if (d.applied) {
+        drop = d.applied; // DOM already sits there from the preview
+      }
+      if (!drop) return; // dropped on empty space, never previewed — no move
       suppressNextCanvasClick();
       window.parent.postMessage(
         { dgn: 'reorder-request', id: d.cdId, refId: drop.refId, position: drop.position },
@@ -2557,7 +2710,9 @@ function ReorderDrag() {
     document.addEventListener('pointerdown', onDown, true);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('keydown', onKeyDown, true);
     return () => {
+      if (drag) clearSettle(drag);
       setHighlight(null);
       if (dividerEl) {
         dividerEl.remove();
@@ -2566,6 +2721,7 @@ function ReorderDrag() {
       document.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('keydown', onKeyDown, true);
     };
   }, []);
 

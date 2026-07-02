@@ -104,3 +104,76 @@ describe('POST /_api/reorder — HTTP round-trip', () => {
     }
   });
 });
+
+describe('POST /_api/reorder-revert — Cmd+Z round-trip', () => {
+  test('undo restores the pre-reorder source, redo re-applies, stale content 409s', async () => {
+    const { root, designRoot } = makeSandbox();
+    mkdirSync(join(designRoot, 'ui'), { recursive: true });
+    const canvasPath = join(designRoot, 'ui', 'List.tsx');
+    writeFileSync(canvasPath, CANVAS_SRC);
+
+    const port = nextPort();
+    const main = `http://localhost:${port}`;
+    const proc = await bootServer(root, port);
+    try {
+      const [aId, , cId] = await divIdsByLine(main, designRoot);
+
+      // Reorder A after C → B, C, A; the response carries the revert-log seq.
+      const res = await fetch(`${main}/_api/reorder`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', id: aId, refId: cId, position: 'after' }),
+        signal: AbortSignal.timeout(2000),
+      });
+      const json = (await res.json()) as { ok: boolean; seq: number };
+      expect(json.ok).toBe(true);
+      expect(typeof json.seq).toBe('number');
+      expect(letterOrder(readFileSync(canvasPath, 'utf8'))).toEqual(['B', 'C', 'A']);
+
+      // Undo → back to A, B, C.
+      const undo = await fetch(`${main}/_api/reorder-revert`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', seq: json.seq, dir: 'undo' }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(undo.status).toBe(200);
+      expect(letterOrder(readFileSync(canvasPath, 'utf8'))).toEqual(['A', 'B', 'C']);
+
+      // Redo → B, C, A again.
+      const redo = await fetch(`${main}/_api/reorder-revert`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', seq: json.seq, dir: 'redo' }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(redo.status).toBe(200);
+      expect(letterOrder(readFileSync(canvasPath, 'utf8'))).toEqual(['B', 'C', 'A']);
+
+      // External edit → undo refuses with 409 and leaves the file alone.
+      const edited = readFileSync(canvasPath, 'utf8').replace('>B<', '>B!<');
+      writeFileSync(canvasPath, edited);
+      const stale = await fetch(`${main}/_api/reorder-revert`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', seq: json.seq, dir: 'undo' }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(stale.status).toBe(409);
+      expect(readFileSync(canvasPath, 'utf8')).toBe(edited);
+
+      // Unknown seq → 404; forged cross-origin POST → 403.
+      const missing = await fetch(`${main}/_api/reorder-revert`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', seq: 99999, dir: 'undo' }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(missing.status).toBe(404);
+      const forged = await fetch(`${main}/_api/reorder-revert`, {
+        method: 'POST',
+        headers: { origin: 'http://evil.example' },
+        body: JSON.stringify({ canvas: 'ui/List', seq: json.seq, dir: 'undo' }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(forged.status).toBe(403);
+    } finally {
+      await killProc(proc);
+    }
+  });
+});

@@ -114,6 +114,15 @@ export function createActivity(ctx: Context, opts: ActivityOptions = {}): Activi
   const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   // Last-seen file text, for the Task 7 region diff. Insertion-ordered Map = LRU.
   const lastText = new Map<string, string>();
+  // Phase 12.1 — writes the USER just made through the shell (drag / keyboard
+  // reorder + its undo/redo) must NOT light the "editing" rim: the overlay means
+  // "an agent works here" (DDR-029), and flashing it on the user's own direct
+  // manipulation reads as interference. The write path emits `activity:suppress`
+  // with the designRoot-relative path right before writing; the next fs:any for
+  // that file (within the TTL) is swallowed. One-shot + TTL so a crashed write
+  // can't mute a file forever.
+  const SUPPRESS_TTL_MS = 2500;
+  const suppressed = new Map<string, number>();
 
   function emit(file: string) {
     const e = state[file];
@@ -191,15 +200,32 @@ export function createActivity(ctx: Context, opts: ActivityOptions = {}): Activi
 
   const off = ctx.bus.on('fs:any', (rel: string) => {
     if (!isCanvasFile(rel)) return;
+    const until = suppressed.get(rel);
+    if (until != null) {
+      suppressed.delete(rel); // one-shot
+      if (Date.now() < until) {
+        // User-originated write — keep the diff baseline fresh so the NEXT
+        // (agent) edit still region-scopes correctly, but skip the rim.
+        if (diffEnabled) void refineArtboards(rel);
+        return;
+      }
+    }
     mark(rel);
     if (diffEnabled) void refineArtboards(rel);
   });
 
+  const offSuppress = ctx.bus.on('activity:suppress', (rel: string) => {
+    if (typeof rel !== 'string' || !rel) return;
+    suppressed.set(rel.replace(/\\/g, '/'), Date.now() + SUPPRESS_TTL_MS);
+  });
+
   function stop() {
     off();
+    offSuppress();
     for (const t of idleTimers.values()) clearTimeout(t);
     idleTimers.clear();
     lastText.clear();
+    suppressed.clear();
   }
 
   return { state, mark, stop };

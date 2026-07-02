@@ -91,4 +91,12 @@ describe('CSRF Origin guard — /_api/reorder source-write route (DDR-138)', () 
     const block = src.slice(start, after === -1 ? undefined : after);
     expect(block).toContain('sameOriginWrite(req)');
   });
+
+  test('/_api/reorder-revert is wired with the sameOriginWrite CSRF guard', () => {
+    const start = src.indexOf("'/_api/reorder-revert':");
+    expect(start).toBeGreaterThan(-1);
+    const after = src.indexOf("'/_api/", start + 1);
+    const block = src.slice(start, after === -1 ? undefined : after);
+    expect(block).toContain('sameOriginWrite(req)');
+  });
 });

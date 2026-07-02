@@ -1211,7 +1211,41 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         );
       }
       return Response.json(
-        { ok: true, delta: result.delta, movedId: result.movedId, semanticId: result.semanticId },
+        {
+          ok: true,
+          delta: result.delta,
+          movedId: result.movedId,
+          semanticId: result.semanticId,
+          seq: result.seq,
+        },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    '/_api/reorder-revert': async (req: Request) => {
+      // Phase 12.1 follow-up — Cmd+Z / Cmd+Shift+Z for a reorder. POST body
+      // { canvas, seq, dir:'undo'|'redo' } → api.reorderRevert swaps the whole
+      // file back to the logged {before|after} content (id-churn-proof; refuses
+      // 409 when the canvas changed since). Same MAIN-ORIGIN-ONLY boundary as
+      // /_api/reorder — NOT in CANVAS_SAFE_API nor startCanvasServer's routes;
+      // the canvas undo stack requests it over the dgn bus, the shell writes.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{ canvas?: unknown; seq?: unknown; dir?: unknown }>(
+        req,
+        8 * 1024
+      );
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.reorderRevert(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, dir: result.dir },
         { status: 200, headers: { 'Cache-Control': 'no-store' } }
       );
     },
