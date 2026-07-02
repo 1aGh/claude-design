@@ -2398,10 +2398,12 @@ function SelectionHalos() {
 // Grab the SELECTED element and drag: it FLOATS with the cursor (a `transform`
 // applied inline, so its layout box stays reserved — the origin shows empty
 // space — and it stays inside the zoomed world, keeping its styling + scale; we
-// divide the screen delta by the element's own zoom so it tracks 1:1). A blue
-// DIVIDER marks the insertion point between siblings (vertical for a row parent,
-// horizontal for a column/block one); a dashed RING marks a container it would
-// nest INTO. Hover a stable target for SETTLE_MS and the layout reflows LIVE
+// divide the screen delta by the element's own zoom so it tracks 1:1). The drop
+// zone is the WHOLE hovered element split 50/50 — top/left half inserts BEFORE,
+// bottom/right half AFTER (axis = parent flex direction) — so there's a wide hit
+// area, not a thin divider to aim at; a blue DIVIDER marks the resulting seam, a
+// dashed RING marks an EMPTY container it would nest INTO. Hover a stable target
+// for SETTLE_MS and the layout reflows LIVE
 // (the node moves there, still floating — you see the result before committing);
 // per-mousemove the DOM never changes, so there's no jank / ping-pong. DROP
 // commits via `dgn:'reorder-request'` to the shell (DDR-054: untrusted canvas
@@ -2516,13 +2518,20 @@ function ReorderDrag() {
       }
     };
 
-    // An element can be NESTED INTO only if it already holds element children —
-    // avoids dropping a node inside a leaf (`<span>text</span>`); before/after
-    // still works on leaves.
-    const canNest = (el: HTMLElement): boolean => el.childElementCount > 0;
+    // A genuinely EMPTY container (no element children, no text) is the only case
+    // where before/after can't express "put it in here" — so the whole box nests
+    // inside. Everything else splits 50/50 (see computeTarget).
+    const isEmptyContainer = (el: HTMLElement): boolean =>
+      el.childElementCount === 0 && !el.textContent?.trim();
 
     // Where would the node drop right now? Pure read — never mutates the DOM
     // (that only happens on drop), which is what keeps the drag jank-free.
+    // The drop zone is the WHOLE element split 50/50: top/left half → before,
+    // bottom/right half → after (axis follows the parent's flex direction). No
+    // thin central "nest" band eating the target — the entire element is an easy,
+    // wide hit. (Nesting into a container that HAS content = drop onto one of its
+    // children; nesting into an EMPTY one = drop anywhere on it; deep nesting =
+    // the Layers panel's Alt+Shift+↑/↓.)
     const computeTarget = (x: number, y: number, d: Drag): Target | null => {
       let E = document.elementFromPoint(x, y)?.closest('[data-cd-id]') as HTMLElement | null;
       while (E && (E === d.el || d.el.contains(E))) {
@@ -2539,15 +2548,15 @@ function ReorderDrag() {
         while (s && s.parentElement !== sib) s = s.parentElement as HTMLElement | null;
         if (s && s !== d.el && reorderCdId(s)) anchor = s;
       }
-      const parent = anchor.parentElement;
-      const pcs = parent ? getComputedStyle(parent) : null;
-      const isRow = !!pcs && pcs.display.includes('flex') && pcs.flexDirection.startsWith('row');
-      const r = anchor.getBoundingClientRect();
-      const frac = isRow ? (x - r.left) / (r.width || 1) : (y - r.top) / (r.height || 1);
-      if (canNest(anchor) && frac >= 0.35 && frac <= 0.65 && !d.el.contains(anchor)) {
+      if (isEmptyContainer(anchor) && !d.el.contains(anchor)) {
         return { kind: 'inside', el: anchor, container: anchor };
       }
+      const parent = anchor.parentElement;
       if (!parent || parent === d.el || d.el.contains(parent)) return null;
+      const pcs = getComputedStyle(parent);
+      const isRow = pcs.display.includes('flex') && pcs.flexDirection.startsWith('row');
+      const r = anchor.getBoundingClientRect();
+      const frac = isRow ? (x - r.left) / (r.width || 1) : (y - r.top) / (r.height || 1);
       return { kind: frac < 0.5 ? 'before' : 'after', el: anchor, container: parent };
     };
 
