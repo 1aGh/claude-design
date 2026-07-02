@@ -521,8 +521,8 @@
 .st-layer.is-hidden .st-layer-eye { opacity: 1; color: var(--fg-2); }
 /* Phase 12.1 (DDR-138) — drag-to-reorder affordances (same model as the in-canvas
    drag): the dragged row floats with the cursor via an inline transform (its slot
-   stays reserved). A fixed blue DIVIDER marks a sibling drop (before/after); a
-   ring + tint marks a nest (inside). */
+   stays reserved). A fixed blue DIVIDER marks the drop — INDENTED (left offset) to
+   the depth it will nest at (dnd-kit-tree / Figma style). */
 .st-layer-divider {
   position: fixed;
   z-index: 60;
@@ -532,7 +532,6 @@
   pointer-events: none;
   box-shadow: 0 0 0 1px var(--bg-0);
 }
-.st-layer--row.is-drop-inside { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-tint); }
 .st-rp-hint { font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); padding: 4px var(--space-2) 6px; letter-spacing: var(--tracking-wide); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .st-css { font-family: var(--font-mono); font-size: var(--type-xs); background: var(--bg-0); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: var(--space-3); line-height: 1.7; color: var(--fg-1); }

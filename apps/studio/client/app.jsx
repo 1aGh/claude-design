@@ -5175,9 +5175,10 @@ function moveLayerNode(nodes, draggedId, refId, position) {
   const insert = (arr) => {
     for (let i = 0; i < arr.length; i++) {
       if (arr[i].id === refId) {
-        if (position === 'inside-end') {
+        if (position === 'inside-start' || position === 'inside-end') {
           arr[i].children = arr[i].children || [];
-          arr[i].children.push(dragged);
+          if (position === 'inside-start') arr[i].children.unshift(dragged);
+          else arr[i].children.push(dragged);
         } else {
           arr.splice(position === 'before' ? i : i + 1, 0, dragged);
         }
@@ -5189,6 +5190,13 @@ function moveLayerNode(nodes, draggedId, refId, position) {
   };
   return insert(clone) ? clone : nodes;
 }
+
+// Void / self-closing tags can't hold children → not a nest target. Everything
+// else (div, section, span, …) can be nested into (matches "drop into any div").
+const LAYER_VOID_TAGS = new Set([
+  'img', 'input', 'br', 'hr', 'area', 'base', 'col', 'embed', 'link', 'meta',
+  'param', 'source', 'track', 'wbr',
+]);
 
 function LayerRow({
   node,
@@ -5225,9 +5233,8 @@ function LayerRow({
   // in-canvas drag): a transform follows the pointer, its layout box stays
   // reserved (empty slot at the origin), and pointer-events:none lets the row
   // under the pointer be hit-tested. A blue divider (rendered by the tree) marks
-  // where it drops; a ring marks a container it would nest into.
+  // where it drops — indented to show the depth it will nest at (Figma-style).
   const isDragging = dragState?.key === key;
-  const ring = dragState?.target?.key === key && dragState.target.ring;
   const dragStyle = isDragging
     ? {
         transform: `translate(${dragState.dx}px, ${dragState.dy}px)`,
@@ -5243,10 +5250,7 @@ function LayerRow({
     <>
       <div
         className={
-          'st-layer st-layer--row' +
-          (isSel ? ' is-sel' : '') +
-          (isHidden ? ' is-hidden' : '') +
-          (ring ? ' is-drop-inside' : '')
+          'st-layer st-layer--row' + (isSel ? ' is-sel' : '') + (isHidden ? ' is-hidden' : '')
         }
         style={{ paddingLeft: 6 + depth * 14, ...(repeated ? { opacity: 0.55 } : null), ...dragStyle }}
         role="treeitem"
@@ -5423,6 +5427,7 @@ function InspectorPanel({
   onSelectLayer,
   onHoverLayer,
   onReorderLayer,
+  layersBusyRef,
   cfg,
   onOptimistic,
   onRecordEdit,
@@ -5488,6 +5493,7 @@ function InspectorPanel({
   const layerDragRef = useRef(null);
   const startLayerDrag = (e, node, key) => {
     if (!handleReorder || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (layersBusyRef?.current) return; // a prior reorder is still landing (ids churning)
     if (repeatedLayerIds.has(node.id)) return; // repeated (list) element — not reorderable
     const startX = e.clientX;
     const startY = e.clientY;
@@ -5499,14 +5505,21 @@ function InspectorPanel({
         walk(c);
       });
     })(node);
-    // key → node, to resolve the row under the pointer.
-    const byKey = new Map();
-    (function walk(nodes) {
+    // Flatten the VISIBLE tree (respecting collapse) with depth. The drop is
+    // computed dnd-kit-tree style: a GAP between rows + a DEPTH from the pointer's
+    // X — so you can nest into any container (even an empty one) and the divider
+    // INDENTS to show it's going into that nested list (Figma-style).
+    const INDENT = 14;
+    const BASE = 6;
+    const flat = [];
+    (function walk(nodes, depth) {
       (nodes || []).forEach((n) => {
-        byKey.set(`${n.id}:${n.index}`, n);
-        walk(n.children);
+        const k = `${n.id}:${n.index}`;
+        flat.push({ node: n, key: k, id: n.id, depth, tag: n.tag });
+        if (n.children && n.children.length && !collapsed.has(k)) walk(n.children, depth + 1);
       });
-    })(layersTree?.nodes);
+    })(layersTree?.nodes, 0);
+    const flatByKey = new Map(flat.map((it) => [it.key, it]));
     let started = false;
     const onMove = (ev) => {
       if (!started) {
@@ -5516,41 +5529,65 @@ function InspectorPanel({
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       let target = null;
-      const rowEl = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('[data-layer-key]');
-      const tKey = rowEl?.getAttribute('data-layer-key');
-      const tNode = tKey ? byKey.get(tKey) : null;
-      // Skip forbidden (self/subtree), a clone of the dragged node (same id →
-      // no-op), and repeated (list) elements (can't insert relative to a looped
-      // node without corrupting the expression).
-      if (
-        rowEl &&
-        tKey &&
-        tNode &&
-        !forbidden.has(tKey) &&
-        tNode.id !== node.id &&
-        !repeatedLayerIds.has(tNode.id)
-      ) {
-        {
-          const r = rowEl.getBoundingClientRect();
-          const f = (ev.clientY - r.top) / (r.height || 1);
-          const canNest = !!(tNode.children && tNode.children.length);
-          let position = f < 0.5 ? 'before' : 'after';
-          let ring = false;
-          // Wide middle band (25–75%) so nesting is actually reachable on short
-          // tree rows; the outer quarters reorder as siblings (before/after).
-          if (canNest && f >= 0.25 && f <= 0.75) {
-            position = 'inside-end';
-            ring = true;
+      // Visible rows in DOM (== flat) order, minus the dragged one (its rect is
+      // floated, so it's meaningless for gap math).
+      const rows = [].slice
+        .call(document.querySelectorAll('.st-layer--row[data-layer-key]'))
+        .map((el) => ({ rect: el.getBoundingClientRect(), it: flatByKey.get(el.getAttribute('data-layer-key')) }))
+        .filter((r) => r.it && r.it.key !== key);
+      if (rows.length) {
+        const rowLeft = rows[0].rect.left;
+        const rowRight = rows[0].rect.right;
+        // Gap = index of the first row whose vertical midpoint is below the pointer.
+        let gap = rows.length;
+        for (let i = 0; i < rows.length; i++) {
+          if (ev.clientY < rows[i].rect.top + rows[i].rect.height / 2) {
+            gap = i;
+            break;
           }
-          target = {
-            key: tKey,
-            node: tNode,
-            position,
-            ring,
-            x: r.left,
-            y: position === 'before' ? r.top : r.bottom,
-            w: r.width,
-          };
+        }
+        const prev = rows[gap - 1]?.it || null;
+        const nextIt = rows[gap]?.it || null;
+        // Depth from pointer X. Clamp between the row below (min) and one level
+        // under the row above (max, if it can hold children).
+        const raw = Math.round((ev.clientX - rowLeft - BASE) / INDENT);
+        const maxDepth = prev ? prev.depth + (LAYER_VOID_TAGS.has(prev.tag) ? 0 : 1) : 0;
+        const minDepth = nextIt ? nextIt.depth : 0;
+        const depth = Math.max(minDepth, Math.min(raw, maxDepth));
+        // Resolve (prev, depth) → { refId, position, refNode, targetDepth }.
+        let refIt = null;
+        let position = 'before';
+        let targetDepth = 0;
+        if (!prev) {
+          if (nextIt) {
+            refIt = nextIt;
+            position = 'before';
+            targetDepth = nextIt.depth;
+          }
+        } else if (depth > prev.depth) {
+          refIt = prev; // nest as prev's FIRST child
+          position = 'inside-start';
+          targetDepth = prev.depth + 1;
+        } else if (depth === prev.depth) {
+          refIt = prev;
+          position = 'after';
+          targetDepth = prev.depth;
+        } else {
+          for (let i = gap - 1; i >= 0; i--) {
+            if (rows[i].it.depth === depth) {
+              refIt = rows[i].it;
+              break;
+            }
+          }
+          if (!refIt) refIt = prev;
+          position = 'after';
+          targetDepth = depth;
+        }
+        // Guard: no self, no dragged-subtree, no repeated (list) target.
+        if (refIt && refIt.id !== node.id && !forbidden.has(refIt.key) && !repeatedLayerIds.has(refIt.id)) {
+          const y = prev ? rows[gap - 1].rect.bottom : rows[0].rect.top;
+          const left = rowLeft + BASE + targetDepth * INDENT;
+          target = { refId: refIt.id, position, node: refIt.node, y, left, w: Math.max(24, rowRight - left) };
         }
       }
       const next = { key, node, dx, dy, target };
@@ -5727,12 +5764,12 @@ function InspectorPanel({
                     />
                   ))}
                 </div>
-                {dragState?.target && !dragState.target.ring ? (
+                {dragState?.target ? (
                   <div
                     className="st-layer-divider"
                     aria-hidden="true"
                     style={{
-                      left: dragState.target.x,
+                      left: dragState.target.left,
                       top: dragState.target.y - 1,
                       width: dragState.target.w,
                     }}
@@ -5798,6 +5835,11 @@ function App() {
   // (same freshness idiom as selectedRef; avoids a render-time TDZ on the
   // later useCallback).
   const reorderLayerRef = useRef(null);
+  // Phase 12.1 — true between a layers-panel reorder and the fresh layers-tree
+  // landing. A reorder churns positional data-cd-ids, so a rapid 2nd drag would
+  // target stale ids; the Layers tree gates new drags on this until the rebuilt
+  // tree (with correct ids) arrives. Cleared by the layers-tree message.
+  const layersBusyRef = useRef(false);
   // Phase 12 Task 4 — Layers tree for the active artboard (posted by canvas-shell).
   const [layersTree, setLayersTree] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -6913,6 +6955,7 @@ function App() {
       } else if (m.dgn === 'layers-tree') {
         // Phase 12 Task 4 — browsable layers tree for the active artboard.
         setLayersTree({ artboardId: m.artboardId, nodes: Array.isArray(m.tree) ? m.tree : [] });
+        layersBusyRef.current = false; // fresh tree (correct ids) landed — drags OK again
       } else if (m.dgn === 'reorder-request') {
         // Phase 12.1 (DDR-138) — the in-canvas ReorderGrip (untrusted canvas
         // iframe) can't reach the main-origin-only /_api/reorder (DDR-054), so it
@@ -7253,6 +7296,10 @@ function App() {
       setLayersTree((prev) =>
         prev ? { ...prev, nodes: moveLayerNode(prev.nodes, draggedId, refId, position) } : prev
       );
+      // Gate the next layers-panel drag until the rebuilt tree lands — the write
+      // churns positional ids, so a rapid 2nd drag on the optimistic tree would
+      // carry stale ids. Cleared by the incoming layers-tree message.
+      layersBusyRef.current = true;
       editApplyChainRef.current = editApplyChainRef.current
         .catch(() => {})
         .then(() =>
@@ -7913,6 +7960,7 @@ function App() {
                 })
               }
               onReorderLayer={reorderLayer}
+              layersBusyRef={layersBusyRef}
               width={rpSize.w}
               resizing={dragSide === 'rp'}
             />
