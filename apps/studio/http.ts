@@ -618,6 +618,42 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       });
     },
 
+    // Phase 31 follow-up — persist an image pasted straight into the ACP composer
+    // (a clipboard screenshot has no path), returning an absolute path the chip
+    // expands to so Claude can Read it. MAIN-ORIGIN ONLY: sameOriginWrite CSRF gate
+    // + deliberately absent from CANVAS_SAFE_API + startCanvasServer routes, so the
+    // untrusted canvas iframe is 403'd. The disk caps live in api.saveChatAttachment
+    // (magic-byte sniff / 10 MB / content-addressed name / session write budget).
+    '/_api/acp/attachment': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const declared = Number(req.headers.get('content-length') || '0');
+      if (Number.isFinite(declared) && declared > 10 * 1024 * 1024) {
+        return Response.json(
+          { ok: false, error: 'attachment exceeds the 10 MB cap' },
+          { status: 413, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      let bytes: Uint8Array;
+      try {
+        bytes = new Uint8Array(await req.arrayBuffer());
+      } catch {
+        return new Response('could not read request body', { status: 400 });
+      }
+      const result = await api.saveChatAttachment(bytes);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status ?? 400, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { path: result.path },
+        { status: 201, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     // Phase 9 Task 8 — offline-mode banner poll fallback. The linked-mode sync
     // runtime writes `_sync.json`; browser tabs also get live pushes over the
     // WS ('sync:status'). Returns `{ linked: false }` in solo mode.

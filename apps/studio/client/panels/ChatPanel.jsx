@@ -135,6 +135,112 @@ function prettyCanvas(path) {
   return file.replace(/\.(tsx|html)$/i, '');
 }
 
+// ── pasted-path / URL → inline chip (Claude-Code-style attachment badge) ──
+// When the whole clipboard is a single path or URL, we collapse it to a short
+// literal token ([image-1] / [file-1] / [link-1]) in the textarea and stash the
+// real value in a per-chat map. The token is the actual text the caret sees, so
+// the mirror can style it as a chip WITHOUT desyncing (chip text === token text),
+// and the adapter expands it back to the real path before sending to Claude.
+const CHIP_RE = /\[(?:image|file|link)-\d+\]/g;
+const IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|svg|avif|bmp|heic|heif|ico|tiff?)$/i;
+
+// Classify a raw clipboard string. Returns { kind, value } only when the trimmed
+// paste is a SINGLE path/URL token (no internal whitespace) — pasting prose that
+// merely contains a link is left as a normal paste. Paths with spaces fall through
+// (kept as plain text) in this first cut.
+function classifyPaste(raw) {
+  const s = (raw || '').trim();
+  if (!s || /\s/.test(s)) return null;
+  const isUrl = /^(?:https?|ftp):\/\/[^\s]+$/i.test(s);
+  const isWinPath = /^[a-zA-Z]:\\[^\s]+$/.test(s);
+  const isAnchoredPath = /^(?:~|\.{0,2})\/[^\s]+$/.test(s); // /a, ~/a, ./a, ../a
+  const looksLikeFile = s.includes('/') && /\.[a-z0-9]{1,8}$/i.test(s); // folder/file.ext
+  if (!isUrl && !isWinPath && !isAnchoredPath && !looksLikeFile) return null;
+  const bare = s.split(/[?#]/)[0]; // strip URL query/hash before the extension test
+  const kind = IMAGE_EXT_RE.test(bare) ? 'image' : isUrl ? 'link' : 'file';
+  return { kind, value: s };
+}
+
+// Next free index for a chip kind, scanning existing tokens so deletes renumber
+// back down (paste after clearing → [image-1] again, not [image-3]).
+function nextChipIndex(text, kind) {
+  const re = new RegExp(`\\[${kind}-(\\d+)\\]`, 'g');
+  let max = 0;
+  let m;
+  while ((m = re.exec(text || ''))) max = Math.max(max, parseInt(m[1], 10));
+  return max + 1;
+}
+
+// Tokenize a string, wrapping [image|file|link-N] tokens in chip spans. Preserves
+// every character verbatim (used both in the mirror overlay and the sent-message
+// bubble), so it is safe over the caret-critical mirror.
+function chipNodes(text, keyPrefix = 'chip') {
+  const nodes = [];
+  let last = 0;
+  let m;
+  let k = 0;
+  CHIP_RE.lastIndex = 0;
+  while ((m = CHIP_RE.exec(text))) {
+    if (m.index > last) nodes.push(text.slice(last, m.index));
+    nodes.push(
+      <span className="chat-paste-chip" key={`${keyPrefix}-${k++}`}>
+        {m[0]}
+      </span>
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+// First image File on the clipboard — a raw screenshot / copied image arrives as
+// bytes with no path (files, or items via getAsFile on some engines).
+function clipboardImageFile(cd) {
+  const files = cd?.files ? Array.from(cd.files) : [];
+  const fromFiles = files.find((f) => f.type && f.type.startsWith('image/'));
+  if (fromFiles) return fromFiles;
+  const items = cd?.items ? Array.from(cd.items) : [];
+  for (const it of items) {
+    if (it.kind === 'file' && it.type && it.type.startsWith('image/')) {
+      const f = it.getAsFile();
+      if (f) return f;
+    }
+  }
+  return null;
+}
+
+// Insert `chip` at the textarea caret, keeping the undo stack + assistant-ui's
+// controlled value in sync. execCommand is a real user-edit (caret follows); the
+// manual splice is the fallback where execCommand('insertText') is unavailable.
+function insertChipAtCaret(ta, chip) {
+  if (document.execCommand && document.execCommand('insertText', false, chip)) return;
+  const start = ta.selectionStart ?? ta.value.length;
+  const end = ta.selectionEnd ?? start;
+  const next = ta.value.slice(0, start) + chip + ta.value.slice(end);
+  const setter = Object.getOwnPropertyDescriptor(
+    window.HTMLTextAreaElement.prototype,
+    'value'
+  )?.set;
+  setter?.call(ta, next);
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+  const pos = start + chip.length;
+  ta.setSelectionRange(pos, pos);
+}
+
+// POST raw image bytes to the dev-server, which writes them under the runtime
+// _chat/attachments/ and returns the absolute path Claude will Read on send.
+async function uploadChatImage(file) {
+  const buf = await file.arrayBuffer();
+  const res = await fetch('/_api/acp/attachment', {
+    method: 'POST',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    body: buf,
+  });
+  if (!res.ok) return null;
+  const data = await res.json().catch(() => null);
+  return (data && data.path) || null;
+}
+
 // ── message-part renderers ──
 function ChatText({ text }) {
   return (
@@ -184,12 +290,16 @@ function ChatToolCard({ toolName, args, result, isError }) {
   );
 }
 
+// User bubble keeps the collapsed chips in the transcript (Claude Code shows the
+// placeholder in history too — the real path went to the agent, not the log).
+function UserBubble({ text }) {
+  return <div className="chat-bubble">{chipNodes(text, 'ub')}</div>;
+}
+
 function UserMessage() {
   return (
     <div className="chat-msg chat-msg--user">
-      <MessagePrimitive.Parts
-        components={{ Text: ({ text }) => <div className="chat-bubble">{text}</div> }}
-      />
+      <MessagePrimitive.Parts components={{ Text: UserBubble }} />
     </div>
   );
 }
@@ -335,39 +445,90 @@ function CommandPopover({ items, activeIndex, onPick, onHover }) {
 // but ONLY when that token is a command that exists (the badge gate). The mirror
 // MUST match the textarea's box model exactly (see .chat-input / .chat-input-mirror
 // in 6-acp-chat.css) or the pill drifts off the text.
-function HighlightedInput({ existsSet }) {
+function HighlightedInput({ existsSet, attachmentsRef, onAttachChange }) {
   const text = useComposer((c) => c.text);
   const mirrorRef = useRef(null);
   const match = matchLeadingCommand(text);
   const token = match ? normalizeName(match.token) : '';
   const highlight = !!(match && token && existsSet.has(token));
 
-  let mirror;
+  // Build the mirror: an optional leading command pill, then the remainder with
+  // any [image|file|link-N] tokens wrapped as chips. Both wrappers preserve the
+  // exact glyphs so the transparent-text textarea's caret stays aligned.
+  let head = null;
+  let bodyStart = 0;
   if (highlight) {
     const leadingWs = text.match(/^\s*/)[0];
     const cmd = `/${match.token}`;
-    const rest = text.slice(leadingWs.length + cmd.length);
-    mirror = (
+    head = (
       <>
         {leadingWs}
         <span className="chat-cmd-pill">{cmd}</span>
-        {rest}
       </>
     );
-  } else {
-    // Trailing newline needs a zero-width guard so the mirror keeps the last line.
-    mirror = text.endsWith('\n') ? `${text}​` : text;
+    bodyStart = leadingWs.length + cmd.length;
   }
+  const body = text.slice(bodyStart);
+  // Trailing newline needs a zero-width guard so the mirror keeps the last line.
+  const guard = text.endsWith('\n') ? '​' : '';
+
+  // Collapse a pasted attachment into a chip token at the caret and stash its real
+  // value in the map so the adapter expands it on send. Two sources:
+  //  1) a raw clipboard image (screenshot) — insert the chip synchronously, upload
+  //     the bytes in the background, and fill the map when the path comes back. The
+  //     in-flight promise is tracked so send can await it (no literal [image-N] if
+  //     the user hits Enter before the upload lands).
+  //  2) a lone path / URL as text — resolved synchronously.
+  const onPaste = useCallback(
+    (e) => {
+      const cd = e.clipboardData;
+      const ta = e.currentTarget;
+      const { map, pending } = attachmentsRef.current;
+
+      const img = clipboardImageFile(cd);
+      if (img) {
+        e.preventDefault();
+        const chip = `[image-${nextChipIndex(ta.value, 'image')}]`;
+        map.set(chip, null); // pending — expandPasteChips leaves it literal until resolved
+        insertChipAtCaret(ta, chip);
+        onAttachChange?.();
+        const p = uploadChatImage(img)
+          .then((path) => {
+            if (path) map.set(chip, path);
+            else map.delete(chip);
+          })
+          .catch(() => map.delete(chip))
+          .finally(() => {
+            pending.delete(p);
+            onAttachChange?.();
+          });
+        pending.add(p);
+        return;
+      }
+
+      const cls = classifyPaste(cd?.getData('text/plain'));
+      if (!cls) return; // ordinary paste — let assistant-ui handle it
+      e.preventDefault();
+      const chip = `[${cls.kind}-${nextChipIndex(ta.value, cls.kind)}]`;
+      map.set(chip, cls.value);
+      insertChipAtCaret(ta, chip);
+      onAttachChange?.();
+    },
+    [attachmentsRef, onAttachChange]
+  );
 
   return (
     <div className="chat-input-wrap">
       <div className="chat-input-mirror" aria-hidden="true" ref={mirrorRef}>
-        {mirror}
+        {head}
+        {chipNodes(body)}
+        {guard}
       </div>
       <ComposerPrimitive.Input
         className="chat-input chat-input--overlay"
-        submitMode="ctrlEnter"
+        submitMode="enter"
         placeholder="Ask Claude to change this canvas…"
+        onPaste={onPaste}
         onScroll={(e) => {
           if (mirrorRef.current) mirrorRef.current.scrollTop = e.currentTarget.scrollTop;
         }}
@@ -376,7 +537,7 @@ function HighlightedInput({ existsSet }) {
   );
 }
 
-function Composer({ activeCanvas, model, setModel, effort, setEffort, conn, chatId }) {
+function Composer({ activeCanvas, model, setModel, effort, setEffort, conn, chatId, attachmentsRef }) {
   const canvasName = prettyCanvas(activeCanvas);
   const { all, existsSet } = useSlashCommands(conn);
   const composerRuntime = useComposerRuntime();
@@ -386,6 +547,27 @@ function Composer({ activeCanvas, model, setModel, effort, setEffort, conn, chat
   const [dismissed, setDismissed] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const menuOpen = !!(match && match.typing) && !dismissed;
+
+  // Attachment reveal (security — DDR-140): a chip collapses a pasted path/URL to
+  // an opaque badge, and the real value is what gets sent to the auto-approving
+  // agent. So the composer MUST show what each chip will expand to BEFORE send —
+  // otherwise a value the user can't see (e.g. one an untrusted canvas seeded onto
+  // the clipboard) rides into the prompt invisibly. `attachTick` re-renders the
+  // strip when an async image upload fills its map entry.
+  const [attachTick, setAttachTick] = useState(0);
+  const bumpAttach = useCallback(() => setAttachTick((t) => t + 1), []);
+  const chipList = useMemo(() => {
+    const map = attachmentsRef.current.map;
+    const seen = new Set();
+    const out = [];
+    for (const m of text.matchAll(/\[(?:image|file|link)-\d+\]/g)) {
+      if (seen.has(m[0])) continue;
+      seen.add(m[0]);
+      out.push({ token: m[0], value: map.get(m[0]) ?? null });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, attachTick, attachmentsRef]);
   const items = useMemo(
     () => (menuOpen ? filterCommands(all, match.token) : []),
     [menuOpen, all, match?.token]
@@ -463,7 +645,11 @@ function Composer({ activeCanvas, model, setModel, effort, setEffort, conn, chat
             />
           ) : null}
           <ComposerPrimitive.Root className="chat-box">
-            <HighlightedInput existsSet={existsSet} />
+            <HighlightedInput
+              existsSet={existsSet}
+              attachmentsRef={attachmentsRef}
+              onAttachChange={bumpAttach}
+            />
             <div className="chat-toolbar">
             <select
               className="chat-select"
@@ -496,8 +682,23 @@ function Composer({ activeCanvas, model, setModel, effort, setEffort, conn, chat
           </div>
           </ComposerPrimitive.Root>
         </div>
+        {chipList.length ? (
+          <div className="chat-attach" role="list" aria-label="Attachments — expands on send">
+            {chipList.map((c) => (
+              <div className="chat-attach-row" role="listitem" key={c.token}>
+                <span className="chat-attach-tok">{c.token}</span>
+                <span className="chat-attach-arrow" aria-hidden="true">
+                  →
+                </span>
+                <span className="chat-attach-val" title={c.value || undefined}>
+                  {c.value || 'attaching…'}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <div className="chat-foot">
-          <span>⌘↵ to send</span>
+          <span>↵ to send · ⇧↵ newline</span>
           <span className="chat-foot-spacer" />
           <span>your Claude subscription</span>
         </div>
@@ -607,13 +808,19 @@ function ChatThread({
   effort,
   setEffort,
 }) {
+  // Paste attachments: `map` = chip token ([image-1]…) → real path/URL (null while
+  // an image upload is in flight); `pending` = the in-flight upload promises. The
+  // adapter awaits `pending` then expands `map` before sending; the composer writes
+  // both on paste.
+  const attachmentsRef = useRef({ map: new Map(), pending: new Set() });
   const adapter = useMemo(
     () =>
       makeAcpAdapter(
         conn,
         () => chatId,
         () => modelRef.current || null,
-        () => effortRef.current
+        () => effortRef.current,
+        () => attachmentsRef.current
       ),
     [conn, chatId, modelRef, effortRef]
   );
@@ -643,6 +850,7 @@ function ChatThread({
             setEffort={setEffort}
             conn={conn}
             chatId={chatId}
+            attachmentsRef={attachmentsRef}
           />
         </ThreadPrimitive.Root>
       </div>

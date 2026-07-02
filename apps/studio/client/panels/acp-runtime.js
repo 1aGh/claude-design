@@ -250,15 +250,29 @@ function safeJson(value) {
   }
 }
 
+// Expand collapsed paste chips ([image-1]/[file-1]/[link-1]) back to the real
+// path/URL the user pasted, so Claude receives the actual value while the chat
+// bubble keeps the compact badge. Unknown tokens (e.g. a stale one the user typed
+// by hand) are left untouched.
+function expandPasteChips(text, map) {
+  if (!map || !map.size) return text;
+  return text.replace(/\[(?:image|file|link)-\d+\]/g, (tok) => map.get(tok) ?? tok);
+}
+
 /**
  * assistant-ui `ChatModelAdapter` over the ACP bridge. Streams text + tool-call
  * parts, preserving the order in which the agent emits them. `available_commands_update`
  * and `usage_update` are intentionally dropped (chrome noise, not chat content).
  */
-export function makeAcpAdapter(conn, getChatId, getModel, getEffort) {
+export function makeAcpAdapter(conn, getChatId, getModel, getEffort, getAttachments) {
   return {
     async *run({ messages, abortSignal }) {
-      const text = lastUserText(messages);
+      // Let any in-flight clipboard-image upload finish so its chip expands to a
+      // real path instead of the literal [image-N] (race when the user pastes an
+      // image and hits Enter immediately).
+      const att = getAttachments?.();
+      if (att?.pending?.size) await Promise.allSettled([...att.pending]);
+      const text = expandPasteChips(lastUserText(messages), att?.map);
       if (!text) return;
 
       const parts = [];

@@ -34,5 +34,18 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(&open_project)
         .build()?;
 
-    MenuBuilder::new(app).items(&[&app_menu, &file_menu]).build()
+    // Edit menu — carries the standard Cut/Copy/Paste/Select-All predefined items.
+    // These are load-bearing on macOS: WKWebView only receives the Cmd+X/C/V/A
+    // shortcuts when the app menu exposes the matching predefined items (they wire
+    // the native `cut:`/`copy:`/`paste:`/`selectAll:` selectors). Without this
+    // submenu copy/paste is dead everywhere in the app, including the ACP chat
+    // composer. Undo/Redo are macOS-only (unsupported on Windows/Linux).
+    let edit_menu = SubmenuBuilder::new(app, "Edit");
+    #[cfg(target_os = "macos")]
+    let edit_menu = edit_menu.undo().redo().separator();
+    let edit_menu = edit_menu.cut().copy().paste().select_all().build()?;
+
+    MenuBuilder::new(app)
+        .items(&[&app_menu, &file_menu, &edit_menu])
+        .build()
 }

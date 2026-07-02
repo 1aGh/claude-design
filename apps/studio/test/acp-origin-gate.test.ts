@@ -99,6 +99,31 @@ describe('ACP bridge origin gate', () => {
         signal: AbortSignal.timeout(2000),
       });
       expect(crossOrigin.status).toBe(403);
+
+      // (6) Phase 31 follow-up — /_api/acp/attachment (clipboard-image paste):
+      // POST-only, main-origin only. A valid PNG → 201 with an absolute path under
+      // the runtime _chat/attachments/; GET is 405; the canvas origin + a
+      // cross-origin drive-by POST are 403.
+      const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+      const up = await fetch(`${main}/_api/acp/attachment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'image/png' },
+        body: png,
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(up.status).toBe(201);
+      const upJson = await up.json();
+      expect(typeof upJson.path).toBe('string');
+      expect(upJson.path).toContain('_chat/attachments/');
+      expect(await status(main, '/_api/acp/attachment')).toBe(405); // GET not allowed
+      expect(await status(canvas, '/_api/acp/attachment')).toBe(403); // off the canvas origin
+      const attDriveBy = await fetch(`${main}/_api/acp/attachment`, {
+        method: 'POST',
+        headers: { Origin: 'https://evil.example', 'Content-Type': 'image/png' },
+        body: png,
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(attDriveBy.status).toBe(403);
     } finally {
       await killProc(proc);
     }

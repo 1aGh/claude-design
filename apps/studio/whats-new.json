@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "acp-composer-paste-and-send",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Paste, copy, and send in the Assistant",
+      "summary": "Copy and paste now work in the desktop app, and Enter sends your message (Shift+Enter for a new line). Paste a file path, a link, or an image straight from your clipboard and it becomes a tidy chip — with a line underneath showing exactly what each chip will send, so nothing hidden reaches Claude. A pasted screenshot is saved with the chat and Claude reads it on send.",
+      "surface": "design-ui"
+    },
+    {
       "id": "slash-command-autocomplete",
       "version": null,
       "date": null,

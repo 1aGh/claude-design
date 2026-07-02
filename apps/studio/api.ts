@@ -239,6 +239,9 @@ export interface Api {
   saveAnnotations(file: string, svg: string): Promise<boolean>;
   // Phase 23 — content-addressed binary image write (drag-drop / paste / picker)
   saveAsset(bytes: Uint8Array): Promise<SaveAssetResult>;
+  // Persist a clipboard-pasted ACP composer image → runtime `_chat/attachments/`,
+  // returns an absolute path (Phase 31 follow-up — POST /_api/acp/attachment).
+  saveChatAttachment(bytes: Uint8Array): Promise<SaveAssetResult>;
   // Create a blank brief board from the browser (Phase 22 — POST /_api/canvas)
   createCanvas(input: {
     name?: unknown;
@@ -1026,6 +1029,56 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       return { ok: false, status: 500, error: err instanceof Error ? err.message : 'write failed' };
     }
     return { ok: true, path: `assets/${name}` };
+  }
+
+  // Phase 31 follow-up — persist an image pasted straight from the clipboard into
+  // the ACP composer (a screenshot has no path yet), so the chip can point Claude
+  // at a real file to Read. Sibling of saveAsset, but:
+  //   • writes under the RUNTIME `_chat/attachments/` (gitignored — DDR-115), not
+  //     the versioned `assets/`; pasted screenshots are ephemeral, not canvas media.
+  //   • returns an ABSOLUTE path — Claude runs with its own cwd, so a project-
+  //     relative string could miss; an absolute path always resolves.
+  // Same load-bearing caps as saveAsset (magic-byte sniff → no SVG/script, 10 MB,
+  // content-addressed name, shared session write budget). MAIN-ORIGIN ONLY at the
+  // route layer (the untrusted canvas can't reach it).
+  async function saveChatAttachment(bytes: Uint8Array): Promise<SaveAssetResult> {
+    if (!bytes || bytes.length === 0) return { ok: false, status: 400, error: 'empty body' };
+    if (bytes.length > ASSET_MAX_BYTES) {
+      return { ok: false, status: 413, error: 'attachment exceeds the 10 MB cap' };
+    }
+    const kind = sniffImageType(bytes);
+    if (!kind) {
+      return {
+        ok: false,
+        status: 415,
+        error: 'unsupported image type — png/jpeg/gif/webp only (SVG rejected)',
+      };
+    }
+    const sha8 = crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 8);
+    const name = `${sha8}.${kind}`;
+    const dir = path.join(paths.designRoot, '_chat', 'attachments');
+    const fileAbs = path.join(dir, name);
+    // Containment backstop — the name is content-addressed (no user input), assert anyway.
+    if (path.resolve(fileAbs) !== path.join(path.resolve(dir), name)) {
+      return { ok: false, status: 400, error: 'resolved attachment path escapes _chat dir' };
+    }
+    try {
+      if (!(await Bun.file(fileAbs).exists())) {
+        if (assetBytesWritten + bytes.length > ASSET_SESSION_BUDGET) {
+          return {
+            ok: false,
+            status: 429,
+            error: 'asset write budget exceeded for this server session',
+          };
+        }
+        await mkdir(dir, { recursive: true });
+        await Bun.write(fileAbs, bytes);
+        assetBytesWritten += bytes.length;
+      }
+    } catch (err) {
+      return { ok: false, status: 500, error: err instanceof Error ? err.message : 'write failed' };
+    }
+    return { ok: true, path: fileAbs };
   }
 
   // Phase 22 — create a blank brief board from the browser file tree. Wired ONLY
@@ -1946,6 +1999,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     loadAnnotations,
     saveAnnotations,
     saveAsset,
+    saveChatAttachment,
     createCanvas,
     deleteCanvas,
     editCss,
