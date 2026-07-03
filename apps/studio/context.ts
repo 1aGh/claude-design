@@ -206,8 +206,47 @@ export function normalizeDesignSystems<T extends DevServerConfig>(cfg: T): T {
   return { ...cfg, designSystems };
 }
 
+/**
+ * True when a config-declared relative path stays inside the design root once
+ * joined to it. Rejects absolute paths and `..` escapes. Security clamp from
+ * the DDR-148 fan-out review: `canvasGroups[].path` / `tokensCssRel` feed
+ * directory walks (`/_index-data`) and a served stylesheet URL — a poisoned
+ * (e.g. peer-committed) config must not walk or serve outside the design root,
+ * and with hot-reload the escape would apply live, no restart gate.
+ */
+export function isContainedRel(rel: unknown): boolean {
+  if (typeof rel !== 'string' || !rel) return false;
+  const p = rel.replace(/\\/g, '/');
+  if (p.startsWith('/') || /^[A-Za-z]:/.test(p)) return false;
+  const norm = path.posix.normalize(p);
+  return norm !== '..' && !norm.startsWith('../');
+}
+
+function clampToDesignRoot(cfg: DevServerConfig): DevServerConfig {
+  const groups = cfg.canvasGroups ?? [];
+  const canvasGroups = groups.filter((g) => isContainedRel(g?.path));
+  for (const g of groups) {
+    if (!canvasGroups.includes(g)) {
+      console.warn(`  warn: canvasGroups path escapes the design root — ignored: ${g?.path}`);
+    }
+  }
+  let tokensCssRel = cfg.tokensCssRel;
+  if (!isContainedRel(tokensCssRel)) {
+    console.warn(`  warn: tokensCssRel escapes the design root — using default: ${tokensCssRel}`);
+    tokensCssRel = DEFAULT_CONFIG.tokensCssRel;
+  }
+  const designSystems = cfg.designSystems?.filter((d) => {
+    const ok =
+      isContainedRel(d?.path) && (d?.tokensCssRel == null || isContainedRel(d.tokensCssRel));
+    if (!ok)
+      console.warn(`  warn: designSystems entry escapes the design root — ignored: ${d?.name}`);
+    return ok;
+  });
+  return { ...cfg, canvasGroups, tokensCssRel, designSystems };
+}
+
 function normalizeConfig(cfg: DevServerConfig): DevServerConfig {
-  return normalizeDesignSystems(cfg);
+  return normalizeDesignSystems(clampToDesignRoot(cfg));
 }
 
 export function createContext(): Context {
@@ -288,9 +327,23 @@ export function reloadConfig(ctx: Context): boolean {
     next.designRoot = ctx.cfg.designRoot;
   }
 
+  // linkedHub is boot-pinned like designRoot: the sync runtime captures it once
+  // at startup (sync/index.ts), so a live swap would let use-time readers
+  // (syncTsx gating) drift out of step with the hub the socket is actually
+  // attached to — and a poisoned config must never re-point sync without a
+  // restart (DDR-148 fan-out review).
+  if (JSON.stringify(next.linkedHub) !== JSON.stringify(ctx.cfg.linkedHub)) {
+    console.warn('  warn: linkedHub changed — not hot-reloadable, restart the server to apply.');
+    if (ctx.cfg.linkedHub === undefined) delete next.linkedHub;
+    else next.linkedHub = ctx.cfg.linkedHub;
+  }
+
   if (JSON.stringify(ctx.cfg) === JSON.stringify(next)) return false;
 
   // In-place swap so every captured `ctx.cfg` reference sees the new values.
+  // INVARIANT: no `await` between the delete loop and the assign — the swap is
+  // atomic only because it is synchronous; an interleaved request must never
+  // observe a partially-emptied cfg.
   const cfg = ctx.cfg as unknown as Record<string, unknown>;
   for (const key of Object.keys(cfg)) delete cfg[key];
   Object.assign(cfg, next);

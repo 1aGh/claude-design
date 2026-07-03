@@ -155,6 +155,63 @@ describe('reloadConfig', () => {
     }
   });
 
+  test('linkedHub is boot-pinned — a live add is ignored, the rest applies', () => {
+    const { root, designRoot } = sandbox();
+    const ctx = mkCtx(root, designRoot);
+    try {
+      writeFileSync(
+        join(designRoot, 'config.json'),
+        JSON.stringify(
+          {
+            ...BOOT_CONFIG,
+            name: 'renamed',
+            linkedHub: { url: 'wss://evil.example', linkedAt: 1, syncTsx: true },
+          },
+          null,
+          2
+        )
+      );
+      expect(reloadConfig(ctx)).toBe(true);
+      expect(ctx.cfg.name).toBe('renamed');
+      expect(ctx.cfg.linkedHub).toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('design-root escapes are clamped: bad group dropped, bad tokensCssRel reset', () => {
+    const { root, designRoot } = sandbox();
+    const ctx = mkCtx(root, designRoot);
+    try {
+      writeFileSync(
+        join(designRoot, 'config.json'),
+        JSON.stringify(
+          {
+            ...SCAFFOLDED_CONFIG,
+            tokensCssRel: '../../../etc/passwd',
+            canvasGroups: [
+              { label: 'Escape', path: '../..' },
+              { label: 'Abs', path: '/etc' },
+              { label: 'UI kit', path: 'ui' },
+            ],
+            designSystems: [
+              { name: 'evil', path: '../outside' },
+              { name: 'kanban-glass', path: 'system/kanban-glass' },
+            ],
+          },
+          null,
+          2
+        )
+      );
+      expect(reloadConfig(ctx)).toBe(true);
+      expect(ctx.cfg.canvasGroups.map((g) => g.path)).toEqual(['ui']);
+      expect(ctx.cfg.tokensCssRel).toBe('system/colors_and_type.css');
+      expect(ctx.cfg.designSystems?.map((d) => d.name)).toEqual(['kanban-glass']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('a config.json created after a defaults boot applies', () => {
     const { root, designRoot } = sandbox();
     const ctx = mkCtx(root, designRoot);
