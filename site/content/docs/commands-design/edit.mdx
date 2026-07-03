@@ -1,6 +1,6 @@
 ---
 title: /design:edit
-description: "Iteruj na aktivním canvasu — Claude přečte soubor co máš v browseru otevřený a aplikuje feedback IN PLACE. Default: po editu auto-spustí critic panel; přidej --perfect [N] pro N iterací auto-fixu, nebo --no-critic pro skip. --opt-out=<scope> přepíše scope ze sidecaru pro tuhle iteraci."
+description: "Iterate on the active canvas — Claude reads the file you have open in the browser and applies feedback IN PLACE. Default: after the edit, auto-runs the critic panel; add --perfect [N] for N auto-fix iterations, or --no-critic to skip. --opt-out=<scope> overrides the scope from the sidecar for this iteration."
 ---
 
 | Property | Value |
@@ -12,7 +12,7 @@ description: "Iteruj na aktivním canvasu — Claude přečte soubor co máš v 
 
 ## Description
 
-Iteruj na aktivním canvasu — Claude přečte soubor co máš v browseru otevřený a aplikuje feedback IN PLACE. Default: po editu auto-spustí critic panel; přidej --perfect [N] pro N iterací auto-fixu, nebo --no-critic pro skip. --opt-out=&lt;scope> přepíše scope ze sidecaru pro tuhle iteraci.
+Iterate on the active canvas — Claude reads the file you have open in the browser and applies feedback IN PLACE. Default: after the edit, auto-runs the critic panel; add --perfect [N] for N auto-fix iterations, or --no-critic to skip. --opt-out=&lt;scope> overrides the scope from the sidecar for this iteration.
 
 ## Invocation
 
@@ -22,7 +22,7 @@ Iteruj na aktivním canvasu — Claude přečte soubor co máš v browseru otev�
 
 ## Summary
 
-Default flow design pluginu. Edituje **soubor co máš právě otevřený v browser tabu** — ne nový session, ne nový file. Jako Claude Design canvas — řekneš "přidej tady presence dot", a presence dot se objeví v aktivním canvasu.
+The design plugin's default flow. Edits the **file you currently have open in the browser tab** — not a new session, not a new file. Like a Claude Design canvas — you say "add a presence dot here", and the presence dot appears in the active canvas.
 ## Source of truth
 
 <Callout type="note" title="Generated from frontmatter">

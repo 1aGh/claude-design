@@ -1,6 +1,6 @@
 ---
 title: /design:draw
-description: "Nakresli production-grade SVG (logo / ikona / ilustrace / diagram / spot) přes deterministický geometry engine — žádné LLM-guessed path data. Naplánuj → vygeneruj N kandidátů → vyrenderuj přes draw-proof ladder (16/24/48/256 × light/dark/flatten) → pairwise-rank → keep-best → rubric critique → iteruj (cap 3–4). Output buď jako asset .svg, nebo inline do aktivního canvasu. Default: po draw-agentovi spustí draw-critic. Opt out přes --no-critic."
+description: "Draw a production-grade SVG (logo / icon / illustration / diagram / spot) via a deterministic geometry engine — no LLM-guessed path data. Plan → generate N candidates → render via the draw-proof ladder (16/24/48/256 × light/dark/flatten) → pairwise-rank → keep-best → rubric critique → iterate (cap 3–4). Output either as an asset .svg or inline into the active canvas. Default: runs draw-critic after draw-agent. Opt out via --no-critic."
 ---
 
 | Property | Value |
@@ -12,7 +12,7 @@ description: "Nakresli production-grade SVG (logo / ikona / ilustrace / diagram 
 
 ## Description
 
-Nakresli production-grade SVG (logo / ikona / ilustrace / diagram / spot) přes deterministický geometry engine — žádné LLM-guessed path data. Naplánuj → vygeneruj N kandidátů → vyrenderuj přes draw-proof ladder (16/24/48/256 × light/dark/flatten) → pairwise-rank → keep-best → rubric critique → iteruj (cap 3–4). Output buď jako asset .svg, nebo inline do aktivního canvasu. Default: po draw-agentovi spustí draw-critic. Opt out přes --no-critic.
+Draw a production-grade SVG (logo / icon / illustration / diagram / spot) via a deterministic geometry engine — no LLM-guessed path data. Plan → generate N candidates → render via the draw-proof ladder (16/24/48/256 × light/dark/flatten) → pairwise-rank → keep-best → rubric critique → iterate (cap 3–4). Output either as an asset .svg or inline into the active canvas. Default: runs draw-critic after draw-agent. Opt out via --no-critic.
 
 ## Invocation
 
@@ -22,7 +22,7 @@ Nakresli production-grade SVG (logo / ikona / ilustrace / diagram / spot) přes 
 
 ## Summary
 
-Generuje **produkční vektorovou grafiku** přes geometry engine (`apps/studio/draw/`) a **vizuálně ji ověří** — renderuje, screenshotuje, pairwise-rankuje, kritizuje proti 30-check rubrice a iteruje do konvergence. Žádné free-hand `&lt;path d>` souřadnice: LLM určuje *záměr*, engine počítá *souřadnice* (to eliminuje LLM-SV
+Generates **production-grade vector graphics** via the geometry engine (`apps/studio/draw/`) and **verifies them visually** — renders, screenshots, pairwise-ranks, critiques against the 30-check rubric, and iterates to convergence. No free-hand `&lt;path d>` coordinates: the LLM decides *intent*, the engine computes *coor
 ## Source of truth
 
 <Callout type="note" title="Generated from frontmatter">

@@ -1,6 +1,6 @@
 ---
 title: /design:rollback
-description: "Vrať poslední snapshot aktivního canvasu (undo poslední /design:edit). --steps N pro víc kroků zpět."
+description: "Restore the last snapshot of the active canvas (undo the last /design:edit). --steps N to go further back."
 ---
 
 | Property | Value |
@@ -12,7 +12,7 @@ description: "Vrať poslední snapshot aktivního canvasu (undo poslední /desig
 
 ## Description
 
-Vrať poslední snapshot aktivního canvasu (undo poslední /design:edit). --steps N pro víc kroků zpět.
+Restore the last snapshot of the active canvas (undo the last /design:edit). --steps N to go further back.
 
 ## Invocation
 
@@ -22,7 +22,7 @@ Vrať poslední snapshot aktivního canvasu (undo poslední /design:edit). --ste
 
 ## Summary
 
-Restoruje předchozí stav active canvasu z `.design/_history/&lt;slug>/`. Každý `/design:edit "&lt;feedback>"` udělal snapshot **před** editem; rollback ten snapshot vrátí.
+Restores the previous state of the active canvas from `.design/_history/&lt;slug>/`. Every `/design:edit "&lt;feedback>"` took a snapshot **before** the edit; rollback restores that snapshot.
 ## Source of truth
 
 <Callout type="note" title="Generated from frontmatter">
