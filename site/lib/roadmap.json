@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-03T08:22:08.102Z",
+  "generated": "2026-07-03T09:17:10.934Z",
   "currentPhase": null,
   "phases": [
     {
@@ -109,6 +109,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-acp-context-hardening.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-acp-plugin-auto-bootstrap",
+      "title": "Feature: ACP plugin auto-bootstrap — zero-install design (+flow) in the Maude Desktop chat",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-acp-plugin-auto-bootstrap.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1046,17 +1057,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "feature-acp-plugin-auto-bootstrap",
-      "title": "Feature: ACP plugin auto-bootstrap — zero-install design (+flow) in the Maude Desktop chat",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-acp-plugin-auto-bootstrap.md",
-      "archived": false,
-      "phaseKey": null
     },
     {
       "id": "feature-video-animation-layer",
