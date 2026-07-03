@@ -140,6 +140,20 @@
       "description": "How hard DS reuse is enforced during canvas generation/edit. 'advisory' (default) = reuse findings (invented brand mark/icons, reinvented components, parallel product shell) surface as warnings. 'strict' = when the DS ships a canonical specimen (logo, iconography, component, platform showcase), reinventing it is a blocker the auto-fix loop must clear. Orthogonal to opt_out_scope on the SAME axis of 'how much the DS binds': a canvas's explicit opt_out_scope=full always wins over strict (explicit free-use beats project policy). A11y is independent of this knob. Per DDR-141.",
       "default": "advisory"
     },
+    "moodboard": {
+      "type": "object",
+      "description": "Knobs for the /design:setup-ds Stage-3 direction gate (the design-language moodboard). Per DDR-147.",
+      "properties": {
+        "variants": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3,
+          "default": 3,
+          "description": "How many direction tiles the interactive direction gate composes by default. The SINGLE authoritative home of this default — docs reference this knob, never a literal. Effective count still degrades to the number of pairwise-distinct research seeds (floor 1), and --quick / autonomous / re-bootstrap force 1. Default tiles are main-agent seed-only compositions (no web, no fan-out); the blind-sub-agent + self-harvest path is an explicit escalation. Per DDR-147."
+        }
+      },
+      "additionalProperties": false
+    },
     "designSystems": {
       "type": "array",
       "description": "Design systems available in this project. Single-DS projects have one entry; multi-DS projects (marketing vs. admin vs. mobile) list each here. Each canvas's .meta.json declares which DS it uses via the 'designSystem' field. The System view's DS picker iterates this array.",

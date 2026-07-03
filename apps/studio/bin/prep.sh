@@ -77,6 +77,7 @@ DEFAULT_DS="project"
 KNOWN_DS=""
 ACCENT_STRATEGY="single"
 COLOR_SPACE="oklch"
+MOODBOARD_VARIANTS="3"
 
 if [ "$CONFIG_PRESENT" = "true" ] && [ "$HAVE_JQ" = "1" ]; then
   NAME=$(jq -r '.name // "Project"' "$CFG")
@@ -91,6 +92,7 @@ if [ "$CONFIG_PRESENT" = "true" ] && [ "$HAVE_JQ" = "1" ]; then
   KNOWN_DS=$(jq -r '.designSystems[]?.name // empty' "$CFG" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
   ACCENT_STRATEGY=$(jq -r '.accentStrategy // "single"' "$CFG")
   COLOR_SPACE=$(jq -r '.colorSpace // "oklch"' "$CFG")
+  MOODBOARD_VARIANTS=$(jq -r '.moodboard.variants // 3' "$CFG")
 fi
 
 DR_ABS="$REPO/$DESIGN_ROOT"
@@ -159,6 +161,7 @@ if [ "$MODE" = "shell" ]; then
   printf 'export KNOWN_DS=%q\n'          "$KNOWN_DS"
   printf 'export ACCENT_STRATEGY=%q\n'   "$ACCENT_STRATEGY"
   printf 'export COLOR_SPACE=%q\n'       "$COLOR_SPACE"
+  printf 'export MOODBOARD_VARIANTS=%s\n' "$MOODBOARD_VARIANTS"
   printf 'export DEPS_OK=%s\n'           "$DEPS_OK"
   printf 'export DEPS_MISSING=%q\n'      "$DEPS_MISSING"
   printf 'export SERVER_UP=%s\n'         "$SERVER_UP"
@@ -181,6 +184,7 @@ if [ "$HAVE_JQ" = "1" ]; then
     --arg tok "$TOKENS_REL" --arg ncd "$NEW_CANVAS_DIR" --arg ncm "$NEW_COMPONENT_DIR" \
     --arg acc "$TEAM_ACCENT" --arg dds "$DEFAULT_DS" --arg kds "$KNOWN_DS" \
     --arg astrat "$ACCENT_STRATEGY" --arg cspace "$COLOR_SPACE" \
+    --arg mbvar "$MOODBOARD_VARIANTS" \
     --arg depsok "$DEPS_OK" --arg depsmiss "$DEPS_MISSING" \
     --arg sup "$SERVER_UP" --arg sport "$SERVER_PORT" \
     --arg act "$ACTIVE_CANVAS" --arg selfile "$SELECTED_FILE" \
@@ -194,7 +198,8 @@ if [ "$HAVE_JQ" = "1" ]; then
         tokens_rel: $tok, new_canvas_dir: $ncd, new_component_dir: $ncm,
         team_accent: $acc, default_ds: $dds,
         known_ds: ($kds | if . == "" then [] else split(" ") end),
-        accent_strategy: $astrat, color_space: $cspace
+        accent_strategy: $astrat, color_space: $cspace,
+        moodboard_variants: ($mbvar | tonumber? // 3)
       },
       active: {
         canvas: $act, selected: $sel, selected_file: $selfile,

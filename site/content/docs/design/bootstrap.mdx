@@ -19,8 +19,8 @@ Two paths to the same result:
 What happens:
 
 1. **Onboard runs first** (if `.design/config.json` is missing). `/design:init` does dependency pre-flight (Node 20+, git), writes a skeleton config with empty `designSystems: []`, and prints install hints for soft deps (agent-browser, maude, CLAUDE.md / `.ai/` recommendations).
-2. **Skill `design-system` loads in bootstrap mode.** It detects `first-bootstrap` (no DS yet) and runs **3-stage discovery** (DDR-033): **Stage 1 — Vision** (free-text prose prompts about product, audience, mood, and voice — no brand-name option ladders to bias you), **Stage 2 — Research** (the `ux-research-agent` builds a domain reference pool from the web and returns per-decision recommendations with confidence), **Stage 3 — Refinement** (a short `AskUserQuestion` round, but only where research is uncertain).
-3. **Direction confirmation.** The skill echoes a two-sentence proposed direction. You say yes or correct it.
+2. **Skill `design-system` loads in bootstrap mode.** It detects `first-bootstrap` (no DS yet) and runs **staged discovery** (DDR-033 + DDR-147): **Stage 1 — Vision** (free-text prose prompts about product, audience, mood, and voice — no brand-name option ladders to bias you), **Stage 2 — Research** (the `ux-research-agent` builds a domain reference pool from the web and returns per-decision recommendations with confidence), **Stage 3 — Direction gate** (the moodboard: by default ~3 genuinely distinct **direction tiles** — real type in context, a 60/30/10 palette strip, the signature treatment, a voice line, each with a one-line thesis — composed from the research payload and rendered side by side; you pick one on gut feel, or mix a base direction with a named element from another), **Stage 4 — Refinement** (a short `AskUserQuestion` round only for what the pick didn't settle — typically 1–3 questions).
+3. **LOCK gate.** One echo of the picked direction + your refinement answers, then the moodboard freezes as the direction contract the generation consumes verbatim. The moodboard stays as a normal canvas you can revisit and comment on. Nobody knows what font they want until they see it used — so you *see* directions before answering any refinement question.
 4. **Mapping to file set.** The skill consults `_MAPPING.md` to compute which specimens to scaffold based on the discovery answers. A consumer marketing site gets ~12 specimens, a pro-tool with multiplayer gets ~22.
 5. **Generation.** Tokens are derived from the brand color (OKLCH-converted, with hover / active / fg auto-computed). The README, SKILL.md, INDEX, and config are generated from `.tpl` templates. Each specimen is **generated fresh** using the inspiration library as reference, not copied verbatim, never with placeholder copy.
 6. **Post-scaffold critic panel runs.** The `design-system-completeness-critic` checks 3-tier rules (Core blocker / Conventional warning / Free-form acknowledged) calibrated by `completenessProfile`, alongside a11y and signature-moment critics. The scaffold completes when there are no blockers **and** the aspiration score clears the silent-pass bar (**≥ 4.0**, DDR-057); a 3.0–4.0 "nice but not wow" score still completes but surfaces the signature-moment-critic's top-2 lifts.
@@ -65,7 +65,7 @@ Produces the Core file set (~19 files) as a neutral skeleton:
         └── components-inputs.html
 ```
 
-After the Core scaffold, open Claude Code and run `/design:setup-ds project "<one-line product brief>" --force` to re-run with the full 3-stage discovery. You'll get a richer, project-flavored result.
+After the Core scaffold, open Claude Code and run `/design:setup-ds project "<one-line product brief>" --force` to re-run with the full staged discovery (vision → research → direction pick → refinement). You'll get a richer, project-flavored result.
 
 ## Adding a second design system
 
@@ -75,7 +75,7 @@ Multi-DS opt-in (e.g., a marketing DS sibling to your admin DS):
 > /design:setup-ds marketing "consumer-facing marketing site for product launch"
 ```
 
-The skill detects `additional-ds` mode (config exists, `marketing` not in `designSystems[]`), runs the same 3-stage discovery plus a `Q_purpose` prompt up front and an inheritance picker between research and refinement, and scaffolds `system/marketing/` alongside the existing DS. Subsequent `/design:new --ds=marketing "<Name>" "<brief>"` creates canvases scoped to that DS.
+The skill detects `additional-ds` mode (config exists, `marketing` not in `designSystems[]`), runs the same staged discovery plus a `Q_purpose` prompt up front and an inheritance picker between research and the direction gate (inherited fonts/motion render identically across all direction tiles, so a pick can never override them), and scaffolds `system/marketing/` alongside the existing DS. Subsequent `/design:new --ds=marketing "<Name>" "<brief>"` creates canvases scoped to that DS.
 
 See [Multi-DS](/docs/design/multi-ds) for the full multi-DS workflow.
 
@@ -87,7 +87,7 @@ To rerun discovery on an existing DS (after a product pivot, brand refresh, etc.
 > /design:setup-ds project --force
 ```
 
-The skill detects `re-bootstrap` mode, lossy-infers Stage 1 (Vision) from the existing DS (README + tokens + layout), and you confirm or correct it in one pass; Stage 2 (Research) always re-runs. Changed answers re-generate the affected files. Without `--force`, the command refuses with a list of safer alternatives (`/design:edit` for incremental, `/design:setup-ds <new-name>` for a sibling DS).
+The skill detects `re-bootstrap` mode, lossy-infers Stage 1 (Vision) from the existing DS (README + tokens + layout), and you confirm or correct it in one pass; Stage 2 (Research) always re-runs, and the direction gate shows a single tile (the inferred vision is too low-confidence to seed divergent directions). Changed answers re-generate the affected files. Without `--force`, the command refuses with a list of safer alternatives (`/design:edit` for incremental, `/design:setup-ds <new-name>` for a sibling DS).
 
 ## What the bootstrap produces
 

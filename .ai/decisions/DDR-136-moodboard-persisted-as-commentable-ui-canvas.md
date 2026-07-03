@@ -1,6 +1,6 @@
 # DDR-136 — Setup-DS moodboard persisted as a commentable UI canvas
 
-**Status:** Accepted — 2026-07-01.
+**Status:** Accepted — 2026-07-01. **Note (2026-07-03):** [DDR-147](DDR-147-moodboard-first-discovery-default-directions.md) moved the moodboard before refinement (Stage 3) and made ~`moodboard.variants` seed-composed tiles the interactive default (main-agent, no web); the persistence, one-canvas composition, and return-a-body mechanics recorded here are unchanged and now apply to the default tiles as well as the escalated variants.
 **Amends:** [DDR-080](DDR-080-moodboard-direction-gate.md) — the *throwaway-canvas* aspect only; the direction-gate mechanics stand.
 **Related:** [DDR-080](DDR-080-moodboard-direction-gate.md) (moodboard direction gate — this DDR keeps its two-gate model and "never under `system/<ds>/`" invariant, and lifts only its throwaway-ness), [DDR-115](DDR-115-per-user-camera-split-and-runtime-state-taxonomy.md) (runtime-state taxonomy — the moodboard now lands under **versioned** `ui/`, not a throwaway `_*` runtime dir, so no three-list change was needed). Instruments: `plugins/design/skills/design-system/_bootstrap.md`, `plugins/design/commands/setup-ds.md`.
 

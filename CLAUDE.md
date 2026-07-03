@@ -126,9 +126,9 @@ Phase A ([DDR-058](.ai/decisions/DDR-058-maude-doctor-deps-config-quality.md)) a
 Design-system bootstrap, canvas iteration, and research-agent rules are owned by the plugin itself. When the user invokes `/design:*` or asks about design work, **load the plugin's own docs as the authoritative source** — do not rely on (or extrapolate from) summaries in this CLAUDE.md.
 
 Entry points (load these when relevant, in this order):
-- `plugins/design/skills/design-system/SKILL.md` — the canonical bootstrap + iteration spec (modes, sub-modes, 3-stage discovery, scaffold flow)
+- `plugins/design/skills/design-system/SKILL.md` — the canonical bootstrap + iteration spec (modes, sub-modes, staged discovery — vision → research → Stage-3 direction gate (moodboard pick, default `moodboard.variants` tiles) → Stage-4 refinement residue → LOCK (DDR-147) — and scaffold flow)
 - `plugins/design/skills/design-system/_pastier-probe-templates.md` — Pastier probe templates fed to `ux-research-agent` during Stage 2 (5 input-field-driven probes: A. Ulice / B. Zrcadlo+Charakter / C. OST / D. Kmen / E. Confidence)
-- `plugins/design/agents/ux-research-agent.md` — domain research subagent (consumes the full `vision-brief.json` from Stage 1; emits `recommendations[]` with per-decision confidence for Stage 3)
+- `plugins/design/agents/ux-research-agent.md` — domain research subagent (consumes the full `vision-brief.json` from Stage 1; emits `mood_clusters[]` + `reference_images[]` that seed the Stage-3 direction tiles, and `recommendations[]` with per-decision confidence for the Stage-4 refinement residue)
 - `plugins/design/commands/{init,setup-ds,setup-docs,new,edit,help}.md` — slash-command flows
 - `plugins/design/agents/*-critic.md` — critic panel definitions (grouped as "4 brand rounds" in the post-scaffold reporting block — see SKILL.md § "Post-scaffold gate")
 - `plugins/design/CATEGORIES.md` — command catalog and naming convention

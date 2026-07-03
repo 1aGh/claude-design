@@ -170,7 +170,7 @@ The agent may also propose treatments outside this catalog — when it does, it 
 | `expressive` | `paired \| chromatic-3` | accent-tinted, gradients OK | `gradient-mesh`, `chromatic-blocks`, `frosted-blur` | `aesthetic` |
 | `maximalist` | `chromatic-N` | bold, colour-as-structure | `chromatic-blocks`, `gradient-mesh`, `body-pattern` | `full` |
 
-**Anti-funnel invariant:** absence of a clear brand-character signal does NOT mean `restrained` — it means low confidence, so Stage 3 ASKS across the full scale (incl. a multi-colour palette option). High-confidence skip is legitimate only when the character is unambiguous, at **both** ends of the scale. Q10 hard-NOs still override (e.g. "no gradients" disables `gradient-mesh`).
+**Anti-funnel invariant:** absence of a clear brand-character signal does NOT mean `restrained` — it means low confidence, so the flow surfaces the full scale to the user (on the multi-tile path the Stage-3 direction pick shows the ambition poles rendered; on the degraded-to-1 path the Stage-4 refinement ASKS across the full scale, incl. a multi-colour palette option — DDR-147). High-confidence skip is legitimate only when the character is unambiguous, at **both** ends of the scale. Q10 hard-NOs still override (e.g. "no gradients" disables `gradient-mesh`).
 
 ### Q10 hard NOs — sub-agent guardrails
 

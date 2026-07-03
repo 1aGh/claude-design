@@ -176,10 +176,10 @@ From the same character anchors PLUS `design_lineage` (Probe A) and the chroma o
 | **0.85–1.00** | vision-brief is specific AND research found strong consensus across ≥ 3 anchors |
 | **0.60–0.85** | vision-brief is specific OR research found consensus — but not both |
 | **0.40–0.60** | vision-brief is vague AND research found conflicting evidence; usable but flag it |
-| **< 0.40** | vision-brief is vague AND research found nothing useful — flag for user input in Stage 3 |
-| **`null`** | agent failed entirely (no payload written) — Stage 3 cannot proceed; flow stops |
+| **< 0.40** | vision-brief is vague AND research found nothing useful — flag for user input in the Stage-4 refinement |
+| **`null`** | agent failed entirely (no payload written) — the flow cannot proceed past Stage 2; it stops |
 
-The `rationale` field is **mandatory** for every recommendation — it's what the user sees in Stage 3 to understand WHY the skill is recommending what it is. Format: one sentence naming the vision-brief input(s) + the research evidence + the resulting recommendation.
+The `rationale` field is **mandatory** for every recommendation — it's what the user sees at the direction gate (per-tile thesis) and in the Stage-4 refinement to understand WHY the skill is recommending what it is. (DDR-147: the confidence gate now runs in Stage 4, AFTER the direction pick — axes the tiles visibly varied on are settled by the pick and silenced; see `_bootstrap.md` § Pick semantics.) Format: one sentence naming the vision-brief input(s) + the research evidence + the resulting recommendation.
 
 **`aesthetic_ambition` confidence rule (DDR-073) — anti-funnel safeguard.** Score it by how strongly the Probe A+B anchors cluster on ONE temperature:
 
@@ -187,7 +187,7 @@ The `rationale` field is **mandatory** for every recommendation — it's what th
 |---|---|
 | **0.85–1.00** | Voice + lineage + anchor-chroma all agree on one pole (e.g. every anchor low-chroma editorial → `restrained`; every anchor multi-accent creative-tool → `expressive`). |
 | **0.60–0.85** | Most signals agree but one pulls the other way. |
-| **< 0.60** | Mixed or absent signal — **Stage 3 asks across the full scale.** This is the correct score for "I can't tell"; do NOT round it up to a confident `restrained`. |
+| **< 0.60** | Mixed or absent signal — **the refinement asks across the full scale** (on the multi-tile path the ambition axis is normally settled by the direction pick instead — the abstract question survives on the degraded-to-1 path). This is the correct score for "I can't tell"; do NOT round it up to a confident `restrained`. |
 
 **Mandatory audit clause:** whenever `aesthetic_ambition.recommendation` is `restrained` or `confident`, the `rationale` MUST name the expressive end you considered and why you ruled it out (forces justification, counters the model's minimal-bias). A `restrained` recommendation with no audit clause is a fail.
 
@@ -215,7 +215,7 @@ The `rationale` field is **mandatory** for every recommendation — it's what th
 ## Hard rules (summary)
 
 1. Every probe writes its output into the canonical `discovery` payload schema (see `agents/ux-research-agent.md` payload schema for the merged shape).
-2. **Confidence is mandatory** on every decision in `recommendations` — if a probe cannot estimate it, set it to `0.0` and surface that as a Stage 3 hard input.
+2. **Confidence is mandatory** on every decision in `recommendations` — if a probe cannot estimate it, set it to `0.0` and surface that as a hard input in the Stage-4 refinement.
 3. **Real products only** — every anchor named in any payload field MUST be an identifiable real product or portfolio surfaced through WebSearch. Training-data assertions without WebSearch evidence count as `fallback_used: true`.
 4. **Family classification (Rule 4 of agent.md) applies to C + D outputs** — every `signature_treatment_options[].family`, `iconography_vibe_options[].family`, and `density_options[].family` MUST classify into a `_MAPPING.md`-catalogued family.
 5. **No probe surfaces Pastier vocabulary in user-facing fields.** "Pastier", "Zrcadlo", "OST", etc. live only in the agent's INTERNAL reasoning and the `_pastier_chapter_coverage` audit field — never in `label`, `description`, `rationale`, or `sample_microcopy`.

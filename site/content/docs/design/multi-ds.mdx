@@ -58,7 +58,7 @@ Avoid it when:
 > /design:setup-ds marketing "consumer-facing marketing site for product launch"
 ```
 
-The skill detects `additional-ds` mode (config exists, `marketing` not in `designSystems[]`), runs the same 3-stage discovery plus a `Q_purpose` prompt, offers an inheritance picker (typography, voice, iconography, motion. Multi-select), and scaffolds `system/marketing/` next to the existing DS.
+The skill detects `additional-ds` mode (config exists, `marketing` not in `designSystems[]`), runs the same staged discovery (vision → research → direction pick → refinement) plus a `Q_purpose` prompt, offers an inheritance picker before the direction gate (typography, voice, iconography, motion. Multi-select; inherited fields render identically across all direction tiles), and scaffolds `system/marketing/` next to the existing DS.
 
 After scaffold:
 

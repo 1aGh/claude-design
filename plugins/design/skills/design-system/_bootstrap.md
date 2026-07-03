@@ -24,7 +24,10 @@
 | Asset-sweep returns multiple hits for one noun | `AskUserQuestion` picking the production asset. Selection logged. |
 | Sub-mode forces a Stage skip (`additional-ds` skipping Stage 0) | 1-line chat + log row. Spec-defined behavior, but still log it. |
 | Socket-close / batch cohort failure during fan-out | Re-spawn the failed slices (≤ fan-out ceiling — see "Batches B + C"), then **reconcile** (the recovery routes THROUGH reconciliation, not around it). 1-line chat + log row. Never report complete with a `pending` or absent per-platform showcase. |
-| **Stage-4 moodboard gate under autonomous mode** (`pokracuj autonomně`) | Default **proceed** ONLY when the agent's own read of the moodboard screenshot finds no obvious mismatch with the brief; otherwise **stop + `AskUserQuestion`**. 1-line chat + log row either way. **Never silently skip the screenshot + Read** — that's the exact silent-elision this log exists to kill. |
+| **Stage-3 direction gate under autonomous mode** (`pokracuj autonomně`) | **1 tile only; auto-pick = the recommended pole.** Default **proceed** ONLY when the agent's own read of the tile screenshot finds no obvious mismatch with the brief; otherwise **stop + `AskUserQuestion`**. 1-line chat + log row either way (the auto-pick is itself a logged row). **Never silently skip the screenshot + Read** — that's the exact silent-elision this log exists to kill. |
+| **Direction pick overrides a ≥ 0.85 research recommendation** | 1-line chat + log row naming the field, the recommendation, and the picked value (DDR-147 bounded-override rule — a pick settles only the axes the tiles visibly varied on). |
+| **Tile-count degrade (thin research / failed distinctness assert)** | Surfaced as an **informed opt-in** ("research found N distinct directions — want a richer web-sourced extra?"), never a silent drop-to-1 and never a silent web-charge. Log row records the seed-distinctness result. |
+| **Escalation to web-harvesting variant sub-agents** | 1-line chat with cost framing (~3–6 min, N parallel sub-agents with their own WebSearch) + log row. |
 | **Hero-preview drift override under autonomous mode** | No-drift → proceed silently. Detected drift → autonomous default is **stop + ask**; any "proceed-through-drift" override writes a log row (with the drift it overrode). |
 | **Critic-panel coverage under autonomous mode** | Default **Full 4 rounds** (recommended) — NOT a silent trim. The panel-coverage `AskUserQuestion` is the human path; autonomous picks Full and writes a log row (codifies the studyfi report's logged divergence #3, where "pokracuj" defaulted Full without firing the question). |
 | **Organic-seed (`draw-agent`) under autonomous mode** | Default **None**. 1-line chat + log row + the `recommend /design:draw "<brief>" --asset` next-step line (codifies the report's "Skipped the draw-agent step" divergence). |
@@ -55,7 +58,7 @@ fi
 
 Hard-stops: missing Node → abort with install hint; missing git → abort with `run git init first`; no write permission → abort.
 
-### Discovery (Round 0 + Round 1 + Round 2 + Round 3 + confirm)
+### Discovery (Stage 0 scope → Stage 1 vision → Stage 2 research → Stage 3 direction gate → Stage 4 residue → LOCK)
 
 **Detect target first.**
 
@@ -68,11 +71,11 @@ Hard-stops: missing Node → abort with install hint; missing git → abort with
 - For `additional-ds`: target dirname is the kebab-case slug of the user-provided name (`<name>`); always `name_source: "user"`.
 - For `re-bootstrap`: target is the existing `system/<name>/` dir; refuse unless `--force`. Preserve the existing brief's `name_source` if present; default to `"user"` if absent (legacy briefs predating Phase 19).
 
-> **3-stage architecture (DDR-033, 2026-05-20).** Discovery is split into three stages that move from **abstract to concrete** the way a designer would talk to a stakeholder: **Stage 1 — Vision (extract)** conversational free-text prompts; **Stage 2 — Research (synthesize)** the `ux-research-agent` consumes the rich vision-brief and returns recommendations with per-decision confidence; **Stage 3 — Refinement (decide)** the skill asks the user only where research is uncertain. **Zero hardcoded option ladders in Stage 3.** Pre-3-stage v1 (12 fixed Qs in 3 rounds) is archived at `_DISCOVERY-v1.md` for diff reference. The reasons for the rewrite are documented in DDR-033.
+> **Staged architecture (DDR-033, 2026-05-20; reordered by DDR-147, 2026-07-03).** Discovery moves from **abstract to concrete** — and shows pixels before asking for decisions: **Stage 1 — Vision (extract)** conversational free-text prompts; **Stage 2 — Research (synthesize)** the `ux-research-agent` consumes the rich vision-brief and returns recommendations with per-decision confidence; **Stage 3 — Direction gate (see)** the user picks between ~`moodboard.variants` rendered direction tiles composed from the payload; **Stage 4 — Refinement (decide the residue)** the skill asks only what the pick didn't settle and research is uncertain about; then the **LOCK gate** freezes the direction contract. **Zero hardcoded option ladders anywhere.** Pre-3-stage v1 (12 fixed Qs in 3 rounds) is archived at `_DISCOVERY-v1.md`; the pre-reorder refine-then-show flow is documented in DDR-033 + DDR-080 and reversed by DDR-147.
 
-> **Hard rule — Stage 1 is plain prose, NOT AskUserQuestion.** The AskUserQuestion tool is a multi-choice picker (min 2 labeled options, auto-"Other" affordance always rendered as N+1 item — schema-enforced, no bypass). Stage 1 needs free-text capture with skip-per-prompt; the tool cannot deliver that UX. Skill emits one chat message per batch with numbered prompts; user replies in one chat message with `1. … 2. …` headings. Parser splits on the heading boundary. See DDR-033 + DF-4 / DF-7 / DF-8 in the plan for the deep research that ruled this in. **Stage 0 + Stage 3 use AskUserQuestion** (4 concrete picks each, with auto-"Other" for overrides).
+> **Hard rule — Stage 1 is plain prose, NOT AskUserQuestion.** The AskUserQuestion tool is a multi-choice picker (min 2 labeled options, auto-"Other" affordance always rendered as N+1 item — schema-enforced, no bypass). Stage 1 needs free-text capture with skip-per-prompt; the tool cannot deliver that UX. Skill emits one chat message per batch with numbered prompts; user replies in one chat message with `1. … 2. …` headings. Parser splits on the heading boundary. See DDR-033 + DF-4 / DF-7 / DF-8 in the plan for the deep research that ruled this in. **Stage 0, the Stage-3 direction-pick gate, Stage-4 refinement, and the LOCK gate use AskUserQuestion** (≤ 4 concrete picks each, with auto-"Other" for overrides).
 
-> **Tool-availability check (Phase 19 / DDR-044).** Before Stage 0 fires, probe `AskUserQuestion` with a single trivial question (e.g. confirm bootstrap mode). On `InputValidationError`, permission denial, or "don't-ask mode" rejection, **switch Stage 0 + Stage 3 to numbered-prose mode** for the remainder of the session. Stage 1 is unaffected (already prose-only). Do NOT hard-depend on AskUserQuestion — the dev-server-bootstrap retro (2026-05-25) hit this exact failure and the flow only survived because the agent improvised. Codify the fallback so it isn't tribal knowledge.
+> **Tool-availability check (Phase 19 / DDR-044).** Before Stage 0 fires, probe `AskUserQuestion` with a single trivial question (e.g. confirm bootstrap mode). On `InputValidationError`, permission denial, or "don't-ask mode" rejection, **switch Stage 0 + every downstream picker (direction gate, refinement, LOCK) to numbered-prose mode** for the remainder of the session. Stage 1 is unaffected (already prose-only). Do NOT hard-depend on AskUserQuestion — the dev-server-bootstrap retro (2026-05-25) hit this exact failure and the flow only survived because the agent improvised. Codify the fallback so it isn't tribal knowledge.
 >
 > **Numbered-prose fallback shape** — emit one chat message of the form below, then await a single reply containing `1. <answer>` lines. Parser is the same split-on-heading logic Stage 1 already uses.
 >
@@ -90,10 +93,10 @@ Hard-stops: missing Node → abort with install hint; missing git → abort with
 > Reply with: 1 / 2 / 3 / 4 (or paste your own answer).
 > ```
 >
-> Stage 3 fallback (N Qs in one batch, each with N labeled options):
+> Refinement (Stage 4) fallback (N Qs in one batch, each with N labeled options — the direction-pick + LOCK gates fall back to the same lettered shape with one Q):
 >
 > ```
-> AskUserQuestion is unavailable — answering Stage 3 via chat. One reply, format:
+> AskUserQuestion is unavailable — answering the refinement via chat. One reply, format:
 >   1. <choice for Q1>
 >   2. <choice for Q2>
 >   …
@@ -321,91 +324,55 @@ Research didn't complete. You can:
 
 The v1 hardcoded option pools are deleted — they were the bias source DDR-033 exists to eliminate (see archived `_DISCOVERY-v1.md` for the v1 reference).
 
-#### Stage 3 — Refinement (adaptive, 0–N Qs by confidence)
+#### Stage 3 — Direction gate (design-language moodboard, default ~`moodboard.variants` directions)
 
-For each decision in `recommendations`:
+> **Why this stage exists (DDR-080), and why it runs BEFORE refinement (DDR-147).** A text echo cannot expose an aesthetic-direction mismatch: a bootstrap can pass the post-scaffold critic panel at signature-moment **4.4/5** and still be deleted whole on first sight — *"delete it entirely, I don't like it at all"* — because the critics measure absence-of-badness + portfolio-worthiness, not *this* user's taste on *this* direction. And an *abstract question* cannot capture taste either: nobody knows what font they want until they see it used (a dogfood user answered 9 abstract refinement picks with "a / a / a / … nechám na tobě"). So the first thing the user sees after research is **rendered directions**: this gate is the cheap human-taste checkpoint (**~1–3 min of seed-only assembly vs the ~30–40 min / ~15k-LOC scaffold it gates**), and the *pick between directions* replaces most of the abstract refinement — Stage 4 below asks only the residue. The **LOCK gate** (after refinement) freezes the approved direction as the contract every Batch-A token derives from (and the Batch-A hero-preview gate later drift-checks against).
 
-| Confidence | Behavior |
-|---|---|
-| **≥ 0.85** | **Skip Q.** Surface only in the final 3-sentence confirm. |
-| **0.60–0.85** | **1 Q with pre-pick.** Recommended option is first; 2 alternatives from `alternatives[]`; auto-"Other" affordance for user-written override; one option labeled `skip (keep recommendation)`. |
-| **< 0.60** | **1 Q without pre-pick.** 3 alternatives (research's top 3) with `recommended` flag on the first; auto-"Other" for user-written. |
-
-**Anchor decision first — `aesthetic_ambition` (DDR-073).** Process the anchor before the other decisions; its outcome pre-fills the derived structural knobs (a confident `expressive` reading means you never separately ask "single or chromatic accent?" — `accent_strategy` rode along). It follows the same confidence gate: high confidence → skip (only shown in the confirm), `< 0.60` → ask. **The ambiguous-ambition Q opens the FULL scale (never a binary), and when it lands ≥ `expressive` the palette sub-question presents a coordinated multi-colour palette from `palette_options[]`, not a single swatch.** Question shape (plain language, no jargon):
-
-```
-From your brief it looks to me like this DS is more EXPRESSIVE / colourful — <one sentence why, from the brand character>.
-Does that fit, or do you want to shift it?
-  ○ Fits, let's go bold (I'll pick a multi-colour palette)   (Recommended)
-  ○ More toned-down / fewer colours                          (→ confident / restrained)
-  ○ Even more / colour as structure                          (→ maximalist)
-  ○ Show me specific palettes to choose from                 (surfaces palette_options[])
-```
-
-Counts observed in dogfood (DF-10, DF-11):
-
-- **Ideal** (rich vision-brief + strong consensus): 0–2 Qs total.
-- **Typical**: 4–6 Qs.
-- **Worst** (vague vision + niche domain): 8–10 Qs.
-
-Stage 3 batches the active Qs into AskUserQuestion calls **of up to 4 Qs each** (DF-2 — schema max). So a typical 4–6-Q Stage 3 is one or two batches.
-
-**No hardcoded option pools.** If `alternatives[]` is empty for a decision (research found nothing), skill **skips the Q** and asks free-text in the next chat message: `"Research doesn't recommend a specific direction for [X]. Write what you'd like, or I'll leave default tokens."`
-
-**The 3-code signature is always a Stage 3 Q** (never Stage 1) — it's a concrete design decision that depends on OST hypothesis + lineage research. Question shape:
-
-```
-Research recommends that the SIGNATURE of this DS rest on 3 codes:
-  → <code1> (<concrete value 1>), <code2> (<concrete value 2>), <code3> (<concrete value 3>)
-
-Reason: <one sentence — link to OST hypothesis + lineage research>
-
-  ○ This trio is good, let's move on        (Recommended)
-  ○ Swap one code                           (open-text follow-up which one + which alternative)
-  ○ Swap all 3                              (open-text follow-up custom trio)
-  ○ Pick them for me from the vision-brief  (skill picks within research consensus)
-```
-
-The 9 Pastier codes are `barva · font · symbol · tvar · vzor · motion · zvuk · voice · charakter`. Of those, `zvuk` and `charakter` are domain-rare; the typical 3-code recommendation draws from the other 7.
-
-#### Confirm (1 chat message, no Q)
-
-After Stage 3 the skill prints a **3-sentence summary** — one sentence per stage:
-
-```
-Vision:     <2-line synth of vision-brief>
-Research:   <3 key anchors from payload + 3-code signature pick>
-Refinement: <what user changed vs what was left on recommendation>
-
-Continue? (y / change something)
-```
-
-On `change something` return to Stage 3 (NOT Stage 1, unless the user explicitly says `začni od začátku` (start over)).
-
-#### Stage 4 — Design-language moodboard (direction gate)
-
-> **Why this stage exists (DDR-080).** The prose Confirm above is a *text* echo — it cannot expose an aesthetic-direction mismatch. A bootstrap can pass the post-scaffold critic panel at signature-moment **4.4/5** and still be deleted whole on first sight — *"delete it entirely, I don't like it at all"* — because the critics measure absence-of-badness + portfolio-worthiness, not *this* user's taste on *this* direction. Stage 4 is the cheap human-taste checkpoint: **~1–3 min of assembly vs the ~30–40 min / ~15k-LOC scaffold it gates.** The user approves the visual *direction* before any token or specimen is generated. On approval the moodboard becomes the **locked direction contract** every Batch-A token derives from (and the Batch-A hero-preview gate later drift-checks against).
-
-**Applies to all three sub-modes** (first-bootstrap / additional-ds / re-bootstrap) — they converge at the prose Confirm, and Stage 4 follows it. The prose Confirm stays as a cheap text echo that *leads into* the moodboard; the moodboard supersedes it as the real direction approval.
+**Applies to all three sub-modes** (first-bootstrap / additional-ds / re-bootstrap) — they converge after Stage 2 research (for `additional-ds`, after the inheritance picker below), and the direction gate follows immediately. There is no separate prose Confirm anymore — the **LOCK gate** below is the confirm.
 
 **What the moodboard IS — and what it must NOT look like.** It is a **chaotic, hand-assembled collage / pinboard** — a feeling-first artefact that reads as if *someone pinned this up at 1am*, not as a rendered component library. Think overlapping torn-paper scraps, reference photos taped or pinned at slight angles, scattered paint-chip swatches, ripped type-specimen fragments, marker scribbles / arrows / circled words, washi tape, paper-grain or corkboard texture behind it all. Its job is to provoke a fast gut reaction (*"yeah, I like this" / "no, this isn't it"*) and to be a **hook for the next move** (*"I like the colours from here, but the layout from there"*). **It must NOT read as a tidy app-mockup or a clean exhibition poster** — no numbered section headers (01/02/03), no masthead/title bar, no grid of equal-sized bordered cards with uniform gutters. Deliberately messy + human beats clean-but-generic; the polish lands later, in the scaffold + critic panel. Here the only question is *direction*.
 
-It is grounded **purely in the already-computed discovery + research payload** (DDR-043 bias-free — discovered + researched values, never a hardcoded aesthetic). The five content **concerns** below are an *inventory of what must be legible*, NOT a layout instruction — they are scattered across the collage, never laid out as five labeled cards in a row.
+It is grounded **purely in the already-computed discovery + research payload** (DDR-043 bias-free — discovered + researched values, never a hardcoded aesthetic). The six content **concerns** below (the expanded board's inventory) are an *inventory of what must be legible*, NOT a layout instruction — they are scattered across the collage, never laid out as labeled cards in a row.
 
-**Gating — when Stage 4 runs:**
+**Gating — when Stage 3 runs, and with how many directions:**
+
+The tile count comes from **`.design/config.json` → `moodboard.variants`** (read via `maude design prep --shell-export` → `MOODBOARD_VARIANTS`; schema default 3, min 1, cap 3) — the **single authoritative home of the default**; no doc restates a literal count. The **effective** count additionally degrades to the number of pairwise-distinct research seeds (see "Seeding + degrade rule" below), floor 1.
 
 | Condition | Behavior |
 |---|---|
-| Interactive bootstrap | **Runs.** This is the headline direction gate. |
+| Interactive bootstrap | **Runs with `MOODBOARD_VARIANTS` direction tiles** (degraded to the distinct-seed count). This is the headline direction gate. |
 | `maude design init --no-discovery` (neutral skeleton) | **Skipped entirely** — there's no discovered palette to ground a moodboard, same gating as the draw organic-seed step (DDR-043). |
-| `--quick` | Assemble + screenshot + Read, then **auto-proceed** — but STILL surface the question so the user can bail. A `--quick` flag is per-stage speed, not blanket scope-renegotiation (closes D-5). |
-| Autonomous (`pokracuj autonomně`) | See the "Spec-bypass discipline" autonomous-defaults — default **proceed** on a clean self-read of the screenshot, **stop and ask** on any obvious mismatch with the brief. Never skip the screenshot+Read. Logged to the bypass-log. |
+| `--quick` | **1 tile** (recommended pole). Assemble + screenshot + Read, then **auto-proceed** — but STILL surface the question so the user can bail. A `--quick` flag is per-stage speed, not blanket scope-renegotiation (closes D-5). |
+| Autonomous (`pokracuj autonomně`) | **1 tile** (recommended pole) — an autonomous run has no human to gut-pick between poles, so it never fans the count out. Default **proceed** (auto-pick = the recommended direction) ONLY on a clean self-read of the screenshot; **stop and ask** on any obvious mismatch with the brief. Never skip the screenshot+Read. Logged to the bypass-log. |
+| `re-bootstrap` sub-mode | **1 tile** — the lossy-inferred vision-brief is intentionally low-confidence on character/lineage; it must not seed divergent poles. |
 
-**Step 1 — Assemble the collage moodboard (default: main agent only, single artboard, NO fan-out).**
+**Step 1 — Compose the direction tiles (default: MAIN AGENT, seed-only, NO fan-out, NO web — DDR-147).**
 
-Write **one** persistent canvas to `<designRoot>/ui/<ds>-moodboard.tsx` — a **normal, versioned UI canvas, NOT a throwaway** (DDR-136, amending DDR-080): it appears in `/design:browse` and the canvas list, the user can **revisit it after the bootstrap**, and comments attach to it exactly like any other `ui/*.tsx` canvas. The **only** DDR-080 invariant that still holds: it is **never written under `system/<ds>/`** (`ui/` is not the design system) — only its throwaway-ness is lifted. Assemble it **purely from the already-computed discovery + research payload** — no new generation, no sub-agent (variant mode is the only fan-out path, below). Target < 3 min wall-clock. It imports `@maude/canvas-lib` like any canvas: `<DesignCanvas><DCSection>…</DCSection></DesignCanvas>`. The **default single moodboard is ONE `<DCArtboard>`** (the full 5-concern collage); **variant mode packs 2–3 `<DCArtboard>`s side by side in this same canvas** (see Variant mode below) — one canvas, the directions next to each other so the user can compare + comment per-artboard.
+Write **one** persistent canvas to `<designRoot>/ui/<ds>-moodboard.tsx` — a **normal, versioned UI canvas, NOT a throwaway** (DDR-136, amending DDR-080): it appears in `/design:browse` and the canvas list, the user can **revisit it after the bootstrap**, and comments attach to it exactly like any other `ui/*.tsx` canvas. The **only** DDR-080 invariant that still holds: it is **never written under `system/<ds>/`** (`ui/` is not the design system). It imports `@maude/canvas-lib` like any canvas: `<DesignCanvas><DCSection>…</DCSection></DesignCanvas>`, with **one `<DCArtboard id="direction-{a|b|c}" label="<descriptive name> · <mood_cluster>">` per direction tile**, side by side, so the user compares + comments per-artboard.
 
-**Collage construction — make it read hand-made (a generating agent MUST follow this):**
+The main agent composes every tile **purely from the already-computed Stage-2 payload** — no sub-agent, no new WebSearch/WebFetch (the blind-sub-agent + self-harvest path is the opt-in **escalation** below). Divergence lives in *seed distinctness*, not the collage hand — one consistent hand deliberately **isolates direction as the comparison variable**. Target < 3 min wall-clock for all tiles.
+
+**Seeding + degrade rule (never fabricate a pole):**
+
+- **Tile A** ← the **recommended** pole: `mood_clusters[0]` + the `recommended:true` palette / type / treatment options.
+- **Tile B** ← a **different `mood_cluster`** + a non-recommended palette option (different lineage / anchors).
+- **Tile C** ← the **alternatives / anti-pole** — the largest aesthetic-ambition or hue distance from A (DDR-073 axis).
+- **Assert pairwise distinctness BEFORE composing:** reject a seed pair sharing **≥ 2 anchors** or sitting **< 40° apart in hue**. Effective tile count = surviving seeds (cap `MOODBOARD_VARIANTS`, floor 1).
+- On `fallback_used: true` or fewer surviving seeds than `MOODBOARD_VARIANTS`, **degrade openly — as an informed opt-in, never silently**: `Research found <N> genuinely distinct directions. Want a <N+1>th, richer web-sourced variant? (~1–2 min — an independent sub-agent with its own image harvest)`. Accepting routes through the escalation below; declining proceeds with N tiles. A silent drop-to-1 and a silent web-charge are both bugs. Log the degrade to the bypass-log.
+- Each tile's imagery = its cluster's slice of the seed `reference_images[]` (matched via `anchor → reference_products[].mood_tag`) + the always-render CSS/SVG scrap layer. Zero live images is a valid tile — the scrap layer + provenance backbone carry it.
+
+**Tile anatomy (miniature style-tile / element-collage hybrid — DDR-147, research-grounded).** Each tile is a compact collage in the same hand-made craft as the expanded board (the construction rules below apply in miniature) and must carry, legibly:
+
+1. **Type in context** — one headline + one body sentence + one UI label in the direction's REAL font families at real sizes (not a lone specimen).
+2. **Palette in proportion** — a 60/30/10 proportion strip (dominant / secondary / accent as they'd actually be used) PLUS 2–3 OKLCH paint-chips with values. Equal-width swatch rows hide the actual feel.
+3. **Signature-treatment hero** — the direction's treatment applied to ONE representative fragment (shown, not described).
+4. **Feeling word + voice line** — the direction's circled feeling word + a 1-line voice sample using real `domain_nouns` (never Lorem).
+5. **Descriptive name + direction thesis** — a short *descriptive* name tied to brief attributes (e.g. "Quiet paper-calm" — NOT an evocative marketing name, NOT bare A/B/C; labels bias picks) + a one-line thesis naming the cluster lineage (from `mood_clusters[i].one_line`). A direction shown without its "why" invites taste-fights.
+6. **Provenance tag(s)** — 1–3 pinned anchor names + source links from the cluster's `reference_products[]` slice.
+
+**Distinctness bar:** a nondesigner must tell the tiles apart in a **5-second glance**. If a direction only reads distinct after study, the seeds were too close — re-check the distinctness assert instead of shipping subtle variety.
+
+**Collage construction — make it read hand-made (applies to the direction tiles in miniature AND the expanded board; a generating agent MUST follow this):**
 
 - **Surface.** A warm corkboard / kraft-paper base — NOT pure white. Pull a base color from the discovered neutral (`oklch`), add a faint paper-grain or speckle (inline SVG `feTurbulence` data-URI at `opacity: .04`, or a `radial-gradient` speckle) and a soft inner vignette (`box-shadow: inset 0 0 120px rgba(0,0,0,.15)`). Keep the texture **behind** content at low contrast — it must never drop a swatch label or type specimen below readable contrast (the OKLCH value + font name stay legible; that's the gate material).
 - **Layout = absolute, off-grid, overlapping.** `position: relative` parent; every scrap `position: absolute` with hand-set, off-round `top/left` (`top: 37px; left: 211px`, not `top: 40px`). Scraps overlap 10–30% and tuck under neighbors; stagger `zIndex` 1–20. **Forbid uniform gutters** — one corner crowded, another left raw. A real pinboard is lumpy.
@@ -418,13 +385,14 @@ Write **one** persistent canvas to `<designRoot>/ui/<ds>-moodboard.tsx` — a **
 - **Hand-drawn marks.** Inline SVG in the accent color as "marker": a wobbly circled word, arrows pointing scrap→scrap (e.g. a swatch → where it'd be used), an underline, a margin scribble (`stroke-width: 2.5`, `stroke-linecap: round`, hand-jittered control points, slight non-closure on circles).
 - **Mood words as scraps, not headings.** The `primary_emotion` + voice descriptors (and `anti_aesthetics` as a circled "NE tohle →") sit at angles, in varied sizes, as torn/taped scraps — never as section titles.
 
-**The five content concerns (all must stay legible across the mess):**
+**The expanded board — six content concerns (all must stay legible across the mess).** After a direction is picked, the winner expands into the full collage carrying:
 
-1. **Palette** — the proposed accent(s) as scattered OKLCH paint-chips (from `recommendations.palette` → `color_oklch_options[]` / `palette_options[]`), each labeled with its OKLCH value, PLUS the **accent-in-context hero** — the accent on a real surface, not a bare chip (that's the "burnt → candy" tell the accent heuristic warns about), pinned large.
+1. **Palette** — the proposed accent(s) as scattered OKLCH paint-chips (from `recommendations.palette` → `color_oklch_options[]` / `palette_options[]`), each labeled with its OKLCH value, a **60/30/10 proportion strip** (dominant / secondary / accent as they'd actually be used), PLUS the **accent-in-context hero** — the accent on a real surface, not a bare chip (that's the "burnt → candy" tell the accent heuristic warns about), pinned large.
 2. **Type pairing** — display + body + (mono if active) specimen in the proposed **real** font families, as a ripped type-specimen fragment, a sentence each at heading + body size.
 3. **Signature-treatment hero** — the Q9 / `recommendations.signature_treatment` applied to ONE representative card / section so the treatment reads in context (shown, not described), taped down as a focal scrap.
 4. **Voice sample** — 1–2 lines in the proposed tone using real `domain_nouns` from the research payload (never Lorem / placeholder), on a taped index-card scrap.
 5. **Reference provenance — scattered, dense, never a bare image grid.** Pin **many** reference photos (the research seed `reference_images[]` is a floor, not a ceiling — see image density below) across the board as torn/taped/pinned scraps. Each photo carries its **provenance** from `reference_products[]`: the **anchor name**, the one-line **`why_relevant`**, a **source link** (`url` / `source_url_for_screenshots`), and — small — the **query that surfaced it** (`found_via_query` / `source_query`), on a pinned tag. **Reliable backbone = names + why + links** (always present from `reference_products[]`); the **image is the enriching layer**. This is the user's *full picture*: not just "here's a palette" but *what we found and why we're recommending this direction*. Mirror the research agent's "every anchor's source query is logged for transparency" principle.
+6. **One real UI fragment** — a card or button cluster rendered in the direction's tokens, taped down as one scrap (element-collage evidence: a *product* board beats a print mood board because it shows the direction on the actual deliverable). Keep it a fragment — **direction fidelity, NOT layout fidelity**: a finished-screen mock drags feedback to layout details instead of the direction.
 
 **Image density — fill the board, never leave holes.** A pinboard reads "real" only when *dense*. Mix three always-rendering layers so the collage is full even at zero live images:
 
@@ -441,22 +409,17 @@ Write **one** persistent canvas to `<designRoot>/ui/<ds>-moodboard.tsx` — a **
 - **Rotation breaking the screenshot/Read** — keep rotated items inside the artboard bounds so `--full` capture doesn't clip the focal scrap; the agent must be able to Read every element it's gating on.
 - **Perf** — keep `feTurbulence` / SVG-mask count modest so the dev-server screenshot renders inside the < 3 min budget.
 
-**Variant mode (2–3 directions — opt-in, per-variant PARALLEL independent sub-agent fan-out).** Direction approval is a **divergent** problem — *"which of these?"* is an easier, more honest gut-call than *"like it / don't like it?"* on one option. **The cost contract holds:** the default single moodboard stays **main-agent-assembled** (cheap, no Agent call, < 3 min). Fan-out is reached **ONLY** via gate option **"Show more variants"** (or an upfront request for options). Variants are the opt-in spend the divergent problem justifies — still ≈ 3–6 min ≪ the 30–40 min scaffold.
-
-Divergence comes from *independent generation*, not one agent's imagination. One context authoring all three tiles produces house-style convergence — same collage hand, three palette swaps. So on opt-in:
+**Escalation — "wilder / richer variants" (opt-in, per-variant PARALLEL independent sub-agent fan-out).** The default tiles above share one collage hand and the one seed-image pool. When the user wants *independently imagined* directions or richer direction-specific imagery — the gate's "wilder variants" escape, the informed-opt-in degrade offer, or an explicit upfront ask — fire the DDR-080/DDR-136 fan-out machinery. This is the justified spend (≈ 3–6 min, N parallel sub-agents with their own web calls — still ≪ the 30–40 min scaffold); it is **NEVER the default path** (DDR-147). Divergence here comes from *independent generation* — one context authoring all tiles produces house-style convergence — so:
 
 - **Fire 2–3 sub-agents in ONE message** (parallel `Agent` calls in a single assistant message — true concurrency). The main agent blocks until all return.
 - **Each sub-agent is BLIND** — it receives ONLY its own seed + the global discovery brief. **No shared draft, no peer tile, no "match the others."** A sub-agent seeing another's seed or tile is the bug that kills divergence.
-- **Distinct seed per sub-agent (assert pairwise distinctness BEFORE firing):**
-  - **Variant A** ← the **recommended** pole: `mood_clusters[0]` + the `recommended:true` `palette_option` / `color_oklch_option`.
-  - **Variant B** ← a **different `mood_cluster`** + a non-recommended `palette_option` (different lineage / anchors).
-  - **Variant C** (if 3) ← the **`alternatives[]` / anti-pole** — the largest aesthetic-ambition or hue distance from A (DDR-073 axis). **Reject a seed set where two clusters share ≥ 2 anchors or sit < 40° apart in hue** — re-pick before firing.
-- **Each sub-agent's brief contains ONLY:** its seed cluster (id, label, anchors, one_line) + assigned palette option + the `signature_treatment` + `domain_nouns` + `primary_emotion` / `anti_aesthetics` + that cluster's `reference_products[]` slice. It **returns ONE self-contained artboard body** (NOT a written file) in **its own collage hand** (same chaotic-pinboard craft as above, in miniature: palette paint-chips + a type scrap + the treatment hero small + scattered reference photos + ONE big circled **feeling word** + the `mood_cluster` name). **Output contract for clean composition:** return a single root `<div style={{ position: 'relative', width, height }}>…</div>` with **everything inline** (inline styles, inline SVG, `<img>` — NO `import` / `const` / `function` / any top-level identifiers), so the main agent can drop each blob inside a `<DCArtboard>` wrapper with **no identifier collisions** across the 2–3 tiles composed into one file.
-- **Each sub-agent gathers its OWN imagery** — it runs **its own 1–2 WebSearch + WebFetch for *its* seed direction**, harvesting ~4–8 direction-specific images into its tile (with its own provenance rows). The main-agent research seed can't cover three opposing poles equally; this self-harvest is what makes the tiles *both* genuinely diverge *and* stay densely collaged. `reference_images[]` is a seed, not a ceiling.
+- **Distinct seed per sub-agent** — the same Tile A/B/C seeding + pairwise-distinctness assert as the default path above (reject seeds sharing ≥ 2 anchors or < 40° apart in hue; re-pick before firing).
+- **Each sub-agent's brief contains ONLY:** its seed cluster (id, label, anchors, one_line) + assigned palette option + the `signature_treatment` + `domain_nouns` + `primary_emotion` / `anti_aesthetics` + that cluster's `reference_products[]` slice. It **returns ONE self-contained artboard body** (NOT a written file) in **its own collage hand** (same chaotic-pinboard craft as above, in miniature, carrying the same tile anatomy 1–6 as the default tiles). **Output contract for clean composition:** return a single root `<div style={{ position: 'relative', width, height }}>…</div>` with **everything inline** (inline styles, inline SVG, `<img>` — NO `import` / `const` / `function` / any top-level identifiers), so the main agent can drop each blob inside a `<DCArtboard>` wrapper with **no identifier collisions** across the 2–3 tiles composed into one file.
+- **Each sub-agent gathers its OWN imagery** — it runs **its own 1–2 WebSearch + WebFetch for *its* seed direction**, harvesting ~4–8 direction-specific images into its tile (with its own provenance rows). The main-agent research seed can't cover three opposing poles equally; this self-harvest is what makes escalated tiles *both* genuinely diverge *and* stay densely collaged. `reference_images[]` is a seed, not a ceiling.
 
-**Reconcile + compose + present + gate.** The main agent asserts 2–3 artboard bodies returned (a sub-agent timeout / failure → log to the bypass-log + compose the survivors, **never block the gate**). It **composes the surviving tiles into the ONE persistent `ui/<ds>-moodboard.tsx`** — each returned blob wrapped in its own `<DCArtboard id="variant-{a|b|c}" label="Direction {A|B|C} · <mood_cluster>" width height>` inside a single `<DCSection>`, so the 2–3 directions sit **side by side in one canvas** (`DesignCanvas` auto-flows them). Screenshot the canvas `--full` in one pass (captures all artboards) and **Read the PNG** before gating (same discipline as the single-moodboard path). Then run the variant-pick gate below. **Cap at 3** — a 4th blows choice-overload AND the AskUserQuestion 4-option cap. On pick → **keep all artboards in the canvas** (the user can revisit + comment on the alternatives too), mark the chosen one as the locked direction, and refine the winner in place.
+**Reconcile + compose + present + gate.** The main agent asserts 2–3 artboard bodies returned (a sub-agent timeout / failure → log to the bypass-log + compose the survivors, **never block the gate**). It **composes the surviving tiles into the ONE persistent `ui/<ds>-moodboard.tsx`** as additional `<DCArtboard>`s inside the single `<DCSection>`, so all directions sit **side by side in one canvas** (`DesignCanvas` auto-flows them). Screenshot the canvas `--full` in one pass (captures all artboards) and **Read the PNG** before gating. Then **re-run the direction-pick gate below** — present at most 3 directions per round (choice-overload + the AskUserQuestion 4-option cap). On pick → **keep all artboards in the canvas** (the user can revisit + comment on the alternatives too) and expand the winner in place.
 
-**Step 2 — Screenshot + Read.** Boot the server if needed, then screenshot the moodboard (single artboard, or in variant mode the composed canvas — `--full` captures all artboards at once) through the dev-server transpile path and **Read the PNG into context** (the agent must SEE it before gating — same discipline as the visual-sanity "Read each captured PNG" rule):
+**Step 2 — Screenshot + Read.** Boot the server if needed, then screenshot the moodboard (all direction tiles at once — `--full` captures every artboard) through the dev-server transpile path and **Read the PNG into context** (the agent must SEE it before gating — same discipline as the visual-sanity "Read each captured PNG" rule):
 
 ```bash
 PORT=$(maude design server-up)                 # no-op if already up; prints port
@@ -475,61 +438,105 @@ maude design screenshot \
 | `screenshot` exit `0` | Captured | `Read` the PNG, then gate (Step 3). |
 | `screenshot` exit `3` | Capture failed (blank / error overlay) | Re-check the moodboard `.tsx` for a bad import or an external-image block that threw; if unrecoverable, surface + `AskUserQuestion` (skip-or-retry), logged. |
 
-**Step 3 — Gate.** `AskUserQuestion` (numbered-prose fallback when AskUserQuestion is unavailable — same shape as Stage 0 / Stage 3 above):
+**Step 3 — Direction-pick gate.** Read the PNG first, then ask. Frame the pick for a **gut decision, not analysis** (research-grounded copy — DDR-147): lead with *first gut reaction*, ask for **fit** ("most like your product for your audience" — never "which do you like"), echo 1–2 of the user's own Stage-1 answers, and give the recommended tile its one-line *why* tied to the brief (never a weak-decoy lineup — every direction shown must be one you'd ship). `AskUserQuestion`; numbered-prose fallback when unavailable — same shape as Stage 0.
+
+With **N ≥ 2 tiles**:
+
+```
+First gut reaction — don't overthink it. Which direction feels most like <product> for <audience>?
+(You said "<Stage-1 echo, e.g. calm + craft>" — <name X> leans hardest into that, so it's my recommendation.)
+  ○ <Descriptive name A> — <one-line thesis>   (Recommended — <why, one clause>)
+  ○ <Descriptive name B> — <one-line thesis>
+  ○ <Descriptive name C> — <one-line thesis>
+  ○ Mix — a base direction + named element(s) from another
+```
+
+(4-option cap respected: ≤ 3 tiles + Mix. "None of these" and "wilder variants — independent takes with fresh imagery, ~3–6 min" ride the auto-"Other" affordance / extra numbered-prose lines. If the user stalls, offer the **eliminate-one fallback** — "Is there a direction we should definitely rule out?" — a lower-pressure decision that still converges.)
+
+With **N = 1** (degraded / `--quick` / autonomous / re-bootstrap):
 
 ```
 Does this design language fit you? (it's about the feeling — before I start generating, that's ~30-40 min)
-  ○ Let's do it        — this is it, lock the direction and generate         (Recommended)
+  ○ Let's go with it   — select this direction and continue        (Recommended)
   ○ Tweak <what>       — almost, but swap the swatch / font / treatment and show again
-  ○ Show more variants — lay out 2-3 directions side by side for me to choose
-  ○ Not this           — back to Stage 3 (refinement), or quit
+  ○ Wilder variants    — 2-3 independent takes with fresh imagery (~3-6 min)
+  ○ Not this           — adjust the vision/research inputs, or quit
 ```
 
-(AskUserQuestion hard max = 4 options; "Not this" resolves to *back to Stage 3* vs *quit* in a one-line follow-up. The auto-"Other" affordance still lets the user free-text.)
+**Pick semantics (DDR-147 — the pick SELECTS, it does not lock):**
 
-Numbered-prose fallback (AskUserQuestion unavailable):
-
-```
-AskUserQuestion is unavailable — answering via chat. Does this design language fit you? (it's about the feeling)
-  1. Let's do it       — lock the direction and generate
-  2. Tweak <what>      — write what to change (swatch / font / treatment)
-  3. Show more variants — lay out 2-3 directions to choose from
-  4. Not this          — back to Stage 3
-  5. Stop              — I'm done
-
-Reply with: 1 / 2 / 3 / 4 / 5 (for "Tweak" write what to change).
-```
-
-**Outcomes:**
-
-| Choice | Action |
+| Outcome | Action |
 |---|---|
-| **Let's do it** | **Lock the moodboard as the direction contract.** Its palette / type / treatment are consumed **verbatim** by Batch A — this is what kills the drift `_bootstrap.md` already warns about (burnt-orange-as-candy accent, D-7 inverted type roles, D-8 melodramatic ladder): Batch A no longer re-derives the look, it renders the *approved* one. **The canvas persists** at `ui/<ds>-moodboard.tsx` — the user can revisit + comment on it any time; in variant mode all artboards stay and the chosen one is marked the direction contract. Optionally also retain the screenshot under `_history/_system/<ds>-moodboard-<ISO>.png`. Proceed to Mapping. |
-| **Tweak `<what>`** | Iterate the **moodboard ONLY** — swap the named swatch / font / treatment in `ui/<ds>-moodboard.tsx`, re-screenshot, re-Read, re-gate. This is where taste gets dialed for ~1 min instead of after 40 min. Loop until the user approves or bails. Do NOT touch `system/<ds>/` (nothing is scaffolded yet). |
-| **Show more variants** | Enter **Variant mode** (above) — fire 2–3 blind parallel sub-agents (one distinct seed each, each self-harvesting imagery), reconcile the survivors, screenshot, Read, and run the variant-pick gate below. |
-| **Not this** | One-line follow-up: *back to Stage 3 (refinement)* — re-open the research recommendations, do NOT scaffold — or *quit* — end the bootstrap **before** Mapping / roster / Batch A. Either way nothing under `system/<ds>/` was written; the moodboard canvas stays under `ui/` (still revisitable — a rejected direction is worth keeping for reference). Log the bail to the bypass-log. |
+| **Pick a direction** | **Settle ONLY the axes that visibly varied across the presented tiles** — always `palette` + `aesthetic_ambition`; `typography` / `signature_treatment` only if the tiles differed on them. Fields held constant across tiles (incl. inherited fields and uncontested ≥ 0.85 recommendations) were never contested — they keep their own research-confidence gate in Stage 4. Picking the recommended tile = affirming research (no override); picking away = a visible, visually-informed deviation on exactly the differing fields — **any pick that overrides a ≥ 0.85 recommendation writes a bypass-log row.** Then **expand the winner into the full six-concern collage** in the same canvas (the losing tiles STAY as reference artboards — revisitable + commentable), re-screenshot + Read, and proceed to **Stage 4 (refinement residue)**. |
+| **Tweak `<what>`** | Iterate the **moodboard ONLY** — swap the named swatch / font / treatment on the tile / expanded board, re-screenshot, re-Read, re-gate. Taste gets dialed for ~1 min here instead of after 40 min of scaffold. Available at any point up to (and at) the LOCK gate. Do NOT touch `system/<ds>/` (nothing is scaffolded yet). |
+| **Mix** | "Base direction `<X>` + `<named element(s)>` from `<Y>`" — **re-render as ONE coherent expanded board** (a deliberate remix; never a cut-and-paste of tokens across directions — the Frankenstein failure practitioners warn about). Re-screenshot, re-Read, confirm the blend reads coherent, then treat exactly like a pick (settled axes = the blend's visible values; ≥ 0.85 overrides logged). |
+| **Wilder variants** | Enter the **escalation** above — blind parallel sub-agents, own seeds, own imagery. Compose survivors as additional artboards and re-run this gate (≤ 3 directions presented per round). |
+| **Not this / none** | One-line follow-up: *adjust the inputs* (revisit Stage-1 answers or re-run Stage-2 research — the directions were wrong, so the inputs were) or *quit* — end the bootstrap **before** Mapping / roster / Batch A. Either way nothing under `system/<ds>/` was written; the moodboard canvas stays under `ui/` (a rejected direction is worth keeping for reference). Log the bail to the bypass-log. |
 
-**Variant-pick gate (after "Show more variants").** Present the 2–3 tiles, Read the screenshot, then:
+**Bypass-log discipline.** Every autonomous deviation routes through `<designRoot>/_history/_system/<ds>-bypass-log.md` — a sub-agent timeout/failure, a seed-distinctness override or tile-count degrade, an autonomous auto-pick, a pick overriding a ≥ 0.85 recommendation, or an escalation to web-harvesting variants. No silent path. Cost framing inline: **default = seed-only main-agent tiles (count from `moodboard.variants`, no fan-out, no web — cheap); escalation = N parallel blind self-harvesting sub-agents, justified because independent imagination is the whole point of escalating** — and the spend is still ≪ the scaffold.
+
+**The moodboard never pollutes `system/<ds>/`.** It lives under `ui/` as a **persistent, versioned, commentable canvas** (`ui/<ds>-moodboard.tsx` — the direction tiles, any escalated variant artboards, and the expanded winner all in that one canvas); the only thing it must never do is land under `system/<ds>/`. Only the *locked direction* (palette / type / treatment values, frozen at the LOCK gate below) flows forward — as inputs to Batch A, not as scaffolded files.
+
+#### Stage 4 — Refinement (residue only, adaptive 0–N Qs by confidence)
+
+Runs AFTER the direction pick. The pick has already settled the visually-contested axes (see Pick semantics above); refinement covers **only the residue**:
+
+- **Silenced — settled by the pick:** every axis the tiles visibly varied on (always `aesthetic_ambition` + `palette`; `typography` / `signature_treatment` when they varied). Same mechanism as the `additional-ds` inheritance silencing below: the corresponding `recommendations` entries are marked settled and never asked, regardless of confidence. The DDR-073 abstract ambition question survives **only on the degraded-to-1 path** — with one tile, ambition was never seen varying, so the full-scale question (incl. the multi-colour `palette_options[]` sub-question when it lands ≥ `expressive`) still applies there.
+- **Never settled by a pick (a static collage can't show them):** `majak_3_codes`, `density`, `spacing_base`, `type_ratio`, `easing_personality`, `layout_max_w` — plus any decision still `< 0.60` after the pick. These go through the normal confidence gate:
+
+| Confidence | Behavior |
+|---|---|
+| **≥ 0.85** | **Skip Q.** Surface only in the LOCK echo. |
+| **0.60–0.85** | **1 Q with pre-pick.** Recommended option is first; 2 alternatives from `alternatives[]`; auto-"Other" affordance for user-written override; one option labeled `skip (keep recommendation)`. |
+| **< 0.60** | **1 Q without pre-pick.** 3 alternatives (research's top 3) with `recommended` flag on the first; auto-"Other" for user-written. |
+
+Typical residue: **1–3 Qs — one AskUserQuestion batch** (≤ 4 Qs per call, DF-2 schema max). The pre-reorder flow ran 4–10 abstract Qs (DF-10 / DF-11); the pick absorbs the difference. **No hardcoded option pools** (unchanged): if `alternatives[]` is empty for a residue decision, skip the Q and ask free-text: `"Research doesn't recommend a specific direction for [X]. Write what you'd like, or I'll leave default tokens."`
+
+**The 3-code signature is always a refinement Q** (never Stage 1) — it's a concrete design decision that depends on OST hypothesis + lineage research. Question shape:
 
 ```
-Which variant grabbed you? (a mix is fine too)
-  ○ Variant A / B / C   — lock this direction (→ expand to the full moodboard → Tweak or lock)
-  ○ Mix                 — take <what> from one + <what> from another (free-text; assemble the blend, re-gate)
-  ○ None                — back to Stage 3 (refinement)
+Research recommends that the SIGNATURE of this DS rest on 3 codes:
+  → <code1> (<concrete value 1>), <code2> (<concrete value 2>), <code3> (<concrete value 3>)
+
+Reason: <one sentence — link to OST hypothesis + lineage research>
+
+  ○ This trio is good, let's move on        (Recommended)
+  ○ Swap one code                           (open-text follow-up which one + which alternative)
+  ○ Swap all 3                              (open-text follow-up custom trio)
+  ○ Pick them for me from the vision-brief  (skill picks within research consensus)
 ```
 
-(AskUserQuestion 4-option cap respected: ≤ 3 variants + Mix = 4; "None" folds into the follow-up. Numbered-prose fallback when unavailable.) On a pick (or an approved Mix), refine the chosen direction into the full 5-concern collage and treat it exactly like the single-moodboard gate (lock on approval, or `Uprav`). All variant artboards live side by side in the persistent `ui/<ds>-moodboard.tsx` — revisitable + commentable, never under `system/<ds>/`.
+The 9 Pastier codes are `barva · font · symbol · tvar · vzor · motion · zvuk · voice · charakter`. Of those, `zvuk` and `charakter` are domain-rare; the typical 3-code recommendation draws from the other 7.
 
-**Bypass-log discipline.** Every autonomous deviation routes through `<designRoot>/_history/_system/<ds>-bypass-log.md` — a sub-agent timeout/failure, a seed-distinctness override, an autonomous variant selection, or an autonomous proceed-through-mismatch. No silent path. Cost framing inline: **default 1 = main-agent collage, no fan-out (cheap); variants = N parallel blind sub-agents, justified because divergence is the whole point of variant mode** and the spend is still ≪ the scaffold.
+Visual second thoughts during refinement don't get abstract Qs — route them to the **Tweak loop** on the expanded board (swap the named swatch / font / treatment, re-screenshot, re-Read).
 
-**The moodboard never pollutes `system/<ds>/`.** It lives under `ui/` as a **persistent, versioned, commentable canvas** (`ui/<ds>-moodboard.tsx` — the single moodboard, the side-by-side variant artboards, and the refined winner all in that one canvas); the only thing it must never do is land under `system/<ds>/`. Only the *approved direction* (palette / type / treatment values) flows forward — as inputs to Batch A, not as scaffolded files.
+#### LOCK gate (replaces the prose Confirm — one Q, then the contract freezes)
+
+After the residue settles, ONE gate echoes everything and locks. This **is** the confirm — there is no separate 3-sentence prose Confirm anymore (DDR-147):
+
+```
+Direction: <descriptive name> — <palette pole> · <type pairing> · <treatment>   (from your pick)
+Residue:   <what the user chose vs what stayed on recommendation>
+
+Lock this direction and generate? (~30–40 min of scaffold)
+  ○ Lock & generate      (Recommended)
+  ○ Tweak <what>         — swap a swatch / font / treatment on the board and show again
+  ○ Change an answer     — re-open a refinement Q
+  ○ Back to directions   — re-run the direction pick
+```
+
+(Numbered-prose fallback when AskUserQuestion is unavailable — same shape as Stage 0.)
+
+**On Lock:** the moodboard becomes the **locked direction contract** — its palette / type / treatment are consumed **verbatim** by Batch A (this is what kills the drift this file already warns about: burnt-orange-as-candy accent, D-7 inverted type roles, D-8 melodramatic ladder — Batch A renders the *approved* board, it does not re-derive the look). Because refinement ran BEFORE the lock, the locked artifact is **exactly what the user last saw** — a stable referent for the Batch-A hero-preview gate. **Any post-lock edit re-locks and re-runs the hero-preview gate.** Optionally retain the screenshot under `_history/_system/<ds>-moodboard-<ISO>.png`. Proceed to Mapping.
+
+Autonomous mode: auto-lock only when the run auto-picked cleanly (see the gating table) and every residue field sat on recommendation; log the auto-lock. `--quick`: same echo, auto-proceed — but still surfaced so the user can bail.
 
 #### `additional-ds` adaptation
 
 Same 3 stages, with two added inputs:
 
 - **Pre-Stage 0:** `Q_purpose` (one prose prompt) — "What is this DS, different from your existing DS `<existing-ds>`?" The answer is folded into vision-brief as `elevator_pitch`; the existing DS's vision-brief (if present) is shown as context but does NOT inherit.
-- **Between Stage 2 and Stage 3:** `INHERITANCE PICKER` (multi-select AskUserQuestion, position load-bearing per studio-2 retro BAD-7 — picker before Stage 3 prevents Stage 3 answers from being silently overridden by inheritance).
+- **Between Stage 2 and the Stage-3 direction gate:** `INHERITANCE PICKER` (multi-select AskUserQuestion, position load-bearing per studio-2 retro BAD-7 — the picker runs BEFORE any downstream decision surface, so neither the direction tiles nor the refinement can be silently overridden by inheritance).
 
 ```
 Inherit from <existing-ds>? (multi-select; "None" = define fresh)
@@ -540,7 +547,7 @@ Inherit from <existing-ds>? (multi-select; "None" = define fresh)
   [ ] None
 ```
 
-Inherited values are pre-baked into the new DS's `colors_and_type.css`; the corresponding `recommendations` entries in the research payload are silenced (no Stage 3 Q on inherited fields, regardless of confidence).
+Inherited values are pre-baked into the new DS's `colors_and_type.css`, **frozen across every direction tile** (an inherited font / motion renders identically in all tiles — never a varied axis, so a pick can never settle or override it — DDR-147), and the corresponding `recommendations` entries in the research payload are silenced (no refinement Q on inherited fields, regardless of confidence).
 
 #### `re-bootstrap` adaptation
 
@@ -549,7 +556,7 @@ For an existing DS without a `vision-brief.json` (DSes scaffolded before DDR-033
 1. **Lossy inference.** Read `system/<ds>/README.md` "What this DS is for" line, `colors_and_type.css` (palette + type families), `_layout.css` (signature treatment family). Produce a draft `vision-brief.json` with `_inferred: true` on every field. Confidence is intentionally low on character / OST / lineage fields (no source in tokens for those).
 2. **Stage 1 confirm pass.** Show the inferred vision-brief to the user in plain prose: `"Here's what I read from your existing DS. Correct / add anything, or write 'OK' to continue."` User edits in one chat message; parser updates fields.
 3. **Stage 2 ALWAYS re-runs.** `--force` implies time has passed; cached payload is stale by definition.
-4. **Stage 3 + Confirm** identical to first-bootstrap.
+4. **Stage 3 direction gate runs with 1 tile** (see the gating table — the lossy-inferred vision must not seed divergent poles); **Stage 4 residue + the LOCK gate** identical to first-bootstrap.
 
 #### Post-scaffold gate — "4 brand rounds"
 
@@ -660,8 +667,8 @@ discovery:
   iconography_vibe: "{{Q11}}"
   density: "{{Q12}}"
   # Discovery-driven values for bias-free template rendering (DDR-026, 2026-05-25).
-  # Derived from the answers above OR captured as follow-up batches when Stage 3
-  # implies them. The agent MUST fill every field — there are no template
+  # Derived from the answers above OR captured as follow-up batches when the
+  # Stage-4 refinement residue implies them. The agent MUST fill every field — there are no template
   # defaults to fall back on; an unsubstituted `{{placeholder}}` leaks as a
   # literal into the rendered tokens CSS.
   accent_strategy:    "{{single | paired | chromatic-3 | chromatic-N}}"   # default: single
@@ -856,7 +863,7 @@ After Batch A writes, the main agent reads the freshly-written `colors_and_type.
 
 ##### Hero-preview gate (token-fidelity check — gates the Batch B+C fan-out)
 
-After the CSS is written + read back — but **before** firing any Batch B/C sub-agent — the main agent writes ONE `signature: true` specimen as a hero preview (default `preview/colors-accent.tsx`; or the showcase hero if the profile has one), screenshots it, and drift-checks the **real computed tokens** against the approved Stage-4 moodboard. This is the **post-token complement** to the pre-token moodboard gate: the moodboard approved the *direction*; this proves *the tokens rendered it*. (`colors-accent.tsx` depends only on `[tokens, chrome]` — both written above — so it is writable now.)
+After the CSS is written + read back — but **before** firing any Batch B/C sub-agent — the main agent writes ONE `signature: true` specimen as a hero preview (default `preview/colors-accent.tsx`; or the showcase hero if the profile has one), screenshots it, and drift-checks the **real computed tokens** against the Stage-3 moodboard as frozen at the LOCK gate. This is the **post-token complement** to the pre-token direction lock: the LOCK approved the *direction*; this proves *the tokens rendered it*. (`colors-accent.tsx` depends only on `[tokens, chrome]` — both written above — so it is writable now.)
 
 ```bash
 PORT=$(maude design server-up)
@@ -881,7 +888,7 @@ Hero preview diverged from the approved moodboard — <what specifically, 1 sent
 
 Numbered-prose fallback when AskUserQuestion is unavailable (`1` Continue / `2` Fix tokens / `3` Stop). Any drift-override (Continue on detected drift) writes a bypass-log row.
 
-**Don't double-prompt.** When the Stage-4 moodboard already locked direction this is a *drift* gate, NOT a fresh approval — a clean render proceeds silently. **If the moodboard was skipped** (`--no-discovery`, or an autonomous skip) there's nothing to drift-check against, so fall back to the existing **accent-in-context self-check** from the "Accent color heuristic" above (screenshot, eyeball the accent in context, fix obvious wrongness in tokens, proceed without a prompt). **Fixing here is a token edit, not a regen** — catching "burnt → candy" / D-7 / D-8 at this gate costs one `colors_and_type.css` edit instead of the ~15k-LOC fan-out it would otherwise poison.
+**Don't double-prompt.** When the LOCK gate already froze the direction this is a *drift* gate, NOT a fresh approval — a clean render proceeds silently. **If the moodboard was skipped** (`--no-discovery`, or an autonomous skip) there's nothing to drift-check against, so fall back to the existing **accent-in-context self-check** from the "Accent color heuristic" above (screenshot, eyeball the accent in context, fix obvious wrongness in tokens, proceed without a prompt). **Fixing here is a token edit, not a regen** — catching "burnt → candy" / D-7 / D-8 at this gate costs one `colors_and_type.css` edit instead of the ~15k-LOC fan-out it would otherwise poison.
 
 **Roster note.** `colors-accent.tsx` (the `signature: true` row in the Batch B `files:` block) is **pre-written by the main agent during Batch A** as this hero specimen — so the Batch B "color tokens" fan-out slice does NOT re-write it. Writing it once (in Batch A) keeps reconciliation's "every row written exactly once" invariant intact: the row stays in the roster and flips to `status: written` during Batch A, not during the Batch B cohort. See the roster `files:` + `fanout:` annotations.
 
@@ -1035,8 +1042,8 @@ Sub-agents are stateless — give each a complete brief, do not assume shared co
 #### Sequencing
 
 ```
-★ Stage 4 moodboard approved → direction contract locked   (pre-scaffold gate — see Discovery § Stage 4)
-  ↓ palette / type / treatment flow into Batch A; nothing under system/<ds>/ is written until this is approved
+★ Direction locked at the LOCK gate (Stage-3 pick + Stage-4 residue)   (pre-scaffold — see Discovery § Stage 3 + LOCK gate)
+  ↓ palette / type / treatment flow into Batch A; nothing under system/<ds>/ is written until this is locked
 Batch A (main agent, serial)              ← ~7 files + 1 hero specimen (colors-accent), 2-3 minutes
   ↓ ★ HERO-PREVIEW gate — screenshot colors-accent, drift-check vs moodboard (light: auto-proceed; prompt only on drift)
   ↓ blocks all of B + C
