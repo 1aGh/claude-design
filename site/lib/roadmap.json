@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-03T09:47:01.695Z",
+  "generated": "2026-07-03T11:27:58.886Z",
   "currentPhase": null,
   "phases": [
     {
@@ -98,6 +98,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan touches the export pipeline that was just hardened (graceful Playwright-miss...",
       "planPath": ".ai/plans/archive/export-pipeline-fixes.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-acp-chat-image-thumbnails-lightbox",
+      "title": "Feature: ACP chat image thumbnails + lightbox",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — especially the ACP composer paste-chip flow, the _chat/attachments/ write path, and t...",
+      "planPath": ".ai/plans/archive/feature-acp-chat-image-thumbnails-lightbox.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1066,17 +1077,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-video-animation-layer.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-acp-chat-image-thumbnails-lightbox",
-      "title": "Feature: ACP chat image thumbnails + lightbox",
-      "status": "icebox",
-      "shipTarget": "ICEBOX",
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — especially the ACP composer paste-chip flow, the _chat/attachments/ write path, and t...",
-      "planPath": ".ai/plans/feature-acp-chat-image-thumbnails-lightbox.md",
       "archived": false,
       "phaseKey": null
     }
