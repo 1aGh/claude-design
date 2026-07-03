@@ -87,6 +87,13 @@ node -e "
   }
 "
 
+# tauri.conf.json has short arrays (updater.endpoints / bundle.externalBin) that
+# biome's formatter keeps on a single line, but the JSON.stringify writer above
+# re-expands them onto multiple lines — which fails the `Lint (biome)` quality
+# gate on EVERY release (regressed v0.38.1). Reformat it back to biome's style so
+# the committed file stays clean. Best-effort: skip silently if biome is absent.
+npx --no-install biome format --write "$TAURI_CONF_PATH" >/dev/null 2>&1 || true
+
 # The desktop crate's Cargo.toml is TOML, not JSON — bump its [package] version
 # (drives env!("CARGO_PKG_VERSION") in the native About box) so it never drifts
 # from tauri.conf.json. Only the first `version = "…"` (the [package] one) is touched.

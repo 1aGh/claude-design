@@ -11,7 +11,7 @@ import { maude } from '../../../lib/maude-tokens';
  */
 export const DesignNewScene = () => {
   const frame = useCurrentFrame();
-  const { fps, width, height } = useVideoConfig();
+  const { fps, width } = useVideoConfig();
   const t = maude.dark;
 
   const appear = (delay: number, rise = 16) => {
