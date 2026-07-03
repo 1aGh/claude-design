@@ -73,7 +73,7 @@ describe('buildCommandModel', () => {
     const { all, existsSet } = buildCommandModel(STATIC_COMMANDS, []);
     expect(all.length).toBe(STATIC_COMMANDS.length);
     expect(existsSet.has('design:edit')).toBe(true);
-    expect(existsSet.has('flow:plan')).toBe(true);
+    expect(existsSet.has('design:new')).toBe(true);
     // every static command is present + flagged not-live
     expect(all.every((c) => c.live === false)).toBe(true);
   });
@@ -90,7 +90,7 @@ describe('buildCommandModel', () => {
     expect(existsSet.has('design:new')).toBe(true);
     expect(existsSet.has('user:custom')).toBe(true);
     // a shipped static command NOT in the live set is no longer "exists"
-    expect(existsSet.has('flow:plan')).toBe(false);
+    expect(existsSet.has('design:critic')).toBe(false);
     // live-only command is added to the union
     expect(all.find((c) => c.name === 'user:custom')?.live).toBe(true);
     // static command present in live is marked live

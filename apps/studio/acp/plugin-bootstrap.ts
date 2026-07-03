@@ -1,8 +1,11 @@
 // ACP session-scoped plugin auto-bootstrap (DDR-143).
 //
 // A Maude Desktop user with only Claude Code installed should get `/design:*`
-// (+ `/flow:*`) working in the chat panel with ZERO manual install — no `npm i`,
-// no `/plugin marketplace add`, no `/reload-plugins`. We achieve that by handing
+// working in the chat panel with ZERO manual install — no `npm i`, no `/plugin
+// marketplace add`, no `/reload-plugins`. (`/flow:*` auto-load is intentionally
+// disabled for now — 2026-07-03 — the chat ships design-only; the plumbing below
+// stays wired so restoring flow is a one-line change in computeSessionPlugins.)
+// We achieve that by handing
 // the ACP-spawned `claude` a session-scoped local plugin dir through the same
 // `_meta` seam the bootstrap brief uses: `_meta.claudeCode.options.plugins`.
 // The adapter spreads that into the SDK `query()` options (verified live —
@@ -69,7 +72,9 @@ export function computeSessionPlugins(deps: SessionPluginDeps): SdkPluginConfig[
     if (dir && !alreadyPresent) out.push({ type: 'local', path: dir, skipMcpDiscovery: true });
   };
   add(deps.designDir, deps.scan.design);
-  add(deps.flowDir, deps.scan.flow);
+  // `/flow` auto-load is intentionally OFF for now (2026-07-03) — the chat ships
+  // design-only. `deps.flowDir` / `deps.scan.flow` stay resolved (harmless) so
+  // restoring it is a one-liner: re-add `add(deps.flowDir, deps.scan.flow)`.
   return out;
 }
 

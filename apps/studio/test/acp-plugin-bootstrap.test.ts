@@ -15,27 +15,26 @@ const FLOW = '/bundle/plugins/flow';
 const NEITHER_INSTALLED = { design: false, flow: false };
 
 describe('computeSessionPlugins — gates', () => {
-  test('neither installed, native, both bundled ⇒ inject BOTH', () => {
+  // `/flow` auto-load is intentionally OFF for now (2026-07-03) — only `design`
+  // is ever injected, even when the flow dir resolves + flow is not installed.
+  test('neither installed, native, both bundled ⇒ inject design only (flow disabled)', () => {
     const out = computeSessionPlugins({
       native: true,
       designDir: DESIGN,
       flowDir: FLOW,
       scan: NEITHER_INSTALLED,
     });
-    expect(out).toEqual([
-      { type: 'local', path: DESIGN, skipMcpDiscovery: true },
-      { type: 'local', path: FLOW, skipMcpDiscovery: true },
-    ]);
+    expect(out).toEqual([{ type: 'local', path: DESIGN, skipMcpDiscovery: true }]);
   });
 
-  test('no-op gate: design already installed ⇒ skip design, keep flow', () => {
+  test('no-op gate: design already installed ⇒ inject nothing (flow never injected)', () => {
     const out = computeSessionPlugins({
       native: true,
       designDir: DESIGN,
       flowDir: FLOW,
       scan: { design: true, flow: false },
     });
-    expect(out).toEqual([{ type: 'local', path: FLOW, skipMcpDiscovery: true }]);
+    expect(out).toEqual([]);
   });
 
   test('no-op gate: BOTH already installed (power user) ⇒ inject nothing', () => {
@@ -58,14 +57,14 @@ describe('computeSessionPlugins — gates', () => {
     expect(out).toEqual([]);
   });
 
-  test('path-missing gate: design dir null (not bundled) ⇒ skip design, keep flow', () => {
+  test('path-missing gate: design dir null ⇒ inject nothing (flow disabled, so no fallback)', () => {
     const out = computeSessionPlugins({
       native: true,
       designDir: null,
       flowDir: FLOW,
       scan: NEITHER_INSTALLED,
     });
-    expect(out).toEqual([{ type: 'local', path: FLOW, skipMcpDiscovery: true }]);
+    expect(out).toEqual([]);
   });
 
   test('web/npm layout: native false AND both dirs null ⇒ empty', () => {

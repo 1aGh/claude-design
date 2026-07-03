@@ -128,9 +128,10 @@ describe('buildStudioBrief — native session commands available (DDR-143)', () 
     commandsAvailable: true,
   });
 
-  test('states design + flow commands are available in this session (zero-install)', () => {
+  test('states design commands are available in this session (zero-install)', () => {
     expect(brief).toContain('/design:');
-    expect(brief).toContain('/flow:');
+    // `/flow:*` is intentionally excluded from the chat for now (2026-07-03).
+    expect(brief).not.toContain('/flow:');
     expect(brief).toContain('available in this session');
     expect(brief).toContain('no install needed');
   });

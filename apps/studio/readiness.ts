@@ -17,7 +17,7 @@ import { join } from 'node:path';
 
 import { isNativePluginContext } from './acp/plugin-bootstrap.ts';
 import { resolveAdapterEntry, resolveClaudePath } from './acp/probe.ts';
-import { DESIGN_PLUGIN_DIR, FLOW_PLUGIN_DIR } from './paths.ts';
+import { DESIGN_PLUGIN_DIR } from './paths.ts';
 
 export type ReadinessStatus = 'present' | 'missing' | 'unknown';
 
@@ -198,42 +198,37 @@ export async function probeReadiness(): Promise<ReadinessReport> {
 
   const scan = scanPlugins();
   // DDR-143 — on the native/desktop path the ACP chat session AUTO-LOADS the
-  // bundled design(+flow) plugins (acp/plugin-bootstrap.ts → session-scoped
-  // `_meta.claudeCode.options.plugins`), so a plugin that isn't marketplace-
-  // installed is still available in the chat. Count that as satisfied: the check
-  // collapses from a red install-wall to green. The web `maude design serve` path
-  // ships no bundle (native=false, both dirs null) → the manual marketplace
-  // remediation still shows there.
+  // bundled `design` plugin (acp/plugin-bootstrap.ts → session-scoped
+  // `_meta.claudeCode.options.plugins`), so a design plugin that isn't
+  // marketplace-installed is still available in the chat. Count that as
+  // satisfied: the check collapses from a red install-wall to green. `/flow` is
+  // intentionally NOT part of the chat for now (2026-07-03), so the gate tracks
+  // `design` alone — demanding a plugin the chat doesn't use would be a false red.
+  // The web `maude design serve` path ships no bundle (native=false, dir null) →
+  // the manual marketplace remediation still shows there.
   const native = isNativePluginContext();
   const designAutoloaded = native && DESIGN_PLUGIN_DIR !== null && !scan.design;
-  const flowAutoloaded = native && FLOW_PLUGIN_DIR !== null && !scan.flow;
   const designReady = scan.design || designAutoloaded;
-  const flowReady = scan.flow || flowAutoloaded;
-  const bothReady = designReady && flowReady;
-  const anyAutoloaded = designAutoloaded || flowAutoloaded;
-  const pluginStatus: ReadinessStatus = bothReady
+  const pluginStatus: ReadinessStatus = designReady
     ? 'present'
     : scan.status === 'unknown'
       ? 'unknown'
       : 'missing';
-  const missing = [!designReady && 'design@maude', !flowReady && 'flow@maude']
-    .filter(Boolean)
-    .join(' + ');
   items.push({
     id: 'plugins',
-    label: 'Maude plugins in Claude Code',
+    label: 'Maude design plugin in Claude Code',
     required: true,
     status: pluginStatus,
-    detail: bothReady
-      ? anyAutoloaded
+    detail: designReady
+      ? designAutoloaded
         ? 'Auto-loaded in the Maude chat session — nothing to install.'
-        : 'design@maude + flow@maude are installed.'
+        : 'design@maude is installed.'
       : scan.status === 'unknown'
         ? "Couldn't read Claude Code's plugin registry — check it manually."
-        : `Missing: ${missing}${scan.marketplace ? '' : ' (and the maude marketplace)'}.`,
-    remediation: bothReady
+        : `Missing: design@maude${scan.marketplace ? '' : ' (and the maude marketplace)'}.`,
+    remediation: designReady
       ? undefined
-      : 'In Claude Code: `/plugin marketplace add 1aGh/maude`, then `/plugin install design@maude` and `/plugin install flow@maude`.',
+      : 'In Claude Code: `/plugin marketplace add 1aGh/maude`, then `/plugin install design@maude`.',
   });
 
   items.push({

@@ -152,15 +152,17 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
         studioBrief: buildStudioBrief({
           designRel: ctx.paths.designRel,
           projectLabel: ctx.projectLabel,
-          // DDR-143 — on the native/desktop path the `/design:*` + `/flow:*`
-          // commands are present in the session (auto-loaded or installed), so
-          // the brief states that plainly instead of hedging.
+          // DDR-143 — on the native/desktop path the `/design:*` commands are
+          // present in the session (auto-loaded or installed), so the brief states
+          // that plainly instead of hedging. (`/flow:*` is intentionally excluded
+          // from the chat for now — 2026-07-03.)
           commandsAvailable: isNativePluginContext(),
         }),
-        // DDR-143 — session-scoped `design`(+`flow`) auto-load for the zero-install
-        // desktop path. Empty on the power-user (already-installed) + web-serve
-        // no-op paths. Computed once here; carried on the readonly bridge options
-        // so it survives an adapter re-spawn (model/effort change).
+        // DDR-143 — session-scoped `design` auto-load for the zero-install desktop
+        // path (`/flow` auto-load disabled for now — 2026-07-03). Empty on the
+        // power-user (already-installed) + web-serve no-op paths. Computed once
+        // here; carried on the readonly bridge options so it survives an adapter
+        // re-spawn (model/effort change).
         plugins: resolveSessionPlugins(),
         onUpdate: (update) => {
           tracker?.onUpdate(update);

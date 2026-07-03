@@ -4,9 +4,11 @@
 //
 // Two sources feed the model:
 //   • STATIC_COMMANDS — a curated bootstrap list (below) so autocomplete is
-//     instant before any `claude` session exists. Hand-sourced from the design +
-//     flow plugin command frontmatter (`name` + `description`); plugin markdown
-//     is NOT shipped to the client, so the list is baked in here.
+//     instant before any `claude` session exists. Hand-sourced from the design
+//     plugin command frontmatter (`name` + `description`); plugin markdown is NOT
+//     shipped to the client, so the list is baked in here. (The `/flow:*` family
+//     is intentionally omitted for now — 2026-07-03 — the chat ships design-only;
+//     a user who installs flow themselves still gets it via the live catalogue.)
 //   • live ACP `available_commands_update` — the drift-proof authority for which
 //     commands ACTUALLY exist in the user's session (incl. their own custom
 //     commands). Once present it wins for the "exists" set (badge gate).
@@ -33,24 +35,6 @@ export const STATIC_COMMANDS = [
   { name: 'design:to-rn', description: 'Generate a react-native-svg + Reanimated component' },
   { name: 'design:init', description: 'One-time project env init for the design plugin' },
   { name: 'design:help', description: 'List all design commands' },
-  // ── flow (the agentic loop) ──
-  { name: 'flow:plan', description: 'Create a context-rich implementation plan', argHint: '"<feature>"' },
-  { name: 'flow:quick', description: 'Fast-path a trivial change (edit → verify → commit)', argHint: '"<change>"' },
-  { name: 'flow:execute', description: 'Execute an implementation plan', argHint: '<plan-path>' },
-  { name: 'flow:done', description: 'Close out a feature (validate → commit → PR → retro)' },
-  { name: 'flow:validate', description: 'Full validation pipeline' },
-  { name: 'flow:utils-verify', description: 'Light verification of touched files' },
-  { name: 'flow:review-code', description: 'Pre-commit self-review of uncommitted changes' },
-  { name: 'flow:bug-rca', description: 'Analyze + document a root cause', argHint: '<ticket>' },
-  { name: 'flow:bug-fix', description: 'Implement a fix from an RCA document', argHint: '<ticket>' },
-  { name: 'flow:record-ddr', description: 'Record a Design Decision Record' },
-  { name: 'flow:status', description: 'Show where you are and what to do next' },
-  { name: 'flow:pause', description: 'Pause the workflow + write a handoff' },
-  { name: 'flow:resume', description: 'Resume a paused workflow' },
-  { name: 'flow:scenario', description: 'Run a cross-platform UI scenario' },
-  { name: 'flow:release', description: 'Walk the release runbook step by step' },
-  { name: 'flow:init', description: 'Scaffold the .ai/ workspace' },
-  { name: 'flow:help', description: 'List all flow commands' },
 ];
 
 /**
@@ -59,8 +43,8 @@ export const STATIC_COMMANDS = [
  *
  * CONFIRMED against a live `claude` ACP session (plan Task 8): the adapter's
  * `available_commands_update` reports plugin commands in the colon+prefix form
- * (`design:edit`, `flow:plan`) — no separator/prefix massaging needed. User
- * skills come through prefix-less (`desktop-e2e`) → group `other`.
+ * (`design:edit`) — no separator/prefix massaging needed. User skills come
+ * through prefix-less (`desktop-e2e`) → group `other`.
  */
 export function normalizeName(raw) {
   if (!raw) return '';
@@ -86,7 +70,7 @@ function sortCmd(a, b) {
  *  - `all` — deduped union, each `{ name, description, argHint, group, live }`.
  *  - `existsSet` — the authoritative "this command exists" set for the badge gate:
  *    the live names once we have any (strict), else the static keys (optimistic —
- *    the shipped flow/design verbs are safe to badge before the first warm-up).
+ *    the shipped design verbs are safe to badge before the first warm-up).
  */
 export function buildCommandModel(staticList, liveList) {
   const live = Array.isArray(liveList) ? liveList : [];

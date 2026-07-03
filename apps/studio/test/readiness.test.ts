@@ -22,6 +22,9 @@ const INSTALLED_BOTH = {
   },
 };
 const INSTALLED_DESIGN_ONLY = { version: 2, plugins: { 'design@maude': [{ scope: 'user' }] } };
+// `/flow` is no longer part of the chat (2026-07-03) — the gate tracks `design`
+// alone, so a registry with flow-but-not-design is the "design missing" case.
+const INSTALLED_FLOW_ONLY = { version: 2, plugins: { 'flow@maude': [{ scope: 'user' }] } };
 
 function fixtureClaudeDir(opts: { markets?: unknown; installed?: unknown }): string {
   const dir = mkdtempSync(join(tmpdir(), 'maude-readiness-'));
@@ -66,22 +69,24 @@ const pluginsItem = async (dir: string, opts: { nativeBootstrap?: boolean } = {}
 // the pure DDR-128 detect-and-guide behavior, still what a `maude design serve`
 // user sees.
 describe('readiness — plugin registry scan (web / manual path)', () => {
-  test('both plugins + marketplace present → plugins item is present, no remediation', async () => {
+  test('design@maude + marketplace present → plugins item is present, no remediation', async () => {
     const item = await pluginsItem(
-      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_BOTH }),
+      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_DESIGN_ONLY }),
       { nativeBootstrap: false }
     );
     expect(item.status).toBe('present');
     expect(item.remediation).toBeUndefined();
   });
 
-  test('only design@maude installed → missing, names the absent flow@maude + offers the fix', async () => {
+  test('design@maude NOT installed → missing, names the absent design@maude + offers the fix', async () => {
+    // flow-only registry: `/flow` is irrelevant to the chat now, so this reads as
+    // "design missing" — the gate tracks design alone.
     const item = await pluginsItem(
-      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_DESIGN_ONLY }),
+      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_FLOW_ONLY }),
       { nativeBootstrap: false }
     );
     expect(item.status).toBe('missing');
-    expect(item.detail).toContain('flow@maude');
+    expect(item.detail).toContain('design@maude');
     expect(item.remediation).toContain('/plugin install');
   });
 
@@ -90,7 +95,7 @@ describe('readiness — plugin registry scan (web / manual path)', () => {
     expect(item.status).toBe('unknown');
   });
 
-  test('plugin presence is the gate — a foreign-repo marketplace does not change a both-installed verdict', async () => {
+  test('plugin presence is the gate — a foreign-repo marketplace does not change a design-installed verdict', async () => {
     const item = await pluginsItem(
       fixtureClaudeDir({
         markets: { other: { source: { repo: 'someone/else' } } },
@@ -114,17 +119,18 @@ describe('readiness — plugin auto-bootstrap (native, DDR-143)', () => {
     expect(item.remediation).toBeUndefined();
   });
 
-  test('only design installed → still present (flow is auto-loaded, no red wall)', async () => {
+  test('design NOT installed (flow-only registry) → still present (design is auto-loaded, no red wall)', async () => {
     const item = await pluginsItem(
-      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_DESIGN_ONLY })
+      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_FLOW_ONLY })
     );
     expect(item.status).toBe('present');
+    expect(item.detail).toContain('Auto-loaded');
     expect(item.remediation).toBeUndefined();
   });
 
-  test('both already installed → present, keeps the "are installed" detail (no auto-load framing)', async () => {
+  test('design already installed → present, keeps the "is installed" detail (no auto-load framing)', async () => {
     const item = await pluginsItem(
-      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_BOTH })
+      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_DESIGN_ONLY })
     );
     expect(item.status).toBe('present');
     expect(item.detail).toContain('installed');
