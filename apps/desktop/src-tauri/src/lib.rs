@@ -187,6 +187,12 @@ pub fn run() {
                 let _ = app.emit("menu://new-project", ());
                 return;
             }
+            if event.id().as_ref() == menu::MENU_CHECK_UPDATES {
+                // Maude ▸ Check for Updates… — force a check now with explicit
+                // dialog feedback (the background loop is otherwise silent).
+                updater::check_now_interactive(app.clone());
+                return;
+            }
             if event.id().as_ref() == menu::MENU_OPEN_PROJECT {
                 let app = app.clone();
                 // Pick a project folder, remember it, and relaunch pointed at it.

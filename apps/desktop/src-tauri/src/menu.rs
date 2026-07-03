@@ -10,6 +10,9 @@ pub const MENU_NEW_PROJECT: &str = "new_project";
 /// Menu-item id for the File ▸ Open Project… action.
 pub const MENU_OPEN_PROJECT: &str = "open_project";
 
+/// Menu-item id for the Maude ▸ Check for Updates… action (manual update check).
+pub const MENU_CHECK_UPDATES: &str = "check_updates";
+
 /// Build the application menu. The first submenu becomes the macOS app menu.
 pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let about = AboutMetadataBuilder::new()
@@ -17,8 +20,17 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .version(Some(env!("CARGO_PKG_VERSION")))
         .build();
 
+    // Manual "Check for Updates…" — the background loop (updater.rs) already checks
+    // on boot / focus / every 4 h, but this lets the user force a check on demand and
+    // get explicit feedback (a native "you're up to date" / error dialog) that the
+    // silent background path deliberately withholds.
+    let check_updates =
+        MenuItemBuilder::with_id(MENU_CHECK_UPDATES, "Check for Updates…").build(app)?;
+
     let app_menu = SubmenuBuilder::new(app, "Maude")
         .about(Some(about))
+        .separator()
+        .item(&check_updates)
         .separator()
         .quit()
         .build()?;

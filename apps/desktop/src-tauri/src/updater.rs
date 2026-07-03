@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_updater::UpdaterExt;
 
 /// 4 hours between background checks (plus on-focus + boot).
@@ -49,7 +50,7 @@ pub fn spawn_update_loop(handle: AppHandle) {
         tokio::time::sleep(Duration::from_secs(INITIAL_DELAY_SECS)).await;
         let mut ticker = tokio::time::interval(Duration::from_secs(CHECK_INTERVAL_SECS));
         loop {
-            check_and_apply(&handle).await;
+            check_and_apply(&handle, false).await;
             ticker.tick().await;
         }
     });
@@ -59,15 +60,30 @@ pub fn spawn_update_loop(handle: AppHandle) {
 /// the updater plugin no-ops a second in-flight check.
 pub fn check_now(handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        check_and_apply(&handle).await;
+        check_and_apply(&handle, false).await;
     });
 }
 
-async fn check_and_apply(handle: &AppHandle) {
+/// One-shot check the user triggered from the Maude ▸ Check for Updates… menu.
+/// Unlike the silent background/focus checks, this surfaces the two otherwise-
+/// invisible outcomes via a native dialog: "you're up to date" and "check failed".
+/// A found update still flows through the normal download → `update-ready` banner.
+pub fn check_now_interactive(handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        check_and_apply(&handle, true).await;
+    });
+}
+
+/// `interactive` = the user asked for this check (menu), so give explicit feedback
+/// on the up-to-date + error paths. Background/focus checks pass `false` and stay quiet.
+async fn check_and_apply(handle: &AppHandle, interactive: bool) {
     let updater = match handle.updater() {
         Ok(u) => u,
         Err(e) => {
             eprintln!("[maude] updater unavailable: {e}");
+            if interactive {
+                notify_check_failed(handle, &e.to_string());
+            }
             return;
         }
     };
@@ -95,9 +111,38 @@ async fn check_and_apply(handle: &AppHandle) {
                 Err(e) => eprintln!("[maude] update download/install failed: {e}"),
             }
         }
-        Ok(None) => { /* already up to date — quiet */ }
-        Err(e) => eprintln!("[maude] update check failed: {e}"),
+        Ok(None) => {
+            // Already up to date. Quiet for background checks; for a manual check the
+            // user expects confirmation that the click did something.
+            if interactive {
+                handle
+                    .dialog()
+                    .message(format!(
+                        "Maude {} is the latest version.",
+                        env!("CARGO_PKG_VERSION")
+                    ))
+                    .title("You’re up to date")
+                    .kind(MessageDialogKind::Info)
+                    .show(|_| {});
+            }
+        }
+        Err(e) => {
+            eprintln!("[maude] update check failed: {e}");
+            if interactive {
+                notify_check_failed(handle, &e.to_string());
+            }
+        }
     }
+}
+
+/// Native error dialog for a manual check that couldn't reach / verify the feed.
+fn notify_check_failed(handle: &AppHandle, err: &str) {
+    handle
+        .dialog()
+        .message(format!("Couldn’t check for updates.\n\n{err}"))
+        .title("Update check failed")
+        .kind(MessageDialogKind::Error)
+        .show(|_| {});
 }
 
 /// Webview → shell: apply the staged update by relaunching. Tears the sidecar down
