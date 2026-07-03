@@ -1036,6 +1036,33 @@
     box-shadow: 0 0 0 3px var(--accent-tint);
   }
 
+  /* Thumbnail strip under an assistant bubble — every designRoot image path the
+     agent mentioned (DDR-145), previewed without leaving the chat. */
+  .chat-thumbrow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+  /* A REFERENCED image (assistant merely named the path) — captioned with its
+     filename so it reads as "a file that was referenced", not first-class agent
+     media (attacker F2, DDR-145). */
+  .chat-thumb-fig {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-width: 180px;
+  }
+  .chat-thumb-cap {
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    color: var(--fg-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* Lightbox — single fixed overlay above the whole shell (ESC / backdrop / ×).
      Scrim mixes the base background so it tracks light/dark themes. z sits above
      the shell modal band (.gi-modal 9600) but below the tour/topmost layer

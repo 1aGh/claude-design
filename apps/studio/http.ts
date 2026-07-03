@@ -674,7 +674,13 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         const name = new URL(req.url).searchParams.get('name');
         const abs = await api.resolveChatAttachment(name);
         if (!abs) return new Response('Not found', { status: 404 });
-        return serveFile(abs, { 'Cache-Control': 'public, max-age=31536000, immutable' });
+        return serveFile(abs, {
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          // Uploaded bytes on the privileged main origin — never let the browser
+          // MIME-sniff a polyglot into a richer type (mirrors the DDR-088 static
+          // lane; the sniff/allowlist on write is the primary gate).
+          'X-Content-Type-Options': 'nosniff',
+        });
       }
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))

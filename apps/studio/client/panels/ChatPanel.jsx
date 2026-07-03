@@ -27,6 +27,7 @@ import {
   activityLabel,
   attachmentName,
   createAcpConnection,
+  designImageRefs,
   extractAttachmentRefs,
   makeAcpAdapter,
 } from './acp-runtime.js';
@@ -249,10 +250,23 @@ async function uploadChatImage(file) {
 }
 
 // ── message-part renderers ──
+// Assistant text: markdown, plus a thumbnail strip for any designRoot image
+// path the agent mentioned (e.g. "/design:screenshot → Saved to: .design/…png"
+// — DDR-145). The path stays visible in the text; the strip adds the preview.
 function ChatText({ text }) {
+  const media = useContext(ChatMediaContext);
+  const refs = designImageRefs(text, media?.designRel);
   return (
     <div className="chat-bubble">
       <Markdown text={text} />
+      {refs.length ? (
+        <div className="chat-thumbrow">
+          {refs.map((src) => {
+            const file = src.split('/').pop();
+            return <ChatThumb key={src} src={src} label={`Open ${file}`} caption={file} />;
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -309,19 +323,34 @@ function attachmentSrc(name) {
 }
 
 // Thumbnail — a real focusable button (Enter/Space open) wrapping the served
-// image; clicking opens the shared lightbox.
-function ChatThumb({ name }) {
+// image; clicking opens the shared lightbox. `src` is always one of our own
+// same-origin serve lanes (attachment route or designRoot static).
+//
+// `caption` marks a REFERENCED path (an image an assistant message merely named,
+// DDR-145) as distinct from first-class user/agent media — it prints the
+// filename under the thumb so an injected assistant can't fully borrow the
+// feed's authority by rendering an arbitrary designRoot image as if it produced
+// it (attacker F2). Pasted-image thumbs pass no caption.
+function ChatThumb({ src, label = 'Open image', caption }) {
   const media = useContext(ChatMediaContext);
-  const src = attachmentSrc(name);
-  return (
+  const btn = (
     <button
       type="button"
       className="chat-thumb-btn"
-      aria-label="Open pasted image"
+      aria-label={label}
       onClick={() => media?.openLightbox(src)}
     >
-      <img className="chat-thumb" src={src} alt="pasted image" loading="lazy" />
+      <img className="chat-thumb" src={src} alt="" loading="lazy" />
     </button>
+  );
+  if (!caption) return btn;
+  return (
+    <figure className="chat-thumb-fig">
+      {btn}
+      <figcaption className="chat-thumb-cap" title={caption}>
+        {caption}
+      </figcaption>
+    </figure>
   );
 }
 
@@ -348,7 +377,7 @@ function ChipOrThumb({ token, kind }) {
     return () => clearInterval(id);
   }, [kind, name, media, token]);
   if (!name) return <span className="chat-paste-chip">{token}</span>;
-  return <ChatThumb name={name} />;
+  return <ChatThumb src={attachmentSrc(name)} label="Open pasted image" />;
 }
 
 // Single fixed overlay for the enlarged image — ESC / backdrop / × close,
@@ -404,22 +433,33 @@ function ChatLightbox({ src, onClose }) {
 
 // User bubble keeps the collapsed chips in the transcript (Claude Code shows the
 // placeholder in history too — the real path went to the agent, not the log),
-// EXCEPT images, which render as clickable thumbnails. Two spellings resolve to
-// the same thumbnail: a live chip ([image-1] → per-chat map) and the reloaded
+// EXCEPT images, which render as clickable thumbnails in a strip UNDER the text
+// (inline they'd break the message's reading flow). Two spellings resolve to the
+// same thumbnail: a live chip ([image-1] → per-chat map) and the reloaded
 // transcript's expanded `_chat/attachments/` path (never printed raw).
 function UserBubble({ text }) {
   const segs = extractAttachmentRefs(text);
+  const inline = [];
+  const images = [];
+  segs.forEach((seg, i) => {
+    if (seg.type === 'text') inline.push(<span key={`t-${i}`}>{seg.text}</span>);
+    else if (seg.type === 'chip' && seg.kind !== 'image')
+      inline.push(
+        <span className="chat-paste-chip" key={`c-${i}`}>
+          {seg.token}
+        </span>
+      );
+    else if (seg.type === 'chip')
+      images.push(<ChipOrThumb key={`c-${i}`} token={seg.token} kind={seg.kind} />);
+    else
+      images.push(
+        <ChatThumb key={`a-${i}`} src={attachmentSrc(seg.name)} label="Open pasted image" />
+      );
+  });
   return (
     <div className="chat-bubble">
-      {segs.map((seg, i) =>
-        seg.type === 'text' ? (
-          <span key={`t-${i}`}>{seg.text}</span>
-        ) : seg.type === 'chip' ? (
-          <ChipOrThumb key={`c-${i}`} token={seg.token} kind={seg.kind} />
-        ) : (
-          <ChatThumb key={`a-${i}`} name={seg.name} />
-        )
-      )}
+      {inline}
+      {images.length ? <div className="chat-thumbrow">{images}</div> : null}
     </div>
   );
 }
@@ -1031,6 +1071,7 @@ function ChatThread({
   effortRef,
   activeCanvas,
   selected,
+  designRel,
   model,
   setModel,
   effort,
@@ -1082,8 +1123,9 @@ function ChatThread({
     () => ({
       chipName: (token) => attachmentName(attachmentsRef.current.map.get(token) || ''),
       openLightbox: setLightboxSrc,
+      designRel,
     }),
-    []
+    [designRel]
   );
   const [activeTools, setActiveTools] = useState([]);
   useEffect(() => conn.onActivity(setActiveTools), [conn]);
@@ -1135,6 +1177,7 @@ function ChatThread({
 export default function ChatPanel({
   activeCanvas,
   selected,
+  designRel,
   width,
   resizing,
   onClose,
@@ -1486,6 +1529,7 @@ export default function ChatPanel({
                 effortRef={effortRef}
                 activeCanvas={activeCanvas}
                 selected={selected}
+                designRel={designRel}
                 model={model}
                 setModel={setModel}
                 effort={effort}

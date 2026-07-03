@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-145: ACP chat — render agent-referenced designRoot images as thumbnails (render-only client slice; ACP image blocks + skill emit stay v2 backlog)](DDR-145-acp-chat-agent-referenced-image-render.md) — 2026-07-03, native-app/acp/chat/thumbnails/lightbox/designroot-static/render-only/cap/svg-excluded
 - [DDR-144: Bundled screenshot engine — agent-browser launcher (externalBin) + on-demand chrome-headless-shell](DDR-144-bundled-screenshot-engine-agent-browser-headless-shell.md) — 2026-07-03, native-app/design/screenshots/agent-browser/chrome-headless-shell/externalBin/zero-install/critics/provisioning
 - [DDR-143: ACP session-scoped plugin auto-bootstrap — `_meta.claudeCode.options.plugins`, native-only, no-op for power users (supersedes DDR-128's guide-only ceiling)](DDR-143-acp-session-scoped-plugin-auto-bootstrap.md) — 2026-07-03, native-app/acp/plugin-bootstrap/zero-install/meta-injection/no-op-gate/ddr-128-supersede/desktop-staging/security
 - [DDR-127: Showcase-grounded canvas generation — platform `ui_kits-<platform>-showcase` as a Tier-0 layout prior (renumbered from a colliding DDR-106)](DDR-127-showcase-grounded-canvas-generation.md) — 2026-06-22, design/design-system/pattern-priors/showcase/ui-kit/envelope/layout-reuse/renumbered-from-106

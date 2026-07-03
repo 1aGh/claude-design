@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "acp-chat-image-thumbnails",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "See images right in the chat",
+      "summary": "Images now show up as thumbnails in the Assistant panel — paste a screenshot into the box and it appears in your message, and when Claude points to an image it made (like a /design:screenshot capture) that shows up too. Click any thumbnail to open it full-size in a lightbox.",
+      "surface": "design-ui"
+    },
+    {
       "id": "acp-context-hardening",
       "version": "0.38.0",
       "date": "2026-07-03",

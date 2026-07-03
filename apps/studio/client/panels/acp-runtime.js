@@ -435,6 +435,69 @@ export function extractAttachmentRefs(text) {
   return segs;
 }
 
+/**
+ * Image paths under the project's design root that an ASSISTANT message text
+ * references (e.g. `/design:screenshot` replying "Saved to: .design/_history/…/
+ * 001.png") → servable same-origin URLs for the thumbnail strip (DDR-145).
+ * Render-only: the main origin already serves designRoot statics with
+ * containment; nothing outside `<designRel>/` ever matches, SVG stays excluded
+ * (scriptable), and the per-message cap bounds a hostile/hallucinated wall of
+ * paths. Returns unique URLs in first-mention order.
+ *
+ * Containment is enforced client-side, NOT delegated to the server (DDR-145
+ * security follow-up): the assistant text is partly untrusted (tool output /
+ * indirect injection), so a token carrying a `..` dot-segment or ANY
+ * percent-encoding is rejected outright — otherwise `.design/../../etc/x.png`
+ * would collapse to `/etc/x.png` in the browser (and `..%2f` would decode
+ * server-side), silently widening the fetch surface from designRel to the whole
+ * repoRoot. The server's `safePathUnderRoot` stays the backstop; this makes the
+ * client guarantee match the docstring instead of leaning on it.
+ */
+export function designImageRefs(text, designRel = '.design', cap = 6) {
+  const rel = String(designRel || '.design').replace(/^\/+|\/+$/g, '');
+  if (!rel) return [];
+  const esc = rel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // A path token: optional abs/relative prefix, then `<rel>/…/<img>`. Boundaries
+  // tolerate the markdown the paths arrive wrapped in (backticks, quotes,
+  // parens) and shed trailing punctuation via the lookahead.
+  // Bounded quantifiers ({0,256}/{1,256}) keep the per-start scan constant-time —
+  // a long failing candidate (attacker-influenceable assistant text) can't drive
+  // superlinear backtracking. No real designRoot path segment run approaches 256.
+  const re = new RegExp(
+    `(?:^|[\\s\`'"(\\[])((?:[^\\s\`'"()\\[\\]]{0,256}/)?${esc}/[^\\s\`'"()\\[\\]]{1,256}?\\.(?:png|jpe?g|gif|webp))(?=[\\s\`'")\\]]|[.,:;!?]|$)`,
+    'gi'
+  );
+  const urls = [];
+  let m;
+  while ((m = re.exec(String(text || ''))) && urls.length < cap) {
+    const raw = m[1];
+    const at = raw.lastIndexOf(`${rel}/`);
+    if (at !== 0 && raw[at - 1] !== '/') continue; // `not-.design/x.png` must not match
+    const relPath = raw.slice(at);
+    const url = `/${relPath}`;
+    // Traversal guard — ALLOWLIST the canonical form, don't blocklist escape
+    // spellings (DDR-145 security follow-up). Two lanes the browser/server
+    // normalize differently:
+    //  1. Reject ANY percent-encoding outright — a plain designRoot path in
+    //     assistant prose never carries `%`, but `..%2f` survives the WHATWG
+    //     `URL` parse (pathname keeps `%2F` literal) and then the SERVER's
+    //     `safePathUnderRoot` decodes it out of designRel.
+    //  2. Parse exactly as the browser will (WHATWG collapses `..` dot-segments
+    //     AND rewrites `\`→`/` for http(s)) and require the result byte-identical
+    //     AND still under `/rel/` — closes `..`, `..\`, and mixed spellings.
+    if (relPath.includes('%')) continue;
+    let canon;
+    try {
+      canon = new URL(url, 'http://x').pathname;
+    } catch {
+      continue;
+    }
+    if (canon !== url || !canon.startsWith(`/${rel}/`)) continue;
+    if (!urls.includes(url)) urls.push(url);
+  }
+  return urls;
+}
+
 // Expand collapsed paste chips ([image-1]/[file-1]/[link-1]) back to the real
 // path/URL the user pasted, so Claude receives the actual value while the chat
 // bubble keeps the compact badge. Unknown tokens (e.g. a stale one the user typed

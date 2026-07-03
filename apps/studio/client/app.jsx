@@ -8210,6 +8210,7 @@ function App() {
                   : null
               }
               selected={selected}
+              designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}
               width={rpSize.w}
               resizing={dragSide === 'rp'}
               onClose={() => setAssistantOpen(false)}

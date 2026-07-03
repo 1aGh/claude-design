@@ -211,3 +211,13 @@ Promote into the task list if the user opts in. Two layers:
   - [ ] Security: traversal `name` rejected; route off canvas origin
 - [ ] No DDR-worthy decision left unrecorded (a DDR is required before the v2 render surface, not for v1)
 - [ ] Code follows the ACP panel's conventions; no regressions to the paste-chip/send flow
+
+---
+
+## Retro
+
+- **The plan's v1/v2 split held, but the user opted into v2 the instant they saw v1.** The very first dogfood interaction ("posílá mi link na obrázek… nic se neobjevilo") was the deferred follow-up. Lesson for `/plan`: when a feature's obvious sibling case is one dogfood turn away, budget for it landing in the same session rather than a clean separate cycle — the "recommended v1, document v2" hedge was right, but v2 arrived in hours, not a sprint.
+- **v2 needed zero server work — the win was recognizing the existing serve lane.** The agent-referenced case reused the main-origin designRoot static fall-through (`safePathUnderRoot`) instead of inventing a route. Checking "does the server already serve this containment-safely?" before designing turned a "thorny follow-up" into a render-only client slice + a DDR.
+- **The security fan-out earned its keep — the client containment guarantee was illusory.** Both defenders + the attacker independently found the same MEDIUM: `designImageRefs` advertised designRel containment in its docstring but its char class admitted `..`/`%`, so the *server* backstop was the only real boundary. A regex that "looks airtight" (raster-only, cap, dedup all genuinely passed) can still leak on the one axis nobody wrote a test for. The fix + 5 regression tests closed it; the lesson is to write the traversal test the moment a helper maps untrusted text → a URL.
+- **The attacker's F2 (content-spoofing / trust-surface) was the finding a checklist misses.** "No bytes execute, same-origin, React-escaped" is all true and all beside the point — the chat feed is a trust surface, and auto-rendering an image an *injected* assistant named lends it authority. The proportionate fix (a filename caption marking referenced vs. first-class media) was cheap; the meta-lesson is that "render-only = safe" reasoning about *bytes* has a blind spot about *authority*.
+- **Live verification caught what tests couldn't:** the lightbox z-index (200) would have rendered *under* the shell modal band (9600) — invisible in a unit test, obvious in a 5-second agent-browser probe of the z-ladder. Keep the "inject the component into a running server and read computed styles" step for any new fixed/overlay chrome.
