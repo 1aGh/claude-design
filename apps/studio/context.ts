@@ -209,7 +209,7 @@ export function normalizeDesignSystems<T extends DevServerConfig>(cfg: T): T {
 /**
  * True when a config-declared relative path stays inside the design root once
  * joined to it. Rejects absolute paths and `..` escapes. Security clamp from
- * the DDR-148 fan-out review: `canvasGroups[].path` / `tokensCssRel` feed
+ * the DDR-149 fan-out review: `canvasGroups[].path` / `tokensCssRel` feed
  * directory walks (`/_index-data`) and a served stylesheet URL — a poisoned
  * (e.g. peer-committed) config must not walk or serve outside the design root,
  * and with hot-reload the escape would apply live, no restart gate.
@@ -331,7 +331,7 @@ export function reloadConfig(ctx: Context): boolean {
   // at startup (sync/index.ts), so a live swap would let use-time readers
   // (syncTsx gating) drift out of step with the hub the socket is actually
   // attached to — and a poisoned config must never re-point sync without a
-  // restart (DDR-148 fan-out review).
+  // restart (DDR-149 fan-out review).
   if (JSON.stringify(next.linkedHub) !== JSON.stringify(ctx.cfg.linkedHub)) {
     console.warn('  warn: linkedHub changed — not hot-reloadable, restart the server to apply.');
     if (ctx.cfg.linkedHub === undefined) delete next.linkedHub;

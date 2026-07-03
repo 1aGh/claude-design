@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "file-tree-live-config-reload",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "New design systems show up in the file tree instantly",
+      "summary": "Bootstrapping a design system from the Assistant (or editing your design config by hand) now updates the file tree live — new canvas groups and their files appear as they're created, no server restart needed.",
+      "surface": "design-ui"
+    },
+    {
       "id": "acp-chat-cross-restart-resume",
       "version": "0.39.1",
       "date": "2026-07-03",

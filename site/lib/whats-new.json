@@ -1,11 +1,20 @@
 {
-  "generated": "2026-07-03T15:34:27.126Z",
-  "version": "0.39.0",
+  "generated": "2026-07-03T20:37:31.921Z",
+  "version": "0.39.1",
   "entries": [
     {
-      "id": "acp-chat-cross-restart-resume",
+      "id": "file-tree-live-config-reload",
       "version": null,
       "date": null,
+      "kind": "fix",
+      "title": "New design systems show up in the file tree instantly",
+      "summary": "Bootstrapping a design system from the Assistant (or editing your design config by hand) now updates the file tree live — new canvas groups and their files appear as they're created, no server restart needed.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "acp-chat-cross-restart-resume",
+      "version": "0.39.1",
+      "date": "2026-07-03",
       "kind": "fix",
       "title": "The Assistant remembers your conversation after a restart",
       "summary": "Killed the app to grab an update, or restarted the dev server mid-chat? The Assistant now picks up the actual conversation where you left off instead of quietly starting fresh while the old messages just sat there.",
