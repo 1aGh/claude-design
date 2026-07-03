@@ -6,7 +6,12 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { activityLabel, isSubagentTool, reduceActivity } from '../client/panels/acp-runtime.js';
+import {
+  activityLabel,
+  applyUpdate,
+  isSubagentTool,
+  reduceActivity,
+} from '../client/panels/acp-runtime.js';
 
 const call = (id: string, toolName?: string, over: Record<string, unknown> = {}) => ({
   t: 'update' as const,
@@ -77,5 +82,73 @@ describe('activityLabel', () => {
     expect(activityLabel([{ title: 'Edit foo.ts' }])).toBe('Edit foo.ts');
     expect(activityLabel([{ title: 'a' }, { title: 'b' }])).toBe('2 tasks running');
     expect(activityLabel([])).toBe('Working…');
+  });
+});
+
+// The F2 fix: the SAME reducer folds live-turn frames AND the post-turn-end
+// "background continuation" frames the client used to drop. If this drifts, the
+// dropped subagent results / consolidation render wrong (or not at all).
+describe('applyUpdate (shared part reducer)', () => {
+  const chunk = (text: string) => ({
+    sessionUpdate: 'agent_message_chunk',
+    content: { type: 'text', text },
+  });
+  const call = (id: string, title: string, kind: string, rawInput: unknown = {}) => ({
+    sessionUpdate: 'tool_call',
+    toolCallId: id,
+    title,
+    kind,
+    rawInput,
+  });
+  const upd = (id: string, status: string, rawOutput: unknown) => ({
+    sessionUpdate: 'tool_call_update',
+    toolCallId: id,
+    status,
+    rawOutput,
+  });
+
+  test('coalesces consecutive text chunks into one part', () => {
+    const parts: unknown[] = [];
+    const ti = new Map();
+    applyUpdate(parts, ti, chunk('Panel: '));
+    applyUpdate(parts, ti, chunk('9 blockers'));
+    expect(parts).toEqual([{ type: 'text', text: 'Panel: 9 blockers' }]);
+  });
+
+  test('tool_call adds a pending part; tool_call_update fills the result', () => {
+    const parts: Array<Record<string, unknown>> = [];
+    const ti = new Map();
+    applyUpdate(parts, ti, call('t1', 'Write critique/001.md', 'edit', { path: 'x' }));
+    expect(parts[0]).toMatchObject({ type: 'tool-call', toolName: 'Write critique/001.md' });
+    expect(parts[0].result).toBeUndefined();
+    applyUpdate(parts, ti, upd('t1', 'completed', { ok: true }));
+    expect(parts[0]).toMatchObject({ result: { ok: true }, isError: false });
+  });
+
+  test('failed update marks isError', () => {
+    const parts: Array<Record<string, unknown>> = [];
+    const ti = new Map();
+    applyUpdate(parts, ti, call('t1', 'Bash', 'execute'));
+    applyUpdate(parts, ti, upd('t1', 'failed', null));
+    expect(parts[0].isError).toBe(true);
+  });
+
+  test('thought → reasoning part; usage/plan ignored', () => {
+    const parts: unknown[] = [];
+    const ti = new Map();
+    applyUpdate(parts, ti, {
+      sessionUpdate: 'agent_thought_chunk',
+      content: { type: 'text', text: 'hmm' },
+    });
+    applyUpdate(parts, ti, { sessionUpdate: 'usage_update' });
+    applyUpdate(parts, ti, { sessionUpdate: 'plan' });
+    expect(parts).toEqual([{ type: 'reasoning', text: 'hmm' }]);
+  });
+
+  test('update for an unknown tool id is a no-op', () => {
+    const parts: unknown[] = [];
+    const ti = new Map();
+    applyUpdate(parts, ti, upd('nope', 'completed', {}));
+    expect(parts).toEqual([]);
   });
 });

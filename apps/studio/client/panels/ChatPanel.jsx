@@ -380,6 +380,43 @@ function ActivityBar({ tools }) {
   );
 }
 
+// Post-turn-end continuation. The ACP adapter settles the prompt at the main
+// agent's first `result` (claude-agent-acp #773) but keeps streaming background
+// work — subagent results, the consolidated report — AFTER the assistant-ui run
+// ended. Those frames can't join the completed message, so acp-runtime collects
+// them and we render them here as a live "continuation" bubble instead of
+// dropping them (the answer used to only appear on reload). See RCA
+// issue-acp-subagent-activity-invisible (facet F2). Cleared when the next turn
+// starts; the durable copy lives in the transcript.
+function ContinuationBubble({ parts }) {
+  if (!parts.length) return null;
+  return (
+    <div className="chat-msg chat-msg--assistant chat-msg--continued">
+      <div className="chat-msg-role">
+        <span className="chat-msg-spark">
+          <Spark size={13} />
+        </span>
+        Claude
+      </div>
+      {parts.map((p, i) =>
+        p.type === 'text' ? (
+          <ChatText key={i} text={p.text} />
+        ) : p.type === 'reasoning' ? (
+          <ChatReasoning key={i} text={p.text} />
+        ) : p.type === 'tool-call' ? (
+          <ChatToolCard
+            key={i}
+            toolName={p.toolName}
+            args={p.args}
+            result={p.result}
+            isError={p.isError}
+          />
+        ) : null
+      )}
+    </div>
+  );
+}
+
 function ChatEmpty() {
   return (
     <div className="chat-empty">
@@ -913,6 +950,9 @@ function ChatThread({
   const runtime = useLocalRuntime(adapter, { initialMessages });
   const [activeTools, setActiveTools] = useState([]);
   useEffect(() => conn.onActivity(setActiveTools), [conn]);
+  // Post-turn-end continuation (the tail the client used to drop — RCA F2).
+  const [bgParts, setBgParts] = useState([]);
+  useEffect(() => conn.onBackground(setBgParts), [conn]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -924,6 +964,9 @@ function ChatThread({
               <ChatEmpty />
             </ThreadPrimitive.Empty>
             <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
+            {/* Background work that outlived the turn — streamed here so it's not
+                dropped (RCA F2). */}
+            <ContinuationBubble parts={bgParts} />
             {/* "still working" indicator under the latest message */}
             <ActivityBar tools={activeTools} />
           </ThreadPrimitive.Viewport>

@@ -449,6 +449,14 @@
     line-height: var(--lh-base);
   }
 
+  /* Continuation bubble — background work (subagent results / consolidation)
+     that streamed in after the turn's premature settle (RCA F2). A dashed rule
+     marks it as a continuation of the message above, not a fresh reply. */
+  .chat-msg--continued {
+    border-top: 1px dashed var(--border-subtle);
+    padding-top: var(--space-3);
+  }
+
   /* Rendered markdown inside the assistant bubble (chat-markdown.jsx) */
   .chat-msg--assistant .chat-bubble > * + * {
     margin-top: var(--space-2);

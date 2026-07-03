@@ -61,6 +61,64 @@ export function activityLabel(tools) {
   return 'Working…';
 }
 
+/**
+ * Fold one `session/update` into the assistant-message `parts` array (mutated in
+ * place) + `toolIndex` map. Shared by the LIVE turn (makeAcpAdapter's run loop)
+ * AND the BACKGROUND sink (the frames the ACP adapter keeps streaming AFTER its
+ * premature settle — claude-agent-acp #773; see RCA issue-acp-subagent-activity-
+ * invisible). `plan`/`usage_update`/`available_commands_update` are not rendered.
+ * Exported for tests.
+ */
+export function applyUpdate(parts, toolIndex, u) {
+  switch (u.sessionUpdate) {
+    case 'agent_message_chunk': {
+      if (u.content?.type !== 'text') break;
+      const last = parts[parts.length - 1];
+      if (last && last.type === 'text') {
+        parts[parts.length - 1] = { ...last, text: last.text + u.content.text };
+      } else {
+        parts.push({ type: 'text', text: u.content.text });
+      }
+      break;
+    }
+    case 'agent_thought_chunk': {
+      // Extended-thinking — a collapsed "Thinking" disclosure (reasoning part).
+      if (u.content?.type !== 'text') break;
+      const last = parts[parts.length - 1];
+      if (last && last.type === 'reasoning') {
+        parts[parts.length - 1] = { ...last, text: last.text + u.content.text };
+      } else {
+        parts.push({ type: 'reasoning', text: u.content.text });
+      }
+      break;
+    }
+    case 'tool_call': {
+      toolIndex.set(u.toolCallId, parts.length);
+      parts.push({
+        type: 'tool-call',
+        toolCallId: u.toolCallId,
+        toolName: u.title || u.kind || 'tool',
+        args: u.rawInput ?? {},
+        argsText: safeJson(u.rawInput),
+        result: undefined,
+      });
+      break;
+    }
+    case 'tool_call_update': {
+      const idx = toolIndex.get(u.toolCallId);
+      if (idx == null) break;
+      parts[idx] = {
+        ...parts[idx],
+        result: u.rawOutput ?? parts[idx].result,
+        isError: u.status === 'failed',
+      };
+      break;
+    }
+    default:
+      break; // plan / thought / commands / usage — not rendered
+  }
+}
+
 /** Connection wrapper around the loopback `/_ws/acp` socket. */
 export function createAcpConnection() {
   let ws = null;
@@ -105,6 +163,27 @@ export function createAcpConnection() {
     if (reduceActivity(activeTools, frame)) emitActivity();
   }
 
+  // Post-turn-end continuation — the ACP adapter settles the prompt at the main
+  // agent's `result` (claude-agent-acp #773) but KEEPS streaming background work
+  // (subagent results, the consolidation) afterward. Those frames arrive with no
+  // active turn (`turnHandler === null`), so they can't join the assistant-ui
+  // message that already completed; accumulate them here as a live "continuation"
+  // the panel renders below the thread — otherwise the whole answer is invisible
+  // until reload. See RCA issue-acp-subagent-activity-invisible (facet F2).
+  const backgroundListeners = new Set();
+  let bgParts = [];
+  const bgToolIndex = new Map();
+  function emitBackground() {
+    const snap = bgParts.slice();
+    for (const fn of backgroundListeners) fn(snap);
+  }
+  function resetBackground() {
+    if (!bgParts.length && !bgToolIndex.size) return;
+    bgParts = [];
+    bgToolIndex.clear();
+    emitBackground();
+  }
+
   function onFrame(frame) {
     if (frame.t === 'ready') {
       status.ready = true;
@@ -123,6 +202,12 @@ export function createAcpConnection() {
     // Everything else belongs to the active prompt turn.
     trackActivity(frame);
     if (turnHandler) turnHandler(frame);
+    else if (frame.t === 'update') {
+      // No active turn, but the adapter is still streaming (the post-settle
+      // tail the client used to drop). Fold it into the background continuation.
+      applyUpdate(bgParts, bgToolIndex, frame.update);
+      emitBackground();
+    }
   }
 
   function ensureOpen() {
@@ -162,6 +247,13 @@ export function createAcpConnection() {
       activityListeners.add(fn);
       fn([...activeTools.values()]);
       return () => activityListeners.delete(fn);
+    },
+
+    /** Subscribe to the post-turn-end continuation parts; replays the current tail. */
+    onBackground(fn) {
+      backgroundListeners.add(fn);
+      fn(bgParts.slice());
+      return () => backgroundListeners.delete(fn);
     },
 
     /** Subscribe to the slash-command catalogue; replays the current list. */
@@ -221,10 +313,12 @@ export function createAcpConnection() {
       };
       abortSignal?.addEventListener('abort', cancel, { once: true });
       setBusy(true);
-      // Fresh user turn — drop any orphaned activity from a prior turn whose
-      // background work never resolved (defensive; the common path drains via
-      // completed updates). setBusy(true) fires FIRST so the finished-ping
-      // deferral (ChatPanel) sees busy before this reset's empty activity emit.
+      // Fresh user turn supersedes the previous turn's leftovers: the background
+      // continuation tail AND any orphaned activity whose background work never
+      // resolved (defensive; the common path drains via completed updates).
+      // setBusy(true) fires FIRST so the finished-ping deferral (ChatPanel) sees
+      // busy before these empty emits.
+      resetBackground();
       if (activeTools.size) {
         activeTools.clear();
         emitActivity();
@@ -341,55 +435,7 @@ export function makeAcpAdapter(conn, getChatId, getModel, getEffort, getAttachme
         getEffort?.()
       )) {
         if (frame.t !== 'update') continue;
-        const u = frame.update;
-        switch (u.sessionUpdate) {
-          case 'agent_message_chunk': {
-            if (u.content?.type !== 'text') break;
-            const last = parts[parts.length - 1];
-            if (last && last.type === 'text') {
-              parts[parts.length - 1] = { ...last, text: last.text + u.content.text };
-            } else {
-              parts.push({ type: 'text', text: u.content.text });
-            }
-            break;
-          }
-          case 'agent_thought_chunk': {
-            // Extended-thinking — rendered as a collapsed "Thinking" disclosure
-            // (assistant-ui reasoning part) so it's available but not in the way.
-            if (u.content?.type !== 'text') break;
-            const last = parts[parts.length - 1];
-            if (last && last.type === 'reasoning') {
-              parts[parts.length - 1] = { ...last, text: last.text + u.content.text };
-            } else {
-              parts.push({ type: 'reasoning', text: u.content.text });
-            }
-            break;
-          }
-          case 'tool_call': {
-            toolIndex.set(u.toolCallId, parts.length);
-            parts.push({
-              type: 'tool-call',
-              toolCallId: u.toolCallId,
-              toolName: u.title || u.kind || 'tool',
-              args: u.rawInput ?? {},
-              argsText: safeJson(u.rawInput),
-              result: undefined,
-            });
-            break;
-          }
-          case 'tool_call_update': {
-            const idx = toolIndex.get(u.toolCallId);
-            if (idx == null) break;
-            parts[idx] = {
-              ...parts[idx],
-              result: u.rawOutput ?? parts[idx].result,
-              isError: u.status === 'failed',
-            };
-            break;
-          }
-          default:
-            break; // plan / thought / commands / usage — not rendered in v1
-        }
+        applyUpdate(parts, toolIndex, frame.update);
         yield { content: parts.slice() };
       }
     },
