@@ -92,7 +92,9 @@ if [ "$CONFIG_PRESENT" = "true" ] && [ "$HAVE_JQ" = "1" ]; then
   KNOWN_DS=$(jq -r '.designSystems[]?.name // empty' "$CFG" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
   ACCENT_STRATEGY=$(jq -r '.accentStrategy // "single"' "$CFG")
   COLOR_SPACE=$(jq -r '.colorSpace // "oklch"' "$CFG")
-  MOODBOARD_VARIANTS=$(jq -r '.moodboard.variants // 3' "$CFG")
+  # Type-coerce + clamp in jq: config.json is untrusted input (a poisoned repo
+  # could put a string here) and --shell-export output gets eval'd by callers.
+  MOODBOARD_VARIANTS=$(jq -r '.moodboard.variants // 3 | if type=="number" then floor else 3 end | if . < 1 then 1 elif . > 3 then 3 else . end' "$CFG")
 fi
 
 DR_ABS="$REPO/$DESIGN_ROOT"
@@ -161,7 +163,7 @@ if [ "$MODE" = "shell" ]; then
   printf 'export KNOWN_DS=%q\n'          "$KNOWN_DS"
   printf 'export ACCENT_STRATEGY=%q\n'   "$ACCENT_STRATEGY"
   printf 'export COLOR_SPACE=%q\n'       "$COLOR_SPACE"
-  printf 'export MOODBOARD_VARIANTS=%s\n' "$MOODBOARD_VARIANTS"
+  printf 'export MOODBOARD_VARIANTS=%q\n' "$MOODBOARD_VARIANTS"
   printf 'export DEPS_OK=%s\n'           "$DEPS_OK"
   printf 'export DEPS_MISSING=%q\n'      "$DEPS_MISSING"
   printf 'export SERVER_UP=%s\n'         "$SERVER_UP"
