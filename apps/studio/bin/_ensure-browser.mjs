@@ -292,7 +292,18 @@ export async function resolveBrowser({ download = true } = {}) {
 }
 
 // CLI entry — only when invoked directly (not when imported by readiness.ts).
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// `import.meta.main` is the reliable "am I the entry module?" flag under `bun
+// --compile`: the argv/url string compare below FALSELY matched inside the
+// standalone binary (embedded modules resolve to /$bunfs/root while argv[1] is
+// the binary path), so this block fired on plain import and killed the server
+// with a stray browser-path print + process.exit before Bun.serve ever ran —
+// the v0.38.0 "Starting…" hang (DDR-045-class compiled-path divergence). Bun
+// sets import.meta.main=false for imported modules; Node <24 leaves it
+// undefined, so fall back to the argv compare for the `node`-fallback CLI path
+// in ensure-browser.sh (a non-compiled process where that compare is correct).
+const runDirectly =
+  import.meta.main ?? (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href);
+if (runDirectly) {
   const result = await resolveBrowser({ download: !NO_DOWNLOAD });
   if (JSON_OUT) {
     process.stdout.write(
