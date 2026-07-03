@@ -289,6 +289,12 @@
     font-weight: 600;
     color: var(--presence-agent);
   }
+  /* Live elapsed counter — dimmer than the label; tabular so it doesn't jitter. */
+  .chat-activity-elapsed {
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-2);
+    opacity: 0.8;
+  }
 
   /* Feed (scrolls live) */
   .chat-feed {

@@ -7,6 +7,60 @@
 
 const WS_PATH = '/_ws/acp';
 
+/**
+ * Pure reducer for the live "what's running now" map (exported for tests).
+ * Returns true when the map changed. `turn-end` deliberately does NOT clear it:
+ * the ACP adapter settles the prompt at the main agent's `result` while
+ * background subagents keep running (claude-agent-acp #773 — see RCA
+ * issue-acp-subagent-activity-invisible), so clearing on turn-end made that
+ * still-running work vanish. Background tool_calls now drain on their own
+ * completed/failed updates; only a hard `error` (teardown) wipes the map.
+ */
+export function reduceActivity(map, frame) {
+  if (frame.t === 'update') {
+    const u = frame.update;
+    if (u.sessionUpdate === 'tool_call') {
+      // `_meta.claudeCode.toolName` is the concrete Claude Code tool name — the
+      // ONLY reliable subagent signal, since the adapter maps Task/Agent →
+      // kind:"think" + title=description (which collide with a plain think tool).
+      map.set(u.toolCallId, {
+        title: u.title || u.kind || 'tool',
+        kind: u.kind,
+        toolName: u._meta?.claudeCode?.toolName,
+      });
+      return true;
+    }
+    if (
+      u.sessionUpdate === 'tool_call_update' &&
+      (u.status === 'completed' || u.status === 'failed')
+    ) {
+      return map.delete(u.toolCallId);
+    }
+    return false;
+  }
+  if (frame.t === 'error') {
+    if (map.size) {
+      map.clear();
+      return true;
+    }
+  }
+  return false;
+}
+
+/** A Task/Agent tool_call is how the ACP adapter surfaces a subagent. */
+export function isSubagentTool(t) {
+  return t.toolName === 'Task' || t.toolName === 'Agent';
+}
+
+/** Label for the "still working" indicator — names subagents explicitly. */
+export function activityLabel(tools) {
+  const subs = tools.filter(isSubagentTool);
+  if (subs.length) return `${subs.length} subagent${subs.length > 1 ? 's' : ''} running`;
+  if (tools.length === 1) return tools[0].title;
+  if (tools.length > 1) return `${tools.length} tasks running`;
+  return 'Working…';
+}
+
 /** Connection wrapper around the loopback `/_ws/acp` socket. */
 export function createAcpConnection() {
   let ws = null;
@@ -48,23 +102,7 @@ export function createAcpConnection() {
   }
 
   function trackActivity(frame) {
-    if (frame.t === 'update') {
-      const u = frame.update;
-      if (u.sessionUpdate === 'tool_call') {
-        activeTools.set(u.toolCallId, { title: u.title || u.kind || 'tool', kind: u.kind });
-        emitActivity();
-      } else if (
-        u.sessionUpdate === 'tool_call_update' &&
-        (u.status === 'completed' || u.status === 'failed')
-      ) {
-        if (activeTools.delete(u.toolCallId)) emitActivity();
-      }
-    } else if (frame.t === 'turn-end' || frame.t === 'error') {
-      if (activeTools.size) {
-        activeTools.clear();
-        emitActivity();
-      }
-    }
+    if (reduceActivity(activeTools, frame)) emitActivity();
   }
 
   function onFrame(frame) {
@@ -183,6 +221,14 @@ export function createAcpConnection() {
       };
       abortSignal?.addEventListener('abort', cancel, { once: true });
       setBusy(true);
+      // Fresh user turn — drop any orphaned activity from a prior turn whose
+      // background work never resolved (defensive; the common path drains via
+      // completed updates). setBusy(true) fires FIRST so the finished-ping
+      // deferral (ChatPanel) sees busy before this reset's empty activity emit.
+      if (activeTools.size) {
+        activeTools.clear();
+        emitActivity();
+      }
       try {
         ws.send(
           JSON.stringify({

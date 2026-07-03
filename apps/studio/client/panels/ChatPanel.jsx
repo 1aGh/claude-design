@@ -23,7 +23,7 @@ import {
   useThread,
 } from '@assistant-ui/react';
 
-import { createAcpConnection, makeAcpAdapter } from './acp-runtime.js';
+import { activityLabel, createAcpConnection, makeAcpAdapter } from './acp-runtime.js';
 import { buildChatContext } from './chat-context.js';
 import { Markdown } from './chat-markdown.jsx';
 import ReadinessList, { useReadiness } from './ReadinessList.jsx';
@@ -322,32 +322,60 @@ function AssistantMessage() {
 }
 
 // ── sub-sections ──
-function StatusRow() {
+// "Working" is TRUE while the prompt turn is in-flight OR any tool is still
+// running — so background subagents that outlive the main turn (the ACP adapter
+// settles at the main agent's `result` while they drain, claude-agent-acp #773)
+// keep the panel from looking idle. See RCA issue-acp-subagent-activity-invisible.
+function StatusRow({ tools = [] }) {
   const running = useThread((t) => t.isRunning);
+  const working = running || tools.length > 0;
   return (
     <div className="chat-statusrow">
       <span
-        className={`chat-status-dot ${running ? 'chat-status-dot--working' : 'chat-status-dot--ready'}`}
+        className={`chat-status-dot ${working ? 'chat-status-dot--working' : 'chat-status-dot--ready'}`}
       />
-      {running ? 'Working…' : 'Ready'}
+      {working ? 'Working…' : 'Ready'}
       <span className="chat-statusrow-sep">·</span>
       <span className="chat-statusrow-cc">Claude Code</span>
     </div>
   );
 }
 
+// Live m:ss since work started — a ticking counter reads as "actively working"
+// during a long, output-quiet subagent stretch (the exact case that used to look
+// hung). Resets whenever work stops.
+function useElapsed(active) {
+  const [, tick] = useState(0);
+  const startRef = useRef(null);
+  useEffect(() => {
+    if (!active) {
+      startRef.current = null;
+      return undefined;
+    }
+    startRef.current = Date.now();
+    const id = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+  if (!active || startRef.current == null) return null;
+  const secs = Math.floor((Date.now() - startRef.current) / 1000);
+  if (secs < 1) return null;
+  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+}
+
 // Live "still working" indicator — sits at the BOTTOM of the feed (under the
-// latest Claude message) so it's clear the turn is still going. Shows the
-// in-flight tool (edit/read/shell/sub-agent) when there is one, else "Working…".
+// latest Claude message). Driven by turn-in-flight OR any running tool, so a
+// background subagent stays visible ("N subagents running · 0:42") instead of
+// the feed going quiet and looking dead.
 function ActivityBar({ tools }) {
   const running = useThread((t) => t.isRunning);
-  if (!running) return null;
-  const label =
-    tools.length === 1 ? tools[0].title : tools.length > 1 ? `${tools.length} tasks running` : 'Working…';
+  const working = running || tools.length > 0;
+  const elapsed = useElapsed(working);
+  if (!working) return null;
   return (
     <div className="chat-activity" role="status" aria-live="polite">
       <span className="chat-activity-spin" aria-hidden="true" />
-      <span className="chat-activity-text">{label}</span>
+      <span className="chat-activity-text">{activityLabel(tools)}</span>
+      {elapsed ? <span className="chat-activity-elapsed">{elapsed}</span> : null}
     </div>
   );
 }
@@ -889,7 +917,7 @@ function ChatThread({
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <div className="chat-panel" style={hidden ? { display: 'none' } : undefined}>
-        <StatusRow />
+        <StatusRow tools={activeTools} />
         <ThreadPrimitive.Root className="chat-thread">
           <ThreadPrimitive.Viewport className="chat-feed" autoScroll>
             <ThreadPrimitive.Empty>
@@ -1017,13 +1045,45 @@ export default function ChatPanel({
       if (existing) return existing;
       const conn = createAcpConnection();
       connsRef.current.set(chatId, conn);
-      conn.onBusy((busy) => {
+      // Background work (subagents) can outlive the main turn — the ACP adapter
+      // settles the prompt at the main agent's `result` while they drain
+      // (claude-agent-acp #773). Track live tool activity so the menubar
+      // badge/dot + the "finished" ping reflect TRUE quiescence, not the
+      // premature turn-end. (RCA issue-acp-subagent-activity-invisible.)
+      let bgActive = false; // a tool (e.g. a subagent) is still running
+      let busyNow = false; // the prompt turn itself is in flight
+      let deferredFinish = false; // turn ended while background work continued
+      const syncAggregate = () => {
         const wasAny = [...busyRef.current.values()].some(Boolean);
-        busyRef.current.set(chatId, busy);
+        busyRef.current.set(chatId, busyNow || bgActive);
         const nowAny = [...busyRef.current.values()].some(Boolean);
         if (wasAny !== nowAny) cbRef.current.onBusyChange?.(nowAny);
-        setBusyChats((prev) => ({ ...prev, [chatId]: busy })); // reactive dot
-        if (!busy) {
+      };
+      conn.onActivity((activeTools) => {
+        bgActive = activeTools.length > 0;
+        syncAggregate();
+        if (deferredFinish && !bgActive && !busyNow) {
+          deferredFinish = false;
+          setBusyChats((prev) => ({ ...prev, [chatId]: false }));
+          cbRef.current.onFinished?.();
+          refreshChats();
+        }
+      });
+      conn.onBusy((busy) => {
+        busyNow = busy;
+        syncAggregate();
+        if (busy) {
+          deferredFinish = false; // a new turn supersedes any pending drain ping
+          setBusyChats((prev) => ({ ...prev, [chatId]: true })); // reactive dot
+          return;
+        }
+        // Turn ended. If background work is still draining, keep the dot lit and
+        // hold the "finished" ping until the activity list empties (onActivity).
+        if (bgActive) {
+          deferredFinish = true;
+          refreshChats();
+        } else {
+          setBusyChats((prev) => ({ ...prev, [chatId]: false }));
           cbRef.current.onFinished?.();
           refreshChats();
         }
