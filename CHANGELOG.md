@@ -1,5 +1,15 @@
 # @1agh/maude
 
+## 0.38.0
+
+### Minor Changes
+
+- dc92aba: The AI chat composer got three fixes and a new attachment affordance. Copy and paste now work in the native app (Cmd+C / Cmd+V / Cmd+X / Cmd+A — a proper Edit menu was missing), and Enter sends your message (Shift+Enter for a newline). Paste a file path, a URL, or an image straight from your clipboard and it collapses into a compact chip — `[file-1]`, `[link-1]`, `[image-1]` — with a reveal line under the composer showing exactly what each chip will send, so nothing hidden ever rides into Claude. A pasted screenshot is saved alongside the chat and Claude reads it on send, just like Claude Code.
+- 641499f: ACP chat context hardening: per-canvas selection memory, frozen-at-send chat context, and a session bootstrap brief. Switching canvases while an agent runs no longer loses what you had selected — each canvas remembers its own selection, and every chat message carries the canvas + selection frozen at send time as a visible, removable attachment chip. New agent sessions get a studio-environment brief so Claude knows where it's running without any project CLAUDE.md setup.
+- 6995fda: Slash-command autocomplete + inline highlight in the native Assistant chat composer. Typing `/` opens a filter-as-you-type menu of the design and flow commands your `claude` actually has installed (keyboard- and mouse-selectable), and a recognized command lights up as a pill right inside the input — so you don't have to remember which commands exist. The command list comes live from your own Claude session (with a built-in bootstrap list for instant suggestions).
+- 30549fe: Drag to reorder elements on a canvas. Grab an element and drop it on the top/left half of another to go above, the bottom/right half to go below, or the middle of a box to nest inside it — the layout reflows live while you hold, Figma-style, with the neighbours gliding into place, and Esc puts it back. Do the same from the Layers panel, which now mirrors the canvas both ways as you drag. Instances of the same reusable component (a board's columns, repeated cards) reorder too. Every move rewrites your `.tsx` source and undoes with ⌘Z / redoes with ⌘⇧Z. Keyboard: with the Layers panel focused, ↑/↓ walk the selection, Alt+↑/↓ move within the parent, and Alt+Shift+↑/↓ move across.
+- bbe1448: Zero-install design in the Maude Desktop chat. With only Claude Code installed, the desktop app's chat panel now auto-loads the `design` plugin for its session — `/design:*` commands just work, with no marketplace to add and no `/plugin install` (power users who already installed it see a no-op, no double-load). And the design critics can now actually SEE your artboards: the app bundles a screenshot engine (agent-browser) and provisions a headless Chromium (chrome-headless-shell) on first use, so `/design:critic` / `/design:screenshot` capture renders zero-install. The web `maude design serve` path is unchanged and keeps the manual marketplace flow.
+
 ## 0.37.0
 
 ### Minor Changes

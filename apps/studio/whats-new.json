@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "acp-context-hardening",
-      "version": null,
-      "date": null,
+      "version": "0.38.0",
+      "date": "2026-07-03",
       "kind": "feature",
       "title": "The Assistant keeps your canvas in view",
       "summary": "Selection now sticks per canvas: pick an element, switch to another canvas and back, and it's still selected — no more losing your place. Every message you send to the Assistant carries the canvas and element you had chosen, frozen at send time and shown as a chip above the box, so switching canvases while Claude works never leaves it guessing what you meant. And a fresh chat already knows it's running inside the Maude studio, so you can just say \"make this bigger\" and go.",
@@ -12,8 +12,8 @@
     },
     {
       "id": "acp-composer-paste-and-send",
-      "version": null,
-      "date": null,
+      "version": "0.38.0",
+      "date": "2026-07-03",
       "kind": "feature",
       "title": "Paste, copy, and send in the Assistant",
       "summary": "Copy and paste now work in the desktop app, and Enter sends your message (Shift+Enter for a new line). Paste a file path, a link, or an image straight from your clipboard and it becomes a tidy chip — with a line underneath showing exactly what each chip will send, so nothing hidden reaches Claude. A pasted screenshot is saved with the chat and Claude reads it on send.",
@@ -21,8 +21,8 @@
     },
     {
       "id": "slash-command-autocomplete",
-      "version": null,
-      "date": null,
+      "version": "0.38.0",
+      "date": "2026-07-03",
       "kind": "feature",
       "title": "Slash-command autocomplete in the Assistant",
       "summary": "In the Assistant chat, type \"/\" to see the design and flow commands your Claude actually has — filter as you type, pick with the keyboard or a click (it prefills, never sends). A command that exists lights up as a pill right inside the box, so you don't have to remember the exact names.",
@@ -30,8 +30,8 @@
     },
     {
       "id": "drag-to-reorder",
-      "version": null,
-      "date": null,
+      "version": "0.38.0",
+      "date": "2026-07-03",
       "kind": "feature",
       "title": "Drag to reorder elements",
       "summary": "Rearrange a canvas by hand. Drag the element itself on the canvas — drop on the top/left half to go above, the bottom/right half to go below, or the middle of a box to drop inside it — and the layout reflows LIVE while you hold, Figma-style, with the neighbours gliding into place; Esc puts it back. Or drag in the Layers panel, which now mirrors the canvas both ways as you move. Even instances of the same reusable component (a board's columns, repeated cards) reorder now. Every reorder rewrites your .tsx source and undoes with ⌘Z / redoes with ⌘⇧Z. Keyboard: with the panel focused, ↑/↓ walk the selection, Alt+↑/↓ move within the parent, Alt+Shift+↑/↓ move across.",
@@ -425,8 +425,8 @@
     },
     {
       "id": "zero-install-desktop-design",
-      "version": null,
-      "date": null,
+      "version": "0.38.0",
+      "date": "2026-07-03",
       "kind": "feature",
       "title": "Design just works in the desktop chat",
       "summary": "With only Claude Code installed, /design:* commands auto-load in the chat (nothing to install), and design critics can now see your artboards — a screenshot engine is bundled and provisions its browser on first use.",
