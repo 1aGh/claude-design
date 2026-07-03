@@ -253,6 +253,14 @@ Execute in order. Keywords: CREATE, UPDATE, REMOVE.
 
 Verification: `pnpm lint` clean (15 pre-existing client warnings), `pnpm test` 163/163, smoke gate exit 0 (changed-only noop, no dist churn), `prep.sh` both modes verified, consistency sweep clean.
 
+## Retro
+
+- **Relay debate earned its cost.** The 3-seat cross-challenge didn't just rubber-stamp — BREAKER's "no" forced the two load-bearing guards (no web on the default path; single lock after refinement) that make the reorder actually safe. Author the divergent debate as a genuine fork, not theater; a seat that never flips is a merged seat.
+- **Live dogfood > spec review, every time.** The spec passed lint/tests/security-review "green", but only rendering 3 real tiles in the user's browser surfaced four defects the review couldn't: hotlinks that fetch-fine-but-render-blank, airy density, text-over-image dominance, and harvested junk (noise/shadow PNGs) in anchor slots. Every one became a DDR-147 addendum. Build a render-and-Read checkpoint into any canvas-generating spec BEFORE calling it done.
+- **`/flow:done` security fan-out caught a real class of bug the feature review missed.** The `curl` guidance and the `MOODBOARD_VARIANTS` eval both shipped in the "done" commits and were only hardened at the closeout gate — evidence the fan-out isn't ceremony. Threat-model *agent instructions* (SSRF/traversal via attacker-influenced payloads), not just runtime code, whenever a spec tells a downstream agent to fetch+write.
+- **Shared-`main` concurrency is the recurring tax.** A parallel session (config-hot-reload + video-animation-layer) owned STATE.md/roadmap.json/whats-new.json throughout; commit-only-your-own-files held, but STATE done-flip + roadmap regen + What's New had to be deferred to their next clean regen. Worktree isolation would have removed the tax — worth defaulting to for any multi-session day.
+- **Process change for `/plan`:** when a feature's deliverable is *generated visual output* (canvas/moodboard/draw), the plan should include an explicit "render N real examples + Read them" acceptance task up front, not just automated gates — the pixels are the spec.
+
 ## Confidence score
 
 **8/10** for one-pass implementation — the spec is markdown (no runtime regression surface beyond prep.sh/schema), the debate resolved every contested seam into explicit rules, and the machinery being promoted already exists. The two points off: renumbering ripple risk across a 1305-line spec + the dogfood dry-run's inherent nondeterminism.
