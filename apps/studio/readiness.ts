@@ -14,9 +14,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-
 import { isNativePluginContext } from './acp/plugin-bootstrap.ts';
 import { resolveAdapterEntry, resolveClaudePath } from './acp/probe.ts';
+import { resolveBrowser } from './bin/_ensure-browser.mjs';
 import { DESIGN_PLUGIN_DIR } from './paths.ts';
 
 export type ReadinessStatus = 'present' | 'missing' | 'unknown';
@@ -231,17 +231,37 @@ export async function probeReadiness(): Promise<ReadinessReport> {
       : 'In Claude Code: `/plugin marketplace add 1aGh/maude`, then `/plugin install design@maude`.',
   });
 
+  // agent-browser + a headless Chromium capture artboards so `/design:*` critics
+  // can SEE the work — effectively required for the full design workflow. On the
+  // native/desktop path agent-browser is BUNDLED (externalBin, DDR — bundled
+  // screenshots) and the browser engine is resolved (or provisioned as
+  // chrome-headless-shell on first use) by ensure-browser, so it's a first-class,
+  // satisfied capability — not a red "optional install" wall. On web/CLI it stays
+  // optional (the user brings agent-browser or playwright).
+  let browserReady = false;
+  if (native) {
+    try {
+      browserReady = !!(await resolveBrowser({ download: false })).path;
+    } catch {
+      /* best-effort — the browser provisions at screenshot time regardless */
+    }
+  }
   items.push({
     id: 'agent-browser',
-    label: 'agent-browser (optional)',
-    required: false,
-    status: agentBrowser ? 'present' : 'missing',
-    detail: agentBrowser
-      ? 'Installed — screenshot evidence during edits.'
-      : 'Optional — richer screenshot evidence during edits.',
-    remediation: agentBrowser
-      ? undefined
-      : 'Optional. Install `agent-browser` for screenshot evidence during `/design:edit`.',
+    label: native ? 'Screenshot engine (design critics)' : 'agent-browser (optional)',
+    required: native,
+    status: native || agentBrowser ? 'present' : 'missing',
+    detail: native
+      ? browserReady
+        ? 'Bundled — artboard screenshots for `/design:*` critics are ready.'
+        : 'Bundled — the browser engine downloads on your first screenshot (~94 MB, one-time).'
+      : agentBrowser
+        ? 'Installed — screenshot evidence during edits.'
+        : 'Optional — richer screenshot evidence during edits.',
+    remediation:
+      native || agentBrowser
+        ? undefined
+        : 'Optional. Install `agent-browser` for screenshot evidence during `/design:edit`.',
   });
 
   // The chat bridge itself: the adapter must be resolvable on disk. This is what

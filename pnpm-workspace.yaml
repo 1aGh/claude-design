@@ -19,6 +19,10 @@ packages:
 # Both ship native binaries via the same postinstall pattern.
 allowBuilds:
   '@biomejs/biome': true
+  # agent-browser (devDep of @maude/desktop, DDR-144) ships its per-platform
+  # binaries IN the npm tarball, so its postinstall isn't needed to obtain them —
+  # deny it. sync-agent-browser.mjs stages the one platform binary at build time.
+  agent-browser: false
   # Phase 9 — @hocuspocus/extension-sqlite pulls in better-sqlite3, which
   # compiles native C++ bindings against the host platform during install.
   # See apps/hub/ and .ai/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md.

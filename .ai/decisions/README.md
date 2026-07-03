@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-144: Bundled screenshot engine — agent-browser launcher (externalBin) + on-demand chrome-headless-shell](DDR-144-bundled-screenshot-engine-agent-browser-headless-shell.md) — 2026-07-03, native-app/design/screenshots/agent-browser/chrome-headless-shell/externalBin/zero-install/critics/provisioning
 - [DDR-143: ACP session-scoped plugin auto-bootstrap — `_meta.claudeCode.options.plugins`, native-only, no-op for power users (supersedes DDR-128's guide-only ceiling)](DDR-143-acp-session-scoped-plugin-auto-bootstrap.md) — 2026-07-03, native-app/acp/plugin-bootstrap/zero-install/meta-injection/no-op-gate/ddr-128-supersede/desktop-staging/security
 - [DDR-127: Showcase-grounded canvas generation — platform `ui_kits-<platform>-showcase` as a Tier-0 layout prior (renumbered from a colliding DDR-106)](DDR-127-showcase-grounded-canvas-generation.md) — 2026-06-22, design/design-system/pattern-priors/showcase/ui-kit/envelope/layout-reuse/renumbered-from-106
 - [DDR-126: Native distribution: auto-update model, signing-key custody, local crash reporting + the phase-32 security posture](DDR-126-native-distribution-auto-update-and-security-posture.md) — 2026-06-23, native-app/distribution/tauri-updater/ed25519-signing/vercel-feed/windows-msi/crash-reporting/version-parity/csp-followup/phase-32

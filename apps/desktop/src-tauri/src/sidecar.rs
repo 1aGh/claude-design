@@ -104,9 +104,26 @@ pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
     // claude) then sees the real PATH. Best-effort: on failure we leave PATH
     // untouched (no regression). The /_api/preflight readiness probe reports what's
     // still genuinely missing on top of this.
-    if let Some(login_path) = resolve_login_path() {
-        eprintln!("[maude] sidecar PATH ← login shell ({} entries)", login_path.split(':').count());
-        command = command.env("PATH", login_path);
+    // Base PATH: the login-shell PATH (DDR-128) if resolvable, else the inherited one.
+    let sep = if cfg!(windows) { ';' } else { ':' };
+    let mut path = resolve_login_path().unwrap_or_else(|| std::env::var("PATH").unwrap_or_default());
+    // Prepend our OWN bundled-tools dir — where Tauri places the `externalBin`
+    // siblings next to the app binary: `agent-browser` (the bundled screenshot
+    // engine, so `/design:*` critics can capture artboards with ZERO install) and
+    // `maude-server`. This puts `agent-browser` on the spawned dev-server → claude
+    // → `maude design screenshot` → screenshot.sh chain's PATH. (In `tauri dev`
+    // this dir holds the triple-named sidecars instead, so agent-browser resolves
+    // from the developer's global install — harmless.)
+    if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_owned())) {
+        if !path.is_empty() {
+            path = format!("{}{}{}", dir.display(), sep, path);
+        } else {
+            path = dir.display().to_string();
+        }
+    }
+    if !path.is_empty() {
+        eprintln!("[maude] sidecar PATH ({} entries, +bundled tools)", path.split(sep).count());
+        command = command.env("PATH", path);
     }
 
     // Pass through the canvas-origin-split override (DDR-063) so a WKWebView that

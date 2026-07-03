@@ -181,9 +181,24 @@ describe('readiness — report shape', () => {
     expect(typeof report.ready).toBe('boolean');
   });
 
-  test('agent-browser is optional and never gates ready', async () => {
+  test('screenshot engine: required + present (bundled) on native → never blocks ready', async () => {
+    // Native (this dev tree): agent-browser is bundled, so the row is first-class
+    // (required) but PRESENT — it can't turn `ready` false.
     const ab = (await probeReadiness()).items.find((i) => i.id === 'agent-browser')!;
-    expect(ab.required).toBe(false);
+    expect(ab.required).toBe(true);
+    expect(ab.status).toBe('present');
+  });
+
+  test('screenshot engine: optional on the web/opt-out path', async () => {
+    const saved = process.env.MAUDE_NO_PLUGIN_BOOTSTRAP;
+    process.env.MAUDE_NO_PLUGIN_BOOTSTRAP = '1'; // force native=false
+    try {
+      const ab = (await probeReadiness()).items.find((i) => i.id === 'agent-browser')!;
+      expect(ab.required).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env.MAUDE_NO_PLUGIN_BOOTSTRAP;
+      else process.env.MAUDE_NO_PLUGIN_BOOTSTRAP = saved;
+    }
   });
 
   test('adapter row tracks the real chat gate (resolveAdapterEntry) and is required', async () => {

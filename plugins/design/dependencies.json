@@ -68,7 +68,7 @@
         "preferred": "npm i -g @anthropic-ai/agent-browser"
       },
       "autoInstall": true,
-      "fallbackBehavior": "Screenshot helpers fall back to `npx playwright` (slower, less reliable). /design:smoke and several critics need agent-browser for full coverage.",
+      "fallbackBehavior": "Screenshot helpers fall back to `npx playwright` (slower, less reliable). /design:smoke and several critics need agent-browser for full coverage. On the Maude DESKTOP app it is BUNDLED (externalBin, DDR-144) and its Chromium engine is provisioned as chrome-headless-shell by `maude design ensure-browser` — screenshots work zero-install there; this soft/manual note applies to the web `maude design serve` + CLI paths.",
       "usedBy": [
         "commands/screenshot.md",
         "commands/new.md",
