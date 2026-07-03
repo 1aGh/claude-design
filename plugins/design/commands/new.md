@@ -1,58 +1,58 @@
 ---
 name: design:new
 category: daily
-description: Vytvoř nový multi-artboard canvas projekt přes frontend-design — generic envelope adaptovaný podle .design/config.json. Default = --perfect (8 iter, full panel, target 4.5/5). Opt out přes --quick nebo --no-critic. Opt out z DS přes --opt-out=palette|aesthetic|full.
+description: Create a new multi-artboard canvas project via frontend-design — generic envelope adapted to .design/config.json. Default = --perfect (8 iter, full panel, target 4.5/5). Opt out via --quick or --no-critic. Opt out of the DS via --opt-out=palette|aesthetic|full.
 argument-hint: "<Name> \"<brief>\" [--blank] [--from-annotations] [--fresh] [--component] [--mobile] [--quick | --no-critic] [--perfect-iter N] [--opt-out=palette|aesthetic|full] [--ds=<name>]"
 ---
 
-# /design:new — scaffold nový canvas projekt
+# /design:new — scaffold a new canvas project
 
-Vytvoří **nový multi-artboard canvas soubor** v `<designRoot>/<newCanvasDir>/<Name>.tsx` přes `frontend-design` plugin. Generic envelope se adaptuje podle `<repo>/.design/config.json` (rootClass, themeDefault, tokensCssRel, …). Canvas envelope (`DesignCanvas` / `DCSection` / `DCArtboard`) se importuje z virtuálního specifikátoru `@maude/canvas-lib`, který dev-server resolvuje na svou bundled canvas-lib v `apps/studio/canvas-lib.tsx` (single source, ships s dev-server installem per DDR-025).
+Creates a **new multi-artboard canvas file** at `<designRoot>/<newCanvasDir>/<Name>.tsx` via the `frontend-design` plugin. The generic envelope adapts to `<repo>/.design/config.json` (rootClass, themeDefault, tokensCssRel, …). The canvas envelope (`DesignCanvas` / `DCSection` / `DCArtboard`) is imported from the virtual specifier `@maude/canvas-lib`, which the dev-server resolves to its bundled canvas-lib at `apps/studio/canvas-lib.tsx` (single source, ships with the dev-server install per DDR-025).
 
-**Canvas projekt = `DesignCanvas` + jedna nebo více `DCSection` + jeden nebo více `DCArtboard`** (panable / zoomable infinite-canvas pattern). Single-page wrapper je anti-pattern; nový screen patří jako další `DCArtboard` do existujícího canvasu (přes `/design:edit "<add new artboard for X>"` ne přes `/design:new`).
+**A canvas project = `DesignCanvas` + one or more `DCSection` + one or more `DCArtboard`** (panable / zoomable infinite-canvas pattern). A single-page wrapper is an anti-pattern; a new screen belongs as another `DCArtboard` in an existing canvas (via `/design:edit "<add new artboard for X>"`, not via `/design:new`).
 
-**Sessions už neexistují.** Nová plocha = nový soubor v `<designRoot>/<newCanvasDir>/`. Žádný `.ai/design-sessions/` adresář, žádné `iterations/NNN.tsx`. Iterace je in-place edit s `_history/` snapshoty.
+**Sessions no longer exist.** A new surface = a new file in `<designRoot>/<newCanvasDir>/`. No `.ai/design-sessions/` directory, no `iterations/NNN.tsx`. Iteration is an in-place edit with `_history/` snapshots.
 
 ## Default = `--perfect`
 
-`/design:new` je **high-leverage moment** — initial scaffold sets the canvas trajectory pro všechny budoucí `/design:edit "<feedback>"` iterace. Levné nedotáhnout, drahé refactorovat zpětně. Proto je critic panel **vždy on, vždy plný, vždy target portfolio-grade**:
+`/design:new` is a **high-leverage moment** — the initial scaffold sets the canvas trajectory for all future `/design:edit "<feedback>"` iterations. Cheap to under-do, expensive to refactor after the fact. That's why the critic panel is **always on, always full, always targeting portfolio-grade**:
 
 - **max 8 iterations** auto-fix loop
 - **aspiration target 4.5 / 5**
-- **panel:** `signature-moment-critic` + `design-critic` + `frontend-critic` + `a11y-critic` (pokud canvas má interactive elements) — minimální set; viz step 10 pro routing detail
-- **token cost:** ~150–300k per `/design:new` invocation. Tohle je deal — uplatňuje se vždy ne se náhodně neprokliká.
+- **panel:** `signature-moment-critic` + `design-critic` + `frontend-critic` + `a11y-critic` (if the canvas has interactive elements) — minimal set; see step 10 for routing detail
+- **token cost:** ~150–300k per `/design:new` invocation. This is the deal — it applies always, not by accidental default.
 
-Opt-out flagy (pro vědomé výjimky):
+Opt-out flags (for deliberate exceptions):
 
-| Flag | Co dělá | Kdy použít |
+| Flag | What it does | When to use |
 |---|---|---|
-| (žádný) | Plný `--perfect` loop. **Default.** | Standard — chceš solidní startovní bod. |
-| `--quick` | 1 critic (`signature-moment-critic`) + max 2 fix iter, žádný plný panel | Throwaway exploration ("can we even render a chart canvas?"), proof-of-concept |
-| `--no-critic` | Skip auto-critic loop entirely (jen generate + reality-check) | Testovací / debug runs, kde jen ověřuješ že file vznikne |
-| `--perfect-iter N` | Override max iterations (default 8) | Velké canvasy (10+ artboardů) co potřebují víc iterací; nebo malé kde 4 stačí |
-| `--skip-ds-keeper` | Skip the `design-system-keeper` precheck (step 9.5) | Známě-experimentální canvasy kde reinvention je intent; debug runs |
+| (none) | Full `--perfect` loop. **Default.** | Standard — you want a solid starting point. |
+| `--quick` | 1 critic (`signature-moment-critic`) + max 2 fix iter, no full panel | Throwaway exploration ("can we even render a chart canvas?"), proof-of-concept |
+| `--no-critic` | Skip auto-critic loop entirely (just generate + reality-check) | Test / debug runs where you only verify the file gets created |
+| `--perfect-iter N` | Override max iterations (default 8) | Large canvases (10+ artboards) that need more iterations; or small ones where 4 is enough |
+| `--skip-ds-keeper` | Skip the `design-system-keeper` precheck (step 9.5) | Known-experimental canvases where reinvention is the intent; debug runs |
 
-**Mode není volitelný-on opt-in.** Mode je **opt-out**. Když user nechce platit cost, musí explicitně říct `--quick` nebo `--no-critic`. Ticha je souhlas s plným loopem.
+**The mode is not opt-in.** The mode is **opt-out**. If the user doesn't want to pay the cost, they must explicitly say `--quick` or `--no-critic`. Silence is consent to the full loop.
 
-**Vstup `$ARGUMENTS`:** `<Name> "<brief>" [--component] [--mobile] [--quick | --no-critic] [--perfect-iter N] [--ds=<name>]`
+**Input `$ARGUMENTS`:** `<Name> "<brief>" [--component] [--mobile] [--quick | --no-critic] [--perfect-iter N] [--ds=<name>]`
 
-- `<Name>` — Title-Case s mezerami (`Match Recap`, `Scout Radar`) pro full-screen canvas projekt.
-  - PascalCase (`MatchRecap`) když je to komponenta s `--component`.
-- `<brief>` — co má canvas dělat / vypadat. Tady popisuj **co všechno bude v canvasu** (kolik artboardů, jaké screens, jaký flow), ne single screen.
-- `--component` — vytvoří `<designRoot>/<newComponentDir>/<PascalName>.jsx` místo top-level HTML. Komponenty se mountují uvnitř canvas artboardů.
-- `--mobile` — naznačí mobile aesthetic v promptu (mobile chrome, single column). Default = desktop. Pokud název obsahuje "Mobile" / "iOS" / "Android", auto-detect.
-- `--quick` | `--no-critic` | `--perfect-iter N` — viz tabulka výše.
+- `<Name>` — Title-Case with spaces (`Match Recap`, `Scout Radar`) for a full-screen canvas project.
+  - PascalCase (`MatchRecap`) when it's a component with `--component`.
+- `<brief>` — what the canvas should do / look like. Describe **everything the canvas will contain** here (how many artboards, which screens, what flow), not a single screen.
+- `--component` — creates `<designRoot>/<newComponentDir>/<PascalName>.jsx` instead of top-level HTML. Components mount inside canvas artboards.
+- `--mobile` — hints a mobile aesthetic in the prompt (mobile chrome, single column). Default = desktop. If the name contains "Mobile" / "iOS" / "Android", auto-detect.
+- `--quick` | `--no-critic` | `--perfect-iter N` — see the table above.
 - `--ds=<name>` — pick which design system this canvas uses (multi-DS projects). Must match a name in `config.json.designSystems[]`. Default = `config.defaultDesignSystem`, falling back to `project` for single-DS layouts. **Unknown DS fails with hint to `/design:setup-ds <name>` — no fallback prompt** (clean separation: `new` does canvases, `setup-ds` does DS creation).
 - `--opt-out=palette|aesthetic|full` — opt out z project DS rules. **Default = `palette`** (tokens link + rootClass envelope kept; local namespaced palette overrides colors only; type/radii/aesthetic still enforced). `aesthetic` = palette + gradients/off-ladder radii/alt type pairings/decorative SVGs allowed. `full` = DS treated as advisory. **A11y enforced at every scope.** Plain-language opt-out signals in the brief ("opt-out design system", "modern color scheme", "different feel", "fully off-system") trigger an inferred scope + one-shot AskUserQuestion before the loop kicks off — see SKILL.md "Opt-out scope" + "Iter-1 checkpoint when scope > palette".
 
-**Backwards compat:** `--perfect` a `--perfect --all` jsou stále accepted (no-op pro samotný `--perfect`, `--all` rozšiřuje panel na **every** critic v `agents/`). User co píše `--perfect` explicitně dostane co očekává.
+**Backwards compat:** `--perfect` and `--perfect --all` are still accepted (no-op for `--perfect` on its own, `--all` expands the panel to **every** critic in `agents/`). A user who writes `--perfect` explicitly gets what they expect.
 
-**Příklady:**
+**Examples:**
 ```
-/design:new "Match Recap" "Post-game recap canvas — 3 artboardy: hero stat card, key moments timeline, share/embed view"
+/design:new "Match Recap" "Post-game recap canvas — 3 artboards: hero stat card, key moments timeline, share/embed view"
 /design:new "Onboarding Desktop" "5-step onboarding flow — welcome, invite preview, identity, permissions, tour. Each as separate DCArtboard."
-/design:new "Scout Radar Mobile" "Radar/sonar circular sweep finder — single full-screen canvas s 2 artboardy: scanning + result list" --mobile
-/design:new MatchRecap "..." --component                   # komponenta v components/
+/design:new "Scout Radar Mobile" "Radar/sonar circular sweep finder — single full-screen canvas with 2 artboards: scanning + result list" --mobile
+/design:new MatchRecap "..." --component                   # component in components/
 /design:new "iOS Bikeshare Signup" "5-screen iOS signup flow, modern blue+orange palette" --mobile --opt-out=aesthetic
 /design:new "Marketing Hero" "Landing hero with feature grid" --ds=marketing
 /design:new "Onboarding brief" --blank                          # empty annotation-only brief board, zero model cost
@@ -77,7 +77,7 @@ Opt-out flagy (pro vědomé výjimky):
 
 This is the "brief board" loop: `--blank` to sketch intent on a blank surface, then plain `/design:new` to have Claude read the sketch and lay out the matching artboards in place. The canvas `kind` field + ingest-mode overload are recorded in **DDR-085**; the annotation vocabulary it reads comes from Phase 21 (sticky + text), the media strokes it forward-reads from Phase 23.
 
-## Postup
+## Procedure
 
 ### 0. Pre-flight: bootstrap detection
 
@@ -97,7 +97,7 @@ The skill treats `$BRIEF` as the answer to discovery Question 1 (product one-lin
 
 ### 1. Resolve config + DS
 
-Vyvolej skill `design` se vstupem: `new $ARGUMENTS`.
+Invoke skill `design` with the input: `new $ARGUMENTS`.
 
 **One pre-flight call instead of 4–8 sequential jq reads.** `prep.sh` reads `.design/config.json` + `_active.json` + `_preflight.json` + `_server.json` in a single pass and exports the resolved vars (`REPO_ROOT`, `NAME`, `DESIGN_ROOT`, `ROOT_CLASS`, `THEME`, `TOKENS_REL`, `NEW_CANVAS_DIR`, `NEW_COMPONENT_DIR`, `TEAM_ACCENT`, `DEFAULT_DS`, `KNOWN_DS`, `ACCENT_STRATEGY`, `COLOR_SPACE`, `DEPS_OK`, `DEPS_MISSING`, `SERVER_UP`, `SERVER_PORT`). The DS-presence gate (`bootstrap-check.sh`, step 0) stays separate — it owns the 0/10/11 exit-code contract.
 
@@ -212,15 +212,15 @@ maude design runtime-health \
   || { echo "✗ runtime bundles defective even after restart — abort /design:new (see stderr)"; exit 1; }
 ```
 
-`server-up.sh` detekuje běžící server (PID + `curl /_health`), startuje znovu pokud stale, poll-uje 10 s. Stdout = port; diagnostic na stderr.
+`server-up.sh` detects a running server (PID + `curl /_health`), restarts if stale, polls for 10 s. Stdout = port; diagnostic on stderr.
 
-`runtime-health.sh` HEAD-probes každý `/_canvas-runtime/<slug>.js` URL a porovná velikost s on-disk pre-built v `<plugin>/dev-server/dist/runtime/`. Ratio < 0.5 = defective dynamic build → `--restart` auto-kill + respawn + jediné re-probe; pokud i restart selže, helper exit 3 a `/design:new` abortuje (canvas by se mountoval s broken runtime). Vyřešeno per system-review 2026-05-27 (D-1): parse-clean nestačí, runtime bundle musí být run-clean ještě před generation step.
+`runtime-health.sh` HEAD-probes each `/_canvas-runtime/<slug>.js` URL and compares its size to the on-disk pre-built in `<plugin>/dev-server/dist/runtime/`. Ratio < 0.5 = defective dynamic build → `--restart` auto-kill + respawn + a single re-probe; if even the restart fails, the helper exits 3 and `/design:new` aborts (the canvas would mount with a broken runtime). Resolved per system-review 2026-05-27 (D-1): parse-clean is not enough, the runtime bundle must be run-clean before the generation step.
 
 ### 3. Validate name + resolve target path
 
 - Default canvas: `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.tsx` (TSX canvas served by the dev-server's two-pass pipeline + Bun.build runtime). The canvas mounts via `_canvas-shell.html`; React 19 + ReactDOM ride in shared `/_canvas-runtime/*.js` bundles. Envelope primitives (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`) come from `@maude/canvas-lib` — the dev-server resolves that virtual specifier to its bundled canvas-lib at `apps/studio/canvas-lib.tsx` (per DDR-025; ships with the dev-server install).
 - `--component`: `<DESIGN_ROOT>/<NEW_COMPONENT_DIR>/<PascalName>.tsx`
-- Reject pokud target file existuje (suggest `<Name> v2`).
+- Reject if the target file exists (suggest `<Name> v2`).
 
 **TSX is the only canvas format.** Legacy `.html` canvases have been migrated; the html-to-jsx codemod was removed alongside the migration. New canvases are authored as TSX from `canvas.tsx.template`.
 
@@ -316,7 +316,7 @@ On **(a)** → print the existing path, tell the user to click it in the browser
 
 ### 4. Resolve mobile/desktop + opt-out scope
 
-`--mobile` flag, nebo název obsahuje `Mobile` / `iOS` / `Android`.
+`--mobile` flag, or the name contains `Mobile` / `iOS` / `Android`.
 
 **Opt-out scope resolution** (see SKILL.md "Opt-out scope" for the canonical spec):
 
@@ -401,13 +401,13 @@ Wall time ~30–60s when fresh; ~0s on cache hit (the agent reads the cache, val
 **Failure handling:**
 - Agent fails entirely (no payload written) → **do not block scaffold**. Surface a warning in the final print (`UX patterns research failed — frontend-design generation proceeded without domain pool; quality may regress to generic-template default`) and continue with envelope-only generation.
 - Payload reports `fallback_used: true` → continue normally but surface in final print (`UX patterns research fell back to LLM-knowledge mode — review canvas IA carefully`).
-- `/design:edit` does NOT run this step. Edit stays rýchlý — research is on-demand only via `--research` flag (future, not currently shipped).
+- `/design:edit` does NOT run this step. Edit stays fast — research is on-demand only via `--research` flag (future, not currently shipped).
 
 ### 4.6. Artboard-count + scope pre-question (when count is ambiguous from brief)
 
 **Fires when:** the brief doesn't explicitly name an artboard count (no "3 artboardy", "5-screen flow", "single canvas with 2 artboards" phrasing). Goal: surface the **render-budget cost** of large canvases BEFORE generation, so users opting for 8+ artboards know the pan/zoom perf wall they'll hit on trackpad-driven zoom.
 
-System-review 2026-05-27 (D-3) flagged that a previous run offered "8 (recommended)" without surfacing perf cost — user picked 8 and reported "pan/zoom strašně seká" once the canvas mounted. The "recommended" tag pushed the choice without surfacing the trade-off. Render-budget heuristic: **≥ 8 artboards on a `--perfect`-shaped canvas with non-trivial CSS hits the canvas-lib pan/zoom perf wall** (~ 2000+ DOM nodes inside a transformable root).
+System-review 2026-05-27 (D-3) flagged that a previous run offered "8 (recommended)" without surfacing perf cost — user picked 8 and reported "pan/zoom stutters badly" once the canvas mounted. The "recommended" tag pushed the choice without surfacing the trade-off. Render-budget heuristic: **≥ 8 artboards on a `--perfect`-shaped canvas with non-trivial CSS hits the canvas-lib pan/zoom perf wall** (~ 2000+ DOM nodes inside a transformable root).
 
 Surface a one-shot `AskUserQuestion` (skip when `--no-critic` or `--quick` — those modes user opted-out of `--perfect`'s default density):
 
@@ -428,21 +428,21 @@ Brief implies a multi-screen canvas but doesn't fix the artboard count. Pick:
 
 ### 5. Build envelope
 
-**Discipline:** envelope je *creative brief*, ne *wireframe spec*. Viz `skills/design/SKILL.md` → "Envelope discipline". Stručně: vibe + 1–2 reference canvases + aspiration directives 9–14 verbatim + brief. **Ne** dictate elements, button counts, copy, paddings.
+**Discipline:** the envelope is a *creative brief*, not a *wireframe spec*. See `skills/design/SKILL.md` → "Envelope discipline". In brief: vibe + 1–2 reference canvases + aspiration directives 9–14 verbatim + brief. Do **not** dictate elements, button counts, copy, paddings.
 
 **Motion vocabulary (Phase 3.7 / DDR-049).** When the brief asks for or implies motion (`animate`, `transition`, `motion`, `play`, `loop`, `slide`, `fade`, drag/drop UX, route transitions, presence cursors, scroll-linked effects), the envelope **MUST** use the canvas-lib motion vocabulary — `<MotionDemo role>` / `<MotionTrack>` / `<TokenPlayback>` / `<ReducedMotionToggle>` / `useMotionTokens` from `@maude/canvas-lib` — not hand-rolled `@keyframes`. The pure-CSS `.motion-*` escape hatch is opt-in for justified zero-JS surfaces only. **The full, authoritative rule (default / escape hatch / never) lives in `skills/design-system/SKILL.md` → "Animation tooling contract" — this is a pointer.** The 8 roles (flip / panel / route / soft / spring / scroll / drag / presence) are the canonical vocabulary; `design-system-keeper` warns on reinventions ≥3× per canvas (promotes to blocker). The motion library (`motion/react`) is automatically declared in `/design:handoff`'s registry-item.json, so the canvas drops into a Next.js + shadcn project with animations working — no manual `npm i motion`.
 
-Adaptuj generic envelope ze SKILL.md "Generation envelope" s konkrétními config hodnotami z kroku 1. **Aspiration directives 9–14 musí být v envelope verbatim** — to je co drive signature-moment-critic axes (signature moment, brand prominence, mock fidelity, restraint, negative space, specificity).
+Adapt the generic envelope from SKILL.md "Generation envelope" with the concrete config values from step 1. **Aspiration directives 9–14 MUST be in the envelope verbatim** — they are what drives the signature-moment-critic axes (signature moment, brand prominence, mock fidelity, restraint, negative space, specificity).
 
 **Append UX pattern reference bundle** (from step 4.5 payload): include in the envelope a `## UX patterns reference` section listing payload `information_architecture_patterns[0].label` (the Recommended IA pattern), `typical_screen_anatomy.regions[]` as a region checklist, `common_flows[].id` as flow names the canvas might depict, `interaction_patterns[].label` as patterns to honor, and `anti_patterns[].pattern` as patterns to avoid. These are **reference**, not prescription — `frontend-design` interprets, doesn't dictate. If step 4.5 failed and no payload exists, skip this section and note in the envelope's footer (`UX pattern research unavailable — generation proceeds on DS + brief alone`).
 
-**Test envelope kvality před spuštěním generation:**
-- Reads jako brief seniornímu IC? ✓
-- Reads jako wireframe spec se seznamem prvků? ✗ — zkrátit
-- Délka ~30–50 řádků? ✓ (~100+ = over-prescriptive)
-- Aspiration directives přítomny? ✓ povinné
-- Reference 1–2 existing canvases? ✓ povinné
-- `## Pattern priors` section populated (or explicitly empty for first-canvas case)? ✓ povinné
+**Test envelope quality before running generation:**
+- Reads like a brief to a senior IC? ✓
+- Reads like a wireframe spec with a list of elements? ✗ — trim it
+- Length ~30–50 lines? ✓ (~100+ = over-prescriptive)
+- Aspiration directives present? ✓ required
+- References 1–2 existing canvases? ✓ required
+- `## Pattern priors` section populated (or explicitly empty for first-canvas case)? ✓ required
 
 #### 5a. Collect pattern priors (for the envelope's `## Pattern priors` section)
 
@@ -486,7 +486,7 @@ done
 # `ui_kits-<platform>-showcase.tsx` is the single highest-leverage specimen the DS
 # scaffold produces — the established arrangement of chrome (nav / sidebar / toolbar /
 # main / status) for a full product surface. Feeding it as a prior is what lets a NEW
-# feature canvas reuse "kde to bude" instead of re-deriving a shell. (Gap fix — pre-this,
+# feature canvas reuse "where it goes" instead of re-deriving a shell. (Gap fix — pre-this,
 # step 5a globbed only components-*.tsx and the showcase never entered the envelope.)
 # Resolve the canvas platform (mirror step 4's detection; tablet rides the mobile family
 # per _MAPPING.md). Default desktop.
@@ -625,13 +625,13 @@ After step 6, append the chosen generation path (Skill vs orchestrator-direct) t
 
 ### 6. Generate — preferred + fallback
 
-Try in order, document which path se použije:
+Try in order, document which path is used:
 
 1. **Preferred:** `Skill(skill: "frontend-design:frontend-design", args: <envelope>)` — creative-design specialist. **Always attempt this first** — even when you predict "same model executes, won't help". Predicting the outcome before observing is the violation; trying and falling back transparently is the contract. See SKILL.md "Why call the Skill even when the executing model is the same".
-2. **Fallback:** Pokud Skill nedostupný / errors out (typicky "Skill type not found" nebo "Agent type 'frontend-design:frontend-design' not found"), generuj přímo přes Read + Write s envelope jako prompt. **Mark report jako "orchestrator-direct fallback (quality may be 1 generation lower)"**.
-3. **Never silently fall back.** Final print MUSÍ obsahovat řádek `Generation: <path>` se kterou cestou se generovalo. After generation, update `<DESIGN_ROOT>/_history/<slug>/000-envelope.md` "Generation path:" line with the actual path taken.
+2. **Fallback:** If the Skill is unavailable / errors out (typically "Skill type not found" or "Agent type 'frontend-design:frontend-design' not found"), generate directly via Read + Write with the envelope as the prompt. **Mark the report as "orchestrator-direct fallback (quality may be 1 generation lower)"**.
+3. **Never silently fall back.** The final print MUST contain a `Generation: <path>` line stating which path generated. After generation, update `<DESIGN_ROOT>/_history/<slug>/000-envelope.md` "Generation path:" line with the actual path taken.
 
-Viz SKILL.md "Cross-skill calls → Generation invocation".
+See SKILL.md "Cross-skill calls → Generation invocation".
 
 ### 6b. INGEST mode — read annotations + insert into the active board (Phase 22)
 
@@ -734,13 +734,13 @@ TSX canvas (the only format):
 
 ### 8. Write target file
 
-Pokud validation fails, do not write. Re-prompt jednou s konkrétním fix-list. Pokud znovu fail, stop.
+If validation fails, do not write. Re-prompt once with a concrete fix-list. If it fails again, stop.
 
 **TSX canvases** are written from `plugins/design/templates/canvas.tsx.template` — the JSDoc header is generated from `.meta.json` (auto-emitted by `canvas-header.ts` on `/design:edit`); the JSX body is the frontend-design output. The `_canvas-shell.html` harness lives in the plugin distribution and is served at `/_canvas-shell.html`; **no copy lands in `<DESIGN_ROOT>/`** (server is the single source of truth — avoids a stale per-project copy drifting from the plugin).
 
 ### 9. Post-write reality check — per-artboard screenshots
 
-**Always fires, regardless of `--no-critic`.** Reality check, ne quality check. Capture přes agent-browser na server URL (ne `file://`). **Per-artboard screenshot is a BLOCKER condition for `/design:new`, ne footnote** — system-review 2026-05-27 (D-2) flagged that single-PNG fallbacks > 5 MB silently bypass visual verification, and per-screen failures used to be logged as `⚠` and continued. New contract: per-screen succeeds, OR the loop halts and surfaces an AskUserQuestion.
+**Always fires, regardless of `--no-critic`.** Reality check, not a quality check. Capture via agent-browser against the server URL (not `file://`). **Per-artboard screenshot is a BLOCKER condition for `/design:new`, not a footnote** — system-review 2026-05-27 (D-2) flagged that single-PNG fallbacks > 5 MB silently bypass visual verification, and per-screen failures used to be logged as `⚠` and continued. New contract: per-screen succeeds, OR the loop halts and surfaces an AskUserQuestion.
 
 > **Activity overlay (Phase 13 / DDR-029).** As the canvas file is written, any open tab shows a live "editing — `<file>`" overlay (pulsing rim + corner badge) on the affected artboard(s), fading out ~3 s after the last write. Automatic, fs-watch-driven, no action required; `hide-chrome` / export captures suppress it.
 
@@ -803,11 +803,11 @@ failure. Pick:
   (d) Abort /design:new — don't continue without visual confirmation.
 ```
 
-Auto Mode (AskUserQuestion denied) → default to (c) but **the final print MUST stamp `⚠ visual verification SKIPPED — per-artboard capture failed on both engines; canvas IA was not visually confirmed`** so the user sees the gap before they discover it via "kde jsou mobile screens?". The critic panel runs WITHOUT a baseline screenshot path; signature-moment-critic and design-critic both flag absent baseline as a warning.
+Auto Mode (AskUserQuestion denied) → default to (c) but **the final print MUST stamp `⚠ visual verification SKIPPED — per-artboard capture failed on both engines; canvas IA was not visually confirmed`** so the user sees the gap before they discover it via "where are the mobile screens?". The critic panel runs WITHOUT a baseline screenshot path; signature-moment-critic and design-critic both flag absent baseline as a warning.
 
 **Per-screen partial fail (some IDs captured, some failed):** Helper returns the captured paths on stdout and exit 3. Treat this as success-with-gap — record which artboard IDs failed in the print + chat.md iter-0 row; do NOT auto-retry the failed IDs (signal that those artboards have render issues worth investigating manually).
 
-**Pokud blank render / timeout on ALL artboards** → warn `⚠ canvas rendered blank — likely JSX error`. Don't auto-rollback (user can open browser + see console). Path tohoto screenshotu (or the absent-baseline marker) jde do final print + chat.md iteration 0 row.
+**If blank render / timeout on ALL artboards** → warn `⚠ canvas rendered blank — likely JSX error`. Don't auto-rollback (user can open browser + see console). This screenshot's path (or the absent-baseline marker) goes into the final print + chat.md iteration 0 row.
 
 **No `--full` shortcut for ≤ 3 artboards.** The single-PNG path was removed per system-review D-2 — even 1 artboard at 1200×760 with a full page panable canvas can produce a misleading PNG (offscreen content cropped, transform state ambiguous). The per-screen path is mandatory; if it fails, the AskUserQuestion above is the only escape hatch.
 
@@ -910,7 +910,7 @@ The agent replaces the hand-written `<svg>` with an engine-built, verified mark 
 
 ### 10. Auto-critic + auto-fix loop (default = `--perfect`)
 
-**Same loop algorithm as `/design:edit`** — see SKILL.md "Auto-critic loop". Klíčový rozdíl: `/design:new` má **vyšší výchozí laťku** než `/design:edit "<feedback>"`, protože scaffold je high-leverage.
+**Same loop algorithm as `/design:edit`** — see SKILL.md "Auto-critic loop". Key difference: `/design:new` has a **higher default bar** than `/design:edit "<feedback>"`, because the scaffold is high-leverage.
 
 **Iter-1 checkpoint — fires only when `opt_out_scope ∈ {aesthetic, full}`.** Before spawning iter-1 critics (after the post-write reality-check screenshots), surface a one-shot AskUserQuestion:
 
@@ -943,23 +943,23 @@ This exists because the user signaled exploration — they should get to see ite
 | `--quick` | 2 | 4.0 / 5 | `signature-moment-critic` only |
 | `--no-critic` | 0 | n/a | (skip loop entirely) |
 
-**Single-critic runs jsou valid pouze když `--quick` / `--no-critic` flag (user opt-out) nebo když `/design:critic --agent <name>` je explicitně user-invoked.** Uvnitř auto-loopu je single-critic shortcut **process violation**, regardless of justification:
+**Single-critic runs are valid only when the `--quick` / `--no-critic` flag is set (user opt-out) or when `/design:critic --agent <name>` is explicitly user-invoked.** Inside the auto-loop a single-critic shortcut is a **process violation**, regardless of justification:
 
 - "I'll just run signature-moment to save tokens" → cost-based skip → violation
 - "Would require multiple parallel Agent spawns" → complexity-based skip → violation
 - "Same model executes anyway, critics won't help" → quality-prediction-based skip → violation
 - "User said brief was a test, probably doesn't need critic" → assumed-intent-based skip → violation
 
-**The default is the contract.** Spec doesn't list "skip if expensive / complex / unlikely to help" as exit conditions. If you predict the loop won't help, that's a spec change to propose, not an orchestrator decision to make mid-run. Pokud token budget je viditelně omezený (context > 60% full), surface a one-shot AskUserQuestion **před** start loopu — viz Failure modes → "--perfect cost when budget tight". Auto Mode (kde AskUserQuestion je denied) **neopravňuje skip** — Auto Mode authorizes autonomous decisions on **ambiguous** matters; spec defaults nejsou ambiguous.
+**The default is the contract.** Spec doesn't list "skip if expensive / complex / unlikely to help" as exit conditions. If you predict the loop won't help, that's a spec change to propose, not an orchestrator decision to make mid-run. If the token budget is visibly constrained (context > 60% full), surface a one-shot AskUserQuestion **before** starting the loop — see Failure modes → "--perfect cost when budget tight". Auto Mode (where AskUserQuestion is denied) **does not authorize a skip** — Auto Mode authorizes autonomous decisions on **ambiguous** matters; spec defaults are not ambiguous.
 
 **Stop conditions (per SKILL.md "Auto-critic loop"):**
 - `SOLID` — correctness 0 blockers + aspiration ≥ target + specificity pass + stable for 1 iter
-- `stable-but-bland` — correctness clean + aspiration plateau pod target → exit s diagnostic (lowest 2 axes named)
-- `max-reached` — hit `max_iter` před SOLID nebo stable
+- `stable-but-bland` — correctness clean + aspiration plateau below target → exit with diagnostic (lowest 2 axes named)
+- `max-reached` — hit `max_iter` before SOLID or stable
 - `divergent` — score regressed > tolerance → restore best snapshot, exit
-- `validation-failed` — fix iteration porušil validation → restore, exit
+- `validation-failed` — fix iteration broke validation → restore, exit
 
-Bootstrap a chat transcript: write `<DESIGN_ROOT>/_history/<slug>/chat.md` with the brief as iteration 0 (include screenshot path z kroku 9), then loop entries as iterations 1..N.
+Bootstrap a chat transcript: write `<DESIGN_ROOT>/_history/<slug>/chat.md` with the brief as iteration 0 (include the screenshot path from step 9), then loop entries as iterations 1..N.
 
 ### 11. Bootstrap docs
 
@@ -1002,48 +1002,48 @@ For a new canvas:
   Docs: <designRoot>/INDEX.md added entry; <designRoot>/README.md updated.
   {if INDEX.md was missing and /design:setup-docs --full was invoked: "Docs: bootstrapped via /design:setup-docs --full"}
 
-  Klikni na něj v browser file tree (autorefresh přes ↻ tree v UI), stane se aktivním.
-  Iteruj přes /design:edit "<feedback>".
+  Click it in the browser file tree (autorefresh via ↻ tree in the UI); it becomes active.
+  Iterate via /design:edit "<feedback>".
 ```
 
-## Co `/design:new` NEDělá
+## What `/design:new` does NOT do
 
-- Nevytváří `.ai/design-sessions/` (koncept zrušen).
-- Negeneruje "iteraci 001". Soubor je rovnou the canvas.
-- Nepřepisuje existující soubor (ochrana proti omylem).
-- Neotevírá soubor v browseru — user na něj klikne sám (auto-refresh tree přes `↻ tree` v UI).
-- Neaktualizuje `_active.json` — stane se aktivním až user klikne v tree.
-- **Negeneruje single-page HTML wrapper** — vždycky multi-artboard canvas.
+- Does not create `.ai/design-sessions/` (concept dropped).
+- Does not generate an "iteration 001". The file is the canvas directly.
+- Does not overwrite an existing file (protection against mistakes).
+- Does not open the file in the browser — the user clicks it themselves (auto-refresh tree via `↻ tree` in the UI).
+- Does not update `_active.json` — it becomes active only when the user clicks it in the tree.
+- **Does not generate a single-page HTML wrapper** — always a multi-artboard canvas.
 
 ## Failure modes
 
-- **Target file already exists** → preferred: surface AskUserQuestion s 2–3 návrhy alternative name (mechanical `<Name> v2`, plus 1–2 brief-derived semantic alternatives — e.g. pokud existující je `iOS Signup Flow.tsx` a brief je o scootersharingu, navrhni `Scooter Signup Flow`). Pokud user vybere, použij; pokud zruší, abort.
-- **Target file exists AND AskUserQuestion is denied** (Auto Mode / non-interactive context) → infer the most accurate alternative name from the brief — semantic, ne mechanical `v2`. Document the choice explicitly v final printu (`Filename: <chosen> (auto-picked from brief because <existing> existed)`). Auto Mode authorizes reasonable autonomous decisions; preserving existing files while creating a new one with brief-accurate name je reasonable. Mechanical `v2` suffix je acceptable fallback pokud brief nedává jasný semantic name.
-- **`frontend-design` Skill nedostupný** → **NE fail** — fall back to orchestrator-direct generation (viz krok 6). Final print MUSÍ flagnout `Generation: orchestrator-direct fallback` + suggestion `/plugin install frontend-design@claude-plugins-official` pro lepší kvalitu příští spuštění.
-- **Generated HTML porušuje validaci** (chybí tokens, hardcoded colors, single-page wrapper bez DCArtboard, …) → re-prompt jednou. Pokud zase rozbité, fail s detail.
-- **Post-write screenshot fails / canvas renders blank** → warn `⚠ canvas rendered blank — likely JSX error` ale neabortuj. Soubor existuje, user ho může otevřít manually + zjistit error v console.
-- **Screenshot reports success but file is missing** → použij canonical helper přes `maude design screenshot`. Helper detekuje silent-fail (PNG < 1 KB) a exit-codes 3. Inline `agent-browser screenshot …` voláním napřímo se vyhni — má CLI quirky kolem `--full` separátoru a `--output` které helper řeší za tebe.
+- **Target file already exists** → preferred: surface AskUserQuestion with 2–3 alternative-name suggestions (mechanical `<Name> v2`, plus 1–2 brief-derived semantic alternatives — e.g. if the existing one is `iOS Signup Flow.tsx` and the brief is about scootersharing, suggest `Scooter Signup Flow`). If the user picks one, use it; if they cancel, abort.
+- **Target file exists AND AskUserQuestion is denied** (Auto Mode / non-interactive context) → infer the most accurate alternative name from the brief — semantic, not a mechanical `v2`. Document the choice explicitly in the final print (`Filename: <chosen> (auto-picked from brief because <existing> existed)`). Auto Mode authorizes reasonable autonomous decisions; preserving existing files while creating a new one with a brief-accurate name is reasonable. A mechanical `v2` suffix is an acceptable fallback if the brief doesn't yield a clear semantic name.
+- **`frontend-design` Skill unavailable** → **do NOT fail** — fall back to orchestrator-direct generation (see step 6). The final print MUST flag `Generation: orchestrator-direct fallback` + suggestion `/plugin install frontend-design@claude-plugins-official` for better quality next run.
+- **Generated HTML violates validation** (missing tokens, hardcoded colors, single-page wrapper without DCArtboard, …) → re-prompt once. If broken again, fail with detail.
+- **Post-write screenshot fails / canvas renders blank** → warn `⚠ canvas rendered blank — likely JSX error` but don't abort. The file exists; the user can open it manually + find the error in the console.
+- **Screenshot reports success but file is missing** → use the canonical helper via `maude design screenshot`. The helper detects silent-fail (PNG < 1 KB) and exit-codes 3. Avoid calling `agent-browser screenshot …` inline directly — it has CLI quirks around the `--full` separator and `--output` that the helper handles for you.
 
 ### `--perfect` cost when budget tight
 
 Default `/design:new` = `--perfect` (8 iter, target 4.5/5, routed panel). Honest cost:
 
-- 8 iterací × min 4 critic agents (signature-moment + design + frontend + a11y) = **32+ subagent calls**
+- 8 iterations × min 4 critic agents (signature-moment + design + frontend + a11y) = **32+ subagent calls**
 - Plus auto-fix iterations between critics = **~40+ subagent calls total**
 - Estimated token cost: **150–300k tokens** (canvas-size dependent)
 - Wall time: **5–15 min** v default model speed
 
 **Orchestrator behavior:**
 
-1. **Default — honor the contract.** Run the full loop. The user chose `/design:new` knowing the deal (default-on `--perfect` je dokumentovaný first-class behavior, ne hidden).
+1. **Default — honor the contract.** Run the full loop. The user chose `/design:new` knowing the deal (default-on `--perfect` is documented first-class behavior, not hidden).
 
-2. **If session token budget je viditelně omezený** (context > 60% full, user dříve v session flagol token concerns, nebo conversation has > ~150k tokens už spotřebovaných) → **before** starting loop, surface a one-shot AskUserQuestion:
-   > "`/design:new` runs `--perfect` by default (~40 subagent calls, 150–300k tokens, 5–15 min). Tvůj context je už 65% full. Pick: (a) plný `--perfect` (default — drahé ale dotažené), (b) `--quick` (signature-moment only, ~2 iter, ~30k tokens), (c) `--no-critic` (jen generate + render check, ~5k tokens)."
+2. **If the session token budget is visibly constrained** (context > 60% full, user flagged token concerns earlier in the session, or the conversation has already consumed > ~150k tokens) → **before** starting the loop, surface a one-shot AskUserQuestion:
+   > "`/design:new` runs `--perfect` by default (~40 subagent calls, 150–300k tokens, 5–15 min). Your context is already 65% full. Pick: (a) full `--perfect` (default — expensive but polished), (b) `--quick` (signature-moment only, ~2 iter, ~30k tokens), (c) `--no-critic` (just generate + render check, ~5k tokens)."
 
-3. **Never silently downgrade** — pokud chceš méně, **explicit flag**: `--quick` nebo `--no-critic`. Token-saving shortcut bez user opt-in / opt-in question = **process violation**. Stejný pattern jako `/flow:execute` Edit-Verify Loop — contract je contract.
+3. **Never silently downgrade** — if you want less, use an **explicit flag**: `--quick` or `--no-critic`. A token-saving shortcut without user opt-in / opt-in question = **process violation**. Same pattern as the `/flow:execute` Edit-Verify Loop — a contract is a contract.
 
-4. **If user explicitly chose downgrade** (option b/c v question above, OR explicit `--quick` / `--no-critic` flag) → state it explicitly v final printu:
+4. **If the user explicitly chose a downgrade** (option b/c in the question above, OR an explicit `--quick` / `--no-critic` flag) → state it explicitly in the final print:
    > `Critic panel (--quick mode per user choice): signature-moment-critic only, max 2 iter`
-- **Path obsahuje cestu mimo `<DESIGN_ROOT>`** → fail (security).
-- **`.design/config.json` chybí** → varuj user "using defaults" a pokračuj s defaults z `dev-server/config.schema.json`.
-- **Auto-critic loop hits `stable-but-bland`** (correctness clean, aspiration plateau pod target) → ne fail, surface canvas s diagnostic. User má dostat lowest 2 aspiration axes named, aby věděl kam směřovat targeted feedback.
+- **Path contains a path outside `<DESIGN_ROOT>`** → fail (security).
+- **`.design/config.json` missing** → warn the user "using defaults" and continue with defaults from `dev-server/config.schema.json`.
+- **Auto-critic loop hits `stable-but-bland`** (correctness clean, aspiration plateau below target) → don't fail, surface the canvas with a diagnostic. The user should get the lowest 2 aspiration axes named so they know where to steer targeted feedback.

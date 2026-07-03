@@ -1,30 +1,30 @@
 ---
 name: design:edit
 category: daily
-description: Iteruj na aktivním canvasu — Claude přečte soubor co máš v browseru otevřený a aplikuje feedback IN PLACE. Default: po editu auto-spustí critic panel; přidej --perfect [N] pro N iterací auto-fixu, nebo --no-critic pro skip. --opt-out=<scope> přepíše scope ze sidecaru pro tuhle iteraci.
+description: Iterate on the active canvas — Claude reads the file you have open in the browser and applies feedback IN PLACE. Default: after the edit, auto-runs the critic panel; add --perfect [N] for N auto-fix iterations, or --no-critic to skip. --opt-out=<scope> overrides the scope from the sidecar for this iteration.
 argument-hint: "\"<feedback>\" [--screenshot <path>] [--perfect [N]] [--no-critic] [--opt-out=palette|aesthetic|full]"
 ---
 
-# /design:edit — iteruj na active canvasu
+# /design:edit — iterate on the active canvas
 
-Default flow design pluginu. Edituje **soubor co máš právě otevřený v browser tabu** — ne nový session, ne nový file. Jako Claude Design canvas — řekneš "přidej tady presence dot", a presence dot se objeví v aktivním canvasu.
+The design plugin's default flow. Edits the **file you currently have open in the browser tab** — not a new session, not a new file. Like a Claude Design canvas — you say "add a presence dot here", and the presence dot appears in the active canvas.
 
-Project-specific hodnoty (designRoot, rootClass, tokens path, themeDefault) přicházejí z `<repo>/.design/config.json`. Orchestrator je čte přes server `/_config` endpoint (nebo přímo ze souboru).
+Project-specific values (designRoot, rootClass, tokens path, themeDefault) come from `<repo>/.design/config.json`. The orchestrator reads them via the server `/_config` endpoint (or straight from the file).
 
-**Vstup `$ARGUMENTS`:** `"<feedback>" [--screenshot <path>] [--opt-out=palette|aesthetic|full]`
+**Input `$ARGUMENTS`:** `"<feedback>" [--screenshot <path>] [--opt-out=palette|aesthetic|full]`
 
-- `<feedback>` — verbatim co se má změnit. Konkrétně: "presence dot 8px u každého hráče v rosteru", "tighter row density", "remove avatar from chat header".
-- `--screenshot <path>` — volitelně cesta k anotovanému obrázku. Claude ho přečte jako image input.
-- `--opt-out=palette|aesthetic|full` — override scope pro tuhle iteraci a persist do `.meta.json`. Pokud chybí, čte se ze sidecaru `<canvas>.meta.json` field `opt_out_scope` (default `palette`). Viz SKILL.md "Opt-out scope".
+- `<feedback>` — verbatim what should change. Concretely: "presence dot 8px next to each roster player name", "tighter row density", "remove avatar from chat header".
+- `--screenshot <path>` — optionally a path to an annotated image. Claude reads it as image input.
+- `--opt-out=palette|aesthetic|full` — override scope for this iteration and persist to `.meta.json`. If absent, read from the sidecar `<canvas>.meta.json` field `opt_out_scope` (default `palette`). See SKILL.md "Opt-out scope".
 
-**Příklady:**
+**Examples:**
 ```
 /design:edit "Presence dot 8px (--status-success) before each roster player name"
 /design:edit "Tighter density on Roster section — padding 8/12 instead of 12/16"
 /design:edit "Match this layout exactly" --screenshot /Users/me/Downloads/anotated.png
 ```
 
-## Postup
+## Procedure
 
 ### 0. Pre-flight: bootstrap detection
 
@@ -54,7 +54,7 @@ Headless Chrome (and many real user browsers / OS accessibility settings) defaul
 
 ### 1. Resolve config
 
-Vyvolej skill `design` se vstupem `$ARGUMENTS`.
+Invoke skill `design` with input `$ARGUMENTS`.
 
 **One pre-flight call instead of the config jq reads + the step-3 slug compute.** `prep.sh --shape edit` reads `.design/config.json` + `_active.json` + `_server.json` in a single pass and exports `DESIGN_ROOT`, `ROOT_CLASS`, `TOKENS_REL`, plus the active-canvas context `ACTIVE_CANVAS`, `SELECTED_FILE`, `SEL_VALID`, `OPEN_TABS`, `ACTIVE_SLUG`, and the server probe `SERVER_UP` / `SERVER_PORT`. Step 3's slug no longer needs a separate `slug.sh` call (use `$ACTIVE_SLUG`); step 2 still runs `server-up.sh` because that helper *starts* a stale/absent server — `prep.sh` only probes.
 
@@ -220,7 +220,7 @@ fi
 
 For `css_mode: "tailwind"` canvases skip (Tailwind utilities self-describe); for `css_mode: "modules"` load the canvas's `<Slug>.module.css` sidecar instead. Missing the canvas-lib vocabulary is the most common reason a `/design:edit` suggests re-inventing a helper that already exists — so on a miss the lib read is non-negotiable, and on a hit `libExports` carries that same vocabulary forward.
 
-### 2. Server lifecycle (vždy první) + runtime-bundle health probe
+### 2. Server lifecycle (always first) + runtime-bundle health probe
 
 ```bash
 PORT=$(maude design server-up --root "$REPO_ROOT")
@@ -237,9 +237,9 @@ maude design runtime-health \
   || { echo "✗ runtime bundles defective even after restart — abort /design:edit (see stderr)"; exit 1; }
 ```
 
-`server-up.sh` detekuje běžící server (PID + `curl /_health`), startuje znovu při stale, poll-uje 10 s, stdout = port. Diagnostic na stderr (`✓ server alive pid=… port=…` / `→ starting dev server …`).
+`server-up.sh` detects a running server (PID + `curl /_health`), restarts on stale, polls 10 s, stdout = port. Diagnostics on stderr (`✓ server alive pid=… port=…` / `→ starting dev server …`).
 
-`runtime-health.sh` ověří že každý `/_canvas-runtime/<slug>.js` server vrací bytes blízko on-disk pre-built bundle (ratio ≥ 0.5). Ratio níž → defective dynamic Bun.build → auto-restart + jediné re-probe; pokud nepomůže, `/design:edit` abortuje a doporučí `lsof -i :$PORT` + manual restart.
+`runtime-health.sh` verifies that for every `/_canvas-runtime/<slug>.js` the server returns bytes close to the on-disk pre-built bundle (ratio ≥ 0.5). Lower ratio → defective dynamic Bun.build → auto-restart + a single re-probe; if that doesn't help, `/design:edit` aborts and recommends `lsof -i :$PORT` + manual restart.
 
 ### 3. Read active canvas + selected element + open comments
 
@@ -267,7 +267,7 @@ SLUG="${ACTIVE_SLUG:-$(maude design slug "${ACTIVE#$DESIGN_ROOT/}")}"
 COMMENTS_FILE="$DESIGN_ROOT/_comments/$SLUG.json"
 ```
 
-Pokud `SEL_VALID=1`, edit bude **scoped** na vybraný element (selector + dom_path + outerHTML). Pokud ne, edit je **canvas-wide**. Stale selection (`selected.file !== active`) → ignoruj a flagni v response.
+If `SEL_VALID=1`, the edit is **scoped** to the selected element (selector + dom_path + outerHTML). If not, the edit is **canvas-wide**. Stale selection (`selected.file !== active`) → ignore and flag in the response.
 
 **Open comments take precedence when feedback is empty / generic.** Each entry: `{id, selector, dom_path, tag, classes, bounds, html_excerpt, text, status, created}`. Orchestrator behaviour:
 
@@ -426,12 +426,12 @@ The step-8 critic panel then includes `draw-critic` automatically (the `HAS_CUST
 
 ### 5. Apply edit
 
-Read the canvas file. **If selection is valid**, build scoped prompt (selector + dom_path + outerHTML + bounds + feedback) — orchestrator zná pattern z `design/SKILL.md` "Scoped edit prompt". Edit pomocí `Edit` tool s `old_string` matchnutý na unikátní substring vybraného elementu (pokud outerHTML appears multiple times, použij dom-path context k disambiguaci).
+Read the canvas file. **If selection is valid**, build a scoped prompt (selector + dom_path + outerHTML + bounds + feedback) — the orchestrator knows the pattern from `design/SKILL.md` "Scoped edit prompt". Edit using the `Edit` tool with `old_string` matched to a unique substring of the selected element (if outerHTML appears multiple times, use the dom-path context to disambiguate).
 
-**Pokud selection není**, edit je canvas-wide. Použij Edit pro minimal diff (preferuj). Write jen když změna je zásadní rewrite, ale preserve:
+**If there's no selection**, the edit is canvas-wide. Use Edit for a minimal diff (preferred). Write only when the change is a substantial rewrite, but preserve:
 - `<link rel="stylesheet" href=".../<TOKENS_REL>">`
 - `<body class="<ROOT_CLASS>" data-theme="…">`
-- The Babel/UMD React mount pattern (pokud existuje)
+- The Babel/UMD React mount pattern (if present)
 - All existing tokens (`var(--*)` references)
 
 **Touch the paired `.tsx` after editing a sibling `.css` (D-2 — highest-ROI fix).** For `css_mode` canvases that carry a sibling `<slug>.css` (NOT Tailwind / inline modes), the dev-server's canvas-build **inlines the CSS at module init and the bundle cache keys on the `.tsx` mtime** — so a CSS-only edit is invisible until something bumps the `.tsx` mtime (or a server restart). After editing any `<slug>.css`, `touch <slug>.tsx` so the canvas-build re-inlines the CSS. Without this, the confirmation screenshot in step 7 reflects the *pre-edit* CSS — studyfi burned 5 identical "nothing changed" screenshots on exactly this. (Tailwind/inline-mode canvases have no sibling `.css`, so this does not apply to them.)
@@ -480,9 +480,9 @@ maude design screenshot --full --out "$OUT" \
   || echo "⚠ baseline screenshot not written"
 ```
 
-Helper resolvuje URL z `_server.json` + `_active.json`, poll-uje pro canvas mount, vybírá engine (agent-browser > playwright fallback). Diagnostic na stderr.
+The helper resolves the URL from `_server.json` + `_active.json`, polls for canvas mount, picks the engine (agent-browser > playwright fallback). Diagnostics on stderr.
 
-Screenshot path je referenced v final print + chat.md row. Pokud render blank → warn `⚠ canvas rendered blank — likely JSX error`, neabortuj (file exists, user může otevřít manually).
+The screenshot path is referenced in the final print + chat.md row. If it renders blank → warn `⚠ canvas rendered blank — likely JSX error`, don't abort (the file exists, the user can open it manually).
 
 Detaily: SKILL.md "Post-write reality check".
 
@@ -572,18 +572,18 @@ If the fast-path runs but ds-keeper produces 0 token-usage findings, the orchest
 
 **Resolve `ds_fidelity` alongside it (DDR-141):** `jq -r '.dsFidelity // "advisory"'` from `.design/config.json`; a resolved scope of `full` overrides to `advisory` (explicit free-use beats project policy — one axis, not two competing switches). Pass it to `design-system-keeper` + `brand-critic` in the same envelope: under `strict`, their reuse findings (invented brand mark, reinvented component/icon family, parallel shell) are **blockers** that count toward the loop's correctness gate; under `advisory` (default) they stay warnings — today's behavior.
 
-**See `skills/design/SKILL.md` "Auto-critic loop" + "Opt-out scope" for full spec.** Klíčové:
+**See `skills/design/SKILL.md` "Auto-critic loop" + "Opt-out scope" for full spec.** Key points:
 
 | Flag | max_iter | aspiration_target | Panel | Use |
 |---|---|---|---|---|
-| (default) | 4 | 4.0 / 5 | routed (incl. `signature-moment-critic` když feedback obsahuje polish/nicer/elegant cues) | každé /design:edit — solid-for-review |
+| (default) | 4 | 4.0 / 5 | routed (incl. `signature-moment-critic` when feedback contains polish/nicer/elegant cues) | every /design:edit — solid-for-review |
 | `--no-critic` | 0 | n/a | (skip) | quick / dirty edit |
 | `--perfect [N]` | N (default 8) | 4.5 / 5 | routed | extended polish, broader scope |
 | `--perfect --all` | N | 4.5 / 5 | every critic incl. aspiration | exhaustive / portfolio-grade |
 | `--opt-out=<scope>` | (orthogonal) | (orthogonal) | (orthogonal) | Override scope for this iteration. `palette` (default) / `aesthetic` (palette + gradients/radii free) / `full` (DS advisory). A11y enforced regardless. Persists to `.meta.json`. |
 | `--skip-ds-keeper` | (orthogonal) | (orthogonal) | (orthogonal) | Skip the `design-system-keeper` precheck (step 7.5). Use for known-experimental edits where reinvention is intent. |
 
-Default loop **multi-axis** stop condition: `correctness == 0 AND aspiration ≥ 4.0 AND specificity == "pass" AND no_gains_for_1_round`. Když plateau → exit `stable-but-bland` s diagnostic (lowest 2 axes), místo silent success na "blockers == 0 ale bland."
+Default loop **multi-axis** stop condition: `correctness == 0 AND aspiration ≥ 4.0 AND specificity == "pass" AND no_gains_for_1_round`. When it plateaus → exit `stable-but-bland` with a diagnostic (lowest 2 axes), instead of silent success on "blockers == 0 but bland."
 
 **Per iteration, decide the panel set first, then spawn it in one parallel batch.** The decision block selects which critics run:
 
@@ -627,20 +627,20 @@ Failure here is non-fatal — print warning, don't restore the canvas. (User can
 
 ## Failure modes
 
-- **Server nelze nastartovat (10s timeout)** → fail s `cat $DESIGN_ROOT/_server.log` instrukcí.
-- **`_active.json` chybí / `active = null`** → fail: "Otevři soubor v browser tabu, klikni na něj, pak zkus znovu."
-- **Active path není `.tsx`** → fail: "Active canvas musí být TSX soubor."
-- **Snapshot fail (no disk / permission)** → refuse, needituj.
-- **Edit poruší tokens link / rootClass / hardcoded colors** → automatic rollback ze snapshotu, report.
-- **Selected element's outerHTML appears multiple times v souboru** → použij dom_path k disambiguaci nebo fail s návrhem zúžit selekci (Cmd+Click konkrétnější dítě).
-- **Stale selection** (`selected.file !== active`) → ignoruj selection, edituj canvas-wide, flagni jednou v response.
+- **Server won't start (10s timeout)** → fail with a `cat $DESIGN_ROOT/_server.log` instruction.
+- **`_active.json` missing / `active = null`** → fail: "Open a file in the browser tab, click on it, then try again."
+- **Active path is not `.tsx`** → fail: "The active canvas must be a TSX file."
+- **Snapshot fail (no disk / permission)** → refuse, don't edit.
+- **Edit breaks the tokens link / rootClass / hardcoded colors** → automatic rollback from the snapshot, report.
+- **Selected element's outerHTML appears multiple times in the file** → use dom_path to disambiguate or fail with a suggestion to narrow the selection (Cmd+Click a more specific child).
+- **Stale selection** (`selected.file !== active`) → ignore the selection, edit canvas-wide, flag once in the response.
 
-## Tipy
+## Tips
 
-- **Pin-to-element edit** — drž **Cmd** (nebo Alt) v canvasu, najeď myší — element se zvýrazní. **Cmd+klikni** ho označ. Status bar dole ukáže `● selector — text`. Další `/design:edit "<feedback>"` edituje **jen ten element**, ne celý soubor.
-- **Esc uvnitř canvasu** zruší selection. Nebo `×` button ve status baru.
-- **Tab switch zruší selection** automaticky (selection je per-canvas).
-- **Refresh canvas** — Cmd+R uvnitř iframe. Pokud nefunguje, klikni na "↻ active" v headeru.
-- **Anotovaný screenshot** — `/design:screenshot` → otevřeš PNG v Preview → zakroužkuješ → `/design:edit "..." --screenshot <path>`. Selection-aware screenshot je default pokud máš element označený.
+- **Pin-to-element edit** — hold **Cmd** (or Alt) in the canvas and hover — the element highlights. **Cmd+click** to select it. The status bar at the bottom shows `● selector — text`. The next `/design:edit "<feedback>"` edits **only that element**, not the whole file.
+- **Esc inside the canvas** clears the selection. Or the `×` button in the status bar.
+- **Tab switch clears the selection** automatically (selection is per-canvas).
+- **Refresh canvas** — Cmd+R inside the iframe. If it doesn't work, click "↻ active" in the header.
+- **Annotated screenshot** — `/design:screenshot` → open the PNG in Preview → circle things → `/design:edit "..." --screenshot <path>`. A selection-aware screenshot is the default if you have an element selected.
 
-Po editu pokračuj `/design:edit "<další feedback>"`, `/design:screenshot`, `/design:critic`, nebo `/design:handoff`. `/design:rollback` pokud editace nedopadla.
+After editing, continue with `/design:edit "<more feedback>"`, `/design:screenshot`, `/design:critic`, or `/design:handoff`. `/design:rollback` if the edit didn't work out.

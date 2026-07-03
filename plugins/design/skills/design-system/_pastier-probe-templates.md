@@ -56,7 +56,7 @@ Query patterns: search for case-study copy, about-page copy, README voice in pro
 From the same character anchors PLUS `design_lineage` (Probe A) and the chroma of the products you surfaced, infer where the brand sits on the `restrained → confident → expressive → maximalist` scale. **Read both ends honestly — this is the primary signal for the anchor decision.**
 
 - **Restrained signals:** quiet/craftsman/calm voice; editorial or terminal lineage; anchors are low-chroma, mono, lots of negative space (Linear, Stripe docs, Vercel, Robin Rendle, Are.na).
-- **Expressive/maximalist signals:** playful/bold/joyful/"experimentátor" voice; colour-forward or creative-tool lineage; anchors lean multi-accent, gradient, colour-as-structure (Figma, Figma Config, Canva, Gumroad, Arc, Framer, Pitch, Linear's *marketing* site, Stripe *marketing*).
+- **Expressive/maximalist signals:** playful/bold/joyful/"experimenter" voice; colour-forward or creative-tool lineage; anchors lean multi-accent, gradient, colour-as-structure (Figma, Figma Config, Canva, Gumroad, Arc, Framer, Pitch, Linear's *marketing* site, Stripe *marketing*).
 - **Confident** sits between (one strong accent + support); **maximalist** is the far end (colour is the structure).
 
 **Mandatory anti-bias guard:** the model defaults to "tasteful minimal". Before recommending `restrained`/`confident`, you MUST have actively considered the expressive end and be able to name *why you ruled it out* — and write that into the `aesthetic_ambition.rationale` audit clause. **No clear signal either way ⇒ confidence `< 0.60` ⇒ Stage 3 asks; absence of signal is NEVER read as `restrained`.**
@@ -65,14 +65,14 @@ From the same character anchors PLUS `design_lineage` (Probe A) and the chroma o
 
 ```jsonc
 // Quiet end — character + lineage cluster low-chroma
-{ "values": "perfekcionismus na detailech", "primary_emotion": "soustředění", "design_lineage": "editorial Stripe docs" }
+{ "values": "perfectionism on the details", "primary_emotion": "focus", "design_lineage": "editorial Stripe docs" }
 // → aesthetic_ambition: { "recommendation": "restrained", "alternatives": ["confident", "expressive"], "confidence": 0.82,
 //      "rationale": "quiet-craftsman voice + Stripe-docs lineage + every anchor low-chroma → restrained; considered confident, ruled out: no colour-forward cue in brief or anchors." }
 
 // Expressive end — playful voice + creative-tool lineage cluster colour-forward
-{ "values": "hravost nad formálností", "primary_emotion": "radost", "design_lineage": "Figma / Gumroad / Arc", "ds_signature_hypothesis": "výrazné barvy" }
+{ "values": "playfulness over formality", "primary_emotion": "joy", "design_lineage": "Figma / Gumroad / Arc", "ds_signature_hypothesis": "bold colours" }
 // → aesthetic_ambition: { "recommendation": "expressive", "alternatives": ["confident", "maximalist"], "confidence": 0.8,
-//      "rationale": "playful joyful voice + Figma/Gumroad lineage + signature='výrazné barvy' + anchors multi-accent → expressive; restrained ruled out (every signal is colour-forward)." }
+//      "rationale": "playful joyful voice + Figma/Gumroad lineage + signature='bold colours' + anchors multi-accent → expressive; restrained ruled out (every signal is colour-forward)." }
 ```
 
 **Worked example (voice tone):**
@@ -81,9 +81,9 @@ From the same character anchors PLUS `design_lineage` (Probe A) and the chroma o
 // vision-brief.json fragment → agent finds portfolios whose authors describe
 // themselves as craftsmen / detail-obsessive / quiet
 {
-  "values": "Vždycky perfekcionismus na detailech",
-  "primary_emotion": "soustředění",
-  "author_voice": "klidný řemeslník"
+  "values": "Always perfectionism on the details",
+  "primary_emotion": "focus",
+  "author_voice": "a calm craftsman"
 }
 // Expected voice_tone_options[] entry
 {
@@ -104,7 +104,7 @@ From the same character anchors PLUS `design_lineage` (Probe A) and the chroma o
 
 **Action:**
 
-- **If hypothesis is specific** (e.g. `"signature žlutá"`, `"CRT motion na přechodech"`): find 3–5 products that nail that direction; recommend a refined version (e.g. a specific OKLCH yellow range with rationale, a specific motion choreography with anchor URL).
+- **If hypothesis is specific** (e.g. `"signature yellow"`, `"CRT motion on transitions"`): find 3–5 products that nail that direction; recommend a refined version (e.g. a specific OKLCH yellow range with rationale, a specific motion choreography with anchor URL).
 - **If hypothesis is `"research, surprise me" / null`**: propose 3 candidate signatures based on `design_lineage` + `primary_emotion`, each classified into a Q9 signature-treatment family from `_MAPPING.md`.
 - **When `aesthetic_ambition ≥ expressive` (DDR-073):** include the colour-led families among the candidates — `chromatic-blocks` (colour-as-structure; Memphis / Canva / Figma Config) and `gradient-mesh` (mesh/aurora backdrop; Figma / Stripe marketing). The subtle families (`chrome-glow`, `inset-recess`) under-deliver for an expressive/maximalist brief, so don't make them the only options.
 - **Always:** check `ds_signature_anti` and ensure no candidate violates it.
@@ -116,13 +116,13 @@ From the same character anchors PLUS `design_lineage` (Probe A) and the chroma o
 ```jsonc
 // vision-brief.json fragment → agent refines hypothesis into specific OKLCH range
 {
-  "ds_signature_hypothesis": "signature žlutá je důležitá",
-  "ds_signature_anti": "určitě ne font, neumím to ohlídat"
+  "ds_signature_hypothesis": "signature yellow is important",
+  "ds_signature_anti": "definitely not the font, I can't keep an eye on it"
 }
 // Expected signature_treatment_options[] entry
 {
   "id": "signature-yellow-chrome-glow",
-  "label": "signature žlutá chrome-glow (anchor: vintage cookbook ochre)",
+  "label": "signature yellow chrome-glow (anchor: vintage cookbook ochre)",
   "family": "chrome-glow",
   "anchor_examples": ["vintage Penguin cookbook 1971", "Foxie.io accent"],
   "why_in_domain": "Recipe / cookbook tradition leans warm ochre / mustard; not bright lemon.",
@@ -150,8 +150,8 @@ From the same character anchors PLUS `design_lineage` (Probe A) and the chroma o
 **Worked example:**
 
 ```jsonc
-// vision-brief.json fragment → scope=personal + author "klidný" → roomy bias
-{ "scope": "personal", "audience": "Jen pro sebe, je to portfolio", "author_voice": "klidný řemeslník" }
+// vision-brief.json fragment → scope=personal + author "calm" → roomy bias
+{ "scope": "personal", "audience": "Just for myself, it's a portfolio", "author_voice": "a calm craftsman" }
 // Expected density_options[] entry
 {
   "id": "roomy-editorial",
@@ -198,7 +198,7 @@ The `rationale` field is **mandatory** for every recommendation — it's what th
   "recommendations": {
     "palette": {
       "confidence": 0.85,
-      "rationale": "primary_emotion='soustředění' + design_lineage='editorial Stripe docs' → cool-neutral L 58-65, C 0.08-0.12, H 200-240. Anchored on Stripe + Vercel docs."
+      "rationale": "primary_emotion='focus' + design_lineage='editorial Stripe docs' → cool-neutral L 58-65, C 0.08-0.12, H 200-240. Anchored on Stripe + Vercel docs."
     },
     "majak_3_codes": {
       "recommendation": ["barva", "font", "motion"],

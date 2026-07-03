@@ -22,7 +22,7 @@ Wraps the bundled `smoke.sh` helper, invoked via `maude design smoke` (the on-PA
 
 Per-canvas hooks (`/design:edit` step 7, `/design:new` step 9, `/design:setup-ds` step 9) already cover single-target work. `/design:smoke` covers the work shapes that bypass them.
 
-## Postup
+## Procedure
 
 1. **Server lifecycle** — `PORT=$(maude design server-up)`.
 1a. **Runtime-bundle health** — `maude design runtime-health --port "$PORT" --restart --quiet`. Smoke's whole purpose is "did I break the iframe?" — a stale dev-server serving a defective `/_canvas-runtime/*.js` will produce blanket `ERROR` rows across every canvas with the same `ReferenceError` (and no source change explains it). Probing the runtime bundles first separates "I broke a canvas" from "the server is broken". System-review 2026-05-27 (D-1).
@@ -75,7 +75,7 @@ The helper exits `0` only if every canvas is `OK` **and** the import-graph lint 
 | `--engine auto\|agent-browser\|playwright` | `auto` | Forced fallback. Playwright loses the error-overlay probe (coarser verdict). |
 | `--changed-only` | off | **Incremental mode (Phase C / DDR-061).** Screenshot only canvases changed since the last smoke run (baseline recorded in `_history/_smoke/.last-smoke.json`). **Escalates back to the full set** when the diff touches `dev-server/**`, `canvas-lib.tsx`, or a `canvas*.tsx.template` (the "everything could break" shapes). No baseline / no git → full set. Empty change set → exit 0, nothing to screenshot. **`/flow:execute`'s phase-end gate defaults to this**; manual `/design:smoke` and release/CI stay full-set. |
 
-## Príklady
+## Examples
 
 ```sh
 /design:smoke
@@ -90,13 +90,13 @@ The helper exits `0` only if every canvas is `OK` **and** the import-graph lint 
 - **`agent-browser` skill unavailable** → helper auto-fallback to playwright. Error-overlay probe is lost; status decision becomes "PNG > 2 KB → OK". Acceptable degraded mode; install agent-browser for full coverage.
 - **Smoke reports `BLANK` for a canvas you know renders fine in browser** → bump `--timeout`. Heavy canvases with lazy-mount can miss the 8 s window.
 
-## Co `/design:smoke` NEdělá
+## What `/design:smoke` does NOT do
 
-- Nemění `_active.json` (smoke iterates URLs directly; doesn't touch the user's selection).
-- Nedělá kvalitativní hodnocení — žádný critic, žádná aesthetic skóre. Pure render check.
-- Neumí per-artboard breakdown — to je `/design:screenshot --all-screens` na konkrétním canvasu. Smoke je full-page per file.
-- Neukládá do `_history/<slug>/screenshots/` (= per-canvas snapshot dir for `/design:edit`). Smoke jde do `_history/_smoke/<timestamp>/` aby nezašumovala canvas-level historii.
+- Doesn't change `_active.json` (smoke iterates URLs directly; doesn't touch the user's selection).
+- Doesn't make a qualitative judgment — no critic, no aesthetic scores. Pure render check.
+- Can't do a per-artboard breakdown — that's `/design:screenshot --all-screens` on a specific canvas. Smoke is full-page per file.
+- Doesn't save into `_history/<slug>/screenshots/` (= the per-canvas snapshot dir for `/design:edit`). Smoke goes to `_history/_smoke/<timestamp>/` so it doesn't pollute canvas-level history.
 
-## Co se cvičí touto smyčkou
+## What this loop drills against
 
-Phase 3.6 + 3.6.1 retra opakovaně dokumentovaly stejnou pattern: build green + tests green + scope "infra change, not UI change" → silně rozbité canvasy odhalené až user-driven exploration. `/design:smoke` je strukturální gate, který tu pattern přerušuje na phase-end, ne v post-validate triage. Viz `.ai/decisions/DDR-021-design-smoke-gate-for-infra-and-bulk-ui-work.md`.
+The Phase 3.6 + 3.6.1 retros repeatedly documented the same pattern: build green + tests green + scope "infra change, not UI change" → badly broken canvases only surfaced by user-driven exploration. `/design:smoke` is the structural gate that interrupts that pattern at phase-end, not in post-validate triage. See `.ai/decisions/DDR-021-design-smoke-gate-for-infra-and-bulk-ui-work.md`.

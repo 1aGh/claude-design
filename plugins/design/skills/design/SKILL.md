@@ -7,6 +7,8 @@ description: Local Claude-Design clone — canvas-first design iteration. Iterat
 
 You are the orchestrator for local design-iteration. The mental model: **the project has a fixed set of canvas files** under `<designRoot>/system/...` (design system specimens) and `<designRoot>/ui/...` (project surfaces). The user opens one in the browser, optionally selects a specific element with Cmd+Click, then says what they want changed. You read state from disk, snapshot, edit in place.
 
+**Language.** These commands and skills are authored in English. **Respond in the language the user writes to you in** — Czech feedback/brief → reply (and user-facing canvas-copy guidance) in Czech; English or any other language → match that. Never default to Czech for a user who is writing in English. The Czech keyword lists inside command matchers (`commands/edit.md`, `commands/new.md`) exist only to *detect* Czech input — they never force Czech *output*.
+
 **Per-repo config.** All project-specific values come from `<repo>/.design/config.json` (schema at `${CLAUDE_PLUGIN_ROOT}/dev-server/config.schema.json`). Key fields you need:
 
 | Field | What you use it for |
@@ -44,7 +46,7 @@ WCAG hard-stops (contrast, semantics, focus, motion-respect, touch targets, form
 `config.dsFidelity: "advisory" | "strict"` (default `advisory`) decides how hard **specimen reuse** is enforced — whether reinventing something the DS already ships (canonical logo, iconography family, component shape, platform showcase shell) is a warning or a blocker:
 
 - **`advisory`** (default) — reuse findings from `design-system-keeper` (Passes A / A.6 / A.8) and `brand-critic`'s canonical-mark check surface as **warnings**. Today's behavior; zero regression for projects that never set the knob.
-- **`strict`** — the "DS za každou cenu" contract: those findings arrive as **blockers**, tagged `category: ds`, and count toward the auto-fix loop's correctness gate — the loop cannot exit `SOLID` while a shipped specimen stays reinvented.
+- **`strict`** — the "DS at any cost" contract: those findings arrive as **blockers**, tagged `category: ds`, and count toward the auto-fix loop's correctness gate — the loop cannot exit `SOLID` while a shipped specimen stays reinvented.
 
 **One axis, not two competing switches.** `dsFidelity` composes with `opt_out_scope`: the *resolved* scope is applied first, and a scope of **`full` always overrides `strict` to `advisory`** — an explicit per-canvas free-use decision beats project policy. At `aesthetic`, strict still binds whatever that scope doesn't relax (brand mark identity and component reuse bind; gradients/radii/type do not). Inventing remains legitimate at every fidelity when the DS ships **no** specimen for the thing being built — strictness gates *reinvention*, never *creation*.
 
@@ -675,7 +677,7 @@ The orchestrator uses Edit tool with old_string scoped to the line range from th
 Two commands, two defaults. **The defaults differ because the leverage differs**:
 
 - `/design:edit "<feedback>"` is incremental — small edit on existing canvas. Default = solid-for-review (max 4 iter, aspiration 4.0). User can iterate cheaply, so over-investing in any one edit is waste.
-- `/design:new` is high-leverage scaffold — sets the canvas trajectory for all future iteration. Default = portfolio-grade (`--perfect`: max 8 iter, aspiration 4.5, full panel). Cheap to do right once; expensive to refactor zpětně.
+- `/design:new` is high-leverage scaffold — sets the canvas trajectory for all future iteration. Default = portfolio-grade (`--perfect`: max 8 iter, aspiration 4.5, full panel). Cheap to do right once; expensive to refactor afterwards.
 
 | Command + flag | max_iter | aspiration_target | Critic panel | Auto-fix | Use case |
 |---|---|---|---|---|---|
@@ -684,7 +686,7 @@ Two commands, two defaults. **The defaults differ because the leverage differs**
 | `/design:edit --perfect --all` | N | 4.5 / 5 | **every critic** | yes | exhaustive polish |
 | `/design:edit --no-critic` | 0 | n/a | (skip) | no | quick / dirty edit |
 | **`/design:new` (none — DEFAULT = `--perfect`)** | **8** | **4.5 / 5** | **signature-moment + design + frontend + a11y (if interactive)** | **yes** | **standard new canvas — portfolio-grade scaffold** |
-| `/design:new --perfect-iter N` | N | 4.5 / 5 | same as default | yes | larger / smaller canvases co potřebují víc / míň iterací |
+| `/design:new --perfect-iter N` | N | 4.5 / 5 | same as default | yes | larger / smaller canvases that need more / fewer iterations |
 | `/design:new --perfect --all` | 8 | 4.5 / 5 | **every critic** | yes | exhaustive — portfolio + comprehensive coverage |
 | `/design:new --quick` | 2 | 4.0 / 5 | signature-moment-critic only | yes | throwaway exploration / proof-of-concept |
 | `/design:new --no-critic` | 0 | n/a | (skip) | no | testing / debug — just verify file generates |

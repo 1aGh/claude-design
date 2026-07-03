@@ -1,54 +1,54 @@
 ---
 name: design:rollback
 category: daily
-description: Vrať poslední snapshot aktivního canvasu (undo poslední /design:edit). --steps N pro víc kroků zpět.
+description: Restore the last snapshot of the active canvas (undo the last /design:edit). --steps N to go further back.
 argument-hint: "[--steps N] [--list]"
 ---
 
 # /design:rollback — undo edit
 
-Restoruje předchozí stav active canvasu z `.design/_history/<slug>/`. Každý `/design:edit "<feedback>"` udělal snapshot **před** editem; rollback ten snapshot vrátí.
+Restores the previous state of the active canvas from `.design/_history/<slug>/`. Every `/design:edit "<feedback>"` took a snapshot **before** the edit; rollback restores that snapshot.
 
-**Vstup `$ARGUMENTS`:** `[--steps N] [--list]`
+**Input `$ARGUMENTS`:** `[--steps N] [--list]`
 
-- `--steps N` — kolik kroků zpět (default 1 = poslední snapshot).
-- `--list` — místo undo jen vypíše dostupné snapshots aktivního canvasu.
+- `--steps N` — how many steps back (default 1 = the last snapshot).
+- `--list` — instead of undoing, just lists the available snapshots of the active canvas.
 
-**Příklady:**
+**Examples:**
 ```
-/design:rollback                    # undo poslední edit
-/design:rollback --steps 3          # vrať 3 editace zpět
-/design:rollback --list             # ukáže historii pro active canvas
+/design:rollback                    # undo the last edit
+/design:rollback --steps 3          # go back 3 edits
+/design:rollback --list             # show history for the active canvas
 ```
 
-## Postup
+## Procedure
 
-Vyvolej skill `design` se vstupem: `rollback $ARGUMENTS`.
+Invoke skill `design` with the input: `rollback $ARGUMENTS`.
 
-Skill:
+The skill:
 1. Server lifecycle check.
-2. Read `.design/_active.json` → cesta k canvasu.
-3. Spočítá `<slug>` z cesty.
-4. **`--list` mode:** `ls .design/_history/<slug>/` setříděné desc by timestamp. Vypíše s indexem (1 = nejnovější) + size + ts. Konec.
-5. **Default mode:** vezme N-tý snapshot zpět (default 1).
-6. **Snapshot CURRENT state first** — rollback je sám reversible. Zapíše current jako `<NNN+1>-<ts>-pre-rollback.bak`.
+2. Read `.design/_active.json` → the canvas path.
+3. Computes `<slug>` from the path.
+4. **`--list` mode:** `ls .design/_history/<slug>/` sorted desc by timestamp. Prints with an index (1 = newest) + size + ts. Done.
+5. **Default mode:** takes the N-th snapshot back (default 1).
+6. **Snapshot the CURRENT state first** — rollback is itself reversible. Writes the current state as `<NNN+1>-<ts>-pre-rollback.bak`.
 7. `cp <chosen-snapshot> <canvas-file>`.
-8. Print: který snapshot byl restorován, kolik kroků, current snapshot count.
-9. User reloadne iframe (Cmd+R).
+8. Print: which snapshot was restored, how many steps, the current snapshot count.
+9. The user reloads the iframe (Cmd+R).
 
 ## Failure modes
 
-- **Žádný history pro active canvas** → fail: "No snapshots in `.design/_history/<slug>/`. Žádný `/design:edit` ještě neběžel."
-- **`--steps N` > history count** → fail s actual count + nabídka `--steps <max>`.
+- **No history for the active canvas** → fail: "No snapshots in `.design/_history/<slug>/`. No `/design:edit` has run yet."
+- **`--steps N` > history count** → fail with the actual count + an offer of `--steps <max>`.
 
-## Tipy
+## Tips
 
-- **Před `/design:handoff` projdi historii** přes `--list` — uvidíš všechny iterace co se sbíhaly k finální.
-- **Snapshots jsou gitignored.** Pokud chceš zachovat konkrétní stav v gitu, copy ho ručně mimo `_history/` (např. `cp .design/_history/.../005-*.bak .ai/decisions/DDR-NNN/visual-evidence.html`).
-- **Rollback rollback** — protože pre-rollback snapshot se taky uloží, můžeš `/design:rollback` zase `/design:rollback` a vrátit se k stavu před první rollbackem.
+- **Before `/design:handoff`, walk the history** via `--list` — you'll see every iteration that converged toward the final one.
+- **Snapshots are gitignored.** If you want to preserve a specific state in git, copy it manually out of `_history/` (e.g. `cp .design/_history/.../005-*.bak .ai/decisions/DDR-NNN/visual-evidence.html`).
+- **Rollback the rollback** — because the pre-rollback snapshot is saved too, you can `/design:rollback` a `/design:rollback` and return to the state before the first rollback.
 
-## Co `/design:rollback` NEdělá
+## What `/design:rollback` does NOT do
 
-- Nesmaže `_history/<slug>/` (zůstává navždy, dokud user manuálně neumaže).
-- Nemění `_active.json` (active canvas zůstává stejný).
-- Nemodifikuje `apps/web` ani `apps/mobile` (handoff je separate flow).
+- Doesn't delete `_history/<slug>/` (it stays forever, until the user manually removes it).
+- Doesn't change `_active.json` (the active canvas stays the same).
+- Doesn't modify `apps/web` or `apps/mobile` (handoff is a separate flow).

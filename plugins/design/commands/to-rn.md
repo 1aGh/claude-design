@@ -1,7 +1,7 @@
 ---
 name: design:to-rn
 category: daily
-description: FALLBACK — vygeneruj native react-native-svg + Reanimated komponentu z IR pro LIGHT/occasional animaci. Pro rich/continuous morph použij `/design:to-lottie` (rn-svg má perf strop, `feTurbulence` nemá native impl).
+description: FALLBACK — generate a native react-native-svg + Reanimated component from the IR for LIGHT/occasional animation. For rich/continuous morph use `/design:to-lottie` (rn-svg has a perf ceiling, `feTurbulence` has no native impl).
 argument-hint: "\"<animated mark | IR handle | canvas>\" [--out <Component.tsx>]"
 ---
 
@@ -24,10 +24,10 @@ a native `react-native-svg` + Reanimated component instead of a Lottie runtime
 
 ## Flags
 
-| Flag | Default | Co dělá |
+| Flag | Default | What it does |
 |---|---|---|
-| `"<source>"` | — | **Required.** Animovaný mark: IR handle / `.tsx` canvas / SMIL+CSS zdroj. |
-| `--out <path>` | `<repo>/src/components/<Slug>.tsx` (nebo dle projektu) | Cílová RN komponenta. |
+| `"<source>"` | — | **Required.** The animated mark: IR handle / `.tsx` canvas / SMIL+CSS source. |
+| `--out <path>` | `<repo>/src/components/<Slug>.tsx` (or per project) | Target RN component. |
 
 ## When to use which
 

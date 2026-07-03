@@ -1,28 +1,28 @@
 ---
 name: design:screenshot
 category: daily
-description: Capture screenshot aktivního canvasu — full, jednoho screenu, elementu, nebo všech screens v smyčce. Wrapper přes `maude design screenshot` (agent-browser primárně, playwright fallback).
+description: Capture a screenshot of the active canvas — full, a single screen, an element, or every screen in a loop. Wrapper over `maude design screenshot` (agent-browser primary, playwright fallback).
 argument-hint: "[--screen|--element <id> | --selector <css> | --full | --all-screens] [--area <n>]"
 ---
 
 # /design:screenshot — capture active canvas
 
-Otevře aktivní canvas (`_active.json`) přes server URL (ne `file://`), zachytí screenshot, uloží do `.design/_history/<slug>/screenshots/<NNN>-<area>.png` (gitignored).
+Opens the active canvas (`_active.json`) via the server URL (not `file://`), captures a screenshot, saves it to `.design/_history/<slug>/screenshots/<NNN>-<area>.png` (gitignored).
 
-Single source of truth pro screenshot logiku je `maude design screenshot` (on-PATH `maude` dispatchuje do bundled helperu — DDR-062). Tento command jen mapuje slash-command flagy na helper a vyřeší cestu output souboru.
+The single source of truth for the screenshot logic is `maude design screenshot` (the on-PATH `maude` dispatches to the bundled helper — DDR-062). This command just maps the slash-command flags to the helper and resolves the output file path.
 
-**Vstup `$ARGUMENTS`:**
+**Input `$ARGUMENTS`:**
 
-| Flag | Co dělá |
+| Flag | What it does |
 |---|---|
-| `--full` *(default)* | Celá stránka. |
-| `--screen <id>` | Jen artboard s `data-dc-screen="<id>"` (Phase 13 konvence) nebo `data-dc-slot="<id>"` (legacy). |
-| `--element <id>` | Jen element s `data-dc-element="<id>"`. |
-| `--selector <css>` | Vlastní CSS selektor (power-user — preferuj `--screen`/`--element` kde to jde). |
-| `--all-screens` | Smyčka přes všechny artboardy, ukládá `<NNN>-screen-<id>.png` do screenshots dir. |
-| `--area <name>` | Label pro single-shot výstup (default `full`). Příklady: `roster-row`, `top-bar`. |
+| `--full` *(default)* | Whole page. |
+| `--screen <id>` | Only the artboard with `data-dc-screen="<id>"` (Phase 13 convention) or `data-dc-slot="<id>"` (legacy). |
+| `--element <id>` | Only the element with `data-dc-element="<id>"`. |
+| `--selector <css>` | Custom CSS selector (power-user — prefer `--screen`/`--element` where possible). |
+| `--all-screens` | Loops over every artboard, saving `<NNN>-screen-<id>.png` into the screenshots dir. |
+| `--area <name>` | Label for the single-shot output (default `full`). Examples: `roster-row`, `top-bar`. |
 
-**Příklady:**
+**Examples:**
 ```
 /design:screenshot
 /design:screenshot --screen onboarding-welcome
@@ -31,48 +31,48 @@ Single source of truth pro screenshot logiku je `maude design screenshot` (on-PA
 /design:screenshot --selector ".roster-row:nth-child(1)" --area roster-row
 ```
 
-## Postup
+## Procedure
 
-Vyvolej skill `design` se vstupem: `screenshot $ARGUMENTS`.
+Invoke skill `design` with the input: `screenshot $ARGUMENTS`.
 
-Skill:
+The skill:
 
 1. **Server lifecycle** — `PORT=$(maude design server-up)`.
-2. **Parse args** — extrahuj jeden ze single-shot módů, `--all-screens`, `--area`.
+2. **Parse args** — extract one of the single-shot modes, `--all-screens`, `--area`.
 3. **Compute slug** — `SLUG=$(maude design slug "${ACTIVE#$DESIGN_ROOT/}")`.
 4. **Output path:**
-   - Single-shot: `OUT="$DESIGN_ROOT/_history/$SLUG/screenshots/$(NNN)-$AREA.png"`, kde `NNN` je další v sekvenci pro daný area (žádné colliding názvy).
-   - `--all-screens`: `OUT_DIR="$DESIGN_ROOT/_history/$SLUG/screenshots/"`; helper sám vytvoří `NNN-screen-<id>.png`.
-5. **Volání helperu:**
+   - Single-shot: `OUT="$DESIGN_ROOT/_history/$SLUG/screenshots/$(NNN)-$AREA.png"`, where `NNN` is next in the sequence for that area (no colliding names).
+   - `--all-screens`: `OUT_DIR="$DESIGN_ROOT/_history/$SLUG/screenshots/"`; the helper creates `NNN-screen-<id>.png` itself.
+5. **Call the helper:**
    ```bash
    maude design screenshot \
      --screen "$SCREEN_ID" --out "$OUT"
-   # nebo
+   # or
    maude design screenshot \
      --all-screens --out-dir "$OUT_DIR"
    ```
-   Helper sám resolvuje URL ze `_server.json` + `_active.json` a zvolí engine (`agent-browser` > `playwright` fallback). Diagnostic jde do stderr, written paths do stdout — composable.
-6. **Print uživateli** cestu(y) k PNG. Pokud `--all-screens` napsal < 1 file (capture failed), surface failure místo silent OK.
+   The helper resolves the URL from `_server.json` + `_active.json` itself and picks the engine (`agent-browser` > `playwright` fallback). Diagnostics go to stderr, written paths to stdout — composable.
+6. **Print to the user** the path(s) to the PNG. If `--all-screens` wrote < 1 file (capture failed), surface the failure instead of a silent OK.
 
-## Tip — annotation loop pro pin-comments (Claude Design style)
+## Tip — annotation loop for pin-comments (Claude Design style)
 
-Pokud chceš anotovat konkrétní místo:
+If you want to annotate a specific spot:
 
-1. `/design:screenshot --element <id>` nebo `--selector <css>` pro výřez.
-2. Otevři PNG v Preview / annotation toolu → zakroužkuj → ulož.
-3. `/design:edit "<konkrétní feedback>" --screenshot <cesta-k-anotovanému-obrázku>`.
+1. `/design:screenshot --element <id>` or `--selector <css>` for the crop.
+2. Open the PNG in Preview / an annotation tool → circle it → save.
+3. `/design:edit "<specific feedback>" --screenshot <path-to-annotated-image>`.
 
 ## Failure modes
 
-- **`_active.json` chybí / `active = null`** → helper failuje s "open one in browser first".
-- **Server neodpovídá na `/_health`** → `server-up.sh` exit 1 s pointem na `$DESIGN_ROOT/_server.log`.
-- **Selector nematchne** → helper detekuje (PNG < 1 KB nebo error z agent-browser), exit 3 s diagnostic. NEdělá silent "success".
-- **`agent-browser` skill nedostupný** → helper auto-fallback na `npx playwright` (první run instaluje Chromium ~150 MB).
+- **`_active.json` missing / `active = null`** → the helper fails with "open one in browser first".
+- **Server not responding to `/_health`** → `server-up.sh` exits 1 pointing at `$DESIGN_ROOT/_server.log`.
+- **Selector doesn't match** → the helper detects it (PNG < 1 KB or an error from agent-browser), exits 3 with a diagnostic. Does NOT do a silent "success".
+- **`agent-browser` skill unavailable** → the helper auto-falls back to `npx playwright` (the first run installs Chromium ~150 MB).
 
-## Co `/design:screenshot` NEdělá
+## What `/design:screenshot` does NOT do
 
-- Nemodifikuje canvas — jen čte.
-- Nemodifikuje `_active.json`.
-- Nezapisuje do `_history/` snapshotů (jen do `_history/<slug>/screenshots/`).
+- Doesn't modify the canvas — it only reads.
+- Doesn't modify `_active.json`.
+- Doesn't write `_history/` snapshots (only into `_history/<slug>/screenshots/`).
 
-Default-screenshotuj často — je to free, image input je nepostradatelný pro `/design:edit "..." --screenshot` annotation loop a pro `/design:critic`.
+Screenshot by default, often — it's free, and image input is indispensable for the `/design:edit "..." --screenshot` annotation loop and for `/design:critic`.

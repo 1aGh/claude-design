@@ -1,29 +1,29 @@
 ---
 name: design:handoff
 category: daily
-description: Emit a shadcn `registry-item.json` sidecar pro aktivní canvas (production-ready drop pro Next.js / Vite / Bun)
+description: Emit a shadcn `registry-item.json` sidecar for the active canvas (production-ready drop for Next.js / Vite / Bun)
 argument-hint: "[--canvas <path>] [--force]"
 ---
 
 # /design:handoff — shadcn registry-item.json sidecar
 
-Konvertuje aktivní canvas (z `_active.json`) na **`<Slug>.registry.json`** vedle TSX souboru. Cílový projekt to konzumuje přes `bunx shadcn add file://./<Slug>.registry.json` — funguje pro Next.js / Vite / Astro / Remix / Bun, jakýkoli framework, který má `shadcn` CLI.
+Converts the active canvas (from `_active.json`) into **`<Slug>.registry.json`** next to the TSX file. The target project consumes it via `bunx shadcn add file://./<Slug>.registry.json` — works for Next.js / Vite / Astro / Remix / Bun, any framework that has the `shadcn` CLI.
 
-Co sidecar obsahuje:
+What the sidecar contains:
 
-1. **`files[0]`** — canvas TSX, **bez `data-cd-id` atributů** (dev-time scaffolding, production je nepotřebuje).
-2. **`files[1]`** (jen pro `css_mode: "inline"`) — podmnožina `_components.css` ořezaná na pravidla, jejichž třída se v canvasu vyskytuje (`.btn`, `.tile`, `.sku`, ...). BEM modifikátory (`.btn--ghost`) jedou s base classou.
-3. **`files[2]`** (jen pro `css_mode: "inline"`) — podmnožina `colors_and_type.css` tokenů, na které ořezané CSS odkazuje přes `var(--*)`.
-4. **`cssVars.theme`** — stejné tokeny v shadcn formátu, aby je CLI grafikovala do `app/globals.css`.
-5. **`dependencies`** — npm spec resolvuje z `Bun.Transpiler.scanImports()` (`react`, `react-dom` + cokoli další). React + ReactDOM jsou floor (DDR-012).
-6. **`registryDependencies`** — `@/components/ui/*` importy se mapují na shadcn primitive names (`button`, `card`, ...).
+1. **`files[0]`** — the canvas TSX, **without `data-cd-id` attributes** (dev-time scaffolding, production doesn't need them).
+2. **`files[1]`** (only for `css_mode: "inline"`) — a subset of `_components.css` trimmed to the rules whose class appears in the canvas (`.btn`, `.tile`, `.sku`, ...). BEM modifiers (`.btn--ghost`) ride along with the base class.
+3. **`files[2]`** (only for `css_mode: "inline"`) — a subset of the `colors_and_type.css` tokens that the trimmed CSS references via `var(--*)`.
+4. **`cssVars.theme`** — the same tokens in shadcn format, so the CLI grafts them into `app/globals.css`.
+5. **`dependencies`** — the npm spec resolved from `Bun.Transpiler.scanImports()` (`react`, `react-dom` + whatever else). React + ReactDOM are the floor (DDR-012).
+6. **`registryDependencies`** — `@/components/ui/*` imports map to shadcn primitive names (`button`, `card`, ...).
 
-**Vstup `$ARGUMENTS`:** `[--canvas <path>] [--force]`
+**Input `$ARGUMENTS`:** `[--canvas <path>] [--force]`
 
-- `--canvas <path>` — explicitní cesta k canvas .tsx (default = `_active.json.active`).
-- `--force` — emitni sidecar i s otevřenými blockers v latest critique.
+- `--canvas <path>` — explicit path to the canvas .tsx (default = `_active.json.active`).
+- `--force` — emit the sidecar even with open blockers in the latest critique.
 
-**Příklad:**
+**Example:**
 ```
 /design:handoff
 /design:handoff --canvas .design/ui/Docs\ Site.tsx
@@ -32,11 +32,11 @@ Co sidecar obsahuje:
 
 ## Pre-requisites
 
-1. **Canvas je `.tsx`** — TSX je jediný podporovaný formát.
-2. **`handoffTargets[0].path === "registry:item"`** v `.design/config.json` (default po Task 10 update).
-3. **Latest critique má `blockers === 0`** — pokud ne, fail s návrhem `/design:edit "Address: <top blocker>"`. Override `--force`.
+1. **Canvas is `.tsx`** — TSX is the only supported format.
+2. **`handoffTargets[0].path === "registry:item"`** in `.design/config.json` (default after the Task 10 update).
+3. **Latest critique has `blockers === 0`** — if not, fail with the suggestion `/design:edit "Address: <top blocker>"`. Override with `--force`.
 
-## Postup
+## Procedure
 
 ### 1. Resolve canvas + meta
 
@@ -48,11 +48,11 @@ CANVAS="$DESIGN_ROOT/$ACTIVE"
 [ "${CANVAS##*.}" != "tsx" ] && echo "handoff: canvas is not .tsx — migrate first" && exit 1
 ```
 
-Načti `<canvas>.meta.json` (kvůli `title` + `subtitle` → registry `title`/`description`).
+Read `<canvas>.meta.json` (for `title` + `subtitle` → registry `title`/`description`).
 
 ### 2. Pre-flight blocker check
 
-Stejně jako `/design:critic` — `_history/<slug>/<NNN>-critic.md` posledního běhu. `blockers: 0` ⇒ pokračuj, jinak fail.
+Same as `/design:critic` — the last run's `_history/<slug>/<NNN>-critic.md`. `blockers: 0` ⇒ proceed, otherwise fail.
 
 ### 3. Run the handoff helper via `maude design handoff`
 
@@ -60,19 +60,19 @@ Stejně jako `/design:critic` — `_history/<slug>/<NNN>-critic.md` posledního 
 maude design handoff "$CANVAS" "$DESIGN_ROOT"
 ```
 
-Wrapper zavolá `bun run handoff.ts --emit <canvas> <designRoot>`. Skript:
+The wrapper calls `bun run handoff.ts --emit <canvas> <designRoot>`. The script:
 
-1. Načte canvas TSX.
-2. Stripne `data-cd-id` atributy (AST-aware, oxc-parser + magic-string).
-3. Klasifikuje importy (npm vs `@/components/ui/*`).
-4. Pro `css_mode: "inline"` canvases:
-   - Sebere každý `className` literal token (`btn`, `btn--ghost`, `sku`, ...).
-   - Ořeže `_components.css` jen na pravidla s odpovídajícími base classami (BEM modifikátory + pseudo-classy se vezmou se sebou).
-   - Z ořezaného CSS extrahuje `var(--*)` reference + ořeže `colors_and_type.css` na ně.
-5. Složí `RegistryItem` strukturu per [shadcn registry-item schema](https://ui.shadcn.com/schema/registry-item.json).
-6. Zapíše atomicky na `<canvas-dir>/<Slug>.registry.json`.
+1. Reads the canvas TSX.
+2. Strips `data-cd-id` attributes (AST-aware, oxc-parser + magic-string).
+3. Classifies imports (npm vs `@/components/ui/*`).
+4. For `css_mode: "inline"` canvases:
+   - Collects every `className` literal token (`btn`, `btn--ghost`, `sku`, ...).
+   - Trims `_components.css` down to only the rules with matching base classes (BEM modifiers + pseudo-classes come along).
+   - Extracts `var(--*)` references from the trimmed CSS + trims `colors_and_type.css` down to them.
+5. Assembles the `RegistryItem` structure per the [shadcn registry-item schema](https://ui.shadcn.com/schema/registry-item.json).
+6. Writes atomically to `<canvas-dir>/<Slug>.registry.json`.
 
-### 4. Reportuj výstup
+### 4. Report the output
 
 ```
 ✅ Handoff sidecar: .design/ui/Docs Site.registry.json
@@ -80,35 +80,35 @@ Wrapper zavolá `bun run handoff.ts --emit <canvas> <designRoot>`. Skript:
    deps:  2  (react, react-dom)
    registryDependencies: 0
    
-   Konzumace v target projektu:
+   Consume in the target project:
      bunx shadcn add file://$(pwd)/.design/ui/Docs\ Site.registry.json
 ```
 
-### 5. Návazné kroky
+### 5. Follow-up steps
 
-- Pokud sidecar je úspěšně emitnutý + komponenta jede v scratch projektu → ulož path do `_history/<slug>/handoff/<NNN>-registry.json.md` jako log.
-- Pro multi-canvas batch handoff: smyčka přes `_active.json.open_tabs` nebo `find .design/ui -name '*.tsx'`.
+- If the sidecar emits successfully + the component runs in a scratch project → save the path to `_history/<slug>/handoff/<NNN>-registry.json.md` as a log.
+- For a multi-canvas batch handoff: loop over `_active.json.open_tabs` or `find .design/ui -name '*.tsx'`.
 
 ## What handoff DOES / DOES NOT do
 
 **DOES:**
-- Stripne `data-cd-id` (dev scaffolding off).
-- Resolvuje `dependencies` z importů (`react` + `react-dom` always).
-- Bunduje použitou podmnožinu `_components.css` + tokenů (pro `css_mode: "inline"`).
-- Atomicky zapíše sidecar.
+- Strips `data-cd-id` (dev scaffolding off).
+- Resolves `dependencies` from the imports (`react` + `react-dom` always).
+- Bundles the used subset of `_components.css` + tokens (for `css_mode: "inline"`).
+- Writes the sidecar atomically.
 
 **DOES NOT:**
-- Necommituje. Sidecar zůstává v `.design/ui/` — uživatel commituje, kdy chce.
-- Nespouští testy.
-- Nepushuje na shadcn registry namespace (pro public hosting použij vlastní pipeline).
-- Nemění target framework (canvas TSX je už React 19, target projekt taky — žádný runtime translation).
+- Doesn't commit. The sidecar stays in `.design/ui/` — the user commits whenever they want.
+- Doesn't run tests.
+- Doesn't push to the shadcn registry namespace (for public hosting use your own pipeline).
+- Doesn't change the target framework (the canvas TSX is already React 19, the target project too — no runtime translation).
 
 ## Failure modes
 
-- **Canvas není `.tsx`** → fail "migrate first".
-- **`handoffTargets` v configu nemá `registry:item`** → fail s návrhem `maude config set handoffTargets ...`.
-- **`bun` v PATH chybí** → fail s pokynem nainstalovat Bun (Phase 3.4).
-- **Latest critique má blockers + bez `--force`** → fail s top blocker quote.
-- **`_components.css` nebo `colors_and_type.css` neexistuje** → emit s prázdným CSS bundle (TSX-only registry-item; consumer dostane self-contained komponentu, ale tříd `_components.css` nepoužije — to je v podstatě same-stack handoff between maude projekty).
+- **Canvas isn't `.tsx`** → fail "migrate first".
+- **`handoffTargets` in the config lacks `registry:item`** → fail with the suggestion `maude config set handoffTargets ...`.
+- **`bun` missing from PATH** → fail with an instruction to install Bun (Phase 3.4).
+- **Latest critique has blockers + no `--force`** → fail with the top blocker quote.
+- **`_components.css` or `colors_and_type.css` doesn't exist** → emit with an empty CSS bundle (TSX-only registry-item; the consumer gets a self-contained component but won't use the `_components.css` classes — that's essentially a same-stack handoff between maude projects).
 
-Po úspěšném handoff vidíš shell output s path k sidecar a kopírovací `bunx shadcn add` command.
+After a successful handoff you see shell output with the path to the sidecar and a copy-paste `bunx shadcn add` command.

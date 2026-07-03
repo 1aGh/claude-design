@@ -35,7 +35,7 @@ Before drawing any multi-element composition (illustration / diagram / spot / ba
 | G5 | **Balance the masses.** Net visual moment about the center near zero (asymmetry is fine if it balances). | `balanceMoment(elements, box).score ≥ ~0.75`. |
 | G6 | **Active negative space.** Leave breathing room around the focal; don't fill every quadrant. | place supports on a SUBSET of focals; keep one quadrant calm. |
 
-A composition that ignores G1–G5 is the failure mode the user called "hnusný" — fix it in generation, not by asking the critic to bless it.
+A composition that ignores G1–G5 is the failure mode the user called "ugly" — fix it in generation, not by asking the critic to bless it.
 
 ---
 

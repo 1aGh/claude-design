@@ -1,53 +1,53 @@
 ---
 name: design:export
 category: daily
-description: Export aktivního canvasu — PNG / PDF / SVG / HTML / PPTX / Canva handoff bundle / project ZIP. Thin slash wrapper nad `POST /_api/export` (stejný engine jako UI dialog ⌘E).
+description: Export the active canvas — PNG / PDF / SVG / HTML / PPTX / Canva handoff bundle / project ZIP. Thin slash wrapper over `POST /_api/export` (same engine as the ⌘E UI dialog).
 argument-hint: "<png|pdf|svg|html|pptx|canva|zip> [--scope selection|artboard|canvas-as-separate|project-raw] [--out <path>] [--option key=value]"
 ---
 
 # /design:export — export active canvas
 
-Pošle požadavek na běžící dev-server (`POST /_api/export`) se stejným payloadem, jaký posílá ⌘E dialog uvnitř canvasu. Server zapíše soubor a tenhle slash command ho dotáhne na disk (default cwd, nebo `--out <path>`).
+Sends a request to the running dev-server (`POST /_api/export`) with the same payload the ⌘E dialog inside the canvas sends. The server writes the file and this slash command pulls it down to disk (default cwd, or `--out <path>`).
 
-**Předpoklad:** dev-server běží (`maude design serve` nebo `/design:new` ho nahodí). Slash command čte port z `.design/_server.json`.
+**Prerequisite:** the dev-server is running (`maude design serve` or `/design:new` brings it up). The slash command reads the port from `.design/_server.json`.
 
-## Vstup `$ARGUMENTS`
+## Input `$ARGUMENTS`
 
-| Flag | Význam |
+| Flag | Meaning |
 |---|---|
-| `<format>` (povinné) | `png` / `pdf` / `svg` / `html` / `pptx` / `canva` / `zip` |
-| `--scope <s>` | `selection` / `artboard` / `canvas-as-separate` / `project-raw`. Default = `canvas-as-separate` pro element-shape formáty, `project-raw` pro `zip`. |
-| `--out <path>` | Kam zapsat. Default = cwd + filename, který server vrátí v `Content-Disposition`. |
-| `--option key=value` | Per-format option. Lze opakovat. Příklady: `--option pageFit=a4` (PDF), `--option mode=raster` (Canva → legacy raster bundle), `--option include=system` (ZIP filtr). |
+| `<format>` (required) | `png` / `pdf` / `svg` / `html` / `pptx` / `canva` / `zip` |
+| `--scope <s>` | `selection` / `artboard` / `canvas-as-separate` / `project-raw`. Default = `canvas-as-separate` for element-shape formats, `project-raw` for `zip`. |
+| `--out <path>` | Where to write. Default = cwd + the filename the server returns in `Content-Disposition`. |
+| `--option key=value` | Per-format option. Can be repeated. Examples: `--option pageFit=a4` (PDF), `--option mode=raster` (Canva → legacy raster bundle), `--option include=system` (ZIP filter). |
 
-## Příklady
+## Examples
 
 ```
-# Aktivní canvas → multi-page PDF, jeden artboard na stránku
+# Active canvas → multi-page PDF, one artboard per page
 /design:export pdf --scope canvas-as-separate
 
-# Vybraný element → PNG do ~/Downloads/hero.png
+# Selected element → PNG to ~/Downloads/hero.png
 /design:export png --scope selection --out ~/Downloads/hero.png
 
 # Editable Canva handoff bundle (PPTX + .canva-handoff.md)
 /design:export canva
 
-# Legacy raster bundle (PNG+CSV+README, bez editovatelné PPTX)
+# Legacy raster bundle (PNG+CSV+README, no editable PPTX)
 /design:export canva --option mode=raster
 
-# Celý `.design/` source ZIP, jen DS subtree
+# Whole `.design/` source ZIP, DS subtree only
 /design:export zip --option include=system
 
-# A4 PDF místo native rozměrů artboardu
+# A4 PDF instead of the artboard's native dimensions
 /design:export pdf --option pageFit=a4
 ```
 
-## Co command provede
+## What the command does
 
-1. **Detekuje port** z `.design/_server.json` (nebo `--port N` override).
-2. **Resolve scope:** pokud uživatel neuvedl `--scope`, použije plan-definovaný default (`canvas-as-separate` pro element formáty, `project-raw` pro `zip`).
-3. **POST** `http://localhost:<port>/_api/export` s body `{ format, scope, options }`.
-4. **Zapíše bytes** do `--out` cesty (nebo cwd + server-supplied filename).
-5. **Stdout:** `wrote <abs-path> (<bytes> bytes)`. Stderr na chybu.
+1. **Detects the port** from `.design/_server.json` (or a `--port N` override).
+2. **Resolve scope:** if the user didn't pass `--scope`, use the plan-defined default (`canvas-as-separate` for element formats, `project-raw` for `zip`).
+3. **POST** `http://localhost:<port>/_api/export` with body `{ format, scope, options }`.
+4. **Writes the bytes** to the `--out` path (or cwd + the server-supplied filename).
+5. **Stdout:** `wrote <abs-path> (<bytes> bytes)`. Stderr on error.
 
-Žádné network volání mimo localhost. Žádné OAuth / token storage — Canva handoff vrací PPTX + markdown s prompt blockem pro tvůj MCP (viz `plugins/design/docs/canva-handoff.md`).
+No network calls outside localhost. No OAuth / token storage — the Canva handoff returns a PPTX + markdown with a prompt block for your MCP (see `plugins/design/docs/canva-handoff.md`).

@@ -1,7 +1,7 @@
 ---
 name: design:to-lottie
 category: daily
-description: Productionize maude animaci → JEDEN `.lottie` Z KÓDU pro web i mobile (1:1 lottie-web/dotlottie-react + lottie-react-native). Emitter z keyframe dat, NE konvertor renderovaného SVG. Self-verify přes headless lottie-web.
+description: Productionize a maude animation → ONE `.lottie` FROM CODE for web and mobile (1:1 lottie-web/dotlottie-react + lottie-react-native). Emitter from keyframe data, NOT a converter of rendered SVG. Self-verify via headless lottie-web.
 argument-hint: "\"<animated mark | IR handle | canvas>\" [--out <path>] [--web] [--verify]"
 ---
 
@@ -20,12 +20,12 @@ construction (same renderer family), performant (native Lottie runtime).
 
 ## Flags
 
-| Flag | Default | Co dělá |
+| Flag | Default | What it does |
 |---|---|---|
-| `"<source>"` | — | **Required.** Animovaný mark: IR handle / `.tsx` canvas / disciplinovaný SMIL+CSS zdroj. |
+| `"<source>"` | — | **Required.** The animated mark: IR handle / `.tsx` canvas / disciplined SMIL+CSS source. |
 | `--out <path>` | `<designRoot>/assets/<slug>.json` | Output `.lottie`/`.json`. |
-| `--web` | — | Drop i web usage snippet (`dotlottie-react` / `lottie-web`) vedle RN snippetu. |
-| `--verify` | on (doporučeno) | Vyrenderuj frames přes headless lottie-web a porovnej s web referencí. |
+| `--web` | — | Also drop a web usage snippet (`dotlottie-react` / `lottie-web`) alongside the RN snippet. |
+| `--verify` | on (recommended) | Render frames through headless lottie-web and compare against the web reference. |
 
 ## Why Lottie (not a second native renderer)
 

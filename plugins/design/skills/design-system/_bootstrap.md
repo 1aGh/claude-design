@@ -17,7 +17,7 @@
 
 | Bypass-routine type | Surfacing |
 | --- | --- |
-| `--quick` flag skips Kolo 2-3 critics | 1-line chat + log row. No `AskUserQuestion` (user asked for `--quick` explicitly). |
+| `--quick` flag skips Round 2-3 critics | 1-line chat + log row. No `AskUserQuestion` (user asked for `--quick` explicitly). |
 | `--imprint` flag steers Stage 2 research toward a brand prior | 1-line chat + log row. The brand-prior steer is the bypass payload. |
 | Dev-server boot fails during visual sanity | `AskUserQuestion` (non-routine — user couldn't predict the failure). Selection logged. |
 | Brief contradicts Stage 0 scope (e.g. user picked Pro Tool but brief says "playful tactile bouncy") | `AskUserQuestion` resolving which signal wins. Selection logged. |
@@ -26,7 +26,7 @@
 | Socket-close / batch cohort failure during fan-out | Re-spawn the failed slices (≤ fan-out ceiling — see "Batches B + C"), then **reconcile** (the recovery routes THROUGH reconciliation, not around it). 1-line chat + log row. Never report complete with a `pending` or absent per-platform showcase. |
 | **Stage-4 moodboard gate under autonomous mode** (`pokracuj autonomně`) | Default **proceed** ONLY when the agent's own read of the moodboard screenshot finds no obvious mismatch with the brief; otherwise **stop + `AskUserQuestion`**. 1-line chat + log row either way. **Never silently skip the screenshot + Read** — that's the exact silent-elision this log exists to kill. |
 | **Hero-preview drift override under autonomous mode** | No-drift → proceed silently. Detected drift → autonomous default is **stop + ask**; any "proceed-through-drift" override writes a log row (with the drift it overrode). |
-| **Critic-panel coverage under autonomous mode** | Default **Full 4 kola** (recommended) — NOT a silent trim. The panel-coverage `AskUserQuestion` is the human path; autonomous picks Full and writes a log row (codifies the studyfi report's logged divergence #3, where "pokracuj" defaulted Full without firing the question). |
+| **Critic-panel coverage under autonomous mode** | Default **Full 4 rounds** (recommended) — NOT a silent trim. The panel-coverage `AskUserQuestion` is the human path; autonomous picks Full and writes a log row (codifies the studyfi report's logged divergence #3, where "pokracuj" defaulted Full without firing the question). |
 | **Organic-seed (`draw-agent`) under autonomous mode** | Default **None**. 1-line chat + log row + the `recommend /design:draw "<brief>" --asset` next-step line (codifies the report's "Skipped the draw-agent step" divergence). |
 
 The bypass log is per-DS (path embeds `<target_ds>`) so multi-DS projects don't cross-pollute.
@@ -81,11 +81,11 @@ Hard-stops: missing Node → abort with install hint; missing git → abort with
 > ```
 > AskUserQuestion is unavailable in this session — answering via chat instead.
 >
-> Co je tohle za projekt?
->   1. Produkt pro veřejnost  — chceš oslovit externí lidi, zákazníky, širší komunitu
->   2. Interní nástroj         — pro tebe a tvůj tým nebo firmu, audience zná kontext
->   3. Osobní projekt          — pro sebe, portfolio, vlastní tool, experiment
->   4. Open-source knihovna    — pro vývojáře co tvůj kód budou používat
+> What kind of project is this?
+>   1. Product for the public  — you want to reach external people, customers, a wider community
+>   2. Internal tool           — for you and your team or company, the audience knows the context
+>   3. Personal project        — for yourself, a portfolio, your own tool, an experiment
+>   4. Open-source library     — for developers who will use your code
 >
 > Reply with: 1 / 2 / 3 / 4 (or paste your own answer).
 > ```
@@ -114,23 +114,23 @@ Hard-stops: missing Node → abort with install hint; missing git → abort with
 One single-select picker captured BEFORE Stage 1. The answer steers wording in Stage 1, the aspiration target the signature-moment-critic checks against post-scaffold, and the voice register defaults — but is **invisible in the UI as internal scoring jargon**. The user sees plain language about who will use the thing (DF-5).
 
 ```
-Co je tohle za projekt?
-  ○ Produkt pro veřejnost  — chceš oslovit externí lidi, zákazníky, širší komunitu
-  ○ Interní nástroj         — pro tebe a tvůj tým nebo firmu, audience zná kontext
-  ○ Osobní projekt          — pro sebe, portfolio, vlastní tool, experiment
-  ○ Open-source knihovna    — pro vývojáře co tvůj kód budou používat
+What kind of project is this?
+  ○ Product for the public  — you want to reach external people, customers, a wider community
+  ○ Internal tool           — for you and your team or company, the audience knows the context
+  ○ Personal project        — for yourself, a portfolio, your own tool, an experiment
+  ○ Open-source library     — for developers who will use your code
 ```
 
-(AskUserQuestion hard schema: max 4 options per Q — DF-1. "Osobní projekt" + "Research" are merged on purpose so the picker fits the 4-option ceiling.)
+(AskUserQuestion hard schema: max 4 options per Q — DF-1. "Personal project" + "Research" are merged on purpose so the picker fits the 4-option ceiling.)
 
 Internal mapping (NOT surfaced to user):
 
 | Scope | Stage 1 voice | Aspiration target (signature-moment-critic) | Default voice register |
 |---|---|---|---|
-| `market` (Produkt pro veřejnost) | "vaše značka / tvůj produkt" | **≥ 4.0/5** | researched per audience |
-| `internal` (Interní nástroj) | "tvůj DS / tvůj tool" | ≥ 3.5/5 | terse |
-| `personal` (Osobní projekt) | "tvůj DS / pro tebe" | 3.0–4.0/5 (per ambition) | user's own voice |
-| `oss` (Open-source knihovna) | "tvoje knihovna" | **≥ 4.0/5** | researched per audience |
+| `market` (Product for the public) | "your brand / your product" | **≥ 4.0/5** | researched per audience |
+| `internal` (Internal tool) | "your DS / your tool" | ≥ 3.5/5 | terse |
+| `personal` (Personal project) | "your DS / for you" | 3.0–4.0/5 (per ambition) | user's own voice |
+| `oss` (Open-source library) | "your library" | **≥ 4.0/5** | researched per audience |
 
 #### Stage 1 — Vision (11 conversational free-text prompts, 3 batches, plain prose)
 
@@ -139,83 +139,83 @@ Internal mapping (NOT surfaced to user):
 **Pattern per batch — emit one chat message with the batch heading + numbered prompts + examples; user replies in one chat message with `1. … 2. …` headings or `skip` per item. Parser splits on `**N. …**` boundary or `\nN. ` numbered list; trim, strip example artifacts, identify `skip` markers (case-insensitive, also `ne`, `nevím`, `—`).** Validated end-to-end in plan dogfood DF-8.
 
 ```
-─── Batch 1/3 — PŘÍPRAVA (kdo a proč, 4 prompts) ──────────────────
+─── Batch 1/3 — PREPARATION (who and why, 4 prompts) ──────────────────
 
-Odpověz v jednom message. Napiš `skip` u jakékoli otázky kterou chceš přeskočit.
+Reply in one message. Write `skip` for any question you want to skip.
 
-**1. Co tenhle projekt je?** Napiš 1–2 věty, jako bys to říkal kamarádovi.
-   *Příklad: „Je to recept manager kde si můžeš nastavit počet porcí
-   a on přepočítá ingredience."* Nemusí to znít cool, normální slova jsou OK.
-   (interní: Pastier — Zkratka)
+**1. What is this project?** Write 1–2 sentences, as if you were telling a friend.
+   *Example: "It's a recipe manager where you can set the number of servings
+   and it recalculates the ingredients."* It doesn't have to sound cool, plain words are fine.
+   (internal: Pastier — Zkratka)
 
-**2. Co by udělalo tenhle DS úspěchem v TVÝCH očích?**
-   Tady jde o tebe, ne o uživatele. Na čem by sis dal záležet?
-   *Příklad: „Aby každá obrazovka vypadala jako z časopisu",
-   „Aby to bylo rychlé a nepřekáželo to", „Aby se mi to líbilo i za 5 let".*
-   (interní: Pastier — Zrcadlo, část 1)
+**2. What would make this DS a success in YOUR eyes?**
+   This is about you, not the user. What would you want to get right?
+   *Example: "That every screen looks like it's from a magazine",
+   "That it's fast and stays out of the way", "That I still like it in 5 years".*
+   (internal: Pastier — Zrcadlo, part 1)
 
-**3. Je něco, na čem si zakládáš a chceš, aby to bylo cítit i v DS?**
-   *Příklad: „Vždycky perfekcionismus na detailech",
-   „Pohoda nad formálností", „Žádné prázdné buzzwords".*
-   Klidně přeskoč, pokud nevíš.
-   (interní: Pastier — Zrcadlo, část 2)
+**3. Is there something you take pride in that you want to come through in the DS too?**
+   *Example: "Always perfectionism on the details",
+   "Ease over formality", "No empty buzzwords".*
+   Feel free to skip if you don't know.
+   (internal: Pastier — Zrcadlo, part 2)
 
-**4. Naopak — co bys NIKDY nechtěl, aby DS vypadal?**
-   Co tě v jiných projektech / DSes vyloženě irituje? Klidně napiš
-   konkrétní jména produktů kterým se chceš VYHNOUT. (Tohle pomůže
-   research agentovi víc než pozitivní reference.)
-   (interní: Pastier — Facka)
+**4. Conversely — how would you NEVER want the DS to look?**
+   What in other projects / DSes downright irritates you? Feel free to write
+   specific product names you want to AVOID. (This helps the
+   research agent more than positive references.)
+   (internal: Pastier — Facka)
 
-─── Batch 2/3 — PROSTOR (kde to žije, 3 prompts) ──────────────────
+─── Batch 2/3 — SPACE (where it lives, 3 prompts) ──────────────────
 
-**5. V jakém vizuálním prostoru tenhle projekt žije?**
-   Nemusí to být přímí konkurenti — stačí říct, k jaké tradici se hlásíš.
-   *Příklad: „terminal tools jako Linear / Vercel",
-   „editorial jako Stripe docs", „hand-drawn jako Notion early days",
-   „retro arcade jako itch.io".* „Nevím, podívej se a doporuč mi" je
-   validní — research agent to udělá.
-   (interní: Pastier — Ulice, část 1: design lineage)
+**5. In what visual space does this project live?**
+   They don't have to be direct competitors — just say which tradition you align with.
+   *Example: "terminal tools like Linear / Vercel",
+   "editorial like Stripe docs", "hand-drawn like Notion early days",
+   "retro arcade like itch.io".* "I don't know, take a look and recommend something" is
+   valid — the research agent will do that.
+   (internal: Pastier — Ulice, part 1: design lineage)
 
-**6. A naopak — co je z toho prostoru OTŘEPANÉ, čeho už je všude moc?**
-   Co bys NECHTĚL zopakovat?
-   *Příklad: „purple-pink gradient hero", „bento grid landing pages",
-   „glass-morphism cards", „stock photos s ‚happy team meeting'".*
-   (interní: Pastier — Ulice, část 2: anti-references)
+**6. And conversely — what in that space is OVERDONE, what is there already too much of everywhere?**
+   What would you NOT want to repeat?
+   *Example: "purple-pink gradient hero", "bento grid landing pages",
+   "glass-morphism cards", "stock photos with a 'happy team meeting'".*
+   (internal: Pastier — Ulice, part 2: anti-references)
 
-**7. Pro koho to děláš?** Klidně „jen pro sebe" je validní odpověď.
-   Pokud jsou to jiní lidé — co o nich asi víš?
-   *Příklad: „Jen pro sebe, je to portfolio", „Pro 5 lidí v týmu
-   co používají dashboardy denně", „Pro vývojáře co staví na PostgreSQL".*
-   (interní: Pastier — Kmen)
+**7. Who are you making it for?** "Just for myself" is a perfectly valid answer.
+   If it's for other people — what do you roughly know about them?
+   *Example: "Just for myself, it's a portfolio", "For 5 people on the team
+   who use dashboards daily", "For developers building on PostgreSQL".*
+   (internal: Pastier — Kmen)
 
-─── Batch 3/3 — DUŠE (jak má působit, 4 prompts) ──────────────────
+─── Batch 3/3 — SOUL (how it should feel, 4 prompts) ──────────────────
 
-**8. Když to někdo poprvé vidí — jakou JEDNU emoci by měl odejít?**
-   *Příklad: klid · údiv · soustředění · hravost · autorita ·
-   „cítím se chytrý" · radost · pocit „to je řemeslo" · respekt.*
-   Vyber jedno slovo, klidně své vlastní.
-   (interní: Pastier — Charakter, část 1: primární emoce)
+**8. When someone sees it for the first time — what ONE emotion should they walk away with?**
+   *Example: calm · wonder · focus · playfulness · authority ·
+   "I feel smart" · joy · a sense of "this is craft" · respect.*
+   Pick one word, your own is fine.
+   (internal: Pastier — Charakter, part 1: primary emotion)
 
-**9. A jaký pocit by měl mít z TEBE jako z autora?**
-   *Příklad: „profík v oboru", „hravý experimentátor",
-   „klidný řemeslník", „někdo kdo ví co dělá ale nepyšní se tím".*
-   Můžeš přeskočit pokud je DS impersonální (např. interní nástroj).
-   (interní: Pastier — Charakter, část 2: autor)
+**9. And what feeling should they get from YOU as the author?**
+   *Example: "a pro in the field", "a playful experimenter",
+   "a calm craftsman", "someone who knows what they're doing but doesn't show off".*
+   You can skip this if the DS is impersonal (e.g. an internal tool).
+   (internal: Pastier — Charakter, part 2: author)
 
-**10. Existuje něco jednoho, čím by ses chtěl odlišit?**
-    Jedna věc, díky které lidi řeknou „jo to je [tvůj projekt]"?
-    *Příklad: „naše signature žlutá", „CRT motion na všech přechodech",
-    „mascot ježek v rohu", „typografie jak ve starých knihách",
-    „nezvyklý layout pattern".* „Nevím, doporuč mi něco" je perfektně
-    OK — research ti potom dá návrhy a ty z nich vybereš.
-    (interní: Pastier — OST, část 1: signature claim)
+**10. Is there one single thing you'd like to stand out with?**
+    One thing that makes people say "yeah, that's [your project]"?
+    *Example: "our signature yellow", "CRT motion on every transition",
+    "a hedgehog mascot in the corner", "typography like in old books",
+    "an unusual layout pattern".* "I don't know, recommend me something" is perfectly
+    OK — research will then give you suggestions and you'll pick from them.
+    (internal: Pastier — OST, part 1: signature claim)
 
-**11. A naopak — co určitě NEMÁ být tvůj signature?**
-    Co je „taková obyčejná default věc" a nechceš to za signature mít?
-    *Příklad: „určitě ne barva, ta je obyčejná",
-    „určitě ne font, neumím to ohlídat".*
-    Klidně přeskoč pokud nemáš názor.
-    (interní: Pastier — OST, část 2)
+**11. And conversely — what definitely should NOT be your signature?**
+    What is "just an ordinary default thing" that you don't want as your signature?
+    *Example: "definitely not colour, it's ordinary",
+    "definitely not the font, I can't keep an eye on it".*
+    Feel free to skip if you have no opinion.
+    (internal: Pastier — OST, part 2)
 ```
 
 **After P11, synthesize the inputs into `vision-brief.json`** at `<designRoot>/_history/_system/<ds>-vision-brief.json`:
@@ -236,7 +236,7 @@ Odpověz v jednom message. Napiš `skip` u jakékoli otázky kterou chceš přes
   "author_voice": "<P9 — may be null>",
   "ds_signature_hypothesis": "<P10 — may be 'no preference'>",
   "ds_signature_anti": "<P11 — may be null>",
-  "aesthetic_ambition_signal": "<nullable — ONLY set when the user volunteered an expressiveness cue in free-text (e.g. P1/P5/P10 said 'barevné jako Figma', 'extravagantní', 'klidný minimalismus'). NOT a prompted field — no Stage 1 question asks for it. A high-weight hint for Stage 2's inference, never a hard pin. Leave null when no cue was volunteered (the common case).>",
+  "aesthetic_ambition_signal": "<nullable — ONLY set when the user volunteered an expressiveness cue in free-text (e.g. P1/P5/P10 said 'colourful like Figma', 'extravagant', 'calm minimalism'). NOT a prompted field — no Stage 1 question asks for it. A high-weight hint for Stage 2's inference, never a hard pin. Leave null when no cue was volunteered (the common case).>",
   "_pastier_chapter_coverage": {
     "zrcadlo": ["P2", "P3"],
     "facka":   ["P4", "P6"],
@@ -286,13 +286,13 @@ The agent's prompt has been extended with **5 Pastier probe templates** (`A. Uli
       "recommendation": "expressive",
       "alternatives":   ["confident", "maximalist"],
       "confidence":     0.78,
-      "rationale":      "Probe B charakter='hravý experimentátor' + design_lineage='Figma / Gumroad' + primary_emotion='radost' → multi-accent expressive. Considered restrained, ruled out: every anchor is colour-forward."
+      "rationale":      "Probe B charakter='playful experimenter' + design_lineage='Figma / Gumroad' + primary_emotion='joy' → multi-accent expressive. Considered restrained, ruled out: every anchor is colour-forward."
     },
     "palette": {
       "recommendation": { /* primary OKLCH option */ },
       "alternatives":   [ /* 2 OKLCH options */ ],
       "confidence":     0.85,
-      "rationale":      "Tvoje primary_emotion='klid' + design_lineage='editorial Stripe docs' nasvědčuje L 58-65, C 0.08-0.12, H 200-240. Anchor: Stripe docs accent, Vercel docs hover."
+      "rationale":      "Your primary_emotion='calm' + design_lineage='editorial Stripe docs' suggests L 58-65, C 0.08-0.12, H 200-240. Anchor: Stripe docs accent, Vercel docs hover."
     },
     "typography":          { /* same shape */ },
     "signature_treatment": { /* same shape */ },
@@ -300,7 +300,7 @@ The agent's prompt has been extended with **5 Pastier probe templates** (`A. Uli
       "recommendation": ["barva", "font", "motion"],
       "alternatives":   [["symbol", "barva", "voice"], ["font", "tvar", "vzor"]],
       "confidence":     0.7,
-      "rationale":      "OST hypotéza 'CRT motion' → motion je code. Lineage editorial → font je code. Třetí code 'barva' protože scope=osobní a chceš výrazné rozpoznání."
+      "rationale":      "OST hypothesis 'CRT motion' → motion is a code. Lineage editorial → font is a code. Third code 'barva' because scope=personal and you want distinctive recognition."
     },
     "density": { /* same shape */ },
     "voice":   { /* same shape */ }
@@ -313,10 +313,10 @@ Confidence semantics: `≥ 0.85` strong consensus, `0.60–0.85` mid (vision-bri
 **Failure handling — NO degradation to hardcoded ladders.** If the agent fails (no payload file written), flow **STOPS** and surfaces:
 
 ```
-Research nedoběhl. Můžeš:
-  ○ Popsat Stage 1 víc do hloubky (vrátit se na P1)
-  ○ Zkusit znovu za chvíli (transient WebSearch error)
-  ○ Ukončit a vrátit se k tomu později
+Research didn't complete. You can:
+  ○ Describe Stage 1 in more depth (go back to P1)
+  ○ Try again in a moment (transient WebSearch error)
+  ○ Stop and come back to it later
 ```
 
 The v1 hardcoded option pools are deleted — they were the bias source DDR-033 exists to eliminate (see archived `_DISCOVERY-v1.md` for the v1 reference).
@@ -334,12 +334,12 @@ For each decision in `recommendations`:
 **Anchor decision first — `aesthetic_ambition` (DDR-073).** Process the anchor before the other decisions; its outcome pre-fills the derived structural knobs (a confident `expressive` reading means you never separately ask "single or chromatic accent?" — `accent_strategy` rode along). It follows the same confidence gate: high confidence → skip (only shown in the confirm), `< 0.60` → ask. **The ambiguous-ambition Q opens the FULL scale (never a binary), and when it lands ≥ `expressive` the palette sub-question presents a coordinated multi-colour palette from `palette_options[]`, not a single swatch.** Question shape (plain language, no jargon):
 
 ```
-Z tvého briefu mi vychází, že tenhle DS je spíš VÝRAZNĚJŠÍ / barevný — <jedna věta proč, z brand charakteru>.
-Sedí to, nebo to chceš posunout?
-  ○ Sedí, jdeme výrazně (vyberu multi-color paletu)   (Recommended)
-  ○ Spíš klidněji / míň barev                          (→ confident / restrained)
-  ○ Ještě víc / barva jako struktura                   (→ maximalist)
-  ○ Ukaž mi konkrétní palety na výběr                  (surfaces palette_options[])
+From your brief it looks to me like this DS is more EXPRESSIVE / colourful — <one sentence why, from the brand character>.
+Does that fit, or do you want to shift it?
+  ○ Fits, let's go bold (I'll pick a multi-colour palette)   (Recommended)
+  ○ More toned-down / fewer colours                          (→ confident / restrained)
+  ○ Even more / colour as structure                          (→ maximalist)
+  ○ Show me specific palettes to choose from                 (surfaces palette_options[])
 ```
 
 Counts observed in dogfood (DF-10, DF-11):
@@ -350,20 +350,20 @@ Counts observed in dogfood (DF-10, DF-11):
 
 Stage 3 batches the active Qs into AskUserQuestion calls **of up to 4 Qs each** (DF-2 — schema max). So a typical 4–6-Q Stage 3 is one or two batches.
 
-**No hardcoded option pools.** If `alternatives[]` is empty for a decision (research found nothing), skill **skips the Q** and asks free-text in the next chat message: `"Research nedoporučuje konkrétní směr pro [X]. Napiš co bys chtěl, nebo nechám default tokens."`
+**No hardcoded option pools.** If `alternatives[]` is empty for a decision (research found nothing), skill **skips the Q** and asks free-text in the next chat message: `"Research doesn't recommend a specific direction for [X]. Write what you'd like, or I'll leave default tokens."`
 
-**Maják 3-code is always a Stage 3 Q** (never Stage 1) — it's a concrete design decision that depends on OST hypothesis + lineage research. Question shape:
+**The 3-code signature is always a Stage 3 Q** (never Stage 1) — it's a concrete design decision that depends on OST hypothesis + lineage research. Question shape:
 
 ```
-Research mi doporučuje, aby SIGNATURE tohohle DS stál na 3 kódech:
+Research recommends that the SIGNATURE of this DS rest on 3 codes:
   → <code1> (<concrete value 1>), <code2> (<concrete value 2>), <code3> (<concrete value 3>)
 
-Důvod: <one sentence — vazba na OST hypothesis + lineage research>
+Reason: <one sentence — link to OST hypothesis + lineage research>
 
-  ○ Tahle trojka je dobrá, jdeme dál        (Recommended)
-  ○ Vyměnit jeden kód                       (open-text follow-up which one + which alternative)
-  ○ Vyměnit všechny 3                       (open-text follow-up custom trio)
-  ○ Vyber mi je sám podle vision-brief      (skill picks within research consensus)
+  ○ This trio is good, let's move on        (Recommended)
+  ○ Swap one code                           (open-text follow-up which one + which alternative)
+  ○ Swap all 3                              (open-text follow-up custom trio)
+  ○ Pick them for me from the vision-brief  (skill picks within research consensus)
 ```
 
 The 9 Pastier codes are `barva · font · symbol · tvar · vzor · motion · zvuk · voice · charakter`. Of those, `zvuk` and `charakter` are domain-rare; the typical 3-code recommendation draws from the other 7.
@@ -374,21 +374,21 @@ After Stage 3 the skill prints a **3-sentence summary** — one sentence per sta
 
 ```
 Vision:     <2-line synth of vision-brief>
-Research:   <3 key anchors from payload + 3-code Maják pick>
+Research:   <3 key anchors from payload + 3-code signature pick>
 Refinement: <what user changed vs what was left on recommendation>
 
-Pokračovat? (y / něco upravit)
+Continue? (y / change something)
 ```
 
-On `něco upravit` return to Stage 3 (NOT Stage 1, unless user explicitly says `začni od začátku`).
+On `change something` return to Stage 3 (NOT Stage 1, unless the user explicitly says `začni od začátku` (start over)).
 
 #### Stage 4 — Design-language moodboard (direction gate)
 
-> **Why this stage exists (DDR-080).** The prose Confirm above is a *text* echo — it cannot expose an aesthetic-direction mismatch. A bootstrap can pass the post-scaffold critic panel at signature-moment **4.4/5** and still be deleted whole on first sight — *"smaž úplně, to se mi vůbec nelíbí"* — because the critics measure absence-of-badness + portfolio-worthiness, not *this* user's taste on *this* direction. Stage 4 is the cheap human-taste checkpoint: **~1–3 min of assembly vs the ~30–40 min / ~15k-LOC scaffold it gates.** The user approves the visual *direction* before any token or specimen is generated. On approval the moodboard becomes the **locked direction contract** every Batch-A token derives from (and the Batch-A hero-preview gate later drift-checks against).
+> **Why this stage exists (DDR-080).** The prose Confirm above is a *text* echo — it cannot expose an aesthetic-direction mismatch. A bootstrap can pass the post-scaffold critic panel at signature-moment **4.4/5** and still be deleted whole on first sight — *"delete it entirely, I don't like it at all"* — because the critics measure absence-of-badness + portfolio-worthiness, not *this* user's taste on *this* direction. Stage 4 is the cheap human-taste checkpoint: **~1–3 min of assembly vs the ~30–40 min / ~15k-LOC scaffold it gates.** The user approves the visual *direction* before any token or specimen is generated. On approval the moodboard becomes the **locked direction contract** every Batch-A token derives from (and the Batch-A hero-preview gate later drift-checks against).
 
 **Applies to all three sub-modes** (first-bootstrap / additional-ds / re-bootstrap) — they converge at the prose Confirm, and Stage 4 follows it. The prose Confirm stays as a cheap text echo that *leads into* the moodboard; the moodboard supersedes it as the real direction approval.
 
-**What the moodboard IS — and what it must NOT look like.** It is a **chaotic, hand-assembled collage / pinboard** — a feeling-first artefact that reads as if *someone pinned this up at 1am*, not as a rendered component library. Think overlapping torn-paper scraps, reference photos taped or pinned at slight angles, scattered paint-chip swatches, ripped type-specimen fragments, marker scribbles / arrows / circled words, washi tape, paper-grain or corkboard texture behind it all. Its job is to provoke a fast gut reaction (*"jo, tohle se mi líbí" / "ne, tohle není ono"*) and to be a **hook for the next move** (*"líbí se mi barvy odsud, ale layout odtamtud"*). **It must NOT read as a tidy app-mockup or a clean exhibition poster** — no numbered section headers (01/02/03), no masthead/title bar, no grid of equal-sized bordered cards with uniform gutters. Deliberately messy + human beats clean-but-generic; the polish lands later, in the scaffold + critic panel. Here the only question is *direction*.
+**What the moodboard IS — and what it must NOT look like.** It is a **chaotic, hand-assembled collage / pinboard** — a feeling-first artefact that reads as if *someone pinned this up at 1am*, not as a rendered component library. Think overlapping torn-paper scraps, reference photos taped or pinned at slight angles, scattered paint-chip swatches, ripped type-specimen fragments, marker scribbles / arrows / circled words, washi tape, paper-grain or corkboard texture behind it all. Its job is to provoke a fast gut reaction (*"yeah, I like this" / "no, this isn't it"*) and to be a **hook for the next move** (*"I like the colours from here, but the layout from there"*). **It must NOT read as a tidy app-mockup or a clean exhibition poster** — no numbered section headers (01/02/03), no masthead/title bar, no grid of equal-sized bordered cards with uniform gutters. Deliberately messy + human beats clean-but-generic; the polish lands later, in the scaffold + critic panel. Here the only question is *direction*.
 
 It is grounded **purely in the already-computed discovery + research payload** (DDR-043 bias-free — discovered + researched values, never a hardcoded aesthetic). The five content **concerns** below are an *inventory of what must be legible*, NOT a layout instruction — they are scattered across the collage, never laid out as five labeled cards in a row.
 
@@ -441,7 +441,7 @@ Write **one** persistent canvas to `<designRoot>/ui/<ds>-moodboard.tsx` — a **
 - **Rotation breaking the screenshot/Read** — keep rotated items inside the artboard bounds so `--full` capture doesn't clip the focal scrap; the agent must be able to Read every element it's gating on.
 - **Perf** — keep `feTurbulence` / SVG-mask count modest so the dev-server screenshot renders inside the < 3 min budget.
 
-**Variant mode (2–3 directions — opt-in, per-variant PARALLEL independent sub-agent fan-out).** Direction approval is a **divergent** problem — *"která z těchhle?"* is an easier, more honest gut-call than *"líbí / nelíbí?"* on one option. **The cost contract holds:** the default single moodboard stays **main-agent-assembled** (cheap, no Agent call, < 3 min). Fan-out is reached **ONLY** via gate option **"Ukaž víc variant"** (or an upfront request for options). Variants are the opt-in spend the divergent problem justifies — still ≈ 3–6 min ≪ the 30–40 min scaffold.
+**Variant mode (2–3 directions — opt-in, per-variant PARALLEL independent sub-agent fan-out).** Direction approval is a **divergent** problem — *"which of these?"* is an easier, more honest gut-call than *"like it / don't like it?"* on one option. **The cost contract holds:** the default single moodboard stays **main-agent-assembled** (cheap, no Agent call, < 3 min). Fan-out is reached **ONLY** via gate option **"Show more variants"** (or an upfront request for options). Variants are the opt-in spend the divergent problem justifies — still ≈ 3–6 min ≪ the 30–40 min scaffold.
 
 Divergence comes from *independent generation*, not one agent's imagination. One context authoring all three tiles produces house-style convergence — same collage hand, three palette swaps. So on opt-in:
 
@@ -454,7 +454,7 @@ Divergence comes from *independent generation*, not one agent's imagination. One
 - **Each sub-agent's brief contains ONLY:** its seed cluster (id, label, anchors, one_line) + assigned palette option + the `signature_treatment` + `domain_nouns` + `primary_emotion` / `anti_aesthetics` + that cluster's `reference_products[]` slice. It **returns ONE self-contained artboard body** (NOT a written file) in **its own collage hand** (same chaotic-pinboard craft as above, in miniature: palette paint-chips + a type scrap + the treatment hero small + scattered reference photos + ONE big circled **feeling word** + the `mood_cluster` name). **Output contract for clean composition:** return a single root `<div style={{ position: 'relative', width, height }}>…</div>` with **everything inline** (inline styles, inline SVG, `<img>` — NO `import` / `const` / `function` / any top-level identifiers), so the main agent can drop each blob inside a `<DCArtboard>` wrapper with **no identifier collisions** across the 2–3 tiles composed into one file.
 - **Each sub-agent gathers its OWN imagery** — it runs **its own 1–2 WebSearch + WebFetch for *its* seed direction**, harvesting ~4–8 direction-specific images into its tile (with its own provenance rows). The main-agent research seed can't cover three opposing poles equally; this self-harvest is what makes the tiles *both* genuinely diverge *and* stay densely collaged. `reference_images[]` is a seed, not a ceiling.
 
-**Reconcile + compose + present + gate.** The main agent asserts 2–3 artboard bodies returned (a sub-agent timeout / failure → log to the bypass-log + compose the survivors, **never block the gate**). It **composes the surviving tiles into the ONE persistent `ui/<ds>-moodboard.tsx`** — each returned blob wrapped in its own `<DCArtboard id="variant-{a|b|c}" label="Směr {A|B|C} · <mood_cluster>" width height>` inside a single `<DCSection>`, so the 2–3 directions sit **side by side in one canvas** (`DesignCanvas` auto-flows them). Screenshot the canvas `--full` in one pass (captures all artboards) and **Read the PNG** before gating (same discipline as the single-moodboard path). Then run the variant-pick gate below. **Cap at 3** — a 4th blows choice-overload AND the AskUserQuestion 4-option cap. On pick → **keep all artboards in the canvas** (the user can revisit + comment on the alternatives too), mark the chosen one as the locked direction, and refine the winner in place.
+**Reconcile + compose + present + gate.** The main agent asserts 2–3 artboard bodies returned (a sub-agent timeout / failure → log to the bypass-log + compose the survivors, **never block the gate**). It **composes the surviving tiles into the ONE persistent `ui/<ds>-moodboard.tsx`** — each returned blob wrapped in its own `<DCArtboard id="variant-{a|b|c}" label="Direction {A|B|C} · <mood_cluster>" width height>` inside a single `<DCSection>`, so the 2–3 directions sit **side by side in one canvas** (`DesignCanvas` auto-flows them). Screenshot the canvas `--full` in one pass (captures all artboards) and **Read the PNG** before gating (same discipline as the single-moodboard path). Then run the variant-pick gate below. **Cap at 3** — a 4th blows choice-overload AND the AskUserQuestion 4-option cap. On pick → **keep all artboards in the canvas** (the user can revisit + comment on the alternatives too), mark the chosen one as the locked direction, and refine the winner in place.
 
 **Step 2 — Screenshot + Read.** Boot the server if needed, then screenshot the moodboard (single artboard, or in variant mode the composed canvas — `--full` captures all artboards at once) through the dev-server transpile path and **Read the PNG into context** (the agent must SEE it before gating — same discipline as the visual-sanity "Read each captured PNG" rule):
 
@@ -478,47 +478,47 @@ maude design screenshot \
 **Step 3 — Gate.** `AskUserQuestion` (numbered-prose fallback when AskUserQuestion is unavailable — same shape as Stage 0 / Stage 3 above):
 
 ```
-Sedí ti tenhle design language? (jde o pocit — než pustím generování, je to ~30-40 min)
-  ○ Jdeme do toho     — tohle je ono, zamkni směr a generuj          (Recommended)
-  ○ Uprav <co>        — skoro, ale vyměň swatch / font / treatment a ukaž znovu
-  ○ Ukaž víc variant  — slož mi 2-3 směry vedle sebe na výběr
-  ○ Tohle ne          — zpět na Stage 3 (refinement), nebo konec
+Does this design language fit you? (it's about the feeling — before I start generating, that's ~30-40 min)
+  ○ Let's do it        — this is it, lock the direction and generate         (Recommended)
+  ○ Tweak <what>       — almost, but swap the swatch / font / treatment and show again
+  ○ Show more variants — lay out 2-3 directions side by side for me to choose
+  ○ Not this           — back to Stage 3 (refinement), or quit
 ```
 
-(AskUserQuestion hard max = 4 options; "Tohle ne" resolves to *zpět na Stage 3* vs *konec* in a one-line follow-up. The auto-"Other" affordance still lets the user free-text.)
+(AskUserQuestion hard max = 4 options; "Not this" resolves to *back to Stage 3* vs *quit* in a one-line follow-up. The auto-"Other" affordance still lets the user free-text.)
 
 Numbered-prose fallback (AskUserQuestion unavailable):
 
 ```
-AskUserQuestion je nedostupný — odpovídám přes chat. Sedí ti tenhle design language? (jde o pocit)
-  1. Jdeme do toho    — zamkni směr a generuj
-  2. Uprav <co>       — napiš co měnit (swatch / font / treatment)
-  3. Ukaž víc variant — slož 2-3 směry na výběr
-  4. Tohle ne         — zpět na Stage 3
-  5. Stop             — končím
+AskUserQuestion is unavailable — answering via chat. Does this design language fit you? (it's about the feeling)
+  1. Let's do it       — lock the direction and generate
+  2. Tweak <what>      — write what to change (swatch / font / treatment)
+  3. Show more variants — lay out 2-3 directions to choose from
+  4. Not this          — back to Stage 3
+  5. Stop              — I'm done
 
-Reply with: 1 / 2 / 3 / 4 / 5 (u „Uprav" napiš co měnit).
+Reply with: 1 / 2 / 3 / 4 / 5 (for "Tweak" write what to change).
 ```
 
 **Outcomes:**
 
 | Choice | Action |
 |---|---|
-| **Jdeme do toho** | **Lock the moodboard as the direction contract.** Its palette / type / treatment are consumed **verbatim** by Batch A — this is what kills the drift `_bootstrap.md` already warns about (burnt-orange-as-candy accent, D-7 inverted type roles, D-8 melodramatic ladder): Batch A no longer re-derives the look, it renders the *approved* one. **The canvas persists** at `ui/<ds>-moodboard.tsx` — the user can revisit + comment on it any time; in variant mode all artboards stay and the chosen one is marked the direction contract. Optionally also retain the screenshot under `_history/_system/<ds>-moodboard-<ISO>.png`. Proceed to Mapping. |
-| **Uprav `<co>`** | Iterate the **moodboard ONLY** — swap the named swatch / font / treatment in `ui/<ds>-moodboard.tsx`, re-screenshot, re-Read, re-gate. This is where taste gets dialed for ~1 min instead of after 40 min. Loop until the user approves or bails. Do NOT touch `system/<ds>/` (nothing is scaffolded yet). |
-| **Ukaž víc variant** | Enter **Variant mode** (above) — fire 2–3 blind parallel sub-agents (one distinct seed each, each self-harvesting imagery), reconcile the survivors, screenshot, Read, and run the variant-pick gate below. |
-| **Tohle ne** | One-line follow-up: *zpět na Stage 3 (refinement)* — re-open the research recommendations, do NOT scaffold — or *konec* — end the bootstrap **before** Mapping / roster / Batch A. Either way nothing under `system/<ds>/` was written; the moodboard canvas stays under `ui/` (still revisitable — a rejected direction is worth keeping for reference). Log the bail to the bypass-log. |
+| **Let's do it** | **Lock the moodboard as the direction contract.** Its palette / type / treatment are consumed **verbatim** by Batch A — this is what kills the drift `_bootstrap.md` already warns about (burnt-orange-as-candy accent, D-7 inverted type roles, D-8 melodramatic ladder): Batch A no longer re-derives the look, it renders the *approved* one. **The canvas persists** at `ui/<ds>-moodboard.tsx` — the user can revisit + comment on it any time; in variant mode all artboards stay and the chosen one is marked the direction contract. Optionally also retain the screenshot under `_history/_system/<ds>-moodboard-<ISO>.png`. Proceed to Mapping. |
+| **Tweak `<what>`** | Iterate the **moodboard ONLY** — swap the named swatch / font / treatment in `ui/<ds>-moodboard.tsx`, re-screenshot, re-Read, re-gate. This is where taste gets dialed for ~1 min instead of after 40 min. Loop until the user approves or bails. Do NOT touch `system/<ds>/` (nothing is scaffolded yet). |
+| **Show more variants** | Enter **Variant mode** (above) — fire 2–3 blind parallel sub-agents (one distinct seed each, each self-harvesting imagery), reconcile the survivors, screenshot, Read, and run the variant-pick gate below. |
+| **Not this** | One-line follow-up: *back to Stage 3 (refinement)* — re-open the research recommendations, do NOT scaffold — or *quit* — end the bootstrap **before** Mapping / roster / Batch A. Either way nothing under `system/<ds>/` was written; the moodboard canvas stays under `ui/` (still revisitable — a rejected direction is worth keeping for reference). Log the bail to the bypass-log. |
 
-**Variant-pick gate (after "Ukaž víc variant").** Present the 2–3 tiles, Read the screenshot, then:
+**Variant-pick gate (after "Show more variants").** Present the 2–3 tiles, Read the screenshot, then:
 
 ```
-Která varianta tě chytla? (klidně i mix)
-  ○ Varianta A / B / C  — zamkni tenhle směr (→ expand to the full moodboard → Uprav nebo lock)
-  ○ Mix                 — vezmi <co> z jedné + <co> z druhé (free-text; assemble the blend, re-gate)
-  ○ Žádná               — zpět na Stage 3 (refinement)
+Which variant grabbed you? (a mix is fine too)
+  ○ Variant A / B / C   — lock this direction (→ expand to the full moodboard → Tweak or lock)
+  ○ Mix                 — take <what> from one + <what> from another (free-text; assemble the blend, re-gate)
+  ○ None                — back to Stage 3 (refinement)
 ```
 
-(AskUserQuestion 4-option cap respected: ≤ 3 variants + Mix = 4; "Žádná" folds into the follow-up. Numbered-prose fallback when unavailable.) On a pick (or an approved Mix), refine the chosen direction into the full 5-concern collage and treat it exactly like the single-moodboard gate (lock on approval, or `Uprav`). All variant artboards live side by side in the persistent `ui/<ds>-moodboard.tsx` — revisitable + commentable, never under `system/<ds>/`.
+(AskUserQuestion 4-option cap respected: ≤ 3 variants + Mix = 4; "None" folds into the follow-up. Numbered-prose fallback when unavailable.) On a pick (or an approved Mix), refine the chosen direction into the full 5-concern collage and treat it exactly like the single-moodboard gate (lock on approval, or `Uprav`). All variant artboards live side by side in the persistent `ui/<ds>-moodboard.tsx` — revisitable + commentable, never under `system/<ds>/`.
 
 **Bypass-log discipline.** Every autonomous deviation routes through `<designRoot>/_history/_system/<ds>-bypass-log.md` — a sub-agent timeout/failure, a seed-distinctness override, an autonomous variant selection, or an autonomous proceed-through-mismatch. No silent path. Cost framing inline: **default 1 = main-agent collage, no fan-out (cheap); variants = N parallel blind sub-agents, justified because divergence is the whole point of variant mode** and the spend is still ≪ the scaffold.
 
@@ -528,7 +528,7 @@ Která varianta tě chytla? (klidně i mix)
 
 Same 3 stages, with two added inputs:
 
-- **Pre-Stage 0:** `Q_purpose` (one prose prompt) — "Co je tohle za DS, jiné než tvůj existující DS `<existing-ds>`?" The answer is folded into vision-brief as `elevator_pitch`; the existing DS's vision-brief (if present) is shown as context but does NOT inherit.
+- **Pre-Stage 0:** `Q_purpose` (one prose prompt) — "What is this DS, different from your existing DS `<existing-ds>`?" The answer is folded into vision-brief as `elevator_pitch`; the existing DS's vision-brief (if present) is shown as context but does NOT inherit.
 - **Between Stage 2 and Stage 3:** `INHERITANCE PICKER` (multi-select AskUserQuestion, position load-bearing per studio-2 retro BAD-7 — picker before Stage 3 prevents Stage 3 answers from being silently overridden by inheritance).
 
 ```
@@ -547,21 +547,21 @@ Inherited values are pre-baked into the new DS's `colors_and_type.css`; the corr
 For an existing DS without a `vision-brief.json` (DSes scaffolded before DDR-033 don't carry one):
 
 1. **Lossy inference.** Read `system/<ds>/README.md` "What this DS is for" line, `colors_and_type.css` (palette + type families), `_layout.css` (signature treatment family). Produce a draft `vision-brief.json` with `_inferred: true` on every field. Confidence is intentionally low on character / OST / lineage fields (no source in tokens for those).
-2. **Stage 1 confirm pass.** Show the inferred vision-brief to the user in plain prose: `"Tady je co jsem si přečetl z tvého stávajícího DS. Oprav / doplň cokoli, nebo napiš 'OK' pro pokračování."` User edits in one chat message; parser updates fields.
+2. **Stage 1 confirm pass.** Show the inferred vision-brief to the user in plain prose: `"Here's what I read from your existing DS. Correct / add anything, or write 'OK' to continue."` User edits in one chat message; parser updates fields.
 3. **Stage 2 ALWAYS re-runs.** `--force` implies time has passed; cached payload is stale by definition.
 4. **Stage 3 + Confirm** identical to first-bootstrap.
 
-#### Post-scaffold gate — "4 kola značky"
+#### Post-scaffold gate — "4 brand rounds"
 
 After scaffold, the aesthetic / structural critic panel is grouped under three Pastier-flavored headers (rename only — critic agents themselves are unchanged):
 
-| Kolo (Pastier) | Critic agents | What it asks |
+| Round (Pastier) | Critic agents | What it asks |
 |---|---|---|
-| **Kolo 1 — Srozumitelnost** | `design-system-completeness-critic` + `a11y-auditor` | Lze tomu rozumět? Drží to standardy? |
-| **Kolo 2 — Atraktivita** | `graphic-design-critic` + `signature-moment-critic` | Rezonuje to vizuálně? Má to moment? |
-| **Kolo 3 — Konzistence** | `typography-critic` + `brand-critic` + `copy-critic` | Drží to spolu? Voice + visual + naming sedí? |
+| **Round 1 — Clarity** | `design-system-completeness-critic` + `a11y-auditor` | Can it be understood? Does it hold to standards? |
+| **Round 2 — Appeal** | `graphic-design-critic` + `signature-moment-critic` | Does it resonate visually? Does it have a moment? |
+| **Round 3 — Consistency** | `typography-critic` + `brand-critic` + `copy-critic` | Does it hold together? Do voice + visual + naming fit? |
 
-Pastier's fourth kolo (Frekvence — marketing reach) is intentionally dropped — outside the DS surface. The actual critic-panel execution + reporting block uses these labels; see "Aesthetic critic panel (mandatory)" and "Always-print next steps" sections below.
+Pastier's fourth round (Frekvence — marketing reach) is intentionally dropped — outside the DS surface. The actual critic-panel execution + reporting block uses these labels; see "Aesthetic critic panel (mandatory)" and "Always-print next steps" sections below.
 
 ### Mapping → file set
 
@@ -869,17 +869,17 @@ maude design screenshot \
 
 **Light by default — auto-proceed on no-drift, hard-prompt ONLY on drift.** Read the PNG and compare it to the approved moodboard's palette / type / treatment:
 
-- **No drift** (accent hue + lightness, type roles, and the signature treatment match what the moodboard promised) → print one line `→ hero honors moodboard, pokračuju` and proceed straight to Batch B+C. **No question.**
+- **No drift** (accent hue + lightness, type roles, and the signature treatment match what the moodboard promised) → print one line `→ hero honors moodboard, continuing` and proceed straight to Batch B+C. **No question.**
 - **Drift detected** (wrong hue lightness — e.g. burnt-orange rendered as candy pumpkin; the signature treatment is missing; display/body type roles inverted — D-7) → **hard-prompt** with `AskUserQuestion`:
 
 ```
-Hero preview se rozešel s odsouhlaseným moodboardem — <co konkrétně, 1 věta>.
-  ○ Pokračovat     — drift je OK, jdeme na fan-out
-  ○ Uprav tokeny   — oprav colors_and_type.css / _layout.css a ukaž znovu (token edit, ne regen)
-  ○ Stop           — zastav před fan-outem
+Hero preview diverged from the approved moodboard — <what specifically, 1 sentence>.
+  ○ Continue       — the drift is OK, let's go to fan-out
+  ○ Fix tokens     — fix colors_and_type.css / _layout.css and show again (token edit, not regen)
+  ○ Stop           — halt before fan-out
 ```
 
-Numbered-prose fallback when AskUserQuestion is unavailable (`1` Pokračovat / `2` Uprav tokeny / `3` Stop). Any drift-override (Pokračovat on detected drift) writes a bypass-log row.
+Numbered-prose fallback when AskUserQuestion is unavailable (`1` Continue / `2` Fix tokens / `3` Stop). Any drift-override (Continue on detected drift) writes a bypass-log row.
 
 **Don't double-prompt.** When the Stage-4 moodboard already locked direction this is a *drift* gate, NOT a fresh approval — a clean render proceeds silently. **If the moodboard was skipped** (`--no-discovery`, or an autonomous skip) there's nothing to drift-check against, so fall back to the existing **accent-in-context self-check** from the "Accent color heuristic" above (screenshot, eyeball the accent in context, fix obvious wrongness in tokens, proceed without a prompt). **Fixing here is a token edit, not a regen** — catching "burnt → candy" / D-7 / D-8 at this gate costs one `colors_and_type.css` edit instead of the ~15k-LOC fan-out it would otherwise poison.
 
@@ -1108,7 +1108,7 @@ The critic emits a JSON verdict. If it returns **blockers**, the bootstrap flow 
 
 **Gating — interactive + opt-in only.**
 - **NEVER** run this in the non-interactive `maude design init --no-discovery` path. That path ships the deliberately-unfinished neutral skeleton (DDR-026); auto-generating lush organic art there contradicts the "nudge the user toward real decisions" intent and would re-introduce a hardcoded aesthetic (DDR-043).
-- Fires only in interactive BOOTSTRAP, **after** the scaffold + asset receipts, **before** the visual-sanity check (so the artifacts are screenshotted and run through the 4-kola gate like any other specimen).
+- Fires only in interactive BOOTSTRAP, **after** the scaffold + asset receipts, **before** the visual-sanity check (so the artifacts are screenshotted and run through the 4-round gate like any other specimen).
 - Surface **one** `AskUserQuestion` (multiSelect), skip the whole step if the user picks none or accepted `--quick`:
 
 ```
@@ -1153,7 +1153,7 @@ The agent runs its plan → generate-N → draw-proof ladder → pairwise-rank �
 **Wire the artifacts into the DS (so they're not orphan files):**
 1. Assets land under `system/<ds>/assets/`. Add a roster receipt row (`status: written`) for each so reconciliation + completeness see them.
 2. Generate (or extend) a `system/<ds>/preview/textures.tsx` specimen that renders the backgrounds + a tiled swatch of each pattern + the spot art (import the SVGs via `dangerouslySetInnerHTML` or inline `<svg>`). This makes them browseable and gives the critic panel something to score.
-3. **Append `textures` to the visual-sanity `--specimens` list below**, and add it as a second critic-panel target — so the organic layer goes through the same 4-kola gate.
+3. **Append `textures` to the visual-sanity `--specimens` list below**, and add it as a second critic-panel target — so the organic layer goes through the same 4-round gate.
 
 **Failure handling:** a `draw-agent` that can't converge → skip that one artifact, surface a one-line warning in the next-step block (`organic-seed: <artifact> skipped — re-run /design:draw "<brief>" --asset manually`), and continue. The artifact layer is additive polish; never let it block the structural bootstrap.
 
@@ -1195,7 +1195,7 @@ Additional specimens (capture when scaffolded): `empty-state` (brand/voice momen
 
 **Read each captured PNG with the `Read` tool** so they're in your visual context. Direct visual scrutiny BEFORE you spawn the aesthetic critics — if the accent is obviously the wrong hue, the motion specimen is blank on first frame, or a logo shows the broken-image icon, fix it in source NOW rather than asking critics to confirm what you can already see.
 
-### 4 kola značky — critic panel (mandatory; user picks coverage)
+### 4 brand rounds — critic panel (mandatory; user picks coverage)
 
 > **The completeness-critic does not catch aesthetic gaps.** It returns `pass` for generic public-component-library output. This step is non-negotiable, especially when discovery captured strong references in the research payload.
 
@@ -1203,41 +1203,41 @@ Additional specimens (capture when scaffolded): `empty-state` (brand/voice momen
 
 ```
 Q: Which critic panel do you want to run?
-   1. Full 4 kola (recommended) — Kolo 1 + 2 + 3, all seven critics. ~2-3 min.
-   2. Imprint-only — Kolo 1 + Kolo 2 + a11y + motion-critic (if motion.tsx exists). ~90s. Trims Kolo 3 (typography/brand/copy). [during bootstrap Kolo 2 is mandatory — see below; outside bootstrap option 2 also skips Kolo 2 aesthetics]
-   3. Custom subset — pick critics manually (Kolo 2 still forced during bootstrap).
+   1. Full 4 rounds (recommended) — Round 1 + 2 + 3, all seven critics. ~2-3 min.
+   2. Imprint-only — Round 1 + Round 2 + a11y + motion-critic (if motion.tsx exists). ~90s. Trims Round 3 (typography/brand/copy). [during bootstrap Round 2 is mandatory — see below; outside bootstrap option 2 also skips Round 2 aesthetics]
+   3. Custom subset — pick critics manually (Round 2 still forced during bootstrap).
 ```
 
 Selection is recorded to the bypass log (rows 2 + 3 are spec deviations). **Imprint-only** still includes `motion-critic` when `system/<ds>/preview/motion.tsx` exists — motion-critic is in the always-on bucket alongside `a11y-auditor` whenever a motion specimen is present (DDR-049). The `--opt-out=motion` scope flag does NOT override this; the only way to skip motion-critic is to not scaffold the motion specimen at all.
 
 When the user accepted `--quick` earlier, default to option 2 but STILL surface the question (the user can upgrade to Full at this point — a `--quick` flag was per-stage discipline, not blanket scope-renegotiation; closes D-5).
 
-**Under autonomous mode** (`pokracuj autonomně`, no interactive answer available), the panel-coverage default is **Full 4 kola** — NOT a silent skip of Kolo 2/3. Write a bypass-log row recording the autonomous Full default (per the "Spec-bypass discipline" autonomous-defaults table). This codifies the studyfi report's logged divergence #3, where the autonomous "pokracuj" run defaulted to Full without ever firing this `AskUserQuestion`; the run was correct but unlogged. The rule makes the default explicit and logged, never inferred.
+**Under autonomous mode** (`pokracuj autonomně`, no interactive answer available), the panel-coverage default is **Full 4 rounds** — NOT a silent skip of Round 2/3. Write a bypass-log row recording the autonomous Full default (per the "Spec-bypass discipline" autonomous-defaults table). This codifies the studyfi report's logged divergence #3, where the autonomous "pokracuj" run defaulted to Full without ever firing this `AskUserQuestion`; the run was correct but unlogged. The rule makes the default explicit and logged, never inferred.
 
-**Kolo 2 (Atraktivita) is NOT skippable during a `first-bootstrap` or `additional-ds` run.** `--quick` / imprint-only may trim **Kolo 3** (typography / brand / copy), but **Kolo 2 always runs** — the signature-moment + graphic-design critics are the only instruments that detect "hezké ale ne wow", and that failure mode is invisible without them (studyfi shipped a 3.8/3.7 that the user spent an evening re-tuning because Kolo 2 ran only post-hoc on request). So during bootstrap, option 2 (Imprint-only) still fires Kolo 2; the trim it offers is Kolo 3 only. (Outside bootstrap — a routine `/design:critic` on an existing canvas — the full opt-out menu still applies.)
+**Round 2 (Appeal) is NOT skippable during a `first-bootstrap` or `additional-ds` run.** `--quick` / imprint-only may trim **Round 3** (typography / brand / copy), but **Round 2 always runs** — the signature-moment + graphic-design critics are the only instruments that detect "nice but not wow", and that failure mode is invisible without them (studyfi shipped a 3.8/3.7 that the user spent an evening re-tuning because Round 2 ran only post-hoc on request). So during bootstrap, option 2 (Imprint-only) still fires Round 2; the trim it offers is Round 3 only. (Outside bootstrap — a routine `/design:critic` on an existing canvas — the full opt-out menu still applies.)
 
-The seven critic agents are grouped into Pastier's three brand-quality kola (Frekvence is intentionally dropped — outside DS surface). **Kolo 1 runs first** (Srozumitelnost — structural floor must hold before aesthetics matter); **Kola 2 + 3 fire in parallel** in a single message, multiple Agent calls. Default specimen target is `colors-accent.tsx` (the accent showcase); when the bootstrap produced a `ui_kits-desktop-showcase.tsx` run a second pass on it too — it's the highest-fidelity "DS in use" artifact.
+The seven critic agents are grouped into Pastier's three brand-quality rounds (Frekvence is intentionally dropped — outside DS surface). **Round 1 runs first** (Clarity — structural floor must hold before aesthetics matter); **Rounds 2 + 3 fire in parallel** in a single message, multiple Agent calls. Default specimen target is `colors-accent.tsx` (the accent showcase); when the bootstrap produced a `ui_kits-desktop-showcase.tsx` run a second pass on it too — it's the highest-fidelity "DS in use" artifact.
 
-| Kolo (Pastier) | Critic | Subagent type | What it catches |
+| Round (Pastier) | Critic | Subagent type | What it catches |
 |---|---|---|---|
-| **Kolo 1 — Srozumitelnost** | `design-system-completeness-critic` | `design:design:design-system-completeness-critic` | Structural completeness — required files, token coverage, manifest fields |
-| **Kolo 1 — Srozumitelnost** | `a11y-auditor` | `flow:flow:a11y-auditor` | WCAG 2.1 AA — contrast, focus, semantic HTML, keyboard reach |
-| **Kolo 2 — Atraktivita** | `signature-moment-critic` | `design:design:signature-moment-critic` | Brand prominence, hero moments, mock fidelity, specificity — the "is this portfolio-worthy?" axis |
-| **Kolo 2 — Atraktivita** | `graphic-design-critic` | `design:design:graphic-design-critic` | Composition, hierarchy, balance, density, rhythm, white-space discipline |
-| **Kolo 3 — Konzistence** | `typography-critic` | `design:design:typography-critic` | **Always run during bootstrap.** Type decisions (font choice, scale, mono pairing) are always non-trivial enough to warrant a sanity pass. Cost: one parallel sub-agent. Opt-out only via `--no-typography-critic`. (Was conditional pre-studio-2-retro — BAD-5 caught the trigger condition was too fuzzy.) |
-| **Kolo 3 — Konzistence** | `brand-critic` | `design:design:brand-critic` | Logo placement / mark integrity / asset ladder / voice-asset alignment |
-| **Kolo 3 — Konzistence** | `copy-critic` | `design:design:copy-critic` | **Always run during bootstrap.** Voice + claim-vs-content drift slip past completeness-critic by definition. Sub-agent peer-reference cross-contamination (e.g. "publish lineup" leaking from studio's sports-stack) is caught here. |
+| **Round 1 — Clarity** | `design-system-completeness-critic` | `design:design:design-system-completeness-critic` | Structural completeness — required files, token coverage, manifest fields |
+| **Round 1 — Clarity** | `a11y-auditor` | `flow:flow:a11y-auditor` | WCAG 2.1 AA — contrast, focus, semantic HTML, keyboard reach |
+| **Round 2 — Appeal** | `signature-moment-critic` | `design:design:signature-moment-critic` | Brand prominence, hero moments, mock fidelity, specificity — the "is this portfolio-worthy?" axis |
+| **Round 2 — Appeal** | `graphic-design-critic` | `design:design:graphic-design-critic` | Composition, hierarchy, balance, density, rhythm, white-space discipline |
+| **Round 3 — Consistency** | `typography-critic` | `design:design:typography-critic` | **Always run during bootstrap.** Type decisions (font choice, scale, mono pairing) are always non-trivial enough to warrant a sanity pass. Cost: one parallel sub-agent. Opt-out only via `--no-typography-critic`. (Was conditional pre-studio-2-retro — BAD-5 caught the trigger condition was too fuzzy.) |
+| **Round 3 — Consistency** | `brand-critic` | `design:design:brand-critic` | Logo placement / mark integrity / asset ladder / voice-asset alignment |
+| **Round 3 — Consistency** | `copy-critic` | `design:design:copy-critic` | **Always run during bootstrap.** Voice + claim-vs-content drift slip past completeness-critic by definition. Sub-agent peer-reference cross-contamination (e.g. "publish lineup" leaking from studio's sports-stack) is caught here. |
 
 **Surface their verdicts in the next-step block.** Use this threshold matrix:
 
 | Outcome | Action |
 |---|---|
 | All critics pass, aspiration_score ≥ 4.0 | Print "Bootstrap complete — aesthetic check passed". This is the ONLY band that prints a clean silent pass. |
-| `3.0 ≤ aspiration_score < 4.0` (the "hezké ale ne wow" band) | Still print complete, but it is NOT silent — append a **"What would take this from hezké to wow"** block with the signature-moment-critic's **top 2 specific lifts** (its actual notes, e.g. studyfi's "mesh never enters a product surface" — NOT a generic nag). The DS is shippable; the block exists so the user sees the concrete next move instead of an evening of self-tuning. |
+| `3.0 ≤ aspiration_score < 4.0` (the "nice but not wow" band) | Still print complete, but it is NOT silent — append a **"What would take this from nice to wow"** block with the signature-moment-critic's **top 2 specific lifts** (its actual notes, e.g. studyfi's "mesh never enters a product surface" — NOT a generic nag). The DS is shippable; the block exists so the user sees the concrete next move instead of an evening of self-tuning. |
 | Any graphic-design blocker, OR aspiration_score < 3.0 | Print "Bootstrap complete with aesthetic warnings — DS scaffold is structurally valid but does NOT match the brief's quality bar yet. Run `/design:edit` on the flagged specimens before calling this done." Surface the top 3 blockers verbatim. |
 | Both completeness AND aesthetic critics flagged blockers | Print "Bootstrap produced a structurally broken AND aesthetically weak DS. Recommend `/design:setup-ds <name> --force` after revising the brief." |
 
-**The silent-pass bar is `≥ 4.0`, not `≥ 3.5`.** "Hezké ale ne wow" *is* a 3.5–3.8 — studyfi scored 3.8/3.7 and the loop reported a silent "passed" while the user re-tuned typography + background by hand. A `3.0 ≤ score < 4.0` MUST surface the "to wow" block; a `< 3.0` is the hard "does not match the quality bar" path. Don't over-correct into nagging — the middle band still says **complete**, it just refuses to be silent. (Bar raised 3.5 → 4.0 per DDR-057.)
+**The silent-pass bar is `≥ 4.0`, not `≥ 3.5`.** "Nice but not wow" *is* a 3.5–3.8 — studyfi scored 3.8/3.7 and the loop reported a silent "passed" while the user re-tuned typography + background by hand. A `3.0 ≤ score < 4.0` MUST surface the "to wow" block; a `< 3.0` is the hard "does not match the quality bar" path. Don't over-correct into nagging — the middle band still says **complete**, it just refuses to be silent. (Bar raised 3.5 → 4.0 per DDR-057.)
 
 ### Post-Flight (slim)
 
@@ -1261,15 +1261,15 @@ Round 0 research:
   [if fallback_used: "⚠ Research fell back to LLM-knowledge mode for this niche domain — review the payload manually before trusting the option pool"]
   [if cache hit: "Reused cached research from <date>"]
 
-Kolo 1 — Srozumitelnost:
+Round 1 — Clarity:
   design-system-completeness:  <N> blockers, <N> warnings
   a11y-auditor:                <N> blockers, <N> warnings
 
-Kolo 2 — Atraktivita (run on <signature specimen>):
+Round 2 — Appeal (run on <signature specimen>):
   signature-moment:    aspiration <X.Y>/5  (blockers: <N>, warnings: <N>)
   graphic-design:      <N> blockers, <N> warnings
 
-Kolo 3 — Konzistence:
+Round 3 — Consistency:
   typography:          <N> blockers, <N> warnings
   brand:               <N> blockers, <N> warnings
   copy:                <N> blockers, <N> warnings
@@ -1278,17 +1278,17 @@ Visual proof — screenshots saved to .design/_history/_system/<ds>-visual-sanit
   colors-accent.png · motion.png · ui_kits-desktop-showcase.png · empty-state.png · logo.png
   (_manifest.json records which were captured / missing / failed)
 
-[IF aspiration < 3.0 OR any Kolo-2 blocker:]
-⚠ Kolo 2 (Atraktivita) did NOT pass. The DS is structurally valid but does not match the brief's quality bar.
+[IF aspiration < 3.0 OR any Round-2 blocker:]
+⚠ Round 2 (Appeal) did NOT pass. The DS is structurally valid but does not match the brief's quality bar.
   Top blockers:
     1. <blocker 1 summary>
     2. <blocker 2 summary>
     3. <blocker 3 summary>
   Recommended: /design:edit "<specific fix>" --perfect, then re-run /design:critic to confirm.
 
-[ELSE IF 3.0 ≤ aspiration < 4.0:]   # the "hezké ale ne wow" middle band — complete, but not silent
-✓ Bootstrap complete (aspiration <X.Y>/5 — hezké, but not yet wow).
-  What would take this from hezké to wow (signature-moment-critic's top 2 specific lifts):
+[ELSE IF 3.0 ≤ aspiration < 4.0:]   # the "nice but not wow" middle band — complete, but not silent
+✓ Bootstrap complete (aspiration <X.Y>/5 — nice, but not yet wow).
+  What would take this from nice to wow (signature-moment-critic's top 2 specific lifts):
     1. <signature-moment lift 1 — the critic's actual note, e.g. "mesh never enters a product surface">
     2. <signature-moment lift 2>
   Optional: /design:edit "<the lift you want>" --perfect to push past 4.0.

@@ -1,33 +1,33 @@
 ---
 name: design:draw
 category: daily
-description: Nakresli production-grade SVG (logo / ikona / ilustrace / diagram / spot) přes deterministický geometry engine — žádné LLM-guessed path data. Naplánuj → vygeneruj N kandidátů → vyrenderuj přes draw-proof ladder (16/24/48/256 × light/dark/flatten) → pairwise-rank → keep-best → rubric critique → iteruj (cap 3–4). Output buď jako asset .svg, nebo inline do aktivního canvasu. Default: po draw-agentovi spustí draw-critic. Opt out přes --no-critic.
+description: Draw a production-grade SVG (logo / icon / illustration / diagram / spot) via a deterministic geometry engine — no LLM-guessed path data. Plan → generate N candidates → render via the draw-proof ladder (16/24/48/256 × light/dark/flatten) → pairwise-rank → keep-best → rubric critique → iterate (cap 3–4). Output either as an asset .svg or inline into the active canvas. Default: runs draw-critic after draw-agent. Opt out via --no-critic.
 argument-hint: "\"<brief>\" [--type icon|logo|illustration|diagram|spot] [--grid 0|1|4|8] [--asset [<path>] | --inline [--into <canvas>]] [--reference <url|path>] [--perfect [N]] [--no-critic]"
 ---
 
-# /design:draw — nakresli verifikovaný SVG mark
+# /design:draw — draw a verified SVG mark
 
-Generuje **produkční vektorovou grafiku** přes geometry engine (`apps/studio/draw/`) a **vizuálně ji ověří** — renderuje, screenshotuje, pairwise-rankuje, kritizuje proti 30-check rubrice a iteruje do konvergence. Žádné free-hand `<path d>` souřadnice: LLM určuje *záměr*, engine počítá *souřadnice* (to eliminuje LLM-SVG failure módy — integer quantization, coordinate drift, occlusion, color degradation).
+Generates **production-grade vector graphics** via the geometry engine (`apps/studio/draw/`) and **verifies them visually** — renders, screenshots, pairwise-ranks, critiques against the 30-check rubric, and iterates to convergence. No free-hand `<path d>` coordinates: the LLM decides *intent*, the engine computes *coordinates* (this eliminates the LLM-SVG failure modes — integer quantization, coordinate drift, occlusion, color degradation).
 
-Project-specific hodnoty (designRoot, rootClass, tokens, accent, colorSpace) přicházejí z `<repo>/.design/config.json`.
+Project-specific values (designRoot, rootClass, tokens, accent, colorSpace) come from `<repo>/.design/config.json`.
 
 ## Flags
 
-| Flag | Default | Co dělá |
+| Flag | Default | What it does |
 |---|---|---|
-| `"<brief>"` | — | **Required.** Popis marku, verbatim (nepřepisovat, neaugmentovat značkami). |
-| `--type <t>` | auto | `icon` \| `logo` \| `illustration` \| `diagram` \| `spot`. Auto-detekce z briefu když chybí. |
-| `--grid <n>` | per-type | Snap base: `1` (pixel — ikony/loga), `4`/`8` (spacing scale — diagramy), `0` (off — ilustrace/spot). |
-| `--asset [<path>]` | viz níže | Output jako standalone `.svg`. Bez `<path>` → `<designRoot>/assets/<slug>.svg`. |
-| `--inline` | — | Output jako JSX vložené do canvasu. |
-| `--into <canvas>` | aktivní | (s `--inline`) cílový `.tsx` canvas; default = `_active.json`. |
-| `--perfect [N]` | 3 | Max iterací draw-agenta (`max_rounds`). Cap 4. |
-| `--no-critic` | — | Přeskoč závěrečný nezávislý `draw-critic` pass. |
-| `--reference <url\|path>` | — | Sankcionovaný „udělej to jako TOHLE" — adaptuj externí asset. **Spustí license HARD gate** (krok 1.5): napřed se zjistí licence, surface volby, default = jen inspirace. Bez flagu zůstává engine-first. |
+| `"<brief>"` | — | **Required.** Description of the mark, verbatim (don't rewrite, don't augment with brand names). |
+| `--type <t>` | auto | `icon` \| `logo` \| `illustration` \| `diagram` \| `spot`. Auto-detected from the brief when omitted. |
+| `--grid <n>` | per-type | Snap base: `1` (pixel — icons/logos), `4`/`8` (spacing scale — diagrams), `0` (off — illustrations/spot). |
+| `--asset [<path>]` | see below | Output as a standalone `.svg`. Without `<path>` → `<designRoot>/assets/<slug>.svg`. |
+| `--inline` | — | Output as JSX embedded into the canvas. |
+| `--into <canvas>` | active | (with `--inline`) target `.tsx` canvas; default = `_active.json`. |
+| `--perfect [N]` | 3 | Max draw-agent iterations (`max_rounds`). Cap 4. |
+| `--no-critic` | — | Skip the final independent `draw-critic` pass. |
+| `--reference <url\|path>` | — | A sanctioned "make it like THIS" — adapt an external asset. **Triggers a license HARD gate** (step 1.5): first the license is determined, choices surfaced, default = inspiration only. Without the flag it stays engine-first. |
 
-**Default output mode:** `--asset` (standalone soubor). `--inline` zvol, když mark patří přímo do otevřeného canvasu (logo do headeru, ikona do tlačítka).
+**Default output mode:** `--asset` (standalone file). Choose `--inline` when the mark belongs directly in the open canvas (a logo in the header, an icon in a button).
 
-**Animace:** když brief žádá pohyb (morph / pulse / blink / „animovaný…"), draw-agent přečte i `_draw-motion-rules.md`, naplánuje keyframe `Timeline` přes IR (`morphVariants` / `timeline` / `sequence`+`parallel`+`stagger`), vyemituje přes `toAnimatedSvg`/`toAnimatedJsx` a **povinně ověří živě** přes `draw-proof --motion` (freeze-frame pohyb nedokáže — DDR-094). Produkční delivery pro web+mobile je Lottie přes `/design:to-lottie`.
+**Animation:** when the brief asks for motion (morph / pulse / blink / "animated…"), draw-agent also reads `_draw-motion-rules.md`, plans a keyframe `Timeline` via IR (`morphVariants` / `timeline` / `sequence`+`parallel`+`stagger`), emits via `toAnimatedSvg`/`toAnimatedJsx`, and **must verify it live** via `draw-proof --motion` (a freeze-frame can't capture motion — DDR-094). Production delivery for web+mobile is Lottie via `/design:to-lottie`.
 
 ## Flow
 
@@ -40,14 +40,14 @@ eval "$(maude design prep --shell-export --shape edit --root "$REPO")"   # confi
 PORT=$(maude design server-up --root "$REPO") # ensure dev server (needed for draw-proof)
 ```
 
-Když `bootstrap-check` vrátí 10/11 (žádný design system) → **stop**, vypiš `Spusť nejdřív /design:setup-ds <name>` a skonči. Mark se kreslí v kontextu DS (tokeny, accent, colorSpace).
+When `bootstrap-check` returns 10/11 (no design system) → **stop**, print `Run /design:setup-ds <name> first` and exit. The mark is drawn in the context of the DS (tokens, accent, colorSpace).
 
 ### 1. Resolve type / grid / mode / viewBox
 
-- `--type` daný → použij; jinak detekuj z briefu (jediný glyph → `icon`; brand name / wordmark → `logo`; scéna/postava → `illustration`; nodes+šipky → `diagram`; dekorativní vzor/pozadí → `spot`).
-- `--grid` daný → použij; jinak default per type (`icon`/`logo` → 1, `diagram` → 8, `illustration`/`spot` → 0).
-- viewBox: `icon` → `0 0 24 24`, `logo` → `0 0 64 64`, jinak zvol podle kompozice.
-- Output mode: `--inline` → resolve cílový canvas (`--into` nebo `_active.json` z prep); jinak `--asset` (path z flagu nebo `<designRoot>/assets/<slug>.svg`).
+- `--type` given → use it; otherwise detect from the brief (single glyph → `icon`; brand name / wordmark → `logo`; scene/character → `illustration`; nodes+arrows → `diagram`; decorative pattern/background → `spot`).
+- `--grid` given → use it; otherwise default per type (`icon`/`logo` → 1, `diagram` → 8, `illustration`/`spot` → 0).
+- viewBox: `icon` → `0 0 24 24`, `logo` → `0 0 64 64`, otherwise pick per composition.
+- Output mode: `--inline` → resolve the target canvas (`--into` or `_active.json` from prep); otherwise `--asset` (path from the flag or `<designRoot>/assets/<slug>.svg`).
 - Slug: `maude design slug "<brief-or-name>"`.
 
 ### 1.5 Reference-adapt license gate (only with `--reference`)
@@ -94,13 +94,13 @@ EOF
 )
 ```
 
-Agent vlastní celý verify loop (plan → N kandidátů → draw-proof ladder → pairwise-rank → keep-best → rubric critique → iterace). **Přečti si verdict** (poslední fenced `json` blok v jeho výstupu).
+The agent owns the whole verify loop (plan → N candidates → draw-proof ladder → pairwise-rank → keep-best → rubric critique → iterate). **Read the verdict** (the last fenced `json` block in its output).
 
-### 3. Vyhodnoť verdict
+### 3. Evaluate the verdict
 
-- `passed: true` (a `hard_pass: true`) → pokračuj na krok 4.
-- `passed: false` → mark má HARD gap nebo nevyřešený STRONG. Pokud `--perfect [N]` dovoluje další kolo a agent neřekl "cap reached", **re-spawn** s `max_rounds` zbývajícím a poznámkou ať cílí na `rubric.strong_failed` + failed HARD checks. Cap 4 kol celkem.
-- Po vyčerpání kol s `passed:false` → vypiš gaps, **neoznačuj za hotové**; navrhni manuální zásah (typicky logo, kde flatten/16px selhává).
+- `passed: true` (and `hard_pass: true`) → continue to step 4.
+- `passed: false` → the mark has a HARD gap or an unresolved STRONG. If `--perfect [N]` allows another round and the agent didn't say "cap reached", **re-spawn** with the remaining `max_rounds` and a note to target `rubric.strong_failed` + the failed HARD checks. Cap 4 rounds total.
+- After exhausting rounds with `passed:false` → print the gaps, **don't mark it done**; propose a manual intervention (typically a logo where flatten/16px fails).
 
 ### 4. Independent critic (default — skip s `--no-critic`)
 
@@ -118,12 +118,12 @@ EOF
 )
 ```
 
-`draw-critic` je **nezávislý soudce** (čte stejný `_draw-design-rules.md`, ale neviděl draw-agentův self-assessment). Když jeho verdict nesouhlasí (najde HARD fail co agent prohlásil za pass) → surface to a navrhni jedno opravné kolo přes `draw-agent`.
+`draw-critic` is an **independent judge** (reads the same `_draw-design-rules.md`, but hasn't seen draw-agent's self-assessment). When its verdict disagrees (finds a HARD fail the agent declared a pass) → surface it and propose one corrective round via `draw-agent`.
 
 ### 5. Report + docs refresh
 
-- Vypiš output report (níže).
-- `/design:setup-docs` refresh (auto, jako po `/design:edit`/`/design:new`) — aby `<designRoot>/README.md` + `INDEX.md` zachytily nový asset.
+- Print the output report (below).
+- `/design:setup-docs` refresh (auto, as after `/design:edit`/`/design:new`) — so `<designRoot>/README.md` + `INDEX.md` capture the new asset.
 
 ## Output report
 
@@ -141,7 +141,7 @@ STRONG gaps:   <list or "none">
 
 ## Notes
 
-- Všechny dev-tooling verby jdou přes `maude design <verb>` (DDR-062) — nikdy raw bin path.
-- `_draw/` (build skripty + proof canvasy) i `_history/_draw-proof/` jsou gitignored — regenerovatelné.
-- Mark dědí theme barvu přes `currentColor` (engine default) — proto funguje dark-mode i single-color flatten zadarmo.
-- Pro inline edit feedback typu "přidej logo do headeru" tě sem auto-routuje `/design:edit` (viz edit.md), takže `/design:draw` většinou voláš ručně jen na standalone asset.
+- All dev-tooling verbs go through `maude design <verb>` (DDR-062) — never a raw bin path.
+- `_draw/` (build scripts + proof canvases) and `_history/_draw-proof/` are gitignored — regenerable.
+- The mark inherits the theme color via `currentColor` (engine default) — that's why dark-mode and single-color flatten work for free.
+- For inline edit feedback like "add a logo to the header" `/design:edit` auto-routes you here (see edit.md), so you usually call `/design:draw` manually only for a standalone asset.

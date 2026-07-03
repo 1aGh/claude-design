@@ -314,7 +314,7 @@ For each hit, capture: `(line_no, css_property, token_name)`.
   - **Stacking ≥ 5 token-usage mismatches on this single canvas** — strong signal of mass-migration drift (the exact pattern that triggered the Docs Site retro). Promote with `top_blockers[].category = "ds-tokens-mass-drift"`.
   - **Stacking ≥ 3 pattern-reinventions** (brand-mark reinventions from Pass A.8 count toward this stack) — strong signal the generator is re-deriving from tokens instead of lifting. Promote with `top_blockers[].category = "pattern-mass-reinvention"`.
 
-**Under `strict` (the "DS za každou cenu" contract — DDR-141):**
+**Under `strict` (the "DS at any cost" contract — DDR-141):**
 
 - **Reuse findings are blockers directly**, no stacking threshold: each Pass-A pattern-reinvention (post Step-4 CSS-overlap filter), each Pass-A.6 full-shell reinvention (zero shared roots), and each Pass-A.8 brand-mark / icon-family reinvention lands in `top_blockers` (`category`: `pattern-reinvention` / `shell-reinvention` / `brand-asset-reinvention`).
 - Pass B token mismatches and Pass A.5 motion / A.7 isolation findings keep their advisory severity ladder — strict targets *specimen reuse*, not every audit dimension.

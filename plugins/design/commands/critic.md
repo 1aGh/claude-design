@@ -1,40 +1,40 @@
 ---
 name: design:critic
 category: daily
-description: Spawn critic panel (or single agent / all critics) na aktivním canvasu — design + a11y + až 9 specialistů (graphic, brand, typography, motion, copy, frontend, info-architecture, signature-moment, draw). Default = orchestrator routes panel based on canvas content + feedback. Honors opt_out_scope from canvas .meta.json or --opt-out= flag. Use --system-only to audit the design system itself (structural completeness) instead of the active canvas.
+description: Spawn critic panel (or single agent / all critics) on the active canvas — design + a11y + up to 9 specialists (graphic, brand, typography, motion, copy, frontend, info-architecture, signature-moment, draw). Default = orchestrator routes panel based on canvas content + feedback. Honors opt_out_scope from canvas .meta.json or --opt-out= flag. Use --system-only to audit the design system itself (structural completeness) instead of the active canvas.
 argument-hint: "[--agent <name>] [--all] [--panel] [--system-only [--ds=<name>] [--all-ds]] [--opt-out=palette|aesthetic|full]"
 ---
 
 # /design:critic — review active canvas
 
-Spustí jednoho nebo víc `*-critic` subagentů na aktivní canvas (`_active.json`). Každý critic emituje **JSON verdict block** na konci svého reportu — orchestrator parsuje a (pokud >1 critic) píše konsolidační `<NNN>-PANEL.md`.
+Runs one or more `*-critic` subagents on the active canvas (`_active.json`). Each critic emits a **JSON verdict block** at the end of its report — the orchestrator parses it and (if >1 critic) writes a consolidated `<NNN>-PANEL.md`.
 
-Tento command **nepouští auto-fix loop** — to dělají `/design:edit` a `/design:new` po každém editu. `/design:critic` je čistá review akce; pro auto-fix s víc iteracemi použij `/design:edit "<feedback>" --perfect`.
+This command **does not run the auto-fix loop** — that's what `/design:edit` and `/design:new` do after every edit. `/design:critic` is a pure review action; for auto-fix with multiple iterations use `/design:edit "<feedback>" --perfect`.
 
 ## Modes
 
 | Flag | Behavior |
 |---|---|
-| (none) | **Routed panel** — orchestrator vybere critics podle obsahu canvasu + posledního feedbacku (viz `skills/design/SKILL.md` "Critic panel routing"). Vždy zahrnuje `design-critic` + `a11y-critic`, dál podmíněně. |
-| `--agent <name>` | Jen jeden specialista. Dostupní: `design-critic`, `graphic-design-critic`, `brand-critic`, `typography-critic`, `motion-critic`, `a11y-critic`, `copy-critic`, `frontend-critic`, `info-architecture-critic`, `signature-moment-critic`, `draw-critic`. |
-| `--all` | Všech 9 critics paralelně. Heavy — utratí 9× tool calls. Použij pro "exhaustive polish before handoff". |
+| (none) | **Routed panel** — orchestrator picks critics based on canvas content + latest feedback (see `skills/design/SKILL.md` "Critic panel routing"). Always includes `design-critic` + `a11y-critic`, the rest conditionally. |
+| `--agent <name>` | A single specialist only. Available: `design-critic`, `graphic-design-critic`, `brand-critic`, `typography-critic`, `motion-critic`, `a11y-critic`, `copy-critic`, `frontend-critic`, `info-architecture-critic`, `signature-moment-critic`, `draw-critic`. |
+| `--all` | All 9 critics in parallel. Heavy — spends 9× the tool calls. Use for "exhaustive polish before handoff". |
 | `--panel` | Alias for default (no flag). |
 | `--opt-out=<scope>` | Override the canvas's persisted scope for this critique only. Without this flag, scope is read from `<active>.meta.json` `opt_out_scope` (default `palette`). Passes to every spawned critic — design-stack critics downgrade matching DS-rule blockers per scope; a11y / frontend / copy critics ignore it. See SKILL.md "Opt-out scope". |
 | `--system-only` | **Audit the design system itself, not the active canvas.** Spawns only `design-system-completeness-critic` against `<designRoot>/system/<ds>/`. The critic applies 3-tier rules (Core / Conventional / Free-form) calibrated by `config.json.completenessProfile` + `activeFamilies[]`. Combine with `--ds=<name>` to scope to one DS in a multi-DS project, or `--all-ds` to audit every entry in `designSystems[]`. Default target is `config.defaultDesignSystem` (single-DS layouts: `project`). |
 
-## Postup
+## Procedure
 
-Vyvolej skill `design` se vstupem: `critic <flags>`.
+Invoke skill `design` with input: `critic <flags>`.
 
 ### 1. Server lifecycle check + read active state
 
-Standard (viz `/design:edit`).
+Standard (see `/design:edit`).
 
 ### 2. Capture screenshot if missing
 
-Pokud nejnovější screenshot pro canvas chybí, capture full-page přes agent-browser (HTTP server URL, ne `file://`).
+If the latest screenshot for the canvas is missing, capture full-page via agent-browser (HTTP server URL, not `file://`).
 
-Pokud `_active.json.selected` set, capture i element-scoped (`--selector "<selected.selector>"`).
+If `_active.json.selected` is set, also capture element-scoped (`--selector "<selected.selector>"`).
 
 ### 2b. Short-circuit for `--system-only`
 
@@ -147,22 +147,22 @@ This is the ONLY place `/design:critic` uses the `relay` tier; it fires only on 
 
 | Symptom | Action |
 |---|---|
-| `_active.json` chybí / null | fail: "Otevři canvas v browseru first." |
-| Screenshot nelze zachytit (agent-browser unavailable) | critic běží jen na HTML source, každý critic flagne "Visual evidence: HTML source only" v hlavičce reportu. |
-| Tokens CSS nečitelný | `design-critic` + `a11y-critic` faili (potřebují tokens pro kompliance + contrast). Ostatní critics pokračují. |
-| Critic spawn fail | report critic jako "agent unavailable" v PANEL.md, pokračuj s ostatními. |
-| `--agent <unknown>` | fail s list of available critics. |
+| `_active.json` missing / null | fail: "Open a canvas in the browser first." |
+| Screenshot cannot be captured (agent-browser unavailable) | critic runs on HTML source only; each critic flags "Visual evidence: HTML source only" in the report header. |
+| Tokens CSS unreadable | `design-critic` + `a11y-critic` fail (they need tokens for compliance + contrast). Other critics continue. |
+| Critic spawn fail | report the critic as "agent unavailable" in PANEL.md, continue with the rest. |
+| `--agent <unknown>` | fail with a list of available critics. |
 
-## Tipy
+## Tips
 
-- **Targeted critique** — Cmd+klikni element v canvasu, pak `/design:critic`. Routing zúží panel na ten element + critics dostanou `selected` v promptu pro element-scoped review.
-- **Fast iteration loop** — `/design:edit "..."` (default = 4-iter multi-axis auto-critic with stable-but-bland exit) je rychlejší než `/design:critic` + ruční follow-up. `/design:critic` je standalone audit (žádný auto-fix).
-- **Pre-handoff polish** — `/design:critic --all` pro exhaustivní review, pak `/design:edit "..." --perfect` pokud blockers, pak `/design:handoff`.
-- **Single discipline** — `/design:critic --agent typography-critic` pro pure type review (žádné UX / DS / a11y noise).
+- **Targeted critique** — Cmd+click an element in the canvas, then `/design:critic`. Routing narrows the panel to that element + critics get `selected` in the prompt for element-scoped review.
+- **Fast iteration loop** — `/design:edit "..."` (default = 4-iter multi-axis auto-critic with stable-but-bland exit) is faster than `/design:critic` + manual follow-up. `/design:critic` is a standalone audit (no auto-fix).
+- **Pre-handoff polish** — `/design:critic --all` for an exhaustive review, then `/design:edit "..." --perfect` if there are blockers, then `/design:handoff`.
+- **Single discipline** — `/design:critic --agent typography-critic` for a pure type review (no UX / DS / a11y noise).
 
-## Discoverability — co jednotlivé critics dělají
+## Discoverability — what each critic does
 
-| Critic | Doména |
+| Critic | Domain |
 |---|---|
 | `design-critic` | Holistic UX (7-layer walk) + design-system compliance (tokens, hard-stops). Default + auto-baseline. |
 | `graphic-design-critic` | Composition, hierarchy, balance, density, rhythm, white-space, gestalt. |
@@ -173,8 +173,8 @@ This is the ONLY place `/design:critic` uses the `relay` tier; it fires only on 
 | `copy-critic` | Microcopy, action verbs, empty/error states, tone, casing, i18n readiness. |
 | `frontend-critic` | JSX patterns, semantic HTML, hooks, keys, performance gotchas, hydration. |
 | `info-architecture-critic` | Nav depth, hierarchy, taxonomy, findability, URL hygiene, cross-surface consistency. |
-| `signature-moment-critic` | **Aspiration axis** — měří *presence of greatness*, ne absence of badness. 5 axes (signature compositional moment per artboard, brand prominence, mock fidelity, restraint, negative space) + specificity gate (no Lorem / placeholders). **Always in panel pro `/design:new` a polish-cued `/design:edit`.** Zavírá gap mezi "passes correctness" a "would screenshot for portfolio". |
-| `draw-critic` | **Standalone vector art** (logo / icon / illustration / diagram / spot) — 30-check draw rubric s HARD floor (WCAG · 4/8pt grid · 16px legibility · single-color flatten). Routed když canvas nese custom `<svg>` mark nebo feedback zmiňuje `logo\|icon\|illustration\|diagram\|svg\|vector`. Gap, který `graphic-design-critic` nepokrývá (ten řeší kompozici celého canvasu, ne mark). |
+| `signature-moment-critic` | **Aspiration axis** — measures *presence of greatness*, not absence of badness. 5 axes (signature compositional moment per artboard, brand prominence, mock fidelity, restraint, negative space) + specificity gate (no Lorem / placeholders). **Always in panel for `/design:new` and polish-cued `/design:edit`.** Closes the gap between "passes correctness" and "would screenshot for portfolio". |
+| `draw-critic` | **Standalone vector art** (logo / icon / illustration / diagram / spot) — 30-check draw rubric with a HARD floor (WCAG · 4/8pt grid · 16px legibility · single-color flatten). Routed when the canvas carries a custom `<svg>` mark or feedback mentions `logo\|icon\|illustration\|diagram\|svg\|vector`. The gap `graphic-design-critic` doesn't cover (it handles the whole-canvas composition, not the mark). |
 | `design-system-completeness-critic` | **Structural completeness of the design system itself** — tokens, philosophy, specimens, shape. 3-tier rules (Core blocker / Conventional warning gated by `activeFamilies` + `completenessProfile` / Free-form acknowledged). **Spawned only via `--system-only`** (or auto-run at the end of skill `design-system` bootstrap flow). NOT included in canvas critic panels — different scope. |
 
 Full critic prompts: `${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`.

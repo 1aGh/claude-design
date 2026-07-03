@@ -1,39 +1,39 @@
 ---
 name: design:chat
 category: daily
-description: Otevři (focusni) native ACP chat sidepanel v Maude okně — agent chat běžící na tvé vlastní `claude` CLI subscription (DDR-123). Native-app only.
+description: Open (focus) the native ACP chat sidepanel in the Maude window — an agent chat running on your own `claude` CLI subscription (DDR-123). Native-app only.
 argument-hint: ""
 ---
 
 # /design:chat — surface the native ACP chat sidepanel
 
-Otevře (nebo focusne) **Assistant** sidepanel v běžícím native Maude okně, kde můžeš hnát `/design:edit`, `/design:new`, `/design:critic`, `/design:screenshot` a sledovat, jak se canvas mění — aniž bys opustil tu samou sdílenou plochu. Panel jede na **tvé vlastní instalaci `claude` na Pro/Max subscription** (žádný login v Maude, nikdy metered API billing — DDR-123).
+Opens (or focuses) the **Assistant** sidepanel in the running native Maude window, where you can drive `/design:edit`, `/design:new`, `/design:critic`, `/design:screenshot` and watch the canvas change — without leaving the same shared surface. The panel runs on **your own `claude` install on a Pro/Max subscription** (no login in Maude, never metered API billing — DDR-123).
 
-> **Native-app only.** Panel existuje jen v native Maude shellu (ne web surface) — ACP spawnuje agenta lokálně na tvém stroji, což spolehlivě umí jen Tauri shell (DDR-123, scope note phase-31). Z terminálového web-studia panel neotevřeš; tam zůstává terminál-driven workflow.
+> **Native-app only.** The panel exists only in the native Maude shell (not the web surface) — ACP spawns the agent locally on your machine, which only the Tauri shell can do reliably (DDR-123, scope note phase-31). You can't open the panel from the terminal web-studio; there the terminal-driven workflow stays.
 
-## Co to dělá
+## What it does
 
-Single source of truth je `maude design chat-open` (on-PATH `maude` dispatchuje do bundled helperu — DDR-062). Helper přečte port běžícího dev-serveru z `<designRoot>/_server.json` a POSTne `/_api/acp/focus`; server emituje bus event, který shell (app.jsx) přeloží na „otevři Assistant panel" (native-only).
+The single source of truth is `maude design chat-open` (the on-PATH `maude` dispatches to the bundled helper — DDR-062). The helper reads the running dev-server's port from `<designRoot>/_server.json` and POSTs to `/_api/acp/focus`; the server emits a bus event that the shell (app.jsx) translates into "open the Assistant panel" (native-only).
 
-## Postup
+## Procedure
 
-1. Ujisti se, že běží native Maude (panel se renderuje uvnitř něj). Pokud server neběží, otevři Maude app.
-2. Spusť focus:
+1. Make sure native Maude is running (the panel renders inside it). If the server isn't running, open the Maude app.
+2. Trigger focus:
 
 ```bash
 maude design chat-open
 ```
 
-3. Assistant panel se otevře v Maude okně (nebo `⌘⇧A` přímo v appce).
+3. The Assistant panel opens in the Maude window (or `⌘⇧A` directly in the app).
 
-## Stavy panelu
+## Panel states
 
-- **Ready** — claude je nainstalovaný + přihlášený; piš prompty, quick-actions (`/design:edit`, `/design:new`, `/design:critic`, `/design:screenshot`) prefillnou composer.
-- **Working…** — agent streamuje; **Stop** (⌘↵ odešle, Esc/Stop ruší turn).
-- **Not connected** — `claude` není nainstalovaný / přihlášený → plain explainer („otevři terminál, spusť `claude` a `/login`"), nikdy error. Detekce přes `GET /_api/acp/status`.
+- **Ready** — claude is installed + logged in; type prompts, quick-actions (`/design:edit`, `/design:new`, `/design:critic`, `/design:screenshot`) prefill the composer.
+- **Working…** — the agent is streaming; **Stop** (⌘↵ sends, Esc/Stop cancels the turn).
+- **Not connected** — `claude` isn't installed / logged in → a plain explainer ("open a terminal, run `claude` and `/login`"), never an error. Detected via `GET /_api/acp/status`.
 
 ## Failure modes
 
-- **No running server** (`_server.json` chybí) → „Open Maude first."
-- **Focus request failed** → server běží, ale `/_api/acp/focus` nedostupné (starý build?) — restartuj Maude.
-- **Web surface** → panel se neotevře (native-only); použij terminálový Claude Code.
+- **No running server** (`_server.json` missing) → "Open Maude first."
+- **Focus request failed** → the server is running, but `/_api/acp/focus` is unavailable (old build?) — restart Maude.
+- **Web surface** → the panel won't open (native-only); use terminal Claude Code.

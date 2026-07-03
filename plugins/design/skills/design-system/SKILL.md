@@ -14,7 +14,7 @@ This skill has **two responsibilities** with **mode-switched flows**:
 The mode is **auto-detected** at invocation (see `## Mode-detection` below). **This router is intentionally small — load exactly one sub-doc for the resolved mode so a turn never parses the flow it doesn't need.**
 
 - **READ** → load [`_read.md`](./_read.md) only.
-- **BOOTSTRAP** → load [`_bootstrap.md`](./_bootstrap.md) only (it carries discovery, the **Stage-4 design-language moodboard direction gate** (pre-scaffold visual approval — DDR-080) + the **Batch-A hero-preview drift gate**, scaffold, the opt-in organic-artifact seed step (`draw-agent` — backgrounds / patterns / spot / brand mark, grounded in the discovered palette), the 4-kola post-scaffold gate, and Post-Flight). Discovery probes load on demand from [`_pastier-probe-templates.md`](./_pastier-probe-templates.md) when you reach Stage 2.
+- **BOOTSTRAP** → load [`_bootstrap.md`](./_bootstrap.md) only (it carries discovery, the **Stage-4 design-language moodboard direction gate** (pre-scaffold visual approval — DDR-080) + the **Batch-A hero-preview drift gate**, scaffold, the opt-in organic-artifact seed step (`draw-agent` — backgrounds / patterns / spot / brand mark, grounded in the discovered palette), the 4-round post-scaffold gate, and Post-Flight). Discovery probes load on demand from [`_pastier-probe-templates.md`](./_pastier-probe-templates.md) when you reach Stage 2.
 
 The **Animation tooling contract** below stays in this router because both flows share it and `commands/new.md` + `commands/edit.md` link to "SKILL.md → Animation tooling contract".
 

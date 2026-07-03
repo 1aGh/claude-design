@@ -2,7 +2,7 @@
 >
 > Snapshot of the **12-Q / 3-round discovery** that lived in `SKILL.md` lines 99-200 before the 3-stage rewrite (Vision → Research → Refinement, DDR-033, 2026-05-20). Kept verbatim so contributors can diff and understand what changed. Do NOT load this file at runtime — `SKILL.md` is authoritative.
 >
-> Why it was replaced — see DDR-033. Short version: visual-first inversion (tokens decided before character / purpose), "3 codes stačí" principle ignored (everything balanced, nothing signature), hardcoded fallback ladders surfaced bias even when research succeeded, scope-agnostic assumptions (market-product taxonomy forced onto personal / internal / OSS).
+> Why it was replaced — see DDR-033. Short version: visual-first inversion (tokens decided before character / purpose), "3 codes are enough" principle ignored (everything balanced, nothing signature), hardcoded fallback ladders surfaced bias even when research succeeded, scope-agnostic assumptions (market-product taxonomy forced onto personal / internal / OSS).
 
 ---
 

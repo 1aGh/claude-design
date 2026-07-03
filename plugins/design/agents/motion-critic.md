@@ -17,7 +17,7 @@ Motion-critic sits in the same "always-on" bucket as `a11y-critic` for DS bootst
 
 This second trigger is the Phase 3.7 addition. Rationale: motion was the highest-friction surface in the studyfi imprint retro (D-3 + D-4 both happened in motion-adjacent code). The cost of running motion-critic is ~30 s; the cost of shipping a broken motion specimen is "user catches it visually in seconds" + 1-2 fix-pass round-trips. The trade-off favors always-on.
 
-The orchestration logic lives in `plugins/design/skills/design-system/SKILL.md` → "4 kola značky — critic panel" section; this critic's "When to run" reflects that orchestration.
+The orchestration logic lives in `plugins/design/skills/design-system/SKILL.md` → "4 brand rounds — critic panel" section; this critic's "When to run" reflects that orchestration.
 
 ## Inputs
 

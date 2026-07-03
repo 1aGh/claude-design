@@ -130,7 +130,7 @@ Entry points (load these when relevant, in this order):
 - `plugins/design/skills/design-system/_pastier-probe-templates.md` — Pastier probe templates fed to `ux-research-agent` during Stage 2 (5 input-field-driven probes: A. Ulice / B. Zrcadlo+Charakter / C. OST / D. Kmen / E. Confidence)
 - `plugins/design/agents/ux-research-agent.md` — domain research subagent (consumes the full `vision-brief.json` from Stage 1; emits `recommendations[]` with per-decision confidence for Stage 3)
 - `plugins/design/commands/{init,setup-ds,setup-docs,new,edit,help}.md` — slash-command flows
-- `plugins/design/agents/*-critic.md` — critic panel definitions (grouped as "4 kola značky" in the post-scaffold reporting block — see SKILL.md § "Post-scaffold gate")
+- `plugins/design/agents/*-critic.md` — critic panel definitions (grouped as "4 brand rounds" in the post-scaffold reporting block — see SKILL.md § "Post-scaffold gate")
 - `plugins/design/CATEGORIES.md` — command catalog and naming convention
 
 When working on a brief the user provided via `/design:setup-ds` or `/design:new`: pass their input **verbatim** to the skill / agent. Do not paraphrase, polish, or augment the brief with "vibe references". Do not propose option ladders that name specific products (brand-name suggestions at the brief-capture stage are the bias source the research agent exists to eliminate). The plugin's own docs handle option generation via the `design:ux-research-agent` — your job is to invoke the right slash command with the user's input intact.
