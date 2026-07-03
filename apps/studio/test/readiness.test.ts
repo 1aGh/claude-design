@@ -45,13 +45,31 @@ async function withClaudeDir<T>(dir: string, fn: () => Promise<T> | T): Promise<
   }
 }
 
-const pluginsItem = async (dir: string) =>
-  (await withClaudeDir(dir, () => probeReadiness())).items.find((i) => i.id === 'plugins')!;
+/** Plugins row under the given ~/.claude fixture. `nativeBootstrap:false` sets
+ *  MAUDE_NO_PLUGIN_BOOTSTRAP to force the web / manual (DDR-128) path — needed to
+ *  isolate the registry scan, since this suite runs in the dev tree where the
+ *  bundled plugin dirs resolve and DDR-143 auto-load would otherwise mask it. */
+const pluginsItem = async (dir: string, opts: { nativeBootstrap?: boolean } = {}) => {
+  const savedOptOut = process.env.MAUDE_NO_PLUGIN_BOOTSTRAP;
+  if (opts.nativeBootstrap === false) process.env.MAUDE_NO_PLUGIN_BOOTSTRAP = '1';
+  try {
+    return (await withClaudeDir(dir, () => probeReadiness())).items.find(
+      (i) => i.id === 'plugins'
+    )!;
+  } finally {
+    if (savedOptOut === undefined) delete process.env.MAUDE_NO_PLUGIN_BOOTSTRAP;
+    else process.env.MAUDE_NO_PLUGIN_BOOTSTRAP = savedOptOut;
+  }
+};
 
-describe('readiness — plugin registry scan', () => {
+// Registry-scan branches under the WEB / manual path (auto-bootstrap opted out) —
+// the pure DDR-128 detect-and-guide behavior, still what a `maude design serve`
+// user sees.
+describe('readiness — plugin registry scan (web / manual path)', () => {
   test('both plugins + marketplace present → plugins item is present, no remediation', async () => {
     const item = await pluginsItem(
-      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_BOTH })
+      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_BOTH }),
+      { nativeBootstrap: false }
     );
     expect(item.status).toBe('present');
     expect(item.remediation).toBeUndefined();
@@ -59,7 +77,8 @@ describe('readiness — plugin registry scan', () => {
 
   test('only design@maude installed → missing, names the absent flow@maude + offers the fix', async () => {
     const item = await pluginsItem(
-      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_DESIGN_ONLY })
+      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_DESIGN_ONLY }),
+      { nativeBootstrap: false }
     );
     expect(item.status).toBe('missing');
     expect(item.detail).toContain('flow@maude');
@@ -67,7 +86,7 @@ describe('readiness — plugin registry scan', () => {
   });
 
   test('registry absent → unknown (Claude Code internal contract; never throws)', async () => {
-    const item = await pluginsItem(fixtureClaudeDir({}));
+    const item = await pluginsItem(fixtureClaudeDir({}), { nativeBootstrap: false });
     expect(item.status).toBe('unknown');
   });
 
@@ -76,9 +95,39 @@ describe('readiness — plugin registry scan', () => {
       fixtureClaudeDir({
         markets: { other: { source: { repo: 'someone/else' } } },
         installed: INSTALLED_BOTH,
-      })
+      }),
+      { nativeBootstrap: false }
     );
     expect(item.status).toBe('present');
+  });
+});
+
+// DDR-143 — on the native/desktop path the ACP session auto-loads the bundled
+// plugins, so the row is satisfied even against a pristine registry. This suite
+// runs in the dev tree, so the bundled plugin dirs resolve → native context is
+// on by default (no opt-out).
+describe('readiness — plugin auto-bootstrap (native, DDR-143)', () => {
+  test('pristine registry → present + "Auto-loaded" detail, no manual remediation', async () => {
+    const item = await pluginsItem(fixtureClaudeDir({}));
+    expect(item.status).toBe('present');
+    expect(item.detail).toContain('Auto-loaded');
+    expect(item.remediation).toBeUndefined();
+  });
+
+  test('only design installed → still present (flow is auto-loaded, no red wall)', async () => {
+    const item = await pluginsItem(
+      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_DESIGN_ONLY })
+    );
+    expect(item.status).toBe('present');
+    expect(item.remediation).toBeUndefined();
+  });
+
+  test('both already installed → present, keeps the "are installed" detail (no auto-load framing)', async () => {
+    const item = await pluginsItem(
+      fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_BOTH })
+    );
+    expect(item.status).toBe('present');
+    expect(item.detail).toContain('installed');
   });
 });
 

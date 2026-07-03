@@ -25,6 +25,7 @@ import {
 } from '@agentclientprotocol/sdk';
 
 import { scrubAgentEnv } from './env.ts';
+import type { SdkPluginConfig } from './plugin-bootstrap.ts';
 import { resolveAdapterEntry, resolveAgentRuntime, resolveClaudePath } from './probe.ts';
 
 export interface AcpBridgeOptions {
@@ -36,6 +37,13 @@ export interface AcpBridgeOptions {
    * Absent → no injection (tests / non-studio embedders).
    */
   studioBrief?: string;
+  /**
+   * Session-scoped local plugins auto-loaded into every new session via
+   * `_meta.claudeCode.options.plugins` (DDR-143; resolved by
+   * plugin-bootstrap.ts). Empty/absent → no injection (power-user no-op, web
+   * serve). Carried on the readonly options so it survives an adapter re-spawn.
+   */
+  plugins?: SdkPluginConfig[];
   /** Streamed `session/update` notifications relayed to the browser. */
   onUpdate: (update: SessionUpdate) => void;
   /** Informational: a tool permission was auto-approved (transparency for the UI). */
@@ -64,24 +72,37 @@ const EFFORT_THINKING_TOKENS: Record<string, number | null> = {
 export type AcpEffort = keyof typeof EFFORT_THINKING_TOKENS;
 
 /**
- * Build the `session/new` params, carrying the studio brief as a system-prompt
- * APPEND (feature-acp-context-hardening). Exported for the upgrade-guard test:
- * the `_meta.systemPrompt` contract is adapter-INTERNAL — the installed
- * `claude-agent-acp@0.49.x` spreads an object form over its `claude_code`
- * preset (acp-agent.js `newSession`), and the SDK's `zNewSessionRequest`
- * declares `_meta` (zod.gen), so the field rides the wire validated. An
- * adapter/SDK bump that drops either side must fail the presence test LOUDLY,
- * not silently un-brief every session. Fallback if that ever happens: prepend
- * the brief as a first-turn text block (see the plan's Task 3b).
+ * Build the `session/new` params, carrying TWO adapter-internal `_meta` payloads
+ * (both spread by the installed `claude-agent-acp@0.49.x` `newSession`):
+ *
+ *   • `_meta.systemPrompt.append` — the studio brief (feature-acp-context-
+ *     hardening); the adapter spreads its object form over the `claude_code`
+ *     preset (acp-agent.js:2282).
+ *   • `_meta.claudeCode.options.plugins` — session-scoped local plugins (DDR-143);
+ *     the adapter reads `_meta.claudeCode.options` (acp-agent.js:2302) and spreads
+ *     the whole object into the SDK `query()` options (`...userProvidedOptions`,
+ *     :2333 → :2455), so `plugins` reaches the SDK's `plugins?: SdkPluginConfig[]`
+ *     (sdk.d.ts:1683) untouched — verified live (Task-1 spike).
+ *
+ * Both siblings coexist under one `_meta`. The SDK's `zNewSessionRequest` declares
+ * `_meta` (zod.gen), so it rides the wire validated. These contracts are
+ * adapter/SDK-INTERNAL and undocumented — an adapter/SDK bump that drops either
+ * must fail the presence tests LOUDLY (acp-bootstrap-brief.test.ts +
+ * acp-session-plugins.test.ts), not silently un-brief / un-plugin every session.
+ * Exported for those tests.
  */
 export function newSessionParams(
   repoRoot: string,
-  studioBrief?: string
+  studioBrief?: string,
+  plugins?: SdkPluginConfig[]
 ): { cwd: string; mcpServers: never[]; _meta?: Record<string, unknown> } {
+  const meta: Record<string, unknown> = {};
+  if (studioBrief) meta.systemPrompt = { append: studioBrief };
+  if (plugins && plugins.length > 0) meta.claudeCode = { options: { plugins } };
   return {
     cwd: repoRoot,
     mcpServers: [],
-    ...(studioBrief ? { _meta: { systemPrompt: { append: studioBrief } } } : {}),
+    ...(Object.keys(meta).length > 0 ? { _meta: meta } : {}),
   };
 }
 
@@ -160,7 +181,7 @@ export class AcpBridge {
     if (existing) return existing;
     if (!this.conn) throw new Error('ACP adapter not started');
     const created = await this.conn.newSession(
-      newSessionParams(this.opts.repoRoot, this.opts.studioBrief)
+      newSessionParams(this.opts.repoRoot, this.opts.studioBrief, this.opts.plugins)
     );
     this.sessions.set(chatId, created.sessionId);
     return created.sessionId;
@@ -298,6 +319,17 @@ export class AcpBridge {
     if (this.opts.studioBrief && !this.briefLogged.has(sessionId)) {
       this.briefLogged.add(sessionId);
       await this.appendTranscript({ role: 'bootstrap', text: this.opts.studioBrief });
+      // DDR-143 — the session-scoped plugin auto-load silently changes the
+      // available command/tool surface, so record exactly which plugins were
+      // injected. Invisible-to-user must not mean invisible-to-audit for an
+      // auto-approving (F2) agent — same discipline as the brief above.
+      if (this.opts.plugins?.length) {
+        await this.appendTranscript({
+          role: 'bootstrap',
+          kind: 'plugins-autoloaded',
+          plugins: this.opts.plugins.map((p) => p.path),
+        });
+      }
     }
     await this.appendTranscript({ role: 'user', text });
     const response = await conn.prompt({

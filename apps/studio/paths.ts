@@ -49,6 +49,38 @@ export const CLIENT_DIR: string = join(DEV_SERVER_ROOT, 'client');
 export const RUNTIME_BUNDLES_DIR: string = join(DIST_DIR, 'runtime');
 
 /**
+ * Absolute path to a bundled plugin's loadable tree (`commands/`, `agents/`,
+ * `skills/`, `hooks/`, `.claude-plugin/plugin.json`), or `null` when this layout
+ * doesn't ship it. Feeds the ACP session-scoped plugin auto-bootstrap
+ * (acp/plugin-bootstrap.ts → `_meta.claudeCode.options.plugins`, DDR-143).
+ *
+ * Resolved from DEV_SERVER_ROOT per DDR-045 (NEVER a local
+ * `dirname(fileURLToPath(import.meta.url))` — that's `/$bunfs/root` inside a
+ * compiled binary). Both the dev tree and the desktop `Resources/` bundle keep
+ * `plugins/` a sibling of `apps/studio/`, so `<root>/../../plugins/<p>` reaches
+ * it in either layout (`path.join` collapses the `..` segments):
+ *   • dev tree:            <repo>/apps/studio        → <repo>/plugins/design
+ *   • desktop Resources:   …/Resources/apps/studio   → …/Resources/plugins/design
+ *
+ * The npm tarball ships ONLY `plugins/<p>/templates` (+ dependencies.json;
+ * `plugins/flow/.claude-plugin/config.schema.json`) — NOT the plugin manifest
+ * (DDR-044 minimal surface). So we gate on `.claude-plugin/plugin.json`, not the
+ * dir: its ABSENCE under the npm-global / web-serve layout yields `null`, and
+ * the resolver skips injection there (those users have a terminal + the manual
+ * marketplace path). Only the dev tree and the staged desktop bundle carry it.
+ */
+export function pluginDirFrom(devServerRoot: string, plugin: 'design' | 'flow'): string | null {
+  const dir = join(devServerRoot, '..', '..', 'plugins', plugin);
+  return existsSync(join(dir, '.claude-plugin', 'plugin.json')) ? dir : null;
+}
+
+/** Bundled `design` plugin tree, or `null` (npm/web layout). See {@link pluginDirFrom}. */
+export const DESIGN_PLUGIN_DIR: string | null = pluginDirFrom(DEV_SERVER_ROOT, 'design');
+
+/** Bundled `flow` plugin tree, or `null` (npm/web layout). See {@link pluginDirFrom}. */
+export const FLOW_PLUGIN_DIR: string | null = pluginDirFrom(DEV_SERVER_ROOT, 'flow');
+
+/**
  * Whether we are running inside a `bun --compile` standalone binary
  * (true when `import.meta.url` resolves to bun's virtual filesystem).
  *

@@ -18,6 +18,8 @@ Plus the **`maude`** CLI — `maude init` scaffolds a fresh `.ai/` workspace fro
 
 ## Quick start
 
+> **Using Maude Desktop?** With only **Claude Code installed**, the desktop app's built-in chat panel auto-loads the `design` + `flow` plugins for its session — `/design:*` and `/flow:*` just work, nothing to install (power users who already installed the plugins see a no-op, no double-load). The steps below are the **manual / power-user path** — for the `maude` CLI, the web `maude design serve` flow, or driving `/design:*` from your own terminal Claude Code. Full detail: [maude.sh/desktop](https://maude.sh/desktop).
+
 ### 1. Add the marketplace inside Claude Code
 
 ```

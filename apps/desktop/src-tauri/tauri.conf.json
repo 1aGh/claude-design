@@ -40,7 +40,8 @@
     },
     "resources": {
       "resources/apps/studio": "apps/studio",
-      "resources/plugins/design/templates": "plugins/design/templates"
+      "resources/plugins/design": "plugins/design",
+      "resources/plugins/flow": "plugins/flow"
     },
     "icon": [
       "icons/32x32.png",

@@ -26,7 +26,8 @@
 // Layout (preserves the apps/studio ↔ plugins/design/templates `../../`
 // relationship http.ts's TEMPLATES_DIR depends on):
 //   src-tauri/resources/apps/studio/        (full source + dist + client, minus the below)
-//   src-tauri/resources/plugins/design/templates/
+//   src-tauri/resources/plugins/design/     (whole plugin tree; templates/ = TEMPLATES_DIR)
+//   src-tauri/resources/plugins/flow/       (whole plugin tree — DDR-143 auto-load)
 
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -35,7 +36,6 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '..', '..', '..'); // apps/desktop/scripts → repo root
 const STUDIO = join(REPO_ROOT, 'apps', 'studio');
-const TEMPLATES = join(REPO_ROOT, 'plugins', 'design', 'templates');
 const OUT = resolve(SCRIPT_DIR, '..', 'src-tauri', 'resources');
 const OUT_STUDIO = join(OUT, 'apps', 'studio');
 
@@ -74,10 +74,53 @@ cpSync(STUDIO, OUT_STUDIO, {
   },
 });
 
-// plugins/design/templates/ — _shell.html canvas harness (TEMPLATES_DIR resolves
-// to <root>/../../plugins/design/templates). REQUIRED for canvas iframes.
-need(TEMPLATES, 'plugins/design/templates');
-cpSync(TEMPLATES, join(OUT, 'plugins', 'design', 'templates'), { recursive: true });
+// --- Plugin trees: design + flow loadable surfaces (DDR-143) -----------------
+// The ACP chat session auto-loads these as session-scoped LOCAL plugins so
+// `/design:*` + `/flow:*` resolve with zero manual install: the dev-server points
+// `_meta.claudeCode.options.plugins` at Resources/plugins/{design,flow} (paths.ts
+// DESIGN_PLUGIN_DIR/FLOW_PLUGIN_DIR, gated on `.claude-plugin/plugin.json`). We
+// copy the WHOLE plugin dir (commands/agents/skills/hooks/.claude-plugin +
+// templates/) because the command markdown references `$CLAUDE_PLUGIN_ROOT/…`
+// paths (templates, agents) at runtime, and the design/templates leg ALSO
+// satisfies http.ts's TEMPLATES_DIR (`<root>/../../plugins/design/templates`) for
+// the canvas iframe harness. Small (~2 MB markdown) vs the sidecar; no
+// node_modules in a plugin tree, but filter defensively to match the studio copy.
+const PLUGIN_TREES = ['design', 'flow'];
+for (const plugin of PLUGIN_TREES) {
+  const src = join(REPO_ROOT, 'plugins', plugin);
+  need(join(src, '.claude-plugin', 'plugin.json'), `plugins/${plugin}/.claude-plugin/plugin.json`);
+  cpSync(src, join(OUT, 'plugins', plugin), {
+    recursive: true,
+    filter: (p) => !/[\\/]node_modules([\\/]|$)/.test(p.replace(/\\/g, '/')),
+  });
+}
+
+// Build-time gate (DDR-129): a plugin whose manifest/commands didn't stage would
+// leave the packaged chat panel resolving NO `/design:*` on a pristine machine —
+// the whole point of this feature. Fail the desktop build loud, not silent.
+for (const plugin of PLUGIN_TREES) {
+  const checks = {
+    manifest: join(OUT, 'plugins', plugin, '.claude-plugin', 'plugin.json'),
+    commands: join(OUT, 'plugins', plugin, 'commands'),
+  };
+  for (const [label, path] of Object.entries(checks)) {
+    if (!existsSync(path)) {
+      console.error(`[stage-resources] plugin ${plugin} ${label} not staged: ${path}`);
+      process.exit(1);
+    }
+  }
+}
+// TEMPLATES_DIR contract (canvas iframe harness) rides on the design tree copy.
+{
+  const designTemplates = join(OUT, 'plugins', 'design', 'templates');
+  if (!existsSync(designTemplates)) {
+    console.error(
+      `[stage-resources] design templates not staged (TEMPLATES_DIR): ${designTemplates}`
+    );
+    process.exit(1);
+  }
+}
+console.log(`[stage-resources] staged plugin trees → ${PLUGIN_TREES.join(', ')}`);
 
 // --- ACP chat adapter: stage its JS dependency closure -----------------------
 // The dev-server spawns `@agentclientprotocol/claude-agent-acp` at runtime, so it

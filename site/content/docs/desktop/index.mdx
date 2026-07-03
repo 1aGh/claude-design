@@ -27,11 +27,18 @@ Disk: ~250 MB. The optional AI editing pairs with a [Claude Code](/docs/design) 
 
 ### What AI editing needs
 
-The canvas browser, version history, and collaboration work the moment you open the app — no extra setup. **AI editing** is the one capability that reaches outside the app: its chat panel drives your paired Claude Code, so that Claude Code needs the Maude pieces installed:
+The canvas browser, version history, and collaboration work the moment you open the app — no extra setup. **AI editing** is the one capability that reaches outside the app: its chat panel drives your paired Claude Code.
 
-- the **`maude` CLI** on your PATH (`npm i -g @1agh/maude`) — `/design:edit` shells out to it;
-- the **Maude plugins** in Claude Code — `/plugin marketplace add 1aGh/maude`, then `/plugin install design@maude` and `/plugin install flow@maude`;
-- a logged-in **`claude`** (`claude` → `/login`), running on your own Pro/Max subscription.
+<Callout type="info" title="With Claude Code installed, the plugins just work">
+The desktop chat panel **auto-loads the `design` + `flow` plugins into its session**, so `/design:*` and `/flow:*` resolve out of the box — nothing to add to a marketplace, nothing to install by hand. A power user who already installed the plugins gets a no-op (no double-load, no version skew).
+</Callout>
+
+So the paired Claude Code needs just:
+
+- a logged-in **`claude`** (`claude` → `/login`) — the single hard prerequisite, running on your own Pro/Max subscription;
+- the **`maude` CLI** on your PATH (`npm i -g @1agh/maude`) — needed for the full multi-step `/design:*` workflows (screenshots, critic passes) that shell out to it; the everyday "edit this canvas" path works without it.
+
+You do **not** run `/plugin marketplace add` or `/plugin install` in the desktop app — the plugins load automatically. Those steps remain the path for the web `maude design serve` flow, or for driving `/design:*` from your own terminal Claude Code (see [Getting Started](/docs/getting-started)).
 
 You don't have to hunt for any of this: the first-run welcome screen has an **AI editing** readiness strip that checks each piece and shows a copy-paste fix for anything missing, and the chat panel surfaces the same breakdown with a **Re-check** button. None of it blocks the rest of the app.
 

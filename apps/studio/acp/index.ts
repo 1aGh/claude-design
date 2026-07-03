@@ -15,6 +15,7 @@ import type { Context } from '../context.ts';
 import type { WsData } from '../ws.ts';
 import { buildStudioBrief } from './bootstrap-brief.ts';
 import { AcpBridge, type AcpEffort } from './bridge.ts';
+import { isNativePluginContext, resolveSessionPlugins } from './plugin-bootstrap.ts';
 import { probeAcpAvailability } from './probe.ts';
 
 const VALID_EFFORT = new Set(['fast', 'balanced', 'thorough']);
@@ -151,7 +152,16 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
         studioBrief: buildStudioBrief({
           designRel: ctx.paths.designRel,
           projectLabel: ctx.projectLabel,
+          // DDR-143 — on the native/desktop path the `/design:*` + `/flow:*`
+          // commands are present in the session (auto-loaded or installed), so
+          // the brief states that plainly instead of hedging.
+          commandsAvailable: isNativePluginContext(),
         }),
+        // DDR-143 — session-scoped `design`(+`flow`) auto-load for the zero-install
+        // desktop path. Empty on the power-user (already-installed) + web-serve
+        // no-op paths. Computed once here; carried on the readonly bridge options
+        // so it survives an adapter re-spawn (model/effort change).
+        plugins: resolveSessionPlugins(),
         onUpdate: (update) => {
           tracker?.onUpdate(update);
           send(ws, { t: 'update', update });
