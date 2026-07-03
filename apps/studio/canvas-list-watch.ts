@@ -86,7 +86,11 @@ export function createCanvasListWatch(
   // default config newCanvasDir IS a group; a config pointing it outside
   // canvasGroups would have the canvas absent from /_index-data too, so the
   // watcher stays consistent with what the tree can actually show.
-  const groupPaths = (ctx.cfg.canvasGroups ?? []).map((g) => g.path);
+  //
+  // Read at USE time, never captured — `reloadConfig` (context.ts) hot-swaps
+  // ctx.cfg in place when config.json changes on disk, and a group added
+  // mid-session (`/design:setup-ds` adding `system`) must gate correctly.
+  const groupPaths = () => (ctx.cfg.canvasGroups ?? []).map((g) => g.path);
 
   // null = not yet seeded; the first refresh captures the baseline and emits
   // nothing (canvases already on disk at boot aren't "added").
@@ -156,7 +160,7 @@ export function createCanvasListWatch(
   }
 
   const off = ctx.bus.on('fs:any', (rel: string) => {
-    if (!isCanvasCandidate(rel, groupPaths)) return;
+    if (!isCanvasCandidate(rel, groupPaths())) return;
     schedule();
   });
 

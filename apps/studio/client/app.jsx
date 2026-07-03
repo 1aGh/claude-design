@@ -5993,15 +5993,15 @@ function App() {
     const cap = setTimeout(() => setLoadingPath(null), 15000);
     return () => clearTimeout(cap);
   }, [loadingPath]);
-  // Loaded once at boot from /_config — informs canvasUrl() so TSX iframes
-  // can pass the right ?designRel + ?tokens query to the canvas mount shell.
+  // Loaded at boot from /_config and re-fetched on the server's
+  // `config-updated` push (config.json hot-reload — /design:setup-ds rewrites
+  // it mid-session) — informs canvasUrl() so TSX iframes can pass the right
+  // ?designRel + ?tokens query to the canvas mount shell.
   const [cfg, setCfg] = useState({ designRel: '.design' });
-  useEffect(() => {
-    let cancelled = false;
+  const loadServerConfig = useCallback(() => {
     fetch('/_config')
       .then((r) => r.json())
       .then((data) => {
-        if (cancelled) return;
         const designRel = (data.designRoot || '.design').replace(/^\/+|\/+$/g, '');
         // Functional merge — the `/_config` and `/_index-data` fetches race, and
         // the latter contributes `canvasDesignSystems` (DDR-093). A full-replace
@@ -6023,10 +6023,10 @@ function App() {
         }));
       })
       .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
   }, []);
+  useEffect(() => {
+    loadServerConfig();
+  }, [loadServerConfig]);
   // Backfill the sync banner on mount from /_sync-status. The 'sync:status' WS
   // broadcast is one-shot for the zero-syncable case (DDR-060 / 9.1-D), so a
   // tab that connects after boot would otherwise miss it. {linked:false} (solo)
@@ -6563,6 +6563,11 @@ function App() {
             // the branch-scoped tree so other open tabs reflect it without a
             // reload. Cross-machine peers get a new canvas via git "Get latest".
             loadTree();
+          } else if (m.type === 'config-updated') {
+            // Server hot-reloaded .design/config.json (/design:setup-ds rewrote
+            // it) — refetch /_config so designSystems / tokensCssRel / groups
+            // match. The tree refresh arrives separately via canvas-list-update.
+            loadServerConfig();
           } else if (m.type === 'acp-focus') {
             // Phase 31 (DDR-123) — `/design:chat` from the terminal asked us to
             // surface the native ACP chat sidepanel. Native-only (the panel
@@ -6590,9 +6595,9 @@ function App() {
     }
     connect();
     return () => wsRef.current && wsRef.current.close();
-    // loadTree is a stable useCallback([]); listed so the canvas-list-update
-    // handler always calls the live reference.
-  }, [loadTree]);
+    // loadTree + loadServerConfig are stable useCallback([])s; listed so the
+    // canvas-list-update / config-updated handlers always call the live refs.
+  }, [loadTree, loadServerConfig]);
 
   function wsSend(obj) {
     const ws = wsRef.current;

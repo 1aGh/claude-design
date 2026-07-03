@@ -245,3 +245,62 @@ export function createContext(): Context {
     bus: createBus(),
   };
 }
+
+/**
+ * Hot-reload `.design/config.json` into an existing Context. `/design:setup-ds`
+ * (and any hand edit) rewrites the config mid-session; without this the server
+ * keeps serving the boot snapshot — `/_index-data` never lists a newly added
+ * canvas group, so scaffolded DS files stay invisible even on a manual tree
+ * reload. RCA: .ai/logs/rca/issue-ds-scaffold-files-not-in-filetree-stale-config.md
+ *
+ * CONTRACT: `ctx.cfg` and `ctx.paths` are mutated IN PLACE — module factories
+ * capture the object references (`const { cfg, paths } = ctx`) and must see the
+ * fresh values through them. Never copy a cfg VALUE at construction time in a
+ * long-lived module (that re-introduces the stale-config bug); read from the
+ * shared object at use time instead.
+ *
+ * Deliberately NOT hot-reloadable: `designRoot` — the fs-watcher and every
+ * runtime path hang off it; changing it requires a restart (warn + keep old).
+ * A config.json that is missing or invalid mid-edit keeps the current cfg
+ * (a running server must not downgrade to defaults on a half-written save).
+ *
+ * Returns true when the config actually changed.
+ */
+export function reloadConfig(ctx: Context): boolean {
+  const next = loadConfig(ctx.paths.repoRoot);
+  // Boot from defaults + config.json created later IS a legit reload; but a
+  // file that vanished or fails to parse mid-edit must not clobber a working
+  // cfg. loadConfig encodes both cases in _source.
+  if (next._source !== '.design/config.json') {
+    if (ctx.cfg._source === '.design/config.json') {
+      console.warn(
+        `  warn: config.json ${next._source === 'defaults' ? 'missing' : 'invalid'} on reload — keeping the running config.`
+      );
+    }
+    return false;
+  }
+
+  const nextDesignRel = next.designRoot.replace(/^\/+|\/+$/g, '');
+  if (nextDesignRel !== ctx.paths.designRel) {
+    console.warn(
+      `  warn: designRoot changed (${ctx.paths.designRel} → ${nextDesignRel}) — not hot-reloadable, restart the server to apply.`
+    );
+    next.designRoot = ctx.cfg.designRoot;
+  }
+
+  if (JSON.stringify(ctx.cfg) === JSON.stringify(next)) return false;
+
+  // In-place swap so every captured `ctx.cfg` reference sees the new values.
+  const cfg = ctx.cfg as unknown as Record<string, unknown>;
+  for (const key of Object.keys(cfg)) delete cfg[key];
+  Object.assign(cfg, next);
+
+  ctx.projectLabel = ctx.cfg.projectLabel || `${ctx.cfg.name} Design`;
+  ctx.paths.tokensUrlRel = path.posix.join(
+    ctx.paths.designRel,
+    ctx.cfg.tokensCssRel.replace(/^\/+/, '')
+  );
+  ctx.paths.systemDirRel =
+    ctx.cfg.canvasGroups.find((g) => /system/i.test(g.path))?.path ?? 'system';
+  return true;
+}

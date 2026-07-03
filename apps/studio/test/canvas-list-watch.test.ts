@@ -320,3 +320,52 @@ describe('canvas-list-watch / real fs-watch end-to-end', () => {
     }
   }, 10_000);
 });
+
+describe('canvas-list-watch / config hot-reload (stale-config RCA)', () => {
+  // /design:setup-ds adds the `system` group to config.json mid-session;
+  // reloadConfig (context.ts) swaps ctx.cfg in place. The watcher must read
+  // groups at USE time — a boot-captured groupPaths list would keep gating
+  // the new group's files out forever.
+  // RCA: .ai/logs/rca/issue-ds-scaffold-files-not-in-filetree-stale-config.md
+  test('a group added by an in-place cfg swap uncovers its canvases', async () => {
+    const { root, designRoot } = sandbox();
+    mkdirSync(join(designRoot, 'system', 'kanban-glass', 'preview'), { recursive: true });
+    const ctx = mkCtx(designRoot);
+    // Pre-scaffold fixture shape: UI-only group.
+    ctx.cfg.canvasGroups = [{ label: 'UI', path: 'ui' }];
+    const got = collect(ctx);
+    const w = createCanvasListWatch(ctx, { debounceMs: 10 });
+    await w.ready;
+    try {
+      // Scaffold writes specimens while the group is still absent — no emit.
+      writeFileSync(join(designRoot, 'system', 'kanban-glass', 'preview', 'colors.tsx'), TSX);
+      ctx.bus.emit('fs:any', 'system/kanban-glass/preview/colors.tsx');
+      await new Promise((r) => setTimeout(r, 10 + 40));
+      await w.refresh();
+      expect(got).toHaveLength(0);
+
+      // Hot reload: new array on the SAME cfg object (what reloadConfig does),
+      // then the server.ts subscriber calls refresh() — the diff must surface
+      // the pre-existing specimen.
+      ctx.cfg.canvasGroups = [
+        { label: 'Design system', path: 'system' },
+        { label: 'UI', path: 'ui' },
+      ];
+      await w.refresh();
+      expect(got).toHaveLength(1);
+      expect(got[0]?.action).toBe('added');
+      expect(got[0]?.rel).toBe('system/kanban-glass/preview/colors.tsx');
+
+      // And FUTURE writes under the new group pass the live fs:any gate.
+      got.length = 0;
+      writeFileSync(join(designRoot, 'system', 'kanban-glass', 'preview', 'type.tsx'), TSX);
+      ctx.bus.emit('fs:any', 'system/kanban-glass/preview/type.tsx');
+      await new Promise((r) => setTimeout(r, 10 + 40));
+      await w.refresh();
+      expect(got.some((m) => m.action === 'added' && m.rel?.endsWith('type.tsx'))).toBe(true);
+    } finally {
+      w.stop();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

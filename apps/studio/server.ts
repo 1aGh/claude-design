@@ -24,7 +24,7 @@ import { createCanvasListWatch } from './canvas-list-watch.ts';
 import { type AiActivityEntry, createAiActivity } from './collab/ai-activity.ts';
 import { createGitLifecycle } from './collab/git-lifecycle.ts';
 import { createCollab } from './collab/index.ts';
-import { createContext } from './context.ts';
+import { createContext, reloadConfig } from './context.ts';
 import { createFsWatch } from './fs-watch.ts';
 import { createGitWatch } from './git/watch.ts';
 import { createHttp } from './http.ts';
@@ -400,6 +400,28 @@ const gitWatch = createGitWatch(ctx);
 // counterpart to api.ts's create/delete emit. RCA:
 // `.ai/logs/rca/issue-acp-new-canvas-not-in-filetree.md`.
 const canvasListWatch = createCanvasListWatch(ctx);
+
+// Config hot-reload — `/design:setup-ds` (or a hand edit) rewrites
+// `.design/config.json` mid-session; without a re-read the server keeps
+// serving the boot snapshot and a newly added canvas group (`system`) never
+// reaches /_index-data, so scaffolded DS files stay invisible even on a
+// manual tree reload. On change: swap ctx.cfg in place (reloadConfig), let
+// canvasListWatch's set-diff emit `canvas-list-update` for canvases the new
+// groups uncover, and tell shells to refetch /_config.
+// RCA: .ai/logs/rca/issue-ds-scaffold-files-not-in-filetree-stale-config.md
+const CONFIG_RELOAD_DEBOUNCE_MS = 150;
+let configReloadTimer: ReturnType<typeof setTimeout> | null = null;
+ctx.bus.on('fs:json', (rel: string) => {
+  if (rel.replace(/\\/g, '/').replace(/^\/+/, '') !== 'config.json') return;
+  if (configReloadTimer) clearTimeout(configReloadTimer);
+  configReloadTimer = setTimeout(() => {
+    configReloadTimer = null;
+    if (!reloadConfig(ctx)) return;
+    console.log('  config.json changed — reloaded live.');
+    void canvasListWatch.refresh();
+    ctx.bus.emit('config-updated');
+  }, CONFIG_RELOAD_DEBOUNCE_MS);
+});
 
 // Phase 9 Task 4 — bidirectional sync agent. No-op when the project isn't
 // linked to a hub (`.design/config.json` has no `linkedHub` field). Kicked

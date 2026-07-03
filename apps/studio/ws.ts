@@ -206,6 +206,11 @@ export function createWs(
     broadcast({ type: 'canvas-list-update', payload })
   );
 
+  // Config hot-reload (server.ts fs:json subscriber) — the shell refetches
+  // /_config so cfg-derived state (designSystems, tokensCssRel, canvasGroups)
+  // matches the reloaded server config. Inspector clients only.
+  ctx.bus.on('config-updated', () => broadcast({ type: 'config-updated' }));
+
   // Phase 31 (DDR-123) — `/design:chat` → `maude design chat-open` → POST
   // /_api/acp/focus emits this; the shell (app.jsx, native-only) opens the
   // Assistant panel. Inspector clients only — same-origin shell, like the rest.
