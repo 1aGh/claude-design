@@ -185,8 +185,16 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
     const safe = id.replace(/[^a-z0-9_-]/gi, '').slice(0, 64);
     return safe || 'default';
   }
+  function chatFilePathFor(chatId: string, suffix: string): string {
+    return join(ctx.paths.designRoot, '_chat', `${sanitizeChatId(chatId)}${suffix}`);
+  }
   function transcriptPathFor(chatId: string): string {
-    return join(ctx.paths.designRoot, '_chat', `${sanitizeChatId(chatId)}.jsonl`);
+    return chatFilePathFor(chatId, '.jsonl');
+  }
+  // Sidecar persisting this chat's ACP sessionId across restarts (bridge.ts
+  // sessionFor's resume path) — the cross-restart memory gap tracked in DDR-125.
+  function sessionStorePathFor(chatId: string): string {
+    return chatFilePathFor(chatId, '.session.json');
   }
 
   async function handlePrompt(
@@ -198,6 +206,7 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
   ): Promise<void> {
     const bridge = getOrCreateBridge(ws);
     bridge.setTranscriptPath(transcriptPathFor(chatId));
+    bridge.setSessionStorePath(sessionStorePathFor(chatId));
     bridge.setConfig(model, effort);
     try {
       await bridge.ensureStarted();
@@ -226,6 +235,7 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
     effort: AcpEffort
   ): Promise<void> {
     const bridge = getOrCreateBridge(ws);
+    bridge.setSessionStorePath(sessionStorePathFor(chatId));
     bridge.setConfig(model, effort);
     try {
       await bridge.warmUp(sanitizeChatId(chatId));

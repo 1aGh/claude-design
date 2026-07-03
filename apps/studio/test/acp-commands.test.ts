@@ -6,6 +6,8 @@
 //     the cached list to a freshly-opened socket.
 
 import { afterEach, describe, expect, test } from 'bun:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { ServerWebSocket } from 'bun';
@@ -73,9 +75,11 @@ describe('AcpBridge.warmUp — publishes the command catalogue without a prompt'
 describe('Acp manager — warm frame broadcasts + open replays commands', () => {
   test('a {t:warm} frame yields a {t:commands} frame, replayed to a new socket', async () => {
     useMockAgent();
-    const ctx = {
-      paths: { repoRoot: process.cwd(), designRoot: join(process.cwd(), '.design') },
-    } as unknown as Context;
+    // Isolated tmp designRoot — `warm` now also writes a session-store sidecar
+    // (bridge.ts sessionFor's resume path), so this must not land in a real
+    // repo path.
+    const designRoot = await mkdtemp(join(tmpdir(), 'acp-commands-test-'));
+    const ctx = { paths: { repoRoot: process.cwd(), designRoot } } as unknown as Context;
     const acp = createAcp(ctx);
 
     const a = fakeWs('ws-a');
@@ -103,6 +107,7 @@ describe('Acp manager — warm frame broadcasts + open replays commands', () => 
       acp.onClose(a.ws);
       // give teardown a tick to kill the subprocess
       await new Promise((r) => setTimeout(r, 50));
+      await rm(designRoot, { recursive: true, force: true });
     }
   }, 20000);
 });

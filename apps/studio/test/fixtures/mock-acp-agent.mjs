@@ -5,6 +5,16 @@
 // `agent_message_chunk` whose text echoes whether ANTHROPIC_API_KEY survived
 // into the child env — it MUST read `<unset>`, proving scrubAgentEnv (DDR-123
 // guardrail #1) stripped it before spawn.
+//
+// session/load simulates the REAL adapter's cross-restart resume (this is a
+// fresh subprocess per test, so it has no memory of a prior session/new call —
+// exactly like the real claude-agent-acp adapter after an app restart, whose
+// resume is backed by the underlying `claude` CLI's own on-disk store, not its
+// own process memory). Any sessionId resolves EXCEPT the `not-found` sentinel
+// (simulates a pruned/unresumable session), so a test controls resume
+// success/failure by choosing which id it persists. It also emits one replay
+// `session/update` BEFORE resolving, mirroring claude-agent-acp's
+// `replaySessionHistory` — bridge.ts must not forward or re-transcript it.
 
 import { Readable, Writable } from 'node:stream';
 
@@ -16,7 +26,7 @@ acp
   .agent({ name: 'mock-acp-agent' })
   .onRequest('initialize', () => ({
     protocolVersion: acp.PROTOCOL_VERSION,
-    agentCapabilities: { loadSession: false },
+    agentCapabilities: { loadSession: true },
   }))
   .onRequest(
     'session/new',
@@ -25,6 +35,19 @@ acp
       return () => ({ sessionId: `mock-session-${++n}` });
     })()
   )
+  .onRequest('session/load', async (ctx) => {
+    if (ctx.params.sessionId === 'not-found') {
+      throw new Error('session not found');
+    }
+    await ctx.client.notify('session/update', {
+      sessionId: ctx.params.sessionId,
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'REPLAYED-HISTORY-SHOULD-NOT-SURFACE' },
+      },
+    });
+    return {};
+  })
   .onRequest('session/prompt', async (ctx) => {
     // The per-request handler context exposes the client connection at `.client`.
     await ctx.client.notify('session/update', {

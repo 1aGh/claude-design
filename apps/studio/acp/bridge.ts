@@ -8,7 +8,7 @@
 // (env.ts): the child inherits the environment MINUS `ANTHROPIC_API_KEY`, so
 // auth precedence falls through to the user's Pro/Max subscription.
 
-import { appendFile, mkdir } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 import {
@@ -71,6 +71,29 @@ const EFFORT_THINKING_TOKENS: Record<string, number | null> = {
 
 export type AcpEffort = keyof typeof EFFORT_THINKING_TOKENS;
 
+// Real sessionIds are adapter-generated `randomUUID()`s. A persisted value that
+// doesn't look like one (corrupt sidecar, or a tracked file a cloned repo
+// shipped despite `_chat/` being gitignored — DDR-115) is rejected rather than
+// forwarded into the privileged `loadSession` ACP call.
+const VALID_SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+// `loadSession`'s replay can, in principle, never settle if the underlying
+// transport dies mid-call (adapter crash, a concurrent `stop()` from another
+// chat sharing this bridge). Bound it so `replaying` always resets and a
+// resume attempt always falls back to `newSession` instead of wedging the
+// bridge silent forever. Mirrors the `withTimeout`/`TIMED_OUT` pattern already
+// used for network calls in `apps/studio/git/service.ts`.
+const LOAD_SESSION_TIMEOUT_MS = 15_000;
+const TIMED_OUT = Symbol('maude-acp-load-session-timeout');
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
+  p.catch(() => {});
+  let timer: ReturnType<typeof setTimeout>;
+  const t = new Promise<typeof TIMED_OUT>((res) => {
+    timer = setTimeout(() => res(TIMED_OUT), ms);
+  });
+  return Promise.race([p, t]).finally(() => clearTimeout(timer));
+}
+
 /**
  * Build the `session/new` params, carrying TWO adapter-internal `_meta` payloads
  * (both spread by the installed `claude-agent-acp@0.49.x` `newSession`):
@@ -90,6 +113,10 @@ export type AcpEffort = keyof typeof EFFORT_THINKING_TOKENS;
  * must fail the presence tests LOUDLY (acp-bootstrap-brief.test.ts +
  * acp-session-plugins.test.ts), not silently un-brief / un-plugin every session.
  * Exported for those tests.
+ *
+ * `cwd`/`mcpServers`/`_meta` are also exactly the shared fields of a
+ * `LoadSessionRequest` (schema/types.gen.d.ts) — `sessionFor`'s resume path
+ * spreads this same object and adds `sessionId` rather than duplicating it.
  */
 export function newSessionParams(
   repoRoot: string,
@@ -136,12 +163,21 @@ export class AcpBridge {
   // context. The adapter (one subprocess) holds them all; switching chats reuses
   // the session, so claude remembers that chat while the app is open.
   private sessions = new Map<string, string>(); // chatId → sessionId
+  // In-flight sessionFor() calls, keyed by chatId — lets a `warm` and a `prompt`
+  // racing for the same chat share one resume/create attempt instead of each
+  // running establishSession() and stomping the single shared `replaying` flag.
+  private sessionPromises = new Map<string, Promise<string>>();
   private currentSession: string | null = null; // the in-flight prompt's session
   /** Sessions whose bootstrap brief already hit the transcript (audit record). */
   private briefLogged = new Set<string>();
   private starting: Promise<void> | null = null;
   /** Per-chat transcript file (`_chat/<id>.jsonl`); set per prompt. */
   private transcriptPath: string | null = null;
+  /** Sidecar persisting this chat's ACP sessionId across restarts (`_chat/<id>.session.json`). */
+  private sessionStorePath: string | null = null;
+  /** True while `conn.loadSession()` is replaying a resumed session's history
+   *  back through the `sessionUpdate` client callback — see the guard in `start()`. */
+  private replaying = false;
   // Model + effort are env-at-spawn (ANTHROPIC_MODEL / MAX_THINKING_TOKENS), so a
   // change re-spawns the adapter. `desired*` is what the UI asked for; `active*`
   // is what the running session was spawned with.
@@ -163,6 +199,10 @@ export class AcpBridge {
 
   setTranscriptPath(path: string | null): void {
     this.transcriptPath = path;
+  }
+
+  setSessionStorePath(path: string | null): void {
+    this.sessionStorePath = path;
   }
 
   /** Desired model (alias/id, or null for the user's default) + effort. Applied
@@ -187,16 +227,102 @@ export class AcpBridge {
     return this.starting;
   }
 
-  /** Get-or-create the ACP session for a chat id (one claude context per chat). */
+  /**
+   * Get-or-create the ACP session for a chat id (one claude context per chat).
+   * `warm` and `prompt` can both reach this for the same chat close together
+   * (composer autocomplete warm-up racing the user hitting send) — a second
+   * concurrent call for the same chatId shares the FIRST call's in-flight
+   * promise (mirrors `ensureStarted`'s `this.starting` pattern) rather than
+   * re-entering resume/create and stomping the single shared `replaying` flag.
+   */
   private async sessionFor(chatId: string): Promise<string> {
     const existing = this.sessions.get(chatId);
     if (existing) return existing;
+    const inFlight = this.sessionPromises.get(chatId);
+    if (inFlight) return inFlight;
+
+    const promise = this.establishSession(chatId).finally(() => {
+      this.sessionPromises.delete(chatId);
+    });
+    this.sessionPromises.set(chatId, promise);
+    return promise;
+  }
+
+  /**
+   * Resumes a session persisted from a PRIOR app/dev-server lifetime (the
+   * cross-restart memory gap tracked in DDR-125) via the adapter's `loadSession`
+   * before falling back to a brand-new `newSession` — either because this chat
+   * has never had a session, or because the resume attempt failed (e.g. the
+   * underlying claude session was pruned, `claude` was reinstalled, or the
+   * adapter's response never arrives — `loadSession` is time-boxed so a dead
+   * transport can't wedge `replaying` true forever and silently black-hole
+   * every future turn on this bridge).
+   */
+  private async establishSession(chatId: string): Promise<string> {
     if (!this.conn) throw new Error('ACP adapter not started');
-    const created = await this.conn.newSession(
-      newSessionParams(this.opts.repoRoot, this.opts.studioBrief, this.opts.plugins)
-    );
+
+    const params = newSessionParams(this.opts.repoRoot, this.opts.studioBrief, this.opts.plugins);
+    const persistedId = await this.readPersistedSessionId();
+    if (persistedId) {
+      try {
+        this.replaying = true;
+        const result = await withTimeout(
+          this.conn.loadSession({ ...params, sessionId: persistedId }),
+          LOAD_SESSION_TIMEOUT_MS
+        );
+        if (result === TIMED_OUT) {
+          throw new Error(`loadSession timed out after ${LOAD_SESSION_TIMEOUT_MS}ms`);
+        }
+        this.sessions.set(chatId, persistedId);
+        return persistedId;
+      } catch (err) {
+        await this.appendTranscript({
+          role: 'bootstrap',
+          kind: 'resume-failed',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        this.replaying = false;
+      }
+    }
+
+    const created = await this.conn.newSession(params);
     this.sessions.set(chatId, created.sessionId);
+    await this.writePersistedSessionId(created.sessionId);
     return created.sessionId;
+  }
+
+  /** Read the sessionId persisted for this chat by a prior bridge lifetime.
+   *  Null when there's no sidecar wired (e.g. warm-up before any prompt), the
+   *  file doesn't exist yet (first-ever turn), it's unreadable/corrupt, or its
+   *  `sessionId` doesn't look like a real one (defense-in-depth — this file's
+   *  directory is per-machine/gitignored per DDR-115, but a cloned repo could
+   *  still ship a tracked file there, so bound what we'll forward into the
+   *  privileged `loadSession` ACP call rather than trusting its shape blindly). */
+  private async readPersistedSessionId(): Promise<string | null> {
+    if (!this.sessionStorePath) return null;
+    try {
+      const raw = await readFile(this.sessionStorePath, 'utf8');
+      const data = JSON.parse(raw) as { sessionId?: unknown };
+      const id = data.sessionId;
+      return typeof id === 'string' && VALID_SESSION_ID.test(id) ? id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Persist a freshly-created sessionId so the NEXT bridge lifetime (app
+   *  restart, dev-server restart) can resume this chat instead of starting
+   *  fresh. Best-effort, like `appendTranscript` — a failed write just means
+   *  the next restart falls back to a new session. */
+  private async writePersistedSessionId(sessionId: string): Promise<void> {
+    if (!this.sessionStorePath) return;
+    try {
+      await mkdir(dirname(this.sessionStorePath), { recursive: true });
+      await writeFile(this.sessionStorePath, JSON.stringify({ sessionId, updatedAt: Date.now() }));
+    } catch {
+      /* best-effort — see doc comment above */
+    }
   }
 
   private async start(): Promise<void> {
@@ -279,6 +405,12 @@ export class AcpBridge {
           this.opts.onCommands?.(params.update.availableCommands ?? []);
           return;
         }
+        // `loadSession` replays the resumed session's entire prior history back
+        // through this SAME callback (claude-agent-acp's replaySessionHistory) to
+        // prime its own in-adapter state. That history is already on disk in the
+        // transcript and already rendered client-side, so forwarding/re-appending
+        // it here would duplicate every message in the panel and the jsonl file.
+        if (this.replaying) return;
         this.opts.onUpdate(params.update);
         void this.appendTranscript({ role: 'agent', update: params.update });
       },
@@ -388,6 +520,13 @@ export class AcpBridge {
     this.proc = null;
     this.conn = null;
     this.sessions.clear();
+    // Drop any in-flight sessionFor() promises too — they were bound to the
+    // now-dead `conn`; a subsequent sessionFor() for the same chatId must
+    // establish fresh against the respawned connection, not await a stale
+    // reference (each entry's own .finally() would eventually clear it once its
+    // bounded loadSession timeout fires, but a call landing before then would
+    // otherwise get back a result tied to the connection we just tore down).
+    this.sessionPromises.clear();
     this.briefLogged.clear();
     this.currentSession = null;
   }
