@@ -10,7 +10,7 @@
 //
 // Native-app only — app.jsx mounts this gated on isNativeApp().
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   AssistantRuntimeProvider,
@@ -23,7 +23,13 @@ import {
   useThread,
 } from '@assistant-ui/react';
 
-import { activityLabel, createAcpConnection, makeAcpAdapter } from './acp-runtime.js';
+import {
+  activityLabel,
+  attachmentName,
+  createAcpConnection,
+  extractAttachmentRefs,
+  makeAcpAdapter,
+} from './acp-runtime.js';
 import { buildChatContext } from './chat-context.js';
 import { Markdown } from './chat-markdown.jsx';
 import ReadinessList, { useReadiness } from './ReadinessList.jsx';
@@ -291,10 +297,131 @@ function ChatToolCard({ toolName, args, result, isError }) {
   );
 }
 
+// ── chat media (image thumbnails + lightbox) ──
+// Per-thread context so deeply-nested bubbles reach the single lightbox + the
+// paste-attachments map without prop-drilling through assistant-ui's renderers.
+// `chipName(token)` resolves a live chip ([image-1]) to its content-addressed
+// name via the per-chat map; `openLightbox(src)` opens the one overlay.
+const ChatMediaContext = createContext(null);
+
+function attachmentSrc(name) {
+  return `/_api/acp/attachment?name=${encodeURIComponent(name)}`;
+}
+
+// Thumbnail — a real focusable button (Enter/Space open) wrapping the served
+// image; clicking opens the shared lightbox.
+function ChatThumb({ name }) {
+  const media = useContext(ChatMediaContext);
+  const src = attachmentSrc(name);
+  return (
+    <button
+      type="button"
+      className="chat-thumb-btn"
+      aria-label="Open pasted image"
+      onClick={() => media?.openLightbox(src)}
+    >
+      <img className="chat-thumb" src={src} alt="pasted image" loading="lazy" />
+    </button>
+  );
+}
+
+// One live-bubble chip: an image chip whose upload has resolved renders as a
+// thumbnail; file/link chips (and a still-pending image upload) keep the text
+// badge. The map entry can fill AFTER the bubble first renders (paste + Enter
+// immediately), so poll briefly until it resolves — the adapter awaits the
+// upload before sending, so this settles within the same turn.
+function ChipOrThumb({ token, kind }) {
+  const media = useContext(ChatMediaContext);
+  const [name, setName] = useState(() => (kind === 'image' ? media?.chipName(token) : null));
+  useEffect(() => {
+    if (kind !== 'image' || name || !media) return undefined;
+    let tries = 0;
+    const id = setInterval(() => {
+      const n = media.chipName(token);
+      if (n) {
+        setName(n);
+        clearInterval(id);
+      } else if (++tries > 20) {
+        clearInterval(id);
+      }
+    }, 250);
+    return () => clearInterval(id);
+  }, [kind, name, media, token]);
+  if (!name) return <span className="chat-paste-chip">{token}</span>;
+  return <ChatThumb name={name} />;
+}
+
+// Single fixed overlay for the enlarged image — ESC / backdrop / × close,
+// role="dialog", focus moves to the close button on open and returns to the
+// invoking thumbnail on close (mirrors tour/overlay.jsx). The capture-phase
+// key listener runs only while open, so it never collides with the composer's
+// onKeyDownCapture.
+function ChatLightbox({ src, onClose }) {
+  const closeRef = useRef(null);
+  const prevFocus = useRef(null);
+  useEffect(() => {
+    prevFocus.current = document.activeElement;
+    closeRef.current?.focus();
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    }
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      try {
+        prevFocus.current?.focus?.();
+      } catch {
+        /* trigger unmounted — non-fatal */
+      }
+    };
+  }, [onClose]);
+  return (
+    <div
+      className="chat-lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Pasted image"
+      onClick={onClose}
+    >
+      <img src={src} alt="pasted image, enlarged" onClick={(e) => e.stopPropagation()} />
+      <button
+        type="button"
+        ref={closeRef}
+        className="chat-lightbox-close"
+        aria-label="Close image"
+        title="Close image"
+        onClick={onClose}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 // User bubble keeps the collapsed chips in the transcript (Claude Code shows the
-// placeholder in history too — the real path went to the agent, not the log).
+// placeholder in history too — the real path went to the agent, not the log),
+// EXCEPT images, which render as clickable thumbnails. Two spellings resolve to
+// the same thumbnail: a live chip ([image-1] → per-chat map) and the reloaded
+// transcript's expanded `_chat/attachments/` path (never printed raw).
 function UserBubble({ text }) {
-  return <div className="chat-bubble">{chipNodes(text, 'ub')}</div>;
+  const segs = extractAttachmentRefs(text);
+  return (
+    <div className="chat-bubble">
+      {segs.map((seg, i) =>
+        seg.type === 'text' ? (
+          <span key={`t-${i}`}>{seg.text}</span>
+        ) : seg.type === 'chip' ? (
+          <ChipOrThumb key={`c-${i}`} token={seg.token} kind={seg.kind} />
+        ) : (
+          <ChatThumb key={`a-${i}`} name={seg.name} />
+        )
+      )}
+    </div>
+  );
 }
 
 function UserMessage() {
@@ -948,6 +1075,16 @@ function ChatThread({
     [conn, chatId, modelRef, effortRef]
   );
   const runtime = useLocalRuntime(adapter, { initialMessages });
+  // Image thumbnails + lightbox — one overlay per thread; bubbles reach it (and
+  // the chip → attachment-name resolution) through ChatMediaContext.
+  const [lightboxSrc, setLightboxSrc] = useState(null);
+  const media = useMemo(
+    () => ({
+      chipName: (token) => attachmentName(attachmentsRef.current.map.get(token) || ''),
+      openLightbox: setLightboxSrc,
+    }),
+    []
+  );
   const [activeTools, setActiveTools] = useState([]);
   useEffect(() => conn.onActivity(setActiveTools), [conn]);
   // Post-turn-end continuation (the tail the client used to drop — RCA F2).
@@ -956,6 +1093,7 @@ function ChatThread({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
+      <ChatMediaContext.Provider value={media}>
       <div className="chat-panel" style={hidden ? { display: 'none' } : undefined}>
         <StatusRow tools={activeTools} />
         <ThreadPrimitive.Root className="chat-thread">
@@ -984,7 +1122,11 @@ function ChatThread({
             attachmentsRef={attachmentsRef}
           />
         </ThreadPrimitive.Root>
+        {lightboxSrc ? (
+          <ChatLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+        ) : null}
       </div>
+      </ChatMediaContext.Provider>
     </AssistantRuntimeProvider>
   );
 }

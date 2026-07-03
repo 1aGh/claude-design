@@ -114,6 +114,11 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // the untrusted canvas origin must never reach it (it writes the global
         // ~/.config/maude/hubs.json token store).
         '/_api/hub/link',
+        // ACP chat attachments (POST upload + GET thumbnail serve) are MAIN-ORIGIN
+        // ONLY — absent from CANVAS_SAFE_API + startCanvasServer's routes. The
+        // untrusted canvas origin must never read (or write) the user's pasted
+        // chat images; a GET here 403s at the gate, not 404 from the handler.
+        '/_api/acp/attachment',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);

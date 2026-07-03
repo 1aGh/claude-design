@@ -1002,14 +1002,109 @@
     flex-shrink: 0;
   }
 
+  /* Pasted-image thumbnail — a focusable button in the user bubble; clicking
+     opens the lightbox. Sized like a chip row, never dominating the bubble. */
+  .chat-thumb-btn {
+    appearance: none;
+    display: inline-block;
+    padding: 0;
+    margin: 2px 0;
+    border: 0;
+    background: transparent;
+    border-radius: var(--radius-sm);
+    cursor: zoom-in;
+    line-height: 0;
+    vertical-align: middle;
+  }
+  .chat-thumb {
+    display: block;
+    max-width: 180px;
+    max-height: 140px;
+    object-fit: cover;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    transition: border-color var(--dur-fast, 120ms) ease;
+  }
+  .chat-thumb-btn:hover .chat-thumb {
+    border-color: var(--border-strong);
+  }
+  .chat-thumb-btn:focus-visible {
+    outline: none;
+  }
+  .chat-thumb-btn:focus-visible .chat-thumb {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
+  }
+
+  /* Lightbox — single fixed overlay above the whole shell (ESC / backdrop / ×).
+     Scrim mixes the base background so it tracks light/dark themes. z sits above
+     the shell modal band (.gi-modal 9600) but below the tour/topmost layer
+     (10050+) — an enlarged image must never bury the guided tour. */
+  .chat-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 9700;
+    display: grid;
+    place-items: center;
+    background: color-mix(in oklch, var(--bg-0) 80%, transparent);
+    animation: chat-lightbox-in 120ms ease;
+  }
+  .chat-lightbox img {
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    background: var(--bg-1);
+    box-shadow: var(--shadow-lg);
+  }
+  .chat-lightbox-close {
+    position: absolute;
+    top: var(--space-4);
+    right: var(--space-4);
+    appearance: none;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    background: var(--bg-2);
+    color: var(--fg-1);
+    font-size: var(--type-base);
+    line-height: 1;
+    cursor: pointer;
+  }
+  .chat-lightbox-close:hover {
+    color: var(--fg-0);
+    background: var(--bg-3);
+  }
+  .chat-lightbox-close:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
+  }
+  @keyframes chat-lightbox-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .chat-status-dot--working,
     .chat-tool-dot--run,
     .chat-activity-spin,
     .st-assistant[data-busy='true'],
     .chat-dot--busy,
-    .chat-msg {
+    .chat-msg,
+    .chat-lightbox {
       animation: none;
+    }
+    .chat-thumb {
+      transition: none;
     }
   }
 }

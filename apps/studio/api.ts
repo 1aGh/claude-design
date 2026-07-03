@@ -242,6 +242,9 @@ export interface Api {
   // Persist a clipboard-pasted ACP composer image → runtime `_chat/attachments/`,
   // returns an absolute path (Phase 31 follow-up — POST /_api/acp/attachment).
   saveChatAttachment(bytes: Uint8Array): Promise<SaveAssetResult>;
+  // Resolve a content-addressed attachment name (`<sha8>.<ext>`) to its absolute
+  // path, or null (GET /_api/acp/attachment — the read side of the pair above).
+  resolveChatAttachment(name: unknown): Promise<string | null>;
   // Create a blank brief board from the browser (Phase 22 — POST /_api/canvas)
   createCanvas(input: {
     name?: unknown;
@@ -1079,6 +1082,23 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       return { ok: false, status: 500, error: err instanceof Error ? err.message : 'write failed' };
     }
     return { ok: true, path: fileAbs };
+  }
+
+  // Read side of saveChatAttachment — resolve a content-addressed attachment
+  // name back to its absolute path under `_chat/attachments/`, or null. The
+  // name is the ONLY input and must match our own `<sha8>.<ext>` shape, so
+  // traversal is impossible by construction; the resolve() assert mirrors the
+  // write side's containment backstop. MAIN-ORIGIN ONLY at the route layer
+  // (the untrusted canvas origin never reaches the serving route).
+  async function resolveChatAttachment(name: unknown): Promise<string | null> {
+    if (typeof name !== 'string' || !/^[0-9a-f]{8}\.(?:png|jpe?g|gif|webp)$/.test(name)) {
+      return null;
+    }
+    const dir = path.join(paths.designRoot, '_chat', 'attachments');
+    const fileAbs = path.join(dir, name);
+    if (path.resolve(fileAbs) !== path.join(path.resolve(dir), name)) return null;
+    if (!(await Bun.file(fileAbs).exists())) return null;
+    return fileAbs;
   }
 
   // Phase 22 — create a blank brief board from the browser file tree. Wired ONLY
@@ -1994,6 +2014,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     saveAnnotations,
     saveAsset,
     saveChatAttachment,
+    resolveChatAttachment,
     createCanvas,
     deleteCanvas,
     editCss,

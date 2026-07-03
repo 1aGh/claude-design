@@ -126,48 +126,48 @@ Three moving parts, all reusing existing patterns:
 
 Execute in order. Each task is atomic and testable.
 
-### Task 1: ADD a GET serve branch to `/_api/acp/attachment` (server)
+### ✅ Task 1: ADD a GET serve branch to `/_api/acp/attachment` (server) — completed
 
 - **Do**: In `api.ts`, add `resolveChatAttachment(name): string | null` — validate `name` against `^[0-9a-f]{8}\.(png|jpe?g|gif|webp)$`, join under `path.join(paths.designRoot,'_chat','attachments')`, run the same containment assert as `saveChatAttachment` (L1062), return the abs path iff the file exists, else `null`. In `http.ts`, make `/_api/acp/attachment` branch on method: keep POST as-is; add **GET** → read `?name=`, call `resolveChatAttachment`, and `serveFile(abs, { 'Content-Type': <by ext>, 'Cache-Control': 'public, max-age=31536000, immutable' })` (content-addressed ⇒ immutable) or `404`.
 - **Pattern**: `saveChatAttachment` (api.ts:1044), `serveFile` (http.ts:465), `/_api/asset` (http.ts:1328).
 - **Gotcha**: `sameOriginWrite` is a POST/CSRF gate — do NOT apply it to GET; the main-origin posture (route absent from `CANVAS_SAFE_API` + `startCanvasServer`) is the boundary. Keep it that way. Name is the ONLY input and must be regex-allowlisted — never resolve a caller-supplied path segment.
 - **Validate**: `bun test test/acp-attachment-serve.test.ts test/canvas-origin-gate.test.ts`
 
-### Task 2: EXPOSE the attachment reference to the rendered bubble (client)
+### ✅ Task 2: EXPOSE the attachment reference to the rendered bubble (client) — completed
 
 - **Do**: Export two pure helpers from `acp-runtime.js`: `attachmentName(absPathOrText)` (basename if it matches the attachments path) and `extractAttachmentRefs(text)` → returns ordered segments splitting `text` into plain runs, `[image-N]` chips, and `_chat/attachments/<sha8>.<ext>` path matches. In `ChatThread`, keep a per-chat `Map(chipToken → name)` populated when `uploadChatImage` resolves (basename of the returned abs path); provide it + `openLightbox` via a React context.
 - **Pattern**: `expandPasteChips` (acp-runtime.js:257), `chipNodes` (ChatPanel.jsx:145).
 - **Gotcha**: **two render paths** — the *live* bubble text holds the chip `[image-N]` (resolve via the map); the *reloaded* bubble text (from transcript, `toThreadMessages`) holds the **expanded absolute path** under `_chat/attachments/` (resolve via `extractAttachmentRefs`). Handle both; when a thumbnail renders from a path match, do **not** also print the raw abs path.
 - **Validate**: `bun test test/chat-attachments.test.ts`
 
-### Task 3: RENDER image chips/paths as thumbnails in `UserBubble` (client)
+### ✅ Task 3: RENDER image chips/paths as thumbnails in `UserBubble` (client) — completed
 
 - **Do**: Replace `chipNodes` usage in `UserBubble` with a renderer that walks `extractAttachmentRefs(text)`: image chip (map→name) OR attachments-path match → `<button class="chat-thumb-btn" onClick={()=>openLightbox(src)} aria-label="Open pasted image"><img class="chat-thumb" src={`/_api/acp/attachment?name=${name}`} alt="pasted image" loading="lazy"/></button>`; file/link chips → existing text chip; plain text → text.
 - **Pattern**: `chipNodes` (ChatPanel.jsx:145), `.chat-ctx` chip render.
 - **Gotcha**: `src` uses the serve route by **name only**. `loading="lazy"`. Keep the button keyboard-focusable. Guard a still-`null` (pending upload) map entry → fall back to the text chip until the upload resolves.
 - **Validate**: manual live (paste screenshot → thumbnail appears in bubble).
 
-### Task 4: ADD the `ChatLightbox` overlay + open/close wiring (client)
+### ✅ Task 4: ADD the `ChatLightbox` overlay + open/close wiring (client) — completed
 
 - **Do**: Inline `ChatLightbox({ src, onClose })` — fixed overlay div, backdrop, centered `<img>`, a `×` close button; ESC + backdrop-click close; `role="dialog"` `aria-modal="true"`; focus the close button on open, restore focus on close. In `ChatThread`, hold `lightboxSrc` state, render `<ChatLightbox>` at panel root when set, and pass `openLightbox=setLightboxSrc` through the context from Task 2.
 - **Pattern**: `client/tour/overlay.jsx` (ESC/backdrop overlay), `.chat-ctx-x` (close glyph + label).
 - **Gotcha**: add/remove the ESC keydown listener on mount only while open; ensure it doesn't collide with the composer's `onKeyDownCapture`. z-index above the panel. Don't lock global scroll.
 - **Validate**: manual live (click thumbnail → lightbox opens; ESC/backdrop/× close; focus returns).
 
-### Task 5: STYLE thumbnail + lightbox (CSS)
+### ✅ Task 5: STYLE thumbnail + lightbox (CSS) — completed
 
 - **Do**: In `6-acp-chat.css` add `.chat-thumb-btn` (button reset, inline-block, focus ring), `.chat-thumb` (max-width ~180px, max-height ~140px, `object-fit: cover`, radius + border token, `cursor: zoom-in`, hover), `.chat-lightbox` (`position: fixed; inset: 0`, scrim bg, grid/flex center, z-index above panel), `.chat-lightbox img` (`max-width: 90vw; max-height: 90vh; object-fit: contain`), `.chat-lightbox-close`. Add both to the `prefers-reduced-motion` collapse block.
 - **Pattern**: existing `.chat-activity*` + reduced-motion block (6-acp-chat.css:~988).
 - **Gotcha**: tokens only — no hex/rgb. Scrim via an existing scrim token or `color-mix(in oklch, var(--bg-0) 80%, transparent)`.
 - **Validate**: `npx biome check` on the CSS; visual check.
 
-### Task 6: TEST — serve-route guard + client ref helpers
+### ✅ Task 6: TEST — serve-route guard + client ref helpers — completed
 
 - **Do**: `test/acp-attachment-serve.test.ts` — GET valid name → 200 + image content-type; `name=../../etc/passwd`, `name=abc`, `name=x.svg`, missing `name` → 4xx; assert the route is unreachable / 405 from the canvas origin (extend `canvas-origin-gate.test.ts` if that's the established home). `test/chat-attachments.test.ts` — `attachmentName` + `extractAttachmentRefs` over: a chip-only string, an expanded-abs-path string, mixed text, and a non-attachment path (must NOT match).
 - **Pattern**: `test/acp-activity.test.ts` (pure-helper style), `test/canvas-origin-gate.test.ts`.
 - **Validate**: `pnpm test:dev-server`
 
-### Task 7: REBUILD the committed client bundle (release) + commit dist
+### ✅ Task 7: REBUILD the committed client bundle (release) + commit dist — completed (rebuild done; commit pending user confirmation)
 
 - **Do**: `cd apps/studio && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release`; commit `dist/client.bundle.js` + `dist/styles.css` only (per CLAUDE.md — never ship the dev-unminified self-heal bundles; leave `dist/runtime/*` untouched).
 - **Gotcha**: if a test-boot churned `dist/runtime/*`, `git restore` those before committing; stage only your source + the two release artifacts.

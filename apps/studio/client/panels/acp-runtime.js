@@ -390,6 +390,51 @@ function safeJson(value) {
   }
 }
 
+// ── chat-attachment refs (image thumbnails + lightbox) ──
+// A pasted image lives in the feed under two spellings: the LIVE bubble holds
+// the collapsed chip token ([image-1] — resolved via the per-chat attachments
+// map), while a RELOADED bubble (transcript) holds the already-expanded
+// absolute path under `_chat/attachments/`. Both funnel into the same
+// `<sha8>.<ext>` name the GET /_api/acp/attachment route serves. Pure — tested
+// in test/chat-attachments.test.ts.
+const ATTACHMENT_NAME = '[0-9a-f]{8}\\.(?:png|jpe?g|gif|webp)';
+
+/**
+ * The content-addressed basename when the string is a `_chat/attachments/` path
+ * (absolute or relative), else null. Non-attachment paths never match.
+ */
+export function attachmentName(absPathOrText) {
+  const m = new RegExp(`(?:^|/)_chat/attachments/(${ATTACHMENT_NAME})$`).exec(
+    String(absPathOrText || '').trim()
+  );
+  return m ? m[1] : null;
+}
+
+/**
+ * Split bubble text into ordered segments the renderer walks:
+ *   { type:'text', text }                — plain run, rendered verbatim
+ *   { type:'chip', token, kind }         — [image|file|link-N] (live bubble)
+ *   { type:'attachment', name, raw }     — expanded _chat/attachments path (reload)
+ */
+export function extractAttachmentRefs(text) {
+  const s = String(text || '');
+  const re = new RegExp(
+    `\\[(image|file|link)-\\d+\\]|\\S*/_chat/attachments/(${ATTACHMENT_NAME})`,
+    'g'
+  );
+  const segs = [];
+  let last = 0;
+  let m;
+  while ((m = re.exec(s))) {
+    if (m.index > last) segs.push({ type: 'text', text: s.slice(last, m.index) });
+    if (m[1]) segs.push({ type: 'chip', token: m[0], kind: m[1] });
+    else segs.push({ type: 'attachment', name: m[2], raw: m[0] });
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) segs.push({ type: 'text', text: s.slice(last) });
+  return segs;
+}
+
 // Expand collapsed paste chips ([image-1]/[file-1]/[link-1]) back to the real
 // path/URL the user pasted, so Claude receives the actual value while the chat
 // bubble keeps the compact badge. Unknown tokens (e.g. a stale one the user typed

@@ -658,10 +658,24 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     // Phase 31 follow-up — persist an image pasted straight into the ACP composer
     // (a clipboard screenshot has no path), returning an absolute path the chip
     // expands to so Claude can Read it. MAIN-ORIGIN ONLY: sameOriginWrite CSRF gate
-    // + deliberately absent from CANVAS_SAFE_API + startCanvasServer routes, so the
-    // untrusted canvas iframe is 403'd. The disk caps live in api.saveChatAttachment
-    // (magic-byte sniff / 10 MB / content-addressed name / session write budget).
+    // on POST + deliberately absent from CANVAS_SAFE_API + startCanvasServer routes,
+    // so the untrusted canvas iframe is 403'd. The disk caps live in
+    // api.saveChatAttachment (magic-byte sniff / 10 MB / content-addressed name /
+    // session write budget).
+    //
+    // GET ?name=<sha8>.<ext> serves the pasted image back to the chat feed
+    // (thumbnail + lightbox). The name is regex-allowlisted in
+    // api.resolveChatAttachment — content-addressed, never a caller path, so
+    // traversal-proof by construction; content-addressed ⇒ immutable cache. No
+    // CSRF gate on GET (sameOriginWrite is the POST/CSRF boundary) — the
+    // main-origin posture above is what keeps the canvas origin out.
     '/_api/acp/attachment': async (req: Request) => {
+      if (req.method === 'GET') {
+        const name = new URL(req.url).searchParams.get('name');
+        const abs = await api.resolveChatAttachment(name);
+        if (!abs) return new Response('Not found', { status: 404 });
+        return serveFile(abs, { 'Cache-Control': 'public, max-age=31536000, immutable' });
+      }
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
