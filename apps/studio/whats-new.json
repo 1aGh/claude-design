@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "acp-chat-cross-restart-resume",
-      "version": null,
-      "date": null,
+      "version": "0.39.1",
+      "date": "2026-07-03",
       "kind": "fix",
       "title": "The Assistant remembers your conversation after a restart",
       "summary": "Killed the app to grab an update, or restarted the dev server mid-chat? The Assistant now picks up the actual conversation where you left off instead of quietly starting fresh while the old messages just sat there.",

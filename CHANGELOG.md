@@ -1,5 +1,11 @@
 # @1agh/maude
 
+## 0.39.1
+
+### Patch Changes
+
+- cb827e8: Fix the ACP chat panel losing conversational memory across an app restart. Killing and reopening Maude (or a dev-server restart) now resumes the actual `claude` session instead of silently starting a fresh one while showing the old transcript — closing the DDR-125 "cross-restart resume" gap.
+
 ## 0.39.0
 
 ### Minor Changes
