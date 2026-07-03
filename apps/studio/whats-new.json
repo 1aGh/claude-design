@@ -422,6 +422,15 @@
       "title": "Self-hostable hub + live file sync",
       "summary": "Run your own Maude hub and co-edit canvases with bidirectional file sync, offline-aware status, and conflict handling.",
       "surface": "design-ui"
+    },
+    {
+      "id": "zero-install-desktop-design",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Design just works in the desktop chat",
+      "summary": "With only Claude Code installed, /design:* commands auto-load in the chat (nothing to install), and design critics can now see your artboards — a screenshot engine is bundled and provisions its browser on first use.",
+      "surface": "design-ui"
     }
   ]
 }

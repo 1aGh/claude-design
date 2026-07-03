@@ -98,11 +98,23 @@ export function newSessionParams(
 ): { cwd: string; mcpServers: never[]; _meta?: Record<string, unknown> } {
   const meta: Record<string, unknown> = {};
   if (studioBrief) meta.systemPrompt = { append: studioBrief };
-  if (plugins && plugins.length > 0) meta.claudeCode = { options: { plugins } };
+  // SECURITY (DDR-144 attacker F2) — narrow settingSources to the user's OWN
+  // ~/.claude only. The adapter defaults to ["user","project","local"] (acp-agent.js
+  // :2331), which would read the SERVED (untrusted, DDR-054) project's
+  // .claude/{settings.json,hooks} into the AUTO-APPROVING (DDR-125 F2) session: a
+  // poisoned `env` block (e.g. AGENT_BROWSER_EXECUTABLE_PATH → a repo-shipped
+  // binary the screenshot engine then executes), hook, or enabledPlugins would run
+  // under auto-approve just by OPENING the repo. 'user'-only closes that confused-
+  // deputy chain (the DDR-143 guard #6 follow-up). The project's CLAUDE.md is read
+  // via a separate path and is unaffected. Always injected — every Maude bridge
+  // session is auto-approving. `...plugins` (DDR-143) rides the same options object.
+  const options: Record<string, unknown> = { settingSources: ['user'] };
+  if (plugins && plugins.length > 0) options.plugins = plugins;
+  meta.claudeCode = { options };
   return {
     cwd: repoRoot,
     mcpServers: [],
-    ...(Object.keys(meta).length > 0 ? { _meta: meta } : {}),
+    _meta: meta,
   };
 }
 

@@ -88,9 +88,14 @@ describe('newSessionParams — the carrier shape', () => {
     expect((p._meta as { systemPrompt?: { append?: string } }).systemPrompt?.append).toBe('BRIEF');
   });
 
-  test('without a brief: no _meta key at all (tests / non-studio embedders)', () => {
+  test('without a brief: no systemPrompt, but _meta still narrows settingSources (DDR-144 F2)', () => {
     const p = newSessionParams('/repo');
-    expect('_meta' in p).toBe(false);
+    const meta = p._meta as {
+      systemPrompt?: unknown;
+      claudeCode?: { options?: { settingSources?: string[] } };
+    };
+    expect(meta.systemPrompt).toBeUndefined();
+    expect(meta.claudeCode?.options?.settingSources).toEqual(['user']);
   });
 });
 

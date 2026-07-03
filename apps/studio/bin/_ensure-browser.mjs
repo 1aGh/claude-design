@@ -44,6 +44,25 @@ const log = (m) => {
 const CDN_VERSIONS =
   'https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json';
 
+// The download URL comes from a remote manifest and its bytes are chmod +x'd and
+// executed — pin the scheme + host so a tampered/redirecting manifest can't point
+// us at http:// or a foreign host (defender F2). Chrome-for-Testing artifacts live
+// on storage.googleapis.com; the manifest on googlechromelabs.github.io.
+export const CDN_HOSTS = new Set(['storage.googleapis.com', 'googlechromelabs.github.io']);
+// The CfT version string flows into cache paths and (on Windows) a PowerShell
+// `-Command` string, so validate it before ANY use (defender F3).
+export const CFT_VERSION_RE = /^[0-9]+(?:\.[0-9]+)*$/;
+
+/** True when a resolved download URL is https + an allowlisted CDN host (defender F2). */
+export function isTrustedDownloadUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && CDN_HOSTS.has(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
 /** Machine-global cache (shared across projects) — NOT the per-project .ai/cache. */
 function browsersDir() {
   return process.env.MAUDE_BROWSERS_DIR || join(homedir(), '.maude', 'browsers');
@@ -196,6 +215,12 @@ async function downloadShell() {
   log('ensure-browser: no browser found — downloading chrome-headless-shell (~94 MB, one-time)…');
   const versions = await fetch(CDN_VERSIONS).then((r) => r.json());
   const stable = versions.channels?.Stable;
+  const version = stable?.version;
+  // F3 — reject a suspicious version before it reaches a path or a shell string.
+  if (typeof version !== 'string' || !CFT_VERSION_RE.test(version)) {
+    log(`ensure-browser: refusing malformed Chrome-for-Testing version ${JSON.stringify(version)}`);
+    return null;
+  }
   const url = (stable?.downloads?.['chrome-headless-shell'] || []).find(
     (d) => d.platform === plat
   )?.url;
@@ -203,10 +228,29 @@ async function downloadShell() {
     log(`ensure-browser: CDN has no chrome-headless-shell for ${plat}`);
     return null;
   }
-  const dest = join(browsersDir(), `chrome-headless-shell-${stable.version}-${plat}`);
+  // F2 — the resolved URL is remote-controlled + its bytes get executed. Pin
+  // https + an allowlisted host so a tampered manifest/redirect can't land a
+  // foreign or plaintext-fetched binary. (CDN-of-record compromise is the
+  // accepted residual — same trust anchor Playwright/Puppeteer rely on.)
+  if (!isTrustedDownloadUrl(url)) {
+    log(`ensure-browser: refusing non-allowlisted download URL ${url}`);
+    return null;
+  }
+  // F3 — the cache is exec-forever, so keep it 0700 (only this user can plant a
+  // binary that later runs as the screenshot engine). Created before the download.
+  mkdirSync(browsersDir(), { recursive: true, mode: 0o700 });
+  try {
+    chmodSync(browsersDir(), 0o700);
+  } catch {
+    /* pre-existing dir owned by another mode — best-effort */
+  }
+  const dest = join(browsersDir(), `chrome-headless-shell-${version}-${plat}`);
   if (findShell(dest)) return findShell(dest); // concurrent provision won the race
-  const tmp = join(tmpdir(), `maude-hshell-${stable.version}-${plat}.zip`);
-  const buf = Buffer.from(await fetch(url).then((r) => r.arrayBuffer()));
+  const tmp = join(tmpdir(), `maude-hshell-${version}-${plat}.zip`);
+  // F1 — do NOT follow redirects: the host allowlist above validated THIS url, but
+  // a 3xx would bounce us to an unvalidated host. The CfT CDN serves the artifact
+  // directly (200), so redirect:'error' fails safe instead of chasing a redirect.
+  const buf = Buffer.from(await fetch(url, { redirect: 'error' }).then((r) => r.arrayBuffer()));
   const { writeFileSync } = await import('node:fs');
   writeFileSync(tmp, buf);
   // Extract to a sibling temp dir, then atomically rename into place.
@@ -214,7 +258,6 @@ async function downloadShell() {
   rmSync(staging, { recursive: true, force: true });
   unzip(tmp, staging);
   rmSync(tmp, { force: true });
-  mkdirSync(browsersDir(), { recursive: true });
   rmSync(dest, { recursive: true, force: true });
   renameSync(staging, dest);
   const exe = findShell(dest);

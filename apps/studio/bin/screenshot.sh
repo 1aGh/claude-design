@@ -126,8 +126,13 @@ case "$MODE" in
 esac
 
 # ---------- engine resolution ----------
+# Prefer the bundled agent-browser the desktop sidecar pins via MAUDE_AGENT_BROWSER
+# (DDR-144 attacker-F4: an explicit single-binary pointer, NOT a PATH prepend that
+# would let a same-user attacker shadow node/chrome in the app dir), else the one
+# on PATH.
+AB="${MAUDE_AGENT_BROWSER:-agent-browser}"
 if [ "$ENGINE" = "auto" ]; then
-  if command -v agent-browser >/dev/null 2>&1; then
+  if command -v "$AB" >/dev/null 2>&1; then
     ENGINE="agent-browser"
   else
     ENGINE="playwright"
@@ -160,9 +165,9 @@ ab_screenshot() {
   local css="$1"
   local out="$2"
   if [ -n "$css" ]; then
-    agent-browser screenshot "$css" "$out" >&2 || return 1
+    "$AB" screenshot "$css" "$out" >&2 || return 1
   else
-    agent-browser screenshot --full "$out" >&2 || return 1
+    "$AB" screenshot --full "$out" >&2 || return 1
   fi
   # agent-browser sometimes reports success without writing — verify size.
   if [ ! -s "$out" ]; then
@@ -195,7 +200,7 @@ pw_screenshot() {
 
 navigate_once() {
   if [ "$ENGINE" = "agent-browser" ]; then
-    agent-browser open "$URL" >&2
+    "$AB" open "$URL" >&2
     # Wait for canvas to mount — Babel/React canvases take 2–4s to settle.
     # Poll for [data-dc-screen] or [data-dc-slot] up to $TIMEOUT seconds; fall
     # through to a fixed sleep when the page isn't a DC canvas.
@@ -205,7 +210,7 @@ navigate_once() {
       sleep 1
       poll=$((poll + 1))
       local raw
-      raw=$(agent-browser eval "document.querySelectorAll('[data-dc-screen],[data-dc-slot]').length" 2>/dev/null)
+      raw=$("$AB" eval "document.querySelectorAll('[data-dc-screen],[data-dc-slot]').length" 2>/dev/null)
       # raw is a plain number on success — strip whitespace, validate.
       local has=$(printf '%s' "$raw" | tr -d '[:space:]')
       case "$has" in
@@ -290,7 +295,7 @@ if [ $ALL_SCREENS -eq 1 ]; then
   if [ "$ENGINE" = "agent-browser" ]; then
     # agent-browser wraps string results in quotes and escapes newlines as
     # literal `\n`; comma-join + tr is simpler than parsing JSON for IDs.
-    raw=$(agent-browser eval \
+    raw=$("$AB" eval \
       "Array.from(document.querySelectorAll('[data-dc-screen],[data-dc-slot]')).map(e => e.getAttribute('data-dc-screen') || e.getAttribute('data-dc-slot')).filter(Boolean).join(',')" \
       2>/dev/null)
     # Strip surrounding quotes, then split on comma.
@@ -301,7 +306,7 @@ if [ $ALL_SCREENS -eq 1 ]; then
   if [ -z "$IDS" ] && relive_url; then
     navigate_once
     if [ "$ENGINE" = "agent-browser" ]; then
-      raw=$(agent-browser eval \
+      raw=$("$AB" eval \
         "Array.from(document.querySelectorAll('[data-dc-screen],[data-dc-slot]')).map(e => e.getAttribute('data-dc-screen') || e.getAttribute('data-dc-slot')).filter(Boolean).join(',')" \
         2>/dev/null)
       IDS=$(printf '%s' "$raw" | sed 's/^"//; s/"$//' | tr ',' '\n')
@@ -318,7 +323,7 @@ if [ $ALL_SCREENS -eq 1 ]; then
     NN=$(printf "%03d" "$N")
     OUT_FILE="$OUT_DIR/${NN}-screen-${ID}.png"
     if [ "$ENGINE" = "agent-browser" ]; then
-      agent-browser eval "document.querySelector('[data-dc-screen=\"$ID\"], [data-dc-slot=\"$ID\"]').scrollIntoView({block:'center'})" >/dev/null 2>&1
+      "$AB" eval "document.querySelector('[data-dc-screen=\"$ID\"], [data-dc-slot=\"$ID\"]').scrollIntoView({block:'center'})" >/dev/null 2>&1
       sleep 0.6
     fi
     if capture_resilient "[data-dc-screen=\"$ID\"], [data-dc-slot=\"$ID\"]" "$OUT_FILE"; then

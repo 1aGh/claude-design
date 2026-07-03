@@ -22,7 +22,7 @@ const PLUGINS: SdkPluginConfig[] = [
 
 type Meta = {
   systemPrompt?: { append?: string };
-  claudeCode?: { options?: { plugins?: SdkPluginConfig[] } };
+  claudeCode?: { options?: { plugins?: SdkPluginConfig[]; settingSources?: string[] } };
 };
 
 describe('newSessionParams — plugin carrier shape', () => {
@@ -32,14 +32,18 @@ describe('newSessionParams — plugin carrier shape', () => {
     expect((p._meta as Meta).claudeCode?.options?.plugins).toEqual(PLUGINS);
   });
 
-  test('empty plugins: no claudeCode key (power-user / web no-op)', () => {
+  test('empty plugins: claudeCode carries settingSources but NO plugins (power-user / web no-op)', () => {
     const p = newSessionParams('/repo', 'BRIEF', []);
-    expect((p._meta as Meta).claudeCode).toBeUndefined();
+    const opts = (p._meta as Meta).claudeCode?.options;
+    expect(opts?.plugins).toBeUndefined();
+    expect(opts?.settingSources).toEqual(['user']); // security narrowing always present
   });
 
-  test('undefined plugins: no claudeCode key', () => {
+  test('undefined plugins: claudeCode carries settingSources, no plugins', () => {
     const p = newSessionParams('/repo', 'BRIEF');
-    expect((p._meta as Meta).claudeCode).toBeUndefined();
+    const opts = (p._meta as Meta).claudeCode?.options;
+    expect(opts?.plugins).toBeUndefined();
+    expect(opts?.settingSources).toEqual(['user']);
   });
 
   test('brief + plugins coexist under one _meta (both siblings intact)', () => {
@@ -56,9 +60,24 @@ describe('newSessionParams — plugin carrier shape', () => {
     expect(meta.claudeCode?.options?.plugins).toEqual(PLUGINS);
   });
 
-  test('nothing injected: no _meta key at all', () => {
+  test('nothing injected: _meta still carries the settingSources security narrowing', () => {
     const p = newSessionParams('/repo', undefined, []);
-    expect('_meta' in p).toBe(false);
+    const meta = p._meta as Meta;
+    expect(meta.systemPrompt).toBeUndefined();
+    expect(meta.claudeCode?.options?.plugins).toBeUndefined();
+    // Every Maude bridge session is auto-approving → settingSources is ALWAYS narrowed.
+    expect(meta.claudeCode?.options?.settingSources).toEqual(['user']);
+  });
+
+  test('settingSources is narrowed to user-only on EVERY session (DDR-144 F2)', () => {
+    for (const p of [
+      newSessionParams('/repo'),
+      newSessionParams('/repo', 'BRIEF'),
+      newSessionParams('/repo', 'BRIEF', PLUGINS),
+      newSessionParams('/repo', undefined, PLUGINS),
+    ]) {
+      expect((p._meta as Meta).claudeCode?.options?.settingSources).toEqual(['user']);
+    }
   });
 });
 

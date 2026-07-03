@@ -65,7 +65,7 @@
         "expectExit": 0
       },
       "install": {
-        "preferred": "npm i -g @anthropic-ai/agent-browser"
+        "preferred": "npm i -g agent-browser"
       },
       "autoInstall": true,
       "fallbackBehavior": "Screenshot helpers fall back to `npx playwright` (slower, less reliable). /design:smoke and several critics need agent-browser for full coverage. On the Maude DESKTOP app it is BUNDLED (externalBin, DDR-144) and its Chromium engine is provisioned as chrome-headless-shell by `maude design ensure-browser` — screenshots work zero-install there; this soft/manual note applies to the web `maude design serve` + CLI paths.",
@@ -80,7 +80,7 @@
         "agents/graphic-design-critic.md",
         "agents/a11y-critic.md"
       ],
-      "docsUrl": "https://github.com/anthropics/agent-browser"
+      "docsUrl": "https://github.com/vercel-labs/agent-browser"
     },
     {
       "id": "playwright",

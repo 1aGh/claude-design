@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { resolveBrowser } from '../bin/_ensure-browser.mjs';
+import { CFT_VERSION_RE, isTrustedDownloadUrl, resolveBrowser } from '../bin/_ensure-browser.mjs';
 
 function withEnv<T>(patch: Record<string, string | undefined>, fn: () => T): T {
   const saved: Record<string, string | undefined> = {};
@@ -63,5 +63,30 @@ describe('resolveBrowser — resolution priority', () => {
   test('download:false never fetches (source is never "downloaded")', async () => {
     const r = await resolveBrowser({ download: false });
     expect(r.source).not.toBe('downloaded');
+  });
+});
+
+describe('download hardening (DDR-144 security fixes)', () => {
+  test('isTrustedDownloadUrl accepts only https on the allowlisted CDN hosts (F2)', () => {
+    expect(
+      isTrustedDownloadUrl('https://storage.googleapis.com/chrome-for-testing-public/x.zip')
+    ).toBe(true);
+    expect(isTrustedDownloadUrl('https://googlechromelabs.github.io/x.json')).toBe(true);
+    // plaintext scheme (MITM-able) rejected
+    expect(isTrustedDownloadUrl('http://storage.googleapis.com/x.zip')).toBe(false);
+    // foreign host (manifest tampering / redirect) rejected
+    expect(isTrustedDownloadUrl('https://evil.example.com/x.zip')).toBe(false);
+    // garbage rejected, no throw
+    expect(isTrustedDownloadUrl('not a url')).toBe(false);
+    expect(isTrustedDownloadUrl('')).toBe(false);
+  });
+
+  test('CFT_VERSION_RE accepts real versions, rejects shell-injection payloads (F3)', () => {
+    expect(CFT_VERSION_RE.test('150.0.7871.46')).toBe(true);
+    expect(CFT_VERSION_RE.test('120')).toBe(true);
+    // the PowerShell -Command break-out attempt
+    expect(CFT_VERSION_RE.test("1.0'; Remove-Item C:\\ -Recurse #")).toBe(false);
+    expect(CFT_VERSION_RE.test('$(rm -rf /)')).toBe(false);
+    expect(CFT_VERSION_RE.test('../../etc')).toBe(false);
   });
 });
