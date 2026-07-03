@@ -39,7 +39,7 @@ async function ensureWelcome(): Promise<void> {
   await (await $(tid('ob-door-local'))).waitForDisplayed({ timeout: 10_000 });
 }
 
-describe('native-onboarding (native-desktop)', function () {
+describe('native-onboarding (native-desktop)', () => {
   before(async function () {
     if (!ONBOARDING) this.skip(); // wrong config (no first-run / stubs) — not applicable
     startReport('native-onboarding (native-desktop) — first-run wizard → studio, zero terminal');

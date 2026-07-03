@@ -151,9 +151,9 @@ describe('canvas-edit / applyMove — guardrails', () => {
   );
 }`;
     const ids = cdIds(src);
-    expect(() => applyMove(CANVAS, src, ids.a as string, ids.img as string, 'inside-start')).toThrow(
-      /self-closing/
-    );
+    expect(() =>
+      applyMove(CANVAS, src, ids.a as string, ids.img as string, 'inside-start')
+    ).toThrow(/self-closing/);
   });
 
   test('refuses an unknown moved id', () => {
