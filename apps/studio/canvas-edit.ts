@@ -402,6 +402,30 @@ export function applyTextEdit(
     });
   }
   const only = meaningful[0];
+  // A single `{'string literal'}` expression child — `<h1>{'Title'}</h1>` — is
+  // editable (DDR-150 P1): rewrite the literal in place. Written back via
+  // JSON.stringify so the result is an inert, correctly-escaped quoted string —
+  // the value never leaves the `{...}`, so (unlike JSXText) there is no markup /
+  // entity injection surface to guard. Any OTHER expression (identifier,
+  // template, call, member — `{title}`, `` {`${n} items`} ``) is genuinely
+  // dynamic: refuse and route to /design:edit rather than delete the binding.
+  if (meaningful.length === 1 && only?.type === 'JSXExpressionContainer') {
+    const expr = (only as AnyNode).expression;
+    if (
+      expr &&
+      (expr.type === 'Literal' || expr.type === 'StringLiteral') &&
+      typeof expr.value === 'string'
+    ) {
+      const s = new MagicString(source);
+      s.overwrite(expr.start as number, expr.end as number, JSON.stringify(text));
+      const out = s.toString();
+      return { source: out, delta: out.length - source.length };
+    }
+    throw new CanvasEditError(`element "${id}" has dynamic content — edit it via /design:edit`, {
+      canvas: canvasAbsPath,
+      id,
+    });
+  }
   if (meaningful.length > 1 || only?.type !== 'JSXText') {
     throw new CanvasEditError(
       `element "${id}" has mixed or expression content — edit it via /design:edit`,

@@ -145,7 +145,8 @@ describe('canvas-edit / applyEdit', () => {
 
   test('retime: edits a literal in place + supports from', async () => {
     const { applyRetimeSequence } = await import('../canvas-edit.ts');
-    const src = 'function C(){ return <Sequence from={10} durationInFrames={40}><Foo/></Sequence>; }';
+    const src =
+      'function C(){ return <Sequence from={10} durationInFrames={40}><Foo/></Sequence>; }';
     const r = applyRetimeSequence(CANVAS, src, 0, { from: 20, durationInFrames: 55 });
     expect(r.source).toContain('from={20}');
     expect(r.source).toContain('durationInFrames={55}');
@@ -154,14 +155,17 @@ describe('canvas-edit / applyEdit', () => {
   test('retime: an out-of-range sequence index throws', async () => {
     const { applyRetimeSequence, CanvasEditError } = await import('../canvas-edit.ts');
     const src = 'function C(){ return <Sequence durationInFrames={40}><Foo/></Sequence>; }';
-    expect(() => applyRetimeSequence(CANVAS, src, 5, { durationInFrames: 10 })).toThrow(CanvasEditError);
+    expect(() => applyRetimeSequence(CANVAS, src, 5, { durationInFrames: 10 })).toThrow(
+      CanvasEditError
+    );
   });
 
   test('inserts into a style object with a TRAILING comma without a double comma (DDR-148 #4)', () => {
     // A frame-driven inline style commonly ends the last property with a
     // trailing comma. Appending must NOT produce `opacity: o, , color: …`
     // (a syntax error that made the canvas render the OLD source on replay).
-    const src = 'function Demo() {\n  const o = 1;\n  return <div style={{ fontSize: 12, opacity: o, }}>x</div>;\n}';
+    const src =
+      'function Demo() {\n  const o = 1;\n  return <div style={{ fontSize: 12, opacity: o, }}>x</div>;\n}';
     const ids = idsOf(src);
     const id = ids.div as string;
     const out = applyEdit(CANVAS, src, id, 'style.color', "'#d48917'");
@@ -339,6 +343,30 @@ describe('canvas-edit / applyTextEdit', () => {
     const src = `function Demo() { return <button>Save</button>; }`;
     expect(() => applyTextEdit(CANVAS, src, 'deadbeef', 'x')).toThrow(CanvasEditError);
   });
+
+  // DDR-150 P1 — widen the editable set to a single `{'string literal'}` child.
+  test('edits a single string-literal expression child', () => {
+    const src = `function Demo() { return <h1>{'Old Title'}</h1>; }`;
+    const id = idsOf(src).h1 as string;
+    const out = applyTextEdit(CANVAS, src, id, 'New Title');
+    expect(out.source).toBe(`function Demo() { return <h1>{"New Title"}</h1>; }`);
+  });
+
+  test('string-literal rewrite is inert — quotes / braces / markup cannot escape the JS string', () => {
+    const src = `function Demo() { return <h1>{"x"}</h1>; }`;
+    const id = idsOf(src).h1 as string;
+    const out = applyTextEdit(CANVAS, src, id, 'say "hi" {expr} <b>');
+    // JSON.stringify escapes the double-quotes; {expr} / <b> stay INSIDE the JS
+    // string literal, so they never become a JSX expression or markup.
+    expect(out.source).toContain('say \\"hi\\"');
+    expect(() => transpileCanvasSource(CANVAS, out.source)).not.toThrow();
+  });
+
+  test('still refuses a dynamic {identifier} child (routes to /design:edit)', () => {
+    const src = 'function Demo() { const title = "x"; return <h1>{title}</h1>; }';
+    const id = idsOf(src).h1 as string;
+    expect(() => applyTextEdit(CANVAS, src, id, 'x')).toThrow(CanvasEditError);
+  });
 });
 
 // Phase 12 (DDR-103) — the `style.<prop>` write path the CSS knobs ride
@@ -364,5 +392,18 @@ describe('canvas-edit / applyEdit style.<prop> (CSS-knob path)', () => {
     const id = idsOf(src).div as string;
     const out = applyEdit(CANVAS, src, id, 'style.padding', '"var(--space-3)"');
     expect(out.source).toContain('style={{ padding: "var(--space-3)" }}');
+  });
+
+  // DDR-150 P1 — the exact video-comp shape: a var-valued prop ending in a
+  // trailing comma. Unconditionally prepending ", " produced `opacity: o, ,
+  // color` — a syntax error that left the Player rendering stale source (the
+  // "my CSS edit resets on replay" bug). Guarded by editStyleProp's between-scan.
+  test('appends onto a frame-driven inline style ending in a trailing comma (no double comma)', () => {
+    const src = `function Demo() { const o = 1; return <div style={{ opacity: o, }}>x</div>; }`;
+    const id = idsOf(src).div as string;
+    const out = applyEdit(CANVAS, src, id, 'style.color', '"var(--fg-0)"');
+    expect(out.source).not.toContain(', ,');
+    expect(out.source).toContain('color: "var(--fg-0)"');
+    expect(() => transpileCanvasSource(CANVAS, out.source)).not.toThrow();
   });
 });
