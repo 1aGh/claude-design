@@ -96,6 +96,7 @@ import {
   MEDIAREF_DEFAULT_H,
   MEDIAREF_DEFAULT_W,
   MEDIAREF_VIDEO_GLYPH,
+  MEDIAREF_VIDEO_H,
   listPrefixedBody,
   listPrefixedLine,
   normalizeBox,
@@ -383,6 +384,19 @@ function canvasDesignRel(): string {
  */
 function resolveAssetHref(href: string): string {
   return /^assets\//.test(href) ? `/${canvasDesignRel()}/${href}` : href;
+}
+
+/**
+ * DDR-150 dogfood #8 — true when a pointer/click event targets the inline
+ * media player inside a mediaref chip. Every document-capture annotation
+ * handler early-returns on it, so the player's native controls (and its
+ * click-to-toggle) work instead of starting a stroke select/drag/draw.
+ * (NOT a stopPropagation guard — that would also kill React's delegated
+ * listeners, which attach later on the capture path.)
+ */
+function isMediaPlayerTarget(e: Event): boolean {
+  const t = e.target as Element | null;
+  return !!(t && typeof t.closest === 'function' && t.closest('[data-mediaref-player]'));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1180,7 +1194,8 @@ export function AnnotationsLayer() {
   const createMediaReference = useCallback(
     (file: File, mediaKind: 'video' | 'audio', world: [number, number]) => {
       const w = MEDIAREF_DEFAULT_W;
-      const h = MEDIAREF_DEFAULT_H;
+      // Video chips are taller — they host the inline 16:9 player (dogfood #8).
+      const h = mediaKind === 'video' ? MEDIAREF_VIDEO_H : MEDIAREF_DEFAULT_H;
       void uploadAsset(file).then((res) => {
         if (!('path' in res)) {
           showCanvasToast(`Couldn't add ${mediaKind}: ${res.error}`);
@@ -1218,7 +1233,17 @@ export function AnnotationsLayer() {
   // drop an image / URL or Cmd+V a clipboard image / link straight onto the
   // canvas. The hook owns the dragover/drop/paste wiring; the create callbacks
   // hold the commit/undo sink + screenToWorld.
-  useCanvasMediaDrop({ enabled: visible, screenToWorld, callbacks: mediaCallbacks });
+  //
+  // DDR-150 dogfood #8 — intake was gated on `visible` (annotations toggled on),
+  // so with annotations hidden (⇧P) a Finder drop silently did NOTHING. Intake
+  // now stays live whenever we're not presenting; the committed stroke simply
+  // shows once annotations are visible again.
+  useCanvasMediaDrop({
+    enabled: !(chrome?.present ?? false),
+    screenToWorld,
+    callbacks: mediaCallbacks,
+  });
+
 
   const eraseAt = useCallback(
     (wx: number, wy: number) => {
@@ -1688,6 +1713,7 @@ export function AnnotationsLayer() {
     };
 
     const onDown = (e: PointerEvent) => {
+      if (isMediaPlayerTarget(e)) return; // mediaref inline player owns this event
       if (e.button !== 0) return;
       if (e.metaKey || e.ctrlKey) return; // escape hatch into element-selection
       const target = e.target as Element | null;
@@ -1981,6 +2007,7 @@ export function AnnotationsLayer() {
     if (typeof document === 'undefined') return;
     if (tool !== 'move') return;
     const onDbl = (e: MouseEvent) => {
+      if (isMediaPlayerTarget(e)) return; // mediaref inline player owns this event
       const target = e.target as Element | null;
       const node = target?.closest?.('[data-id][data-tool]');
       if (!node) return;
@@ -2504,6 +2531,7 @@ export function AnnotationsLayer() {
     if (typeof document === 'undefined') return;
     if (tool !== 'move') return;
     const onDown = (e: PointerEvent) => {
+      if (isMediaPlayerTarget(e)) return; // mediaref inline player owns this event
       if (e.button !== 0) return;
       const dot = (e.target as Element | null)?.closest?.('.dc-annot-conn-dot');
       if (!dot) return;
@@ -2619,6 +2647,7 @@ export function AnnotationsLayer() {
     // propagation WITHOUT preventDefault, so the native contextmenu event
     // (which opens OUR menu above) still follows.
     const onDown = (e: PointerEvent) => {
+      if (isMediaPlayerTarget(e)) return; // mediaref inline player owns this event
       if (e.button !== 2) return;
       if (!strokeAt(e.target as Element | null)) return;
       e.stopImmediatePropagation();
@@ -2768,6 +2797,10 @@ export function AnnotationsLayer() {
           onCancelEdit={cancelEditing}
         />
       ) : null}
+      {/* DDR-150 dogfood #8 — inline players for media-reference chips (HTML
+          overlay in the world div; see MediaRefPlayers for why not
+          foreignObject). */}
+      <MediaRefPlayers worldRef={worldRef} strokes={renderStrokes} visible={visible} />
       <AnnotationContextToolbar
         editingId={
           editingTarget?.kind === 'anchored'
@@ -3154,6 +3187,90 @@ function AnnotationsSvg({
   );
 }
 
+/**
+ * DDR-150 dogfood #8 — the mediaref chips' inline players, rendered as PLAIN
+ * HTML absolutely positioned in the world div (which carries the pan/zoom CSS
+ * transform), NOT as SVG foreignObject: Chromium hit-tests foreignObject
+ * content under a transformed ancestor in the un-transformed coordinate space,
+ * so real clicks miss the player at most zoom levels. HTML children of the
+ * transformed div hit-test correctly. The [data-mediaref-player] attr keeps
+ * every document-capture annotation handler out (isMediaPlayerTarget guard).
+ */
+function MediaRefPlayers({
+  worldRef,
+  strokes,
+  visible,
+}: {
+  worldRef: React.RefObject<HTMLElement | null>;
+  strokes: readonly Stroke[];
+  visible: boolean;
+}) {
+  const target = worldRef.current;
+  if (!target || !visible) return null;
+  const HEADER = 26;
+  const refs = strokes.filter(
+    (s): s is MediaRefStroke => s.tool === 'mediaref' && !!s.src && Math.abs(s.h) > HEADER + 12
+  );
+  if (refs.length === 0) return null;
+  return createPortal(
+    <>
+      {refs.map((s) => {
+        const x = Math.min(s.x, s.x + s.w);
+        const y = Math.min(s.y, s.y + s.h);
+        const w = Math.abs(s.w);
+        const h = Math.abs(s.h);
+        const mediaUrl = resolveAssetHref(s.src);
+        const isAudio = s.mediaKind === 'audio';
+        return (
+          <div
+            key={`mrp-${s.id}`}
+            data-mediaref-player="1"
+            style={{
+              position: 'absolute',
+              left: x + 4,
+              top: y + HEADER,
+              width: Math.max(8, w - 8),
+              height: Math.max(8, h - HEADER - 4),
+              borderRadius: 6,
+              overflow: 'hidden',
+              zIndex: 4,
+            }}
+          >
+            {isAudio ? (
+              <audio
+                controls
+                preload="metadata"
+                src={mediaUrl}
+                style={{ width: '100%', height: '100%' }}
+              />
+            ) : (
+              <video
+                // Chromium's native controls already toggle play/pause on a
+                // content-area click (a custom click listener would double-fire
+                // against it and cancel itself out — verified live). The router
+                // overlay-skip + the annotation-handler guards are what make
+                // these native interactions reachable.
+                controls
+                preload="metadata"
+                playsInline
+                src={mediaUrl}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  background: '#000',
+                  display: 'block',
+                }}
+              />
+            )}
+          </div>
+        );
+      })}
+    </>,
+    target
+  );
+}
+
 function TextEditor({
   anchorId,
   host,
@@ -3209,6 +3326,7 @@ function TextEditor({
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const onDown = (e: PointerEvent) => {
+      if (isMediaPlayerTarget(e)) return; // mediaref inline player owns this event
       const el = ref.current;
       if (!el) return;
       if (el.contains(e.target as Node)) return;
@@ -3471,6 +3589,7 @@ function StandaloneTextEditor({
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const onDown = (e: PointerEvent) => {
+      if (isMediaPlayerTarget(e)) return; // mediaref inline player owns this event
       const el = ref.current;
       if (!el) return;
       if (el.contains(e.target as Node)) return;
@@ -3653,6 +3772,7 @@ function AnnotationContextMenu({
     if (nx !== at.x || ny !== at.y) setAt({ x: nx, y: ny });
     el.querySelector<HTMLButtonElement>('button.dc-menu-item:not([disabled])')?.focus();
     const onDown = (e: PointerEvent) => {
+      if (isMediaPlayerTarget(e)) return; // mediaref inline player owns this event
       if (!el.contains(e.target as Node)) onClose();
     };
     const onKey = (e: KeyboardEvent) => {
@@ -4221,14 +4341,21 @@ function StrokeNodeBase({
     );
   }
   if (stroke.tool === 'mediaref') {
-    // DDR-150 P4 — reference chip (mirrors the link card). NEVER a <Video>/<Audio>
-    // element — it's a still pointer to an assets/ clip the agent enumerates.
+    // DDR-150 P4 + dogfood #8 — reference chip with a REAL inline player.
+    // LIVE-RENDER ONLY: the <foreignObject> + <video>/<audio> below never
+    // persist — the model serializer still writes the sanitizer-safe data-*
+    // card (foreignObject is stripped by sanitizeAnnotationSvg by design).
+    // The 26px header strip (badge + filename) is the select/drag handle; the
+    // player area is fenced off from the annotation handlers by the
+    // [data-mediaref-player] window-capture guard.
     const x = Math.min(stroke.x, stroke.x + stroke.w);
     const y = Math.min(stroke.y, stroke.y + stroke.h);
     const w = Math.abs(stroke.w);
     const h = Math.abs(stroke.h);
-    const lay = linkCardLayout(x, y, w, h);
-    const shownTitle = clampLinkTitle(stroke.title, lay.textMaxChars);
+    const HEADER = 26;
+    const isAudio = stroke.mediaKind === 'audio';
+    const mediaUrl = stroke.src ? resolveAssetHref(stroke.src) : '';
+    const shownTitle = clampLinkTitle(stroke.title, Math.max(8, Math.floor((w - 40) / 7)));
     const textFont = {
       fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
     } as const;
@@ -4255,31 +4382,21 @@ function StrokeNodeBase({
           filter="url(#dc-sticky-shadow)"
         />
         <svg
-          x={lay.glyph.x}
-          y={lay.glyph.y}
-          width={lay.glyph.size}
-          height={lay.glyph.size}
+          x={x + 8}
+          y={y + 5}
+          width={16}
+          height={16}
           viewBox="0 0 24 24"
           fill={LINK_GLYPH_STROKE}
           stroke="none"
           aria-hidden="true"
         >
-          <path d={stroke.mediaKind === 'audio' ? MEDIAREF_AUDIO_GLYPH : MEDIAREF_VIDEO_GLYPH} />
+          <path d={isAudio ? MEDIAREF_AUDIO_GLYPH : MEDIAREF_VIDEO_GLYPH} />
         </svg>
         <text
-          x={lay.textX}
-          y={lay.domain.y}
-          fontSize={lay.domain.fontSize}
-          fill={LINK_DOMAIN_FILL}
-          dominantBaseline="hanging"
-          style={textFont}
-        >
-          {`${stroke.mediaKind} · reference`}
-        </text>
-        <text
-          x={lay.textX}
-          y={lay.title.y}
-          fontSize={lay.title.fontSize}
+          x={x + 30}
+          y={y + 9}
+          fontSize={11}
           fill={LINK_TITLE_FILL}
           fontWeight={600}
           dominantBaseline="hanging"
@@ -4287,6 +4404,24 @@ function StrokeNodeBase({
         >
           {shownTitle}
         </text>
+        {/* The inline player itself is an HTML overlay portaled beside this SVG
+            (MediaRefPlayers below) — NOT a foreignObject: Chromium hit-tests
+            foreignObject content under a CSS-transformed ancestor in the WRONG
+            coordinate space (the un-panned/un-zoomed one), so real clicks miss
+            the player at most zoom levels while elementFromPoint lies that
+            they'd land. Plain HTML in the transformed world hit-tests right. */}
+        {!mediaUrl ? (
+          <text
+            x={x + 30}
+            y={y + HEADER + 10}
+            fontSize={10}
+            fill={LINK_DOMAIN_FILL}
+            dominantBaseline="hanging"
+            style={textFont}
+          >
+            (missing media reference)
+          </text>
+        ) : null}
       </g>
     );
   }

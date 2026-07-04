@@ -554,8 +554,10 @@ export const IMAGE_MAX_DROP_SIDE = 480;
 export const LINK_DEFAULT_W = 260;
 export const LINK_DEFAULT_H = 76;
 // DDR-150 P4 — media-reference chip (dropped video/audio → assets/ pointer).
-export const MEDIAREF_DEFAULT_W = 240;
-export const MEDIAREF_DEFAULT_H = 72;
+export const MEDIAREF_DEFAULT_W = 280;
+export const MEDIAREF_DEFAULT_H = 76;
+/** Video chips are taller: 26px header + a 16:9 inline player area (dogfood #8). */
+export const MEDIAREF_VIDEO_H = 190;
 export const LINK_CARD_FILL = '#ffffff';
 export const LINK_CARD_STROKE = '#d4d4d8';
 export const LINK_DOMAIN_FILL = '#71717a';

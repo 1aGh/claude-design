@@ -6419,6 +6419,27 @@ function App() {
     [activePath]
   );
 
+  // DDR-150 dogfood #7 — a file dragged from Finder and dropped on a shell area
+  // with no drop target used to make the browser NAVIGATE AWAY to the file
+  // (file:// replaces the app). Document-level guard: always cancel the default
+  // for file drags; the TimelinePanel's own onDrop (bubbling before this) still
+  // receives the drop first — this only blocks the browser fallback.
+  useEffect(() => {
+    const isFileDrag = (e) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    const onDocDragOver = (e) => {
+      if (isFileDrag(e)) e.preventDefault();
+    };
+    const onDocDrop = (e) => {
+      if (isFileDrag(e)) e.preventDefault();
+    };
+    document.addEventListener('dragover', onDocDragOver);
+    document.addEventListener('drop', onDocDrop);
+    return () => {
+      document.removeEventListener('dragover', onDocDragOver);
+      document.removeEventListener('drop', onDocDrop);
+    };
+  }, []);
+
   // DDR-150 P3 Task 9 — timeline keyboard shortcuts. Read live state through a
   // ref so the listener attaches once. Gated on: timeline open + a comp active +
   // focus NOT in a text field. Space doesn't steal the canvas PAN chord because

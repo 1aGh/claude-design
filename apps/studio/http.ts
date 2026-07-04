@@ -1844,6 +1844,42 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         return serveCanvasShell(process.env.MAUDE_CSP_POC === '1', capture);
       }
 
+      // DDR-150 dogfood — canvas-relative assets alias. A comp's
+      // `<Video src="assets/x.mp4">` resolves against the iframe root →
+      // `/assets/x.mp4`; serve `designRoot/assets/x.mp4` (flat sha8-named
+      // uploads, media extensions only — mirrors isCanvasSafeRoute's gate on
+      // the canvas origin). Without this, every src the timeline insert /
+      // replace / assemble writers emit 404'd in the Player.
+      if (pathname.startsWith('/assets/')) {
+        let name = '';
+        try {
+          name = decodeURIComponent(pathname.slice('/assets/'.length));
+        } catch {
+          return new Response('Bad request', { status: 400 });
+        }
+        if (
+          name &&
+          !name.includes('/') &&
+          !name.includes('\\') &&
+          !name.includes('..') &&
+          !name.startsWith('_') &&
+          CANVAS_ASSET_EXTS.has(ext(name))
+        ) {
+          const abs = join(ctx.paths.designRoot, 'assets', name);
+          const f = Bun.file(abs);
+          if (await f.exists()) {
+            return new Response(f, {
+              headers: {
+                'Content-Type': MIME[ext(name)] || 'application/octet-stream',
+                'Cache-Control': 'no-store',
+                'X-Content-Type-Options': 'nosniff',
+              },
+            });
+          }
+          return new Response('Not found', { status: 404 });
+        }
+      }
+
       // Fall-through: serve user repo files (designRoot + everything under repoRoot).
       const fp = safePathUnderRoot(req.url, ctx.paths.repoRoot);
       if (!fp) return new Response('Forbidden', { status: 403 });
@@ -1982,6 +2018,17 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       const rest = safe.slice(designPrefix.length);
       // Reject runtime/state dirs+files (_comments, _sync.json, _history, …).
       if (rest.split('/').some((seg) => seg.startsWith('_'))) return false;
+      return CANVAS_ASSET_EXTS.has(ext(safe));
+    }
+    // DDR-150 dogfood — `/assets/<file>`: the canvas-RELATIVE form every writer
+    // emits (`<Video src="assets/x.mp4">` from timeline insert / replace /
+    // assemble, and what the video-comp skill teaches). It aliases to
+    // `designRoot/assets/<file>` — flat single segment (uploads are sha8-named),
+    // media/image extensions only, no `_` names. Same read-only trust class as
+    // the designRel static lane above (DDR-088 widened media grant).
+    if (safe.startsWith('/assets/')) {
+      const rest = safe.slice('/assets/'.length);
+      if (!rest || rest.includes('/') || rest.startsWith('_')) return false;
       return CANVAS_ASSET_EXTS.has(ext(safe));
     }
     return false;

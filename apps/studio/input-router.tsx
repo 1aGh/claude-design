@@ -345,7 +345,13 @@ export function isEditableTarget(t: EventTarget | null): boolean {
  */
 export function isOverlayTarget(t: EventTarget | null): boolean {
   if (!t || !(t as Element).closest) return false;
-  return !!(t as Element).closest('.cm-composer, .cm-thread, .cm-mention-popup, .cm-pin');
+  // [data-mediaref-player] — the inline <video>/<audio controls> on a media
+  // reference chip (DDR-150 dogfood #8). The router must never claim (and
+  // preventDefault) pointerdowns over the player, or its native controls
+  // (play button, scrubber drag, volume) die under the move tool.
+  return !!(t as Element).closest(
+    '.cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, [data-mediaref-player]'
+  );
 }
 
 export function useInputRouter(opts: UseInputRouterOptions): void {
