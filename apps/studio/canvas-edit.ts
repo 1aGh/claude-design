@@ -948,14 +948,24 @@ function editStyleProp(
 
   // Key missing — append before the closing `}`. ObjectExpression's last char
   // is the `}`; magic-string appendLeft at end keeps the brace in place.
+  //
+  // TRAILING-COMMA guard: a frame-driven inline style often ends the last
+  // property with a trailing comma (`opacity: o,\n}`). Unconditionally
+  // prepending `, ` there produced `opacity: o, , color: X` — a double comma =
+  // syntax error, so the canvas failed to rebuild and the Player kept rendering
+  // the OLD source (the "my CSS edit resets when I replay the video" bug).
+  // Detect an existing trailing comma between the last property and the `}` and
+  // omit our separating comma when one is already there.
   const props = obj.properties as AnyNode[];
-  const tail = props.length > 0 ? (props[props.length - 1].end as number) : obj.start + 1;
-  const sep = props.length > 0 ? ', ' : ' ';
+  let sep = ' ';
+  if (props.length > 0) {
+    const lastEnd = props[props.length - 1].end as number;
+    const between = s.original.slice(lastEnd, (obj.end as number) - 1);
+    sep = /,/.test(between) ? ' ' : ', ';
+  }
   // The object's textual end is `obj.end - 1` for `}` after the chars.
   // appendLeft at obj.end -1 puts new text before the `}`.
-  s.appendLeft(obj.end - 1, `${sep}${jsKey(prop)}: ${value} `);
-  // Suppress unused-var lint without bypassing TS:
-  void tail;
+  s.appendLeft((obj.end as number) - 1, `${sep}${jsKey(prop)}: ${value} `);
 }
 
 /**

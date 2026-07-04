@@ -67,6 +67,9 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/edit-css',
         '/_api/edit-text',
         '/_api/edit-attr',
+        // DDR-148 — raw canvas source for the Timeline parser is MAIN-ORIGIN
+        // ONLY (the untrusted canvas iframe must never read project source).
+        '/_api/canvas-source',
         // Phase 12.1 (DDR-138) — node-move reorder is a source-write, MAIN-ORIGIN
         // ONLY. The canvas iframe requests a reorder over the dgn:* bus; the shell
         // performs the write. A GET here 403s at the gate (route unreachable on

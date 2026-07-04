@@ -791,6 +791,28 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       return new Response('Method not allowed', { status: 405 });
     },
 
+    '/_api/canvas-source': async (req: Request) => {
+      // DDR-148 — read-only raw .tsx source for the Timeline panel's sequence/
+      // keyframe parser. GET ?file=<canvas rel or slug> → { source }.
+      // MAIN-ORIGIN ONLY: intentionally absent from CANVAS_SAFE_API +
+      // startCanvasServer's routes (dual-allowlist, DDR-054) — the untrusted
+      // canvas iframe must never read arbitrary project source. Containment via
+      // api.loadCanvasSource → resolveCanvasAbs (stays under designRoot).
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      const file = new URL(req.url).searchParams.get('file');
+      const r = await api.loadCanvasSource(file);
+      if (!r.ok) {
+        return Response.json(
+          { ok: false, error: r.error },
+          { status: r.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, source: r.source },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/git-committers': async (req: Request) => {
       // Phase 6 — feed for the @mention autocomplete in composer + reply box.
       // GET → top-20 committers on HEAD (`git shortlog -sne | head -20`)

@@ -20,6 +20,7 @@ import IdentityBar from './panels/IdentityBar.jsx';
 import OnboardingWizard from './panels/OnboardingWizard.jsx';
 import { ReadinessDialog } from './panels/ReadinessList.jsx';
 import TimelinePanel from './panels/TimelinePanel.jsx';
+import { parseCompTimeline } from './panels/timeline-parse.js';
 import RepoBranchSwitcher from './panels/RepoBranchSwitcher.jsx';
 import { appIsFirstRun, isNativeApp, onUpdateReady, restartToUpdate } from './github.js';
 import { COLLAB_TOUR } from './tour/collab-tour.js';
@@ -6109,6 +6110,9 @@ function App() {
   const [timelineFrame, setTimelineFrame] = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
   const [timelineLoop, setTimelineLoop] = useState(true);
+  // DDR-148 — parsed sequence/keyframe rows for the Timeline (from raw .tsx).
+  const [timelineSequences, setTimelineSequences] = useState([]);
+  const [timelineTotal, setTimelineTotal] = useState(0);
   // Phase 31 (DDR-123) — the native ACP chat sidepanel (right dock, native-only).
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantBusy, setAssistantBusy] = useState(false);
@@ -6344,6 +6348,31 @@ function App() {
     const t = setTimeout(() => postToActiveCanvas({ dgn: 'timeline-request-comps' }), 60);
     return () => clearTimeout(t);
   }, [activePath, postToActiveCanvas]);
+
+  // DDR-148 — fetch + parse the active comp's raw source into sequence/keyframe
+  // rows when the Timeline is open. Re-runs when a comp is (re)announced, so it
+  // refreshes after a canvas edit (the edit triggers a reload → re-announce).
+  useEffect(() => {
+    if (!timelineOpen || activeComps.length === 0 || !activePath || activePath === SYSTEM_TAB) {
+      setTimelineSequences([]);
+      setTimelineTotal(0);
+      return undefined;
+    }
+    let alive = true;
+    const total = activeComps[0]?.durationInFrames || 0;
+    fetch(`/_api/canvas-source?file=${encodeURIComponent(activePath)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!alive || !j?.ok || typeof j.source !== 'string') return;
+        const parsed = parseCompTimeline(j.source, total);
+        setTimelineSequences(parsed.sequences);
+        setTimelineTotal(parsed.total);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [timelineOpen, activeComps, activePath]);
 
   const toggleAnnotations = useCallback(() => {
     setAnnotationsVisible((v) => {
@@ -8291,30 +8320,6 @@ function App() {
               width={rpSize.w}
               resizing={dragSide === 'rp'}
             />
-          ) : timelineOpen ? (
-            <TimelinePanel
-              comps={activeComps}
-              frame={timelineFrame}
-              playing={timelinePlaying}
-              loop={timelineLoop}
-              onSeek={(f) => {
-                setTimelineFrame(f);
-                setTimelinePlaying(false);
-                postToActiveCanvas({ dgn: 'timeline-seek', frame: f });
-              }}
-              onPlay={() => {
-                setTimelinePlaying(true);
-                postToActiveCanvas({ dgn: 'timeline-play' });
-              }}
-              onPause={() => {
-                setTimelinePlaying(false);
-                postToActiveCanvas({ dgn: 'timeline-pause' });
-              }}
-              onToggleLoop={() => setTimelineLoop((v) => !v)}
-              width={rpSize.w}
-              resizing={dragSide === 'rp'}
-              onClose={() => setTimelineOpen(false)}
-            />
           ) : null}
           {/* Phase 31 (DDR-123) — the ACP chat panel stays MOUNTED (display:none
               when inactive) so the chat keeps streaming + its history survives a
@@ -8337,6 +8342,34 @@ function App() {
             />
           )}
         </div>
+        {/* DDR-148 — Timeline is a BOTTOM dock (full-width strip below the stage,
+            above the status bar) — video timelines are horizontal. */}
+        {timelineOpen && (
+          <TimelinePanel
+            comps={activeComps}
+            sequences={timelineSequences}
+            total={timelineTotal}
+            frame={timelineFrame}
+            playing={timelinePlaying}
+            loop={timelineLoop}
+            onSeek={(f) => {
+              setTimelineFrame(f);
+              setTimelinePlaying(false);
+              postToActiveCanvas({ dgn: 'timeline-seek', frame: f });
+            }}
+            onPlay={() => {
+              setTimelinePlaying(true);
+              postToActiveCanvas({ dgn: 'timeline-play' });
+            }}
+            onPause={() => {
+              setTimelinePlaying(false);
+              postToActiveCanvas({ dgn: 'timeline-pause' });
+            }}
+            onToggleLoop={() => setTimelineLoop((v) => !v)}
+            height={216}
+            onClose={() => setTimelineOpen(false)}
+          />
+        )}
         <StatusBar
           activePath={activePath}
           selected={selected}

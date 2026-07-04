@@ -212,9 +212,15 @@ export function VideoComp({
   const [autoId] = useState(() => id ?? `videocomp-${++mountCounter}`);
   const compId = id ?? autoId;
   const capturing = hideChrome();
-  const reduce = prefersReducedMotion();
   const showControls = controls ?? !capturing;
-  const play = (autoPlay ?? !reduce) && !capturing;
+  // Default to PAUSED in preview so the comp is editable on open (a moving,
+  // frame-driven element can't be Cmd+Click-selected). The author can opt into
+  // autoplay; capture never autoplays (the shim drives frames). Opens on a
+  // poster frame ~35% in so a paused comp shows content, not an empty frame 0.
+  const play = (autoPlay ?? false) && !capturing;
+  const posterFrame = capturing
+    ? 0
+    : Math.min(Math.max(0, durationInFrames - 1), Math.round(durationInFrames * 0.35));
 
   // Register with the seek bridge for the lifetime of this mount.
   useEffect(() => {
@@ -303,7 +309,13 @@ export function VideoComp({
         controls={showControls}
         loop={loop}
         autoPlay={play}
-        clickToPlay={showControls}
+        initialFrame={posterFrame}
+        // Clicking the artboard must NOT toggle playback — it selects elements
+        // for editing (the whole point of a canvas). Play only via the explicit
+        // transport button (Player controls / Timeline panel). Same for the
+        // spacebar, which is the canvas pan chord. (DDR-148 feedback #2.)
+        clickToPlay={false}
+        spaceKeyToPlayOrPause={false}
         doubleClickToFullscreen={false}
         // We ship Remotion in-house and disclose the license (DDR-148); ack in
         // code so the Player never nags/watermarks the preview.

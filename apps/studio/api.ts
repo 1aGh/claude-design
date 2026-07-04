@@ -230,6 +230,10 @@ export interface Api {
   saveCanvasState(file: string, state: Record<string, unknown>): Promise<void>;
   // Canvas meta sidecar (Phase 4 T5 — .design/ui/<slug>.meta.json)
   loadCanvasMeta(file: string): Promise<Record<string, unknown> | null>;
+  /** DDR-148 — raw .tsx source for the Timeline sequence/keyframe parser. */
+  loadCanvasSource(
+    file: unknown
+  ): Promise<{ ok: true; source: string } | { ok: false; status: number; error: string }>;
   patchCanvasMeta(
     file: string,
     patch: Record<string, unknown>
@@ -1568,6 +1572,27 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     return { ok: true, abs };
   }
 
+  /**
+   * DDR-148 — read a canvas's RAW .tsx source (containment via resolveCanvasAbs).
+   * The Timeline panel parses `<Sequence>`/`<TransitionSeries.Sequence>` blocks
+   * + `interpolate` windows from it to draw the sequence/keyframe rows. Read-only,
+   * MAIN-ORIGIN ONLY at the route layer (never the untrusted canvas iframe).
+   */
+  async function loadCanvasSource(
+    file: unknown
+  ): Promise<{ ok: true; source: string } | { ok: false; status: number; error: string }> {
+    const r = resolveCanvasAbs(file);
+    if (!r.ok) return r;
+    const f = Bun.file(r.abs);
+    if (!(await f.exists())) return { ok: false, status: 404, error: 'canvas not found' };
+    const source = await f.text();
+    // A comp is small; never stream a huge blob into the panel.
+    if (source.length > 512 * 1024) {
+      return { ok: false, status: 413, error: 'canvas source too large for the timeline parser' };
+    }
+    return { ok: true, source };
+  }
+
   // 8-hex lowercase, the shape `computeId` (canvas-edit.ts) stamps on data-cd-id.
   const CD_ID_RE = /^[0-9a-f]{8}$/;
 
@@ -2221,6 +2246,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     loadCanvasState,
     saveCanvasState,
     loadCanvasMeta,
+    loadCanvasSource,
     patchCanvasMeta,
     loadAnnotations,
     saveAnnotations,

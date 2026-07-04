@@ -123,6 +123,21 @@ describe('canvas-edit / applyEdit', () => {
     expect(out.source).toContain('<div style={{ padding: 14 }}>x</div>');
   });
 
+  test('inserts into a style object with a TRAILING comma without a double comma (DDR-148 #4)', () => {
+    // A frame-driven inline style commonly ends the last property with a
+    // trailing comma. Appending must NOT produce `opacity: o, , color: …`
+    // (a syntax error that made the canvas render the OLD source on replay).
+    const src = 'function Demo() {\n  const o = 1;\n  return <div style={{ fontSize: 12, opacity: o, }}>x</div>;\n}';
+    const ids = idsOf(src);
+    const id = ids.div as string;
+    const out = applyEdit(CANVAS, src, id, 'style.color', "'#d48917'");
+    expect(out.source).toContain("color: '#d48917'");
+    expect(out.source).not.toMatch(/,\s*,/); // no double comma
+    // And it must still parse.
+    const reparse = applyEdit(CANVAS, out.source, id, 'style.fontSize', '13');
+    expect(reparse.source).toContain('fontSize: 13');
+  });
+
   test('throws CanvasEditError when id is not found', () => {
     const src = 'function Demo() { return <div>x</div>; }';
     expect(() => applyEdit(CANVAS, src, 'deadbeef', 'className', 'x')).toThrow(CanvasEditError);
