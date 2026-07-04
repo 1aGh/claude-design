@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "timeline-clip-editing",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Hand-edit your video comps on the timeline",
+      "summary": "After the Assistant generates a video, fine-tune it yourself. On the timeline you can drag a clip to move it, drag its right edge to trim, drop a video / image / audio file to add a clip, swap a clip's footage (⇄), or remove a clip (×). Keyboard shortcuts help: Space plays/pauses, arrows step frames (Shift = a second), Home/End jump to the ends, and . / , hop between keyframes. Editing is multi-comp-safe — a change always lands on the clip you meant, never one in another composition. And inline text / CSS tweaks you make on the canvas now actually stick.",
+      "surface": "design-ui"
+    },
+    {
       "id": "video-comp-remotion",
       "version": null,
       "date": null,
