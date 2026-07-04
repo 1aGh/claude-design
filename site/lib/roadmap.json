@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-04T06:50:02.001Z",
+  "generated": "2026-07-04T16:19:21.145Z",
   "currentPhase": null,
   "phases": [
     {
@@ -351,6 +351,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to the canvas-origin split (DDR-054 — the in-iframe overlays are untrusted, treat them differently from the shell), the CSS la...",
       "planPath": ".ai/plans/archive/feature-studio-maude-ds-redesign.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-video-animation-layer",
+      "title": "Feature: Video & animation layer — Remotion-authored video comps (in-house bundled) + capture-first GIF/MP4 export",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-video-animation-layer.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1081,13 +1092,13 @@
       "phaseKey": "19"
     },
     {
-      "id": "feature-video-animation-layer",
-      "title": "Feature: Video & animation layer — Remotion-authored video comps (in-house bundled) + capture-first GIF/MP4 export",
+      "id": "feature-video-editing-robustness",
+      "title": "Feature: Robust video & animation editing — direct manipulation on the video-comp timeline + canvas",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-video-animation-layer.md",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan extends DDR-148 (the shipped video-comp foundation) — read it and the shippe...",
+      "planPath": ".ai/plans/feature-video-editing-robustness.md",
       "archived": false,
       "phaseKey": null
     }

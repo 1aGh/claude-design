@@ -93,6 +93,40 @@ Seats BUILDER/SHIPPER/BREAKER (relay tier available, short-circuited on converge
 - **Remotion 5.0 migration** — breaking-change list upstream (min Bun 1.1.3, `TransitionSeries` changes); watch before bumping the pinned version.
 - **hi@remotion.dev confirmation** — the one genuinely open edge (does the AUTHOR fall under Automators for embedding the Player in the tool?). Draft ready at `.ai/plans/notes/remotion-license-email.md`; **release-gated, not merge-gated.**
 
+## Addendum — dogfood + security close-out (2026-07-04)
+
+Extensive dogfooding after the T1–T11 land added the interactive spine + surfaced
+two security blockers (fixed before `/flow:done` closed). Recorded here because
+the review artifacts under `.ai/logs/security-reviews/` are gitignored.
+
+**Shipped in the dogfood loop:** bottom Timeline panel (sequence + keyframe rows,
+music/`<Audio>` layer, scrub, drag-to-retime, drag-to-resize), the Timeline as the
+sole control surface (VideoComp `controls` default OFF; transport + volume + loop
+live-controlled via `timeline-*` postMessages keyed to the target comp id), the
+Timeline following the **viewport-active artboard** (canvas-lib posts
+`active-artboard`; multi-comp canvases scope to it), real-MP4 editing
+(`<Video>`/`<Audio>` from `assets/` — needed `media-src` on the canvas CSP + the
+media exts in `CANVAS_ASSET_EXTS`/MIME), and a video-seek-aware capture.
+
+**Security posture (canvas origin = untrusted, DDR-054):**
+- `media-src 'self' blob:` added to the canvas-origin CSP — same inert-bytes trust
+  as `img-src 'self'`; without it `default-src 'none'` blocked all `<Video>`/`<Audio>`.
+- **Export-capture CSP (attacker F1, HIGH — fixed).** The export renders the
+  untrusted canvas on the MAIN origin, where the shell CSP was env-gated off, and
+  the capture shim actively drives `<video>` fetches → a canvas `<Video src=…>` /
+  comp `fetch()` was a read-SSRF + exfil-via-artifact. Now every `?hide-chrome=1`
+  capture render carries `cspForCapture()` — network sinks locked to `'self'`,
+  `script-src` left permissive (comp JS + the `addScriptTag` encoder). Regression
+  test in `canvas-origin-gate.test.ts`.
+- **Body-ceiling DoS (attacker F2, MEDIUM — fixed).** The ~108 MB
+  `maxRequestBodySize` (for the streaming asset route) let `readJson` buffer a
+  107 MB body on canvas-reachable routes before its cap → memory-amplification,
+  reverting DDR-088's 16 MB bound. `readJson` now streams + early-aborts past `max`.
+- **Open follow-ups (below floor, tracked):** F3 — the raised asset budgets
+  (session 1 GB, per-file 100 MB) widen untrusted-origin disk-fill; consider a
+  lower default or a gesture gate. F4 — `retimeAttr` retargets the first same-named
+  numeric `const` in the file; scope it to the lexically-referenced binding.
+
 ## Linked
 
-Plan: [`.ai/plans/feature-video-animation-layer.md`](../plans/feature-video-animation-layer.md).
+Plan: [`.ai/plans/feature-video-animation-layer.md`](../plans/archive/feature-video-animation-layer.md).
