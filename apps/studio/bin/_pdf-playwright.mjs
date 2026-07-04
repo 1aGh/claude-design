@@ -43,13 +43,20 @@ const browser = await launchChromium();
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await ctx.newPage();
-  await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
+  await page.goto(url, { waitUntil: 'load', timeout: timeoutMs });
   // Wait for web fonts so `@font-face` glyphs land in the PDF instead of
   // fallback Latin (puppeteer #3183 / playwright equivalent).
   await page.evaluate(() => document.fonts.ready);
   // Print-media emulation — Chromium's PDF output otherwise applies *screen*
   // CSS and ignores `@media print` rules entirely.
   await page.emulateMedia({ media: 'print' });
+  // `load` fires before React mounts (and a video comp never reaches
+  // `networkidle`), so gate on the artboard rendering before we query it —
+  // otherwise a multi `.all()` can run against an empty page.
+  await page
+    .locator(selector ?? '[data-dc-screen]')
+    .first()
+    .waitFor({ state: 'visible', timeout: timeoutMs });
 
   const written = [];
   const screens = multi

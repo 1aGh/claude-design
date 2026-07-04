@@ -96,6 +96,43 @@ async fn pick_directory(app: tauri::AppHandle) -> Result<Option<String>, String>
     rx.await.map_err(|_| "Folder picker closed unexpectedly.".to_string())
 }
 
+/// Native "Save As…" for an export payload — opens a save dialog seeded with the
+/// export's filename, writes the bytes to the chosen path, and returns that path
+/// (or `None` if the user cancelled). This is what makes native-app exports OFFER
+/// a save location: the webview's `<a download>` blob path (app.jsx) is swallowed
+/// opaquely by WKWebView, so the user never learns where the file landed. The
+/// dev-server streams the bytes to the webview, which hands them here to persist.
+/// RCA: issue-desktop-export-failures.
+#[tauri::command]
+async fn save_export(
+    app: tauri::AppHandle,
+    filename: String,
+    bytes: Vec<u8>,
+) -> Result<Option<String>, String> {
+    // E2E (debug builds only): a native save dialog can't be DOM-driven, so the
+    // harness injects the destination via MAUDE_E2E_SAVE_PATH. Gated on
+    // `debug_assertions` — never compiled into the release `.app`.
+    #[cfg(debug_assertions)]
+    if let Ok(p) = std::env::var("MAUDE_E2E_SAVE_PATH") {
+        if !p.is_empty() {
+            std::fs::write(&p, &bytes).map_err(|e| format!("Couldn’t write the export: {e}"))?;
+            return Ok(Some(p));
+        }
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().set_file_name(&filename).save_file(move |dest| {
+        let _ = tx.send(dest.and_then(|f| f.into_path().ok()));
+    });
+    let dest = rx.await.map_err(|_| "Save dialog closed unexpectedly.".to_string())?;
+    match dest {
+        Some(path) => {
+            std::fs::write(&path, &bytes).map_err(|e| format!("Couldn’t write the export: {e}"))?;
+            Ok(Some(path.to_string_lossy().to_string()))
+        }
+        None => Ok(None), // cancelled — not an error
+    }
+}
+
 /// Switch the app to a local project folder (the freshly cloned copy) — same
 /// in-process switch as File ▸ Open Project (NOT app.restart()).
 #[tauri::command]
@@ -169,6 +206,7 @@ pub fn run() {
             keychain::github_is_signed_in,
             keychain::github_sign_out,
             pick_directory,
+            save_export,
             open_local_project,
             app_state::app_is_first_run,
             app_state::app_get_last_project,

@@ -45,7 +45,15 @@ const browser = await launchChromium();
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await ctx.newPage();
-  await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
+  await page.goto(url, { waitUntil: 'load', timeout: timeoutMs });
+  await page.evaluate(() => document.fonts.ready);
+  // `load` fires before React mounts (and a video comp never reaches
+  // `networkidle`), so gate on the artboard rendering before we query it —
+  // otherwise a multi `.all()` can run against an empty page.
+  await page
+    .locator(selector ?? '[data-dc-screen]')
+    .first()
+    .waitFor({ state: 'visible', timeout: timeoutMs });
   // Reset the world plane's CSS zoom + transform so the captured artboard
   // outerHTML carries 1440×900 dimensions instead of the pan-zoomed thumb.
   await page.evaluate(() => {

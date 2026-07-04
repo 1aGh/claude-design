@@ -87,6 +87,13 @@ export const appRecentProjects = () => invoke('app_recent_projects');
 export const pickDirectory = () => invoke('pick_directory');
 /** Switch the app to a local project folder (the freshly cloned copy). */
 export const openLocalProject = (path) => invoke('open_local_project', { path });
+/**
+ * Native "Save As…" for an export — opens an OS save dialog seeded with
+ * `filename`, writes `bytes` (a plain number array from a Uint8Array) to the
+ * chosen path, and resolves to that path (or null if cancelled). Only callable in
+ * the native app; the browser build uses the `<a download>` blob instead.
+ */
+export const saveExport = (filename, bytes) => invoke('save_export', { filename, bytes });
 
 // ── Tauri shell: auto-update (Phase 32 / Task 1) ────────────────────────────────
 // The shell downloads + stages a newer build in the background and emits

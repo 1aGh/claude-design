@@ -46,8 +46,15 @@ try {
     deviceScaleFactor,
   });
   const page = await ctx.newPage();
-  await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
+  await page.goto(url, { waitUntil: 'load', timeout: timeoutMs });
   await page.evaluate(() => document.fonts.ready);
+  // `load` fires before React mounts (and a video comp never reaches
+  // `networkidle`), so gate on the artboard element actually rendering before we
+  // query/capture — otherwise a multi `.all()` can run against an empty page.
+  await page
+    .locator(selector ?? '[data-dc-screen]')
+    .first()
+    .waitFor({ state: 'visible', timeout: timeoutMs });
 
   const written = [];
 

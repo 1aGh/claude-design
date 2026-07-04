@@ -68,7 +68,7 @@ try {
     deviceScaleFactor,
   });
   const page = await ctx.newPage();
-  await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
+  await page.goto(url, { waitUntil: 'load', timeout: timeoutMs });
   await page.evaluate(() => document.fonts.ready);
 
   // Resolve the target artboard handle. Priority: explicit --selector (from the
