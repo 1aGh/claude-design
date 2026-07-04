@@ -19,6 +19,7 @@ import GitPanel from './panels/GitPanel.jsx';
 import IdentityBar from './panels/IdentityBar.jsx';
 import OnboardingWizard from './panels/OnboardingWizard.jsx';
 import { ReadinessDialog } from './panels/ReadinessList.jsx';
+import TimelinePanel from './panels/TimelinePanel.jsx';
 import RepoBranchSwitcher from './panels/RepoBranchSwitcher.jsx';
 import { appIsFirstRun, isNativeApp, onUpdateReady, restartToUpdate } from './github.js';
 import { COLLAB_TOUR } from './tour/collab-tour.js';
@@ -768,6 +769,11 @@ const EXPORT_CARDS = [
   { id: 'svg', label: 'SVG', sub: 'per artboard', icon: 'vector', format: 'svg' },
   { id: 'html', label: 'HTML', sub: 'self-contained', icon: 'code', format: 'html' },
   { id: 'pptx', label: 'PPTX', sub: 'slides', icon: 'presentation', format: 'pptx' },
+  // DDR-148 — temporal formats. Shown only when the active canvas has a
+  // video-comp (`temporal: true` + the hasComps gate in ExportDialog); the
+  // capture engine renders the artboard frame-by-frame.
+  { id: 'mp4', label: 'MP4', sub: 'video · H.264', icon: 'presentation', format: 'mp4', temporal: true },
+  { id: 'gif', label: 'GIF', sub: 'animated', icon: 'image', format: 'gif', temporal: true },
   { id: 'canva', label: 'Canva', sub: 'handoff bundle', icon: 'external', format: 'canva' },
   { id: 'zip', label: 'ZIP', sub: 'project bundle', icon: 'archive', format: 'zip' },
   { id: 'shadcn', label: 'AI handoff', sub: 'production drop', icon: 'sparkle', handoff: true },
@@ -787,6 +793,9 @@ const EXPORT_VALID_SCOPES = {
   svg: ['selection', 'artboard', 'canvas-as-separate'],
   html: ['artboard', 'canvas-as-separate'],
   pptx: ['canvas-as-separate'],
+  mp4: ['artboard'],
+  gif: ['artboard'],
+  webm: ['artboard'],
   canva: ['canvas-as-separate'],
   zip: ['project-raw'],
 };
@@ -796,7 +805,7 @@ const PNG_SCALES = [
   { value: 3, label: '3× (max)' },
 ];
 
-function ExportDialog({ mode, initialScope, activePath, onClose }) {
+function ExportDialog({ mode, initialScope, activePath, hasComps = false, onClose }) {
   const [sel, setSel] = useState(mode === 'handoff' ? 'shadcn' : 'png');
   const [scope, setScope] = useState(
     initialScope && EXPORT_SCOPE_LABELS[initialScope] ? initialScope : 'artboard'
@@ -901,7 +910,7 @@ function ExportDialog({ mode, initialScope, activePath, onClose }) {
               : 'Format'}
           </div>
           <div className="st-fmt-grid">
-            {EXPORT_CARDS.map((c) => (
+            {EXPORT_CARDS.filter((c) => !c.temporal || hasComps).map((c) => (
               <button
                 type="button"
                 key={c.id}
@@ -2406,6 +2415,9 @@ function Menubar({
   inspectorTab,
   onToggleInspector,
   onOpenLayers,
+  timelineOpen,
+  onToggleTimeline,
+  hasComps = false,
   assistantOpen,
   onToggleAssistant,
   assistantBusy,
@@ -2462,6 +2474,15 @@ function Menubar({
       label: 'Inspector',
       shortcut: '⌘ ⇧ I',
       checked: inspectorOpen,
+      disabled: false,
+    },
+    // DDR-148 — Timeline (video-comp scrub). Phase-tag hints when the active
+    // canvas actually has a comp; the panel itself shows an empty state otherwise.
+    {
+      id: 'timeline',
+      label: 'Timeline',
+      phase: hasComps ? 'video' : undefined,
+      checked: timelineOpen,
       disabled: false,
     },
     // Phase 31 (DDR-123) — native-only ACP chat sidepanel.
@@ -2628,6 +2649,7 @@ function Menubar({
             else if (id === 'hidden') onToggleShowHidden();
             else if (id === 'annotate') onToggleAnnotations();
             else if (id === 'inspector') onToggleInspector();
+            else if (id === 'timeline') onToggleTimeline?.();
             else if (id === 'assistant') onToggleAssistant?.();
             else if (id === 'layers') onOpenLayers?.();
             else if (id === 'minimap') onToggleMinimap?.();
@@ -6079,6 +6101,14 @@ function App() {
   // The palette (T4) drives them; the dialog (T5) + panel (T6) consume them.
   const [exportDialog, setExportDialog] = useState(null); // null | { mode: 'export'|'handoff', scope? }
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  // DDR-148 — Timeline panel (right dock) for scrubbing a video-comp. `activeComps`
+  // is populated from the iframe's `timeline-comps` announce; `timelineFrame` from
+  // its live `timeline-frame`. Empty comps ⇒ the panel shows its empty state.
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [activeComps, setActiveComps] = useState([]);
+  const [timelineFrame, setTimelineFrame] = useState(0);
+  const [timelinePlaying, setTimelinePlaying] = useState(false);
+  const [timelineLoop, setTimelineLoop] = useState(true);
   // Phase 31 (DDR-123) — the native ACP chat sidepanel (right dock, native-only).
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantBusy, setAssistantBusy] = useState(false);
@@ -6128,6 +6158,7 @@ function App() {
     setInspectorOpen(which === 'inspector');
     setCommentsPanelOpen(which === 'comments');
     setAssistantOpen(which === 'assistant');
+    setTimelineOpen(which === 'timeline');
   }, []);
   // Functional updates so this is stale-closure-safe inside the keydown /
   // postMessage listeners; opening always clears the sibling panels.
@@ -6138,6 +6169,7 @@ function App() {
           setChangesOpen(false);
           setCommentsPanelOpen(false);
           setAssistantOpen(false);
+          setTimelineOpen(false);
         }
         return !v;
       });
@@ -6147,6 +6179,7 @@ function App() {
           setChangesOpen(false);
           setInspectorOpen(false);
           setAssistantOpen(false);
+          setTimelineOpen(false);
         }
         return !v;
       });
@@ -6156,6 +6189,7 @@ function App() {
           setInspectorOpen(false);
           setCommentsPanelOpen(false);
           setAssistantOpen(false);
+          setTimelineOpen(false);
         }
         return !v;
       });
@@ -6165,6 +6199,17 @@ function App() {
           setChangesOpen(false);
           setInspectorOpen(false);
           setCommentsPanelOpen(false);
+          setTimelineOpen(false);
+        }
+        return !v;
+      });
+    } else if (which === 'timeline') {
+      setTimelineOpen((v) => {
+        if (!v) {
+          setChangesOpen(false);
+          setInspectorOpen(false);
+          setCommentsPanelOpen(false);
+          setAssistantOpen(false);
         }
         return !v;
       });
@@ -6287,6 +6332,18 @@ function App() {
     },
     [activePath]
   );
+
+  // DDR-148 — reset the Timeline's comp meta when the active canvas changes (a
+  // non-comp canvas fires no announce, so stale comps would linger), then ask
+  // the (possibly already-mounted) active canvas to re-announce. video-comp.tsx
+  // answers `timeline-request-comps` with a fresh `timeline-comps`.
+  useEffect(() => {
+    setActiveComps([]);
+    setTimelineFrame(0);
+    setTimelinePlaying(false);
+    const t = setTimeout(() => postToActiveCanvas({ dgn: 'timeline-request-comps' }), 60);
+    return () => clearTimeout(t);
+  }, [activePath, postToActiveCanvas]);
 
   const toggleAnnotations = useCallback(() => {
     setAnnotationsVisible((v) => {
@@ -7226,6 +7283,35 @@ function App() {
         // meta.json-derived seed when the canvas knows better. Clamp.
         const n = Math.round(m.count);
         if (Number.isFinite(n) && n >= 0 && n <= 999) setActiveArtboards(n);
+      } else if (m.dgn === 'timeline-comps' && Array.isArray(m.comps)) {
+        // DDR-148 — a video-comp announces its comp meta (from video-comp.tsx).
+        // Gate to the ACTIVE canvas window (phase-28 F-2 pattern): a background
+        // canvas must not plant comps into the Timeline panel, which shows the
+        // active canvas's comps. Inert display, but keep the seam closed.
+        const activeWin =
+          activePath && activePath !== SYSTEM_TAB
+            ? iframesRef.current.get(activePath)?.contentWindow
+            : null;
+        if (e.source !== activeWin) return;
+        const safe = m.comps
+          .filter((c) => c && typeof c.id === 'string')
+          .slice(0, 32)
+          .map((c) => ({
+            id: String(c.id).slice(0, 120),
+            fps: Math.max(1, Math.min(120, Math.round(Number(c.fps) || 30))),
+            durationInFrames: Math.max(1, Math.min(1_000_000, Math.round(Number(c.durationInFrames) || 1))),
+            width: Math.max(1, Math.round(Number(c.width) || 0)),
+            height: Math.max(1, Math.round(Number(c.height) || 0)),
+          }));
+        setActiveComps(safe);
+      } else if (m.dgn === 'timeline-frame' && typeof m.frame === 'number') {
+        // Live playhead mirror from the Player (preview scrub/playback).
+        const activeWin =
+          activePath && activePath !== SYSTEM_TAB
+            ? iframesRef.current.get(activePath)?.contentWindow
+            : null;
+        if (e.source !== activeWin) return;
+        if (Number.isFinite(m.frame)) setTimelineFrame(Math.max(0, Math.round(m.frame)));
       } else if (m.dgn === 'toggle-palette') {
         // ⌘K pressed while focus was inside the canvas iframe — the injected
         // inspector forwards the chord here since the iframe's keydown never
@@ -8012,6 +8098,9 @@ function App() {
           inspectorOpen={inspectorOpen}
           inspectorTab={inspectorTab}
           onToggleInspector={() => toggleRightPanel('inspector')}
+          timelineOpen={timelineOpen}
+          onToggleTimeline={() => toggleRightPanel('timeline')}
+          hasComps={activeComps.length > 0}
           assistantOpen={assistantOpen}
           onToggleAssistant={() => toggleRightPanel('assistant')}
           assistantBusy={assistantBusy}
@@ -8202,6 +8291,30 @@ function App() {
               width={rpSize.w}
               resizing={dragSide === 'rp'}
             />
+          ) : timelineOpen ? (
+            <TimelinePanel
+              comps={activeComps}
+              frame={timelineFrame}
+              playing={timelinePlaying}
+              loop={timelineLoop}
+              onSeek={(f) => {
+                setTimelineFrame(f);
+                setTimelinePlaying(false);
+                postToActiveCanvas({ dgn: 'timeline-seek', frame: f });
+              }}
+              onPlay={() => {
+                setTimelinePlaying(true);
+                postToActiveCanvas({ dgn: 'timeline-play' });
+              }}
+              onPause={() => {
+                setTimelinePlaying(false);
+                postToActiveCanvas({ dgn: 'timeline-pause' });
+              }}
+              onToggleLoop={() => setTimelineLoop((v) => !v)}
+              width={rpSize.w}
+              resizing={dragSide === 'rp'}
+              onClose={() => setTimelineOpen(false)}
+            />
           ) : null}
           {/* Phase 31 (DDR-123) — the ACP chat panel stays MOUNTED (display:none
               when inactive) so the chat keeps streaming + its history survives a
@@ -8269,6 +8382,7 @@ function App() {
           mode={exportDialog.mode}
           initialScope={exportDialog.scope}
           activePath={activePath}
+          hasComps={activeComps.length > 0}
           onClose={() => setExportDialog(null)}
         />
       )}

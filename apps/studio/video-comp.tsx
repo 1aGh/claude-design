@@ -236,6 +236,13 @@ export function VideoComp({
     const onMessage = (e: MessageEvent) => {
       const m = e.data as { dgn?: string; frame?: number; id?: string } | null;
       if (!m || typeof m !== 'object' || typeof m.dgn !== 'string') return;
+      // The shell asks a (possibly already-mounted) canvas to re-announce its
+      // comps — answer regardless of Player readiness so a tab-switch / panel-
+      // open re-syncs the Timeline panel.
+      if (m.dgn === 'timeline-request-comps') {
+        postToShell({ dgn: 'timeline-comps', comps: seekWindow()?.__maude_comps__?.() ?? [] });
+        return;
+      }
       if (m.id && m.id !== compId) return; // targeted seek to another comp
       const p = ref.current;
       if (!p) return;

@@ -1211,6 +1211,37 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .gp-draft .gp-sep { color: var(--fg-3); }
 .gp-x { appearance: none; border: none; background: transparent; color: var(--fg-2); font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 5px; border-radius: var(--radius-xs); }
 .gp-x:hover { color: var(--fg-1); background: var(--bg-3); }
+
+/* ── Timeline panel (DDR-148) — transport + scrub over the embedded Player ── */
+.tl-panel { display: flex; flex-direction: column; min-height: 0; background: var(--bg-1); }
+.tl-head { display: flex; align-items: center; gap: var(--space-2); height: 40px; padding: 0 var(--space-2) 0 var(--space-4); border-bottom: 1px solid var(--border-default); flex: none; }
+.tl-title { font-family: var(--font-display); font-weight: 600; font-size: var(--type-md); color: var(--fg-0); }
+.tl-spacer { flex: 1; }
+.tl-meta { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); white-space: nowrap; }
+.tl-x { appearance: none; border: none; background: transparent; color: var(--fg-2); font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 5px; border-radius: var(--radius-xs); }
+.tl-x:hover { color: var(--fg-1); background: var(--bg-3); }
+.tl-empty { padding: var(--space-5) var(--space-4); color: var(--fg-2); font-size: var(--type-sm); line-height: 1.5; }
+.tl-empty code { font-family: var(--font-mono); font-size: var(--type-xs); background: var(--bg-2); padding: 1px 4px; border-radius: var(--radius-xs); color: var(--fg-1); }
+.tl-body { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
+.tl-transport { display: flex; align-items: center; gap: var(--space-2); }
+.tl-btn { appearance: none; display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--bg-2); color: var(--fg-1); cursor: pointer; transition: background var(--dur-soft) var(--ease-out), color var(--dur-soft) var(--ease-out), border-color var(--dur-soft) var(--ease-out); }
+.tl-btn:hover { background: var(--bg-3); color: var(--fg-0); }
+.tl-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tl-btn.is-on { background: var(--accent-tint); border-color: var(--accent-muted); color: var(--accent); }
+.tl-btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.tl-btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-fg); }
+.tl-readout { margin-left: auto; font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); display: inline-flex; align-items: baseline; gap: 4px; }
+.tl-readout b { color: var(--fg-0); font-weight: 600; }
+.tl-readout .tl-sep { color: var(--fg-3); }
+.tl-readout .tl-time { color: var(--fg-2); margin-left: var(--space-2); }
+.tl-track { position: relative; height: 26px; border-radius: var(--radius-sm); background: var(--bg-2); border: 1px solid var(--border-subtle); }
+.tl-tick { position: absolute; top: 4px; bottom: 4px; width: 1px; background: var(--border-default); transform: translateX(-0.5px); pointer-events: none; }
+.tl-playhead { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); transform: translateX(-1px); pointer-events: none; z-index: 2; }
+.tl-scrub { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; }
+.tl-scrub:focus-visible + .tl-playhead, .tl-track:has(.tl-scrub:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tl-hint { margin: 0; font-size: var(--type-xs); color: var(--fg-3); line-height: 1.5; }
+.tl-hint code { font-family: var(--font-mono); background: var(--bg-2); padding: 1px 4px; border-radius: var(--radius-xs); color: var(--fg-2); }
+@media (prefers-reduced-motion: reduce) { .tl-btn { transition: none; } }
 /* tabbar/tab — DS treatment folded in */
 .gp-tabs { display: flex; gap: var(--space-1); padding: var(--space-2) var(--space-3) 0; border-bottom: 1px solid var(--border-subtle); }
 .gp-tab { appearance: none; border: 0; background: transparent; font-size: var(--type-sm); color: var(--fg-2); font-family: var(--font-body); padding: var(--space-3) var(--space-4); cursor: pointer; border-bottom: 2px solid transparent; }
