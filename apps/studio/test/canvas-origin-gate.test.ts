@@ -146,6 +146,9 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
       const shell = await fetch(`${canvas}/_canvas-shell.html`);
       const csp = shell.headers.get('content-security-policy') ?? '';
       expect(csp).toContain("connect-src 'self'");
+      // DDR-148 — media-src must be present so a video-comp's <Video>/<Audio>
+      // isn't blocked by default-src 'none' (black video / silent audio).
+      expect(csp).toContain("media-src 'self'");
       expect(csp).toContain("webrtc 'block'");
       expect(csp).toContain('frame-ancestors');
       expect(csp).toContain(`http://localhost:${port}`);

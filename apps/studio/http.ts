@@ -121,6 +121,11 @@ export function cspForCanvasShell(html: string, mainOrigin?: string): string {
     `script-src ${scriptSrc}`,
     "connect-src 'self'",
     "img-src 'self' data: blob:",
+    // DDR-148 — a video-comp's <Video>/<Audio> loads media from the canvas
+    // origin's own designRoot (assets/). Same inert-bytes trust as img-src
+    // 'self'; without it default-src 'none' blocks all media (black video, no
+    // sound). `blob:` covers Remotion's processed-media URLs.
+    "media-src 'self' blob:",
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",
     "frame-src 'self'",

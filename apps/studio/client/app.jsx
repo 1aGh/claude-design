@@ -6111,6 +6111,11 @@ function App() {
   const [timelinePlaying, setTimelinePlaying] = useState(false);
   const [timelineLoop, setTimelineLoop] = useState(true);
   const [timelineMuted, setTimelineMuted] = useState(false);
+  const [timelineVolume, setTimelineVolume] = useState(1);
+  const [timelineHeight, setTimelineHeight] = useState(216);
+  // The artboard nearest the viewport centre (reported by canvas-lib on pan) —
+  // the Timeline follows THIS, so it redraws as you move across the canvas.
+  const [canvasActiveArtboard, setCanvasActiveArtboard] = useState(null);
   // DDR-148 — parsed sequence/keyframe rows for the Timeline (from raw .tsx).
   const [timelineSequences, setTimelineSequences] = useState([]);
   const [timelineAudio, setTimelineAudio] = useState([]);
@@ -6383,11 +6388,12 @@ function App() {
       return;
     }
     const total = activeComps[0]?.durationInFrames || 0;
-    const parsed = parseCompTimeline(timelineSource, total, selected?.artboardId ?? null);
+    const artboard = canvasActiveArtboard ?? selected?.artboardId ?? null;
+    const parsed = parseCompTimeline(timelineSource, total, artboard);
     setTimelineSequences(parsed.sequences);
     setTimelineAudio(parsed.audio || []);
     setTimelineTotal(parsed.total);
-  }, [timelineSource, selected, activeComps]);
+  }, [timelineSource, selected, activeComps, canvasActiveArtboard]);
 
   const toggleAnnotations = useCallback(() => {
     setAnnotationsVisible((v) => {
@@ -7327,6 +7333,16 @@ function App() {
         // meta.json-derived seed when the canvas knows better. Clamp.
         const n = Math.round(m.count);
         if (Number.isFinite(n) && n >= 0 && n <= 999) setActiveArtboards(n);
+      } else if (m.dgn === 'active-artboard') {
+        // DDR-148 — canvas-lib reports the viewport-active artboard on pan. Gate
+        // to the ACTIVE canvas window (a background canvas must not hijack the
+        // Timeline's target). The Timeline re-parses to this artboard's comp.
+        const activeWin =
+          activePath && activePath !== SYSTEM_TAB
+            ? iframesRef.current.get(activePath)?.contentWindow
+            : null;
+        if (e.source !== activeWin) return;
+        setCanvasActiveArtboard(typeof m.id === 'string' ? m.id : null);
       } else if (m.dgn === 'timeline-comps' && Array.isArray(m.comps)) {
         // DDR-148 — a video-comp announces its comp meta (from video-comp.tsx).
         // Gate to the ACTIVE canvas window (phase-28 F-2 pattern): a background
@@ -8396,6 +8412,16 @@ function App() {
                 return next;
               });
             }}
+            volume={timelineVolume}
+            onVolume={(v) => {
+              setTimelineVolume(v);
+              // Dragging volume implies "I want to hear it" — unmute.
+              if (v > 0 && timelineMuted) {
+                setTimelineMuted(false);
+                postToActiveCanvas({ dgn: 'timeline-mute', muted: false, id: timelineCompId });
+              }
+              postToActiveCanvas({ dgn: 'timeline-volume', volume: v, id: timelineCompId });
+            }}
             onRetime={(index, patch) => {
               if (!activePath || activePath === SYSTEM_TAB) return;
               fetch('/_api/retime-sequence', {
@@ -8411,7 +8437,8 @@ function App() {
                 })
                 .catch(() => {});
             }}
-            height={216}
+            height={timelineHeight}
+            onResize={setTimelineHeight}
             onClose={() => setTimelineOpen(false)}
           />
         )}

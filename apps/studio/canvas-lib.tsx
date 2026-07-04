@@ -1504,6 +1504,18 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
     return bestId;
   }, [artboards, controller.viewport]);
 
+  // DDR-148 — report the viewport-active artboard (nearest the centre) to the
+  // shell so the Timeline panel FOLLOWS whichever artboard the user pans to,
+  // not just the one they cmd+click. Fires on every pan/zoom that changes it.
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.parent === window) return;
+    try {
+      window.parent.postMessage({ dgn: 'active-artboard', id: activeArtboardId }, '*');
+    } catch {
+      /* cross-origin parent without our listener — no-op */
+    }
+  }, [activeArtboardId]);
+
   // The world's transform is owned by useViewportController (writes straight
   // to `worldRef.current.style.transform`). Rendering the transform from
   // React state instead would race: between React's commit and the

@@ -88,8 +88,11 @@ export default function TimelinePanel({
   onToggleLoop,
   muted = false,
   onToggleMute,
+  volume = 1,
+  onVolume,
   height,
   resizing,
+  onResize,
   onRetime,
   onClose,
 }) {
@@ -101,6 +104,22 @@ export default function TimelinePanel({
   const draggingRef = useRef(false);
   // Drag-to-retime a sequence's duration: { index, startX, startDur, rowW, curDur }.
   const [retimeDrag, setRetimeDrag] = useState(null);
+  // Drag the top edge to resize the panel taller/shorter.
+  const [heightDrag, setHeightDrag] = useState(null);
+  useEffect(() => {
+    if (!heightDrag) return undefined;
+    const move = (e) => {
+      const next = clamp(heightDrag.startH + (heightDrag.startY - e.clientY), 140, 640);
+      onResize?.(next);
+    };
+    const up = () => setHeightDrag(null);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up, { once: true });
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+  }, [heightDrag, onResize]);
 
   // The row-track's frame axis starts AFTER the fixed label gutter (96px).
   const LABEL_GUTTER = 96;
@@ -185,6 +204,15 @@ export default function TimelinePanel({
       aria-label="Timeline"
       data-testid="timeline-panel"
     >
+      <div
+        className="tl-resize-handle"
+        data-testid="timeline-resize-handle"
+        title="Drag to resize"
+        onPointerDown={(e) => {
+          e.preventDefault();
+          setHeightDrag({ startY: e.clientY, startH: height || 216 });
+        }}
+      />
       <div className="tl-head">
         {comp ? (
           <>
@@ -223,6 +251,19 @@ export default function TimelinePanel({
               >
                 <TIcon name={muted ? 'muted' : 'sound'} />
               </button>
+            ) : null}
+            {audio.length > 0 ? (
+              <input
+                type="range"
+                className="tl-volume"
+                min="0"
+                max="100"
+                value={Math.round((muted ? 0 : volume) * 100)}
+                data-testid="timeline-volume"
+                aria-label="Volume"
+                title="Volume"
+                onChange={(e) => onVolume?.(Number(e.target.value) / 100)}
+              />
             ) : null}
             <span className="tl-readout" data-testid="timeline-readout">
               <b>{clamped}</b>
