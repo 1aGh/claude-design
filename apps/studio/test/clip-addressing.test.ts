@@ -204,6 +204,15 @@ describe('applyRetimeSequenceByClip — stableId retime (multi-comp safe)', () =
       })
     ).toThrow(CanvasEditError);
   });
+
+  test('inserts `from` when moving a cursor-implicit clip (P3 Task 6)', () => {
+    const src = [
+      'const Comp = () => <Sequence durationInFrames={40}><A /></Sequence>;',
+      'function Canvas() { return <DCArtboard id="x"><VideoComp component={Comp} durationInFrames={40} fps={30} /></DCArtboard>; }',
+    ].join('\n');
+    const out = applyRetimeSequenceByClip(CANVAS, src, 'x', 'Comp#0', undefined, { from: 25 });
+    expect(out.source).toContain('<Sequence from={25} durationInFrames={40}>');
+  });
 });
 
 describe('applyRemoveClip — clip removal (DDR-150 P3)', () => {

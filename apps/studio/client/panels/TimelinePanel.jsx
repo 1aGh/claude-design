@@ -106,6 +106,11 @@ export default function TimelinePanel({
   const draggingRef = useRef(false);
   // Drag-to-retime a sequence's duration: { index, startX, startDur, rowW, curDur }.
   const [retimeDrag, setRetimeDrag] = useState(null);
+  // Drag the block body to move a clip's `from`: { index, startX, startFrom, rowW, curFrom }.
+  const [moveDrag, setMoveDrag] = useState(null);
+  // True after a body-drag actually moved — suppresses the click-to-seek that
+  // would otherwise fire on pointerup.
+  const movedRef = useRef(false);
   // Drag the top edge to resize the panel taller/shorter. Matches the DS
   // resize-panels reference: pointer-capture + window listeners attached
   // SYNCHRONOUSLY in pointerdown (a useEffect-on-state attaches a frame late and
@@ -193,6 +198,41 @@ export default function TimelinePanel({
       window.removeEventListener('pointerup', up);
     };
   }, [retimeDrag, totalFrames, onRetime]);
+
+  // DDR-150 P3 Task 6 — drag the block BODY to move a clip's `from` (the engine
+  // inserts `from` if the clip was cursor-implicit). Previews live; commits on
+  // release. Distinct from the right-edge duration drag above.
+  useEffect(() => {
+    if (!moveDrag) return undefined;
+    const move = (e) => {
+      const deltaFrames =
+        ((e.clientX - moveDrag.startX) / Math.max(1, moveDrag.rowW)) * (totalFrames - 1);
+      const curFrom = Math.max(0, Math.round(moveDrag.startFrom + deltaFrames));
+      if (Math.abs(curFrom - moveDrag.startFrom) >= 1) movedRef.current = true;
+      setMoveDrag((d) => (d ? { ...d, curFrom } : d));
+    };
+    const up = () => {
+      setMoveDrag((d) => {
+        if (d && d.curFrom !== d.startFrom) onRetime?.(d.index, { from: d.curFrom });
+        return null;
+      });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up, { once: true });
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+  }, [moveDrag, totalFrames, onRetime]);
+
+  const startMove = (e, index, startFrom) => {
+    if (!onRetime) return;
+    e.stopPropagation();
+    const rowTrack = e.currentTarget.closest('.tl-row-track');
+    const rowW = rowTrack ? rowTrack.getBoundingClientRect().width : 300;
+    movedRef.current = false;
+    setMoveDrag({ index, startX: e.clientX, startFrom, rowW, curFrom: startFrom });
+  };
 
   const startResize = (e, index, dur) => {
     e.stopPropagation();
@@ -324,6 +364,9 @@ export default function TimelinePanel({
                 const dur =
                   retimeDrag && retimeDrag.index === i ? retimeDrag.curDur : seq.duration;
                 const resizing = !!(retimeDrag && retimeDrag.index === i);
+                const blockFrom =
+                  moveDrag && moveDrag.index === i ? moveDrag.curFrom : seq.from;
+                const moving = !!(moveDrag && moveDrag.index === i);
                 return (
                   <div className="tl-row" key={i} data-testid={`timeline-row-${i}`}>
                     <span className="tl-row-label" title={seq.label}>
@@ -332,15 +375,21 @@ export default function TimelinePanel({
                     <div className="tl-row-track">
                       <button
                         type="button"
-                        className={`tl-seq-block${resizing ? ' is-resizing' : ''}`}
+                        className={`tl-seq-block${resizing ? ' is-resizing' : ''}${moving ? ' is-moving' : ''}`}
                         data-testid={`timeline-seq-${i}`}
-                        title={`${seq.label} · ${seq.from}–${seq.from + dur}f (${dur}f)`}
+                        title={`${seq.label} · ${blockFrom}–${blockFrom + dur}f (${dur}f) · drag to move`}
                         style={{
-                          left: pct(seq.from),
+                          left: pct(blockFrom),
                           width: `${(dur / (totalFrames - 1)) * 100}%`,
+                          cursor: onRetime ? 'grab' : undefined,
                         }}
+                        onPointerDown={(e) => startMove(e, i, seq.from)}
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (movedRef.current) {
+                            movedRef.current = false;
+                            return; // a drag-move just happened — don't also seek
+                          }
                           onSeek?.(seq.from);
                         }}
                       >

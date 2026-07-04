@@ -957,7 +957,20 @@ function retimeAttr(
   newVal: number
 ): boolean {
   const am = tag.match(new RegExp(`\\b${key}=\\{\\s*([^}]*?)\\s*\\}`));
-  if (!am || am.index == null) return false;
+  if (!am || am.index == null) {
+    // Attr absent. For `from`, INSERT it — moving a cursor-implicit clip
+    // (`<Sequence durationInFrames={…}>`) to a new start needs an explicit
+    // `from` (DDR-150 P3 Task 6). durationInFrames is required on a clip, so
+    // never auto-insert it.
+    if (key === 'from') {
+      const nameMatch = tag.match(/^<([A-Za-z][\w.]*)/);
+      if (nameMatch) {
+        s.appendLeft(tagStart + nameMatch[0].length, ` from={${newVal}}`);
+        return true;
+      }
+    }
+    return false;
+  }
   const inner = am[1].trim();
   if (/^[A-Za-z_$][\w$]*$/.test(inner)) {
     const cm = source.match(new RegExp(`\\bconst\\s+${inner}\\s*=\\s*(-?\\d+)`));

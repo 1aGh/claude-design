@@ -1260,6 +1260,7 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .tl-seq-remove { position: absolute; top: 3px; width: 15px; height: 15px; z-index: 5; display: grid; place-items: center; padding: 0; border: none; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--bg-0) 70%, transparent); color: var(--fg-1); font-size: 13px; line-height: 1; cursor: pointer; opacity: 0; transition: opacity var(--dur-1, 120ms) ease; }
 .tl-row:hover .tl-seq-remove { opacity: 0.7; }
 .tl-seq-remove:hover { opacity: 1; background: var(--status-err, #dc2626); color: #fff; }
+.tl-seq-block.is-moving { cursor: grabbing; box-shadow: 0 0 0 1px var(--accent); }
 /* DDR-150 P3 — per-clip replace-media (⇄). */
 .tl-seq-replace { position: absolute; top: 3px; width: 15px; height: 15px; z-index: 5; display: grid; place-items: center; padding: 0; border: none; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--bg-0) 70%, transparent); color: var(--fg-1); font-size: 11px; line-height: 1; cursor: pointer; opacity: 0; transition: opacity var(--dur-1, 120ms) ease; }
 .tl-row:hover .tl-seq-replace { opacity: 0.7; }
