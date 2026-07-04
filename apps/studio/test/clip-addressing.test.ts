@@ -9,6 +9,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  applyRetimeSequenceByClip,
   assertCompSemantics,
   CanvasEditError,
   enumerateClips,
@@ -163,5 +164,43 @@ describe('assertCompSemantics — TransitionSeries alternation (parse-clean ≠ 
     expect(() => assertCompSemantics(CANVAS, wrap(`${SEQ}${TR}${TR}${SEQ}`))).toThrow(
       CanvasEditError
     );
+  });
+});
+
+describe('applyRetimeSequenceByClip — stableId retime (multi-comp safe)', () => {
+  const SRC = [
+    'const Intro = () => <Sequence durationInFrames={40}><Video src="intro.mp4" /></Sequence>;',
+    'const Outro = () => (',
+    '  <>',
+    '    <Sequence durationInFrames={50}><Video src="a.mp4" /></Sequence>',
+    '    <Sequence from={10} durationInFrames={60}><Video src="b.mp4" /></Sequence>',
+    '  </>',
+    ');',
+    'function Canvas() {',
+    '  return (<DesignCanvas>',
+    '    <DCArtboard id="intro"><VideoComp component={Intro} durationInFrames={40} fps={30} /></DCArtboard>',
+    '    <DCArtboard id="outro"><VideoComp component={Outro} durationInFrames={110} fps={30} /></DCArtboard>',
+    '  </DesignCanvas>);',
+    '}',
+  ].join('\n');
+
+  test('retimes the addressed clip in comp B without touching comp A', () => {
+    const out = applyRetimeSequenceByClip(CANVAS, SRC, 'outro', 'Outro#1', undefined, {
+      durationInFrames: 90,
+    });
+    // Outro#1 (the b.mp4 clip, from={10}) is retimed to 90…
+    expect(out.source).toContain('from={10} durationInFrames={90}');
+    // …and the Intro clip (a whole-file index of 0) is untouched.
+    expect(out.source).toContain('const Intro = () => <Sequence durationInFrames={40}>');
+    // …as is Outro#0.
+    expect(out.source).toContain('<Sequence durationInFrames={50}><Video src="a.mp4"');
+  });
+
+  test('refuses a stale content-hash (concurrent edit)', () => {
+    expect(() =>
+      applyRetimeSequenceByClip(CANVAS, SRC, 'outro', 'Outro#1', 'deadbeef', {
+        durationInFrames: 90,
+      })
+    ).toThrow(CanvasEditError);
   });
 });

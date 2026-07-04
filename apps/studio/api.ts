@@ -16,6 +16,7 @@ import {
   moveElement,
   removeAttribute,
   retimeSequence,
+  retimeSequenceByClip,
   editText as runEditText,
 } from './canvas-edit.ts';
 import type { Context } from './context.ts';
@@ -294,6 +295,10 @@ export interface Api {
   /** DDR-148 — Timeline drag-to-retime a sequence's durationInFrames / from. */
   retimeSequenceOp(input: {
     canvas?: unknown;
+    // DDR-150 P2 — prefer stableId (comp-scoped, multi-comp-safe) over index.
+    stableId?: unknown;
+    artboardId?: unknown;
+    contentHash?: unknown;
     index?: unknown;
     durationInFrames?: unknown;
     from?: unknown;
@@ -1834,14 +1839,22 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
    */
   async function retimeSequenceOp(input: {
     canvas?: unknown;
+    stableId?: unknown;
+    artboardId?: unknown;
+    contentHash?: unknown;
     index?: unknown;
     durationInFrames?: unknown;
     from?: unknown;
   }): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
+    // DDR-150 P2 — prefer the comp-scoped stableId (multi-comp-safe) over the
+    // legacy whole-file index. The index path stays for back-compat.
+    const stableId = typeof input.stableId === 'string' ? input.stableId : null;
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId : undefined;
+    const contentHash = typeof input.contentHash === 'string' ? input.contentHash : undefined;
     const index = Number.isInteger(input.index) ? (input.index as number) : -1;
-    if (index < 0 || index > 500)
+    if (!stableId && (index < 0 || index > 500))
       return { ok: false, status: 400, error: 'invalid sequence index' };
     const frames = (v: unknown, lo: number): number | undefined => {
       const n = Math.round(Number(v));
@@ -1857,7 +1870,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     ctx.bus.emit('activity:suppress', rel);
     try {
       const before = await Bun.file(r.abs).text();
-      await retimeSequence(r.abs, index, patch);
+      if (stableId) await retimeSequenceByClip(r.abs, artboardId, stableId, contentHash, patch);
+      else await retimeSequence(r.abs, index, patch);
       const after = await Bun.file(r.abs).text();
       if (after === before) {
         ctx.bus.emit('activity:unsuppress', rel);

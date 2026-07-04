@@ -1046,6 +1046,90 @@ export async function retimeSequence(
   });
 }
 
+/**
+ * Retime a clip addressed by the enumerator's `stableId` (comp-scoped) instead of
+ * a whole-file index — the DDR-150 P2 fix for the multi-comp mis-hit. Verifies
+ * the content-hash fingerprint (refuse a stale/raced target), patches the clip's
+ * own tag via `retimeAttr` (const-preferring), then reparse + semantic gate.
+ */
+export function applyRetimeSequenceByClip(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string | undefined,
+  stableId: string,
+  expectedHash: string | undefined,
+  patch: RetimePatch
+): { source: string } {
+  const clip = resolveClip(canvasAbsPath, source, artboardId, stableId, expectedHash);
+  const s = new MagicString(source);
+  SEQ_TAG_RE.lastIndex = 0;
+  let touched = false;
+  let m: RegExpExecArray | null = SEQ_TAG_RE.exec(source);
+  while (m) {
+    if (m.index === clip.start) {
+      for (const [key, val] of [
+        ['durationInFrames', patch.durationInFrames],
+        ['from', patch.from],
+      ] as const) {
+        if (val == null || !Number.isFinite(val)) continue;
+        if (retimeAttr(s, source, m[0], m.index, key, Math.max(0, Math.round(val)))) touched = true;
+      }
+      break;
+    }
+    m = SEQ_TAG_RE.exec(source);
+  }
+  if (!touched) {
+    throw new CanvasEditError(`clip "${stableId}" has no retimable from/durationInFrames`, {
+      canvas: canvasAbsPath,
+      id: stableId,
+    });
+  }
+  const next = s.toString();
+  const parsed = parseSync(canvasAbsPath, next, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `retime produced invalid source: ${parsed.errors[0]?.message ?? 'parse error'}`,
+      { canvas: canvasAbsPath, id: stableId }
+    );
+  }
+  assertCompSemantics(canvasAbsPath, next);
+  return { source: next };
+}
+
+/** Retime a clip by stableId on disk (atomic write + cross-process lock). */
+export async function retimeSequenceByClip(
+  canvasAbsPath: string,
+  artboardId: string | undefined,
+  stableId: string,
+  expectedHash: string | undefined,
+  patch: RetimePatch
+): Promise<{ source: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: stableId,
+      });
+    }
+    const source = await file.text();
+    const next = applyRetimeSequenceByClip(
+      canvasAbsPath,
+      source,
+      artboardId,
+      stableId,
+      expectedHash,
+      patch
+    );
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Clip addressing (DDR-150 P2). The SINGLE authoritative tokenizer for a
 // video-comp's clips. The Timeline UI addresses every op through the `stableId`

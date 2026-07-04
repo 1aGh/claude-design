@@ -22,7 +22,13 @@ import { ReadinessDialog } from './panels/ReadinessList.jsx';
 import TimelinePanel from './panels/TimelinePanel.jsx';
 import { parseCompTimeline } from './panels/timeline-parse.js';
 import RepoBranchSwitcher from './panels/RepoBranchSwitcher.jsx';
-import { appIsFirstRun, isNativeApp, onUpdateReady, restartToUpdate } from './github.js';
+import {
+  appIsFirstRun,
+  isNativeApp,
+  onUpdateReady,
+  restartToUpdate,
+  saveExport,
+} from './github.js';
 import { COLLAB_TOUR } from './tour/collab-tour.js';
 import { TourOverlay } from './tour/overlay.jsx';
 import { USAGE_TOUR } from './tour/usage-tour.js';
@@ -873,16 +879,30 @@ function ExportDialog({ mode, initialScope, activePath, hasComps = false, onClos
       const fn = /filename="([^"]+)"/.exec(disp);
       const filename = (fn && fn[1]) || `export.${card.format}`;
       const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      setStatus({ ok: true, msg: `Exported ${filename}` });
-      loadRecent();
+      if (isNativeApp()) {
+        // Native: WKWebView swallows the `<a download>` blob (the file lands in
+        // an unknown default with no prompt). Route through a real OS save dialog
+        // so the export OFFERS a location. Cancel → soft no-op.
+        const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
+        const savedPath = await saveExport(filename, bytes);
+        if (savedPath) {
+          setStatus({ ok: true, msg: `Saved to ${savedPath}` });
+          loadRecent();
+        } else {
+          setStatus({ ok: true, msg: 'Save cancelled' });
+        }
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setStatus({ ok: true, msg: `Exported ${filename}` });
+        loadRecent();
+      }
     } catch (err) {
       setStatus({ ok: false, msg: err && err.message ? err.message : String(err) });
     }
@@ -8447,11 +8467,37 @@ function App() {
             }}
             onRetime={(index, patch) => {
               if (!activePath || activePath === SYSTEM_TAB) return;
-              fetch('/_api/retime-sequence', {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ canvas: activePath, index, ...patch }),
-              })
+              // DDR-150 P2 — address the clip by its comp-scoped stableId (from
+              // /_api/comp-clips), NOT the raw row index, so a retime on a
+              // multi-comp canvas can never mis-hit a clip in another comp. The
+              // row index counts sequence rows only, so map it to the index-th
+              // sequence clip (transitions filtered). Fall back to the legacy
+              // index if the enumerator is unavailable.
+              const artboardId = timelineCompId || undefined;
+              const ccUrl = `/_api/comp-clips?canvas=${encodeURIComponent(activePath)}${artboardId ? `&artboardId=${encodeURIComponent(artboardId)}` : ''}`;
+              fetch(ccUrl)
+                .then((r) => r.json().catch(() => ({})))
+                .then((cc) => {
+                  const seqs =
+                    cc?.ok && Array.isArray(cc.clips)
+                      ? cc.clips.filter((c) => c.kind === 'sequence')
+                      : [];
+                  const clip = seqs[index] || null;
+                  const body = clip?.stableId
+                    ? {
+                        canvas: activePath,
+                        artboardId,
+                        stableId: clip.stableId,
+                        contentHash: clip.contentHash,
+                        ...patch,
+                      }
+                    : { canvas: activePath, index, ...patch };
+                  return fetch('/_api/retime-sequence', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify(body),
+                  });
+                })
                 .then((r) => r.json())
                 .then((j) => {
                   if (!j?.ok) console.warn('[retime]', j?.error || 'failed');

@@ -1433,6 +1433,9 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         return new Response('cross-origin write rejected', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
+        stableId?: unknown;
+        artboardId?: unknown;
+        contentHash?: unknown;
         index?: unknown;
         durationInFrames?: unknown;
         from?: unknown;
