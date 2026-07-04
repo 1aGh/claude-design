@@ -812,7 +812,15 @@ const PNG_SCALES = [
   { value: 3, label: '3× (max)' },
 ];
 
-function ExportDialog({ mode, initialScope, activePath, hasComps = false, onClose }) {
+function ExportDialog({
+  mode,
+  initialScope,
+  activePath,
+  hasComps = false,
+  activeArtboardId = null,
+  selection = null,
+  onClose,
+}) {
   const [sel, setSel] = useState(mode === 'handoff' ? 'shadcn' : 'png');
   const [scope, setScope] = useState(
     initialScope && EXPORT_SCOPE_LABELS[initialScope] ? initialScope : 'artboard'
@@ -864,6 +872,12 @@ function ExportDialog({ mode, initialScope, activePath, hasComps = false, onClos
     setBusy(true);
     setStatus(null);
     const options = card.format === 'png' ? { scale } : {};
+    // Scope targeting hints (resolveScope reads these): `artboardId` makes
+    // "Active artboard" export the right screen instead of `:first-of-type`;
+    // `selection` makes "Current selection" export the selected element. Mirrors
+    // the in-canvas dialog's captureScopeHints.
+    if (activeArtboardId) options.artboardId = activeArtboardId;
+    if (selection?.selector) options.selection = selection;
     try {
       const r = await fetch('/_api/export', {
         method: 'POST',
@@ -8881,6 +8895,13 @@ function App() {
           initialScope={exportDialog.scope}
           activePath={activePath}
           hasComps={activeComps.length > 0}
+          // Which artboard "Active artboard" scope targets. The shell can't query
+          // the cross-origin canvas DOM (the in-canvas dialog's activeArtboardId),
+          // so use the tracked signals: an explicit selection wins, else the
+          // viewport-active artboard canvas-lib reports on pan. Without this,
+          // scope=artboard fell back to `:first-of-type` (always the first).
+          activeArtboardId={selected?.artboardId ?? canvasActiveArtboard ?? null}
+          selection={selected?.selector ? { selector: selected.selector, file: selected.file } : null}
           onClose={() => setExportDialog(null)}
         />
       )}
