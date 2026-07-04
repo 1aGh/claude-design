@@ -137,7 +137,13 @@ console.log(`[stage-resources] staged plugin trees → ${PLUGIN_TREES.join(', ')
 const ACP_ENTRY_PKG = '@agentclientprotocol/claude-agent-acp';
 // Platform-native CLI packages — large, platform-locked, and unused once
 // CLAUDE_CODE_EXECUTABLE is pinned. Never stage these.
-const IS_NATIVE_PKG = (name) => /^@anthropic-ai\/claude-agent-sdk-(linux|darwin|win32)/.test(name);
+const IS_ACP_NATIVE_PKG = (name) =>
+  /^@anthropic-ai\/claude-agent-sdk-(linux|darwin|win32)/.test(name);
+// Render-export runtime packages carry only deps we never ship at runtime:
+// playwright's optional `fsevents` (macOS-native) and mediabunny's `@types/*`
+// (type-only — Bun.build transpiles, never type-checks). Skip both so the staged
+// closure stays lean + platform-independent.
+const IS_RENDER_SKIP_DEP = (name) => name === 'fsevents' || name.startsWith('@types/');
 
 // Guard against a pathological symlink cycle; the `parent === dir` root check is
 // the real terminator, this is just belt-and-suspenders.
@@ -158,11 +164,13 @@ function resolveDepPkgJson(fromRealDir, dep) {
   return null;
 }
 
-// Walk the JS closure from the adapter, collecting one real dir per package name.
-function collectAcpClosure() {
-  const entryPkgJson = join(STUDIO, 'node_modules', ACP_ENTRY_PKG, 'package.json');
+// Walk the JS closure from an entry package, collecting one real dir per package
+// name. `isSkipDep(name)` drops deps we deliberately don't ship (heavy platform
+// binaries, optional native modules).
+function collectClosure(entryPkg, label, isSkipDep) {
+  const entryPkgJson = join(STUDIO, 'node_modules', entryPkg, 'package.json');
   if (!existsSync(entryPkgJson)) {
-    console.error(`[stage-resources] missing ACP adapter: ${entryPkgJson}`);
+    console.error(`[stage-resources] missing ${label}: ${entryPkgJson}`);
     console.error('Install dev-server deps first: pnpm install');
     process.exit(1);
   }
@@ -175,43 +183,80 @@ function collectAcpClosure() {
     const pkg = JSON.parse(readFileSync(join(realDir, 'package.json'), 'utf8'));
     const deps = { ...(pkg.dependencies ?? {}), ...(pkg.optionalDependencies ?? {}) };
     for (const dep of Object.keys(deps)) {
-      if (IS_NATIVE_PKG(dep)) continue; // skip the heavy platform binaries
+      if (isSkipDep(dep)) continue; // skip heavy/native/optional deps
       const depPkgJson = resolveDepPkgJson(realDir, dep);
       if (!depPkgJson) continue; // optional/native dep absent on this platform — fine
       walk(dep, dirname(depPkgJson));
     }
   };
-  walk(ACP_ENTRY_PKG, realpathSync(dirname(entryPkgJson)));
+  walk(entryPkg, realpathSync(dirname(entryPkgJson)));
   return collected;
 }
 
-const closure = collectAcpClosure();
-for (const [name, realDir] of closure) {
-  const dst = join(OUT_STUDIO, 'node_modules', name);
-  mkdirSync(dirname(dst), { recursive: true });
-  // Dereference symlinks (pnpm store), but drop each package's own node_modules —
-  // every dep is hoisted flat (no version conflicts in this closure), so nested
-  // trees would only duplicate or pull the symlink farm back in.
-  cpSync(realDir, dst, {
-    recursive: true,
-    dereference: true,
-    filter: (src) => {
-      const rel = src.slice(realDir.length);
-      if (/[\\/]node_modules([\\/]|$)/.test(rel)) return false;
-      // Containment: with dereference:true, never follow a symlink whose target
-      // escapes the package's own real dir — a malicious dep could otherwise
-      // symlink to e.g. ~/.ssh and have its contents copied into the signed
-      // bundle. The package's own files are real (pnpm stores content as real
-      // files, only the linking is symlinked), so this drops nothing legit.
-      try {
-        const real = realpathSync(src);
-        return real === realDir || real.startsWith(realDir + sep);
-      } catch {
-        return false;
-      }
-    },
-  });
+// Copy a collected closure into the staged node_modules, flat-hoisted +
+// symlink-dereferenced.
+function stageClosure(closure) {
+  for (const [name, realDir] of closure) {
+    const dst = join(OUT_STUDIO, 'node_modules', name);
+    mkdirSync(dirname(dst), { recursive: true });
+    // Dereference symlinks (pnpm store), but drop each package's own node_modules —
+    // every dep is hoisted flat (no version conflicts in this closure), so nested
+    // trees would only duplicate or pull the symlink farm back in.
+    cpSync(realDir, dst, {
+      recursive: true,
+      dereference: true,
+      filter: (src) => {
+        const rel = src.slice(realDir.length);
+        if (/[\\/]node_modules([\\/]|$)/.test(rel)) return false;
+        // Containment: with dereference:true, never follow a symlink whose target
+        // escapes the package's own real dir — a malicious dep could otherwise
+        // symlink to e.g. ~/.ssh and have its contents copied into the signed
+        // bundle. The package's own files are real (pnpm stores content as real
+        // files, only the linking is symlinked), so this drops nothing legit.
+        try {
+          const real = realpathSync(src);
+          return real === realDir || real.startsWith(realDir + sep);
+        } catch {
+          return false;
+        }
+      },
+    });
+  }
 }
+
+const closure = collectClosure(ACP_ENTRY_PKG, 'ACP adapter', IS_ACP_NATIVE_PKG);
+stageClosure(closure);
+
+// --- Render-export runtime: stage the packages the export shims need ----------
+// The render exporters can't resolve these because the blanket node_modules
+// filter above excludes them, so a compiled-binary sidecar (desktop app) fails:
+//   • `playwright` — the spawned `bin/_{png,pdf,svg,html,pptx,video}-playwright.mjs`
+//     shims `import 'playwright'`; absent → ERR_MODULE_NOT_FOUND: 'playwright'.
+//   • `mediabunny` + `gifenc` — imported by `exporters/video-encode-lib.ts`,
+//     which the video exporter Bun.build's at runtime (dynamic, so NOT embedded
+//     in the compiled binary); absent → mp4/gif export fails at the encode step.
+// Stage each package's JS closure (playwright+playwright-core; mediabunny;
+// gifenc). Browsers/native are NOT in these packages — the Chromium binary is
+// resolved at runtime from the ms-playwright cache or an executablePath (see
+// bin/_pw-launch.mjs). RCA: issue-desktop-export-failures.
+const RENDER_RUNTIME_PKGS = ['playwright', 'mediabunny', 'gifenc'];
+let renderPkgCount = 0;
+for (const pkg of RENDER_RUNTIME_PKGS) {
+  const c = collectClosure(pkg, `${pkg} (render export)`, IS_RENDER_SKIP_DEP);
+  stageClosure(c);
+  renderPkgCount += c.size;
+}
+// Gate: every render-export entry package must exist after staging.
+for (const pkg of RENDER_RUNTIME_PKGS) {
+  const pj = join(OUT_STUDIO, 'node_modules', pkg, 'package.json');
+  if (!existsSync(pj)) {
+    console.error(`[stage-resources] render-export pkg not staged: ${pj}`);
+    process.exit(1);
+  }
+}
+console.log(
+  `[stage-resources] staged render-export runtime (${renderPkgCount} pkgs) → ${RENDER_RUNTIME_PKGS.join(', ')}`
+);
 
 // Build-time gate: a missing adapter must FAIL the desktop build loud, not ship a
 // dead chat panel. Mirror resolveAdapterEntry()'s contract — the bin must exist.
