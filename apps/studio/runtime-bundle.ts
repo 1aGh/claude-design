@@ -79,6 +79,35 @@ export const RUNTIME_PACKAGES = [
   // every real canvas) returned HTTP 500 "Bundle failed".
   'lib0/decoding',
   'lib0/encoding',
+  // DDR-148 — Remotion video-comp authoring. `remotion` carries the React
+  // context stack (RemotionEnvironment / Sequence / Timeline) that a video-comp
+  // canvas AND the `<Player>` preview BOTH consume — so it MUST be a single
+  // externalised bundle (importmap-shared), exactly like React itself, or the
+  // Player's provider and the composition's `useCurrentFrame()` bind to
+  // different context instances and the comp renders frozen at frame 0 (the
+  // dual-package hazard). `@remotion/player` + `@remotion/transitions` each
+  // externalise `remotion` (→ the one bundle) and INLINE their own stateless
+  // helpers — `remotion/no-react` (interpolate/random/validators/NoReactInternals,
+  // all pure), plus `@remotion/paths`/`@remotion/shapes` for transitions — which
+  // hold no cross-package state, so a per-bundle copy is harmless. NOT shipping
+  // `@remotion/renderer`/`@remotion/web-renderer` (export goes through the
+  // capture spine). Pre-built into dist/runtime + floored in .min-sizes.json.
+  'remotion',
+  '@remotion/player',
+  '@remotion/transitions',
+  // Transition presentations are separate subpath modules by design (Remotion
+  // tree-shakes to what you import). But a canvas import specifier that isn't
+  // in RUNTIME_PACKAGES tries to resolve against the USER's node_modules at
+  // request-time Bun.build — which doesn't exist on an npm/marketplace install
+  // — so EVERY presentation the skill teaches must be pre-bundled + importmap-
+  // routed. v1 ships the six core wipes ("join 4 clips + crossfade" vocabulary);
+  // exotic presentations (dreamy-zoom, film-burn, …) are a documented follow-up.
+  '@remotion/transitions/fade',
+  '@remotion/transitions/slide',
+  '@remotion/transitions/wipe',
+  '@remotion/transitions/flip',
+  '@remotion/transitions/clock-wipe',
+  '@remotion/transitions/none',
 ] as const;
 
 export type RuntimePackage = (typeof RUNTIME_PACKAGES)[number];

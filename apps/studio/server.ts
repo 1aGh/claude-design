@@ -18,7 +18,7 @@ import { spawn } from 'node:child_process';
 
 import { createAcp } from './acp/index.ts';
 import { createActivity } from './activity.ts';
-import { createApi } from './api.ts';
+import { ASSET_MAX_VIDEO_BYTES, createApi } from './api.ts';
 import { bootSelfHeal } from './boot-self-heal.ts';
 import { createCanvasListWatch } from './canvas-list-watch.ts';
 import { type AiActivityEntry, createAiActivity } from './collab/ai-activity.ts';
@@ -124,13 +124,16 @@ const { port: BASE_PORT, explicit: PORT_EXPLICIT } = resolvePort();
 
 type BunServer = ReturnType<typeof Bun.serve<WsData, never>>;
 
-// Phase 23 security review (DDR-088 follow-up) — hard ceiling on a buffered
-// request body. Without it Bun's 128 MB default applies, so `POST /_api/asset`
-// would buffer up to 128 MB into RAM BEFORE api.saveAsset's 10 MB check runs
-// (memory amplification from the untrusted canvas origin). 16 MB covers every
-// legit body (10 MB asset + 1 MB annotation SVG + small JSON) with headroom and
-// bounds the pre-handler buffer; the authoritative per-route caps still apply.
-const MAX_REQUEST_BODY = 16 * 1024 * 1024;
+// Phase 23 security review (DDR-088) + DDR-148 — hard ceiling on a request
+// body. Bun's 128 MB default would let the untrusted canvas origin send huge
+// bodies to any route. DDR-088 pinned this at 16 MB. DDR-148 raises it to the
+// video cap + 8 MB headroom so `POST /_api/asset` can accept a 100 MB clip —
+// but that route now STREAMS the body to disk (saveAssetFromStream), so a big
+// upload never lands as one ArrayBuffer in RAM. Other routes keep their small
+// LOGICAL caps (annotation 1 MB, JSON) — a body over those still rejects; the
+// only change is Bun accepts more bytes pre-handler (a bandwidth-bounded
+// transient-buffer tradeoff on the buffering routes, noted in DDR-148).
+const MAX_REQUEST_BODY = ASSET_MAX_VIDEO_BYTES + 8 * 1024 * 1024;
 
 function startServer(port: number): BunServer {
   return Bun.serve<WsData, never>({

@@ -10,7 +10,7 @@ import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 
 import { probeAcpAvailability } from './acp/probe.ts';
 import { deleteChat, listChats, readChatMessages } from './acp/transcript.ts';
-import type { Api } from './api.ts';
+import { type Api, ASSET_MAX_VIDEO_BYTES } from './api.ts';
 import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
@@ -1346,31 +1346,29 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     },
 
     '/_api/asset': async (req: Request) => {
-      // Phase 23 — binary image upload from the canvas (drag-drop / paste / the
-      // a11y file picker). POST raw image bytes → content-addressed write under
+      // Phase 23 / DDR-148 — binary media upload from the canvas (drag-drop /
+      // paste). POST raw bytes → content-addressed write under
       // <designRoot>/assets/<sha8>.<ext>, returns 201 { path }. This route is on
       // the canvas-origin allowlist (CANVAS_SAFE_API below) — a bigger grant than
       // the inert annotation-SVG write (binary, disk) — so the caps in
-      // api.saveAsset (magic-byte sniff, 10 MB ceiling, content-addressed name,
-      // traversal guard, no-SVG, dedupe) are the load-bearing trust mitigation,
-      // NOT optional. See DDR (Task 9).
+      // api.saveAssetFromStream (magic-byte sniff, per-category ceiling, content-
+      // addressed name, traversal guard, no-SVG/script, dedupe, session budget)
+      // are the load-bearing trust mitigation, NOT optional. DDR-088 + DDR-148:
+      // the body is STREAMED to disk (no full-buffer of a 100 MB clip in RAM).
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
-      // Early reject on a declared oversize body (the post-read length check in
-      // saveAsset is the authoritative gate — Content-Length can be omitted/lied).
+      // Early reject on a declared oversize body (the streamed per-category cap in
+      // saveAssetFromStream is the authoritative gate — Content-Length can be
+      // omitted/lied; this only trims an obvious oversize before we open a temp).
       const declared = Number(req.headers.get('content-length') || '0');
-      if (Number.isFinite(declared) && declared > 10 * 1024 * 1024) {
+      if (Number.isFinite(declared) && declared > ASSET_MAX_VIDEO_BYTES) {
+        const mb = Math.round(ASSET_MAX_VIDEO_BYTES / (1024 * 1024));
         return Response.json(
-          { ok: false, error: 'asset exceeds the 10 MB cap' },
+          { ok: false, error: `media exceeds the ${mb} MB cap` },
           { status: 413, headers: { 'Cache-Control': 'no-store' } }
         );
       }
-      let bytes: Uint8Array;
-      try {
-        bytes = new Uint8Array(await req.arrayBuffer());
-      } catch {
-        return new Response('could not read request body', { status: 400 });
-      }
-      const result = await api.saveAsset(bytes);
+      if (!req.body) return new Response('empty body', { status: 400 });
+      const result = await api.saveAssetFromStream(req.body as ReadableStream<Uint8Array>);
       if (!result.ok) {
         return Response.json(
           { ok: false, error: result.error },

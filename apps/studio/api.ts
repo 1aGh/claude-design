@@ -239,6 +239,9 @@ export interface Api {
   saveAnnotations(file: string, svg: string): Promise<boolean>;
   // Phase 23 — content-addressed binary image write (drag-drop / paste / picker)
   saveAsset(bytes: Uint8Array): Promise<SaveAssetResult>;
+  /** DDR-148 — streaming variant for the HTTP route (100 MB video without a
+   *  full in-RAM buffer). Sniffs + caps + content-addresses like saveAsset. */
+  saveAssetFromStream(stream: ReadableStream<Uint8Array>): Promise<SaveAssetResult>;
   // Persist a clipboard-pasted ACP composer image → runtime `_chat/attachments/`,
   // returns an absolute path (Phase 31 follow-up — POST /_api/acp/attachment).
   saveChatAttachment(bytes: Uint8Array): Promise<SaveAssetResult>;
@@ -327,7 +330,10 @@ export const ASSET_MAX_BYTES = 10 * 1024 * 1024;
  */
 export const ASSET_SESSION_BUDGET = (() => {
   const env = Number(process.env.MAUDE_ASSET_SESSION_BUDGET);
-  return Number.isFinite(env) && env > 0 ? env : 256 * 1024 * 1024;
+  // DDR-148 — raised 256 MB → 1 GB now that the route accepts video/audio (one
+  // 100 MB clip would blow a 256 MB budget after a couple of drops). Still an
+  // aggregate per-server-instance disk-fill bound; env-overridable.
+  return Number.isFinite(env) && env > 0 ? env : 1024 * 1024 * 1024;
 })();
 
 /**
@@ -390,6 +396,110 @@ export interface SaveAssetResult {
   error?: string;
   /** Relative `assets/<sha8>.<ext>` path on success. */
   path?: string;
+}
+
+/** DDR-148 — media category, decides which per-file cap applies. */
+export type AssetCategory = 'image' | 'video' | 'audio';
+
+export interface AssetTypeInfo {
+  /** Stored file extension (bytes decide it, never the upload name). */
+  ext: string;
+  category: AssetCategory;
+}
+
+/**
+ * DDR-148 — per-file ceiling for time-based media (video + audio). Images keep
+ * the tighter {@link ASSET_MAX_BYTES} 10 MB cap. Overridable via
+ * `MAUDE_ASSET_MAX_VIDEO_BYTES` (bytes) for power users. The route lives on the
+ * (untrusted) canvas origin, so this cap + the session budget + the streamed
+ * write are the trust mitigation, exactly like the image caps (DDR-088).
+ */
+export const ASSET_MAX_VIDEO_BYTES = (() => {
+  const env = Number(process.env.MAUDE_ASSET_MAX_VIDEO_BYTES);
+  return Number.isFinite(env) && env > 0 ? env : 100 * 1024 * 1024;
+})();
+
+/** The byte cap for a category. */
+export function assetCapForCategory(category: AssetCategory): number {
+  return category === 'image' ? ASSET_MAX_BYTES : ASSET_MAX_VIDEO_BYTES;
+}
+
+const UNSUPPORTED_ASSET_MSG =
+  'unsupported media type — png/jpeg/gif/webp images or mp4/mov/webm/mp3/wav/m4a media only (SVG/script rejected)';
+
+function capError(category?: AssetCategory): string {
+  if (category === 'image') return 'image exceeds the 10 MB cap';
+  const mb = Math.round(ASSET_MAX_VIDEO_BYTES / (1024 * 1024));
+  return `media exceeds the ${mb} MB cap`;
+}
+
+/** Concatenate a small list of chunks (used only for the ≤ few-KB sniff head). */
+function concatBytes(chunks: readonly Uint8Array[]): Uint8Array {
+  let len = 0;
+  for (const c of chunks) len += c.length;
+  const out = new Uint8Array(len);
+  let off = 0;
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.length;
+  }
+  return out;
+}
+
+/**
+ * DDR-148 — magic-byte type sniff for the WIDENED asset route: images (via
+ * {@link sniffImageType}) PLUS time-based media. The declared name / extension
+ * / Content-Type is NEVER trusted — the bytes decide the stored extension AND
+ * the category (→ which cap applies). The server only sniffs; it never PARSES a
+ * container (parsing happens in the sandboxed capture browser). Anything that
+ * isn't a recognised raster/video/audio magic number (SVG, HTML, arbitrary
+ * script) → null → rejected (415). Needs ≥ 12 bytes for the ISO-BMFF brands.
+ */
+export function sniffAssetType(bytes: Uint8Array): AssetTypeInfo | null {
+  const img = sniffImageType(bytes);
+  if (img) return { ext: img, category: 'image' };
+  const b = bytes;
+  // ISO-BMFF (mp4 / mov / m4a): "ftyp" box at offset 4, brand at offset 8.
+  if (
+    b.length >= 12 &&
+    b[4] === 0x66 && // f
+    b[5] === 0x74 && // t
+    b[6] === 0x79 && // y
+    b[7] === 0x70 // p
+  ) {
+    const brand = String.fromCharCode(b[8] ?? 0, b[9] ?? 0, b[10] ?? 0, b[11] ?? 0);
+    if (brand === 'qt  ') return { ext: 'mov', category: 'video' };
+    if (brand.startsWith('M4A')) return { ext: 'm4a', category: 'audio' };
+    if (brand.startsWith('M4V')) return { ext: 'm4v', category: 'video' };
+    // isom / mp41 / mp42 / avc1 / iso2 / iso5 / dash / mp4v / … → treat as mp4.
+    return { ext: 'mp4', category: 'video' };
+  }
+  // Matroska / WebM — EBML header 1A 45 DF A3.
+  if (b.length >= 4 && b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) {
+    return { ext: 'webm', category: 'video' };
+  }
+  // MP3 — "ID3" tag OR a frame-sync (0xFF followed by 0b111xxxxx).
+  if (b.length >= 3 && b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) {
+    return { ext: 'mp3', category: 'audio' };
+  }
+  if (b.length >= 2 && b[0] === 0xff && ((b[1] ?? 0) & 0xe0) === 0xe0) {
+    return { ext: 'mp3', category: 'audio' };
+  }
+  // WAV — "RIFF"????"WAVE".
+  if (
+    b.length >= 12 &&
+    b[0] === 0x52 &&
+    b[1] === 0x49 &&
+    b[2] === 0x46 &&
+    b[3] === 0x46 &&
+    b[8] === 0x57 &&
+    b[9] === 0x41 &&
+    b[10] === 0x56 &&
+    b[11] === 0x45
+  ) {
+    return { ext: 'wav', category: 'audio' };
+  }
+  return null;
 }
 
 export function createApi(ctx: Context, hooks: ApiHooks): Api {
@@ -987,51 +1097,153 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   //     user input, but a poisoned designRoot must still not escape).
   // Running total of bytes this server instance has actually written (post-dedupe).
   let assetBytesWritten = 0;
+
+  /**
+   * DDR-148 — the streaming write path behind `POST /_api/asset`. Reads the
+   * request body chunk-by-chunk so a 100 MB video never lands as a single
+   * ArrayBuffer in RAM (the memory-amplification vector DDR-088 §review flagged
+   * for the untrusted canvas origin — worse now that the per-file cap is 100 MB,
+   * not 10 MB). Sniffs the type from the head, applies the CATEGORY cap while
+   * streaming (image 10 MB · video/audio {@link ASSET_MAX_VIDEO_BYTES}), writes
+   * to a temp file, then content-addresses (sha8) → dedupe-rename. Nothing is
+   * ever parsed — only magic bytes are read. `saveAsset(bytes)` wraps this so
+   * both the route and any programmatic caller share ONE tested path.
+   */
+  async function saveAssetFromStream(stream: ReadableStream<Uint8Array>): Promise<SaveAssetResult> {
+    const assetsDir = path.join(paths.designRoot, 'assets');
+    const tmpName = `.tmp-${crypto.randomBytes(8).toString('hex')}`;
+    const tmpAbs = path.join(assetsDir, tmpName);
+    const hash = crypto.createHash('sha256');
+    let sink: Bun.FileSink | null = null;
+    let typeInfo: AssetTypeInfo | null = null;
+    let cap = ASSET_MAX_VIDEO_BYTES; // provisional max until the head is sniffed
+    let total = 0;
+    const headChunks: Uint8Array[] = [];
+    let headLen = 0;
+
+    const cleanup = async () => {
+      try {
+        if (sink) await sink.end();
+      } catch {
+        /* sink already closed */
+      }
+      try {
+        await rm(tmpAbs, { force: true });
+      } catch {
+        /* temp already gone */
+      }
+    };
+    const flushHead = () => {
+      for (const c of headChunks) {
+        hash.update(c);
+        sink?.write(c);
+      }
+      headChunks.length = 0;
+      headLen = 0;
+    };
+
+    // Explicit reader (NOT `for await` — Bun's HTTP `req.body` ReadableStream
+    // does not implement Symbol.asyncIterator, so async-iteration throws
+    // "undefined is not a function"; getReader().read() works for every stream).
+    const reader = stream.getReader();
+    try {
+      await mkdir(assetsDir, { recursive: true });
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = value;
+        if (!chunk || chunk.length === 0) continue;
+        total += chunk.length;
+        if (total > cap) {
+          await cleanup();
+          return { ok: false, status: 413, error: capError(typeInfo?.category) };
+        }
+        if (!typeInfo) {
+          headChunks.push(chunk);
+          headLen += chunk.length;
+          if (headLen >= 12) {
+            typeInfo = sniffAssetType(concatBytes(headChunks));
+            if (!typeInfo) {
+              await cleanup(); // nothing written yet — no temp file to remove
+              return { ok: false, status: 415, error: UNSUPPORTED_ASSET_MSG };
+            }
+            cap = assetCapForCategory(typeInfo.category);
+            if (total > cap) {
+              await cleanup();
+              return { ok: false, status: 413, error: capError(typeInfo.category) };
+            }
+            sink = Bun.file(tmpAbs).writer();
+            flushHead();
+          }
+        } else {
+          hash.update(chunk);
+          sink?.write(chunk);
+        }
+      }
+
+      if (total === 0) {
+        await cleanup();
+        return { ok: false, status: 400, error: 'empty body' };
+      }
+      // A body shorter than 12 bytes never triggered the mid-stream sniff.
+      if (!typeInfo) {
+        typeInfo = sniffAssetType(concatBytes(headChunks));
+        if (!typeInfo) {
+          await cleanup();
+          return { ok: false, status: 415, error: UNSUPPORTED_ASSET_MSG };
+        }
+        cap = assetCapForCategory(typeInfo.category);
+        if (total > cap) {
+          await cleanup();
+          return { ok: false, status: 413, error: capError(typeInfo.category) };
+        }
+        sink = Bun.file(tmpAbs).writer();
+        flushHead();
+      }
+      if (sink) await sink.end();
+
+      const sha8 = hash.digest('hex').slice(0, 8);
+      const name = `${sha8}.${typeInfo.ext}`;
+      const fileAbs = path.join(assetsDir, name);
+      // Containment backstop — the name is content-addressed (sha8 hex + sniffed
+      // ext), no user-controlled segment, but assert anyway (poisoned designRoot).
+      if (path.resolve(fileAbs) !== path.join(path.resolve(assetsDir), name)) {
+        await rm(tmpAbs, { force: true });
+        return { ok: false, status: 400, error: 'resolved asset path escapes assets dir' };
+      }
+      // Dedupe — identical bytes hash to the same name; drop the temp copy.
+      if (await Bun.file(fileAbs).exists()) {
+        await rm(tmpAbs, { force: true });
+        return { ok: true, path: `assets/${name}` };
+      }
+      // Aggregate write budget — bounds a scripted disk-fill loop from the
+      // untrusted canvas origin. Only a genuinely NEW file counts.
+      if (assetBytesWritten + total > ASSET_SESSION_BUDGET) {
+        await rm(tmpAbs, { force: true });
+        return {
+          ok: false,
+          status: 429,
+          error: 'asset write budget exceeded for this server session',
+        };
+      }
+      await rename(tmpAbs, fileAbs);
+      assetBytesWritten += total;
+      return { ok: true, path: `assets/${name}` };
+    } catch (err) {
+      await cleanup();
+      return { ok: false, status: 500, error: err instanceof Error ? err.message : 'write failed' };
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        /* already released */
+      }
+    }
+  }
+
   async function saveAsset(bytes: Uint8Array): Promise<SaveAssetResult> {
     if (!bytes || bytes.length === 0) return { ok: false, status: 400, error: 'empty body' };
-    if (bytes.length > ASSET_MAX_BYTES) {
-      return { ok: false, status: 413, error: 'asset exceeds the 10 MB cap' };
-    }
-    const kind = sniffImageType(bytes);
-    if (!kind) {
-      return {
-        ok: false,
-        status: 415,
-        error: 'unsupported image type — png/jpeg/gif/webp only (SVG rejected)',
-      };
-    }
-    const sha8 = crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 8);
-    const name = `${sha8}.${kind}`;
-    const assetsDir = path.join(paths.designRoot, 'assets');
-    const fileAbs = path.join(assetsDir, name);
-    // Containment backstop — the name is content-addressed (sha8 hex + sniffed
-    // ext), so there is no user-controlled path segment, but assert anyway.
-    const resolved = path.resolve(fileAbs);
-    const assetsResolved = path.resolve(assetsDir);
-    if (resolved !== path.join(assetsResolved, name)) {
-      return { ok: false, status: 400, error: 'resolved asset path escapes assets dir' };
-    }
-    try {
-      // Dedupe — identical bytes hash to the same name; skip the write if present.
-      if (!(await Bun.file(fileAbs).exists())) {
-        // Aggregate write budget (DDR-088 follow-up) — bounds a scripted
-        // one-byte-mutation disk-fill loop from the untrusted canvas origin.
-        // Only a genuinely NEW file counts (a dedupe hit is free).
-        if (assetBytesWritten + bytes.length > ASSET_SESSION_BUDGET) {
-          return {
-            ok: false,
-            status: 429,
-            error: 'asset write budget exceeded for this server session',
-          };
-        }
-        await mkdir(assetsDir, { recursive: true });
-        await Bun.write(fileAbs, bytes);
-        assetBytesWritten += bytes.length;
-      }
-    } catch (err) {
-      return { ok: false, status: 500, error: err instanceof Error ? err.message : 'write failed' };
-    }
-    return { ok: true, path: `assets/${name}` };
+    return saveAssetFromStream(new Response(bytes).body as ReadableStream<Uint8Array>);
   }
 
   // Phase 31 follow-up — persist an image pasted straight from the clipboard into
@@ -2013,6 +2225,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     loadAnnotations,
     saveAnnotations,
     saveAsset,
+    saveAssetFromStream,
     saveChatAttachment,
     resolveChatAttachment,
     createCanvas,

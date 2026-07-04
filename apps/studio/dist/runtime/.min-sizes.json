@@ -12,5 +12,14 @@
   "y-protocols_sync.js": 1000,
   "y-protocols_awareness.js": 3500,
   "lib0_decoding.js": 5500,
-  "lib0_encoding.js": 5500
+  "lib0_encoding.js": 5500,
+  "remotion.js": 134000,
+  "@remotion_player.js": 60000,
+  "@remotion_transitions.js": 40000,
+  "@remotion_transitions_fade.js": 400,
+  "@remotion_transitions_slide.js": 900,
+  "@remotion_transitions_wipe.js": 1500,
+  "@remotion_transitions_flip.js": 700,
+  "@remotion_transitions_clock-wipe.js": 36000,
+  "@remotion_transitions_none.js": 300
 }

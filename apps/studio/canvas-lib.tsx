@@ -108,6 +108,13 @@ import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { MaybeToolProvider, useToolModeOptional } from './use-tool-mode.tsx';
 import { UndoStackProvider, useUndoSinks, useUndoStackOptional } from './use-undo-stack.tsx';
 
+export type { CompSnapshot, VideoCompMeta, VideoCompProps } from './video-comp.tsx';
+// DDR-148 — video-comp canvas kind. Re-exported so `@maude/canvas-lib` exposes
+// <VideoComp> (Remotion composition mounted in <Player> + the deterministic
+// seek bridge). Its `remotion`/`@remotion/player` imports resolve through the
+// canvas importmap (RUNTIME_PACKAGES), same as react/motion.
+export { VideoComp } from './video-comp.tsx';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Module constants
 

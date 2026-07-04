@@ -9,6 +9,8 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-149: Dev-server config hot-reload — in-place `ctx.cfg` swap contract (mid-session `/design:setup-ds` scaffolds reach the file tree live)](DDR-149-config-hot-reload-in-place-cfg-contract.md) — 2026-07-03, studio/config/hot-reload/file-tree/canvas-list-watch/security-clamp/linked-hub-boot-pin
+- [DDR-148: Video & animation layer — Remotion-authored comps (in-house bundled) + capture-first GIF/MP4 export (hybrid, user-ratified over the 3:0 debate default)](DDR-148-video-comp-remotion-authoring-capture-export.md) — 2026-07-03, design/video/remotion/player/transitions/runtime-bundle/capture-spine/mediabunny/gifenc/asset-widen/determinism/license-disclosure
 - [DDR-146: ACP chat — persist + resume the claude session across app restarts (closes DDR-125's tracked cross-restart follow-up)](DDR-146-acp-cross-restart-session-resume.md) — 2026-07-03, native-app/acp/chat/session-resume/load-session/ddr-125-followup/concurrency/security
 - [DDR-145: ACP chat — render agent-referenced designRoot images as thumbnails (render-only client slice; ACP image blocks + skill emit stay v2 backlog)](DDR-145-acp-chat-agent-referenced-image-render.md) — 2026-07-03, native-app/acp/chat/thumbnails/lightbox/designroot-static/render-only/cap/svg-excluded
 - [DDR-144: Bundled screenshot engine — agent-browser launcher (externalBin) + on-demand chrome-headless-shell](DDR-144-bundled-screenshot-engine-agent-browser-headless-shell.md) — 2026-07-03, native-app/design/screenshots/agent-browser/chrome-headless-shell/externalBin/zero-install/critics/provisioning
