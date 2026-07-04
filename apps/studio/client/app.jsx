@@ -6114,6 +6114,18 @@ function App() {
   const [timelineSequences, setTimelineSequences] = useState([]);
   const [timelineAudio, setTimelineAudio] = useState([]);
   const [timelineTotal, setTimelineTotal] = useState(0);
+  // On a multi-comp canvas the Timeline drives ONE comp (the parser scopes to it
+  // + reports its total). Match that total back to the announced comp id so the
+  // transport/scrub targets ONLY that comp — not every artboard on the canvas.
+  const timelineCompId = useMemo(() => {
+    if (!activeComps.length) return null;
+    const match = activeComps.find((c) => c.durationInFrames === timelineTotal);
+    return (match ?? activeComps[0]).id;
+  }, [activeComps, timelineTotal]);
+  const timelineCompIdRef = useRef(null);
+  useEffect(() => {
+    timelineCompIdRef.current = timelineCompId;
+  }, [timelineCompId]);
   // Phase 31 (DDR-123) — the native ACP chat sidepanel (right dock, native-only).
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantBusy, setAssistantBusy] = useState(false);
@@ -7333,6 +7345,9 @@ function App() {
             ? iframesRef.current.get(activePath)?.contentWindow
             : null;
         if (e.source !== activeWin) return;
+        // Only the Timeline's target comp drives the playhead — a sibling
+        // artboard's Player must not fight it for the readout (multi-comp canvas).
+        if (m.id && timelineCompIdRef.current && m.id !== timelineCompIdRef.current) return;
         if (Number.isFinite(m.frame)) setTimelineFrame(Math.max(0, Math.round(m.frame)));
       } else if (m.dgn === 'toggle-palette') {
         // ⌘K pressed while focus was inside the canvas iframe — the injected
@@ -8349,15 +8364,15 @@ function App() {
             onSeek={(f) => {
               setTimelineFrame(f);
               setTimelinePlaying(false);
-              postToActiveCanvas({ dgn: 'timeline-seek', frame: f });
+              postToActiveCanvas({ dgn: 'timeline-seek', frame: f, id: timelineCompId });
             }}
             onPlay={() => {
               setTimelinePlaying(true);
-              postToActiveCanvas({ dgn: 'timeline-play' });
+              postToActiveCanvas({ dgn: 'timeline-play', id: timelineCompId });
             }}
             onPause={() => {
               setTimelinePlaying(false);
-              postToActiveCanvas({ dgn: 'timeline-pause' });
+              postToActiveCanvas({ dgn: 'timeline-pause', id: timelineCompId });
             }}
             onToggleLoop={() => setTimelineLoop((v) => !v)}
             onRetime={(index, patch) => {
