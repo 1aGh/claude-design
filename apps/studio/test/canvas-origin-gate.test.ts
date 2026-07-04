@@ -72,6 +72,10 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/canvas-source',
         // DDR-148 — Timeline drag-to-retime is a source-write, MAIN-ORIGIN ONLY.
         '/_api/retime-sequence',
+        // DDR-150 P2 — the clip enumerator reads project source structure, so it
+        // is MAIN-ORIGIN ONLY (same boundary as /_api/canvas-source): the
+        // untrusted canvas iframe must never enumerate the comp it renders.
+        '/_api/comp-clips',
         // Phase 12.1 (DDR-138) — node-move reorder is a source-write, MAIN-ORIGIN
         // ONLY. The canvas iframe requests a reorder over the dgn:* bus; the shell
         // performs the write. A GET here 403s at the gate (route unreachable on

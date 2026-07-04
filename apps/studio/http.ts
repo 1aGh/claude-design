@@ -1448,6 +1448,29 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       return Response.json({ ok: true }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
     },
 
+    '/_api/comp-clips': async (req: Request) => {
+      // DDR-150 P2 — the single authoritative clip enumerator for a video-comp.
+      // GET ?canvas=<rel>&artboardId=<id> → { ok, compName, clips:[{ stableId,
+      // from, durationInFrames, mediaTag, mediaSrc, mediaCdId, contentHash }] }.
+      // The Timeline addresses every clip op by the returned stableId (never a
+      // regex document-order index — the multi-comp mis-hit defect). Read-only +
+      // MAIN-ORIGIN-ONLY: absent from CANVAS_SAFE_API + the startCanvasServer
+      // route map, so the untrusted canvas iframe can never reach it (DDR-054).
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      const u = new URL(req.url);
+      const result = await api.compClips({
+        canvas: u.searchParams.get('canvas'),
+        artboardId: u.searchParams.get('artboardId') ?? undefined,
+      });
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(result, { status: 200, headers: { 'Cache-Control': 'no-store' } });
+    },
+
     '/_api/reorder-revert': async (req: Request) => {
       // Phase 12.1 follow-up — Cmd+Z / Cmd+Shift+Z for a reorder. POST body
       // { canvas, seq, dir:'undo'|'redo' } → api.reorderRevert swaps the whole

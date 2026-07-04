@@ -9,7 +9,9 @@ import path from 'node:path';
 import { renderBriefBoard, validateCanvasName } from './canvas-create.ts';
 import {
   CanvasEditError,
+  type ClipInfo,
   editAttribute,
+  enumerateClips,
   type MovePosition,
   moveElement,
   removeAttribute,
@@ -296,6 +298,20 @@ export interface Api {
     durationInFrames?: unknown;
     from?: unknown;
   }): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
+  // DDR-150 P2 — the single authoritative clip enumerator for a video-comp.
+  // Read-only; the Timeline addresses every op by the returned `stableId`
+  // (never a regex document-order index — the multi-comp mis-hit defect).
+  compClips(input: { canvas?: unknown; artboardId?: unknown }): Promise<
+    | {
+        ok: true;
+        compName: string | null;
+        artboardId: string | null;
+        fps: number | null;
+        durationInFrames: number | null;
+        clips: Array<Omit<ClipInfo, 'start' | 'end'>>;
+      }
+    | { ok: false; status: number; error: string }
+  >;
   // Undo/redo a prior reorder by seq (Cmd+Z from the canvas undo stack). Whole-
   // file content swap from the in-memory revert log — immune to the positional
   // data-cd-id churn a reorder causes (inverse-descriptor undo would go stale).
@@ -1863,6 +1879,32 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  async function compClips(input: { canvas?: unknown; artboardId?: unknown }) {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId : undefined;
+    try {
+      const source = await Bun.file(r.abs).text();
+      const result = enumerateClips(r.abs, source, artboardId);
+      // Strip the internal source offsets — the client addresses by stableId.
+      const clips = result.clips.map(({ start: _s, end: _e, ...c }) => c);
+      return {
+        ok: true as const,
+        compName: result.compName,
+        artboardId: result.artboardId,
+        fps: result.fps,
+        durationInFrames: result.durationInFrames,
+        clips,
+      };
+    } catch (err) {
+      return {
+        ok: false as const,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'enumerate failed',
+      };
+    }
+  }
+
   async function reorderRevert(input: {
     canvas?: unknown;
     seq?: unknown;
@@ -2319,6 +2361,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     editCss,
     editText,
     editAttr,
+    compClips,
     reorder,
     retimeSequenceOp,
     reorderRevert,
