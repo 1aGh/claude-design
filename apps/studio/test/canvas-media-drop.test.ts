@@ -13,6 +13,7 @@ import {
   isHttpUrl,
   linkDomain,
   type MediaPayload,
+  mediaSnippet,
   normalizeUrl,
   prettifyUrl,
 } from '../use-canvas-media-drop.tsx';
@@ -116,8 +117,36 @@ describe('use-canvas-media-drop / classifyMediaPayload (dispatch matrix)', () =>
     expect(intent?.kind).toBe('image');
   });
 
-  test('a non-image file is ignored', () => {
+  test('a non-image, non-media file is ignored', () => {
     expect(classifyMediaPayload({ ...empty, files: [fakeFile('application/pdf')] })).toBeNull();
+  });
+
+  test('a video file → a media intent (DDR-148)', () => {
+    const intent = classifyMediaPayload({ ...empty, files: [fakeFile('video/mp4')] });
+    expect(intent).toEqual({ kind: 'media', file: expect.anything(), mediaKind: 'video' });
+  });
+
+  test('an audio file → a media intent', () => {
+    const intent = classifyMediaPayload({ ...empty, files: [fakeFile('audio/mpeg')] });
+    expect(intent?.kind).toBe('media');
+    expect(intent && intent.kind === 'media' && intent.mediaKind).toBe('audio');
+  });
+
+  test('an image still wins over a co-dropped video', () => {
+    const intent = classifyMediaPayload({
+      ...empty,
+      files: [fakeFile('image/png'), fakeFile('video/mp4')],
+    });
+    expect(intent?.kind).toBe('image');
+  });
+
+  test('mediaSnippet emits the right Remotion element', () => {
+    expect(mediaSnippet('video', 'assets/ab12cd34.mp4')).toBe(
+      '<Video src="assets/ab12cd34.mp4" />'
+    );
+    expect(mediaSnippet('audio', 'assets/ff00aa11.mp3')).toBe(
+      '<Audio src="assets/ff00aa11.mp3" />'
+    );
   });
 
   test('a URL drop becomes a link with the anchor text as the title', () => {

@@ -1,10 +1,14 @@
 /**
  * @file       use-canvas-media-drop.tsx — Phase 23 canvas media intake
  * @scope      apps/studio/use-canvas-media-drop.tsx
- * @purpose    OS-level drag-and-drop + clipboard paste of images and URLs onto
- *             the canvas. Routes each gesture to a create callback owned by
- *             AnnotationsLayer (which holds the commit/undo sink + screenToWorld):
+ * @purpose    OS-level drag-and-drop + clipboard paste of images, video/audio,
+ *             and URLs onto the canvas. Routes each gesture to a create callback
+ *             owned by AnnotationsLayer (which holds the commit/undo sink +
+ *             screenToWorld):
  *               • image file → `onImage(file, world)`  → optimistic stroke + upload
+ *               • video/audio → `onMedia?(file, kind, world)` → upload to assets/
+ *                 + toast the `<Video>`/`<Audio>` snippet (DDR-148; auto-insert
+ *                 into the comp TSX is a documented follow-up)
  *               • http(s) URL → `onLink(url, title, world)` → client-only link chip
  *
  *             The classification + URL helpers are PURE + exported so the unit
@@ -35,6 +39,7 @@ export interface MediaPayload {
 
 export type MediaIntent =
   | { kind: 'image'; file: File }
+  | { kind: 'media'; file: File; mediaKind: 'video' | 'audio' }
   | { kind: 'link'; url: string; title: string };
 
 /** True only for an absolute http(s) URL — the one scheme a link chip accepts. */
@@ -136,6 +141,19 @@ export function anchorTextFromHtml(html: string): string | null {
 export function classifyMediaPayload(p: MediaPayload): MediaIntent | null {
   const imageFile = p.files.find((f) => typeof f.type === 'string' && f.type.startsWith('image/'));
   if (imageFile) return { kind: 'image', file: imageFile };
+  // DDR-148 — video/audio files land in the project's assets/ (the widened asset
+  // route, DDR-088) so a comp can reference them as <Video>/<Audio src="assets/…">.
+  const mediaFile = p.files.find(
+    (f) =>
+      typeof f.type === 'string' && (f.type.startsWith('video/') || f.type.startsWith('audio/'))
+  );
+  if (mediaFile) {
+    return {
+      kind: 'media',
+      file: mediaFile,
+      mediaKind: mediaFile.type.startsWith('video/') ? 'video' : 'audio',
+    };
+  }
   const url = firstHttpUrl(p.uriList) ?? firstHttpUrl(p.plain);
   if (url) {
     const title = anchorTextFromHtml(p.html) ?? prettifyUrl(url);
@@ -242,6 +260,45 @@ export function showCanvasToast(message: string): void {
 export interface MediaDropCallbacks {
   onImage: (file: File, world: [number, number]) => void;
   onLink: (url: string, title: string, world: [number, number]) => void;
+  /**
+   * DDR-148 — a video/audio file was dropped. Optional: when omitted, the hook
+   * uploads it to `assets/` and toasts a ready-to-use `<Video>`/`<Audio>`
+   * snippet (the drop-then-reference flow). A future host can provide this to
+   * auto-insert the element into the composition TSX (the deferred slice — the
+   * comp-placement question, see DDR-148 open items).
+   */
+  onMedia?: (file: File, mediaKind: 'video' | 'audio', world: [number, number]) => void;
+}
+
+/** The snippet the toast surfaces so the dropped clip is one paste away. */
+export function mediaSnippet(mediaKind: 'video' | 'audio', assetPath: string): string {
+  if (mediaKind === 'audio') return `<Audio src="${assetPath}" />`;
+  return `<Video src="${assetPath}" />`;
+}
+
+/**
+ * Default media-drop handler: upload the file to the widened asset route, then
+ * toast the `assets/…` path + the snippet to paste into the comp. Copies the
+ * snippet to the clipboard when available. Exported for reuse/testing.
+ */
+export async function uploadAndAnnounceMedia(
+  file: File,
+  mediaKind: 'video' | 'audio'
+): Promise<void> {
+  const sizeMb = file.size / (1024 * 1024);
+  const res = await uploadAsset(file);
+  if ('error' in res) {
+    showCanvasToast(`Couldn't add ${mediaKind}: ${res.error}`);
+    return;
+  }
+  const snippet = mediaSnippet(mediaKind, res.path);
+  try {
+    await navigator.clipboard?.writeText(snippet);
+  } catch {
+    /* clipboard unavailable — the toast still shows the snippet */
+  }
+  const warn = sizeMb > 20 ? ' · ⚠ >20 MB rides git + sync' : '';
+  showCanvasToast(`Added ${res.path}${warn} — snippet copied: ${snippet}`);
 }
 
 export function useCanvasMediaDrop(opts: {
@@ -317,7 +374,12 @@ export function useCanvasMediaDrop(opts: {
 
     const dispatchIntent = (intent: MediaIntent, world: [number, number]) => {
       if (intent.kind === 'image') callbacks.onImage(intent.file, world);
-      else if (isHttpUrl(intent.url)) callbacks.onLink(intent.url, intent.title, world);
+      else if (intent.kind === 'media') {
+        if (callbacks.onMedia) callbacks.onMedia(intent.file, intent.mediaKind, world);
+        else void uploadAndAnnounceMedia(intent.file, intent.mediaKind);
+      } else if (intent.kind === 'link' && isHttpUrl(intent.url)) {
+        callbacks.onLink(intent.url, intent.title, world);
+      }
     };
 
     document.addEventListener('dragover', onDragOver);
