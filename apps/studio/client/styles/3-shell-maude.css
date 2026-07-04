@@ -1213,7 +1213,7 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .gp-x:hover { color: var(--fg-1); background: var(--bg-3); }
 
 /* ── Timeline (DDR-148) — BOTTOM-docked transport + per-sequence track ── */
-.tl-panel { position: relative; display: flex; flex-direction: column; min-height: 0; width: 100%; background: var(--bg-1); border-top: 1px solid var(--border-default); }
+.tl-panel { position: relative; display: flex; flex-direction: column; min-height: 0; width: 100%; background: var(--bg-1); border-top: 1px solid var(--border-default); user-select: none; -webkit-user-select: none; }
 /* drag the top edge to resize the panel taller/shorter */
 .tl-resize-handle { position: absolute; top: -3px; left: 0; right: 0; height: 8px; cursor: ns-resize; z-index: 6; touch-action: none; }
 .tl-resize-handle::after { content: ""; position: absolute; top: 3px; left: 50%; transform: translateX(-50%); width: 44px; height: 3px; border-radius: 2px; background: var(--fg-2); opacity: 0; transition: opacity 0.12s; }

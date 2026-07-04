@@ -139,6 +139,39 @@ export function cspForCanvasShell(html: string, mainOrigin?: string): string {
 }
 
 /**
+ * CSP for the EXPORT/CAPTURE render (DDR-148 security, attacker F1). The export
+ * renders the (untrusted, DDR-054) canvas on the MAIN origin — where the normal
+ * shell CSP is env-gated off — and the capture shim ACTIVELY primes+seeks every
+ * `<video>`, so a canvas with `<Video src="http://169.254.169.254/…">` or comp
+ * JS doing `fetch(internal)` would turn ⌘E into read-SSRF + exfil-via-artifact.
+ *
+ * The comp is arbitrary JS by design and the in-page encoder is injected via
+ * `addScriptTag`, so restricting SCRIPT execution is neither possible nor the
+ * threat — the threat is NETWORK EGRESS. This CSP therefore locks every network
+ * sink to `'self'` (media/img/connect/font, no frames/objects/form posts) while
+ * leaving script permissive. Legit designRoot media is same-origin → still
+ * loads; every off-origin fetch/media/beacon is refused.
+ */
+export function cspForCapture(): string {
+  return [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "media-src 'self' blob:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "worker-src 'self' blob:",
+    "child-src 'self' blob:",
+    "frame-src 'none'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "webrtc 'block'",
+  ].join('; ');
+}
+
+/**
  * CSRF guard for the main-origin source-write routes (edit-css / edit-text /
  * edit-attr / reorder). Those routes are reachable only from the shell, which is
  * same-origin — but `readJson` enforces no `Content-Type`, so a cross-site page
@@ -498,7 +531,7 @@ export interface Http {
    * origin keeps it env-gated for the POC). Shared so both listeners produce
    * byte-identical HTML.
    */
-  serveCanvasShell(applyCsp: boolean): Promise<Response>;
+  serveCanvasShell(applyCsp: boolean, capture?: boolean): Promise<Response>;
   /**
    * T2 (9.1-A) — allowlist gate for the segregated canvas origin. Returns true
    * only for the routes the canvas runtime legitimately needs (shell, runtime
@@ -582,8 +615,43 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
 
   async function readJson<T = unknown>(req: Request, max = 256 * 1024): Promise<T | null> {
     try {
-      const text = await req.text();
-      if (text.length > max) throw new Error('body too large');
+      // DDR-148 security (attacker F2): the global maxRequestBodySize is raised
+      // to ~108 MB so the STREAMING /_api/asset route can accept large videos —
+      // but a JSON route must never buffer that. `req.text()` would materialize
+      // the whole body BEFORE the length check (a 107 MB body from the untrusted
+      // canvas origin = memory-amplification DoS, reverting DDR-088). So: honest
+      // content-length fast-reject, then read the stream and ABORT past `max`,
+      // buffering at most ~max + one chunk.
+      const cl = Number(req.headers.get('content-length'));
+      if (Number.isFinite(cl) && cl > max) return null;
+      const body = req.body;
+      if (!body) return null;
+      const reader = body.getReader();
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        size += value.byteLength;
+        if (size > max) {
+          try {
+            await reader.cancel();
+          } catch {
+            /* stream already closing */
+          }
+          return null;
+        }
+        chunks.push(value);
+      }
+      if (size === 0) return null;
+      const buf = new Uint8Array(size);
+      let off = 0;
+      for (const c of chunks) {
+        buf.set(c, off);
+        off += c.byteLength;
+      }
+      const text = new TextDecoder().decode(buf);
       return text ? (JSON.parse(text) as T) : null;
     } catch {
       return null;
@@ -1630,8 +1698,11 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       if (pathname === '/_canvas-shell.html' || pathname === '/_canvas-shell') {
         // The segregated canvas origin (server.ts) calls serveCanvasShell(true)
         // directly with CSP always on; on the legacy main origin the CSP stays
-        // env-gated (MAUDE_CSP_POC) for the POC / backwards-compat.
-        return serveCanvasShell(process.env.MAUDE_CSP_POC === '1');
+        // env-gated (MAUDE_CSP_POC) for the POC / backwards-compat. A capture
+        // render (?hide-chrome=1 — ⌘E export / screenshot shim) ALWAYS gets the
+        // network-locked capture CSP so it can't SSRF/exfil (attacker F1).
+        const capture = url.searchParams.get('hide-chrome') === '1';
+        return serveCanvasShell(process.env.MAUDE_CSP_POC === '1', capture);
       }
 
       // Fall-through: serve user repo files (designRoot + everything under repoRoot).
@@ -1666,7 +1737,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     }
   }
 
-  async function serveCanvasShell(applyCsp: boolean): Promise<Response> {
+  async function serveCanvasShell(applyCsp: boolean, capture = false): Promise<Response> {
     const shellHtml = await Bun.file(join(TEMPLATES_DIR, '_shell.html')).text();
     // Inject inspector overlay — Cmd+Click selection + add-comment flow.
     const injected = inspect.injectInspector(shellHtml);
@@ -1674,7 +1745,12 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
     };
-    if (applyCsp) headers['Content-Security-Policy'] = cspForCanvasShell(injected, ctx.mainOrigin);
+    // A capture render (⌘E export / screenshot) ALWAYS carries the network-locked
+    // capture CSP, even on the main origin where the normal shell CSP is off —
+    // this is the SSRF/exfil boundary the export otherwise lacked (attacker F1).
+    if (capture) headers['Content-Security-Policy'] = cspForCapture();
+    else if (applyCsp)
+      headers['Content-Security-Policy'] = cspForCanvasShell(injected, ctx.mainOrigin);
     return new Response(injected, { headers });
   }
 

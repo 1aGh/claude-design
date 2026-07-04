@@ -211,6 +211,9 @@ export function VideoComp({
   // Stable id across re-renders; unique per mount when the author omits one.
   const [autoId] = useState(() => id ?? `videocomp-${++mountCounter}`);
   const compId = id ?? autoId;
+  // Loop is live-controlled from the Timeline (timeline-loop message), not just
+  // the mount prop — so toggling loop OFF actually stops the replay.
+  const [loopState, setLoopState] = useState(loop);
   const capturing = hideChrome();
   // The Timeline panel is the control surface (transport + scrub + volume), so
   // the Player's own chrome is redundant on the artboard — hidden by default.
@@ -249,6 +252,7 @@ export function VideoComp({
         id?: string;
         muted?: boolean;
         volume?: number;
+        loop?: boolean;
       } | null;
       if (!m || typeof m !== 'object' || typeof m.dgn !== 'string') return;
       // The shell asks a (possibly already-mounted) canvas to re-announce its
@@ -275,6 +279,8 @@ export function VideoComp({
           else p.unmute();
         } else if (m.dgn === 'timeline-volume' && typeof m.volume === 'number') {
           p.setVolume(clamp(m.volume, 0, 1));
+        } else if (m.dgn === 'timeline-loop') {
+          setLoopState(!!m.loop);
         }
       } catch {
         /* Player transitional — ignore */
@@ -322,7 +328,7 @@ export function VideoComp({
         compositionHeight={height}
         inputProps={inputProps ?? {}}
         controls={showControls}
-        loop={loop}
+        loop={loopState}
         autoPlay={play}
         initialFrame={posterFrame}
         // Clicking the artboard must NOT toggle playback — it selects elements

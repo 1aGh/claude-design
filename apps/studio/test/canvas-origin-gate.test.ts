@@ -152,6 +152,20 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
       expect(csp).toContain("webrtc 'block'");
       expect(csp).toContain('frame-ancestors');
       expect(csp).toContain(`http://localhost:${port}`);
+
+      // (5) DDR-148 attacker F1 — the EXPORT/CAPTURE render (?hide-chrome=1) on
+      // the MAIN origin (where the normal shell CSP is off) MUST carry the
+      // network-locked capture CSP, else a canvas <Video src="http://internal">
+      // or comp fetch() turns ⌘E into read-SSRF + exfil-via-artifact.
+      const capMain = await fetch(`http://localhost:${port}/_canvas-shell.html?hide-chrome=1`);
+      const capCsp = capMain.headers.get('content-security-policy') ?? '';
+      expect(capCsp).toContain("media-src 'self'"); // <Video src=external> blocked
+      expect(capCsp).toContain("connect-src 'self'"); // comp fetch(external) blocked
+      expect(capCsp).toContain("img-src 'self'");
+      expect(capCsp).toContain("object-src 'none'");
+      // A normal main-origin shell (no capture flag) stays CSP-off (back-compat).
+      const plainMain = await fetch(`http://localhost:${port}/_canvas-shell.html`);
+      expect(plainMain.headers.get('content-security-policy')).toBeNull();
     } finally {
       await killProc(proc);
     }

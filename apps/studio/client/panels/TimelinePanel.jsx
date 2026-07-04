@@ -104,22 +104,29 @@ export default function TimelinePanel({
   const draggingRef = useRef(false);
   // Drag-to-retime a sequence's duration: { index, startX, startDur, rowW, curDur }.
   const [retimeDrag, setRetimeDrag] = useState(null);
-  // Drag the top edge to resize the panel taller/shorter.
-  const [heightDrag, setHeightDrag] = useState(null);
-  useEffect(() => {
-    if (!heightDrag) return undefined;
-    const move = (e) => {
-      const next = clamp(heightDrag.startH + (heightDrag.startY - e.clientY), 140, 640);
-      onResize?.(next);
-    };
-    const up = () => setHeightDrag(null);
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up, { once: true });
-    return () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-  }, [heightDrag, onResize]);
+  // Drag the top edge to resize the panel taller/shorter. Matches the DS
+  // resize-panels reference: pointer-capture + window listeners attached
+  // SYNCHRONOUSLY in pointerdown (a useEffect-on-state attaches a frame late and
+  // drops the first moves — the "sticks / can't resize" jank).
+  const beginResize = useCallback(
+    (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      const startY = e.clientY;
+      const startH = height || 216;
+      const onMove = (ev) => {
+        onResize?.(clamp(startH + (startY - ev.clientY), 140, 640));
+      };
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    },
+    [height, onResize]
+  );
 
   // The row-track's frame axis starts AFTER the fixed label gutter (96px).
   const LABEL_GUTTER = 96;
@@ -153,6 +160,7 @@ export default function TimelinePanel({
     // A click on a sequence block seeks to its start (handled there); a click on
     // the bare track scrubs + starts a drag.
     if (retimeDrag) return; // a resize is in flight — don't scrub
+    e.preventDefault(); // don't start a text selection while scrubbing
     draggingRef.current = true;
     seekAt(e.clientX);
     // force the effect to (re)attach the window listeners
@@ -208,10 +216,7 @@ export default function TimelinePanel({
         className="tl-resize-handle"
         data-testid="timeline-resize-handle"
         title="Drag to resize"
-        onPointerDown={(e) => {
-          e.preventDefault();
-          setHeightDrag({ startY: e.clientY, startH: height || 216 });
-        }}
+        onPointerDown={beginResize}
       />
       <div className="tl-head">
         {comp ? (

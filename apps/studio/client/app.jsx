@@ -7342,7 +7342,8 @@ function App() {
             ? iframesRef.current.get(activePath)?.contentWindow
             : null;
         if (e.source !== activeWin) return;
-        setCanvasActiveArtboard(typeof m.id === 'string' ? m.id : null);
+        // Cap the id like the sibling timeline-comps handler (defensive; inert).
+        setCanvasActiveArtboard(typeof m.id === 'string' ? m.id.slice(0, 120) : null);
       } else if (m.dgn === 'timeline-comps' && Array.isArray(m.comps)) {
         // DDR-148 — a video-comp announces its comp meta (from video-comp.tsx).
         // Gate to the ACTIVE canvas window (phase-28 F-2 pattern): a background
@@ -8394,16 +8395,23 @@ function App() {
             }}
             onPlay={() => {
               setTimelinePlaying(true);
-              // Sync mute state to the Player, then play (the artboard has no
-              // volume chrome — the Timeline owns sound now).
+              // Sync mute + loop to the Player, then play (the artboard has no
+              // chrome — the Timeline owns transport/sound/loop now).
               postToActiveCanvas({ dgn: 'timeline-mute', muted: timelineMuted, id: timelineCompId });
+              postToActiveCanvas({ dgn: 'timeline-loop', loop: timelineLoop, id: timelineCompId });
               postToActiveCanvas({ dgn: 'timeline-play', id: timelineCompId });
             }}
             onPause={() => {
               setTimelinePlaying(false);
               postToActiveCanvas({ dgn: 'timeline-pause', id: timelineCompId });
             }}
-            onToggleLoop={() => setTimelineLoop((v) => !v)}
+            onToggleLoop={() =>
+              setTimelineLoop((v) => {
+                const next = !v;
+                postToActiveCanvas({ dgn: 'timeline-loop', loop: next, id: timelineCompId });
+                return next;
+              })
+            }
             muted={timelineMuted}
             onToggleMute={() => {
               setTimelineMuted((v) => {
