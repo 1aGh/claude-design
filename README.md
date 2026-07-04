@@ -11,7 +11,7 @@ A personal marketplace of Claude Code plugins. Two plugins today, plus a `maude`
 
 | Plugin | What it does |
 | ------ | ------------ |
-| **`design`** | Canvas-first iteration on TSX/JSX mocks under `.design/` — element selection via Cmd+Click, auto-managed dev server, chained UX/DS critique. |
+| **`design`** | Canvas-first iteration on TSX/JSX mocks under `.design/` — element selection via Cmd+Click, auto-managed dev server, chained UX/DS critique. Canvases can also be **video-comps** (Remotion compositions previewed in-app, exported to MP4/GIF through Maude's own capture engine — no extra install). |
 | **`flow`** | Generic agentic workflow loop with a second-brain `.ai/` workspace. `/flow:plan`, `/flow:execute`, `/flow:utils-verify`, `/flow:validate`, `/flow:done`, `/flow:init`, `/flow:record-ddr`, `/flow:scenario`, …. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json`. |
 
 Plus the **`maude`** CLI — `maude init` scaffolds a fresh `.ai/` workspace from the flow plugin skeleton; `maude design serve` boots the design dev server. The legacy `mdcc` alias still works (prints a deprecation warning) and will be removed in v0.17.x.

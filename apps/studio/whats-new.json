@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "video-comp-remotion",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Design videos & animations, right in the canvas",
+      "summary": "A canvas artboard can now be a real motion composition (powered by Remotion) — scrub it in the built-in player, drop clips and music onto it, direct edits from the Assistant (\"turn this into an animation\", \"join these 4 clips with a crossfade\"), and export the artboard as MP4 or GIF. Rendered by Maude's own capture engine — no extra install, no native downloads. Remotion is free for individuals and teams of up to 3; larger orgs need their own Remotion license.",
+      "surface": "design-ui"
+    },
+    {
       "id": "file-tree-live-config-reload",
       "version": null,
       "date": null,

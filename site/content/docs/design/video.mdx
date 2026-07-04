@@ -1,0 +1,69 @@
+---
+title: Video & animation
+description: Author marketing videos and motion graphics as a canvas — a real Remotion composition, previewed in-app and exported to MP4/GIF through Maude's own capture engine. No extra install, no native binaries.
+---
+
+A canvas artboard can be a **video-comp** — a genuine [Remotion](https://www.remotion.dev)
+composition you author in TSX, preview and scrub in the embedded player, and
+export to **MP4** or **GIF**. It rides the same canvas-first loop as static
+mocks: describe it to the Assistant, tweak it, drop clips onto it, and export.
+
+## What you get
+
+- **Author animation as code** — the artboard body is a React component driven by
+  the frame index (`useCurrentFrame()`), so titles, transitions, and motion
+  graphics are precise and reproducible.
+- **Drop clips and music** — drag a video/audio file onto the canvas and it lands
+  as a `<Video>` / `<Audio>` in the composition.
+- **Direct it from chat** — "turn this into an animation", "join these 4 clips with
+  a crossfade", "add a title card", "put this music under it".
+- **Scrub + retime** — the built-in player gives you transport controls; the
+  Timeline panel (View → Timeline) scrubs and retimes sequence blocks.
+- **Export MP4 / GIF** — `⌘E` or `/design:export mp4 --scope artboard`. Rendered by
+  Maude's own capture engine (frame-by-frame, deterministic), so **you install
+  nothing** and there are **no native binaries** in the download.
+
+## Author one
+
+Ask the Assistant for a video — e.g. *"a 3-second hero animation where the logo
+springs in over a dark background"* — or scaffold it directly:
+
+```
+/design:new "Hero animation — logo springs in, tagline fades up" 
+```
+
+The composition uses the Remotion vocabulary (`useCurrentFrame`, `interpolate`,
+`spring`, `<Series>`, `<TransitionSeries>`, `<Video>`, `<Audio>`) plus Maude's
+`<VideoComp>` wrapper, which carries the comp's `fps` / `durationInFrames` /
+size. Everything is frame-driven — **no CSS animations inside a comp** (they
+can't be seeked frame-perfectly).
+
+## Export
+
+```
+# MP4 — fps and duration come from the composition
+/design:export mp4 --scope artboard
+
+# Looping GIF — 15 fps, 3 s, 128-color palette
+/design:export gif --scope artboard --option fps=15 --option durationMs=3000 --option gifColors=128
+```
+
+MP4 is H.264 (it falls back to WebM if your capture browser has no H.264
+encoder); GIF is palette-quantized. The default cap is 30 s / 900 frames.
+
+## Remotion license
+
+Maude bundles Remotion so you never install it — but Remotion is
+**source-available software, not MIT**, and its license may apply to **you**:
+
+- **Free** for individuals and for companies of **up to 3 people** (unlimited
+  commercial use).
+- For-profit organizations of **4 or more people** need their own **Remotion
+  Company License**. That obligation is between your organization and Remotion —
+  the compositions live in *your* project — not something Maude handles for you.
+
+Maude ships **no renderer binaries and no telemetry** — export runs entirely
+through Maude's own capture engine. See the
+[Remotion license](https://www.remotion.dev/docs/license) and
+[remotion.pro/license](https://www.remotion.pro/license) for the authoritative
+terms.
