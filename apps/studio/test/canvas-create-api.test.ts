@@ -122,6 +122,82 @@ describe('/_api/canvas — POST round-trip', () => {
     }
   });
 
+  test('assembles a video-comp (kind: video-comp) from dropped clips (DDR-150 P4 Task 12)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const r = await fetch(`http://localhost:${port}/_api/canvas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'My Reel',
+          kind: 'video-comp',
+          fps: 30,
+          clips: [
+            { src: 'assets/a.mp4', mediaKind: 'video', durationInFrames: 60 },
+            { src: 'assets/b.mp4', mediaKind: 'video' },
+            { src: 'assets/music.mp3', mediaKind: 'audio' },
+          ],
+        }),
+      });
+      expect(r.status).toBe(201);
+      const j = (await r.json()) as { ok: boolean; rel: string };
+      expect(j.ok).toBe(true);
+      const tsx = readFileSync(join(designRoot, 'ui', 'My Reel.tsx'), 'utf8');
+      expect(tsx).toContain('<VideoComp component={Comp}');
+      expect(tsx).toContain('<OffthreadVideo src="assets/a.mp4" />');
+      expect(tsx).toContain('<Audio src="assets/music.mp3" />');
+      expect(tsx).toContain('name="clip-1"');
+      const m = JSON.parse(readFileSync(join(designRoot, 'ui', 'My Reel.meta.json'), 'utf8'));
+      expect(m.kind).toBe('video-comp');
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('rejects a video-comp with an empty clips[] (400) and a traversal src (400)', async () => {
+    const { root } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const empty = await fetch(`http://localhost:${port}/_api/canvas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Empty', kind: 'video-comp', clips: [] }),
+      });
+      expect(empty.status).toBe(400);
+      const bad = await fetch(`http://localhost:${port}/_api/canvas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Bad',
+          kind: 'video-comp',
+          clips: [{ src: '../../etc/passwd', mediaKind: 'video' }],
+        }),
+      });
+      expect(bad.status).toBe(400);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('rejects a cross-origin create (CSRF guard on /_api/canvas — DDR-150 P4)', async () => {
+    const { root } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const r = await fetch(`http://localhost:${port}/_api/canvas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'http://evil.example' },
+        body: JSON.stringify({ name: 'Forged', kind: 'brief-board' }),
+      });
+      expect(r.status).toBe(403);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
   test('create + delete emit canvas-list-update over the inspector WS (Phase 30)', async () => {
     const { root } = makeSandbox();
     const port = nextPort();

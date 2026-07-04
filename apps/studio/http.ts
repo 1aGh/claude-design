@@ -1016,6 +1016,14 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       // startCanvasServer's allowlist (DDR-054) — the untrusted canvas iframe
       // origin must never reach a file-write/-delete endpoint. Validation lives in
       // api.createCanvas / api.deleteCanvas (containment + group allowlist).
+      // DDR-150 P4 Task 12 — this route creates/deletes source `.tsx` (the
+      // video-comp assemble writes real comp source), so it's CSRF-gated like the
+      // other source-write routes: a cross-origin top-level page is rejected (the
+      // DDR-054 split only blocks the canvas iframe). No-Origin (curl/tests) + the
+      // same-origin shell pass. Closes a pre-existing gap on create/delete.
+      if (req.method === 'DELETE' || req.method === 'POST') {
+        if (!sameOriginWrite(req)) return new Response('cross-origin write rejected', { status: 403 });
+      }
       if (req.method === 'DELETE') {
         const file = new URL(req.url).searchParams.get('file');
         const result = await api.deleteCanvas({ file });
@@ -1037,9 +1045,19 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         );
       }
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
-      const body = await readJson<{ name?: unknown; kind?: unknown; group?: unknown }>(
+      const body = await readJson<{
+        name?: unknown;
+        kind?: unknown;
+        group?: unknown;
+        clips?: unknown;
+        fps?: unknown;
+        width?: unknown;
+        height?: unknown;
+      }>(
         req,
-        8 * 1024
+        // DDR-150 P4 Task 12 — a video-comp assemble carries a clips[] array;
+        // widen the read cap accordingly (still bounded well under abuse).
+        64 * 1024
       );
       if (!body) return new Response('body required', { status: 400 });
       const result = await api.createCanvas(body);

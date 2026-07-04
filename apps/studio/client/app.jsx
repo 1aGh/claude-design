@@ -2370,6 +2370,9 @@ function FileDropdown({ onAction, onClose, hasCanvas }) {
       items={[
         // Bare N — the browser reserves ⌘N (New Window) and never delivers it.
         { id: 'new', label: 'New canvas…', shortcut: 'N' },
+        // DDR-150 P4 Task 12 — one-click "udělej z toho video" from the clips
+        // dropped as reference chips on the active canvas.
+        { id: 'assemble', label: 'Assemble dropped clips → video', disabled: !hasCanvas },
         { id: 'export', label: 'Export…', shortcut: '⇧⌘E' },
         { id: 'handoff', label: 'Handoff to production', shortcut: '⇧⌘H' },
         { sep: true },
@@ -2444,6 +2447,7 @@ function Menubar({
   assistantBusy,
   assistantUnseen,
   onNewCanvas,
+  onAssembleVideo,
   onOpenExport,
   onReload,
   onCloseCanvas,
@@ -2640,6 +2644,7 @@ function Menubar({
           hasCanvas={!!activePath}
           onAction={(id) => {
             if (id === 'new') onNewCanvas?.();
+            else if (id === 'assemble') onAssembleVideo?.();
             else if (id === 'export') onOpenExport?.('export');
             else if (id === 'handoff') onOpenExport?.('handoff');
             else if (id === 'reload') onReload?.();
@@ -7094,6 +7099,49 @@ function App() {
     [loadTree, openTab]
   );
 
+  // DDR-150 P4 Task 12 — one-click "udělej z toho video". Reads the ACTIVE
+  // canvas's annotation sidecar (main-origin — no cross-origin round-trip),
+  // gathers every dropped media-reference chip's src in document order, and POSTs
+  // an assembled video-comp (kind: 'video-comp') → opens the new, immediately
+  // hand-editable comp. Durations default server-side to fps*3 (the user trims on
+  // the Timeline); client-side <video>.duration probing is a documented tightening.
+  const assembleVideo = useCallback(async () => {
+    if (!activePath || activePath === SYSTEM_TAB) return;
+    try {
+      const ar = await fetch(`/_api/annotations?file=${encodeURIComponent(activePath)}`);
+      const svg = ar.ok ? await ar.text() : '';
+      const clips = [];
+      if (svg) {
+        const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+        for (const g of doc.querySelectorAll('[data-tool="mediaref"]')) {
+          const src = g.getAttribute('data-src');
+          if (!src) continue;
+          clips.push({ src, mediaKind: g.getAttribute('data-media-kind') === 'audio' ? 'audio' : 'video' });
+        }
+      }
+      if (clips.length === 0) {
+        window.alert('Drop video/audio clips on the canvas first, then assemble them into a video.');
+        return;
+      }
+      const baseName = displayName(basename(activePath)).replace(/\.tsx$/i, '');
+      const name = `${baseName} Video`;
+      const r = await fetch('/_api/canvas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, kind: 'video-comp', clips }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) {
+        window.alert(`Assemble failed: ${j.error || `error ${r.status}`}`);
+        return;
+      }
+      await loadTree();
+      openTab(j.file);
+    } catch (e) {
+      window.alert(`Assemble failed: ${e instanceof Error ? e.message : 'network error'}`);
+    }
+  }, [activePath, loadTree, openTab]);
+
   // Phase 22 — soft-delete a canvas from the file tree. Confirms (destructive),
   // DELETEs to the main-origin-only endpoint, refreshes the tree, and resets the
   // active tab if the deleted canvas was open. The server moves the whole sidecar
@@ -8314,6 +8362,7 @@ function App() {
               60
             );
           }}
+          onAssembleVideo={assembleVideo}
           onOpenExport={(mode) => setExportDialog({ mode })}
           onReload={reloadActive}
           onCloseCanvas={() => activePath && closeTab(activePath)}

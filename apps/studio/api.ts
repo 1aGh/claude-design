@@ -9,6 +9,8 @@ import path from 'node:path';
 import { renderBriefBoard, validateCanvasName } from './canvas-create.ts';
 import {
   CanvasEditError,
+  type AssembleClip,
+  assembleCompSource,
   type ClipInfo,
   editAttribute,
   enumerateClips,
@@ -259,11 +261,16 @@ export interface Api {
   // Resolve a content-addressed attachment name (`<sha8>.<ext>`) to its absolute
   // path, or null (GET /_api/acp/attachment — the read side of the pair above).
   resolveChatAttachment(name: unknown): Promise<string | null>;
-  // Create a blank brief board from the browser (Phase 22 — POST /_api/canvas)
+  // Create a blank brief board OR an assembled video-comp from the browser
+  // (Phase 22 — POST /_api/canvas; DDR-150 P4 Task 12 adds kind "video-comp").
   createCanvas(input: {
     name?: unknown;
     kind?: unknown;
     group?: unknown;
+    clips?: unknown;
+    fps?: unknown;
+    width?: unknown;
+    height?: unknown;
   }): Promise<CreateCanvasResult>;
   // Soft-delete a canvas from the browser (Phase 22 — DELETE /_api/canvas)
   deleteCanvas(input: { file?: unknown }): Promise<DeleteCanvasResult>;
@@ -1392,11 +1399,37 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     name?: unknown;
     kind?: unknown;
     group?: unknown;
+    // DDR-150 P4 Task 12 — video-comp assemble payload (kind === 'video-comp').
+    clips?: unknown;
+    fps?: unknown;
+    width?: unknown;
+    height?: unknown;
   }): Promise<CreateCanvasResult> {
-    // v1 only stamps blank boards — generation stays with `/design:new` (Claude).
+    // v1 stamps blank brief-boards + assembled video-comps — richer generation
+    // stays with `/design:new` (Claude).
     const kind = input.kind == null || input.kind === '' ? 'brief-board' : input.kind;
-    if (kind !== 'brief-board') {
-      return { ok: false, status: 400, error: 'only kind "brief-board" is supported' };
+    if (kind !== 'brief-board' && kind !== 'video-comp') {
+      return { ok: false, status: 400, error: 'kind must be "brief-board" or "video-comp"' };
+    }
+    // Parse + validate the assemble clip list up front (video-comp only).
+    let assembleClips: AssembleClip[] = [];
+    if (kind === 'video-comp') {
+      if (!Array.isArray(input.clips) || input.clips.length === 0) {
+        return { ok: false, status: 400, error: 'video-comp needs a non-empty clips[]' };
+      }
+      if (input.clips.length > 60) {
+        return { ok: false, status: 400, error: 'too many clips (max 60)' };
+      }
+      for (const raw of input.clips) {
+        const c = raw as { src?: unknown; mediaKind?: unknown; durationInFrames?: unknown };
+        const src = typeof c?.src === 'string' ? c.src : '';
+        if (!src) return { ok: false, status: 400, error: 'each clip needs a src' };
+        const mediaKind = c?.mediaKind === 'audio' ? 'audio' : 'video';
+        const durationInFrames = Number.isFinite(Number(c?.durationInFrames))
+          ? Math.max(1, Math.min(100000, Math.round(Number(c.durationInFrames))))
+          : null;
+        assembleClips.push({ src, mediaKind, durationInFrames });
+      }
     }
     const v = validateCanvasName(input.name);
     if (!v.ok || !v.name || !v.componentName) {
@@ -1449,25 +1482,55 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const slug = fileSlug(rel);
     const dsName = cfg.defaultDesignSystem || 'project';
     const platform = 'desktop';
-    const tsx = renderBriefBoard({
-      name: v.name,
-      componentName: v.componentName,
-      dsName,
-      platform,
-      seedHint: 'Empty brief board — annotate me',
-      historyDir: path.posix.join(paths.designRel, '_history', slug),
-    });
+    let tsx: string;
+    if (kind === 'video-comp') {
+      try {
+        tsx = assembleCompSource(v.componentName, assembleClips, {
+          fps: Number.isFinite(Number(input.fps)) ? Number(input.fps) : undefined,
+          width: Number.isFinite(Number(input.width)) ? Number(input.width) : undefined,
+          height: Number.isFinite(Number(input.height)) ? Number(input.height) : undefined,
+        });
+      } catch (err) {
+        return {
+          ok: false,
+          status: 400,
+          error: err instanceof Error ? err.message : 'assemble failed',
+        };
+      }
+    } else {
+      tsx = renderBriefBoard({
+        name: v.name,
+        componentName: v.componentName,
+        dsName,
+        platform,
+        seedHint: 'Empty brief board — annotate me',
+        historyDir: path.posix.join(paths.designRel, '_history', slug),
+      });
+    }
     const now = new Date().toISOString();
-    const meta = {
-      kind: 'brief-board',
-      title: v.name,
-      subtitle: 'brief board',
-      brief: v.name,
-      designSystem: dsName,
-      platform,
-      created: now,
-      last_modified: now,
-    };
+    const meta =
+      kind === 'video-comp'
+        ? {
+            kind: 'video-comp',
+            title: v.name,
+            subtitle: 'assembled reel',
+            brief: v.name,
+            tags: ['video'],
+            designSystem: dsName,
+            platform,
+            created: now,
+            last_modified: now,
+          }
+        : {
+            kind: 'brief-board',
+            title: v.name,
+            subtitle: 'brief board',
+            brief: v.name,
+            designSystem: dsName,
+            platform,
+            created: now,
+            last_modified: now,
+          };
     await Bun.write(fileAbs, tsx);
     await Bun.write(
       path.join(groupAbs, `${v.name}.meta.json`),

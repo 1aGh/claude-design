@@ -1815,6 +1815,97 @@ export async function insertClip(
   });
 }
 
+/** A clip in an assemble request — a dropped reference chip's src + kind. */
+export interface AssembleClip {
+  src: string;
+  mediaKind: 'video' | 'audio';
+  /** Intrinsic duration probed client-side; falls back to fps*3 when absent. */
+  durationInFrames?: number | null;
+}
+
+/** Reject a src that isn't a contained relative asset path (no ../, no scheme). */
+function assertContainedAssetSrc(src: string, canvasAbsPath: string): void {
+  const t = src.trim();
+  if (!t || /\.\./.test(t) || /^\s*(javascript|vbscript|file|data|https?):/i.test(t)) {
+    throw new CanvasEditError(
+      'clip src must be a contained asset path (assets/…, no ../ or scheme)',
+      { canvas: canvasAbsPath, id: '' }
+    );
+  }
+}
+
+/**
+ * Generate a full video-comp canvas TSX from a set of dropped reference clips
+ * (DDR-150 P4 Task 12 — the "udělej z toho video" one-click). Video clips are
+ * laid back-to-back as named `<Sequence>`s (explicit from/durationInFrames — so
+ * they're immediately hand-editable on the Timeline, DDR-150); audio clips become
+ * `<Audio>` beds under the whole reel. Only bundled Remotion imports are used
+ * (skill invariant). `componentName` is the exported Canvas component; every src
+ * is escaped + contained. The comp is a genuine frame-driven composition, never a
+ * frozen preview. Throws `CanvasEditError` on an empty set / bad src.
+ */
+export function assembleCompSource(
+  componentName: string,
+  clips: AssembleClip[],
+  opts: { fps?: number; width?: number; height?: number } = {}
+): string {
+  const fps = Math.max(1, Math.round(opts.fps ?? 30));
+  const width = Math.max(1, Math.round(opts.width ?? 1280));
+  const height = Math.max(1, Math.round(opts.height ?? 720));
+  const videos = clips.filter((c) => c.mediaKind === 'video');
+  const audios = clips.filter((c) => c.mediaKind === 'audio');
+  if (videos.length === 0 && audios.length === 0) {
+    throw new CanvasEditError('assemble needs at least one clip', { canvas: componentName, id: '' });
+  }
+  for (const c of clips) assertContainedAssetSrc(c.src, componentName);
+
+  const defDur = fps * 3;
+  let cursor = 0;
+  const seqLines: string[] = [];
+  videos.forEach((c, i) => {
+    const dur = Math.max(1, Math.round(c.durationInFrames ?? defDur));
+    seqLines.push(
+      `      <Sequence name="clip-${i + 1}" from={${cursor}} durationInFrames={${dur}}>`,
+      `        <OffthreadVideo src="${escapeAttr(c.src)}" />`,
+      `      </Sequence>`
+    );
+    cursor += dur;
+  });
+  // Audio beds run under the whole reel (no seek — a bed, not a clip).
+  audios.forEach((c) => {
+    seqLines.push(`      <Audio src="${escapeAttr(c.src)}" />`);
+  });
+  const total = Math.max(cursor, defDur);
+
+  const remotionImports = ['AbsoluteFill', 'Sequence'];
+  if (videos.length) remotionImports.push('OffthreadVideo');
+  if (audios.length) remotionImports.push('Audio');
+
+  return [
+    `import { DesignCanvas, DCSection, DCArtboard, VideoComp } from '@maude/canvas-lib';`,
+    `import { ${remotionImports.join(', ')} } from 'remotion';`,
+    ``,
+    `const Comp = () => (`,
+    `  <AbsoluteFill style={{ background: 'var(--bg-0)' }}>`,
+    ...seqLines,
+    `  </AbsoluteFill>`,
+    `);`,
+    ``,
+    `export default function ${componentName}() {`,
+    `  return (`,
+    `    <DesignCanvas>`,
+    `      <DCSection title="Assembled reel">`,
+    `        <DCArtboard id="reel" label="Reel" width={${width}} height={${height}}>`,
+    `          <VideoComp component={Comp} durationInFrames={${total}} fps={${fps}} width={${width}} height={${height}} />`,
+    `        </DCArtboard>`,
+    `      </DCSection>`,
+    `    </DesignCanvas>`,
+    `  );`,
+    `}`,
+    ``,
+  ].join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // Edit shapes.
 

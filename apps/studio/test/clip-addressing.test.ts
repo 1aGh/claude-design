@@ -13,6 +13,7 @@ import {
   applyRemoveClip,
   applyReorderClip,
   applyRetimeSequenceByClip,
+  assembleCompSource,
   assertCompSemantics,
   CanvasEditError,
   enumerateClips,
@@ -421,5 +422,61 @@ describe('applyReorderClip — z-order reorder (DDR-150 P5)', () => {
         'after'
       )
     ).toThrow(CanvasEditError);
+  });
+});
+
+describe('assembleCompSource — refs → comp (DDR-150 P4 Task 12)', () => {
+  test('lays video clips back-to-back as named sequences + parses + enumerates', () => {
+    const tsx = assembleCompSource(
+      'MyReel',
+      [
+        { src: 'assets/a.mp4', mediaKind: 'video', durationInFrames: 60 },
+        { src: 'assets/b.mp4', mediaKind: 'video', durationInFrames: 40 },
+      ],
+      { fps: 30 }
+    );
+    // Generated source is parseable + the enumerator sees exactly two clips…
+    const { clips, compName, durationInFrames } = enumerateClips('/abs/MyReel.tsx', tsx, 'reel');
+    expect(compName).toBe('Comp');
+    expect(clips.map((c) => c.mediaSrc)).toEqual(['assets/a.mp4', 'assets/b.mp4']);
+    // …laid back-to-back (cursor advances by each duration)…
+    expect(clips[0]!.from).toBe(0);
+    expect(clips[1]!.from).toBe(60);
+    expect(clips[1]!.durationInFrames).toBe(40);
+    // …with durable <Sequence name> identity so hand-edits land right.
+    expect(clips.map((c) => c.stableId)).toEqual(['name:clip-1', 'name:clip-2']);
+    // total duration = sum of clip durations.
+    expect(durationInFrames).toBe(100);
+    // and it passes the semantic gate.
+    expect(() => assertCompSemantics('/abs/MyReel.tsx', tsx)).not.toThrow();
+  });
+
+  test('audio clips become <Audio> beds under the reel (not sequenced)', () => {
+    const tsx = assembleCompSource('R', [
+      { src: 'assets/v.mp4', mediaKind: 'video', durationInFrames: 90 },
+      { src: 'assets/music.mp3', mediaKind: 'audio' },
+    ]);
+    expect(tsx).toContain('<Audio src="assets/music.mp3" />');
+    expect(tsx).toContain(`import { AbsoluteFill, Sequence, OffthreadVideo, Audio } from 'remotion';`);
+    // total driven by the video clip's duration (audio doesn't extend it).
+    expect(enumerateClips('/abs/R.tsx', tsx, 'reel').durationInFrames).toBe(90);
+  });
+
+  test('defaults an unknown duration to fps*3', () => {
+    const tsx = assembleCompSource('R', [{ src: 'assets/v.mp4', mediaKind: 'video' }], { fps: 24 });
+    expect(enumerateClips('/abs/R.tsx', tsx, 'reel').clips[0]!.durationInFrames).toBe(72);
+  });
+
+  test('rejects a traversal / scheme src', () => {
+    expect(() =>
+      assembleCompSource('R', [{ src: '../../etc/passwd', mediaKind: 'video' }])
+    ).toThrow(CanvasEditError);
+    expect(() =>
+      assembleCompSource('R', [{ src: 'https://evil.example/x.mp4', mediaKind: 'video' }])
+    ).toThrow(CanvasEditError);
+  });
+
+  test('refuses an empty clip set', () => {
+    expect(() => assembleCompSource('R', [])).toThrow(CanvasEditError);
   });
 });
