@@ -27,6 +27,10 @@
 // (matches the locator.ts pattern). Two parallel edits against different
 // canvases run in parallel.
 
+import { mkdir, open, stat, unlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 import MagicString from 'magic-string';
 import { parseSync } from 'oxc-parser';
 
@@ -144,8 +148,67 @@ function findAttribute(opening: AnyNode, name: string): AnyNode | null {
 }
 
 // ---------------------------------------------------------------------------
-// Per-canvas mutex. Mirrors locator.ts; two concurrent edits against the same
-// .tsx file serialise so they can't race read-modify-write.
+// Per-canvas mutex — TWO layers (DDR-150 P2). (1) An in-process Promise chain
+// serialises edits within THIS process (fast). (2) A cross-process advisory
+// lockfile serialises against edits from ANOTHER process — the `/design:edit`
+// CLI (`import.meta.main` below) or the HMR file-watcher — so their
+// read-modify-write can't interleave with ours and lose an update (the in-
+// process `locks` Map alone couldn't see them). The lockfile lives in the OS
+// temp dir (NOT the versioned design root — never touches the gitignore
+// taxonomy) keyed by the canvas absolute path. A crashed holder leaves a STALE
+// lock, stolen after LOCK_STALE_MS; if it stays contended past LOCK_MAX_WAIT_MS
+// we proceed anyway rather than deadlock — the atomic tmp-rename write + the
+// content-hash fingerprint are the backstop against a truly simultaneous writer.
+
+const LOCK_DIR = path.join(tmpdir(), 'maude-locks');
+const LOCK_STALE_MS = 15_000;
+const LOCK_POLL_MS = 25;
+const LOCK_MAX_WAIT_MS = 10_000;
+
+/** OS-temp lockfile path for a canvas (shared across processes; keyed by abs path). */
+export function lockPathFor(filePath: string): string {
+  return path.join(LOCK_DIR, `${Bun.hash(filePath).toString(16).padStart(16, '0')}.lock`);
+}
+
+/**
+ * Acquire the cross-process advisory lock for `filePath`; resolves to an
+ * idempotent release fn. Exported for tests. Degrades to a no-op lock (rather
+ * than breaking every edit) if the temp dir is unwritable or contention outlasts
+ * LOCK_MAX_WAIT_MS.
+ */
+export async function acquireFileLock(filePath: string): Promise<() => Promise<void>> {
+  const lp = lockPathFor(filePath);
+  await mkdir(LOCK_DIR, { recursive: true }).catch(() => {});
+  const start = Date.now();
+  for (;;) {
+    try {
+      const fh = await open(lp, 'wx'); // O_CREAT | O_EXCL — fails if already held
+      await fh.writeFile(`${process.pid} ${Date.now()}`);
+      await fh.close();
+      let released = false;
+      return async () => {
+        if (released) return;
+        released = true;
+        await unlink(lp).catch(() => {});
+      };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') {
+        return async () => {}; // can't create a lockfile at all → in-process-only
+      }
+      try {
+        const st = await stat(lp);
+        if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
+          await unlink(lp).catch(() => {}); // holder crashed — steal
+          continue;
+        }
+      } catch {
+        continue; // vanished between EEXIST and stat — retry the create
+      }
+      if (Date.now() - start > LOCK_MAX_WAIT_MS) return async () => {}; // don't deadlock
+      await new Promise((r) => setTimeout(r, LOCK_POLL_MS));
+    }
+  }
+}
 
 const locks = new Map<string, Promise<void>>();
 function withLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
@@ -156,10 +219,21 @@ function withLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
   });
   const next = prev.then(() => gate);
   locks.set(filePath, next);
-  return prev.then(fn).finally(() => {
-    release();
-    if (locks.get(filePath) === next) locks.delete(filePath);
-  });
+  return prev
+    .then(async () => {
+      // In-process calls are already serialised by the chain above, so only ONE
+      // local call ever contends the lockfile — cross-process is its only job.
+      const releaseFile = await acquireFileLock(filePath);
+      try {
+        return await fn();
+      } finally {
+        await releaseFile();
+      }
+    })
+    .finally(() => {
+      release();
+      if (locks.get(filePath) === next) locks.delete(filePath);
+    });
 }
 
 // ---------------------------------------------------------------------------
