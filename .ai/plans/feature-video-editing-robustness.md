@@ -2,55 +2,58 @@
 
 Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan **extends DDR-148** (the shipped video-comp foundation) — read it and the shipped code first; do not re-derive the Player/seek/export layers, they exist.
 
+> **This plan was hardened by a divergent BUILDER/SHIPPER/BREAKER debate (2026-07-04).** The debate caught a load-bearing defect the first draft missed — clip addressing by document-order index is **already broken on multi-comp canvases** (two tokenizers disagree), which makes destructive ops silently corrupt the *wrong* clip. The resulting direction (user-ratified): **persistence-fix first → a mandatory clip-addressing foundation → lean clip ops → media intake + one-click assemble → z-order + keyframe markers.** Mid-clip split and show/hide are **deferred behind the addressing + semantic gate** (BREAKER's block, honored). See § Debate record.
+
 ## Description
 
-DDR-148 shipped the video-comp foundation: a Remotion composition mounted in `<Player>`, the `window.__maude_seek__` bridge, a bottom **Timeline panel** (transport + scrub + volume + read-only sequence rows + drag-the-right-edge-to-retime-duration), the `canvas-edit.ts` source-patch engine, and capture-first MP4/GIF export. What's missing is the **direct-manipulation editing surface** on top of it — the difference between "watch/scrub a comp the AI made" and "trim, move, cut, hide, replace, and assemble clips by hand."
+DDR-148 shipped the video-comp foundation: a Remotion composition in `<Player>`, the `window.__maude_seek__` bridge, a bottom **Timeline panel** (transport + scrub + volume + read-only rows + drag-the-right-edge-to-retime-duration), the `canvas-edit.ts` source-patch engine, and capture-first MP4/GIF export. What's missing is the **direct-manipulation editing surface** — the difference between "watch/scrub a comp the AI made" and "trim, move, delete, replace, and assemble clips by hand."
 
-This feature adds **basic manual video & animation editing**, keeping the DDR-148 model intact: **the timeline is a view of the source TSX, and every edit is a reparse-gated source-patch on Remotion `<Sequence>`/`<Video>`/`<Audio>`/`<Img>` tags** — no bespoke clip IR (DDR-148 §3 settled this). The target use case is explicit in the request: **generate an infographic or video with the AI, then fine-tune the details by hand.**
+This feature adds **basic manual video & animation editing**, keeping the DDR-148 model: **the timeline is a view of the source TSX, and every edit is a source patch on Remotion `<Sequence>`/`<Video>`/`<Audio>`/`<Img>` tags** — no bespoke clip IR (DDR-148 §3). The target use case is explicit: **generate an infographic or video with the AI, then fine-tune the details by hand** (and "throw a pile of clips at the canvas, tell the agent *udělej z toho video*").
 
-Four phases (ordering ratified by the user):
+Five phases (order + scope ratified after the debate):
 
-- **P1 — Media intake.** (a) Drag/drop/paste **video, image, audio directly onto the Timeline** → insert a real `<Sequence>` + `<Video/Audio/Img>` at the drop frame (source insert). (b) Drop **any media anywhere on the canvas as a reference** — mirroring today's paste-image behavior (annotation-layer chip), so the "throw a pile of clips at the canvas, then tell the agent *udělej z toho video*" flow works.
-- **P2 — Timeline clip ops.** Move a clip along the track (`from`), cut/split at the playhead, remove a clip, show/hide a clip, replace a clip's media.
-- **P3 — Live canvas element-editing persistence fix.** Inline text/CSS/attr edits via the inspector today **silently fail and revert on reload** for common cases (mixed/expression text, class-styled elements) — make them robust, surface failures, and survive HMR.
-- **P4 — Keyboard shortcuts + polish.** Space = play/pause (context-scoped, resolving the pan-chord conflict), ← / → step by frame, Shift+arrows step by second, `.`/`,` step by keyframe, Home/End, Delete removes the selected clip; snap, tooltips, a11y.
+- **P1 — Live-edit persistence fix** *(reordered to first — it's a trust-breaking bug in a **shipped** feature, hits **every** canvas, and is nearly free).* Inline text/CSS edits via the inspector today **silently fail and revert on reload**; make them robust, surface failures, survive HMR.
+- **P2 — Clip-addressing foundation** *(mandatory, blocks every destructive op).* One AST-based clip enumerator shared by UI + engine (kills the two-tokenizer multi-comp disagreement), a **stable clip identity**, a **content-hash optimistic-concurrency fingerprint**, a **semantic gate** (parse-clean ≠ correct), a **cross-process lock**, and hard `src`/tag validation.
+- **P3 — Clip ops (lean) + shortcuts.** Move (`from`), trim, remove, replace — all reusing shipped engine ops over the new addressing — plus Delete key and timeline keyboard shortcuts.
+- **P4 — Media intake + assemble.** Drop media on the canvas as a reference chip (mirrors paste-image); drop on the timeline to insert a clip; **one-click "assemble refs → comp"** (the user's verbatim ask).
+- **P5 — Ambition adds.** Vertical/z-order clip reorder (reuses `applyMove`); interactive keyframe markers (click-to-seek).
 
 ## User Story
 
-As a **designer/founder using Maude** I want **to drop clips onto the timeline, then move, trim, cut, hide, replace, and delete them directly — plus reliably tweak text and CSS on the canvas by hand** so that **after the AI generates a video or infographic I can do the last-mile manual polish in the same canvas-first loop, without re-prompting blind for every small timing or copy change.**
+As a **designer/founder using Maude** I want **to reliably hand-tweak text and CSS on the canvas, then move/trim/delete/replace/reorder clips on the timeline and assemble dropped clips into a comp** so that **after the AI generates a video or infographic I can do the last-mile manual polish in the same canvas-first loop, without re-prompting blind for every timing or copy change — and without a stray edit ever silently corrupting a different clip.**
 
 ## Problem
 
-- The Timeline panel is **read-only except for one gesture** (drag the right edge to change `durationInFrames`). You cannot move a clip, cut it, delete it, hide it, or replace its media.
-- **Nothing can be dropped onto the timeline** — `use-canvas-media-drop.tsx` only listens on `document` and routes to the annotations layer / a toast; the timeline is not a drop target.
-- **Video/audio dropped on the canvas only toasts a copy-paste snippet** (`uploadAndAnnounceMedia`) — it doesn't land as a visible reference the way a pasted image does, so the "assemble a pile of clips" use case has no on-canvas artifact for the agent to act on.
-- **Live inline editing is unreliable** — `editText` refuses mixed/expression children (`<h1>{title}</h1>`, `<p>Hi <b>there</b></p>`) and the shell only `console.warn`s the refusal, so the optimistic DOM change reverts on the next HMR reload ("*přepis textu nezůstává perzistentní*"). CSS edits through the inspector have a related class of silent-revert bugs (the trailing-comma regression is fixed in-tree; class-styled elements and non-inline `style` still refuse).
-- **No editing keyboard shortcuts** — Space is deliberately the canvas pan chord (`spaceKeyToPlayOrPause={false}` on the Player), so there's no play/pause or frame-step key.
+- **Live inline editing is unreliable** — `editText` refuses mixed/expression children (`<h1>{title}</h1>`, `<p>Hi <b>there</b></p>`) and the shell only `console.warn`s the refusal (`app.jsx:7143,7183`), so the optimistic DOM change reverts on the next HMR reload ("*přepis textu nezůstává perzistentní*"). CSS edits have a related silent-revert class (class-styled + non-inline `style`).
+- **Clip addressing is already broken on multi-comp canvases** — the UI parser counts clips within **one comp's body** (`timeline-parse.js:116-131`, `scope = target.body`) while the engine counts `<Sequence>` tags across the **whole file** (`canvas-edit.ts:845,889`). `retimeSequence(index)` already mis-hits on a 2-comp canvas today (recoverable). Destructive ops built on this would be **irreversible wrong-clip corruption**.
+- The Timeline is **read-only except one gesture** (right-edge duration drag). No move, delete, replace, reorder; **nothing can be dropped onto it**.
+- **Video/audio dropped on the canvas only toasts a snippet** (`uploadAndAnnounceMedia`) — no on-canvas artifact for the "assemble a pile of clips" use case.
+- **No editing keyboard shortcuts** — Space is the pan chord (`spaceKeyToPlayOrPause={false}` on the Player), so no play/pause or frame-step.
 
 ## Solution
 
-Every new capability is a **new op in the existing source-patch engine** (`apps/studio/canvas-edit.ts`) exposed through a **main-origin-only** endpoint (`apps/studio/http.ts` + `apps/studio/api.ts`, absent from both canvas allowlists — DDR-054/DDR-088), driven from the **Timeline panel** (`TimelinePanel.jsx`) or the **inspector** through the shell's postMessage bridge (`app.jsx`). The `timeline-parse.js` parser is widened to surface the addressing metadata the new ops need (per-clip tag ranges, media `src`, hidden state). The Remotion transport in `video-comp.tsx` is unchanged except for a couple of new inbound messages (step-frame).
+Every capability is a source patch through the existing engine (`apps/studio/canvas-edit.ts`) behind a **main-origin-only** endpoint (`http.ts` + `api.ts`, absent from both canvas allowlists — DDR-054/DDR-088), driven from the Timeline panel / inspector via the shell postMessage bridge (`app.jsx`). The debate's core structural change: **clips are addressed through ONE authoritative AST enumerator, by a stable identity + content-hash fingerprint — never by a regex document-order index.**
 
-| Capability | New engine op (`canvas-edit.ts`) | Addressing | Reuses |
-| --- | --- | --- | --- |
-| Move clip along track (`from`) | *(none — existing `retimeSequence`)* | seq index | `applyRetimeSequence` already patches `from` |
-| Trim clip (`durationInFrames`) | *(shipped)* | seq index | right-edge drag exists |
-| Insert clip (drop→timeline) | `insertSequenceIntoComp` | comp name / artboard id + `from` | comp-body locate + reparse gate |
-| Cut / split at playhead | `splitSequence` | seq index + frame | duplicate span, set `startFrom` on tail |
-| Remove clip | `removeSequence` | seq index | MagicString remove + adjacent-transition fixup + reparse |
-| Show / hide clip | `toggleSequenceHidden` | seq index | JSX-comment wrap/unwrap marker + reparse |
-| Replace media | *(existing `editAttribute` on `src`)* | media element cd-id | upload asset → patch `src` |
-| Drop media → canvas reference | *(client — annotations layer)* | world xy | mirror `onImage`/`onLink` chip |
+What already exists and is **reused, not rebuilt** (SHIPPER):
 
-Load-bearing invariants (inherited, do not break): **atomic write + per-file mutex + reparse-before-write** (never write source that doesn't parse); **const-preferring rewrites** so a derived `TOTAL = A + B - XF` moves in lock-step (already in `retimeAttr`); **source-write routes stay main-origin-only**; **the determinism contract** (a dropped `<Video>` is seeked per-frame during capture, never free-running); **committed client bundle rebuilt `--release` after any `client/` change**.
+| Capability | Mechanism | Status |
+| --- | --- | --- |
+| Move clip (`from`) + trim (`durationInFrames`) | `retimeSequence`/`applyRetimeSequence` (const-preferring) — already patches **both** | shipped; re-address onto P2 foundation |
+| Replace media (`src`) | `editAttribute`/`editStringAttr` — replaces any attr on any value shape | shipped; address media element via enumerator |
+| Structural move / reorder | `moveElement`/`applyMove` (re-indent + reparse + re-settle) | shipped; drives z-order (P5) |
+| Inline text / CSS / attr | `editText`/`editCss`/`editAttr` + `apply-edit` lane | shipped; hardened in P1 |
+
+Genuinely net-new engine work: the **AST clip enumerator + fingerprint + semantic gate + cross-process lock** (P2), `removeSequence` (P3, standalone-only), `insertSequenceIntoComp` (P4). **Deferred behind P2's gate:** `splitSequence`, `toggleSequenceHidden` (BREAKER blocked them as originally specced; "cut" is approximated by two-edge trim in v1).
+
+Load-bearing invariants (some inherited, some added by the debate): **address by stable id through one AST tokenizer** · **content-hash fingerprint refuses a stale/raced target** · **semantic gate after reparse** (parse-clean ≠ correct) · **cross-process lock** (HTTP + `/design:edit` CLI + HMR must not interleave) · atomic write + reparse-before-write · const-preferring rewrites · source-write routes main-origin-only · `src` contained under `assets/` (no `..`) + `escapeAttr` on the insert path · committed client bundle rebuilt `--release` after any `client/` change.
 
 ## Metadata
 
-- **Type**: Enhancement (direct-manipulation layer) + Bug Fix (P3 persistence)
+- **Type**: Bug Fix (P1 persistence; P2 latent multi-comp mis-address) + Enhancement (P3–P5 direct manipulation)
 - **Complexity**: High
-- **App/Package**: `apps/studio` (dev-server engine + client + canvas-lib) · minor `plugins/design` (video-comp skill teaches the parseable shapes; motion-critic unchanged)
-- **Affected Systems**: source-patch engine (`canvas-edit.ts` — security/correctness-load-bearing), main-origin source-write route surface (`http.ts`/`api.ts` — CSRF-gated), Timeline panel + shell postMessage bridge, annotations layer (media reference), asset write surface (reused, not widened), keyboard-shortcut layer
-- **Dependencies**: none new — Remotion / `@remotion/player` / mediabunny / gifenc / asset route all shipped in DDR-148. `oxc-parser` + `magic-string` (already the engine's toolchain).
+- **App/Package**: `apps/studio` (engine + client + canvas-lib) · minor `plugins/design` (video-comp skill teaches stable-id-friendly shapes)
+- **Affected Systems**: source-patch engine (`canvas-edit.ts` — correctness/security-load-bearing), clip-addressing (NEW shared enumerator), main-origin source-write routes (CSRF-gated), Timeline panel + shell bridge, annotations layer (media reference), asset write surface (reused), cross-process write locking (NEW)
+- **Dependencies**: none new — Remotion / Player / mediabunny / gifenc / asset route shipped in DDR-148; `oxc-parser` + `magic-string` are already the engine toolchain.
 
 ---
 
@@ -60,108 +63,114 @@ Load-bearing invariants (inherited, do not break): **atomic write + per-file mut
 
 > During `/flow:execute`, read every file listed here in parallel in a single assistant message.
 
-- `apps/studio/canvas-edit.ts` — Why: the whole source-patch engine. `retimeSequence`/`applyRetimeSequence` + `retimeAttr` (lines ~834–949 — `from` is ALREADY patchable, const-preferring); `moveElement`/`applyMove` (structural move + re-indent + reparse gate — the template every new structural op mirrors, lines ~659–831); `editAttribute` (the `src`-replace path); `editText`/`applyTextEdit` (the P3 refusal at lines ~391–410); atomic write + `withLock` mutex (lines ~150–210); `escapeJsxText`/`escapeAttr` (injection guards). **New ops go here.**
-- `apps/studio/client/panels/timeline-parse.js` — Why: the regex parser that produces the timeline rows. `SEQ_TAG_RE`-equivalent tokenization, `videoCompUsages`/`componentBody` (comp scoping), `collectConsts`/`resolveNum` (const resolution), the `<Audio>` row pass. **Must be widened** to emit per-clip source ranges + media `src` + hidden state for the new ops to address clips.
-- `apps/studio/client/panels/TimelinePanel.jsx` — Why: the timeline UI. `retimeDrag` right-edge gesture (lines ~165–193), `onRetime` prop wiring, seek/scrub, `data-testid` conventions, the row/track/playhead layout the new gestures + drop target attach to.
-- `apps/studio/video-comp.tsx` — Why: the Player mount + `installMaudeSeekBridge` + the full `timeline-*` postMessage protocol (seek/play/pause/mute/volume/comps). `clickToPlay={false}` + `spaceKeyToPlayOrPause={false}` (lines ~328–334 — the P4 Space conflict origin). New step-frame messages ride this.
-- `apps/studio/use-canvas-media-drop.tsx` — Why: the drop/paste hook. `classifyMediaPayload` dispatch matrix, `onImage`/`onMedia`/`onLink` callbacks (media → `uploadAndAnnounceMedia` toast today, lines ~284–302), `uploadAsset`, `mediaSnippet`. **P1 extends this** (timeline drop target + on-canvas media reference).
-- `apps/studio/api.ts` — Why: the API wrappers `editCss`/`editText`/`editAttr`/`retimeSequenceOp` (lines ~264–297, ~1637–1849) that adapt the engine to the HTTP layer + do input validation. **New ops get sibling wrappers here.**
-- `apps/studio/http.ts` — Why: the route map. `/_api/edit-css|edit-text|edit-attr|retime-sequence` handlers (lines ~1225–1373), the CSRF guard for main-origin source-write routes (lines ~142–…), and `CANVAS_SAFE_API` (the allowlist new source-write routes must stay OUT of). **New endpoints go here, main-origin-only.**
-- `apps/studio/server.ts` — Why: `startCanvasServer` `routes` map — the second allowlist (DDR-088). New source-write routes are absent from it; only asset-write is canvas-reachable.
-- `apps/studio/client/app.jsx` — Why: the shell. Timeline state + wiring (`timelinePlaying`/`timelineCompId`/`activeComps`/`timelineFrame`, ~6100–6400; the `<TimelinePanel … onRetime={…→ /_api/retime-sequence}>` block ~8380–8440); the inline-edit persistence handlers (`edit-text`/`apply-edit`, ~7131–7186 — the P3 silent-`console.warn`); the `select`/`layers-tree`/`reorder-request` postMessage lane (the pattern new clip-edit requests follow); `applyOptimisticStyle`; the media-drop callback wiring; the global keydown surface (P4).
-- `apps/studio/canvas-lib.tsx` — Why: `AnnotationsLayer` owns the media-drop callbacks (commit/undo sink + `screenToWorld`); `onImage`/`onLink` chip creation is the exact path P1's on-canvas media reference mirrors. Also the `VideoComp` re-export surface.
-- `.ai/decisions/DDR-148-video-comp-remotion-authoring-capture-export.md` — Why: the foundation this extends; the determinism contract + the "no bespoke IR, Remotion vocabulary IS the composition" decision that scopes every clip op to source-patching Remotion tags.
-- `.ai/decisions/DDR-103-phase-12-in-canvas-direct-edit.md` + `DDR-104-css-panel-ux-model.md` — Why: the inline-edit trust boundary + UX model P3 hardens; the `editText` mixed/expression refusal is a DDR-103 design choice — P3 changes the *failure surfacing*, not the escape rule.
-- `.ai/decisions/DDR-088-canvas-media-vocabulary-and-asset-write-surface.md` + `DDR-054-linked-mode-trust-model-and-task-4-hardening.md` — Why: why source-write routes are main-origin-only; the dual-allowlist rule; the asset route P1's timeline-drop reuses unchanged.
-- `.ai/decisions/DDR-138-*` (node-move reorder) — Why: `moveElement`/`reorder` is the structural-edit + re-select-through-id-churn precedent P2's remove/split re-settle logic mirrors.
-- `apps/studio/test/timeline-parse.test.ts` + `test/video-comp.test.ts` + `test/canvas-origin-gate.test.ts` — Why: the guards to extend (parser cases, seek determinism, the `GET → 405`/route-absence assertion for every new main-origin route).
+- `apps/studio/canvas-edit.ts` — Why: the engine. `retimeSequence`/`applyRetimeSequence` + `retimeAttr` (~834–949 — patches `from` AND `durationInFrames`, const-vs-literal); `moveElement`/`applyMove` + `collectElements`/`collectElementsFull` (~513–831 — the AST walk the P2 enumerator extends, plus the re-settle-through-id-churn precedent); `editAttribute`/`editStringAttr` (`src`-replace); `editText`/`applyTextEdit` (the P1 refusal ~391–410); `escapeJsxText`/`escapeAttr` (~997–1017 injection guards — the insert path MUST use these); `withLock` (~150–163 — **in-process only**, the P2 cross-process gap); the `SEQ_TAG_RE` whole-file walk (~845,889 — **the bug**: replace with the comp-scoped AST enumerator).
+- `apps/studio/client/panels/timeline-parse.js` — Why: the UI tokenizer (regex, comp-scoped `scope = target.body` ~116-131). **The two-parser disagreement lives here.** P2 makes the UI address clips through the engine's enumerator (or its returned stable ids), not this regex index. Keep it for *labels/positions*, not for *addressing destructive ops*.
+- `apps/studio/client/panels/TimelinePanel.jsx` — Why: the timeline UI. `retimeDrag`/`startResize` gesture (~165–193 — cloned for the `from`-move), keyframe bars (~344–355 — P5 click-to-seek), row/track/playhead layout the new gestures + drop target attach to; `data-testid` conventions.
+- `apps/studio/video-comp.tsx` — Why: Player mount + `installMaudeSeekBridge` + the `timeline-*` postMessage protocol (seek/play/pause/mute/volume/comps ~243–306); `clickToPlay={false}` + `spaceKeyToPlayOrPause={false}` (~328–334 — the P3 Space-conflict origin).
+- `apps/studio/use-canvas-media-drop.tsx` — Why: the drop/paste hook. `classifyMediaPayload` dispatch matrix, `onImage`/`onMedia`/`onLink` callbacks (`onMedia`→`uploadAndAnnounceMedia` toast today ~284–302), `uploadAsset`, `mediaSnippet`. P4 extends it (timeline drop target + on-canvas media reference).
+- `apps/studio/api.ts` — Why: wrappers `editCss`/`editText`/`editAttr`/`retimeSequenceOp` (~264–297, ~1637–1849) — the input-validation + engine-adapter layer new ops get siblings in.
+- `apps/studio/http.ts` — Why: the route map + `/_api/edit-*` + `/_api/retime-sequence` handlers (~1225–1373); the CSRF `sameOriginWrite` guard for main-origin source-write routes (~142,192-196); `CANVAS_SAFE_API` (new source-write routes stay OUT).
+- `apps/studio/server.ts` — Why: `startCanvasServer` `routes` — the second allowlist (DDR-088); new source-write routes absent from it; only asset-write is canvas-reachable.
+- `apps/studio/client/app.jsx` — Why: the shell. Timeline state + wiring (`timelinePlaying`/`timelineCompId`/`activeComps`/`timelineFrame` ~6100–6400; the `<TimelinePanel … onRetime={…→ /_api/retime-sequence}>` block ~8380–8440); the inline-edit persistence handlers (`edit-text`/`apply-edit` ~7131–7186 — the P1 silent `console.warn`); the `select`/`layers-tree`/`reorder-request` postMessage lane (~7098–7271 — the active-canvas-only request gate + `pendingReorderRef` re-settle pattern the P2/P3 ops mirror); `applyOptimisticStyle`; the global keydown surface (P3).
+- `apps/studio/canvas-lib.tsx` — Why: `AnnotationsLayer` owns the media-drop callbacks (commit/undo sink + `screenToWorld`); `onImage`/`onLink` chip creation is the exact path P4's on-canvas media reference mirrors. `VideoComp` re-export.
+- `apps/studio/canvas-pipeline.ts` — Why: where `data-cd-id` is injected (the positional-id precedent P2's stable clip id mirrors; the candidate injection site for a `{/* @mclip id */}` sentinel / `<Sequence name>` normalization).
+- `.ai/decisions/DDR-148-*.md` — Why: the foundation; the determinism contract + "no bespoke IR, Remotion vocabulary IS the model" that scopes ops to Remotion tags.
+- `.ai/decisions/DDR-103-*.md` + `DDR-104-*.md` — Why: the inline-edit trust boundary + UX model P1 hardens; the `editText` refusal is a DDR-103 choice — P1 changes failure *surfacing*, not the escape rule.
+- `.ai/decisions/DDR-088-*.md` + `DDR-054-*.md` + `DDR-138-*.md` — Why: source-write routes main-origin-only + dual-allowlist; untrusted-iframe trust model; the node-move reorder + re-select-through-id-churn precedent.
+- `apps/studio/test/timeline-parse.test.ts` + `test/video-comp.test.ts` + `test/canvas-origin-gate.test.ts` — Why: guards to extend (parser cases, seek determinism, `GET → 405`/route-absence per new route).
 
 ### Files to Create
 
-- *(new ops in existing)* `apps/studio/canvas-edit.ts` — `insertSequenceIntoComp`, `splitSequence`, `removeSequence`, `toggleSequenceHidden` (+ pure `apply*` variants).
-- `apps/studio/test/canvas-edit-clip-ops.test.ts` — pure-variant unit tests for every new op (insert/split/remove/hide + reparse-gate refusals + const-preserving + TransitionSeries fixup).
+- *(new ops/enumerator in existing)* `apps/studio/canvas-edit.ts` — `enumerateClips` (AST, comp-scoped, stable id + content hash), `assertCompSemantics` (semantic gate), `removeSequence`, `insertSequenceIntoComp` (+ pure `apply*`); a cross-process lock helper (or `apps/studio/file-lock.ts`).
+- `apps/studio/test/clip-addressing.test.ts` — **the debate's headline guard**: UI-index == engine-clip across nested / `.map()` / multi-comp / commented-tag fixtures; fingerprint refuses a stale/mutated target; semantic gate rejects orphaned/double `<TransitionSeries.Transition>`.
+- `apps/studio/test/canvas-edit-clip-ops.test.ts` — remove/insert pure-variant tests + reparse-gate + semantic-gate refusals + `src` traversal rejection + `escapeAttr`-on-insert.
 - `apps/studio/test/media-drop-timeline.test.ts` — timeline-drop dispatch + on-canvas media-reference classification.
-- *(extend)* `apps/studio/client/panels/timeline-parse.js` — per-clip source ranges + `src` + `hidden` in the returned shape.
-- *(new, optional)* `apps/studio/client/panels/timeline-drop.js` — pure helper mapping a drop clientX → frame + target row (unit-testable without a DOM), mirroring `timeline-parse.js`'s pure style.
-- `.ai/decisions/DDR-1xx-timeline-direct-manipulation-and-inline-edit-persistence.md` — the decision record (Task 0): clip ops as reparse-gated source patches, split/hide reversibility model, the Space-conflict resolution, the P3 failure-surfacing change.
+- *(extend)* `apps/studio/client/panels/timeline-parse.js` — emit per-clip stable id + content hash (from the enumerator) + media `src`; stop being the addressing authority.
+- `.ai/decisions/DDR-1xx-timeline-clip-addressing-and-inline-edit-persistence.md` — the decision (Task 0): AST clip addressing + fingerprint + semantic gate as the destructive-op prerequisite; the P1 failure-surfacing change; why split/hide are deferred; the debate record.
 
 ### Design canvases
 
 | Canvas | Status | Tags | Notes |
 | ------ | ------ | ---- | ----- |
-| `.design/ui/Studio Intro Video.tsx` | storyboard | — | The repo's own video storyboard authored AS a canvas — the natural reference for what a comp being edited looks like; ground the clip-row UX in it. |
-| `.design/ui/Canvas Viewport.tsx` | active | — | The shell-chrome canvas — mock the new Timeline affordances (drop target, clip context actions, hide-eye) here before building. |
-| `.design/ui/Maude Video Intro.tsx` | *(modified in tree)* | — | Currently-dirty video canvas — a live comp to dogfood P1/P2 against. |
+| `.design/ui/Studio Intro Video.tsx` | storyboard | — | The repo's own video storyboard authored AS a canvas — reference for a comp-being-edited; ground the clip-row UX in it. |
+| `.design/ui/Canvas Viewport.tsx` | active | — | Shell-chrome canvas — mock the new Timeline affordances (drop target, clip context actions, reorder handle) here first. |
+| `.design/ui/Maude Video Intro.tsx` | *(modified in tree)* | — | A live comp to dogfood P3/P4 against. |
 
 ### Documentation
 
-- [Remotion `<Sequence>`](https://www.remotion.dev/docs/sequence) (`from` / `durationInFrames`) + [`<Video>`](https://www.remotion.dev/docs/video) (`startFrom` / `endAt` — the trim props split writes) + [`<TransitionSeries>`](https://www.remotion.dev/docs/transitions) — Why: the exact prop vocabulary every clip op patches; `startFrom` is what makes a split's tail continue the source instead of restarting.
-- [Building a timeline](https://www.remotion.dev/docs/building-a-timeline) — Why: Remotion's own `Item {from, durationInFrames, id}` data model — the shape our parser already mirrors; confirms move/trim/split map 1:1 to `from`/`durationInFrames`.
-- [oxc-parser](https://oxc.rs/) + [magic-string](https://github.com/Rich-Harris/magic-string) — Why: the AST-locate + surgical-rewrite toolchain every new op uses (already in `canvas-edit.ts`).
+- [Remotion `<Sequence>`](https://www.remotion.dev/docs/sequence) (`from`/`durationInFrames`/**`name`** — the durable, Prettier-surviving clip label P2 uses for stable identity) + [`<Video>`](https://www.remotion.dev/docs/video) (`startFrom` — only needed if split ships, deferred) + [`<TransitionSeries>`](https://www.remotion.dev/docs/transitions) (alternation the semantic gate asserts).
+- [Building a timeline](https://www.remotion.dev/docs/building-a-timeline) — Why: Remotion's `Item {from, durationInFrames, id}` model — confirms move/trim map 1:1 to props and endorses a stable per-item id.
+- [oxc-parser](https://oxc.rs/) + [magic-string](https://github.com/Rich-Harris/magic-string) — Why: the AST-enumerate + surgical-rewrite toolchain (already in `canvas-edit.ts`); the enumerator uses the AST, not regex.
 
 ### Patterns to Follow
 
-- **New structural op = `applyX` (pure, reparse-gated) + `X` (disk, `withLock` + atomic tmp-rename)** — copy the `applyMove`/`moveElement` pair verbatim as the skeleton (`canvas-edit.ts` ~659–831). The reparse gate at the end is non-negotiable — "never write source that doesn't parse."
-- **Sequence addressing by document order** — clips are addressed by their tokenization index (as `retimeSequence` does via `SEQ_TAG_RE`), NOT `data-cd-id` (`TransitionSeries.Sequence` is a member-expression with no stable cd-id). Media *elements* inside a clip (`<Video>`/`<Img>`) DO get cd-ids → `editAttribute` addresses them for replace.
-- **Main-origin-only source-write endpoint** — mirror `/_api/retime-sequence` (`http.ts` ~1356): CSRF-gated, absent from `CANVAS_SAFE_API` (http.ts) AND `startCanvasServer` routes (server.ts), with a `GET → 405` + route-absence assertion in `test/canvas-origin-gate.test.ts`.
-- **Untrusted-iframe → shell request lane** — a Timeline gesture in the shell calls `/_api/*` directly (shell is main-origin). A gesture that originates *inside* a canvas iframe (e.g. a clip context menu rendered in-canvas) must REQUEST via postMessage and be honored **only from the ACTIVE canvas window** — copy the `reorder-request` gate (`app.jsx` ~7251–7271).
-- **Re-settle selection through id churn** — a structural edit (insert/remove/split) reflows positional cd-ids; mirror the `pendingReorderRef` + `movedId`/`semanticId` re-select dance (`app.jsx` ~7196–7222, `canvas-edit.ts` `MoveResult`).
-- **On-canvas media reference = annotation chip** — mirror `onImage`/`onLink` in `AnnotationsLayer` (client-side, versioned in `.annotations.svg`), NOT a source `<Video>` insert. The AnnotationsLayer commit/undo sink + `screenToWorld` are the integration points.
-- **Client change → rebuild committed bundle** — `cd apps/studio && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release`, commit `dist/client.bundle.js` + `dist/styles.css` (CLAUDE.md rule; whatever's committed is what ships).
-- **Verbs via `maude design`** (DDR-062) — no new plugin bin verb expected; all editing is UI/endpoint-driven inside the running server.
+- **New structural op = `applyX` (pure, reparse-gated + semantic-gated) + `X` (disk, cross-process-locked + atomic tmp-rename)** — copy `applyMove`/`moveElement` (~659–831) as the skeleton; add the semantic gate after the reparse gate.
+- **Address clips by the AST enumerator's stable id + content hash — never a regex index.** The enumerator walks with the SAME component/jsxIndex bookkeeping as `collectElements` (~513–556), scoped to the target comp body, and skips tags inside comments/strings (regex didn't).
+- **Main-origin-only source-write endpoint** — mirror `/_api/retime-sequence` (~1356): CSRF-gated, absent from `CANVAS_SAFE_API` + `startCanvasServer` routes, with a `GET → 405`/absence assertion in `test/canvas-origin-gate.test.ts`.
+- **Untrusted-iframe → shell request lane** — a gesture originating inside a canvas iframe REQUESTS via postMessage, honored **only from the ACTIVE canvas window** (copy the `reorder-request` gate ~7251–7271). Timeline gestures live in the shell (main-origin) and call `/_api/*` directly.
+- **Re-settle selection through id churn** — insert/remove/reorder reflow ids; mirror `pendingReorderRef` + `movedId`/`semanticId` (~7196–7222, `MoveResult`). With stable clip ids this becomes cheap.
+- **On-canvas media reference = annotation chip** — mirror `onImage`/`onLink` in `AnnotationsLayer` (client-side, versioned `.annotations.svg`), NOT a source insert.
+- **Client change → rebuild committed bundle** — `cd apps/studio && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release`, commit `dist/client.bundle.js` + `dist/styles.css`.
 
 ---
 
 ## Design Decisions
 
-### Architecture: clip ops are reparse-gated source patches on Remotion tags (DDR-148 continuation)
+### Clip-addressing foundation (the debate's core add — mandatory before any destructive op)
 
-No JSON clip sidecar, no bespoke IR. The comp TSX **is** the timeline model; the parser reads it, the ops patch it, HMR re-renders it. This keeps a single source of truth (the file the agent also edits), keeps every edit inspectable/diffable/rollback-able through the existing `_history/<slug>` + undo lanes, and avoids a second model that could drift from the source. Cost: some edits (splitting a `<TransitionSeries.Sequence>`, reordering render/z-order) are hard-to-impossible as clean text patches — **explicitly scoped out of v1** (below), with the reparse gate guaranteeing we refuse rather than corrupt.
+The root defect: two tokenizers disagree on "which clip is index N." Fix = **one authoritative AST enumerator** in `canvas-edit.ts`, scoped to a specific comp (by artboard id → comp name, reusing `videoCompUsages`/`collectElementsFull` scoping), returning for each clip `{ stableId, from, durationInFrames, mediaTag, mediaSrc, contentHash }`. The UI's `timeline-parse.js` keeps drawing rows but **addresses ops by the enumerator's `stableId`**, not its own regex position.
 
-### Split / cut model
+- **Stable identity** — prefer, in order: a Remotion `<Sequence name="…">` (durable, human-facing, survives Prettier); a pipeline-injected `{/* @mclip <id> */}` sentinel; else the AST-order-index *within the scoped comp* (computed by the SAME enumerator the engine uses, so UI/engine never disagree even in the degraded case). Not a bespoke IR — the TSX stays the single source (DDR-148 line held); this is the positional-`data-cd-id` precedent made non-positional.
+- **Content-hash optimistic-concurrency fingerprint** — every structural op sends the target clip's expected `contentHash`; the engine recomputes from disk and refuses (409-style, actionable) if it changed. Guards a stale UI index AND a concurrent `/design:edit`/HMR edit.
+- **Semantic gate (parse-clean ≠ correct)** — after the reparse gate, assert comp invariants: `<TransitionSeries>` strict alternation (no leading/trailing/double `<Transition>` — the BREAKER counter to the first draft's false "reparse catches it" claim), and coverage/monotonicity sanity for move/remove. Refuse on violation.
+- **Cross-process lock** — the in-process `withLock` (~150) can't stop the `/design:edit` CLI (`import.meta.main` ~1161) + HMR from interleaving. Structural clip ops take an on-disk advisory lock on the comp file.
 
-Split a standalone `<Sequence from={F} durationInFrames={D}>` at playhead frame `P` (`F < P < F+D`) into two: head `<Sequence from={F} durationInFrames={P-F}>`, tail `<Sequence from={P} durationInFrames={F+D-P}>`. When the clip contains a `<Video>`/`<Audio>`, the tail's media gets `startFrom={(existingStartFrom ?? 0) + (P-F)}` so playback continues seamlessly instead of restarting. **v1 splits standalone `<Sequence>` only**; splitting inside `<TransitionSeries>` is deferred (the overlap math + transition placement isn't a clean text patch) — the op refuses with an actionable message.
+### Split / hide are DEFERRED (BREAKER block, honored)
 
-### Show / hide model
+- **Mid-clip split** — the `startFrom` seam math × const-preferring rewrites × TransitionSeries overlap is the highest risk-per-value; v1 approximates "cut" with the shipped two-edge trim. True split is the first fast-follow once the semantic gate proves out.
+- **Show/hide via JSX-comment marker** — the byte-identical round-trip promise fights Prettier/HMR reflow and any clip containing `*/`, and a commented `<Sequence>` skews a regex index (moot once addressing is AST-based, but the reflow hazard remains). Deferred; **remove + one-undo covers the need** in v1.
 
-Hide = wrap the clip element in a reversible JSX block comment carrying a marker (`{/* dc-hidden */ }` sentinel) so the parser can render it as a dimmed "hidden" ghost row with an eye-toggle, and unhide restores it byte-for-byte. **v1 scopes hide to explicit-`from` `<Sequence>`** (commenting a cursor-implicit clip would shift siblings' derived timing); refuse otherwise. Alternative considered + rejected: a `display:none` style (a `<Sequence>` is not a DOM node) and a boolean `hidden` prop (requires an authoring convention we can't assume in AI-generated comps).
+### On-canvas media reference vs. timeline insert vs. assemble (P4)
 
-### On-canvas media reference vs. timeline insert (the two P1 drops are different)
+- **Drop on canvas body** → annotation-layer reference chip (mirrors paste-image), versioned, non-destructive — the "*nahazet klipy → agent z toho udělá video*" artifact.
+- **Drop on the Timeline** → `insertSequenceIntoComp` at the drop frame (a clip added; reflows ids → re-settle via the P2 addressing).
+- **"Assemble refs → comp" one-click** (BUILDER, the user's verbatim ask) → scaffold a `<VideoComp>` + N `<Sequence><Video>` in drop order, durations probed client-side (`<video>.duration`); a chip the agent must be re-prompted about is not "assemble."
 
-- **Drop on the canvas body** → an **annotation-layer reference chip** (mirrors paste-image), client-side, versioned in `.annotations.svg`. This is the "*nahazet klipy do canvasu a pak říct agentovi ať z toho udělá video*" artifact — the agent sees N referenced assets + their labels and assembles a comp. It does NOT mutate comp source.
-- **Drop on the Timeline panel** → a real `insertSequenceIntoComp` source patch (a new `<Sequence>`+`<Video/Audio/Img>` at the drop frame). This is "add this clip to the video."
+### Space-key conflict (P3)
 
-Resolving which: the drop's target element (timeline panel vs canvas). The Timeline panel becomes its own drop target; `use-canvas-media-drop.tsx`'s `document`-level listener keeps the canvas path.
+Space stays the canvas pan chord by default; = play/pause only when ALL of: Timeline open, comp active, focus not in input/`contenteditable`, pointer over / last-focus on the timeline. Frame-step keys (← →, Shift+← →, `,`/`.`) are timeline-scoped the same way. Shell-level handler; the Player keeps `spaceKeyToPlayOrPause={false}`.
 
-### Space-key conflict resolution (P4)
+### Ops surface (all main-origin-only, CSRF-gated, absent from both canvas allowlists)
 
-Space stays the **canvas pan chord** by default. Space = **play/pause** only when ALL of: the Timeline panel is open, a comp is active, focus is NOT in a text input / `contenteditable`, and the pointer is over the timeline OR the timeline last received focus. Frame-step keys (← →, Shift+← →, `,`/`.`) are timeline-scoped the same way. This is a shell-level keydown handler gated on timeline focus/hover — it never steals Space from the canvas pan gesture or from typing. Documented in the DDR so the precedence is explicit.
-
-### Ops surface (new endpoints — all main-origin-only, CSRF-gated, absent from both canvas allowlists)
-
-| Endpoint | Body | Engine op |
+| Endpoint | Body | Engine |
 | --- | --- | --- |
-| `POST /_api/insert-sequence` | `{ canvas, artboardId, from, durationInFrames, media:{tag,src} }` | `insertSequenceIntoComp` |
-| `POST /_api/split-sequence` | `{ canvas, index, frame }` | `splitSequence` |
-| `POST /_api/remove-sequence` | `{ canvas, index }` | `removeSequence` |
-| `POST /_api/toggle-sequence-hidden` | `{ canvas, index, hidden }` | `toggleSequenceHidden` |
-| move (`from`) / trim | `/_api/retime-sequence` **(shipped)** `{ index, from?, durationInFrames? }` | `retimeSequence` |
-| replace media | `/_api/edit-attr` **(shipped)** `{ id, attr:'src', value }` | `editAttribute` |
+| `GET /_api/comp-clips` | `{ canvas, artboardId }` | `enumerateClips` (stableId + contentHash) |
+| move (`from`) / trim | `/_api/retime-sequence` **(shipped, re-addressed)** `{ canvas, clipId, contentHash, from?, durationInFrames? }` | `retimeSequence` |
+| replace media | `/_api/edit-attr` **(shipped)** `{ id, attr:'src', value }` (src contained under `assets/`) | `editAttribute` |
+| remove clip | `POST /_api/remove-sequence` `{ canvas, clipId, contentHash }` | `removeSequence` (standalone-only) |
+| insert clip | `POST /_api/insert-sequence` `{ canvas, artboardId, from, durationInFrames, media:{tag,src} }` | `insertSequenceIntoComp` |
+| z-order reorder | `POST /_api/reorder` **(shipped)** or `reorder-sequence` `{ canvas, clipId, refClipId, position }` | `moveElement` |
 
 ### Custom Components Needed
 
 | Component | Reason | Extends |
 | --- | --- | --- |
-| Timeline drop target + drop-frame ghost | no timeline intake today | `TimelinePanel.jsx` track region + `timeline-drop.js` |
-| Clip context actions (split/remove/hide/replace) | clips are click-to-seek only | `TimelinePanel.jsx` `tl-seq-block` |
-| Clip body horizontal-move gesture (`from`) | only the right-edge (duration) drags today | `retimeDrag` sibling in `TimelinePanel.jsx` |
-| On-canvas media-reference chip (video/audio) | video/audio only toasts a snippet today | `AnnotationsLayer` `onImage`/`onLink` chip |
+| AST clip enumerator + fingerprint + semantic gate | the addressing foundation | `canvas-edit.ts` `collectElements` walk |
+| Timeline drop target + drop-frame ghost | no timeline intake today | `TimelinePanel.jsx` track + a pure `clientX→frame` helper |
+| Clip context actions (remove/replace/reorder) + `from`-move gesture | clips are click-to-seek only | `TimelinePanel.jsx` `tl-seq-block` + `retimeDrag` |
+| On-canvas media-reference chip (video/audio) | video/audio only toasts a snippet today | `AnnotationsLayer` `onImage`/`onLink` |
+| "Assemble refs → comp" action | the user's verbatim ask | `insertSequenceIntoComp` × N + scaffold |
 
 ---
 
-## The invariant (load-bearing constraint — do not break)
+## The invariants (load-bearing — do not break)
 
-**Every structural edit reparses before it writes.** `applyMove`/`applyRetimeSequence` already end with a `parseSync` gate that throws (aborting the write) if the edit would produce invalid source. Every new op (`insert`/`split`/`remove`/`hide`) MUST do the same. This is what lets the op set stay small and the guardrails few — a clever-but-wrong text patch fails loud (refuse + actionable message) instead of corrupting the user's comp. Combined with the atomic tmp-rename write + per-file `withLock` mutex, a concurrent reader/HMR never sees a partial or broken file.
+1. **One tokenizer.** Clips are enumerated by the AST enumerator, scoped to the target comp, skipping tags inside comments/strings. UI addresses by its `stableId`. A test asserts UI-index == engine-clip across nested/`.map()`/multi-comp/commented fixtures.
+2. **Fingerprint before mutate.** Every structural op refuses if the target clip's on-disk content hash ≠ the one the UI sent (stale index / concurrent edit).
+3. **Semantic gate after reparse.** Parse-clean is necessary, not sufficient — assert TransitionSeries alternation + timing sanity; refuse otherwise.
+4. **Cross-process lock.** HTTP + CLI + HMR cannot interleave writes to one comp.
+5. **Atomic write + reparse-before-write** (inherited) and **const-preferring rewrites** (inherited).
+6. **Security:** source-write routes main-origin-only; `src` normalized + contained under `assets/` (reject `..`); the insert path builds JSX through `escapeAttr`, never raw concatenation; tag ∈ {Video,Audio,Img}.
 
 ---
 
@@ -171,167 +180,182 @@ Execute in phase order. Each task is atomic and testable.
 
 ### Task 0: RECORD the decision DDR
 
-- **Do**: Record DDR `timeline-direct-manipulation-and-inline-edit-persistence`: clip ops as reparse-gated source patches on Remotion tags (DDR-148 continuation); the split (`startFrom` tail) + hide (JSX-comment marker) reversibility models + their v1 scope-outs (`<TransitionSeries>` split, render-order reorder); the two-different-drops model (canvas ref vs timeline insert); the Space-conflict precedence rule; the P3 change (surface inline-edit failures instead of silent `console.warn` — the escape rule from DDR-103 is unchanged, only the UX of failure).
-- **Pattern**: DDR-148 structure (decision + scope-out table + revisit-when); check the decisions dir AND the uncommitted README index diff before numbering (memory `project_ddr_numbering_races_on_shared_main`).
+- **Do**: DDR `timeline-clip-addressing-and-inline-edit-persistence`: AST clip addressing + content-hash fingerprint + semantic gate as the destructive-op prerequisite (the multi-comp two-tokenizer defect + fix); the cross-process lock; the P1 failure-surfacing change (DDR-103 escape rule unchanged); why split/hide are deferred; the § Debate record (BUILDER/SHIPPER/BREAKER verdicts + the user's Ambitious ratification).
+- **Pattern**: DDR-148 structure; check the decisions dir AND the uncommitted README index diff before numbering (memory `project_ddr_numbering_races_on_shared_main`).
 - **Validate**: file exists; linked from this plan.
 
 ---
 
-### P1 — Media intake
+### P1 — Live-edit persistence fix (reordered to first)
 
-### Task 1: EXTEND `timeline-parse.js` to emit per-clip addressing metadata
+### Task 1: SURFACE inline-edit failures + revert the stranded optimistic edit
 
-- **Do**: Add to each returned sequence: `srcRange` (the `[start,end]` of the clip's `<Sequence>` open→close in source, or the token range), `mediaTag` (`Video`/`Audio`/`Img`/null) + `mediaSrc`, `hidden` (true when the clip is wrapped in the `{/* dc-hidden */}` marker — detect commented `<Sequence>` blocks), and whether the clip is inside a `<TransitionSeries>` (so the UI can disable split/hide with a reason). Keep the parser pure + graceful-degrade (unparseable → today's scrub-only shape).
-- **Pattern**: the existing `videoCompUsages`/`componentBody` scoping + the `<Audio>` pass; add a hidden-clip pass over `{/* dc-hidden … */}` blocks.
-- **Gotcha**: the parser is regex, not a full AST — the engine ops (which DO use oxc-parser) are authoritative for the actual edit; the parser only needs enough to *address* and *label* clips. Don't try to make the parser exact; make the op refuse when the parser guessed wrong (reparse gate).
-- **Validate**: `cd apps/studio && bun test test/timeline-parse.test.ts` (new cases: media src, hidden clip, TransitionSeries membership).
+- **Do**: Replace the silent `console.warn` on `/_api/edit-text` + `apply-edit` failures (`app.jsx:7143,7183`) with a visible, actionable result (toast/inline badge: "Couldn't save — mixed content, edit via chat") AND **revert the optimistic DOM edit on refusal** so the canvas reflects true state instead of a change that vanishes on reload. Add a visible-success signal. Reconcile the optimistic edit against the endpoint `{ok}` — do not rely on HMR to agree.
+- **Pattern**: `showCanvasToast`; extend `applyOptimisticStyle` to revert-on-failure.
+- **Validate**: live — edit text on `<h1>{title}</h1>` → clear "use chat" signal (no silent snap-back); edit `<button>Save</button>` → persists across reload.
 
-### Task 2: CREATE `insertSequenceIntoComp` + `POST /_api/insert-sequence`
+### Task 2: WIDEN inline TEXT edits for common real elements
 
-- **Do**: Engine op (`canvas-edit.ts`): locate the target comp's body by `artboardId`→comp name (reuse `videoCompUsages`/`collectElementsFull` logic), find the sequence-list insertion anchor, and `appendLeft` a re-indented `<Sequence from={F} durationInFrames={D}>\n  <Video src="assets/…" />\n</Sequence>` (or `<Audio>`/`<Img>`); reparse-gate; return the new clip's index. `api.ts` wrapper `insertSequenceOp` (validate `from`/`dur` ints, media tag allowlist, `src` under `assets/`). `http.ts` main-origin route.
-- **Pattern**: `applyMove` skeleton (locate → MagicString → reparse gate → disk via `withLock`); `retimeSequenceOp` wrapper shape; `/_api/retime-sequence` route + CSRF gate.
-- **Gotcha**: default `durationInFrames` from the media's intrinsic duration when known (probe on upload) else a sane default (e.g. `fps * 3`); a comp with no existing `<Sequence>` (bare composition) needs the insert to also establish the sequence-list container — refuse with an actionable message if the body shape isn't insertable, don't guess.
-- **Validate**: `bun test test/canvas-edit-clip-ops.test.ts` (insert into empty + non-empty comp; reparse-gate on malformed target); route absent from both allowlists.
+- **Do**: Beyond single-`JSXText`-child: handle `{'string literal'}` expression children (`<h1>{'Title'}</h1>` → rewrite the literal) and unambiguous static-text-around-a-single-inline-child. For genuinely dynamic content (`{title}`, `{count} items`) keep the refusal but **route to `/design:edit`'s fast path** instead of a dead end. Every new branch goes through `escapeJsxText` (DDR-103 — the load-bearing injection guard).
+- **Pattern**: `applyTextEdit` `meaningful`-children analysis; the DDR-103 escape rule stays.
+- **Gotcha**: NEVER rewrite a `{identifier}`/interpolated template as literal text (deletes the binding) — refuse-and-route.
+- **Validate**: `bun test` (string-literal child rewrite; refuse `{identifier}`; escaping holds); live — edit hero copy → sticks.
 
-### Task 3: ADD the Timeline drop target (drop media → insert clip)
+### Task 3: MAKE inline CSS edits robust for class-styled + non-inline elements
 
-- **Do**: Make the `TimelinePanel` track a drop target (dragover highlight + drop-frame ghost playhead). On drop of a video/audio/image file: `uploadAsset` → compute the drop frame from clientX (`timeline-drop.js` pure helper) → `POST /_api/insert-sequence`. On drop of an existing `assets/…` URL (re-drop), skip the upload. Wire through the shell (the panel lives in the shell = main-origin, can call `/_api/*` directly).
-- **Pattern**: `use-canvas-media-drop.tsx` `classifyMediaPayload` for the payload matrix (reuse the pure classifier); `TimelinePanel` `seekAt` clientX→frame math for the drop-frame mapping; `data-testid` `timeline-dropzone`, `timeline-drop-ghost`.
-- **Gotcha**: the OS drop event also bubbles to the `document`-level canvas media-drop listener — the timeline handler must `stopPropagation`/`preventDefault` so a timeline drop doesn't ALSO create a canvas reference chip. >20 MB size-warning toast (assets are versioned — DDR-148).
-- **Validate**: live (agent-browser): drag an mp4 onto the timeline → `<Sequence><Video></Sequence>` appears in the TSX at the drop frame, a new row renders, the clip plays in the Player. `bun test test/media-drop-timeline.test.ts`.
-
-### Task 4: EXTEND on-canvas media reference (video/audio drop → annotation chip)
-
-- **Do**: Replace `use-canvas-media-drop.tsx`'s `uploadAndAnnounceMedia` toast-only path with an `AnnotationsLayer` media-reference chip (mirror `onImage`/`onLink`): upload → place a positioned chip at `world` showing a poster/first-frame (or a ♪ tile for audio) + filename, stored in the versioned annotations. The chip carries the `assets/…` path so the agent can enumerate referenced clips. Keep the copy-paste snippet available (secondary affordance, e.g. click-to-copy on the chip).
-- **Pattern**: `AnnotationsLayer` `onImage` chip creation + commit/undo sink; `onLink` link-chip for the label/positioning model.
-- **Gotcha**: a video poster needs one decoded frame — grab it client-side (`<video>` seek to 0 + canvas draw) at chip-create; don't block the drop on it (placeholder → poster when ready). Audio has no frame → a labeled ♪ tile. This is a REFERENCE, not a comp element — it must NOT be seeked by the capture spine (it's on the annotations layer, which capture already excludes via `?hide-chrome`).
-- **Validate**: live: drop 3 mp4s + 1 mp3 onto blank canvas → 4 reference chips land; `/design:chat` "make a 15s video from these clips" sees them (chips + their asset paths are in the canvas the agent reads).
-
----
-
-### P2 — Timeline clip ops
-
-### Task 5: ADD clip horizontal-move (`from`) + Delete + context actions to the Timeline
-
-- **Do**: (a) Add a **body-drag** on `tl-seq-block` that changes `from` (distinct from the shipped right-edge duration drag) → `onRetime(index, { from })` → `/_api/retime-sequence` (engine already patches `from`). Live-preview the block x during drag, commit on release. (b) A per-clip **context affordance** (right-click / kebab) with Split / Remove / Hide / Replace. (c) Selecting a clip row reflects into the shell selection so Delete works (P4).
-- **Pattern**: the `retimeDrag` gesture (clone it for `from`, clamp `from ≥ 0`); `data-testid` `timeline-seq-move-<n>`, `timeline-seq-menu-<n>`.
-- **Gotcha**: moving `from` on a cursor-implicit sequence (no explicit `from=`) — `retimeAttr` returns false (nothing to patch); the UI should first materialize an explicit `from={cursor}` (insert the attr) then move. Snap to second/keyframe ticks (P4).
-- **Validate**: live: drag a clip body → `from` updates in TSX, block moves, Player scrub reflects new timing.
-
-### Task 6: CREATE `splitSequence` + `POST /_api/split-sequence` (cut at playhead)
-
-- **Do**: Engine op: for standalone `<Sequence from={F} dur={D}>` at index, split at frame `P` → head + tail (tail gets `from={P}`, `dur={F+D-P}`, and `startFrom` bumped on its `<Video>/<Audio>` by `P-F`); reparse-gate; return the two resulting indices. Refuse (actionable) inside `<TransitionSeries>` or when `P` is outside `(F, F+D)`. UI: a "Split at playhead" clip action (and the P4 shortcut).
-- **Pattern**: `applyMove` skeleton; `retimeAttr`'s const-vs-literal handling for the frame math; Remotion `<Video startFrom>` semantics.
-- **Gotcha**: const-preferring — if `dur` is `const A`, the split can't just bump `A` (both halves would reference it); the tail must get literal frames or a new const. Keep it simple: write literals for the split products, leave a `// split` comment. Re-settle selection onto the head clip.
-- **Validate**: `bun test` (split a `<Video>` clip → tail `startFrom` correct; refuse in TransitionSeries; refuse out-of-range); live: playhead mid-clip → Split → two rows, seamless playback across the cut.
-
-### Task 7: CREATE `removeSequence` + `POST /_api/remove-sequence`
-
-- **Do**: Engine op: remove the clip's `<Sequence>…</Sequence>` span (+ its line framing, like `moveElement`'s `removeStart`); when the clip is inside a `<TransitionSeries>`, also remove ONE adjacent `<TransitionSeries.Transition>` to keep the series valid; reparse-gate (this catches an invalid TransitionSeries residue → refuse). Return the reflowed clip list. UI: clip "Remove" action + Delete key (P4) with a subtle confirm/undo.
-- **Pattern**: `applyRemove`/`moveElement` span-removal + reparse gate; the `_history`/undo lane so a removal is one Cmd+Z.
-- **Gotcha**: removing the only clip in a comp → refuse ("delete the comp instead"). Re-settle selection onto the previous/next clip.
-- **Validate**: `bun test` (remove standalone; remove-in-TransitionSeries drops one transition; refuse last clip); live: Remove → clip gone, timing reflows, one undo restores it.
-
-### Task 8: CREATE `toggleSequenceHidden` + `POST /_api/toggle-sequence-hidden`
-
-- **Do**: Engine op: wrap an explicit-`from` `<Sequence>` in `{/* dc-hidden */ /* …original… */}` (reversible marker) to hide; unwrap to show; reparse-gate both directions; refuse on cursor-implicit / TransitionSeries clips (would shift timing) with an actionable message. UI: an eye toggle on the clip row; parser (Task 1) renders hidden clips dimmed.
-- **Pattern**: MagicString wrap/unwrap around the clip span; the Task 1 parser hidden-pass reads the marker back.
-- **Gotcha**: JSX comments inside JSX children are `{/* */}` (expression-container comments), and the *wrapped element* must itself be commented as a block — verify the exact escaping round-trips (hide→show is byte-identical) in a unit test. Don't leave a `{/* */}` that Prettier would reflow oddly.
-- **Validate**: `bun test` (hide→show round-trip byte-identical; hidden clip omitted from render; refuse cursor-implicit); live: eye-toggle → clip disappears from Player, row dims, toggle back restores.
-
-### Task 9: WIRE replace-media (upload → patch `src`)
-
-- **Do**: The clip "Replace" action opens a file picker (or accepts a drop onto the clip): `uploadAsset` → `POST /_api/edit-attr` `{ id: <media element cd-id>, attr: 'src', value: 'assets/…' }` (engine's `editAttribute` already does this). The media element's cd-id comes from the pipeline (Video/Img/Audio are plain identifiers → they get one); resolve it via the selection bridge or a targeted parse.
-- **Pattern**: existing `editAttr` endpoint; the asset upload from Task 3.
-- **Gotcha**: replacing audio `src` should preserve `from`/`durationInFrames`/volume envelope (only `src` changes). If the media element has no resolvable cd-id (e.g. `src` built from a prop), refuse → "edit via /design:edit".
-- **Validate**: live: Replace a clip's video → new footage plays, timing/position unchanged; `bun test` (edit-attr on `src`).
-
----
-
-### P3 — Live canvas element-editing persistence fix
-
-### Task 10: DIAGNOSE + surface inline-edit failures (stop the silent revert)
-
-- **Do**: Replace the silent `console.warn` on `/_api/edit-text` + `apply-edit` failures (`app.jsx` ~7143, ~7183) with a **visible, actionable** result: a toast/inline badge ("Couldn't save this edit — mixed content, edit via chat") AND (critically) **do not leave the optimistic DOM change stranded** — on a refusal, revert the optimistic DOM edit immediately so the canvas reflects the true (unsaved) state instead of showing a change that silently vanishes on the next reload. Add a matching visible-success signal so the user knows an edit stuck.
-- **Pattern**: `showCanvasToast`; the `applyOptimisticStyle` optimistic-then-reconcile pattern (extend it to revert-on-failure).
-- **Gotcha**: the failure is currently invisible precisely because the write is async + the HMR reload is what "reverts" — the fix is to reconcile the optimistic edit against the endpoint's `{ok}` result, not to hope HMR agrees.
-- **Validate**: live: edit text on `<h1>{title}</h1>` → clear "can't inline-edit, use chat" signal (not a silent snap-back); edit a leaf `<button>Save</button>` → persists across reload.
-
-### Task 11: MAKE inline TEXT edits robust for common real elements
-
-- **Do**: Widen the `editText` editable set beyond single-`JSXText`-child. At minimum handle **`{'string literal'}` expression children** (`<h1>{'Title'}</h1>` → rewrite the literal) and **leading/trailing static text around a single inline child** where the target is unambiguous. For genuinely mixed/dynamic content (`{title}`, `{count} items`), keep the refusal but route it to a **one-shot agent-assisted edit** (hand the new text + element to `/design:edit`'s fast path) instead of a dead end. Preserve the `escapeJsxText` injection guard on every new path.
-- **Pattern**: `applyTextEdit`'s JSXText handling; extend `meaningful`-children analysis to the string-literal-expression case; the DDR-103 escape rule stays.
-- **Gotcha**: NEVER rewrite a `{identifier}` or template with interpolation as literal text (that would delete the binding) — those are the refuse-and-route cases. The security boundary (`escapeJsxText`/`escapeAttr`) is load-bearing — every new branch goes through it (DDR-103).
-- **Validate**: `bun test` (new `applyTextEdit` cases: string-literal child rewrite; refuse `{identifier}`; escaping holds); live: edit copy on a real generated hero → sticks.
-
-### Task 12: MAKE inline CSS edits robust for class-styled + non-inline elements
-
-- **Do**: Today `editStyleProp` refuses when there's no inline `style={{}}` object (or it isn't an inline ObjectExpression). For a class-styled element, **inserting an inline `style={{ prop: value }}`** already works (the no-style-attr branch) — verify it does for the inspector's common props and that the reconcile (optimistic paint → source patch → HMR) doesn't flash-revert. Where the refusal is correct (style is a spread/variable), surface it (Task 10) and route to chat. Confirm the trailing-comma guard (already in-tree) covers frame-driven inline styles in comps.
+- **Do**: Verify the `editStyleProp` insert-branch (no existing inline `style`) works for the inspector's common props on class-styled elements and the reconcile doesn't flash-revert. Where refusal is correct (style is a spread/variable) surface it (Task 1) + route to chat. Add a regression test for the frame-driven `style={{ opacity: o, }}` trailing-comma append (the fixed "CSS resets on replay" bug).
 - **Pattern**: `editStyleProp` insert-branch; `applyOptimisticStyle` reconcile.
-- **Gotcha**: the "CSS edit resets when I replay the video" bug is fixed in-tree (double-comma guard) — add a regression test so it stays fixed; a comp's frame-driven `style={{ opacity: o, }}` is the exact shape that regressed.
-- **Validate**: `bun test` (insert inline style on a class-only element; frame-driven-style append regression); live: change a color via the inspector on a generated card → persists across reload AND across a Player replay.
+- **Validate**: `bun test` (insert inline style on class-only element; frame-driven-append regression); live — recolor a generated card via inspector → persists across reload AND a Player replay.
 
 ---
 
-### P4 — Keyboard shortcuts + polish
+### P2 — Clip-addressing foundation (mandatory, blocks P3+)
 
-### Task 13: ADD timeline-scoped keyboard shortcuts
+### Task 4: CREATE the AST clip enumerator + `GET /_api/comp-clips`; migrate the SHIPPED retime onto it
 
-- **Do**: Shell-level keydown handler, **gated on timeline focus/hover + comp active + not-typing** (the Space-conflict rule): **Space** play/pause, **← / →** step 1 frame, **Shift+← / →** step 1s, **`,` / `.`** step to prev/next keyframe (from the parsed `keyframes[]`), **Home/End** jump to start/end, **Delete/Backspace** remove the selected clip (Task 7), **`s`** split at playhead (Task 6). Drive transport via the existing `timeline-seek`/`-play`/`-pause` postMessage; add a `timeline-step` convenience if useful.
-- **Pattern**: the existing global keydown handlers in `app.jsx`; the `timeline-*` postMessage protocol in `video-comp.tsx`.
-- **Gotcha**: the Player has `spaceKeyToPlayOrPause={false}` deliberately (Space = pan) — do NOT re-enable it on the Player; the shell handler owns Space and only when the timeline context is active + focus isn't in an input/contenteditable. Show the shortcut map in a `?`/tooltip.
-- **Validate**: live: Space toggles play only with the timeline active (still pans the canvas otherwise); arrows step frames; `.`/`,` land on keyframes; Delete removes the selected clip.
+- **Do**: `enumerateClips(source, artboardId)` in `canvas-edit.ts`: AST-walk (reuse `collectElements` bookkeeping), scope to the target comp body, list each `<Sequence>`/`<TransitionSeries.Sequence>`/`<Video>`/`<Audio>` clip with `{ stableId (name→sentinel→scoped-AST-index), from, durationInFrames, mediaTag, mediaSrc, contentHash }`, skipping tags inside comments/strings. `GET /_api/comp-clips` returns it. **Re-point the shipped `retimeSequence` from `SEQ_TAG_RE` document-order to this enumerator** (fixes the latent multi-comp retime mis-hit). `timeline-parse.js` addresses ops by `stableId`.
+- **Pattern**: `collectElements`/`collectElementsFull` (~513–618); `videoCompUsages` scoping (`timeline-parse.js`); `computeId` (~65) for the degraded scoped index.
+- **Gotcha**: `TransitionSeries.Sequence` is a member-expression with no `data-cd-id` — the enumerator assigns the stable id; the content hash is over the clip's source span.
+- **Validate**: `bun test test/clip-addressing.test.ts` — **UI-index == engine-clip across nested / `.map()` / multi-comp / commented-tag fixtures** (the headline guard); enumerator ignores commented `<Sequence>`.
 
-### Task 14: POLISH — snapping, tooltips, a11y, empty/edge states
+### Task 5: ADD the content-hash fingerprint + semantic gate + cross-process lock
 
-- **Do**: Snap clip drags (move/trim/split) to second ticks + neighboring clip edges + the playhead (with an override modifier). Tooltips/readouts for every gesture. A11y: clip rows focusable + operable by keyboard (the P4 shortcuts already give frame-step; add clip focus + menu via keyboard), `aria` labels, reduced-motion on the ghost/preview. Edge states: drop on an empty (no-comp) canvas → offer "make this a video-comp"; drop of an unsupported type → clear message.
-- **Pattern**: existing `TimelinePanel` tick math; the a11y-auditor's WCAG bar; `flow:motion-rules` for the drag-preview durations.
-- **Validate**: `flow:validate-a11y` on the timeline; live: snapping feels right; keyboard-only clip edit works.
+- **Do**: Every structural op accepts `{ clipId, contentHash }`; the engine resolves `clipId` via the enumerator, recomputes the hash, and refuses (409, actionable) on mismatch. Add `assertCompSemantics(source, artboardId)` run after the reparse gate: `<TransitionSeries>` strict alternation (no leading/trailing/double `<Transition>`), monotonic/covered timing for move+remove. Add a cross-process on-disk advisory lock for comp-file structural writes (HTTP + CLI + HMR).
+- **Pattern**: the `withLock` shape (extend to a lockfile); `applyMove`'s reparse gate (add the semantic gate beside it).
+- **Validate**: `bun test` — fingerprint refuses a mutated target; semantic gate rejects an orphaned/double transition; two racing writers serialize (no lost update).
 
-### Task 15: DOCS + skill + bundle + verification sweep
+---
 
-- **Do**: (a) Teach the parseable/edit-friendly shapes in `plugins/design/skills/video-comp/SKILL.md` (explicit `from`/`durationInFrames`, standalone `<Sequence>` for splittable clips, `<Video src startFrom>`), so AI-generated comps are hand-editable by construction. (b) `apps/studio/whats-new.json` entry via the `whats-new-entry` skill (pending). (c) Rebuild the committed client bundle `--release` + commit `dist/client.bundle.js` + `dist/styles.css`. (d) `pnpm --filter @maude/site gen:roadmap` if a plan is archived/added. (e) Full live sweep per the memory `feedback_no_break_exhaustive_verify` (inventory + per-feature verify).
-- **Pattern**: `whats-new-entry` skill; the CLAUDE.md bundle-rebuild rule.
+### P3 — Clip ops (lean, reuse shipped engine) + shortcuts
+
+### Task 6: ADD clip `from`-move + trim gestures over the new addressing
+
+- **Do**: A **body-drag** on `tl-seq-block` that changes `from` (distinct from the shipped right-edge duration drag) → `/_api/retime-sequence` with `{clipId, contentHash, from}`. Live-preview x during drag, commit on release. Materialize an explicit `from={cursor}` first when the clip is cursor-implicit (else `retimeAttr` has nothing to patch).
+- **Pattern**: `retimeDrag`/`startResize` (clone for `from`, clamp `≥0`); `data-testid` `timeline-seq-move-<n>`.
+- **Validate**: live — drag a clip body on a **2-comp** canvas → the CORRECT clip's `from` updates; block moves; scrub reflects.
+
+### Task 7: CREATE `removeSequence` + `POST /_api/remove-sequence` (standalone-only) + Delete key
+
+- **Do**: Remove the clip's `<Sequence>…</Sequence>` span (+ line framing, like `moveElement`'s `removeStart`); **refuse-in-`<TransitionSeries>` via the SEMANTIC gate** (Task 5), not a hoped-for reparse catch; refuse removing the only clip. Fingerprint-checked. Delete/Backspace on a selected clip triggers it; one `_history`/Cmd+Z restores. Re-settle selection onto the neighbor.
+- **Pattern**: `applyRemove`/`applyMove` span-removal + reparse + **semantic** gate; the undo lane.
+- **Validate**: `bun test` (remove standalone; refuse-in-series; refuse last; fingerprint mismatch → 409); live — Delete → correct clip gone, one undo restores.
+
+### Task 8: WIRE replace-media (upload → patch `src`, contained)
+
+- **Do**: Clip "Replace" (file picker or drop onto the clip) → `uploadAsset` → `/_api/edit-attr` `{ id: <media element id from enumerator>, attr:'src', value:'assets/…' }`. Preserve `from`/`durationInFrames`/volume (only `src` changes). Refuse when `src` is prop-built (no resolvable target) → "edit via /design:edit". Normalize + contain `src` under `assets/`.
+- **Pattern**: shipped `editAttr`; the Task 11 asset upload.
+- **Validate**: live — replace a clip's footage → new video plays, timing unchanged; `bun test` (edit-attr on `src`; `../` traversal rejected).
+
+### Task 9: ADD timeline-scoped keyboard shortcuts
+
+- **Do**: Shell keydown gated on timeline focus/hover + comp active + not-typing: **Space** play/pause, **← →** ±1 frame, **Shift+← →** ±1s, **`,`/`.`** prev/next keyframe (from parsed `keyframes[]`), **Home/End**, **Delete/Backspace** remove selected clip (Task 7). Drive transport via `timeline-seek`/`-play`/`-pause`.
+- **Pattern**: existing global keydown handlers; the `timeline-*` protocol (`video-comp.tsx`).
+- **Gotcha**: keep `spaceKeyToPlayOrPause={false}` on the Player — the shell owns Space, only in timeline context, never in an input.
+- **Validate**: live — Space toggles play only with timeline active (still pans otherwise); arrows step; `.`/`,` land on keyframes; Delete removes the selected clip.
+
+---
+
+### P4 — Media intake + assemble
+
+### Task 10: EXTEND on-canvas media reference (video/audio drop → annotation chip)
+
+- **Do**: Replace `use-canvas-media-drop.tsx`'s `uploadAndAnnounceMedia` toast-only path with an `AnnotationsLayer` media-reference chip (mirror `onImage`/`onLink`): upload → positioned chip at `world` with a poster/first-frame (or ♪ tile for audio) + filename, carrying the `assets/…` path so the agent can enumerate refs. Keep the snippet available (click-to-copy on the chip).
+- **Pattern**: `AnnotationsLayer` `onImage`/`onLink` chip + commit/undo sink.
+- **Gotcha**: grab the poster async (`<video>` seek-0 + canvas draw), placeholder until ready; audio → ♪ tile. It's a REFERENCE (annotations layer, excluded from capture by `?hide-chrome`), never seeked by the capture spine.
+- **Validate**: live — drop 3 mp4s + 1 mp3 on blank canvas → 4 chips; `/design:chat` "make a 15s video from these" sees them.
+
+### Task 11: CREATE `insertSequenceIntoComp` + `POST /_api/insert-sequence` + Timeline drop target
+
+- **Do**: Engine op: locate the target comp body, insert a re-indented `<Sequence from={F} durationInFrames={D}>\n  <Video src="assets/…" />\n</Sequence>` (or `<Audio>`/`<Img>`) at the sequence-list anchor; reparse + semantic gate; return the new clip's `stableId`. Refuse an un-insertable body shape (don't guess). `escapeAttr` on the built JSX; `src` contained. Timeline becomes a drop target (dragover highlight + drop-frame ghost): `uploadAsset` → clientX→frame → insert. `stopPropagation` so a timeline drop doesn't ALSO make a canvas chip. >20 MB warning.
+- **Pattern**: `applyMove` skeleton + semantic gate; `classifyMediaPayload` for the payload matrix; `TimelinePanel` `seekAt` clientX→frame; `data-testid` `timeline-dropzone`.
+- **Gotcha**: default `durationInFrames` from probed intrinsic duration else `fps*3`; re-settle selection onto the inserted clip via the P2 addressing.
+- **Validate**: `bun test test/canvas-edit-clip-ops.test.ts` (insert empty + non-empty; `src` traversal rejected; route absent from both allowlists); live — drag mp4 onto timeline → clip appears at the drop frame + plays.
+
+### Task 12: CREATE "assemble refs → comp" one-click (the verbatim ask)
+
+- **Do**: A "Make video from these" action on the on-canvas reference set: scaffold a `<VideoComp>` (+ `DCArtboard`) and insert N `<Sequence><Video>` in drop order via `insertSequenceIntoComp`, durations from probed intrinsic length (fallback `fps*3`); land the user on the new comp with the Timeline open.
+- **Pattern**: Task 11 insert × N; `canvas-create`/scaffold conventions for a new artboard/comp.
+- **Gotcha**: keep it a genuine editable comp (frame-driven), not a frozen preview; audio refs → an `<Audio>` bed row.
+- **Validate**: live — 4 chips → "assemble" → a playable comp with 4 clips in order, immediately editable (move/trim/delete/replace from P3).
+
+---
+
+### P5 — Ambition adds
+
+### Task 13: ADD vertical / z-order clip reorder (reuse `applyMove`)
+
+- **Do**: Drag a clip row up/down → reorder `<Sequence>` siblings (render/stacking order) via the shipped `moveElement`/`applyMove`, addressed by `stableId`, fingerprint-checked, re-settled through the P2 addressing. (Distinct from horizontal `from`-move.)
+- **Pattern**: `applyMove` sibling reorder + reparse + semantic gate + `MoveResult` re-settle.
+- **Validate**: live — reorder overlapping clips (footage + lower-third) → stacking changes, timing preserved, one undo.
+
+### Task 14: MAKE keyframe markers interactive (click-to-seek)
+
+- **Do**: The already-parsed + drawn keyframe bars (`timeline-parse.js:53`, `TimelinePanel.jsx:344-355`) become click-to-seek to that keyframe's frame, feeding the `,`/`.` step (Task 9). Read-only on the source (no `interpolate` value editing — that's deferred).
+- **Pattern**: the existing `tl-kf` render + `onSeek`.
+- **Validate**: live — click a keyframe bar → playhead lands on it; `.`/`,` step between them.
+
+---
+
+### Polish + ship
+
+### Task 15: POLISH — snapping, tooltips, a11y, edge states
+
+- **Do**: Snap clip drags (move/trim/reorder) to second ticks + neighbor edges + playhead (override modifier). Tooltips/readouts per gesture. A11y: clip rows focusable + keyboard-operable, `aria` labels, reduced-motion on ghost/preview. Edge states: drop on a no-comp canvas → offer "make a video-comp" / "assemble"; unsupported type → clear message.
+- **Pattern**: `TimelinePanel` tick math; a11y-auditor WCAG bar; `flow:motion-rules` for preview durations.
+- **Validate**: `flow:validate-a11y` on the timeline; live — snapping + keyboard-only clip edit.
+
+### Task 16: DOCS + skill + bundle + verification sweep
+
+- **Do**: (a) `plugins/design/skills/video-comp/SKILL.md`: teach **`<Sequence name="…">`** + explicit `from`/`durationInFrames` + standalone sequences, so AI-generated comps are hand-editable AND stable-id-friendly by construction. (b) `whats-new.json` entry via the `whats-new-entry` skill (pending). (c) Rebuild committed client bundle `--release` + commit `dist/client.bundle.js` + `dist/styles.css`. (d) `pnpm --filter @maude/site gen:roadmap` if a plan is archived/added (on a clean tree — see the commit note). (e) Full live sweep per memory `feedback_no_break_exhaustive_verify`.
 - **Validate**: quality gates green; live checklist in the execution report.
 
 ---
 
 ## Validation
 
-Repo quality gates (adapted per `feedback_scope_flow_commands_to_repo_state` — this repo has no scenario-runner/.ai/scenarios):
+Repo quality gates (adapted per `feedback_scope_flow_commands_to_repo_state` — no scenario-runner/.ai/scenarios in this repo):
 
 1. **Lint**: `pnpm lint`
-2. **Tests**: `pnpm test && pnpm test:dev-server` (new: `canvas-edit-clip-ops`, `media-drop-timeline`, extended `timeline-parse` + `applyTextEdit`/`editStyleProp` regression + `canvas-origin-gate` route-absence)
+2. **Tests**: `pnpm test && pnpm test:dev-server` (new: `clip-addressing`, `canvas-edit-clip-ops`, `media-drop-timeline`, extended `timeline-parse`/`applyTextEdit`/`editStyleProp` regression + `canvas-origin-gate` route-absence)
 3. **Build**: `pnpm --filter @maude/site build`
-4. **Parity/tarball/tokens/site-content**: `bash scripts/check-version-parity.sh` · `bash scripts/check-tarball-shape.sh` · `pnpm --filter @maude/site sync:tokens:check`
+4. **Parity/tarball/tokens**: `bash scripts/check-version-parity.sh` · `bash scripts/check-tarball-shape.sh` · `pnpm --filter @maude/site sync:tokens:check`
 5. **Runtime bundles**: `bash apps/studio/bin/check-runtime-bundles.sh` (unchanged — no new runtime deps)
-6. **Client bundle rebuilt `--release`** and committed (`dist/client.bundle.js` + `dist/styles.css`)
-7. **Security pass**: `security-auditor` + `ethical-hacker` over the new main-origin source-write routes (confirm absence from both canvas allowlists; confirm `escapeJsxText`/`escapeAttr`/`assets/`-containment on insert/replace)
-8. **Live UI verify** (agent-browser): the P1–P4 checklist — drop→timeline insert, drop→canvas reference, move/trim/split/remove/hide/replace, inline text+CSS persist across reload AND replay, keyboard shortcuts
-9. **A11y**: timeline keyboard reach + clip operability + reduced-motion (`flow:validate-a11y`)
-10. **Manual**: an AI-generated 15–20s comp → hand-edit end to end (drop a clip, move it, trim, split, remove one, hide one, replace footage, retype a title, recolor a card) → export MP4 → verify the edits landed and playback is seamless
+6. **Client bundle rebuilt `--release`** and committed
+7. **Security pass**: `security-auditor` + `ethical-hacker` over the new main-origin routes (absence from both allowlists + `GET→405`; `escapeAttr` on insert; `src` `assets/` containment; cross-process lock)
+8. **Live UI verify** (agent-browser): P1–P5 checklist — **multi-comp addressing (delete/move hits the right clip)**, persistence across reload+replay, move/trim/remove/replace/reorder, drop→canvas ref, drop→timeline insert, assemble-refs, keyboard shortcuts
+9. **A11y**: timeline keyboard reach + clip operability + reduced-motion
+10. **Manual**: an AI-generated **multi-artboard** infographic comp → hand-edit end to end (move, trim, delete one, replace footage, reorder overlap, retype a title, recolor a card, assemble 3 dropped clips into a new comp) → export MP4 → verify every edit landed on the intended clip and playback is correct
 
 ---
 
 ## Acceptance Criteria
 
 - [ ] All tasks completed; DDR recorded
-- [ ] **P1**: video/image/audio dropped ON the timeline → `<Sequence>`+`<Video/Audio/Img>` inserted at the drop frame, plays; media dropped on the canvas → reference chip (like paste-image), enumerable by the agent
-- [ ] **P2**: a clip can be moved (`from`), trimmed, split at playhead (seamless via `startFrom`), removed (one-undo), hidden/shown (reversible), and have its media replaced — all as reparse-gated source patches that never corrupt the comp
-- [ ] **P3**: inline text + CSS edits via the inspector **persist across HMR reload and Player replay**; unsupported cases surface a clear message + route to chat instead of silently reverting
-- [ ] **P4**: Space play/pause (context-scoped, never steals the pan chord or typing), frame/second/keyframe stepping, Home/End, Delete-clip, split shortcut
-- [ ] Every new source-write route is main-origin-only, CSRF-gated, absent from `CANVAS_SAFE_API` + `startCanvasServer` routes, with a `GET → 405`/absence assertion
-- [ ] No new user-side install; no new runtime bundle; determinism contract intact (dropped `<Video>` seeked per-frame in capture)
-- [ ] Quality gates green; committed client bundle rebuilt `--release`; live sweep 0 blockers; no DDR-worthy decision unrecorded
+- [ ] **P1**: inline text + CSS edits persist across HMR reload AND Player replay; unsupported cases surface a clear message + route to chat instead of silently reverting
+- [ ] **P2 (mandatory)**: clips addressed by ONE AST enumerator's stable id; **UI-index == engine-clip proven across nested/`.map()`/multi-comp/commented fixtures**; content-hash fingerprint refuses a stale/raced target; semantic gate rejects orphaned/double transitions; cross-process lock serializes HTTP+CLI+HMR
+- [ ] **P3**: move (`from`), trim, remove (standalone; refuse-in-series via semantic gate; one-undo), replace — each hits the intended clip on a multi-comp canvas — plus Delete key + timeline shortcuts (Space context-scoped)
+- [ ] **P4**: media dropped on canvas → reference chip; dropped on timeline → clip inserted; one-click assemble-refs → a playable, immediately-editable comp
+- [ ] **P5**: vertical/z-order reorder (reuse `applyMove`); keyframe markers click-to-seek
+- [ ] Every new source-write route main-origin-only, CSRF-gated, absent from both allowlists, `GET→405`; `src` contained; `escapeAttr` on insert
+- [ ] No new install/runtime bundle; determinism intact; committed client bundle rebuilt `--release`; quality gates green; live sweep 0 blockers
 
 ---
 
+## Debate record (BUILDER / SHIPPER / BREAKER — 2026-07-04)
+
+Divergent bookend debate (reduce tier — three parallel report-back seats, grounded in the shipped code). Convergent headline (all three, independent): **document-order clip addressing is already broken on multi-comp canvases** — UI counts one comp body (`timeline-parse.js:116-131`), engine counts the whole file (`canvas-edit.ts:845,889`); destructive ops would silently corrupt the wrong clip; a JSX-comment hide marker compounds it (regex matches the commented tag).
+
+- **BREAKER (verdict: block-as-specced)** — parse-clean ≠ correct; the reparse gate is blind to wrong-clip delete, orphaned `<Transition>` (my first-draft "reparse catches it" was **false**), timing drift; `withLock` is in-process only (CLI/HMR race); `escapeAttr` doesn't stop `assets/../`; insert-by-concatenation bypasses escaping. Required: one AST tokenizer, content-hash fingerprint, semantic gate, cross-process lock, `src` containment. → **P2 is these guardrails, mandatory; split/hide deferred.**
+- **SHIPPER (advocate)** — the core loop needs ~zero new ops (`retimeSequence` does move+trim; `editAttribute` does replace); only `removeSequence` (standalone) is unavoidable; **fix persistence first** (shipped trust bug, every canvas, nearly free); defer split/hide/insert. → **P1 reordered to first; P3 is lean/reuse.**
+- **BUILDER (advocate)** — address by stable id (`<Sequence name>`/sentinel) fixes the root bug AND unlocks features; pull the user's verbatim **assemble-refs → comp**, **z-order reorder** (reuse `applyMove`), and **keyframe click-to-seek** into v1. → **P4 assemble; P5 reorder + markers.**
+
+**User ratification (2026-07-04): "Ambitious"** — P1 persistence → P2 addressing foundation → P3 lean clip ops + shortcuts → P4 media intake + assemble → P5 z-order + keyframe markers. Mid-clip split and show/hide **deferred** behind the addressing + semantic gate.
+
 ## Deferred / Open questions
 
-- **Splitting inside `<TransitionSeries>`** — overlap + transition-placement math isn't a clean text patch; v1 refuses. Revisit if users hit it often.
-- **Vertical reorder / render-order (z-order) of clips** — reordering `<Sequence>` siblings changes stacking; `moveElement` exists but the timeline UX + semantics need their own slice. v1 = horizontal (`from`) only.
-- **Per-keyframe `interpolate()` dot-editing** — still deferred from DDR-148; this plan ships clip-level ops, not keyframe-level.
-- **Multi-select clip ops** (move/delete N clips) — v1 is single-clip (mirrors the shell's single-focus model).
-- **Promoting a canvas media-reference chip into the comp** ("use these 3 refs as a TransitionSeries") — v1 leaves assembly to the agent; a one-click "assemble refs" is a natural follow-up.
-- **Intrinsic-duration probe on upload** — insert defaults to `fps*3` when the media duration is unknown; probing it (client-side `<video>.duration`) tightens the default.
-- **Undo granularity** — confirm each clip op is exactly one `_history`/Cmd+Z step (mirrors reorder); a compound op (split = two writes) may need coalescing.
+- **Mid-clip split (`splitSequence`)** — `startFrom` seam × const-preferring × TransitionSeries; first fast-follow once the semantic gate proves out. v1 "cut" = two-edge trim.
+- **Show/hide (`toggleSequenceHidden`)** — JSX-comment reversibility fights Prettier/HMR reflow; remove+undo covers v1.
+- **`<TransitionSeries>` split**, **multi-select clip ops**, **`interpolate()` value dot-editing** — deferred (interpolate rewriting is the hard one).
+- **Stable-id durability** — `<Sequence name>`/sentinel can be dropped by Prettier or an agent edit → the enumerator degrades to scoped-AST-index (still UI/engine-consistent); watch for churn.
+- **Intrinsic-duration probe** — insert/assemble default `fps*3` when unknown; client-side `<video>.duration` tightens it.
+- **Undo granularity** — confirm each clip op is one `_history`/Cmd+Z step; compound ops (assemble = N inserts) may need coalescing.
