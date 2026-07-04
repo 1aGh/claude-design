@@ -1753,6 +1753,18 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const value = typeof input.value === 'string' ? input.value : '';
     if (!value.trim()) return { ok: false, status: 400, error: 'value required' };
     if (value.length > 256) return { ok: false, status: 413, error: 'value too long' };
+    // DDR-150 P3 — a media/image `src` edit (the clip-replace path) must stay a
+    // contained asset reference: no path traversal, no script/file/data schemes.
+    if (
+      attr === 'src' &&
+      (/\.\./.test(value) || /^\s*(javascript|vbscript|file|data):/i.test(value))
+    ) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'src must be a contained asset path (no ../ or javascript:/file:/data: schemes)',
+      };
+    }
     // Non-`style.` attr name → editAttribute writes a plain quoted JSX attribute.
     // Pass the value RAW: editStringAttr quotes/escapes it itself (JSON.stringify
     // on replace, escapeAttr on insert) — pre-stringifying here double-encoded

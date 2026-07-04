@@ -95,6 +95,7 @@ export default function TimelinePanel({
   onResize,
   onRetime,
   onRemove,
+  onReplace,
   onClose,
 }) {
   const comp = comps[0] ?? null;
@@ -371,6 +372,25 @@ export default function TimelinePanel({
                           onPointerDown={(e) => startResize(e, i, seq.duration)}
                           onClick={(e) => e.stopPropagation()}
                         />
+                      ) : null}
+                      {onReplace ? (
+                        <button
+                          type="button"
+                          className="tl-seq-replace"
+                          data-testid={`timeline-replace-${i}`}
+                          title="Replace this clip's media"
+                          aria-label={`Replace media in ${seq.label}`}
+                          style={{
+                            left: `calc(${pct(seq.from)} + ${(dur / (totalFrames - 1)) * 100}% - 34px)`,
+                          }}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onReplace(i);
+                          }}
+                        >
+                          ⇄
+                        </button>
                       ) : null}
                       {onRemove ? (
                         <button

@@ -8549,6 +8549,68 @@ function App() {
                 })
                 .catch(() => {});
             }}
+            onReplace={(index) => {
+              if (!activePath || activePath === SYSTEM_TAB) return;
+              // DDR-150 P3 — replace a clip's media: resolve the media element's
+              // cd-id from the enumerator, upload the picked file to assets/, then
+              // patch its `src` via /_api/edit-attr (the src containment guard
+              // rejects ../ + script schemes). Timing/from/volume are preserved —
+              // only the src changes.
+              const artboardId = timelineCompId || undefined;
+              const ccUrl = `/_api/comp-clips?canvas=${encodeURIComponent(activePath)}${artboardId ? `&artboardId=${encodeURIComponent(artboardId)}` : ''}`;
+              fetch(ccUrl)
+                .then((r) => r.json().catch(() => ({})))
+                .then((cc) => {
+                  const seqs =
+                    cc?.ok && Array.isArray(cc.clips)
+                      ? cc.clips.filter((c) => c.kind === 'sequence')
+                      : [];
+                  const clip = seqs[index] || null;
+                  if (!clip?.mediaCdId) {
+                    console.warn('[replace] clip has no replaceable media');
+                    return;
+                  }
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = 'video/*,audio/*,image/*';
+                  input.style.display = 'none';
+                  document.body.appendChild(input);
+                  input.addEventListener('change', () => {
+                    const file = input.files?.[0];
+                    input.remove();
+                    if (!file) return;
+                    fetch('/_api/asset', {
+                      method: 'POST',
+                      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+                      body: file,
+                    })
+                      .then((r) => r.json().catch(() => ({})))
+                      .then((up) => {
+                        if (!up?.path) {
+                          console.warn('[replace] upload failed', up?.error);
+                          return null;
+                        }
+                        return fetch('/_api/edit-attr', {
+                          method: 'POST',
+                          headers: { 'content-type': 'application/json' },
+                          body: JSON.stringify({
+                            canvas: activePath,
+                            id: clip.mediaCdId,
+                            attr: 'src',
+                            value: up.path,
+                          }),
+                        });
+                      })
+                      .then((r) => (r ? r.json() : null))
+                      .then((j) => {
+                        if (j && !j.ok) console.warn('[replace]', j.error || 'failed');
+                      })
+                      .catch(() => {});
+                  });
+                  input.click();
+                })
+                .catch(() => {});
+            }}
             height={timelineHeight}
             onResize={setTimelineHeight}
             onClose={() => setTimelineOpen(false)}
