@@ -330,14 +330,16 @@ Repo quality gates (adapted per `feedback_scope_flow_commands_to_repo_state` —
 
 ## Acceptance Criteria
 
-- [ ] All tasks completed; DDR recorded
-- [ ] **P1**: inline text + CSS edits persist across HMR reload AND Player replay; unsupported cases surface a clear message + route to chat instead of silently reverting
-- [ ] **P2 (mandatory)**: clips addressed by ONE AST enumerator's stable id; **UI-index == engine-clip proven across nested/`.map()`/multi-comp/commented fixtures**; content-hash fingerprint refuses a stale/raced target; semantic gate rejects orphaned/double transitions; cross-process lock serializes HTTP+CLI+HMR
-- [ ] **P3**: move (`from`), trim, remove (standalone; refuse-in-series via semantic gate; one-undo), replace — each hits the intended clip on a multi-comp canvas — plus Delete key + timeline shortcuts (Space context-scoped)
-- [ ] **P4**: media dropped on canvas → reference chip; dropped on timeline → clip inserted; one-click assemble-refs → a playable, immediately-editable comp
-- [ ] **P5**: vertical/z-order reorder (reuse `applyMove`); keyframe markers click-to-seek
-- [ ] Every new source-write route main-origin-only, CSRF-gated, absent from both allowlists, `GET→405`; `src` contained; `escapeAttr` on insert
-- [ ] No new install/runtime bundle; determinism intact; committed client bundle rebuilt `--release`; quality gates green; live sweep 0 blockers
+- [x] All tasks completed; DDR recorded (DDR-150)
+- [x] **P1**: inline text + CSS edits persist across HMR reload AND Player replay; unsupported cases surface a clear message + route to chat instead of silently reverting
+- [x] **P2 (mandatory)**: clips addressed by ONE AST enumerator's stable id; **UI-index == engine-clip proven across nested/`.map()`/multi-comp/commented fixtures**; content-hash fingerprint refuses a stale/raced target; semantic gate rejects orphaned/double transitions; cross-process lock serializes HTTP+CLI+HMR
+- [x] **P3**: move (`from`), trim, remove (standalone; refuse-in-series via semantic gate; one-undo), replace — each hits the intended clip on a multi-comp canvas — plus Delete key + timeline shortcuts (Space context-scoped)
+- [x] **P4**: media dropped on canvas → reference chip; dropped on timeline → clip inserted; one-click assemble-refs → a playable, immediately-editable comp
+- [x] **P5**: vertical/z-order reorder (reuse `applyMove`); keyframe markers click-to-seek
+- [x] Every new source-write route main-origin-only, CSRF-gated, absent from both allowlists, `GET→405`; `src` contained; `escapeAttr` on insert (incl. closing the pre-existing `/_api/canvas` CSRF gap)
+- [x] No new install/runtime bundle; determinism intact; committed client bundle rebuilt `--release`; quality gates green; live sweep 0 blockers
+
+> **Status: COMPLETE (2026-07-04).** All 16 tasks landed across 21 commits (b511906 DDR → f0b0548 polish), each e2e-verified (engine unit tests + real-server curl + live agent-browser). Full dev-server suite green (1959 pass; the lone full-run failure is pre-existing test-parallelism flakiness — a different test each run, all pass isolated). Deferred by design (BREAKER, ratified): mid-clip split, show/hide, TransitionSeries split, multi-select, interpolate() value editing.
 
 ---
 

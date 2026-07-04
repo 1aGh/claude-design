@@ -7,7 +7,7 @@
       "date": null,
       "kind": "feature",
       "title": "Hand-edit your video comps on the timeline",
-      "summary": "After the Assistant generates a video, fine-tune it yourself. On the timeline you can drag a clip to move it, drag its right edge to trim, drop a video / image / audio file to add a clip, swap a clip's footage (⇄), or remove a clip (×). Keyboard shortcuts help: Space plays/pauses, arrows step frames (Shift = a second), Home/End jump to the ends, and . / , hop between keyframes. Editing is multi-comp-safe — a change always lands on the clip you meant, never one in another composition. And inline text / CSS tweaks you make on the canvas now actually stick.",
+      "summary": "After the Assistant generates a video, fine-tune it yourself. On the timeline you can drag a clip to move it, drag its right edge to trim (both snap to second-ticks and neighbour clip edges; hold Alt to drag freely), drop a video / image / audio file to add a clip, raise or lower a clip's stacking, swap a clip's footage (⇄), or remove a clip (×). Keyboard shortcuts help: Space plays/pauses, arrows step frames (Shift = a second), Home/End jump to the ends, and . / , hop between keyframes. Prefer to start from footage? Drop video/audio clips anywhere on the canvas as reference chips, then File then Assemble dropped clips into video builds a real, editable comp in one click. Editing is multi-comp-safe — a change always lands on the clip you meant, never one in another composition. And inline text / CSS tweaks you make on the canvas now actually stick.",
       "surface": "design-ui"
     },
     {
