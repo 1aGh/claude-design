@@ -96,6 +96,7 @@ export default function TimelinePanel({
   onRetime,
   onRemove,
   onReplace,
+  onReorder,
   onDropMedia,
   onClose,
 }) {
@@ -393,7 +394,39 @@ export default function TimelinePanel({
                 return (
                   <div className="tl-row" key={i} data-testid={`timeline-row-${i}`}>
                     <span className="tl-row-label" title={seq.label}>
-                      {seq.label}
+                      {onReorder ? (
+                        <span className="tl-seq-reorder" role="group" aria-label={`Stacking order for ${seq.label}`}>
+                          <button
+                            type="button"
+                            className="tl-reorder-btn"
+                            data-testid={`timeline-raise-${i}`}
+                            title="Bring forward (render on top)"
+                            aria-label={`Bring ${seq.label} forward`}
+                            disabled={i >= sequences.length - 1}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onReorder(i, 'forward');
+                            }}
+                          >
+                            ▲
+                          </button>
+                          <button
+                            type="button"
+                            className="tl-reorder-btn"
+                            data-testid={`timeline-lower-${i}`}
+                            title="Send backward (render underneath)"
+                            aria-label={`Send ${seq.label} backward`}
+                            disabled={i <= 0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onReorder(i, 'backward');
+                            }}
+                          >
+                            ▼
+                          </button>
+                        </span>
+                      ) : null}
+                      <span className="tl-row-label-text">{seq.label}</span>
                     </span>
                     <div className="tl-row-track">
                       <button

@@ -11,6 +11,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   applyInsertClip,
   applyRemoveClip,
+  applyReorderClip,
   applyRetimeSequenceByClip,
   assertCompSemantics,
   CanvasEditError,
@@ -330,5 +331,95 @@ describe('applyRemoveClip — clip removal (DDR-150 P3)', () => {
     expect(() => assertCompSemantics(CANVAS, out.source)).not.toThrow();
     // exactly one transition left (was 2, one dropped with the removed sequence).
     expect((out.source.match(/TransitionSeries\.Transition/g) || []).length).toBe(1);
+  });
+});
+
+describe('applyReorderClip — z-order reorder (DDR-150 P5)', () => {
+  // Three standalone <Sequence> siblings whose stacking order (document order)
+  // is the render z-order — footage under a lower-third under a logo.
+  const stack = () =>
+    [
+      'const Reel = () => (',
+      '  <>',
+      '    <Sequence durationInFrames={90}><Video src="footage.mp4" /></Sequence>',
+      '    <Sequence durationInFrames={90}><Img src="lower-third.png" /></Sequence>',
+      '    <Sequence durationInFrames={90}><Img src="logo.png" /></Sequence>',
+      '  </>',
+      ');',
+      'function Canvas() { return <DCArtboard id="reel"><VideoComp component={Reel} durationInFrames={90} fps={30} /></DCArtboard>; }',
+    ].join('\n');
+
+  test('moves a clip after a sibling — stacking order changes, content preserved', () => {
+    const src = stack();
+    const clips = enumerateClips(CANVAS, src, 'reel').clips;
+    const footage = clips[0]!; // Reel#0
+    const logo = clips[2]!; // Reel#2
+    // Bring footage to the top: move it AFTER the logo.
+    const out = applyReorderClip(
+      CANVAS,
+      src,
+      'reel',
+      footage.stableId,
+      footage.contentHash,
+      logo.stableId,
+      logo.contentHash,
+      'after'
+    );
+    // New document order: lower-third, logo, footage (footage now paints last).
+    const after = enumerateClips(CANVAS, out.source, 'reel').clips;
+    expect(after.map((c) => c.mediaSrc)).toEqual(['lower-third.png', 'logo.png', 'footage.mp4']);
+    // All three clips survive; nothing was dropped or duplicated.
+    expect(after.length).toBe(3);
+    // The moved clip is re-addressed by its (unchanged) content hash.
+    expect(out.stableId).toBe(after[2]!.stableId);
+  });
+
+  test('refuses a stale content-hash on either clip', () => {
+    const src = stack();
+    const clips = enumerateClips(CANVAS, src, 'reel').clips;
+    expect(() =>
+      applyReorderClip(
+        CANVAS,
+        src,
+        'reel',
+        clips[0]!.stableId,
+        'deadbeef',
+        clips[2]!.stableId,
+        clips[2]!.contentHash,
+        'after'
+      )
+    ).toThrow(CanvasEditError);
+  });
+
+  test('refuses a self-move', () => {
+    const src = stack();
+    const c0 = enumerateClips(CANVAS, src, 'reel').clips[0]!;
+    expect(() =>
+      applyReorderClip(CANVAS, src, 'reel', c0.stableId, c0.contentHash, c0.stableId, c0.contentHash, 'after')
+    ).toThrow(CanvasEditError);
+  });
+
+  test('refuses reordering a TransitionSeries clip (timing would break)', () => {
+    const src = [
+      'const Comp = () => (<TransitionSeries>',
+      '  <TransitionSeries.Sequence durationInFrames={30}><A /></TransitionSeries.Sequence>',
+      '  <TransitionSeries.Transition timing={t} />',
+      '  <TransitionSeries.Sequence durationInFrames={40}><B /></TransitionSeries.Sequence>',
+      '</TransitionSeries>);',
+      'function Canvas() { return <DCArtboard id="x"><VideoComp component={Comp} durationInFrames={70} fps={30} /></DCArtboard>; }',
+    ].join('\n');
+    const seqs = enumerateClips(CANVAS, src, 'x').clips.filter((c) => c.kind === 'sequence');
+    expect(() =>
+      applyReorderClip(
+        CANVAS,
+        src,
+        'x',
+        seqs[0]!.stableId,
+        seqs[0]!.contentHash,
+        seqs[1]!.stableId,
+        seqs[1]!.contentHash,
+        'after'
+      )
+    ).toThrow(CanvasEditError);
   });
 });

@@ -1247,7 +1247,16 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .tl-tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border-subtle); }
 .tl-tick-label { position: absolute; top: -1px; left: 3px; font-family: var(--font-mono); font-size: 9px; color: var(--fg-3); white-space: nowrap; }
 .tl-row { display: flex; align-items: center; gap: var(--space-2); height: 30px; }
-.tl-row-label { flex: none; width: 88px; font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.tl-row-label { flex: none; width: 88px; display: flex; align-items: center; justify-content: flex-end; gap: 3px; font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); overflow: hidden; white-space: nowrap; text-align: right; }
+.tl-row-label-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* DDR-150 P5 — z-order raise/lower. Stacked ▲/▼; later sibling paints on top. */
+.tl-seq-reorder { display: inline-flex; flex-direction: column; flex: none; opacity: 0; transition: opacity var(--dur-1, 120ms) ease; }
+.tl-row:hover .tl-seq-reorder { opacity: 0.6; }
+.tl-seq-reorder:hover, .tl-seq-reorder:focus-within { opacity: 1; }
+.tl-reorder-btn { width: 13px; height: 8px; display: grid; place-items: center; padding: 0; border: none; border-radius: 2px; background: transparent; color: var(--fg-2); font-size: 7px; line-height: 1; cursor: pointer; }
+.tl-reorder-btn:hover:not(:disabled) { background: var(--accent); color: var(--accent-fg, #fff); }
+.tl-reorder-btn:disabled { opacity: 0.25; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .tl-seq-reorder { transition: none; } }
 .tl-row-track { position: relative; flex: 1; height: 100%; background: var(--bg-2); border-radius: var(--radius-sm); }
 .tl-seq-block { position: absolute; top: 3px; bottom: 3px; appearance: none; border: 1px solid var(--accent-muted); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--accent) 20%, var(--bg-2)); color: var(--fg-0); cursor: pointer; overflow: hidden; padding: 0; min-width: 6px; transition: background var(--dur-soft) var(--ease-out); }
 .tl-seq-block:hover { background: color-mix(in oklch, var(--accent) 32%, var(--bg-2)); }

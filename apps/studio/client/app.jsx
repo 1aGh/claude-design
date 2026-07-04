@@ -8695,6 +8695,48 @@ function App() {
                 })
                 .catch(() => {});
             }}
+            onReorder={(index, direction) => {
+              if (!activePath || activePath === SYSTEM_TAB) return;
+              // DDR-150 P5 — z-order reorder: move a standalone <Sequence> before/
+              // after a sibling (render stacking; later sibling paints on top).
+              // ▲ forward = move AFTER the next sibling; ▼ backward = move BEFORE
+              // the previous sibling. Both clips addressed by comp-scoped stableId +
+              // fingerprint (via /_api/comp-clips); the engine refuses a TransitionSeries
+              // clip + a stale/raced target, then reloads via the file watcher.
+              const artboardId = timelineCompId || undefined;
+              const ccUrl = `/_api/comp-clips?canvas=${encodeURIComponent(activePath)}${artboardId ? `&artboardId=${encodeURIComponent(artboardId)}` : ''}`;
+              fetch(ccUrl)
+                .then((r) => r.json().catch(() => ({})))
+                .then((cc) => {
+                  const seqs =
+                    cc?.ok && Array.isArray(cc.clips)
+                      ? cc.clips.filter((c) => c.kind === 'sequence')
+                      : [];
+                  const moved = seqs[index] || null;
+                  const refIdx = direction === 'forward' ? index + 1 : index - 1;
+                  const ref = seqs[refIdx] || null;
+                  const position = direction === 'forward' ? 'after' : 'before';
+                  if (!moved?.stableId || !ref?.stableId) return null;
+                  return fetch('/_api/reorder-sequence', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      canvas: activePath,
+                      artboardId,
+                      stableId: moved.stableId,
+                      contentHash: moved.contentHash,
+                      refStableId: ref.stableId,
+                      refContentHash: ref.contentHash,
+                      position,
+                    }),
+                  });
+                })
+                .then((r) => (r ? r.json() : null))
+                .then((j) => {
+                  if (j && !j.ok) console.warn('[reorder-clip]', j.error || 'failed');
+                })
+                .catch(() => {});
+            }}
             onDropMedia={(file) => {
               if (!activePath || activePath === SYSTEM_TAB) return;
               // DDR-150 P4 Task 11 — drop a media file onto the timeline to

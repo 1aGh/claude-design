@@ -1277,6 +1277,8 @@ export interface ClipInfo {
   mediaSrc: string | null;
   /** Positional cd-id of the media element (for `editAttribute` src-replace). */
   mediaCdId: string | null;
+  /** Positional cd-id of the clip's OWN `<Sequence>` node (for `moveElement` z-order reorder). */
+  clipCdId: string | null;
   /** Fingerprint of the clip's source span — refuse an op if it no longer matches. */
   contentHash: string;
   start: number;
@@ -1429,6 +1431,7 @@ export function enumerateClips(
       mediaTag: media ? jsxTagName(media) : null,
       mediaSrc: media ? getStringAttr(media.openingElement, 'src') : null,
       mediaCdId: media ? (cdIdOf.get(media) ?? null) : null,
+      clipCdId: cdIdOf.get(c.node) ?? null,
       contentHash: hashSpan(source, c.start, c.end),
       start: c.start,
       end: c.end,
@@ -1620,6 +1623,94 @@ export async function removeClip(
     const { rename } = await import('node:fs/promises');
     await rename(tmp, canvasAbsPath);
     return nextSrc;
+  });
+}
+
+/**
+ * Reorder a clip among its STANDALONE `<Sequence>` siblings (DDR-150 P5) — the
+ * z-order / render-stacking gesture (later sibling paints on top), distinct from
+ * the horizontal `from`-move. Reuses the shipped `applyMove` (re-indent + reparse
+ * + re-settle-through-id-churn) addressed by each clip's own cd-id, then runs the
+ * semantic gate. Refuses a `<TransitionSeries.Sequence>`/`<Series.Sequence>`
+ * (reordering those breaks the transition/back-to-back timing — not a stacking
+ * op) and a self-move. Both `stableId`s are fingerprint-checked. Returns the moved
+ * clip's stableId (recomputed from disk — a pure reorder leaves its content hash
+ * unchanged, so it's found even when addressed by scoped index).
+ */
+export function applyReorderClip(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string | undefined,
+  movedStableId: string,
+  movedHash: string | undefined,
+  refStableId: string,
+  refHash: string | undefined,
+  position: MovePosition
+): { source: string; stableId: string } {
+  if (movedStableId === refStableId) {
+    throw new CanvasEditError('cannot reorder a clip relative to itself', {
+      canvas: canvasAbsPath,
+      id: movedStableId,
+    });
+  }
+  const moved = resolveClip(canvasAbsPath, source, artboardId, movedStableId, movedHash);
+  const ref = resolveClip(canvasAbsPath, source, artboardId, refStableId, refHash);
+  if (moved.tag !== 'Sequence' || ref.tag !== 'Sequence') {
+    throw new CanvasEditError(
+      'z-order reorder is standalone-<Sequence>-only (a TransitionSeries/Series clip carries timing that reordering would break)',
+      { canvas: canvasAbsPath, id: movedStableId }
+    );
+  }
+  if (!moved.clipCdId || !ref.clipCdId) {
+    throw new CanvasEditError('clip has no addressable node to reorder', {
+      canvas: canvasAbsPath,
+      id: movedStableId,
+    });
+  }
+  const res = applyMove(canvasAbsPath, source, moved.clipCdId, ref.clipCdId, position);
+  assertCompSemantics(canvasAbsPath, res.source);
+  // A pure reorder never touches the clip body → its content hash is preserved.
+  // Re-address by that hash so a scoped-index stableId still resolves post-move.
+  const after = enumerateClips(canvasAbsPath, res.source, artboardId);
+  const settled = after.clips.find((c) => c.contentHash === moved.contentHash);
+  return { source: res.source, stableId: settled?.stableId ?? movedStableId };
+}
+
+/** Reorder a clip on disk (atomic write + cross-process lock). */
+export async function reorderClip(
+  canvasAbsPath: string,
+  artboardId: string | undefined,
+  movedStableId: string,
+  movedHash: string | undefined,
+  refStableId: string,
+  refHash: string | undefined,
+  position: MovePosition
+): Promise<{ source: string; stableId: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: movedStableId,
+      });
+    }
+    const source = await file.text();
+    const next = applyReorderClip(
+      canvasAbsPath,
+      source,
+      artboardId,
+      movedStableId,
+      movedHash,
+      refStableId,
+      refHash,
+      position
+    );
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
   });
 }
 

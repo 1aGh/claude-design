@@ -17,6 +17,7 @@ import {
   moveElement,
   removeAttribute,
   removeClip,
+  reorderClip,
   retimeSequence,
   retimeSequenceByClip,
   editText as runEditText,
@@ -323,6 +324,20 @@ export interface Api {
     mediaTag?: unknown;
     src?: unknown;
   }): Promise<{ ok: true; stableId: string | null } | { ok: false; status: number; error: string }>;
+  // DDR-150 P5 — z-order reorder: move a standalone <Sequence> before/after a
+  // sibling (render stacking), reusing moveElement + the semantic gate. Both
+  // clips are fingerprint-checked. Returns the moved clip's (re-settled) stableId.
+  reorderSequenceOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    stableId?: unknown;
+    contentHash?: unknown;
+    refStableId?: unknown;
+    refContentHash?: unknown;
+    position?: unknown;
+  }): Promise<
+    { ok: true; stableId: string | null } | { ok: false; status: number; error: string }
+  >;
   // DDR-150 P2 — the single authoritative clip enumerator for a video-comp.
   // Read-only; the Timeline addresses every op by the returned `stableId`
   // (never a regex document-order index — the multi-comp mis-hit defect).
@@ -2010,6 +2025,63 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  async function reorderSequenceOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    stableId?: unknown;
+    contentHash?: unknown;
+    refStableId?: unknown;
+    refContentHash?: unknown;
+    position?: unknown;
+  }): Promise<
+    { ok: true; stableId: string | null } | { ok: false; status: number; error: string }
+  > {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const stableId = typeof input.stableId === 'string' ? input.stableId : null;
+    const refStableId = typeof input.refStableId === 'string' ? input.refStableId : null;
+    if (!stableId || !refStableId) {
+      return { ok: false, status: 400, error: 'stableId and refStableId required' };
+    }
+    const position: MovePosition = input.position === 'before' ? 'before' : 'after';
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId : undefined;
+    const contentHash = typeof input.contentHash === 'string' ? input.contentHash : undefined;
+    const refContentHash =
+      typeof input.refContentHash === 'string' ? input.refContentHash : undefined;
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      const res = await reorderClip(
+        r.abs,
+        artboardId,
+        stableId,
+        contentHash,
+        refStableId,
+        refContentHash,
+        position
+      );
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+      } else {
+        try {
+          await history.writeSnapshot(rel, before, 'pre-reorder-clip');
+        } catch {
+          /* snapshot best-effort */
+        }
+      }
+      return { ok: true, stableId: res.stableId };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'reorder failed',
+      };
+    }
+  }
+
   async function compClips(input: { canvas?: unknown; artboardId?: unknown }) {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
@@ -2494,6 +2566,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     editAttr,
     removeSequenceOp,
     insertSequenceOp,
+    reorderSequenceOp,
     compClips,
     reorder,
     retimeSequenceOp,

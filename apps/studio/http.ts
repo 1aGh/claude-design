@@ -1507,6 +1507,39 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       );
     },
 
+    '/_api/reorder-sequence': async (req: Request) => {
+      // DDR-150 P5 — z-order reorder. POST { canvas, artboardId, stableId,
+      // contentHash, refStableId, refContentHash, position } → reorderClip
+      // (moves a standalone <Sequence> before/after a sibling via moveElement +
+      // semantic gate; both clips fingerprint-checked; refuses TransitionSeries
+      // clips + self-move). MAIN-ORIGIN-ONLY (absent from CANVAS_SAFE_API +
+      // startCanvasServer routes — same dual-allowlist as the other clip writes).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        artboardId?: unknown;
+        stableId?: unknown;
+        contentHash?: unknown;
+        refStableId?: unknown;
+        refContentHash?: unknown;
+        position?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.reorderSequenceOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, stableId: result.stableId },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/comp-clips': async (req: Request) => {
       // DDR-150 P2 — the single authoritative clip enumerator for a video-comp.
       // GET ?canvas=<rel>&artboardId=<id> → { ok, compName, clips:[{ stableId,
