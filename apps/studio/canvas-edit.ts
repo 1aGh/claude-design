@@ -973,6 +973,390 @@ export async function retimeSequence(
 }
 
 // ---------------------------------------------------------------------------
+// Clip addressing (DDR-150 P2). The SINGLE authoritative tokenizer for a
+// video-comp's clips. The Timeline UI addresses every op through the `stableId`
+// this returns, NOT its own regex position — killing the two-tokenizer
+// document-order disagreement that made destructive ops corrupt the wrong clip
+// on a multi-comp canvas (the debate's headline defect). AST-based, so it skips
+// tags inside comments/strings (the regex parser didn't) and scopes cleanly to
+// one comp's body even when several comps share a file.
+
+/** Sequence-family "clip" tags (the timeline rows). */
+const CLIP_TAGS = new Set(['Sequence', 'Series.Sequence', 'TransitionSeries.Sequence']);
+/** Transition tags (occupy a slot between clips inside a TransitionSeries). */
+const TRANSITION_TAGS = new Set(['Series.Transition', 'TransitionSeries.Transition']);
+/** Media tags that carry a `src` (the replace-media + drop targets). */
+const MEDIA_TAGS = new Set(['Video', 'OffthreadVideo', 'Audio', 'Img', 'Image']);
+
+/** Full tag string of a JSXElement: `Sequence` | `TransitionSeries.Sequence` | … */
+function jsxTagName(node: AnyNode): string | null {
+  const n = node?.openingElement?.name;
+  if (!n) return null;
+  if (n.type === 'JSXIdentifier') return typeof n.name === 'string' ? n.name : null;
+  if (n.type === 'JSXMemberExpression') {
+    const obj = n.object?.type === 'JSXIdentifier' ? n.object.name : null;
+    const prop = n.property?.type === 'JSXIdentifier' ? n.property.name : null;
+    if (obj && prop) return `${obj}.${prop}`;
+  }
+  return null;
+}
+
+/** Evaluate a numeric AST expression against a resolved const map (literal,
+ *  negation, const identifier, or simple arithmetic of them). null if not
+ *  resolvable — from/duration are best-effort labels, never load-bearing for
+ *  addressing (that's stableId + contentHash). */
+function evalNum(n: AnyNode, consts: Record<string, number>): number | null {
+  if (!n || typeof n !== 'object') return null;
+  const t = n.type;
+  if ((t === 'Literal' || t === 'NumericLiteral') && typeof n.value === 'number') return n.value;
+  if (t === 'UnaryExpression' && n.operator === '-') {
+    const v = evalNum(n.argument, consts);
+    return v == null ? null : -v;
+  }
+  if (t === 'Identifier') return Object.hasOwn(consts, n.name) ? (consts[n.name] as number) : null;
+  if (t === 'BinaryExpression') {
+    const l = evalNum(n.left, consts);
+    const r = evalNum(n.right, consts);
+    if (l == null || r == null) return null;
+    switch (n.operator) {
+      case '+':
+        return l + r;
+      case '-':
+        return l - r;
+      case '*':
+        return l * r;
+      case '/':
+        return r ? l / r : null;
+      default:
+        return null;
+    }
+  }
+  return null;
+}
+
+/** Top-level numeric const bindings (3 passes so a derived `TOTAL = A + B` resolves). */
+function collectNumericConsts(program: AnyNode): Record<string, number> {
+  const consts: Record<string, number> = {};
+  const decls: Array<{ name: string; init: AnyNode }> = [];
+  for (const node of program?.body ?? []) {
+    if (node?.type !== 'VariableDeclaration') continue;
+    for (const d of node.declarations ?? []) {
+      if (d?.id?.type === 'Identifier' && d.init) decls.push({ name: d.id.name, init: d.init });
+    }
+  }
+  for (let pass = 0; pass < 3; pass += 1) {
+    for (const { name, init } of decls) {
+      if (Object.hasOwn(consts, name)) continue;
+      const v = evalNum(init, consts);
+      if (v != null && Number.isFinite(v)) consts[name] = Math.round(v);
+    }
+  }
+  return consts;
+}
+
+/** Resolve a numeric JSX attribute (`from={20}` / `durationInFrames={A}`). */
+function numAttr(opening: AnyNode, name: string, consts: Record<string, number>): number | null {
+  const a = findAttribute(opening, name);
+  let v = a?.value;
+  if (!v) return null;
+  if (v.type === 'JSXExpressionContainer') v = v.expression;
+  const n = evalNum(v, consts);
+  return n == null ? null : Math.round(n);
+}
+
+/** First media descendant of a clip (its `<Video>`/`<Audio>`/`<Img>` — the replace target). */
+function firstMediaDescendant(clip: AnyNode): AnyNode | null {
+  let found: AnyNode | null = null;
+  function walk(n: AnyNode): void {
+    if (found || !n || typeof n !== 'object') return;
+    if (Array.isArray(n)) {
+      for (const c of n) {
+        if (found) return;
+        walk(c);
+      }
+      return;
+    }
+    if (n.type === 'JSXElement' && MEDIA_TAGS.has(jsxTagName(n) ?? '')) {
+      found = n;
+      return;
+    }
+    for (const k of Object.keys(n)) {
+      if (k === 'loc' || k === 'range' || k === 'start' || k === 'end' || k === 'type') continue;
+      walk(n[k]);
+    }
+  }
+  walk(clip.children ?? []);
+  return found;
+}
+
+/** Stable content fingerprint of a clip's exact source span (optimistic-concurrency check). */
+function hashSpan(source: string, start: number, end: number): string {
+  return Bun.hash(source.slice(start, end)).toString(16).padStart(16, '0').slice(0, 12);
+}
+
+/** One clip (timeline row) + everything an op needs to address + label it. */
+export interface ClipInfo {
+  /** Durable identity: `name:<Sequence name>` → `mclip:<sentinel>` → `<comp>#<indexInComp>`. */
+  stableId: string;
+  kind: 'sequence' | 'transition';
+  tag: string;
+  from: number | null;
+  durationInFrames: number | null;
+  mediaTag: string | null;
+  mediaSrc: string | null;
+  /** Positional cd-id of the media element (for `editAttribute` src-replace). */
+  mediaCdId: string | null;
+  /** Fingerprint of the clip's source span — refuse an op if it no longer matches. */
+  contentHash: string;
+  start: number;
+  end: number;
+}
+
+export interface CompClips {
+  compName: string | null;
+  artboardId: string | null;
+  fps: number | null;
+  durationInFrames: number | null;
+  clips: ClipInfo[];
+}
+
+/**
+ * Enumerate the clips of ONE video-comp (scoped by `artboardId` → its
+ * `<VideoComp component={X}>` → component X's body). The Timeline UI renders
+ * rows from this and addresses every op by `clip.stableId` — so UI and engine
+ * can never disagree about which clip is which (the multi-comp defect). Throws
+ * `CanvasEditError` on unparseable source.
+ */
+export function enumerateClips(
+  canvasAbsPath: string,
+  source: string,
+  artboardId?: string
+): CompClips {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id: artboardId ?? '' }
+    );
+  }
+  const program = parsed.program;
+  const consts = collectNumericConsts(program);
+  const cdIdOf = new Map<AnyNode, string>();
+  for (const { id, node } of collectElements(program)) cdIdOf.set(node, id);
+
+  interface Usage {
+    compName: string | null;
+    artboardId: string | null;
+    fps: number | null;
+    duration: number | null;
+  }
+  interface RawClip {
+    tag: string;
+    kind: 'sequence' | 'transition';
+    node: AnyNode;
+    comp: string;
+    indexInComp: number;
+    start: number;
+    end: number;
+  }
+  const usages: Usage[] = [];
+  const clips: RawClip[] = [];
+  const compClipCount: Record<string, number> = {};
+  const compStack: string[] = [''];
+  const artboardStack: Array<string | null> = [];
+
+  function visit(node: AnyNode): void {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const c of node) visit(c);
+      return;
+    }
+    if (typeof node.type !== 'string') return;
+    const newComp = componentNameOf(node);
+    let pushedComp = false;
+    if (newComp !== null) {
+      compStack.push(newComp);
+      pushedComp = true;
+    }
+    if (node.type === 'JSXElement') {
+      const tag = jsxTagName(node);
+      let pushedArt = false;
+      if (tag === 'DCArtboard') {
+        artboardStack.push(getStringAttr(node.openingElement, 'id'));
+        pushedArt = true;
+      }
+      if (tag === 'VideoComp') {
+        const compAttr = findAttribute(node.openingElement, 'component');
+        const cv = compAttr?.value;
+        const cn =
+          cv?.type === 'JSXExpressionContainer' && cv.expression?.type === 'Identifier'
+            ? cv.expression.name
+            : null;
+        usages.push({
+          compName: cn,
+          artboardId: artboardStack.length ? artboardStack[artboardStack.length - 1] : null,
+          fps: numAttr(node.openingElement, 'fps', consts),
+          duration: numAttr(node.openingElement, 'durationInFrames', consts),
+        });
+      }
+      if (tag && (CLIP_TAGS.has(tag) || TRANSITION_TAGS.has(tag))) {
+        const comp = compStack[compStack.length - 1] as string;
+        const idx = compClipCount[comp] ?? 0;
+        compClipCount[comp] = idx + 1;
+        clips.push({
+          tag,
+          kind: TRANSITION_TAGS.has(tag) ? 'transition' : 'sequence',
+          node,
+          comp,
+          indexInComp: idx,
+          start: node.start as number,
+          end: node.end as number,
+        });
+      }
+      if (node.openingElement) visit(node.openingElement.attributes);
+      visit(node.children);
+      if (pushedArt) artboardStack.pop();
+      if (pushedComp) compStack.pop();
+      return;
+    }
+    for (const k of Object.keys(node)) {
+      if (k === 'loc' || k === 'range' || k === 'start' || k === 'end' || k === 'type') continue;
+      visit(node[k]);
+    }
+    if (pushedComp) compStack.pop();
+  }
+  visit(program);
+
+  // Resolve which comp to scope to. Preference mirrors timeline-parse.js:
+  // the selected artboard's comp → a comp with clips → the first usage.
+  const target =
+    (artboardId && usages.find((u) => u.artboardId === artboardId && u.compName)) ||
+    usages.find((u) => u.compName && clips.some((c) => c.comp === u.compName)) ||
+    usages.find((u) => u.compName) ||
+    null;
+  const targetComp = target?.compName ?? clips[0]?.comp ?? null;
+
+  const scoped = targetComp == null ? [] : clips.filter((c) => c.comp === targetComp);
+  const clipInfos: ClipInfo[] = scoped.map((c) => {
+    const opening = c.node.openingElement;
+    const nameAttr = getStringAttr(opening, 'name');
+    const before = source.slice(Math.max(0, c.start - 160), c.start);
+    const sentinel = before.match(/\{\/\*\s*@mclip\s+([A-Za-z0-9_-]+)\s*\*\/\}\s*$/);
+    const stableId =
+      nameAttr != null && nameAttr !== ''
+        ? `name:${nameAttr}`
+        : sentinel
+          ? `mclip:${sentinel[1]}`
+          : `${targetComp}#${c.indexInComp}`;
+    const media = firstMediaDescendant(c.node);
+    return {
+      stableId,
+      kind: c.kind,
+      tag: c.tag,
+      from: numAttr(opening, 'from', consts),
+      durationInFrames: numAttr(opening, 'durationInFrames', consts),
+      mediaTag: media ? jsxTagName(media) : null,
+      mediaSrc: media ? getStringAttr(media.openingElement, 'src') : null,
+      mediaCdId: media ? (cdIdOf.get(media) ?? null) : null,
+      contentHash: hashSpan(source, c.start, c.end),
+      start: c.start,
+      end: c.end,
+    };
+  });
+
+  return {
+    compName: targetComp,
+    artboardId: target?.artboardId ?? null,
+    fps: target?.fps ?? null,
+    durationInFrames: target?.duration ?? null,
+    clips: clipInfos,
+  };
+}
+
+/**
+ * Resolve a `stableId` (from `enumerateClips`) to its live clip in `source`,
+ * verifying the caller's `expectedHash` still matches (optimistic concurrency —
+ * a stale UI index or a concurrent edit is refused, not silently mis-applied).
+ * Returns the ClipInfo (with current start/end for the patch). Throws on a
+ * missing id or a hash mismatch.
+ */
+export function resolveClip(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string | undefined,
+  stableId: string,
+  expectedHash?: string
+): ClipInfo {
+  const { clips } = enumerateClips(canvasAbsPath, source, artboardId);
+  const hit = clips.find((c) => c.stableId === stableId);
+  if (!hit) {
+    throw new CanvasEditError(`clip "${stableId}" not found`, {
+      canvas: canvasAbsPath,
+      id: stableId,
+    });
+  }
+  if (expectedHash != null && expectedHash !== hit.contentHash) {
+    throw new CanvasEditError(
+      `clip "${stableId}" changed since it was read (concurrent edit); reload and retry`,
+      { canvas: canvasAbsPath, id: stableId }
+    );
+  }
+  return hit;
+}
+
+/**
+ * The semantic gate (DDR-150 P2). Parse-clean is NOT correct: a wrong-clip
+ * delete, an orphaned/leading/double `<TransitionSeries.Transition>`, all parse
+ * fine yet render wrong. After any structural clip edit, assert every
+ * `<TransitionSeries>` strictly alternates Sequence/Transition and begins + ends
+ * with a Sequence. Throws `CanvasEditError` on a violation.
+ */
+export function assertCompSemantics(canvasAbsPath: string, source: string): { ok: true } {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id: '' }
+    );
+  }
+  const series: AnyNode[] = [];
+  (function find(node: AnyNode): void {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const c of node) find(c);
+      return;
+    }
+    if (node.type === 'JSXElement' && jsxTagName(node) === 'TransitionSeries') series.push(node);
+    for (const k of Object.keys(node)) {
+      if (k === 'loc' || k === 'range' || k === 'start' || k === 'end' || k === 'type') continue;
+      find(node[k]);
+    }
+  })(parsed.program);
+
+  for (const s of series) {
+    const kinds: Array<'sequence' | 'transition'> = [];
+    for (const child of s.children ?? []) {
+      if (child?.type !== 'JSXElement') continue;
+      const tag = jsxTagName(child);
+      if (tag && TRANSITION_TAGS.has(tag)) kinds.push('transition');
+      else if (tag && CLIP_TAGS.has(tag)) kinds.push('sequence');
+    }
+    if (kinds.length === 0) continue;
+    const bad =
+      kinds[0] !== 'sequence' ||
+      kinds[kinds.length - 1] !== 'sequence' ||
+      kinds.some((k, i) => i > 0 && k === kinds[i - 1]);
+    if (bad) {
+      throw new CanvasEditError(
+        'TransitionSeries must alternate Sequence/Transition and begin + end with a Sequence (a leading, trailing, or doubled Transition is invalid Remotion)',
+        { canvas: canvasAbsPath, id: '' }
+      );
+    }
+  }
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
 // Edit shapes.
 
 function editStringAttr(s: MagicString, opening: AnyNode, name: string, value: string): void {
