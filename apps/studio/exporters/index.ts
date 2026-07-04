@@ -15,11 +15,34 @@ import * as png from './png.ts';
 import * as pptx from './pptx.ts';
 import { type ResolveScopeArgs, resolveScope, type Scope, type Target } from './scope.ts';
 import * as svg from './svg.ts';
+// DDR-148 — temporal formats (capture-spine encode). Named exports mp4/webm/gif.
+import { gif, mp4, webm } from './video.ts';
 import * as zip from './zip.ts';
 
-export type Format = 'png' | 'pdf' | 'svg' | 'html' | 'pptx' | 'canva' | 'zip';
+export type Format =
+  | 'png'
+  | 'pdf'
+  | 'svg'
+  | 'html'
+  | 'pptx'
+  | 'canva'
+  | 'zip'
+  | 'mp4'
+  | 'webm'
+  | 'gif';
 
-export const FORMATS: readonly Format[] = ['png', 'pdf', 'svg', 'html', 'pptx', 'canva', 'zip'];
+export const FORMATS: readonly Format[] = [
+  'png',
+  'pdf',
+  'svg',
+  'html',
+  'pptx',
+  'canva',
+  'zip',
+  'mp4',
+  'webm',
+  'gif',
+];
 
 /** Options bag forwarded to the adapter. Format-specific keys are validated by each adapter. */
 export type ExportOptions = Record<string, unknown>;
@@ -63,6 +86,9 @@ const REGISTRY: Record<Format, Adapter> = {
   pptx,
   canva,
   zip,
+  mp4,
+  webm,
+  gif,
 };
 
 export function getAdapter(format: Format): Adapter | null {

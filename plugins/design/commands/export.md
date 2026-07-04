@@ -1,8 +1,8 @@
 ---
 name: design:export
 category: daily
-description: Export the active canvas — PNG / PDF / SVG / HTML / PPTX / Canva handoff bundle / project ZIP. Thin slash wrapper over `POST /_api/export` (same engine as the ⌘E UI dialog).
-argument-hint: "<png|pdf|svg|html|pptx|canva|zip> [--scope selection|artboard|canvas-as-separate|project-raw] [--out <path>] [--option key=value]"
+description: Export the active canvas — PNG / PDF / SVG / HTML / PPTX / MP4 / GIF / WebM / Canva handoff bundle / project ZIP. Thin slash wrapper over `POST /_api/export` (same engine as the ⌘E UI dialog).
+argument-hint: "<png|pdf|svg|html|pptx|mp4|gif|webm|canva|zip> [--scope selection|artboard|canvas-as-separate|project-raw] [--out <path>] [--option key=value]"
 ---
 
 # /design:export — export active canvas
@@ -15,10 +15,12 @@ Sends a request to the running dev-server (`POST /_api/export`) with the same pa
 
 | Flag | Meaning |
 |---|---|
-| `<format>` (required) | `png` / `pdf` / `svg` / `html` / `pptx` / `canva` / `zip` |
-| `--scope <s>` | `selection` / `artboard` / `canvas-as-separate` / `project-raw`. Default = `canvas-as-separate` for element-shape formats, `project-raw` for `zip`. |
+| `<format>` (required) | `png` / `pdf` / `svg` / `html` / `pptx` / `mp4` / `gif` / `webm` / `canva` / `zip` |
+| `--scope <s>` | `selection` / `artboard` / `canvas-as-separate` / `project-raw`. Default = `canvas-as-separate` for element-shape formats, `artboard` for the temporal formats (`mp4`/`gif`/`webm`), `project-raw` for `zip`. |
 | `--out <path>` | Where to write. Default = cwd + the filename the server returns in `Content-Disposition`. |
-| `--option key=value` | Per-format option. Can be repeated. Examples: `--option pageFit=a4` (PDF), `--option mode=raster` (Canva → legacy raster bundle), `--option include=system` (ZIP filter). |
+| `--option key=value` | Per-format option. Can be repeated. Examples: `--option pageFit=a4` (PDF), `--option mode=raster` (Canva → legacy raster bundle), `--option include=system` (ZIP filter), `--option fps=30` / `--option durationMs=4000` / `--option gifColors=128` (MP4/GIF/WebM). |
+
+**Temporal formats (`mp4` / `gif` / `webm`) — DDR-148.** Scope is `artboard`: a **video-comp** artboard (its comp meta drives fps + frame count) or an ordinary **animated** mock (`--option fps=…` + `--option durationMs=…`; add `--option mode=ordinary` for WAAPI/CSS-driven motion). Rendered through Maude's own capture spine (Playwright frame-step → mediabunny H.264 MP4 / gifenc GIF, in-page) — no native binaries, deterministic. Default cap 30 s / 900 frames. MP4 falls back to WebM when the capture browser has no H.264 encoder.
 
 ## Examples
 
@@ -40,6 +42,12 @@ Sends a request to the running dev-server (`POST /_api/export`) with the same pa
 
 # A4 PDF instead of the artboard's native dimensions
 /design:export pdf --option pageFit=a4
+
+# Video-comp artboard → MP4 (fps/duration come from the comp meta)
+/design:export mp4 --scope artboard
+
+# Animated mock → looping GIF, 15 fps · 3 s · 128-color palette
+/design:export gif --scope artboard --option fps=15 --option durationMs=3000 --option gifColors=128
 ```
 
 ## What the command does

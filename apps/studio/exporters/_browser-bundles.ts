@@ -69,6 +69,41 @@ async function buildIife(entry: string, globalName: string, cachePath: string): 
 }
 
 /**
+ * DDR-148 — build the in-page video encoder (`video-encode-lib.ts`) to a
+ * self-contained browser ESM module cached under the OS temp dir. It imports
+ * mediabunny + gifenc (both INLINED — no externals) and assigns
+ * `window.__maudeEnc`; the capture shim injects it via
+ * `page.addScriptTag({ content, type: 'module' })`. Returns the cache path.
+ *
+ * Unlike getBrowserBundle this bundles a LOCAL source entry (not an npm
+ * package) and keeps ESM (the module's top-level `window.__maudeEnc = …` side
+ * effect runs on load — no IIFE export-hoisting needed).
+ */
+let encodeLibReady: Promise<string> | null = null;
+export function getEncodeLibBundle(): Promise<string> {
+  if (encodeLibReady) return encodeLibReady;
+  const entry = path.join(import.meta.dir, 'video-encode-lib.ts');
+  const cachePath = path.join(tmpdir(), 'maude-video-encode-lib.mjs');
+  encodeLibReady = (async () => {
+    const built = await Bun.build({
+      entrypoints: [entry],
+      target: 'browser',
+      format: 'esm',
+      minify: true,
+      conditions: ['browser', 'import'],
+    });
+    if (!built.success) {
+      throw new Error(`encode-lib bundle failed: ${built.logs.map((l) => l.message).join('; ')}`);
+    }
+    const first = built.outputs[0];
+    if (!first) throw new Error('encode-lib bundle produced no outputs');
+    await Bun.write(cachePath, await first.text());
+    return cachePath;
+  })();
+  return encodeLibReady;
+}
+
+/**
  * Returns the path to an IIFE bundle for the given npm package, attaching its
  * exports under `window[globalName]`. Caches under the OS temp dir so a long-
  * running dev server pays the build cost once.
