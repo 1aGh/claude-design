@@ -68,4 +68,37 @@ describe('parseCompTimeline', () => {
     const r = parseCompTimeline(COMP, 200);
     expect(r.total).toBe(200);
   });
+
+  test('an <Audio> bed becomes its own row spanning the comp (DDR-148 music layer)', () => {
+    const src = `${COMP.replace(
+      '</TransitionSeries>',
+      '</TransitionSeries><Audio src="/.design/assets/music.mp3" />'
+    )}`;
+    const r = parseCompTimeline(src, 90);
+    expect(r.audio).toHaveLength(1);
+    expect(r.audio[0]).toMatchObject({ kind: 'audio', label: 'music.mp3', from: 0, duration: 90 });
+  });
+
+  test('a multi-comp canvas scopes the timeline to the media comp + its total', () => {
+    // Two VideoComps on one canvas: a plain intro (no media) + a reel (has
+    // <Audio>). The parser must show the REEL — its sequences, total, audio.
+    const src = `
+const IT = 40; const RT = 120;
+const Intro = () => <AbsoluteFill/>;
+function Movie(){ return <TransitionSeries><TransitionSeries.Sequence durationInFrames={IT}><Intro/></TransitionSeries.Sequence></TransitionSeries>; }
+const Clip = () => <AbsoluteFill/>;
+function Reel(){ return (<AbsoluteFill><TransitionSeries><TransitionSeries.Sequence durationInFrames={RT}><Clip/></TransitionSeries.Sequence></TransitionSeries><Audio src="/x/song.mp3"/></AbsoluteFill>); }
+export default function Canvas(){ return (<DesignCanvas>
+  <VideoComp component={Movie} durationInFrames={IT} fps={30} width={960} height={540} />
+  <VideoComp component={Reel} durationInFrames={RT} fps={30} width={960} height={540} />
+</DesignCanvas>); }
+`;
+    // The app passes the FIRST comp's duration (the intro, 40) — the parser must
+    // still pick the reel (media) and report its total (120) + audio.
+    const r = parseCompTimeline(src, 40);
+    expect(r.total).toBe(120);
+    expect(r.sequences).toEqual([expect.objectContaining({ label: 'Clip', duration: 120 })]);
+    expect(r.audio).toHaveLength(1);
+    expect(r.audio[0].label).toBe('song.mp3');
+  });
 });

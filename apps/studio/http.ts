@@ -55,6 +55,15 @@ export const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
   '.otf': 'font/otf',
+  // DDR-148 — video/audio media referenced by a video-comp `<Video>`/`<Audio>`.
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.ogg': 'audio/ogg',
 };
 
 function ext(p: string): string {
@@ -1681,6 +1690,17 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     '.woff2',
     '.ttf',
     '.otf',
+    // DDR-148 — video/audio media a video-comp `<Video>`/`<Audio>` loads from
+    // assets/. Served like images (inert static bytes, `nosniff`, no script
+    // execution under the canvas CSP) — the same read grant, widened for media.
+    '.mp4',
+    '.m4v',
+    '.mov',
+    '.webm',
+    '.mp3',
+    '.wav',
+    '.m4a',
+    '.ogg',
   ]);
 
   // Exact API paths the canvas iframe needs (collab + display data). See

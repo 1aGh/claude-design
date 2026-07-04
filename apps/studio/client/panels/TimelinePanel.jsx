@@ -63,6 +63,7 @@ function fmtTime(frame, fps) {
 export default function TimelinePanel({
   comps = [],
   sequences = [],
+  audio = [],
   total = 0,
   frame = 0,
   playing = false,
@@ -300,6 +301,29 @@ export default function TimelinePanel({
                 );
               })
             )}
+
+            {audio.map((a, i) => (
+              <div className="tl-row" key={`a${i}`} data-testid={`timeline-audio-${i}`}>
+                <span className="tl-row-label" title={a.label}>
+                  ♪ {a.label}
+                </span>
+                <div className="tl-row-track">
+                  <div
+                    className="tl-audio-block"
+                    title={`${a.label} · ${a.from}–${a.from + a.duration}f`}
+                    style={{
+                      left: pct(a.from),
+                      width: `${(a.duration / (totalFrames - 1)) * 100}%`,
+                    }}
+                  >
+                    <svg className="tl-wave" viewBox="0 0 100 12" preserveAspectRatio="none" aria-hidden>
+                      <path d="M0 6 Q2 1 4 6 T8 6 T12 6 T16 6 T20 6 T24 6 T28 6 T32 6 T36 6 T40 6 T44 6 T48 6 T52 6 T56 6 T60 6 T64 6 T68 6 T72 6 T76 6 T80 6 T84 6 T88 6 T92 6 T96 6 T100 6" />
+                    </svg>
+                    <span className="tl-seq-name">{a.label}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
 
             <span
               className="tl-playhead"

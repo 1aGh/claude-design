@@ -6112,6 +6112,7 @@ function App() {
   const [timelineLoop, setTimelineLoop] = useState(true);
   // DDR-148 — parsed sequence/keyframe rows for the Timeline (from raw .tsx).
   const [timelineSequences, setTimelineSequences] = useState([]);
+  const [timelineAudio, setTimelineAudio] = useState([]);
   const [timelineTotal, setTimelineTotal] = useState(0);
   // Phase 31 (DDR-123) — the native ACP chat sidepanel (right dock, native-only).
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -6345,6 +6346,7 @@ function App() {
   useEffect(() => {
     if (!timelineOpen || activeComps.length === 0 || !activePath || activePath === SYSTEM_TAB) {
       setTimelineSequences([]);
+      setTimelineAudio([]);
       setTimelineTotal(0);
       return undefined;
     }
@@ -6356,6 +6358,7 @@ function App() {
         if (!alive || !j?.ok || typeof j.source !== 'string') return;
         const parsed = parseCompTimeline(j.source, total);
         setTimelineSequences(parsed.sequences);
+        setTimelineAudio(parsed.audio || []);
         setTimelineTotal(parsed.total);
       })
       .catch(() => {});
@@ -8338,6 +8341,7 @@ function App() {
           <TimelinePanel
             comps={activeComps}
             sequences={timelineSequences}
+            audio={timelineAudio}
             total={timelineTotal}
             frame={timelineFrame}
             playing={timelinePlaying}

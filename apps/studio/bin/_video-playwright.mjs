@@ -126,8 +126,7 @@ try {
   // from comp meta / options); fall back to the registered comp meta in-page.
   const compMeta = await page.evaluate(() => {
     try {
-      const comps =
-        typeof window.__maude_comps__ === 'function' ? window.__maude_comps__() : [];
+      const comps = typeof window.__maude_comps__ === 'function' ? window.__maude_comps__() : [];
       return comps[0] ?? null;
     } catch {
       return null;
@@ -272,9 +271,36 @@ async function seekFrame(page, frame, fps, mode) {
     return;
   }
   // comp mode — the seek bridge pauses + seeks the Player and resolves post-paint.
+  // A comp with <Video>/<OffthreadVideo> renders a real <video> whose seek is
+  // ASYNC — 2 rAF isn't enough, so wait for every video to land on its frame
+  // (`seeked` / readyState) before the screenshot, else a stale frame is caught.
   await page.evaluate(async (frame) => {
     if (typeof window.__maude_seek__ === 'function') {
       await window.__maude_seek__(frame);
+    }
+    const vids = Array.from(document.querySelectorAll('video'));
+    if (vids.length) {
+      await Promise.all(
+        vids.map(
+          (v) =>
+            new Promise((res) => {
+              if (v.readyState >= 2 && !v.seeking) return res(undefined);
+              let done = false;
+              const finish = () => {
+                if (done) return;
+                done = true;
+                clearInterval(iv);
+                res(undefined);
+              };
+              const iv = setInterval(() => {
+                if (v.readyState >= 2 && !v.seeking) finish();
+              }, 16);
+              v.addEventListener('seeked', finish, { once: true });
+              setTimeout(finish, 1500); // never hang a frame
+            })
+        )
+      );
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
     }
   }, frame);
 }
