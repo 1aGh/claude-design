@@ -1451,6 +1451,32 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       return Response.json({ ok: true }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
     },
 
+    '/_api/remove-sequence': async (req: Request) => {
+      // DDR-150 P3 — remove a clip. POST { canvas, stableId, artboardId?,
+      // contentHash? } → removeClip (fingerprint + semantic gate; refuses the
+      // only clip; drops an adjacent transition in a series). Snapshots pre-remove
+      // for /design:rollback. Same MAIN-ORIGIN-ONLY trust boundary as the other
+      // source-writes (absent from CANVAS_SAFE_API + startCanvasServer routes).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        stableId?: unknown;
+        artboardId?: unknown;
+        contentHash?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.removeSequenceOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json({ ok: true }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
+    },
+
     '/_api/comp-clips': async (req: Request) => {
       // DDR-150 P2 — the single authoritative clip enumerator for a video-comp.
       // GET ?canvas=<rel>&artboardId=<id> → { ok, compName, clips:[{ stableId,

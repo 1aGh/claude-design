@@ -1514,6 +1514,102 @@ export function assertCompSemantics(canvasAbsPath: string, source: string): { ok
   return { ok: true };
 }
 
+/** Source span of an element extended back over its leading indent + newline
+ *  (so removing it doesn't leave a blank line) — mirrors moveElement's removeStart. */
+function spanWithFraming(source: string, start: number, end: number): [number, number] {
+  const line = lineStartInfo(source, start);
+  const rs = line.newlineBefore ? line.indentStart - 1 : line.indentStart;
+  return [rs, end];
+}
+
+/**
+ * Remove a clip (DDR-150 P3), addressed by the enumerator's stableId. Verifies
+ * the content-hash fingerprint; refuses removing the ONLY clip; when the clip
+ * lives in a `<TransitionSeries>` also removes ONE adjacent transition so the
+ * series stays valid; then reparse + semantic gate (the backstop that refuses a
+ * remove which would leave a dangling/doubled transition, rather than corrupt).
+ */
+export function applyRemoveClip(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string | undefined,
+  stableId: string,
+  expectedHash: string | undefined
+): { source: string } {
+  const { clips } = enumerateClips(canvasAbsPath, source, artboardId);
+  const idx = clips.findIndex((c) => c.stableId === stableId);
+  if (idx < 0) {
+    throw new CanvasEditError(`clip "${stableId}" not found`, {
+      canvas: canvasAbsPath,
+      id: stableId,
+    });
+  }
+  const clip = clips[idx] as ClipInfo;
+  if (expectedHash != null && expectedHash !== clip.contentHash) {
+    throw new CanvasEditError(
+      `clip "${stableId}" changed since it was read (concurrent edit); reload and retry`,
+      { canvas: canvasAbsPath, id: stableId }
+    );
+  }
+  if (clip.kind !== 'sequence') {
+    throw new CanvasEditError(`"${stableId}" is a transition, not a removable clip`, {
+      canvas: canvasAbsPath,
+      id: stableId,
+    });
+  }
+  if (clips.filter((c) => c.kind === 'sequence').length <= 1) {
+    throw new CanvasEditError('cannot remove the only clip — delete the comp instead', {
+      canvas: canvasAbsPath,
+      id: stableId,
+    });
+  }
+  const spans: Array<[number, number]> = [spanWithFraming(source, clip.start, clip.end)];
+  if (clip.tag.startsWith('TransitionSeries.')) {
+    const next = clips[idx + 1];
+    const prev = clips[idx - 1];
+    const t = next?.kind === 'transition' ? next : prev?.kind === 'transition' ? prev : null;
+    if (t) spans.push(spanWithFraming(source, t.start, t.end));
+  }
+  const s = new MagicString(source);
+  for (const [a, b] of spans) s.remove(a, b);
+  const out = s.toString();
+  const parsed = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `remove produced invalid source: ${parsed.errors[0]?.message ?? 'parse error'}`,
+      { canvas: canvasAbsPath, id: stableId }
+    );
+  }
+  assertCompSemantics(canvasAbsPath, out); // refuse a dangling/doubled transition
+  return { source: out };
+}
+
+/** Remove a clip on disk (atomic write + cross-process lock). */
+export async function removeClip(
+  canvasAbsPath: string,
+  artboardId: string | undefined,
+  stableId: string,
+  expectedHash: string | undefined
+): Promise<{ source: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: stableId,
+      });
+    }
+    const source = await file.text();
+    const nextSrc = applyRemoveClip(canvasAbsPath, source, artboardId, stableId, expectedHash);
+    if (nextSrc.source === source) return nextSrc;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, nextSrc.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return nextSrc;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Edit shapes.
 

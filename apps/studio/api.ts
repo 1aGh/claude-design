@@ -15,6 +15,7 @@ import {
   type MovePosition,
   moveElement,
   removeAttribute,
+  removeClip,
   retimeSequence,
   retimeSequenceByClip,
   editText as runEditText,
@@ -302,6 +303,14 @@ export interface Api {
     index?: unknown;
     durationInFrames?: unknown;
     from?: unknown;
+  }): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
+  // DDR-150 P3 — remove a clip addressed by stableId (fingerprint + semantic
+  // gate; refuses the only clip; drops an adjacent transition in a series).
+  removeSequenceOp(input: {
+    canvas?: unknown;
+    stableId?: unknown;
+    artboardId?: unknown;
+    contentHash?: unknown;
   }): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   // DDR-150 P2 — the single authoritative clip enumerator for a video-comp.
   // Read-only; the Timeline addresses every op by the returned `stableId`
@@ -1893,6 +1902,44 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  async function removeSequenceOp(input: {
+    canvas?: unknown;
+    stableId?: unknown;
+    artboardId?: unknown;
+    contentHash?: unknown;
+  }): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const stableId = typeof input.stableId === 'string' ? input.stableId : null;
+    if (!stableId) return { ok: false, status: 400, error: 'stableId required' };
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId : undefined;
+    const contentHash = typeof input.contentHash === 'string' ? input.contentHash : undefined;
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      await removeClip(r.abs, artboardId, stableId, contentHash);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-remove-clip');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'remove failed',
+      };
+    }
+  }
+
   async function compClips(input: { canvas?: unknown; artboardId?: unknown }) {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
@@ -2375,6 +2422,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     editCss,
     editText,
     editAttr,
+    removeSequenceOp,
     compClips,
     reorder,
     retimeSequenceOp,

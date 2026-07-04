@@ -94,6 +94,7 @@ export default function TimelinePanel({
   resizing,
   onResize,
   onRetime,
+  onRemove,
   onClose,
 }) {
   const comp = comps[0] ?? null;
@@ -370,6 +371,25 @@ export default function TimelinePanel({
                           onPointerDown={(e) => startResize(e, i, seq.duration)}
                           onClick={(e) => e.stopPropagation()}
                         />
+                      ) : null}
+                      {onRemove ? (
+                        <button
+                          type="button"
+                          className="tl-seq-remove"
+                          data-testid={`timeline-remove-${i}`}
+                          title="Remove this clip"
+                          aria-label={`Remove ${seq.label}`}
+                          style={{
+                            left: `calc(${pct(seq.from)} + ${(dur / (totalFrames - 1)) * 100}% - 17px)`,
+                          }}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRemove(i);
+                          }}
+                        >
+                          ×
+                        </button>
                       ) : null}
                     </div>
                   </div>

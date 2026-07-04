@@ -7547,6 +7547,15 @@ function App() {
         const fn = /filename="([^"]+)"/.exec(disp);
         const filename = (fn && fn[1]) || 'export';
         const blob = await r.blob();
+        if (isNativeApp()) {
+          // Native: route the bridged in-canvas export through the OS save dialog
+          // too (WKWebView swallows the `<a download>` blob). Mirror the shell
+          // ExportDialog's doExport native branch.
+          const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
+          const savedPath = await saveExport(filename, bytes);
+          reply(savedPath ? { ok: true, filename } : { ok: false, error: 'Save cancelled' });
+          return;
+        }
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -8503,6 +8512,40 @@ function App() {
                   if (!j?.ok) console.warn('[retime]', j?.error || 'failed');
                   // The file watcher reloads the canvas → re-announce → the
                   // source-fetch effect re-parses the new timing.
+                })
+                .catch(() => {});
+            }}
+            onRemove={(index) => {
+              if (!activePath || activePath === SYSTEM_TAB) return;
+              // DDR-150 P3 — remove the clip addressed by its comp-scoped stableId
+              // (the sequence-row index → the index-th sequence clip). The engine
+              // fingerprint + semantic gate refuse a stale/raced or series-breaking
+              // removal; the file watcher reloads the canvas after.
+              const artboardId = timelineCompId || undefined;
+              const ccUrl = `/_api/comp-clips?canvas=${encodeURIComponent(activePath)}${artboardId ? `&artboardId=${encodeURIComponent(artboardId)}` : ''}`;
+              fetch(ccUrl)
+                .then((r) => r.json().catch(() => ({})))
+                .then((cc) => {
+                  const seqs =
+                    cc?.ok && Array.isArray(cc.clips)
+                      ? cc.clips.filter((c) => c.kind === 'sequence')
+                      : [];
+                  const clip = seqs[index] || null;
+                  if (!clip?.stableId) return null;
+                  return fetch('/_api/remove-sequence', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      canvas: activePath,
+                      artboardId,
+                      stableId: clip.stableId,
+                      contentHash: clip.contentHash,
+                    }),
+                  });
+                })
+                .then((r) => (r ? r.json() : null))
+                .then((j) => {
+                  if (j && !j.ok) console.warn('[remove-clip]', j.error || 'failed');
                 })
                 .catch(() => {});
             }}

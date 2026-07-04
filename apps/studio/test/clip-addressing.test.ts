@@ -9,6 +9,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  applyRemoveClip,
   applyRetimeSequenceByClip,
   assertCompSemantics,
   CanvasEditError,
@@ -202,5 +203,73 @@ describe('applyRetimeSequenceByClip — stableId retime (multi-comp safe)', () =
         durationInFrames: 90,
       })
     ).toThrow(CanvasEditError);
+  });
+});
+
+describe('applyRemoveClip — clip removal (DDR-150 P3)', () => {
+  const outro = () =>
+    [
+      `const Intro = () => <Sequence durationInFrames={40}><Video src="i.mp4" /></Sequence>;`,
+      `const Outro = () => (`,
+      `  <>`,
+      `    <Sequence durationInFrames={50}><Video src="a.mp4" /></Sequence>`,
+      `    <Sequence from={10} durationInFrames={60}><Video src="b.mp4" /></Sequence>`,
+      `  </>`,
+      `);`,
+      `function Canvas() {`,
+      `  return (<DesignCanvas>`,
+      `    <DCArtboard id="intro"><VideoComp component={Intro} durationInFrames={40} fps={30} /></DCArtboard>`,
+      `    <DCArtboard id="outro"><VideoComp component={Outro} durationInFrames={110} fps={30} /></DCArtboard>`,
+      `  </DesignCanvas>);`,
+      `}`,
+    ].join('\n');
+
+  test('removes a standalone clip in comp B, leaving comp A + the sibling clip', () => {
+    const src = outro();
+    const out = applyRemoveClip(CANVAS, src, 'outro', 'Outro#0', undefined);
+    // Outro#0 (a.mp4) gone; Outro#1 (b.mp4) + Intro (i.mp4) intact.
+    expect(out.source).not.toContain('a.mp4');
+    expect(out.source).toContain('b.mp4');
+    expect(out.source).toContain('i.mp4');
+  });
+
+  test('refuses removing the only clip in a comp', () => {
+    const src = [
+      'const Comp = () => <Sequence durationInFrames={30}><A /></Sequence>;',
+      'function Canvas() { return <DCArtboard id="x"><VideoComp component={Comp} durationInFrames={30} fps={30} /></DCArtboard>; }',
+    ].join('\n');
+    const only = enumerateClips(CANVAS, src, 'x').clips[0] as { stableId: string };
+    expect(() => applyRemoveClip(CANVAS, src, 'x', only.stableId, undefined)).toThrow(
+      CanvasEditError
+    );
+  });
+
+  test('refuses a stale content-hash', () => {
+    const src = outro();
+    expect(() => applyRemoveClip(CANVAS, src, 'outro', 'Outro#0', 'deadbeef')).toThrow(
+      CanvasEditError
+    );
+  });
+
+  test('drops one adjacent transition when removing a TransitionSeries clip (series stays valid)', () => {
+    const src = [
+      'const Comp = () => (<TransitionSeries>',
+      '  <TransitionSeries.Sequence durationInFrames={30}><A /></TransitionSeries.Sequence>',
+      '  <TransitionSeries.Transition timing={t} />',
+      '  <TransitionSeries.Sequence durationInFrames={40}><B /></TransitionSeries.Sequence>',
+      '  <TransitionSeries.Transition timing={t} />',
+      '  <TransitionSeries.Sequence durationInFrames={50}><C /></TransitionSeries.Sequence>',
+      '</TransitionSeries>);',
+      'function Canvas() { return <DCArtboard id="x"><VideoComp component={Comp} durationInFrames={120} fps={30} /></DCArtboard>; }',
+    ].join('\n');
+    // Remove the middle sequence (Comp#2 in flat order: S,T,S,T,S → index 2).
+    const clips = enumerateClips(CANVAS, src, 'x').clips;
+    const mid = clips.filter((c) => c.kind === 'sequence')[1] as { stableId: string };
+    const out = applyRemoveClip(CANVAS, src, 'x', mid.stableId, undefined);
+    // <B/> gone; the result still parses AND passes the alternation gate.
+    expect(out.source).not.toContain('<B />');
+    expect(() => assertCompSemantics(CANVAS, out.source)).not.toThrow();
+    // exactly one transition left (was 2, one dropped with the removed sequence).
+    expect((out.source.match(/TransitionSeries\.Transition/g) || []).length).toBe(1);
   });
 });

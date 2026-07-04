@@ -76,6 +76,8 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // is MAIN-ORIGIN ONLY (same boundary as /_api/canvas-source): the
         // untrusted canvas iframe must never enumerate the comp it renders.
         '/_api/comp-clips',
+        // DDR-150 P3 — clip removal is a source-write, MAIN-ORIGIN ONLY.
+        '/_api/remove-sequence',
         // Phase 12.1 (DDR-138) — node-move reorder is a source-write, MAIN-ORIGIN
         // ONLY. The canvas iframe requests a reorder over the dgn:* bus; the shell
         // performs the write. A GET here 403s at the gate (route unreachable on
