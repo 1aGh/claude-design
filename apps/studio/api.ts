@@ -189,7 +189,7 @@ export type DeleteCanvasResult =
 
 /** Phase 12 — result of an in-canvas direct edit (`editCss` / `editText`). */
 export type EditOpResult =
-  | { ok: true; delta: number }
+  | { ok: true; delta: number; seq?: number }
   | { ok: false; status: number; error: string };
 
 /**
@@ -312,7 +312,7 @@ export interface Api {
     index?: unknown;
     durationInFrames?: unknown;
     from?: unknown;
-  }): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
   // DDR-150 P3 — remove a clip addressed by stableId (fingerprint + semantic
   // gate; refuses the only clip; drops an adjacent transition in a series).
   removeSequenceOp(input: {
@@ -320,7 +320,7 @@ export interface Api {
     stableId?: unknown;
     artboardId?: unknown;
     contentHash?: unknown;
-  }): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
   // DDR-150 P4 — insert a new <Sequence> (optionally with media) after a comp's
   // last clip. Returns the new clip's stableId.
   insertSequenceOp(input: {
@@ -330,7 +330,10 @@ export interface Api {
     durationInFrames?: unknown;
     mediaTag?: unknown;
     src?: unknown;
-  }): Promise<{ ok: true; stableId: string | null } | { ok: false; status: number; error: string }>;
+  }): Promise<
+    | { ok: true; stableId: string | null; seq?: number }
+    | { ok: false; status: number; error: string }
+  >;
   // DDR-150 P5 — z-order reorder: move a standalone <Sequence> before/after a
   // sibling (render stacking), reusing moveElement + the semantic gate. Both
   // clips are fingerprint-checked. Returns the moved clip's (re-settled) stableId.
@@ -343,7 +346,8 @@ export interface Api {
     refContentHash?: unknown;
     position?: unknown;
   }): Promise<
-    { ok: true; stableId: string | null } | { ok: false; status: number; error: string }
+    | { ok: true; stableId: string | null; seq?: number }
+    | { ok: false; status: number; error: string }
   >;
   // DDR-150 P2 — the single authoritative clip enumerator for a video-comp.
   // Read-only; the Timeline addresses every op by the returned `stableId`
@@ -589,6 +593,22 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   const REORDER_LOG_CAP = 50;
   const reorderLog = new Map<number, { abs: string; before: string; after: string }>();
   let reorderSeq = 0;
+
+  // DDR-150 dogfood #1 — the SAME whole-file log backs the Timeline clip ops
+  // (retime / remove / insert / z-reorder / replace-src): every successful op
+  // registers its {before, after} and returns the seq; the shell keeps a
+  // per-canvas undo/redo stack of seqs and replays them through
+  // /_api/reorder-revert (guarded whole-file swap, 409 on divergence).
+  function logUndo(abs: string, before: string, after: string): number {
+    const seq = ++reorderSeq;
+    reorderLog.set(seq, { abs, before, after });
+    while (reorderLog.size > REORDER_LOG_CAP) {
+      const oldest = reorderLog.keys().next().value;
+      if (oldest === undefined) break;
+      reorderLog.delete(oldest);
+    }
+    return seq;
+  }
 
   function fileSlug(file: string): string {
     return canvasSlugFromRel(file, paths.designRel);
@@ -1738,11 +1758,20 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const rel = path.relative(paths.designRoot, abs);
     ctx.bus.emit('activity:suppress', rel);
     try {
+      // DDR-150 dogfood #1 — capture before/after so the edit registers in the
+      // whole-file undo log (the Timeline replace-src path rides this; other
+      // inspector edits get an undoable seq for free).
+      const before = await Bun.file(abs).text();
       const res = await run();
       // `changed === false` = the op collapsed to a no-op and nothing hit disk —
       // NOT `delta === 0`, which an equal-length replacement also produces.
-      if (res.changed === false) ctx.bus.emit('activity:unsuppress', rel);
-      return { ok: true, delta: res.delta };
+      if (res.changed === false) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true, delta: res.delta };
+      }
+      const after = await Bun.file(abs).text();
+      const seq = after !== before ? logUndo(abs, before, after) : undefined;
+      return { ok: true, delta: res.delta, seq };
     } catch (err) {
       ctx.bus.emit('activity:unsuppress', rel);
       return {
@@ -1955,7 +1984,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     index?: unknown;
     durationInFrames?: unknown;
     from?: unknown;
-  }): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
     // DDR-150 P2 — prefer the comp-scoped stableId (multi-comp-safe) over the
@@ -1992,7 +2021,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       } catch {
         /* snapshot best-effort */
       }
-      return { ok: true };
+      return { ok: true, seq: logUndo(r.abs, before, after) };
     } catch (err) {
       ctx.bus.emit('activity:unsuppress', rel);
       return {
@@ -2008,7 +2037,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     stableId?: unknown;
     artboardId?: unknown;
     contentHash?: unknown;
-  }): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
     const stableId = typeof input.stableId === 'string' ? input.stableId : null;
@@ -2030,7 +2059,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       } catch {
         /* snapshot best-effort */
       }
-      return { ok: true };
+      return { ok: true, seq: logUndo(r.abs, before, after) };
     } catch (err) {
       ctx.bus.emit('activity:unsuppress', rel);
       return {
@@ -2049,7 +2078,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     mediaTag?: unknown;
     src?: unknown;
   }): Promise<
-    { ok: true; stableId: string | null } | { ok: false; status: number; error: string }
+    | { ok: true; stableId: string | null; seq?: number }
+    | { ok: false; status: number; error: string }
   > {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
@@ -2068,6 +2098,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       const before = await Bun.file(r.abs).text();
       const res = await insertClip(r.abs, artboardId, { from, durationInFrames, mediaTag, src });
       const after = await Bun.file(r.abs).text();
+      let seq: number | undefined;
       if (after === before) {
         ctx.bus.emit('activity:unsuppress', rel);
       } else {
@@ -2076,8 +2107,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         } catch {
           /* snapshot best-effort */
         }
+        seq = logUndo(r.abs, before, after);
       }
-      return { ok: true, stableId: res.stableId };
+      return { ok: true, stableId: res.stableId, seq };
     } catch (err) {
       ctx.bus.emit('activity:unsuppress', rel);
       return {
@@ -2097,7 +2129,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     refContentHash?: unknown;
     position?: unknown;
   }): Promise<
-    { ok: true; stableId: string | null } | { ok: false; status: number; error: string }
+    | { ok: true; stableId: string | null; seq?: number }
+    | { ok: false; status: number; error: string }
   > {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
@@ -2125,6 +2158,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         position
       );
       const after = await Bun.file(r.abs).text();
+      let seq: number | undefined;
       if (after === before) {
         ctx.bus.emit('activity:unsuppress', rel);
       } else {
@@ -2133,8 +2167,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         } catch {
           /* snapshot best-effort */
         }
+        seq = logUndo(r.abs, before, after);
       }
-      return { ok: true, stableId: res.stableId };
+      return { ok: true, stableId: res.stableId, seq };
     } catch (err) {
       ctx.bus.emit('activity:unsuppress', rel);
       return {
@@ -2161,6 +2196,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         fps: result.fps,
         durationInFrames: result.durationInFrames,
         clips,
+        // DDR-150 dogfood #5 — loose media beds (audio/bg video) for replace.
+        media: result.media,
       };
     } catch (err) {
       return {

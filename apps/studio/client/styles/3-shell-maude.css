@@ -1249,6 +1249,15 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .tl-row { display: flex; align-items: center; gap: var(--space-2); height: 30px; }
 .tl-row-label { flex: none; width: 88px; display: flex; align-items: center; justify-content: flex-end; gap: 3px; font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); overflow: hidden; white-space: nowrap; text-align: right; }
 .tl-row-label-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* DDR-150 dogfood #6 — per-row media-kind identity (video / image / audio / JSX). */
+.tl-kind { flex: none; width: 14px; height: 14px; display: grid; place-items: center; border-radius: 3px; font-size: 8px; line-height: 1; color: var(--fg-2); background: var(--bg-3); }
+.tl-kind[data-kind="video"] { color: #7dd3fc; background: color-mix(in oklch, #0ea5e9 22%, var(--bg-3)); }
+.tl-kind[data-kind="image"] { color: #86efac; background: color-mix(in oklch, #22c55e 20%, var(--bg-3)); }
+.tl-kind[data-kind="audio"] { color: #fcd34d; background: color-mix(in oklch, #f59e0b 20%, var(--bg-3)); }
+.tl-kind[data-kind="jsx"] { color: var(--fg-2); font-style: italic; }
+/* Kind tint on the block itself — a video clip reads different from JSX motion. */
+.tl-seq-block[data-kind="video"] { border-color: color-mix(in oklch, #0ea5e9 55%, var(--accent-muted)); background: color-mix(in oklch, #0ea5e9 16%, var(--bg-2)); }
+.tl-seq-block[data-kind="image"] { border-color: color-mix(in oklch, #22c55e 45%, var(--accent-muted)); background: color-mix(in oklch, #22c55e 13%, var(--bg-2)); }
 /* DDR-150 P5 — z-order raise/lower. Stacked ▲/▼; later sibling paints on top. */
 .tl-seq-reorder { display: inline-flex; flex-direction: column; flex: none; opacity: 0; transition: opacity var(--dur-1, 120ms) ease; }
 .tl-row:hover .tl-seq-reorder { opacity: 0.6; }

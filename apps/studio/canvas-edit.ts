@@ -1296,12 +1296,25 @@ export interface ClipInfo {
   end: number;
 }
 
+/** A media element sitting DIRECTLY in the comp body (not inside a clip) — an
+ *  `<Audio>` music bed under the reel, a full-length `<Video>` background, … .
+ *  Not a clip (no from/duration semantics of its own), but it IS addressable:
+ *  the Timeline's audio rows use `cdId` for a replace (`editAttribute` on src). */
+export interface LooseMediaInfo {
+  tag: string;
+  src: string | null;
+  cdId: string | null;
+  contentHash: string;
+}
+
 export interface CompClips {
   compName: string | null;
   artboardId: string | null;
   fps: number | null;
   durationInFrames: number | null;
   clips: ClipInfo[];
+  /** DDR-150 dogfood #5 — loose media beds (document order), for audio replace. */
+  media: LooseMediaInfo[];
 }
 
 /**
@@ -1343,8 +1356,16 @@ export function enumerateClips(
     start: number;
     end: number;
   }
+  interface RawMedia {
+    tag: string;
+    node: AnyNode;
+    comp: string;
+    start: number;
+    end: number;
+  }
   const usages: Usage[] = [];
   const clips: RawClip[] = [];
+  const mediaEls: RawMedia[] = [];
   const compClipCount: Record<string, number> = {};
   const compStack: string[] = [''];
   const artboardStack: Array<string | null> = [];
@@ -1393,6 +1414,17 @@ export function enumerateClips(
           node,
           comp,
           indexInComp: idx,
+          start: node.start as number,
+          end: node.end as number,
+        });
+      }
+      if (tag && MEDIA_TAGS.has(tag)) {
+        // Every media element, with its owning comp — loose beds are filtered
+        // out of clip spans below (an <Audio> under the reel vs inside a clip).
+        mediaEls.push({
+          tag,
+          node,
+          comp: compStack[compStack.length - 1] as string,
           start: node.start as number,
           end: node.end as number,
         });
@@ -1449,12 +1481,27 @@ export function enumerateClips(
     };
   });
 
+  // Loose media beds — media in the target comp OUTSIDE every clip span
+  // (an <Audio> music bed, a background <Video>). Document order.
+  const media: LooseMediaInfo[] = mediaEls
+    .filter(
+      (mel) =>
+        mel.comp === targetComp && !scoped.some((c) => mel.start >= c.start && mel.end <= c.end)
+    )
+    .map((mel) => ({
+      tag: mel.tag,
+      src: getStringAttr(mel.node.openingElement, 'src'),
+      cdId: cdIdOf.get(mel.node) ?? null,
+      contentHash: hashSpan(source, mel.start, mel.end),
+    }));
+
   return {
     compName: targetComp,
     artboardId: target?.artboardId ?? null,
     fps: target?.fps ?? null,
     durationInFrames: target?.duration ?? null,
     clips: clipInfos,
+    media,
   };
 }
 

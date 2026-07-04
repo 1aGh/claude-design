@@ -451,6 +451,28 @@ describe('applyReorderClip — z-order reorder (DDR-150 P5)', () => {
   });
 });
 
+describe('enumerateClips — loose media beds (DDR-150 dogfood #5, audio replace)', () => {
+  test('an <Audio> bed OUTSIDE clips is listed in media[] with a cd-id; one inside a clip is not', () => {
+    const src = [
+      'const Comp = () => (',
+      '  <>',
+      '    <Sequence durationInFrames={60}><Video src="assets/a.mp4" /></Sequence>',
+      '    <Sequence durationInFrames={30}><Audio src="assets/voice.mp3" /></Sequence>',
+      '    <Audio src="assets/music.mp3" volume={0.6} />',
+      '  </>',
+      ');',
+      'function Canvas() { return <DCArtboard id="x"><VideoComp component={Comp} durationInFrames={60} fps={30} /></DCArtboard>; }',
+    ].join('\n');
+    const { clips, media } = enumerateClips(CANVAS, src, 'x');
+    expect(clips.length).toBe(2);
+    // ONLY the loose bed — the in-clip <Audio>/<Video> stay clip-scoped media.
+    expect(media.length).toBe(1);
+    expect(media[0]!.tag).toBe('Audio');
+    expect(media[0]!.src).toBe('assets/music.mp3');
+    expect(typeof media[0]!.cdId === 'string' || media[0]!.cdId === null).toBe(true);
+  });
+});
+
 describe('assembleCompSource — refs → comp (DDR-150 P4 Task 12)', () => {
   test('lays video clips back-to-back as named sequences + parses + enumerates', () => {
     const tsx = assembleCompSource(

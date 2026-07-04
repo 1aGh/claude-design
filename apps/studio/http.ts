@@ -1393,7 +1393,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         );
       }
       return Response.json(
-        { ok: true, delta: result.delta },
+        { ok: true, delta: result.delta, seq: result.seq },
         { status: 200, headers: { 'Cache-Control': 'no-store' } }
       );
     },
@@ -1466,7 +1466,10 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
           { status: result.status, headers: { 'Cache-Control': 'no-store' } }
         );
       }
-      return Response.json({ ok: true }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
+      return Response.json(
+        { ok: true, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
     },
 
     '/_api/remove-sequence': async (req: Request) => {
@@ -1492,7 +1495,10 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
           { status: result.status, headers: { 'Cache-Control': 'no-store' } }
         );
       }
-      return Response.json({ ok: true }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
+      return Response.json(
+        { ok: true, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
     },
 
     '/_api/insert-sequence': async (req: Request) => {
@@ -1520,7 +1526,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         );
       }
       return Response.json(
-        { ok: true, stableId: result.stableId },
+        { ok: true, stableId: result.stableId, seq: result.seq },
         { status: 200, headers: { 'Cache-Control': 'no-store' } }
       );
     },
@@ -1553,7 +1559,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         );
       }
       return Response.json(
-        { ok: true, stableId: result.stableId },
+        { ok: true, stableId: result.stableId, seq: result.seq },
         { status: 200, headers: { 'Cache-Control': 'no-store' } }
       );
     },

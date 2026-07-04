@@ -6437,7 +6437,56 @@ function App() {
     loop: timelineLoop,
     sequences: timelineSequences,
     post: postToActiveCanvas,
+    canvas: activePath,
   };
+
+  // DDR-150 dogfood #1 — Timeline undo/redo. Every successful clip op (move /
+  // trim / remove / insert / z-reorder / replace-src) returns a server `seq`
+  // registered in the whole-file undo log; Cmd+Z / Shift+Cmd+Z replay it via
+  // /_api/reorder-revert (guarded swap — 409s honestly if the canvas diverged).
+  const tlUndoRef = useRef({ undo: [], redo: [] });
+  const pushTlUndo = useCallback((canvas, seq, label) => {
+    if (typeof seq !== 'number') return;
+    tlUndoRef.current.undo.push({ canvas, seq, label });
+    tlUndoRef.current.redo = []; // a new edit invalidates the redo branch
+    if (tlUndoRef.current.undo.length > 50) tlUndoRef.current.undo.shift();
+  }, []);
+  const tlUndoRedo = useCallback((dir) => {
+    const s = tlUndoRef.current;
+    const src = dir === 'undo' ? s.undo : s.redo;
+    const dst = dir === 'undo' ? s.redo : s.undo;
+    const canvas = tlKeyRef.current.canvas;
+    // Last entry for THIS canvas (stacks are global; ops are per-canvas).
+    let idx = -1;
+    for (let i = src.length - 1; i >= 0; i--) {
+      if (src[i].canvas === canvas) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx < 0) {
+      shellToast(dir === 'undo' ? 'Nothing to undo on this timeline.' : 'Nothing to redo.');
+      return;
+    }
+    const entry = src[idx];
+    fetch('/_api/reorder-revert', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ canvas: entry.canvas, seq: entry.seq, dir }),
+    })
+      .then((r) => r.json().catch(() => ({})))
+      .then((j) => {
+        src.splice(idx, 1);
+        if (j?.ok) {
+          dst.push(entry);
+          shellToast(`${dir === 'undo' ? 'Undid' : 'Redid'}: ${entry.label}`, true);
+        } else {
+          // 409 canvas diverged / 404 server restarted — entry is dead, drop it.
+          shellToast(`${dir === 'undo' ? 'Undo' : 'Redo'} skipped: ${j?.error || 'failed'}`);
+        }
+      })
+      .catch(() => shellToast(`${dir === 'undo' ? 'Undo' : 'Redo'} failed: network error`));
+  }, []);
   useEffect(() => {
     const onKey = (e) => {
       const s = tlKeyRef.current;
@@ -6464,6 +6513,14 @@ function App() {
         }
         return [...pts].filter((n) => n >= 0 && n < total).sort((a, b) => a - b);
       };
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
+        // Cmd+Z / Shift+Cmd+Z — undo/redo the last timeline clip op. Only when
+        // the shell (not the canvas iframe) has focus + the timeline is active,
+        // so the canvas's own annotation undo is untouched.
+        e.preventDefault();
+        tlUndoRedo(e.shiftKey ? 'redo' : 'undo');
+        return;
+      }
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
         if (s.playing) {
@@ -7189,6 +7246,68 @@ function App() {
       window.alert(`Assemble failed: ${e instanceof Error ? e.message : 'network error'}`);
     }
   }, [activePath, loadTree, openTab]);
+
+  // DDR-150 dogfood #5 — shared replace-media flow, PICKER-FIRST. The <input
+  // type=file> is created + clicked SYNCHRONOUSLY inside the caller's click
+  // gesture (browsers revoke transient user-activation after any await, which is
+  // why the old fetch-then-click never opened the dialog). The comp-clips lookup
+  // + upload + src patch all happen in the change handler, where no activation
+  // is needed. `resolveCdId(cc)` maps the fresh enumerator payload to the target
+  // media element's cd-id (sequence clip vs audio bed).
+  const replaceMediaViaPicker = useCallback(
+    ({ accept, resolveCdId }) => {
+      const canvas = activePath;
+      const artboardId = timelineCompId || undefined;
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = accept;
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      input.addEventListener('change', () => {
+        const file = input.files?.[0];
+        input.remove();
+        if (!file) return;
+        const ccUrl = `/_api/comp-clips?canvas=${encodeURIComponent(canvas)}${artboardId ? `&artboardId=${encodeURIComponent(artboardId)}` : ''}`;
+        fetch(ccUrl)
+          .then((r) => r.json().catch(() => ({})))
+          .then((cc) => {
+            const cdId = resolveCdId(cc);
+            if (!cdId) {
+              shellToast('No replaceable media here (its src is computed) — edit via chat.');
+              return null;
+            }
+            return fetch('/_api/asset', {
+              method: 'POST',
+              headers: { 'Content-Type': file.type || 'application/octet-stream' },
+              body: file,
+            })
+              .then((r) => r.json().catch(() => ({})))
+              .then((up) => {
+                if (!up?.path) {
+                  shellToast(`Upload failed: ${up?.error || 'unknown error'}`);
+                  return null;
+                }
+                return fetch('/_api/edit-attr', {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({ canvas, id: cdId, attr: 'src', value: up.path }),
+                });
+              });
+          })
+          .then((r) => (r ? r.json() : null))
+          .then((j) => {
+            if (j && !j.ok) shellToast(`Replace refused: ${j.error || 'failed'}`);
+            else if (j && j.ok) {
+              shellToast('Media replaced.', true);
+              if (j.seq != null) pushTlUndo(canvas, j.seq, 'replace media');
+            }
+          })
+          .catch(() => shellToast('Replace failed: network error'));
+      });
+      input.click();
+    },
+    [activePath, timelineCompId, pushTlUndo]
+  );
 
   // Phase 22 — soft-delete a canvas from the file tree. Confirms (destructive),
   // DELETEs to the main-origin-only endpoint, refreshes the tree, and resets the
@@ -8693,6 +8812,8 @@ function App() {
                   if (!j?.ok) {
                     console.warn('[retime]', j?.error || 'failed');
                     shellToast(`Retime refused: ${j?.error || 'failed'}`);
+                  } else if (j?.seq != null) {
+                    pushTlUndo(activePath, j.seq, patch.from != null ? 'move clip' : 'trim clip');
                   }
                   // The file watcher reloads the canvas → re-announce → the
                   // source-fetch effect re-parses the new timing.
@@ -8732,78 +8853,46 @@ function App() {
                   if (j && !j.ok) {
                     console.warn('[remove-clip]', j.error || 'failed');
                     shellToast(`Remove refused: ${j.error || 'failed'}`);
+                  } else if (j?.seq != null) {
+                    pushTlUndo(activePath, j.seq, 'remove clip');
                   }
                 })
                 .catch(() => {});
             }}
             onReplace={(index) => {
               if (!activePath || activePath === SYSTEM_TAB) return;
-              // DDR-150 P3 — replace a clip's media: resolve the media element's
-              // cd-id from the enumerator, upload the picked file to assets/, then
-              // patch its `src` via /_api/edit-attr (the src containment guard
-              // rejects ../ + script schemes). Timing/from/volume are preserved —
-              // only the src changes.
-              const artboardId = timelineCompId || undefined;
-              const ccUrl = `/_api/comp-clips?canvas=${encodeURIComponent(activePath)}${artboardId ? `&artboardId=${encodeURIComponent(artboardId)}` : ''}`;
-              fetch(ccUrl)
-                .then((r) => r.json().catch(() => ({})))
-                .then((cc) => {
+              // DDR-150 P3 + dogfood #5 — replace a clip's media. The file picker
+              // MUST open synchronously inside the click gesture: browsers revoke
+              // the transient user-activation after an await/fetch round-trip, so
+              // the old fetch-then-click() silently no-oped ("replace neotevře
+              // žádné okno"). Picker first; resolve the target + upload in the
+              // change handler.
+              replaceMediaViaPicker({
+                accept: 'video/*,image/*',
+                resolveCdId: (cc) => {
                   const seqs =
                     cc?.ok && Array.isArray(cc.clips)
                       ? cc.clips.filter((c) => c.kind === 'sequence')
                       : [];
-                  const clip = seqs[index] || null;
-                  if (!clip?.mediaCdId) {
-                    console.warn('[replace] clip has no replaceable media');
-                    shellToast('This clip has no replaceable media (its src is computed) — edit via chat.');
-                    return;
-                  }
-                  const input = document.createElement('input');
-                  input.type = 'file';
-                  input.accept = 'video/*,audio/*,image/*';
-                  input.style.display = 'none';
-                  document.body.appendChild(input);
-                  input.addEventListener('change', () => {
-                    const file = input.files?.[0];
-                    input.remove();
-                    if (!file) return;
-                    fetch('/_api/asset', {
-                      method: 'POST',
-                      headers: { 'Content-Type': file.type || 'application/octet-stream' },
-                      body: file,
-                    })
-                      .then((r) => r.json().catch(() => ({})))
-                      .then((up) => {
-                        if (!up?.path) {
-                          console.warn('[replace] upload failed', up?.error);
-                          shellToast(`Upload failed: ${up?.error || 'unknown error'}`);
-                          return null;
-                        }
-                        return fetch('/_api/edit-attr', {
-                          method: 'POST',
-                          headers: { 'content-type': 'application/json' },
-                          body: JSON.stringify({
-                            canvas: activePath,
-                            id: clip.mediaCdId,
-                            attr: 'src',
-                            value: up.path,
-                          }),
-                        });
-                      })
-                      .then((r) => (r ? r.json() : null))
-                      .then((j) => {
-                        if (j && !j.ok) {
-                          console.warn('[replace]', j.error || 'failed');
-                          shellToast(`Replace refused: ${j.error || 'failed'}`);
-                        } else if (j && j.ok) {
-                          shellToast('Clip media replaced.', true);
-                        }
-                      })
-                      .catch(() => {});
-                  });
-                  input.click();
-                })
-                .catch(() => {});
+                  return seqs[index]?.mediaCdId || null;
+                },
+              });
+            }}
+            onReplaceAudio={(index) => {
+              if (!activePath || activePath === SYSTEM_TAB) return;
+              // DDR-150 dogfood #5 — audio beds are addressable too: the
+              // enumerator lists loose media (an <Audio> under the reel) with a
+              // cd-id; ⇄ on the audio row swaps its src.
+              replaceMediaViaPicker({
+                accept: 'audio/*',
+                resolveCdId: (cc) => {
+                  const beds =
+                    cc?.ok && Array.isArray(cc.media)
+                      ? cc.media.filter((m) => m.tag === 'Audio')
+                      : [];
+                  return beds[index]?.cdId || null;
+                },
+              });
             }}
             onReorder={(index, direction) => {
               if (!activePath || activePath === SYSTEM_TAB) return;
@@ -8846,6 +8935,8 @@ function App() {
                   if (j && !j.ok) {
                     console.warn('[reorder-clip]', j.error || 'failed');
                     shellToast(`Reorder refused: ${j.error || 'failed'}`);
+                  } else if (j?.seq != null) {
+                    pushTlUndo(activePath, j.seq, 'reorder clip');
                   }
                 })
                 .catch(() => {});
@@ -8896,6 +8987,7 @@ function App() {
                     shellToast(`Insert refused: ${j.error || 'failed'}`);
                   } else if (j && j.ok) {
                     shellToast('Clip added to the timeline.', true);
+                    if (j.seq != null) pushTlUndo(activePath, j.seq, 'add clip');
                   }
                 })
                 .catch(() => {});

@@ -14,6 +14,31 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { computeSnapTargets, snapFrame, snapThresholdFrames } from './timeline-snap.js';
 
+// DDR-150 dogfood #6 — per-row media-kind identity so the timeline reads like
+// an editor: what's footage, what's a still, what's audio, what's plain JSX.
+function rowKind(seq) {
+  const t = seq.mediaTag;
+  if (t === 'Video' || t === 'OffthreadVideo') return 'video';
+  if (t === 'Img') return 'image';
+  if (t === 'Audio') return 'audio';
+  return 'jsx';
+}
+function rowKindGlyph(seq) {
+  const k = rowKind(seq);
+  if (k === 'video') return '▶';
+  if (k === 'image') return '◫';
+  if (k === 'audio') return '♪';
+  return 'ƒ';
+}
+function rowKindTitle(seq) {
+  const k = rowKind(seq);
+  const src = seq.mediaSrc ? ` · ${String(seq.mediaSrc).split('/').pop()}` : '';
+  if (k === 'video') return `Video clip${src}`;
+  if (k === 'image') return `Image${src}`;
+  if (k === 'audio') return `Audio${src}`;
+  return 'Animated JSX (code-driven)';
+}
+
 function TIcon({ name, size = 15 }) {
   const paths = {
     play: <path d="M4 3l9 5-9 5z" fill="currentColor" stroke="none" />,
@@ -98,6 +123,7 @@ export default function TimelinePanel({
   onRetime,
   onRemove,
   onReplace,
+  onReplaceAudio,
   onReorder,
   onDropMedia,
   onClose,
@@ -430,7 +456,7 @@ export default function TimelinePanel({
                 return (
                   <div className="tl-row" key={i} data-testid={`timeline-row-${i}`}>
                     <span className="tl-row-label" title={seq.label}>
-                      {onReorder ? (
+                      {onReorder && !seq.series ? (
                         <span className="tl-seq-reorder" role="group" aria-label={`Stacking order for ${seq.label}`}>
                           <button
                             type="button"
@@ -462,6 +488,14 @@ export default function TimelinePanel({
                           </button>
                         </span>
                       ) : null}
+                      <span
+                        className="tl-kind"
+                        data-kind={rowKind(seq)}
+                        title={rowKindTitle(seq)}
+                        aria-label={rowKindTitle(seq)}
+                      >
+                        {rowKindGlyph(seq)}
+                      </span>
                       <span className="tl-row-label-text">{seq.label}</span>
                     </span>
                     <div className="tl-row-track">
@@ -469,6 +503,7 @@ export default function TimelinePanel({
                         type="button"
                         className={`tl-seq-block${resizing ? ' is-resizing' : ''}${moving ? ' is-moving' : ''}`}
                         data-testid={`timeline-seq-${i}`}
+                        data-kind={rowKind(seq)}
                         title={
                           seq.series
                             ? `${seq.label} · ${blockFrom}–${blockFrom + dur}f (${dur}f) · position computed by the series — trim the right edge to retime`
@@ -577,7 +612,10 @@ export default function TimelinePanel({
             {audio.map((a, i) => (
               <div className="tl-row" key={`a${i}`} data-testid={`timeline-audio-${i}`}>
                 <span className="tl-row-label" title={a.label}>
-                  ♪ {a.label}
+                  <span className="tl-kind" data-kind="audio" title={`Audio · ${a.label}`} aria-label={`Audio · ${a.label}`}>
+                    ♪
+                  </span>
+                  <span className="tl-row-label-text">{a.label}</span>
                 </span>
                 <div className="tl-row-track">
                   <div
@@ -593,6 +631,25 @@ export default function TimelinePanel({
                     </svg>
                     <span className="tl-seq-name">{a.label}</span>
                   </div>
+                  {onReplaceAudio ? (
+                    <button
+                      type="button"
+                      className="tl-seq-replace"
+                      data-testid={`timeline-audio-replace-${i}`}
+                      title="Replace this audio"
+                      aria-label={`Replace audio ${a.label}`}
+                      style={{
+                        left: `calc(${pct(a.from)} + ${(a.duration / (totalFrames - 1)) * 100}% - 20px)`,
+                      }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onReplaceAudio(i);
+                      }}
+                    >
+                      ⇄
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ))}
