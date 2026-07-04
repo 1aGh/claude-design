@@ -6366,6 +6366,90 @@ function App() {
     [activePath]
   );
 
+  // DDR-150 P3 Task 9 — timeline keyboard shortcuts. Read live state through a
+  // ref so the listener attaches once. Gated on: timeline open + a comp active +
+  // focus NOT in a text field. Space doesn't steal the canvas PAN chord because
+  // that keydown fires inside the focused canvas iframe, never reaching this
+  // top-document listener. Space = play/pause · ←/→ = ±1 frame (Shift = ±1s) ·
+  // Home/End = start/end · ,/. = prev/next keyframe boundary.
+  const tlKeyRef = useRef({});
+  tlKeyRef.current = {
+    open: timelineOpen,
+    comps: activeComps,
+    frame: timelineFrame,
+    total: timelineTotal,
+    playing: timelinePlaying,
+    compId: timelineCompId,
+    muted: timelineMuted,
+    loop: timelineLoop,
+    sequences: timelineSequences,
+    post: postToActiveCanvas,
+  };
+  useEffect(() => {
+    const onKey = (e) => {
+      const s = tlKeyRef.current;
+      if (!s.open || !s.comps?.length) return;
+      const t = e.target;
+      const tag = t?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return;
+      const fps = s.comps[0]?.fps || 30;
+      const total = Math.max(1, s.total);
+      const doSeek = (f) => {
+        const nf = Math.max(0, Math.min(total - 1, Math.round(f)));
+        setTimelineFrame(nf);
+        setTimelinePlaying(false);
+        s.post({ dgn: 'timeline-seek', frame: nf, id: s.compId });
+      };
+      const snapFrames = () => {
+        const pts = new Set([0, total - 1]);
+        for (const seq of s.sequences || []) {
+          pts.add(seq.from);
+          for (const kf of seq.keyframes || []) {
+            pts.add(kf.from);
+            pts.add(kf.to);
+          }
+        }
+        return [...pts].filter((n) => n >= 0 && n < total).sort((a, b) => a - b);
+      };
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        if (s.playing) {
+          setTimelinePlaying(false);
+          s.post({ dgn: 'timeline-pause', id: s.compId });
+        } else {
+          setTimelinePlaying(true);
+          s.post({ dgn: 'timeline-mute', muted: s.muted, id: s.compId });
+          s.post({ dgn: 'timeline-loop', loop: s.loop, id: s.compId });
+          s.post({ dgn: 'timeline-play', id: s.compId });
+        }
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        doSeek(s.frame + (e.shiftKey ? fps : 1));
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        doSeek(s.frame - (e.shiftKey ? fps : 1));
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        doSeek(0);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        doSeek(total - 1);
+      } else if (e.key === '.') {
+        e.preventDefault();
+        const next = snapFrames().find((n) => n > s.frame);
+        if (next != null) doSeek(next);
+      } else if (e.key === ',') {
+        e.preventDefault();
+        const prev = snapFrames()
+          .reverse()
+          .find((n) => n < s.frame);
+        if (prev != null) doSeek(prev);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // DDR-148 — reset the Timeline's comp meta when the active canvas changes (a
   // non-comp canvas fires no announce, so stale comps would linger), then ask
   // the (possibly already-mounted) active canvas to re-announce. video-comp.tsx
