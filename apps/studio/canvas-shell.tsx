@@ -94,6 +94,7 @@ import {
   useAnnotationSelectionOptional,
 } from './use-annotation-selection.tsx';
 import { AnnotationsVisibilityProvider } from './use-annotations-visibility.tsx';
+import { showCanvasToast } from './use-canvas-media-drop.tsx';
 import { ChromeVisibilityProvider, useChromeVisibility } from './use-chrome-visibility.tsx';
 import { useCollab } from './use-collab.tsx';
 import { useCursorModifiers } from './use-cursor-modifiers.tsx';
@@ -1867,13 +1868,16 @@ function CanvasRouter({
     // rather than a change that silently disappears on the next reload (DDR-150 P1).
     const onEditReverted = (e: MessageEvent): void => {
       if (e.source !== window.parent) return;
-      const m = e.data as { dgn?: string; op?: string } | null;
+      const m = e.data as { dgn?: string; op?: string; reason?: string } | null;
       if (m?.dgn !== 'edit-reverted' || m.op !== 'text' || !lastTextCommit) return;
       try {
         lastTextCommit.el.textContent = lastTextCommit.original;
       } catch {
         /* detached — a subsequent reload re-syncs */
       }
+      showCanvasToast(
+        `Couldn't save that text — ${m.reason || 'not editable inline'}. Edit it via chat.`
+      );
       lastTextCommit = null;
     };
     // Capture phase so we beat the fit-to-view dblclick handler.
