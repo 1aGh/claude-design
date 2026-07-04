@@ -1,0 +1,218 @@
+---
+name: design:video-comp
+description: Author a video-comp canvas — a real Remotion composition mounted in the embedded Player for scrub/preview, exported to MP4/GIF through Maude's own capture spine (no renderer binaries). Auto-load when the brief or feedback mentions video, animation, klip/clip, motion graphics, titles, transitions, or hudba/music, or when authoring/editing a `<VideoComp>` artboard. Owns the Remotion iron rules + Maude's runtime/asset/export conventions (DDR-148).
+---
+
+# video-comp — author animation & marketing video AS a canvas
+
+A **video-comp** is a canvas artboard whose body is a genuine **Remotion**
+composition, mounted in the embedded `@remotion/player` for free scrub/preview
+and exported to **MP4/GIF** through Maude's own capture spine. You author it in
+TSX exactly like any other canvas — the composition is a React component driven
+by the frame index. See **DDR-148** for the architecture.
+
+Load this skill whenever the brief/feedback mentions **video, animation, klip,
+motion graphics, titles, transitions, or music/hudba**, or when you touch a
+`<VideoComp>` artboard.
+
+## The determinism iron law (non-negotiable)
+
+Export is frame-perfect ONLY because every animated value is a **pure function
+of the frame index**. Adapted from Remotion's official LLM guidance:
+
+- **Drive everything from `useCurrentFrame()`** via `interpolate()` / `spring()`.
+- **NEVER use CSS animations or transitions inside a comp** — no `@keyframes`,
+  no `transition:`, no `animation:`. They run on a wall-clock the capture can't
+  seek, so the export freezes or tears. (Ordinary non-comp artboards MAY use
+  CSS/WAAPI — but a `<VideoComp>` body must not.)
+- **No `Date.now()` / `Math.random()` / bare `requestAnimationFrame`** in render
+  output. For randomness use Remotion's seeded `random(seed)`.
+- Timing is in **frames**, not milliseconds: `interpolate(frame, [0, 30], …)` is
+  "over the first second at 30fps".
+
+## Only bundled imports resolve (Maude runtime constraint)
+
+A canvas can `import` ONLY from the packages Maude pre-bundles — an unbundled
+specifier fails to resolve on an end-user install (no `node_modules`). For
+video-comps that means:
+
+- `@maude/canvas-lib` — `DesignCanvas`, `DCSection`, `DCArtboard`, **`VideoComp`**.
+- `remotion` — `useCurrentFrame`, `useVideoConfig`, `interpolate`, `spring`,
+  `Easing`, `random`, `AbsoluteFill`, `Sequence`, `Series`, `Loop`, `Freeze`,
+  `Img`, `Video`, `OffthreadVideo`, `Audio`, `staticFile`, `interpolateColors`.
+- `@remotion/transitions` — `TransitionSeries`, `linearTiming`, `springTiming`.
+- Transition **presentations** (each a separate import): `@remotion/transitions/fade`,
+  `/slide`, `/wipe`, `/flip`, `/clock-wipe`, `/none`. (Exotic presentations like
+  `dreamy-zoom` are NOT bundled in v1 — stick to these six.)
+
+Do **not** import `@remotion/renderer`, `@remotion/web-renderer`, or any other
+`@remotion/*` — they aren't bundled and aren't needed (export is the capture
+spine).
+
+## The `<VideoComp>` wrapper + comp meta
+
+Mount the composition inside a `DCArtboard` whose width/height match the comp.
+`<VideoComp>` carries the **comp meta** (`fps` / `durationInFrames` / `width` /
+`height`) that both the Player and the exporter read:
+
+```tsx
+import { DesignCanvas, DCSection, DCArtboard, VideoComp } from '@maude/canvas-lib';
+import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
+
+const Title = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const enter = spring({ frame, fps, config: { damping: 200 } });
+  const y = interpolate(enter, [0, 1], [40, 0]);
+  const opacity = interpolate(frame, [0, 15], [0, 1], { extrapolateRight: 'clamp' });
+  return (
+    <AbsoluteFill style={{ background: 'var(--bg-0)', color: 'var(--fg-0)', justifyContent: 'center', alignItems: 'center' }}>
+      <div style={{ transform: `translateY(${y}px)`, opacity, fontSize: 72, fontWeight: 800 }}>Hello</div>
+    </AbsoluteFill>
+  );
+};
+
+export default function Canvas() {
+  return (
+    <DesignCanvas>
+      <DCSection title="Hero video">
+        <DCArtboard id="hero" label="Hero" width={1280} height={720}>
+          <VideoComp component={Title} durationInFrames={90} fps={30} width={1280} height={720} />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+```
+
+- Use **DS tokens** (`var(--bg-0)`, `var(--accent)`, `var(--fg-0)`) for colors,
+  same as any canvas — a video-comp is still a DS surface.
+- Multiple comps on one canvas → give each `<VideoComp id="…">` a stable id.
+- **Keep `<Sequence>`/`<TransitionSeries.Sequence>` structure parseable** (literal
+  `from` / `durationInFrames` props, one block per beat) — the Timeline panel
+  reads it directly.
+
+## Vocabulary: sequences, series, transitions, media
+
+- **`<Sequence from={30} durationInFrames={60}>`** — time-shift a child so its
+  own `useCurrentFrame()` starts at 0 when the parent hits frame 30.
+- **`<Series>` / `<Series.Sequence durationInFrames={…}>`** — lay beats back-to-back
+  without hand-computing offsets.
+- **`<TransitionSeries>`** — beats joined by transitions (the "spoj tyhle klipy"
+  vocabulary):
+
+```tsx
+import { TransitionSeries, linearTiming } from '@remotion/transitions';
+import { fade } from '@remotion/transitions/fade';
+import { slide } from '@remotion/transitions/slide';
+
+<TransitionSeries>
+  <TransitionSeries.Sequence durationInFrames={60}><Clip src="assets/a.mp4" /></TransitionSeries.Sequence>
+  <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: 15 })} />
+  <TransitionSeries.Sequence durationInFrames={60}><Clip src="assets/b.mp4" /></TransitionSeries.Sequence>
+  <TransitionSeries.Transition presentation={slide({ direction: 'from-right' })} timing={linearTiming({ durationInFrames: 15 })} />
+  <TransitionSeries.Sequence durationInFrames={60}><Clip src="assets/c.mp4" /></TransitionSeries.Sequence>
+</TransitionSeries>
+```
+
+- **Video/audio**: `<Video src="assets/clip.mp4" />` / `<OffthreadVideo>` /
+  `<Audio src="assets/music.mp3" volume={0.6} startFrom={30} />`. Sources are
+  **always** relative `assets/…` paths (see below).
+
+## Assets: `assets/` only, no network
+
+Media lives in `<designRoot>/assets/` (content-addressed on drop). Reference it
+**relatively** — `src="assets/<name>.mp4"`. NEVER fetch from a URL and never
+inline a data: URL. Drop a video/audio file onto the canvas to upload it; large
+files (>20 MB) ride git + collab sync, so keep clips lean.
+
+## Worked example — join 4 clips + crossfades + a music bed
+
+```tsx
+import { DesignCanvas, DCSection, DCArtboard, VideoComp } from '@maude/canvas-lib';
+import { AbsoluteFill, Audio, OffthreadVideo, interpolate, useCurrentFrame } from 'remotion';
+import { TransitionSeries, linearTiming } from '@remotion/transitions';
+import { fade } from '@remotion/transitions/fade';
+
+const CLIP = 60; // frames per clip
+const XF = 15;   // crossfade length
+const clips = ['assets/a.mp4', 'assets/b.mp4', 'assets/c.mp4', 'assets/d.mp4'];
+// 4 clips, 3 crossfades → total = 4*CLIP - 3*XF
+const TOTAL = clips.length * CLIP - (clips.length - 1) * XF;
+
+const Clip = ({ src, label }: { src: string; label: string }) => {
+  const frame = useCurrentFrame();
+  const up = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: 'clamp' });
+  return (
+    <AbsoluteFill>
+      <OffthreadVideo src={src} />
+      <AbsoluteFill style={{ justifyContent: 'flex-end', padding: 48 }}>
+        <div style={{ color: 'var(--fg-0)', fontSize: 40, fontWeight: 700, opacity: up }}>{label}</div>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
+const Reel = () => (
+  <AbsoluteFill>
+    <TransitionSeries>
+      {clips.flatMap((src, i) => {
+        const seq = (
+          <TransitionSeries.Sequence key={`s${i}`} durationInFrames={CLIP}>
+            <Clip src={src} label={`0${i + 1}`} />
+          </TransitionSeries.Sequence>
+        );
+        if (i === clips.length - 1) return [seq];
+        return [
+          seq,
+          <TransitionSeries.Transition
+            key={`t${i}`}
+            presentation={fade()}
+            timing={linearTiming({ durationInFrames: XF })}
+          />,
+        ];
+      })}
+    </TransitionSeries>
+    {/* Music bed under the whole reel, fading out over the last 20 frames. */}
+    <Audio src="assets/music.mp3" volume={(f) => interpolate(f, [TOTAL - 20, TOTAL], [0.7, 0], { extrapolateLeft: 'clamp' })} />
+  </AbsoluteFill>
+);
+
+export default function Canvas() {
+  return (
+    <DesignCanvas>
+      <DCSection title="Showreel">
+        <DCArtboard id="reel" label="Reel" width={1280} height={720}>
+          <VideoComp component={Reel} durationInFrames={/* TOTAL */ 195} fps={30} width={1280} height={720} />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+```
+
+## Preview + export
+
+- **Preview/scrub** is free — the Player shows transport controls in the canvas,
+  and the **Timeline panel** (View → Timeline) scrubs + retimes sequence blocks.
+- **Export** via the ⌘E dialog or the slash command (DDR-062 — go through the
+  command, never a bin path):
+  - `\/design:export mp4 --scope artboard` — fps/duration come from the comp meta.
+  - `\/design:export gif --scope artboard --option fps=15 --option gifColors=128`.
+  - MP4 is H.264 (falls back to WebM if the capture browser has no H.264 encoder);
+    GIF is palette-quantized. Both render deterministically through the capture
+    spine — **no native binaries, no user install**.
+
+## Verify motion over time — freeze-frames lie (DDR-094)
+
+A single screenshot can look right while nothing actually animates. When you
+check a comp, seek to **two** different frames (or scrub in the Player) and
+confirm the output changes. The motion-critic enforces this as a hard gate.
+
+## License note (surface once to the user)
+
+Remotion is **source-available, not MIT**. It's **free for individuals and
+companies of ≤ 3 people** (unlimited commercial use); for-profit orgs of 4+
+people need their own Remotion Company License — that's **the user's**
+relationship with Remotion, not Maude's. Maude ships no renderer binaries and no
+telemetry. See `dist/runtime/REMOTION-LICENSE.md` + <https://remotion.pro/license>.

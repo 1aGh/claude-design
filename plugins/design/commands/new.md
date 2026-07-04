@@ -99,6 +99,8 @@ The skill treats `$BRIEF` as the answer to discovery Question 1 (product one-lin
 
 Invoke skill `design` with the input: `new $ARGUMENTS`.
 
+**Video-comp brief cue (DDR-148).** When the brief describes a **video / animation / motion-graphic** deliverable — cues like `video`, `animace`/`animation`, `klip`/`clip`, `mp4`, `gif`, `showreel`, `trailer`, `title sequence`/`titulek`, `motion graphic`, `hudba`/`music`, `explainer`, `intro/outro` — also load skill **`design:video-comp`** and scaffold the artboard body as a `<VideoComp>` Remotion composition (frame-driven, `assets/` media, bundled imports only) instead of a static mock. The rest of the envelope (`DesignCanvas`/`DCSection`/`DCArtboard`, DS tokens) is unchanged.
+
 **One pre-flight call instead of 4–8 sequential jq reads.** `prep.sh` reads `.design/config.json` + `_active.json` + `_preflight.json` + `_server.json` in a single pass and exports the resolved vars (`REPO_ROOT`, `NAME`, `DESIGN_ROOT`, `ROOT_CLASS`, `THEME`, `TOKENS_REL`, `NEW_CANVAS_DIR`, `NEW_COMPONENT_DIR`, `TEAM_ACCENT`, `DEFAULT_DS`, `KNOWN_DS`, `ACCENT_STRATEGY`, `COLOR_SPACE`, `DEPS_OK`, `DEPS_MISSING`, `SERVER_UP`, `SERVER_PORT`). The DS-presence gate (`bootstrap-check.sh`, step 0) stays separate — it owns the 0/10/11 exit-code contract.
 
 ```bash

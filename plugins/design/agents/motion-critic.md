@@ -87,6 +87,29 @@ Standard contract (see `design-critic.md`).
 - "Particle" decorations.
 - Hero animation that loops indefinitely (loops should resolve and stop).
 
+### 10. Video-comp (Remotion) rules — DDR-148 (when the canvas contains `<VideoComp`)
+
+A video-comp is a Remotion composition; its motion contract is DIFFERENT from a CSS/WAAPI mock and is **load-bearing for export determinism**. Detect via `grep -n '<VideoComp\|useCurrentFrame\|@remotion' "$canvas"`. Then hard-check:
+
+- **NO CSS animations/transitions inside the comp body** — `@keyframes`, `transition:`, `animation:`, or `motion/react` used *inside* a `<VideoComp>` composition = **blocker**. Comp values MUST be frame-driven (`useCurrentFrame()` → `interpolate`/`spring`). (Sections 1–5's CSS-duration rules do NOT apply inside a comp — they'd be wrong there.)
+- **No non-deterministic values** in render output — `Date.now()`, `Math.random()`, bare `requestAnimationFrame`/`setInterval` driving a value = **blocker** (breaks frame-perfect capture). Seeded `random()` is fine.
+- **Only bundled imports** — a comp importing anything outside `@maude/canvas-lib` / `remotion` / `@remotion/transitions` (+ the six bundled presentations `fade`/`slide`/`wipe`/`flip`/`clock-wipe`/`none`) = blocker (won't resolve on an end-user install).
+- **Media is `assets/…`** — `<Video>`/`<Audio>`/`<OffthreadVideo>` `src` must be a relative `assets/` path, never a URL or data: URI.
+- **Parseable structure** — `<Sequence>`/`<TransitionSeries.Sequence>` use literal `from`/`durationInFrames` (the Timeline panel parses them).
+
+### 11. Live-motion proof (freeze-frames lie — DDR-094 §6)
+
+A single screenshot can PASS while nothing actually animates (a frozen `d:path()`, a suppressed comp, a dead keyframe). **Never trust one frame.** Sample the motion over **two** points and assert it changed:
+
+- **Video-comp**: seek to two frames and confirm the render differs.
+  ```bash
+  agent-browser eval "window.__maude_seek__ && window.__maude_seek__(0)"; agent-browser screenshot /tmp/mc-f0.png
+  agent-browser eval "window.__maude_seek__(Math.floor((window.__maude_comps__()[0]?.durationInFrames||30)/2))"; agent-browser screenshot /tmp/mc-fN.png
+  # identical bytes at two distinct frames = the comp is NOT animating → HARD fail
+  ```
+- **Ordinary artboard**: sample a computed style over real wall-clock (t0 vs t1 ~600ms apart via `getComputedStyle`/`getBBox`) and assert it moves.
+- A **freeze-frame pass + over-time fail is a HARD fail** — report it as a blocker, not a pass.
+
 ## Report format
 
 ```markdown

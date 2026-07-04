@@ -52,6 +52,16 @@ agent-browser eval "matchMedia('(prefers-reduced-motion: reduce)').matches"
 
 Headless Chrome (and many real user browsers / OS accessibility settings) default `prefers-reduced-motion: reduce` to **true**, and the design tokens *correctly* collapse `--dur-*` to `1ms` in that branch — so "nothing animates" is the system working as designed, not a CSS bug. If the probe returns `true`, that is almost certainly the whole story: surface it to the user ("motion is suppressed by `prefers-reduced-motion: reduce` in this browser/OS — toggle it via the specimen's `<ReducedMotionToggle>` or your OS settings to see it play") instead of chasing the CSS. Only if the probe returns `false` does a real motion bug warrant reading the keyframes/`motion/react` code. The probe is ~1 agent-browser call and belongs before any code reading — studyfi burned ~2 user round-trips chasing CSS that was working.
 
+#### 0.6 Video-comp pre-load (DDR-148)
+
+When the feedback mentions video / animation-as-video cues — `video`, `klip`, `clip`, `animace`, `animation`, `mp4`, `gif`, `hudba`, `music`, `soundtrack`, `titulek`, `title card`, `transition`, `crossfade`, `motion graphic`, `showreel`, `trailer` — **OR** the active canvas already contains `<VideoComp` — load skill **`design:video-comp`** before dispatching the edit, so the composition stays inside the Remotion iron rules (frame-driven values only, no CSS animations in a comp, only bundled imports, `assets/` sources). One-liner grep:
+
+```bash
+grep -qiE 'video|klip|clip|animace|animation|mp4|gif|hudba|music|soundtrack|titulek|title card|transition|crossfade|motion graphic|showreel|trailer' <<< "$ARGUMENTS" && VIDEO_EDIT=1
+grep -q '<VideoComp' "$ACTIVE_CANVAS_ABS" 2>/dev/null && VIDEO_EDIT=1
+[ -n "$VIDEO_EDIT" ] && echo "→ loading skill design:video-comp (Remotion composition rules)"
+```
+
 ### 1. Resolve config
 
 Invoke skill `design` with input `$ARGUMENTS`.
