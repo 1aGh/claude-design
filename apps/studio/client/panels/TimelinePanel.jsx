@@ -427,8 +427,14 @@ export default function TimelinePanel({
                             <span
                               key={k}
                               className="tl-kf"
+                              data-testid={`timeline-kf-${i}-${k}`}
                               style={{ left: `${clamp(l, 0, 100)}%`, width: `${Math.max(1.5, w)}%` }}
-                              title={`animates ${kf.from}–${kf.to}f`}
+                              title={`seek to keyframe ${kf.from}f (animates ${kf.from}–${kf.to}f)`}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSeek?.(kf.from);
+                              }}
                             />
                           );
                         })}
