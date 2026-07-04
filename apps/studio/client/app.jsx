@@ -6162,7 +6162,8 @@ function App() {
     setInspectorOpen(which === 'inspector');
     setCommentsPanelOpen(which === 'comments');
     setAssistantOpen(which === 'assistant');
-    setTimelineOpen(which === 'timeline');
+    // NOTE: the Timeline is a BOTTOM dock (DDR-148), NOT part of the right-rail
+    // mutual-exclusion — it stays open when a right panel opens.
   }, []);
   // Functional updates so this is stale-closure-safe inside the keydown /
   // postMessage listeners; opening always clears the sibling panels.
@@ -6173,7 +6174,6 @@ function App() {
           setChangesOpen(false);
           setCommentsPanelOpen(false);
           setAssistantOpen(false);
-          setTimelineOpen(false);
         }
         return !v;
       });
@@ -6183,7 +6183,6 @@ function App() {
           setChangesOpen(false);
           setInspectorOpen(false);
           setAssistantOpen(false);
-          setTimelineOpen(false);
         }
         return !v;
       });
@@ -6193,7 +6192,6 @@ function App() {
           setInspectorOpen(false);
           setCommentsPanelOpen(false);
           setAssistantOpen(false);
-          setTimelineOpen(false);
         }
         return !v;
       });
@@ -6203,22 +6201,14 @@ function App() {
           setChangesOpen(false);
           setInspectorOpen(false);
           setCommentsPanelOpen(false);
-          setTimelineOpen(false);
-        }
-        return !v;
-      });
-    } else if (which === 'timeline') {
-      setTimelineOpen((v) => {
-        if (!v) {
-          setChangesOpen(false);
-          setInspectorOpen(false);
-          setCommentsPanelOpen(false);
-          setAssistantOpen(false);
         }
         return !v;
       });
     }
   }, []);
+  // DDR-148 — the Timeline is a BOTTOM dock, independent of the right rail: it
+  // toggles on its own and coexists with Inspector/Changes/Comments/Chat.
+  const toggleTimeline = useCallback(() => setTimelineOpen((v) => !v), []);
   const whatsNew = useWhatsNew(MDCC_VERSION);
   // Phase 29 (E4) — first-run onboarding wizard. The native shell boots a minimal
   // "welcome" project on first launch; we ask it whether this is a first run and, if
@@ -8128,7 +8118,7 @@ function App() {
           inspectorTab={inspectorTab}
           onToggleInspector={() => toggleRightPanel('inspector')}
           timelineOpen={timelineOpen}
-          onToggleTimeline={() => toggleRightPanel('timeline')}
+          onToggleTimeline={toggleTimeline}
           hasComps={activeComps.length > 0}
           assistantOpen={assistantOpen}
           onToggleAssistant={() => toggleRightPanel('assistant')}
@@ -8366,6 +8356,21 @@ function App() {
               postToActiveCanvas({ dgn: 'timeline-pause' });
             }}
             onToggleLoop={() => setTimelineLoop((v) => !v)}
+            onRetime={(index, patch) => {
+              if (!activePath || activePath === SYSTEM_TAB) return;
+              fetch('/_api/retime-sequence', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ canvas: activePath, index, ...patch }),
+              })
+                .then((r) => r.json())
+                .then((j) => {
+                  if (!j?.ok) console.warn('[retime]', j?.error || 'failed');
+                  // The file watcher reloads the canvas → re-announce → the
+                  // source-fetch effect re-parses the new timing.
+                })
+                .catch(() => {});
+            }}
             height={216}
             onClose={() => setTimelineOpen(false)}
           />

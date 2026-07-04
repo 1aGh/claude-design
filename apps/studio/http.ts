@@ -1339,6 +1339,33 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       );
     },
 
+    '/_api/retime-sequence': async (req: Request) => {
+      // DDR-148 — Timeline drag-to-retime. POST { canvas, index, durationInFrames?,
+      // from? } → rewrites the index-th sequence's timing (const-preferring so a
+      // derived total updates too). Same MAIN-ORIGIN-ONLY trust boundary as
+      // /_api/reorder + /_api/edit-css (absent from CANVAS_SAFE_API +
+      // startCanvasServer routes, DDR-054) — the source write is privileged; the
+      // untrusted canvas iframe can only request it over the dgn:* bus.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        index?: unknown;
+        durationInFrames?: unknown;
+        from?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.retimeSequenceOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json({ ok: true }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
+    },
+
     '/_api/reorder-revert': async (req: Request) => {
       // Phase 12.1 follow-up — Cmd+Z / Cmd+Shift+Z for a reorder. POST body
       // { canvas, seq, dir:'undo'|'redo' } → api.reorderRevert swaps the whole

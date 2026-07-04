@@ -123,6 +123,40 @@ describe('canvas-edit / applyEdit', () => {
     expect(out.source).toContain('<div style={{ padding: 14 }}>x</div>');
   });
 
+  test('retime: bumps a referenced const so a derived total moves in lock-step (DDR-148)', async () => {
+    const { applyRetimeSequence } = await import('../canvas-edit.ts');
+    const src = [
+      'const A = 66;',
+      'const B = 62;',
+      'const XF = 16;',
+      'const TOTAL = A + B - XF;',
+      'function Movie(){ return (<TransitionSeries>',
+      '  <TransitionSeries.Sequence durationInFrames={A}><Intro/></TransitionSeries.Sequence>',
+      '  <TransitionSeries.Transition timing={linearTiming({ durationInFrames: XF })} />',
+      '  <TransitionSeries.Sequence durationInFrames={B}><Payoff/></TransitionSeries.Sequence>',
+      '</TransitionSeries>); }',
+    ].join('\n');
+    const r0 = applyRetimeSequence(CANVAS, src, 0, { durationInFrames: 80 });
+    expect(r0.source).toContain('const A = 80'); // const edited, not the literal
+    expect(r0.source).toContain('const TOTAL = A + B - XF'); // derived total intact → auto-updates
+    const r1 = applyRetimeSequence(CANVAS, r0.source, 1, { durationInFrames: 90 });
+    expect(r1.source).toContain('const B = 90');
+  });
+
+  test('retime: edits a literal in place + supports from', async () => {
+    const { applyRetimeSequence } = await import('../canvas-edit.ts');
+    const src = 'function C(){ return <Sequence from={10} durationInFrames={40}><Foo/></Sequence>; }';
+    const r = applyRetimeSequence(CANVAS, src, 0, { from: 20, durationInFrames: 55 });
+    expect(r.source).toContain('from={20}');
+    expect(r.source).toContain('durationInFrames={55}');
+  });
+
+  test('retime: an out-of-range sequence index throws', async () => {
+    const { applyRetimeSequence, CanvasEditError } = await import('../canvas-edit.ts');
+    const src = 'function C(){ return <Sequence durationInFrames={40}><Foo/></Sequence>; }';
+    expect(() => applyRetimeSequence(CANVAS, src, 5, { durationInFrames: 10 })).toThrow(CanvasEditError);
+  });
+
   test('inserts into a style object with a TRAILING comma without a double comma (DDR-148 #4)', () => {
     // A frame-driven inline style commonly ends the last property with a
     // trailing comma. Appending must NOT produce `opacity: o, , color: …`

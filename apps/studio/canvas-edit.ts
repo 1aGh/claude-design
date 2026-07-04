@@ -831,6 +831,124 @@ export function applyMove(
 }
 
 // ---------------------------------------------------------------------------
+// DDR-148 — Timeline drag-to-retime. Rewrites a `<...Sequence>`'s
+// `durationInFrames` / `from` to a new frame count. Sequences are addressed by
+// their document ORDER (the same order timeline-parse.js tokenizes them), not a
+// data-cd-id — a member-expression element (`TransitionSeries.Sequence`) has no
+// stable cd-id, and the order is what the Timeline UI already knows.
+
+export interface RetimePatch {
+  durationInFrames?: number;
+  from?: number;
+}
+
+const SEQ_TAG_RE = /<(?:TransitionSeries\.Sequence|Series\.Sequence|Sequence)\b[^>]*>/g;
+
+/**
+ * Rewrite one attribute on a sequence tag. Prefers editing a referenced const
+ * (`durationInFrames={A}` → bump `const A = …`) so a derived total
+ * (`const TOTAL = A + B - XF`) updates in lock-step; falls back to editing a
+ * literal in place; refuses a non-trivial expression (returns false).
+ */
+function retimeAttr(
+  s: MagicString,
+  source: string,
+  tag: string,
+  tagStart: number,
+  key: 'durationInFrames' | 'from',
+  newVal: number
+): boolean {
+  const am = tag.match(new RegExp(`\\b${key}=\\{\\s*([^}]*?)\\s*\\}`));
+  if (!am || am.index == null) return false;
+  const inner = am[1].trim();
+  if (/^[A-Za-z_$][\w$]*$/.test(inner)) {
+    const cm = source.match(new RegExp(`\\bconst\\s+${inner}\\s*=\\s*(-?\\d+)`));
+    if (cm && cm.index != null && cm[1]) {
+      const numStart = cm.index + cm[0].lastIndexOf(cm[1]);
+      s.overwrite(numStart, numStart + cm[1].length, String(newVal));
+      return true;
+    }
+  }
+  if (/^-?\d+$/.test(inner)) {
+    const innerRel = am[0].indexOf(inner, am[0].indexOf('{'));
+    const valStart = tagStart + am.index + innerRel;
+    s.overwrite(valStart, valStart + inner.length, String(newVal));
+    return true;
+  }
+  return false;
+}
+
+/** Pure retime — exposed for tests. Never mutates disk. */
+export function applyRetimeSequence(
+  canvasAbsPath: string,
+  source: string,
+  seqIndex: number,
+  patch: RetimePatch
+): { source: string } {
+  const s = new MagicString(source);
+  SEQ_TAG_RE.lastIndex = 0;
+  let i = 0;
+  let touched = false;
+  let m: RegExpExecArray | null = SEQ_TAG_RE.exec(source);
+  while (m) {
+    if (i === seqIndex) {
+      const tag = m[0];
+      const tagStart = m.index;
+      for (const [key, val] of [
+        ['durationInFrames', patch.durationInFrames],
+        ['from', patch.from],
+      ] as const) {
+        if (val == null || !Number.isFinite(val)) continue;
+        if (retimeAttr(s, source, tag, tagStart, key, Math.max(0, Math.round(val)))) touched = true;
+      }
+      break;
+    }
+    i += 1;
+    m = SEQ_TAG_RE.exec(source);
+  }
+  if (!touched) {
+    throw new CanvasEditError(`no retimable sequence at index ${seqIndex}`, {
+      canvas: canvasAbsPath,
+      id: String(seqIndex),
+    });
+  }
+  const next = s.toString();
+  const parsed = parseSync(canvasAbsPath, next, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `retime produced invalid source: ${parsed.errors[0]?.message ?? 'parse error'}`,
+      { canvas: canvasAbsPath, id: String(seqIndex) }
+    );
+  }
+  return { source: next };
+}
+
+/** Retime a sequence on disk (atomic write + per-file lock, like moveElement). */
+export async function retimeSequence(
+  canvasAbsPath: string,
+  seqIndex: number,
+  patch: RetimePatch
+): Promise<{ source: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: String(seqIndex),
+      });
+    }
+    const source = await file.text();
+    const next = applyRetimeSequence(canvasAbsPath, source, seqIndex, patch);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Edit shapes.
 
 function editStringAttr(s: MagicString, opening: AnyNode, name: string, value: string): void {

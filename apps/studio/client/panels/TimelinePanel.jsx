@@ -10,7 +10,7 @@
 // v1 is read-only rows (see + seek). Drag-to-retime a block / move a keyframe
 // (source-patch) is the documented next slice.
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 function TIcon({ name, size = 15 }) {
   const paths = {
@@ -73,6 +73,7 @@ export default function TimelinePanel({
   onToggleLoop,
   height,
   resizing,
+  onRetime,
   onClose,
 }) {
   const comp = comps[0] ?? null;
@@ -81,13 +82,18 @@ export default function TimelinePanel({
   const clamped = clamp(Math.round(frame), 0, totalFrames - 1);
   const trackRef = useRef(null);
   const draggingRef = useRef(false);
+  // Drag-to-retime a sequence's duration: { index, startX, startDur, rowW, curDur }.
+  const [retimeDrag, setRetimeDrag] = useState(null);
 
+  // The row-track's frame axis starts AFTER the fixed label gutter (96px).
+  const LABEL_GUTTER = 96;
   const seekAt = useCallback(
     (clientX) => {
       const el = trackRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      const pct = clamp((clientX - r.left) / Math.max(1, r.width), 0, 1);
+      const axis = Math.max(1, r.width - LABEL_GUTTER);
+      const pct = clamp((clientX - r.left - LABEL_GUTTER) / axis, 0, 1);
       onSeek?.(Math.round(pct * (totalFrames - 1)));
     },
     [onSeek, totalFrames]
@@ -110,10 +116,44 @@ export default function TimelinePanel({
   const onTrackDown = (e) => {
     // A click on a sequence block seeks to its start (handled there); a click on
     // the bare track scrubs + starts a drag.
+    if (retimeDrag) return; // a resize is in flight — don't scrub
     draggingRef.current = true;
     seekAt(e.clientX);
     // force the effect to (re)attach the window listeners
     e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  // DDR-148 drag-to-retime — dragging a block's right edge rewrites its
+  // durationInFrames (const-preferring on the server, so a derived total moves
+  // in lock-step). The width previews live; the source patch lands on release.
+  useEffect(() => {
+    if (!retimeDrag) return undefined;
+    const move = (e) => {
+      const deltaFrames =
+        ((e.clientX - retimeDrag.startX) / Math.max(1, retimeDrag.rowW)) * (totalFrames - 1);
+      const curDur = Math.max(1, Math.round(retimeDrag.startDur + deltaFrames));
+      setRetimeDrag((d) => (d ? { ...d, curDur } : d));
+    };
+    const up = () => {
+      setRetimeDrag((d) => {
+        if (d && d.curDur !== d.startDur) onRetime?.(d.index, { durationInFrames: d.curDur });
+        return null;
+      });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up, { once: true });
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+  }, [retimeDrag, totalFrames, onRetime]);
+
+  const startResize = (e, index, dur) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const rowTrack = e.currentTarget.closest('.tl-row-track');
+    const rowW = rowTrack ? rowTrack.getBoundingClientRect().width : 300;
+    setRetimeDrag({ index, startX: e.clientX, startDur: dur, rowW, curDur: dur });
   };
 
   // Second ticks across the ruler.
@@ -202,40 +242,63 @@ export default function TimelinePanel({
                 </div>
               </div>
             ) : (
-              sequences.map((seq, i) => (
-                <div className="tl-row" key={i} data-testid={`timeline-row-${i}`}>
-                  <span className="tl-row-label" title={seq.label}>
-                    {seq.label}
-                  </span>
-                  <div className="tl-row-track">
-                    <button
-                      type="button"
-                      className="tl-seq-block"
-                      data-testid={`timeline-seq-${i}`}
-                      title={`${seq.label} · ${seq.from}–${seq.from + seq.duration}f`}
-                      style={{ left: pct(seq.from), width: `${(seq.duration / (totalFrames - 1)) * 100}%` }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSeek?.(seq.from);
-                      }}
-                    >
-                      <span className="tl-seq-name">{seq.label}</span>
-                      {seq.keyframes.map((kf, k) => {
-                        const l = ((kf.from - seq.from) / Math.max(1, seq.duration)) * 100;
-                        const w = ((kf.to - kf.from) / Math.max(1, seq.duration)) * 100;
-                        return (
-                          <span
-                            key={k}
-                            className="tl-kf"
-                            style={{ left: `${clamp(l, 0, 100)}%`, width: `${Math.max(1.5, w)}%` }}
-                            title={`animates ${kf.from}–${kf.to}f`}
-                          />
-                        );
-                      })}
-                    </button>
+              sequences.map((seq, i) => {
+                const dur =
+                  retimeDrag && retimeDrag.index === i ? retimeDrag.curDur : seq.duration;
+                const resizing = !!(retimeDrag && retimeDrag.index === i);
+                return (
+                  <div className="tl-row" key={i} data-testid={`timeline-row-${i}`}>
+                    <span className="tl-row-label" title={seq.label}>
+                      {seq.label}
+                    </span>
+                    <div className="tl-row-track">
+                      <button
+                        type="button"
+                        className={`tl-seq-block${resizing ? ' is-resizing' : ''}`}
+                        data-testid={`timeline-seq-${i}`}
+                        title={`${seq.label} · ${seq.from}–${seq.from + dur}f (${dur}f)`}
+                        style={{
+                          left: pct(seq.from),
+                          width: `${(dur / (totalFrames - 1)) * 100}%`,
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSeek?.(seq.from);
+                        }}
+                      >
+                        <span className="tl-seq-name">
+                          {seq.label}
+                          {resizing ? ` · ${dur}f` : ''}
+                        </span>
+                        {seq.keyframes.map((kf, k) => {
+                          const l = ((kf.from - seq.from) / Math.max(1, seq.duration)) * 100;
+                          const w = ((kf.to - kf.from) / Math.max(1, seq.duration)) * 100;
+                          return (
+                            <span
+                              key={k}
+                              className="tl-kf"
+                              style={{ left: `${clamp(l, 0, 100)}%`, width: `${Math.max(1.5, w)}%` }}
+                              title={`animates ${kf.from}–${kf.to}f`}
+                            />
+                          );
+                        })}
+                      </button>
+                      {onRetime ? (
+                        <span
+                          className="tl-seq-resize"
+                          data-testid={`timeline-resize-${i}`}
+                          title="Drag to retime this sequence"
+                          style={{
+                            left: `calc(${pct(seq.from)} + ${(dur / (totalFrames - 1)) * 100}% - 5px)`,
+                          }}
+                          onPointerDown={(e) => startResize(e, i, seq.duration)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
 
             <span

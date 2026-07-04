@@ -1246,6 +1246,11 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .tl-seq-block:hover { background: color-mix(in oklch, var(--accent) 32%, var(--bg-2)); }
 .tl-seq-block:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .tl-seq-name { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--fg-0); pointer-events: none; white-space: nowrap; }
+.tl-seq-block.is-resizing { background: color-mix(in oklch, var(--accent) 42%, var(--bg-2)); border-color: var(--accent); }
+/* drag-to-retime handle at the block's right edge */
+.tl-seq-resize { position: absolute; top: 3px; bottom: 3px; width: 10px; z-index: 4; cursor: ew-resize; border-radius: 2px; touch-action: none; }
+.tl-seq-resize::after { content: ""; position: absolute; top: 20%; bottom: 20%; left: 4px; width: 2px; border-radius: 1px; background: var(--fg-2); opacity: 0; }
+.tl-seq-resize:hover::after { opacity: 0.9; background: var(--accent); }
 .tl-kf { position: absolute; top: 3px; bottom: 3px; min-width: 3px; border-radius: 2px; background: var(--accent); opacity: 0.85; pointer-events: none; }
 .tl-playhead { position: absolute; top: 16px; bottom: 0; width: 2px; background: var(--fg-0); box-shadow: 0 0 0 1px var(--bg-1); pointer-events: none; z-index: 3; }
 .tl-playhead::before { content: ""; position: absolute; top: -4px; left: -4px; border: 5px solid transparent; border-top-color: var(--fg-0); }

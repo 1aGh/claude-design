@@ -13,6 +13,7 @@ import {
   type MovePosition,
   moveElement,
   removeAttribute,
+  retimeSequence,
   editText as runEditText,
 } from './canvas-edit.ts';
 import type { Context } from './context.ts';
@@ -288,6 +289,13 @@ export interface Api {
     refId?: unknown;
     position?: unknown;
   }): Promise<ReorderOpResult>;
+  /** DDR-148 — Timeline drag-to-retime a sequence's durationInFrames / from. */
+  retimeSequenceOp(input: {
+    canvas?: unknown;
+    index?: unknown;
+    durationInFrames?: unknown;
+    from?: unknown;
+  }): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   // Undo/redo a prior reorder by seq (Cmd+Z from the canvas undo stack). Whole-
   // file content swap from the in-memory revert log — immune to the positional
   // data-cd-id churn a reorder causes (inverse-descriptor undo would go stale).
@@ -1803,6 +1811,58 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  /**
+   * DDR-148 — Timeline drag-to-retime. Rewrites the `durationInFrames` / `from`
+   * of the `index`-th sequence (document order). MAIN-ORIGIN ONLY at the route
+   * layer. Snapshots pre-retime for /design:rollback; suppresses the agent-rim.
+   */
+  async function retimeSequenceOp(input: {
+    canvas?: unknown;
+    index?: unknown;
+    durationInFrames?: unknown;
+    from?: unknown;
+  }): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const index = Number.isInteger(input.index) ? (input.index as number) : -1;
+    if (index < 0 || index > 500)
+      return { ok: false, status: 400, error: 'invalid sequence index' };
+    const frames = (v: unknown, lo: number): number | undefined => {
+      const n = Math.round(Number(v));
+      return Number.isFinite(n) ? Math.max(lo, Math.min(100000, n)) : undefined;
+    };
+    const patch: { durationInFrames?: number; from?: number } = {};
+    if (input.durationInFrames != null) patch.durationInFrames = frames(input.durationInFrames, 1);
+    if (input.from != null) patch.from = frames(input.from, 0);
+    if (patch.durationInFrames == null && patch.from == null) {
+      return { ok: false, status: 400, error: 'nothing to retime' };
+    }
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      await retimeSequence(r.abs, index, patch);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-retime');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'retime failed',
+      };
+    }
+  }
+
   async function reorderRevert(input: {
     canvas?: unknown;
     seq?: unknown;
@@ -2260,6 +2320,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     editText,
     editAttr,
     reorder,
+    retimeSequenceOp,
     reorderRevert,
     buildIndexData,
     buildSystemData,
