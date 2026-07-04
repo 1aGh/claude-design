@@ -71,6 +71,12 @@ async function runVideo(
   // Ordinary artboards animate on wall-clock (WAAPI); video-comps on frame index.
   if (options.mode === 'ordinary') args.push('--mode', 'ordinary');
 
+  // Resolution multiplier (1–3×) — the artboard's native size × scale. Default 2×
+  // so a 960×540 comp exports at 1920×1080 instead of a tiny native capture. The
+  // shim applies it as deviceScaleFactor AND sizes the encoder to match.
+  const scale = clampInt(options.scale, 1, 3) ?? 2;
+  args.push('--scale', String(scale));
+
   const fps = clampInt(options.fps, 1, 60);
   if (fps) args.push('--fps', String(fps));
 

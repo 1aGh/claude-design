@@ -166,6 +166,15 @@ try {
   const framePaths = [];
   const t0 = Date.now();
 
+  // Output resolution = the artboard's CSS clip × deviceScaleFactor. `clip` is in
+  // CSS px, but `page.screenshot` emits deviceScaleFactor× device pixels, so the
+  // encoder canvas must match the SCREENSHOT's real pixel size — otherwise every
+  // frame is drawn down to the native artboard size (the "tiny resolution" bug:
+  // scale was accepted but never applied to the encode). scale=2 → 960×540 comp
+  // exports at 1920×1080. Even dims (H.264 requires width/height divisible by 2).
+  const outW = Math.max(2, Math.round((clip.width * deviceScaleFactor) / 2) * 2);
+  const outH = Math.max(2, Math.round((clip.height * deviceScaleFactor) / 2) * 2);
+
   // Encode sink (Task 6) — inject the in-page mediabunny/gifenc lib and start it.
   const encoding = !!(encodeLib && format && out);
   const isGif = format === 'gif';
@@ -182,15 +191,15 @@ try {
         return window.__maudeEnc.startVideo({ width, height, fps, format: fmt });
       },
       {
-        width: clip.width,
-        height: clip.height,
+        width: outW,
+        height: outH,
         fps,
         isGif,
         gifColors: Number(args.gifColors) || 256,
         fmt: format,
       }
     );
-    console.error(`encoder: ${started.container} / ${started.codec}`);
+    console.error(`encoder: ${started.container} / ${started.codec} @ ${outW}×${outH}`);
   }
 
   for (let f = 0; f < frameCount; f += 1) {
@@ -215,7 +224,7 @@ try {
     if (f % 30 === 0) console.error(`frame ${f + 1}/${frameCount}`);
   }
 
-  let result = { fps, frameCount, width: clip.width, height: clip.height, framePaths };
+  let result = { fps, frameCount, width: outW, height: outH, framePaths };
   if (encoding) {
     const enc = await page.evaluate(
       async ({ isGif }) =>

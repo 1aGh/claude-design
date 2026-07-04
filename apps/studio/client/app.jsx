@@ -871,7 +871,9 @@ function ExportDialog({
     }
     setBusy(true);
     setStatus(null);
-    const options = card.format === 'png' ? { scale } : {};
+    // `scale` drives PNG size AND video resolution (deviceScaleFactor → encoder
+    // dims); temporal formats were previously fixed at the tiny native size.
+    const options = card.format === 'png' || card.temporal ? { scale } : {};
     // Scope targeting hints (resolveScope reads these): `artboardId` makes
     // "Active artboard" export the right screen instead of `:first-of-type`;
     // `selection` makes "Current selection" export the selected element. Mirrors
@@ -980,10 +982,10 @@ function ExportDialog({
               </select>
             </div>
           )}
-          {!card.handoff && card.format === 'png' && (
+          {!card.handoff && (card.format === 'png' || card.temporal) && (
             <div className="st-dialog-row">
               <label className="st-dialog-lbl" htmlFor="st-export-size">
-                Size
+                {card.temporal ? 'Resolution' : 'Size'}
               </label>
               <select
                 id="st-export-size"
@@ -1002,6 +1004,11 @@ function ExportDialog({
           {!card.handoff && card.format === 'png' && (
             <div className="st-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
               Resolution multiplier — {scale}× ≈ {1440 * scale}×{900 * scale} for a 1440×900 artboard.
+            </div>
+          )}
+          {!card.handoff && card.temporal && (
+            <div className="st-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+              {scale}× the artboard's native resolution (e.g. 960×540 → {960 * scale}×{540 * scale}).
             </div>
           )}
           {card.handoff && (
