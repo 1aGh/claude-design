@@ -12,6 +12,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { computeSnapTargets, snapFrame, snapThresholdFrames } from './timeline-snap.js';
+
 function TIcon({ name, size = 15 }) {
   const paths = {
     play: <path d="M4 3l9 5-9 5z" fill="currentColor" stroke="none" />,
@@ -185,7 +187,12 @@ export default function TimelinePanel({
     const move = (e) => {
       const deltaFrames =
         ((e.clientX - retimeDrag.startX) / Math.max(1, retimeDrag.rowW)) * (totalFrames - 1);
-      const curDur = Math.max(1, Math.round(retimeDrag.startDur + deltaFrames));
+      let end = retimeDrag.startFrom + Math.round(retimeDrag.startDur + deltaFrames);
+      // Snap the moving EDGE (clip end) to ticks / neighbor edges / playhead —
+      // Alt overrides. The clip's own start stays fixed, so duration = end − from.
+      const thr = e.altKey ? 0 : snapThresholdFrames(retimeDrag.rowW, totalFrames);
+      end = snapFrame(end, retimeDrag.targets, thr);
+      const curDur = Math.max(1, end - retimeDrag.startFrom);
       setRetimeDrag((d) => (d ? { ...d, curDur } : d));
     };
     const up = () => {
@@ -210,7 +217,10 @@ export default function TimelinePanel({
     const move = (e) => {
       const deltaFrames =
         ((e.clientX - moveDrag.startX) / Math.max(1, moveDrag.rowW)) * (totalFrames - 1);
-      const curFrom = Math.max(0, Math.round(moveDrag.startFrom + deltaFrames));
+      let curFrom = Math.max(0, Math.round(moveDrag.startFrom + deltaFrames));
+      // Snap the clip START to ticks / neighbor edges / playhead — Alt overrides.
+      const thr = e.altKey ? 0 : snapThresholdFrames(moveDrag.rowW, totalFrames);
+      curFrom = Math.max(0, snapFrame(curFrom, moveDrag.targets, thr));
       if (Math.abs(curFrom - moveDrag.startFrom) >= 1) movedRef.current = true;
       setMoveDrag((d) => (d ? { ...d, curFrom } : d));
     };
@@ -228,13 +238,24 @@ export default function TimelinePanel({
     };
   }, [moveDrag, totalFrames, onRetime]);
 
+  // Snap targets for a drag on clip `index`: ticks + OTHER clips' edges + playhead.
+  const snapTargetsFor = (index) =>
+    computeSnapTargets({ fps, totalFrames, clips: sequences, movingIndex: index, playhead: clamped });
+
   const startMove = (e, index, startFrom) => {
     if (!onRetime) return;
     e.stopPropagation();
     const rowTrack = e.currentTarget.closest('.tl-row-track');
     const rowW = rowTrack ? rowTrack.getBoundingClientRect().width : 300;
     movedRef.current = false;
-    setMoveDrag({ index, startX: e.clientX, startFrom, rowW, curFrom: startFrom });
+    setMoveDrag({
+      index,
+      startX: e.clientX,
+      startFrom,
+      rowW,
+      curFrom: startFrom,
+      targets: snapTargetsFor(index),
+    });
   };
 
   const startResize = (e, index, dur) => {
@@ -242,7 +263,16 @@ export default function TimelinePanel({
     e.preventDefault();
     const rowTrack = e.currentTarget.closest('.tl-row-track');
     const rowW = rowTrack ? rowTrack.getBoundingClientRect().width : 300;
-    setRetimeDrag({ index, startX: e.clientX, startDur: dur, rowW, curDur: dur });
+    const startFrom = sequences[index]?.from ?? 0;
+    setRetimeDrag({
+      index,
+      startX: e.clientX,
+      startDur: dur,
+      startFrom,
+      rowW,
+      curDur: dur,
+      targets: snapTargetsFor(index),
+    });
   };
 
   // Second ticks across the ruler.
@@ -356,7 +386,8 @@ export default function TimelinePanel({
       {!comp ? (
         <div className="tl-empty" data-testid="timeline-empty">
           No animation on this canvas. Make an artboard a <b>video-comp</b>
-          (<code>&lt;VideoComp&gt;</code>) to scrub and export it.
+          (<code>&lt;VideoComp&gt;</code>) to scrub and export it — or drop clips on
+          the canvas and <b>File → Assemble dropped clips → video</b>.
         </div>
       ) : (
         <div className="tl-scroll">
@@ -433,7 +464,8 @@ export default function TimelinePanel({
                         type="button"
                         className={`tl-seq-block${resizing ? ' is-resizing' : ''}${moving ? ' is-moving' : ''}`}
                         data-testid={`timeline-seq-${i}`}
-                        title={`${seq.label} · ${blockFrom}–${blockFrom + dur}f (${dur}f) · drag to move`}
+                        title={`${seq.label} · ${blockFrom}–${blockFrom + dur}f (${dur}f) · drag to move (Alt = no snap)`}
+                        aria-label={`${seq.label}, from frame ${blockFrom} to ${blockFrom + dur}, ${dur} frames. Click to seek; drag to move.`}
                         style={{
                           left: pct(blockFrom),
                           width: `${(dur / (totalFrames - 1)) * 100}%`,
@@ -452,6 +484,7 @@ export default function TimelinePanel({
                         <span className="tl-seq-name">
                           {seq.label}
                           {resizing ? ` · ${dur}f` : ''}
+                          {moving ? ` · @${blockFrom}f` : ''}
                         </span>
                         {seq.keyframes.map((kf, k) => {
                           const l = ((kf.from - seq.from) / Math.max(1, seq.duration)) * 100;
