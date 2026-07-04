@@ -20,6 +20,7 @@ fn main() {
                 "restart_to_update",
                 "prefs_get_crash_reporting",
                 "prefs_set_crash_reporting",
+                "save_export",
             ]),
         ),
     )
