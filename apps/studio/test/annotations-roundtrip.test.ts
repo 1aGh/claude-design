@@ -16,6 +16,7 @@ import {
   type ArrowStroke,
   type ImageStroke,
   type LinkStroke,
+  type MediaRefStroke,
   type RectStroke,
   type StickyStroke,
   type Stroke,
@@ -311,6 +312,52 @@ describe('annotations round-trip / link chip (Phase 23)', () => {
       '<rect x="0" y="0" width="260" height="76" rx="8" ry="8"/></g></svg>';
     const [parsed] = svgToStrokes(svg) as LinkStroke[];
     expect(parsed?.title).toBe('x.io');
+  });
+});
+
+describe('annotations round-trip / media-reference chip (DDR-150 P4)', () => {
+  const ref: MediaRefStroke = {
+    id: 'mr1',
+    tool: 'mediaref',
+    x: 120,
+    y: 90,
+    w: 240,
+    h: 72,
+    src: 'assets/9f8e7d6c.mp4',
+    mediaKind: 'video',
+    title: 'b-roll-sunset.mp4',
+  };
+
+  test('mediaref survives serialize → parse with all fields intact', () => {
+    const [parsed] = svgToStrokes(strokesToSvg([ref])) as MediaRefStroke[];
+    expect(parsed).toEqual(ref);
+  });
+
+  test('mediaref persists data-src (the agent enumerates refs off it), never a <Video>', () => {
+    const svg = strokesToSvg([ref]);
+    expect(svg).toContain('data-src="assets/9f8e7d6c.mp4"');
+    expect(svg).toContain('data-media-kind="video"');
+    expect(svg).not.toContain('<Video');
+    expect(svg).not.toContain('<video');
+  });
+
+  test('mediaref serialize → parse is idempotent', () => {
+    const once = strokesToSvg([{ ...ref, mediaKind: 'audio', src: 'assets/track.mp3' }]);
+    expect(reparse(once)).toBe(once);
+  });
+
+  test('mediaref SVG survives sanitizeAnnotationSvg byte-intact (PUT-path)', () => {
+    const svg = strokesToSvg([ref]);
+    expect(sanitizeAnnotationSvg(svg)).toBe(svg);
+  });
+
+  test('a data-src with a traversal/scheme is dropped to an inert empty ref', () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1">' +
+      '<g data-id="mr2" data-tool="mediaref" data-src="../../etc/passwd" data-media-kind="video" data-title="x">' +
+      '<rect x="0" y="0" width="240" height="72" rx="8" ry="8"/></g></svg>';
+    const [parsed] = svgToStrokes(svg) as MediaRefStroke[];
+    expect(parsed?.src).toBe('');
   });
 });
 

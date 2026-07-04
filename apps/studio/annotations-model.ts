@@ -267,6 +267,30 @@ export interface LinkStroke extends StrokeBase {
   domain: string;
 }
 /**
+ * DDR-150 P4 — a video/audio file dropped on the canvas BODY (not the timeline)
+ * as a reference chip. It's the "nahazet klipy → agent z toho udělá video"
+ * artifact: a non-destructive, versioned pointer to an `assets/…` clip the agent
+ * can enumerate off the saved `.annotations.svg` (via `data-src`), then assemble
+ * into a comp. Distinct from a timeline drop (which INSERTS a `<Sequence>`) and
+ * from an ImageStroke (a rendered picture). Renders as a card: a media glyph
+ * (▶ video / ♪ audio) + the filename. `src` is ALWAYS a relative `assets/<sha8>`
+ * path (never seeked by the capture spine — it's a reference, excluded from
+ * export by `?hide-chrome`). Persists as an allowlisted `<g>` like LinkStroke —
+ * `data-src`/`data-media-kind`/`data-title` are the round-trip source of truth.
+ */
+export interface MediaRefStroke extends StrokeBase {
+  tool: 'mediaref';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Relative `assets/<sha8>.<ext>` path — the agent reads this off the SVG. */
+  src: string;
+  mediaKind: 'video' | 'audio';
+  /** Human-facing label (the dropped file's name). */
+  title: string;
+}
+/**
  * FigJam v3 — section: a labelled organizing container. Renders as a soft
  * rounded region with a name chip above the top-left corner; its INTERIOR is
  * click-through (only the border + chip select it) and dragging a section
@@ -294,6 +318,7 @@ export type Stroke =
   | StickyStroke
   | ImageStroke
   | LinkStroke
+  | MediaRefStroke
   | SectionStroke;
 
 /**
@@ -528,6 +553,9 @@ export const IMAGE_MIN_SIZE = 16;
 export const IMAGE_MAX_DROP_SIDE = 480;
 export const LINK_DEFAULT_W = 260;
 export const LINK_DEFAULT_H = 76;
+// DDR-150 P4 — media-reference chip (dropped video/audio → assets/ pointer).
+export const MEDIAREF_DEFAULT_W = 240;
+export const MEDIAREF_DEFAULT_H = 72;
 export const LINK_CARD_FILL = '#ffffff';
 export const LINK_CARD_STROKE = '#d4d4d8';
 export const LINK_DOMAIN_FILL = '#71717a';
@@ -539,6 +567,12 @@ export const LINK_GLYPH_STROKE = '#52525b';
 // <rect> geometry), so render/serialize only need to agree visually.
 export const LINK_GLYPH_D1 = 'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71';
 export const LINK_GLYPH_D2 = 'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71';
+// DDR-150 P4 — media-reference chip glyphs (24×24 viewBox, filled). One source
+// for serialize + StrokeNode render, like the link glyph. Video = play triangle;
+// audio = a filled note. The parser ignores the glyph (reads data-* + geometry).
+export const MEDIAREF_VIDEO_GLYPH = 'M8 5v14l11-7z';
+export const MEDIAREF_AUDIO_GLYPH =
+  'M9 18V6l10-2v11.5a2.5 2.5 0 1 1-2-2.45V7.3L11 8.6v6.9a2.5 2.5 0 1 1-2-2.45z';
 
 /** Card text positions, derived purely from the bbox (idempotent round-trip). */
 export function linkCardLayout(x: number, y: number, w: number, h: number) {
@@ -1038,6 +1072,37 @@ function strokeToSvgElBase(s: Stroke): string {
       `</g>`
     );
   }
+  if (s.tool === 'mediaref') {
+    // DDR-150 P4 — reference chip for a dropped clip. Like the link card: the
+    // data-* are the round-trip source of truth (the agent reads data-src to
+    // enumerate refs); the inner rect/glyph/text are the inert, sanitizer-safe
+    // visual. NEVER a <Video>/<Audio> element (that would try to play/seek) —
+    // it's a pointer, drawn as a still card.
+    const nx = Math.min(s.x, s.x + s.w);
+    const ny = Math.min(s.y, s.y + s.h);
+    const nw = Math.abs(s.w);
+    const nh = Math.abs(s.h);
+    const lay = linkCardLayout(nx, ny, nw, nh);
+    const shownTitle = clampLinkTitle(s.title, lay.textMaxChars);
+    const glyph =
+      s.mediaKind === 'audio'
+        ? `<path d="${MEDIAREF_AUDIO_GLYPH}"/>`
+        : `<path d="${MEDIAREF_VIDEO_GLYPH}"/>`;
+    return (
+      `<g data-id="${esc(s.id)}" data-tool="mediaref" data-src="${escAttr(s.src)}" data-media-kind="${escAttr(
+        s.mediaKind
+      )}" data-title="${escAttr(s.title)}">` +
+      `<rect x="${nx}" y="${ny}" width="${nw}" height="${nh}" rx="8" ry="8" fill="${LINK_CARD_FILL}" stroke="${LINK_CARD_STROKE}" stroke-width="1"/>` +
+      `<svg x="${lay.glyph.x}" y="${lay.glyph.y}" width="${lay.glyph.size}" height="${lay.glyph.size}" viewBox="0 0 24 24" fill="${LINK_GLYPH_STROKE}" stroke="none">${glyph}</svg>` +
+      `<text x="${lay.textX}" y="${lay.domain.y}" font-size="${lay.domain.fontSize}" fill="${LINK_DOMAIN_FILL}" dominant-baseline="hanging">${esc(
+        `${s.mediaKind} · reference`
+      )}</text>` +
+      `<text x="${lay.textX}" y="${lay.title.y}" font-size="${lay.title.fontSize}" fill="${LINK_TITLE_FILL}" font-weight="600" dominant-baseline="hanging">${esc(
+        shownTitle
+      )}</text>` +
+      `</g>`
+    );
+  }
   if (s.tool === 'section') {
     // FigJam v3 — inert persisted form: region rect + chip label text. Colors
     // are render-time chrome; the parser reads geometry off the rect and the
@@ -1463,6 +1528,22 @@ export function svgToStrokes(svgText: string): Stroke[] {
         push({ id, tool: 'link', x, y, w, h, url, title, domain });
         continue;
       }
+      if (tool === 'mediaref') {
+        // DDR-150 P4 — geometry off the <rect> child (mirrors link/sticky);
+        // data-src is the pointer the agent enumerates. A src that fails the
+        // assets/ shape is dropped to '' (an inert chip that references nothing).
+        const rectEl = el.querySelector('rect');
+        const x = pfloat(rectEl?.getAttribute('x'));
+        const y = pfloat(rectEl?.getAttribute('y'));
+        const w = pfloat(rectEl?.getAttribute('width'), MEDIAREF_DEFAULT_W);
+        const h = pfloat(rectEl?.getAttribute('height'), MEDIAREF_DEFAULT_H);
+        const rawSrc = el.getAttribute('data-src') || '';
+        const src = ASSET_MEDIA_SRC_RE.test(rawSrc) ? rawSrc : '';
+        const mediaKind = el.getAttribute('data-media-kind') === 'audio' ? 'audio' : 'video';
+        const title = el.getAttribute('data-title') || src;
+        push({ id, tool: 'mediaref', x, y, w, h, src, mediaKind, title });
+        continue;
+      }
       if (tool === 'text') {
         const rawAnchor = el.getAttribute('data-anchor-id');
         const fontSize =
@@ -1650,8 +1731,8 @@ export function strokeHitTest(s: Stroke, wx: number, wy: number, tol: number): b
     return onEdge;
   }
   const t = Math.max(tol, 'width' in s ? s.width : 2);
-  if (s.tool === 'sticky' || s.tool === 'image' || s.tool === 'link') {
-    // Sticky / image / link are solid cards — filled-rect hit anywhere inside.
+  if (s.tool === 'sticky' || s.tool === 'image' || s.tool === 'link' || s.tool === 'mediaref') {
+    // Sticky / image / link / mediaref are solid cards — filled-rect hit inside.
     const xMin = Math.min(s.x, s.x + s.w);
     const xMax = Math.max(s.x, s.x + s.w);
     const yMin = Math.min(s.y, s.y + s.h);
@@ -1844,6 +1925,8 @@ export function isStrokeMeaningful(s: Stroke): boolean {
   // Phase 23 — an image needs real extent; a link needs a non-empty URL.
   if (s.tool === 'image') return Math.abs(s.w) >= IMAGE_MIN_SIZE && Math.abs(s.h) >= IMAGE_MIN_SIZE;
   if (s.tool === 'link') return s.url.trim().length > 0;
+  // A media-reference chip needs a non-empty assets/ src (its whole purpose).
+  if (s.tool === 'mediaref') return s.src.trim().length > 0;
   if (s.tool === 'section')
     return Math.abs(s.w) >= SECTION_MIN_SIZE && Math.abs(s.h) >= SECTION_MIN_SIZE;
   return Math.hypot(s.x2 - s.x1, s.y2 - s.y1) >= 4;
@@ -1886,9 +1969,15 @@ export function strokeBBox(
       h: Math.abs(s.y2 - s.y1),
     };
   }
-  if (s.tool === 'sticky' || s.tool === 'image' || s.tool === 'link' || s.tool === 'section') {
-    // Phase 23 — image + link are rect-shaped media, same bbox as a sticky
-    // card; FigJam v3 sections share it too.
+  if (
+    s.tool === 'sticky' ||
+    s.tool === 'image' ||
+    s.tool === 'link' ||
+    s.tool === 'mediaref' ||
+    s.tool === 'section'
+  ) {
+    // Phase 23 — image + link + mediaref are rect-shaped cards, same bbox as a
+    // sticky; FigJam v3 sections share it too.
     return {
       x: Math.min(s.x, s.x + s.w),
       y: Math.min(s.y, s.y + s.h),
@@ -1928,7 +2017,13 @@ export function translateOne(s: Stroke, dx: number, dy: number): Stroke {
   if (s.tool === 'ellipse') return { ...s, cx: s.cx + dx, cy: s.cy + dy };
   if (s.tool === 'arrow')
     return { ...s, x1: s.x1 + dx, y1: s.y1 + dy, x2: s.x2 + dx, y2: s.y2 + dy };
-  if (s.tool === 'sticky' || s.tool === 'image' || s.tool === 'link' || s.tool === 'section')
+  if (
+    s.tool === 'sticky' ||
+    s.tool === 'image' ||
+    s.tool === 'link' ||
+    s.tool === 'mediaref' ||
+    s.tool === 'section'
+  )
     return { ...s, x: s.x + dx, y: s.y + dy };
   // text — anchored inherits its host's bbox (moves with the host); standalone
   // (Phase 21) carries its own world (x, y) and translates directly.
@@ -1997,6 +2092,10 @@ export const ANNOTATION_SVG_ELEMENTS = new Set([
  * is stripped by Rule 3. Pairs with the asset-write caps (DDR Task 9).
  */
 export const ASSET_IMAGE_HREF_RE = /^assets\/[A-Za-z0-9._-]+\.(?:png|jpe?g|webp|gif)$/;
+// DDR-150 P4 — a media-reference chip's data-src: a relative assets/ path to a
+// video/audio clip (no scheme, no traversal). Same shape as the image href gate.
+export const ASSET_MEDIA_SRC_RE =
+  /^assets\/[A-Za-z0-9._-]+\.(?:mp4|webm|mov|m4v|mp3|wav|m4a|aac|ogg)$/;
 
 /**
  * A3 (DDR-060 F1 re-audit) — sanitize an annotation SVG before it is persisted /

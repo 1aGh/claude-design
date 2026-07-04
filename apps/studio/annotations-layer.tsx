@@ -91,6 +91,11 @@ import {
   LINK_TITLE_FILL,
   type ListType,
   linkCardLayout,
+  type MediaRefStroke,
+  MEDIAREF_AUDIO_GLYPH,
+  MEDIAREF_DEFAULT_H,
+  MEDIAREF_DEFAULT_W,
+  MEDIAREF_VIDEO_GLYPH,
   listPrefixedBody,
   listPrefixedLine,
   normalizeBox,
@@ -1167,9 +1172,47 @@ export function AnnotationsLayer() {
     [commitStrokes, annotSel]
   );
 
+  // Media reference (DDR-150 P4): a video/audio file dropped on the canvas BODY
+  // becomes a versioned reference chip (NOT a source insert, NOT a played
+  // element) carrying its assets/ path — the "nahazet klipy → agent z toho udělá
+  // video" artifact. Upload to assets/, then commit a MediaRefStroke; on failure
+  // toast. No poster probe in v1 — a media glyph tile (▶/♪) + filename.
+  const createMediaReference = useCallback(
+    (file: File, mediaKind: 'video' | 'audio', world: [number, number]) => {
+      const w = MEDIAREF_DEFAULT_W;
+      const h = MEDIAREF_DEFAULT_H;
+      void uploadAsset(file).then((res) => {
+        if (!('path' in res)) {
+          showCanvasToast(`Couldn't add ${mediaKind}: ${res.error}`);
+          return;
+        }
+        const id = rid();
+        const ref: MediaRefStroke = {
+          id,
+          tool: 'mediaref',
+          x: world[0] - w / 2,
+          y: world[1] - h / 2,
+          w,
+          h,
+          src: res.path,
+          mediaKind,
+          title: (file.name || res.path).slice(0, 300),
+        };
+        const before = strokesRef.current;
+        commitStrokes(before, [...before, ref], `add ${mediaKind} reference`);
+        annotSel?.replace([id]);
+        const sizeMb = file.size / (1024 * 1024);
+        showCanvasToast(
+          `Added ${mediaKind} reference · ${res.path}${sizeMb > 20 ? ' · ⚠ >20 MB rides git + sync' : ''}`
+        );
+      });
+    },
+    [commitStrokes, annotSel]
+  );
+
   const mediaCallbacks = useMemo(
-    () => ({ onImage: createImageFromFile, onLink: createLink }),
-    [createImageFromFile, createLink]
+    () => ({ onImage: createImageFromFile, onLink: createLink, onMedia: createMediaReference }),
+    [createImageFromFile, createLink, createMediaReference]
   );
   // Media intake is paste/drop only (per product steer — no toolbar buttons):
   // drop an image / URL or Cmd+V a clipboard image / link straight onto the
@@ -1636,6 +1679,7 @@ export function AnnotationsLayer() {
           t === 'sticky' ||
           t === 'image' ||
           t === 'link' ||
+          t === 'mediaref' ||
           t === 'section')
       ) {
         return id;
@@ -4161,6 +4205,76 @@ function StrokeNodeBase({
           style={textFont}
         >
           {stroke.domain}
+        </text>
+        <text
+          x={lay.textX}
+          y={lay.title.y}
+          fontSize={lay.title.fontSize}
+          fill={LINK_TITLE_FILL}
+          fontWeight={600}
+          dominantBaseline="hanging"
+          style={textFont}
+        >
+          {shownTitle}
+        </text>
+      </g>
+    );
+  }
+  if (stroke.tool === 'mediaref') {
+    // DDR-150 P4 — reference chip (mirrors the link card). NEVER a <Video>/<Audio>
+    // element — it's a still pointer to an assets/ clip the agent enumerates.
+    const x = Math.min(stroke.x, stroke.x + stroke.w);
+    const y = Math.min(stroke.y, stroke.y + stroke.h);
+    const w = Math.abs(stroke.w);
+    const h = Math.abs(stroke.h);
+    const lay = linkCardLayout(x, y, w, h);
+    const shownTitle = clampLinkTitle(stroke.title, lay.textMaxChars);
+    const textFont = {
+      fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+    } as const;
+    return (
+      <g
+        data-id={stroke.id}
+        data-tool="mediaref"
+        data-src={stroke.src}
+        data-media-kind={stroke.mediaKind}
+        data-title={stroke.title}
+        pointerEvents={hitMode}
+      >
+        <rect
+          x={x}
+          y={y}
+          width={w}
+          height={h}
+          rx={8}
+          ry={8}
+          fill={LINK_CARD_FILL}
+          stroke={LINK_CARD_STROKE}
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+          filter="url(#dc-sticky-shadow)"
+        />
+        <svg
+          x={lay.glyph.x}
+          y={lay.glyph.y}
+          width={lay.glyph.size}
+          height={lay.glyph.size}
+          viewBox="0 0 24 24"
+          fill={LINK_GLYPH_STROKE}
+          stroke="none"
+          aria-hidden="true"
+        >
+          <path d={stroke.mediaKind === 'audio' ? MEDIAREF_AUDIO_GLYPH : MEDIAREF_VIDEO_GLYPH} />
+        </svg>
+        <text
+          x={lay.textX}
+          y={lay.domain.y}
+          fontSize={lay.domain.fontSize}
+          fill={LINK_DOMAIN_FILL}
+          dominantBaseline="hanging"
+          style={textFont}
+        >
+          {`${stroke.mediaKind} · reference`}
         </text>
         <text
           x={lay.textX}
