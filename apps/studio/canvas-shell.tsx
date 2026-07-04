@@ -1780,6 +1780,11 @@ function CanvasRouter({
     if (!host) return;
     let editing: HTMLElement | null = null;
     let original = '';
+    // DDR-150 P1 — the committed-but-unconfirmed edit, so a shell rejection
+    // (dynamic/mixed content the engine refuses) can revert the optimistic
+    // contenteditable text instead of letting it silently vanish on the next
+    // reload. Mirrors the reorder-failed revert below. Cleared on revert.
+    let lastTextCommit: { el: HTMLElement; original: string } | null = null;
     const onBlur = (): void => commitEdit(true);
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
@@ -1815,6 +1820,8 @@ function CanvasRouter({
       } catch {
         /* detached / cross-origin */
       }
+      // Stash the optimistic edit so a shell rejection can revert it (DDR-150 P1).
+      lastTextCommit = { el: elx, original };
       // Record onto the in-canvas undo stack so Cmd+Z reverts the rewrite. The
       // edit already posted above (record, don't re-run do()). before/after are
       // the trimmed bodies the edit-text endpoint persists.
@@ -1855,10 +1862,26 @@ function CanvasRouter({
         /* selection API unavailable */
       }
     };
+    // The shell rejected the last inline text edit — revert the optimistic
+    // contenteditable text so the canvas reflects the true (unsaved) source
+    // rather than a change that silently disappears on the next reload (DDR-150 P1).
+    const onEditReverted = (e: MessageEvent): void => {
+      if (e.source !== window.parent) return;
+      const m = e.data as { dgn?: string; op?: string } | null;
+      if (m?.dgn !== 'edit-reverted' || m.op !== 'text' || !lastTextCommit) return;
+      try {
+        lastTextCommit.el.textContent = lastTextCommit.original;
+      } catch {
+        /* detached — a subsequent reload re-syncs */
+      }
+      lastTextCommit = null;
+    };
     // Capture phase so we beat the fit-to-view dblclick handler.
     host.addEventListener('dblclick', onDbl, true);
+    window.addEventListener('message', onEditReverted);
     return () => {
       host.removeEventListener('dblclick', onDbl, true);
+      window.removeEventListener('message', onEditReverted);
       if (editing) teardown(editing);
     };
   }, [hostRef]);

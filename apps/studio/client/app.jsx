@@ -7132,7 +7132,15 @@ function App() {
         // Phase 12 (DDR-103) — inline text edit committed in the canvas. POST to
         // the main-origin-only /_api/edit-text → editText writes the escaped
         // JSXText to source; the file-watcher HMR reload then shows the new text.
-        // A refusal (mixed/expression content) is logged, not fatal.
+        // DDR-150 P1: a refusal is NO LONGER silent — surface it AND tell the
+        // canvas to revert the optimistic contenteditable text, so a failed edit
+        // can't silently vanish on the next reload ("my text edit didn't stick").
+        const editSource = e.source;
+        const revertText = () => {
+          try {
+            editSource?.postMessage({ dgn: 'edit-reverted', op: 'text', id: m.id }, '*');
+          } catch {}
+        };
         fetch('/_api/edit-text', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -7140,9 +7148,20 @@ function App() {
         })
           .then((r) => r.json().catch(() => ({})))
           .then((j) => {
-            if (!j.ok) console.warn('[edit-text]', j.error || 'failed');
+            if (j.ok) {
+              setStatus({ ok: true, msg: 'Text saved' });
+            } else {
+              setStatus({
+                ok: false,
+                msg: `Text not saved — ${j.error || "this element can't be edited inline"}. Edit it via chat instead.`,
+              });
+              revertText();
+            }
           })
-          .catch(() => {});
+          .catch(() => {
+            setStatus({ ok: false, msg: 'Text not saved — network error. Reverting.' });
+            revertText();
+          });
       } else if (m.dgn === 'apply-edit' && m.id && (m.op === 'css' || m.op === 'text' || m.op === 'attr')) {
         // Inline-edit undo/redo (DDR-103/104 follow-up). The canvas iframe's
         // `edit-source` command can't call the main-origin-only `/_api/edit-*`
@@ -7180,7 +7199,15 @@ function App() {
             })
               .then((r) => r.json().catch(() => ({})))
               .then((j) => {
-                if (!j.ok) console.warn('[apply-edit]', op, j.error || 'failed');
+                // DDR-150 P1 — surface the failure instead of swallowing it. (The
+                // optimistic CSS paint is left for the undo/redo lane; a targeted
+                // revert here is a tracked refinement.)
+                if (!j.ok) {
+                  setStatus({
+                    ok: false,
+                    msg: `Edit not saved — ${j.error || 'this element refused the edit'}.`,
+                  });
+                }
               })
               .catch(() => {})
           );
