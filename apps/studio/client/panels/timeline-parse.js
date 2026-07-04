@@ -83,15 +83,20 @@ function componentBody(src, name) {
   return rest.slice(0, next > 0 ? next : rest.length);
 }
 
-/** The `<VideoComp component={X} durationInFrames={D} fps={F}>` usages in a canvas. */
+/** The `<VideoComp component={X} …>` usages in a canvas, each tagged with the id
+ *  of its enclosing `<DCArtboard id="…">` (nearest preceding) so the Timeline can
+ *  scope to whichever artboard the user selected. */
 function videoCompUsages(src, consts) {
   const out = [];
   for (const m of src.matchAll(/<VideoComp\b([^>]*?)\/?>/g)) {
     const a = m[1];
     const comp = a.match(/component=\{([A-Za-z_$][\w$]*)\}/);
     if (!comp) continue;
+    const before = src.slice(0, m.index);
+    const boards = [...before.matchAll(/<DCArtboard\b[^>]*?\bid=["']([^"']+)["']/g)];
     out.push({
       compName: comp[1],
+      artboardId: boards.length ? boards[boards.length - 1][1] : null,
       duration: resolveNum(a.match(/durationInFrames=\{([^}]+)\}/)?.[1], consts),
       fps: resolveNum(a.match(/fps=\{([^}]+)\}/)?.[1], consts) || 30,
     });
@@ -99,14 +104,15 @@ function videoCompUsages(src, consts) {
   return out;
 }
 
-export function parseCompTimeline(source, totalFrames) {
+export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
   const src = String(source ?? '');
   const consts = collectConsts(src);
 
   // A canvas can hold SEVERAL video-comps (one per artboard). Scope the parse to
   // ONE composition's body so a 2-comp canvas doesn't merge every sequence into
-  // one track. Prefer the comp whose duration the caller asked for, then a comp
-  // with real media (Video/Audio), then the first — and read fps/total from it.
+  // one track. Preference: the artboard the user SELECTED (so the Timeline
+  // follows the canvas), then a comp with real media, then a duration match,
+  // then the first — and read fps/total from it.
   let scope = src;
   let scopedTotal = totalFrames;
   let scopedFps = 0;
@@ -114,9 +120,8 @@ export function parseCompTimeline(source, totalFrames) {
     .map((u) => ({ ...u, body: componentBody(src, u.compName) }))
     .filter((u) => u.body);
   if (usages.length) {
-    // Prefer a comp with real media (Video/Audio) — that's the one worth a
-    // timeline; then a duration match to the requested comp; then the first.
     const target =
+      (selectedArtboardId && usages.find((u) => u.artboardId === selectedArtboardId)) ||
       usages.find((u) => /<(?:Audio|OffthreadVideo|Video)\b/.test(u.body)) ||
       usages.find((u) => u.duration != null && u.duration === totalFrames) ||
       usages[0];

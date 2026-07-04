@@ -101,4 +101,27 @@ export default function Canvas(){ return (<DesignCanvas>
     expect(r.audio).toHaveLength(1);
     expect(r.audio[0].label).toBe('song.mp3');
   });
+
+  test('the Timeline scopes to the SELECTED artboard (follows the canvas)', () => {
+    const src = `
+const IT = 40; const RT = 120;
+const Intro = () => <AbsoluteFill/>;
+function Movie(){ return <TransitionSeries><TransitionSeries.Sequence durationInFrames={IT}><Intro/></TransitionSeries.Sequence></TransitionSeries>; }
+const Clip = () => <AbsoluteFill/>;
+function Reel(){ return (<AbsoluteFill><TransitionSeries><TransitionSeries.Sequence durationInFrames={RT}><Clip/></TransitionSeries.Sequence></TransitionSeries><Audio src="/x/song.mp3"/></AbsoluteFill>); }
+export default function Canvas(){ return (<DesignCanvas>
+  <DCArtboard id="intro" width={960} height={540}><VideoComp component={Movie} durationInFrames={IT} fps={30} width={960} height={540} /></DCArtboard>
+  <DCArtboard id="reel" width={960} height={540}><VideoComp component={Reel} durationInFrames={RT} fps={30} width={960} height={540} /></DCArtboard>
+</DesignCanvas>); }
+`;
+    // Selecting the intro artboard shows the INTRO — even though the reel has media.
+    const intro = parseCompTimeline(src, 40, 'intro');
+    expect(intro.total).toBe(40);
+    expect(intro.sequences).toEqual([expect.objectContaining({ label: 'Intro', duration: 40 })]);
+    expect(intro.audio).toHaveLength(0);
+    // Selecting the reel shows the reel + its music.
+    const reel = parseCompTimeline(src, 40, 'reel');
+    expect(reel.total).toBe(120);
+    expect(reel.audio).toHaveLength(1);
+  });
 });

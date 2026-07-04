@@ -6110,6 +6110,7 @@ function App() {
   const [timelineFrame, setTimelineFrame] = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
   const [timelineLoop, setTimelineLoop] = useState(true);
+  const [timelineMuted, setTimelineMuted] = useState(false);
   // DDR-148 — parsed sequence/keyframe rows for the Timeline (from raw .tsx).
   const [timelineSequences, setTimelineSequences] = useState([]);
   const [timelineAudio, setTimelineAudio] = useState([]);
@@ -6352,32 +6353,41 @@ function App() {
     return () => clearTimeout(t);
   }, [activePath, postToActiveCanvas]);
 
-  // DDR-148 — fetch + parse the active comp's raw source into sequence/keyframe
-  // rows when the Timeline is open. Re-runs when a comp is (re)announced, so it
-  // refreshes after a canvas edit (the edit triggers a reload → re-announce).
+  // DDR-148 — fetch the active canvas's raw source when the Timeline is open.
+  // Re-runs when a comp is (re)announced, so it refreshes after a canvas edit.
+  const [timelineSource, setTimelineSource] = useState('');
   useEffect(() => {
     if (!timelineOpen || activeComps.length === 0 || !activePath || activePath === SYSTEM_TAB) {
-      setTimelineSequences([]);
-      setTimelineAudio([]);
-      setTimelineTotal(0);
+      setTimelineSource('');
       return undefined;
     }
     let alive = true;
-    const total = activeComps[0]?.durationInFrames || 0;
     fetch(`/_api/canvas-source?file=${encodeURIComponent(activePath)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
-        if (!alive || !j?.ok || typeof j.source !== 'string') return;
-        const parsed = parseCompTimeline(j.source, total);
-        setTimelineSequences(parsed.sequences);
-        setTimelineAudio(parsed.audio || []);
-        setTimelineTotal(parsed.total);
+        if (alive && j?.ok && typeof j.source === 'string') setTimelineSource(j.source);
       })
       .catch(() => {});
     return () => {
       alive = false;
     };
   }, [timelineOpen, activeComps, activePath]);
+
+  // Parse (cheap) — re-runs on source change AND on selection change, so the
+  // Timeline REDRAWS to whichever artboard the user just selected/moved to.
+  useEffect(() => {
+    if (!timelineSource) {
+      setTimelineSequences([]);
+      setTimelineAudio([]);
+      setTimelineTotal(0);
+      return;
+    }
+    const total = activeComps[0]?.durationInFrames || 0;
+    const parsed = parseCompTimeline(timelineSource, total, selected?.artboardId ?? null);
+    setTimelineSequences(parsed.sequences);
+    setTimelineAudio(parsed.audio || []);
+    setTimelineTotal(parsed.total);
+  }, [timelineSource, selected, activeComps]);
 
   const toggleAnnotations = useCallback(() => {
     setAnnotationsVisible((v) => {
@@ -8368,6 +8378,9 @@ function App() {
             }}
             onPlay={() => {
               setTimelinePlaying(true);
+              // Sync mute state to the Player, then play (the artboard has no
+              // volume chrome — the Timeline owns sound now).
+              postToActiveCanvas({ dgn: 'timeline-mute', muted: timelineMuted, id: timelineCompId });
               postToActiveCanvas({ dgn: 'timeline-play', id: timelineCompId });
             }}
             onPause={() => {
@@ -8375,6 +8388,14 @@ function App() {
               postToActiveCanvas({ dgn: 'timeline-pause', id: timelineCompId });
             }}
             onToggleLoop={() => setTimelineLoop((v) => !v)}
+            muted={timelineMuted}
+            onToggleMute={() => {
+              setTimelineMuted((v) => {
+                const next = !v;
+                postToActiveCanvas({ dgn: 'timeline-mute', muted: next, id: timelineCompId });
+                return next;
+              });
+            }}
             onRetime={(index, patch) => {
               if (!activePath || activePath === SYSTEM_TAB) return;
               fetch('/_api/retime-sequence', {

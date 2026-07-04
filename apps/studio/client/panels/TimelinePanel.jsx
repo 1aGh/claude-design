@@ -33,6 +33,20 @@ function TIcon({ name, size = 15 }) {
         <path d="M12 3.5l-6 4.5 6 4.5z" fill="currentColor" stroke="none" />
       </>
     ),
+    sound: (
+      <>
+        <path d="M3 6h2.2L8 3.3v9.4L5.2 10H3z" fill="currentColor" stroke="none" />
+        <path d="M10.5 5.5a3.2 3.2 0 0 1 0 5" />
+        <path d="M12.3 3.7a5.6 5.6 0 0 1 0 8.6" />
+      </>
+    ),
+    muted: (
+      <>
+        <path d="M3 6h2.2L8 3.3v9.4L5.2 10H3z" fill="currentColor" stroke="none" />
+        <line x1="10.7" y1="6" x2="13.7" y2="10" />
+        <line x1="13.7" y1="6" x2="10.7" y2="10" />
+      </>
+    ),
   };
   return (
     <svg
@@ -72,6 +86,8 @@ export default function TimelinePanel({
   onPlay,
   onPause,
   onToggleLoop,
+  muted = false,
+  onToggleMute,
   height,
   resizing,
   onRetime,
@@ -195,6 +211,19 @@ export default function TimelinePanel({
             >
               <TIcon name="loop" />
             </button>
+            {audio.length > 0 ? (
+              <button
+                type="button"
+                className={`tl-btn${muted ? '' : ' is-on'}`}
+                aria-label={muted ? 'Unmute' : 'Mute'}
+                aria-pressed={!muted}
+                data-testid="timeline-mute"
+                title={muted ? 'Unmute audio' : 'Mute audio'}
+                onClick={() => onToggleMute?.()}
+              >
+                <TIcon name={muted ? 'muted' : 'sound'} />
+              </button>
+            ) : null}
             <span className="tl-readout" data-testid="timeline-readout">
               <b>{clamped}</b>
               <span className="tl-sep">/</span>

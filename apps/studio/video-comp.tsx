@@ -212,7 +212,10 @@ export function VideoComp({
   const [autoId] = useState(() => id ?? `videocomp-${++mountCounter}`);
   const compId = id ?? autoId;
   const capturing = hideChrome();
-  const showControls = controls ?? !capturing;
+  // The Timeline panel is the control surface (transport + scrub + volume), so
+  // the Player's own chrome is redundant on the artboard — hidden by default.
+  // Opt back in per-comp with `controls`; never shown during capture. (DDR-148.)
+  const showControls = (controls ?? false) && !capturing;
   // Default to PAUSED in preview so the comp is editable on open (a moving,
   // frame-driven element can't be Cmd+Click-selected). The author can opt into
   // autoplay; capture never autoplays (the shim drives frames). Opens on a
@@ -240,7 +243,13 @@ export function VideoComp({
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onMessage = (e: MessageEvent) => {
-      const m = e.data as { dgn?: string; frame?: number; id?: string } | null;
+      const m = e.data as {
+        dgn?: string;
+        frame?: number;
+        id?: string;
+        muted?: boolean;
+        volume?: number;
+      } | null;
       if (!m || typeof m !== 'object' || typeof m.dgn !== 'string') return;
       // The shell asks a (possibly already-mounted) canvas to re-announce its
       // comps — answer regardless of Player readiness so a tab-switch / panel-
@@ -260,6 +269,12 @@ export function VideoComp({
           p.play();
         } else if (m.dgn === 'timeline-pause') {
           p.pause();
+        } else if (m.dgn === 'timeline-mute') {
+          // Sound is controlled from the Timeline (the artboard has no chrome).
+          if (m.muted) p.mute();
+          else p.unmute();
+        } else if (m.dgn === 'timeline-volume' && typeof m.volume === 'number') {
+          p.setVolume(clamp(m.volume, 0, 1));
         }
       } catch {
         /* Player transitional — ignore */
