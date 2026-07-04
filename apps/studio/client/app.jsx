@@ -8144,6 +8144,18 @@ function App() {
       // makes inspector CSS / inline text / attr edits undoable from anywhere.
       if (meta && !e.altKey && (e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y')) {
         if (!inEditable && !inCanvasIframe && activePath && activePath !== SYSTEM_TAB) {
+          // DDR-150 dogfood #1 (team finding) — SINGLE OWNER per keypress. With
+          // the Timeline open on a video-comp canvas, the timeline undo stack
+          // owns Cmd+Z/Shift+Cmd+Z (the timeline keydown effect performs it).
+          // Without this skip, BOTH handlers fired on one keypress — undoing a
+          // clip op AND popping the canvas's annotation undo simultaneously.
+          if (
+            (e.key === 'z' || e.key === 'Z') &&
+            tlKeyRef.current.open &&
+            tlKeyRef.current.comps?.length
+          ) {
+            return; // the timeline shortcuts effect claims it
+          }
           e.preventDefault();
           const redo = e.key === 'y' || e.key === 'Y' || e.shiftKey;
           postToActiveCanvas({ dgn: redo ? 'redo' : 'undo' });

@@ -522,6 +522,64 @@ async function serveFile(absPath: string, headers: Record<string, string> = {}):
   });
 }
 
+/** Media (video/audio) extensions that get HTTP Range support when served. */
+const RANGE_MEDIA_EXTS = new Set([
+  '.mp4',
+  '.m4v',
+  '.mov',
+  '.webm',
+  '.mp3',
+  '.wav',
+  '.m4a',
+  '.ogg',
+]);
+
+/**
+ * DDR-150 dogfood (team finding) — serve a media file with HTTP Range support.
+ * The plain `new Response(Bun.file(..))` lane answered `Range:` requests with a
+ * 200 + full body: Chrome copes for small clips (buffers everything) but large
+ * MP4s scrub terribly, and WKWebView (the native desktop app) can refuse to
+ * play media from servers without Range support at all. Single-range only
+ * (`bytes=a-b`, suffix `bytes=-n`, open `bytes=a-`); malformed ranges fall back
+ * to a full 200; an unsatisfiable one gets an honest 416.
+ */
+async function serveMediaFile(
+  absPath: string,
+  req: Request,
+  headers: Record<string, string> = {}
+): Promise<Response> {
+  const file = Bun.file(absPath);
+  if (!(await file.exists())) return new Response('Not found', { status: 404 });
+  const size = file.size;
+  const base = {
+    'Content-Type': MIME[ext(absPath)] || 'application/octet-stream',
+    'Cache-Control': 'no-store',
+    'Accept-Ranges': 'bytes',
+    ...headers,
+  };
+  const range = req.headers.get('range');
+  const m = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+  if (m && (m[1] || m[2]) && size > 0) {
+    const start = m[1] ? Number.parseInt(m[1], 10) : Math.max(0, size - Number.parseInt(m[2] as string, 10));
+    const end = m[1] && m[2] ? Math.min(Number.parseInt(m[2], 10), size - 1) : size - 1;
+    if (Number.isFinite(start) && start >= 0 && start <= end && start < size) {
+      return new Response(file.slice(start, end + 1), {
+        status: 206,
+        headers: {
+          ...base,
+          'Content-Range': `bytes ${start}-${end}/${size}`,
+          'Content-Length': String(end - start + 1),
+        },
+      });
+    }
+    return new Response(null, {
+      status: 416,
+      headers: { ...base, 'Content-Range': `bytes */${size}` },
+    });
+  }
+  return new Response(file, { headers: base });
+}
+
 export interface Http {
   routes: Record<string, (req: Request) => Response | Promise<Response>>;
   fetch(req: Request): Promise<Response>;
@@ -1866,6 +1924,10 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
           CANVAS_ASSET_EXTS.has(ext(name))
         ) {
           const abs = join(ctx.paths.designRoot, 'assets', name);
+          // Range-aware for video/audio (scrubbing + WKWebView compat).
+          if (RANGE_MEDIA_EXTS.has(ext(name))) {
+            return serveMediaFile(abs, req, { 'X-Content-Type-Options': 'nosniff' });
+          }
           const f = Bun.file(abs);
           if (await f.exists()) {
             return new Response(f, {
@@ -1893,6 +1955,11 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       // .tsx under designRoot is a canvas — transpile + emit locator, return JS.
       if (e === '.tsx' && underDesignRoot) {
         return serveCanvasTsx(fp, req, ctx, join(ctx.paths.designRoot, '_locator.json'));
+      }
+      // Video/audio get Range support (scrubbing + WKWebView compat) — the
+      // `/.design/assets/…` form comps reference goes through here.
+      if (RANGE_MEDIA_EXTS.has(e)) {
+        return serveMediaFile(fp, req, { 'X-Content-Type-Options': 'nosniff' });
       }
       // Bun.file streams transparently for binary content.
       return new Response(file, {
