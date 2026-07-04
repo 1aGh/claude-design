@@ -244,6 +244,11 @@ export default function TimelinePanel({
 
   const startMove = (e, index, startFrom) => {
     if (!onRetime) return;
+    // A TransitionSeries/Series clip computes its own position — Remotion
+    // IGNORES a `from` prop on it, so a body-drag would write a no-op lie
+    // (the "video never changes" dogfood bug). The engine refuses it too;
+    // don't even start the gesture.
+    if (sequences[index]?.series) return;
     e.stopPropagation();
     const rowTrack = e.currentTarget.closest('.tl-row-track');
     const rowW = rowTrack ? rowTrack.getBoundingClientRect().width : 300;
@@ -464,12 +469,20 @@ export default function TimelinePanel({
                         type="button"
                         className={`tl-seq-block${resizing ? ' is-resizing' : ''}${moving ? ' is-moving' : ''}`}
                         data-testid={`timeline-seq-${i}`}
-                        title={`${seq.label} · ${blockFrom}–${blockFrom + dur}f (${dur}f) · drag to move (Alt = no snap)`}
-                        aria-label={`${seq.label}, from frame ${blockFrom} to ${blockFrom + dur}, ${dur} frames. Click to seek; drag to move.`}
+                        title={
+                          seq.series
+                            ? `${seq.label} · ${blockFrom}–${blockFrom + dur}f (${dur}f) · position computed by the series — trim the right edge to retime`
+                            : `${seq.label} · ${blockFrom}–${blockFrom + dur}f (${dur}f) · drag to move (Alt = no snap)`
+                        }
+                        aria-label={
+                          seq.series
+                            ? `${seq.label}, series beat, frames ${blockFrom} to ${blockFrom + dur}. Click to seek; trim its edge to retime.`
+                            : `${seq.label}, from frame ${blockFrom} to ${blockFrom + dur}, ${dur} frames. Click to seek; drag to move.`
+                        }
                         style={{
                           left: pct(blockFrom),
                           width: `${(dur / (totalFrames - 1)) * 100}%`,
-                          cursor: onRetime ? 'grab' : undefined,
+                          cursor: onRetime && !seq.series ? 'grab' : undefined,
                         }}
                         onPointerDown={(e) => startMove(e, i, seq.from)}
                         onClick={(e) => {

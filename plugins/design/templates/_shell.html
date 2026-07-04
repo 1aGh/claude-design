@@ -359,7 +359,20 @@
                 // skipped. Mirrors the meta echo-guard below.
                 if (msg.mode === 'module') {
                   // read the parent-verified local (NOT a canvas-writable global)
-                  if (Date.now() - lastCssOptimisticAt < 1500) return;
+                  //
+                  // VIDEO-COMP EXCEPTION (DDR-150 dogfood): on a canvas with a
+                  // mounted Remotion comp the optimistic DOM style CANNOT hold —
+                  // the Player re-renders styles from the (old) module on every
+                  // frame, wiping the edit at the next play-through. Skipping the
+                  // module reload here left the OLD color playing until a manual
+                  // Cmd+R even though the new value was on disk. So: skip the
+                  // redundant reload only on comp-less canvases. (Reading the
+                  // comp registry off `window` is canvas-influenced, but a canvas
+                  // lying "I have comps" can only FORCE a reload — the safe
+                  // direction; it can never suppress one.)
+                  var hasComps = false;
+                  try { hasComps = !!(window.__maude_comps__ && window.__maude_comps__().length); } catch (err) { hasComps = false; }
+                  if (!hasComps && Date.now() - lastCssOptimisticAt < 1500) return;
                 }
                 // Phase 30 (F4) — prefer an in-place hot-swap for ANY canvas-body
                 // (`module`) change whenever the canvas runtime is mounted: the

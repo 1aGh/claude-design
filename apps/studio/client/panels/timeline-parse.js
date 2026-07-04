@@ -146,11 +146,23 @@ export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
       const fm = attrs.match(/from=\{([^}]+)\}/);
       const after = scope.slice(openEnd, openEnd + 240);
       const lm = after.match(/<([A-Z][A-Za-z0-9]*)\b/);
+      // Media child sniff (badge + replace affordance): the first
+      // <Video|OffthreadVideo|Audio|Img src="…"> inside the clip body.
+      const mm = after.match(/<(Video|OffthreadVideo|Audio|Img)\b[^>]*src=["']([^"']+)["']/);
+      const nameM = attrs.match(/name=["']([^"']+)["']/);
       items.push({
         type: 'seq',
+        // DDR-150 dogfood fix: a `from` on a SERIES clip is a lie — Remotion's
+        // TransitionSeries/Series compute their own offsets and IGNORE the prop
+        // (one shipped drag-move used to insert it). Never let it position the
+        // row; series rows always flow from the cumulative cursor, exactly like
+        // the render.
+        series: kind !== 'Sequence',
         dur: resolveNum(dm?.[1], consts),
-        from: fm ? resolveNum(fm[1], consts) : null,
-        compName: lm ? lm[1] : null,
+        from: kind === 'Sequence' && fm ? resolveNum(fm[1], consts) : null,
+        compName: nameM ? nameM[1] : lm ? lm[1] : null,
+        mediaTag: mm ? mm[1] : null,
+        mediaSrc: mm ? mm[2] : null,
       });
     }
   }
@@ -166,6 +178,9 @@ export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
     const duration = it.dur != null ? it.dur : 30;
     sequences.push({
       label: it.compName ?? `Seq ${sequences.length + 1}`,
+      series: !!it.series,
+      mediaTag: it.mediaTag,
+      mediaSrc: it.mediaSrc,
       from: Math.max(0, from),
       duration: Math.max(1, duration),
       keyframes: keyframesForComponent(src, it.compName, consts, Math.max(0, from)),

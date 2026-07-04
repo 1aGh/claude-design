@@ -100,6 +100,33 @@ function basename(p) {
   return p.split('/').pop();
 }
 
+// DDR-150 dogfood — a transient shell toast for timeline/inline-edit op results.
+// The clip ops used to console.warn their failures (a 422 "series clip can't
+// move" looked like "the button does nothing"). Self-contained DOM (no React
+// state), mirrors the canvas-side showCanvasToast.
+function shellToast(message, ok = false) {
+  if (typeof document === 'undefined') return;
+  let el = document.getElementById('st-op-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'st-op-toast';
+    el.setAttribute('role', 'status');
+    el.style.cssText =
+      'position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:80;' +
+      'max-width:440px;padding:8px 14px;border-radius:8px;font:12px/1.45 var(--font-mono,monospace);' +
+      'box-shadow:0 8px 28px rgba(0,0,0,.34);pointer-events:none;opacity:0;transition:opacity 140ms ease;';
+    document.body.appendChild(el);
+  }
+  el.style.background = ok ? '#1d3524' : '#3a1d1d';
+  el.style.color = ok ? '#b7e4c0' : '#f1b8b8';
+  el.textContent = message;
+  el.style.opacity = '1';
+  clearTimeout(shellToast._t);
+  shellToast._t = setTimeout(() => {
+    el.style.opacity = '0';
+  }, 3200);
+}
+
 // Strip canvas extensions for display. `Canvas Viewport.tsx` → `Canvas Viewport`.
 // Sidecars (`.meta.json`, `.css`, `.registry.json`) keep their extensions so
 // the file type stays unambiguous.
@@ -8663,7 +8690,10 @@ function App() {
                 })
                 .then((r) => r.json())
                 .then((j) => {
-                  if (!j?.ok) console.warn('[retime]', j?.error || 'failed');
+                  if (!j?.ok) {
+                    console.warn('[retime]', j?.error || 'failed');
+                    shellToast(`Retime refused: ${j?.error || 'failed'}`);
+                  }
                   // The file watcher reloads the canvas → re-announce → the
                   // source-fetch effect re-parses the new timing.
                 })
@@ -8699,7 +8729,10 @@ function App() {
                 })
                 .then((r) => (r ? r.json() : null))
                 .then((j) => {
-                  if (j && !j.ok) console.warn('[remove-clip]', j.error || 'failed');
+                  if (j && !j.ok) {
+                    console.warn('[remove-clip]', j.error || 'failed');
+                    shellToast(`Remove refused: ${j.error || 'failed'}`);
+                  }
                 })
                 .catch(() => {});
             }}
@@ -8722,6 +8755,7 @@ function App() {
                   const clip = seqs[index] || null;
                   if (!clip?.mediaCdId) {
                     console.warn('[replace] clip has no replaceable media');
+                    shellToast('This clip has no replaceable media (its src is computed) — edit via chat.');
                     return;
                   }
                   const input = document.createElement('input');
@@ -8742,6 +8776,7 @@ function App() {
                       .then((up) => {
                         if (!up?.path) {
                           console.warn('[replace] upload failed', up?.error);
+                          shellToast(`Upload failed: ${up?.error || 'unknown error'}`);
                           return null;
                         }
                         return fetch('/_api/edit-attr', {
@@ -8757,7 +8792,12 @@ function App() {
                       })
                       .then((r) => (r ? r.json() : null))
                       .then((j) => {
-                        if (j && !j.ok) console.warn('[replace]', j.error || 'failed');
+                        if (j && !j.ok) {
+                          console.warn('[replace]', j.error || 'failed');
+                          shellToast(`Replace refused: ${j.error || 'failed'}`);
+                        } else if (j && j.ok) {
+                          shellToast('Clip media replaced.', true);
+                        }
                       })
                       .catch(() => {});
                   });
@@ -8803,7 +8843,10 @@ function App() {
                 })
                 .then((r) => (r ? r.json() : null))
                 .then((j) => {
-                  if (j && !j.ok) console.warn('[reorder-clip]', j.error || 'failed');
+                  if (j && !j.ok) {
+                    console.warn('[reorder-clip]', j.error || 'failed');
+                    shellToast(`Reorder refused: ${j.error || 'failed'}`);
+                  }
                 })
                 .catch(() => {});
             }}
@@ -8830,6 +8873,7 @@ function App() {
                 .then((up) => {
                   if (!up?.path) {
                     console.warn('[insert] upload failed', up?.error);
+                    shellToast(`Upload failed: ${up?.error || 'unknown error'}`);
                     return null;
                   }
                   return fetch('/_api/insert-sequence', {
@@ -8847,7 +8891,12 @@ function App() {
                 })
                 .then((r) => (r ? r.json() : null))
                 .then((j) => {
-                  if (j && !j.ok) console.warn('[insert-clip]', j.error || 'failed');
+                  if (j && !j.ok) {
+                    console.warn('[insert-clip]', j.error || 'failed');
+                    shellToast(`Insert refused: ${j.error || 'failed'}`);
+                  } else if (j && j.ok) {
+                    shellToast('Clip added to the timeline.', true);
+                  }
                 })
                 .catch(() => {});
             }}

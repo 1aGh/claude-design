@@ -218,6 +218,32 @@ describe('applyRetimeSequenceByClip — stableId retime (multi-comp safe)', () =
   });
 });
 
+describe('applyRetimeSequenceByClip — refuses a no-op `from` on series clips (dogfood fix)', () => {
+  const src = [
+    'const Comp = () => (<TransitionSeries>',
+    '  <TransitionSeries.Sequence durationInFrames={30}><A /></TransitionSeries.Sequence>',
+    '  <TransitionSeries.Transition timing={t} />',
+    '  <TransitionSeries.Sequence durationInFrames={40}><B /></TransitionSeries.Sequence>',
+    '</TransitionSeries>);',
+    'function Canvas() { return <DCArtboard id="x"><VideoComp component={Comp} durationInFrames={70} fps={30} /></DCArtboard>; }',
+  ].join('\n');
+
+  test('from-move on a TransitionSeries.Sequence throws (Remotion ignores the prop)', () => {
+    const seqs = enumerateClips(CANVAS, src, 'x').clips.filter((c) => c.kind === 'sequence');
+    expect(() =>
+      applyRetimeSequenceByClip(CANVAS, src, 'x', seqs[0]!.stableId, undefined, { from: 20 })
+    ).toThrow(/series computes its position/);
+  });
+
+  test('trim (durationInFrames) on a TransitionSeries.Sequence still works', () => {
+    const seqs = enumerateClips(CANVAS, src, 'x').clips.filter((c) => c.kind === 'sequence');
+    const out = applyRetimeSequenceByClip(CANVAS, src, 'x', seqs[1]!.stableId, undefined, {
+      durationInFrames: 25,
+    });
+    expect(out.source).toContain('durationInFrames={25}');
+  });
+});
+
 describe('applyRemoveClip — clip removal (DDR-150 P3)', () => {
   const outro = () =>
     [

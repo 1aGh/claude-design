@@ -1074,6 +1074,17 @@ export function applyRetimeSequenceByClip(
   patch: RetimePatch
 ): { source: string } {
   const clip = resolveClip(canvasAbsPath, source, artboardId, stableId, expectedHash);
+  // A `from` move is STANDALONE-<Sequence>-only. `<TransitionSeries.Sequence>` /
+  // `<Series.Sequence>` compute their own offsets — Remotion silently IGNORES a
+  // `from` prop on them, so patching/inserting one writes a lie: the timeline
+  // draws a gap while the rendered video never changes (the dogfood bug —
+  // "video je furt stejné, ať klipem pohnu jakkoliv"). Refuse loudly instead.
+  if (patch.from != null && clip.tag !== 'Sequence') {
+    throw new CanvasEditError(
+      `"${stableId}" is a ${clip.tag} — the series computes its position, so moving it has no effect. Trim its duration instead, or reorder the beats.`,
+      { canvas: canvasAbsPath, id: stableId }
+    );
+  }
   const s = new MagicString(source);
   SEQ_TAG_RE.lastIndex = 0;
   let touched = false;
