@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import JSZip from 'jszip';
-
+import { exportShimPath, resolveExportRuntime } from './_runtime.ts';
 import {
   canvasShellUrl,
   type ExportContext,
@@ -21,7 +21,9 @@ import {
 } from './index.ts';
 import type { Target } from './scope.ts';
 
-const PNG_PLAYWRIGHT = path.join(import.meta.dir, '..', 'bin', '_png-playwright.mjs');
+// DDR-045: resolve via DEV_SERVER_ROOT, never `import.meta.dir` (→ /$bunfs/root
+// in a compiled binary). See exporters/_runtime.ts.
+const PNG_PLAYWRIGHT = exportShimPath('_png-playwright.mjs');
 
 interface CaptureOptions {
   scale?: 1 | 2 | 3;
@@ -66,7 +68,7 @@ async function captureElement(
     if (target.widen) args.push('--widen-to-artboard', '1');
     args.push('--out', path.join(outDir, `${target.canvasSlug}.png`));
   }
-  const proc = Bun.spawn(['node', ...args], {
+  const proc = Bun.spawn([resolveExportRuntime(), ...args], {
     cwd: path.dirname(PNG_PLAYWRIGHT),
     stdout: 'pipe',
     stderr: 'pipe',

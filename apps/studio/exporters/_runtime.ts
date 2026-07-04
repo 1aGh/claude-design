@@ -1,0 +1,69 @@
+// Shared runtime + path resolution for the external playwright render shims
+// (`bin/_{png,pdf,svg,html,pptx,video}-playwright.mjs`).
+//
+// RCA: issue-desktop-export-failures. The render exporters were written for the
+// dev-server runtime and never migrated for the compiled-Bun sidecar packaging,
+// so they broke in two ways in every `bun --compile` standalone binary (the
+// desktop app AND `npm i -g @1agh/maude`):
+//
+//   1. Shim paths computed from `import.meta.dir` → inside a compiled binary that
+//      is the virtual `/$bunfs/root`, not a real disk path, so `Bun.spawn` /
+//      `Bun.build` fail with "failed to open root directory: /$bunfs/root". This
+//      is the DDR-045 bug: filesystem-relative paths MUST derive from
+//      `paths.ts`, never a local `import.meta.dir`.
+//   2. Spawning a hardcoded `'node'` → the desktop sidecar is a compiled Bun
+//      binary with no bundled `node`; a Finder-launched `.app` can't rely on one
+//      being on PATH, so the spawn fails with `posix_spawn 'node'` ENOENT.
+//
+// This module centralizes both concerns so all six adapters resolve identically.
+
+import path from 'node:path';
+
+import { DEV_SERVER_ROOT } from '../paths.ts';
+
+/**
+ * Real-disk dir holding the render shims (`<DEV_SERVER_ROOT>/bin`).
+ *
+ * Derived from `DEV_SERVER_ROOT` (paths.ts) — NEVER `import.meta.dir`, which is
+ * the virtual `/$bunfs/root` inside a compiled binary (DDR-045). In dev this is
+ * the same `apps/studio/bin` the old `path.join(import.meta.dir, '..', 'bin')`
+ * resolved to; in the desktop bundle it resolves to `Resources/apps/studio/bin`
+ * (the shims ARE staged there — stage-resources ships the whole source tree).
+ */
+export const EXPORT_SHIM_DIR: string = path.join(DEV_SERVER_ROOT, 'bin');
+
+/** Absolute path to a render shim by basename (e.g. `_png-playwright.mjs`). */
+export function exportShimPath(basename: string): string {
+  return path.join(EXPORT_SHIM_DIR, basename);
+}
+
+/**
+ * Resolve a JS runtime able to execute the external `.mjs` render shims.
+ *
+ * Ladder (mirrors `acp/probe.ts` resolveAgentRuntime): explicit override → a
+ * real `node` on PATH → a standalone `bun` on PATH. The compiled maude binary
+ * (`process.execPath`) is deliberately NOT a fallback — a `bun --compile`
+ * standalone ignores a script argument and re-runs its own embedded entrypoint,
+ * so it can't run a shim. When nothing resolves (a packaged desktop app whose
+ * sidecar has no node/bun on PATH) we throw an ACTIONABLE error instead of the
+ * cryptic `posix_spawn 'node'` ENOENT the hardcoded `'node'` produced.
+ */
+export function resolveExportRuntime(): string {
+  // Look up against the LIVE process PATH (the desktop sidecar sets it via env at
+  // spawn — DDR-128), not Bun's startup env snapshot, so a corrected PATH is
+  // honored and the lookup is deterministic/testable.
+  const pathEnv = process.env.PATH;
+  const runtime =
+    process.env.MAUDE_EXPORT_RUNTIME ||
+    Bun.which('node', { PATH: pathEnv }) ||
+    Bun.which('bun', { PATH: pathEnv });
+  if (!runtime) {
+    throw new Error(
+      'render export needs a JS runtime (node or bun) on PATH, but this build has none. ' +
+        'Run the export from the browser dev-server (`maude design serve`), install Node, ' +
+        'or set MAUDE_EXPORT_RUNTIME to a node/bun binary. ' +
+        '(Native desktop render-export backend is pending — see RCA issue-desktop-export-failures.)'
+    );
+  }
+  return runtime;
+}

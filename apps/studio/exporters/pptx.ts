@@ -27,6 +27,7 @@ import path from 'node:path';
 import PptxGenJS from 'pptxgenjs';
 
 import { getBrowserBundle } from './_browser-bundles.ts';
+import { exportShimPath, resolveExportRuntime } from './_runtime.ts';
 import {
   canvasShellUrl,
   type ExportContext,
@@ -35,8 +36,9 @@ import {
 } from './index.ts';
 import type { Target } from './scope.ts';
 
-const SVG_PLAYWRIGHT = path.join(import.meta.dir, '..', 'bin', '_svg-playwright.mjs');
-const PNG_PLAYWRIGHT = path.join(import.meta.dir, '..', 'bin', '_png-playwright.mjs');
+// DDR-045: resolve via DEV_SERVER_ROOT, never `import.meta.dir`. See _runtime.ts.
+const SVG_PLAYWRIGHT = exportShimPath('_svg-playwright.mjs');
+const PNG_PLAYWRIGHT = exportShimPath('_png-playwright.mjs');
 const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 const SLIDE_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide';
 const SLIDE_CT = 'application/vnd.openxmlformats-officedocument.presentationml.slide+xml';
@@ -49,9 +51,9 @@ function isElementTarget(t: Target): t is ElementTarget {
   return t.kind === 'element';
 }
 
-/** Spawn a playwright shim via `node`, returning the written file paths (stdout). */
+/** Spawn a playwright shim via a resolved runtime, returning the written file paths (stdout). */
 async function spawnShim(args: string[]): Promise<string[]> {
-  const proc = Bun.spawn(['node', ...args], {
+  const proc = Bun.spawn([resolveExportRuntime(), ...args], {
     cwd: path.dirname(args[0]),
     stdout: 'pipe',
     stderr: 'pipe',

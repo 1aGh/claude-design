@@ -13,6 +13,7 @@ import path from 'node:path';
 import JSZip from 'jszip';
 
 import { getBrowserBundle } from './_browser-bundles.ts';
+import { exportShimPath, resolveExportRuntime } from './_runtime.ts';
 import {
   canvasShellUrl,
   type ExportContext,
@@ -21,7 +22,8 @@ import {
 } from './index.ts';
 import type { Target } from './scope.ts';
 
-const SVG_PLAYWRIGHT = path.join(import.meta.dir, '..', 'bin', '_svg-playwright.mjs');
+// DDR-045: resolve via DEV_SERVER_ROOT, never `import.meta.dir`. See _runtime.ts.
+const SVG_PLAYWRIGHT = exportShimPath('_svg-playwright.mjs');
 
 async function captureSvg(
   target: Extract<Target, { kind: 'element' }>,
@@ -50,10 +52,12 @@ async function captureSvg(
     args.push('--out', path.join(outDir, `${target.canvasSlug}.svg`));
   }
 
-  // Run via `node` so the shim's `import 'playwright'` resolves against
-  // dev-server/node_modules (playwright is a devDep). `npm exec` doesn't
-  // bridge the module path for ESM imports — confirmed against npm 10.x.
-  const proc = Bun.spawn(['node', ...args], {
+  // Run via a resolved node/bun runtime so the shim's `import 'playwright'`
+  // resolves against dev-server/node_modules (playwright is a devDep). `npm exec`
+  // doesn't bridge the module path for ESM imports — confirmed against npm 10.x.
+  // resolveExportRuntime() replaces a hardcoded `'node'` so a compiled binary
+  // without `node` on PATH surfaces an actionable error, not `posix_spawn 'node'`.
+  const proc = Bun.spawn([resolveExportRuntime(), ...args], {
     cwd: path.dirname(SVG_PLAYWRIGHT),
     stdout: 'pipe',
     stderr: 'pipe',

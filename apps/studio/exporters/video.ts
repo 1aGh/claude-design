@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { getEncodeLibBundle } from './_browser-bundles.ts';
+import { exportShimPath, resolveExportRuntime } from './_runtime.ts';
 import {
   canvasShellUrl,
   type ExportContext,
@@ -20,7 +21,8 @@ import {
 } from './index.ts';
 import type { Target } from './scope.ts';
 
-const VIDEO_PLAYWRIGHT = path.join(import.meta.dir, '..', 'bin', '_video-playwright.mjs');
+// DDR-045: resolve via DEV_SERVER_ROOT, never `import.meta.dir`. See _runtime.ts.
+const VIDEO_PLAYWRIGHT = exportShimPath('_video-playwright.mjs');
 
 type VideoFormat = 'mp4' | 'webm' | 'gif';
 
@@ -81,7 +83,7 @@ async function runVideo(
   }
 
   try {
-    const proc = Bun.spawn(['node', ...args], {
+    const proc = Bun.spawn([resolveExportRuntime(), ...args], {
       cwd: path.dirname(VIDEO_PLAYWRIGHT),
       stdout: 'pipe',
       stderr: 'pipe',

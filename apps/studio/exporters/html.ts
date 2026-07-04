@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import JSZip from 'jszip';
-
+import { exportShimPath, resolveExportRuntime } from './_runtime.ts';
 import {
   canvasShellUrl,
   type ExportContext,
@@ -20,7 +20,8 @@ import {
 } from './index.ts';
 import type { Target } from './scope.ts';
 
-const HTML_PLAYWRIGHT = path.join(import.meta.dir, '..', 'bin', '_html-playwright.mjs');
+// DDR-045: resolve via DEV_SERVER_ROOT, never `import.meta.dir`. See _runtime.ts.
+const HTML_PLAYWRIGHT = exportShimPath('_html-playwright.mjs');
 
 async function captureHtml(
   target: Extract<Target, { kind: 'element' }>,
@@ -45,7 +46,7 @@ async function captureHtml(
     if (target.widen) args.push('--widen-to-artboard', '1');
     args.push('--out', path.join(outDir, `${target.canvasSlug}.html`));
   }
-  const proc = Bun.spawn(['node', ...args], {
+  const proc = Bun.spawn([resolveExportRuntime(), ...args], {
     cwd: path.dirname(HTML_PLAYWRIGHT),
     stdout: 'pipe',
     stderr: 'pipe',

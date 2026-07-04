@@ -9,6 +9,8 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import { DEV_SERVER_ROOT } from '../paths.ts';
+
 interface CachedBundle {
   path: string;
   ready: Promise<string>;
@@ -82,7 +84,10 @@ async function buildIife(entry: string, globalName: string, cachePath: string): 
 let encodeLibReady: Promise<string> | null = null;
 export function getEncodeLibBundle(): Promise<string> {
   if (encodeLibReady) return encodeLibReady;
-  const entry = path.join(import.meta.dir, 'video-encode-lib.ts');
+  // DDR-045: derive from DEV_SERVER_ROOT, never `import.meta.dir`. In a compiled
+  // binary the latter is the virtual `/$bunfs/root`, so `Bun.build` fails with
+  // "failed to open root directory: /$bunfs/root" (the mp4/gif export bug).
+  const entry = path.join(DEV_SERVER_ROOT, 'exporters', 'video-encode-lib.ts');
   const cachePath = path.join(tmpdir(), 'maude-video-encode-lib.mjs');
   encodeLibReady = (async () => {
     const built = await Bun.build({

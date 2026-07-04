@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { PDFDocument } from 'pdf-lib';
-
+import { exportShimPath, resolveExportRuntime } from './_runtime.ts';
 import {
   canvasShellUrl,
   type ExportContext,
@@ -22,7 +22,8 @@ import {
 } from './index.ts';
 import type { Target } from './scope.ts';
 
-const PDF_PLAYWRIGHT = path.join(import.meta.dir, '..', 'bin', '_pdf-playwright.mjs');
+// DDR-045: resolve via DEV_SERVER_ROOT, never `import.meta.dir`. See _runtime.ts.
+const PDF_PLAYWRIGHT = exportShimPath('_pdf-playwright.mjs');
 
 async function capturePdf(
   target: Extract<Target, { kind: 'element' }>,
@@ -48,7 +49,7 @@ async function capturePdf(
     args.push('--out', path.join(outDir, `${target.canvasSlug}.pdf`));
   }
 
-  const proc = Bun.spawn(['node', ...args], {
+  const proc = Bun.spawn([resolveExportRuntime(), ...args], {
     cwd: path.dirname(PDF_PLAYWRIGHT),
     stdout: 'pipe',
     stderr: 'pipe',
