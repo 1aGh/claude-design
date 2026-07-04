@@ -8695,6 +8695,50 @@ function App() {
                 })
                 .catch(() => {});
             }}
+            onDropMedia={(file) => {
+              if (!activePath || activePath === SYSTEM_TAB) return;
+              // DDR-150 P4 Task 11 — drop a media file onto the timeline to
+              // insert a clip: upload to assets/, then append a <Sequence> with
+              // the media (playing after existing content). fps*3 default length.
+              const artboardId = timelineCompId || undefined;
+              const mediaTag = file.type.startsWith('video/')
+                ? 'Video'
+                : file.type.startsWith('audio/')
+                  ? 'Audio'
+                  : file.type.startsWith('image/')
+                    ? 'Img'
+                    : null;
+              const fps = activeComps[0]?.fps || 30;
+              fetch('/_api/asset', {
+                method: 'POST',
+                headers: { 'Content-Type': file.type || 'application/octet-stream' },
+                body: file,
+              })
+                .then((r) => r.json().catch(() => ({})))
+                .then((up) => {
+                  if (!up?.path) {
+                    console.warn('[insert] upload failed', up?.error);
+                    return null;
+                  }
+                  return fetch('/_api/insert-sequence', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      canvas: activePath,
+                      artboardId,
+                      from: Math.max(0, timelineTotal),
+                      durationInFrames: Math.round(fps * 3),
+                      mediaTag,
+                      src: up.path,
+                    }),
+                  });
+                })
+                .then((r) => (r ? r.json() : null))
+                .then((j) => {
+                  if (j && !j.ok) console.warn('[insert-clip]', j.error || 'failed');
+                })
+                .catch(() => {});
+            }}
             height={timelineHeight}
             onResize={setTimelineHeight}
             onClose={() => setTimelineOpen(false)}

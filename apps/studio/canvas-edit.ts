@@ -1623,6 +1623,107 @@ export async function removeClip(
   });
 }
 
+/** Media tags a caller may insert as a clip's child (also gated at the api layer). */
+const INSERTABLE_MEDIA = new Set(['Video', 'Audio', 'Img', 'OffthreadVideo']);
+
+/**
+ * Insert a new `<Sequence>` clip into a comp (DDR-150 P4), addressed by
+ * artboardId. Appends after the comp's LAST clip (matching its indentation),
+ * optionally with a media child. Scoped to STANDALONE `<Sequence>` comps —
+ * refuses a `<TransitionSeries>` (its overlap/transition math isn't a clean
+ * append) and a comp with no existing clip to anchor to. Reparse + semantic
+ * gate; `src` contained (no ../ or script schemes). Returns the new stableId.
+ */
+export function applyInsertClip(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string | undefined,
+  opts: { from: number; durationInFrames: number; mediaTag?: string | null; src?: string | null }
+): { source: string; stableId: string | null } {
+  const { clips, compName } = enumerateClips(canvasAbsPath, source, artboardId);
+  if (!compName) {
+    throw new CanvasEditError('no video-comp for this artboard', {
+      canvas: canvasAbsPath,
+      id: artboardId ?? '',
+    });
+  }
+  if (clips.length === 0) {
+    throw new CanvasEditError('comp has no existing clip to anchor the insert', {
+      canvas: canvasAbsPath,
+      id: artboardId ?? '',
+    });
+  }
+  const last = clips[clips.length - 1] as ClipInfo;
+  if (last.tag.startsWith('TransitionSeries.')) {
+    throw new CanvasEditError(
+      'cannot append into a <TransitionSeries> (transition math) — deferred',
+      {
+        canvas: canvasAbsPath,
+        id: artboardId ?? '',
+      }
+    );
+  }
+  const from = Math.max(0, Math.round(opts.from));
+  const dur = Math.max(1, Math.round(opts.durationInFrames));
+  const indent = lineStartInfo(source, last.start).indent;
+  let media = '';
+  if (opts.mediaTag && INSERTABLE_MEDIA.has(opts.mediaTag)) {
+    const src = (opts.src ?? '').trim();
+    if (src && (/\.\./.test(src) || /^\s*(javascript|vbscript|file|data):/i.test(src))) {
+      throw new CanvasEditError(
+        'media src must be a contained asset path (no ../ or script schemes)',
+        {
+          canvas: canvasAbsPath,
+          id: artboardId ?? '',
+        }
+      );
+    }
+    media = `\n${indent}  <${opts.mediaTag} src="${escapeAttr(src)}" />\n${indent}`;
+  }
+  const clipText = `\n${indent}<Sequence from={${from}} durationInFrames={${dur}}>${media}</Sequence>`;
+  const s = new MagicString(source);
+  s.appendLeft(last.end, clipText);
+  const out = s.toString();
+  const parsed = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `insert produced invalid source: ${parsed.errors[0]?.message ?? 'parse error'}`,
+      { canvas: canvasAbsPath, id: artboardId ?? '' }
+    );
+  }
+  assertCompSemantics(canvasAbsPath, out);
+  const after = enumerateClips(canvasAbsPath, out, artboardId);
+  const newStableId = after.clips.length
+    ? (after.clips[after.clips.length - 1]?.stableId ?? null)
+    : null;
+  return { source: out, stableId: newStableId };
+}
+
+/** Insert a clip on disk (atomic write + cross-process lock). */
+export async function insertClip(
+  canvasAbsPath: string,
+  artboardId: string | undefined,
+  opts: { from: number; durationInFrames: number; mediaTag?: string | null; src?: string | null }
+): Promise<{ source: string; stableId: string | null }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: artboardId ?? '',
+      });
+    }
+    const source = await file.text();
+    const next = applyInsertClip(canvasAbsPath, source, artboardId, opts);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Edit shapes.
 

@@ -1477,6 +1477,36 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       return Response.json({ ok: true }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
     },
 
+    '/_api/insert-sequence': async (req: Request) => {
+      // DDR-150 P4 — insert a clip. POST { canvas, artboardId, from,
+      // durationInFrames, mediaTag?, src? } → insertClip (appends after the
+      // comp's last clip; refuses TransitionSeries + empty comps; src contained).
+      // MAIN-ORIGIN-ONLY (absent from CANVAS_SAFE_API + startCanvasServer routes).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        artboardId?: unknown;
+        from?: unknown;
+        durationInFrames?: unknown;
+        mediaTag?: unknown;
+        src?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.insertSequenceOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, stableId: result.stableId },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/comp-clips': async (req: Request) => {
       // DDR-150 P2 — the single authoritative clip enumerator for a video-comp.
       // GET ?canvas=<rel>&artboardId=<id> → { ok, compName, clips:[{ stableId,

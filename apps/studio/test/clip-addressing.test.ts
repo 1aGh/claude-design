@@ -9,6 +9,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  applyInsertClip,
   applyRemoveClip,
   applyRetimeSequenceByClip,
   assertCompSemantics,
@@ -256,6 +257,55 @@ describe('applyRemoveClip — clip removal (DDR-150 P3)', () => {
   test('refuses a stale content-hash', () => {
     const src = outro();
     expect(() => applyRemoveClip(CANVAS, src, 'outro', 'Outro#0', 'deadbeef')).toThrow(
+      CanvasEditError
+    );
+  });
+
+  test('inserts a new <Sequence> with media after the last clip (P4 Task 11)', () => {
+    const src = [
+      'const Comp = () => (',
+      '  <>',
+      '    <Sequence durationInFrames={50}><Video src="assets/a.mp4" /></Sequence>',
+      '  </>',
+      ');',
+      'function Canvas() { return <DCArtboard id="x"><VideoComp component={Comp} durationInFrames={50} fps={30} /></DCArtboard>; }',
+    ].join('\n');
+    const out = applyInsertClip(CANVAS, src, 'x', {
+      from: 50,
+      durationInFrames: 40,
+      mediaTag: 'Video',
+      src: 'assets/new.mp4',
+    });
+    expect(out.source).toContain('<Sequence from={50} durationInFrames={40}>');
+    expect(out.source).toContain('<Video src="assets/new.mp4" />');
+    expect(out.stableId).toBe('Comp#1'); // new clip is the 2nd
+    // both clips enumerate cleanly
+    expect(enumerateClips(CANVAS, out.source, 'x').clips.length).toBe(2);
+  });
+
+  test('refuses insert with a traversal src', () => {
+    const src = [
+      'const Comp = () => <Sequence durationInFrames={30}><Video src="assets/a.mp4" /></Sequence>;',
+      'function Canvas() { return <DCArtboard id="x"><VideoComp component={Comp} durationInFrames={30} fps={30} /></DCArtboard>; }',
+    ].join('\n');
+    expect(() =>
+      applyInsertClip(CANVAS, src, 'x', {
+        from: 0,
+        durationInFrames: 30,
+        mediaTag: 'Video',
+        src: '../../etc/passwd',
+      })
+    ).toThrow(CanvasEditError);
+  });
+
+  test('refuses appending into a <TransitionSeries> (deferred)', () => {
+    const src = [
+      'const Comp = () => (<TransitionSeries>',
+      '  <TransitionSeries.Sequence durationInFrames={30}><A /></TransitionSeries.Sequence>',
+      '</TransitionSeries>);',
+      'function Canvas() { return <DCArtboard id="x"><VideoComp component={Comp} durationInFrames={30} fps={30} /></DCArtboard>; }',
+    ].join('\n');
+    expect(() => applyInsertClip(CANVAS, src, 'x', { from: 30, durationInFrames: 30 })).toThrow(
       CanvasEditError
     );
   });

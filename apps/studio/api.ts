@@ -12,6 +12,7 @@ import {
   type ClipInfo,
   editAttribute,
   enumerateClips,
+  insertClip,
   type MovePosition,
   moveElement,
   removeAttribute,
@@ -312,6 +313,16 @@ export interface Api {
     artboardId?: unknown;
     contentHash?: unknown;
   }): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
+  // DDR-150 P4 — insert a new <Sequence> (optionally with media) after a comp's
+  // last clip. Returns the new clip's stableId.
+  insertSequenceOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    from?: unknown;
+    durationInFrames?: unknown;
+    mediaTag?: unknown;
+    src?: unknown;
+  }): Promise<{ ok: true; stableId: string | null } | { ok: false; status: number; error: string }>;
   // DDR-150 P2 — the single authoritative clip enumerator for a video-comp.
   // Read-only; the Timeline addresses every op by the returned `stableId`
   // (never a regex document-order index — the multi-comp mis-hit defect).
@@ -1952,6 +1963,53 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  async function insertSequenceOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    from?: unknown;
+    durationInFrames?: unknown;
+    mediaTag?: unknown;
+    src?: unknown;
+  }): Promise<
+    { ok: true; stableId: string | null } | { ok: false; status: number; error: string }
+  > {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId : undefined;
+    const from = Number.isFinite(Number(input.from))
+      ? Math.max(0, Math.round(Number(input.from)))
+      : 0;
+    const durationInFrames = Number.isFinite(Number(input.durationInFrames))
+      ? Math.max(1, Math.min(100000, Math.round(Number(input.durationInFrames))))
+      : 90;
+    const mediaTag = typeof input.mediaTag === 'string' ? input.mediaTag : null;
+    const src = typeof input.src === 'string' ? input.src : null;
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      const res = await insertClip(r.abs, artboardId, { from, durationInFrames, mediaTag, src });
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+      } else {
+        try {
+          await history.writeSnapshot(rel, before, 'pre-insert-clip');
+        } catch {
+          /* snapshot best-effort */
+        }
+      }
+      return { ok: true, stableId: res.stableId };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'insert failed',
+      };
+    }
+  }
+
   async function compClips(input: { canvas?: unknown; artboardId?: unknown }) {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
@@ -2435,6 +2493,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     editText,
     editAttr,
     removeSequenceOp,
+    insertSequenceOp,
     compClips,
     reorder,
     retimeSequenceOp,

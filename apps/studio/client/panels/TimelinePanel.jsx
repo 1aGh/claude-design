@@ -96,8 +96,10 @@ export default function TimelinePanel({
   onRetime,
   onRemove,
   onReplace,
+  onDropMedia,
   onClose,
 }) {
+  const [dropActive, setDropActive] = useState(false);
   const comp = comps[0] ?? null;
   const totalFrames = Math.max(1, total || comp?.durationInFrames || 1);
   const fps = comp?.fps ?? 30;
@@ -247,10 +249,31 @@ export default function TimelinePanel({
   const ticks = Array.from({ length: secs + 1 }, (_, i) => (i * fps) / (totalFrames - 1));
   const pct = (f) => `${(clamp(f, 0, totalFrames - 1) / (totalFrames - 1)) * 100}%`;
 
+  // DDR-150 P4 Task 11 — drop a media file onto the timeline to insert a clip.
+  const hasFiles = (dt) => Array.from(dt?.types ?? []).includes('Files');
+  const onDrop = (e) => {
+    if (!onDropMedia || !hasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDropActive(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) onDropMedia(file);
+  };
+
   return (
     <aside
-      className={`tl-panel${resizing ? ' is-resizing' : ''}`}
+      className={`tl-panel${resizing ? ' is-resizing' : ''}${dropActive ? ' is-drop' : ''}`}
       style={height ? { height } : undefined}
+      onDragOver={(e) => {
+        if (!onDropMedia || !hasFiles(e.dataTransfer)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        if (!dropActive) setDropActive(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.relatedTarget == null) setDropActive(false);
+      }}
+      onDrop={onDrop}
       aria-label="Timeline"
       data-testid="timeline-panel"
     >
