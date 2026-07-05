@@ -6,7 +6,7 @@
   "plugins": {
     "design": {
       "commands": 17,
-      "skills": 3,
+      "skills": 4,
       "agents": 17
     },
     "flow": {
@@ -73,6 +73,7 @@
     "design/categories.mdx": "2026-05-29",
     "design/index.mdx": "2026-06-12",
     "design/multi-ds.mdx": "2026-07-03",
+    "design/video.mdx": "2026-07-04",
     "desktop/index.mdx": "2026-07-03",
     "flow.mdx": "2026-06-11",
     "getting-started.mdx": "2026-07-03",
