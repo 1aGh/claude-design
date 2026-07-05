@@ -1,0 +1,5 @@
+---
+"@1agh/maude": minor
+---
+
+Hand-edit your video comps on the timeline. After the Assistant generates a video you can now drag a clip to move it, drag its right edge to trim (snapping to second-ticks and neighbour edges; hold Alt to drag freely), drop a video / image / audio file to add a clip, raise or lower a clip's stacking, swap a clip's footage, or remove it. Right-click any clip for the same menu — replace, move, hide, or remove — where hide keeps a clip in place while it stops rendering. Clips that layer a background under a title expand into per-layer rows so you can see and replace the video separately from its caption, and transition-based showreels reorder and accept dropped clips too. Keyboard shortcuts help (Space plays/pauses, arrows step frames, Home/End jump to the ends, `.`/`,` hop keyframes), you can drop reference clips anywhere on the canvas and File → Assemble them into a real comp in one click, edits are multi-comp-safe, and inline text / CSS tweaks made on the canvas now persist.
