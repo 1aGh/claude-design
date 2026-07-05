@@ -235,11 +235,19 @@ stageClosure(closure);
 //   • `mediabunny` + `gifenc` — imported by `exporters/video-encode-lib.ts`,
 //     which the video exporter Bun.build's at runtime (dynamic, so NOT embedded
 //     in the compiled binary); absent → mp4/gif export fails at the encode step.
+//   • `@remotion/web-renderer` — DDR-148 addendum (audio export). Imported by
+//     `exporters/video-render-lib.ts`, ALSO Bun.build'd at export-request time
+//     (never pre-built, unlike the canvas-runtime `remotion`/`@remotion/media`
+//     bundles, which ship as committed `dist/runtime/*.js` and need no node_modules
+//     presence at all — the sidecar reads those straight off disk). Its own
+//     dependency closure (@remotion/licensing + the 3 @mediabunny/*-encoder WASM
+//     packages, its own pinned `mediabunny`) is walked + staged automatically by
+//     collectClosure below — no separate entry needed for those.
 // Stage each package's JS closure (playwright+playwright-core; mediabunny;
-// gifenc). Browsers/native are NOT in these packages — the Chromium binary is
-// resolved at runtime from the ms-playwright cache or an executablePath (see
-// bin/_pw-launch.mjs). RCA: issue-desktop-export-failures.
-const RENDER_RUNTIME_PKGS = ['playwright', 'mediabunny', 'gifenc'];
+// gifenc; @remotion/web-renderer). Browsers/native are NOT in these packages —
+// the Chromium binary is resolved at runtime from the ms-playwright cache or an
+// executablePath (see bin/_pw-launch.mjs). RCA: issue-desktop-export-failures.
+const RENDER_RUNTIME_PKGS = ['playwright', 'mediabunny', 'gifenc', '@remotion/web-renderer'];
 let renderPkgCount = 0;
 for (const pkg of RENDER_RUNTIME_PKGS) {
   const c = collectClosure(pkg, `${pkg} (render export)`, IS_RENDER_SKIP_DEP);
