@@ -1257,6 +1257,14 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .tl-kind[data-kind="jsx"] { color: var(--fg-2); font-style: italic; }
 /* DDR-150 dogfood — the right-click clip menu reuses the canvas's shared
    .dc-context-menu component (context-menu.tsx / ensureMenuStyles). */
+/* Clip layer decomposition — expand toggle + indented sub-rows. */
+.tl-expand { flex: none; width: 12px; height: 14px; display: grid; place-items: center; padding: 0; border: none; background: transparent; color: var(--fg-2); font-size: 8px; line-height: 1; cursor: pointer; border-radius: 2px; }
+.tl-expand:hover:not(.tl-expand--spacer) { color: var(--fg-0); background: var(--bg-3); }
+.tl-expand--spacer { cursor: default; pointer-events: none; }
+.tl-row--layer .tl-row-label { color: var(--fg-2); }
+.tl-row--layer { opacity: 0.92; }
+.tl-layer-indent { flex: none; width: 10px; }
+.tl-layer-block { top: 5px; bottom: 5px; opacity: 0.7; border-style: dashed; }
 /* Kind tint on the block itself — a video clip reads different from JSX motion. */
 .tl-seq-block[data-kind="video"] { border-color: color-mix(in oklch, #0ea5e9 55%, var(--accent-muted)); background: color-mix(in oklch, #0ea5e9 16%, var(--bg-2)); }
 .tl-seq-block[data-kind="image"] { border-color: color-mix(in oklch, #22c55e 45%, var(--accent-muted)); background: color-mix(in oklch, #22c55e 13%, var(--bg-2)); }

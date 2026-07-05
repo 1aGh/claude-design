@@ -1169,6 +1169,20 @@ const CLIP_TAGS = new Set(['Sequence', 'Series.Sequence', 'TransitionSeries.Sequ
 const TRANSITION_TAGS = new Set(['Series.Transition', 'TransitionSeries.Transition']);
 /** Media tags that carry a `src` (the replace-media + drop targets). */
 const MEDIA_TAGS = new Set(['Video', 'OffthreadVideo', 'Audio', 'Img', 'Image']);
+/** Remotion/layout primitives that are structural, not their own timeline layer. */
+const LAYER_SKIP_TAGS = new Set([
+  'AbsoluteFill',
+  'Sequence',
+  'Series',
+  'Series.Sequence',
+  'Series.Transition',
+  'TransitionSeries',
+  'TransitionSeries.Sequence',
+  'TransitionSeries.Transition',
+  'Loop',
+  'Freeze',
+  'Fragment',
+]);
 
 /** Full tag string of a JSXElement: `Sequence` | `TransitionSeries.Sequence` | … */
 function jsxTagName(node: AnyNode): string | null {
@@ -1410,6 +1424,145 @@ function resolveNestedMedia(
   return { el: media, tag, src: null, cdId: null, arrayRef: null, shared: false };
 }
 
+/** One visually-meaningful layer inside a clip (a media element or a named
+ *  sub-component) — so the Timeline can show a ClipShot's mp4 background and its
+ *  title/lower-third as SEPARATE rows instead of one opaque "ClipShot". */
+export interface ClipLayer {
+  kind: 'video' | 'image' | 'audio' | 'component';
+  /** Human label — the media filename, or the sub-component's tag. */
+  label: string;
+  mediaTag: string | null;
+  mediaSrc: string | null;
+  mediaCdId: string | null;
+  mediaArrayRef: { arrayName: string; index: number; field: string } | null;
+  mediaShared: boolean;
+}
+
+/**
+ * Decompose a clip into its stacked layers (media elements + named sub-components),
+ * resolving through a wrapper component (the showreel `<ClipShot clip={CLIPS[i]}>`
+ * → its `<Video>` + `<LowerThird>`). Ordered by source position. Skips Remotion/
+ * layout primitives (AbsoluteFill, Sequence, …). Returns [] when the clip has no
+ * decomposable structure (a pure inline card).
+ */
+function collectClipLayers(
+  clip: AnyNode,
+  componentBodies: Map<string, AnyNode>,
+  arrays: Map<string, AnyNode>,
+  cdIdOf: Map<AnyNode, string>
+): ClipLayer[] {
+  // Resolve the root to walk: the wrapper component's body if the clip wraps one,
+  // else the clip's own children. Carry the wrapper element so prop-fed src (the
+  // component's `clip` param → `CLIPS[i]`) resolves against the call site.
+  const wrapper = firstComponentChild(clip);
+  const wrapperTag = wrapper ? jsxTagName(wrapper) : null;
+  const body = wrapperTag ? componentBodies.get(wrapperTag) : null;
+  const root: AnyNode = body ? { children: [body] } : clip;
+
+  const layers: ClipLayer[] = [];
+  (function walk(n: AnyNode): void {
+    if (!n || typeof n !== 'object') return;
+    if (Array.isArray(n)) {
+      for (const c of n) walk(c);
+      return;
+    }
+    if (n.type === 'JSXElement') {
+      const tag = jsxTagName(n) ?? '';
+      if (MEDIA_TAGS.has(tag)) {
+        // Media layer — resolve src the same way replace does (literal / prop / array).
+        const m = wrapper
+          ? resolveMediaSrcThroughWrapper(n, wrapper, arrays, cdIdOf)
+          : {
+              src: getStringAttr(n.openingElement, 'src'),
+              cdId: cdIdOf.get(n) ?? null,
+              arrayRef: null as ClipLayer['mediaArrayRef'],
+              shared: false,
+            };
+        const kind: ClipLayer['kind'] =
+          tag === 'Audio' ? 'audio' : tag === 'Img' || tag === 'Image' ? 'image' : 'video';
+        layers.push({
+          kind,
+          label: m.src ? String(m.src).split('/').pop() || tag : tag,
+          mediaTag: tag,
+          mediaSrc: m.src,
+          mediaCdId: m.cdId,
+          mediaArrayRef: m.arrayRef,
+          mediaShared: m.shared,
+        });
+      } else if (
+        /^[A-Z]/.test(tag) &&
+        !LAYER_SKIP_TAGS.has(tag) &&
+        tag !== wrapperTag &&
+        componentBodies.has(tag) // a KNOWN locally-defined component → a real layer
+      ) {
+        // A named sub-component (LowerThird, TitleBadge, …) → a component layer.
+        // Only surface locally-defined components (skip unknown/library tags to
+        // avoid noise); its media (if any) is walked below and attributed to it.
+        layers.push({
+          kind: 'component',
+          label: tag,
+          mediaTag: null,
+          mediaSrc: null,
+          mediaCdId: null,
+          mediaArrayRef: null,
+          mediaShared: false,
+        });
+      }
+    }
+    // Generic recursion (mirrors firstMediaDescendant) so wrapped/parenthesized
+    // arrow bodies + all child positions are traversed, not just `children`.
+    for (const k of Object.keys(n)) {
+      if (k === 'loc' || k === 'range' || k === 'start' || k === 'end' || k === 'type') continue;
+      walk(n[k]);
+    }
+  })(root);
+  return layers;
+}
+
+/** Resolve a media element's src (literal / prop-fed-from-array) via its wrapper's call site. */
+function resolveMediaSrcThroughWrapper(
+  media: AnyNode,
+  wrapper: AnyNode,
+  arrays: Map<string, AnyNode>,
+  cdIdOf: Map<AnyNode, string>
+): { src: string | null; cdId: string | null; arrayRef: ClipLayer['mediaArrayRef']; shared: boolean } {
+  const srcVal = srcAttrValue(media);
+  if (srcVal?.type === 'Literal' || srcVal?.type === 'StringLiteral') {
+    return { src: String(srcVal.value), cdId: cdIdOf.get(media) ?? null, arrayRef: null, shared: true };
+  }
+  if (
+    srcVal?.type === 'JSXExpressionContainer' &&
+    srcVal.expression?.type === 'MemberExpression' &&
+    srcVal.expression.property?.type === 'Identifier'
+  ) {
+    const field = srcVal.expression.property.name;
+    for (const attr of (wrapper.openingElement?.attributes ?? []) as AnyNode[]) {
+      const v = attr?.value;
+      const e = v?.type === 'JSXExpressionContainer' ? v.expression : null;
+      if (
+        e?.type === 'MemberExpression' &&
+        e.object?.type === 'Identifier' &&
+        arrays.has(e.object.name) &&
+        e.property?.type === 'Literal' &&
+        typeof e.property.value === 'number'
+      ) {
+        const arr = arrays.get(e.object.name);
+        const el = (arr?.elements ?? [])[e.property.value] as AnyNode | undefined;
+        const prop =
+          el?.type === 'ObjectExpression'
+            ? (el.properties ?? []).find((p: AnyNode) => p?.key?.name === field || p?.key?.value === field)
+            : null;
+        const lit =
+          prop?.value && (prop.value.type === 'Literal' || prop.value.type === 'StringLiteral')
+            ? String(prop.value.value)
+            : null;
+        return { src: lit, cdId: null, arrayRef: { arrayName: e.object.name, index: e.property.value, field }, shared: false };
+      }
+    }
+  }
+  return { src: null, cdId: cdIdOf.get(media) ?? null, arrayRef: null, shared: false };
+}
+
 /** Stable content fingerprint of a clip's exact source span (optimistic-concurrency check). */
 function hashSpan(source: string, start: number, end: number): string {
   return Bun.hash(source.slice(start, end)).toString(16).padStart(16, '0').slice(0, 12);
@@ -1442,6 +1595,9 @@ export interface ClipInfo {
   mediaShared: boolean;
   /** Positional cd-id of the clip's OWN `<Sequence>` node (for `moveElement` z-order reorder). */
   clipCdId: string | null;
+  /** The clip's stacked layers (mp4 background + title/lower-third + …) for the
+   *  expandable timeline rows. Empty for a pure inline card. */
+  layers: ClipLayer[];
   /** Fingerprint of the clip's source span — refuse an op if it no longer matches. */
   contentHash: string;
   start: number;
@@ -1633,6 +1789,7 @@ export function enumerateClips(
       mediaArrayRef: m ? m.arrayRef : null,
       mediaShared: m ? m.shared : false,
       clipCdId: cdIdOf.get(c.node) ?? null,
+      layers: collectClipLayers(c.node, componentBodies, arrays, cdIdOf),
       contentHash: hashSpan(source, c.start, c.end),
       start: c.start,
       end: c.end,

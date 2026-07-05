@@ -509,6 +509,37 @@ describe('applyReorderClip — z-order reorder (DDR-150 P5)', () => {
   });
 });
 
+describe('enumerateClips — clip layer decomposition (dogfood — mp4 background + title)', () => {
+  const src = [
+    "const CLIPS = [{ src: 'assets/a.mp4', label: 'Aerial' }];",
+    'const LowerThird = ({ label }) => <AbsoluteFill><div>{label}</div></AbsoluteFill>;',
+    'const ClipShot = ({ clip }) => (',
+    '  <AbsoluteFill>',
+    '    <AbsoluteFill><Video src={clip.src} /></AbsoluteFill>',
+    '    <AbsoluteFill style={{ background: "grad" }} />',
+    '    <LowerThird label={clip.label} />',
+    '  </AbsoluteFill>',
+    ');',
+    'const TitleCard = () => <AbsoluteFill>hi</AbsoluteFill>;',
+    'const Reel = () => (<TransitionSeries>',
+    '  <TransitionSeries.Sequence durationInFrames={60}><TitleCard /></TransitionSeries.Sequence>',
+    '  <TransitionSeries.Transition timing={t} />',
+    '  <TransitionSeries.Sequence durationInFrames={60}><ClipShot clip={CLIPS[0]} /></TransitionSeries.Sequence>',
+    '</TransitionSeries>);',
+    'function Canvas() { return <DCArtboard id="reel"><VideoComp component={Reel} durationInFrames={120} fps={30} /></DCArtboard>; }',
+  ].join('\n');
+
+  test('a ClipShot decomposes into a video layer (array-fed, replaceable) + its title component', () => {
+    const seqs = enumerateClips(CANVAS, src, 'reel').clips.filter((c) => c.kind === 'sequence');
+    expect(seqs[0]!.layers).toEqual([]); // pure TitleCard → no layers
+    const layers = seqs[1]!.layers;
+    expect(layers.map((l) => l.kind)).toEqual(['video', 'component']);
+    expect(layers[0]!.mediaTag).toBe('Video');
+    expect(layers[0]!.mediaArrayRef).toEqual({ arrayName: 'CLIPS', index: 0, field: 'src' });
+    expect(layers[1]!.label).toBe('LowerThird');
+  });
+});
+
 describe('enumerateClips — nested/wrapper-component media (showreel granularity + replace)', () => {
   const showreel = [
     "const CLIPS = [",

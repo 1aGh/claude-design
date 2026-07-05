@@ -6707,6 +6707,8 @@ function App() {
         // Replaceable when the enumerator found an addressable media target:
         // a literal-src element (mediaCdId) or an array-fed src (mediaArrayRef).
         replaceable: !!(cm.mediaCdId || cm.mediaArrayRef),
+        // The clip's stacked layers (mp4 background + title/…) for expandable rows.
+        layers: Array.isArray(cm.layers) ? cm.layers : [],
       };
     });
     setTimelineSequences(merged);
@@ -9039,6 +9041,31 @@ function App() {
                       ? cc.media.filter((m) => m.tag === 'Audio')
                       : [];
                   return beds[index]?.cdId ? { cdId: beds[index].cdId } : null;
+                },
+              });
+            }}
+            onReplaceLayer={(clipIndex, layerIndex) => {
+              if (!activePath || activePath === SYSTEM_TAB) return;
+              // DDR-150 dogfood — replace a SPECIFIC layer inside an expanded clip
+              // (the mp4 background separately from the title layer). Targets the
+              // layer's own media (array-fed or literal-src) from the enumerator.
+              const kind =
+                timelineSequences[clipIndex]?.layers?.[layerIndex]?.kind === 'audio'
+                  ? 'audio/*'
+                  : timelineSequences[clipIndex]?.layers?.[layerIndex]?.kind === 'image'
+                    ? 'image/*'
+                    : 'video/*';
+              replaceMediaViaPicker({
+                accept: kind,
+                resolveTarget: (cc) => {
+                  const seqs =
+                    cc?.ok && Array.isArray(cc.clips)
+                      ? cc.clips.filter((c) => c.kind === 'sequence')
+                      : [];
+                  const ly = seqs[clipIndex]?.layers?.[layerIndex];
+                  if (ly?.mediaArrayRef) return { arrayRef: ly.mediaArrayRef };
+                  if (ly?.mediaCdId) return { cdId: ly.mediaCdId };
+                  return null;
                 },
               });
             }}

@@ -10,7 +10,7 @@
 // v1 is read-only rows (see + seek). Drag-to-retime a block / move a keyframe
 // (source-patch) is the documented next slice.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 
 import { computeSnapTargets, snapFrame, snapThresholdFrames } from './timeline-snap.js';
 // DDR-150 dogfood — reuse the SAME context-menu component the canvas uses
@@ -128,10 +128,14 @@ export default function TimelinePanel({
   onRemove,
   onReplace,
   onReplaceAudio,
+  onReplaceLayer,
   onReorder,
   onDropMedia,
   onClose,
 }) {
+  // DDR-150 dogfood — which clip rows are expanded into their layers (mp4
+  // background + title/lower-third), so a ClipShot reads as its parts, not one box.
+  const [expanded, setExpanded] = useState(() => new Set());
   const [dropActive, setDropActive] = useState(false);
   const comp = comps[0] ?? null;
   const totalFrames = Math.max(1, total || comp?.durationInFrames || 1);
@@ -460,9 +464,36 @@ export default function TimelinePanel({
                 const blockFrom =
                   moveDrag && moveDrag.index === i ? moveDrag.curFrom : seq.from;
                 const moving = !!(moveDrag && moveDrag.index === i);
+                const layers = Array.isArray(seq.layers) ? seq.layers : [];
+                const decomposable = layers.length >= 2;
+                const isExpanded = expanded.has(i);
                 return (
-                  <div className="tl-row" key={i} data-testid={`timeline-row-${i}`}>
+                  <Fragment key={i}>
+                  <div className="tl-row" data-testid={`timeline-row-${i}`}>
                     <span className="tl-row-label" title={seq.label}>
+                      {decomposable ? (
+                        <button
+                          type="button"
+                          className="tl-expand"
+                          data-testid={`timeline-expand-${i}`}
+                          title={isExpanded ? 'Collapse layers' : 'Show layers'}
+                          aria-label={isExpanded ? `Collapse ${seq.label} layers` : `Show ${seq.label} layers`}
+                          aria-expanded={isExpanded}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpanded((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(i)) next.delete(i);
+                              else next.add(i);
+                              return next;
+                            });
+                          }}
+                        >
+                          {isExpanded ? '▾' : '▸'}
+                        </button>
+                      ) : (
+                        <span className="tl-expand tl-expand--spacer" aria-hidden="true" />
+                      )}
                       {onReorder ? (
                         <span
                           className="tl-seq-reorder"
@@ -627,6 +658,72 @@ export default function TimelinePanel({
                       ) : null}
                     </div>
                   </div>
+                  {isExpanded
+                    ? layers.map((ly, li) => {
+                        const lyKind =
+                          ly.kind === 'video'
+                            ? 'video'
+                            : ly.kind === 'image'
+                              ? 'image'
+                              : ly.kind === 'audio'
+                                ? 'audio'
+                                : 'jsx';
+                        const lyGlyph =
+                          ly.kind === 'video'
+                            ? '▶'
+                            : ly.kind === 'image'
+                              ? '◫'
+                              : ly.kind === 'audio'
+                                ? '♪'
+                                : 'ƒ';
+                        const lyReplaceable = !!(ly.mediaCdId || ly.mediaArrayRef);
+                        return (
+                          <div
+                            className="tl-row tl-row--layer"
+                            key={`l${li}`}
+                            data-testid={`timeline-layer-${i}-${li}`}
+                          >
+                            <span className="tl-row-label" title={ly.label}>
+                              <span className="tl-layer-indent" aria-hidden="true" />
+                              <span className="tl-kind" data-kind={lyKind}>
+                                {lyGlyph}
+                              </span>
+                              <span className="tl-row-label-text">{ly.label}</span>
+                            </span>
+                            <div className="tl-row-track">
+                              <div
+                                className="tl-seq-block tl-layer-block"
+                                data-kind={lyKind}
+                                title={`${ly.label} (${ly.kind} layer)`}
+                                style={{ left: pct(seq.from), width: `${(dur / (totalFrames - 1)) * 100}%` }}
+                              >
+                                <span className="tl-seq-name">{ly.label}</span>
+                              </div>
+                              {onReplaceLayer && lyReplaceable ? (
+                                <button
+                                  type="button"
+                                  className="tl-seq-replace"
+                                  data-testid={`timeline-layer-replace-${i}-${li}`}
+                                  title={`Replace this ${ly.kind}`}
+                                  aria-label={`Replace ${ly.label}`}
+                                  style={{
+                                    left: `calc(${pct(seq.from)} + ${(dur / (totalFrames - 1)) * 100}% - 20px)`,
+                                  }}
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onReplaceLayer(i, li);
+                                  }}
+                                >
+                                  ⇄
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })
+                    : null}
+                  </Fragment>
                 );
               })
             )}
