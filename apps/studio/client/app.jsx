@@ -853,6 +853,11 @@ function ExportDialog({
     initialScope && EXPORT_SCOPE_LABELS[initialScope] ? initialScope : 'artboard'
   );
   const [scale, setScale] = useState(2);
+  // DDR-148 addendum — mp4/webm of a registered video-comp render through
+  // renderMediaOnWeb, which produces real audio (Remotion owns the
+  // TransitionSeries/volume-closure timeline). gif has no audio track at all
+  // (format limitation, not a toggle), so this only applies to mp4/webm.
+  const [audio, setAudio] = useState(true);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null); // { ok, msg }
   const [recent, setRecent] = useState([]);
@@ -901,6 +906,9 @@ function ExportDialog({
     // `scale` drives PNG size AND video resolution (deviceScaleFactor → encoder
     // dims); temporal formats were previously fixed at the tiny native size.
     const options = card.format === 'png' || card.temporal ? { scale } : {};
+    // Export-with-audio (DDR-148 addendum) — mp4/webm only; gif is silent by
+    // format, so the checkbox never renders for it (see hasAudioToggle below).
+    if (card.format === 'mp4' || card.format === 'webm') options.audio = audio;
     // Scope targeting hints (resolveScope reads these): `artboardId` makes
     // "Active artboard" export the right screen instead of `:first-of-type`;
     // `selection` makes "Current selection" export the selected element. Mirrors
@@ -1036,6 +1044,23 @@ function ExportDialog({
           {!card.handoff && card.temporal && (
             <div className="st-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
               {scale}× the artboard's native resolution (e.g. 960×540 → {960 * scale}×{540 * scale}).
+            </div>
+          )}
+          {!card.handoff && (card.format === 'mp4' || card.format === 'webm') && (
+            <div className="st-dialog-row">
+              <label
+                className="st-dialog-lbl"
+                htmlFor="st-export-audio"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+              >
+                <input
+                  id="st-export-audio"
+                  type="checkbox"
+                  checked={audio}
+                  onChange={(e) => setAudio(e.target.checked)}
+                />
+                Export with audio
+              </label>
             </div>
           )}
           {card.handoff && (
