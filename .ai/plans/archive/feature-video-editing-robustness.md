@@ -361,3 +361,25 @@ Divergent bookend debate (reduce tier — three parallel report-back seats, grou
 - **Stable-id durability** — `<Sequence name>`/sentinel can be dropped by Prettier or an agent edit → the enumerator degrades to scoped-AST-index (still UI/engine-consistent); watch for churn.
 - **Intrinsic-duration probe** — insert/assemble default `fps*3` when unknown; client-side `<video>.duration` tightens it.
 - **Undo granularity** — confirm each clip op is one `_history`/Cmd+Z step; compound ops (assemble = N inserts) may need coalescing.
+
+---
+
+## Post-plan dogfood addendum (2026-07-05)
+
+A long user dogfood loop after COMPLETE shipped several of the deferred items + a granularity/UX layer, all on `main` (commits `8d3071c`→`61786e9`, each e2e-verified):
+
+- **Multi-comp scoping fix** (`8d3071c`) — the Timeline passed the `<Player>` id, not the resolved `DCArtboard` id, so comp-clips/ops fell back to the wrong comp on a 2-comp canvas (ClipShots showed `ƒ`). `parseCompTimeline` now returns the resolved artboard id, threaded through every op. This was the addressing bug the debate flagged, resurfacing at the client boundary.
+- **`<TransitionSeries>` reorder + insert** (`9daee6e`) — the deferred "TransitionSeries split" stays deferred, but reorder-by-**span-swap** (sequences trade places, transitions stay put → alternation preserved) and insert-by-**clone-transition** (append a beat + a transition cloned from an existing one so its presentation import is satisfied) now work. This unblocked the showreel, which is a `<TransitionSeries>`.
+- **Right-click clip context menu** (`9daee6e`→`4627a7b`) — reuses the canvas's shared `ContextMenuView` (one component, dark chrome tokens defined on the shell so it matches the canvas menu).
+- **Clip layer decomposition** (`fd8fb9e`→`d0556b9`) — a clip that wraps a component (`<ClipShot clip={CLIPS[i]}>` → `<Video>` + `<LowerThird>`) decomposes into per-layer sub-rows (expanded by default), each media layer replaceable on its own; replace moves off the parent onto the sub-layers.
+- **Show/hide (`toggleClipHidden`) LANDED** (`61786e9`) — the deferred item, solved the reversibility worry the plan raised: gate the clip's children behind `{false && (…)}` instead of a JSX comment — the tag + time slot stay (TransitionSeries alternation intact), it's Prettier/HMR-stable, and Show strips back to the byte-identical original.
+
+**Still deferred:** mid-clip split, `<TransitionSeries>` split, per-sub-layer independent trim/move (layers share the parent Sequence's timing — would need each wrapped in its own `<Sequence>`), multi-select, `interpolate()` value editing.
+
+## Retro
+
+- **The debate's core finding recurred at a boundary it didn't name.** The BUILDER/SHIPPER/BREAKER debate correctly identified document-order addressing as broken across the two *tokenizers* — but the same class of bug bit again at the *client→engine* boundary (Player id vs artboard id) on a multi-comp canvas. Lesson for `/plan`: when a debate flags "two sources disagree on identity," enumerate *every* producer of that identity, including the UI ids, not just the two parsers.
+- **`{false && (…)}` beats JSX comments for reversible hide.** The plan deferred show/hide partly because "JSX-comment reversibility fights Prettier/HMR reflow." A `{false && (children)}` gate sidesteps that entirely (valid JSX, formatter-stable, keeps the node's time slot so series alternation survives) — the deferral was over-cautious; the gate should have been the first idea.
+- **Decompose-then-act needs the AST to resolve *through* wrapper components.** The granularity ask ("show video vs title separately") only worked once `collectClipLayers` resolved media through the wrapper component body + its array-fed `clip={CLIPS[i]}` call site. Grounding the layer rows in real resolution (not a shallow child scan) is what made per-layer replace land on the right `src`.
+- **Reuse the shell's own components for parity.** The first context menu was hand-rolled and looked nothing like the canvas menu (white vs dark). Reusing the exported `ContextMenuView` + defining the chrome tokens fixed both look and the desktop-webview dismiss behavior in one move — the user's "why didn't you reuse it" was right.
+- **Verification ceiling held.** Real-mp4 comps are flaky to render headless (footage decode); the reliable path was an Img-based decomposable comp for the UI checks + server-side `comp-clips` assertions against the real showreel + engine unit tests. Keep an Img fixture for timeline-UI e2e.

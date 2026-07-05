@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-04T16:19:21.145Z",
+  "generated": "2026-07-05T16:42:34.262Z",
   "currentPhase": null,
   "phases": [
     {
@@ -362,6 +362,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-video-animation-layer.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-video-editing-robustness",
+      "title": "Feature: Robust video & animation editing — direct manipulation on the video-comp timeline + canvas",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan extends DDR-148 (the shipped video-comp foundation) — read it and the shippe...",
+      "planPath": ".ai/plans/archive/feature-video-editing-robustness.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1090,17 +1101,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "feature-video-editing-robustness",
-      "title": "Feature: Robust video & animation editing — direct manipulation on the video-comp timeline + canvas",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan extends DDR-148 (the shipped video-comp foundation) — read it and the shippe...",
-      "planPath": ".ai/plans/feature-video-editing-robustness.md",
-      "archived": false,
-      "phaseKey": null
     }
   ]
 }
