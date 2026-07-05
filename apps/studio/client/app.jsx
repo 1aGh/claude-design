@@ -7315,11 +7315,23 @@ function App() {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = accept;
-      input.style.display = 'none';
+      // OFF-SCREEN, not display:none — the native desktop app (Tauri WKWebView)
+      // will NOT present the file panel for a `display:none` input (it must be
+      // laid out). Off-screen + transparent works in both WKWebView and browsers
+      // (dogfood: "replace ... nefunguje ale v desktop app"). Guard against a
+      // cancelled dialog leaking the node with a one-shot focus cleanup.
+      input.style.cssText =
+        'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
       document.body.appendChild(input);
+      const cleanup = () => {
+        if (input.isConnected) input.remove();
+      };
+      // If the user cancels the panel, `change` never fires — reclaim the node
+      // when focus returns to the window (fires on both pick and cancel).
+      window.addEventListener('focus', () => setTimeout(cleanup, 300), { once: true });
       input.addEventListener('change', () => {
         const file = input.files?.[0];
-        input.remove();
+        cleanup();
         if (!file) return;
         const ccUrl = `/_api/comp-clips?canvas=${encodeURIComponent(canvas)}${artboardId ? `&artboardId=${encodeURIComponent(artboardId)}` : ''}`;
         fetch(ccUrl)
