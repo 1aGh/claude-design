@@ -1,11 +1,11 @@
 {
-  "generated": "2026-07-05T18:19:50.918Z",
-  "version": "0.39.1",
+  "generated": "2026-07-05T18:25:07.578Z",
+  "version": "0.40.0",
   "entries": [
     {
       "id": "timeline-clip-editing",
-      "version": null,
-      "date": null,
+      "version": "0.40.0",
+      "date": "2026-07-05",
       "kind": "feature",
       "title": "Hand-edit your video comps on the timeline",
       "summary": "After the Assistant generates a video, fine-tune it yourself. On the timeline you can drag a clip to move it, drag its right edge to trim (both snap to second-ticks and neighbour clip edges; hold Alt to drag freely), drop a video / image / audio file to add a clip, raise or lower a clip's stacking, swap a clip's footage (⇄), or remove a clip (×). Right-click any clip for the same menu — replace, move, hide, or remove — and hide keeps a clip in place while it stops rendering. Clips that layer a background over a title expand into per-layer rows, so you can see and replace the video separately from its caption. Transition-based showreels reorder and accept dropped clips too. Keyboard shortcuts help: Space plays/pauses, arrows step frames (Shift = a second), Home/End jump to the ends, and . / , hop between keyframes. Prefer to start from footage? Drop video/audio clips anywhere on the canvas as reference chips, then File then Assemble dropped clips into video builds a real, editable comp in one click. Editing is multi-comp-safe — a change always lands on the clip you meant, never one in another composition. And inline text / CSS tweaks you make on the canvas now actually stick.",
@@ -13,8 +13,8 @@
     },
     {
       "id": "video-comp-remotion",
-      "version": null,
-      "date": null,
+      "version": "0.40.0",
+      "date": "2026-07-05",
       "kind": "feature",
       "title": "Design videos & animations, right in the canvas",
       "summary": "A canvas artboard can now be a real motion composition (powered by Remotion) — scrub it in the built-in player, drop clips and music onto it, direct edits from the Assistant (\"turn this into an animation\", \"join these 4 clips with a crossfade\"), and export the artboard as MP4 or GIF. Rendered by Maude's own capture engine — no extra install, no native downloads. Remotion is free for individuals and teams of up to 3; larger orgs need their own Remotion license.",
@@ -22,8 +22,8 @@
     },
     {
       "id": "file-tree-live-config-reload",
-      "version": null,
-      "date": null,
+      "version": "0.40.0",
+      "date": "2026-07-05",
       "kind": "fix",
       "title": "New design systems show up in the file tree instantly",
       "summary": "Bootstrapping a design system from the Assistant (or editing your design config by hand) now updates the file tree live — new canvas groups and their files appear as they're created, no server restart needed.",

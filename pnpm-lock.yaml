@@ -24,28 +24,6 @@ importers:
       '@playwright/test':
         specifier: ^1.60.0
         version: 1.60.0
-    optionalDependencies:
-      '@1agh/maude-darwin-arm64':
-        specifier: 0.39.1
-        version: 0.39.1
-      '@1agh/maude-darwin-x64':
-        specifier: 0.39.1
-        version: 0.39.1
-      '@1agh/maude-linux-arm64':
-        specifier: 0.39.1
-        version: 0.39.1
-      '@1agh/maude-linux-arm64-musl':
-        specifier: 0.39.1
-        version: 0.39.1
-      '@1agh/maude-linux-x64':
-        specifier: 0.39.1
-        version: 0.39.1
-      '@1agh/maude-linux-x64-musl':
-        specifier: 0.39.1
-        version: 0.39.1
-      '@1agh/maude-win32-x64':
-        specifier: 0.39.1
-        version: 0.39.1
 
   apps/desktop:
     devDependencies:
@@ -303,45 +281,6 @@ importers:
         version: 6.0.3
 
 packages:
-
-  '@1agh/maude-darwin-arm64@0.39.1':
-    resolution: {integrity: sha512-heVMgS289mgh8DOFaYEyKsp7cWAGkzz/0crq6aUxJIfFHrSOE12I1ZE8z70M1yDFclJV1wHGHvZVtVO+/qsGwQ==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@1agh/maude-darwin-x64@0.39.1':
-    resolution: {integrity: sha512-oIJFtfVVsfdBf2ckV3ey/pal1PbvUt9bLM/jK7yEJY2U1jYvUapb/AD5ZM9Wkn/luzR8Wu99fSqMCvrywKuQ5Q==}
-    cpu: [x64]
-    os: [darwin]
-
-  '@1agh/maude-linux-arm64-musl@0.39.1':
-    resolution: {integrity: sha512-fzV5uzNjz0xLcGLytYb2n8GGc95MKJFL0lG4x5s2zn17JfAHX3cWf1UU3YhxAGUDH+fSLjUUJ2V1sSz3sSkmJg==}
-    cpu: [arm64]
-    os: [linux]
-    libc: [musl]
-
-  '@1agh/maude-linux-arm64@0.39.1':
-    resolution: {integrity: sha512-5CSzL2OLBsrcr7eH31x5bYWHVyHU81zgU1fGzRjMhd1VBMXr3/JWZEEXdWENMR0H7sOlAjCcN+I/W7ansHm2+A==}
-    cpu: [arm64]
-    os: [linux]
-    libc: [glibc]
-
-  '@1agh/maude-linux-x64-musl@0.39.1':
-    resolution: {integrity: sha512-QtQNngpWPw80R2bm4HaT3yKq7KUL6tC+A9OAv27uNISiEPqN4X4Ve27Xix8Z1U7C1TLwC+IE7ZSiD60xJlXomw==}
-    cpu: [x64]
-    os: [linux]
-    libc: [musl]
-
-  '@1agh/maude-linux-x64@0.39.1':
-    resolution: {integrity: sha512-pYqxiXnasjjAH5YxjSQLBNnT/H9V0wFtiQE9KVKxsHBZpNt6OQisXd7eAl4sKXaeg+DUYgrIanRG5GXW8q/haA==}
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
-
-  '@1agh/maude-win32-x64@0.39.1':
-    resolution: {integrity: sha512-WYwaKkLuhxyJfuMh7itOhpp08v+ZMb+VDMhLCIT30enEKpBraZY5ph+wCdeCE26E/8KVcViySGdQtqcbVRErww==}
-    cpu: [x64]
-    os: [win32]
 
   '@agentclientprotocol/claude-agent-acp@0.49.0':
     resolution: {integrity: sha512-AXwPU9fgPDmaJiDbPG80gAVSTF2F/3ANlsG3NtYeSBjv9fA6PeSEwkrMPt0JWwoHaPiYzjAe0IA5dWadMFh4kA==}
@@ -6262,27 +6201,6 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
-
-  '@1agh/maude-darwin-arm64@0.39.1':
-    optional: true
-
-  '@1agh/maude-darwin-x64@0.39.1':
-    optional: true
-
-  '@1agh/maude-linux-arm64-musl@0.39.1':
-    optional: true
-
-  '@1agh/maude-linux-arm64@0.39.1':
-    optional: true
-
-  '@1agh/maude-linux-x64-musl@0.39.1':
-    optional: true
-
-  '@1agh/maude-linux-x64@0.39.1':
-    optional: true
-
-  '@1agh/maude-win32-x64@0.39.1':
-    optional: true
 
   '@agentclientprotocol/claude-agent-acp@0.49.0(@anthropic-ai/sdk@0.105.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.26.0(zod@4.4.3))':
     dependencies:
