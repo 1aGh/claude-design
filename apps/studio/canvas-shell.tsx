@@ -2527,6 +2527,15 @@ function ReorderDrag() {
       /** Stamped [data-cd-id] nodes in their ORIGINAL order — for computing a
        *  reused instance's occurrence index even after the DOM reflowed. */
       snapshot: Element[] | null;
+      /** True when the dragged element is `position: absolute|fixed` — reorder
+       *  (sibling order) never changes where an out-of-flow element paints, so
+       *  these drags commit `left`/`top` instead of a tree move (see the
+       *  "absolute element snaps back" RCA). */
+      outOfFlow: boolean;
+      /** Pre-drag `left`/`top` (px, resolved via computed style) — only
+       *  meaningful when `outOfFlow`. */
+      originLeft: number;
+      originTop: number;
     };
     // Hover a stable spot this long and the layout reflows LIVE (the node moves
     // there while still floating with the cursor) — you see the result before
@@ -2538,6 +2547,9 @@ function ReorderDrag() {
     // The last committed drop, kept so a shell 'reorder-failed' can undo the
     // optimistic DOM move (the write was rejected → nothing persisted).
     let lastCommit: { el: HTMLElement; parent: HTMLElement; next: Element | null } | null = null;
+    // The last committed out-of-flow reposition, kept so a shell
+    // 'reposition-failed' can restore the pre-drag inline style.
+    let lastPosition: { el: HTMLElement; prevStyle: string | null } | null = null;
 
     const setHighlight = (el: HTMLElement | null) => {
       if (highlightEl === el) return;
@@ -2791,6 +2803,7 @@ function ReorderDrag() {
       if (!(t instanceof Node) || !el.contains(t)) return;
       // Candidate — do NOT claim yet (a plain click must still work). We only
       // become a drag once the pointer crosses the threshold in onMove.
+      const outOfFlowPos = getComputedStyle(el).position;
       drag = {
         pointerId: e.pointerId,
         startX: e.clientX,
@@ -2810,6 +2823,9 @@ function ReorderDrag() {
         settleKey: null,
         applied: null,
         snapshot: null,
+        outOfFlow: outOfFlowPos === 'absolute' || outOfFlowPos === 'fixed',
+        originLeft: 0,
+        originTop: 0,
       };
     };
 
@@ -2834,7 +2850,18 @@ function ReorderDrag() {
         // reflect the pre-drag layout, not the reflowed one.
         d.snapshot = [...document.querySelectorAll('[data-cd-id]')];
         d.prevStyle = d.el.getAttribute('style');
-        if (getComputedStyle(d.el).position === 'static') d.el.style.position = 'relative';
+        if (d.outOfFlow) {
+          // Resolved (used) value in px — matches the unit space `left`/`top`
+          // are written back in, regardless of an ancestor's zoom transform
+          // (a CSS `transform: scale()` on the world doesn't change a
+          // descendant's own box-model values). `auto` (e.g. positioned via
+          // `right`/`bottom` instead) falls back to 0 — a known v1 limit.
+          const cs = getComputedStyle(d.el);
+          d.originLeft = Number.parseFloat(cs.left) || 0;
+          d.originTop = Number.parseFloat(cs.top) || 0;
+        } else if (getComputedStyle(d.el).position === 'static') {
+          d.el.style.position = 'relative';
+        }
         d.el.style.zIndex = '9990';
         d.el.style.pointerEvents = 'none'; // so elementFromPoint sees what's beneath
         d.el.style.opacity = '0.9';
@@ -2848,6 +2875,11 @@ function ReorderDrag() {
       const tx = (e.clientX - d.startX) / d.zoom;
       const ty = (e.clientY - d.startY) / d.zoom;
       d.el.style.transform = `translate(${tx}px, ${ty}px)`;
+      // Out-of-flow elements free-move with the cursor — there's no sibling
+      // "before/after" to hunt for (reordering an absolute/fixed element's
+      // JSX siblings wouldn't change where it paints), so skip the reorder
+      // target/divider/settle machinery entirely; onUp commits `left`/`top`.
+      if (d.outOfFlow) return;
       // Indicator + settle scheduling only — the DOM moves when a target stays
       // stable for SETTLE_MS (the live-reflow preview), never per-mousemove.
       const target = computeTarget(e.clientX, e.clientY, d);
@@ -2885,6 +2917,35 @@ function ReorderDrag() {
       if (!d || e.pointerId !== d.pointerId) return;
       if (!d.dragging) return; // a plain click — leave it to native handlers
       clearSettle(d);
+      if (d.outOfFlow) {
+        // Un-float: restore the pre-drag inline style (drops the drag-only
+        // props AND the cursor-follow transform), then overlay the new
+        // left/top — same "unfloat" step as reorder, but the position
+        // sticks instead of reverting to `prevStyle`'s original left/top.
+        if (d.prevStyle == null) d.el.removeAttribute('style');
+        else d.el.setAttribute('style', d.prevStyle);
+        const dx = (d.lastX - d.startX) / d.zoom;
+        const dy = (d.lastY - d.startY) / d.zoom;
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return; // negligible — nothing to persist
+        const left = Math.round(d.originLeft + dx);
+        const top = Math.round(d.originTop + dy);
+        d.el.style.left = `${left}px`;
+        d.el.style.top = `${top}px`;
+        lastPosition = { el: d.el, prevStyle: d.prevStyle };
+        suppressNextCanvasClick();
+        window.parent.postMessage(
+          {
+            dgn: 'reposition-request',
+            id: d.cdId,
+            left,
+            top,
+            beforeLeft: Math.round(d.originLeft),
+            beforeTop: Math.round(d.originTop),
+          },
+          '*'
+        );
+        return;
+      }
       // Un-float: restore the element's exact original inline style.
       if (d.prevStyle == null) d.el.removeAttribute('style');
       else d.el.setAttribute('style', d.prevStyle);
@@ -2945,15 +3006,28 @@ function ReorderDrag() {
       lastCommit = null;
     };
 
+    // The shell rejected the last reposition write — revert the optimistic
+    // left/top back to the pre-drag inline style.
+    const onRepositionFailed = (e: MessageEvent) => {
+      if (e.source !== window.parent) return;
+      const m = e.data as { dgn?: string } | null;
+      if (m?.dgn !== 'reposition-failed' || !lastPosition) return;
+      if (lastPosition.prevStyle == null) lastPosition.el.removeAttribute('style');
+      else lastPosition.el.setAttribute('style', lastPosition.prevStyle);
+      lastPosition = null;
+    };
+
     document.addEventListener('pointerdown', onDown, true);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('message', onReorderFailed);
+    window.addEventListener('message', onRepositionFailed);
     return () => {
       if (drag) clearSettle(drag);
       setHighlight(null);
       window.removeEventListener('message', onReorderFailed);
+      window.removeEventListener('message', onRepositionFailed);
       if (dividerEl) {
         dividerEl.remove();
         dividerEl = null;

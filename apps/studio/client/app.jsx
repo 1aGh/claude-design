@@ -6039,6 +6039,10 @@ function App() {
   // (same freshness idiom as selectedRef; avoids a render-time TDZ on the
   // later useCallback).
   const reorderLayerRef = useRef(null);
+  // Same freshness idiom for `repositionElement` (defined far below), read
+  // when the in-canvas drag posts dgn:'reposition-request' — the coordinate-
+  // mode commit for out-of-flow (position:absolute/fixed) elements.
+  const repositionElementRef = useRef(null);
   // Phase 12.1 — true between a layers-panel reorder and the fresh layers-tree
   // landing. A reorder churns positional data-cd-ids, so a rapid 2nd drag would
   // target stale ids; the Layers tree gates new drags on this until the rebuilt
@@ -7739,6 +7743,25 @@ function App() {
             refIndex: Number.isInteger(m.refIndex) ? m.refIndex : undefined,
           });
         }
+      } else if (m.dgn === 'reposition-request') {
+        // Free-XY reposition for out-of-flow elements (position:absolute/
+        // fixed) — the in-canvas drag switches from reorder-mode to
+        // coordinate-mode when the dragged element is out of flow, because
+        // reordering an absolute/fixed element's JSX siblings never changes
+        // where it paints (the "moves then snaps back" RCA). Same trust
+        // model + confused-deputy guard as reorder-request: untrusted canvas
+        // REQUESTS, shell WRITES, pinned to the ACTIVE canvas (never
+        // `m.canvas`, which an untrusted iframe could spoof).
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        const okShape =
+          typeof m.id === 'string' &&
+          Number.isFinite(m.left) &&
+          Number.isFinite(m.top) &&
+          Number.isFinite(m.beforeLeft) &&
+          Number.isFinite(m.beforeTop);
+        if (e.source === activeWin && okShape) {
+          repositionElementRef.current?.(m.id, m.left, m.top, m.beforeLeft, m.beforeTop);
+        }
       } else if (m.dgn === 'open-inspector') {
         // Phase 12 — context-menu "Inspect" / tool-palette Inspect opens the right panel.
         openRightPanel('inspector');
@@ -8183,6 +8206,64 @@ function App() {
   useEffect(() => {
     reorderLayerRef.current = reorderLayer;
   }, [reorderLayer]);
+
+  // Commit an in-canvas coordinate-mode drag (out-of-flow element: absolute/
+  // fixed) as two sequential single-property writes through the SAME
+  // main-origin endpoint the CSS panel already uses (`/_api/edit-css`, Phase
+  // 12 / DDR-103) — no new write surface. `editStyleProp` upserts into the
+  // existing `style={{}}` object, so the second call (top) lands next to the
+  // first (left) rather than clobbering it. Serialized on the shared
+  // apply-edit chain so it can't race an in-flight write to the same file.
+  const repositionElement = useCallback(
+    (id, left, top, beforeLeft, beforeTop) => {
+      if (!id || !activePath) return;
+      const canvas = activePath;
+      const writeProp = (property, value) =>
+        fetch('/_api/edit-css', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ canvas, id, property, value: `${value}px` }),
+        }).then((r) => r.json().catch(() => ({})));
+      editApplyChainRef.current = editApplyChainRef.current
+        .catch(() => {})
+        .then(() => writeProp('left', left))
+        .then((j1) => {
+          if (!j1.ok) throw new Error(j1.error || 'left write failed');
+          return writeProp('top', top);
+        })
+        .then((j2) => {
+          if (!j2.ok) throw new Error(j2.error || 'top write failed');
+          // Record BOTH properties onto the canvas undo stack — two Cmd+Z
+          // steps (top, then left), same as committing two CSS knobs by hand.
+          recordSourceEdit({
+            op: 'css',
+            canvas,
+            id,
+            key: 'left',
+            before: `${beforeLeft}px`,
+            after: `${left}px`,
+          });
+          recordSourceEdit({
+            op: 'css',
+            canvas,
+            id,
+            key: 'top',
+            before: `${beforeTop}px`,
+            after: `${top}px`,
+          });
+        })
+        .catch((err) => {
+          console.warn('[reposition]', err?.message || err);
+          // Nothing (or only `left`) persisted — tell the canvas to restore
+          // the pre-drag inline style so a phantom move doesn't linger.
+          postToActiveCanvas({ dgn: 'reposition-failed' });
+        });
+    },
+    [activePath, postToActiveCanvas, recordSourceEdit]
+  );
+  useEffect(() => {
+    repositionElementRef.current = repositionElement;
+  }, [repositionElement]);
 
   const resolveComment = useCallback((id) => {
     wsSend({ type: 'comments-patch', id, patch: { status: 'resolved' } });
