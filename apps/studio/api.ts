@@ -17,6 +17,7 @@ import {
   insertClip,
   type MovePosition,
   moveElement,
+  editArrayElementString,
   removeAttribute,
   removeClip,
   reorderClip,
@@ -349,6 +350,15 @@ export interface Api {
     | { ok: true; stableId: string | null; seq?: number }
     | { ok: false; status: number; error: string }
   >;
+  // DDR-150 dogfood — replace a media src that lives in an array literal
+  // (the showreel `CLIPS[i].src` pattern), addressed by mediaArrayRef.
+  editArraySrcOp(input: {
+    canvas?: unknown;
+    arrayName?: unknown;
+    index?: unknown;
+    field?: unknown;
+    value?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
   // DDR-150 P2 — the single authoritative clip enumerator for a video-comp.
   // Read-only; the Timeline addresses every op by the returned `stableId`
   // (never a regex document-order index — the multi-comp mis-hit defect).
@@ -2120,6 +2130,48 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  async function editArraySrcOp(input: {
+    canvas?: unknown;
+    arrayName?: unknown;
+    index?: unknown;
+    field?: unknown;
+    value?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const arrayName = typeof input.arrayName === 'string' ? input.arrayName : '';
+    const field = typeof input.field === 'string' ? input.field : 'src';
+    const index = Number.isInteger(input.index) ? (input.index as number) : -1;
+    const value = typeof input.value === 'string' ? input.value : '';
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(arrayName)) {
+      return { ok: false, status: 400, error: 'invalid array name' };
+    }
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(field)) {
+      return { ok: false, status: 400, error: 'invalid field' };
+    }
+    if (index < 0 || index > 500) return { ok: false, status: 400, error: 'invalid index' };
+    if (!value.trim()) return { ok: false, status: 400, error: 'value required' };
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      await editArrayElementString(r.abs, arrayName, index, field, value);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true };
+      }
+      return { ok: true, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'edit failed',
+      };
+    }
+  }
+
   async function reorderSequenceOp(input: {
     canvas?: unknown;
     artboardId?: unknown;
@@ -2667,6 +2719,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     removeSequenceOp,
     insertSequenceOp,
     reorderSequenceOp,
+    editArraySrcOp,
     compClips,
     reorder,
     retimeSequenceOp,

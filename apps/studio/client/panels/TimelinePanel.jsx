@@ -565,12 +565,12 @@ export default function TimelinePanel({
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : null}
-                      {onReplace ? (
+                      {onReplace && seq.replaceable ? (
                         <button
                           type="button"
                           className="tl-seq-replace"
                           data-testid={`timeline-replace-${i}`}
-                          title="Replace this clip's media"
+                          title={`Replace this ${rowKind(seq)}`}
                           aria-label={`Replace media in ${seq.label}`}
                           style={{
                             left: `calc(${pct(seq.from)} + ${(dur / (totalFrames - 1)) * 100}% - 34px)`,

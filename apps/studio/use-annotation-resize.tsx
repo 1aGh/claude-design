@@ -159,6 +159,7 @@ function isResizable(
     s.tool === 'sticky' ||
     s.tool === 'image' ||
     s.tool === 'link' ||
+    s.tool === 'mediaref' ||
     s.tool === 'section'
   );
 }
@@ -374,11 +375,13 @@ export function resizeStroke(
     start.tool === 'sticky' ||
     start.tool === 'polygon' ||
     start.tool === 'link' ||
+    start.tool === 'mediaref' ||
     start.tool === 'section'
   ) {
-    // Rect / polygon / sticky / link all resize via their shared x / y / w / h
-    // bbox. Text re-wraps inside the foreignObject automatically. Sticky stays
-    // 1:1; the link card free-resizes (Shift still locks its current ratio).
+    // Rect / polygon / sticky / link / mediaref all resize via their shared
+    // x / y / w / h bbox. Sticky stays 1:1; the link + media-ref cards
+    // free-resize (Shift still locks their current ratio) so the user can size
+    // the inline player up (DDR-150 dogfood — "video annotation nejde zvětšit").
     const b0 = { x: start.x, y: start.y, w: start.w, h: start.h };
     const box = bboxResizeRotAware(start, b0, corner, wx, wy, mods, start.tool === 'sticky');
     return box as Partial<RectStroke | StickyStroke | PolygonStroke | LinkStroke>;

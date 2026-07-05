@@ -9,6 +9,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  applyEditArrayElementString,
   applyInsertClip,
   applyRemoveClip,
   applyReorderClip,
@@ -448,6 +449,74 @@ describe('applyReorderClip — z-order reorder (DDR-150 P5)', () => {
         'after'
       )
     ).toThrow(CanvasEditError);
+  });
+});
+
+describe('enumerateClips — nested/wrapper-component media (showreel granularity + replace)', () => {
+  const showreel = [
+    "const CLIPS = [",
+    "  { src: 'assets/a.mp4', label: 'Aerial' },",
+    "  { src: 'assets/b.mp4', label: 'Nature' },",
+    "];",
+    "const ClipShot = ({ clip }) => <AbsoluteFill><Video src={clip.src} /></AbsoluteFill>;",
+    "const TitleCard = () => <AbsoluteFill>hi</AbsoluteFill>;",
+    "const Comp = () => (<><TransitionSeries>",
+    "  <TransitionSeries.Sequence durationInFrames={60}><TitleCard /></TransitionSeries.Sequence>",
+    "  <TransitionSeries.Transition timing={t} />",
+    "  <TransitionSeries.Sequence durationInFrames={60}><ClipShot clip={CLIPS[0]} /></TransitionSeries.Sequence>",
+    "  <TransitionSeries.Transition timing={t} />",
+    "  <TransitionSeries.Sequence durationInFrames={60}><ClipShot clip={CLIPS[1]} /></TransitionSeries.Sequence>",
+    "</TransitionSeries><Audio src=\"assets/music.mp3\" /></>);",
+    "function Canvas() { return <DCArtboard id=\"reel\"><VideoComp component={Comp} durationInFrames={180} fps={30} /></DCArtboard>; }",
+  ].join('\n');
+
+  test('resolves media through a wrapper component fed by an array element', () => {
+    const seqs = enumerateClips(CANVAS, showreel, 'reel').clips.filter((c) => c.kind === 'sequence');
+    // TitleCard = pure function, no media.
+    expect(seqs[0]!.mediaTag).toBeNull();
+    // ClipShot clips → Video, src resolved through CLIPS[i].src, array-ref for replace.
+    expect(seqs[1]!.mediaTag).toBe('Video');
+    expect(seqs[1]!.mediaSrc).toBe('assets/a.mp4');
+    expect(seqs[1]!.mediaArrayRef).toEqual({ arrayName: 'CLIPS', index: 0, field: 'src' });
+    expect(seqs[2]!.mediaArrayRef).toEqual({ arrayName: 'CLIPS', index: 1, field: 'src' });
+  });
+
+  test('the loose <Audio> is NOT mis-attributed to the last sequence', () => {
+    const { clips, media } = enumerateClips(CANVAS, showreel, 'reel');
+    const seqs = clips.filter((c) => c.kind === 'sequence');
+    expect(seqs.every((s) => s.mediaTag !== 'Audio')).toBe(true);
+    expect(media.length).toBe(1);
+    expect(media[0]!.tag).toBe('Audio');
+  });
+});
+
+describe('applyEditArrayElementString — array-fed src replace (showreel)', () => {
+  const src = [
+    "const CLIPS = [",
+    "  { src: 'assets/a.mp4', label: 'Aerial' },",
+    "  { src: 'assets/b.mp4', label: 'Nature' },",
+    "];",
+  ].join('\n');
+
+  test('rewrites the indexed element string', () => {
+    const out = applyEditArrayElementString(CANVAS, src, 'CLIPS', 1, 'src', 'assets/new.mp4');
+    expect(out.source).toContain('"assets/new.mp4"');
+    expect(out.source).toContain("'assets/a.mp4'"); // sibling untouched
+  });
+
+  test('rejects a traversal / scheme value', () => {
+    expect(() => applyEditArrayElementString(CANVAS, src, 'CLIPS', 0, 'src', '../x')).toThrow(
+      CanvasEditError
+    );
+  });
+
+  test('throws on a missing array / element / field', () => {
+    expect(() => applyEditArrayElementString(CANVAS, src, 'NOPE', 0, 'src', 'assets/x.mp4')).toThrow(
+      CanvasEditError
+    );
+    expect(() => applyEditArrayElementString(CANVAS, src, 'CLIPS', 9, 'src', 'assets/x.mp4')).toThrow(
+      CanvasEditError
+    );
   });
 });
 

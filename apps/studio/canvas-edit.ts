@@ -1271,6 +1271,145 @@ function firstMediaDescendant(clip: AnyNode): AnyNode | null {
   return found;
 }
 
+/** Map every top-level component name → its render body root (for nested-media resolution). */
+function collectComponentBodies(program: AnyNode): Map<string, AnyNode> {
+  const out = new Map<string, AnyNode>();
+  const body = (program?.body ?? []) as AnyNode[];
+  for (const stmt of body) {
+    if (stmt?.type === 'FunctionDeclaration' && isPascalIdent(stmt.id?.name)) {
+      out.set(stmt.id.name, stmt.body);
+    } else if (stmt?.type === 'VariableDeclaration') {
+      for (const d of stmt.declarations ?? []) {
+        const name = componentNameOf(d);
+        if (name && d.init?.body) out.set(name, d.init.body);
+      }
+    }
+  }
+  return out;
+}
+
+/** Map every top-level `const NAME = [ {…}, … ]` → its ArrayExpression (for `CLIPS[i].src`). */
+function collectArrayLiterals(program: AnyNode): Map<string, AnyNode> {
+  const out = new Map<string, AnyNode>();
+  for (const stmt of (program?.body ?? []) as AnyNode[]) {
+    if (stmt?.type !== 'VariableDeclaration') continue;
+    for (const d of stmt.declarations ?? []) {
+      if (d?.id?.type === 'Identifier' && d.init?.type === 'ArrayExpression') {
+        out.set(d.id.name, d.init);
+      }
+    }
+  }
+  return out;
+}
+
+/** The first JSXElement child of `clip` whose tag is a PascalCase component (not a primitive). */
+function firstComponentChild(clip: AnyNode): AnyNode | null {
+  for (const child of (clip.children ?? []) as AnyNode[]) {
+    if (child?.type === 'JSXElement') {
+      const tag = jsxTagName(child);
+      if (tag && isPascalIdent(tag) && !MEDIA_TAGS.has(tag)) return child;
+    }
+  }
+  return null;
+}
+
+/** A media element's `src` attr node (JSX value), or null. */
+function srcAttrValue(mediaEl: AnyNode): AnyNode | null {
+  const attr = findAttribute(mediaEl.openingElement, 'src');
+  return attr?.value ?? null;
+}
+
+/**
+ * Resolve a clip's media even when it's nested one level inside a wrapper
+ * component whose `src` is fed by an array element (the showreel
+ * `<ClipShot clip={CLIPS[2]} />` → `<Video src={clip.src} />` pattern). Returns
+ * the media tag + a replace target: a direct `cdId` (literal src), an
+ * `arrayRef` (edit `NAME[i].field`), or `shared` (literal src in a reused comp).
+ */
+function resolveNestedMedia(
+  clip: AnyNode,
+  componentBodies: Map<string, AnyNode>,
+  arrays: Map<string, AnyNode>,
+  cdIdOf: Map<AnyNode, string>
+): {
+  el: AnyNode;
+  tag: string;
+  src: string | null;
+  cdId: string | null;
+  arrayRef: { arrayName: string; index: number; field: string } | null;
+  shared: boolean;
+} | null {
+  // 1. Direct media descendant (literal or prop src).
+  const direct = firstMediaDescendant(clip);
+  if (direct) {
+    return {
+      el: direct,
+      tag: jsxTagName(direct) ?? 'Video',
+      src: getStringAttr(direct.openingElement, 'src'),
+      cdId: cdIdOf.get(direct) ?? null,
+      arrayRef: null,
+      shared: false,
+    };
+  }
+  // 2. Wrapper component: <Comp propName={ARR[i]} /> → Comp body → media <X src={param.field}>.
+  const wrapper = firstComponentChild(clip);
+  if (!wrapper) return null;
+  const compName = jsxTagName(wrapper);
+  const body = compName ? componentBodies.get(compName) : null;
+  if (!body) return null;
+  const media = firstMediaDescendant({ children: [body] });
+  if (!media) return null;
+  const tag = jsxTagName(media) ?? 'Video';
+  const srcVal = srcAttrValue(media);
+  // Literal src inside the shared component → replaceable, but shared.
+  if (srcVal?.type === 'Literal' || srcVal?.type === 'StringLiteral') {
+    return { el: media, tag, src: String(srcVal.value), cdId: cdIdOf.get(media) ?? null, arrayRef: null, shared: true };
+  }
+  // Prop-bound src: `src={param.field}` where `param` is the component's first
+  // destructured/parameter name, bound at the call site to `ARR[i]`.
+  if (srcVal?.type === 'JSXExpressionContainer') {
+    const expr = srcVal.expression;
+    // member: param.field
+    if (expr?.type === 'MemberExpression' && expr.object?.type === 'Identifier' && expr.property?.type === 'Identifier') {
+      const field = expr.property.name;
+      // Find the call-site prop bound to this component's param: <Comp X={ARR[i]}>.
+      // The wrapper's first attribute value that is `ARR[i]` gives the array + index.
+      for (const attr of (wrapper.openingElement?.attributes ?? []) as AnyNode[]) {
+        const v = attr?.value;
+        if (v?.type !== 'JSXExpressionContainer') continue;
+        const e = v.expression;
+        if (
+          e?.type === 'MemberExpression' &&
+          e.object?.type === 'Identifier' &&
+          arrays.has(e.object.name) &&
+          e.property?.type === 'Literal' &&
+          typeof e.property.value === 'number'
+        ) {
+          const arr = arrays.get(e.object.name);
+          const el = (arr?.elements ?? [])[e.property.value] as AnyNode | undefined;
+          const prop = el?.type === 'ObjectExpression'
+            ? (el.properties ?? []).find((p: AnyNode) => p?.key?.name === field || p?.key?.value === field)
+            : null;
+          const litSrc =
+            prop?.value && (prop.value.type === 'Literal' || prop.value.type === 'StringLiteral')
+              ? String(prop.value.value)
+              : null;
+          return {
+            el: media,
+            tag,
+            src: litSrc,
+            cdId: null,
+            arrayRef: { arrayName: e.object.name, index: e.property.value, field },
+            shared: false,
+          };
+        }
+      }
+    }
+  }
+  // Media exists but src isn't resolvable to a replaceable target.
+  return { el: media, tag, src: null, cdId: null, arrayRef: null, shared: false };
+}
+
 /** Stable content fingerprint of a clip's exact source span (optimistic-concurrency check). */
 function hashSpan(source: string, start: number, end: number): string {
   return Bun.hash(source.slice(start, end)).toString(16).padStart(16, '0').slice(0, 12);
@@ -1288,6 +1427,19 @@ export interface ClipInfo {
   mediaSrc: string | null;
   /** Positional cd-id of the media element (for `editAttribute` src-replace). */
   mediaCdId: string | null;
+  /**
+   * When the clip's media lives inside a wrapper component whose `src` is fed by
+   * an array element (`<ClipShot clip={CLIPS[2]} />` → `<Video src={clip.src}>`),
+   * this points at the array-literal string to edit for a replace (the showreel
+   * pattern). `mediaCdId` is then null (the element's src is a prop, not literal).
+   */
+  mediaArrayRef: { arrayName: string; index: number; field: string } | null;
+  /**
+   * True when the media's literal `src` lives in a SHARED wrapper component (every
+   * instance renders the same element) — replacing it changes every clip using
+   * that component. The client warns before applying.
+   */
+  mediaShared: boolean;
   /** Positional cd-id of the clip's OWN `<Sequence>` node (for `moveElement` z-order reorder). */
   clipCdId: string | null;
   /** Fingerprint of the clip's source span — refuse an op if it no longer matches. */
@@ -1452,6 +1604,8 @@ export function enumerateClips(
     null;
   const targetComp = target?.compName ?? clips[0]?.comp ?? null;
 
+  const componentBodies = collectComponentBodies(program);
+  const arrays = collectArrayLiterals(program);
   const scoped = targetComp == null ? [] : clips.filter((c) => c.comp === targetComp);
   const clipInfos: ClipInfo[] = scoped.map((c) => {
     const opening = c.node.openingElement;
@@ -1464,16 +1618,20 @@ export function enumerateClips(
         : sentinel
           ? `mclip:${sentinel[1]}`
           : `${targetComp}#${c.indexInComp}`;
-    const media = firstMediaDescendant(c.node);
+    // Resolve media even through a wrapper component (the showreel pattern) so
+    // the Timeline can badge the clip video/image/audio AND replace its source.
+    const m = resolveNestedMedia(c.node, componentBodies, arrays, cdIdOf);
     return {
       stableId,
       kind: c.kind,
       tag: c.tag,
       from: numAttr(opening, 'from', consts),
       durationInFrames: numAttr(opening, 'durationInFrames', consts),
-      mediaTag: media ? jsxTagName(media) : null,
-      mediaSrc: media ? getStringAttr(media.openingElement, 'src') : null,
-      mediaCdId: media ? (cdIdOf.get(media) ?? null) : null,
+      mediaTag: m ? m.tag : null,
+      mediaSrc: m ? m.src : null,
+      mediaCdId: m ? m.cdId : null,
+      mediaArrayRef: m ? m.arrayRef : null,
+      mediaShared: m ? m.shared : false,
       clipCdId: cdIdOf.get(c.node) ?? null,
       contentHash: hashSpan(source, c.start, c.end),
       start: c.start,
@@ -1864,6 +2022,99 @@ export async function insertClip(
     }
     const source = await file.text();
     const next = applyInsertClip(canvasAbsPath, source, artboardId, opts);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
+/**
+ * Replace a media `src` that lives in an array-of-objects literal
+ * (`const CLIPS = [{ src: 'assets/a.mp4', … }, …]`) — the showreel pattern where
+ * a clip's `<Video src={clip.src}>` is fed by `<ClipShot clip={CLIPS[i]} />`.
+ * Pure. Rewrites `NAME[index].field`'s string to `value` (contained asset path).
+ * Throws `CanvasEditError` on a bad path / missing target.
+ */
+export function applyEditArrayElementString(
+  canvasAbsPath: string,
+  source: string,
+  arrayName: string,
+  index: number,
+  field: string,
+  value: string
+): { source: string } {
+  const v = value.trim();
+  if (!v || /\.\./.test(v) || /^\s*(javascript|vbscript|file|data|https?):/i.test(v)) {
+    throw new CanvasEditError('src must be a contained asset path (no ../ or scheme)', {
+      canvas: canvasAbsPath,
+      id: `${arrayName}[${index}].${field}`,
+    });
+  }
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(`oxc-parser failed: ${parsed.errors[0]?.message ?? 'unknown'}`, {
+      canvas: canvasAbsPath,
+      id: arrayName,
+    });
+  }
+  let arr: AnyNode | null = null;
+  for (const stmt of (parsed.program?.body ?? []) as AnyNode[]) {
+    if (stmt?.type !== 'VariableDeclaration') continue;
+    for (const d of stmt.declarations ?? []) {
+      if (d?.id?.type === 'Identifier' && d.id.name === arrayName && d.init?.type === 'ArrayExpression') {
+        arr = d.init;
+      }
+    }
+  }
+  if (!arr) throw new CanvasEditError(`array "${arrayName}" not found`, { canvas: canvasAbsPath, id: arrayName });
+  const el = (arr.elements ?? [])[index] as AnyNode | undefined;
+  if (!el || el.type !== 'ObjectExpression') {
+    throw new CanvasEditError(`${arrayName}[${index}] is not an object literal`, {
+      canvas: canvasAbsPath,
+      id: `${arrayName}[${index}]`,
+    });
+  }
+  const prop = (el.properties ?? []).find(
+    (p: AnyNode) => p?.key?.name === field || p?.key?.value === field
+  );
+  const valNode = prop?.value;
+  if (!valNode || (valNode.type !== 'Literal' && valNode.type !== 'StringLiteral')) {
+    throw new CanvasEditError(`${arrayName}[${index}].${field} is not a string literal`, {
+      canvas: canvasAbsPath,
+      id: `${arrayName}[${index}].${field}`,
+    });
+  }
+  const s = new MagicString(source);
+  s.overwrite(valNode.start as number, valNode.end as number, JSON.stringify(v));
+  const out = s.toString();
+  const re = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (re.errors && re.errors.length > 0) {
+    throw new CanvasEditError(`edit produced invalid source: ${re.errors[0]?.message ?? 'parse error'}`, {
+      canvas: canvasAbsPath,
+      id: arrayName,
+    });
+  }
+  return { source: out };
+}
+
+/** Edit an array-element src on disk (atomic write + cross-process lock). */
+export async function editArrayElementString(
+  canvasAbsPath: string,
+  arrayName: string,
+  index: number,
+  field: string,
+  value: string
+): Promise<{ source: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, { canvas: canvasAbsPath, id: arrayName });
+    }
+    const source = await file.text();
+    const next = applyEditArrayElementString(canvasAbsPath, source, arrayName, index, field, value);
     if (next.source === source) return next;
     const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
     await Bun.write(tmp, next.source);

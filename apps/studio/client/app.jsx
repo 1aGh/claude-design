@@ -6596,9 +6596,14 @@ function App() {
   // DDR-148 — fetch the active canvas's raw source when the Timeline is open.
   // Re-runs when a comp is (re)announced, so it refreshes after a canvas edit.
   const [timelineSource, setTimelineSource] = useState('');
+  // DDR-150 dogfood — authoritative per-clip media from the enumerator (handles
+  // wrapper components + array-fed src the regex parser can't see), merged into
+  // the rows for the kind badge + replace addressing.
+  const [timelineClipMedia, setTimelineClipMedia] = useState([]);
   useEffect(() => {
     if (!timelineOpen || activeComps.length === 0 || !activePath || activePath === SYSTEM_TAB) {
       setTimelineSource('');
+      setTimelineClipMedia([]);
       return undefined;
     }
     let alive = true;
@@ -6606,6 +6611,17 @@ function App() {
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (alive && j?.ok && typeof j.source === 'string') setTimelineSource(j.source);
+      })
+      .catch(() => {});
+    const artboardId = timelineCompIdRef.current || undefined;
+    const ccUrl = `/_api/comp-clips?canvas=${encodeURIComponent(activePath)}${artboardId ? `&artboardId=${encodeURIComponent(artboardId)}` : ''}`;
+    fetch(ccUrl)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cc) => {
+        if (!alive) return;
+        const seqs =
+          cc?.ok && Array.isArray(cc.clips) ? cc.clips.filter((c) => c.kind === 'sequence') : [];
+        setTimelineClipMedia(seqs);
       })
       .catch(() => {});
     return () => {
@@ -6625,10 +6641,25 @@ function App() {
     const total = activeComps[0]?.durationInFrames || 0;
     const artboard = canvasActiveArtboard ?? selected?.artboardId ?? null;
     const parsed = parseCompTimeline(timelineSource, total, artboard);
-    setTimelineSequences(parsed.sequences);
+    // Overlay the enumerator's authoritative media (kind badge + replace target)
+    // onto each row by sequence index — it sees wrapper-component + array-fed
+    // media the row parser can't (the showreel <ClipShot clip={CLIPS[i]}/> case).
+    const merged = parsed.sequences.map((s, i) => {
+      const cm = timelineClipMedia[i];
+      if (!cm) return s;
+      return {
+        ...s,
+        mediaTag: cm.mediaTag ?? s.mediaTag,
+        mediaSrc: cm.mediaSrc ?? s.mediaSrc,
+        // Replaceable when the enumerator found an addressable media target:
+        // a literal-src element (mediaCdId) or an array-fed src (mediaArrayRef).
+        replaceable: !!(cm.mediaCdId || cm.mediaArrayRef),
+      };
+    });
+    setTimelineSequences(merged);
     setTimelineAudio(parsed.audio || []);
     setTimelineTotal(parsed.total);
-  }, [timelineSource, selected, activeComps, canvasActiveArtboard]);
+  }, [timelineSource, timelineClipMedia, selected, activeComps, canvasActiveArtboard]);
 
   const toggleAnnotations = useCallback(() => {
     setAnnotationsVisible((v) => {
@@ -7274,9 +7305,11 @@ function App() {
   // why the old fetch-then-click never opened the dialog). The comp-clips lookup
   // + upload + src patch all happen in the change handler, where no activation
   // is needed. `resolveCdId(cc)` maps the fresh enumerator payload to the target
-  // media element's cd-id (sequence clip vs audio bed).
+  // media target (sequence clip via cd-id, audio bed via cd-id, or a showreel
+  // array-fed src via mediaArrayRef → /_api/edit-array-src). `resolveTarget(cc)`
+  // returns { cdId } | { arrayRef } | null.
   const replaceMediaViaPicker = useCallback(
-    ({ accept, resolveCdId }) => {
+    ({ accept, resolveTarget }) => {
       const canvas = activePath;
       const artboardId = timelineCompId || undefined;
       const input = document.createElement('input');
@@ -7292,8 +7325,8 @@ function App() {
         fetch(ccUrl)
           .then((r) => r.json().catch(() => ({})))
           .then((cc) => {
-            const cdId = resolveCdId(cc);
-            if (!cdId) {
+            const target = resolveTarget(cc);
+            if (!target) {
               shellToast('No replaceable media here (its src is computed) — edit via chat.');
               return null;
             }
@@ -7308,10 +7341,24 @@ function App() {
                   shellToast(`Upload failed: ${up?.error || 'unknown error'}`);
                   return null;
                 }
+                if (target.arrayRef) {
+                  // Showreel pattern: the src lives in an array literal.
+                  return fetch('/_api/edit-array-src', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      canvas,
+                      arrayName: target.arrayRef.arrayName,
+                      index: target.arrayRef.index,
+                      field: target.arrayRef.field,
+                      value: up.path,
+                    }),
+                  });
+                }
                 return fetch('/_api/edit-attr', {
                   method: 'POST',
                   headers: { 'content-type': 'application/json' },
-                  body: JSON.stringify({ canvas, id: cdId, attr: 'src', value: up.path }),
+                  body: JSON.stringify({ canvas, id: target.cdId, attr: 'src', value: up.path }),
                 });
               });
           })
@@ -8902,12 +8949,15 @@ function App() {
               // change handler.
               replaceMediaViaPicker({
                 accept: 'video/*,image/*',
-                resolveCdId: (cc) => {
+                resolveTarget: (cc) => {
                   const seqs =
                     cc?.ok && Array.isArray(cc.clips)
                       ? cc.clips.filter((c) => c.kind === 'sequence')
                       : [];
-                  return seqs[index]?.mediaCdId || null;
+                  const clip = seqs[index];
+                  if (clip?.mediaArrayRef) return { arrayRef: clip.mediaArrayRef };
+                  if (clip?.mediaCdId) return { cdId: clip.mediaCdId };
+                  return null;
                 },
               });
             }}
@@ -8918,12 +8968,12 @@ function App() {
               // cd-id; ⇄ on the audio row swaps its src.
               replaceMediaViaPicker({
                 accept: 'audio/*',
-                resolveCdId: (cc) => {
+                resolveTarget: (cc) => {
                   const beds =
                     cc?.ok && Array.isArray(cc.media)
                       ? cc.media.filter((m) => m.tag === 'Audio')
                       : [];
-                  return beds[index]?.cdId || null;
+                  return beds[index]?.cdId ? { cdId: beds[index].cdId } : null;
                 },
               });
             }}

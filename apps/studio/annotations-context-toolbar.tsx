@@ -827,9 +827,44 @@ export function AnnotationContextToolbar({
   // fall through to the generic bar below.
   const soleMedia =
     selectedStrokes.length === 1 &&
-    (selectedStrokes[0]?.tool === 'image' || selectedStrokes[0]?.tool === 'link')
+    (selectedStrokes[0]?.tool === 'image' ||
+      selectedStrokes[0]?.tool === 'link' ||
+      selectedStrokes[0]?.tool === 'mediaref')
       ? selectedStrokes[0]
       : null;
+  if (soleMedia?.tool === 'mediaref') {
+    // DDR-150 dogfood — a media-reference chip has no color to set (the generic
+    // swatch palette was meaningless noise). Focused panel: filename + delete.
+    const mr = soleMedia;
+    return (
+      <div
+        ref={ref}
+        className="dc-annot-ctx"
+        role="toolbar"
+        aria-label="Media reference properties"
+        style={{ display: 'flex', top: -9999, left: -9999 }}
+      >
+        <span
+          className="dc-annot-ctx-label"
+          style={{ padding: '0 8px', fontSize: 12, opacity: 0.85, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          title={`${mr.mediaKind} · ${mr.src}`}
+        >
+          {mr.mediaKind === 'audio' ? '♪ ' : '▶ '}
+          {mr.title}
+        </span>
+        <div className="dc-annot-ctx-sep" />
+        <button
+          type="button"
+          className="dc-annot-ctx-ibtn dc-annot-ctx-ibtn--danger"
+          aria-label="Delete media reference"
+          title="Delete"
+          onClick={remove}
+        >
+          <IconTrash />
+        </button>
+      </div>
+    );
+  }
   if (soleMedia?.tool === 'image') {
     const img = soleMedia;
     const commitAlt = (value: string) => {

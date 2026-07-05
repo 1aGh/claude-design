@@ -144,10 +144,17 @@ export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
     } else {
       const dm = attrs.match(/durationInFrames=\{([^}]+)\}/);
       const fm = attrs.match(/from=\{([^}]+)\}/);
-      const after = scope.slice(openEnd, openEnd + 240);
+      // Bound the media/child sniff to THIS clip's own body — up to its close
+      // tag — never the fixed 240-char window that used to bleed into a
+      // following loose <Audio> and badge the wrong row (dogfood: EndCard showed
+      // a phantom audio). FALLBACK badge only; the enumerator (comp-clips)
+      // overlays authoritative media by index (incl. wrapper-component media).
+      const closeIdx = scope.indexOf(`</${kind}>`, openEnd);
+      const bound = closeIdx >= 0 ? Math.min(closeIdx, openEnd + 400) : openEnd + 240;
+      const after = scope.slice(openEnd, bound);
       const lm = after.match(/<([A-Z][A-Za-z0-9]*)\b/);
       // Media child sniff (badge + replace affordance): the first
-      // <Video|OffthreadVideo|Audio|Img src="…"> inside the clip body.
+      // <Video|OffthreadVideo|Audio|Img src="…"> DIRECTLY inside the clip body.
       const mm = after.match(/<(Video|OffthreadVideo|Audio|Img)\b[^>]*src=["']([^"']+)["']/);
       const nameM = attrs.match(/name=["']([^"']+)["']/);
       items.push({

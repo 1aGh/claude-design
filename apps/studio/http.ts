@@ -1622,6 +1622,36 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       );
     },
 
+    '/_api/edit-array-src': async (req: Request) => {
+      // DDR-150 dogfood — replace a media src stored in an array literal (the
+      // showreel `const CLIPS = [{ src }, …]` fed via `<ClipShot clip={CLIPS[i]}>`),
+      // addressed by the enumerator's mediaArrayRef. MAIN-ORIGIN-ONLY + CSRF-gated
+      // (same dual-allowlist as the other source writes); value contained under
+      // assets/ in the engine.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        arrayName?: unknown;
+        index?: unknown;
+        field?: unknown;
+        value?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.editArraySrcOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/comp-clips': async (req: Request) => {
       // DDR-150 P2 — the single authoritative clip enumerator for a video-comp.
       // GET ?canvas=<rel>&artboardId=<id> → { ok, compName, clips:[{ stableId,
