@@ -1256,11 +1256,21 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .tl-kind[data-kind="audio"] { color: #fcd34d; background: color-mix(in oklch, #f59e0b 20%, var(--bg-3)); }
 .tl-kind[data-kind="jsx"] { color: var(--fg-2); font-style: italic; }
 /* DDR-150 dogfood — the right-click clip menu reuses the canvas's shared
-   .dc-context-menu component (context-menu.tsx / ensureMenuStyles). */
+   .dc-context-menu component. Its injected CSS reads --maude-chrome-* tokens
+   that the CANVAS defines (dark floating chrome) but the SHELL never set — so it
+   fell back to white and looked nothing like the canvas menu. Define the same
+   dark chrome tokens ON the menu so shell + canvas menus match. */
+.dc-context-menu {
+  --maude-chrome-bg-0: oklch(0.165 0.012 255);
+  --maude-chrome-fg-0: oklch(0.955 0.005 250);
+  --maude-chrome-border: oklch(0.290 0.012 255);
+  --maude-chrome-shadow: rgba(0, 0, 0, 0.46);
+  --maude-chrome-font-mono: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
 /* Clip layer decomposition — expand toggle + indented sub-rows. */
-.tl-expand { flex: none; width: 12px; height: 14px; display: grid; place-items: center; padding: 0; border: none; background: transparent; color: var(--fg-2); font-size: 8px; line-height: 1; cursor: pointer; border-radius: 2px; }
-.tl-expand:hover:not(.tl-expand--spacer) { color: var(--fg-0); background: var(--bg-3); }
-.tl-expand--spacer { cursor: default; pointer-events: none; }
+.tl-expand { flex: none; width: 16px; height: 16px; display: grid; place-items: center; padding: 0; border: none; background: transparent; color: var(--fg-1); font-size: 10px; line-height: 1; cursor: pointer; border-radius: 3px; }
+.tl-expand:hover:not(.tl-expand--spacer) { color: var(--fg-0); background: var(--accent); }
+.tl-expand--spacer { width: 16px; cursor: default; pointer-events: none; }
 .tl-row--layer .tl-row-label { color: var(--fg-2); }
 .tl-row--layer { opacity: 0.92; }
 .tl-layer-indent { flex: none; width: 10px; }

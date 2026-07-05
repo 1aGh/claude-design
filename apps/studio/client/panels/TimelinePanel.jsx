@@ -133,9 +133,10 @@ export default function TimelinePanel({
   onDropMedia,
   onClose,
 }) {
-  // DDR-150 dogfood — which clip rows are expanded into their layers (mp4
-  // background + title/lower-third), so a ClipShot reads as its parts, not one box.
-  const [expanded, setExpanded] = useState(() => new Set());
+  // DDR-150 dogfood — clips are expanded into their layers (mp4 background +
+  // title/…) BY DEFAULT so a ClipShot reads as its parts, not one box. Track the
+  // rows the user COLLAPSED instead (default-open, per the user's steer).
+  const [collapsed, setCollapsed] = useState(() => new Set());
   const [dropActive, setDropActive] = useState(false);
   const comp = comps[0] ?? null;
   const totalFrames = Math.max(1, total || comp?.durationInFrames || 1);
@@ -466,7 +467,7 @@ export default function TimelinePanel({
                 const moving = !!(moveDrag && moveDrag.index === i);
                 const layers = Array.isArray(seq.layers) ? seq.layers : [];
                 const decomposable = layers.length >= 2;
-                const isExpanded = expanded.has(i);
+                const isExpanded = decomposable && !collapsed.has(i);
                 return (
                   <Fragment key={i}>
                   <div className="tl-row" data-testid={`timeline-row-${i}`}>
@@ -481,7 +482,7 @@ export default function TimelinePanel({
                           aria-expanded={isExpanded}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setExpanded((prev) => {
+                            setCollapsed((prev) => {
                               const next = new Set(prev);
                               if (next.has(i)) next.delete(i);
                               else next.add(i);
