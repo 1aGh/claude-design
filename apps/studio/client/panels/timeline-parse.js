@@ -116,6 +116,7 @@ export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
   let scope = src;
   let scopedTotal = totalFrames;
   let scopedFps = 0;
+  let scopedArtboardId = null;
   const usages = videoCompUsages(src, consts)
     .map((u) => ({ ...u, body: componentBody(src, u.compName) }))
     .filter((u) => u.body);
@@ -128,6 +129,7 @@ export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
     scope = target.body;
     if (target.duration != null) scopedTotal = target.duration;
     scopedFps = target.fps;
+    scopedArtboardId = target.artboardId ?? null;
   }
 
   const items = [];
@@ -219,5 +221,9 @@ export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
     });
   }
 
-  return { total, fps: scopedFps || undefined, sequences, audio };
+  // `artboardId` is the DCArtboard the timeline scoped to — the shell passes it
+  // to /_api/comp-clips + every clip op so the enumerator targets the SAME comp
+  // (on a multi-comp canvas its own fallback picks a different one — the
+  // showreel badge/replace mis-scoped to the wrong comp without this).
+  return { total, fps: scopedFps || undefined, sequences, audio, artboardId: scopedArtboardId };
 }

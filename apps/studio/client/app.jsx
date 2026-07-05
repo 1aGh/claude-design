@@ -6230,6 +6230,16 @@ function App() {
   useEffect(() => {
     timelineCompIdRef.current = timelineCompId;
   }, [timelineCompId]);
+  // The DCArtboard id the timeline scoped to (from parseCompTimeline). Used for
+  // /_api/comp-clips + every clip op so the enumerator targets the SAME comp the
+  // rows came from — `timelineCompId` is the Player's `videocomp-N` id, which
+  // never matches a DCArtboard id and made the enumerator fall back to the wrong
+  // comp on a multi-comp canvas (the showreel badge/replace/op mis-scope).
+  const [timelineArtboardId, setTimelineArtboardId] = useState(null);
+  const timelineArtboardIdRef = useRef(null);
+  useEffect(() => {
+    timelineArtboardIdRef.current = timelineArtboardId;
+  }, [timelineArtboardId]);
   // Phase 31 (DDR-123) — the native ACP chat sidepanel (right dock, native-only).
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantBusy, setAssistantBusy] = useState(false);
@@ -6638,7 +6648,24 @@ function App() {
         if (alive && j?.ok && typeof j.source === 'string') setTimelineSource(j.source);
       })
       .catch(() => {});
-    const artboardId = timelineCompIdRef.current || undefined;
+    return () => {
+      alive = false;
+    };
+  }, [timelineOpen, activeComps, activePath]);
+
+  // Authoritative per-clip media (comp-clips) — a SEPARATE effect keyed on the
+  // RESOLVED artboard id, which the parser only knows AFTER timelineSource
+  // arrives. Fetching it here (not in the source effect) means it re-runs once
+  // the parser scopes to the right comp — so a multi-comp canvas (the showreel:
+  // Movie + Reel) overlays the CORRECT comp's media, not the enumerator's own
+  // fallback pick.
+  useEffect(() => {
+    if (!timelineOpen || !activePath || activePath === SYSTEM_TAB || !timelineSource) {
+      setTimelineClipMedia([]);
+      return undefined;
+    }
+    let alive = true;
+    const artboardId = timelineArtboardId || undefined;
     const ccUrl = `/_api/comp-clips?canvas=${encodeURIComponent(activePath)}${artboardId ? `&artboardId=${encodeURIComponent(artboardId)}` : ''}`;
     fetch(ccUrl)
       .then((r) => (r.ok ? r.json() : null))
@@ -6652,7 +6679,7 @@ function App() {
     return () => {
       alive = false;
     };
-  }, [timelineOpen, activeComps, activePath]);
+  }, [timelineOpen, activePath, timelineSource, timelineArtboardId]);
 
   // Parse (cheap) — re-runs on source change AND on selection change, so the
   // Timeline REDRAWS to whichever artboard the user just selected/moved to.
@@ -6666,6 +6693,7 @@ function App() {
     const total = activeComps[0]?.durationInFrames || 0;
     const artboard = canvasActiveArtboard ?? selected?.artboardId ?? null;
     const parsed = parseCompTimeline(timelineSource, total, artboard);
+    setTimelineArtboardId(parsed.artboardId ?? artboard ?? null);
     // Overlay the enumerator's authoritative media (kind badge + replace target)
     // onto each row by sequence index — it sees wrapper-component + array-fed
     // media the row parser can't (the showreel <ClipShot clip={CLIPS[i]}/> case).
@@ -7336,7 +7364,7 @@ function App() {
   const replaceMediaViaPicker = useCallback(
     ({ accept, resolveTarget }) => {
       const canvas = activePath;
-      const artboardId = timelineCompId || undefined;
+      const artboardId = timelineArtboardId || undefined;
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = accept;
@@ -7411,7 +7439,7 @@ function App() {
       });
       input.click();
     },
-    [activePath, timelineCompId, pushTlUndo]
+    [activePath, timelineArtboardId, pushTlUndo]
   );
 
   // Phase 22 — soft-delete a canvas from the file tree. Confirms (destructive),
@@ -8899,7 +8927,7 @@ function App() {
               // row index counts sequence rows only, so map it to the index-th
               // sequence clip (transitions filtered). Fall back to the legacy
               // index if the enumerator is unavailable.
-              const artboardId = timelineCompId || undefined;
+              const artboardId = timelineArtboardId || undefined;
               const ccUrl = `/_api/comp-clips?canvas=${encodeURIComponent(activePath)}${artboardId ? `&artboardId=${encodeURIComponent(artboardId)}` : ''}`;
               fetch(ccUrl)
                 .then((r) => r.json().catch(() => ({})))
@@ -8943,7 +8971,7 @@ function App() {
               // (the sequence-row index → the index-th sequence clip). The engine
               // fingerprint + semantic gate refuse a stale/raced or series-breaking
               // removal; the file watcher reloads the canvas after.
-              const artboardId = timelineCompId || undefined;
+              const artboardId = timelineArtboardId || undefined;
               const ccUrl = `/_api/comp-clips?canvas=${encodeURIComponent(activePath)}${artboardId ? `&artboardId=${encodeURIComponent(artboardId)}` : ''}`;
               fetch(ccUrl)
                 .then((r) => r.json().catch(() => ({})))
@@ -9022,7 +9050,7 @@ function App() {
               // the previous sibling. Both clips addressed by comp-scoped stableId +
               // fingerprint (via /_api/comp-clips); the engine refuses a TransitionSeries
               // clip + a stale/raced target, then reloads via the file watcher.
-              const artboardId = timelineCompId || undefined;
+              const artboardId = timelineArtboardId || undefined;
               const ccUrl = `/_api/comp-clips?canvas=${encodeURIComponent(activePath)}${artboardId ? `&artboardId=${encodeURIComponent(artboardId)}` : ''}`;
               fetch(ccUrl)
                 .then((r) => r.json().catch(() => ({})))
@@ -9066,7 +9094,7 @@ function App() {
               // DDR-150 P4 Task 11 — drop a media file onto the timeline to
               // insert a clip: upload to assets/, then append a <Sequence> with
               // the media (playing after existing content). fps*3 default length.
-              const artboardId = timelineCompId || undefined;
+              const artboardId = timelineArtboardId || undefined;
               const mediaTag = file.type.startsWith('video/')
                 ? 'Video'
                 : file.type.startsWith('audio/')
