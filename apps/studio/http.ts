@@ -1622,6 +1622,33 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       );
     },
 
+    '/_api/toggle-hide': async (req: Request) => {
+      // DDR-150 dogfood — hide/show a clip (gates its body behind {false && …};
+      // the tag + time slot + TransitionSeries alternation stay). MAIN-ORIGIN-ONLY
+      // + CSRF-gated like the other source writes.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        stableId?: unknown;
+        artboardId?: unknown;
+        contentHash?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.toggleHideOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, hidden: result.hidden, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/edit-array-src': async (req: Request) => {
       // DDR-150 dogfood — replace a media src stored in an array literal (the
       // showreel `const CLIPS = [{ src }, …]` fed via `<ClipShot clip={CLIPS[i]}>`),

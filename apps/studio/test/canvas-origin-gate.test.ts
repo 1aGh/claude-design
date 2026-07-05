@@ -84,6 +84,8 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/reorder-sequence',
         // DDR-150 dogfood — array-src replace is a source-write, MAIN-ORIGIN ONLY.
         '/_api/edit-array-src',
+        // DDR-150 dogfood — clip hide/show is a source-write, MAIN-ORIGIN ONLY.
+        '/_api/toggle-hide',
         // Phase 12.1 (DDR-138) — node-move reorder is a source-write, MAIN-ORIGIN
         // ONLY. The canvas iframe requests a reorder over the dgn:* bus; the shell
         // performs the write. A GET here 403s at the gate (route unreachable on

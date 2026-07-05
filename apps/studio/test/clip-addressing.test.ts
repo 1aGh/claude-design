@@ -14,6 +14,7 @@ import {
   applyRemoveClip,
   applyReorderClip,
   applyRetimeSequenceByClip,
+  applyToggleClipHidden,
   assembleCompSource,
   assertCompSemantics,
   CanvasEditError,
@@ -506,6 +507,31 @@ describe('applyReorderClip — z-order reorder (DDR-150 P5)', () => {
         'after'
       )
     ).toThrow(CanvasEditError);
+  });
+});
+
+describe('applyToggleClipHidden — hide/show a clip (dogfood)', () => {
+  const src = [
+    'const Comp = () => (<TransitionSeries>',
+    '  <TransitionSeries.Sequence durationInFrames={40}><A /></TransitionSeries.Sequence>',
+    '  <TransitionSeries.Transition timing={t} />',
+    '  <TransitionSeries.Sequence durationInFrames={50}><B /></TransitionSeries.Sequence>',
+    '</TransitionSeries>);',
+    'function Canvas() { return <DCArtboard id="x"><VideoComp component={Comp} durationInFrames={90} fps={30} /></DCArtboard>; }',
+  ].join('\n');
+
+  test('hide gates the body behind {false && (…)} keeping the tag + alternation, then shows reversibly', () => {
+    const s0 = enumerateClips(CANVAS, src, 'x').clips.filter((c) => c.kind === 'sequence');
+    expect(s0.every((c) => c.hidden === false)).toBe(true);
+    const hid = applyToggleClipHidden(CANVAS, src, 'x', s0[0]!.stableId, s0[0]!.contentHash);
+    expect(hid.hidden).toBe(true);
+    expect(hid.source).toContain('{false && (<A />)}');
+    expect(() => assertCompSemantics(CANVAS, hid.source)).not.toThrow(); // alternation intact
+    const s1 = enumerateClips(CANVAS, hid.source, 'x').clips.filter((c) => c.kind === 'sequence');
+    expect(s1[0]!.hidden).toBe(true);
+    const shown = applyToggleClipHidden(CANVAS, hid.source, 'x', s1[0]!.stableId, s1[0]!.contentHash);
+    expect(shown.hidden).toBe(false);
+    expect(shown.source).toBe(src); // fully reversible
   });
 });
 

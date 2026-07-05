@@ -130,6 +130,7 @@ export default function TimelinePanel({
   onReplaceAudio,
   onReplaceLayer,
   onReorder,
+  onToggleHide,
   onDropMedia,
   onClose,
 }) {
@@ -480,8 +481,10 @@ export default function TimelinePanel({
                           title={isExpanded ? 'Collapse layers' : 'Show layers'}
                           aria-label={isExpanded ? `Collapse ${seq.label} layers` : `Show ${seq.label} layers`}
                           aria-expanded={isExpanded}
+                          onPointerDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
+                            e.preventDefault();
                             setCollapsed((prev) => {
                               const next = new Set(prev);
                               if (next.has(i)) next.delete(i);
@@ -550,9 +553,10 @@ export default function TimelinePanel({
                     <div className="tl-row-track">
                       <button
                         type="button"
-                        className={`tl-seq-block${resizing ? ' is-resizing' : ''}${moving ? ' is-moving' : ''}`}
+                        className={`tl-seq-block${resizing ? ' is-resizing' : ''}${moving ? ' is-moving' : ''}${seq.hidden ? ' is-hidden' : ''}`}
                         data-testid={`timeline-seq-${i}`}
                         data-kind={rowKind(seq)}
+                        data-hidden={seq.hidden ? '1' : undefined}
                         title={
                           seq.series
                             ? `${seq.label} · ${blockFrom}–${blockFrom + dur}f (${dur}f) · position computed by the series — trim the right edge to retime`
@@ -619,7 +623,7 @@ export default function TimelinePanel({
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : null}
-                      {onReplace && seq.replaceable ? (
+                      {onReplace && seq.replaceable && !decomposable ? (
                         <button
                           type="button"
                           className="tl-seq-replace"
@@ -695,8 +699,14 @@ export default function TimelinePanel({
                               <div
                                 className="tl-seq-block tl-layer-block"
                                 data-kind={lyKind}
+                                data-testid={`timeline-layer-block-${i}-${li}`}
                                 title={`${ly.label} (${ly.kind} layer)`}
                                 style={{ left: pct(seq.from), width: `${(dur / (totalFrames - 1)) * 100}%` }}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setCtxMenu({ index: i, layerIndex: li, x: e.clientX, y: e.clientY });
+                                }}
                               >
                                 <span className="tl-seq-name">{ly.label}</span>
                               </div>
@@ -786,33 +796,55 @@ export default function TimelinePanel({
         ? (() => {
             const seq = sequences[ctxMenu.index];
             const i = ctxMenu.index;
-            const primary = [];
-            if (onReplace && seq.replaceable) {
-              primary.push({
-                id: 'replace',
-                label: `Replace ${rowKind(seq)}…`,
-                onSelect: () => onReplace(i),
-              });
-            }
-            if (onReorder) {
-              primary.push({
-                id: 'earlier',
-                label: seq.series ? 'Move earlier' : 'Bring forward',
-                disabled: seq.series ? i <= 0 : i >= sequences.length - 1,
-                onSelect: () => onReorder(i, seq.series ? 'backward' : 'forward'),
-              });
-              primary.push({
-                id: 'later',
-                label: seq.series ? 'Move later' : 'Send backward',
-                disabled: seq.series ? i >= sequences.length - 1 : i <= 0,
-                onSelect: () => onReorder(i, seq.series ? 'forward' : 'backward'),
-              });
-            }
-            const sections = [primary];
-            if (onRemove) {
-              sections.push([
-                { id: 'remove', label: 'Remove clip', destructive: true, onSelect: () => onRemove(i) },
-              ]);
+            const li = ctxMenu.layerIndex;
+            let sections;
+            if (li != null) {
+              // A LAYER (sub-clip) menu — a stacked layer shares the clip's
+              // timing, so only media-replace applies here; trim/move/cut are
+              // clip-level ops on the parent row.
+              const ly = (Array.isArray(seq.layers) ? seq.layers : [])[li];
+              const items = [];
+              if (onReplaceLayer && ly && (ly.mediaCdId || ly.mediaArrayRef)) {
+                items.push({ id: 'replace-layer', label: `Replace ${ly.kind}…`, onSelect: () => onReplaceLayer(i, li) });
+              }
+              if (items.length === 0) {
+                items.push({ id: 'noop', label: 'No replaceable media in this layer', disabled: true, onSelect: () => {} });
+              }
+              sections = [items];
+            } else {
+              const primary = [];
+              // Replace only when the clip's media is directly on it (not split
+              // into layers — those replace from their own sub-rows).
+              if (onReplace && seq.replaceable && !(Array.isArray(seq.layers) && seq.layers.length >= 2)) {
+                primary.push({ id: 'replace', label: `Replace ${rowKind(seq)}…`, onSelect: () => onReplace(i) });
+              }
+              if (onReorder) {
+                primary.push({
+                  id: 'earlier',
+                  label: seq.series ? 'Move earlier' : 'Bring forward',
+                  disabled: seq.series ? i <= 0 : i >= sequences.length - 1,
+                  onSelect: () => onReorder(i, seq.series ? 'backward' : 'forward'),
+                });
+                primary.push({
+                  id: 'later',
+                  label: seq.series ? 'Move later' : 'Send backward',
+                  disabled: seq.series ? i >= sequences.length - 1 : i <= 0,
+                  onSelect: () => onReorder(i, seq.series ? 'forward' : 'backward'),
+                });
+              }
+              sections = [primary];
+              const tail = [];
+              if (onToggleHide) {
+                tail.push({
+                  id: 'hide',
+                  label: seq.hidden ? 'Show clip' : 'Hide clip',
+                  onSelect: () => onToggleHide(i),
+                });
+              }
+              if (onRemove) {
+                tail.push({ id: 'remove', label: 'Remove clip', destructive: true, onSelect: () => onRemove(i) });
+              }
+              if (tail.length) sections.push(tail);
             }
             return (
               <ContextMenuView

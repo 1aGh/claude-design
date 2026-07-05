@@ -22,6 +22,7 @@ import {
   removeClip,
   reorderClip,
   retimeSequence,
+  toggleClipHidden,
   retimeSequenceByClip,
   editText as runEditText,
 } from './canvas-edit.ts';
@@ -359,6 +360,15 @@ export interface Api {
     field?: unknown;
     value?: unknown;
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
+  // DDR-150 dogfood — hide/show a clip (gates its body behind {false && …}).
+  toggleHideOp(input: {
+    canvas?: unknown;
+    stableId?: unknown;
+    artboardId?: unknown;
+    contentHash?: unknown;
+  }): Promise<
+    { ok: true; hidden: boolean; seq?: number } | { ok: false; status: number; error: string }
+  >;
   // DDR-150 P2 — the single authoritative clip enumerator for a video-comp.
   // Read-only; the Timeline addresses every op by the returned `stableId`
   // (never a regex document-order index — the multi-comp mis-hit defect).
@@ -2130,6 +2140,39 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  async function toggleHideOp(input: {
+    canvas?: unknown;
+    stableId?: unknown;
+    artboardId?: unknown;
+    contentHash?: unknown;
+  }): Promise<{ ok: true; hidden: boolean; seq?: number } | { ok: false; status: number; error: string }> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const stableId = typeof input.stableId === 'string' ? input.stableId : null;
+    if (!stableId) return { ok: false, status: 400, error: 'stableId required' };
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId : undefined;
+    const contentHash = typeof input.contentHash === 'string' ? input.contentHash : undefined;
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      const res = await toggleClipHidden(r.abs, artboardId, stableId, contentHash);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true, hidden: res.hidden };
+      }
+      return { ok: true, hidden: res.hidden, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'hide failed',
+      };
+    }
+  }
+
   async function editArraySrcOp(input: {
     canvas?: unknown;
     arrayName?: unknown;
@@ -2720,6 +2763,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     insertSequenceOp,
     reorderSequenceOp,
     editArraySrcOp,
+    toggleHideOp,
     compClips,
     reorder,
     retimeSequenceOp,

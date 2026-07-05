@@ -1563,6 +1563,21 @@ function resolveMediaSrcThroughWrapper(
   return { src: null, cdId: cdIdOf.get(media) ?? null, arrayRef: null, shared: false };
 }
 
+/** The child span [start, end] of a clip element (between its `>` and `</`), or null (self-closing). */
+function clipChildrenSpan(node: AnyNode): { start: number; end: number } | null {
+  const oe = node.openingElement;
+  const ce = node.closingElement;
+  if (!oe || !ce || typeof oe.end !== 'number' || typeof ce.start !== 'number') return null;
+  return { start: oe.end as number, end: ce.start as number };
+}
+
+/** True when a clip's children are gated behind `{false && (…)}` (the hide marker). */
+function clipChildrenHidden(node: AnyNode, source: string): boolean {
+  const span = clipChildrenSpan(node);
+  if (!span) return false;
+  return /^\s*\{false && \(/.test(source.slice(span.start, span.end));
+}
+
 /** Stable content fingerprint of a clip's exact source span (optimistic-concurrency check). */
 function hashSpan(source: string, start: number, end: number): string {
   return Bun.hash(source.slice(start, end)).toString(16).padStart(16, '0').slice(0, 12);
@@ -1598,6 +1613,9 @@ export interface ClipInfo {
   /** The clip's stacked layers (mp4 background + title/lower-third + …) for the
    *  expandable timeline rows. Empty for a pure inline card. */
   layers: ClipLayer[];
+  /** True when the clip's body is gated behind `{false && (…)}` (hidden — renders
+   *  nothing but keeps its time slot + the TransitionSeries alternation). */
+  hidden: boolean;
   /** Fingerprint of the clip's source span — refuse an op if it no longer matches. */
   contentHash: string;
   start: number;
@@ -1790,6 +1808,7 @@ export function enumerateClips(
       mediaShared: m ? m.shared : false,
       clipCdId: cdIdOf.get(c.node) ?? null,
       layers: collectClipLayers(c.node, componentBodies, arrays, cdIdOf),
+      hidden: clipChildrenHidden(c.node, source),
       contentHash: hashSpan(source, c.start, c.end),
       start: c.start,
       end: c.end,
@@ -2105,6 +2124,104 @@ export async function reorderClip(
       refHash,
       position
     );
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
+/**
+ * Toggle a clip's visibility (DDR-150 dogfood — "hide clip"). Gates the clip's
+ * children behind `{false && (…)}` (hide) or strips it (show). The clip TAG stays
+ * — so it keeps its time slot and, inside a `<TransitionSeries>`, the S/T/S
+ * alternation stays valid — only its content stops rendering. Reversible.
+ * Fingerprint-checked. Returns the new hidden state.
+ */
+export function applyToggleClipHidden(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string | undefined,
+  stableId: string,
+  expectedHash: string | undefined
+): { source: string; hidden: boolean } {
+  resolveClip(canvasAbsPath, source, artboardId, stableId, expectedHash); // validate + fingerprint
+  // Re-parse to locate the clip's node (need its opening/closing tag spans).
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(`oxc-parser failed: ${parsed.errors[0]?.message ?? 'unknown'}`, {
+      canvas: canvasAbsPath,
+      id: stableId,
+    });
+  }
+  const { clips } = enumerateClips(canvasAbsPath, source, artboardId);
+  const info = clips.find((c) => c.stableId === stableId);
+  if (!info) throw new CanvasEditError(`clip "${stableId}" not found`, { canvas: canvasAbsPath, id: stableId });
+  // Walk for the JSXElement whose span matches the resolved clip.
+  let node: AnyNode | null = null;
+  (function find(n: AnyNode): void {
+    if (node || !n || typeof n !== 'object') return;
+    if (Array.isArray(n)) {
+      for (const c of n) find(c);
+      return;
+    }
+    if (n.type === 'JSXElement' && n.start === info.start && n.end === info.end) {
+      node = n;
+      return;
+    }
+    for (const k of Object.keys(n)) {
+      if (k === 'loc' || k === 'range' || k === 'start' || k === 'end' || k === 'type') continue;
+      find(n[k]);
+    }
+  })(parsed.program);
+  if (!node) throw new CanvasEditError(`clip "${stableId}" node not found`, { canvas: canvasAbsPath, id: stableId });
+  const span = clipChildrenSpan(node);
+  if (!span) {
+    throw new CanvasEditError('this clip has no body to hide (self-closing)', {
+      canvas: canvasAbsPath,
+      id: stableId,
+    });
+  }
+  const children = source.slice(span.start, span.end);
+  const s = new MagicString(source);
+  let hidden: boolean;
+  if (/^\s*\{false && \(/.test(children)) {
+    // Unhide — strip the exact wrapper we added.
+    const inner = children.replace(/^(\s*)\{false && \(/, '$1').replace(/\)\}(\s*)$/, '$1');
+    s.overwrite(span.start, span.end, inner);
+    hidden = false;
+  } else {
+    s.overwrite(span.start, span.end, `{false && (${children})}`);
+    hidden = true;
+  }
+  const out = s.toString();
+  const re = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (re.errors && re.errors.length > 0) {
+    throw new CanvasEditError(`hide produced invalid source: ${re.errors[0]?.message ?? 'parse error'}`, {
+      canvas: canvasAbsPath,
+      id: stableId,
+    });
+  }
+  assertCompSemantics(canvasAbsPath, out);
+  return { source: out, hidden };
+}
+
+/** Toggle a clip's hidden state on disk (atomic write + cross-process lock). */
+export async function toggleClipHidden(
+  canvasAbsPath: string,
+  artboardId: string | undefined,
+  stableId: string,
+  expectedHash: string | undefined
+): Promise<{ source: string; hidden: boolean }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, { canvas: canvasAbsPath, id: stableId });
+    }
+    const source = await file.text();
+    const next = applyToggleClipHidden(canvasAbsPath, source, artboardId, stableId, expectedHash);
     if (next.source === source) return next;
     const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
     await Bun.write(tmp, next.source);

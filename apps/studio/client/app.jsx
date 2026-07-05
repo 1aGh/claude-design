@@ -6709,6 +6709,7 @@ function App() {
         replaceable: !!(cm.mediaCdId || cm.mediaArrayRef),
         // The clip's stacked layers (mp4 background + title/…) for expandable rows.
         layers: Array.isArray(cm.layers) ? cm.layers : [],
+        hidden: !!cm.hidden,
       };
     });
     setTimelineSequences(merged);
@@ -9115,6 +9116,43 @@ function App() {
                   }
                 })
                 .catch(() => {});
+            }}
+            onToggleHide={(index) => {
+              if (!activePath || activePath === SYSTEM_TAB) return;
+              // DDR-150 dogfood — hide/show a clip (gates its body behind
+              // {false && …}; the tag + time slot stay). Addressed by comp-scoped
+              // stableId + fingerprint.
+              const artboardId = timelineArtboardId || undefined;
+              const ccUrl = `/_api/comp-clips?canvas=${encodeURIComponent(activePath)}${artboardId ? `&artboardId=${encodeURIComponent(artboardId)}` : ''}`;
+              fetch(ccUrl)
+                .then((r) => r.json().catch(() => ({})))
+                .then((cc) => {
+                  const seqs =
+                    cc?.ok && Array.isArray(cc.clips)
+                      ? cc.clips.filter((c) => c.kind === 'sequence')
+                      : [];
+                  const clip = seqs[index] || null;
+                  if (!clip?.stableId) return null;
+                  return fetch('/_api/toggle-hide', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      canvas: activePath,
+                      artboardId,
+                      stableId: clip.stableId,
+                      contentHash: clip.contentHash,
+                    }),
+                  });
+                })
+                .then((r) => (r ? r.json() : null))
+                .then((j) => {
+                  if (j && !j.ok) shellToast(`Hide refused: ${j.error || 'failed'}`);
+                  else if (j && j.ok) {
+                    shellToast(j.hidden ? 'Clip hidden.' : 'Clip shown.', true);
+                    if (j.seq != null) pushTlUndo(activePath, j.seq, j.hidden ? 'hide clip' : 'show clip');
+                  }
+                })
+                .catch(() => shellToast('Hide failed: network error'));
             }}
             onDropMedia={(file) => {
               if (!activePath || activePath === SYSTEM_TAB) return;
