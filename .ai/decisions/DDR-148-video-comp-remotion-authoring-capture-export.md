@@ -127,6 +127,160 @@ media exts in `CANVAS_ASSET_EXTS`/MIME), and a video-seek-aware capture.
   lower default or a gesture gate. F4 — `retimeAttr` retargets the first same-named
   numeric `const` in the file; scope it to the lexically-referenced binding.
 
+## Addendum — audio export via `@remotion/web-renderer` (2026-07-05)
+
+The T1–T11 capture spine shipped **video-only** — `video-encode-lib.ts`'s comment
+said outright: "Audio mixing is added in a follow-up slice." Two user-reported
+bugs (tiny fixed resolution; no audio) triggered that follow-up. Resolution was
+a straightforward fix (thread `scale` through to the encoder canvas + deviceScale
+— done first). Audio required real R&D: a 4-approach research workflow (Remotion
+node-renderer / real-time Web Audio capture / hand-rolled OfflineAudioContext
+mix / mediabunny-only) converged on a hybrid recommendation, but **hands-on
+spiking overturned its central premise** — worth recording so nobody re-derives
+this from scratch.
+
+**Architecture shipped:** for **mp4/webm of a registered video-comp**,
+`window.__maude_render_video__` (`video-comp.tsx`) hands the comp's `component` +
+meta to an injected in-page module (`exporters/video-render-lib.ts`) that calls
+`@remotion/web-renderer`'s `renderMediaOnWeb()` — a **whole-comp render, video +
+audio in ONE pass**. Remotion owns the `TransitionSeries` offset math and
+`<Audio volume={fn}>` closures internally, so the exported audio is correctly
+timed and leveled *by construction* — no hand-rolled mixing, no OfflineAudioContext
+schedule reconstruction. **gif** (no audio, no `renderMediaOnWeb` container
+support), **ordinary/CSS-WAAPI artboards**, and **any artboard with no
+registered comp** all fall through unchanged to the original frame-step +
+mediabunny/gifenc spine (`_video-playwright.mjs`'s `frameStepCapture()`).
+
+**Why not the research workflow's literal recommendation (audio-only
+web-renderer pass + keep frame-step for video).** The research converged on
+"render audio separately via web-renderer, keep the proven frame-step spine for
+video, mux the two." Implementing it surfaced a hard blocker: `@remotion/media`'s
+`<Video>`/`<Audio>` (required — `renderMediaOnWeb` rejects classic `remotion`'s
+`<Video>`/`<Audio>`, which render `<Html5Video>`/`<Html5Audio>`) decode
+**to a `<canvas>`, not a `<video>` element** — so the frame-step spine's
+`<video>`-seeked-event wait is a no-op against it. Empirically this turned out to
+be **fine for screenshot-based capture** (verified visually across 5 frames
+including a mid-transition dual-canvas composite — see below), which meant the
+simpler fix was available: don't bolt audio onto the side, replace the WHOLE
+mp4/webm-of-a-comp path with `renderMediaOnWeb` and let Remotion do both tracks.
+The frame-step spine is retained ONLY where `renderMediaOnWeb` structurally can't
+apply (gif's container, ordinary artboards' lack of a comp to render).
+
+**`@remotion/media` migration was gated on two live tests before touching the
+shared runtime, not assumed compatible:**
+1. **Player-compat spike** — `<Video>` from `@remotion/media` inside
+   `@remotion/player`'s `<Player>`, screenshotted after a seek: renders correctly
+   (`hasPlayer: true`, zero errors, real decoded frame content). This is what
+   makes the LIVE PREVIEW safe to migrate.
+2. **Frame-step-compat spike** — the same comp exported via the EXISTING
+   `_video-playwright.mjs` frame loop at 5 frames (title card, mid-clip ×2, a
+   mid-**transition** frame with two simultaneous `<canvas>` elements
+   compositing, second-clip) — every frame showed correct real content, 4/4
+   repeat runs of a full mp4 export succeeded with no flakiness. This is what
+   justified leaving PNG/GIF/PDF/SVG/HTML/PPTX untouched rather than special-
+   casing every format around `@remotion/media`.
+
+`@remotion/media` was added to `RUNTIME_PACKAGES` (ships as a committed
+`dist/runtime/@remotion_media.js`, exactly like `remotion`/`@remotion/player` —
+**no node_modules presence needed at runtime**, unlike the point below).
+
+**The dual-package hazard bit twice, empirically, before the bundle was
+correct — both instances are the same root cause and worth naming explicitly
+for the next person who adds an externalized-import bundle here:**
+- **1st: `remotion/version` 404.** `Bun.build`'s `external` option is
+  package-name **prefix**-matched (already documented in `runtime-bundle.ts`'s
+  own comment on this exact gotcha) — listing `'remotion'` as external ALSO
+  externalizes deep subpaths like `remotion/version` (a real import inside
+  `@remotion/web-renderer`'s own tree). The importmap only maps the bare
+  `remotion` specifier, so the externalized subpath 404s in the browser
+  ("Failed to resolve module specifier"). Fix: an exact-match `onResolve`
+  plugin (mirrors `canvas-build.ts`'s `exact-externals`) instead of the
+  `external` array — only the LITERAL specifiers the importmap covers get
+  externalized; every subpath bundles inline like any other dependency.
+- **2nd: minified React error #321 (Invalid Hook Call).** Fixing the first bug
+  revealed a second: `react`/`react-dom` weren't in the exact-externals set,
+  so `Bun.build` happily INLINED a second copy of React into the render-lib
+  bundle. Two React module instances in one page is the textbook cause of
+  error #321 — the `component` passed into `renderMediaOnWeb` was created
+  against the PAGE's (importmap-loaded) React, but `renderMediaOnWeb`'s
+  internal render tree used the BUNDLED copy's React, so the component's
+  hooks (`useCurrentFrame`, `useVideoConfig`) read a dispatcher/context from
+  the wrong instance. Fix: add the full react set (`react`, `react-dom`,
+  `react-dom/client`, `react/jsx-runtime`, `react/jsx-dev-runtime`) to the
+  same exact-externals set. **The general lesson: any addScriptTag-injected
+  module that receives page-created React elements/components MUST
+  externalize the exact same package set the importmap serves — remotion
+  alone is not sufficient once React itself is in the payload.**
+
+**Known, non-blocking: "Mediabunny was loaded twice" console warning.**
+`@remotion/media`'s own internal decode path bundles its own `mediabunny`
+copy; `video-render-lib.ts` (via `@remotion/web-renderer`) bundles a SEPARATE
+one for its own muxing. Mediabunny prints a defensive warning when it detects
+this. Empirically this does NOT corrupt output — every recorded render
+(mp4 h264+aac, webm vp9+opus, muted, scaled) produced valid, correctly-decodable
+files with correct visual content and non-silent audio. Left as a documented
+cosmetic warning rather than deduping mediabunny through the importmap (would
+require adding it to `RUNTIME_PACKAGES` — extra bytes on every canvas that never
+touches video, for a warning with no observed correctness impact). Revisit if a
+future mediabunny version turns this into a hard failure.
+
+**License + offline posture — no new code needed.** `renderMediaOnWeb` posts an
+optional usage-telemetry beacon to `remotion.pro`. The EXISTING capture CSP
+(`cspForCapture()`, `http.ts`, DDR-148's own attacker-F1 fix) already locks
+`connect-src 'self'` for every export capture — verified live: the fetch is
+refused by the browser with a CSP violation, and the render still completes
+successfully. `licenseKey` is threaded from `MAUDE_REMOTION_LICENSE` (env,
+project-configurable), defaulting to `'free-license'` in the shim when unset —
+qualification for Remotion's free tier (individuals / ≤3-person companies) is
+a **product/business decision for the user**, not something this code decides;
+default is documented as provisional, not a claim of eligibility.
+
+**Determinism: SSIM, not bit-identical, for the renderMediaOnWeb path.** DDR-148's
+original claim — "two capture runs to frame N are pixel-identical" — holds for
+the frame-step spine (lossless PNG screenshots). It does NOT extend byte-for-byte
+to `renderMediaOnWeb`'s H.264/VP9 output: two identical renders of the same
+comp/options produced **different SHA-256 hashes** every time tested. Decoding
+both and comparing frame-by-frame gave **SSIM 0.9996–0.9998, PSNR 33–36 dB**
+across every frame — i.e. perceptually identical, the difference being ordinary
+lossy-codec quantization/rate-control noise (well-documented behavior for
+multi-threaded H.264/VP9 encoders, not specific to this pipeline). Any future
+regression test against this path should assert **SSIM above a threshold**
+(e.g. > 0.995), never byte-equality.
+
+**Desktop packaging (the hard constraint — zero manual install).**
+`@remotion/media` needs nothing beyond the committed `dist/runtime/*.js` (no
+different from how `remotion`/`@remotion/player` already ship). But
+`@remotion/web-renderer` — driving `video-render-lib.ts` — is **`Bun.build`'d
+dynamically at export-request time in the sidecar**, exactly like the existing
+`video-encode-lib.ts` path, so it needs real `node_modules` presence in the
+packaged app. Added to `apps/desktop/scripts/stage-resources.mjs`'s
+`RENDER_RUNTIME_PKGS`; its own dependency closure (`@remotion/licensing`, its
+pinned `mediabunny`, the 3 `@mediabunny/{aac,mp3,flac}-encoder` WASM packages,
+`zod`) is staged automatically by the existing closure-walker (no new entries
+needed). Verified by building `video-render-lib.ts` directly from the STAGED
+tree (not the dev `node_modules`) — succeeds with identical output to the dev
+build, confirming the packaged `.app` can render audio with zero additional
+user-side installs.
+
+**Manual verification recipe** (no `ffprobe`/`ffmpeg` test dependency was added
+to the `bun:test` suite — this repo's test philosophy is zero-external-tool;
+see `test/video-comp.test.ts`'s own note that live Player rendering is an
+agent-browser/manual check, not a unit test). To re-verify this path after a
+future change:
+1. Boot the dev server, drive `_canvas-shell.html?...&hide-chrome=1&capture=1`
+   with Playwright directly (not just `curl` the `/_api/export` HTTP layer —
+   that only proves dispatch, not content).
+2. Resolve the comp's `data-comp-id` inside the target artboard
+   (`findCompIdIn`), inject the `getWebRendererBundle()` output via
+   `addScriptTag`, call `window.__maude_render_video__(compId, opts)` directly.
+3. `ffprobe` the output for both a video AND audio stream, matching
+   duration; extract PCM and run a windowed RMS pass — a comp with a known
+   `<Audio volume={interpolate(...)}>` envelope should show the fade shape as a
+   solid proxy that Remotion evaluated the real closure (not a flat/silent
+   track, which is what a naive re-implementation would produce).
+4. For a determinism check, decode two renders to frames and compare via SSIM
+   (`ffmpeg -lavfi ssim`), not a hash.
+
 ## Linked
 
 Plan: [`.ai/plans/feature-video-animation-layer.md`](../plans/archive/feature-video-animation-layer.md).
