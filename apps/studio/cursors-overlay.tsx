@@ -55,7 +55,7 @@ const CURSOR_CSS = `
   top: 14px;
   left: 10px;
   padding: 1px 8px;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-weight: 500;
   font-size: 10px;
   line-height: 1.4;
@@ -72,7 +72,7 @@ const CURSOR_CSS = `
   left: 0;
   pointer-events: none;
   border: 2px solid;
-  border-radius: var(--radius-sm, 2px);
+  border-radius: 2px;
   box-sizing: border-box;
   will-change: transform, width, height;
 }
@@ -81,12 +81,12 @@ const CURSOR_CSS = `
   top: -18px;
   left: -2px;
   padding: 1px 5px;
-  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  font-family: system-ui, -apple-system, sans-serif;
   font-weight: 600;
   font-size: 10px;
   line-height: 1.3;
   color: var(--maude-hud-accent-fg, #fff);
-  border-radius: var(--radius-sm, 2px) var(--radius-sm, 2px) 0 0;
+  border-radius: 2px 2px 0 0;
   white-space: nowrap;
 }
 /* Phase 30 / DDR-120 — soft editing-presence. When a peer (human or a bridged

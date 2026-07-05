@@ -271,7 +271,7 @@ const DIALOG_CSS = `
 .dc-export-dialog footer button.dc-ed-primary { background: var(--maude-hud-accent, #1a1a1a); color: var(--maude-hud-accent-fg, #fff); border-color: transparent; }
 .dc-export-dialog footer button:disabled { opacity: 0.4; cursor: not-allowed; }
 .dc-export-dialog .dc-ed-status { padding: 8px 20px; font-size: 12px; color: var(--maude-chrome-fg-1, rgba(40,30,20,0.65)); border-top: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.08)); }
-.dc-export-dialog .dc-ed-status.is-error { color: var(--status-error, #c0392b); }
+.dc-export-dialog .dc-ed-status.is-error { color: #c0392b; }
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────

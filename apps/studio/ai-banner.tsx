@@ -43,9 +43,9 @@ const BANNER_CSS = `
   background: var(--maude-hud-accent-tint, oklch(92% 0.040 55));
   color: var(--maude-chrome-fg-0, #111);
   border: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.16));
-  border-radius: var(--radius-md, 4px);
+  border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  font-family: system-ui, -apple-system, sans-serif;
   font-weight: 500;
   font-size: 12px;
   line-height: 1.2;

@@ -29,7 +29,7 @@ const CHROME_CSS = `
   display: flex;
   align-items: center;
   pointer-events: auto;
-  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  font-family: system-ui, -apple-system, sans-serif;
 }
 .dc-participant {
   width: 26px;
@@ -74,7 +74,7 @@ const CHROME_CSS = `
   background: var(--maude-chrome-bg-1, #fff);
   color: var(--maude-chrome-fg-0, #111);
   border: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.16));
-  border-radius: var(--radius-md, 4px);
+  border-radius: 4px;
   font-size: 12px;
   line-height: 1.35;
   white-space: nowrap;
@@ -93,7 +93,7 @@ const CHROME_CSS = `
   background: var(--maude-hud-accent, oklch(56% 0.170 50));
   color: var(--maude-hud-accent-fg, #fff);
   border: none;
-  border-radius: var(--radius-sm, 2px);
+  border-radius: 2px;
   font-family: inherit;
   font-weight: 500;
   font-size: 11px;

@@ -209,8 +209,8 @@ const MENU_CSS = `
 }
 .dc-context-menu .dc-menu-item.is-destructive:hover,
 .dc-context-menu .dc-menu-item.is-destructive:focus-visible {
-  background: var(--status-error, #c0392b);
-  color: var(--accent-fg, #fff);
+  background: #c0392b;
+  color: #fff;
 }
 .dc-context-menu .dc-menu-shortcut {
   color: var(--maude-chrome-fg-1, rgba(40,30,20,0.55));

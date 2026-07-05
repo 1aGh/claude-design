@@ -32,12 +32,12 @@ const HUD_CSS = `
   user-select: none;
   opacity: 0;
   transform: translateY(-4px);
-  transition: opacity var(--dur-base, 200ms) linear, transform var(--dur-base, 200ms) ease-out;
+  transition: opacity 200ms linear, transform 200ms ease-out;
 }
 .dc-undo-hud[data-visible="true"] {
   opacity: 1;
   transform: translateY(0);
-  transition-duration: var(--dur-fast, 120ms);
+  transition-duration: 120ms;
 }
 @media (prefers-reduced-motion: reduce) {
   .dc-undo-hud {
