@@ -139,6 +139,23 @@ export default function TimelinePanel({
   const [retimeDrag, setRetimeDrag] = useState(null);
   // Drag the block body to move a clip's `from`: { index, startX, startFrom, rowW, curFrom }.
   const [moveDrag, setMoveDrag] = useState(null);
+  // DDR-150 dogfood — right-click clip context menu: { index, x, y }.
+  const [ctxMenu, setCtxMenu] = useState(null);
+  useEffect(() => {
+    if (!ctxMenu) return undefined;
+    // Close on an outside pointerdown — but NOT one inside the menu itself
+    // (window-capture fires before the item's onClick; closing here would
+    // unmount the item before its click lands, so the action never runs).
+    const close = (e) => {
+      if (e?.target?.closest?.('.tl-ctx')) return;
+      setCtxMenu(null);
+    };
+    window.addEventListener('pointerdown', close, { capture: true });
+    window.addEventListener('blur', () => setCtxMenu(null));
+    return () => {
+      window.removeEventListener('pointerdown', close, { capture: true });
+    };
+  }, [ctxMenu]);
   // True after a body-drag actually moved — suppresses the click-to-seek that
   // would otherwise fire on pointerup.
   const movedRef = useRef(false);
@@ -456,18 +473,26 @@ export default function TimelinePanel({
                 return (
                   <div className="tl-row" key={i} data-testid={`timeline-row-${i}`}>
                     <span className="tl-row-label" title={seq.label}>
-                      {onReorder && !seq.series ? (
-                        <span className="tl-seq-reorder" role="group" aria-label={`Stacking order for ${seq.label}`}>
+                      {onReorder ? (
+                        <span
+                          className="tl-seq-reorder"
+                          role="group"
+                          aria-label={`${seq.series ? 'Play order' : 'Stacking order'} for ${seq.label}`}
+                        >
                           <button
                             type="button"
                             className="tl-reorder-btn"
                             data-testid={`timeline-raise-${i}`}
-                            title="Bring forward (render on top)"
-                            aria-label={`Bring ${seq.label} forward`}
-                            disabled={i >= sequences.length - 1}
+                            title={seq.series ? 'Move earlier (plays sooner)' : 'Bring forward (render on top)'}
+                            aria-label={
+                              seq.series ? `Move ${seq.label} earlier` : `Bring ${seq.label} forward`
+                            }
+                            disabled={seq.series ? i <= 0 : i >= sequences.length - 1}
                             onClick={(e) => {
                               e.stopPropagation();
-                              onReorder(i, 'forward');
+                              // Series clips play in order — ▲ = earlier (swap with
+                              // the previous beat); standalone → forward in z-stack.
+                              onReorder(i, seq.series ? 'backward' : 'forward');
                             }}
                           >
                             ▲
@@ -476,12 +501,14 @@ export default function TimelinePanel({
                             type="button"
                             className="tl-reorder-btn"
                             data-testid={`timeline-lower-${i}`}
-                            title="Send backward (render underneath)"
-                            aria-label={`Send ${seq.label} backward`}
-                            disabled={i <= 0}
+                            title={seq.series ? 'Move later (plays after)' : 'Send backward (render underneath)'}
+                            aria-label={
+                              seq.series ? `Move ${seq.label} later` : `Send ${seq.label} backward`
+                            }
+                            disabled={seq.series ? i >= sequences.length - 1 : i <= 0}
                             onClick={(e) => {
                               e.stopPropagation();
-                              onReorder(i, 'backward');
+                              onReorder(i, seq.series ? 'forward' : 'backward');
                             }}
                           >
                             ▼
@@ -518,6 +545,11 @@ export default function TimelinePanel({
                           left: pct(blockFrom),
                           width: `${(dur / (totalFrames - 1)) * 100}%`,
                           cursor: onRetime && !seq.series ? 'grab' : undefined,
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setCtxMenu({ index: i, x: e.clientX, y: e.clientY });
                         }}
                         onPointerDown={(e) => startMove(e, i, seq.from)}
                         onClick={(e) => {
@@ -662,6 +694,60 @@ export default function TimelinePanel({
           </div>
         </div>
       )}
+      {ctxMenu && sequences[ctxMenu.index] ? (
+        (() => {
+          const seq = sequences[ctxMenu.index];
+          const i = ctxMenu.index;
+          const item = (label, enabled, fn, testid) => (
+            <button
+              type="button"
+              className="tl-ctx-item"
+              data-testid={testid}
+              disabled={!enabled}
+              onClick={(e) => {
+                e.stopPropagation();
+                setCtxMenu(null);
+                fn();
+              }}
+            >
+              {label}
+            </button>
+          );
+          return (
+            <div
+              className="tl-ctx"
+              data-testid="timeline-ctx-menu"
+              role="menu"
+              style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 90 }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              {onReplace && seq.replaceable
+                ? item(`Replace ${rowKind(seq)}…`, true, () => onReplace(i), 'timeline-ctx-replace')
+                : null}
+              {onReorder
+                ? item(
+                    seq.series ? 'Move earlier' : 'Bring forward',
+                    seq.series ? i > 0 : i < sequences.length - 1,
+                    () => onReorder(i, seq.series ? 'backward' : 'forward'),
+                    'timeline-ctx-earlier'
+                  )
+                : null}
+              {onReorder
+                ? item(
+                    seq.series ? 'Move later' : 'Send backward',
+                    seq.series ? i < sequences.length - 1 : i > 0,
+                    () => onReorder(i, seq.series ? 'forward' : 'backward'),
+                    'timeline-ctx-later'
+                  )
+                : null}
+              {onRemove ? <div className="tl-ctx-sep" /> : null}
+              {onRemove
+                ? item('Remove clip', true, () => onRemove(i), 'timeline-ctx-remove')
+                : null}
+            </div>
+          );
+        })()
+      ) : null}
     </aside>
   );
 }

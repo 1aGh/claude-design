@@ -327,7 +327,7 @@ describe('applyRemoveClip — clip removal (DDR-150 P3)', () => {
     ).toThrow(CanvasEditError);
   });
 
-  test('refuses appending into a <TransitionSeries> (deferred)', () => {
+  test('refuses appending into a single-sequence <TransitionSeries> (no transition to clone)', () => {
     const src = [
       'const Comp = () => (<TransitionSeries>',
       '  <TransitionSeries.Sequence durationInFrames={30}><A /></TransitionSeries.Sequence>',
@@ -337,6 +337,30 @@ describe('applyRemoveClip — clip removal (DDR-150 P3)', () => {
     expect(() => applyInsertClip(CANVAS, src, 'x', { from: 30, durationInFrames: 30 })).toThrow(
       CanvasEditError
     );
+  });
+
+  test('appends a transition + sequence into a <TransitionSeries> (dogfood — cloned transition)', () => {
+    const src = [
+      'const Comp = () => (<TransitionSeries>',
+      '  <TransitionSeries.Sequence durationInFrames={30}><A /></TransitionSeries.Sequence>',
+      '  <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: 8 })} />',
+      '  <TransitionSeries.Sequence durationInFrames={40}><B /></TransitionSeries.Sequence>',
+      '</TransitionSeries>);',
+      'function Canvas() { return <DCArtboard id="x"><VideoComp component={Comp} durationInFrames={70} fps={30} /></DCArtboard>; }',
+    ].join('\n');
+    const out = applyInsertClip(CANVAS, src, 'x', {
+      from: 0,
+      durationInFrames: 50,
+      mediaTag: 'Video',
+      src: 'assets/new.mp4',
+    });
+    // A new sequence with the media + a cloned transition; alternation intact.
+    expect(out.source).toContain('<Video src="assets/new.mp4" />');
+    expect((out.source.match(/<\/TransitionSeries\.Sequence>/g) || []).length).toBe(3); // 3 sequences
+    expect((out.source.match(/TransitionSeries\.Transition/g) || []).length).toBe(2);
+    expect(() => assertCompSemantics(CANVAS, out.source)).not.toThrow();
+    const seqs = enumerateClips(CANVAS, out.source, 'x').clips.filter((c) => c.kind === 'sequence');
+    expect(seqs.length).toBe(3);
   });
 
   test('drops one adjacent transition when removing a TransitionSeries clip (series stays valid)', () => {
@@ -427,25 +451,58 @@ describe('applyReorderClip — z-order reorder (DDR-150 P5)', () => {
     ).toThrow(CanvasEditError);
   });
 
-  test('refuses reordering a TransitionSeries clip (timing would break)', () => {
+  test('reorders TransitionSeries beats by SWAPPING sequences (dogfood — transitions stay put)', () => {
     const src = [
       'const Comp = () => (<TransitionSeries>',
       '  <TransitionSeries.Sequence durationInFrames={30}><A /></TransitionSeries.Sequence>',
       '  <TransitionSeries.Transition timing={t} />',
       '  <TransitionSeries.Sequence durationInFrames={40}><B /></TransitionSeries.Sequence>',
+      '  <TransitionSeries.Transition timing={t} />',
+      '  <TransitionSeries.Sequence durationInFrames={50}><C /></TransitionSeries.Sequence>',
       '</TransitionSeries>);',
-      'function Canvas() { return <DCArtboard id="x"><VideoComp component={Comp} durationInFrames={70} fps={30} /></DCArtboard>; }',
+      'function Canvas() { return <DCArtboard id="x"><VideoComp component={Comp} durationInFrames={120} fps={30} /></DCArtboard>; }',
     ].join('\n');
     const seqs = enumerateClips(CANVAS, src, 'x').clips.filter((c) => c.kind === 'sequence');
+    // Move A (clip 0) later — swap with B (clip 1).
+    const out = applyReorderClip(
+      CANVAS,
+      src,
+      'x',
+      seqs[0]!.stableId,
+      seqs[0]!.contentHash,
+      seqs[1]!.stableId,
+      seqs[1]!.contentHash,
+      'after'
+    );
+    // B now plays first (with its 40f), A second (30f) — alternation intact.
+    const order = (out.source.match(/<([ABC]) \//g) || []).map((m) => m[1]);
+    expect(order).toEqual(['B', 'A', 'C']);
+    expect(() => assertCompSemantics(CANVAS, out.source)).not.toThrow();
+    expect((out.source.match(/TransitionSeries\.Transition/g) || []).length).toBe(2); // both kept
+  });
+
+  test('still refuses reordering a series clip against a STANDALONE one (mixed kinds)', () => {
+    const src = [
+      'const Comp = () => (<><TransitionSeries>',
+      '  <TransitionSeries.Sequence durationInFrames={30}><A /></TransitionSeries.Sequence>',
+      '  <TransitionSeries.Transition timing={t} />',
+      '  <TransitionSeries.Sequence durationInFrames={40}><B /></TransitionSeries.Sequence>',
+      '</TransitionSeries>',
+      '<Sequence durationInFrames={20}><D /></Sequence></>);',
+      'function Canvas() { return <DCArtboard id="x"><VideoComp component={Comp} durationInFrames={90} fps={30} /></DCArtboard>; }',
+    ].join('\n');
+    const seqs = enumerateClips(CANVAS, src, 'x').clips.filter((c) => c.kind === 'sequence');
+    const seriesClip = seqs.find((c) => c.tag === 'TransitionSeries.Sequence')!;
+    const standalone = seqs.find((c) => c.tag === 'Sequence')!;
     expect(() =>
       applyReorderClip(
         CANVAS,
         src,
         'x',
-        seqs[0]!.stableId,
-        seqs[0]!.contentHash,
-        seqs[1]!.stableId,
-        seqs[1]!.contentHash,
+        seriesClip.stableId,
+        seriesClip.contentHash,
+        standalone.stableId,
+        standalone.contentHash,
         'after'
       )
     ).toThrow(CanvasEditError);

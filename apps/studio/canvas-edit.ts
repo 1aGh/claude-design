@@ -1871,9 +1871,36 @@ export function applyReorderClip(
   }
   const moved = resolveClip(canvasAbsPath, source, artboardId, movedStableId, movedHash);
   const ref = resolveClip(canvasAbsPath, source, artboardId, refStableId, refHash);
+  const bothSeries =
+    (moved.tag === 'TransitionSeries.Sequence' || moved.tag === 'Series.Sequence') &&
+    (ref.tag === 'TransitionSeries.Sequence' || ref.tag === 'Series.Sequence');
+  // TransitionSeries/Series clips play in ORDER (not z-stacked) — "reorder" means
+  // change PLAY order. Physically moving the tag would break the S/T/S/T
+  // alternation, so instead SWAP the two sequences' spans in place: the
+  // transitions between them stay put, alternation is preserved, and the beats
+  // change order (DDR-150 dogfood — "reorder klip vrstvy" on a showreel).
+  if (bothSeries) {
+    const a = moved.start <= ref.start ? moved : ref;
+    const b = moved.start <= ref.start ? ref : moved;
+    const s = new MagicString(source);
+    s.overwrite(a.start, a.end, source.slice(b.start, b.end));
+    s.overwrite(b.start, b.end, source.slice(a.start, a.end));
+    const out = s.toString();
+    const parsed = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+    if (parsed.errors && parsed.errors.length > 0) {
+      throw new CanvasEditError(
+        `reorder produced invalid source: ${parsed.errors[0]?.message ?? 'parse error'}`,
+        { canvas: canvasAbsPath, id: movedStableId }
+      );
+    }
+    assertCompSemantics(canvasAbsPath, out);
+    const after = enumerateClips(canvasAbsPath, out, artboardId);
+    const settled = after.clips.find((c) => c.contentHash === moved.contentHash);
+    return { source: out, stableId: settled?.stableId ?? movedStableId };
+  }
   if (moved.tag !== 'Sequence' || ref.tag !== 'Sequence') {
     throw new CanvasEditError(
-      'z-order reorder is standalone-<Sequence>-only (a TransitionSeries/Series clip carries timing that reordering would break)',
+      'reorder needs two sequences of the same kind (standalone ↔ standalone, or series ↔ series)',
       { canvas: canvasAbsPath, id: movedStableId }
     );
   }
@@ -1961,35 +1988,53 @@ export function applyInsertClip(
     });
   }
   const last = clips[clips.length - 1] as ClipInfo;
-  if (last.tag.startsWith('TransitionSeries.')) {
-    throw new CanvasEditError(
-      'cannot append into a <TransitionSeries> (transition math) — deferred',
-      {
-        canvas: canvasAbsPath,
-        id: artboardId ?? '',
-      }
-    );
-  }
   const from = Math.max(0, Math.round(opts.from));
   const dur = Math.max(1, Math.round(opts.durationInFrames));
   const indent = lineStartInfo(source, last.start).indent;
-  let media = '';
-  if (opts.mediaTag && INSERTABLE_MEDIA.has(opts.mediaTag)) {
-    const src = (opts.src ?? '').trim();
-    if (src && (/\.\./.test(src) || /^\s*(javascript|vbscript|file|data):/i.test(src))) {
+  const srcTrim = (opts.src ?? '').trim();
+  if (
+    opts.mediaTag &&
+    INSERTABLE_MEDIA.has(opts.mediaTag) &&
+    srcTrim &&
+    (/\.\./.test(srcTrim) || /^\s*(javascript|vbscript|file|data):/i.test(srcTrim))
+  ) {
+    throw new CanvasEditError('media src must be a contained asset path (no ../ or script schemes)', {
+      canvas: canvasAbsPath,
+      id: artboardId ?? '',
+    });
+  }
+  const s = new MagicString(source);
+  if (last.tag.startsWith('TransitionSeries.') || last.tag.startsWith('Series.')) {
+    // DDR-150 dogfood — append INTO a TransitionSeries: add a transition + a new
+    // TransitionSeries.Sequence, keeping the S/T/S alternation. The transition is
+    // CLONED verbatim from an existing one in the series so its
+    // presentation/timing imports are already satisfied (we can't invent a
+    // `fade()` the comp may not import). Series sequences carry no `from`.
+    const seriesPrefix = last.tag.split('.')[0]; // 'TransitionSeries' | 'Series'
+    const proto = clips.find((c) => c.kind === 'transition' && c.tag.startsWith(`${seriesPrefix}.`));
+    if (!proto) {
       throw new CanvasEditError(
-        'media src must be a contained asset path (no ../ or script schemes)',
-        {
-          canvas: canvasAbsPath,
-          id: artboardId ?? '',
-        }
+        `cannot append into a <${seriesPrefix}> with no existing transition to clone — add a beat via chat`,
+        { canvas: canvasAbsPath, id: artboardId ?? '' }
       );
     }
-    media = `\n${indent}  <${opts.mediaTag} src="${escapeAttr(src)}" />\n${indent}`;
+    const transitionText = source.slice(proto.start, proto.end);
+    const media =
+      opts.mediaTag && INSERTABLE_MEDIA.has(opts.mediaTag)
+        ? `\n${indent}  <${opts.mediaTag} src="${escapeAttr(srcTrim)}" />\n${indent}`
+        : '';
+    const clipText =
+      `\n${indent}${transitionText}` +
+      `\n${indent}<${seriesPrefix}.Sequence durationInFrames={${dur}}>${media}</${seriesPrefix}.Sequence>`;
+    s.appendLeft(last.end, clipText);
+  } else {
+    const media =
+      opts.mediaTag && INSERTABLE_MEDIA.has(opts.mediaTag)
+        ? `\n${indent}  <${opts.mediaTag} src="${escapeAttr(srcTrim)}" />\n${indent}`
+        : '';
+    const clipText = `\n${indent}<Sequence from={${from}} durationInFrames={${dur}}>${media}</Sequence>`;
+    s.appendLeft(last.end, clipText);
   }
-  const clipText = `\n${indent}<Sequence from={${from}} durationInFrames={${dur}}>${media}</Sequence>`;
-  const s = new MagicString(source);
-  s.appendLeft(last.end, clipText);
   const out = s.toString();
   const parsed = parseSync(canvasAbsPath, out, { sourceType: 'module' });
   if (parsed.errors && parsed.errors.length > 0) {
