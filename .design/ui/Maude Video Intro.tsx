@@ -4,15 +4,11 @@
 // Maude, scrub it in the Timeline panel, and ⌘E → MP4/GIF.
 
 import { DCArtboard, DCSection, DesignCanvas, VideoComp } from '@maude/canvas-lib';
-import {
-  AbsoluteFill,
-  Audio,
-  interpolate,
-  spring,
-  useCurrentFrame,
-  useVideoConfig,
-  Video,
-} from 'remotion';
+import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
+// <Video>/<Audio> from @remotion/media (decode-to-canvas) — required for
+// audio export via renderMediaOnWeb; also compatible with the preview Player
+// and the frame-step capture spine (screenshot-after-seek, verified DDR-148 addendum).
+import { Audio, Video } from '@remotion/media';
 import { TransitionSeries, linearTiming } from '@remotion/transitions';
 import { fade } from '@remotion/transitions/fade';
 import { slide } from '@remotion/transitions/slide';
@@ -151,7 +147,7 @@ const Payoff = () => {
           <circle cx="42" cy="42" r="40" fill="rgba(11,14,22,0.16)" />
           <path d="M32 26 L62 42 L32 58 Z" fill={INK} />
         </svg>
-        <div style={{ fontSize: 108, fontWeight: 800, letterSpacing: '-0.03em' }}>now moves.</div>
+        <div style={{ fontSize: 108, fontWeight: 800, letterSpacing: '-0.03em' }}>Asdada</div>
       </div>
     </AbsoluteFill>
   );

@@ -42,11 +42,39 @@ export interface VideoCompMeta {
 interface CompEntry extends VideoCompMeta {
   id: string;
   ref: React.RefObject<PlayerRef | null>;
+  /** The Remotion composition component + its props — carried so the export
+   *  capture's renderMediaOnWeb path (DDR-148 addendum, audio export) can
+   *  render the SAME component tree Remotion owns the timeline math for
+   *  (TransitionSeries offsets, <Audio volume={fn}> closures), rather than
+   *  re-deriving it. Never serialized — component references don't survive
+   *  postMessage/JSON, so this stays out of CompSnapshot. */
+  component: ComponentType<Record<string, unknown>>;
+  inputProps: Record<string, unknown>;
 }
 
 /** Serializable meta the capture shim + Timeline panel read (no functions). */
 export interface CompSnapshot extends VideoCompMeta {
   id: string;
+}
+
+/** Result contract for `__maude_render_video__` — see exporters/video-render-lib.ts. */
+export interface RenderVideoResult {
+  b64: string;
+  bytes: number;
+  container: string;
+  videoCodec: string | null;
+  audioCodec: string | null;
+}
+
+/** Options accepted by `__maude_render_video__`, forwarded to renderMediaOnWeb. */
+export interface RenderVideoOptions {
+  container: 'mp4' | 'webm';
+  videoCodec?: string;
+  audioCodec?: string;
+  scale?: number;
+  muted?: boolean;
+  frameRange?: [number, number];
+  licenseKey?: string;
 }
 
 interface MaudeSeekWindow {
@@ -56,6 +84,25 @@ interface MaudeSeekWindow {
   __maude_seek__?: (frame: number, opts?: { fps?: number }) => Promise<void>;
   /** Serializable comp list for the capture shim / Timeline panel. */
   __maude_comps__?: () => CompSnapshot[];
+  /**
+   * DDR-148 addendum (audio export) — whole-comp render via renderMediaOnWeb
+   * (video+audio, one pass; Remotion owns the TransitionSeries/volume-closure
+   * timeline math). Looks up the component by compId and delegates to
+   * `window.__maudeRenderVideo__`, which the export capture injects via
+   * addScriptTag (exporters/video-render-lib.ts) — absent during normal
+   * preview, so this throws outside a capture session.
+   */
+  __maude_render_video__?: (compId: string, opts: RenderVideoOptions) => Promise<RenderVideoResult>;
+  __maudeRenderVideo__?: (
+    opts: RenderVideoOptions & {
+      component: ComponentType<Record<string, unknown>>;
+      inputProps: Record<string, unknown>;
+      width: number;
+      height: number;
+      fps: number;
+      durationInFrames: number;
+    }
+  ) => Promise<RenderVideoResult>;
 }
 
 function seekWindow(): MaudeSeekWindow | null {
@@ -133,6 +180,36 @@ export function installMaudeSeekBridge(): void {
       width: e.width,
       height: e.height,
     }));
+
+  w.__maude_render_video__ = async (compId, opts) => {
+    const entry = registry().get(compId);
+    if (!entry) throw new Error(`no registered video-comp with id "${compId}"`);
+    if (typeof w.__maudeRenderVideo__ !== 'function') {
+      throw new Error(
+        'render-lib bundle not injected — the export capture must addScriptTag ' +
+          'exporters/video-render-lib.ts before calling __maude_render_video__'
+      );
+    }
+    return w.__maudeRenderVideo__({
+      ...opts,
+      component: entry.component,
+      inputProps: entry.inputProps,
+      width: entry.width,
+      height: entry.height,
+      fps: entry.fps,
+      durationInFrames: entry.durationInFrames,
+    });
+  };
+}
+
+/** Find the compId of the nearest VideoComp mounted inside `container` (the
+ *  target artboard element) — the artboard's own `data-dc-screen` id and the
+ *  VideoComp's `id` prop are independent (an author rarely sets the latter),
+ *  so the capture shim resolves by DOM containment rather than assuming a
+ *  1:1 id match. Returns null when the artboard has no video-comp (an
+ *  ordinary artboard, or a comp not yet mounted). */
+export function findCompIdIn(container: Element): string | null {
+  return container.querySelector('[data-comp-id]')?.getAttribute('data-comp-id') ?? null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -231,7 +308,16 @@ export function VideoComp({
   // Register with the seek bridge for the lifetime of this mount.
   useEffect(() => {
     installMaudeSeekBridge();
-    const entry: CompEntry = { id: compId, fps, durationInFrames, width, height, ref };
+    const entry: CompEntry = {
+      id: compId,
+      fps,
+      durationInFrames,
+      width,
+      height,
+      ref,
+      component,
+      inputProps: inputProps ?? {},
+    };
     registry().set(compId, entry);
     // Announce comps to the shell so the Timeline panel can auto-suggest.
     postToShell({ dgn: 'timeline-comps', comps: seekWindow()?.__maude_comps__?.() ?? [] });
@@ -240,7 +326,7 @@ export function VideoComp({
       if (cur === entry) registry().delete(compId);
       postToShell({ dgn: 'timeline-comps', comps: seekWindow()?.__maude_comps__?.() ?? [] });
     };
-  }, [compId, fps, durationInFrames, width, height]);
+  }, [compId, fps, durationInFrames, width, height, component, inputProps]);
 
   // Shell → iframe transport: the Timeline panel drives preview scrub/playback.
   useEffect(() => {

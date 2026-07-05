@@ -109,6 +109,83 @@ export function getEncodeLibBundle(): Promise<string> {
 }
 
 /**
+ * DDR-148 addendum (audio export) — build the in-page whole-comp renderer
+ * (`video-render-lib.ts`, wraps @remotion/web-renderer's renderMediaOnWeb) to a
+ * self-contained browser ESM module cached under the OS temp dir. Assigns
+ * `window.__maudeRenderVideo__`; the capture shim injects it via addScriptTag
+ * before calling `window.__maude_render_video__` (video-comp.tsx bridge).
+ *
+ * UNLIKE getEncodeLibBundle, this externalizes 'remotion' + '@remotion/media' —
+ * they must resolve to the SAME module instances the canvas's importmap already
+ * loaded (dual-package hazard: a second bundled copy would give
+ * renderMediaOnWeb's internal Composition/context providers a different
+ * `TimelineContext` than the one the passed `component`'s hooks read from,
+ * freezing every frame at 0 / silencing audio). The browser's importmap
+ * (declared in _shell.html) resolves these bare specifiers even for a
+ * dynamically injected `<script type=module>` tag.
+ */
+let webRendererLibReady: Promise<string> | null = null;
+export function getWebRendererBundle(): Promise<string> {
+  if (webRendererLibReady) return webRendererLibReady;
+  const entry = path.join(DEV_SERVER_ROOT, 'exporters', 'video-render-lib.ts');
+  const cachePath = path.join(tmpdir(), 'maude-video-render-lib.mjs');
+  webRendererLibReady = (async () => {
+    // Bun's `external` field is package-name PREFIX matched (runtime-bundle.ts's
+    // comment on the same gotcha) — listing 'remotion' also externalizes deep
+    // subpaths like 'remotion/version' (a real import inside web-renderer's own
+    // dependency tree). The importmap only maps the bare 'remotion' specifier, so
+    // an externalized 'remotion/version' 404s in the browser with "Failed to
+    // resolve module specifier". Use an exact-match onResolve plugin (mirrors
+    // canvas-build.ts's `exact-externals`) so ONLY the specifiers the importmap
+    // actually covers are externalized; every subpath (version, no-react, etc.)
+    // gets bundled inline like any other dependency.
+    //
+    // react/react-dom MUST also be externalized here (not just remotion) — a
+    // second bundled React copy inside this module renders the SAME `component`
+    // reference the page's importmap-loaded React created, and two React
+    // instances in one page is the textbook "Invalid Hook Call" (minified React
+    // error #321): the component's hooks resolve against instance A's dispatcher
+    // while web-renderer's internal renderer/reconciler is instance B. Discovered
+    // empirically — the first working build threw exactly this error.
+    const EXTERNAL_EXACT = new Set([
+      'remotion',
+      '@remotion/media',
+      'react',
+      'react-dom',
+      'react-dom/client',
+      'react/jsx-runtime',
+      'react/jsx-dev-runtime',
+    ]);
+    const built = await Bun.build({
+      entrypoints: [entry],
+      target: 'browser',
+      format: 'esm',
+      minify: true,
+      conditions: ['browser', 'import'],
+      plugins: [
+        {
+          name: 'exact-externals',
+          setup(builder) {
+            builder.onResolve({ filter: /.*/ }, (args) => {
+              if (EXTERNAL_EXACT.has(args.path)) return { path: args.path, external: true };
+              return null;
+            });
+          },
+        },
+      ],
+    });
+    if (!built.success) {
+      throw new Error(`web-renderer bundle failed: ${built.logs.map((l) => l.message).join('; ')}`);
+    }
+    const first = built.outputs[0];
+    if (!first) throw new Error('web-renderer bundle produced no outputs');
+    await Bun.write(cachePath, await first.text());
+    return cachePath;
+  })();
+  return webRendererLibReady;
+}
+
+/**
  * Returns the path to an IIFE bundle for the given npm package, attaching its
  * exports under `window[globalName]`. Caches under the OS temp dir so a long-
  * running dev server pays the build cost once.

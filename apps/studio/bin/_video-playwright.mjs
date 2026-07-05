@@ -1,22 +1,23 @@
 // _video-playwright.mjs — DDR-148 deterministic video/animation capture shim.
 //
-// The export counterpart to _png-playwright.mjs: instead of one screenshot it
-// steps a canvas artboard frame-by-frame and captures each frame. A video-comp
-// is deterministic BY CONSTRUCTION (Remotion's useCurrentFrame + the
-// window.__maude_seek__ bridge), so two capture runs to frame N are pixel-
-// identical — the determinism contract the whole feature rests on.
+// The export counterpart to _png-playwright.mjs. Two capture strategies:
 //
-// Reuses the _png-playwright world-plane reset (DDR-041): zero the .dc-world
-// zoom/transform, pin the target artboard to (0,0), size the viewport to the
-// artboard rect, then screenshot a fixed clip every frame.
+//   1. WHOLE-COMP RENDER (DDR-148 addendum, audio export) — mp4/webm export of
+//      an artboard with a registered VideoComp goes through
+//      window.__maude_render_video__ (video-comp.tsx bridge → the injected
+//      render-lib's renderMediaOnWeb). Remotion renders video+audio in ONE
+//      pass, owning the TransitionSeries offset math and <Audio volume={fn}>
+//      closures internally — no hand-rolled frame loop, no separate mixing.
+//   2. FRAME-STEP CAPTURE (original DDR-148 spine) — everything else: gif
+//      (no audio, no renderMediaOnWeb container support), ordinary
+//      (non-comp/CSS-WAAPI) artboards, and the fallback when no VideoComp is
+//      registered on the target artboard. Steps the artboard frame-by-frame
+//      via window.__maude_seek__, screenshots each frame, encodes in-page via
+//      mediabunny/gifenc (video-encode-lib.ts). A video-comp is deterministic
+//      BY CONSTRUCTION (Remotion's useCurrentFrame + the seek bridge), so two
+//      capture runs to frame N are pixel-identical.
 //
-// Two frame sinks:
-//   • --dump-frames <dir>  → write frame-00000.png … (the determinism smoke +
-//     a debugging aid). Task 5 deliverable.
-//   • --format mp4|webm|gif --out <path> → encode in-page via mediabunny/gifenc
-//     (Task 6, wired through _video-encode.mjs helpers loaded as addScriptTag).
-//
-// Seek model:
+// Seek model (path 2 only):
 //   • video-comp artboard → window.__maude_seek__(frame) (Player frame prop).
 //   • ordinary artboard  → time-based: document.getAnimations() currentTime +
 //     every <video>.currentTime, awaiting `seeked`. Selected by --mode.
@@ -40,10 +41,13 @@ const {
   fps: fpsArg,
   frames: framesArg,
   'dump-frames': dumpDir,
-  'encode-lib': encodeLib, // path to the bundled in-page encoder (mediabunny/gifenc)
+  'encode-lib': encodeLib, // path to the bundled in-page frame encoder (mediabunny/gifenc)
+  'render-lib': renderLib, // path to the bundled in-page whole-comp renderer (renderMediaOnWeb)
   format, // 'mp4' | 'webm' | 'gif' — enables the encode sink (with --out)
   out, // encoded file destination
   mode = 'comp', // 'comp' | 'ordinary'
+  audio, // '1' | '0' — include audio in the render-lib path (default on; presence-checked below)
+  'license-key': licenseKeyArg,
   timeout = '60',
   scale = '1',
 } = args;
@@ -57,6 +61,11 @@ if (!url) {
 
 const timeoutMs = Number(timeout) * 1000;
 const deviceScaleFactor = Math.max(1, Math.min(4, Number(scale) || 1));
+// `--audio` is presence-checked (Object.fromEntries maps a bare flag to '1'), so
+// absence of the flag entirely (not passed) still defaults to audio ON — video.ts
+// always passes an explicit '0'/'1'.
+const wantAudio = audio !== '0';
+const licenseKey = licenseKeyArg || 'free-license';
 
 /** Wait a real turn of the event loop + a frame so a seek settles before shot. */
 const SETTLE_MS = 16;
@@ -86,8 +95,10 @@ try {
     ? await located.evaluateHandle((el) => el.closest('[data-dc-screen]') ?? el)
     : located;
 
-  // DDR-041 world-plane reset + pin the target artboard to (0,0) so the clip is
-  // the artboard's native pixels, not the pan/zoomed world.
+  // DDR-041 world-plane reset + pin the target artboard to (0,0) — needed by
+  // both capture strategies: the frame-step path screenshots this rect; the
+  // whole-comp path still benefits from a settled, non-panned layout when it
+  // reads the comp's registered width/height (defensive, cheap).
   await page.evaluate(() => {
     const world = document.querySelector('.dc-world');
     if (world) {
@@ -100,6 +111,123 @@ try {
     ab.style.left = '0px';
     ab.style.top = '0px';
   });
+
+  // Resolve the compId of the nearest VideoComp mounted inside the target
+  // artboard (the artboard's `data-dc-screen` id and the comp's own `id` prop
+  // are independent — an author rarely sets the latter — so we resolve by DOM
+  // containment). Null for an ordinary/CSS artboard with no registered comp.
+  const compId = await handle.evaluate(
+    (el) => el.querySelector('[data-comp-id]')?.getAttribute('data-comp-id') ?? null
+  );
+
+  // Whole-comp render path: mp4/webm export of a registered video-comp. GIF has
+  // no renderMediaOnWeb container support (and no audio need); an artboard with
+  // no registered comp (ordinary/CSS) has nothing for renderMediaOnWeb to render
+  // — both fall through to the frame-step path below.
+  const useRenderer = !!renderLib && format !== 'gif' && !!compId;
+
+  if (useRenderer) {
+    const t0 = Date.now();
+    const libSrc = readFileSync(renderLib, 'utf8');
+    await page.addScriptTag({ content: libSrc, type: 'module' });
+    await page.waitForFunction(() => typeof window.__maudeRenderVideo__ === 'function', {
+      timeout: timeoutMs,
+    });
+
+    const explicitFrames = Number(framesArg);
+    const frameRange =
+      Number.isFinite(explicitFrames) && explicitFrames > 0 ? [0, explicitFrames - 1] : null;
+
+    const rendered = await page.evaluate(
+      async ({ compId, container, scale, muted, frameRange, licenseKey }) => {
+        return window.__maude_render_video__(compId, {
+          container,
+          scale,
+          muted,
+          frameRange,
+          licenseKey,
+        });
+      },
+      {
+        compId,
+        container: format,
+        scale: deviceScaleFactor,
+        muted: !wantAudio,
+        frameRange,
+        licenseKey,
+      }
+    );
+
+    writeFileSync(out, Buffer.from(rendered.b64, 'base64'));
+
+    // Comp meta for the summary (diagnostic only — video.ts reads `container`).
+    const compMeta = await page.evaluate(
+      (id) =>
+        (typeof window.__maude_comps__ === 'function' ? window.__maude_comps__() : []).find(
+          (c) => c.id === id
+        ) ?? null,
+      compId
+    );
+    const frameCount = frameRange
+      ? frameRange[1] - frameRange[0] + 1
+      : (compMeta?.durationInFrames ?? 0);
+
+    const result = {
+      fps: compMeta?.fps ?? null,
+      frameCount,
+      width: Math.round((compMeta?.width ?? 0) * deviceScaleFactor),
+      height: Math.round((compMeta?.height ?? 0) * deviceScaleFactor),
+      out,
+      bytes: rendered.bytes,
+      container: rendered.container,
+      codec: rendered.videoCodec,
+      audioCodec: rendered.audioCodec,
+    };
+    const ms = Date.now() - t0;
+    console.error(
+      `✓ rendered ${rendered.container}/${rendered.videoCodec}` +
+        `${rendered.audioCodec ? `+${rendered.audioCodec}` : ' (muted)'} → ${out} (${rendered.bytes} B) in ${ms}ms`
+    );
+    console.log(JSON.stringify(result));
+  } else {
+    await frameStepCapture({
+      page,
+      handle,
+      compId,
+      fpsArg,
+      framesArg,
+      dumpDir,
+      encodeLib,
+      format,
+      out,
+      mode,
+      deviceScaleFactor,
+      timeoutMs,
+    });
+  }
+} finally {
+  await browser.close();
+}
+
+/**
+ * Original DDR-148 frame-step + mediabunny/gifenc capture (gif, ordinary
+ * artboards, and the no-registered-comp fallback). Unchanged behavior from the
+ * pre-addendum shim.
+ */
+async function frameStepCapture({
+  page,
+  handle,
+  compId,
+  fpsArg,
+  framesArg,
+  dumpDir,
+  encodeLib,
+  format,
+  out,
+  mode,
+  deviceScaleFactor,
+  timeoutMs,
+}) {
   const rect0 = await handle.evaluate((el) => {
     const r = el.getBoundingClientRect();
     return { width: r.width, height: r.height };
@@ -123,15 +251,18 @@ try {
   });
 
   // Resolve fps + frame count. Prefer explicit args (the exporter computes them
-  // from comp meta / options); fall back to the registered comp meta in-page.
-  const compMeta = await page.evaluate(() => {
+  // from comp meta / options); fall back to the registered comp meta in-page —
+  // matched by the RESOLVED compId when the target has one (not just "the
+  // first comp on the page", which mis-hit on multi-comp canvases).
+  const compMeta = await page.evaluate((id) => {
     try {
       const comps = typeof window.__maude_comps__ === 'function' ? window.__maude_comps__() : [];
+      if (id) return comps.find((c) => c.id === id) ?? comps[0] ?? null;
       return comps[0] ?? null;
     } catch {
       return null;
     }
-  });
+  }, compId);
   const fps = Number(fpsArg) || compMeta?.fps || 30;
   // Cap at 900 frames (30 s @ 30 fps) so a runaway/huge comp can't spawn an
   // unbounded screenshot loop — matches exporters/video.ts MAX_FRAMES.
@@ -242,8 +373,6 @@ try {
   );
   // stdout = machine-readable summary for the exporter.
   console.log(JSON.stringify(result));
-} finally {
-  await browser.close();
 }
 
 /** Seek one frame via the right bridge. Resolves after the frame has painted. */
@@ -280,9 +409,12 @@ async function seekFrame(page, frame, fps, mode) {
     return;
   }
   // comp mode — the seek bridge pauses + seeks the Player and resolves post-paint.
-  // A comp with <Video>/<OffthreadVideo> renders a real <video> whose seek is
-  // ASYNC — 2 rAF isn't enough, so wait for every video to land on its frame
-  // (`seeked` / readyState) before the screenshot, else a stale frame is caught.
+  // A comp with classic remotion <Video>/<OffthreadVideo> renders a real <video>
+  // whose seek is ASYNC — 2 rAF isn't enough, so wait for every video to land on
+  // its frame (`seeked` / readyState) before the screenshot, else a stale frame
+  // is caught. @remotion/media's <Video> decodes to a <canvas> (no <video> tag),
+  // and empirically settles within the same 2-rAF window this wait already ends
+  // on (verified across mid-clip + mid-transition frames — DDR-148 addendum).
   await page.evaluate(async (frame) => {
     if (typeof window.__maude_seek__ === 'function') {
       await window.__maude_seek__(frame);

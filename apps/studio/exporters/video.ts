@@ -1,17 +1,25 @@
 // DDR-148 — video/animation exporter (mp4 · webm · gif).
 //
-// Drives bin/_video-playwright.mjs (the deterministic capture spine): steps the
-// artboard frame-by-frame via window.__maude_seek__ and encodes in-page with
-// mediabunny (H.264/avc MP4, VP9/VP8 WebM fallback) or gifenc. Scope is always
-// `artboard` — an artboard is a video-comp (comp meta drives fps/frames) or an
-// ordinary animated mock (options drive them). No native binaries; the capture
-// Chromium is the same one every other exporter already uses (DDR-041).
+// Drives bin/_video-playwright.mjs, which picks one of two capture strategies:
+//   • mp4/webm of a registered video-comp — DDR-148 addendum (audio export):
+//     window.__maude_render_video__ → @remotion/web-renderer's renderMediaOnWeb,
+//     video+audio in one pass (Remotion owns the TransitionSeries/volume-closure
+//     timeline math). `getWebRendererBundle()` supplies the in-page renderer.
+//   • everything else (gif, ordinary/CSS-WAAPI artboards, or no registered
+//     comp) — the original frame-step spine: steps the artboard frame-by-frame
+//     via window.__maude_seek__ and encodes in-page with mediabunny (H.264/avc
+//     MP4, VP9/VP8 WebM fallback) or gifenc. `getEncodeLibBundle()` supplies
+//     this in-page encoder, and doubles as the render-lib path's fallback when
+//     the target has no registered comp (the shim decides at runtime — see
+//     _video-playwright.mjs for the exact routing condition).
+// Scope is always `artboard`. No native binaries; the capture Chromium is the
+// same one every other exporter already uses (DDR-041).
 
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { getEncodeLibBundle } from './_browser-bundles.ts';
+import { getEncodeLibBundle, getWebRendererBundle } from './_browser-bundles.ts';
 import { exportShimPath, resolveExportRuntime } from './_runtime.ts';
 import {
   canvasShellUrl,
@@ -48,7 +56,14 @@ async function runVideo(
     );
   }
 
-  const lib = await getEncodeLibBundle();
+  // gif has no renderMediaOnWeb container support (and no audio need — GIF is a
+  // silent format), so it never needs the render-lib bundle; mp4/webm build it
+  // alongside the frame-step encode-lib (the shim decides per-target at runtime
+  // whether the artboard has a registered comp to hand the renderer).
+  const [lib, renderLib] = await Promise.all([
+    getEncodeLibBundle(),
+    format === 'gif' ? Promise.resolve(null) : getWebRendererBundle(),
+  ]);
   const tmp = mkdtempSync(path.join(tmpdir(), 'maude-video-'));
   const outPath = path.join(tmp, `export.${format}`);
 
@@ -67,9 +82,24 @@ async function runVideo(
     '--timeout',
     String((options.timeoutSec as number | undefined) ?? 120),
   ];
+  if (renderLib) args.push('--render-lib', renderLib);
   if (el.widen) args.push('--widen', '1');
   // Ordinary artboards animate on wall-clock (WAAPI); video-comps on frame index.
   if (options.mode === 'ordinary') args.push('--mode', 'ordinary');
+
+  // Export-with-audio (DDR-148 addendum) — default ON; only the render-lib path
+  // (mp4/webm of a registered comp) can actually produce audio, but the flag is
+  // harmless for the frame-step fallback (video-only, always has been).
+  const wantAudio = options.audio !== false;
+  args.push('--audio', wantAudio ? '1' : '0');
+  // Remotion license posture — MAUDE_REMOTION_LICENSE env (config-driven, per
+  // project); the shim defaults to 'free-license' when unset. Network egress
+  // for web-renderer's optional telemetry is blocked at the CSP layer regardless
+  // (cspForCapture's `connect-src 'self'`, http.ts) — no additional code needed
+  // for the offline posture beyond passing the key through.
+  if (process.env.MAUDE_REMOTION_LICENSE) {
+    args.push('--license-key', process.env.MAUDE_REMOTION_LICENSE);
+  }
 
   // Resolution multiplier (1–3×) — the artboard's native size × scale. Default 2×
   // so a 960×540 comp exports at 1920×1080 instead of a tiny native capture. The

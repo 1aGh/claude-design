@@ -94,6 +94,7 @@ export const RUNTIME_PACKAGES = [
   // capture spine). Pre-built into dist/runtime + floored in .min-sizes.json.
   'remotion',
   '@remotion/player',
+  '@remotion/media',
   '@remotion/transitions',
   // Transition presentations are separate subpath modules by design (Remotion
   // tree-shakes to what you import). But a canvas import specifier that isn't
