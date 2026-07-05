@@ -1255,13 +1255,8 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .tl-kind[data-kind="image"] { color: #86efac; background: color-mix(in oklch, #22c55e 20%, var(--bg-3)); }
 .tl-kind[data-kind="audio"] { color: #fcd34d; background: color-mix(in oklch, #f59e0b 20%, var(--bg-3)); }
 .tl-kind[data-kind="jsx"] { color: var(--fg-2); font-style: italic; }
-/* DDR-150 dogfood — right-click clip context menu. */
-.tl-ctx { min-width: 168px; padding: 4px; border-radius: var(--radius-sm); background: var(--bg-1); border: 1px solid var(--border-1, var(--accent-muted)); box-shadow: 0 12px 32px rgba(0,0,0,0.4); display: flex; flex-direction: column; gap: 1px; font-size: var(--type-xs); }
-.tl-ctx-item { display: block; width: 100%; text-align: left; padding: 6px 10px; border: none; border-radius: var(--radius-xs); background: transparent; color: var(--fg-0); font: inherit; cursor: pointer; }
-.tl-ctx-item:hover:not(:disabled) { background: var(--accent); color: var(--accent-fg, #fff); }
-.tl-ctx-item:disabled { opacity: 0.35; cursor: default; }
-.tl-ctx-item--danger:hover:not(:disabled) { background: var(--status-err, #dc2626); }
-.tl-ctx-sep { height: 1px; margin: 3px 4px; background: var(--border-1, var(--accent-muted)); }
+/* DDR-150 dogfood — the right-click clip menu reuses the canvas's shared
+   .dc-context-menu component (context-menu.tsx / ensureMenuStyles). */
 /* Kind tint on the block itself — a video clip reads different from JSX motion. */
 .tl-seq-block[data-kind="video"] { border-color: color-mix(in oklch, #0ea5e9 55%, var(--accent-muted)); background: color-mix(in oklch, #0ea5e9 16%, var(--bg-2)); }
 .tl-seq-block[data-kind="image"] { border-color: color-mix(in oklch, #22c55e 45%, var(--accent-muted)); background: color-mix(in oklch, #22c55e 13%, var(--bg-2)); }

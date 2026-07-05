@@ -297,7 +297,7 @@ export function useContextMenuOptional(): ContextMenuValue | null {
 // ─────────────────────────────────────────────────────────────────────────────
 // View
 
-function ContextMenuView({
+export function ContextMenuView({
   target,
   sections,
   onClose,

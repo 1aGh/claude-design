@@ -13,6 +13,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { computeSnapTargets, snapFrame, snapThresholdFrames } from './timeline-snap.js';
+// DDR-150 dogfood — reuse the SAME context-menu component the canvas uses
+// (viewport-aware positioning, keyboard nav, outside-click/Esc dismiss, shared
+// .dc-context-menu styling) instead of a bespoke shell menu.
+import { ContextMenuView } from '../../context-menu.tsx';
 
 // DDR-150 dogfood #6 — per-row media-kind identity so the timeline reads like
 // an editor: what's footage, what's a still, what's audio, what's plain JSX.
@@ -139,23 +143,9 @@ export default function TimelinePanel({
   const [retimeDrag, setRetimeDrag] = useState(null);
   // Drag the block body to move a clip's `from`: { index, startX, startFrom, rowW, curFrom }.
   const [moveDrag, setMoveDrag] = useState(null);
-  // DDR-150 dogfood — right-click clip context menu: { index, x, y }.
+  // DDR-150 dogfood — right-click clip context menu: { index, x, y }. Dismiss +
+  // repositioning are owned by the shared ContextMenuView.
   const [ctxMenu, setCtxMenu] = useState(null);
-  useEffect(() => {
-    if (!ctxMenu) return undefined;
-    // Close on an outside pointerdown — but NOT one inside the menu itself
-    // (window-capture fires before the item's onClick; closing here would
-    // unmount the item before its click lands, so the action never runs).
-    const close = (e) => {
-      if (e?.target?.closest?.('.tl-ctx')) return;
-      setCtxMenu(null);
-    };
-    window.addEventListener('pointerdown', close, { capture: true });
-    window.addEventListener('blur', () => setCtxMenu(null));
-    return () => {
-      window.removeEventListener('pointerdown', close, { capture: true });
-    };
-  }, [ctxMenu]);
   // True after a body-drag actually moved — suppresses the click-to-seek that
   // would otherwise fire on pointerup.
   const movedRef = useRef(false);
@@ -694,60 +684,47 @@ export default function TimelinePanel({
           </div>
         </div>
       )}
-      {ctxMenu && sequences[ctxMenu.index] ? (
-        (() => {
-          const seq = sequences[ctxMenu.index];
-          const i = ctxMenu.index;
-          const item = (label, enabled, fn, testid) => (
-            <button
-              type="button"
-              className="tl-ctx-item"
-              data-testid={testid}
-              disabled={!enabled}
-              onClick={(e) => {
-                e.stopPropagation();
-                setCtxMenu(null);
-                fn();
-              }}
-            >
-              {label}
-            </button>
-          );
-          return (
-            <div
-              className="tl-ctx"
-              data-testid="timeline-ctx-menu"
-              role="menu"
-              style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 90 }}
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              {onReplace && seq.replaceable
-                ? item(`Replace ${rowKind(seq)}…`, true, () => onReplace(i), 'timeline-ctx-replace')
-                : null}
-              {onReorder
-                ? item(
-                    seq.series ? 'Move earlier' : 'Bring forward',
-                    seq.series ? i > 0 : i < sequences.length - 1,
-                    () => onReorder(i, seq.series ? 'backward' : 'forward'),
-                    'timeline-ctx-earlier'
-                  )
-                : null}
-              {onReorder
-                ? item(
-                    seq.series ? 'Move later' : 'Send backward',
-                    seq.series ? i < sequences.length - 1 : i > 0,
-                    () => onReorder(i, seq.series ? 'forward' : 'backward'),
-                    'timeline-ctx-later'
-                  )
-                : null}
-              {onRemove ? <div className="tl-ctx-sep" /> : null}
-              {onRemove
-                ? item('Remove clip', true, () => onRemove(i), 'timeline-ctx-remove')
-                : null}
-            </div>
-          );
-        })()
-      ) : null}
+      {ctxMenu && sequences[ctxMenu.index]
+        ? (() => {
+            const seq = sequences[ctxMenu.index];
+            const i = ctxMenu.index;
+            const primary = [];
+            if (onReplace && seq.replaceable) {
+              primary.push({
+                id: 'replace',
+                label: `Replace ${rowKind(seq)}…`,
+                onSelect: () => onReplace(i),
+              });
+            }
+            if (onReorder) {
+              primary.push({
+                id: 'earlier',
+                label: seq.series ? 'Move earlier' : 'Bring forward',
+                disabled: seq.series ? i <= 0 : i >= sequences.length - 1,
+                onSelect: () => onReorder(i, seq.series ? 'backward' : 'forward'),
+              });
+              primary.push({
+                id: 'later',
+                label: seq.series ? 'Move later' : 'Send backward',
+                disabled: seq.series ? i >= sequences.length - 1 : i <= 0,
+                onSelect: () => onReorder(i, seq.series ? 'forward' : 'backward'),
+              });
+            }
+            const sections = [primary];
+            if (onRemove) {
+              sections.push([
+                { id: 'remove', label: 'Remove clip', destructive: true, onSelect: () => onRemove(i) },
+              ]);
+            }
+            return (
+              <ContextMenuView
+                target={{ kind: 'element', el: null, cdId: null, artboardId: null, clientX: ctxMenu.x, clientY: ctxMenu.y }}
+                sections={sections}
+                onClose={() => setCtxMenu(null)}
+              />
+            );
+          })()
+        : null}
     </aside>
   );
 }
