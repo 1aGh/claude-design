@@ -1377,14 +1377,25 @@ function resolveNestedMedia(
   const srcVal = srcAttrValue(media);
   // Literal src inside the shared component → replaceable, but shared.
   if (srcVal?.type === 'Literal' || srcVal?.type === 'StringLiteral') {
-    return { el: media, tag, src: String(srcVal.value), cdId: cdIdOf.get(media) ?? null, arrayRef: null, shared: true };
+    return {
+      el: media,
+      tag,
+      src: String(srcVal.value),
+      cdId: cdIdOf.get(media) ?? null,
+      arrayRef: null,
+      shared: true,
+    };
   }
   // Prop-bound src: `src={param.field}` where `param` is the component's first
   // destructured/parameter name, bound at the call site to `ARR[i]`.
   if (srcVal?.type === 'JSXExpressionContainer') {
     const expr = srcVal.expression;
     // member: param.field
-    if (expr?.type === 'MemberExpression' && expr.object?.type === 'Identifier' && expr.property?.type === 'Identifier') {
+    if (
+      expr?.type === 'MemberExpression' &&
+      expr.object?.type === 'Identifier' &&
+      expr.property?.type === 'Identifier'
+    ) {
       const field = expr.property.name;
       // Find the call-site prop bound to this component's param: <Comp X={ARR[i]}>.
       // The wrapper's first attribute value that is `ARR[i]` gives the array + index.
@@ -1401,9 +1412,12 @@ function resolveNestedMedia(
         ) {
           const arr = arrays.get(e.object.name);
           const el = (arr?.elements ?? [])[e.property.value] as AnyNode | undefined;
-          const prop = el?.type === 'ObjectExpression'
-            ? (el.properties ?? []).find((p: AnyNode) => p?.key?.name === field || p?.key?.value === field)
-            : null;
+          const prop =
+            el?.type === 'ObjectExpression'
+              ? (el.properties ?? []).find(
+                  (p: AnyNode) => p?.key?.name === field || p?.key?.value === field
+                )
+              : null;
           const litSrc =
             prop?.value && (prop.value.type === 'Literal' || prop.value.type === 'StringLiteral')
               ? String(prop.value.value)
@@ -1525,10 +1539,20 @@ function resolveMediaSrcThroughWrapper(
   wrapper: AnyNode,
   arrays: Map<string, AnyNode>,
   cdIdOf: Map<AnyNode, string>
-): { src: string | null; cdId: string | null; arrayRef: ClipLayer['mediaArrayRef']; shared: boolean } {
+): {
+  src: string | null;
+  cdId: string | null;
+  arrayRef: ClipLayer['mediaArrayRef'];
+  shared: boolean;
+} {
   const srcVal = srcAttrValue(media);
   if (srcVal?.type === 'Literal' || srcVal?.type === 'StringLiteral') {
-    return { src: String(srcVal.value), cdId: cdIdOf.get(media) ?? null, arrayRef: null, shared: true };
+    return {
+      src: String(srcVal.value),
+      cdId: cdIdOf.get(media) ?? null,
+      arrayRef: null,
+      shared: true,
+    };
   }
   if (
     srcVal?.type === 'JSXExpressionContainer' &&
@@ -1550,13 +1574,20 @@ function resolveMediaSrcThroughWrapper(
         const el = (arr?.elements ?? [])[e.property.value] as AnyNode | undefined;
         const prop =
           el?.type === 'ObjectExpression'
-            ? (el.properties ?? []).find((p: AnyNode) => p?.key?.name === field || p?.key?.value === field)
+            ? (el.properties ?? []).find(
+                (p: AnyNode) => p?.key?.name === field || p?.key?.value === field
+              )
             : null;
         const lit =
           prop?.value && (prop.value.type === 'Literal' || prop.value.type === 'StringLiteral')
             ? String(prop.value.value)
             : null;
-        return { src: lit, cdId: null, arrayRef: { arrayName: e.object.name, index: e.property.value, field }, shared: false };
+        return {
+          src: lit,
+          cdId: null,
+          arrayRef: { arrayName: e.object.name, index: e.property.value, field },
+          shared: false,
+        };
       }
     }
   }
@@ -2158,7 +2189,11 @@ export function applyToggleClipHidden(
   }
   const { clips } = enumerateClips(canvasAbsPath, source, artboardId);
   const info = clips.find((c) => c.stableId === stableId);
-  if (!info) throw new CanvasEditError(`clip "${stableId}" not found`, { canvas: canvasAbsPath, id: stableId });
+  if (!info)
+    throw new CanvasEditError(`clip "${stableId}" not found`, {
+      canvas: canvasAbsPath,
+      id: stableId,
+    });
   // Walk for the JSXElement whose span matches the resolved clip.
   let node: AnyNode | null = null;
   (function find(n: AnyNode): void {
@@ -2176,7 +2211,11 @@ export function applyToggleClipHidden(
       find(n[k]);
     }
   })(parsed.program);
-  if (!node) throw new CanvasEditError(`clip "${stableId}" node not found`, { canvas: canvasAbsPath, id: stableId });
+  if (!node)
+    throw new CanvasEditError(`clip "${stableId}" node not found`, {
+      canvas: canvasAbsPath,
+      id: stableId,
+    });
   const span = clipChildrenSpan(node);
   if (!span) {
     throw new CanvasEditError('this clip has no body to hide (self-closing)', {
@@ -2199,10 +2238,13 @@ export function applyToggleClipHidden(
   const out = s.toString();
   const re = parseSync(canvasAbsPath, out, { sourceType: 'module' });
   if (re.errors && re.errors.length > 0) {
-    throw new CanvasEditError(`hide produced invalid source: ${re.errors[0]?.message ?? 'parse error'}`, {
-      canvas: canvasAbsPath,
-      id: stableId,
-    });
+    throw new CanvasEditError(
+      `hide produced invalid source: ${re.errors[0]?.message ?? 'parse error'}`,
+      {
+        canvas: canvasAbsPath,
+        id: stableId,
+      }
+    );
   }
   assertCompSemantics(canvasAbsPath, out);
   return { source: out, hidden };
@@ -2218,7 +2260,10 @@ export async function toggleClipHidden(
   return withLock(canvasAbsPath, async () => {
     const file = Bun.file(canvasAbsPath);
     if (!(await file.exists())) {
-      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, { canvas: canvasAbsPath, id: stableId });
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: stableId,
+      });
     }
     const source = await file.text();
     const next = applyToggleClipHidden(canvasAbsPath, source, artboardId, stableId, expectedHash);
@@ -2272,10 +2317,13 @@ export function applyInsertClip(
     srcTrim &&
     (/\.\./.test(srcTrim) || /^\s*(javascript|vbscript|file|data):/i.test(srcTrim))
   ) {
-    throw new CanvasEditError('media src must be a contained asset path (no ../ or script schemes)', {
-      canvas: canvasAbsPath,
-      id: artboardId ?? '',
-    });
+    throw new CanvasEditError(
+      'media src must be a contained asset path (no ../ or script schemes)',
+      {
+        canvas: canvasAbsPath,
+        id: artboardId ?? '',
+      }
+    );
   }
   const s = new MagicString(source);
   if (last.tag.startsWith('TransitionSeries.') || last.tag.startsWith('Series.')) {
@@ -2285,7 +2333,9 @@ export function applyInsertClip(
     // presentation/timing imports are already satisfied (we can't invent a
     // `fade()` the comp may not import). Series sequences carry no `from`.
     const seriesPrefix = last.tag.split('.')[0]; // 'TransitionSeries' | 'Series'
-    const proto = clips.find((c) => c.kind === 'transition' && c.tag.startsWith(`${seriesPrefix}.`));
+    const proto = clips.find(
+      (c) => c.kind === 'transition' && c.tag.startsWith(`${seriesPrefix}.`)
+    );
     if (!proto) {
       throw new CanvasEditError(
         `cannot append into a <${seriesPrefix}> with no existing transition to clone — add a beat via chat`,
@@ -2383,12 +2433,20 @@ export function applyEditArrayElementString(
   for (const stmt of (parsed.program?.body ?? []) as AnyNode[]) {
     if (stmt?.type !== 'VariableDeclaration') continue;
     for (const d of stmt.declarations ?? []) {
-      if (d?.id?.type === 'Identifier' && d.id.name === arrayName && d.init?.type === 'ArrayExpression') {
+      if (
+        d?.id?.type === 'Identifier' &&
+        d.id.name === arrayName &&
+        d.init?.type === 'ArrayExpression'
+      ) {
         arr = d.init;
       }
     }
   }
-  if (!arr) throw new CanvasEditError(`array "${arrayName}" not found`, { canvas: canvasAbsPath, id: arrayName });
+  if (!arr)
+    throw new CanvasEditError(`array "${arrayName}" not found`, {
+      canvas: canvasAbsPath,
+      id: arrayName,
+    });
   const el = (arr.elements ?? [])[index] as AnyNode | undefined;
   if (!el || el.type !== 'ObjectExpression') {
     throw new CanvasEditError(`${arrayName}[${index}] is not an object literal`, {
@@ -2411,10 +2469,13 @@ export function applyEditArrayElementString(
   const out = s.toString();
   const re = parseSync(canvasAbsPath, out, { sourceType: 'module' });
   if (re.errors && re.errors.length > 0) {
-    throw new CanvasEditError(`edit produced invalid source: ${re.errors[0]?.message ?? 'parse error'}`, {
-      canvas: canvasAbsPath,
-      id: arrayName,
-    });
+    throw new CanvasEditError(
+      `edit produced invalid source: ${re.errors[0]?.message ?? 'parse error'}`,
+      {
+        canvas: canvasAbsPath,
+        id: arrayName,
+      }
+    );
   }
   return { source: out };
 }
@@ -2430,7 +2491,10 @@ export async function editArrayElementString(
   return withLock(canvasAbsPath, async () => {
     const file = Bun.file(canvasAbsPath);
     if (!(await file.exists())) {
-      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, { canvas: canvasAbsPath, id: arrayName });
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: arrayName,
+      });
     }
     const source = await file.text();
     const next = applyEditArrayElementString(canvasAbsPath, source, arrayName, index, field, value);
@@ -2483,7 +2547,10 @@ export function assembleCompSource(
   const videos = clips.filter((c) => c.mediaKind === 'video');
   const audios = clips.filter((c) => c.mediaKind === 'audio');
   if (videos.length === 0 && audios.length === 0) {
-    throw new CanvasEditError('assemble needs at least one clip', { canvas: componentName, id: '' });
+    throw new CanvasEditError('assemble needs at least one clip', {
+      canvas: componentName,
+      id: '',
+    });
   }
   for (const c of clips) assertContainedAssetSrc(c.src, componentName);
 

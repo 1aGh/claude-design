@@ -11,9 +11,9 @@
 // Deterministic BY CONSTRUCTION — every value is a pure function of the frame.
 
 import { DCArtboard, DCSection, DesignCanvas, VideoComp } from '@maude/canvas-lib';
-import { AbsoluteFill, Audio, interpolate, useCurrentFrame } from 'remotion';
-import { TransitionSeries, linearTiming } from '@remotion/transitions';
+import { linearTiming, TransitionSeries } from '@remotion/transitions';
 import { fade } from '@remotion/transitions/fade';
+import { AbsoluteFill, Audio, interpolate, useCurrentFrame } from 'remotion';
 
 const CLIP = 45;
 const XF = 15;
@@ -57,9 +57,7 @@ function Fixture() {
       </TransitionSeries>
       <Audio
         src="assets/music.mp3"
-        volume={(f) =>
-          interpolate(f, [TOTAL - 15, TOTAL], [0.7, 0], { extrapolateLeft: 'clamp' })
-        }
+        volume={(f) => interpolate(f, [TOTAL - 15, TOTAL], [0.7, 0], { extrapolateLeft: 'clamp' })}
       />
     </AbsoluteFill>
   );
@@ -70,7 +68,13 @@ export default function Canvas() {
     <DesignCanvas>
       <DCSection title="Video-comp fixture">
         <DCArtboard id="fixture" label="Fixture" width={640} height={360}>
-          <VideoComp component={Fixture} durationInFrames={TOTAL} fps={30} width={640} height={360} />
+          <VideoComp
+            component={Fixture}
+            durationInFrames={TOTAL}
+            fps={30}
+            width={640}
+            height={360}
+          />
         </DCArtboard>
       </DCSection>
     </DesignCanvas>

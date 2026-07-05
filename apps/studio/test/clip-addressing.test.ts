@@ -448,7 +448,16 @@ describe('applyReorderClip — z-order reorder (DDR-150 P5)', () => {
     const src = stack();
     const c0 = enumerateClips(CANVAS, src, 'reel').clips[0]!;
     expect(() =>
-      applyReorderClip(CANVAS, src, 'reel', c0.stableId, c0.contentHash, c0.stableId, c0.contentHash, 'after')
+      applyReorderClip(
+        CANVAS,
+        src,
+        'reel',
+        c0.stableId,
+        c0.contentHash,
+        c0.stableId,
+        c0.contentHash,
+        'after'
+      )
     ).toThrow(CanvasEditError);
   });
 
@@ -529,7 +538,13 @@ describe('applyToggleClipHidden — hide/show a clip (dogfood)', () => {
     expect(() => assertCompSemantics(CANVAS, hid.source)).not.toThrow(); // alternation intact
     const s1 = enumerateClips(CANVAS, hid.source, 'x').clips.filter((c) => c.kind === 'sequence');
     expect(s1[0]!.hidden).toBe(true);
-    const shown = applyToggleClipHidden(CANVAS, hid.source, 'x', s1[0]!.stableId, s1[0]!.contentHash);
+    const shown = applyToggleClipHidden(
+      CANVAS,
+      hid.source,
+      'x',
+      s1[0]!.stableId,
+      s1[0]!.contentHash
+    );
     expect(shown.hidden).toBe(false);
     expect(shown.source).toBe(src); // fully reversible
   });
@@ -568,24 +583,26 @@ describe('enumerateClips — clip layer decomposition (dogfood — mp4 backgroun
 
 describe('enumerateClips — nested/wrapper-component media (showreel granularity + replace)', () => {
   const showreel = [
-    "const CLIPS = [",
+    'const CLIPS = [',
     "  { src: 'assets/a.mp4', label: 'Aerial' },",
     "  { src: 'assets/b.mp4', label: 'Nature' },",
-    "];",
-    "const ClipShot = ({ clip }) => <AbsoluteFill><Video src={clip.src} /></AbsoluteFill>;",
-    "const TitleCard = () => <AbsoluteFill>hi</AbsoluteFill>;",
-    "const Comp = () => (<><TransitionSeries>",
-    "  <TransitionSeries.Sequence durationInFrames={60}><TitleCard /></TransitionSeries.Sequence>",
-    "  <TransitionSeries.Transition timing={t} />",
-    "  <TransitionSeries.Sequence durationInFrames={60}><ClipShot clip={CLIPS[0]} /></TransitionSeries.Sequence>",
-    "  <TransitionSeries.Transition timing={t} />",
-    "  <TransitionSeries.Sequence durationInFrames={60}><ClipShot clip={CLIPS[1]} /></TransitionSeries.Sequence>",
-    "</TransitionSeries><Audio src=\"assets/music.mp3\" /></>);",
-    "function Canvas() { return <DCArtboard id=\"reel\"><VideoComp component={Comp} durationInFrames={180} fps={30} /></DCArtboard>; }",
+    '];',
+    'const ClipShot = ({ clip }) => <AbsoluteFill><Video src={clip.src} /></AbsoluteFill>;',
+    'const TitleCard = () => <AbsoluteFill>hi</AbsoluteFill>;',
+    'const Comp = () => (<><TransitionSeries>',
+    '  <TransitionSeries.Sequence durationInFrames={60}><TitleCard /></TransitionSeries.Sequence>',
+    '  <TransitionSeries.Transition timing={t} />',
+    '  <TransitionSeries.Sequence durationInFrames={60}><ClipShot clip={CLIPS[0]} /></TransitionSeries.Sequence>',
+    '  <TransitionSeries.Transition timing={t} />',
+    '  <TransitionSeries.Sequence durationInFrames={60}><ClipShot clip={CLIPS[1]} /></TransitionSeries.Sequence>',
+    '</TransitionSeries><Audio src="assets/music.mp3" /></>);',
+    'function Canvas() { return <DCArtboard id="reel"><VideoComp component={Comp} durationInFrames={180} fps={30} /></DCArtboard>; }',
   ].join('\n');
 
   test('resolves media through a wrapper component fed by an array element', () => {
-    const seqs = enumerateClips(CANVAS, showreel, 'reel').clips.filter((c) => c.kind === 'sequence');
+    const seqs = enumerateClips(CANVAS, showreel, 'reel').clips.filter(
+      (c) => c.kind === 'sequence'
+    );
     // TitleCard = pure function, no media.
     expect(seqs[0]!.mediaTag).toBeNull();
     // ClipShot clips → Video, src resolved through CLIPS[i].src, array-ref for replace.
@@ -606,10 +623,10 @@ describe('enumerateClips — nested/wrapper-component media (showreel granularit
 
 describe('applyEditArrayElementString — array-fed src replace (showreel)', () => {
   const src = [
-    "const CLIPS = [",
+    'const CLIPS = [',
     "  { src: 'assets/a.mp4', label: 'Aerial' },",
     "  { src: 'assets/b.mp4', label: 'Nature' },",
-    "];",
+    '];',
   ].join('\n');
 
   test('rewrites the indexed element string', () => {
@@ -625,12 +642,12 @@ describe('applyEditArrayElementString — array-fed src replace (showreel)', () 
   });
 
   test('throws on a missing array / element / field', () => {
-    expect(() => applyEditArrayElementString(CANVAS, src, 'NOPE', 0, 'src', 'assets/x.mp4')).toThrow(
-      CanvasEditError
-    );
-    expect(() => applyEditArrayElementString(CANVAS, src, 'CLIPS', 9, 'src', 'assets/x.mp4')).toThrow(
-      CanvasEditError
-    );
+    expect(() =>
+      applyEditArrayElementString(CANVAS, src, 'NOPE', 0, 'src', 'assets/x.mp4')
+    ).toThrow(CanvasEditError);
+    expect(() =>
+      applyEditArrayElementString(CANVAS, src, 'CLIPS', 9, 'src', 'assets/x.mp4')
+    ).toThrow(CanvasEditError);
   });
 });
 
@@ -688,7 +705,9 @@ describe('assembleCompSource — refs → comp (DDR-150 P4 Task 12)', () => {
       { src: 'assets/music.mp3', mediaKind: 'audio' },
     ]);
     expect(tsx).toContain('<Audio src="assets/music.mp3" />');
-    expect(tsx).toContain(`import { AbsoluteFill, Sequence, OffthreadVideo, Audio } from 'remotion';`);
+    expect(tsx).toContain(
+      `import { AbsoluteFill, Sequence, OffthreadVideo, Audio } from 'remotion';`
+    );
     // total driven by the video clip's duration (audio doesn't extend it).
     expect(enumerateClips('/abs/R.tsx', tsx, 'reel').durationInFrames).toBe(90);
   });

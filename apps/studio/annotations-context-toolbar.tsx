@@ -846,7 +846,15 @@ export function AnnotationContextToolbar({
       >
         <span
           className="dc-annot-ctx-label"
-          style={{ padding: '0 8px', fontSize: 12, opacity: 0.85, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          style={{
+            padding: '0 8px',
+            fontSize: 12,
+            opacity: 0.85,
+            maxWidth: 220,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
           title={`${mr.mediaKind} · ${mr.src}`}
         >
           {mr.mediaKind === 'audio' ? '♪ ' : '▶ '}

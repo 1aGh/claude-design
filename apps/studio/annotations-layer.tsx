@@ -91,14 +91,14 @@ import {
   LINK_TITLE_FILL,
   type ListType,
   linkCardLayout,
-  type MediaRefStroke,
+  listPrefixedBody,
+  listPrefixedLine,
   MEDIAREF_AUDIO_GLYPH,
   MEDIAREF_DEFAULT_H,
   MEDIAREF_DEFAULT_W,
   MEDIAREF_VIDEO_GLYPH,
   MEDIAREF_VIDEO_H,
-  listPrefixedBody,
-  listPrefixedLine,
+  type MediaRefStroke,
   normalizeBox,
   normalizeRect,
   normalizeSticky,
@@ -1243,7 +1243,6 @@ export function AnnotationsLayer() {
     screenToWorld,
     callbacks: mediaCallbacks,
   });
-
 
   const eraseAt = useCallback(
     (wx: number, wy: number) => {
@@ -3237,6 +3236,7 @@ function MediaRefPlayers({
             }}
           >
             {isAudio ? (
+              // biome-ignore lint/a11y/useMediaCaption: user-dropped reference media — there is no caption source to point a <track> at.
               <audio
                 controls
                 preload="metadata"
@@ -3244,6 +3244,7 @@ function MediaRefPlayers({
                 style={{ width: '100%', height: '100%' }}
               />
             ) : (
+              // biome-ignore lint/a11y/useMediaCaption: user-dropped reference media — no caption source exists for an arbitrary dragged-in clip.
               <video
                 // Chromium's native controls already toggle play/pause on a
                 // content-area click (a custom click listener would double-fire

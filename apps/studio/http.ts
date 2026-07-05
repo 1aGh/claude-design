@@ -523,16 +523,7 @@ async function serveFile(absPath: string, headers: Record<string, string> = {}):
 }
 
 /** Media (video/audio) extensions that get HTTP Range support when served. */
-const RANGE_MEDIA_EXTS = new Set([
-  '.mp4',
-  '.m4v',
-  '.mov',
-  '.webm',
-  '.mp3',
-  '.wav',
-  '.m4a',
-  '.ogg',
-]);
+const RANGE_MEDIA_EXTS = new Set(['.mp4', '.m4v', '.mov', '.webm', '.mp3', '.wav', '.m4a', '.ogg']);
 
 /**
  * DDR-150 dogfood (team finding) — serve a media file with HTTP Range support.
@@ -560,7 +551,9 @@ async function serveMediaFile(
   const range = req.headers.get('range');
   const m = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
   if (m && (m[1] || m[2]) && size > 0) {
-    const start = m[1] ? Number.parseInt(m[1], 10) : Math.max(0, size - Number.parseInt(m[2] as string, 10));
+    const start = m[1]
+      ? Number.parseInt(m[1], 10)
+      : Math.max(0, size - Number.parseInt(m[2] as string, 10));
     const end = m[1] && m[2] ? Math.min(Number.parseInt(m[2], 10), size - 1) : size - 1;
     if (Number.isFinite(start) && start >= 0 && start <= end && start < size) {
       return new Response(file.slice(start, end + 1), {
@@ -1098,7 +1091,8 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       // DDR-054 split only blocks the canvas iframe). No-Origin (curl/tests) + the
       // same-origin shell pass. Closes a pre-existing gap on create/delete.
       if (req.method === 'DELETE' || req.method === 'POST') {
-        if (!sameOriginWrite(req)) return new Response('cross-origin write rejected', { status: 403 });
+        if (!sameOriginWrite(req))
+          return new Response('cross-origin write rejected', { status: 403 });
         if (!isLoopbackHost(req.headers.get('host')))
           return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       }

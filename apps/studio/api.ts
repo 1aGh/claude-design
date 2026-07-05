@@ -8,23 +8,23 @@ import path from 'node:path';
 
 import { renderBriefBoard, validateCanvasName } from './canvas-create.ts';
 import {
-  CanvasEditError,
   type AssembleClip,
   assembleCompSource,
+  CanvasEditError,
   type ClipInfo,
+  editArrayElementString,
   editAttribute,
   enumerateClips,
   insertClip,
   type MovePosition,
   moveElement,
-  editArrayElementString,
   removeAttribute,
   removeClip,
   reorderClip,
   retimeSequence,
-  toggleClipHidden,
   retimeSequenceByClip,
   editText as runEditText,
+  toggleClipHidden,
 } from './canvas-edit.ts';
 import type { Context } from './context.ts';
 import { createHistory } from './history.ts';
@@ -1452,7 +1452,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       return { ok: false, status: 400, error: 'kind must be "brief-board" or "video-comp"' };
     }
     // Parse + validate the assemble clip list up front (video-comp only).
-    let assembleClips: AssembleClip[] = [];
+    const assembleClips: AssembleClip[] = [];
     if (kind === 'video-comp') {
       if (!Array.isArray(input.clips) || input.clips.length === 0) {
         return { ok: false, status: 400, error: 'video-comp needs a non-empty clips[]' };
@@ -2145,7 +2145,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     stableId?: unknown;
     artboardId?: unknown;
     contentHash?: unknown;
-  }): Promise<{ ok: true; hidden: boolean; seq?: number } | { ok: false; status: number; error: string }> {
+  }): Promise<
+    { ok: true; hidden: boolean; seq?: number } | { ok: false; status: number; error: string }
+  > {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
     const stableId = typeof input.stableId === 'string' ? input.stableId : null;
