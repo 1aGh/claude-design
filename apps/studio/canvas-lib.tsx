@@ -704,6 +704,13 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
   const [isInteracting, setIsInteracting] = useState(false);
   const interactingRef = useRef(false);
   const isInteractingStateRef = useRef(false);
+  // Snapshot of the zoom at the START of each interaction burst. Lets the
+  // WebKit settle re-raster (writeTransform crisp) fire ONLY when the gesture
+  // actually changed scale — a pure pan is scale-invariant, so re-rasterizing
+  // the whole world plane on pan-settle is wasted work (the "seká po dojezdu"
+  // tail-spike on large canvases). RCA:
+  // .ai/logs/rca/issue-canvas-pan-zoom-jank-large-moodboard.md
+  const zoomAtInteractStartRef = useRef(1);
 
   // Throttle / settle timers.
   const publishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -788,6 +795,9 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
     interactingRef.current = true;
     if (!isInteractingStateRef.current) {
       isInteractingStateRef.current = true;
+      // Start of a fresh gesture burst — remember the scale so settle can tell
+      // a pure pan (skip the crisp re-raster) from a zoom (needs it).
+      zoomAtInteractStartRef.current = vpRef.current.zoom;
       setIsInteracting(true);
     }
     if (interactEndTimerRef.current != null) clearTimeout(interactEndTimerRef.current);
@@ -799,7 +809,12 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
       // Motion has stopped — re-write the world transform in crisp mode so the
       // WebKit path drops its compositor layer and re-rasterizes text sharply at
       // the settled scale. No-op on the Blink path (CSS `zoom` is already crisp).
-      writeTransform(vpRef.current, { crisp: true });
+      // Skip it when the burst never changed scale (pure pan): the layer is
+      // already crisp at this zoom, so releasing + repainting the whole world
+      // plane would be a wasted main-thread spike on large canvases.
+      if (vpRef.current.zoom !== zoomAtInteractStartRef.current) {
+        writeTransform(vpRef.current, { crisp: true });
+      }
     }, 220);
   }, [writeTransform]);
 
@@ -1791,7 +1806,23 @@ export function DCArtboard({
         className={`dc-artboard dc-positioned${isInDrag ? ' dc-dragging' : ''}`}
         data-dc-screen={id}
         aria-current={isActive ? 'true' : undefined}
-        style={{ left: liveX, top: liveY, width: rect.w, height: rect.h }}
+        style={{
+          left: liveX,
+          top: liveY,
+          width: rect.w,
+          height: rect.h,
+          // Off-screen artboards skip layout+paint. On a large multi-board
+          // canvas (e.g. an 18-board moodboard) every board otherwise paints
+          // onto one huge .dc-world plane whose device-pixel size exceeds
+          // WebKit's ~16384px texture limit, forcing tile repaints on every
+          // pan/zoom. content-visibility localizes each board's paint and culls
+          // the ones outside the viewport; contain-intrinsic-size preserves the
+          // box so the model-based fit math (computeFit reads ArtboardRects,
+          // never the DOM) and drag hit-testing are unaffected. RCA:
+          // .ai/logs/rca/issue-canvas-pan-zoom-jank-large-moodboard.md
+          contentVisibility: 'auto',
+          containIntrinsicSize: `${rect.w}px ${rect.h}px`,
+        }}
         {...handleProps}
       >
         <button type="button" className="dc-artboard-label sku" aria-label={`Artboard ${label}`}>
