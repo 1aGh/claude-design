@@ -197,6 +197,19 @@ async function buildCss(): Promise<{ outBytes: number; outPath: string }> {
 // Pre-building all 6 sub-bundles at release time + shipping in dist/runtime/
 // eliminates the runtime dependency on disk node_modules entirely.
 
+// Dev builds skip the runtime-bundle regen whenever every bundle is already
+// on disk: the committed dist/runtime/*.js are authoritative for releases
+// (CI builds with MAUDE_SKIP_RUNTIME_BUILD=1), and a dev-mode regen writes
+// UNMINIFIED output that dirties the tree at ~2× the shipped size. Runtime
+// bundles depend only on dependency versions, never on client/server source,
+// so after a dep bump regen deliberately:
+//   MAUDE_FORCE_RUNTIME_BUILD=1 bun run build.ts --release
+async function runtimeBundlesComplete(): Promise<boolean> {
+  const { RUNTIME_PACKAGES, slugFor } = await import('./runtime-bundle.ts');
+  const outDir = join(DIST, 'runtime');
+  return RUNTIME_PACKAGES.every((pkg) => existsSync(join(outDir, `${slugFor(pkg)}.js`)));
+}
+
 async function buildRuntimeBundles(): Promise<{ outDir: string; count: number; bytes: number }> {
   // Defer import so build.ts can run in --dry-run without pulling react.
   const { RUNTIME_PACKAGES, getRuntimeBundle, slugFor } = await import('./runtime-bundle.ts');
@@ -477,6 +490,14 @@ async function main() {
   if (process.env.MAUDE_SKIP_RUNTIME_BUILD === '1') {
     console.log(
       '[build] dist/runtime/*.js SKIPPED (MAUDE_SKIP_RUNTIME_BUILD=1 — using committed pre-built)'
+    );
+  } else if (
+    MODE === 'dev' &&
+    process.env.MAUDE_FORCE_RUNTIME_BUILD !== '1' &&
+    (await runtimeBundlesComplete())
+  ) {
+    console.log(
+      '[build] dist/runtime/*.js SKIPPED (all present; committed bundles are authoritative — MAUDE_FORCE_RUNTIME_BUILD=1 to regen after a dep bump)'
     );
   } else {
     const runtime = await buildRuntimeBundles();
