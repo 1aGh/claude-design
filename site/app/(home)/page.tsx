@@ -94,10 +94,15 @@ export default function HomePage() {
             <span>PUBLISHED {stats.publishedDate}</span>
           </div>
           <h1 id="land-h1">
-            Maude, how it <span style={{ color: 'var(--accent)' }}>works mostly</span>.
+            The design tool that finally stops{' '}
+            <span style={{ color: 'var(--accent)' }}>fighting the AI</span>.
           </h1>
+          <div className="mdcc-hero-sku" style={{ marginTop: 0, marginBottom: 'var(--space-3)' }}>
+            (maude, how it works mostly.)
+          </div>
           <p className="mdcc-hero-punchline">
-            Vibe-design & vibe-code workflows for Claude Code. Two plugins, one CLI, some vibes.
+            Real files. Real git. Real tokens. Nothing here pretends Claude Code doesn&apos;t exist.
+            That&apos;s why it just works.
           </p>
           <p>
             <code>design</code> iterates on HTML mocks. <code>flow</code> runs the agentic loop
@@ -149,6 +154,43 @@ export default function HomePage() {
           </div>
           <pre>{INSTALL_SNIPPET}</pre>
         </section>
+      </section>
+
+      <section aria-labelledby="why-h">
+        <div className="mdcc-section-head">
+          <h2 id="why-h">Why not just Figma? Why not just Claude Design?</h2>
+          <span className="mdcc-eyebrow">the short version</span>
+        </div>
+        <div className="mdcc-cat-grid">
+          <div className="mdcc-cat-card" style={{ cursor: 'default' }}>
+            <h3>Figma</h3>
+            <p>
+              A human-first design tool with an AI panel bolted onto the side. The AI is a guest in
+              someone else&apos;s house.
+            </p>
+          </div>
+          <div className="mdcc-cat-card" style={{ cursor: 'default' }}>
+            <h3>Claude Design</h3>
+            <p>
+              A chat box that forgets everything by morning. No git, no files, no design system to
+              check new work against.
+            </p>
+          </div>
+          <div className="mdcc-cat-card" style={{ cursor: 'default' }}>
+            <h3>
+              <code>maude</code>
+            </h3>
+            <p>
+              Built around Claude Code from day one. Real <code>.tsx</code> files, real git history,
+              a real dev server. That&apos;s the whole trick.
+            </p>
+          </div>
+        </div>
+        <p className="mdcc-hero-fineprint" style={{ marginTop: 'var(--space-4)' }}>
+          And it&apos;s not just the canvas. <code>flow</code> runs the same repo-native loop for
+          planning and shipping the whole feature, and the optional self-hosted hub brings the team
+          into the same <code>.design/</code> in real time.
+        </p>
       </section>
 
       {/* ── Feature spotlight: the latest big shipped feature. Curated, not
