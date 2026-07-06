@@ -17,6 +17,7 @@
 ## Pre-flight
 
 - [ ] On `main` with clean working tree (no staged or unstaged changes)
+  - If `apps/studio/dist/runtime/*.js` show as modified, that's an accidental dev-mode regen (unminified, ~2× shipped size) — `git restore apps/studio/dist/runtime/`, **never commit it**. The committed bundles are release-authoritative (`MAUDE_SKIP_RUNTIME_BUILD=1` in CI); regen deliberately only after a dep bump.
 - [ ] Latest `quality.yml` and `version-parity.yml` are **actually green** on `main` (run `gh run list --workflow=quality.yml --branch=main --limit 1` — don't just assume from memory). A red `quality.yml` masks lurkers that the release commit will surface.
 - [ ] At least one `.changeset/*.md` since the previous tag (otherwise the bump is a no-op)
 - [ ] You have npm publish permission for `@1agh/maude` + all 7 `@1agh/maude-<slug>` packages, and push access to `main`
@@ -110,7 +111,14 @@ pnpm --filter @maude/site gen:roadmap            # refresh roadmap from .ai/plan
 git diff --stat site/                                # capture any drift to commit
 ```
 
-If the generators produced diffs, stage them with the release commit (next step).
+The committed dev-server artifacts ship verbatim (`publish-main` builds with `MAUDE_SKIP_RUNTIME_BUILD=1`), so verify `client.bundle.js` + `styles.css` + `comment-mount.js` aren't stale against source — a studio-client commit that forgot the release-minified rebuild otherwise ships without its own change (bit v0.40.x: the committed bundle lagged source by several commits):
+
+```bash
+(cd apps/studio && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release)
+git diff --stat apps/studio/dist/                    # any diff = committed artifact was stale; stage it
+```
+
+If the generators or the artifact rebuild produced diffs, stage them with the release commit (next step).
 
 ## Commit + annotated tag
 
@@ -122,6 +130,11 @@ git add package.json \
         plugins/design/.claude-plugin/plugin.json \
         plugins/flow/.claude-plugin/plugin.json \
         packages/maude-*/package.json \
+        apps/desktop/src-tauri/tauri.conf.json \
+        apps/desktop/src-tauri/Cargo.toml \
+        apps/desktop/src-tauri/Cargo.lock \
+        apps/studio/dist/ \
+        apps/studio/whats-new.json \
         CHANGELOG.md \
         .changeset/ \
         site/lib/stats.json \

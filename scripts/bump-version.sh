@@ -108,6 +108,20 @@ if [ -f "$CARGO_TOML_PATH" ]; then
   "
 fi
 
+# Cargo.lock records the workspace member's version too. Without this, the
+# lockfile drifts after every release until the next cargo run rewrites it —
+# outside the release commit, as a stray working-tree modification.
+CARGO_LOCK_PATH="$ROOT/apps/desktop/src-tauri/Cargo.lock"
+if [ -f "$CARGO_LOCK_PATH" ]; then
+  NEW="$NEW" node -e "
+    const fs = require('fs');
+    const p = '$CARGO_LOCK_PATH';
+    const s = fs.readFileSync(p, 'utf8');
+    const out = s.replace(/(name = \"maude-desktop\"\nversion = )\"[0-9]+\.[0-9]+\.[0-9]+\"/, '\$1\"' + process.env.NEW + '\"');
+    fs.writeFileSync(p, out);
+  "
+fi
+
 # Stamp any pending What's New entries (version:null) with the new version + date.
 node "$ROOT/scripts/stamp-whats-new.mjs" "$NEW"
 
