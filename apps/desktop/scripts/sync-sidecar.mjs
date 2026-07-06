@@ -59,7 +59,9 @@ const src = candidates.find((p) => existsSync(p));
 if (!src) {
   console.error('[sync-sidecar] no dev-server binary found. Looked in:');
   for (const c of candidates) console.error(`  - ${c}`);
-  console.error('Build it first: cd apps/studio && bun run build:binary');
+  console.error(
+    'Build it first: cd apps/studio && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release'
+  );
   process.exit(1);
 }
 
