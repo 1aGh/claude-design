@@ -40,7 +40,11 @@
 # Stdout: one line per canvas, tab-separated:
 #   STATUS \t FILE \t SCREENSHOT \t DETAIL
 # Stderr: diagnostic / progress.
-# Exit:   0 = all green / 3 = at least one blank/error/unstyled/lint-fail / 1 = missing deps / 2 = bad args.
+# Exit:   0 = all green / 3 = at least one blank/error/unstyled/broken-img/lint-fail / 1 = missing deps / 2 = bad args.
+#
+# BROKEN-IMG (agent-browser engine only) flags a VISIBLE <img> that finished
+# loading with naturalWidth 0 — a CSP-blocked hotlink or a 404'd local asset the
+# user sees as an empty thumbnail. onError-hidden scrap fallbacks are excluded.
 
 REPO=""
 OUT_DIR=""
@@ -356,6 +360,37 @@ probe_agent_browser() {
     return
   fi
 
+  # Broken-image gate (DDR-147 / 2026-07-06 RCA) — the moodboard + DS specimens
+  # fill photo slots with web imagery; a hotlink blocked by the canvas CSP
+  # (`img-src 'self'`, default-on split origin) or a 404'd local path renders as
+  # an empty "broken image" thumbnail the user sees but every check above sails
+  # past (it has text, no error, a >2 KB screenshot). Flag any <img> that
+  # FINISHED loading with naturalWidth 0 AND is actually VISIBLE — a slot whose
+  # `onError` hid the img and swapped in a scrap (display:none / hidden / opacity
+  # 0) is a graceful degrade, NOT a failure, so it's excluded. Catches the class
+  # of regression where download-first silently stopped working.
+  local broken
+  broken=$(agent-browser eval "(() => {
+    const bad = [...document.querySelectorAll('img')].filter((im) => {
+      if (!im.complete || im.naturalWidth > 0) return false;
+      const src = (im.getAttribute('src') || '').trim();
+      if (!src || src.startsWith('data:')) return false;
+      const cs = getComputedStyle(im);
+      if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return false;
+      return true;
+    });
+    if (!bad.length) return '';
+    const sample = bad.slice(0, 2).map((im) => (im.currentSrc || im.getAttribute('src') || '').slice(0, 60)).join(', ');
+    return bad.length + ' broken img(s): ' + sample;
+  })()" 2>/dev/null)
+  broken=$(printf '%s' "$broken" | sed 's/^\"//; s/\"$//')
+  if [ -n "$broken" ] && [ "$broken" != "null" ] && [ "$broken" != "undefined" ]; then
+    echo "BROKEN-IMG"
+    echo "$broken"
+    echo "$out_png"
+    return
+  fi
+
   # Computed-style gate (DDR-068) — "mounts with content" ≠ "rendered styled". A
   # specimen whose import graph dropped the token CSS passes every check above
   # (it has text, no error, a >2 KB screenshot) yet every var()-driven rule is
@@ -456,11 +491,12 @@ while IFS= read -r CANVAS; do
   SHOT=$(printf '%s\n' "$RESULT" | sed -n '3p')
 
   case "$STATUS" in
-    OK)       SYM="✓"; echo "$SYM" >&2 ;;
-    BLANK)    SYM="✗"; FAILED=$((FAILED + 1)); echo "$SYM blank ($DETAIL)" >&2 ;;
-    ERROR)    SYM="⚠"; FAILED=$((FAILED + 1)); echo "$SYM error ($DETAIL)" >&2 ;;
-    UNSTYLED) SYM="✗"; FAILED=$((FAILED + 1)); echo "$SYM unstyled ($DETAIL)" >&2 ;;
-    *)        SYM="?"; FAILED=$((FAILED + 1)); echo "? unknown ($STATUS)" >&2 ;;
+    OK)         SYM="✓"; echo "$SYM" >&2 ;;
+    BLANK)      SYM="✗"; FAILED=$((FAILED + 1)); echo "$SYM blank ($DETAIL)" >&2 ;;
+    ERROR)      SYM="⚠"; FAILED=$((FAILED + 1)); echo "$SYM error ($DETAIL)" >&2 ;;
+    UNSTYLED)   SYM="✗"; FAILED=$((FAILED + 1)); echo "$SYM unstyled ($DETAIL)" >&2 ;;
+    BROKEN-IMG) SYM="✗"; FAILED=$((FAILED + 1)); echo "$SYM broken-img ($DETAIL)" >&2 ;;
+    *)          SYM="?"; FAILED=$((FAILED + 1)); echo "? unknown ($STATUS)" >&2 ;;
   esac
 
   printf '%s\t%s\t%s\t%s\n' "$STATUS" "$REL" "$SHOT" "$DETAIL" >> "$TSV"

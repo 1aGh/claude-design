@@ -45,6 +45,7 @@ const BIN_VERBS = new Set([
   'annotate',
   'chat-open',
   'ensure-browser',
+  'fetch-asset',
 ]);
 
 // Bin verbs that boot the dev-server (directly, or by shelling into server-up.sh).
@@ -136,7 +137,7 @@ Lifecycle:
 
 Dev-tooling (dispatch to the dev-server bash helpers — DDR-062):
   screenshot · server-up · prep · slug · bootstrap-check · runtime-health
-  smoke · canvas-edit · handoff · asset-sweep · visual-sanity
+  smoke · canvas-edit · handoff · asset-sweep · visual-sanity · fetch-asset
   draw-build · draw-proof · svg-optimize · to-lottie · read-annotations · annotate
         Invoke the bundled helper of the same name. maude resolves it from its
         own package root and sets CLAUDE_PLUGIN_ROOT for the child; stdout,
@@ -147,6 +148,7 @@ Dev-tooling (dispatch to the dev-server bash helpers — DDR-062):
           PORT=$(maude design server-up --root "$REPO")
           eval "$(maude design prep --shell-export --shape edit --root "$REPO")"
           maude design smoke --changed-only
+          REF=$(maude design fetch-asset "$URL" --root "$REPO")   # download-first image
 
   serve [--port N] [--root PATH]
         Start the design plugin's dev server in the current repo. Equivalent
