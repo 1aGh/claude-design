@@ -51,6 +51,13 @@ const EL_RESIZE_CSS = `
 .dc-el-resize-handle[data-corner="ne"], .dc-el-resize-handle[data-corner="sw"] { cursor: nesw-resize !important; }
 .dc-el-resize-handle[data-corner="n"], .dc-el-resize-handle[data-corner="s"] { cursor: ns-resize !important; width: 14px; height: 6px; }
 .dc-el-resize-handle[data-corner="e"], .dc-el-resize-handle[data-corner="w"] { cursor: ew-resize !important; width: 6px; height: 14px; }
+.dc-el-resize-handle[data-corner="rotate"] {
+  cursor: grab !important;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--maude-hud-accent-fg, oklch(0.180 0.030 268));
+  border: 1.5px solid var(--maude-hud-accent, oklch(0.680 0.180 268));
+}
 `.trim();
 
 function ensureElementResizeStyles(): void {
@@ -172,21 +179,87 @@ export function computeElementResize(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Rotation math (Task L8) — free-hand rotate handle. All pure, unit-tested.
+
+/** Rotation angle (deg) from a CSS `transform` matrix (`none`/`matrix(...)`). */
+export function rotationDegFromMatrix(transform: string | null | undefined): number {
+  if (!transform || transform === 'none') return 0;
+  const m = /matrix\(([^)]+)\)/.exec(transform);
+  if (!m) return 0;
+  const parts = m[1].split(',').map(Number);
+  const a = parts[0] ?? 1;
+  const b = parts[1] ?? 0;
+  return Math.round(Math.atan2(b, a) * (180 / Math.PI) * 100) / 100;
+}
+
+/** Uniform scale from a CSS `transform` matrix (the `.dc-world` zoom). 1 when none. */
+export function scaleFromMatrix(transform: string | null | undefined): number {
+  if (!transform || transform === 'none') return 1;
+  const m = /matrix\(([^)]+)\)/.exec(transform);
+  if (!m) return 1;
+  const parts = m[1].split(',').map(Number);
+  const a = parts[0] ?? 1;
+  const b = parts[1] ?? 0;
+  const s = Math.hypot(a, b);
+  return s > 0 ? s : 1;
+}
+
+/** Rotate a local offset (dx,dy) by `deg` — screen y is down, positive = CW. */
+export function rotatePointDeg(dx: number, dy: number, deg: number): [number, number] {
+  const r = (deg * Math.PI) / 180;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  return [dx * cos - dy * sin, dx * sin + dy * cos];
+}
+
+/**
+ * Element rotation (deg) so its TOP (local -Y) points toward the pointer — the
+ * rotate handle sits above top-center, so the angle from the element center to
+ * the pointer, +90°. Snaps to 15° while Shift is held. Normalized to (-180,180].
+ */
+export function rotateDragDeg(
+  cx: number,
+  cy: number,
+  px: number,
+  py: number,
+  snap: boolean
+): number {
+  let deg = Math.atan2(py - cy, px - cx) * (180 / Math.PI) + 90;
+  while (deg > 180) deg -= 360;
+  while (deg <= -180) deg += 360;
+  if (snap) deg = Math.round(deg / 15) * 15;
+  return Math.round(deg * 100) / 100;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Overlay component — mounted once in CanvasShell alongside SelectionHalos.
 
 interface ElResizeDrag {
   pointerId: number;
-  corner: ElResizeCorner;
+  corner: ElResizeCorner | 'rotate';
   el: HTMLElement;
   cdId: string;
   startClientX: number;
   startClientY: number;
   elZoom: number; // rect.width / offsetWidth — the element's own render scale
+  /** Element rotation (deg) at drag start — resize deltas are un-rotated by it. */
+  angle: number;
+  /** Screen center of the element — the pivot for a rotate drag. */
+  cx: number;
+  cy: number;
   start: ElResizeStart;
   flags: ElResizeFlags;
   /** Inline style values BEFORE the drag — the undo `before` + failure restore. */
-  before: { width: string | null; height: string | null; left: string | null; top: string | null };
+  before: {
+    width: string | null;
+    height: string | null;
+    left: string | null;
+    top: string | null;
+    transform: string | null;
+  };
   lastResult: ElResizeResult | null;
+  /** Last previewed `transform` (rotate drag) — the commit value. */
+  lastTransform: string | null;
 }
 
 /** Post the committed resize to the main-origin shell. Split out so the message
@@ -200,12 +273,19 @@ function postResizeRequest(drag: ElResizeDrag, r: ElResizeResult): void {
   if (typeof r.top === 'number') patch.top = `${r.top}px`;
   try {
     window.parent.postMessage(
-      {
-        dgn: 'resize-request',
-        id: drag.cdId,
-        patch,
-        before: drag.before,
-      },
+      { dgn: 'resize-request', id: drag.cdId, patch, before: drag.before },
+      '*'
+    );
+  } catch {
+    /* detached / cross-origin teardown */
+  }
+}
+
+/** Post a committed rotate (Task L8) — a `transform` patch on the same lane. */
+function postRotateRequest(drag: ElResizeDrag, transform: string): void {
+  try {
+    window.parent.postMessage(
+      { dgn: 'resize-request', id: drag.cdId, patch: { transform }, before: drag.before },
       '*'
     );
   } catch {
@@ -256,39 +336,54 @@ export function ElementResizeOverlay(): ReactNode {
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
-      // Ensure 8 handle children.
-      while (c.children.length < EL_RESIZE_CORNERS.length) {
-        c.appendChild(document.createElement('div'));
-      }
-      while (c.children.length > EL_RESIZE_CORNERS.length) {
-        c.lastChild && c.removeChild(c.lastChild);
-      }
+      // 8 resize handles + 1 rotate handle.
+      const TOTAL = EL_RESIZE_CORNERS.length + 1;
+      while (c.children.length < TOTAL) c.appendChild(document.createElement('div'));
+      while (c.children.length > TOTAL) c.lastChild && c.removeChild(c.lastChild);
+
+      // Rotation-aware placement (Task L8): the element's AABB center is its true
+      // center (default transform-origin), so handles ride the ROTATED box. Read
+      // the element's own rotation + the .dc-world zoom from computed style (DOM
+      // reads — the overlay stays camera-agnostic, no viewport controller).
       const cx = r.left + r.width / 2;
       const cy = r.top + r.height / 2;
-      const anchor: Record<ElResizeCorner, [number, number]> = {
-        nw: [r.left, r.top],
-        n: [cx, r.top],
-        ne: [r.right, r.top],
-        e: [r.right, cy],
-        se: [r.right, r.bottom],
-        s: [cx, r.bottom],
-        sw: [r.left, r.bottom],
-        w: [r.left, cy],
+      const deg = rotationDegFromMatrix(getComputedStyle(el).transform);
+      const world = el.closest('.dc-world') as HTMLElement | null;
+      const zoom = world ? scaleFromMatrix(getComputedStyle(world).transform) : 1;
+      const hw = (el.offsetWidth * zoom) / 2;
+      const hh = (el.offsetHeight * zoom) / 2;
+      const ROT_OFFSET = 22; // px above top-center for the rotate handle
+      const localOffset: Record<string, [number, number]> = {
+        nw: [-hw, -hh],
+        n: [0, -hh],
+        ne: [hw, -hh],
+        e: [hw, 0],
+        se: [hw, hh],
+        s: [0, hh],
+        sw: [-hw, hh],
+        w: [-hw, 0],
+        rotate: [0, -hh - ROT_OFFSET],
       };
-      for (let i = 0; i < EL_RESIZE_CORNERS.length; i++) {
-        const corner = EL_RESIZE_CORNERS[i];
+      const handles = [...EL_RESIZE_CORNERS, 'rotate'];
+      for (let i = 0; i < handles.length; i++) {
+        const corner = handles[i];
         const handle = c.children[i] as HTMLElement;
-        const [ax, ay] = anchor[corner];
-        // Edge pills are 14×6 / 6×14, corners 8×8 — center each on its point.
+        const [ox, oy] = localOffset[corner] ?? [0, 0];
+        const [rx, ry] = rotatePointDeg(ox, oy, deg);
+        const ax = cx + rx;
+        const ay = cy + ry;
+        const isRot = corner === 'rotate';
         const ns = corner === 'n' || corner === 's';
         const ew = corner === 'e' || corner === 'w';
-        const halfW = ns ? 7 : ew ? 3 : 4;
-        const halfH = ns ? 3 : ew ? 7 : 4;
+        const halfW = isRot ? 6 : ns ? 7 : ew ? 3 : 4;
+        const halfH = isRot ? 6 : ns ? 3 : ew ? 7 : 4;
         handle.className = 'dc-el-resize-handle';
         handle.dataset.corner = corner;
         handle.style.display = 'block';
         handle.style.left = `${Math.round(ax - halfW)}px`;
         handle.style.top = `${Math.round(ay - halfH)}px`;
+        // Orient the edge pills with the element; the rotate circle stays upright.
+        handle.style.transform = isRot ? '' : `rotate(${deg}deg)`;
       }
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -314,13 +409,19 @@ export function ElementResizeOverlay(): ReactNode {
     if (!c) return;
 
     const computeFromEvent = (d: ElResizeDrag, ev: PointerEvent): ElResizeResult => {
-      const dxW = (ev.clientX - d.startClientX) / d.elZoom;
-      const dyW = (ev.clientY - d.startClientY) / d.elZoom;
+      // Un-rotate the screen delta into the element's LOCAL frame (so dragging a
+      // handle resizes along the element's own axes on a rotated element), then
+      // ÷ render zoom → world units.
+      const [ldx, ldy] = rotatePointDeg(
+        ev.clientX - d.startClientX,
+        ev.clientY - d.startClientY,
+        -d.angle
+      );
       return computeElementResize(
-        d.corner,
+        d.corner as ElResizeCorner,
         d.start,
-        dxW,
-        dyW,
+        ldx / d.elZoom,
+        ldy / d.elZoom,
         { aspect: !!ev.shiftKey, center: !!ev.altKey },
         d.flags
       );
@@ -329,7 +430,7 @@ export function ElementResizeOverlay(): ReactNode {
     const onDown = (e: PointerEvent) => {
       const t = e.target as HTMLElement | null;
       if (!t?.classList.contains('dc-el-resize-handle')) return;
-      const corner = t.dataset.corner as ElResizeCorner | undefined;
+      const corner = t.dataset.corner as ElResizeCorner | 'rotate' | undefined;
       if (!corner || !one || typeof one.id !== 'string') return;
       const el = resolveSelectionEl(document, one) as HTMLElement | null;
       if (!el) return;
@@ -341,6 +442,8 @@ export function ElementResizeOverlay(): ReactNode {
       const outOfFlow = cs.position === 'absolute' || cs.position === 'fixed';
       const startLeft = Number.parseFloat(el.style.left);
       const startTop = Number.parseFloat(el.style.top);
+      const angle = rotationDegFromMatrix(cs.transform);
+      const z = elZoom > 0 ? elZoom : 1;
       const drag: ElResizeDrag = {
         pointerId: e.pointerId,
         corner,
@@ -348,11 +451,15 @@ export function ElementResizeOverlay(): ReactNode {
         cdId: one.id,
         startClientX: e.clientX,
         startClientY: e.clientY,
-        elZoom: elZoom > 0 ? elZoom : 1,
+        elZoom: z,
+        angle,
+        cx: rect.left + rect.width / 2,
+        cy: rect.top + rect.height / 2,
         start: {
-          // World-px border box (rect is screen px, ÷ render zoom → world).
-          w: rect.width / (elZoom > 0 ? elZoom : 1),
-          h: rect.height / (elZoom > 0 ? elZoom : 1),
+          // World-px border box. rect is the AABB; for a rotated element that
+          // over-states w/h, so derive from offset dims when rotated.
+          w: (angle ? el.offsetWidth : rect.width / z) || rect.width / z,
+          h: (angle ? el.offsetHeight : rect.height / z) || rect.height / z,
           left: startLeft,
           top: startTop,
         },
@@ -365,8 +472,10 @@ export function ElementResizeOverlay(): ReactNode {
           height: el.style.height || null,
           left: el.style.left || null,
           top: el.style.top || null,
+          transform: el.style.transform || null,
         },
         lastResult: null,
+        lastTransform: null,
       };
       dragRef.current = drag;
       try {
@@ -380,6 +489,14 @@ export function ElementResizeOverlay(): ReactNode {
       const d = dragRef.current;
       if (!d || e.pointerId !== d.pointerId) return;
       e.preventDefault();
+      if (d.corner === 'rotate') {
+        // Rotate about the element center toward the pointer; Shift snaps to 15°.
+        const deg = rotateDragDeg(d.cx, d.cy, e.clientX, e.clientY, !!e.shiftKey);
+        const tf = `rotate(${deg}deg)`;
+        d.el.style.transform = tf;
+        d.lastTransform = tf;
+        return;
+      }
       applyPreview(d, computeFromEvent(d, e));
     };
 
@@ -387,6 +504,13 @@ export function ElementResizeOverlay(): ReactNode {
       const d = dragRef.current;
       if (!d || e.pointerId !== d.pointerId) return;
       dragRef.current = null;
+      if (d.corner === 'rotate') {
+        const tf = d.lastTransform;
+        if (!tf || tf === d.before.transform) return; // no-op
+        lastCommitRef.current = { el: d.el, before: d.before };
+        postRotateRequest(d, tf);
+        return;
+      }
       const r = d.lastResult ?? computeFromEvent(d, e);
       // No-op guard: nothing changed → don't churn a source write / undo entry.
       const changed =
@@ -411,6 +535,8 @@ export function ElementResizeOverlay(): ReactNode {
       if (last.before.left !== null || last.el.style.left)
         last.el.style.left = last.before.left ?? '';
       if (last.before.top !== null || last.el.style.top) last.el.style.top = last.before.top ?? '';
+      if (last.before.transform !== null || last.el.style.transform)
+        last.el.style.transform = last.before.transform ?? '';
       lastCommitRef.current = null;
     };
 

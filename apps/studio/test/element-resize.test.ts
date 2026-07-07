@@ -5,7 +5,14 @@
 // edge fixed (Figma grammar).
 
 import { describe, expect, test } from 'bun:test';
-import { computeElementResize, type ElResizeStart } from '../use-element-resize.tsx';
+import {
+  computeElementResize,
+  type ElResizeStart,
+  rotateDragDeg,
+  rotatePointDeg,
+  rotationDegFromMatrix,
+  scaleFromMatrix,
+} from '../use-element-resize.tsx';
 
 const NO_MODS = { aspect: false, center: false };
 const NO_MOVE = { canMoveLeft: false, canMoveTop: false };
@@ -84,5 +91,43 @@ describe('computeElementResize — modifiers', () => {
     const r = computeElementResize('se', START, -500, -500, NO_MODS, CAN_MOVE);
     expect(r.width).toBe(1);
     expect(r.height).toBe(1);
+  });
+});
+
+describe('rotate math (Task L8)', () => {
+  test('rotationDegFromMatrix reads the angle', () => {
+    expect(rotationDegFromMatrix('none')).toBe(0);
+    expect(rotationDegFromMatrix(null)).toBe(0);
+    expect(rotationDegFromMatrix('matrix(1, 0, 0, 1, 0, 0)')).toBe(0);
+    expect(rotationDegFromMatrix('matrix(0, 1, -1, 0, 0, 0)')).toBe(90); // CW 90°
+    expect(Math.round(rotationDegFromMatrix('matrix(0.7071, 0.7071, -0.7071, 0.7071, 0, 0)'))).toBe(
+      45
+    );
+  });
+
+  test('scaleFromMatrix reads the .dc-world zoom', () => {
+    expect(scaleFromMatrix('none')).toBe(1);
+    expect(scaleFromMatrix('matrix(2, 0, 0, 2, 100, 50)')).toBe(2);
+    // Scale survives a combined rotate+scale (magnitude of the first column).
+    expect(scaleFromMatrix('matrix(0, 1.5, -1.5, 0, 0, 0)')).toBe(1.5);
+  });
+
+  test('rotatePointDeg rotates a local offset (screen y-down, CW positive)', () => {
+    const [x0, y0] = rotatePointDeg(10, 0, 0);
+    expect(x0).toBeCloseTo(10);
+    expect(y0).toBeCloseTo(0);
+    const [x90, y90] = rotatePointDeg(10, 0, 90);
+    expect(x90).toBeCloseTo(0);
+    expect(y90).toBeCloseTo(10);
+  });
+
+  test('rotateDragDeg points the element top at the pointer; Shift snaps to 15°', () => {
+    // Pointer directly above center → top points up → 0°.
+    expect(rotateDragDeg(100, 100, 100, 0, false)).toBe(0);
+    // Pointer to the right → top points right → 90°.
+    expect(rotateDragDeg(100, 100, 200, 100, false)).toBe(90);
+    // Shift always snaps to a 15° multiple; a slightly-off-right pointer → 90.
+    expect(rotateDragDeg(100, 100, 205, 90, true) % 15).toBe(0);
+    expect(rotateDragDeg(100, 100, 205, 90, true)).toBe(90);
   });
 });

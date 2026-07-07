@@ -8869,7 +8869,8 @@ function App() {
       if (!id || !activePath || !patch || typeof patch !== 'object') return;
       const canvas = activePath;
       const b = before && typeof before === 'object' ? before : {};
-      const props = ['width', 'height', 'left', 'top'].filter(
+      // `transform` rides the same lane for the rotate handle (Task L8).
+      const props = ['width', 'height', 'left', 'top', 'transform'].filter(
         (p) => typeof patch[p] === 'string' && patch[p]
       );
       if (!props.length) return;

@@ -502,7 +502,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha**: measurement must use world coords (post-Stage-A host-scroll-0 invariant) so numbers are correct at any zoom.
 - **Validate**: select A, Alt-hover B → red line + px distances; drag/resize → live dimension pill.
 
-#### Task L8: ADD a free-hand rotate handle on canvas elements (dogfood request 2026-07-07)
+#### ✅ Task L8: ADD a free-hand rotate handle on canvas elements (dogfood request 2026-07-07) — DONE (live-drag verify pending dogfood)
 
 - **Do**: Add a **rotate handle** to the element selection overlay (a small handle offset above the top edge, or a Cmd-hover of a corner per Figma) so the user can grab and rotate an element directly on the canvas. Writes `transform: rotate(<deg>deg)` (composing with any existing `transform`) through the same optimistic `apply-style` → `edit-css` lane resize uses; snap to 15° increments while Shift is held. The resize-handle geometry (Stage D `use-element-resize.tsx`) must account for the element's current rotation when placing the 8 resize handles (rotate the handle anchor points by the element's angle) so resize stays correct on a rotated element.
 - **Pattern**: `use-element-resize.tsx` (the overlay + rAF-follow + optimistic commit lane); the Stage-B `transform` knob already does rotate-via-text — this is the direct-manipulation counterpart. Read the element's current rotation from `authored.transform` / `computed.transform` (parse the `rotate()`/matrix).
