@@ -101,6 +101,7 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // unreachable on this origin), never 405 from a reached handler.
         '/_api/delete-element',
         '/_api/insert-element',
+        '/_api/duplicate-element',
         '/_api/insert-artboard',
         '/_api/resize-artboard',
         '/_api/delete-artboard',

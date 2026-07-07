@@ -8269,6 +8269,16 @@ function App() {
         if (e.source === activeWin && typeof m.id === 'string') {
           deleteElementShellRef.current?.(m.id, Number.isInteger(m.idIndex) ? m.idIndex : undefined);
         }
+      } else if (m.dgn === 'duplicate-request') {
+        // Cmd+D (Task L3) — duplicate the selected element. Confused-deputy gated
+        // + pinned to the active canvas, like the other structural verbs.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin && typeof m.id === 'string') {
+          duplicateElementShellRef.current?.(
+            m.id,
+            Number.isInteger(m.idIndex) ? m.idIndex : undefined
+          );
+        }
       } else if (m.dgn === 'insert-request') {
         // Stage I3 — insert a synthesized div/text/image relative to `refId`.
         const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
@@ -8991,6 +9001,23 @@ function App() {
     [structuralWrite]
   );
 
+  const duplicateElementShell = useCallback(
+    (id, idIndex) => {
+      structuralWrite(
+        '/_api/duplicate-element',
+        { id, idIndex: Number.isInteger(idIndex) ? idIndex : undefined },
+        {
+          label: 'duplicate element',
+          // Select the copy once the HMR reload lands (best-effort, like insert).
+          onOk: (j, canvas) => {
+            if (j.newId) pendingReorderRef.current = { file: canvas, movedId: j.newId, artboardId: null };
+          },
+        }
+      );
+    },
+    [structuralWrite]
+  );
+
   const insertArtboardShell = useCallback(
     ({ id, label, width, height }) => {
       structuralWrite(
@@ -9039,18 +9066,21 @@ function App() {
   const insertArtboardShellRef = useRef(null);
   const resizeArtboardShellRef = useRef(null);
   const deleteArtboardShellRef = useRef(null);
+  const duplicateElementShellRef = useRef(null);
   useEffect(() => {
     deleteElementShellRef.current = deleteElementShell;
     insertElementShellRef.current = insertElementShell;
     insertArtboardShellRef.current = insertArtboardShell;
     resizeArtboardShellRef.current = resizeArtboardShell;
     deleteArtboardShellRef.current = deleteArtboardShell;
+    duplicateElementShellRef.current = duplicateElementShell;
   }, [
     deleteElementShell,
     insertElementShell,
     insertArtboardShell,
     resizeArtboardShell,
     deleteArtboardShell,
+    duplicateElementShell,
   ]);
 
   // Shell-level Backspace/Delete guard. CRITICAL: in the Tauri desktop app, an

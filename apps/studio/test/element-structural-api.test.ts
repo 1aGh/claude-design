@@ -135,6 +135,37 @@ describe('POST /_api/insert-element', () => {
   });
 });
 
+describe('POST /_api/duplicate-element', () => {
+  test('duplicates an element as the next sibling, returns a new id, undo removes it', async () => {
+    const { designRoot, main, proc } = await boot();
+    const canvasPath = join(designRoot, 'ui', 'List.tsx');
+    try {
+      const [aId] = await divIdsByLine(main, designRoot);
+      const res = await fetch(`${main}/_api/duplicate-element`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', id: aId }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as { ok: boolean; newId: string | null; seq: number };
+      expect(json.ok).toBe(true);
+      expect(json.newId).toMatch(/^[0-9a-f]{8}$/);
+      // The first <div>A</div> is now duplicated → A, A, B, C.
+      expect(letters(readFileSync(canvasPath, 'utf8'))).toEqual(['A', 'A', 'B', 'C']);
+
+      // Undo removes the copy.
+      await fetch(`${main}/_api/reorder-revert`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', seq: json.seq, dir: 'undo' }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(letters(readFileSync(canvasPath, 'utf8'))).toEqual(['A', 'B', 'C']);
+    } finally {
+      await killProc(proc as never);
+    }
+  });
+});
+
 describe('POST /_api/insert-artboard + /_api/resize-artboard', () => {
   test('inserts an empty artboard, then resizes it via numeric props', async () => {
     const { designRoot, main, proc } = await boot();

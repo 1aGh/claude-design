@@ -14,6 +14,7 @@ import {
   type ClipInfo,
   deleteArtboard,
   deleteElement,
+  duplicateElement,
   type EditScope,
   editArrayElementString,
   editAttribute,
@@ -431,6 +432,14 @@ export interface Api {
     width?: unknown;
     height?: unknown;
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
+  /** Duplicate an element (Cmd+D) — a copy as the next sibling, whole-file undo. */
+  duplicateElementOp(input: {
+    canvas?: unknown;
+    id?: unknown;
+    idIndex?: unknown;
+  }): Promise<
+    { ok: true; newId: string | null; seq?: number } | { ok: false; status: number; error: string }
+  >;
   /** Delete an artboard by its `id` prop (whole-file undo seq). */
   deleteArtboardOp(input: {
     canvas?: unknown;
@@ -2503,6 +2512,50 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  /** Duplicate an element (Cmd+D) — insert a copy as the next sibling. */
+  async function duplicateElementOp(input: {
+    canvas?: unknown;
+    id?: unknown;
+    idIndex?: unknown;
+  }): Promise<
+    { ok: true; newId: string | null; seq?: number } | { ok: false; status: number; error: string }
+  > {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    if (!takeStructuralToken()) return RATE_LIMITED;
+    const id = typeof input.id === 'string' ? input.id.trim() : '';
+    if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid data-cd-id' };
+    const idIndex = Number.isInteger(input.idIndex) ? (input.idIndex as number) : undefined;
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      if (before.length > MAX_CANVAS_SOURCE) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: false, status: 413, error: 'canvas source too large to grow' };
+      }
+      const res = await duplicateElement(r.abs, id, idIndex);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true, newId: res.newId };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-duplicate-element');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true, newId: res.newId, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'duplicate failed',
+      };
+    }
+  }
+
   /** Delete an artboard by its `id` prop (Backspace / context-menu on a frame). */
   async function deleteArtboardOp(input: {
     canvas?: unknown;
@@ -3204,6 +3257,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     insertArtboardOp,
     resizeArtboardOp,
     deleteArtboardOp,
+    duplicateElementOp,
     editScopeOp,
     reorderRevert,
     buildIndexData,

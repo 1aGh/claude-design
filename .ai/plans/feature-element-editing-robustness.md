@@ -472,7 +472,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha**: this is also the **editor-accessibility** answer (the selection graph becomes mouse-free) — keep `aria` focus in sync. Don't collide with the existing `Tab` usage elsewhere; scope to when the canvas has focus + a selection.
 - **Validate**: select an element → Enter drills in, Shift+Enter goes up, Tab cycles siblings, Esc clears; keyboard-only round-trip works.
 
-#### Task L3: ADD duplicate (Cmd+D) + Alt-drag-duplicate + paste-in-place
+#### 🟡 Task L3: ADD duplicate (Cmd+D) + Alt-drag-duplicate + paste-in-place — Cmd+D + context-menu DONE; Alt-drag / paste-in-place REMAIN
 
 - **Do**: `Cmd/Ctrl+D` duplicates the selected element in place (slightly offset), `Alt`-drag drops an instant copy at the release point, and `Cmd/Ctrl+Shift+V` pastes a copied element at its original coordinates onto the selected frame (not nested). All three are **structural inserts** — reuse the Stage-I `insert-element` engine (clone the source JSX span, re-anchor) + its whole-file-snapshot undo.
 - **Gotcha**: duplicating a **shared-component instance** duplicates the `<Card/>` usage (artboard-local), consistent with the Stage-H scope model. Cross-canvas paste must resolve the asset/component imports or warn.

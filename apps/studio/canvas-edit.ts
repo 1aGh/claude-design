@@ -2815,6 +2815,89 @@ export async function insertElement(
   });
 }
 
+/**
+ * Duplicate the element with `data-cd-id === id` — insert a verbatim copy of its
+ * source as the next sibling (Cmd+D, Task L3). Since the SOURCE carries no
+ * data-cd-id (they're injected at transpile, not stored on disk), the clone gets
+ * a fresh positional id on the next transpile — no id collision. Reused-component
+ * instances resolve via resolveUsageId so the copy is the `<Card/>` USAGE
+ * (artboard-local), consistent with the Stage-H scope model.
+ */
+export function applyDuplicateElement(
+  canvasAbsPath: string,
+  source: string,
+  id: string,
+  occurrence?: number
+): { source: string; newId: string | null } {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id }
+    );
+  }
+  const targetId = resolveUsageId(parsed.program, id, occurrence);
+  const hit = findOpening(parsed.program, targetId);
+  if (!hit) {
+    throw new CanvasEditError(`data-cd-id "${targetId}" not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id: targetId,
+    });
+  }
+  const el = hit.element;
+  const elStart = el.start as number;
+  const elEnd = el.end as number;
+  // The clone is the element's own source, placed at the same indent as the next
+  // sibling (its internal lines are already indented relative to that level).
+  const cloneText = source.slice(elStart, elEnd);
+  const targetIndent = lineStartInfo(source, elStart).indent;
+  const insertText = `\n${targetIndent}${cloneText}`;
+  const s = new MagicString(source);
+  s.appendLeft(elEnd, insertText);
+  const out = s.toString();
+  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (check.errors && check.errors.length > 0) {
+    throw new CanvasEditError(
+      `duplicate would produce invalid source (${check.errors[0]?.message ?? 'parse error'}); aborted`,
+      { canvas: canvasAbsPath, id: targetId }
+    );
+  }
+  // Single append (no removes) → the copy's `<` lands at this exact offset.
+  const elemStart = elEnd + insertText.indexOf(cloneText);
+  let newId: string | null = null;
+  let fallback: string | null = null;
+  for (const { id: eid, node } of collectElements(check.program)) {
+    if ((node.start as number) === elemStart) {
+      newId = eid;
+      break;
+    }
+    if (out.slice(node.start as number, node.end as number) === cloneText) fallback = eid;
+  }
+  return { source: out, newId: newId ?? fallback };
+}
+
+/** Duplicate an element on disk (atomic write + cross-process lock). */
+export async function duplicateElement(
+  canvasAbsPath: string,
+  id: string,
+  occurrence?: number
+): Promise<{ source: string; newId: string | null }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, { canvas: canvasAbsPath, id });
+    }
+    const source = await file.text();
+    const next = applyDuplicateElement(canvasAbsPath, source, id, occurrence);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
 /** Collect every JSXElement whose opening tag is `tagName` (document order). */
 function collectJsxByTag(program: AnyNode, tagName: string): AnyNode[] {
   const out: AnyNode[] = [];

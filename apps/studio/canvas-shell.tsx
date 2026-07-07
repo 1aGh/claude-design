@@ -1457,6 +1457,20 @@ function buildRegistry(deps: {
       [exportItem('export-selection', 'Export selection…', 'selection', '⌘E')],
       [
         {
+          id: 'duplicate-element',
+          label: 'Duplicate',
+          shortcut: '⌘D',
+          // Task L3 — main-origin source duplicate; post to the parent shell.
+          onSelect: (target) => {
+            if (!target.cdId) return;
+            try {
+              window.parent.postMessage({ dgn: 'duplicate-request', id: target.cdId }, '*');
+            } catch {
+              /* detached / cross-origin */
+            }
+          },
+        },
+        {
           id: 'delete-element',
           label: 'Delete',
           shortcut: '⌫',

@@ -101,6 +101,25 @@ export function useKeyboardDiscipline(): void {
         return;
       }
 
+      // Cmd/Ctrl+D → duplicate the single selected element (Task L3). Main-origin
+      // write, so post to the parent shell (pinned to the active canvas + undo).
+      // preventDefault so the browser doesn't bookmark the page.
+      if (isMeta && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'd') {
+        const one = selSet.selected.length === 1 ? selSet.selected[0] : null;
+        if (one?.id) {
+          e.preventDefault();
+          try {
+            window.parent.postMessage(
+              { dgn: 'duplicate-request', id: one.id, idIndex: one.index },
+              '*'
+            );
+          } catch {
+            /* detached / cross-origin */
+          }
+        }
+        return;
+      }
+
       // Delete / Backspace → request a source delete of the single selected
       // element (feature-element-editing-robustness Stage I). The write is
       // main-origin-only (DDR-054), so we POST the request to the parent shell,

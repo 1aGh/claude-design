@@ -1845,6 +1845,33 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       );
     },
 
+    '/_api/duplicate-element': async (req: Request) => {
+      // Cmd+D (Task L3) — duplicate an element (a copy as the next sibling). POST
+      // { canvas, id, idIndex? } → api.duplicateElementOp. Whole-file undo seq.
+      // MAIN-ORIGIN ONLY; sameOriginWrite + loopback-Host gated (dual-allowlist).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{ canvas?: unknown; id?: unknown; idIndex?: unknown }>(
+        req,
+        8 * 1024
+      );
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.duplicateElementOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, newId: result.newId, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/insert-artboard': async (req: Request) => {
       // Stage I4 — insert a new EMPTY artboard from a screen-size preset. POST
       // { canvas, id, label, width, height } → api.insertArtboardOp (appends a
