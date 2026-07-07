@@ -209,6 +209,66 @@ describe('POST /_api/insert-artboard + /_api/resize-artboard', () => {
   });
 });
 
+describe('POST /_api/delete-artboard', () => {
+  test('deletes an artboard by id prop, refuses the last one, undo restores', async () => {
+    const { designRoot, main, proc } = await boot();
+    const canvasPath = join(designRoot, 'ui', 'List.tsx');
+    try {
+      await divIdsByLine(main, designRoot); // warm pipeline
+
+      // Deleting the only artboard is refused (a canvas needs ≥1).
+      const last = await fetch(`${main}/_api/delete-artboard`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', artboardId: 'home' }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(last.status).toBe(422);
+
+      // Add a second artboard, then delete it.
+      await fetch(`${main}/_api/insert-artboard`, {
+        method: 'POST',
+        body: JSON.stringify({
+          canvas: 'ui/List',
+          id: 'mobile',
+          label: 'M',
+          width: 390,
+          height: 844,
+        }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(readFileSync(canvasPath, 'utf8')).toContain('id="mobile"');
+
+      const del = await fetch(`${main}/_api/delete-artboard`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', artboardId: 'mobile' }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(del.status).toBe(200);
+      const delJson = (await del.json()) as { ok: boolean; seq: number };
+      expect(readFileSync(canvasPath, 'utf8')).not.toContain('id="mobile"');
+
+      // Undo restores the deleted artboard.
+      await fetch(`${main}/_api/reorder-revert`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', seq: delJson.seq, dir: 'undo' }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(readFileSync(canvasPath, 'utf8')).toContain('id="mobile"');
+
+      // Cross-origin delete is CSRF-rejected.
+      const forged = await fetch(`${main}/_api/delete-artboard`, {
+        method: 'POST',
+        headers: { origin: 'http://evil.example' },
+        body: JSON.stringify({ canvas: 'ui/List', artboardId: 'mobile' }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(forged.status).toBe(403);
+    } finally {
+      await killProc(proc as never);
+    }
+  });
+});
+
 // G3 security (DDR-152) — the structural-write disk-fill / silent-shred defenses
 // the adversarial review required: a per-api token bucket rate-caps the verbs,
 // and a source-size ceiling refuses a GROWTH op past MAX_CANVAS_SOURCE (a delete

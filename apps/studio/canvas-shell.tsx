@@ -1562,6 +1562,28 @@ function buildRegistry(deps: {
         },
       ],
       [themeItem],
+      [
+        {
+          id: 'delete-artboard',
+          label: 'Delete artboard',
+          shortcut: '⌫',
+          destructive: true,
+          // Main-origin-only source delete (DDR-054): post to the parent shell,
+          // which performs it (pinned to the active canvas) + records undo. The
+          // engine refuses to delete the last artboard.
+          onSelect: (target) => {
+            if (!target.artboardId) return;
+            try {
+              window.parent.postMessage(
+                { dgn: 'delete-artboard-request', artboardId: target.artboardId },
+                '*'
+              );
+            } catch {
+              /* detached / cross-origin */
+            }
+          },
+        },
+      ],
       [exportItem('export-artboard', 'Export this artboard…', 'artboard')],
     ],
     world: [

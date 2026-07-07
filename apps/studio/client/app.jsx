@@ -850,7 +850,6 @@ function AssetPicker({ designRel, onPick, onClose }) {
   const [assets, setAssets] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
-  const fileRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
@@ -874,8 +873,7 @@ function AssetPicker({ designRel, onPick, onClose }) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
 
-  const onUpload = async (e) => {
-    const f = e.target.files?.[0];
+  const doUpload = async (f) => {
     if (!f) return;
     setBusy(true);
     setErr(null);
@@ -895,8 +893,32 @@ function AssetPicker({ designRel, onPick, onClose }) {
       setErr('upload failed');
     } finally {
       setBusy(false);
-      if (fileRef.current) fileRef.current.value = '';
     }
+  };
+
+  // Imperative file picker — mirrors the proven replaceMediaViaPicker pattern.
+  // A React-rendered <input> (even off-screen) does NOT reliably present the
+  // native file panel inside the Tauri WKWebView; an input freshly created,
+  // appended to document.body, and clicked SYNCHRONOUSLY in the user gesture
+  // does (dogfood: "upload furt neotvira nativni panel"). Off-screen (not
+  // display:none) so WKWebView lays it out.
+  const openFilePicker = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,video/*';
+    input.style.cssText =
+      'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
+    document.body.appendChild(input);
+    const cleanup = () => {
+      if (input.isConnected) input.remove();
+    };
+    window.addEventListener('focus', () => setTimeout(cleanup, 300), { once: true });
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      cleanup();
+      if (file) doUpload(file);
+    });
+    input.click();
   };
 
   const assetUrl = (p) => `/${designRel}/${p}`;
@@ -918,33 +940,9 @@ function AssetPicker({ designRel, onPick, onClose }) {
         </div>
         <div className="st-dialog-bd">
           <div className="st-ap-toolbar">
-            <button
-              type="button"
-              className="st-btn"
-              onClick={() => fileRef.current?.click()}
-              disabled={busy}
-            >
+            <button type="button" className="st-btn" onClick={openFilePicker} disabled={busy}>
               {busy ? 'Uploading…' : 'Upload…'}
             </button>
-            {/* OFF-SCREEN, not `hidden`/display:none — the native desktop app
-                (Tauri WKWebView) won't present the file panel for a display:none
-                input; it must be laid out. Off-screen+transparent works in both
-                WKWebView and browsers. (dogfood: "upload tlačítko nefunguje".) */}
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*,video/*"
-              onChange={onUpload}
-              style={{
-                position: 'fixed',
-                left: '-9999px',
-                top: 0,
-                width: '1px',
-                height: '1px',
-                opacity: 0,
-                pointerEvents: 'none',
-              }}
-            />
             {err && <span className="st-ap-err">{err}</span>}
           </div>
           <div className="st-ap-grid">
@@ -5270,7 +5268,36 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
                 )}
                 {row('object-fit', csel('object-fit', CSS_OBJECT_FIT))}
                 {row('object-position', text('object-position'))}
-                {row('aspect-ratio', csel('aspect-ratio', CSS_ASPECT_RATIO))}
+                {row(
+                  'aspect-ratio',
+                  <select
+                    className="st-cp-nsel"
+                    aria-label="aspect-ratio"
+                    value={
+                      CSS_ASPECT_RATIO.includes(authored['aspect-ratio'])
+                        ? authored['aspect-ratio']
+                        : ''
+                    }
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      commit('aspect-ratio', v);
+                      // A fixed height overrides aspect-ratio (CSS: explicit
+                      // width+height win). When applying a real ratio, release the
+                      // height so the ratio actually reshapes the box (dogfood:
+                      // "nastavil jsem 16/9 a nic se nestalo").
+                      if (v && v !== 'auto' && authored.height) reset('height');
+                    }}
+                  >
+                    <option value="" disabled>
+                      {cssHint(computed['aspect-ratio']) || '—'}
+                    </option>
+                    {CSS_ASPECT_RATIO.map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </>
             )
           : null;
@@ -8294,6 +8321,12 @@ function App() {
             Number.isFinite(m.height) ? m.height : undefined
           );
         }
+      } else if (m.dgn === 'delete-artboard-request') {
+        // Backspace / context-menu delete of a whole artboard (by its id prop).
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin && typeof m.artboardId === 'string') {
+          deleteArtboardShellRef.current?.(m.artboardId);
+        }
       } else if (m.dgn === 'open-inspector') {
         // Phase 12 — context-menu "Inspect" / tool-palette Inspect opens the right panel.
         openRightPanel('inspector');
@@ -8966,17 +8999,32 @@ function App() {
     },
     [structuralWrite]
   );
+
+  const deleteArtboardShell = useCallback(
+    (artboardId) => {
+      structuralWrite('/_api/delete-artboard', { artboardId }, { label: 'delete artboard' });
+    },
+    [structuralWrite]
+  );
   // Refs the (stale-closure) onMessage handlers below read.
   const deleteElementShellRef = useRef(null);
   const insertElementShellRef = useRef(null);
   const insertArtboardShellRef = useRef(null);
   const resizeArtboardShellRef = useRef(null);
+  const deleteArtboardShellRef = useRef(null);
   useEffect(() => {
     deleteElementShellRef.current = deleteElementShell;
     insertElementShellRef.current = insertElementShell;
     insertArtboardShellRef.current = insertArtboardShell;
     resizeArtboardShellRef.current = resizeArtboardShell;
-  }, [deleteElementShell, insertElementShell, insertArtboardShell, resizeArtboardShell]);
+    deleteArtboardShellRef.current = deleteArtboardShell;
+  }, [
+    deleteElementShell,
+    insertElementShell,
+    insertArtboardShell,
+    resizeArtboardShell,
+    deleteArtboardShell,
+  ]);
 
   // feature-element-editing-robustness Stage F — AssetPicker request. `req` is
   // { purpose:'insert-image', refId, position, refIndex } (Insert ▸ Image) or

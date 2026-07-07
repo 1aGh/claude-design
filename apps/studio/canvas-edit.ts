@@ -2932,6 +2932,78 @@ export async function resizeArtboard(
   });
 }
 
+/**
+ * Delete the `<DCArtboard id="…">` whose `id` prop equals `artboardId` — the
+ * artboard counterpart of applyDeleteElement (an artboard is addressed by its id
+ * PROP, since the rendered `<article data-dc-screen>` has no data-cd-id; same
+ * convention as applyResizeArtboard). Removes the framed span + reparse-gates,
+ * and refuses to delete the LAST artboard (a canvas with zero artboards renders
+ * nothing). Whole-file-snapshot undo, like the other structural ops.
+ */
+export function applyDeleteArtboard(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string
+): { source: string } {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  const artboards = collectJsxByTag(parsed.program, 'DCArtboard');
+  if (artboards.length <= 1) {
+    throw new CanvasEditError('cannot delete the last artboard on the canvas', {
+      canvas: canvasAbsPath,
+      id: artboardId,
+    });
+  }
+  const target = artboards.find((a) => getStringAttr(a.openingElement, 'id') === artboardId);
+  if (!target) {
+    throw new CanvasEditError(`<DCArtboard id="${artboardId}"> not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id: artboardId,
+    });
+  }
+  const [rs, re] = spanWithFraming(source, target.start as number, target.end as number);
+  const s = new MagicString(source);
+  s.remove(rs, re);
+  const out = s.toString();
+  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (check.errors && check.errors.length > 0) {
+    throw new CanvasEditError(
+      `artboard delete produced invalid source (${check.errors[0]?.message ?? 'parse error'})`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  return { source: out };
+}
+
+/** Delete an artboard on disk (atomic write + cross-process lock). */
+export async function deleteArtboard(
+  canvasAbsPath: string,
+  artboardId: string
+): Promise<{ source: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: artboardId,
+      });
+    }
+    const source = await file.text();
+    const next = applyDeleteArtboard(canvasAbsPath, source, artboardId);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
 /** Artboard id must be a safe JSX-attribute identifier (no quotes/markup). */
 const ARTBOARD_ID_RE = /^[A-Za-z][\w-]*$/;
 

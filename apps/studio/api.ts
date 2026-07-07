@@ -12,6 +12,7 @@ import {
   assembleCompSource,
   CanvasEditError,
   type ClipInfo,
+  deleteArtboard,
   deleteElement,
   type EditScope,
   editArrayElementString,
@@ -429,6 +430,11 @@ export interface Api {
     artboardId?: unknown;
     width?: unknown;
     height?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
+  /** Delete an artboard by its `id` prop (whole-file undo seq). */
+  deleteArtboardOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
   /** Edit-scope verdict (local vs shared component instance) for the INV-3 badge. */
   editScopeOp(input: {
@@ -2497,6 +2503,44 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  /** Delete an artboard by its `id` prop (Backspace / context-menu on a frame). */
+  async function deleteArtboardOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    if (!takeStructuralToken()) return RATE_LIMITED;
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId.trim() : '';
+    if (!/^[A-Za-z][\w-]{0,63}$/.test(artboardId)) {
+      return { ok: false, status: 400, error: 'invalid artboard id' };
+    }
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      await deleteArtboard(r.abs, artboardId);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-delete-artboard');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'delete-artboard failed',
+      };
+    }
+  }
+
   /**
    * Edit-scope verdict for the INV-3 predictability badge (Stage H). READ-only —
    * parses the canvas + returns whether an edit to `id` is local or shared. No
@@ -3159,6 +3203,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     insertElementOp,
     insertArtboardOp,
     resizeArtboardOp,
+    deleteArtboardOp,
     editScopeOp,
     reorderRevert,
     buildIndexData,

@@ -1950,6 +1950,31 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       );
     },
 
+    '/_api/delete-artboard': async (req: Request) => {
+      // Delete an artboard by its `id` prop (Backspace / context-menu on a frame).
+      // POST { canvas, artboardId } → api.deleteArtboardOp (removes the
+      // <DCArtboard id="…"> span; refuses the last one). Whole-file undo seq.
+      // MAIN-ORIGIN ONLY; sameOriginWrite + loopback-Host gated (dual-allowlist).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{ canvas?: unknown; artboardId?: unknown }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.deleteArtboardOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/asset': async (req: Request) => {
       // Phase 23 / DDR-148 — binary media upload from the canvas (drag-drop /
       // paste). POST raw bytes → content-addressed write under

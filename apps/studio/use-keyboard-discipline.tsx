@@ -122,6 +122,18 @@ export function useKeyboardDiscipline(): void {
           } catch {
             /* detached / cross-origin */
           }
+        } else if (one?.artboardId && !one.id) {
+          // Whole-artboard delete — addressed by its `id` prop (no cd-id on the
+          // rendered <article>). Shell performs it main-origin-only + records undo.
+          e.preventDefault();
+          try {
+            window.parent.postMessage(
+              { dgn: 'delete-artboard-request', artboardId: one.artboardId },
+              '*'
+            );
+          } catch {
+            /* detached / cross-origin */
+          }
         }
         return;
       }
