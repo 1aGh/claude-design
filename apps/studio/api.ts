@@ -259,6 +259,8 @@ export interface Api {
   saveAnnotations(file: string, svg: string): Promise<boolean>;
   // Phase 23 — content-addressed binary image write (drag-drop / paste / picker)
   saveAsset(bytes: Uint8Array): Promise<SaveAssetResult>;
+  /** Stage F1 — list content-addressed image/video assets for the AssetPicker. */
+  listAssets(): Promise<{ ok: true; assets: AssetListing[] }>;
   /** DDR-148 — streaming variant for the HTTP route (100 MB video without a
    *  full in-RAM buffer). Sniffs + caps + content-addresses like saveAsset. */
   saveAssetFromStream(stream: ReadableStream<Uint8Array>): Promise<SaveAssetResult>;
@@ -538,6 +540,17 @@ export interface SaveAssetResult {
   error?: string;
   /** Relative `assets/<sha8>.<ext>` path on success. */
   path?: string;
+}
+
+/** Stage F1 — one media asset in the AssetPicker listing. */
+export interface AssetListing {
+  /** designRoot-relative path (`assets/<sha8>.<ext>`) — what a src/href uses. */
+  path: string;
+  name: string;
+  ext: string;
+  kind: 'image' | 'video';
+  size: number;
+  mtimeMs: number;
 }
 
 /** DDR-148 — media category, decides which per-file cap applies. */
@@ -1402,6 +1415,41 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   async function saveAsset(bytes: Uint8Array): Promise<SaveAssetResult> {
     if (!bytes || bytes.length === 0) return { ok: false, status: 400, error: 'empty body' };
     return saveAssetFromStream(new Response(bytes).body as ReadableStream<Uint8Array>);
+  }
+
+  // Stage F1 (feature-element-editing-robustness) — list the versioned content-
+  // addressed media under <designRoot>/assets/ for the AssetPicker (Replace
+  // image / insert image). Read-only; returns image + video assets only (never
+  // arbitrary files), newest first, capped. MAIN-ORIGIN ONLY at the route layer.
+  async function listAssets(): Promise<{ ok: true; assets: AssetListing[] }> {
+    const assetsDir = path.join(paths.designRoot, 'assets');
+    const IMG = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.svg']);
+    const VID = new Set(['.mp4', '.webm', '.mov', '.m4v', '.ogg']);
+    let entries: string[] = [];
+    try {
+      entries = await readdir(assetsDir);
+    } catch {
+      return { ok: true, assets: [] }; // no assets dir yet
+    }
+    const out: AssetListing[] = [];
+    for (const name of entries) {
+      const ext = path.extname(name).toLowerCase();
+      const kind = IMG.has(ext) ? 'image' : VID.has(ext) ? 'video' : null;
+      if (!kind) continue;
+      let size = 0;
+      let mtimeMs = 0;
+      try {
+        const st = await statp(path.join(assetsDir, name));
+        if (!st.isFile()) continue;
+        size = st.size;
+        mtimeMs = st.mtimeMs;
+      } catch {
+        continue;
+      }
+      out.push({ path: `assets/${name}`, name, ext: ext.slice(1), kind, size, mtimeMs });
+    }
+    out.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    return { ok: true, assets: out.slice(0, 500) };
   }
 
   // Phase 31 follow-up — persist an image pasted straight from the clipboard into
@@ -2994,6 +3042,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     loadAnnotations,
     saveAnnotations,
     saveAsset,
+    listAssets,
     saveAssetFromStream,
     saveChatAttachment,
     resolveChatAttachment,

@@ -361,19 +361,19 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 
 ### Stage F — Media swap/replace + framing
 
-#### Task F1: CREATE the `AssetPicker` dialog
+#### 🟡 Task F1: CREATE the `AssetPicker` dialog — DONE (list `/_api/assets` GET + upload); fetch-by-URL deferred (needs a host-allowlisted download route)
 
 - **Do**: New small dialog listing existing `assets/` (a `GET` that enumerates the content-addressed asset dir — add a read-only `/_api/assets` list route if none exists, `sameOriginWrite` N/A for GET but keep it main-origin), plus **upload** (reuse `POST /_api/asset`, `use-canvas-media-drop.tsx:171`) and **fetch-by-URL** (the `maude design fetch-asset` semantics from the `reference_canvas_images_download_first` memory — download local, reference flat `assets/<sha8>`). Returns a chosen `assets/<sha8>.<ext>` path.
 - **Gotcha**: Never hotlink — the CSP split origin blocks remote `<img>` (per memory `reference_canvas_images_download_first`); the picker must always resolve to a local `assets/` path.
 - **Validate**: open the picker, pick an existing asset + upload a new one + fetch a URL; each returns a valid local path.
 
-#### Task F2: ADD "Replace image/media…" for authored `<img>`/`<video>` (context menu + Media section)
+#### ✅ Task F2: ADD "Replace image/media…" for authored `<img>`/`<video>` (context menu + Media section) — DONE (context-menu "Replace image…" + Media-section "Replace…" button → `/_api/edit-attr` src + undo; I3 image-insert wired through the picker)
 
 - **Do**: Add a "Replace image…" entry to the element right-click menu (`canvas-shell.tsx:1323-1372`, alongside "Copy CSS"/"Inspect") and a "Replace" button in the Media knob section (Task B5), shown when the selection is an `<img>`/`<video>`. On pick, re-point `src` via `/_api/edit-attr` (`attr: 'src'`, value = the picked path) — the `editAttribute` src-replace path already exists (`canvas-edit.ts:1627`).
 - **Gotcha**: `edit-attr` writes a JSX attribute; a `src` that's a template expression (`src={foo}`) can't be safely string-replaced — detect and fall back to "edit with /design:edit" (mirror the `CssKnobs` `!editable` disabled state, `app.jsx:4524-4535`).
 - **Validate**: right-click an authored `<img>` → "Replace image…" → pick → the `src` in the `.tsx` updates, canvas re-renders, Cmd+Z reverts.
 
-#### Task F3: ADD "Replace…" for annotation `ImageStroke`/`MediaRefStroke`
+#### Task F3: ADD "Replace…" for annotation `ImageStroke`/`MediaRefStroke` — TODO (separate annotation-model path)
 
 - **Do**: Add the same "Replace…" entry to `AnnotationContextMenu` (`annotations-layer.tsx:3745-3816`), gated on an `ImageStroke`/`MediaRefStroke`. On pick, update the stroke's `href`/`src` through the annotation model (mirror `createImageFromFile`'s href-swap, `:1114-1160`) — **not** `edit-css` (annotation images have no `data-cd-id`).
 - **Gotcha**: This rides the annotation write path, not the source-write routes — keep the two clearly separated (research flagged this as the exact fault line between the three media representations).
@@ -419,7 +419,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha**: `Delete` must NOT fire while an inline text edit or a form input is focused; reuse the keyboard-discipline guard (`use-keyboard-discipline.tsx`).
 - **Validate**: select an element → press Delete → it's removed → Cmd+Z restores it exactly (whole-file snapshot). Delete a shared instance → only that instance goes.
 
-#### 🟡 Task I3: CREATE the `insert-element` source op + route + palette — engine + route + shell + context-menu Div/Text DONE; image (needs Stage-F AssetPicker) + tool-palette place-mode REMAINING
+#### 🟡 Task I3: CREATE the `insert-element` source op + route + palette — engine + route + shell + context-menu Div/Text/Image (image via AssetPicker) DONE; tool-palette place-mode REMAINING
 
 - **Do**: In `canvas-edit.ts`, add `applyInsertElement(source, refId, position, kind)` where `kind ∈ {div, text, image}`: synthesize a minimal JSX string (`<div style={{…}} />`, `<p>Text</p>`, `<img src="assets/…"/>`) **without** `data-cd-id` (the pipeline stamps it on next transpile — `canvas-pipeline.ts:161-174`), placed at `refId`+`position` (`before`/`after`/`inside-start`/`inside-end`) using `moveElement`'s indentation helpers (`:574-597`, `:864-898`); `appendLeft` + reparse gate + return the new element's post-transpile id. Add `POST /_api/insert-element` (whole-file snapshot undo, same as delete). Add an insert affordance to `tool-palette.tsx` (a "+ Element" menu: Div / Text / Image) that, on click, enters a place-mode (click an artboard/element to choose the insertion anchor) or appends to the active artboard.
 - **Pattern**: `applyInsertClip` (`canvas-edit.ts:2282-2401`) is the insert template; `tool-palette.tsx` is the palette host (but this writes canvas **source**, not the annotation layer — keep the boundary explicit in a comment).

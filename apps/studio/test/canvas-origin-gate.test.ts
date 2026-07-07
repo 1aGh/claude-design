@@ -103,6 +103,9 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/insert-element',
         '/_api/insert-artboard',
         '/_api/resize-artboard',
+        // Stage F1 — the AssetPicker's asset-listing GET is a shell (main-origin)
+        // concern; the untrusted canvas iframe must not enumerate project media.
+        '/_api/assets',
         // Phase 27 (E2) — every /_api/git/* route is MAIN-ORIGIN ONLY: absent from
         // CANVAS_SAFE_API + startCanvasServer's `routes` map. A GET from the
         // canvas origin must 403 at the gate (not 405 from a reached handler),

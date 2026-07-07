@@ -839,6 +839,132 @@ const PNG_SCALES = [
   { value: 3, label: '3× (max)' },
 ];
 
+// feature-element-editing-robustness Stage F1 — AssetPicker. A shell modal that
+// lists the versioned content-addressed media under <designRoot>/assets/ (via the
+// main-origin-only GET /_api/assets) and lets the user pick one — or upload a new
+// file (POST /_api/asset, content-addressed) — for a media Replace / image
+// Insert. Thumbnails load from the main origin's designRoot static serve
+// (/${designRel}/${asset.path}); never a remote hotlink (the CSP split origin
+// blocks those — memory reference_canvas_images_download_first).
+function AssetPicker({ designRel, onPick, onClose }) {
+  const [assets, setAssets] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const fileRef = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/_api/assets')
+      .then((r) => r.json())
+      .then((j) => alive && setAssets(j.ok ? j.assets : []))
+      .catch(() => alive && setAssets([]));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+
+  const onUpload = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch('/_api/asset', {
+        method: 'POST',
+        headers: { 'content-type': f.type || 'application/octet-stream' },
+        body: f,
+      });
+      const j = await res.json().catch(() => ({}));
+      if (j.ok && j.path) {
+        onPick(j.path);
+        return;
+      }
+      setErr(j.error || 'upload failed');
+    } catch {
+      setErr('upload failed');
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const assetUrl = (p) => `/${designRel}/${p}`;
+
+  return (
+    <div
+      className="st-scrim"
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="st-dialog st-asset-picker" role="dialog" aria-modal="true" aria-label="Choose media">
+        <div className="st-dialog-hd">
+          <span className="st-dialog-title">Choose media</span>
+          <button type="button" className="st-iconbtn" aria-label="Close" onClick={onClose}>
+            <StIcon name="x" size={15} />
+          </button>
+        </div>
+        <div className="st-dialog-bd">
+          <div className="st-ap-toolbar">
+            <button
+              type="button"
+              className="st-btn"
+              onClick={() => fileRef.current?.click()}
+              disabled={busy}
+            >
+              {busy ? 'Uploading…' : 'Upload…'}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,video/*"
+              hidden
+              onChange={onUpload}
+            />
+            {err && <span className="st-ap-err">{err}</span>}
+          </div>
+          <div className="st-ap-grid">
+            {assets == null ? (
+              <div className="st-ap-empty">Loading…</div>
+            ) : assets.length === 0 ? (
+              <div className="st-ap-empty">No assets yet — upload one.</div>
+            ) : (
+              assets.map((a) => (
+                <button
+                  type="button"
+                  key={a.path}
+                  className="st-ap-cell"
+                  title={`${a.name} · ${Math.max(1, Math.round(a.size / 1024))} KB`}
+                  onClick={() => onPick(a.path)}
+                >
+                  {a.kind === 'video' ? (
+                    <video className="st-ap-thumb" src={assetUrl(a.path)} muted playsInline />
+                  ) : (
+                    <img className="st-ap-thumb" src={assetUrl(a.path)} alt={a.name} loading="lazy" />
+                  )}
+                  <span className="st-ap-name">{a.name}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ExportDialog({
   mode,
   initialScope,
@@ -4296,7 +4422,7 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex,
   );
 }
 
-function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onUndoRedo }) {
+function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoRedo }) {
   const editable = !!el.id;
   const computed = el.computed || {};
   // Phase 12.3 — optimistic local overlay over the selection's authored / custom
@@ -5084,10 +5210,25 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onUndoRedo }) {
           !!authored['object-fit'] ||
           !!authored['object-position'] ||
           !!authored['aspect-ratio'];
+        // Stage F2 — "Replace…" opens the AssetPicker to re-point src (authored
+        // <img>/<video> only; a template-expression src can't be string-swapped,
+        // so gate on a real src attr being present).
+        const canReplace = (t === 'img' || t === 'video') && !!el.attrs?.src && !!onReplaceMedia;
         return showMedia
           ? sec(
               'Media',
               <>
+                {canReplace && (
+                  <div className="st-cp-row">
+                    <button
+                      type="button"
+                      className="st-btn st-cp-replace"
+                      onClick={() => onReplaceMedia(el)}
+                    >
+                      Replace…
+                    </button>
+                  </div>
+                )}
                 {row('object-fit', csel('object-fit', CSS_OBJECT_FIT))}
                 {row('object-position', text('object-position'))}
                 {row('aspect-ratio', text('aspect-ratio'))}
@@ -5649,6 +5790,7 @@ function InspectorPanel({
   cfg,
   onOptimistic,
   onRecordEdit,
+  onReplaceMedia,
   onUndoRedo,
   tab: tabProp,
   onTabChange,
@@ -6121,6 +6263,7 @@ function InspectorPanel({
             cfg={cfg}
             onOptimistic={onOptimistic}
             onRecordEdit={onRecordEdit}
+            onReplaceMedia={onReplaceMedia}
             onUndoRedo={onUndoRedo}
           />
         )}
@@ -7999,6 +8142,38 @@ function App() {
             refIndex: Number.isInteger(m.refIndex) ? m.refIndex : undefined,
           });
         }
+      } else if (m.dgn === 'insert-image-request') {
+        // Stage F/I3 — "Insert ▸ Image" from the canvas context menu. An image
+        // needs a contained asset src, so the shell opens the AssetPicker; the
+        // pick then drives insertElementShell(kind:'image'). Confused-deputy
+        // gated + pinned to the active canvas like the other request verbs.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        const okShape =
+          typeof m.refId === 'string' &&
+          (m.position === 'before' ||
+            m.position === 'after' ||
+            m.position === 'inside-start' ||
+            m.position === 'inside-end');
+        if (e.source === activeWin && okShape) {
+          openAssetPickerRef.current?.({
+            purpose: 'insert-image',
+            refId: m.refId,
+            position: m.position,
+            refIndex: Number.isInteger(m.refIndex) ? m.refIndex : undefined,
+          });
+        }
+      } else if (m.dgn === 'replace-media-request') {
+        // Stage F2 — "Replace image…" from the canvas context menu. Opens the
+        // AssetPicker in replace mode; the pick re-points src via edit-attr. The
+        // context menu supplies the current src as the undo before-value.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin && typeof m.id === 'string') {
+          openAssetPickerRef.current?.({
+            purpose: 'replace-src',
+            id: m.id,
+            before: typeof m.before === 'string' ? m.before : null,
+          });
+        }
       } else if (m.dgn === 'insert-artboard-request') {
         // Stage I4 — insert a new empty artboard from a screen-size preset.
         const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
@@ -8693,6 +8868,71 @@ function App() {
     resizeArtboardShellRef.current = resizeArtboardShell;
   }, [deleteElementShell, insertElementShell, insertArtboardShell, resizeArtboardShell]);
 
+  // feature-element-editing-robustness Stage F — AssetPicker request. `req` is
+  // { purpose:'insert-image', refId, position, refIndex } (Insert ▸ Image) or
+  // { purpose:'replace-src', id, before } (Media-section "Replace…"). null = closed.
+  const [assetPickerReq, setAssetPickerReq] = useState(null);
+  const openAssetPickerRef = useRef(null);
+  useEffect(() => {
+    openAssetPickerRef.current = (req) => setAssetPickerReq(req);
+  }, []);
+  const onAssetPicked = useCallback(
+    (pickedPath) => {
+      const req = assetPickerReq;
+      setAssetPickerReq(null);
+      if (!req || !pickedPath) return;
+      if (req.purpose === 'insert-image') {
+        insertElementShell(req.refId, req.position || 'after', 'image', {
+          src: pickedPath,
+          refIndex: req.refIndex,
+        });
+        return;
+      }
+      if (req.purpose === 'replace-src') {
+        // Re-point an authored <img>/<video> src via /_api/edit-attr (+ undo).
+        const canvas = activePath;
+        if (!canvas || !req.id) return;
+        editApplyChainRef.current = editApplyChainRef.current
+          .catch(() => {})
+          .then(() =>
+            fetch('/_api/edit-attr', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ canvas, id: req.id, attr: 'src', value: pickedPath }),
+            })
+              .then((r) => r.json().catch(() => ({})))
+              .then((j) => {
+                if (j.ok) {
+                  recordSourceEdit({
+                    op: 'attr',
+                    canvas,
+                    id: req.id,
+                    key: 'src',
+                    before: req.before ?? null,
+                    after: pickedPath,
+                  });
+                } else {
+                  console.warn('[replace-src]', j.error || 'failed');
+                }
+              })
+              .catch(() => {})
+          );
+      }
+    },
+    [assetPickerReq, insertElementShell, activePath, recordSourceEdit]
+  );
+  // Media-section "Replace…" (CssKnobs) → open the picker in replace mode with
+  // the element's current src as the undo before-value (captured from the
+  // Selection's `attrs.src`, not the resolved URL).
+  const onReplaceMedia = useCallback((elSel) => {
+    if (!elSel?.id) return;
+    setAssetPickerReq({
+      purpose: 'replace-src',
+      id: elSel.id,
+      before: elSel.attrs?.src ?? null,
+    });
+  }, []);
+
   const resolveComment = useCallback((id) => {
     wsSend({ type: 'comments-patch', id, patch: { status: 'resolved' } });
   }, []);
@@ -9321,6 +9561,7 @@ function App() {
               onClose={() => setInspectorOpen(false)}
               onOptimistic={applyOptimisticStyle}
               onRecordEdit={recordSourceEdit}
+              onReplaceMedia={onReplaceMedia}
               onUndoRedo={(dir) => postToActiveCanvas({ dgn: dir })}
               layersTree={layersTree}
               canvasFile={activePath}
@@ -9776,6 +10017,13 @@ function App() {
           activeArtboardId={selected?.artboardId ?? canvasActiveArtboard ?? null}
           selection={selected?.selector ? { selector: selected.selector, file: selected.file } : null}
           onClose={() => setExportDialog(null)}
+        />
+      )}
+      {assetPickerReq && (
+        <AssetPicker
+          designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}
+          onPick={onAssetPicked}
+          onClose={() => setAssetPickerReq(null)}
         />
       )}
       {diffTarget && (

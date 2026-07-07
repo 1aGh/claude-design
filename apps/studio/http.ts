@@ -1877,6 +1877,23 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       );
     },
 
+    '/_api/assets': async (req: Request) => {
+      // Stage F1 (feature-element-editing-robustness) — list content-addressed
+      // image/video assets under <designRoot>/assets/ for the AssetPicker (Replace
+      // image / insert image). GET → { assets:[{path,name,ext,kind,size,mtimeMs}] }.
+      // MAIN-ORIGIN ONLY: the picker is a shell dialog; absent from CANVAS_SAFE_API
+      // + startCanvasServer routes (dual-allowlist, DDR-054). Loopback-Host gated
+      // (DNS-rebinding); read-only, so no sameOriginWrite (GET).
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const r = await api.listAssets();
+      return Response.json(
+        { ok: true, assets: r.assets },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/resize-artboard': async (req: Request) => {
       // Stage D4 — free-hand artboard resize. POST { canvas, artboardId, width?,
       // height? } → api.resizeArtboardOp (writes the NUMERIC width/height props on

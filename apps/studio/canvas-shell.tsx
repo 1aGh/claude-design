@@ -1410,8 +1410,48 @@ function buildRegistry(deps: {
                 }
               },
             },
+            {
+              id: 'insert-image',
+              label: 'Image…',
+              // Image needs a contained asset src — the shell opens the AssetPicker.
+              onSelect: (target) => {
+                if (!target.cdId) return;
+                try {
+                  window.parent.postMessage(
+                    { dgn: 'insert-image-request', refId: target.cdId, position: 'after' },
+                    '*'
+                  );
+                } catch {
+                  /* detached */
+                }
+              },
+            },
           ],
           onSelect: () => {},
+        },
+        {
+          id: 'replace-media',
+          label: 'Replace image…',
+          // Stage F2 — re-point an authored <img>/<video> src. Only meaningful on
+          // a media element; on anything else it's a no-op (the shell's edit-attr
+          // will refuse a non-media / expression src). The Media inspector section
+          // carries the primary, always-gated "Replace…" button.
+          onSelect: (target) => {
+            const tag = target.el?.tagName?.toLowerCase();
+            if (!target.cdId || (tag !== 'img' && tag !== 'video')) return;
+            // Read the authored src straight off the element so the shell has the
+            // undo before-value (getAttribute is the literal content attr, not the
+            // resolved URL).
+            const before = target.el?.getAttribute('src') ?? null;
+            try {
+              window.parent.postMessage(
+                { dgn: 'replace-media-request', id: target.cdId, before },
+                '*'
+              );
+            } catch {
+              /* detached */
+            }
+          },
         },
       ],
       [exportItem('export-selection', 'Export selection…', 'selection', '⌘E')],
