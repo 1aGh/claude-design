@@ -148,6 +148,60 @@ export function useKeyboardDiscipline(): void {
         return;
       }
 
+      // Keyboard tree traversal (Task L2) — Enter = first child, Shift+Enter =
+      // parent, Tab / Shift+Tab = next / previous sibling. Mouse-free selection of
+      // the deeply-nested / overlapping elements the plan's predictability goal is
+      // about. Scoped to a single element selection + no meta modifier.
+      if (!isMeta && !e.altKey && (e.key === 'Enter' || e.key === 'Tab')) {
+        const one = selSet.selected.length === 1 ? selSet.selected[0] : null;
+        if (!one?.id) return;
+        const el = resolveSelectionEl(document, one) as HTMLElement | null;
+        if (!el) return;
+        let next: Element | null = null;
+        if (e.key === 'Enter' && !e.shiftKey) {
+          next = el.querySelector('[data-cd-id]'); // first descendant
+        } else if (e.key === 'Enter' && e.shiftKey) {
+          next = el.parentElement?.closest('[data-cd-id]') ?? null; // parent
+        } else if (e.key === 'Tab') {
+          // Next / previous stamped sibling in document order.
+          const forward = !e.shiftKey;
+          let s: Element | null = forward ? el.nextElementSibling : el.previousElementSibling;
+          while (s) {
+            if (s.hasAttribute('data-cd-id')) {
+              next = s;
+              break;
+            }
+            const inner = s.querySelector('[data-cd-id]');
+            if (inner) {
+              next = inner;
+              break;
+            }
+            s = forward ? s.nextElementSibling : s.previousElementSibling;
+          }
+        }
+        // Don't leave the artboard body (a parent hop past the artboard root).
+        if (next?.closest('.dc-artboard-body') && next.getAttribute('data-cd-id')) {
+          e.preventDefault();
+          const cdId = next.getAttribute('data-cd-id') as string;
+          const artboardId =
+            next.closest('[data-dc-screen]')?.getAttribute('data-dc-screen') ?? null;
+          const sel = scopedCdSelector(cdId, artboardId);
+          selSet.replace([
+            {
+              id: cdId,
+              selector: sel,
+              artboardId,
+              index: selectorIndex(document, sel, next),
+              tag: next.tagName.toLowerCase(),
+            },
+          ]);
+        } else if (e.key === 'Tab') {
+          // Swallow Tab even with no target, so focus doesn't jump out of the canvas.
+          e.preventDefault();
+        }
+        return;
+      }
+
       // Delete / Backspace → request a source delete of the single selected
       // element (feature-element-editing-robustness Stage I). The write is
       // main-origin-only (DDR-054), so we POST the request to the parent shell,

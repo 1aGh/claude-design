@@ -466,7 +466,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha**: bail when a text input / `contenteditable` is focused (the guard already exists in the hook). For in-flow elements without `position`, nudge is ambiguous — either no-op with a hint or nudge via `margin` (decide during impl; prefer no-op + hint to avoid surprising layout shifts).
 - **Validate**: select an element → Arrow moves 1px, Shift+Arrow 10px, Cmd+Z reverts; artboard nudge still works.
 
-#### Task L2: ADD keyboard selection traversal (parent / child / sibling)
+#### ✅ Task L2: ADD keyboard selection traversal (parent / child / sibling) — DONE (Enter/Shift+Enter/Tab/Shift+Tab; live verify pending dogfood)
 
 - **Do**: Map DOM tree navigation to keys, mirroring Figma/Webflow: `Enter` = select first child, `Shift+Enter` (or `↑` per Webflow) = select parent, `Tab`/`Shift+Tab` (or `←`/`→`) = next/previous sibling, `Esc` = deselect. Resolve relatives from the selected element's DOM node + the Layers tree (`serializeArtboardTree`, `canvas-shell.tsx:431-459`) and reuse the `select-by-id` path (camera-aware after Stage A).
 - **Gotcha**: this is also the **editor-accessibility** answer (the selection graph becomes mouse-free) — keep `aria` focus in sync. Don't collide with the existing `Tab` usage elsewhere; scope to when the canvas has focus + a selection.
