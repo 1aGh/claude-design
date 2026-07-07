@@ -333,7 +333,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha (scope)**: if the resized element is inside a reusable component, `width`/`height` written via `edit-css` change **all instances** (Stage H). For a resize on a component **instance**, route through the occurrence-index resolver per Stage H so it stays local; otherwise show the Stage-H "affects N instances" confirm. Do **not** ship resize before Stage H's scope surfacing.
 - **Validate**: resize an absolute element from its top-left corner; confirm width/height/left/top all persist to the `.tsx`, one coherent render, Cmd+Z reverts.
 
-#### 🟡 Task D4: ADD free-hand artboard resize — numeric-attr engine (`applyResizeArtboard`) + `/_api/resize-artboard` route + shell + undo + tests DONE; ElementResizeOverlay artboard-scope extension REMAINING
+#### ✅ Task D4: ADD free-hand artboard resize — DONE 2026-07-07 (numeric-attr engine + route + shell + undo + tests + `ElementResizeOverlay` artboard-scope extension, growth-only E/S/SE handles)
 
 - **Do**: Extend the resize-handle overlay to the **artboard** scope: when an artboard frame (`[data-dc-screen]`) is the active selection, render the 8 handles around the artboard and, on drag, write the new `width`/`height` **props** on the `<DCArtboard>` element via `/_api/edit-attr` (per DDR-027 artboard size is JSX-authoritative, not a `layout` field). Reuse `use-element-resize`'s geometry + `use-artboard-drag.tsx`'s screen-delta÷zoom math; compose with the existing artboard chrome-drag (a handle pointerdown claims resize, the chrome body still moves).
 - **Pattern**: `DCArtboard` `width`/`height` authoring (`canvas-lib.tsx:1763-1912`, `scaffold-design.ts:36`); artboard drag (`use-artboard-drag.tsx`).

@@ -256,6 +256,11 @@ interface ElResizeDrag {
    *  reused component the server maps it to the dragged instance's `<Component/>`
    *  usage so resizing one instance stays local; 0 for a normal element. */
   idIndex: number;
+  /** Stage D4 — set when this drag targets a whole ARTBOARD frame (`[data-dc-
+   *  screen]`, no data-cd-id) instead of a canvas element. Commits via
+   *  `resize-artboard-request` (numeric width/height PROPS, DDR-027) instead of
+   *  `resize-request`. Null for an ordinary element drag. */
+  artboardId: string | null;
   startClientX: number;
   startClientY: number;
   elZoom: number; // rect.width / offsetWidth — the element's own render scale
@@ -301,6 +306,27 @@ function postResizeRequest(drag: ElResizeDrag, r: ElResizeResult): void {
   }
 }
 
+/** Stage D4 — post a committed ARTBOARD resize. `width`/`height` are plain
+ *  NUMBERS (world px, not px strings) — the shell writes them as numeric JSX
+ *  attrs via `/_api/resize-artboard` (DDR-027: artboard size is JSX-authoritative,
+ *  not inline style). Never carries left/top — see the `artboardId` doc above. */
+function postResizeArtboardRequest(drag: ElResizeDrag, r: ElResizeResult): void {
+  if (!drag.artboardId) return;
+  try {
+    window.parent.postMessage(
+      {
+        dgn: 'resize-artboard-request',
+        artboardId: drag.artboardId,
+        width: r.width,
+        height: r.height,
+      },
+      '*'
+    );
+  } catch {
+    /* detached / cross-origin teardown */
+  }
+}
+
 /** Post a committed rotate (Task L8) — a `transform` patch on the same lane. */
 function postRotateRequest(drag: ElResizeDrag, transform: string): void {
   try {
@@ -333,8 +359,12 @@ export function ElementResizeOverlay(): ReactNode {
 
   const one = selected.length === 1 ? selected[0] : null;
   const cdId = one && typeof one.id === 'string' ? one.id : null;
-  // Only a real element selection with the move tool active gets handles.
-  const active = tool === 'move' && !!cdId;
+  // Stage D4 — a whole-ARTBOARD selection (chrome click: no data-cd-id, just the
+  // `data-dc-screen` host) also gets handles, restricted to E/S/SE (growth-only —
+  // see the `artboardId` doc on ElResizeDrag for why left/top never move).
+  const artboardOnly = one && !cdId && typeof one.artboardId === 'string' ? one.artboardId : null;
+  // A real element OR artboard selection with the move tool active gets handles.
+  const active = tool === 'move' && (!!cdId || !!artboardOnly);
 
   // rAF loop — follow the selected element's screen box (pan/zoom + layout).
   useEffect(() => {
@@ -362,8 +392,11 @@ export function ElementResizeOverlay(): ReactNode {
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
-      // 8 resize handles + 4 corner rotate zones.
-      const TOTAL = EL_RESIZE_CORNERS.length + 4;
+      // Stage D4 — an artboard gets growth-only handles (E/S/SE) and NO rotate
+      // zones (artboards don't rotate); an element gets the full 8 + 4 rotate set.
+      const resizeCorners: ElResizeCorner[] = artboardOnly ? ['e', 's', 'se'] : EL_RESIZE_CORNERS;
+      const rotateZones: RotCorner[] = artboardOnly ? [] : ['rot-nw', 'rot-ne', 'rot-sw', 'rot-se'];
+      const TOTAL = resizeCorners.length + rotateZones.length;
       while (c.children.length < TOTAL) c.appendChild(document.createElement('div'));
       while (c.children.length > TOTAL) c.lastChild && c.removeChild(c.lastChild);
 
@@ -396,7 +429,7 @@ export function ElementResizeOverlay(): ReactNode {
       };
       // Rotate zones FIRST (lower in the DOM / z-index 5), corners LAST so the
       // 8×8 squares paint on top in the overlap.
-      const handles = ['rot-nw', 'rot-ne', 'rot-sw', 'rot-se', ...EL_RESIZE_CORNERS];
+      const handles = [...rotateZones, ...resizeCorners];
       for (let i = 0; i < handles.length; i++) {
         const corner = handles[i];
         const handle = c.children[i] as HTMLElement;
@@ -423,7 +456,7 @@ export function ElementResizeOverlay(): ReactNode {
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
-  }, [active, one]);
+  }, [active, one, artboardOnly]);
 
   // Live-apply a resize result to the element's inline style (instant preview,
   // no source write). Commit on release.
@@ -454,7 +487,10 @@ export function ElementResizeOverlay(): ReactNode {
         d.start,
         ldx / d.elZoom,
         ldy / d.elZoom,
-        { aspect: !!ev.shiftKey, center: !!ev.altKey },
+        // Stage D4 — Alt/center is ignored for an artboard: without a left/top
+        // write, "center" would just double the growth speed with no visual
+        // recentering (confusing). Aspect-lock (Shift) still applies to both.
+        { aspect: !!ev.shiftKey, center: !d.artboardId && !!ev.altKey },
         d.flags
       );
     };
@@ -463,7 +499,10 @@ export function ElementResizeOverlay(): ReactNode {
       const t = e.target as HTMLElement | null;
       if (!t?.classList.contains('dc-el-resize-handle')) return;
       const corner = t.dataset.corner as ElResizeCorner | RotCorner | undefined;
-      if (!corner || !one || typeof one.id !== 'string') return;
+      if (!corner || !one) return;
+      const elCdId = typeof one.id === 'string' ? one.id : null;
+      const elArtboardId = !elCdId && typeof one.artboardId === 'string' ? one.artboardId : null;
+      if (!elCdId && !elArtboardId) return;
       const el = resolveSelectionEl(document, one) as HTMLElement | null;
       if (!el) return;
       e.preventDefault();
@@ -471,10 +510,16 @@ export function ElementResizeOverlay(): ReactNode {
       const rect = el.getBoundingClientRect();
       const elZoom = el.offsetWidth ? rect.width / el.offsetWidth : 1;
       const cs = getComputedStyle(el);
-      const outOfFlow = cs.position === 'absolute' || cs.position === 'fixed';
-      const startLeft = Number.parseFloat(el.style.left);
-      const startTop = Number.parseFloat(el.style.top);
-      const angle = rotationDegFromMatrix(cs.transform);
+      // Stage D4 — an artboard NEVER derives left/top from a resize drag (the
+      // route only writes width/height PROPS; layout.artboards[] x/y stays
+      // untouched — see the plan's Task D4 gotcha). Forcing outOfFlow=false here
+      // (even though an artboard IS position:absolute in the DOM) is what makes
+      // `flags.canMoveLeft/Top` false below; the growth-only E/S/SE handle set
+      // rendered above is the visual half of the same guarantee.
+      const outOfFlow = !elArtboardId && (cs.position === 'absolute' || cs.position === 'fixed');
+      const startLeft = elArtboardId ? Number.NaN : Number.parseFloat(el.style.left);
+      const startTop = elArtboardId ? Number.NaN : Number.parseFloat(el.style.top);
+      const angle = elArtboardId ? 0 : rotationDegFromMatrix(cs.transform);
       const z = elZoom > 0 ? elZoom : 1;
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
@@ -482,10 +527,12 @@ export function ElementResizeOverlay(): ReactNode {
         pointerId: e.pointerId,
         corner,
         el,
-        cdId: one.id,
+        cdId: elCdId ?? '',
+        artboardId: elArtboardId,
         // Stage H3 — which instance (global same-cd-id DOM occurrence) so a
         // reused-component resize routes to its own `<Component/>` usage (local).
-        idIndex: globalCdOccurrence(document, one.id, el),
+        // N/A (0) for an artboard drag.
+        idIndex: elCdId ? globalCdOccurrence(document, elCdId, el) : 0,
         startClientX: e.clientX,
         startClientY: e.clientY,
         elZoom: z,
@@ -564,13 +611,17 @@ export function ElementResizeOverlay(): ReactNode {
         (typeof r.top === 'number' && `${r.top}px` !== d.before.top);
       if (!changed) return;
       lastCommitRef.current = { el: d.el, before: d.before };
-      postResizeRequest(d, r);
+      if (d.artboardId) postResizeArtboardRequest(d, r);
+      else postResizeRequest(d, r);
     };
 
     // Restore the pre-drag inline box if the shell reports the write failed.
+    // `resize-artboard-failed` (Stage D4) shares the same restore shape — an
+    // artboard drag's `before` never carries left/top (canMoveLeft/Top forced
+    // false), so the width/height-only branch below is already correct for it.
     const onFail = (e: MessageEvent) => {
       const m = e.data as { dgn?: string } | null;
-      if (m?.dgn !== 'resize-failed') return;
+      if (m?.dgn !== 'resize-failed' && m?.dgn !== 'resize-artboard-failed') return;
       if (e.source !== window.parent) return; // only the parent shell (DDR-054)
       const last = lastCommitRef.current;
       if (!last) return;

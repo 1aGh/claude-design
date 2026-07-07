@@ -9077,7 +9077,7 @@ function App() {
   // inverse descriptor goes stale (same reason reorder uses the server seq log).
   const structuralWriteRef = useRef(null);
   const structuralWrite = useCallback(
-    (route, body, { label, onOk } = {}) => {
+    (route, body, { label, onOk, onFail } = {}) => {
       if (!activePath) return;
       const canvas = activePath;
       editApplyChainRef.current = editApplyChainRef.current
@@ -9092,6 +9092,7 @@ function App() {
             .then((j) => {
               if (!j.ok) {
                 console.warn(`[${route}]`, j.error || 'failed');
+                onFail?.(j);
                 return;
               }
               if (typeof j.seq === 'number') {
@@ -9102,7 +9103,7 @@ function App() {
               }
               onOk?.(j, canvas);
             })
-            .catch(() => {})
+            .catch((err) => onFail?.({ error: err?.message }))
         );
     },
     [activePath, postToActiveCanvas]
@@ -9266,10 +9267,16 @@ function App() {
       structuralWrite(
         '/_api/resize-artboard',
         { artboardId, width, height },
-        { label: 'resize artboard' }
+        {
+          label: 'resize artboard',
+          // Stage D4 — the resize overlay applies a live inline-style preview
+          // during the drag (no HMR yet); on a rejected/failed write, tell it to
+          // restore the pre-drag box so a phantom resize doesn't linger.
+          onFail: () => postToActiveCanvas({ dgn: 'resize-artboard-failed' }),
+        }
       );
     },
-    [structuralWrite]
+    [structuralWrite, postToActiveCanvas]
   );
 
   const deleteArtboardShell = useCallback(
