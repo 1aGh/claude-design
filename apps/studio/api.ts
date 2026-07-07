@@ -12,15 +12,20 @@ import {
   assembleCompSource,
   CanvasEditError,
   type ClipInfo,
+  deleteElement,
   editArrayElementString,
   editAttribute,
   enumerateClips,
+  type InsertKind,
+  insertArtboard,
   insertClip,
+  insertElement,
   type MovePosition,
   moveElement,
   removeAttribute,
   removeClip,
   reorderClip,
+  resizeArtboard,
   retimeSequence,
   retimeSequenceByClip,
   editText as runEditText,
@@ -383,6 +388,44 @@ export interface Api {
       }
     | { ok: false; status: number; error: string }
   >;
+  // Stage I (feature-element-editing-robustness) — general element structural
+  // edits. Each logs a whole-file undo seq (reverted via reorderRevert).
+  /** Delete an element by data-cd-id (reused-component instance via idIndex). */
+  deleteElementOp(input: {
+    canvas?: unknown;
+    id?: unknown;
+    idIndex?: unknown;
+  }): Promise<
+    { ok: true; deletedId: string; seq?: number } | { ok: false; status: number; error: string }
+  >;
+  /** Insert a synthesized div/text/image relative to a reference element. */
+  insertElementOp(input: {
+    canvas?: unknown;
+    refId?: unknown;
+    position?: unknown;
+    kind?: unknown;
+    src?: unknown;
+    refIndex?: unknown;
+  }): Promise<
+    { ok: true; newId: string | null; seq?: number } | { ok: false; status: number; error: string }
+  >;
+  /** Insert a new empty artboard from a screen-size preset. */
+  insertArtboardOp(input: {
+    canvas?: unknown;
+    id?: unknown;
+    label?: unknown;
+    width?: unknown;
+    height?: unknown;
+  }): Promise<
+    { ok: true; artboardId: string; seq?: number } | { ok: false; status: number; error: string }
+  >;
+  /** Free-hand artboard resize — write width/height numeric props (DDR-027, D4). */
+  resizeArtboardOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    width?: unknown;
+    height?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
   // Undo/redo a prior reorder by seq (Cmd+Z from the canvas undo stack). Whole-
   // file content swap from the in-memory revert log — immune to the positional
   // data-cd-id churn a reorder causes (inverse-descriptor undo would go stale).
@@ -2140,6 +2183,204 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  // Stage I (feature-element-editing-robustness) — general element structural
+  // edits (delete / insert / new-artboard) + free-hand artboard resize (D4). All
+  // MAIN-ORIGIN ONLY at the route layer; each logs a whole-file {before, after}
+  // under a seq (logUndo) so Cmd+Z reverts through /_api/reorder-revert (a
+  // structural edit renumbers positional data-cd-ids → an inverse descriptor
+  // goes stale). Same agent-rim suppression + pre-op snapshot as reorder.
+
+  /** Delete the element with `data-cd-id === id` (reused-component instance via idIndex). */
+  async function deleteElementOp(input: {
+    canvas?: unknown;
+    id?: unknown;
+    idIndex?: unknown;
+  }): Promise<
+    { ok: true; deletedId: string; seq?: number } | { ok: false; status: number; error: string }
+  > {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const id = typeof input.id === 'string' ? input.id.trim() : '';
+    if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid data-cd-id' };
+    const idIndex = Number.isInteger(input.idIndex) ? (input.idIndex as number) : undefined;
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      const res = await deleteElement(r.abs, id, idIndex);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true, deletedId: res.deletedId };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-delete-element');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true, deletedId: res.deletedId, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'delete failed',
+      };
+    }
+  }
+
+  /** Insert a synthesized element (div/text/image) relative to `refId`. */
+  async function insertElementOp(input: {
+    canvas?: unknown;
+    refId?: unknown;
+    position?: unknown;
+    kind?: unknown;
+    src?: unknown;
+    refIndex?: unknown;
+  }): Promise<
+    { ok: true; newId: string | null; seq?: number } | { ok: false; status: number; error: string }
+  > {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const refId = typeof input.refId === 'string' ? input.refId.trim() : '';
+    if (!CD_ID_RE.test(refId)) {
+      return { ok: false, status: 400, error: 'invalid reference data-cd-id' };
+    }
+    const position = input.position;
+    if (typeof position !== 'string' || !MOVE_POSITIONS.has(position)) {
+      return { ok: false, status: 400, error: 'invalid position' };
+    }
+    const kind = input.kind;
+    if (kind !== 'div' && kind !== 'text' && kind !== 'image') {
+      return { ok: false, status: 400, error: 'invalid kind (div|text|image)' };
+    }
+    const src = typeof input.src === 'string' ? input.src : undefined;
+    const refIndex = Number.isInteger(input.refIndex) ? (input.refIndex as number) : undefined;
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      const res = await insertElement(r.abs, refId, position as MovePosition, kind as InsertKind, {
+        src,
+        occurrence: refIndex,
+      });
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true, newId: res.newId };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-insert-element');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true, newId: res.newId, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'insert failed',
+      };
+    }
+  }
+
+  /** Insert a new empty artboard (id/label/width/height) after the last one. */
+  async function insertArtboardOp(input: {
+    canvas?: unknown;
+    id?: unknown;
+    label?: unknown;
+    width?: unknown;
+    height?: unknown;
+  }): Promise<
+    { ok: true; artboardId: string; seq?: number } | { ok: false; status: number; error: string }
+  > {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const id = typeof input.id === 'string' ? input.id.trim() : '';
+    if (!/^[A-Za-z][\w-]{0,63}$/.test(id)) {
+      return { ok: false, status: 400, error: 'invalid artboard id' };
+    }
+    const label = typeof input.label === 'string' ? input.label.slice(0, 120) : id;
+    const width = Number.isFinite(Number(input.width))
+      ? Math.max(64, Math.min(8192, Math.round(Number(input.width))))
+      : 0;
+    const height = Number.isFinite(Number(input.height))
+      ? Math.max(64, Math.min(8192, Math.round(Number(input.height))))
+      : 0;
+    if (!width || !height) return { ok: false, status: 400, error: 'width and height required' };
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      const res = await insertArtboard(r.abs, { id, label, width, height });
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true, artboardId: res.artboardId };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-insert-artboard');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true, artboardId: res.artboardId, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'insert-artboard failed',
+      };
+    }
+  }
+
+  /** Free-hand artboard resize (D4) — write width/height NUMERIC props (DDR-027). */
+  async function resizeArtboardOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    width?: unknown;
+    height?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId.trim() : '';
+    if (!/^[A-Za-z][\w-]{0,63}$/.test(artboardId)) {
+      return { ok: false, status: 400, error: 'invalid artboard id' };
+    }
+    const dim = (v: unknown): number | undefined =>
+      Number.isFinite(Number(v)) ? Math.max(64, Math.min(8192, Math.round(Number(v)))) : undefined;
+    const width = dim(input.width);
+    const height = dim(input.height);
+    if (width == null && height == null) {
+      return { ok: false, status: 400, error: 'width or height required' };
+    }
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      await resizeArtboard(r.abs, artboardId, width, height);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-resize-artboard');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'resize-artboard failed',
+      };
+    }
+  }
+
   async function toggleHideOp(input: {
     canvas?: unknown;
     stableId?: unknown;
@@ -2769,6 +3010,10 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     compClips,
     reorder,
     retimeSequenceOp,
+    deleteElementOp,
+    insertElementOp,
+    insertArtboardOp,
+    resizeArtboardOp,
     reorderRevert,
     buildIndexData,
     buildSystemData,

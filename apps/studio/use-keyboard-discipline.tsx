@@ -101,6 +101,31 @@ export function useKeyboardDiscipline(): void {
         return;
       }
 
+      // Delete / Backspace → request a source delete of the single selected
+      // element (feature-element-editing-robustness Stage I). The write is
+      // main-origin-only (DDR-054), so we POST the request to the parent shell,
+      // which performs it (pinned to the active canvas) + records undo. Guarded
+      // against text-editing focus above; skip modifier combos + non-single /
+      // artboard-only selections (whole-artboard delete is out of scope here).
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !isMeta && !e.altKey) {
+        const one = selSet.selected.length === 1 ? selSet.selected[0] : null;
+        if (one?.id) {
+          e.preventDefault();
+          try {
+            // `index` is the DOM occurrence among same-cd-id nodes, which equals
+            // the reused-component usage index — so a shared-instance delete
+            // targets the right <Component/> usage (resolveUsageId, canvas-edit).
+            window.parent.postMessage(
+              { dgn: 'delete-request', id: one.id, idIndex: one.index },
+              '*'
+            );
+          } catch {
+            /* detached / cross-origin */
+          }
+        }
+        return;
+      }
+
       // Arrow nudge — artboards only (see file header for the why).
       const delta = nudgeDelta({ key: e.key, shift: e.shiftKey });
       if (!delta) return;

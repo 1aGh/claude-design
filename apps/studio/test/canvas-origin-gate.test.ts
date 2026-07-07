@@ -93,6 +93,16 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // revert route (whole-file swap — strictly more powerful than a move).
         '/_api/reorder',
         '/_api/reorder-revert',
+        // Stage I (feature-element-editing-robustness) — general element
+        // structural edits (delete / insert / new-artboard) + free-hand artboard
+        // resize (D4) are ALL source-writes, MAIN-ORIGIN ONLY. The untrusted
+        // canvas iframe requests them over the dgn:* bus; the shell performs the
+        // write. A GET from the canvas origin must 403 at the gate (route
+        // unreachable on this origin), never 405 from a reached handler.
+        '/_api/delete-element',
+        '/_api/insert-element',
+        '/_api/insert-artboard',
+        '/_api/resize-artboard',
         // Phase 27 (E2) — every /_api/git/* route is MAIN-ORIGIN ONLY: absent from
         // CANVAS_SAFE_API + startCanvasServer's `routes` map. A GET from the
         // canvas origin must 403 at the gate (not 405 from a reached handler),

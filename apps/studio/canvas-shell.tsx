@@ -1371,8 +1371,68 @@ function buildRegistry(deps: {
           },
         },
       ],
+      [
+        {
+          id: 'insert-element',
+          label: 'Insert',
+          // feature-element-editing-robustness Stage I3 — insert a synthesized
+          // element AFTER the right-clicked one (main-origin write: request it
+          // from the parent shell). Image insert needs an asset src (the Stage-F
+          // AssetPicker), so only Div/Text are offered here for now.
+          submenu: [
+            {
+              id: 'insert-div',
+              label: 'Div',
+              onSelect: (target) => {
+                if (!target.cdId) return;
+                try {
+                  window.parent.postMessage(
+                    { dgn: 'insert-request', refId: target.cdId, position: 'after', kind: 'div' },
+                    '*'
+                  );
+                } catch {
+                  /* detached */
+                }
+              },
+            },
+            {
+              id: 'insert-text',
+              label: 'Text',
+              onSelect: (target) => {
+                if (!target.cdId) return;
+                try {
+                  window.parent.postMessage(
+                    { dgn: 'insert-request', refId: target.cdId, position: 'after', kind: 'text' },
+                    '*'
+                  );
+                } catch {
+                  /* detached */
+                }
+              },
+            },
+          ],
+          onSelect: () => {},
+        },
+      ],
       [exportItem('export-selection', 'Export selection…', 'selection', '⌘E')],
       [
+        {
+          id: 'delete-element',
+          label: 'Delete',
+          shortcut: '⌫',
+          destructive: true,
+          // feature-element-editing-robustness Stage I — request a source delete.
+          // The write is main-origin-only (DDR-054): post to the parent shell,
+          // which performs it (pinned to the active canvas) + records undo.
+          onSelect: (target) => {
+            if (!target.cdId) return;
+            try {
+              window.parent.postMessage({ dgn: 'delete-request', id: target.cdId }, '*');
+            } catch {
+              /* detached / cross-origin */
+            }
+          },
+        },
         {
           id: 'hide',
           label: 'Hide',

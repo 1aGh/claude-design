@@ -7974,6 +7974,59 @@ function App() {
         if (e.source === activeWin && okShape) {
           resizeElementRef.current?.(m.id, m.patch, m.before);
         }
+      } else if (m.dgn === 'delete-request') {
+        // feature-element-editing-robustness Stage I — delete an element (Del key
+        // / context menu / toolbar in the canvas). Same confused-deputy guard as
+        // reorder/reposition/resize: untrusted canvas REQUESTS, shell WRITES,
+        // pinned to the ACTIVE canvas (never `m.canvas`).
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin && typeof m.id === 'string') {
+          deleteElementShellRef.current?.(m.id, Number.isInteger(m.idIndex) ? m.idIndex : undefined);
+        }
+      } else if (m.dgn === 'insert-request') {
+        // Stage I3 — insert a synthesized div/text/image relative to `refId`.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        const okShape =
+          typeof m.refId === 'string' &&
+          (m.kind === 'div' || m.kind === 'text' || m.kind === 'image') &&
+          (m.position === 'before' ||
+            m.position === 'after' ||
+            m.position === 'inside-start' ||
+            m.position === 'inside-end');
+        if (e.source === activeWin && okShape) {
+          insertElementShellRef.current?.(m.refId, m.position, m.kind, {
+            src: typeof m.src === 'string' ? m.src : undefined,
+            refIndex: Number.isInteger(m.refIndex) ? m.refIndex : undefined,
+          });
+        }
+      } else if (m.dgn === 'insert-artboard-request') {
+        // Stage I4 — insert a new empty artboard from a screen-size preset.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        const okShape =
+          typeof m.id === 'string' &&
+          Number.isFinite(m.width) &&
+          Number.isFinite(m.height);
+        if (e.source === activeWin && okShape) {
+          insertArtboardShellRef.current?.({
+            id: m.id,
+            label: typeof m.label === 'string' ? m.label : m.id,
+            width: m.width,
+            height: m.height,
+          });
+        }
+      } else if (m.dgn === 'resize-artboard-request') {
+        // Stage D4 — free-hand artboard resize (numeric width/height props).
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        const okShape =
+          typeof m.artboardId === 'string' &&
+          (Number.isFinite(m.width) || Number.isFinite(m.height));
+        if (e.source === activeWin && okShape) {
+          resizeArtboardShellRef.current?.(
+            m.artboardId,
+            Number.isFinite(m.width) ? m.width : undefined,
+            Number.isFinite(m.height) ? m.height : undefined
+          );
+        }
       } else if (m.dgn === 'open-inspector') {
         // Phase 12 — context-menu "Inspect" / tool-palette Inspect opens the right panel.
         openRightPanel('inspector');
@@ -8527,6 +8580,118 @@ function App() {
   useEffect(() => {
     resizeElementRef.current = resizeElement;
   }, [resizeElement]);
+
+  // feature-element-editing-robustness Stage I — general element structural edits
+  // (delete / insert element / insert artboard) + Stage D4 (artboard resize).
+  // Each is a main-origin-only write the untrusted canvas can only REQUEST over
+  // the dgn:* bus; the shell performs it, pinned to `activePath` (confused-deputy
+  // guard, DDR-054/138). Undo reuses the reorder command's whole-file seq revert
+  // (record-edit op:'reorder') — a structural edit renumbers positional ids, so an
+  // inverse descriptor goes stale (same reason reorder uses the server seq log).
+  const structuralWriteRef = useRef(null);
+  const structuralWrite = useCallback(
+    (route, body, { label, onOk } = {}) => {
+      if (!activePath) return;
+      const canvas = activePath;
+      editApplyChainRef.current = editApplyChainRef.current
+        .catch(() => {})
+        .then(() =>
+          fetch(route, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ ...body, canvas }),
+          })
+            .then((r) => r.json().catch(() => ({})))
+            .then((j) => {
+              if (!j.ok) {
+                console.warn(`[${route}]`, j.error || 'failed');
+                return;
+              }
+              if (typeof j.seq === 'number') {
+                postToActiveCanvas({
+                  dgn: 'record-edit',
+                  payload: { op: 'reorder', canvas, seq: j.seq, label: label || 'edit' },
+                });
+              }
+              onOk?.(j, canvas);
+            })
+            .catch(() => {})
+        );
+    },
+    [activePath, postToActiveCanvas]
+  );
+  useEffect(() => {
+    structuralWriteRef.current = structuralWrite;
+  }, [structuralWrite]);
+
+  const deleteElementShell = useCallback(
+    (id, idIndex) => {
+      // After the delete lands + HMR reloads, clear the (now-gone) selection.
+      structuralWrite(
+        '/_api/delete-element',
+        { id, idIndex: Number.isInteger(idIndex) ? idIndex : undefined },
+        { label: 'delete element', onOk: () => postToActiveCanvas({ dgn: 'selection-clear' }) }
+      );
+    },
+    [structuralWrite, postToActiveCanvas]
+  );
+
+  const insertElementShell = useCallback(
+    (refId, position, kind, opts = {}) => {
+      structuralWrite(
+        '/_api/insert-element',
+        {
+          refId,
+          position,
+          kind,
+          src: typeof opts.src === 'string' ? opts.src : undefined,
+          refIndex: Number.isInteger(opts.refIndex) ? opts.refIndex : undefined,
+        },
+        {
+          label: `insert ${kind}`,
+          // Select the new element once the HMR reload lands (its id is stamped
+          // on transpile — best-effort, like reorder's pendingReorderRef).
+          onOk: (j, canvas) => {
+            if (j.newId) pendingReorderRef.current = { file: canvas, movedId: j.newId, artboardId: null };
+          },
+        }
+      );
+    },
+    [structuralWrite]
+  );
+
+  const insertArtboardShell = useCallback(
+    ({ id, label, width, height }) => {
+      structuralWrite(
+        '/_api/insert-artboard',
+        { id, label, width, height },
+        { label: 'insert artboard' }
+      );
+    },
+    [structuralWrite]
+  );
+
+  const resizeArtboardShell = useCallback(
+    (artboardId, width, height) => {
+      structuralWrite(
+        '/_api/resize-artboard',
+        { artboardId, width, height },
+        { label: 'resize artboard' }
+      );
+    },
+    [structuralWrite]
+  );
+  // Refs the (stale-closure) onMessage handlers below read.
+  const deleteElementShellRef = useRef(null);
+  const insertElementShellRef = useRef(null);
+  const insertArtboardShellRef = useRef(null);
+  const resizeArtboardShellRef = useRef(null);
+  useEffect(() => {
+    deleteElementShellRef.current = deleteElementShell;
+    insertElementShellRef.current = insertElementShell;
+    insertArtboardShellRef.current = insertArtboardShell;
+    resizeArtboardShellRef.current = resizeArtboardShell;
+  }, [deleteElementShell, insertElementShell, insertArtboardShell, resizeArtboardShell]);
 
   const resolveComment = useCallback((id) => {
     wsSend({ type: 'comments-patch', id, patch: { status: 'resolved' } });

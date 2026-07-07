@@ -333,7 +333,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha (scope)**: if the resized element is inside a reusable component, `width`/`height` written via `edit-css` change **all instances** (Stage H). For a resize on a component **instance**, route through the occurrence-index resolver per Stage H so it stays local; otherwise show the Stage-H "affects N instances" confirm. Do **not** ship resize before Stage H's scope surfacing.
 - **Validate**: resize an absolute element from its top-left corner; confirm width/height/left/top all persist to the `.tsx`, one coherent render, Cmd+Z reverts.
 
-#### Task D4: ADD free-hand artboard resize
+#### 🟡 Task D4: ADD free-hand artboard resize — numeric-attr engine (`applyResizeArtboard`) + `/_api/resize-artboard` route + shell + undo + tests DONE; ElementResizeOverlay artboard-scope extension REMAINING
 
 - **Do**: Extend the resize-handle overlay to the **artboard** scope: when an artboard frame (`[data-dc-screen]`) is the active selection, render the 8 handles around the artboard and, on drag, write the new `width`/`height` **props** on the `<DCArtboard>` element via `/_api/edit-attr` (per DDR-027 artboard size is JSX-authoritative, not a `layout` field). Reuse `use-element-resize`'s geometry + `use-artboard-drag.tsx`'s screen-delta÷zoom math; compose with the existing artboard chrome-drag (a handle pointerdown claims resize, the chrome body still moves).
 - **Pattern**: `DCArtboard` `width`/`height` authoring (`canvas-lib.tsx:1763-1912`, `scaffold-design.ts:36`); artboard drag (`use-artboard-drag.tsx`).
@@ -406,27 +406,27 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 
 > New capability: general element delete + insert (only video-comp `<Sequence>` clips have these today). All ride the `reorder`-style five-part wiring with **whole-file-snapshot undo** (a structural edit renumbers positional ids, so an inverse *descriptor* goes stale — DDR-138/139).
 
-#### Task I1: CREATE the `delete-element` source op + route
+#### ✅ Task I1: CREATE the `delete-element` source op + route — DONE (engine + route + tests)
 
 - **Do**: In `canvas-edit.ts`, add `applyDeleteElement(source, id, occurrence?)`: `findOpening` → `spanWithFraming` (`:1956-1962`) → `MagicString.remove` → **reparse gate** (`:906-914`); for a shared-component instance, resolve the specific usage via `resolveUsageId` first (delete the `<Card/>` usage, artboard-local — not the shared def). Add `POST /_api/delete-element {canvas, id, idIndex?}` (main-origin-only, `sameOriginWrite`+loopback) writing a `reorderLog`-style whole-file `{before, after}` under a `seq`, plus history snapshot (`api.ts:1972`).
 - **Pattern**: `applyRemoveClip` (`canvas-edit.ts:1964-2050`) is the near-exact template; `/_api/remove-sequence` (`http.ts:1567-1585`) is the route shape.
 - **Gotcha**: refuse to delete the last child of an artboard into invalid JSX (reparse gate catches it, but message it). Deleting a shared-component **inner** element deletes it everywhere — gate behind the Stage-H2 confirm.
 - **Validate**: `cd apps/studio && bun test` (delete round-trips, reparse gate rejects a delete that would break JSX).
 
-#### Task I2: WIRE delete undo + the Del-key/context-menu/toolbar affordances
+#### ✅ Task I2: WIRE delete undo + the Del-key/context-menu/toolbar affordances — DONE (undo reuses reorder-revert seq-log; Del/Backspace key + context-menu; toolbar entry deferred)
 
 - **Do**: New `commands/delete-element-command.ts` (register via `registerCommand`), a `deleteRevertFn` sink on `CommandSinks` wired in `canvas-shell.tsx`, a parent-gated `dgn:'delete-request'` verb + shell handler (mirror `reorder-request`, `app.jsx:7752-7772`), and `undoStack.push(...)`. Trigger from: `Delete`/`Backspace` on a selected element (guard against text-editing focus), the element context menu (`canvas-shell.tsx:1323-1372`), and the contextual toolbar. Undo posts `dgn:'delete-revert'` → `POST /_api/delete-revert {seq, dir}` (or reuse `reorder-revert`'s handler generalized).
 - **Gotcha**: `Delete` must NOT fire while an inline text edit or a form input is focused; reuse the keyboard-discipline guard (`use-keyboard-discipline.tsx`).
 - **Validate**: select an element → press Delete → it's removed → Cmd+Z restores it exactly (whole-file snapshot). Delete a shared instance → only that instance goes.
 
-#### Task I3: CREATE the `insert-element` source op + route + palette
+#### 🟡 Task I3: CREATE the `insert-element` source op + route + palette — engine + route + shell + context-menu Div/Text DONE; image (needs Stage-F AssetPicker) + tool-palette place-mode REMAINING
 
 - **Do**: In `canvas-edit.ts`, add `applyInsertElement(source, refId, position, kind)` where `kind ∈ {div, text, image}`: synthesize a minimal JSX string (`<div style={{…}} />`, `<p>Text</p>`, `<img src="assets/…"/>`) **without** `data-cd-id` (the pipeline stamps it on next transpile — `canvas-pipeline.ts:161-174`), placed at `refId`+`position` (`before`/`after`/`inside-start`/`inside-end`) using `moveElement`'s indentation helpers (`:574-597`, `:864-898`); `appendLeft` + reparse gate + return the new element's post-transpile id. Add `POST /_api/insert-element` (whole-file snapshot undo, same as delete). Add an insert affordance to `tool-palette.tsx` (a "+ Element" menu: Div / Text / Image) that, on click, enters a place-mode (click an artboard/element to choose the insertion anchor) or appends to the active artboard.
 - **Pattern**: `applyInsertClip` (`canvas-edit.ts:2282-2401`) is the insert template; `tool-palette.tsx` is the palette host (but this writes canvas **source**, not the annotation layer — keep the boundary explicit in a comment).
 - **Gotcha**: an inserted `<img>` needs a source — open the `AssetPicker` (Task F1) inline, or insert a neutral placeholder asset. A new element should land selected + inspectable so the user can immediately style it.
 - **Validate**: `cd apps/studio && bun test` (insert round-trips, new id resolves); manual: "+ Element → Div" appends a div to the active artboard, it's selected, Cmd+Z removes it.
 
-#### Task I4: CREATE the `insert-artboard` op + screen-size presets
+#### 🟡 Task I4: CREATE the `insert-artboard` op + screen-size presets — engine + route + shell + undo + tests DONE; canvas-side "+ Artboard" affordance + SCREEN_PRESETS picker + patchCanvasMeta grid REMAINING
 
 - **Do**: Add `applyInsertArtboard(source, preset)` inserting a new `<DCArtboard id label width height>` (optionally wrapping in a `<DCSection>` if the canvas uses sections) after the last artboard, using the `scaffold-design.ts:35-79` shape, with `width`/`height` from a **preset table** (`SCREEN_PRESETS`: Desktop 1440×1024, Laptop 1280×800, Tablet 834×1194, Mobile 390×844, plus Custom W×H). Generate a unique `id`/`label`, let the pipeline stamp the `data-cd-id`, and `patchCanvasMeta` to give it a grid position (DDR-027 default-grid, `canvas-lib.tsx:1526-1528`). Surface via a canvas-level "+ Artboard" affordance (toolbar / canvas context menu / empty-canvas CTA) with a preset picker. Whole-file snapshot undo.
 - **Pattern**: `applyInsertElement` (Task I3) for the source write; `scaffold-design.ts` for the artboard JSX + `layout.artboards[]` entry shape; `SCREEN_PRESETS` is new (device sizes).

@@ -2507,6 +2507,456 @@ export async function editArrayElementString(
   });
 }
 
+// ---------------------------------------------------------------------------
+// General element structural edits — delete / insert / new-artboard (Stage I,
+// feature-element-editing-robustness). These extend the DDR-138/139 move/reorder
+// model (and the DDR-150 clip delete/insert) from video-comp <Sequence> clips to
+// ARBITRARY canvas elements + whole artboards. Every op is a whole-file
+// {before, after} write (a structural edit renumbers positional data-cd-ids, so
+// an inverse *descriptor* goes stale — the caller logs before/after under a seq
+// and Cmd+Z reverts by whole-file swap through /_api/reorder-revert). Each runs
+// the same reparse gate as `applyMove`: never write source that doesn't parse.
+
+/** Kind of element the insert palette can synthesize. */
+export type InsertKind = 'div' | 'text' | 'image';
+
+/** Synthesize a minimal, self-styled JSX element for an insert. No `data-cd-id`
+ *  — the pipeline stamps it on the next transpile (canvas-pipeline stamping is
+ *  unconditional). The new element lands selectable + immediately styleable. */
+function synthInsertElement(kind: InsertKind, src?: string): string {
+  if (kind === 'text') return `<p style={{ margin: 0 }}>Text</p>`;
+  if (kind === 'image') {
+    const s = (src ?? '').trim();
+    return `<img src="${escapeAttr(s)}" alt="" style={{ width: 160, height: 120, objectFit: 'cover', borderRadius: 8 }} />`;
+  }
+  // div — a visible neutral placeholder box the user can immediately restyle.
+  return `<div style={{ width: 120, height: 80, background: 'var(--bg-2)', borderRadius: 8 }} />`;
+}
+
+/**
+ * Delete the element with `data-cd-id === id` from a canvas. Pure; never mutates
+ * disk (the async `deleteElement` wraps this under the per-file lock). For a
+ * reused-component INSTANCE the id names an element inside the component
+ * definition (shared across N usages); `occurrence` maps it to the specific
+ * `<Component/>` USAGE so deleting one instance is artboard-local — deleting the
+ * shared internal element is inherently global (there is only one). Mirrors
+ * `applyRemoveClip`: remove the framed span (leading indent + newline), then the
+ * reparse gate refuses a delete that would leave invalid JSX (e.g. an element
+ * that was the sole child of a `{expr}` that now dangles).
+ */
+export function applyDeleteElement(
+  canvasAbsPath: string,
+  source: string,
+  id: string,
+  occurrence?: number
+): { source: string; deletedId: string } {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id }
+    );
+  }
+  const targetId = resolveUsageId(parsed.program, id, occurrence);
+  const hit = findOpening(parsed.program, targetId);
+  if (!hit) {
+    throw new CanvasEditError(`data-cd-id "${targetId}" not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id: targetId,
+    });
+  }
+  const el = hit.element;
+  const [rs, re] = spanWithFraming(source, el.start as number, el.end as number);
+  const s = new MagicString(source);
+  s.remove(rs, re);
+  const out = s.toString();
+  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (check.errors && check.errors.length > 0) {
+    throw new CanvasEditError(
+      `delete would produce invalid source (${check.errors[0]?.message ?? 'parse error'}); aborted — the element may be the sole child a parent requires`,
+      { canvas: canvasAbsPath, id: targetId }
+    );
+  }
+  return { source: out, deletedId: targetId };
+}
+
+/** Delete an element on disk (atomic write + cross-process lock). */
+export async function deleteElement(
+  canvasAbsPath: string,
+  id: string,
+  occurrence?: number
+): Promise<{ source: string; deletedId: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id,
+      });
+    }
+    const source = await file.text();
+    const next = applyDeleteElement(canvasAbsPath, source, id, occurrence);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
+/**
+ * Insert a synthesized element (`div` / `text` / `image`) relative to the
+ * element with `data-cd-id === refId`. Pure. Reuses `applyMove`'s per-position
+ * anchor + indentation logic (the new element is a single line, so no
+ * continuation re-indent is needed). The inserted element carries NO
+ * `data-cd-id`; after the reparse gate we recompute its post-transpile
+ * positional id (the id the DOM will carry once the pipeline stamps it) by
+ * locating the freshly-inserted node, and return it so the caller can select the
+ * new element. An `image` needs a contained asset `src` (the AssetPicker
+ * supplies one — never a remote hotlink, which the CSP split origin blocks).
+ */
+export function applyInsertElement(
+  canvasAbsPath: string,
+  source: string,
+  refId: string,
+  position: MovePosition,
+  kind: InsertKind,
+  opts?: { src?: string; occurrence?: number }
+): { source: string; newId: string | null } {
+  if (kind === 'image') {
+    if (!opts?.src?.trim()) {
+      throw new CanvasEditError('insert image requires a contained asset src (assets/…)', {
+        canvas: canvasAbsPath,
+        id: refId,
+      });
+    }
+    assertContainedAssetSrc(opts.src, canvasAbsPath);
+  }
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id: refId }
+    );
+  }
+  const targetRef = resolveUsageId(parsed.program, refId, opts?.occurrence);
+  const ref = findOpening(parsed.program, targetRef);
+  if (!ref) {
+    throw new CanvasEditError(`reference data-cd-id "${targetRef}" not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id: targetRef,
+    });
+  }
+  const refEl = ref.element;
+  const rStart = refEl.start as number;
+  const rEnd = refEl.end as number;
+  const inside = position === 'inside-start' || position === 'inside-end';
+  if (inside && (refEl.openingElement?.selfClosing || !refEl.closingElement)) {
+    throw new CanvasEditError(
+      `target "${targetRef}" is self-closing — cannot nest an element inside it`,
+      { canvas: canvasAbsPath, id: targetRef }
+    );
+  }
+
+  const indentUnit = detectIndentUnit(source);
+  const newText = synthInsertElement(kind, opts?.src);
+
+  let targetIndent: string;
+  let anchor: number;
+  let insertText: string;
+  if (position === 'after') {
+    targetIndent = lineStartInfo(source, rStart).indent;
+    anchor = rEnd;
+    insertText = `\n${targetIndent}${newText}`;
+  } else if (position === 'before') {
+    const rLine = lineStartInfo(source, rStart);
+    targetIndent = rLine.indent;
+    if (rLine.newlineBefore) {
+      anchor = rLine.indentStart - 1;
+      insertText = `\n${targetIndent}${newText}`;
+    } else {
+      anchor = rLine.indentStart;
+      insertText = `${targetIndent}${newText}\n`;
+    }
+  } else if (position === 'inside-start') {
+    targetIndent = lineStartInfo(source, rStart).indent + indentUnit;
+    anchor = refEl.openingElement.end as number;
+    insertText = `\n${targetIndent}${newText}`;
+  } else {
+    // inside-end — last child, before the closing tag's own line.
+    targetIndent = lineStartInfo(source, rStart).indent + indentUnit;
+    const cStart = refEl.closingElement.start as number;
+    const cLine = lineStartInfo(source, cStart);
+    if (cLine.newlineBefore) {
+      anchor = cLine.indentStart - 1;
+      insertText = `\n${targetIndent}${newText}`;
+    } else {
+      anchor = cStart;
+      insertText = `${newText}`;
+    }
+  }
+
+  const s = new MagicString(source);
+  s.appendLeft(anchor, insertText);
+  const out = s.toString();
+  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (check.errors && check.errors.length > 0) {
+    throw new CanvasEditError(
+      `insert would produce invalid source (${check.errors[0]?.message ?? 'parse error'}); aborted`,
+      { canvas: canvasAbsPath, id: targetRef }
+    );
+  }
+  // Recompute the new element's post-insert positional id. There's a single
+  // append (no removes), so the new element's `<` lands at `anchor + prefixLen`
+  // in `out`; match by that exact offset (robust when the inserted text is a
+  // duplicate of a sibling), falling back to a text match.
+  const prefixLen = insertText.indexOf(newText);
+  const elemStart = anchor + prefixLen;
+  let newId: string | null = null;
+  let fallback: string | null = null;
+  for (const { id: eid, node } of collectElements(check.program)) {
+    if ((node.start as number) === elemStart) {
+      newId = eid;
+      break;
+    }
+    if (out.slice(node.start as number, node.end as number) === newText) fallback = eid;
+  }
+  return { source: out, newId: newId ?? fallback };
+}
+
+/** Insert an element on disk (atomic write + cross-process lock). */
+export async function insertElement(
+  canvasAbsPath: string,
+  refId: string,
+  position: MovePosition,
+  kind: InsertKind,
+  opts?: { src?: string; occurrence?: number }
+): Promise<{ source: string; newId: string | null }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: refId,
+      });
+    }
+    const source = await file.text();
+    const next = applyInsertElement(canvasAbsPath, source, refId, position, kind, opts);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
+/** Collect every JSXElement whose opening tag is `tagName` (document order). */
+function collectJsxByTag(program: AnyNode, tagName: string): AnyNode[] {
+  const out: AnyNode[] = [];
+  function visit(node: AnyNode): void {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const c of node) visit(c);
+      return;
+    }
+    if (typeof node.type !== 'string') return;
+    if (node.type === 'JSXElement') {
+      const n = node.openingElement?.name;
+      if (n?.type === 'JSXIdentifier' && n.name === tagName) out.push(node);
+    }
+    for (const k of Object.keys(node)) {
+      if (k === 'loc' || k === 'range' || k === 'start' || k === 'end' || k === 'type') continue;
+      visit(node[k]);
+    }
+  }
+  visit(program);
+  return out;
+}
+
+/**
+ * Write a NUMERIC JSX attribute (`width={430}`) — the shape `<DCArtboard>` size
+ * props take (DDR-027). Distinct from `editStringAttr`, which would emit
+ * `width="430"` and break the numeric prop. Overwrites an existing `{expr}` or
+ * `"literal"`, or inserts the attribute after the tag name if missing.
+ */
+function writeNumericAttr(s: MagicString, opening: AnyNode, name: string, value: number): void {
+  const num = Math.max(1, Math.round(value));
+  const attr = findAttribute(opening, name);
+  if (attr) {
+    const v = attr.value;
+    if (!v) {
+      s.appendLeft(attr.end as number, `={${num}}`);
+      return;
+    }
+    // Any value shape (expression container or string literal) → a numeric expr.
+    s.overwrite(v.start as number, v.end as number, `{${num}}`);
+    return;
+  }
+  const insertAt: number | undefined = opening?.name?.end;
+  if (typeof insertAt !== 'number') throw new Error('Opening element has no resolvable name range');
+  s.appendLeft(insertAt, ` ${name}={${num}}`);
+}
+
+/**
+ * Free-hand artboard resize (Stage D4). Rewrites the `width` / `height` NUMERIC
+ * props on the `<DCArtboard>` whose `id` prop equals `artboardId` — per DDR-027
+ * artboard size is JSX-authoritative (not a `layout` field), and an artboard's
+ * rendered `<article data-dc-screen>` carries no `data-cd-id`, so it's addressed
+ * by its own `id` prop, not the cd-id lane. Pure; reparse-gated.
+ */
+export function applyResizeArtboard(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string,
+  width: number | undefined,
+  height: number | undefined
+): { source: string } {
+  if (width == null && height == null) return { source };
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  const artboards = collectJsxByTag(parsed.program, 'DCArtboard');
+  const target = artboards.find((a) => getStringAttr(a.openingElement, 'id') === artboardId);
+  if (!target) {
+    throw new CanvasEditError(`<DCArtboard id="${artboardId}"> not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id: artboardId,
+    });
+  }
+  const s = new MagicString(source);
+  if (typeof width === 'number') writeNumericAttr(s, target.openingElement, 'width', width);
+  if (typeof height === 'number') writeNumericAttr(s, target.openingElement, 'height', height);
+  const out = s.toString();
+  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (check.errors && check.errors.length > 0) {
+    throw new CanvasEditError(
+      `artboard resize produced invalid source (${check.errors[0]?.message ?? 'parse error'})`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  return { source: out };
+}
+
+/** Resize an artboard on disk (atomic write + cross-process lock). */
+export async function resizeArtboard(
+  canvasAbsPath: string,
+  artboardId: string,
+  width: number | undefined,
+  height: number | undefined
+): Promise<{ source: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: artboardId,
+      });
+    }
+    const source = await file.text();
+    const next = applyResizeArtboard(canvasAbsPath, source, artboardId, width, height);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
+/** Artboard id must be a safe JSX-attribute identifier (no quotes/markup). */
+const ARTBOARD_ID_RE = /^[A-Za-z][\w-]*$/;
+
+/**
+ * Insert a new EMPTY `<DCArtboard>` after the canvas's last artboard (Stage I4).
+ * Pure. The size props (`width`/`height`) are JSX-authoritative (DDR-027); the
+ * grid position is left to the caller's `patchCanvasMeta` (DDR-027 default-grid
+ * places an unpositioned artboard at the next free slot). The artboard is empty
+ * — a clean frame the user fills via insert-element — and non-self-closing so an
+ * `inside-end` insert can target it. Reparse-gated. Rejects a duplicate `id`.
+ */
+export function applyInsertArtboard(
+  canvasAbsPath: string,
+  source: string,
+  opts: { id: string; label: string; width: number; height: number }
+): { source: string; artboardId: string } {
+  const id = opts.id.trim();
+  const label = opts.label.trim();
+  const width = Math.max(1, Math.round(opts.width));
+  const height = Math.max(1, Math.round(opts.height));
+  if (!ARTBOARD_ID_RE.test(id)) {
+    throw new CanvasEditError(`invalid artboard id "${id}" (must match ${ARTBOARD_ID_RE})`, {
+      canvas: canvasAbsPath,
+      id,
+    });
+  }
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id }
+    );
+  }
+  const artboards = collectJsxByTag(parsed.program, 'DCArtboard');
+  if (artboards.length === 0) {
+    throw new CanvasEditError(
+      'no <DCArtboard> to anchor a new artboard — scaffold a canvas first',
+      { canvas: canvasAbsPath, id }
+    );
+  }
+  for (const a of artboards) {
+    if (getStringAttr(a.openingElement, 'id') === id) {
+      throw new CanvasEditError(`artboard id "${id}" already exists`, {
+        canvas: canvasAbsPath,
+        id,
+      });
+    }
+  }
+  const last = artboards[artboards.length - 1] as AnyNode;
+  const indent = lineStartInfo(source, last.start as number).indent;
+  const newText = `<DCArtboard id="${escapeAttr(id)}" label="${escapeAttr(label)}" width={${width}} height={${height}}></DCArtboard>`;
+  const s = new MagicString(source);
+  s.appendLeft(last.end as number, `\n${indent}${newText}`);
+  const out = s.toString();
+  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (check.errors && check.errors.length > 0) {
+    throw new CanvasEditError(
+      `insert-artboard produced invalid source (${check.errors[0]?.message ?? 'parse error'})`,
+      { canvas: canvasAbsPath, id }
+    );
+  }
+  return { source: out, artboardId: id };
+}
+
+/** Insert a new empty artboard on disk (atomic write + cross-process lock). */
+export async function insertArtboard(
+  canvasAbsPath: string,
+  opts: { id: string; label: string; width: number; height: number }
+): Promise<{ source: string; artboardId: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: opts.id,
+      });
+    }
+    const source = await file.text();
+    const next = applyInsertArtboard(canvasAbsPath, source, opts);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
 /** A clip in an assemble request — a dropped reference chip's src + kind. */
 export interface AssembleClip {
   src: string;

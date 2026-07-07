@@ -1780,6 +1780,134 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       );
     },
 
+    '/_api/delete-element': async (req: Request) => {
+      // Stage I (feature-element-editing-robustness) — delete an element by
+      // data-cd-id. POST { canvas, id, idIndex? } → api.deleteElementOp (reparse
+      // gate; reused-component instance via idIndex). Logs a whole-file undo seq
+      // (Cmd+Z via /_api/reorder-revert — a structural edit churns positional
+      // ids so an inverse descriptor goes stale). Same MAIN-ORIGIN-ONLY trust
+      // boundary as /_api/reorder: absent from CANVAS_SAFE_API + startCanvasServer
+      // routes (DDR-054); sameOriginWrite CSRF + loopback-Host (DNS-rebinding) gated.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{ canvas?: unknown; id?: unknown; idIndex?: unknown }>(
+        req,
+        8 * 1024
+      );
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.deleteElementOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, deletedId: result.deletedId, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    '/_api/insert-element': async (req: Request) => {
+      // Stage I — insert a synthesized div/text/image relative to `refId`. POST
+      // { canvas, refId, position, kind, src?, refIndex? } → api.insertElementOp.
+      // Returns the new element's post-transpile id so the shell can select it.
+      // Whole-file undo seq. MAIN-ORIGIN ONLY (absent from both allowlists);
+      // sameOriginWrite + loopback-Host gated. An `image` src is contained to
+      // assets/ in the engine (no remote hotlink / ../ / scheme).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        refId?: unknown;
+        position?: unknown;
+        kind?: unknown;
+        src?: unknown;
+        refIndex?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.insertElementOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, newId: result.newId, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    '/_api/insert-artboard': async (req: Request) => {
+      // Stage I4 — insert a new EMPTY artboard from a screen-size preset. POST
+      // { canvas, id, label, width, height } → api.insertArtboardOp (appends a
+      // <DCArtboard id label width height></DCArtboard> after the last artboard;
+      // size JSX-authoritative per DDR-027). Whole-file undo seq. MAIN-ORIGIN
+      // ONLY (absent from both allowlists); sameOriginWrite + loopback-Host gated.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        id?: unknown;
+        label?: unknown;
+        width?: unknown;
+        height?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.insertArtboardOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, artboardId: result.artboardId, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    '/_api/resize-artboard': async (req: Request) => {
+      // Stage D4 — free-hand artboard resize. POST { canvas, artboardId, width?,
+      // height? } → api.resizeArtboardOp (writes the NUMERIC width/height props on
+      // the <DCArtboard id="…">, addressed by its `id` prop since the rendered
+      // <article data-dc-screen> carries no data-cd-id; DDR-027). Whole-file undo
+      // seq. MAIN-ORIGIN ONLY; sameOriginWrite + loopback-Host gated.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        artboardId?: unknown;
+        width?: unknown;
+        height?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.resizeArtboardOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/asset': async (req: Request) => {
       // Phase 23 / DDR-148 — binary media upload from the canvas (drag-drop /
       // paste). POST raw bytes → content-addressed write under
