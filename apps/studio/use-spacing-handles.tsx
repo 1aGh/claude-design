@@ -1,0 +1,328 @@
+/**
+ * @file       use-spacing-handles.tsx — Stage J (feature-element-editing-robustness)
+ * @scope      apps/studio/use-spacing-handles.tsx
+ * @purpose    On-canvas padding + gap drag. 4 small padding-edge handles (always,
+ *             for the single selected element) + one dot per flex gap (only when
+ *             the element is a flex/inline-flex container with ≥2 children).
+ *             Live preview via direct inline-style writes (mirrors
+ *             `use-element-resize.tsx`'s `applyPreview`); commit rides the SAME
+ *             `resize-request` lane the element-resize overlay already uses —
+ *             `padding-top/right/bottom/left`/`gap` were added to the shell's
+ *             `resizeElement` allowed-prop list, so this needed no new write
+ *             surface. A component-instance drag threads the Stage H3 occurrence
+ *             index the same way (`globalCdOccurrence`) so it stays local.
+ *
+ *             CSS-Grid gap editing is out of v1 scope — grid tracks are a
+ *             separate follow-up plan (`feature-grid-track-editor.md`, Stage M3).
+ */
+
+import { type ReactNode, useCallback, useEffect, useRef } from 'react';
+import { globalCdOccurrence, resolveSelectionEl } from './dom-selection.ts';
+import {
+  computeGapDrag,
+  computeGapMidpoints,
+  computePaddingDrag,
+  computePaddingLines,
+  flexMainAxis,
+  type PaddingSide,
+} from './spacing-handles.ts';
+import { scaleFromMatrix } from './use-element-resize.tsx';
+import { useSelectionSet } from './use-selection-set.tsx';
+import { useToolMode } from './use-tool-mode.tsx';
+
+const SPACING_CSS = `
+.dc-spacing-handle {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  /* Below the Stage-D resize handles (z-index 6) — at 0 padding a spacing
+     handle sits exactly on the border, where a resize mid-edge handle also
+     lives; the resize handle should win that hit-test tie. */
+  z-index: 4;
+  pointer-events: auto;
+  touch-action: none;
+}
+.dc-spacing-handle--padding {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--maude-hud-accent, oklch(0.680 0.180 268));
+  border: 1px solid var(--maude-hud-accent-fg, oklch(0.180 0.030 268));
+  opacity: 0.55;
+}
+.dc-spacing-handle--padding:hover,
+.dc-spacing-handle--padding[data-dragging="true"] { opacity: 1; }
+.dc-spacing-handle--padding[data-side="top"],
+.dc-spacing-handle--padding[data-side="bottom"] { cursor: ns-resize; }
+.dc-spacing-handle--padding[data-side="left"],
+.dc-spacing-handle--padding[data-side="right"] { cursor: ew-resize; }
+.dc-spacing-handle--gap {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #FF24BD;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  opacity: 0.7;
+}
+.dc-spacing-handle--gap:hover,
+.dc-spacing-handle--gap[data-dragging="true"] { opacity: 1; }
+.dc-spacing-handle--gap[data-axis="x"] { cursor: ew-resize; }
+.dc-spacing-handle--gap[data-axis="y"] { cursor: ns-resize; }
+@media (prefers-reduced-motion: reduce) {
+  .dc-spacing-handle { transition-duration: 1ms; }
+}
+`.trim();
+
+function ensureSpacingStyles(): void {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById('dc-spacing-css')) return;
+  const s = document.createElement('style');
+  s.id = 'dc-spacing-css';
+  s.textContent = SPACING_CSS;
+  document.head.appendChild(s);
+}
+
+function computedPx(cs: CSSStyleDeclaration, prop: string): number {
+  return Number.parseFloat(cs.getPropertyValue(prop)) || 0;
+}
+
+interface SpacingDrag {
+  pointerId: number;
+  kind: 'padding' | 'gap';
+  side: PaddingSide | null;
+  axis: 'x' | 'y';
+  el: HTMLElement;
+  cdId: string;
+  idIndex: number;
+  startClientX: number;
+  startClientY: number;
+  zoom: number;
+  startValue: number;
+  /** The single CSS property this drag writes — `padding-<side>` or `gap`. */
+  prop: string;
+  /** Inline value BEFORE the drag (`el.style.getPropertyValue(prop)` or null). */
+  before: string | null;
+}
+
+export function SpacingHandlesOverlay(): ReactNode {
+  ensureSpacingStyles();
+  const { selected } = useSelectionSet();
+  const { tool } = useToolMode();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const dragRef = useRef<SpacingDrag | null>(null);
+  const lastCommitRef = useRef<{ el: HTMLElement; prop: string; before: string | null } | null>(
+    null
+  );
+
+  const one = selected.length === 1 ? selected[0] : null;
+  const cdId = one && typeof one.id === 'string' ? one.id : null;
+  const active = tool === 'move' && !!cdId;
+
+  // rAF loop — recompute + repaint every frame (pan/zoom/layout AND a live drag,
+  // since a gap drag reflows sibling children — re-deriving from the DOM each
+  // frame is simpler and more correct than hand-propagating the effect to every
+  // other gap handle).
+  useEffect(() => {
+    const c = containerRef.current;
+    if (!c) return;
+    const hideAll = () => {
+      for (const child of Array.from(c.children)) (child as HTMLElement).style.display = 'none';
+    };
+    if (!active || !one) {
+      hideAll();
+      return;
+    }
+    const tick = () => {
+      rafRef.current = null;
+      const el = resolveSelectionEl(document, one) as HTMLElement | null;
+      if (!el) {
+        hideAll();
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 && r.height <= 0) {
+        hideAll();
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      const cs = getComputedStyle(el);
+      const world = el.closest('.dc-world') as HTMLElement | null;
+      const zoom = world ? scaleFromMatrix(getComputedStyle(world).transform) : 1;
+      const padding = {
+        top: computedPx(cs, 'padding-top'),
+        right: computedPx(cs, 'padding-right'),
+        bottom: computedPx(cs, 'padding-bottom'),
+        left: computedPx(cs, 'padding-left'),
+      };
+      const lines = computePaddingLines(
+        { x: r.left, y: r.top, w: r.width, h: r.height },
+        padding,
+        zoom
+      );
+      const isFlex = cs.display === 'flex' || cs.display === 'inline-flex';
+      const axis = flexMainAxis(cs.flexDirection);
+      const gapPoints = isFlex
+        ? computeGapMidpoints(
+            Array.from(el.children).map((child) => {
+              const cr = (child as HTMLElement).getBoundingClientRect();
+              return { x: cr.left, y: cr.top, w: cr.width, h: cr.height };
+            }),
+            axis
+          )
+        : [];
+      const TOTAL = lines.length + gapPoints.length;
+      while (c.children.length < TOTAL) c.appendChild(document.createElement('div'));
+      while (c.children.length > TOTAL) c.lastChild && c.removeChild(c.lastChild);
+      let i = 0;
+      for (const line of lines) {
+        const h = c.children[i] as HTMLElement;
+        h.className = 'dc-spacing-handle dc-spacing-handle--padding';
+        h.dataset.side = line.side;
+        h.dataset.prop = `padding-${line.side}`;
+        h.dataset.axis = line.axis;
+        h.style.display = 'block';
+        h.style.left = `${Math.round(line.x)}px`;
+        h.style.top = `${Math.round(line.y)}px`;
+        i++;
+      }
+      for (const pt of gapPoints) {
+        const h = c.children[i] as HTMLElement;
+        h.className = 'dc-spacing-handle dc-spacing-handle--gap';
+        h.dataset.side = '';
+        h.dataset.prop = 'gap';
+        h.dataset.axis = axis;
+        h.style.display = 'block';
+        h.style.left = `${Math.round(pt.x)}px`;
+        h.style.top = `${Math.round(pt.y)}px`;
+        i++;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [active, one]);
+
+  const commit = useCallback((d: SpacingDrag, value: number) => {
+    const after = `${value}px`;
+    lastCommitRef.current = { el: d.el, prop: d.prop, before: d.before };
+    try {
+      window.parent.postMessage(
+        {
+          dgn: 'resize-request',
+          id: d.cdId,
+          patch: { [d.prop]: after },
+          before: { [d.prop]: d.before },
+          idIndex: d.idIndex,
+        },
+        '*'
+      );
+    } catch {
+      /* detached / cross-origin teardown */
+    }
+  }, []);
+
+  useEffect(() => {
+    const c = containerRef.current;
+    if (!c) return;
+
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t?.classList.contains('dc-spacing-handle')) return;
+      if (!one || typeof one.id !== 'string') return;
+      const el = resolveSelectionEl(document, one) as HTMLElement | null;
+      if (!el) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const prop = t.dataset.prop || '';
+      const isGap = prop === 'gap';
+      const cs = getComputedStyle(el);
+      const world = el.closest('.dc-world') as HTMLElement | null;
+      const zoom = world ? scaleFromMatrix(getComputedStyle(world).transform) : 1;
+      const drag: SpacingDrag = {
+        pointerId: e.pointerId,
+        kind: isGap ? 'gap' : 'padding',
+        side: isGap ? null : ((t.dataset.side as PaddingSide) ?? null),
+        axis: (t.dataset.axis as 'x' | 'y') ?? 'x',
+        el,
+        cdId: one.id,
+        idIndex: globalCdOccurrence(document, one.id, el),
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        zoom: zoom > 0 ? zoom : 1,
+        startValue: computedPx(cs, prop),
+        prop,
+        before: el.style.getPropertyValue(prop) || null,
+      };
+      dragRef.current = drag;
+      t.dataset.dragging = 'true';
+      try {
+        t.setPointerCapture(e.pointerId);
+      } catch {
+        /* synthetic events may reject capture */
+      }
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      e.preventDefault();
+      const dx = e.clientX - d.startClientX;
+      const dy = e.clientY - d.startClientY;
+      const next =
+        d.kind === 'gap'
+          ? computeGapDrag(d.axis, d.startValue, dx, dy, d.zoom)
+          : computePaddingDrag(d.side ?? 'top', d.startValue, dx, dy, d.zoom);
+      d.el.style.setProperty(d.prop, `${next}px`);
+    };
+
+    const onUp = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      dragRef.current = null;
+      const handle = containerRef.current?.querySelector<HTMLElement>(
+        `.dc-spacing-handle[data-prop="${d.prop}"][data-dragging="true"]`
+      );
+      if (handle) delete handle.dataset.dragging;
+      const dx = e.clientX - d.startClientX;
+      const dy = e.clientY - d.startClientY;
+      const next =
+        d.kind === 'gap'
+          ? computeGapDrag(d.axis, d.startValue, dx, dy, d.zoom)
+          : computePaddingDrag(d.side ?? 'top', d.startValue, dx, dy, d.zoom);
+      if (`${next}px` === (d.before ?? `${d.startValue}px`)) return; // no-op guard
+      commit(d, next);
+    };
+
+    // Restore the pre-drag inline value if the shell reports the write failed
+    // (shares `resize-failed` with the element-resize overlay — both restore a
+    // single inline prop from their OWN lastCommitRef, so they don't collide).
+    const onFail = (e: MessageEvent) => {
+      const m = e.data as { dgn?: string } | null;
+      if (m?.dgn !== 'resize-failed') return;
+      if (e.source !== window.parent) return; // only the parent shell (DDR-054)
+      const last = lastCommitRef.current;
+      if (!last) return;
+      if (last.before == null) last.el.style.removeProperty(last.prop);
+      else last.el.style.setProperty(last.prop, last.before);
+      lastCommitRef.current = null;
+    };
+
+    c.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('message', onFail);
+    return () => {
+      c.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('message', onFail);
+    };
+  }, [one, commit]);
+
+  return <div ref={containerRef} aria-hidden="true" />;
+}

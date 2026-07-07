@@ -9039,10 +9039,21 @@ function App() {
       // width/height/left/top write lands on that instance's own `<Component/>`
       // usage (local), not the shared inner definition. undefined for a plain element.
       const occ = Number.isInteger(idIndex) ? idIndex : undefined;
-      // `transform` rides the same lane for the rotate handle (Task L8).
-      const props = ['width', 'height', 'left', 'top', 'transform'].filter(
-        (p) => typeof patch[p] === 'string' && patch[p]
-      );
+      // `transform` rides the same lane for the rotate handle (Task L8);
+      // `padding-*`/`gap` ride it for the on-canvas spacing drag (Stage J) — same
+      // single-prop /_api/edit-css write + per-prop undo record, no new lane.
+      const props = [
+        'width',
+        'height',
+        'left',
+        'top',
+        'transform',
+        'padding-top',
+        'padding-right',
+        'padding-bottom',
+        'padding-left',
+        'gap',
+      ].filter((p) => typeof patch[p] === 'string' && patch[p]);
       if (!props.length) return;
       // INV-2 (DDR-105) — arm the reload-suppression window BEFORE the edit-css
       // writes so the follow-up HMR is skipped. Without this the canvas remounts

@@ -435,7 +435,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 
 ### Stage J — On-canvas spacing (padding + gap drag)
 
-#### Task J1: CREATE an on-canvas padding + gap drag overlay
+#### ✅ Task J1: CREATE an on-canvas padding + gap drag overlay — DONE 2026-07-07
 
 - **Do**: New fixed-rAF overlay (mirror `equal-spacing-handles.tsx`'s follow-layer scaffold, `:159-219`) that, for a selected flex/grid container or padded element, paints draggable **padding** edges (inside the box) and **gap** handles (between flex/grid children). Dragging uses `makeScrub`'s value math (`app.jsx:4461`) and previews live via `applyOptimisticStyle`; on release, commit through `commit()`→`/_api/edit-css`→`record('css', 'padding-…'|'gap', before, after)` so it inherits `edit-source` undo (INV-1). Alt = symmetric pair, alt+shift = all sides (match the panel box-model grammar).
 - **Pattern**: read-only affordance already exists in `equal-spacing-handles.tsx` (header: "drag-to-adjust … Wave 3.x follow-up; for v1 we paint the affordance only") — this task builds the deferred drag. Detector: `equal-spacing-detector.ts` for gap midpoints.

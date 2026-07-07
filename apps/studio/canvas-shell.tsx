@@ -105,6 +105,7 @@ import {
   type Selection,
   useSelectionSet,
 } from './use-selection-set.tsx';
+import { SpacingHandlesOverlay } from './use-spacing-handles.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
 import { useUndoSinks, useUndoStack } from './use-undo-stack.tsx';
 
@@ -2247,6 +2248,7 @@ function CanvasRouter({
       <HoverHalo el={hoverEl} />
       <SelectionHalos />
       <ElementResizeOverlay />
+      <SpacingHandlesOverlay />
       <ReorderDrag />
       <LayersLiveSync />
       <GroupBbox />
