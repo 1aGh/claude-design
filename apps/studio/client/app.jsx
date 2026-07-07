@@ -6003,8 +6003,22 @@ function resolveArtboardIdFromSelection(el) {
 // CURRENT artboard to 834×1194 in one click instead of typing both fields.
 function ArtboardKnobs({ el, onResizeArtboard }) {
   const artboardId = resolveArtboardIdFromSelection(el);
-  const w = Number.isFinite(el.worldW) ? el.worldW : null;
-  const h = Number.isFinite(el.worldH) ? el.worldH : null;
+  // Dogfood 2026-07-07 (round 2) — `worldW`/`worldH` (zoom-independent) are
+  // undefined for a selection that reached here via a code path predating
+  // that field (a canvas iframe that hasn't remounted since); fall back to
+  // `bounds` (the SCREEN rect — always populated, but wrong at any zoom other
+  // than 100%) so the fields show SOMETHING rather than sit empty. Self-heals
+  // to the exact value the moment `worldW`/`worldH` are present.
+  const w = Number.isFinite(el.worldW)
+    ? el.worldW
+    : Number.isFinite(el.bounds?.w)
+      ? el.bounds.w
+      : null;
+  const h = Number.isFinite(el.worldH)
+    ? el.worldH
+    : Number.isFinite(el.bounds?.h)
+      ? el.bounds.h
+      : null;
   const commitSize = (width, height) => {
     if (!artboardId) return;
     const nw = Number.isFinite(width) && width > 0 ? Math.round(width) : undefined;
@@ -6056,21 +6070,25 @@ function ArtboardKnobs({ el, onResizeArtboard }) {
           />
         </div>
       </div>
-      <div className="st-cp-modes" style={{ padding: '0 12px 8px' }}>
-        <div className="st-cp-modeseg" role="group" aria-label="artboard size preset">
+      <div style={{ padding: '0 12px 8px' }}>
+        <select
+          className="st-cp-nsel"
+          aria-label="artboard size preset"
+          value={activePreset ?? ''}
+          onChange={(e) => {
+            const p = SCREEN_PRESETS[e.currentTarget.value];
+            if (p) commitSize(p.width, p.height);
+          }}
+        >
+          <option value="" disabled>
+            {activePreset ? SCREEN_PRESETS[activePreset].label : 'Preset size…'}
+          </option>
           {Object.entries(SCREEN_PRESETS).map(([key, p]) => (
-            <button
-              key={key}
-              type="button"
-              className={`st-cp-modebtn${activePreset === key ? ' is-active' : ''}`}
-              aria-pressed={activePreset === key}
-              onClick={() => commitSize(p.width, p.height)}
-              title={`${p.label} — ${p.width}×${p.height}`}
-            >
-              {p.label}
-            </button>
+            <option key={key} value={key}>
+              {p.label} — {p.width}×{p.height}
+            </option>
           ))}
-        </div>
+        </select>
       </div>
     </section>
   );
