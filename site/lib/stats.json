@@ -5,8 +5,8 @@
   "contributors": 1,
   "plugins": {
     "design": {
-      "commands": 17,
-      "skills": 4,
+      "commands": 18,
+      "skills": 5,
       "agents": 17
     },
     "flow": {
@@ -81,7 +81,7 @@
     "hub/index.mdx": "2026-05-30",
     "hub/linking.mdx": "2026-06-23",
     "hub/pricing.mdx": "2026-05-28",
-    "index.mdx": "2026-06-24",
+    "index.mdx": "2026-07-06",
     "orchestration.mdx": "2026-06-25",
     "recipes/expo.mdx": "2026-05-30",
     "recipes/monorepo.mdx": "2026-05-23",

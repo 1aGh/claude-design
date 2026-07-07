@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-151: Whiteboard AI toolkit — geometry manifest, element-level context, and the `--board` template engine](DDR-151-whiteboard-ai-toolkit-geometry-manifest-and-element-context.md) — 2026-07-07, annotations/figjam/whiteboard/geometry-manifest/element-context/canvas-rects/board-templates/dom-parser/skill/dev-server
 - [DDR-150: Timeline clip addressing (AST id + fingerprint + semantic gate) & inline-edit persistence](DDR-150-timeline-clip-addressing-and-inline-edit-persistence.md) — 2026-07-04, studio/video/timeline/clip-addressing/ast-enumerator/content-hash-fingerprint/semantic-gate/cross-process-lock/inline-edit-persistence/debate
 - [DDR-149: Dev-server config hot-reload — in-place `ctx.cfg` swap contract (mid-session `/design:setup-ds` scaffolds reach the file tree live)](DDR-149-config-hot-reload-in-place-cfg-contract.md) — 2026-07-03, studio/config/hot-reload/file-tree/canvas-list-watch/security-clamp/linked-hub-boot-pin
 - [DDR-148: Video & animation layer — Remotion-authored comps (in-house bundled) + capture-first GIF/MP4 export (hybrid, user-ratified over the 3:0 debate default)](DDR-148-video-comp-remotion-authoring-capture-export.md) — 2026-07-03, design/video/remotion/player/transitions/runtime-bundle/capture-spine/mediabunny/gifenc/asset-widen/determinism/license-disclosure

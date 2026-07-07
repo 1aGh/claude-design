@@ -29,11 +29,14 @@ Default verbs. No prefix. Members:
 | `/design:handoff` | Migrate the active canvas to a production target |
 | `/design:to-lottie` | Productionize a maude animation → ONE `.lottie` from code (web + mobile, 1:1; emitter, not converter) |
 | `/design:to-rn` | FALLBACK — native react-native-svg + Reanimated component from the IR (light animation only) |
+| `/design:board` | Read the whiteboard with artboard + ELEMENT context, and/or author a whole tidy template (retro / kanban / social calendar / roadmap / brainstorm / checklist / user-flow) onto it — skill `whiteboard` |
 | `/design:help` | Print this grouped index |
 
 The bare `/design` form was a one-version compat stub in v0.8 that redirected to `/design:edit`. **Removed in v0.9** — only `/design:edit` resolves now.
 
 **Brief boards (Phase 22).** `/design:new` has three modes (resolved internally, not separate verbs — see [DDR-085](../../.ai/decisions/DDR-085-canvas-kind-and-design-new-ingest-mode.md)): **normal** (generate a new canvas), **blank** (`--blank` → an annotation-only `kind:"brief-board"` canvas, zero model cost), and **ingest** (run on an annotated brief-board → read its sticky/text notes verbatim and insert generated artboards into the same canvas). Escape hatches: `--from-annotations` (force ingest anywhere) / `--fresh` (ignore a board's notes, scaffold a new file). We deliberately overloaded `/design:new` rather than adding a `/design:brief-board` verb — the user creates and fills a board through the same command.
+
+**Whiteboard AI toolkit (feature-whiteboard-ai-toolkit).** `/design:board` is a NEW verb, not an overload of `/design:edit`/`/design:new` — the read→understand→author→verify loop over the FigJam draw layer is a distinct workflow from component editing, and the user explicitly asked for the full two-way toolkit (see [DDR-151](../../.ai/decisions/DDR-151-whiteboard-ai-toolkit-geometry-manifest-and-element-context.md)). The low-level verbs (`maude design canvas-rects`/`read-annotations`/`annotate`) and the full read/write/template spec live in skill `whiteboard`, not in this command's own body.
 
 ### setup — One-shot bootstrapping operations
 

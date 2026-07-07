@@ -1,6 +1,7 @@
 {
   "title": "Design commands",
   "pages": [
+    "board",
     "browse",
     "chat",
     "critic",

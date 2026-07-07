@@ -37,7 +37,14 @@ import { pathToFileURL } from 'node:url';
 // Argv
 
 function parseArgv(argv) {
-  const out = { positional: [], root: null, canvasState: null, help: false, graph: false };
+  const out = {
+    positional: [],
+    root: null,
+    canvasState: null,
+    rects: null,
+    help: false,
+    graph: false,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') {
@@ -56,6 +63,11 @@ function parseArgv(argv) {
       out.canvasState = argv[i];
     } else if (a.startsWith('--canvas-state=')) {
       out.canvasState = a.slice('--canvas-state='.length);
+    } else if (a === '--rects') {
+      i += 1;
+      out.rects = argv[i];
+    } else if (a.startsWith('--rects=')) {
+      out.rects = a.slice('--rects='.length);
     } else {
       out.positional.push(a);
     }
@@ -67,6 +79,7 @@ const HELP = `read-annotations.mjs — headless SVG → JSON annotation reader (
 
 Usage:
   maude design read-annotations <rel-path> [--root <repo>] [--canvas-state <path>]
+                                 [--rects <path>]
 
 Args:
   <rel-path>          Canvas path relative to the design root (e.g. "ui/Foo.tsx").
@@ -75,6 +88,16 @@ Args:
                       each annotation is tagged with the artboard it overlaps,
                       plus artboard-relative coords (rel) and a W3C-style
                       target block { source, selector, geometry }.
+  --rects <p>         A \`maude design canvas-rects\` geometry manifest
+                      ({ artboards, elements }) — feature-whiteboard-ai-toolkit.
+                      Adds ELEMENT-level context: an annotation whose center
+                      falls inside an element's world rect gets
+                      element: { cdId, selector, index, artboard, rect, tag,
+                      text } (or element: null). Also supplies artboard
+                      tagging (as --canvas-state does) when --canvas-state is
+                      not separately given. When an element resolves, the W3C
+                      target.selector upgrades from AnnotationIdSelector to
+                      { type: "CssSelector", value: <element.selector> }.
   --graph             Emit { annotations, graph } instead of the bare array:
                       graph.edges = bound arrows (from/to host ids), graph.nodes
                       = the strokes those arrows connect (with labels) — a
@@ -495,19 +518,99 @@ function tagArtboard(ann, artboards) {
  * FigJam v3 — anchor an annotation to its artboard for AI consumers: the
  * overlapping artboard id, artboard-RELATIVE coords (what survives an artboard
  * move), and a W3C Web-Annotation-style target (anchor by stable id first,
- * geometry as the refinement/fallback).
+ * geometry as the refinement/fallback). feature-whiteboard-ai-toolkit — when
+ * `anchorToElement` (below) already resolved `ann.element`, the target
+ * selector upgrades to a CssSelector naming that element instead of the bare
+ * AnnotationIdSelector.
  */
 function anchorToArtboard(ann, artboards) {
   const r = findArtboard(ann, artboards);
   if (!r) return { ...ann, artboard: null };
+  const selector = ann.element
+    ? { type: 'CssSelector', value: ann.element.selector }
+    : { type: 'AnnotationIdSelector', value: ann.id };
   return {
     ...ann,
     artboard: r.id,
     rel: ann.x != null ? { x: ann.x - r.x, y: ann.y - r.y } : null,
     target: {
       source: r.id,
-      selector: { type: 'AnnotationIdSelector', value: ann.id },
+      selector,
       geometry: ann.x != null ? { x: ann.x, y: ann.y, w: ann.w ?? 0, h: ann.h ?? 0 } : null,
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// --rects element-level context (feature-whiteboard-ai-toolkit). Reads a
+// `maude design canvas-rects` geometry manifest ({ artboards, elements }) —
+// `loadArtboards` above already understands `raw.artboards`, so only the
+// elements side needs a dedicated loader.
+
+function loadElements(p) {
+  try {
+    const raw = JSON.parse(readFileSync(p, 'utf8'));
+    const arr = Array.isArray(raw?.elements) ? raw.elements : [];
+    return arr.filter(
+      (e) =>
+        e &&
+        typeof e.selector === 'string' &&
+        e.selector &&
+        [e.x, e.y, e.w, e.h].every((n) => Number.isFinite(n))
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Deepest-element approximation over a FLAT rect list (no live DOM to walk,
+ * unlike `resolveHoverTarget` in the browser): the smallest-area element whose
+ * world rect contains the annotation's CENTER point. Smallest-containing-rect
+ * is the standard proxy for "innermost" when only bounding boxes are known —
+ * a wrapping card and the button inside it both contain the point, but the
+ * button's rect is smaller.
+ */
+function findElement(ann, elements) {
+  if (ann.x == null || ann.y == null) return null;
+  const cx = ann.x + (ann.w || 0) / 2;
+  const cy = ann.y + (ann.h || 0) / 2;
+  let best = null;
+  let bestArea = Number.POSITIVE_INFINITY;
+  for (const el of elements) {
+    if (cx < el.x || cx > el.x + el.w || cy < el.y || cy > el.y + el.h) continue;
+    const area = Math.max(0, el.w) * Math.max(0, el.h);
+    if (area < bestArea) {
+      bestArea = area;
+      best = el;
+    }
+  }
+  return best;
+}
+
+/**
+ * Look up a manifest element BY IDENTITY (its `cdId` or its full `selector`
+ * string) rather than by point — what `annotate --pin <cdId|selector>` needs
+ * to resolve a placement target. First match in manifest order.
+ */
+function findElementById(elements, query) {
+  if (!query) return null;
+  return elements.find((el) => el.cdId === query || el.selector === query) ?? null;
+}
+
+function anchorToElement(ann, elements) {
+  const el = findElement(ann, elements);
+  if (!el) return { ...ann, element: null };
+  return {
+    ...ann,
+    element: {
+      cdId: el.cdId ?? null,
+      selector: el.selector,
+      index: el.index ?? 0,
+      artboard: el.artboard ?? null,
+      rect: { x: el.x, y: el.y, w: el.w, h: el.h },
+      tag: el.tag ?? '',
+      text: el.text ?? '',
     },
   };
 }
@@ -548,14 +651,28 @@ function main() {
 
   let annotations = parseAnnotations(svg);
 
+  // feature-whiteboard-ai-toolkit — --rects supplies element-level context
+  // (and, absent a separate --canvas-state, artboards too: loadArtboards
+  // already understands a canvas-rects manifest's `{ artboards, elements }`
+  // shape). Elements are resolved BEFORE artboards so anchorToArtboard can see
+  // the already-attached `element` and upgrade its W3C target.selector.
+  let artboards = [];
   if (args.canvasState) {
     const csPath = isAbsolute(args.canvasState)
       ? args.canvasState
       : resolve(process.cwd(), args.canvasState);
-    const artboards = loadArtboards(csPath);
-    if (artboards.length) {
-      annotations = annotations.map((a) => anchorToArtboard(a, artboards));
+    artboards = loadArtboards(csPath);
+  }
+  if (args.rects) {
+    const rectsPath = isAbsolute(args.rects) ? args.rects : resolve(process.cwd(), args.rects);
+    const elements = loadElements(rectsPath);
+    if (elements.length) {
+      annotations = annotations.map((a) => anchorToElement(a, elements));
     }
+    if (!artboards.length) artboards = loadArtboards(rectsPath);
+  }
+  if (artboards.length) {
+    annotations = annotations.map((a) => anchorToArtboard(a, artboards));
   }
 
   if (args.graph) {
@@ -567,7 +684,21 @@ function main() {
 
 // FigJam v3 — the parsing core is importable (the `annotate` write verb reuses
 // it for host-geometry lookups); main() runs only when invoked as a script.
-export { buildGraph, fileSlug, loadArtboards, parseAnnotations, resolveDesignRoot, tagArtboard };
+// feature-whiteboard-ai-toolkit — findElement/loadElements are exported too so
+// `annotate --pin` (Task 4) can resolve an element's rect from the same
+// canvas-rects manifest without a second implementation.
+export {
+  anchorToElement,
+  buildGraph,
+  fileSlug,
+  findElement,
+  findElementById,
+  loadArtboards,
+  loadElements,
+  parseAnnotations,
+  resolveDesignRoot,
+  tagArtboard,
+};
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) main();

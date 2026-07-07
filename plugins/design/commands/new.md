@@ -663,21 +663,29 @@ fi
 
 #### 6b.2 Compose the verbatim brief
 
-Per CLAUDE.md ("pass the user's input verbatim — do not paraphrase"), the annotation text becomes a `## User annotations (verbatim)` block: one line per stroke with `text != null`, each prefixed with a positional hint from its world coords (and the overlapped artboard when `--canvas-state` is present).
+Per CLAUDE.md ("pass the user's input verbatim — do not paraphrase"), the annotation text becomes a `## User annotations (verbatim)` block: one line per stroke with `text != null`, each prefixed with a positional hint from its world coords, the overlapped artboard, and — when a live-render `canvas-rects` manifest resolved one (skill `whiteboard`) — the specific UI element the note sits over.
 
 ```bash
-# Canvas-state (artboard rects) for overlap tagging — present once a board has
-# real artboards (e.g. a re-ingest). Optional; absent on a first ingest.
-CANVAS_STATE="$REPO_ROOT/$DESIGN_ROOT/_canvas-state/$ACTIVE_SLUG.json"
-CS_ARG=""; [[ -f "$CANVAS_STATE" ]] && CS_ARG="--canvas-state $CANVAS_STATE"
-ANNOT_JSON=$(maude design read-annotations "$ACTIVE_REL" --root "$REPO_ROOT" $CS_ARG 2>/dev/null || echo '[]')
+# Geometry manifest (feature-whiteboard-ai-toolkit) for artboard AND element
+# overlap tagging — present once a board has real artboards (e.g. a
+# re-ingest). Optional; absent/empty on a first ingest onto a bare frame.
+# Supersedes the old `_canvas-state/$SLUG.json` reference: that legacy file
+# only ever carries `{sections:{}, viewport}` (no producer populates
+# `sections` with rects), so it silently never tagged an artboard — the
+# manifest is the one that actually works, and adds ELEMENT context too.
+RECTS_JSON="$REPO_ROOT/$DESIGN_ROOT/_history/$ACTIVE_SLUG/rects.json"
+maude design canvas-rects "$ACTIVE_REL" --root "$REPO_ROOT" > "$RECTS_JSON" 2>/dev/null || echo '{}' > "$RECTS_JSON"
+ANNOT_JSON=$(maude design read-annotations "$ACTIVE_REL" --root "$REPO_ROOT" --rects "$RECTS_JSON" 2>/dev/null || echo '[]')
 
 # Verbatim block: text strokes only, each with a positional hint. gsub collapses
 # multi-line sticky bodies to one line so the block stays one-line-per-note.
+# The element hint (skill `whiteboard`) only fires on a re-ingest with a live
+# render available — a first ingest onto a bare frame has no elements yet.
 ANNOT_BLOCK=$(jq -r '
   [ .[] | select(.text != null and (.text|length) > 0) ]
   | map(
-      ( if .artboard then "[near artboard \"" + .artboard + "\"] "
+      ( if .element then "[near artboard \"" + (.artboard // "?") + "\", over the " + (.element.tag // "element") + " \"" + (.element.text // .element.selector) + "\"] "
+        elif .artboard then "[near artboard \"" + .artboard + "\"] "
         elif (.x != null and .y != null)
           then "[at " + (.x|floor|tostring) + "," + (.y|floor|tostring) + "] "
         else "" end )

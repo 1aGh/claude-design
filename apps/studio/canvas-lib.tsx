@@ -47,6 +47,16 @@
  *   useTheme()         Current theme + setter, syncs to <html data-theme>.
  *   useArtboardBounds(ref) ResizeObserver wrapper returning {width,height}.
  *
+ *   Whiteboard toolkit (feature-whiteboard-ai-toolkit) ────────────────────
+ *   window.__maudeCanvasRects() Installed as a side effect on module load.
+ *                      Returns { artboards, elements, elementsTruncated } in
+ *                      WORLD coords — the geometry manifest `maude design
+ *                      canvas-rects` reads via headless Chromium so the
+ *                      annotation read/write verbs never hand-compute a
+ *                      coordinate. See the section right after DCArtboard.
+ *   getLiveViewport()  The live pan/zoom, readable outside the React tree —
+ *                      what the hook above converts screen rects through.
+ *
  * Authoring vocabulary. Lift these before re-implementing equivalents. The
  * surface intentionally mirrors the .html-era specimen idioms one-for-one
  * (`.specimen-hd`, `.specimen-meta`, `.sku`, `.swatch`, `.stamp`) so existing
@@ -95,6 +105,7 @@ import {
   buildMoveArtboardsRecord,
   diffLayoutPositions,
 } from './commands/move-artboards-command.ts';
+import { scopedCdSelector, selectorIndex, shortText } from './dom-selection.ts';
 import { AgentPresenceProvider, useAgentPresence } from './use-agent-presence.tsx';
 import { type DragState, useArtboardDrag } from './use-artboard-drag.tsx';
 import {
@@ -707,6 +718,15 @@ function fitRectIntoHost(rect: ArtboardRect, hostEl: HTMLElement, pad = 24): Vie
 // then. Written on every applyViewport (exact — no settle/publish lag).
 let liveViewport: ViewportState | null = null;
 
+/**
+ * The current pan/zoom, read from OUTSIDE the React tree — the
+ * `window.__maudeCanvasRects()` hook (below) has no component instance to
+ * hook into, so it reads this module-scope mirror instead of WorldContext.
+ */
+export function getLiveViewport(): ViewportState | null {
+  return liveViewport ? { ...liveViewport } : null;
+}
+
 export function useViewportController(opts: ViewportControllerOptions): ViewportControllerHandle {
   const {
     hostRef,
@@ -994,6 +1014,7 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
     const initial = getInitial();
     if (initial) {
       vpRef.current = { ...initial };
+      liveViewport = { ...initial }; // mirror pre-first-gesture so headless capture sees it
       writeTransform(vpRef.current, { crisp: true });
       setViewportPublished({ ...vpRef.current });
     }
@@ -1007,6 +1028,7 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
         hadSize = true;
         const refit = computeFitRef.current();
         vpRef.current = { ...refit };
+        liveViewport = { ...refit };
         writeTransform(vpRef.current, { crisp: true });
         setViewportPublished({ ...vpRef.current });
       }
@@ -1864,6 +1886,148 @@ export function DCArtboard({
   );
 }
 DCArtboard.displayName = 'DCArtboard';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// window.__maudeCanvasRects() — the whiteboard-toolkit geometry manifest hook
+// (feature-whiteboard-ai-toolkit). `maude design canvas-rects` (a headless
+// Chromium shim) calls this to get every artboard's + every meaningful
+// element's WORLD-coordinate rect, so the annotation read/write verbs
+// (`read-annotations --rects`, `annotate --in/--pin/--board`) never need to
+// hand-compute a coordinate. Pure DOM + the `liveViewport` mirror above — no
+// React context needed, so it works from a plain page.evaluate() call with no
+// regard for which component tree happens to be mounted.
+//
+// World-coord conversion mirrors DesignCanvasInner's `activeArtboardId` math
+// (canvas = translate(vp.x,vp.y) then scale(vp.zoom) applied to `.dc-world`):
+//   worldX = (screenX - hostRect.left - vp.x) / vp.zoom
+// A `.dc-canvas` host is required (bare DS specimens have no world plane —
+// this hook is for UI canvases with artboards, so it returns an empty
+// manifest there rather than guessing).
+
+export interface CanvasRectsElement {
+  cdId: string | null;
+  selector: string;
+  index: number;
+  artboard: string | null;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  tag: string;
+  text: string;
+}
+
+export interface CanvasRectsManifest {
+  artboards: ArtboardRect[];
+  elements: CanvasRectsElement[];
+  elementsTruncated: boolean;
+}
+
+// Comment/annotation/chrome subtrees never make useful annotation targets —
+// mirrors the pickSpecimenEl chrome denylist (canvas-comment-mount.tsx) plus
+// the annotation layer's own root.
+const RECTS_CHROME_SELECTOR =
+  '.cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, [data-mc-hover-halo], [data-mdcc-annotations], .dc-minimap, .dc-zoom-toolbar';
+
+const RECTS_INTERACTIVE_TAGS = new Set([
+  'button',
+  'a',
+  'input',
+  'textarea',
+  'select',
+  'option',
+  'label',
+  'summary',
+  'img',
+  'svg',
+  'video',
+  'picture',
+]);
+
+const RECTS_ELEMENT_CAP = 400;
+
+/** True when `el` has no `[data-cd-id]` descendant — a "leaf" in the pipeline's
+ *  stamped tree, i.e. the finest element the JSX source actually distinguishes
+ *  (a text run, an icon, a leaf `<div>`) rather than a structural wrapper. */
+function isCdIdLeaf(el: Element): boolean {
+  return el.querySelector('[data-cd-id]') === null;
+}
+
+function elementIsCandidate(el: Element): boolean {
+  const tag = el.tagName.toLowerCase();
+  if (RECTS_INTERACTIVE_TAGS.has(tag)) return true;
+  if (el.hasAttribute('role') && el.getAttribute('role') === 'button') return true;
+  if (el.hasAttribute('tabindex')) return true;
+  if (!isCdIdLeaf(el)) return false; // structural wrapper — a leaf sibling/descendant covers it
+  return shortText(el, 1).length > 0;
+}
+
+function buildCanvasRectsManifest(): CanvasRectsManifest {
+  const empty: CanvasRectsManifest = { artboards: [], elements: [], elementsTruncated: false };
+  if (typeof document === 'undefined') return empty;
+  const host = document.querySelector('.dc-canvas') as HTMLElement | null;
+  if (!host) return empty; // bare specimen / no world plane — nothing to resolve against
+
+  const vp = getLiveViewport() ?? { x: 0, y: 0, zoom: 1 };
+  const hostRect = host.getBoundingClientRect();
+  const toWorld = (r: DOMRect): { x: number; y: number; w: number; h: number } => ({
+    x: (r.left - hostRect.left - vp.x) / vp.zoom,
+    y: (r.top - hostRect.top - vp.y) / vp.zoom,
+    w: r.width / vp.zoom,
+    h: r.height / vp.zoom,
+  });
+
+  const artboards: ArtboardRect[] = [];
+  const artboardEls = Array.from(document.querySelectorAll('[data-dc-screen]'));
+  for (const el of artboardEls) {
+    const rect = (el as HTMLElement).getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) continue;
+    const id = el.getAttribute('data-dc-screen');
+    if (!id) continue;
+    artboards.push({ id, ...toWorld(rect) });
+  }
+
+  const elements: CanvasRectsElement[] = [];
+  let truncated = false;
+  const candidateEls = Array.from(document.querySelectorAll('[data-cd-id]'));
+  for (const el of candidateEls) {
+    if (elements.length >= RECTS_ELEMENT_CAP) {
+      truncated = true;
+      break;
+    }
+    if (el.closest(RECTS_CHROME_SELECTOR)) continue;
+    const artboardEl = el.closest('[data-dc-screen]');
+    if (!artboardEl) continue; // off-artboard chrome (menubar, panels, toolbars)
+    if (!elementIsCandidate(el)) continue;
+    const rect = (el as HTMLElement).getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) continue;
+    const cdId = el.getAttribute('data-cd-id');
+    const artboardId = artboardEl.getAttribute('data-dc-screen');
+    const selector = cdId ? scopedCdSelector(cdId, artboardId) : '';
+    const index = cdId ? selectorIndex(document, selector, el) : 0;
+    elements.push({
+      cdId,
+      selector,
+      index,
+      artboard: artboardId,
+      ...toWorld(rect),
+      tag: el.tagName.toLowerCase(),
+      text: shortText(el, 120),
+    });
+  }
+
+  return { artboards, elements, elementsTruncated: truncated };
+}
+
+declare global {
+  interface Window {
+    __maudeCanvasRects?: () => CanvasRectsManifest;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.__maudeCanvasRects = buildCanvasRectsManifest;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DrawProof (Phase 25) — the render/verify harness for the draw engine. Renders

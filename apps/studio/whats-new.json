@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "whiteboard-ai-toolkit",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "The Assistant now reads and draws on your whiteboard",
+      "summary": "Sketch stickies, shapes, and arrows on a canvas and the Assistant understands not just which artboard a note sits on, but which button or element it's pointing at. Ask it to pin a note next to something specific, and it'll drop it right there with an arrow pointing at it — no guessing coordinates. It can also lay out a whole tidy board for you: a sprint retro, a kanban, a week of social posts, a roadmap, a brainstorm, a user-flow diagram — just ask.",
+      "surface": "design-ui"
+    },
+    {
       "id": "timeline-clip-editing",
       "version": "0.40.0",
       "date": "2026-07-05",

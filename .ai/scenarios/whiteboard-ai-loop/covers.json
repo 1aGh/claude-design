@@ -1,0 +1,17 @@
+{
+  "web": [
+    "apps/studio/canvas-lib.tsx",
+    "apps/studio/bin/annotate.mjs",
+    "apps/studio/bin/read-annotations.mjs",
+    "apps/studio/bin/canvas-rects.sh",
+    "apps/studio/bin/_canvas-rects-playwright.mjs",
+    "apps/studio/bin/_canvas-rects-static.mjs",
+    "apps/studio/annotations-model.ts",
+    "apps/studio/annotations-bindings.ts",
+    "cli/commands/design.mjs",
+    "plugins/design/skills/whiteboard/**",
+    "plugins/design/commands/board.md"
+  ],
+  "native": [],
+  "shared": []
+}

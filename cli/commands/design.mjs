@@ -43,6 +43,7 @@ const BIN_VERBS = new Set([
   'to-lottie',
   'read-annotations',
   'annotate',
+  'canvas-rects',
   'chat-open',
   'ensure-browser',
   'fetch-asset',
@@ -139,6 +140,7 @@ Dev-tooling (dispatch to the dev-server bash helpers — DDR-062):
   screenshot · server-up · prep · slug · bootstrap-check · runtime-health
   smoke · canvas-edit · handoff · asset-sweep · visual-sanity · fetch-asset
   draw-build · draw-proof · svg-optimize · to-lottie · read-annotations · annotate
+  canvas-rects
         Invoke the bundled helper of the same name. maude resolves it from its
         own package root and sets CLAUDE_PLUGIN_ROOT for the child; stdout,
         stderr, and exit code pass straight through (so command-substitution
@@ -149,6 +151,7 @@ Dev-tooling (dispatch to the dev-server bash helpers — DDR-062):
           eval "$(maude design prep --shell-export --shape edit --root "$REPO")"
           maude design smoke --changed-only
           REF=$(maude design fetch-asset "$URL" --root "$REPO")   # download-first image
+          maude design canvas-rects "ui/Foo.tsx"                  # geometry manifest (whiteboard toolkit)
 
   serve [--port N] [--root PATH]
         Start the design plugin's dev server in the current repo. Equivalent

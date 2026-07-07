@@ -40,6 +40,16 @@ interface Annotation {
   color: string | null;
   anchorId?: string;
   artboard?: string | null;
+  element?: {
+    cdId: string | null;
+    selector: string;
+    index: number;
+    artboard: string | null;
+    rect: { x: number; y: number; w: number; h: number };
+    tag: string;
+    text: string;
+  } | null;
+  target?: { source: string; selector: { type: string; value: string }; geometry: unknown };
 }
 
 // Mirror api.ts fileSlug for the common (design-root-relative .tsx) case so the
@@ -405,5 +415,149 @@ describe('read-annotations / --canvas-state overlap tagging', () => {
     };
     const [a] = read(REL, strokesToSvg([t])).annotations;
     expect(a && 'artboard' in a).toBe(false);
+  });
+});
+
+// feature-whiteboard-ai-toolkit — --rects (a `maude design canvas-rects`
+// geometry manifest) adds element-level context on top of the existing
+// artboard tagging.
+describe('read-annotations / --rects element-level context', () => {
+  const manifest = JSON.stringify({
+    artboards: [{ id: 'hero', x: 0, y: 0, w: 400, h: 300 }],
+    elements: [
+      // A wrapping card AND the button inside it both contain "over-button"'s
+      // center — the button (smaller area) must win (deepest heuristic).
+      {
+        cdId: 'card1',
+        selector: '[data-dc-screen="hero"] [data-cd-id="card1"]',
+        index: 0,
+        artboard: 'hero',
+        x: 40,
+        y: 40,
+        w: 300,
+        h: 200,
+        tag: 'div',
+        text: '',
+      },
+      {
+        cdId: 'btn1',
+        selector: '[data-dc-screen="hero"] [data-cd-id="btn1"]',
+        index: 0,
+        artboard: 'hero',
+        x: 60,
+        y: 60,
+        w: 100,
+        h: 32,
+        tag: 'button',
+        text: 'Continue',
+      },
+    ],
+    elementsTruncated: false,
+  });
+
+  test('a note whose center sits over an element resolves the DEEPEST (smallest) match', () => {
+    const t: TextStroke = {
+      id: 'over-button',
+      tool: 'text',
+      color: '#000',
+      fontSize: 14,
+      text: 'shrink this',
+      x: 80,
+      y: 70, // inside both card1 (40,40,300,200) and btn1 (60,60,100,32)
+    };
+    const { annotations } = read(REL, strokesToSvg([t]), ['--rects', 'rects.json'], {
+      'rects.json': manifest,
+    });
+    const [a] = annotations;
+    expect(a?.element?.cdId).toBe('btn1');
+    expect(a?.element?.tag).toBe('button');
+    expect(a?.element?.text).toBe('Continue');
+    expect(a?.element?.selector).toBe('[data-dc-screen="hero"] [data-cd-id="btn1"]');
+    expect(a?.element?.rect).toEqual({ x: 60, y: 60, w: 100, h: 32 });
+  });
+
+  test('a note over no element resolves element: null', () => {
+    const t: TextStroke = {
+      id: 'floating',
+      tool: 'text',
+      color: '#000',
+      fontSize: 14,
+      text: 'nowhere near an element',
+      x: 5000,
+      y: 5000,
+    };
+    const { annotations } = read(REL, strokesToSvg([t]), ['--rects', 'rects.json'], {
+      'rects.json': manifest,
+    });
+    expect(annotations[0]?.element).toBeNull();
+  });
+
+  test('--rects also supplies artboard tagging when --canvas-state is absent', () => {
+    const t: TextStroke = {
+      id: 'on-hero',
+      tool: 'text',
+      color: '#000',
+      fontSize: 14,
+      text: 'x',
+      x: 80,
+      y: 70,
+    };
+    const { annotations } = read(REL, strokesToSvg([t]), ['--rects', 'rects.json'], {
+      'rects.json': manifest,
+    });
+    expect(annotations[0]?.artboard).toBe('hero');
+  });
+
+  test('an element resolution upgrades the W3C target.selector to a CssSelector', () => {
+    const t: TextStroke = {
+      id: 'over-button-2',
+      tool: 'text',
+      color: '#000',
+      fontSize: 14,
+      text: 'x',
+      x: 80,
+      y: 70,
+    };
+    const { annotations } = read(REL, strokesToSvg([t]), ['--rects', 'rects.json'], {
+      'rects.json': manifest,
+    });
+    expect(annotations[0]?.target?.selector).toEqual({
+      type: 'CssSelector',
+      value: '[data-dc-screen="hero"] [data-cd-id="btn1"]',
+    });
+  });
+
+  test('a floating note (no artboard) keeps AnnotationIdSelector', () => {
+    const t: TextStroke = {
+      id: 'far-away',
+      tool: 'text',
+      color: '#000',
+      fontSize: 14,
+      text: 'x',
+      x: 9000,
+      y: 9000,
+    };
+    const { annotations } = read(REL, strokesToSvg([t]), ['--rects', 'rects.json'], {
+      'rects.json': manifest,
+    });
+    // Outside every artboard — anchorToArtboard returns early, no `target` at all.
+    expect(annotations[0]?.target).toBeUndefined();
+    expect(annotations[0]?.element).toBeNull();
+  });
+
+  test('without --rects, no element field is emitted (byte-for-byte preserved)', () => {
+    const t: TextStroke = {
+      id: 't',
+      tool: 'text',
+      color: '#000',
+      fontSize: 14,
+      text: 'x',
+      x: 80,
+      y: 70,
+    };
+    const [a] = read(REL, strokesToSvg([t]), ['--canvas-state', 'state.json'], {
+      'state.json': JSON.stringify({ artboards: [{ id: 'hero', x: 0, y: 0, w: 400, h: 300 }] }),
+    }).annotations;
+    expect(a && 'element' in a).toBe(false);
   });
 });

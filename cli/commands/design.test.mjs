@@ -51,8 +51,56 @@ test('unknown verb exits 2', () => {
 test('design help lists the dev-tooling verbs', () => {
   const res = runDesign(['help']);
   assert.equal(res.status, 0, res.stderr);
-  for (const verb of ['screenshot', 'server-up', 'prep', 'slug', 'smoke', 'visual-sanity']) {
+  for (const verb of [
+    'screenshot',
+    'server-up',
+    'prep',
+    'slug',
+    'smoke',
+    'visual-sanity',
+    'canvas-rects',
+  ]) {
     assert.match(res.stdout, new RegExp(verb), `usage should mention ${verb}`);
+  }
+});
+
+// canvas-rects needs an explicit --root pinned to an isolated temp dir (not
+// runDesign's ambient cwd) — its server-detection reads $CLAUDE_PROJECT_DIR /
+// `git rev-parse` when --root is absent, which would escape the temp dir in
+// an environment where either is set.
+function runCanvasRects(args, root) {
+  const env = { ...process.env };
+  env.CLAUDE_PLUGIN_ROOT = undefined;
+  return spawnSync(process.execPath, [BIN, 'design', 'canvas-rects', ...args, '--root', root], {
+    cwd: root,
+    encoding: 'utf8',
+    env,
+  });
+}
+
+test('canvas-rects dispatches to the bundled helper (--help)', () => {
+  const root = mkdtempSync(join(tmpdir(), 'maude-canvas-rects-'));
+  try {
+    const res = runCanvasRects(['--help'], root);
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /canvas-rects\.sh/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('canvas-rects with no live server falls back to the static lane', () => {
+  // No .design/_server.json under --root → static fallback, no browser
+  // needed. A missing canvas still emits a valid empty manifest (exit 0).
+  const root = mkdtempSync(join(tmpdir(), 'maude-canvas-rects-'));
+  try {
+    const res = runCanvasRects(['ui/Nonexistent.tsx'], root);
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stderr, /static/);
+    const manifest = JSON.parse(res.stdout.trim());
+    assert.deepEqual(manifest, { artboards: [], elements: [], elementsTruncated: false });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

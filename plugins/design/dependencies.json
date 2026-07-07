@@ -74,8 +74,10 @@
         "commands/new.md",
         "commands/edit.md",
         "commands/smoke.md",
+        "commands/board.md",
         "dev-server/bin/screenshot.sh",
         "dev-server/bin/smoke.sh",
+        "dev-server/bin/canvas-rects.sh",
         "agents/design-critic.md",
         "agents/graphic-design-critic.md",
         "agents/a11y-critic.md"
@@ -104,7 +106,9 @@
         "dev-server/bin/_html-playwright.mjs",
         "dev-server/bin/_pptx-playwright.mjs",
         "dev-server/bin/_enumerate-artboards-playwright.mjs",
-        "dev-server/bin/screenshot.sh"
+        "dev-server/bin/screenshot.sh",
+        "dev-server/bin/_canvas-rects-playwright.mjs",
+        "dev-server/bin/canvas-rects.sh"
       ],
       "docsUrl": "https://playwright.dev"
     },
@@ -157,7 +161,11 @@
       },
       "autoInstall": false,
       "fallbackBehavior": "Slash commands' bash blocks that read .ai/workflows.config.json via jq degrade to inline node one-liners; harder to read but functional.",
-      "usedBy": ["dev-server/bin/bootstrap-check.sh", "dev-server/bin/server-up.sh"]
+      "usedBy": [
+        "dev-server/bin/bootstrap-check.sh",
+        "dev-server/bin/server-up.sh",
+        "dev-server/bin/canvas-rects.sh"
+      ]
     },
     {
       "id": "askuserquestion-mcp",

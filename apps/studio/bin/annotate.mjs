@@ -67,10 +67,13 @@ import {
   STICKY_DEFAULT_W,
   sanitizeAnnotationSvg,
   strokeToSvgEl,
+  svgToStrokes,
 } from '../annotations-model.ts';
 import {
   fileSlug,
+  findElementById,
   loadArtboards,
+  loadElements,
   parseAnnotations,
   resolveDesignRoot,
 } from './read-annotations.mjs';
@@ -95,22 +98,79 @@ const HELP = `annotate.mjs — AI annotation WRITE verb (DDR-062 via \`maude des
 
 Usage:
   maude design annotate <rel-path> [--ops <file|->] [--flow <file|->]
-                        [--near <artboardId>] [--canvas-state <path>]
+                        [--board <file|->]
+                        [--near <artboardId>] [--in <artboardId>]
+                        [--pin <cdId|selector>] [--no-pointer]
+                        [--canvas-state <path>] [--rects <path>]
                         [--root <repo>] [--dry-run]
 
 Args:
   <rel-path>          Canvas path relative to the design root (e.g. "ui/Foo.tsx").
   --ops <file|->      Ops JSON ({ ops: [...] }); "-" or omitted = stdin.
   --flow <file|->     Flow JSON ({ nodes, edges }) — auto-laid-out diagram of
-                      bound connectors. Mutually exclusive with --ops.
-  --near <artboard>   With --canvas-state: place the flow beside this artboard.
+                      bound connectors. Mutually exclusive with --ops/--board.
+  --board <file|->    Board JSON ({ title?, layout?, groups?, nodes?, edges?,
+                      connections? }) — a whole tidy TEMPLATE (retro, kanban,
+                      social calendar, roadmap, brainstorm, checklist,
+                      user-flow), the "generate a FigJam-style template"
+                      surface (feature-whiteboard-ai-toolkit). Named presets
+                      are NOT built in here — they're spec fixtures documented
+                      in the \`whiteboard\` skill; this is the generic engine:
+                        layout: "columns" (default; "grid"/"lanes" alias it) —
+                          one titled section per groups[].title, its
+                          groups[].cards (string[] or {text,color?}[]) stacked
+                          inside as stickies. An empty cards[] still gets a
+                          clean, evenly-spaced blank section (a board the team
+                          fills in live).
+                        layout: "radial" — a central shape/"title" (brainstorm
+                          topic) with every group's cards ringed around it.
+                        layout: "flow" — needs nodes[]/edges[] instead of
+                          groups[]; delegates straight to --flow's auto-layout
+                          (a user-flow / flowchart diagram of labelled shapes
+                          wired by bound connectors).
+                      connections?: [{from,to,label?}] adds bound arrows
+                      between refs the expansion minted (@sec<i> per section,
+                      @sec<i>card<j> per card, @center/@idea<i> for radial).
+                      Mutually exclusive with --ops/--flow.
+  --near <artboard>   Place beside this artboard (outside it, to the right).
+  --in <artboard>     Place INSIDE this artboard (top-left + a 40px inset).
+                      Requires --canvas-state or --rects. Unknown id = error.
+  --pin <cdId|sel>    Place beside this ELEMENT (from a --rects manifest) —
+                      "drop a note next to the CTA button". Unknown id/selector
+                      = error (never a silent mis-place). A created sticky/text
+                      also gets a pointer arrow to the element unless
+                      --no-pointer or the op sets "pointer": false.
   --canvas-state <p>  Artboard rects JSON (same shape read-annotations takes).
+  --rects <p>         A \`maude design canvas-rects\` geometry manifest
+                      ({ artboards, elements }) — feature-whiteboard-ai-toolkit.
+                      Supplies --pin's element lookup, and --in/--near's
+                      artboard lookup when --canvas-state isn't also given.
   --root <repo>       Repo root. Default: $CLAUDE_PROJECT_DIR, then cwd.
   --dry-run           Print the merged SVG to stdout instead of writing.
 
+Per-op overrides: any "create" op may carry its own "in"/"near"/"pin" field
+(and "pointer": false) to place just that op differently from the batch
+default — the same resolution rules as the CLI flags above.
+
 Ops vocabulary: create (sticky | text | shape | arrow) · connect (bound arrow
-between hosts, by id or @ref) · group · delete. Created strokes carry
-data-author="ai" and fresh ids; the verb prints { ok, via, file, refs }.
+between hosts, by id or @ref) · group · delete · move · set-text · set-color.
+Created strokes carry data-author="ai" and fresh ids; the verb prints
+{ ok, via, file, refs }.
+
+move/set-text/set-color (id-preserving, feature-whiteboard-ai-toolkit):
+  { "op": "move", "id": "<id|@ref>", "x": N, "y": N }
+  { "op": "set-text", "id": "<id|@ref>", "text": "…" }     (or a section's label)
+  { "op": "set-color", "id": "<id|@ref>", "color": "#…" }
+Every other attribute on the stroke (fontSize, bold/italic/dashed, rotation,
+groupIds, cornerRadius, …) is preserved byte-for-byte — the target is parsed
+through the CANONICAL parser and re-serialized through the CANONICAL
+serializer, not reconstructed from defaults. Works on a stroke created earlier
+in the SAME batch (by @ref) or an existing one from the file. Not every tool
+supports every op (arrows/pen have no single position; anchored text has no
+independent position; shapes have no single color/text field) — unsupported
+combinations fail loud (exit 2) rather than silently no-op or mis-write.
+DDR-100 deliberately omitted "update" for LWW honesty — these stay id-
+preserving but are still whole-file last-write-wins like every other op.
 
 The write is last-write-wins over the whole SVG — read before you write.`;
 
@@ -122,8 +182,13 @@ function parseArgv(argv) {
     positional: [],
     ops: null,
     flow: null,
+    board: null,
     near: null,
+    in: null,
+    pin: null,
+    pointer: true,
     canvasState: null,
+    rects: null,
     root: null,
     dryRun: false,
     help: false,
@@ -131,8 +196,12 @@ function parseArgv(argv) {
   const VALUE_FLAGS = {
     '--ops': 'ops',
     '--flow': 'flow',
+    '--board': 'board',
     '--near': 'near',
+    '--in': 'in',
+    '--pin': 'pin',
     '--canvas-state': 'canvasState',
+    '--rects': 'rects',
     '--root': 'root',
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -143,6 +212,8 @@ function parseArgv(argv) {
       out.help = true;
     } else if (a === '--dry-run') {
       out.dryRun = true;
+    } else if (a === '--no-pointer') {
+      out.pointer = false;
     } else if (flagKey in VALUE_FLAGS) {
       if (eq > 0) {
         out[VALUE_FLAGS[flagKey]] = a.slice(eq + 1);
@@ -219,33 +290,79 @@ const BINDABLE_PARSED = new Set(['rect', 'ellipse', 'polygon', 'sticky', 'image'
 // ─────────────────────────────────────────────────────────────────────────────
 // Op application
 
-function buildContext(existing, artboards, near) {
-  // Placement origin: beside --near's artboard when given, else right of the
-  // existing annotation extent, else a sane top-left.
+function buildContext(existing, artboards, elements, placement) {
+  // Placement origin, priority: --pin (beside the element) > --in (inside the
+  // artboard) > --near (beside the artboard, existing behavior) > right of the
+  // existing annotation extent > a sane top-left. Unknown --in/--pin targets
+  // are a hard error (never a silent mis-place) — --near stays lenient
+  // (pre-existing behavior: an unmatched id silently falls through).
   let origin = { x: 100, y: 100 };
-  const nearBoard = near ? artboards.find((r) => r.id === near) : null;
-  if (nearBoard) {
-    origin = { x: nearBoard.x + nearBoard.w + 80, y: nearBoard.y };
-  } else if (existing.length) {
-    let maxX = Number.NEGATIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    for (const a of existing) {
-      if (a.x == null) continue;
-      maxX = Math.max(maxX, a.x + (a.w || 0));
-      minY = Math.min(minY, a.y ?? 0);
+  let pinnedEl = null;
+  if (placement?.in) {
+    const board = artboards.find((r) => r.id === placement.in);
+    if (!board) fail(`--in: unknown artboard "${placement.in}"`, 2);
+    origin = { x: board.x + 40, y: board.y + 40 };
+  } else if (placement?.pin) {
+    const el = findElementById(elements, placement.pin);
+    if (!el) fail(`--pin: element "${placement.pin}" not found in the --rects manifest`, 2);
+    pinnedEl = el;
+    origin = { x: el.x + el.w + 40, y: el.y };
+  } else {
+    const nearBoard = placement?.near ? artboards.find((r) => r.id === placement.near) : null;
+    if (nearBoard) {
+      origin = { x: nearBoard.x + nearBoard.w + 80, y: nearBoard.y };
+    } else if (existing.length) {
+      let maxX = Number.NEGATIVE_INFINITY;
+      let minY = Number.POSITIVE_INFINITY;
+      for (const a of existing) {
+        if (a.x == null) continue;
+        maxX = Math.max(maxX, a.x + (a.w || 0));
+        minY = Math.min(minY, a.y ?? 0);
+      }
+      if (Number.isFinite(maxX)) origin = { x: maxX + 80, y: Math.max(0, minY) };
     }
-    if (Number.isFinite(maxX)) origin = { x: maxX + 80, y: Math.max(0, minY) };
   }
   return {
     origin,
     cursor: { ...origin },
+    pinnedEl, // element the GLOBAL --pin resolved, or null
+    pointer: placement?.pointer !== false, // --no-pointer disables pointer arrows entirely
+    artboards, // for per-op "in"/"near" overrides
+    elements, // for per-op "pin" overrides
     refs: new Map(), // '@ref' → minted id
     newById: new Map(), // id → new Stroke
     created: [], // Stroke[] in creation order
     groupExisting: [], // { id, groupId } injections into existing elements
     deletes: [], // existing ids to remove
     existingById: new Map(existing.map((a) => [a.id, a])),
+    replaces: new Map(), // id -> patched full Stroke (move/set-text/set-color)
+    rawSvg: '', // set by main() before applyOps — the pre-batch SVG, for ensureFullStrokes
+    fullStrokes: null, // lazy id -> full Stroke cache, populated on first move/set-text/set-color
   };
+}
+
+/**
+ * Per-op "in"/"near"/"pin" placement override — the same resolution rules as
+ * the CLI flags (buildContext, above), scoped to ONE op. Returns null when the
+ * op carries none of the three (the caller then falls back to ctx.cursor).
+ */
+function resolveOpPlacement(ctx, op) {
+  if (op.pin) {
+    const el = findElementById(ctx.elements, op.pin);
+    if (!el) fail(`op.pin: element "${op.pin}" not found in the --rects manifest`, 2);
+    return { x: el.x + el.w + 40, y: el.y, pinnedEl: el };
+  }
+  if (op.in) {
+    const board = ctx.artboards.find((r) => r.id === op.in);
+    if (!board) fail(`op.in: unknown artboard "${op.in}"`, 2);
+    return { x: board.x + 40, y: board.y + 40, pinnedEl: null };
+  }
+  if (op.near) {
+    const board = ctx.artboards.find((r) => r.id === op.near);
+    if (!board) fail(`op.near: unknown artboard "${op.near}"`, 2);
+    return { x: board.x + board.w + 80, y: board.y, pinnedEl: null };
+  }
+  return null;
 }
 
 function resolveTarget(ctx, idOrRef) {
@@ -267,11 +384,24 @@ function mint(ctx, ref) {
   return id;
 }
 
+/**
+ * Resolves an op's placement, returning { x, y, pinnedEl }. An op-level
+ * in/near/pin override takes priority over the batch's ctx.cursor; explicit
+ * op.x/op.y always win over either. `pinnedEl` (an op-level pin, or the
+ * GLOBAL --pin when the op has no override of its own) is what createSticky/
+ * createText use to attach a pointer arrow.
+ */
 function autoPlace(ctx, w, op) {
+  const override = op.in || op.near || op.pin ? resolveOpPlacement(ctx, op) : null;
+  if (override) {
+    const x = Number.isFinite(op.x) ? op.x : override.x;
+    const y = Number.isFinite(op.y) ? op.y : override.y;
+    return { x, y, pinnedEl: override.pinnedEl };
+  }
   const x = Number.isFinite(op.x) ? op.x : ctx.cursor.x;
   const y = Number.isFinite(op.y) ? op.y : ctx.cursor.y;
   if (!Number.isFinite(op.x)) ctx.cursor.x = x + w + 40;
-  return { x, y };
+  return { x, y, pinnedEl: ctx.pinnedEl };
 }
 
 function pushCreated(ctx, stroke) {
@@ -280,11 +410,41 @@ function pushCreated(ctx, stroke) {
   return stroke;
 }
 
+/**
+ * A visual pointer from a note to a DOM element (--pin). Not a magnetic BIND
+ * (annotate.mjs:18 — binds only host on annotation strokes, DDR-100) — a DOM
+ * element isn't part of this SVG, so the arrow is a one-time snapshot
+ * computed via the SAME facing-anchor math createConnect uses, against a
+ * fabricated rect host built from the element's manifest rect.
+ */
+function pointerArrowTo(ctx, fromStroke, el) {
+  const elHost = { id: `_el_${el.cdId ?? 'x'}`, tool: 'rect', x: el.x, y: el.y, w: el.w, h: el.h };
+  const fromCenter = centerOf(fromStroke);
+  const toCenter = [el.x + el.w / 2, el.y + el.h / 2];
+  const sb = facingAnchor(fromStroke, toCenter[0], toCenter[1]);
+  const eb = facingAnchor(elHost, fromCenter[0], fromCenter[1]);
+  if (!sb || !eb) return null;
+  const p1 = anchorPoint(fromStroke, sb.nx, sb.ny);
+  const p2 = anchorPoint(elHost, eb.nx, eb.ny);
+  if (!p1 || !p2) return null;
+  return pushCreated(ctx, {
+    id: rid(),
+    tool: 'arrow',
+    color: DEFAULT_COLOR,
+    width: 3,
+    x1: p1[0],
+    y1: p1[1],
+    x2: p2[0],
+    y2: p2[1],
+    author: 'ai',
+  });
+}
+
 function createSticky(ctx, op) {
   const w = Number.isFinite(op.w) ? op.w : STICKY_DEFAULT_W;
   const h = Number.isFinite(op.h) ? op.h : STICKY_DEFAULT_H;
-  const { x, y } = autoPlace(ctx, w, op);
-  return pushCreated(ctx, {
+  const { x, y, pinnedEl } = autoPlace(ctx, w, op);
+  const stroke = pushCreated(ctx, {
     id: mint(ctx, op.ref),
     tool: 'sticky',
     color: typeof op.color === 'string' ? op.color : DEFAULT_STICKY_COLOR,
@@ -297,6 +457,8 @@ function createSticky(ctx, op) {
     cornerRadius: STICKY_CORNER_RADIUS,
     author: 'ai',
   });
+  if (pinnedEl && ctx.pointer && op.pointer !== false) pointerArrowTo(ctx, stroke, pinnedEl);
+  return stroke;
 }
 
 function createSection(ctx, op) {
@@ -317,8 +479,8 @@ function createSection(ctx, op) {
 }
 
 function createText(ctx, op) {
-  const { x, y } = autoPlace(ctx, 160, op);
-  return pushCreated(ctx, {
+  const { x, y, pinnedEl } = autoPlace(ctx, 160, op);
+  const stroke = pushCreated(ctx, {
     id: mint(ctx, op.ref),
     tool: 'text',
     color: typeof op.color === 'string' ? op.color : TEXT_INK,
@@ -328,6 +490,8 @@ function createText(ctx, op) {
     y,
     author: 'ai',
   });
+  if (pinnedEl && ctx.pointer && op.pointer !== false) pointerArrowTo(ctx, stroke, pinnedEl);
+  return stroke;
 }
 
 function createShape(ctx, op) {
@@ -470,7 +634,143 @@ function applyGroup(ctx, op) {
   }
 }
 
-function applyOps(ctx, ops) {
+// ─────────────────────────────────────────────────────────────────────────────
+// move / set-text / set-color — id-preserving mutation (feature-whiteboard-
+// ai-toolkit). DDR-100 deliberately omitted "update" for LWW honesty; this is
+// the additive answer: parse the FULL existing stroke via the CANONICAL
+// parser (svgToStrokes — the same code the canvas itself uses), patch just
+// the requested field, and re-serialize through the CANONICAL serializer —
+// every other attribute (fontSize, bold/italic/dashed, rotation, groupIds,
+// cornerRadius, …) survives untouched. `svgToStrokes` needs a DOMParser,
+// which Bun doesn't ship — happy-dom is loaded ONLY when a move/set-text/
+// set-color op actually appears in the batch, so the common create-only path
+// pays zero cost for it.
+//
+// Security note (feature-whiteboard-ai-toolkit security review): this reads
+// an on-disk .annotations.svg a peer/hub can write (DDR-054) or that landed
+// via any git commit — content `sanitizeAnnotationSvg` was designed to gate
+// only on WRITE. We now sanitize on READ too before it ever reaches the DOM
+// parser. `GlobalRegistrator.register()` is still what we use (happy-dom's
+// internals need its full global scaffolding — e.g. querySelector's error
+// path reaches through `this.window`, not just a bare `DOMParser` reference,
+// so patching `DOMParser` alone leaves the parse broken) — but register()
+// itself records every property it overwrote, so we call `unregister()`
+// (its documented inverse) IMMEDIATELY after the parse, before control ever
+// returns to the batch's later loopback-gated PUT. That closes the window
+// this feature's own security review flagged: fetch/Response/Request/URL
+// never stay monkey-patched past this one parse.
+async function ensureFullStrokes(ctx) {
+  if (ctx.fullStrokes) return ctx.fullStrokes;
+  let GlobalRegistrator;
+  try {
+    ({ GlobalRegistrator } = await import('@happy-dom/global-registrator'));
+  } catch {
+    // Packaging note (feature-whiteboard-ai-toolkit review): apps/studio's
+    // package.json is a nested workspace manifest the npm tarball doesn't
+    // ship, and unlike every other bin script here this is the first one
+    // that needs a real third-party package at runtime — an npm-installed
+    // maude may have no node_modules for it. Fail loud with the documented
+    // escape hatch rather than an opaque "Cannot find package" stack trace.
+    fail(
+      'move/set-text/set-color need the happy-dom package, which is not installed — ' +
+        "reinstall maude, or use delete + create instead (the vocabulary's existing fallback for full replacement)",
+      1
+    );
+  }
+  GlobalRegistrator.register({ settings: { disableJavaScriptEvaluation: true } });
+  let strokes;
+  try {
+    strokes = svgToStrokes(sanitizeAnnotationSvg(ctx.rawSvg));
+  } finally {
+    await GlobalRegistrator.unregister();
+  }
+  ctx.fullStrokes = new Map(strokes.map((s) => [s.id, s]));
+  return ctx.fullStrokes;
+}
+
+/**
+ * Resolves an id or "@ref" to the mutable stroke — a just-created stroke in
+ * THIS batch (mutated in place, not yet serialized), an EARLIER patch this
+ * same batch already queued (checked before the cached original — otherwise
+ * a second move/set-text/set-color on the same id would clobber the first
+ * patch instead of building on it), or an existing one from the pre-batch SVG.
+ */
+async function resolveMutable(ctx, idOrRef, verb) {
+  const id =
+    typeof idOrRef === 'string' && idOrRef.startsWith('@') ? ctx.refs.get(idOrRef) : idOrRef;
+  if (!id) fail(`${verb}: unknown ref "${idOrRef}"`, 2);
+  const created = ctx.newById.get(id);
+  if (created) return { id, stroke: created, isNew: true };
+  if (ctx.replaces.has(id)) return { id, stroke: ctx.replaces.get(id), isNew: false };
+  const byId = await ensureFullStrokes(ctx);
+  const stroke = byId.get(id);
+  if (!stroke) fail(`${verb}: unknown id "${id}"`, 2);
+  return { id, stroke, isNew: false };
+}
+
+function commitMutation(ctx, target, patched) {
+  if (target.isNew) Object.assign(target.stroke, patched);
+  else ctx.replaces.set(target.id, { ...target.stroke, ...patched });
+}
+
+async function applyMove(ctx, op) {
+  if (typeof op.id !== 'string' || !op.id) fail('move: missing id', 2);
+  if (!Number.isFinite(op.x) || !Number.isFinite(op.y)) fail('move: x/y must be finite numbers', 2);
+  const target = await resolveMutable(ctx, op.id, 'move');
+  const { stroke } = target;
+  if (stroke.tool === 'ellipse') {
+    commitMutation(ctx, target, { cx: op.x + stroke.rx, cy: op.y + stroke.ry });
+    return;
+  }
+  if (stroke.tool === 'arrow' || stroke.tool === 'pen') {
+    fail(`move: "${stroke.tool}" has no single position (multi-point) — use delete + create`, 2);
+  }
+  if (stroke.tool === 'text' && stroke.anchorId) {
+    fail('move: anchored text derives its position from its host — move the host instead', 2);
+  }
+  if (stroke.x == null || stroke.y == null) {
+    fail(`move: tool "${stroke.tool}" has no movable x/y`, 2);
+  }
+  commitMutation(ctx, target, { x: op.x, y: op.y });
+}
+
+async function applySetText(ctx, op) {
+  if (typeof op.id !== 'string' || !op.id) fail('set-text: missing id', 2);
+  if (typeof op.text !== 'string') fail('set-text: text must be a string', 2);
+  const target = await resolveMutable(ctx, op.id, 'set-text');
+  const { stroke } = target;
+  const field = 'label' in stroke ? 'label' : 'text' in stroke ? 'text' : null;
+  if (!field) fail(`set-text: tool "${stroke.tool}" has no text/label field`, 2);
+  commitMutation(ctx, target, { [field]: op.text });
+}
+
+async function applySetColor(ctx, op) {
+  if (typeof op.id !== 'string' || !op.id) fail('set-color: missing id', 2);
+  if (typeof op.color !== 'string' || !op.color)
+    fail('set-color: color must be a non-empty string', 2);
+  const target = await resolveMutable(ctx, op.id, 'set-color');
+  const { stroke } = target;
+  if (!('color' in stroke)) {
+    fail(`set-color: tool "${stroke.tool}" has no single color field — use delete + create`, 2);
+  }
+  commitMutation(ctx, target, { color: op.color });
+}
+
+/** Splice a re-serialized stroke into the SAME position the original element
+ *  occupied — preserves document order/z, unlike delete-then-append. Mirrors
+ *  deleteElement's g-wrapped-vs-flat matching. */
+function replaceElement(svg, id, replacement) {
+  const idEsc = escapeRe(id);
+  const gOrTextRe = new RegExp(`<(g|text)\\b[^>]*data-id="${idEsc}"[^>]*>[\\s\\S]*?</\\1>`);
+  if (gOrTextRe.test(svg)) return svg.replace(gOrTextRe, replacement);
+  const flatRe = new RegExp(
+    `<(?:path|rect|ellipse|polygon|image)\\b[^>]*data-id="${idEsc}"[^>]*/>`
+  );
+  if (flatRe.test(svg)) return svg.replace(flatRe, replacement);
+  return null;
+}
+
+async function applyOps(ctx, ops) {
   for (const op of ops) {
     if (!op || typeof op !== 'object') fail('ops: every entry must be an object', 2);
     if (op.op === 'create') {
@@ -502,6 +802,12 @@ function applyOps(ctx, ops) {
     } else if (op.op === 'delete') {
       if (typeof op.id !== 'string' || !op.id) fail('delete: missing id', 2);
       ctx.deletes.push(op.id);
+    } else if (op.op === 'move') {
+      await applyMove(ctx, op);
+    } else if (op.op === 'set-text') {
+      await applySetText(ctx, op);
+    } else if (op.op === 'set-color') {
+      await applySetColor(ctx, op);
     } else {
       fail(`ops: unknown op "${op.op}"`, 2);
     }
@@ -515,6 +821,12 @@ function flowToOps(flow) {
   const nodes = Array.isArray(flow.nodes) ? flow.nodes : [];
   const edges = Array.isArray(flow.edges) ? flow.edges : [];
   if (!nodes.length) fail('flow: needs at least one node', 2);
+  if (nodes.length > FLOW_MAX_NODES) {
+    fail(`flow: nodes[] has ${nodes.length}, max ${FLOW_MAX_NODES}`, 2);
+  }
+  if (edges.length > FLOW_MAX_EDGES) {
+    fail(`flow: edges[] has ${edges.length}, max ${FLOW_MAX_EDGES}`, 2);
+  }
   const ids = nodes.map((n) => n.id);
   const idSet = new Set(ids);
   for (const e of edges) {
@@ -568,6 +880,187 @@ function flowToOps(flow) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Board mode (feature-whiteboard-ai-toolkit) — a typed template spec expands
+// into ops the same way --flow does. Named presets (retro / kanban / social-
+// calendar / roadmap / brainstorm / checklist / user-flow) are NOT hardcoded
+// here — they're spec fixtures documented in the `whiteboard` skill; this is
+// just the generic layout engine they share.
+
+const BOARD_COL_W = 280;
+const BOARD_COL_GAP = 40;
+const BOARD_CARD_W = 240;
+const BOARD_CARD_H = 90;
+const BOARD_CARD_GAP = 20;
+const BOARD_HEADER_H = 60;
+const BOARD_EMPTY_SECTION_H = 500;
+const BOARD_RADIAL_RADIUS = 320;
+const BOARD_RADIAL_CENTER_W = 200;
+const BOARD_RADIAL_CENTER_H = 100;
+const BOARD_RADIAL_CARD_W = 200;
+const BOARD_RADIAL_CARD_H = 80;
+
+// Security (feature-whiteboard-ai-toolkit review): --board is arbitrary JSON
+// an agent composes; MAX_ANNOTATIONS_BYTES only rejects AFTER the full spec
+// is expanded + serialized, so an unbounded groups/cards array could burn
+// real CPU/memory before that cap ever fires. Cap generously (well above any
+// real retro/kanban/roadmap board) up front instead.
+const BOARD_MAX_GROUPS = 20;
+const BOARD_MAX_CARDS_PER_GROUP = 50;
+const BOARD_MAX_TOTAL_CARDS = 300;
+const BOARD_MAX_CONNECTIONS = 400;
+// Shared by --flow (top-level) and --board's layout:"flow" (which delegates
+// straight to flowToOps) — checked once, in flowToOps itself, so neither
+// caller can bypass it. A relationship array (edges) is just as capable of
+// manufacturing unbounded connect ops as an entity array (nodes/cards) is —
+// createConnect mints a fresh arrow (+ optional label text) stroke per call
+// regardless of how few distinct nodes are involved.
+const FLOW_MAX_NODES = 200;
+const FLOW_MAX_EDGES = 400;
+
+function cardText(card) {
+  return typeof card === 'string' ? card : typeof card?.text === 'string' ? card.text : '';
+}
+
+function cardColor(card) {
+  return typeof card === 'object' && card && typeof card.color === 'string'
+    ? card.color
+    : undefined;
+}
+
+/**
+ * "columns" (default; "grid"/"lanes" are v1 aliases of the same engine) — one
+ * titled section per group, its cards stacked inside it. Deterministic and
+ * non-overlapping: each section's own height grows with its own card count,
+ * so an empty column next to a seeded one (a half-filled retro board) never
+ * collides with its neighbor.
+ */
+function boardColumns(groups) {
+  const ops = [];
+  groups.forEach((g, i) => {
+    const cards = Array.isArray(g.cards) ? g.cards : [];
+    const h = cards.length
+      ? BOARD_HEADER_H + cards.length * (BOARD_CARD_H + BOARD_CARD_GAP)
+      : BOARD_EMPTY_SECTION_H;
+    const colX = i * (BOARD_COL_W + BOARD_COL_GAP);
+    ops.push({
+      op: 'create',
+      type: 'section',
+      ref: `@sec${i}`,
+      label: typeof g.title === 'string' && g.title ? g.title : `Group ${i + 1}`,
+      color: typeof g.color === 'string' ? g.color : undefined,
+      boardX: colX,
+      boardY: 0,
+      w: BOARD_COL_W,
+      h,
+    });
+    cards.forEach((c, j) => {
+      ops.push({
+        op: 'create',
+        type: 'sticky',
+        ref: `@sec${i}card${j}`,
+        text: cardText(c),
+        color: cardColor(c),
+        boardX: colX + (BOARD_COL_W - BOARD_CARD_W) / 2,
+        boardY: BOARD_HEADER_H + j * (BOARD_CARD_H + BOARD_CARD_GAP),
+        w: BOARD_CARD_W,
+        h: BOARD_CARD_H,
+      });
+    });
+  });
+  return ops;
+}
+
+/**
+ * "radial" — a central topic shape with idea cards arranged in a ring
+ * (brainstorm). Cards flatten across every group's cards in order — a
+ * brainstorm spec doesn't need multiple groups, but tolerates them.
+ */
+function boardRadial(spec, groups) {
+  const cards = groups.flatMap((g) => (Array.isArray(g.cards) ? g.cards : []));
+  const pad = BOARD_RADIAL_RADIUS + Math.max(BOARD_RADIAL_CARD_W, BOARD_RADIAL_CARD_H);
+  const ops = [
+    {
+      op: 'create',
+      type: 'shape',
+      shape: 'ellipse',
+      ref: '@center',
+      label: typeof spec.title === 'string' && spec.title ? spec.title : 'Topic',
+      boardX: pad - BOARD_RADIAL_CENTER_W / 2,
+      boardY: pad - BOARD_RADIAL_CENTER_H / 2,
+      w: BOARD_RADIAL_CENTER_W,
+      h: BOARD_RADIAL_CENTER_H,
+    },
+  ];
+  const n = cards.length;
+  cards.forEach((c, i) => {
+    const angle = (2 * Math.PI * i) / Math.max(1, n) - Math.PI / 2;
+    const cx = pad + BOARD_RADIAL_RADIUS * Math.cos(angle);
+    const cy = pad + BOARD_RADIAL_RADIUS * Math.sin(angle);
+    ops.push({
+      op: 'create',
+      type: 'sticky',
+      ref: `@idea${i}`,
+      text: cardText(c),
+      color: cardColor(c),
+      boardX: cx - BOARD_RADIAL_CARD_W / 2,
+      boardY: cy - BOARD_RADIAL_CARD_H / 2,
+      w: BOARD_RADIAL_CARD_W,
+      h: BOARD_RADIAL_CARD_H,
+    });
+  });
+  return ops;
+}
+
+/**
+ * Expand a typed board spec into ops (create + connect), positioned relative
+ * to the placement origin via `boardX`/`boardY` — the same convention
+ * `flowToOps` uses for `flowX`/`flowY` (applyOriginOffset, below, applies
+ * either). `layout: "flow"` delegates straight to `flowToOps` so a user-flow
+ * diagram shares ONE auto-layout implementation with plain `--flow`.
+ */
+function boardToOps(spec) {
+  const layout = typeof spec.layout === 'string' ? spec.layout : 'columns';
+  if (layout === 'flow') {
+    if (!Array.isArray(spec.nodes) || !spec.nodes.length) {
+      fail('board: layout "flow" needs a nodes[] array', 2);
+    }
+    return flowToOps({ nodes: spec.nodes, edges: spec.edges });
+  }
+  const groups = Array.isArray(spec.groups) ? spec.groups : [];
+  if (!groups.length) fail('board: needs a non-empty groups[] array (or layout: "flow")', 2);
+  if (groups.length > BOARD_MAX_GROUPS) {
+    fail(`board: groups[] has ${groups.length}, max ${BOARD_MAX_GROUPS}`, 2);
+  }
+  let totalCards = 0;
+  for (const g of groups) {
+    const n = Array.isArray(g?.cards) ? g.cards.length : 0;
+    if (n > BOARD_MAX_CARDS_PER_GROUP) {
+      fail(`board: group "${g?.title ?? '?'}" has ${n} cards, max ${BOARD_MAX_CARDS_PER_GROUP}`, 2);
+    }
+    totalCards += n;
+  }
+  if (totalCards > BOARD_MAX_TOTAL_CARDS) {
+    fail(`board: ${totalCards} total cards across groups, max ${BOARD_MAX_TOTAL_CARDS}`, 2);
+  }
+  const ops = layout === 'radial' ? boardRadial(spec, groups) : boardColumns(groups);
+
+  // Optional cross-references — "from"/"to" name a ref this expansion minted
+  // (section refs are `@sec<i>`, 0-indexed by group order; card refs are
+  // `@sec<i>card<j>`; the radial center is `@center`, ideas are `@idea<i>`).
+  const connections = Array.isArray(spec.connections) ? spec.connections : [];
+  if (connections.length > BOARD_MAX_CONNECTIONS) {
+    fail(`board: connections[] has ${connections.length}, max ${BOARD_MAX_CONNECTIONS}`, 2);
+  }
+  for (const c of connections) {
+    if (!c || typeof c.from !== 'string' || typeof c.to !== 'string') {
+      fail('board: each connections[] entry needs string "from"/"to"', 2);
+    }
+    ops.push({ op: 'connect', from: c.from, to: c.to, label: c.label });
+  }
+  return ops;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SVG assembly — deletes + group injections on the existing string, new
 // strokes serialized through the canonical serializer, sanitize, cap.
 
@@ -606,6 +1099,20 @@ function injectGroupAttr(svg, id, groupId) {
   });
 }
 
+/**
+ * Shared by --flow and --board: both expansions emit ops with a relative
+ * offset field (flowX/flowY, or boardX/boardY) instead of absolute x/y, so
+ * ONE placement resolution (--near/--in/--pin/existing-extent, buildContext)
+ * positions the whole diagram/board as a unit.
+ */
+function applyOriginOffset(ops, origin) {
+  return ops.map((op) => {
+    if ('flowX' in op) return { ...op, x: origin.x + op.flowX, y: origin.y + op.flowY };
+    if ('boardX' in op) return { ...op, x: origin.x + op.boardX, y: origin.y + op.boardY };
+    return op;
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main
 
@@ -617,7 +1124,9 @@ async function main() {
   }
   const relPath = args.positional[0];
   if (!relPath) fail(`missing <rel-path>.\n\n${HELP}`, 2);
-  if (args.ops && args.flow) fail('--ops and --flow are mutually exclusive', 2);
+  if ([args.ops, args.flow, args.board].filter((v) => v != null).length > 1) {
+    fail('--ops, --flow, and --board are mutually exclusive', 2);
+  }
 
   const repoRoot = args.root
     ? resolve(args.root)
@@ -636,35 +1145,68 @@ async function main() {
       svg = '';
     }
   }
+  // Security (feature-whiteboard-ai-toolkit review): MAX_ANNOTATIONS_BYTES was
+  // only ever checked on the MERGED OUTPUT. A file already at/near the cap
+  // (peer-written per DDR-054, or git-committed by anyone) would still be
+  // read in full and DOM-parsed on every move/set-text/set-color — the exact
+  // "pay the cost before the check" pattern this feature's own board-size
+  // caps exist to avoid, just via the read path instead of the write path.
+  if (Buffer.byteLength(svg, 'utf8') > MAX_ANNOTATIONS_BYTES) {
+    fail(`annotations file exceeds ${MAX_ANNOTATIONS_BYTES} bytes on disk — refusing to read`, 2);
+  }
   const existing = parseAnnotations(svg);
 
-  const artboards = args.canvasState
+  let artboards = args.canvasState
     ? loadArtboards(
         isAbsolute(args.canvasState) ? args.canvasState : resolve(process.cwd(), args.canvasState)
       )
     : [];
 
-  const ctx = buildContext(existing, artboards, args.near);
+  // feature-whiteboard-ai-toolkit — --rects supplies element lookups for
+  // --pin, and (absent a separate --canvas-state) artboard lookups for
+  // --in/--near too: loadArtboards already understands a canvas-rects
+  // manifest's { artboards, elements } shape.
+  let elements = [];
+  if (args.rects) {
+    const rectsPath = isAbsolute(args.rects) ? args.rects : resolve(process.cwd(), args.rects);
+    elements = loadElements(rectsPath);
+    if (!artboards.length) artboards = loadArtboards(rectsPath);
+  }
+
+  const ctx = buildContext(existing, artboards, elements, {
+    near: args.near,
+    in: args.in,
+    pin: args.pin,
+    pointer: args.pointer,
+  });
+  ctx.rawSvg = svg;
 
   let ops;
   if (args.flow != null) {
     const flow = parseJsonInput(readInput(args.flow), '--flow');
-    ops = flowToOps(flow).map((op) =>
-      'flowX' in op ? { ...op, x: ctx.origin.x + op.flowX, y: ctx.origin.y + op.flowY } : op
-    );
+    ops = applyOriginOffset(flowToOps(flow), ctx.origin);
+  } else if (args.board != null) {
+    const spec = parseJsonInput(readInput(args.board), '--board');
+    ops = applyOriginOffset(boardToOps(spec), ctx.origin);
   } else {
     const payload = parseJsonInput(readInput(args.ops), '--ops');
     ops = Array.isArray(payload.ops) ? payload.ops : Array.isArray(payload) ? payload : null;
     if (!ops) fail('ops: expected { ops: [...] } (or a bare array)', 2);
   }
 
-  applyOps(ctx, ops);
+  await applyOps(ctx, ops);
 
-  // Assemble. Deletes + group injections operate on the existing string; new
-  // strokes append before </svg> through the canonical serializer.
+  // Assemble. Deletes + group injections + move/set-text/set-color replaces
+  // operate on the existing string; new strokes append before </svg> through
+  // the canonical serializer.
   let merged = svg && /<svg[\s>]/i.test(svg) ? svg : `${SVG_HEADER}</svg>`;
   for (const id of ctx.deletes) merged = deleteElement(merged, id);
   for (const inj of ctx.groupExisting) merged = injectGroupAttr(merged, inj.id, inj.groupId);
+  for (const [id, stroke] of ctx.replaces) {
+    const next = replaceElement(merged, id, strokeToSvgEl(stroke));
+    if (next === null) fail(`internal: replaced stroke "${id}" vanished before assembly`, 1);
+    merged = next;
+  }
   if (ctx.created.length) {
     const body = ctx.created.map((s) => strokeToSvgEl(s)).join('');
     const close = merged.lastIndexOf('</svg>');
