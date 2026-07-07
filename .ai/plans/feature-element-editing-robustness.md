@@ -342,19 +342,19 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 
 ### Stage E — Element selection + inspect on DS specimens
 
-#### Task E1: TEACH the lite mount to produce a selection on bare specimens
+#### ✅ Task E1: TEACH the lite mount to produce a selection on bare specimens — DONE
 
 - **Do**: In `canvas-comment-mount.tsx`, add `'select'` to the lite mount's claimable actions (currently `COMMENT_CLAIMS` at `:75-80` deliberately omits it) and wire a specimen-aware select resolver by generalizing `pickSpecimenEl` (`:93-104`) — anchor on the hit element's own `data-cd-id` (specimens are already stamped, `canvas-pipeline.ts:211-226`) **without** requiring `.dc-artboard-body`/`[data-dc-screen]` ancestry. Build the `Selection` via the existing `hoverTargetToSelection` machinery (`dom-selection.ts:349-399`) with a null `artboardId` (the selector degrades to a bare `[data-cd-id="…"]`).
 - **Gotcha**: `resolveHoverTarget` (`input-router.tsx:592-658`) returns null without artboard ancestry — do **not** loosen that (it's load-bearing for UI canvases); instead give the specimen path its own resolver. `scopedCdSelector` (`dom-selection.ts:124-128`) must tolerate a null artboard scope.
 - **Validate**: ⌘-click an element inside `system/<ds>/preview/logo.tsx` → a `select-set` message reaches the shell; the Inspector shows the element.
 
-#### Task E2: RENDER a minimal selection layer on specimens
+#### ✅ Task E2: RENDER a minimal selection layer on specimens — DONE
 
 - **Do**: In the lite mount tree (`buildCanvasTree`, `:362-372`), render a minimal selection layer for the specimen path: a selection halo + the `ContextualToolbar` (`contextual-toolbar.tsx`) + the Stage-D resize overlay, reusing the same components CanvasShell uses. This gives specimens the same select→inspect→resize affordances without pulling in the full CanvasShell.
 - **Gotcha**: Specimens have no camera/artboard, so world↔screen is identity (no `.dc-world` transform) — the halo/handle math must handle the no-camera case (guard the `getLiveViewport`/controller calls). Verify the contextual toolbar's "Inspect"/"Copy CSS" still post correctly (they already post to `window.parent`, `contextual-toolbar.tsx:207-251`).
 - **Validate**: select a specimen element → halo + toolbar appear; "Inspect" opens the panel; edit a knob → persists to the specimen `.tsx` via `edit-css`.
 
-#### Task E3: VERIFY the specimen write path end-to-end + `_active` tracking
+#### ✅ Task E3: VERIFY the specimen write path end-to-end + `_active` tracking — mechanism verified (live specimen-edit → Stage-G scenario)
 
 - **Do**: Confirm (research says it's ready, but verify live) that `edit-css`/`edit-attr` on a specimen element (`el.file` = `system/<ds>/preview/X.tsx`, `el.id` = `data-cd-id`) writes correctly, `_active.json` tracks the specimen selection, and the halo restores after HMR. No code change expected unless a gap surfaces.
 - **Validate**: edit a specimen element's `color` → source updates, HMR reloads, halo restores. `cd apps/studio && bun test`.

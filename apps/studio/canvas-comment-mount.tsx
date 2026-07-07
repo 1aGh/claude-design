@@ -42,7 +42,14 @@ import { createRoot } from 'react-dom/client';
 
 import { CommentsOverlay } from './comments-overlay.tsx';
 import { deriveFile, hoverTargetToSelection } from './dom-selection.ts';
-import { type RouterAction, resolveHoverTarget, useInputRouter } from './input-router.tsx';
+import {
+  type HoverTarget,
+  isOverlayTarget,
+  type RouterAction,
+  resolveHoverTarget,
+  useInputRouter,
+} from './input-router.tsx';
+import { ElementResizeOverlay } from './use-element-resize.tsx';
 import {
   MaybeSelectionSetProvider,
   type Selection,
@@ -94,13 +101,31 @@ function pickSpecimenEl(clientX: number, clientY: number): HTMLElement | null {
   if (typeof document === 'undefined') return null;
   const hit = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
   if (!hit) return null;
-  // Never anchor to comment chrome or the document root.
-  if (hit.closest('.cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, [data-mc-hover-halo]')) {
+  // Never anchor to comment chrome, the selection/resize overlay, or the root.
+  if (
+    hit.closest(
+      '.cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, [data-mc-hover-halo], [data-mc-selection-halo], .dc-el-resize-handle'
+    )
+  ) {
     return null;
   }
   const tag = hit.tagName;
   if (tag === 'HTML' || tag === 'BODY') return null;
   return hit;
+}
+
+// feature-element-editing-robustness Stage E — the SELECT anchor for a bare
+// specimen. Generalizes `pickSpecimenEl` (the comment anchor) by climbing to the
+// hit element's own `data-cd-id`, else its nearest stamped ancestor — every JSX
+// element the pipeline stamps unconditionally (canvas-pipeline.ts), so a
+// specimen element always resolves to a cd-id the Inspector's `edit-css`/
+// `edit-attr` can target. Falls back to the bare hit when (defensively) nothing
+// is stamped, in which case the selection degrades to a `cssPath` selector.
+function pickSpecimenSelectEl(clientX: number, clientY: number): HTMLElement | null {
+  const hit = pickSpecimenEl(clientX, clientY);
+  if (!hit) return null;
+  const stamped = hit.closest('[data-cd-id]') as HTMLElement | null;
+  return stamped ?? hit;
 }
 
 function CommentHost({ children, file }: { children: ReactNode; file: string | undefined }) {
@@ -119,6 +144,57 @@ function CommentHost({ children, file }: { children: ReactNode; file: string | u
   useEffect(() => {
     if (tool !== 'comment') setHoverEl(null);
   }, [tool]);
+
+  // feature-element-editing-robustness Stage E — element SELECT on a bare
+  // specimen. `selectedEl` drives the selection halo; `isSpecimen` gates the
+  // resize overlay so it mounts on specimens ONLY (a UI canvas already mounts
+  // its own inside CanvasShell — mounting a second here would double the handles).
+  const [selectedEl, setSelectedEl] = useState<HTMLElement | null>(null);
+  const [isSpecimen, setIsSpecimen] = useState(false);
+  useEffect(() => {
+    // The inner DesignCanvas (`.dc-canvas`) mounts a beat after this layer, so
+    // re-check on the next frame + a short timeout before deciding.
+    const check = () => setIsSpecimen(isBareSpecimen());
+    check();
+    const raf = requestAnimationFrame(check);
+    const t = setTimeout(check, 120);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
+  }, []);
+
+  // Specimen select — a capture-phase Cmd/Ctrl-click. Self-gated on
+  // `isBareSpecimen()` at event time: a UI canvas has its own CanvasShell select
+  // router (specimens have none), so this is the ONLY select handler on a
+  // specimen and a pure no-op on a UI canvas — no double-handling, no need to
+  // touch the shared COMMENT_CLAIMS (which would preventDefault a UI canvas's
+  // own select). `selSet.replace` posts `dgn:'select-set'` to the parent shell,
+  // so the Inspector opens (Stage C) + edits persist via `edit-css` (Stage E3).
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0 || !(e.metaKey || e.ctrlKey)) return; // select gesture only
+      if (!isBareSpecimen()) return; // UI canvas → CanvasShell owns select
+      if (isOverlayTarget(e.target)) return; // comment chrome owns its clicks
+      const el = pickSpecimenSelectEl(e.clientX, e.clientY);
+      if (!el) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const cdId = el.getAttribute('data-cd-id');
+      const sel = hoverTargetToSelection({ el, cdId, artboardId: null } as HoverTarget);
+      if (e.shiftKey) selSet.add(sel);
+      else selSet.replace(sel);
+      setSelectedEl(el);
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [selSet]);
+
+  // Drop the selection halo when the selection clears (Esc / parent force-clear).
+  useEffect(() => {
+    if (selSet.selected.length === 0) setSelectedEl(null);
+  }, [selSet.selected]);
 
   // Reflect the active tool onto the host (and body, since the host is
   // display:contents and can't carry a paintable cursor). Comment-mode CSS
@@ -187,8 +263,66 @@ function CommentHost({ children, file }: { children: ReactNode; file: string | u
     <div data-mc-host ref={hostRef} style={{ display: 'contents' }}>
       {children}
       {hoverEl ? <MountHoverHalo el={hoverEl} /> : null}
+      {selectedEl ? <MountSelectionHalo el={selectedEl} /> : null}
+      {isSpecimen ? <ElementResizeOverlay /> : null}
       <CommentsOverlay />
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MountSelectionHalo — Stage E. A steadier accent outline around the SELECTED
+// specimen element (vs the lighter hover halo). rAF-follows the element's screen
+// box; inline-styled (a bare specimen doesn't load canvas-lib's HALO_CSS).
+
+function MountSelectionHalo({ el }: { el: HTMLElement }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const targetRef = useRef<HTMLElement>(el);
+  targetRef.current = el;
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const tick = () => {
+      rafRef.current = null;
+      const div = ref.current;
+      const t = targetRef.current;
+      if (div && t?.isConnected) {
+        const r = t.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) {
+          div.style.display = 'none';
+        } else {
+          div.style.display = 'block';
+          div.style.left = `${Math.round(r.left)}px`;
+          div.style.top = `${Math.round(r.top)}px`;
+          div.style.width = `${Math.round(r.width)}px`;
+          div.style.height = `${Math.round(r.height)}px`;
+        }
+      } else if (div) {
+        div.style.display = 'none';
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      aria-hidden="true"
+      data-mc-selection-halo=""
+      style={{
+        position: 'fixed',
+        display: 'none',
+        pointerEvents: 'none',
+        zIndex: 2147483645,
+        border: '1.5px solid var(--maude-hud-accent, oklch(0.680 0.180 268))',
+        borderRadius: '3px',
+        boxSizing: 'border-box',
+      }}
+    />
   );
 }
 
