@@ -95,6 +95,14 @@ export const openLocalProject = (path) => invoke('open_local_project', { path })
  */
 export const saveExport = (filename, bytes) => invoke('save_export', { filename, bytes });
 
+/**
+ * Native "open file" for media upload — the read counterpart to saveExport.
+ * WKWebView won't present the file panel for an HTML <input type=file>, so the
+ * AssetPicker uses this in the desktop app. Returns { name, bytes:[...] } or null
+ * (cancelled). Browser build uses the <input type=file> path instead.
+ */
+export const pickMediaFile = () => invoke('pick_media_file');
+
 // ── Tauri shell: auto-update (Phase 32 / Task 1) ────────────────────────────────
 // The shell downloads + stages a newer build in the background and emits
 // `update-ready` with { version, notes }. The client shows a banner; clicking

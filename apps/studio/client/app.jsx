@@ -26,6 +26,7 @@ import {
   appIsFirstRun,
   isNativeApp,
   onUpdateReady,
+  pickMediaFile,
   restartToUpdate,
   saveExport,
 } from './github.js';
@@ -884,11 +885,13 @@ function AssetPicker({ designRel, onPick, onClose }) {
         body: f,
       });
       const j = await res.json().catch(() => ({}));
-      if (j.ok && j.path) {
+      // /_api/asset returns 201 { path } on success — NO `ok` field (the bug: a
+      // `j.ok` check always failed → "upload failed" even on a good upload).
+      if (res.ok && j.path) {
         onPick(j.path);
         return;
       }
-      setErr(j.error || 'upload failed');
+      setErr(j.error || `upload failed (HTTP ${res.status})`);
     } catch {
       setErr('upload failed');
     } finally {
@@ -896,13 +899,36 @@ function AssetPicker({ designRel, onPick, onClose }) {
     }
   };
 
-  // Imperative file picker — mirrors the proven replaceMediaViaPicker pattern.
-  // A React-rendered <input> (even off-screen) does NOT reliably present the
-  // native file panel inside the Tauri WKWebView; an input freshly created,
-  // appended to document.body, and clicked SYNCHRONOUSLY in the user gesture
-  // does (dogfood: "upload furt neotvira nativni panel"). Off-screen (not
-  // display:none) so WKWebView lays it out.
+  // Native desktop (Tauri WKWebView) — an HTML <input type=file> won't present
+  // the file panel AT ALL here, so route through the same native-dialog spine
+  // export uses (dogfood: "pri exportu to uz umime"). The Rust pick_media_file
+  // command opens an OS open-dialog + reads the bytes; we POST them to
+  // /_api/asset (magic-byte sniffed, so name/ext aren't trusted).
+  const openFilePickerNative = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const picked = await pickMediaFile();
+      if (picked?.bytes) {
+        // Blob from the byte array; the server sniffs the type, so no content-type
+        // needed. (doUpload sets its own busy=false in finally.)
+        await doUpload(new Blob([new Uint8Array(picked.bytes)]));
+        return;
+      }
+    } catch (e) {
+      setErr(e?.message || 'open failed');
+    }
+    setBusy(false); // only reached on cancel / error (doUpload owns the success path)
+  };
+
+  // Browser — imperative <input>, mirrors the proven replaceMediaViaPicker
+  // pattern (freshly created, appended to document.body, clicked synchronously in
+  // the gesture). Off-screen (not display:none) so it lays out.
   const openFilePicker = () => {
+    if (isNativeApp()) {
+      openFilePickerNative();
+      return;
+    }
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*,video/*';
@@ -9025,6 +9051,36 @@ function App() {
     resizeArtboardShell,
     deleteArtboardShell,
   ]);
+
+  // Shell-level Backspace/Delete guard. CRITICAL: in the Tauri desktop app, an
+  // unhandled Backspace triggers WKWebView back-navigation, which reloads the
+  // WHOLE app to "Starting…" (dogfood crash). When an artboard is selected, focus
+  // sits on the shell (not the canvas iframe), so the in-canvas key handler never
+  // sees the keydown — the shell must catch it. Preventing the default here stops
+  // the back-nav universally; if a single artboard is the selection, also delete
+  // it (Backspace parity with the context menu). Element delete stays in the
+  // canvas iframe (which has focus when an element is selected; its keydown never
+  // reaches this window, so there's no double-handling).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target;
+      const editable =
+        t &&
+        (t.tagName === 'INPUT' ||
+          t.tagName === 'TEXTAREA' ||
+          t.tagName === 'SELECT' ||
+          t.isContentEditable);
+      if (editable) return;
+      if (!activePath || activePath === SYSTEM_TAB) return;
+      e.preventDefault();
+      const one = Array.isArray(selected) ? (selected.length === 1 ? selected[0] : null) : selected;
+      if (one?.artboardId && !one.id) deleteArtboardShell(one.artboardId);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activePath, selected, deleteArtboardShell]);
 
   // feature-element-editing-robustness Stage F — AssetPicker request. `req` is
   // { purpose:'insert-image', refId, position, refIndex } (Insert ▸ Image) or

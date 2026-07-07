@@ -133,6 +133,64 @@ async fn save_export(
     }
 }
 
+/// Serialized picked-file payload for `pick_media_file`.
+#[derive(serde::Serialize)]
+struct PickedMedia {
+    name: String,
+    bytes: Vec<u8>,
+}
+
+/// Native "open file" for media upload — the READ counterpart to save_export.
+/// WKWebView won't present a file panel for an HTML `<input type=file>` (dogfood:
+/// "upload native okno nevyskoci v tauri"), so the AssetPicker routes through
+/// this: opens an image/video open-dialog, reads the chosen file, and returns
+/// `{ name, bytes }` (or `None` if cancelled). JS then POSTs the bytes to
+/// `/_api/asset` — the same content-addressed, magic-byte-sniffed intake as a
+/// drag-drop, so no trust is placed in the name/extension.
+#[tauri::command]
+async fn pick_media_file(app: tauri::AppHandle) -> Result<Option<PickedMedia>, String> {
+    // E2E (debug builds only): a native open dialog can't be DOM-driven, so the
+    // harness injects the source path via MAUDE_E2E_OPEN_PATH. Never in release.
+    #[cfg(debug_assertions)]
+    if let Ok(p) = std::env::var("MAUDE_E2E_OPEN_PATH") {
+        if !p.is_empty() {
+            let bytes = std::fs::read(&p).map_err(|e| format!("Couldn’t read the file: {e}"))?;
+            let name = std::path::Path::new(&p)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("upload")
+                .to_string();
+            return Ok(Some(PickedMedia { name, bytes }));
+        }
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter(
+            "Media",
+            &[
+                "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "mp4", "webm", "mov", "m4v",
+                "ogg",
+            ],
+        )
+        .pick_file(move |picked| {
+            let _ = tx.send(picked.and_then(|f| f.into_path().ok()));
+        });
+    let path = rx.await.map_err(|_| "Open dialog closed unexpectedly.".to_string())?;
+    match path {
+        Some(p) => {
+            let bytes = std::fs::read(&p).map_err(|e| format!("Couldn’t read the file: {e}"))?;
+            let name = p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("upload")
+                .to_string();
+            Ok(Some(PickedMedia { name, bytes }))
+        }
+        None => Ok(None), // cancelled — not an error
+    }
+}
+
 /// Switch the app to a local project folder (the freshly cloned copy) — same
 /// in-process switch as File ▸ Open Project (NOT app.restart()).
 #[tauri::command]
@@ -207,6 +265,7 @@ pub fn run() {
             keychain::github_sign_out,
             pick_directory,
             save_export,
+            pick_media_file,
             open_local_project,
             app_state::app_is_first_run,
             app_state::app_get_last_project,

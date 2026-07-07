@@ -21,6 +21,7 @@ fn main() {
                 "prefs_get_crash_reporting",
                 "prefs_set_crash_reporting",
                 "save_export",
+                "pick_media_file",
             ]),
         ),
     )

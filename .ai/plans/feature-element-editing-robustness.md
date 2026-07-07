@@ -502,7 +502,14 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha**: measurement must use world coords (post-Stage-A host-scroll-0 invariant) so numbers are correct at any zoom.
 - **Validate**: select A, Alt-hover B → red line + px distances; drag/resize → live dimension pill.
 
-> **Open (deep-research did not confirm present or absent — quick internal check before deciding):** eyedropper / color-picker-from-canvas, gradients + blend modes (probe #8); numeric-entry-with-math like `100+20` in knob fields (probe #13); a dedicated rotate **handle** (rotate-via-`transform`-text is covered by the Stage-B `transform` knob); explicit z-order **commands** (bring-to-front / send-backward — the `z-index` knob is added in Stage B, but not the one-click stacking commands). These are small follow-ups if wanted; not blockers.
+#### Task L8: ADD a free-hand rotate handle on canvas elements (dogfood request 2026-07-07)
+
+- **Do**: Add a **rotate handle** to the element selection overlay (a small handle offset above the top edge, or a Cmd-hover of a corner per Figma) so the user can grab and rotate an element directly on the canvas. Writes `transform: rotate(<deg>deg)` (composing with any existing `transform`) through the same optimistic `apply-style` → `edit-css` lane resize uses; snap to 15° increments while Shift is held. The resize-handle geometry (Stage D `use-element-resize.tsx`) must account for the element's current rotation when placing the 8 resize handles (rotate the handle anchor points by the element's angle) so resize stays correct on a rotated element.
+- **Pattern**: `use-element-resize.tsx` (the overlay + rAF-follow + optimistic commit lane); the Stage-B `transform` knob already does rotate-via-text — this is the direct-manipulation counterpart. Read the element's current rotation from `authored.transform` / `computed.transform` (parse the `rotate()`/matrix).
+- **Gotcha**: a rotated element's `getBoundingClientRect()` is the AABB, not the rotated box — the handle placement must use the element's own transform, not the AABB, or the handles drift. Verify at 50%/200% zoom + on an already-`transform`-ed element. Cmd+Z reverts.
+- **Validate**: select an element → grab the rotate handle → it rotates; Shift snaps to 15°; the resize handles still sit on the (rotated) box corners; Cmd+Z reverts.
+
+> **Open (deep-research did not confirm present or absent — quick internal check before deciding):** eyedropper / color-picker-from-canvas, gradients + blend modes (probe #8); numeric-entry-with-math like `100+20` in knob fields (probe #13); explicit z-order **commands** (bring-to-front / send-backward — the `z-index` knob is added in Stage B, but not the one-click stacking commands). These are small follow-ups if wanted; not blockers. (The dedicated rotate **handle** is now Task L8 above.)
 
 ### Stage M — Flex / auto-layout editor (sizing modes + grouped layout controls)
 
