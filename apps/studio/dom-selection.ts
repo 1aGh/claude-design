@@ -455,6 +455,13 @@ export function hoverTargetToSelection(target: HoverTarget, file?: string): Sele
           h: Math.round(rect.height),
         }
       : null,
+    // WORLD-unit size — `offsetWidth`/`offsetHeight` are the element's own local
+    // pixel box, unaffected by an ancestor's `.dc-world` zoom transform (unlike
+    // `bounds`, which is the SCREEN rect and lies at any zoom other than 100%).
+    // The Inspector's artboard-resize fields (Stage D4 tail) need the true
+    // JSX-authored width/height to pre-fill correctly regardless of zoom.
+    worldW: el instanceof HTMLElement ? Math.round(el.offsetWidth) : undefined,
+    worldH: el instanceof HTMLElement ? Math.round(el.offsetHeight) : undefined,
     html: el ? (el.outerHTML ?? '').slice(0, 4000) : '',
     ...styleMapsFor(el),
   };

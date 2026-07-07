@@ -145,3 +145,22 @@ export function computeGapDrag(
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
+
+/**
+ * Which padding sides a drag on `side` touches, given the held modifiers —
+ * matches the CSS-panel box-model widget's OWN scrub grammar exactly (`side()`
+ * in `client/app.jsx`, `title="drag to scrub · alt = symmetric · alt+shift =
+ * all sides"`): plain drag = just this side; Alt = the symmetric axis PAIR
+ * (top+bottom, or left+right); Alt+Shift = all four. Every touched side is set
+ * to the SAME value (not each grown by its own delta) — same semantics as the
+ * panel's `sidesFor`/`last` write.
+ */
+export function paddingSideSet(
+  side: PaddingSide,
+  altKey: boolean,
+  shiftKey: boolean
+): PaddingSide[] {
+  if (altKey && shiftKey) return ['top', 'right', 'bottom', 'left'];
+  if (altKey) return side === 'top' || side === 'bottom' ? ['top', 'bottom'] : ['left', 'right'];
+  return [side];
+}

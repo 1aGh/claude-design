@@ -5982,6 +5982,88 @@ function InspectComputed({ el }) {
   );
 }
 
+// Dogfood 2026-07-07 — the CSS tab showed everything disabled for a
+// whole-ARTBOARD selection (`CssKnobs`'s `editable = !!el.id`, and an artboard
+// chrome click has NO data-cd-id — DCArtboard doesn't forward it to the DOM).
+// A dedicated, MUCH smaller panel: exact width/height fields (writes via
+// /_api/resize-artboard, NOT edit-css — DDR-027 numeric JSX props) + the SAME
+// SCREEN_PRESETS the "+ Artboard" menu uses, so picking "Tablet" resizes the
+// CURRENT artboard to 834×1194 in one click instead of typing both fields.
+function ArtboardKnobs({ el, onResizeArtboard }) {
+  const artboardId = el.artboardId;
+  const w = Number.isFinite(el.worldW) ? el.worldW : null;
+  const h = Number.isFinite(el.worldH) ? el.worldH : null;
+  const commitSize = (width, height) => {
+    if (!artboardId) return;
+    const nw = Number.isFinite(width) && width > 0 ? Math.round(width) : undefined;
+    const nh = Number.isFinite(height) && height > 0 ? Math.round(height) : undefined;
+    if (nw == null && nh == null) return;
+    onResizeArtboard?.(artboardId, nw, nh);
+  };
+  const activePreset = Object.entries(SCREEN_PRESETS).find(
+    ([, p]) => p.width === w && p.height === h
+  )?.[0];
+  return (
+    <section className="st-cp-sec">
+      <div className="st-cp-sechd-row">
+        <span className="st-cp-sechd">Artboard</span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, padding: '4px 12px' }}>
+        <div className="st-cp-num">
+          <span className="st-cp-numlead" aria-hidden="true">
+            W
+          </span>
+          <input
+            className="st-cp-numin"
+            type="number"
+            min="1"
+            aria-label="artboard width"
+            key={`w:${w ?? ''}`}
+            defaultValue={w ?? ''}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
+            onBlur={(e) => commitSize(Number.parseFloat(e.currentTarget.value), null)}
+          />
+        </div>
+        <div className="st-cp-num">
+          <span className="st-cp-numlead" aria-hidden="true">
+            H
+          </span>
+          <input
+            className="st-cp-numin"
+            type="number"
+            min="1"
+            aria-label="artboard height"
+            key={`h:${h ?? ''}`}
+            defaultValue={h ?? ''}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
+            onBlur={(e) => commitSize(null, Number.parseFloat(e.currentTarget.value))}
+          />
+        </div>
+      </div>
+      <div className="st-cp-modes" style={{ padding: '0 12px 8px' }}>
+        <div className="st-cp-modeseg" role="group" aria-label="artboard size preset">
+          {Object.entries(SCREEN_PRESETS).map(([key, p]) => (
+            <button
+              key={key}
+              type="button"
+              className={`st-cp-modebtn${activePreset === key ? ' is-active' : ''}`}
+              aria-pressed={activePreset === key}
+              onClick={() => commitSize(p.width, p.height)}
+              title={`${p.label} — ${p.width}×${p.height}`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function InspectorPanel({
   selected,
   onClose,
@@ -5995,6 +6077,7 @@ function InspectorPanel({
   onOptimistic,
   onRecordEdit,
   onReplaceMedia,
+  onResizeArtboard,
   onUndoRedo,
   editScope,
   tab: tabProp,
@@ -6486,6 +6569,8 @@ function InspectorPanel({
               </div>
             )}
           </>
+        ) : !el.id && el.artboardId ? (
+          <ArtboardKnobs el={el} onResizeArtboard={onResizeArtboard} />
         ) : (
           <CssKnobs
             el={el}
@@ -9055,10 +9140,34 @@ function App() {
         'gap',
       ].filter((p) => typeof patch[p] === 'string' && patch[p]);
       if (!props.length) return;
+      // Dogfood 2026-07-07 — "resize paddingu nebo gap" was still deselecting on
+      // completion. `applyOptimisticStyle` was posting {id, prop, value} only —
+      // missing artboardId/index — so the canvas-side `apply-style` handler
+      // resolved the UNSCOPED `[data-cd-id]` selector (dom-selection.ts
+      // `resolveSelectionEl`/`scopedCdSelector`), which is a latent multi-
+      // artboard/reused-component miss. Pull the current selection's own
+      // artboardId/index (when it matches `id`) so every optimistic apply +
+      // the belt-and-suspenders reselect below target the SAME instance.
+      const curSel = selectedRef.current;
+      const curOne = Array.isArray(curSel)
+        ? curSel.length === 1
+          ? curSel[0]
+          : null
+        : curSel;
+      const selArtboardId = curOne && curOne.id === id ? (curOne.artboardId ?? null) : null;
+      const selIndex = curOne && curOne.id === id ? (curOne.index ?? 0) : 0;
       // INV-2 (DDR-105) — arm the reload-suppression window BEFORE the edit-css
       // writes so the follow-up HMR is skipped. Without this the canvas remounts
       // and drops the selection (the "resize deselects the element" dogfood bug).
-      for (const p of props) applyOptimisticStyle({ id, prop: p, value: patch[p] });
+      for (const p of props) {
+        applyOptimisticStyle({
+          id,
+          artboardId: selArtboardId,
+          index: selIndex,
+          prop: p,
+          value: patch[p],
+        });
+      }
       const writeProp = (property, value) =>
         fetch('/_api/edit-css', {
           method: 'POST',
@@ -9079,6 +9188,13 @@ function App() {
           for (const p of props) {
             recordSourceEdit({ op: 'css', canvas, id, key: p, before: b[p] ?? null, after: patch[p] });
           }
+          // Dogfood 2026-07-07 — belt-and-suspenders reselect, mirroring the
+          // structural ops' `pendingReorderRef` re-settle. The DDR-105 suppression
+          // window should make this a no-op (no reload → the selection was never
+          // lost) — idempotent per `scheduleHaloRestore`'s own doc comment, so it's
+          // safe to always fire, and it's the backstop if suppression ever misses
+          // (a slow FS-watcher round trip past the 1.5s window, for example).
+          scheduleHaloRestore({ id, file: canvas, artboardId: selArtboardId, index: selIndex });
         })
         .catch((err) => {
           console.warn('[resize]', err?.message || err);
@@ -9087,7 +9203,7 @@ function App() {
           postToActiveCanvas({ dgn: 'resize-failed' });
         });
     },
-    [activePath, postToActiveCanvas, recordSourceEdit, applyOptimisticStyle]
+    [activePath, postToActiveCanvas, recordSourceEdit, applyOptimisticStyle, scheduleHaloRestore]
   );
   useEffect(() => {
     resizeElementRef.current = resizeElement;
@@ -10083,6 +10199,7 @@ function App() {
               onOptimistic={applyOptimisticStyle}
               onRecordEdit={recordSourceEdit}
               onReplaceMedia={onReplaceMedia}
+              onResizeArtboard={resizeArtboardShell}
               editScope={editScope}
               onUndoRedo={(dir) => postToActiveCanvas({ dgn: dir })}
               layersTree={layersTree}

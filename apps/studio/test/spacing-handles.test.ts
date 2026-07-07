@@ -10,6 +10,7 @@ import {
   computePaddingDrag,
   computePaddingLines,
   flexMainAxis,
+  paddingSideSet,
 } from '../spacing-handles.ts';
 
 const RECT = { x: 100, y: 200, w: 300, h: 150 };
@@ -96,6 +97,28 @@ describe('spacing-handles / computeGapMidpoints', () => {
       { x: 40, y: 50 },
       { x: 40, y: 110 },
     ]);
+  });
+});
+
+describe('spacing-handles / paddingSideSet', () => {
+  test('plain drag touches only the dragged side', () => {
+    expect(paddingSideSet('top', false, false)).toEqual(['top']);
+    expect(paddingSideSet('left', false, false)).toEqual(['left']);
+  });
+  test('Alt on top/bottom locks the vertical pair', () => {
+    expect(paddingSideSet('top', true, false)).toEqual(['top', 'bottom']);
+    expect(paddingSideSet('bottom', true, false)).toEqual(['top', 'bottom']);
+  });
+  test('Alt on left/right locks the horizontal pair', () => {
+    expect(paddingSideSet('left', true, false)).toEqual(['left', 'right']);
+    expect(paddingSideSet('right', true, false)).toEqual(['left', 'right']);
+  });
+  test('Alt+Shift locks all 4 sides regardless of which was grabbed', () => {
+    expect(paddingSideSet('top', true, true)).toEqual(['top', 'right', 'bottom', 'left']);
+    expect(paddingSideSet('right', true, true)).toEqual(['top', 'right', 'bottom', 'left']);
+  });
+  test('Shift alone (no Alt) is plain — matches the panel (shift is a step modifier there)', () => {
+    expect(paddingSideSet('top', false, true)).toEqual(['top']);
   });
 });
 

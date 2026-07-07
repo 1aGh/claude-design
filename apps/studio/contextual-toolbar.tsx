@@ -29,8 +29,8 @@
  */
 
 import { useEffect, useRef } from 'react';
-
 import { resolveSelectionEl } from './dom-selection.ts';
+import { isElementDragActive } from './drag-state.ts';
 import { useSelectionSet } from './use-selection-set.tsx';
 
 const CTX_TOOLBAR_CSS = `
@@ -154,6 +154,18 @@ export function ContextualToolbar() {
     }
     const tick = () => {
       rafRef.current = null;
+      // Dogfood 2026-07-07 — "hrozně zavaší ten toolbar" during a reorder drag:
+      // the floating pill has nothing useful to say mid-drag anyway (Inspect /
+      // Copy CSS / Copy ID on an element that's about to move), and its own
+      // per-frame resolveSelectionEl + getBoundingClientRect work was
+      // compounding with the drag's own DOM churn + the resize/spacing
+      // overlays' rAF loops. Hide it for the duration, like Figma/Webflow do.
+      if (isElementDragActive()) {
+        div.style.display = 'none';
+        div.setAttribute('data-on', 'false');
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
       let xMin = Number.POSITIVE_INFINITY;
       let yMin = Number.POSITIVE_INFINITY;
       let xMax = Number.NEGATIVE_INFINITY;

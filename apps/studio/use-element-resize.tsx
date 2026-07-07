@@ -26,6 +26,7 @@
 
 import { type ReactNode, useCallback, useEffect, useRef } from 'react';
 import { globalCdOccurrence, resolveSelectionEl } from './dom-selection.ts';
+import { isElementDragActive } from './drag-state.ts';
 import { useSelectionSet } from './use-selection-set.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
 
@@ -379,6 +380,16 @@ export function ElementResizeOverlay(): ReactNode {
     }
     const tick = () => {
       rafRef.current = null;
+      // Dogfood 2026-07-07 — a live ReorderDrag is the canvas's most DOM-churn-
+      // heavy gesture (never true for OUR own resize drag — a handle grab
+      // stopPropagation()s before ReorderDrag's own pointerdown listener sees
+      // it); skip this overlay's per-frame work while one is in flight so it
+      // doesn't compound the jank ("hrozně zavaší ten toolbar").
+      if (isElementDragActive()) {
+        hideAll();
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
       const el = resolveSelectionEl(document, one) as HTMLElement | null;
       // Skip inline text runs where width/height are meaningless (no explicit box).
       if (!el) {

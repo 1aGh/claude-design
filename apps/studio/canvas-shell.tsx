@@ -76,6 +76,7 @@ import {
   selectorIndex,
   shortText,
 } from './dom-selection.ts';
+import { setElementDragActive } from './drag-state.ts';
 import { EqualSpacingHandles } from './equal-spacing-handles.tsx';
 import { ExportDialogProvider } from './export-dialog.tsx';
 import {
@@ -3048,6 +3049,7 @@ function ReorderDrag() {
       hideDivider();
       suppressNextCanvasClick();
       drag = null;
+      setElementDragActive(false);
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -3102,6 +3104,7 @@ function ReorderDrag() {
       if (!d.dragging) {
         if (!crossedDragThreshold(d.startX, d.startY, e.clientX, e.clientY)) return;
         d.dragging = true;
+        setElementDragActive(true);
         // Start floating: the element tracks the cursor via `transform`, so its
         // layout box stays reserved (origin shows empty space) and it stays in
         // the zoomed world (styling + scale intact). Divide the screen delta by
@@ -3179,6 +3182,7 @@ function ReorderDrag() {
     const onUp = (e: PointerEvent) => {
       const d = drag;
       drag = null;
+      setElementDragActive(false);
       setHighlight(null);
       hideDivider();
       if (!d || e.pointerId !== d.pointerId) return;
@@ -3296,6 +3300,7 @@ function ReorderDrag() {
     return () => {
       if (drag) clearSettle(drag);
       setHighlight(null);
+      setElementDragActive(false);
       window.removeEventListener('message', onReorderFailed);
       window.removeEventListener('message', onRepositionFailed);
       if (dividerEl) {

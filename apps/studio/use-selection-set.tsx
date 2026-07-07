@@ -60,6 +60,12 @@ export interface Selection {
   text?: string;
   dom_path?: string[];
   bounds?: { x: number; y: number; w: number; h: number } | null;
+  /** Stage D4 tail — WORLD-unit size (`offsetWidth`/`offsetHeight`, unaffected by
+   *  the `.dc-world` zoom transform, unlike `bounds` which is the SCREEN rect).
+   *  The Inspector's artboard-resize fields need the true JSX-authored size to
+   *  pre-fill correctly regardless of zoom. */
+  worldW?: number;
+  worldH?: number;
   html?: string;
   /** Phase 12.2 — authored inline-style values (knob pre-fill) + resolved computed (placeholder hint). */
   authored?: Record<string, string>;

@@ -18,6 +18,7 @@
 
 import { type ReactNode, useCallback, useEffect, useRef } from 'react';
 import { globalCdOccurrence, resolveSelectionEl } from './dom-selection.ts';
+import { isElementDragActive } from './drag-state.ts';
 import {
   computeGapDrag,
   computeGapMidpoints,
@@ -25,6 +26,7 @@ import {
   computePaddingLines,
   flexMainAxis,
   type PaddingSide,
+  paddingSideSet,
 } from './spacing-handles.ts';
 import { scaleFromMatrix } from './use-element-resize.tsx';
 import { useSelectionSet } from './use-selection-set.tsx';
@@ -101,6 +103,17 @@ interface SpacingDrag {
   prop: string;
   /** Inline value BEFORE the drag (`el.style.getPropertyValue(prop)` or null). */
   before: string | null;
+  /** All 4 padding sides' inline values BEFORE the drag — for the Alt (pair) /
+   *  Alt+Shift (all) box-model modifiers (`paddingSideSet`), which can touch
+   *  sides OTHER than the one grabbed. Undefined for a gap drag. */
+  paddingBefore?: Record<PaddingSide, string | null>;
+}
+
+/** One touched property's before/after — the shape `resizeElement`'s multi-prop
+ *  `patch`/`before` objects already accept (Stage D3/L8 established this). */
+interface PropEntry {
+  prop: string;
+  before: string | null;
 }
 
 export function SpacingHandlesOverlay(): ReactNode {
@@ -110,9 +123,7 @@ export function SpacingHandlesOverlay(): ReactNode {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const dragRef = useRef<SpacingDrag | null>(null);
-  const lastCommitRef = useRef<{ el: HTMLElement; prop: string; before: string | null } | null>(
-    null
-  );
+  const lastCommitRef = useRef<{ el: HTMLElement; entries: PropEntry[] } | null>(null);
 
   const one = selected.length === 1 ? selected[0] : null;
   const cdId = one && typeof one.id === 'string' ? one.id : null;
@@ -134,6 +145,15 @@ export function SpacingHandlesOverlay(): ReactNode {
     }
     const tick = () => {
       rafRef.current = null;
+      // Dogfood 2026-07-07 — a live ReorderDrag is the canvas's most DOM-churn-
+      // heavy gesture; skip this overlay's own getBoundingClientRect/
+      // getComputedStyle work while one is in flight (its handles are
+      // irrelevant mid-drag anyway — the drag has its own live-preview chrome).
+      if (isElementDragActive()) {
+        hideAll();
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
       const el = resolveSelectionEl(document, one) as HTMLElement | null;
       if (!el) {
         hideAll();
@@ -181,6 +201,7 @@ export function SpacingHandlesOverlay(): ReactNode {
         h.dataset.side = line.side;
         h.dataset.prop = `padding-${line.side}`;
         h.dataset.axis = line.axis;
+        h.title = `padding-${line.side} · drag to scrub · alt = symmetric pair · alt+shift = all sides`;
         h.style.display = 'block';
         h.style.left = `${Math.round(line.x)}px`;
         h.style.top = `${Math.round(line.y)}px`;
@@ -191,6 +212,7 @@ export function SpacingHandlesOverlay(): ReactNode {
         h.className = 'dc-spacing-handle dc-spacing-handle--gap';
         h.dataset.side = '';
         h.dataset.prop = 'gap';
+        h.title = 'gap · drag to scrub';
         h.dataset.axis = axis;
         h.style.display = 'block';
         h.style.left = `${Math.round(pt.x)}px`;
@@ -205,18 +227,24 @@ export function SpacingHandlesOverlay(): ReactNode {
     };
   }, [active, one]);
 
-  const commit = useCallback((d: SpacingDrag, value: number) => {
+  /** Commit one or more touched properties in a SINGLE `resize-request` — a
+   *  plain drag has one entry; an Alt (pair) / Alt+Shift (all sides) padding
+   *  drag has 2 or 4, all set to the SAME value (mirrors the CSS panel's own
+   *  `side()` scrub semantics — every touched side becomes the dragged value,
+   *  not each grown independently). */
+  const commit = useCallback((d: SpacingDrag, entries: PropEntry[], value: number) => {
+    if (!entries.length) return;
     const after = `${value}px`;
-    lastCommitRef.current = { el: d.el, prop: d.prop, before: d.before };
+    lastCommitRef.current = { el: d.el, entries };
+    const patch: Record<string, string> = {};
+    const before: Record<string, string | null> = {};
+    for (const e of entries) {
+      patch[e.prop] = after;
+      before[e.prop] = e.before;
+    }
     try {
       window.parent.postMessage(
-        {
-          dgn: 'resize-request',
-          id: d.cdId,
-          patch: { [d.prop]: after },
-          before: { [d.prop]: d.before },
-          idIndex: d.idIndex,
-        },
+        { dgn: 'resize-request', id: d.cdId, patch, before, idIndex: d.idIndex },
         '*'
       );
     } catch {
@@ -255,6 +283,17 @@ export function SpacingHandlesOverlay(): ReactNode {
         startValue: computedPx(cs, prop),
         prop,
         before: el.style.getPropertyValue(prop) || null,
+        // Alt (pair) / Alt+Shift (all sides) can touch sides OTHER than the one
+        // grabbed — capture every side's PRE-drag inline value up front so a
+        // late modifier press still gets the correct undo `before`.
+        paddingBefore: isGap
+          ? undefined
+          : {
+              top: el.style.getPropertyValue('padding-top') || null,
+              right: el.style.getPropertyValue('padding-right') || null,
+              bottom: el.style.getPropertyValue('padding-bottom') || null,
+              left: el.style.getPropertyValue('padding-left') || null,
+            },
       };
       dragRef.current = drag;
       t.dataset.dragging = 'true';
@@ -263,6 +302,15 @@ export function SpacingHandlesOverlay(): ReactNode {
       } catch {
         /* synthetic events may reject capture */
       }
+    };
+
+    // Alt (pair) / Alt+Shift (all sides) — the CSS panel's own box-model scrub
+    // grammar, matched exactly (`paddingSideSet`). Gap has no "opposite side"
+    // concept, so modifiers only ever apply to a padding drag.
+    const touchedEntries = (d: SpacingDrag, ev: PointerEvent): PropEntry[] => {
+      if (d.kind === 'gap' || !d.paddingBefore) return [{ prop: d.prop, before: d.before }];
+      const sides = paddingSideSet(d.side ?? 'top', ev.altKey, ev.shiftKey);
+      return sides.map((s) => ({ prop: `padding-${s}`, before: d.paddingBefore?.[s] ?? null }));
     };
 
     const onMove = (e: PointerEvent) => {
@@ -275,7 +323,7 @@ export function SpacingHandlesOverlay(): ReactNode {
         d.kind === 'gap'
           ? computeGapDrag(d.axis, d.startValue, dx, dy, d.zoom)
           : computePaddingDrag(d.side ?? 'top', d.startValue, dx, dy, d.zoom);
-      d.el.style.setProperty(d.prop, `${next}px`);
+      for (const entry of touchedEntries(d, e)) d.el.style.setProperty(entry.prop, `${next}px`);
     };
 
     const onUp = (e: PointerEvent) => {
@@ -292,21 +340,26 @@ export function SpacingHandlesOverlay(): ReactNode {
         d.kind === 'gap'
           ? computeGapDrag(d.axis, d.startValue, dx, dy, d.zoom)
           : computePaddingDrag(d.side ?? 'top', d.startValue, dx, dy, d.zoom);
-      if (`${next}px` === (d.before ?? `${d.startValue}px`)) return; // no-op guard
-      commit(d, next);
+      const entries = touchedEntries(d, e);
+      const after = `${next}px`;
+      const changed = entries.some((entry) => after !== (entry.before ?? `${d.startValue}px`));
+      if (!changed) return; // no-op guard
+      commit(d, entries, next);
     };
 
-    // Restore the pre-drag inline value if the shell reports the write failed
-    // (shares `resize-failed` with the element-resize overlay — both restore a
-    // single inline prop from their OWN lastCommitRef, so they don't collide).
+    // Restore the pre-drag inline value(s) if the shell reports the write
+    // failed (shares `resize-failed` with the element-resize overlay — both
+    // restore from their OWN lastCommitRef, so they don't collide).
     const onFail = (e: MessageEvent) => {
       const m = e.data as { dgn?: string } | null;
       if (m?.dgn !== 'resize-failed') return;
       if (e.source !== window.parent) return; // only the parent shell (DDR-054)
       const last = lastCommitRef.current;
       if (!last) return;
-      if (last.before == null) last.el.style.removeProperty(last.prop);
-      else last.el.style.setProperty(last.prop, last.before);
+      for (const entry of last.entries) {
+        if (entry.before == null) last.el.style.removeProperty(entry.prop);
+        else last.el.style.setProperty(entry.prop, entry.before);
+      }
       lastCommitRef.current = null;
     };
 
