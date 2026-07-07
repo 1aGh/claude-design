@@ -5982,6 +5982,18 @@ function InspectComputed({ el }) {
   );
 }
 
+// Dogfood 2026-07-07 — resolve the artboard id for a whole-artboard selection
+// defensively: prefer `el.artboardId` (set by `hoverTargetToSelection` for a
+// live chrome click), but fall back to parsing it out of `el.selector` — some
+// selection-construction paths (Layers-tree artboard row, a restored
+// `_active.json` selection) may not carry `artboardId` even though the
+// selector is always the `[data-dc-screen="…"]` chrome form for one.
+function resolveArtboardIdFromSelection(el) {
+  if (el.artboardId) return el.artboardId;
+  const m = /^\[data-dc-screen="([^"]+)"\]$/.exec(el.selector || '');
+  return m ? m[1] : null;
+}
+
 // Dogfood 2026-07-07 — the CSS tab showed everything disabled for a
 // whole-ARTBOARD selection (`CssKnobs`'s `editable = !!el.id`, and an artboard
 // chrome click has NO data-cd-id — DCArtboard doesn't forward it to the DOM).
@@ -5990,7 +6002,7 @@ function InspectComputed({ el }) {
 // SCREEN_PRESETS the "+ Artboard" menu uses, so picking "Tablet" resizes the
 // CURRENT artboard to 834×1194 in one click instead of typing both fields.
 function ArtboardKnobs({ el, onResizeArtboard }) {
-  const artboardId = el.artboardId;
+  const artboardId = resolveArtboardIdFromSelection(el);
   const w = Number.isFinite(el.worldW) ? el.worldW : null;
   const h = Number.isFinite(el.worldH) ? el.worldH : null;
   const commitSize = (width, height) => {
@@ -6569,7 +6581,7 @@ function InspectorPanel({
               </div>
             )}
           </>
-        ) : !el.id && el.artboardId ? (
+        ) : !el.id && resolveArtboardIdFromSelection(el) ? (
           <ArtboardKnobs el={el} onResizeArtboard={onResizeArtboard} />
         ) : (
           <CssKnobs
