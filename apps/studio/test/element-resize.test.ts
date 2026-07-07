@@ -8,7 +8,8 @@ import { describe, expect, test } from 'bun:test';
 import {
   computeElementResize,
   type ElResizeStart,
-  rotateDragDeg,
+  pointerAngleRad,
+  rotateDeltaDeg,
   rotatePointDeg,
   rotationDegFromMatrix,
   scaleFromMatrix,
@@ -121,13 +122,15 @@ describe('rotate math (Task L8)', () => {
     expect(y90).toBeCloseTo(10);
   });
 
-  test('rotateDragDeg points the element top at the pointer; Shift snaps to 15°', () => {
-    // Pointer directly above center → top points up → 0°.
-    expect(rotateDragDeg(100, 100, 100, 0, false)).toBe(0);
-    // Pointer to the right → top points right → 90°.
-    expect(rotateDragDeg(100, 100, 200, 100, false)).toBe(90);
-    // Shift always snaps to a 15° multiple; a slightly-off-right pointer → 90.
-    expect(rotateDragDeg(100, 100, 205, 90, true) % 15).toBe(0);
-    expect(rotateDragDeg(100, 100, 205, 90, true)).toBe(90);
+  test('rotateDeltaDeg turns by the change in center→pointer angle; Shift snaps 15°', () => {
+    const start = pointerAngleRad(100, 100, 200, 100); // pointer right → 0 rad
+    const down = pointerAngleRad(100, 100, 100, 200); // pointer down → +π/2
+    // From 0°, dragging the pointer from right to down = +90°.
+    expect(rotateDeltaDeg(0, start, down, false)).toBe(90);
+    // No pointer change → angle unchanged (relative model).
+    expect(rotateDeltaDeg(30, start, start, false)).toBe(30);
+    // Shift snaps to a 15° multiple.
+    expect(rotateDeltaDeg(0, start, down, true) % 15).toBe(0);
+    expect(rotateDeltaDeg(0, start, down, true)).toBe(90);
   });
 });

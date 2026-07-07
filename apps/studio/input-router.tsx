@@ -475,6 +475,18 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
       if (action.kind !== 'no-op') {
         e.preventDefault();
         e.stopImmediatePropagation();
+        // preventDefault above stops mousedown's default FOCUS, so a Cmd-click
+        // select would leave the iframe unfocused and every in-canvas keyboard
+        // shortcut (arrow-nudge, Cmd+D, copy/paste-style, Delete) dead until a
+        // drag happened to focus it (dogfood: "funguje jen když hnu myší").
+        // Restore canvas focus explicitly so the keydown listeners fire.
+        if (action.kind === 'select') {
+          try {
+            window.focus();
+          } catch {
+            /* focus may be rejected outside a user gesture */
+          }
+        }
       }
     };
 

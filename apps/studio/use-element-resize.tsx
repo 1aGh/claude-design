@@ -51,12 +51,17 @@ const EL_RESIZE_CSS = `
 .dc-el-resize-handle[data-corner="ne"], .dc-el-resize-handle[data-corner="sw"] { cursor: nesw-resize !important; }
 .dc-el-resize-handle[data-corner="n"], .dc-el-resize-handle[data-corner="s"] { cursor: ns-resize !important; width: 14px; height: 6px; }
 .dc-el-resize-handle[data-corner="e"], .dc-el-resize-handle[data-corner="w"] { cursor: ew-resize !important; width: 6px; height: 14px; }
-.dc-el-resize-handle[data-corner="rotate"] {
-  cursor: grab !important;
-  width: 12px; height: 12px;
-  border-radius: 50%;
-  background: var(--maude-hud-accent-fg, oklch(0.180 0.030 268));
-  border: 1.5px solid var(--maude-hud-accent, oklch(0.680 0.180 268));
+/* Rotation lives in INVISIBLE zones just outside each CORNER (FigJam / mirrors
+   the annotation .dc-annot-rotate-zone) — the cursor flips to a rotate glyph and
+   dragging turns the element. z-index BELOW the corner squares so the resize
+   square wins on the inner overlap; the surrounding ring rotates. */
+.dc-el-resize-handle[data-corner^="rot-"] {
+  width: 20px; height: 20px;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  z-index: 5;
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cg fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath stroke='white' stroke-width='4' d='M4.8 13 A6 6 0 1 1 15.2 13 M2.2 10.8 L4.8 13 L7.4 10.9 M12.6 10.9 L15.2 13 L17.8 10.8'/%3E%3Cpath stroke='black' stroke-width='1.8' d='M4.8 13 A6 6 0 1 1 15.2 13 M2.2 10.8 L4.8 13 L7.4 10.9 M12.6 10.9 L15.2 13 L17.8 10.8'/%3E%3C/g%3E%3C/svg%3E") 10 10, alias !important;
 }
 `.trim();
 
@@ -212,19 +217,25 @@ export function rotatePointDeg(dx: number, dy: number, deg: number): [number, nu
   return [dx * cos - dy * sin, dx * sin + dy * cos];
 }
 
+/** Screen angle (radians) from the element center to a point. */
+export function pointerAngleRad(cx: number, cy: number, px: number, py: number): number {
+  return Math.atan2(py - cy, px - cx);
+}
+
 /**
- * Element rotation (deg) so its TOP (local -Y) points toward the pointer — the
- * rotate handle sits above top-center, so the angle from the element center to
- * the pointer, +90°. Snaps to 15° while Shift is held. Normalized to (-180,180].
+ * RELATIVE rotate (FigJam corner-zone model): the element's new angle after
+ * dragging from `startPointerRad` to `curPointerRad`, starting from
+ * `startElementDeg`. Grab any corner zone and turn — the delta is the change in
+ * the center→pointer angle, so the corner tracks the cursor. Snaps to 15° while
+ * Shift is held. Normalized to (-180, 180].
  */
-export function rotateDragDeg(
-  cx: number,
-  cy: number,
-  px: number,
-  py: number,
+export function rotateDeltaDeg(
+  startElementDeg: number,
+  startPointerRad: number,
+  curPointerRad: number,
   snap: boolean
 ): number {
-  let deg = Math.atan2(py - cy, px - cx) * (180 / Math.PI) + 90;
+  let deg = startElementDeg + (curPointerRad - startPointerRad) * (180 / Math.PI);
   while (deg > 180) deg -= 360;
   while (deg <= -180) deg += 360;
   if (snap) deg = Math.round(deg / 15) * 15;
@@ -234,19 +245,24 @@ export function rotateDragDeg(
 // ─────────────────────────────────────────────────────────────────────────────
 // Overlay component — mounted once in CanvasShell alongside SelectionHalos.
 
+type RotCorner = 'rot-nw' | 'rot-ne' | 'rot-sw' | 'rot-se';
+
 interface ElResizeDrag {
   pointerId: number;
-  corner: ElResizeCorner | 'rotate';
+  corner: ElResizeCorner | RotCorner;
   el: HTMLElement;
   cdId: string;
   startClientX: number;
   startClientY: number;
   elZoom: number; // rect.width / offsetWidth — the element's own render scale
-  /** Element rotation (deg) at drag start — resize deltas are un-rotated by it. */
+  /** Element rotation (deg) at drag start — resize deltas are un-rotated by it,
+   *  and it's the base angle a rotate drag turns FROM. */
   angle: number;
   /** Screen center of the element — the pivot for a rotate drag. */
   cx: number;
   cy: number;
+  /** center→pointer angle (rad) at rotate-drag start (relative rotation base). */
+  rotStartPointer: number;
   start: ElResizeStart;
   flags: ElResizeFlags;
   /** Inline style values BEFORE the drag — the undo `before` + failure restore. */
@@ -336,8 +352,8 @@ export function ElementResizeOverlay(): ReactNode {
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
-      // 8 resize handles + 1 rotate handle.
-      const TOTAL = EL_RESIZE_CORNERS.length + 1;
+      // 8 resize handles + 4 corner rotate zones.
+      const TOTAL = EL_RESIZE_CORNERS.length + 4;
       while (c.children.length < TOTAL) c.appendChild(document.createElement('div'));
       while (c.children.length > TOTAL) c.lastChild && c.removeChild(c.lastChild);
 
@@ -352,7 +368,8 @@ export function ElementResizeOverlay(): ReactNode {
       const zoom = world ? scaleFromMatrix(getComputedStyle(world).transform) : 1;
       const hw = (el.offsetWidth * zoom) / 2;
       const hh = (el.offsetHeight * zoom) / 2;
-      const ROT_OFFSET = 22; // px above top-center for the rotate handle
+      // Rotate zones sit ON each corner (same offset), 20×20, z-index below the
+      // 8×8 corner square — so the square wins the center + the ring rotates.
       const localOffset: Record<string, [number, number]> = {
         nw: [-hw, -hh],
         n: [0, -hh],
@@ -362,9 +379,14 @@ export function ElementResizeOverlay(): ReactNode {
         s: [0, hh],
         sw: [-hw, hh],
         w: [-hw, 0],
-        rotate: [0, -hh - ROT_OFFSET],
+        'rot-nw': [-hw, -hh],
+        'rot-ne': [hw, -hh],
+        'rot-sw': [-hw, hh],
+        'rot-se': [hw, hh],
       };
-      const handles = [...EL_RESIZE_CORNERS, 'rotate'];
+      // Rotate zones FIRST (lower in the DOM / z-index 5), corners LAST so the
+      // 8×8 squares paint on top in the overlap.
+      const handles = ['rot-nw', 'rot-ne', 'rot-sw', 'rot-se', ...EL_RESIZE_CORNERS];
       for (let i = 0; i < handles.length; i++) {
         const corner = handles[i];
         const handle = c.children[i] as HTMLElement;
@@ -372,17 +394,17 @@ export function ElementResizeOverlay(): ReactNode {
         const [rx, ry] = rotatePointDeg(ox, oy, deg);
         const ax = cx + rx;
         const ay = cy + ry;
-        const isRot = corner === 'rotate';
+        const isRot = corner.startsWith('rot-');
         const ns = corner === 'n' || corner === 's';
         const ew = corner === 'e' || corner === 'w';
-        const halfW = isRot ? 6 : ns ? 7 : ew ? 3 : 4;
-        const halfH = isRot ? 6 : ns ? 3 : ew ? 7 : 4;
+        const halfW = isRot ? 10 : ns ? 7 : ew ? 3 : 4;
+        const halfH = isRot ? 10 : ns ? 3 : ew ? 7 : 4;
         handle.className = 'dc-el-resize-handle';
         handle.dataset.corner = corner;
         handle.style.display = 'block';
         handle.style.left = `${Math.round(ax - halfW)}px`;
         handle.style.top = `${Math.round(ay - halfH)}px`;
-        // Orient the edge pills with the element; the rotate circle stays upright.
+        // Orient the edge pills with the element; rotate zones stay unrotated.
         handle.style.transform = isRot ? '' : `rotate(${deg}deg)`;
       }
       rafRef.current = requestAnimationFrame(tick);
@@ -430,7 +452,7 @@ export function ElementResizeOverlay(): ReactNode {
     const onDown = (e: PointerEvent) => {
       const t = e.target as HTMLElement | null;
       if (!t?.classList.contains('dc-el-resize-handle')) return;
-      const corner = t.dataset.corner as ElResizeCorner | 'rotate' | undefined;
+      const corner = t.dataset.corner as ElResizeCorner | RotCorner | undefined;
       if (!corner || !one || typeof one.id !== 'string') return;
       const el = resolveSelectionEl(document, one) as HTMLElement | null;
       if (!el) return;
@@ -444,6 +466,8 @@ export function ElementResizeOverlay(): ReactNode {
       const startTop = Number.parseFloat(el.style.top);
       const angle = rotationDegFromMatrix(cs.transform);
       const z = elZoom > 0 ? elZoom : 1;
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
       const drag: ElResizeDrag = {
         pointerId: e.pointerId,
         corner,
@@ -453,8 +477,9 @@ export function ElementResizeOverlay(): ReactNode {
         startClientY: e.clientY,
         elZoom: z,
         angle,
-        cx: rect.left + rect.width / 2,
-        cy: rect.top + rect.height / 2,
+        cx,
+        cy,
+        rotStartPointer: pointerAngleRad(cx, cy, e.clientX, e.clientY),
         start: {
           // World-px border box. rect is the AABB; for a rotated element that
           // over-states w/h, so derive from offset dims when rotated.
@@ -489,9 +514,15 @@ export function ElementResizeOverlay(): ReactNode {
       const d = dragRef.current;
       if (!d || e.pointerId !== d.pointerId) return;
       e.preventDefault();
-      if (d.corner === 'rotate') {
-        // Rotate about the element center toward the pointer; Shift snaps to 15°.
-        const deg = rotateDragDeg(d.cx, d.cy, e.clientX, e.clientY, !!e.shiftKey);
+      if (d.corner.startsWith('rot-')) {
+        // Rotate RELATIVE to the grabbed corner: turn by the change in the
+        // center→pointer angle from where the drag started. Shift snaps to 15°.
+        const deg = rotateDeltaDeg(
+          d.angle,
+          d.rotStartPointer,
+          pointerAngleRad(d.cx, d.cy, e.clientX, e.clientY),
+          !!e.shiftKey
+        );
         const tf = `rotate(${deg}deg)`;
         d.el.style.transform = tf;
         d.lastTransform = tf;
@@ -504,7 +535,7 @@ export function ElementResizeOverlay(): ReactNode {
       const d = dragRef.current;
       if (!d || e.pointerId !== d.pointerId) return;
       dragRef.current = null;
-      if (d.corner === 'rotate') {
+      if (d.corner.startsWith('rot-')) {
         const tf = d.lastTransform;
         if (!tf || tf === d.before.transform) return; // no-op
         lastCommitRef.current = { el: d.el, before: d.before };

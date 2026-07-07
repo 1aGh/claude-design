@@ -8827,6 +8827,12 @@ function App() {
     (id, left, top, beforeLeft, beforeTop) => {
       if (!id || !activePath) return;
       const canvas = activePath;
+      // INV-2 (DDR-105) — arm the reload-suppression window BEFORE the edit-css
+      // writes so the HMR reload is skipped and the canvas doesn't remount + drop
+      // the selection (dogfood: "když pohnu elementem myší, ztratím focus"). Same
+      // fix as resizeElement; also covers the keyboard nudge (L1) which reuses this.
+      applyOptimisticStyle({ id, prop: 'left', value: `${left}px` });
+      applyOptimisticStyle({ id, prop: 'top', value: `${top}px` });
       const writeProp = (property, value) =>
         fetch('/_api/edit-css', {
           method: 'POST',
@@ -8868,7 +8874,7 @@ function App() {
           postToActiveCanvas({ dgn: 'reposition-failed' });
         });
     },
-    [activePath, postToActiveCanvas, recordSourceEdit]
+    [activePath, postToActiveCanvas, recordSourceEdit, applyOptimisticStyle]
   );
   useEffect(() => {
     repositionElementRef.current = repositionElement;
