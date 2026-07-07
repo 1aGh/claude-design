@@ -460,13 +460,13 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 
 > A 108-agent deep-research pass (all findings 3-0 verified against primary Figma/Webflow/Penpot docs) surfaced table-stakes affordances users of those tools reach for by muscle memory. **Already present in Maude → not re-added:** marquee/rubber-band select (`marquee-overlay.tsx`), command palette (`CommandPalette`, `app.jsx:559`), inline double-click text edit (`contenteditable .dc-text-editing`, `canvas-shell.tsx:320`), unit-switching, undo/redo. **Out of scope (no clean TSX analog):** vector boolean ops; prototyping links; element interaction-states / responsive breakpoints (note as a future plan). The tasks below are the confirmed gaps that reuse existing infra.
 
-#### ✅ Task L1: EXTEND keyboard nudge from artboards to elements — DONE (out-of-flow elements; in-flow no-op; live verify pending dogfood)
+#### ✅ Task L1: EXTEND keyboard nudge from artboards to elements — DONE + user-verified 2026-07-07 (out-of-flow elements; in-flow no-op)
 
 - **Do**: `use-keyboard-discipline.tsx` already nudges **artboards** by arrow keys but explicitly scopes out elements (`:9` "arrow nudge applies to artboards only … would require an ephemeral CSS-transform overlay"). Extend it to the selected element: Arrow = 1px, Shift+Arrow = 10px (configurable), previewing via the optimistic `apply-style` overlay and committing `left/top` (absolute) or the appropriate offset through the Stage-D reposition lane on key-up (debounced), with one undo record per settle.
 - **Gotcha**: bail when a text input / `contenteditable` is focused (the guard already exists in the hook). For in-flow elements without `position`, nudge is ambiguous — either no-op with a hint or nudge via `margin` (decide during impl; prefer no-op + hint to avoid surprising layout shifts).
 - **Validate**: select an element → Arrow moves 1px, Shift+Arrow 10px, Cmd+Z reverts; artboard nudge still works.
 
-#### ✅ Task L2: ADD keyboard selection traversal (parent / child / sibling) — DONE (Enter/Shift+Enter/Tab/Shift+Tab; live verify pending dogfood)
+#### ✅ Task L2: ADD keyboard selection traversal (parent / child / sibling) — DONE + user-verified 2026-07-07 (Enter/Shift+Enter/Tab/Shift+Tab)
 
 - **Do**: Map DOM tree navigation to keys, mirroring Figma/Webflow: `Enter` = select first child, `Shift+Enter` (or `↑` per Webflow) = select parent, `Tab`/`Shift+Tab` (or `←`/`→`) = next/previous sibling, `Esc` = deselect. Resolve relatives from the selected element's DOM node + the Layers tree (`serializeArtboardTree`, `canvas-shell.tsx:431-459`) and reuse the `select-by-id` path (camera-aware after Stage A).
 - **Gotcha**: this is also the **editor-accessibility** answer (the selection graph becomes mouse-free) — keep `aria` focus in sync. Don't collide with the existing `Tab` usage elsewhere; scope to when the canvas has focus + a selection.
@@ -478,7 +478,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha**: duplicating a **shared-component instance** duplicates the `<Card/>` usage (artboard-local), consistent with the Stage-H scope model. Cross-canvas paste must resolve the asset/component imports or warn.
 - **Validate**: Cmd+D on an element → an offset copy appears + selected; Alt-drag → copy at drop point; both Cmd+Z-reversible.
 
-#### ✅ Task L4: ADD copy-style / paste-style (Cmd+Opt+C / Cmd+Opt+V) — DONE (appearance-only; N-step undo, live verify pending dogfood)
+#### ✅ Task L4: ADD copy-style / paste-style (Cmd+Opt+C / Cmd+Opt+V) — DONE + user-verified 2026-07-07 (appearance/inline-only; className copy is a follow-up; N-step undo)
 
 - **Do**: `Cmd/Ctrl+Opt/Alt+C` captures the selected element's authored style map (the `authored`/`customStyles` already on the `Selection`), `Cmd/Ctrl+Opt/Alt+V` applies it to another selected element by chaining `edit-css` writes for each captured property (serialized on `editApplyChainRef`, one undo group). Also expose via the context menu ("Paste style").
 - **Gotcha**: apply only *authored* props (not resolved computed) so you don't bake inherited/DS-token values into raw overrides — respect the DDR-104 authored-vs-computed distinction. This is the natural batch-write case that may justify the optional `edit-css-batch` route (Task D3).
@@ -502,7 +502,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha**: measurement must use world coords (post-Stage-A host-scroll-0 invariant) so numbers are correct at any zoom.
 - **Validate**: select A, Alt-hover B → red line + px distances; drag/resize → live dimension pill.
 
-#### ✅ Task L8: ADD a free-hand rotate handle on canvas elements (dogfood request 2026-07-07) — DONE (live-drag verify pending dogfood)
+#### ✅ Task L8: ADD a free-hand rotate handle on canvas elements (dogfood request 2026-07-07) — DONE + user-verified 2026-07-07 (4 invisible CORNER zones, FigJam; relative rotation)
 
 - **Do**: Add a **rotate handle** to the element selection overlay (a small handle offset above the top edge, or a Cmd-hover of a corner per Figma) so the user can grab and rotate an element directly on the canvas. Writes `transform: rotate(<deg>deg)` (composing with any existing `transform`) through the same optimistic `apply-style` → `edit-css` lane resize uses; snap to 15° increments while Shift is held. The resize-handle geometry (Stage D `use-element-resize.tsx`) must account for the element's current rotation when placing the 8 resize handles (rotate the handle anchor points by the element's angle) so resize stays correct on a rotated element.
 - **Pattern**: `use-element-resize.tsx` (the overlay + rAF-follow + optimistic commit lane); the Stage-B `transform` knob already does rotate-via-text — this is the direct-manipulation counterpart. Read the element's current rotation from `authored.transform` / `computed.transform` (parse the `rotate()`/matrix).
