@@ -373,7 +373,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha**: `edit-attr` writes a JSX attribute; a `src` that's a template expression (`src={foo}`) can't be safely string-replaced — detect and fall back to "edit with /design:edit" (mirror the `CssKnobs` `!editable` disabled state, `app.jsx:4524-4535`).
 - **Validate**: right-click an authored `<img>` → "Replace image…" → pick → the `src` in the `.tsx` updates, canvas re-renders, Cmd+Z reverts.
 
-#### Task F3: ADD "Replace…" for annotation `ImageStroke`/`MediaRefStroke` — TODO (separate annotation-model path)
+#### ✅ Task F3: ADD "Replace…" for annotation `ImageStroke`/`MediaRefStroke` — DONE 2026-07-07 (separate annotation-model path, via `commitStrokes`)
 
 - **Do**: Add the same "Replace…" entry to `AnnotationContextMenu` (`annotations-layer.tsx:3745-3816`), gated on an `ImageStroke`/`MediaRefStroke`. On pick, update the stroke's `href`/`src` through the annotation model (mirror `createImageFromFile`'s href-swap, `:1114-1160`) — **not** `edit-css` (annotation images have no `data-cd-id`).
 - **Gotcha**: This rides the annotation write path, not the source-write routes — keep the two clearly separated (research flagged this as the exact fault line between the three media representations).

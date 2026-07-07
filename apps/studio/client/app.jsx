@@ -8461,6 +8461,20 @@ function App() {
             before: typeof m.before === 'string' ? m.before : null,
           });
         }
+      } else if (m.dgn === 'replace-annotation-media-request') {
+        // Stage F3 — "Replace…" on an annotation ImageStroke/MediaRefStroke.
+        // Opens the SAME AssetPicker; unlike F2 the pick is posted BACK DOWN to
+        // the canvas (no data-cd-id to ride edit-attr — the annotation model owns
+        // its own strokes, so the canvas iframe performs the write itself).
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin && typeof m.id === 'string') {
+          openAssetPickerRef.current?.({
+            purpose: 'replace-annotation-media',
+            canvas: activePath,
+            id: m.id,
+            before: typeof m.before === 'string' ? m.before : null,
+          });
+        }
       } else if (m.dgn === 'insert-artboard-request') {
         // Stage I4 — insert a new empty artboard from a screen-size preset.
         const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
@@ -9401,9 +9415,16 @@ function App() {
               })
               .catch(() => {})
           );
+        return;
+      }
+      if (req.purpose === 'replace-annotation-media') {
+        // Stage F3 — relay the picked path DOWN to the canvas; the annotation
+        // model owns its own strokes + persistence + undo (`commitStrokes`), so
+        // unlike `replace-src` the shell performs no write of its own here.
+        postToActiveCanvas({ dgn: 'replace-annotation-media', id: req.id, path: pickedPath });
       }
     },
-    [assetPickerReq, insertElementShell, activePath, recordSourceEdit]
+    [assetPickerReq, insertElementShell, activePath, recordSourceEdit, postToActiveCanvas]
   );
   // Media-section "Replace…" (CssKnobs) → open the picker in replace mode with
   // the element's current src as the undo before-value (captured from the

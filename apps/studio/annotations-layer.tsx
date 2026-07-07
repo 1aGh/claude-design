@@ -1076,11 +1076,36 @@ export function AnnotationsLayer() {
       }
       if (m.dgn === 'annotation-select-all') {
         if (annotSel) annotSel.replace(strokes.map((s) => s.id));
+        return;
+      }
+      // Stage F3 — the shell's AssetPicker (main-origin, DDR-054) resolved a new
+      // asset for an ImageStroke/MediaRefStroke's "Replace…" context-menu entry;
+      // the canvas iframe owns the annotation model, so the shell REQUESTS the
+      // swap here rather than writing strokes itself. `href`/`src` mirrors each
+      // stroke shape (ImageStroke.href / MediaRefStroke.src) — swap whichever key
+      // the target stroke actually carries, everything else survives byte-for-byte.
+      if (
+        m.dgn === 'replace-annotation-media' &&
+        typeof (m as { id?: unknown }).id === 'string' &&
+        typeof (m as { path?: unknown }).path === 'string'
+      ) {
+        const id = (m as { id: string }).id;
+        const path = (m as { path: string }).path;
+        const before = strokesRef.current;
+        const target = before.find((s) => s.id === id);
+        if (!target || (target.tool !== 'image' && target.tool !== 'mediaref')) return;
+        const after = before.map((s) => {
+          if (s.id !== id) return s;
+          return target.tool === 'image'
+            ? ({ ...s, href: path } as ImageStroke)
+            : ({ ...s, src: path } as MediaRefStroke);
+        });
+        commitStrokes(before, after, 'replace media');
       }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [annotSel, strokes, setVisible]);
+  }, [annotSel, strokes, setVisible, commitStrokes]);
 
   // Document-level toggle: Shift+P (presentation). Annotation-shortcut help is
   // owned by the dev-server menubar (Help button); we no longer ship an
@@ -2737,9 +2762,27 @@ export function AnnotationsLayer() {
         if (members) annotSel.replace(members);
       } else if (action === 'ungroup') {
         store.ungroupSelection(sel);
+      } else if (action === 'replace') {
+        // Stage F3 — "Replace…" on an ImageStroke/MediaRefStroke. The canvas
+        // REQUESTS (untrusted-origin postMessage, DDR-054); the main-origin shell
+        // opens the AssetPicker and posts the picked path back down (handled by
+        // the `replace-annotation-media` listener above, which owns the write —
+        // this model has no data-cd-id, so it can't ride edit-attr like F2).
+        if (sel.length !== 1) return;
+        const target = strokesById.get(sel[0] as string);
+        if (!target || (target.tool !== 'image' && target.tool !== 'mediaref')) return;
+        const before = target.tool === 'image' ? target.href : target.src;
+        try {
+          window.parent.postMessage(
+            { dgn: 'replace-annotation-media-request', id: target.id, before },
+            '*'
+          );
+        } catch {
+          /* detached / cross-origin teardown */
+        }
       }
     },
-    [annotSel, copySelection, pasteStrokesText]
+    [annotSel, copySelection, pasteStrokesText, strokesById]
   );
 
   // FigJam v3 — first time a multi-selection lands, surface the group /
@@ -2816,6 +2859,10 @@ export function AnnotationsLayer() {
           pos={ctxMenu}
           selCount={annotSel.selectedIds.length}
           canUngroup={selectedStrokes.some((s) => (s.groupIds?.length ?? 0) > 0)}
+          canReplace={
+            selectedStrokes.length === 1 &&
+            (selectedStrokes[0]?.tool === 'image' || selectedStrokes[0]?.tool === 'mediaref')
+          }
           onAction={onMenuAction}
           onClose={() => setCtxMenu(null)}
         />
@@ -3750,12 +3797,15 @@ function AnnotationContextMenu({
   pos,
   selCount,
   canUngroup,
+  canReplace,
   onAction,
   onClose,
 }: {
   pos: { x: number; y: number };
   selCount: number;
   canUngroup: boolean;
+  /** Stage F3 — exactly one ImageStroke/MediaRefStroke is selected. */
+  canReplace: boolean;
   onAction: (action: string) => void;
   onClose: () => void;
 }) {
@@ -3822,6 +3872,7 @@ function AnnotationContextMenu({
       {item('cut', 'Cut', '⌘X')}
       {item('paste', 'Paste', '⌘V')}
       {item('duplicate', 'Duplicate', '⌘D')}
+      {canReplace ? item('replace', 'Replace…') : null}
       <div className="dc-menu-sep" aria-hidden="true" />
       {item('front', 'Bring to front', ']')}
       {item('forward', 'Bring forward', '⌘]')}
