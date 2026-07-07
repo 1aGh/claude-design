@@ -5325,7 +5325,7 @@ function LayerRow({
   selectedId,
   selectedIndex,
   collapsed,
-  hidden,
+  hiddenOverride,
   onToggle,
   onSelect,
   onHover,
@@ -5342,7 +5342,7 @@ function LayerRow({
   // clones at once. Fall back to id-only when the selection carries no index.
   const isSel =
     node.id === selectedId && (selectedIndex == null || node.index === selectedIndex);
-  const isHidden = hidden?.has(key);
+  const isHidden = hiddenOverride?.has(key) ? hiddenOverride.get(key) : !!node.hidden;
   // A shared data-cd-id (reused component instance) IS reorderable now — the
   // server maps the occurrence index to the parent <Component> usage — so these
   // are no longer greyed/blocked. A `.map()`ed single-usage element still can't
@@ -5435,7 +5435,7 @@ function LayerRow({
               selectedId={selectedId}
               selectedIndex={selectedIndex}
               collapsed={collapsed}
-              hidden={hidden}
+              hiddenOverride={hiddenOverride}
               onToggle={onToggle}
               onSelect={onSelect}
               onHover={onHover}
@@ -5519,6 +5519,7 @@ function InspectorPanel({
   selected,
   onClose,
   layersTree,
+  canvasFile,
   onSelectLayer,
   onHoverLayer,
   onReorderLayer,
@@ -5543,9 +5544,18 @@ function InspectorPanel({
     onTabChange?.(t);
   };
   const [collapsed, setCollapsed] = useState(() => new Set());
-  // Phase 12.3 (W3.1) — per-layer visibility toggle. Live-only (display:none via
-  // the optimistic apply bus); not persisted to source. Keyed by `${id}:${index}`.
-  const [hiddenLayers, setHiddenLayers] = useState(() => new Set());
+  // Phase 12.3 (W3.1) — per-layer visibility toggle. Persists via /_api/edit-css
+  // (property 'display', mirroring CssKnobs' commit/reset) and is undoable via
+  // the same edit-source command (see the undo/redo coverage RCA:
+  // .ai/logs/rca/issue-undo-redo-coverage-gaps.md). Keyed by `${id}:${index}`;
+  // holds only OPTIMISTIC overrides (either direction) over the tree-reported
+  // `node.hidden` (the authoritative source value) so a first render of an
+  // already-hidden element shows the correct eye-icon state without a click.
+  const [hiddenOverride, setHiddenOverride] = useState(() => new Map());
+  const isNodeHidden = (node) => {
+    const key = `${node.id}:${node.index}`;
+    return hiddenOverride.has(key) ? hiddenOverride.get(key) : !!node.hidden;
+  };
   // Phase 12.1 (DDR-138) — drag-to-reorder state (lifted so every row sees the
   // same drop target) + an aria-live announcement for keyboard moves.
   const [dragState, setDragState] = useState(null);
@@ -5786,7 +5796,9 @@ function InspectorPanel({
     });
   const toggleVisibility = (node) => {
     const key = `${node.id}:${node.index}`;
-    const willHide = !hiddenLayers.has(key);
+    const wasHidden = isNodeHidden(node);
+    const willHide = !wasHidden;
+    setHiddenOverride((prev) => new Map(prev).set(key, willHide));
     onOptimistic?.({
       id: node.id,
       artboardId: layersTree?.artboardId ?? null,
@@ -5794,11 +5806,26 @@ function InspectorPanel({
       prop: 'display',
       value: willHide ? 'none' : null,
     });
-    setHiddenLayers((prev) => {
-      const next = new Set(prev);
-      if (willHide) next.add(key);
-      else next.delete(key);
-      return next;
+    if (!canvasFile || !node.id) return;
+    fetch('/_api/edit-css', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(
+        willHide
+          ? { canvas: canvasFile, id: node.id, property: 'display', value: 'none' }
+          : { canvas: canvasFile, id: node.id, property: 'display', reset: true }
+      ),
+    }).catch(() => {});
+    // Record onto the canvas undo stack (Cmd+Z), same as any other inline CSS
+    // edit — fire-and-forget alongside the POST above, mirroring CssKnobs'
+    // commit()/reset() (which don't gate the record on the fetch resolving).
+    onRecordEdit?.({
+      op: 'css',
+      canvas: canvasFile,
+      id: node.id,
+      key: 'display',
+      before: wasHidden ? 'none' : null,
+      after: willHide ? 'none' : null,
     });
   };
   // `selected` may be a single element, an array (multi-select), or null.
@@ -5920,7 +5947,7 @@ function InspectorPanel({
                       selectedId={el.id}
                       selectedIndex={el.index}
                       collapsed={collapsed}
-                      hidden={hiddenLayers}
+                      hiddenOverride={hiddenOverride}
                       onToggle={toggleCollapse}
                       onSelect={(node) => {
                         onSelectLayer?.(node);
@@ -8893,6 +8920,7 @@ function App() {
               onRecordEdit={recordSourceEdit}
               onUndoRedo={(dir) => postToActiveCanvas({ dgn: dir })}
               layersTree={layersTree}
+              canvasFile={activePath}
               onSelectLayer={(n) =>
                 postToActiveCanvas({
                   dgn: 'select-by-id',

@@ -382,6 +382,11 @@ interface LayerNode {
   /** Occurrence index of this id within the artboard — matches the resolver's
    *  `querySelectorAll([data-dc-screen=…] [data-cd-id=…])[index]`. */
   index: number;
+  /** Authored `style.display === 'none'` — the Layers-panel eye icon's source
+   *  of truth. The panel's toggle persists through `/_api/edit-css` (same
+   *  route CssKnobs uses), so this must reflect the SOURCE value, not a
+   *  client-only preview flag (see app.jsx `toggleVisibility`). */
+  hidden: boolean;
   children: LayerNode[];
 }
 
@@ -440,6 +445,7 @@ function serializeArtboardTree(root: Element): LayerNode[] {
           label: layerLabel(child),
           type: layerType(child),
           index: idx,
+          hidden: (child as HTMLElement).style.display === 'none',
           children: walk(child),
         });
       } else {
