@@ -383,13 +383,13 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 
 > User-chosen model (Option A): **surface the scope + keep instance move/resize local**. No per-instance style override, no detach. The predictability comes from *showing* whether an edit is local or shared, and from routing instance move/resize per-occurrence.
 
-#### Task H1: CREATE an edit-scope resolver (local vs shared, instance count)
+#### ✅ Task H1: CREATE an edit-scope resolver (local vs shared, instance count) — DONE (`51fc607`)
 
 - **Do**: Add a server-side (or parse-time) resolver that, for a selected `data-cd-id`, returns `{ scope: 'local' | 'shared', componentName, instanceCount }`. Compute it from the existing primitives: read the id's `componentName` from `_locator.json` (`locator.ts:25-36`) — `shared` iff `componentName` names a real component (not the top-level artboard function) — and `instanceCount = collectElementsFull().filter(e => e.tag === componentName).length` (`canvas-edit.ts:661-747`, the exact computation `resolveUsageId` already ships). Surface it on the `Selection` (extend the payload) or via a small `GET /_api/edit-scope?canvas&id`.
 - **Gotcha**: the `.map()` caveat (DDR-139 §1) — a single `<Card/>` inside `.map()` has `instanceCount === 1` but renders N DOM nodes. For an accurate badge, combine the source usage count with the DOM occurrence count (from `serializeArtboardTree`'s per-artboard `index`, `canvas-shell.tsx:431-459`). Label honestly: "shared source · rendered N×".
 - **Validate**: `cd apps/studio && bun test` with fixtures: an artboard-local `<div>` → `local`; a `<div>` inside a `Card` used in 3 artboards → `shared, instanceCount 3`.
 
-#### Task H2: SURFACE the scope in the Inspector + on destructive/global edits
+#### ✅ Task H2: SURFACE the scope in the Inspector + on destructive/global edits — DONE (`51fc607`)
 
 - **Do**: Add a scope badge to the Inspector header (near `el.selector`, `app.jsx:5876`) and the contextual toolbar: **"Local — this artboard only"** vs **"Shared component · edits N places"**. For a **shared** element, a first style/attr edit in a session shows a one-time inline confirm ("This changes N instances across artboards — edit anyway?"), remembered per session so it isn't nagging. Delete of a shared element (Stage I) always confirms.
 - **Pattern**: reuse the Layers-tab per-instance highlight already shipped (`app.jsx:5340-5350`) so selecting an instance highlights only that occurrence, reinforcing the mental model.
@@ -426,7 +426,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha**: an inserted `<img>` needs a source — open the `AssetPicker` (Task F1) inline, or insert a neutral placeholder asset. A new element should land selected + inspectable so the user can immediately style it.
 - **Validate**: `cd apps/studio && bun test` (insert round-trips, new id resolves); manual: "+ Element → Div" appends a div to the active artboard, it's selected, Cmd+Z removes it.
 
-#### 🟡 Task I4: CREATE the `insert-artboard` op + screen-size presets — engine + route + shell + undo + tests DONE; canvas-side "+ Artboard" affordance + SCREEN_PRESETS picker + patchCanvasMeta grid REMAINING
+#### ✅ Task I4: CREATE the `insert-artboard` op + screen-size presets — DONE (engine + route + shell + undo + tests + Edit-menu "+ Artboard" affordance with the 4 `SCREEN_PRESETS`, runtime default-grid placement)
 
 - **Do**: Add `applyInsertArtboard(source, preset)` inserting a new `<DCArtboard id label width height>` (optionally wrapping in a `<DCSection>` if the canvas uses sections) after the last artboard, using the `scaffold-design.ts:35-79` shape, with `width`/`height` from a **preset table** (`SCREEN_PRESETS`: Desktop 1440×1024, Laptop 1280×800, Tablet 834×1194, Mobile 390×844, plus Custom W×H). Generate a unique `id`/`label`, let the pipeline stamp the `data-cd-id`, and `patchCanvasMeta` to give it a grid position (DDR-027 default-grid, `canvas-lib.tsx:1526-1528`). Surface via a canvas-level "+ Artboard" affordance (toolbar / canvas context menu / empty-canvas CTA) with a preset picker. Whole-file snapshot undo.
 - **Pattern**: `applyInsertElement` (Task I3) for the source write; `scaffold-design.ts` for the artboard JSX + `layout.artboards[]` entry shape; `SCREEN_PRESETS` is new (device sizes).
@@ -534,7 +534,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 
 ### Stage G — Guardrails, decision record, tests, changelog
 
-#### Task G1: RECORD the DDR (curated-tier expansion + resize/specimen/media model)
+#### ✅ Task G1: RECORD the DDR (curated-tier expansion + resize/specimen/media model) — DONE, DDR-152 (`d5a9b9a`)
 
 - **Do**: Via `/flow:record-ddr`, record a decision covering: (a) **supersedes DDR-104 §3's OUT-list** — `position`/inset/`transform`/`text-transform`/`text-decoration`/`font-style`/`object-fit`/`aspect-ratio` are now curated (state *why*: user feedback that box/framing/positioning are core designer edits, not power-user escapes); (b) the element + artboard resize-handle model (reuse annotation-resize geometry; element size via `edit-css`, artboard size via `edit-attr width/height` per DDR-027); (c) specimen selection as a mount/router-gap fix with the `select-set` parent-gate as the trust boundary; (d) the media-swap write concern (`edit-attr` src-replace / annotation-model href-swap) orthogonal to the photo-editor plan's `/_api/photo-edit`; (e) **general element delete/insert + new-artboard insert** as new structural ops with whole-file-snapshot undo (extending DDR-138/139's model from clips to general elements); (f) the **reusable-component predictability contract** (Option A: surface scope + local instance move/resize, *no* override/detach — record why the override/detach path was declined). Cross-reference DDR-103/104/105/019/027/054/088/138/139/050.
 - **Gotcha**: DDR numbering races on shared `main` (memory `project_ddr_numbering_races_on_shared_main`) — re-check `.ai/decisions/` immediately before numbering; the tentative next number is **DDR-152** (current max is 151). This may warrant **two** DDRs (the knob/scope UX decision and the structural-edit/undo decision) if one grows unwieldy.
@@ -545,7 +545,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Do**: (a) the Stage-A camera regression (Task A3); (b) a `dom-selection` test asserting the new `KNOB_PROPS` round-trip into `authored`; (c) resize-commit tests for element (`width/height/left/top`) and artboard (`width/height` attrs) + undo records; (d) a specimen-selection test asserting a bare-specimen element produces a `select-set` with a null-artboard selector; (e) a media src-replace test (`edit-attr` on `src`); (f) `canvas-edit.ts` structural tests: `applyDeleteElement`/`applyInsertElement`/`applyInsertArtboard` round-trip, reparse-gate rejects invalid results, shared-instance delete targets the usage; (g) an edit-scope resolver test (`local` vs `shared, instanceCount N`, incl. the `.map()` caveat); (h) a spacing-drag commit test; (i) the K1 whole-file byte-compare undo sequence. Mirror `canvas-edit.test.ts` / selection-test shapes.
 - **Validate**: `cd apps/studio && bun test`.
 
-#### Task G3: RUN the security-review focus on the one new selection surface
+#### ✅ Task G3: RUN the security-review focus on the one new selection surface — DONE, 2 Medium blockers closed (`b224328`)
 
 - **Do**: Per DDR-054/DDR-105, confirm every new source-write route (`delete-element`, `insert-element`, `insert-artboard`, `delete-revert`, the optional `edit-css-batch`, and the `/_api/assets` GET) is **main-origin-only** (absent from `CANVAS_SAFE_API` + `startCanvasServer`'s allowlist), `sameOriginWrite`+loopback guarded, and pinned to `activePath` (never the iframe-supplied canvas). Confirm specimen selection (Stage E) flows through the already parent-source-gated `select-set` handler (`app.jsx:7584-7590`) and adds no canvas-origin-reachable write. Confirm the insert path can't be driven to write outside the design root (path containment on any asset `src`). Run `security-auditor` + `ethical-hacker` scoped to the diff.
 - **Validate**: `/flow:validate-security` → 0 blockers at the configured `severityFloor`; add `test/canvas-origin-gate.test.ts`-style assertions (GET→405 / canvas-origin POST→rejected) for each new write route.
