@@ -8279,6 +8279,14 @@ function App() {
             Number.isInteger(m.idIndex) ? m.idIndex : undefined
           );
         }
+      } else if (m.dgn === 'copy-style') {
+        // Task L4 — capture the current selection's authored style (shell-side).
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin) copyStyleRef.current?.();
+      } else if (m.dgn === 'paste-style') {
+        // Task L4 — apply the copied style to the target element.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin && typeof m.id === 'string') pasteStyleRef.current?.(m.id);
       } else if (m.dgn === 'insert-request') {
         // Stage I3 — insert a synthesized div/text/image relative to `refId`.
         const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
@@ -9018,6 +9026,78 @@ function App() {
     [structuralWrite]
   );
 
+  // Task L4 — copy-style / paste-style. Captures a selection's AUTHORED inline
+  // styles (not resolved/computed, so DS-token + inherited values aren't baked in)
+  // minus layout/geometry props, then applies them to another element via chained
+  // edit-css writes (one per prop, like resize — N-step undo). Clipboard lives in
+  // the shell so it survives selection + canvas changes.
+  const copiedStyleRef = useRef(null);
+  // Appearance-only: exclude position/size/margin so paste-style copies the LOOK,
+  // not the layout (Figma parity — padding/color/border/shadow/font/… carry over).
+  const PASTE_STYLE_EXCLUDE = useMemo(
+    () =>
+      new Set([
+        'position',
+        'top',
+        'right',
+        'bottom',
+        'left',
+        'inset',
+        'width',
+        'height',
+        'min-width',
+        'max-width',
+        'min-height',
+        'max-height',
+        'margin',
+        'margin-top',
+        'margin-right',
+        'margin-bottom',
+        'margin-left',
+      ]),
+    []
+  );
+  const copyStyle = useCallback(() => {
+    const sel = selectedRef.current;
+    const one = Array.isArray(sel) ? (sel.length === 1 ? sel[0] : null) : sel;
+    if (!one) return;
+    const map = {};
+    for (const [k, v] of Object.entries(one.authored || {})) {
+      if (!PASTE_STYLE_EXCLUDE.has(k)) map[k] = v;
+    }
+    for (const [k, v] of Object.entries(one.customStyles || {})) {
+      if (!PASTE_STYLE_EXCLUDE.has(k)) map[k] = v;
+    }
+    copiedStyleRef.current = Object.keys(map).length ? map : null;
+  }, [PASTE_STYLE_EXCLUDE]);
+  const pasteStyle = useCallback(
+    (id) => {
+      const canvas = activePath;
+      const map = copiedStyleRef.current;
+      if (!canvas || !id || !map) return;
+      const entries = Object.entries(map);
+      let chain = editApplyChainRef.current.catch(() => {});
+      for (const [property, value] of entries) {
+        applyOptimisticStyle({ id, prop: property, value }); // preview + arm no-flicker
+        chain = chain.then(() =>
+          fetch('/_api/edit-css', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ canvas, id, property, value }),
+          })
+            .then((r) => r.json().catch(() => ({})))
+            .then((j) => {
+              if (j.ok)
+                recordSourceEdit({ op: 'css', canvas, id, key: property, before: null, after: value });
+            })
+            .catch(() => {})
+        );
+      }
+      editApplyChainRef.current = chain;
+    },
+    [activePath, applyOptimisticStyle, recordSourceEdit]
+  );
+
   const insertArtboardShell = useCallback(
     ({ id, label, width, height }) => {
       structuralWrite(
@@ -9067,6 +9147,8 @@ function App() {
   const resizeArtboardShellRef = useRef(null);
   const deleteArtboardShellRef = useRef(null);
   const duplicateElementShellRef = useRef(null);
+  const copyStyleRef = useRef(null);
+  const pasteStyleRef = useRef(null);
   useEffect(() => {
     deleteElementShellRef.current = deleteElementShell;
     insertElementShellRef.current = insertElementShell;
@@ -9074,6 +9156,8 @@ function App() {
     resizeArtboardShellRef.current = resizeArtboardShell;
     deleteArtboardShellRef.current = deleteArtboardShell;
     duplicateElementShellRef.current = duplicateElementShell;
+    copyStyleRef.current = copyStyle;
+    pasteStyleRef.current = pasteStyle;
   }, [
     deleteElementShell,
     insertElementShell,
@@ -9081,6 +9165,8 @@ function App() {
     resizeArtboardShell,
     deleteArtboardShell,
     duplicateElementShell,
+    copyStyle,
+    pasteStyle,
   ]);
 
   // Shell-level Backspace/Delete guard. CRITICAL: in the Tauri desktop app, an

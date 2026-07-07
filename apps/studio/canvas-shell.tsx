@@ -1471,6 +1471,32 @@ function buildRegistry(deps: {
           },
         },
         {
+          id: 'copy-style',
+          label: 'Copy style',
+          shortcut: '⌘⌥C',
+          // Task L4 — the shell captures the current selection's authored style.
+          onSelect: () => {
+            try {
+              window.parent.postMessage({ dgn: 'copy-style' }, '*');
+            } catch {
+              /* detached / cross-origin */
+            }
+          },
+        },
+        {
+          id: 'paste-style',
+          label: 'Paste style',
+          shortcut: '⌘⌥V',
+          onSelect: (target) => {
+            if (!target.cdId) return;
+            try {
+              window.parent.postMessage({ dgn: 'paste-style', id: target.cdId }, '*');
+            } catch {
+              /* detached / cross-origin */
+            }
+          },
+        },
+        {
           id: 'delete-element',
           label: 'Delete',
           shortcut: '⌫',

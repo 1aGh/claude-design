@@ -478,7 +478,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha**: duplicating a **shared-component instance** duplicates the `<Card/>` usage (artboard-local), consistent with the Stage-H scope model. Cross-canvas paste must resolve the asset/component imports or warn.
 - **Validate**: Cmd+D on an element → an offset copy appears + selected; Alt-drag → copy at drop point; both Cmd+Z-reversible.
 
-#### Task L4: ADD copy-style / paste-style (Cmd+Opt+C / Cmd+Opt+V)
+#### ✅ Task L4: ADD copy-style / paste-style (Cmd+Opt+C / Cmd+Opt+V) — DONE (appearance-only; N-step undo, live verify pending dogfood)
 
 - **Do**: `Cmd/Ctrl+Opt/Alt+C` captures the selected element's authored style map (the `authored`/`customStyles` already on the `Selection`), `Cmd/Ctrl+Opt/Alt+V` applies it to another selected element by chaining `edit-css` writes for each captured property (serialized on `editApplyChainRef`, one undo group). Also expose via the context menu ("Paste style").
 - **Gotcha**: apply only *authored* props (not resolved computed) so you don't bake inherited/DS-token values into raw overrides — respect the DDR-104 authored-vs-computed distinction. This is the natural batch-write case that may justify the optional `edit-css-batch` route (Task D3).

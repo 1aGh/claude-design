@@ -120,6 +120,27 @@ export function useKeyboardDiscipline(): void {
         return;
       }
 
+      // Cmd/Ctrl+Opt+C / +V → copy-style / paste-style (Task L4). Copy captures the
+      // selection's authored appearance (shell-side); paste applies it to the
+      // currently selected element. The shell holds the clipboard + does the write.
+      if (isMeta && e.altKey && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'v')) {
+        const one = selSet.selected.length === 1 ? selSet.selected[0] : null;
+        if (one?.id) {
+          e.preventDefault();
+          try {
+            window.parent.postMessage(
+              e.key.toLowerCase() === 'c'
+                ? { dgn: 'copy-style' }
+                : { dgn: 'paste-style', id: one.id },
+              '*'
+            );
+          } catch {
+            /* detached / cross-origin */
+          }
+        }
+        return;
+      }
+
       // Delete / Backspace → request a source delete of the single selected
       // element (feature-element-editing-robustness Stage I). The write is
       // main-origin-only (DDR-054), so we POST the request to the parent shell,
