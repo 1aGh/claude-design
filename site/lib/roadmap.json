@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-07T09:28:39.464Z",
+  "generated": "2026-07-07T20:13:37.182Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1154,6 +1154,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan is grounded in a four-agent read of the studio editing subsystems (selection...",
       "planPath": ".ai/plans/feature-element-editing-robustness.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-grid-track-editor",
+      "title": "Feature: CSS-Grid track editor (on-canvas columns/rows + track drag-resize)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Give a display: grid container a first-class on-canvas track editor, matching what Figma auto-layout-grids and Webflow's Grid 2.0 give designers: define the column and row tracks, drag the track gu...",
+      "planPath": ".ai/plans/feature-grid-track-editor.md",
       "archived": false,
       "phaseKey": null
     },

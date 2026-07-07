@@ -70,6 +70,14 @@ export interface Selection {
   /** Phase 12.3 — custom HTML attributes on the element (data-, aria-, role, title…),
    *  so the panel reflects a custom attribute the user added via the escape hatch. */
   attrs?: Record<string, string>;
+  /** Stage M — the PARENT element's resolved `display` + `flex-direction`, captured
+   *  at selection time (the shell can't reach the cross-origin iframe to read them
+   *  later). Drives the Fixed/Hug/Fill sizing control: "Fill" is `flex-grow:1` on a
+   *  flex child's MAIN axis, `align-self:stretch` on its cross axis, else `100%`. Also
+   *  gates the flex-child (align-self / flex-grow…) rows so they don't show on a
+   *  block child. Absent for a detached node / no parent. */
+  parentDisplay?: string;
+  parentFlexDirection?: string;
 }
 
 interface SelectionSetValue {

@@ -396,7 +396,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha**: don't block the edit — this is *legibility*, not a gate (except delete). The user's model explicitly accepts that inner-shared-element styling is global; the badge just makes it never surprising.
 - **Validate**: select an inner element of a 3×-used component → header shows "Shared · edits 3 places"; select an artboard-local element → "Local".
 
-#### Task H3: ROUTE instance move/resize/reposition per-occurrence so it stays local
+#### ✅ Task H3: ROUTE instance move/resize/reposition per-occurrence so it stays local — DONE 2026-07-07
 
 - **Do**: When a **component instance** (`<Card/>` usage — resolvable to a usage node) is moved/resized/repositioned, send the occurrence `idIndex`/`refIndex` (the protocol already carried by reorder, `app.jsx:5575-5580`, `:7752-7772`) so `resolveUsageId` (`canvas-edit.ts:718-747`) targets that specific usage's own `left/top`/`width`/`height`, not the shared definition. This makes "absolutely position one instance" local — the user's exact ask.
 - **Gotcha**: this only makes the **instance wrapper** local; positioning an *inner* element of a shared component is inherently global (no override primitive, per the chosen model) — the Stage-H2 badge + confirm is the answer there. Document this boundary in a code comment so a future reader doesn't mistake it for a bug.
@@ -515,19 +515,19 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 
 > Deep-research's highest-value strategic gap for a TSX/flexbox tool. **Partially present:** the CssKnobs `Layout` section already has `display`/`flex-direction`/`align-items`/`justify-content`/`gap` (`app.jsx:4900-4909`). This stage turns that into a coherent **auto-layout editor** and adds the missing piece users reason about most: **per-element sizing mode**. (CSS-Grid track editor is a **separate follow-up plan** per the 2026-07-07 decision — stub it in `.ai/plans/` but do not build here.)
 
-#### Task M1: ADD per-element sizing mode (Fixed / Hug / Fill)
+#### ✅ Task M1: ADD per-element sizing mode (Fixed / Hug / Fill) — DONE 2026-07-07
 
 - **Do**: Add a `Fixed / Hug / Fill` control for width and (separately) height — the single biggest source of layout-behavior confusion for React/flexbox mockups (Figma auto-layout parity). Map to CSS: **Fixed** = an explicit `width`/`height` value; **Hug** = `width: auto` / `fit-content` (shrink to children); **Fill** = `width: 100%` or `flex: 1 1 0` (stretch to fill the flex parent), with optional `min-`/`max-` bounds. Surface it as a segmented toggle at the top of the `Size` section, driving the existing `width`/`height` knobs (which stay for the Fixed case).
 - **Gotcha**: the correct "Fill" CSS depends on the parent's `display` (flex child → `flex: 1`; block child → `width: 100%`) — resolve from the selection's parent (available via the Layers tree / computed styles) so the emitted CSS actually behaves. Extend `KNOB_PROPS` (Stage B1) with `flex-grow`/`flex-shrink`/`flex-basis`/`align-self`/`min-width`/`min-height`/`max-height` so these round-trip.
 - **Validate**: set a card to Fill inside a flex row → it stretches; Hug → it shrinks to text; Fixed → the width knob controls it; Cmd+Z reverts each.
 
-#### Task M2: EXTEND the Layout section into a grouped auto-layout editor
+#### ✅ Task M2: EXTEND the Layout section into a grouped auto-layout editor — DONE 2026-07-07
 
 - **Do**: Extend the existing `Layout` section (`app.jsx:4900-4909`) into a proper auto-layout editor: add `flex-wrap` (nowrap/wrap), promote `justify-content` to include `space-between`/`space-around`/`space-evenly` ("Auto" gap), keep `align-items`, surface per-side padding inline (it already exists in Spacing — cross-link), and gap with an "Auto" option. Present it with the auto-layout mental model (Direction · Wrap · Distribution · Gap · Padding) so a Figma/Webflow user recognizes it. Optionally add an on-canvas "add auto-layout" affordance on a container.
 - **Gotcha**: only show the flex controls when `display` is `flex`/`inline-flex` (or offer a one-click "make this a flex container" that sets `display:flex`) — don't present flex knobs on a block element (the DDR-104 `gap`-degrades-gracefully precedent).
 - **Validate**: on a flex container, toggle direction/wrap/distribution/gap → live reflow + persisted + Cmd+Z; the controls hide/adapt on a non-flex element.
 
-#### Task M3: STUB the CSS-Grid track editor follow-up plan
+#### ✅ Task M3: STUB the CSS-Grid track editor follow-up plan — DONE 2026-07-07
 
 - **Do**: Create `.ai/plans/feature-grid-track-editor.md` as a **stub** (title, one-paragraph scope, the deep-research citation `university.webflow.com/videos/grid-2-0`, and the key requirements: define columns/rows, on-canvas track drag-resize with Shift-both, per-track unit px/%/fr/em, manual cell placement + corner-span). Do **not** implement — this is the separate follow-up the user chose. Run the roadmap regen so it appears.
 - **Validate**: stub file exists; `pnpm --filter @maude/site gen:roadmap` includes it.

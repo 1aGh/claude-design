@@ -796,6 +796,20 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-add:hover { border-color: var(--accent); color: var(--fg-0); }
 .st-cp-note { font-size: 10px; color: var(--fg-2); font-style: italic; }
 
+/* Stage M — Fixed / Hug / Fill sizing-mode segmented control (per axis). */
+.st-cp-modes { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-1); }
+.st-cp-modeseg { display: flex; align-items: stretch; gap: var(--space-1); }
+.st-cp-modeax { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); }
+.st-cp-modebtn { flex: 1; appearance: none; cursor: pointer; border: 1px solid var(--border-default); background: var(--bg-3); color: var(--fg-1); font-family: var(--font-mono); font-size: 10px; min-height: 22px; border-radius: var(--radius-xs); padding: 0 var(--space-1); }
+.st-cp-modebtn:hover:not(.is-active):not(:disabled) { background: var(--bg-4); color: var(--fg-0); }
+.st-cp-modebtn.is-active { background: var(--accent-tint); border-color: var(--accent); color: var(--accent); }
+.st-cp-modebtn:disabled { opacity: 0.5; cursor: default; }
+/* Stage M — sub-header for the flex-child row group + the make-flex CTA. */
+.st-cp-subhd { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); text-transform: uppercase; letter-spacing: 0.04em; margin-top: var(--space-2); }
+.st-cp-makeflex { align-self: flex-start; appearance: none; cursor: pointer; border: 1px dashed var(--border-default); background: transparent; color: var(--fg-1); font-family: var(--font-mono); font-size: var(--type-xs); border-radius: var(--radius-xs); padding: 4px var(--space-2); }
+.st-cp-makeflex:hover:not(:disabled) { border-color: var(--accent); color: var(--fg-0); }
+.st-cp-makeflex:disabled { opacity: 0.5; cursor: default; }
+
 /* provenance legend */
 .st-cp-legend { display: flex; flex-wrap: wrap; gap: var(--space-3); padding-top: var(--space-1); border-top: 1px solid var(--border-subtle); }
 .st-cp-legend span { display: inline-flex; align-items: center; gap: var(--space-1); font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); }

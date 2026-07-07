@@ -263,9 +263,18 @@ const KNOB_PROPS = [
   // Layout
   'display',
   'flex-direction',
+  'flex-wrap',
   'align-items',
   'justify-content',
   'gap',
+  // Stage M — flex-CHILD props (sizing mode Fill + the Auto-layout child rows).
+  // Shown only when the PARENT is flex (Selection.parentDisplay); captured here so
+  // they round-trip. `flex` shorthand is listed for customStyles-exclusion only.
+  'flex',
+  'flex-grow',
+  'flex-shrink',
+  'flex-basis',
+  'align-self',
   // Typography
   'font-family',
   'color',
@@ -289,7 +298,10 @@ const KNOB_PROPS = [
   // Size
   'width',
   'height',
+  'min-width',
+  'min-height',
   'max-width',
+  'max-height',
   // Appearance
   'background-color',
   'border-radius',
@@ -341,6 +353,8 @@ function styleMapsFor(el: Element | null): {
   computed: Record<string, string>;
   customStyles: Record<string, string>;
   attrs: Record<string, string>;
+  parentDisplay?: string;
+  parentFlexDirection?: string;
 } {
   if (!el || typeof window === 'undefined' || !window.getComputedStyle) {
     return { authored: {}, computed: {}, customStyles: {}, attrs: {} };
@@ -379,7 +393,16 @@ function styleMapsFor(el: Element | null): {
       if (ATTR_SKIP.test(a.name)) continue;
       attrs[a.name] = a.value;
     }
-    return { authored, computed, customStyles, attrs };
+    // Stage M — parent's layout context (for the Fixed/Hug/Fill sizing control +
+    // flex-child row gating). Read here because the shell can't reach the
+    // cross-origin iframe to compute it after selection.
+    const parent = (el as HTMLElement).parentElement;
+    const parentDisplay = parent ? window.getComputedStyle(parent).display : '';
+    const parentFlexDirection =
+      parent && (parentDisplay === 'flex' || parentDisplay === 'inline-flex')
+        ? window.getComputedStyle(parent).flexDirection
+        : '';
+    return { authored, computed, customStyles, attrs, parentDisplay, parentFlexDirection };
   } catch {
     return { authored: {}, computed: {}, customStyles: {}, attrs: {} };
   }

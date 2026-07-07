@@ -12,6 +12,7 @@ import { createRoot } from 'react-dom/client';
 // import that Bun erases), so this pulls only string constants into the client
 // bundle — no React, no input-router. See the tool-cursor handler below.
 import { resolveToolCursor } from '../canvas-cursors.ts';
+import { sizingModeOf, sizingModePatch } from '../sizing-mode.ts';
 import { canvasUrl } from './canvas-url.js';
 import ChatPanel from './panels/ChatPanel.jsx';
 import DiffView from './panels/DiffView.jsx';
@@ -3823,7 +3824,10 @@ function SyncBanner({ status }) {
 
 const CSS_DISPLAYS = ['block', 'inline-block', 'flex', 'inline-flex', 'grid', 'inline', 'none'];
 const CSS_FLEX_DIR = ['row', 'row-reverse', 'column', 'column-reverse'];
+const CSS_FLEX_WRAP = ['nowrap', 'wrap', 'wrap-reverse'];
 const CSS_ALIGN = ['stretch', 'flex-start', 'center', 'flex-end', 'baseline'];
+// Stage M — flex-CHILD align-self (adds `auto` to the container align-items set).
+const CSS_ALIGN_SELF = ['auto', 'stretch', 'flex-start', 'center', 'flex-end', 'baseline'];
 const CSS_JUSTIFY = [
   'flex-start',
   'center',
@@ -4647,6 +4651,48 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
     post('/_api/edit-attr', { canvas: el.file, id: el.id, attr, reset: true }, `@${attr}`);
     record('attr', attr, before, null);
   };
+  // Stage M1 — apply a Fixed / Hug / Fill sizing mode to one axis. The pure
+  // `sizingModePatch` returns the exact writes (context-aware Fill: flex main axis
+  // → flex-grow, cross axis → align-self, block/grid → 100%) + the fill-props to
+  // clear. Each ride the same commit/reset lanes (per-prop edit-css + undo record);
+  // the server's per-file lock serializes them, so the resulting box is coherent.
+  const parentLayout = { display: el.parentDisplay, flexDirection: el.parentFlexDirection };
+  const applySizing = (axis, mode) => {
+    if (!editable) return;
+    const px = Math.round((axis === 'width' ? el.bounds?.w : el.bounds?.h) || 0);
+    const patch = sizingModePatch(axis, mode, parentLayout, px);
+    for (const p of patch.reset) if (authored[p]) reset(p);
+    for (const [prop, value] of patch.set) commit(prop, value);
+  };
+  const parentIsFlexChild =
+    el.parentDisplay === 'flex' || el.parentDisplay === 'inline-flex';
+  const sizeModeSeg = (axis) => {
+    const cur = sizingModeOf(axis, authored, computed, parentLayout);
+    return (
+      <div className="st-cp-modeseg" role="group" aria-label={`${axis} sizing mode`}>
+        <span className="st-cp-modeax" aria-hidden="true">
+          {axis === 'width' ? 'W' : 'H'}
+        </span>
+        {[
+          ['fixed', 'Fixed'],
+          ['hug', 'Hug'],
+          ['fill', 'Fill'],
+        ].map(([m, label]) => (
+          <button
+            key={m}
+            type="button"
+            className={`st-cp-modebtn${cur === m ? ' is-active' : ''}`}
+            aria-pressed={cur === m}
+            disabled={!editable}
+            onClick={() => applySizing(axis, m)}
+            title={`${label} ${axis}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    );
+  };
   // Cmd+Z / Cmd+Shift+Z (or Cmd+Y) inside the inspector forwards to the canvas
   // undo stack — Figma-parity: a property field reverts the last DOCUMENT edit,
   // not field text. Without this, an edit committed with focus still in the
@@ -4805,7 +4851,7 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
 
   // Props each section owns — drives the per-section "reset section" affordance.
   const SECTION_PROPS = {
-    Layout: ['display', 'flex-direction', 'align-items', 'justify-content', 'gap'],
+    Layout: ['display', 'flex-direction', 'flex-wrap', 'align-items', 'justify-content', 'gap'],
     // feature-element-editing-robustness Stage B — promoted DDR-104 OUT-list.
     Position: ['position', 'top', 'right', 'bottom', 'left', 'z-index'],
     Typography: [
@@ -4831,7 +4877,21 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
       'padding-bottom',
       'padding-left',
     ],
-    Size: ['width', 'height', 'max-width', 'overflow'],
+    Size: [
+      'width',
+      'height',
+      'min-width',
+      'min-height',
+      'max-width',
+      'max-height',
+      'overflow',
+      // Stage M — flex-child sizing props (written by the Fill mode + shown as rows
+      // when the parent is flex). Included so a section-reset clears them too.
+      'flex-grow',
+      'flex-shrink',
+      'flex-basis',
+      'align-self',
+    ],
     Media: ['object-fit', 'aspect-ratio', 'object-position'],
     Appearance: [
       'background-color',
@@ -5153,13 +5213,44 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
 
       {sec(
         'Layout',
-        <>
-          {row('display', csel('display', CSS_DISPLAYS))}
-          {row('flex-direction', csel('flex-direction', CSS_FLEX_DIR))}
-          {row('align-items', csel('align-items', CSS_ALIGN))}
-          {row('justify-content', csel('justify-content', CSS_JUSTIFY))}
-          {row('gap', num('gap', 'space'))}
-        </>
+        (() => {
+          // Stage M2 — auto-layout editor. Present the flex vocabulary (Direction ·
+          // Wrap · Distribution · Align · Gap) only when the element IS a flex/grid
+          // container, so a plain block doesn't carry knobs that do nothing; a
+          // non-container gets a one-click "make it a flex layout" instead (the
+          // DDR-104 gap-degrades-gracefully precedent). align-items / justify-content
+          // / gap apply to grid too; flex-direction / flex-wrap are flex-only.
+          const disp = (authored.display || cssHint(computed.display) || '').trim();
+          const isFlex = disp === 'flex' || disp === 'inline-flex';
+          const isGrid = disp === 'grid' || disp === 'inline-grid';
+          return (
+            <>
+              {row('display', csel('display', CSS_DISPLAYS))}
+              {isFlex ? (
+                <>
+                  {row('flex-direction', csel('flex-direction', CSS_FLEX_DIR))}
+                  {row('flex-wrap', csel('flex-wrap', CSS_FLEX_WRAP))}
+                </>
+              ) : null}
+              {isFlex || isGrid ? (
+                <>
+                  {row('align-items', csel('align-items', CSS_ALIGN))}
+                  {row('justify-content', csel('justify-content', CSS_JUSTIFY))}
+                  {row('gap', num('gap', 'space'))}
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="st-cp-makeflex"
+                  disabled={!editable}
+                  onClick={() => commit('display', 'flex')}
+                >
+                  + Auto layout (flex)
+                </button>
+              )}
+            </>
+          );
+        })()
       )}
 
       {sec(
@@ -5253,10 +5344,31 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
       {sec(
         'Size',
         <>
+          {/* Stage M1 — per-axis Fixed / Hug / Fill sizing mode (Figma parity). The
+              Fixed case leaves the numeric width/height knobs below in control. */}
+          <div className="st-cp-modes">
+            {sizeModeSeg('width')}
+            {sizeModeSeg('height')}
+          </div>
           {row('width', num('width'))}
           {row('height', num('height'))}
+          {row('min-width', num('min-width'))}
           {row('max-width', num('max-width'))}
+          {row('min-height', num('min-height'))}
+          {row('max-height', num('max-height'))}
           {row('overflow', csel('overflow', CSS_OVERFLOW))}
+          {/* Stage M1 — flex-CHILD controls, only meaningful when the parent is a
+              flex container. align-self is the cross-axis override; flex-grow/shrink/
+              basis are the main-axis behavior the Fill mode writes for you. */}
+          {parentIsFlexChild ? (
+            <>
+              <div className="st-cp-subhd">In flex parent</div>
+              {row('align-self', csel('align-self', CSS_ALIGN_SELF))}
+              {row('flex-grow', num('flex-grow', null, { unitless: true }))}
+              {row('flex-shrink', num('flex-shrink', null, { unitless: true }))}
+              {row('flex-basis', num('flex-basis'))}
+            </>
+          ) : null}
         </>
       )}
 
