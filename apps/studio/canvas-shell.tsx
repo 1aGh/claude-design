@@ -1485,6 +1485,63 @@ function boundsOf(el: HTMLElement) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Task A1 (feature-element-editing-robustness) — camera-aware reveal.
+//
+// The `select-by-id` channel (Layers-panel click, restored/echoed selection,
+// post-edit reselect) used to `scrollIntoView({block:'nearest'})` to reveal the
+// selected element. But `.dc-canvas` / `.dc-artboard-body` are `overflow:hidden`
+// engine clip layers, and the camera is the `.dc-world` transform — so a host
+// scroll shifted the layout out from under the camera model (a phantom right
+// strip, and the pan reset after an absolute-element move: Bugs A + B). Reveal
+// THROUGH the camera instead: measure the element's live screen box and, only
+// when it's off-screen, pan the world transform the minimal amount to bring the
+// nearest out-of-view edge in. Screen-space deltas → `controller.panBy` (which
+// reads the exact live viewport), so it's self-correcting regardless of any
+// model lag and never touches host scroll.
+
+/** Distance (screen px) a canvas element is allowed to sit from the viewport
+ *  edge after a reveal — a small inset so a just-revealed element isn't flush
+ *  against the frame. */
+export const REVEAL_MARGIN_PX = 40;
+
+/** Minimal 1-axis delta (screen px) to bring `[elStart, elEnd]` inside
+ *  `[viewStart + margin, viewEnd - margin]`. Returns 0 when already visible OR
+ *  when the element spans the viewport (bigger than the view — don't move,
+ *  matching `scrollIntoView({block:'nearest'})`). Sign matches `panBy`: a
+ *  positive delta pans the world content toward the end (down / right). */
+export function revealAxisDelta(
+  elStart: number,
+  elEnd: number,
+  viewStart: number,
+  viewEnd: number,
+  margin: number
+): number {
+  const vs = viewStart + margin;
+  const ve = viewEnd - margin;
+  if (elStart >= vs && elEnd <= ve) return 0; // fully visible
+  if (elStart <= vs && elEnd >= ve) return 0; // spans the viewport — leave it
+  if (elStart < vs) return vs - elStart; // off the start edge → pan toward end
+  if (elEnd > ve) return ve - elEnd; // off the end edge → pan toward start
+  return 0;
+}
+
+/** Pan the camera the minimal amount so `target` is visible inside `host`,
+ *  entirely through the world transform (never host scroll). No-op when the
+ *  element is already on-screen. Exported for the Task A3 regression test. */
+export function revealElementViaCamera(
+  host: HTMLElement,
+  target: HTMLElement,
+  controller: ViewportControllerHandle
+): void {
+  const hostRect = host.getBoundingClientRect();
+  const r = target.getBoundingClientRect();
+  if (r.width <= 0 && r.height <= 0) return; // detached / display:none — nothing to reveal
+  const dx = revealAxisDelta(r.left, r.right, hostRect.left, hostRect.right, REVEAL_MARGIN_PX);
+  const dy = revealAxisDelta(r.top, r.bottom, hostRect.top, hostRect.bottom, REVEAL_MARGIN_PX);
+  if (dx !== 0 || dy !== 0) controller.panBy(dx, dy);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Router wire-up
 
 function CanvasRouter({
@@ -1547,6 +1604,36 @@ function CanvasRouter({
   // the floating chrome (DCMiniMap, DCZoomToolbar, ToolPalette, AnnotationsLayer)
   // consumes.
   const chromeCtx = useChromeVisibility();
+
+  // Task A2 (feature-element-editing-robustness) — host-scroll-0 invariant.
+  // `.dc-canvas` (overflow:hidden) and each `.dc-artboard-body` are the engine's
+  // clip layers; the camera lives entirely in the `.dc-world` transform, and
+  // both `writeTransform` and `__maudeCanvasRects` assume these hosts sit at
+  // scroll 0. A stray programmatic scroll (a residual scrollIntoView, focus()
+  // auto-scroll of an overflow:hidden ancestor) would shift the layout and
+  // desync the camera model — the Bug A/B class. Clamp any scroll on an ENGINE
+  // clip layer straight back to 0. Author scroll containers deeper inside a mock
+  // are left alone (the target check excludes them). `scroll` events don't
+  // bubble, so capture:true is what lets the host observe a descendant clip's
+  // scroll without also intercepting author-content scrolls (those fail the
+  // engine-clip test and pass through).
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const clamp = (e: Event) => {
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      const isEngineClip =
+        t === host ||
+        t.classList.contains('dc-artboard-body') ||
+        t.classList.contains('dc-artboard');
+      if (!isEngineClip) return;
+      if (t.scrollLeft !== 0) t.scrollLeft = 0;
+      if (t.scrollTop !== 0) t.scrollTop = 0;
+    };
+    host.addEventListener('scroll', clamp, true);
+    return () => host.removeEventListener('scroll', clamp, true);
+  }, [hostRef]);
 
   // Hover state drives the floating .dc-cv-halo--hover overlay. The overlay
   // itself reads getBoundingClientRect on every rAF tick to follow pan/zoom.
@@ -1631,7 +1718,15 @@ function CanvasRouter({
                 artboardId: mm.artboardId ?? null,
               } as HoverTarget)
             );
-            (target as HTMLElement).scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+            // Task A1 — reveal THROUGH the camera, not host scroll. The old
+            // `scrollIntoView` scrolled the overflow:hidden `.dc-canvas` /
+            // `.dc-artboard-body` clip layers, desyncing the `.dc-world`
+            // transform (Bugs A + B). `revealElementViaCamera` pans the world
+            // the minimal amount only when the element is off-screen.
+            const host = hostRef.current;
+            if (host && zoomController) {
+              revealElementViaCamera(host, target as HTMLElement, zoomController);
+            }
           }
         }
         return;
@@ -1773,7 +1868,7 @@ function CanvasRouter({
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [selSet, annotSel, setTool, undoStack, zoomController, chromeCtx]);
+  }, [selSet, annotSel, setTool, undoStack, zoomController, chromeCtx, hostRef]);
 
   // Phase 12 (DDR-103) — double-click a LEAF-TEXT element (children all text
   // nodes) to edit its copy in place. Commit (blur / Enter) posts `dgn:edit-text`

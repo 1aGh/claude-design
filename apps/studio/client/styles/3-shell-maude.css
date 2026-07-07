@@ -716,6 +716,15 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-boxv--mb, .st-cp-boxv--pb { bottom: 1px; left: 50%; transform: translateX(-50%); }
 .st-cp-boxv--ml, .st-cp-boxv--pl { left: 0; top: 50%; transform: translateY(-50%); }
 .st-cp-boxv--mr, .st-cp-boxv--pr { right: 0; top: 50%; transform: translateY(-50%); }
+/* feature-element-editing-robustness Stage B — Position inset widget. One ring
+   (no nested padding box): the 4 inset inputs sit on the outer box edges around
+   a centered core showing the current `position` keyword (Figma constraints box). */
+.st-cp-boxv--it { top: 1px; left: 50%; transform: translateX(-50%); }
+.st-cp-boxv--ib { bottom: 1px; left: 50%; transform: translateX(-50%); }
+.st-cp-boxv--il { left: 0; top: 50%; transform: translateY(-50%); }
+.st-cp-boxv--ir { right: 0; top: 50%; transform: translateY(-50%); }
+.st-cp-boxtag--i { color: var(--accent); }
+.st-cp-boxcore--pos { text-transform: none; letter-spacing: 0; }
 .st-cp-boxhint { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .st-cp-boxhint + .st-cp-row { margin-top: var(--space-1); }
 .st-cp-chip { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: 1px 6px; }

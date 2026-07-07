@@ -289,6 +289,32 @@ const KNOB_PROPS = [
   'border-color',
   'box-shadow',
   'opacity',
+  // feature-element-editing-robustness Stage B — promotes DDR-104 §3's OUT-list
+  // into curated rows (superseded by the Stage-G DDR). Adding them here captures
+  // their authored/computed values for the new panel controls AND moves them out
+  // of the Advanced "customStyles" hatch (a canvas that carried one as a raw
+  // custom prop now surfaces it in its curated row instead).
+  // Position + stacking
+  'position',
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'z-index',
+  // Transform
+  'transform',
+  'transform-origin',
+  // Typography (extra)
+  'font-style',
+  'text-transform',
+  'text-decoration',
+  'white-space',
+  // Overflow
+  'overflow',
+  // Media framing
+  'object-fit',
+  'aspect-ratio',
+  'object-position',
 ] as const;
 
 // Phase 12.3 — HTML attributes the custom-attribute hatch may have written, so a

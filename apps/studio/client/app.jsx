@@ -2511,6 +2511,8 @@ function Menubar({
   inspectorOpen,
   inspectorTab,
   onToggleInspector,
+  autoOpenInspector,
+  onToggleAutoOpenInspector,
   onOpenLayers,
   timelineOpen,
   onToggleTimeline,
@@ -2572,6 +2574,13 @@ function Menubar({
       label: 'Inspector',
       shortcut: '⌘ ⇧ I',
       checked: inspectorOpen,
+      disabled: false,
+    },
+    {
+      id: 'autoopen',
+      label: 'Auto-open Inspector on select',
+      shortcut: '',
+      checked: !!autoOpenInspector,
       disabled: false,
     },
     // DDR-148 — Timeline (video-comp scrub). Phase-tag hints when the active
@@ -2748,6 +2757,7 @@ function Menubar({
             else if (id === 'hidden') onToggleShowHidden();
             else if (id === 'annotate') onToggleAnnotations();
             else if (id === 'inspector') onToggleInspector();
+            else if (id === 'autoopen') onToggleAutoOpenInspector?.();
             else if (id === 'timeline') onToggleTimeline?.();
             else if (id === 'assistant') onToggleAssistant?.();
             else if (id === 'layers') onOpenLayers?.();
@@ -3675,6 +3685,15 @@ const PROP_LEAD = {
   opacity: { icon: 'p-opacity' },
 };
 const CSS_ALIGN_OPTS = ['left', 'center', 'right', 'justify'];
+// feature-element-editing-robustness Stage B — enum option lists for the promoted
+// DDR-104 OUT-list knobs (Position / Typography extras / Media framing).
+const CSS_POSITION = ['static', 'relative', 'absolute', 'fixed', 'sticky'];
+const CSS_FONT_STYLE = ['normal', 'italic', 'oblique'];
+const CSS_TEXT_TRANSFORM = ['none', 'uppercase', 'lowercase', 'capitalize'];
+const CSS_TEXT_DECORATION = ['none', 'underline', 'line-through', 'overline'];
+const CSS_WHITE_SPACE = ['normal', 'nowrap', 'pre', 'pre-wrap', 'pre-line', 'break-spaces'];
+const CSS_OBJECT_FIT = ['fill', 'contain', 'cover', 'none', 'scale-down'];
+const CSS_OVERFLOW = ['visible', 'hidden', 'auto', 'scroll'];
 
 let _cssColorCtx = null;
 // Normalize any CSS color string to #rrggbb for the native color input via a
@@ -4321,9 +4340,11 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onUndoRedo }) {
   const [status, setStatus] = useState({});
   const [open, setOpen] = useState({
     Layout: true,
+    Position: true,
     Typography: true,
     Spacing: true,
     Size: true,
+    Media: true,
     Appearance: true,
     Advanced: false,
   });
@@ -4596,6 +4617,8 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onUndoRedo }) {
   // Props each section owns — drives the per-section "reset section" affordance.
   const SECTION_PROPS = {
     Layout: ['display', 'flex-direction', 'align-items', 'justify-content', 'gap'],
+    // feature-element-editing-robustness Stage B — promoted DDR-104 OUT-list.
+    Position: ['position', 'top', 'right', 'bottom', 'left', 'z-index'],
     Typography: [
       'font-family',
       'color',
@@ -4604,6 +4627,10 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onUndoRedo }) {
       'line-height',
       'letter-spacing',
       'text-align',
+      'font-style',
+      'text-transform',
+      'text-decoration',
+      'white-space',
     ],
     Spacing: [
       'margin-top',
@@ -4615,7 +4642,8 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onUndoRedo }) {
       'padding-bottom',
       'padding-left',
     ],
-    Size: ['width', 'height', 'max-width'],
+    Size: ['width', 'height', 'max-width', 'overflow'],
+    Media: ['object-fit', 'aspect-ratio', 'object-position'],
     Appearance: [
       'background-color',
       'border-radius',
@@ -4628,6 +4656,8 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onUndoRedo }) {
       'border-color',
       'box-shadow',
       'opacity',
+      'transform',
+      'transform-origin',
     ],
   };
   const resetSection = (name) => {
@@ -4863,6 +4893,41 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onUndoRedo }) {
     );
   };
 
+  // feature-element-editing-robustness Stage B (Task B3) — a position INSET side
+  // (top/right/bottom/left). Mirrors `side()` but for the bare inset longhands
+  // (no group prefix), allowing NEGATIVE values and an `auto` default, and reuses
+  // the same box-model scrub grammar: alt = the axis pair, alt+shift = all four.
+  const inset = (prop) => {
+    const a = authored[prop];
+    const shown =
+      a != null && a !== '' && a !== 'auto'
+        ? cssSplitUnit(a).n || a
+        : cssSplitUnit(cssHint(computed[prop]) ?? '').n || '';
+    const isZero = !a || a === 'auto' || a === '0' || a === '0px';
+    const pair = prop === 'top' || prop === 'bottom' ? ['top', 'bottom'] : ['left', 'right'];
+    const all = ['top', 'right', 'bottom', 'left'];
+    return (
+      <input
+        className={`st-cp-boxv st-cp-scrub st-cp-boxv--i${prop[0]}${isZero ? ' is-zero' : ''}`}
+        key={`${prop}:${a ?? ''}`}
+        aria-label={prop}
+        defaultValue={shown}
+        placeholder="auto"
+        title="drag to scrub · alt = axis pair · alt+shift = all sides · type auto"
+        onPointerDown={makeScrub(prop, { sides: { pair, all }, min: -Infinity })}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+        }}
+        onBlur={(e) => {
+          const raw = e.currentTarget.value.trim();
+          if (!raw) return;
+          const val = /[a-z%]/i.test(raw) ? raw : `${raw}px`;
+          commit(prop, val);
+        }}
+      />
+    );
+  };
+
   const corner = (label, prop) => (
     <label className="st-cp-cornerf">
       <span>{label}</span>
@@ -4909,6 +4974,29 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onUndoRedo }) {
       )}
 
       {sec(
+        'Position',
+        <>
+          {row('position', csel('position', CSS_POSITION))}
+          <div className="st-cp-box st-cp-box--inset" aria-label="position inset (top / right / bottom / left)">
+            <span className="st-cp-boxtag st-cp-boxtag--i">{prov(provOf('top'))}inset</span>
+            {inset('top')}
+            {inset('right')}
+            {inset('bottom')}
+            {inset('left')}
+            <div className="st-cp-boxcore st-cp-boxcore--pos">
+              {authored.position || cssHint(computed.position) || 'static'}
+            </div>
+          </div>
+          {(authored.position || cssHint(computed.position) || 'static') === 'static' ? (
+            <div className="st-cp-note">
+              top / right / bottom / left apply once position is relative, absolute, fixed, or sticky
+            </div>
+          ) : null}
+          {row('z-index', num('z-index'))}
+        </>
+      )}
+
+      {sec(
         'Typography',
         <>
           {row('font-family', csel('font-family', CSS_FONTS))}
@@ -4938,6 +5026,11 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onUndoRedo }) {
               ))}
             </div>
           )}
+          {/* Stage B (Task B4) — promoted typography knobs (was DDR-104 OUT-list). */}
+          {row('font-style', csel('font-style', CSS_FONT_STYLE))}
+          {row('text-transform', csel('text-transform', CSS_TEXT_TRANSFORM))}
+          {row('text-decoration', csel('text-decoration', CSS_TEXT_DECORATION))}
+          {row('white-space', csel('white-space', CSS_WHITE_SPACE))}
         </>
       )}
 
@@ -4974,8 +5067,34 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onUndoRedo }) {
           {row('width', num('width'))}
           {row('height', num('height'))}
           {row('max-width', num('max-width'))}
+          {row('overflow', csel('overflow', CSS_OVERFLOW))}
         </>
       )}
+
+      {/* Stage B (Task B5) — Media framing. Rendered only for a media element
+          (img / video / picture / svg / canvas) or a selection that already
+          carries a framing prop, so a plain <div> doesn't grow object-fit rows.
+          Media = box/framing/source (this plan); the photo-editor plan's "Photo"
+          tab owns pixels/look — they are separate DOM slots by design. */}
+      {(() => {
+        const t = (el.tag || '').toLowerCase();
+        const isMediaEl = t === 'img' || t === 'video' || t === 'picture' || t === 'svg' || t === 'canvas';
+        const showMedia =
+          isMediaEl ||
+          !!authored['object-fit'] ||
+          !!authored['object-position'] ||
+          !!authored['aspect-ratio'];
+        return showMedia
+          ? sec(
+              'Media',
+              <>
+                {row('object-fit', csel('object-fit', CSS_OBJECT_FIT))}
+                {row('object-position', text('object-position'))}
+                {row('aspect-ratio', text('aspect-ratio'))}
+              </>
+            )
+          : null;
+      })()}
 
       {sec(
         'Appearance',
@@ -5060,6 +5179,9 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onUndoRedo }) {
               />
             </div>
           )}
+          {/* Stage B (Task B4) — transform as a free-value row (mirrors box-shadow). */}
+          {row('transform', text('transform'))}
+          {row('transform-origin', text('transform-origin'))}
         </>
       )}
 
@@ -6308,6 +6430,33 @@ function App() {
   // Inspector tab is lifted so View ▸ Layers can open the panel ON the Layers
   // tab (the menu item sat disabled as "Phase 12" long after the tab shipped).
   const [inspectorTab, setInspectorTab] = useState('inspect');
+  // feature-element-editing-robustness Stage C — auto-open the Inspector on the
+  // CSS tab when a fresh single selection arrives AND no right panel is already
+  // open. Preference-backed (default ON); disable it in the View menu. Refs keep
+  // the postMessage selection listener stale-closure-safe.
+  const [autoOpenInspector, setAutoOpenInspector] = useState(() => {
+    try {
+      return localStorage.getItem('maude-auto-open-inspector') !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const autoOpenInspectorRef = useRef(autoOpenInspector);
+  useEffect(() => {
+    autoOpenInspectorRef.current = autoOpenInspector;
+    try {
+      localStorage.setItem('maude-auto-open-inspector', autoOpenInspector ? '1' : '0');
+    } catch {
+      /* private mode / storage disabled */
+    }
+  }, [autoOpenInspector]);
+  // Whether ANY right-dock panel is open — the auto-open guard reads this ref so
+  // it never steals focus from an already-open panel (the user's explicit rule).
+  const anyRightPanelOpenRef = useRef(false);
+  useEffect(() => {
+    anyRightPanelOpenRef.current =
+      inspectorOpen || commentsPanelOpen || changesOpen || assistantOpen;
+  }, [inspectorOpen, commentsPanelOpen, changesOpen, assistantOpen]);
   // The right dock holds exactly ONE panel (Changes / Inspector / Comments) at
   // a time — opening any panel REPLACES whatever was there. These two helpers
   // are the single source of that invariant; every open/toggle path routes
@@ -6323,6 +6472,21 @@ function App() {
     // NOTE: the Timeline is a BOTTOM dock (DDR-148), NOT part of the right-rail
     // mutual-exclusion — it stays open when a right panel opens.
   }, []);
+  // feature-element-editing-robustness Stage C (Task C1) — open the Inspector on
+  // the CSS tab for a fresh SINGLE selection, but only when nothing is already
+  // docked on the right (never override an open Layers/Inspect/Comments panel)
+  // and only when the preference is on. Idempotent: once the inspector is open,
+  // the `anyRightPanelOpen` guard stops it re-firing on the next selection.
+  const maybeAutoOpenInspectorOnSelect = useCallback(
+    (sel) => {
+      if (!autoOpenInspectorRef.current) return;
+      if (!sel || !sel.id) return; // need a stable element id to inspect
+      if (anyRightPanelOpenRef.current) return; // don't steal from an open panel
+      openRightPanel('inspector');
+      setInspectorTab('css');
+    },
+    [openRightPanel]
+  );
   // Functional updates so this is stale-closure-safe inside the keydown /
   // postMessage listeners; opening always clears the sibling panels.
   const toggleRightPanel = useCallback((which) => {
@@ -7591,6 +7755,7 @@ function App() {
       if (m.dgn === 'select' && m.selection) {
         wsSend({ type: 'select', selection: m.selection });
         setSelected(m.selection);
+        maybeAutoOpenInspectorOnSelect(m.selection); // Stage C
       } else if (m.dgn === 'select-set') {
         // Canvas multi-select. Payload shape:
         //   null              → empty selection
@@ -7607,9 +7772,12 @@ function App() {
           const head = payload[0] ?? null;
           if (head) wsSend({ type: 'select', selection: head });
           setSelected(head);
+          // Stage C — auto-open only for a genuine SINGLE selection, never multi.
+          if (payload.length === 1) maybeAutoOpenInspectorOnSelect(head);
         } else {
           wsSend({ type: 'select', selection: payload });
           setSelected(payload);
+          maybeAutoOpenInspectorOnSelect(payload); // Stage C
         }
       } else if (m.dgn === 'clear-select') {
         wsSend({ type: 'clear-select' });
@@ -8761,6 +8929,8 @@ function App() {
           inspectorOpen={inspectorOpen}
           inspectorTab={inspectorTab}
           onToggleInspector={() => toggleRightPanel('inspector')}
+          autoOpenInspector={autoOpenInspector}
+          onToggleAutoOpenInspector={() => setAutoOpenInspector((v) => !v)}
           timelineOpen={timelineOpen}
           onToggleTimeline={toggleTimeline}
           hasComps={activeComps.length > 0}
