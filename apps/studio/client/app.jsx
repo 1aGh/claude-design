@@ -926,12 +926,24 @@ function AssetPicker({ designRel, onPick, onClose }) {
             >
               {busy ? 'Uploading…' : 'Upload…'}
             </button>
+            {/* OFF-SCREEN, not `hidden`/display:none — the native desktop app
+                (Tauri WKWebView) won't present the file panel for a display:none
+                input; it must be laid out. Off-screen+transparent works in both
+                WKWebView and browsers. (dogfood: "upload tlačítko nefunguje".) */}
             <input
               ref={fileRef}
               type="file"
               accept="image/*,video/*"
-              hidden
               onChange={onUpload}
+              style={{
+                position: 'fixed',
+                left: '-9999px',
+                top: 0,
+                width: '1px',
+                height: '1px',
+                opacity: 0,
+                pointerEvents: 'none',
+              }}
             />
             {err && <span className="st-ap-err">{err}</span>}
           </div>
@@ -2582,7 +2594,7 @@ function FileDropdown({ onAction, onClose, hasCanvas }) {
   );
 }
 
-function EditDropdown({ onAction, onClose }) {
+function EditDropdown({ onAction, onClose, hasCanvas }) {
   return (
     <DropdownMenu
       label="Edit"
@@ -2595,6 +2607,17 @@ function EditDropdown({ onAction, onClose }) {
         { sep: true },
         { id: 'deselect-all', label: 'Deselect all', shortcut: 'Esc' },
         { id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⇧⌘A' },
+        // Stage I4 — insert an empty artboard from a device-size preset into the
+        // active canvas. Only meaningful with a canvas open.
+        ...(hasCanvas
+          ? [
+              { sep: true },
+              { id: 'new-artboard:desktop', label: 'New artboard: Desktop' },
+              { id: 'new-artboard:laptop', label: 'New artboard: Laptop' },
+              { id: 'new-artboard:tablet', label: 'New artboard: Tablet' },
+              { id: 'new-artboard:mobile', label: 'New artboard: Mobile' },
+            ]
+          : []),
       ]}
     />
   );
@@ -2652,6 +2675,7 @@ function Menubar({
   onOpenExport,
   onReload,
   onCloseCanvas,
+  onInsertArtboard,
 }) {
   const isSystem = activePath === SYSTEM_TAB;
   const stamp = isSystem ? 'SYSTEM' : activePath ? 'CANVAS' : 'IDLE';
@@ -2863,12 +2887,15 @@ function Menubar({
       )}
       {openMenu === 'edit' && (
         <EditDropdown
+          hasCanvas={!!activePath && !isSystem}
           onAction={(id) => {
             if (id === 'undo') postToActiveCanvas({ dgn: 'undo' });
             else if (id === 'redo') postToActiveCanvas({ dgn: 'redo' });
             else if (id === 'deselect-all') postToActiveCanvas({ dgn: 'selection-clear' });
             else if (id === 'select-all-annotations')
               postToActiveCanvas({ dgn: 'annotation-select-all' });
+            else if (id.startsWith('new-artboard:'))
+              onInsertArtboard?.(id.slice('new-artboard:'.length));
           }}
           onClose={() => setOpenMenu(null)}
         />
@@ -3820,6 +3847,18 @@ const CSS_TEXT_DECORATION = ['none', 'underline', 'line-through', 'overline'];
 const CSS_WHITE_SPACE = ['normal', 'nowrap', 'pre', 'pre-wrap', 'pre-line', 'break-spaces'];
 const CSS_OBJECT_FIT = ['fill', 'contain', 'cover', 'none', 'scale-down'];
 const CSS_OVERFLOW = ['visible', 'hidden', 'auto', 'scroll'];
+// Common aspect ratios for the Media dropdown (dogfood request — a select, not a
+// free-text field). Canonical spaced form so a dropdown-set value round-trips.
+const CSS_ASPECT_RATIO = ['auto', '1 / 1', '4 / 3', '3 / 2', '16 / 9', '21 / 9', '3 / 4', '2 / 3', '9 / 16'];
+
+// feature-element-editing-robustness Stage I4 — device presets for the "New
+// artboard" menu (inserts an empty <DCArtboard> of these dims into the canvas).
+const SCREEN_PRESETS = {
+  desktop: { label: 'Desktop', width: 1440, height: 1024 },
+  laptop: { label: 'Laptop', width: 1280, height: 800 },
+  tablet: { label: 'Tablet', width: 834, height: 1194 },
+  mobile: { label: 'Mobile', width: 390, height: 844 },
+};
 
 let _cssColorCtx = null;
 // Normalize any CSS color string to #rrggbb for the native color input via a
@@ -5219,7 +5258,7 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
               'Media',
               <>
                 {canReplace && (
-                  <div className="st-cp-row">
+                  <div className="st-cp-mediabtn">
                     <button
                       type="button"
                       className="st-btn st-cp-replace"
@@ -5231,7 +5270,7 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
                 )}
                 {row('object-fit', csel('object-fit', CSS_OBJECT_FIT))}
                 {row('object-position', text('object-position'))}
-                {row('aspect-ratio', text('aspect-ratio'))}
+                {row('aspect-ratio', csel('aspect-ratio', CSS_ASPECT_RATIO))}
               </>
             )
           : null;
@@ -8775,6 +8814,10 @@ function App() {
         (p) => typeof patch[p] === 'string' && patch[p]
       );
       if (!props.length) return;
+      // INV-2 (DDR-105) — arm the reload-suppression window BEFORE the edit-css
+      // writes so the follow-up HMR is skipped. Without this the canvas remounts
+      // and drops the selection (the "resize deselects the element" dogfood bug).
+      for (const p of props) applyOptimisticStyle({ id, prop: p, value: patch[p] });
       const writeProp = (property, value) =>
         fetch('/_api/edit-css', {
           method: 'POST',
@@ -8803,7 +8846,7 @@ function App() {
           postToActiveCanvas({ dgn: 'resize-failed' });
         });
     },
-    [activePath, postToActiveCanvas, recordSourceEdit]
+    [activePath, postToActiveCanvas, recordSourceEdit, applyOptimisticStyle]
   );
   useEffect(() => {
     resizeElementRef.current = resizeElement;
@@ -8897,6 +8940,20 @@ function App() {
       );
     },
     [structuralWrite]
+  );
+
+  // Stage I4 — "New artboard: <preset>" from the Edit menu. Generates a unique
+  // id (server 422s a dup, negligible with a random suffix) + a preset label/dims
+  // and inserts an empty <DCArtboard> after the last one (runtime default-grid
+  // places it; DDR-027). The new frame is then selectable + resizable.
+  const onInsertArtboard = useCallback(
+    (presetKey) => {
+      const p = SCREEN_PRESETS[presetKey];
+      if (!p) return;
+      const id = `s${Math.random().toString(36).slice(2, 8)}`;
+      insertArtboardShell({ id, label: p.label, width: p.width, height: p.height });
+    },
+    [insertArtboardShell]
   );
 
   const resizeArtboardShell = useCallback(
@@ -9469,6 +9526,7 @@ function App() {
           onToggleInspector={() => toggleRightPanel('inspector')}
           autoOpenInspector={autoOpenInspector}
           onToggleAutoOpenInspector={() => setAutoOpenInspector((v) => !v)}
+          onInsertArtboard={onInsertArtboard}
           timelineOpen={timelineOpen}
           onToggleTimeline={toggleTimeline}
           hasComps={activeComps.length > 0}

@@ -54,7 +54,7 @@ function isChromeTarget(t: EventTarget | null): boolean {
   const el = t as Element;
   if (
     el.closest(
-      '.dc-mm, .dc-zoom-tb, .dc-tool-palette, .dc-context-menu, .dc-cv-halo, .dc-cv-group-bbox, .cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, .dc-annot-svg, .dc-annot-ctx, .dc-tp-popover, .dc-annot-resize-handle, .dc-multi-artboard-tb, .dc-elem-ctx-tb, .dc-cv-eq-spacing-layer'
+      '.dc-mm, .dc-zoom-tb, .dc-tool-palette, .dc-context-menu, .dc-cv-halo, .dc-cv-group-bbox, .cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, .dc-annot-svg, .dc-annot-ctx, .dc-tp-popover, .dc-annot-resize-handle, .dc-el-resize-handle, .dc-multi-artboard-tb, .dc-elem-ctx-tb, .dc-cv-eq-spacing-layer'
     )
   ) {
     return true;

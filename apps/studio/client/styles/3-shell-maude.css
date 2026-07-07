@@ -497,6 +497,9 @@
 .st-ap-thumb { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-xs); background: var(--bg-4, var(--bg-3)); display: block; }
 .st-ap-name { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .st-cp-replace { width: 100%; justify-content: center; }
+/* Media "Replace…" — a full-width button, NOT inside the 3-col .st-cp-row grid
+   (which would drop it into the 10px provenance-dot column and clip it). */
+.st-cp-mediabtn { padding: var(--space-1) 0 var(--space-2); }
 
 /* ─── Inspector panel fields / layers / css (Plan C P11–P13) ───────────────
  * Lifted from Studio.css; complements the already-present `.st-insp-row`,
