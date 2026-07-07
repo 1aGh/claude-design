@@ -246,6 +246,28 @@ const ENGINE_CSS = `
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Per-board compositor freeze (RCA: large filter/blend-heavy canvases jank on
+     pan/zoom). Promote each artboard to its own GPU layer that rasterizes ONCE
+     into a fixed bitmap the compositor then translates/scales — instead of
+     re-running its paint every frame. Load-bearing on WebKit/WKWebView, which
+     does NOT hardware-accelerate SVG url() reference filters or feTurbulence
+     (only CSS shorthand filters), so a scale change would otherwise re-RASTER
+     every board's poster/grain/blend at once (the fit-all zoom cliff).
+     will-change:transform (NOT plain translateZ(0)) is the fix: it freezes the
+     rastered bitmap so it never re-rasters under transform updates — fit-all pan
+     composites finished textures, zoom SCALES them (sharp when zoomed out).
+     Filters stay LIVE in the DOM — nothing baked — so the exact look and full
+     editability are preserved; paint just happens once per board, not per frame.
+     isolation:isolate bounds each board's blend backdrop so the texture is
+     self-contained/cacheable (isolation/contain do not themselves promote —
+     will-change does). content-visibility (on .dc-positioned) culls off-screen
+     boards so the promoted-layer count + GPU memory stay bounded to what's in
+     view. NB: this is the realistic ceiling on WebKit — a Chromium engine (Blink)
+     GPU-accelerates url() filters and renders such canvases more smoothly.
+     See .ai/logs/rca/issue-canvas-pan-zoom-jank-large-moodboard.md. */
+  isolation: isolate;
+  contain: paint;
+  will-change: transform;
 }
 .dc-canvas .dc-artboard.dc-positioned { position: absolute; }
 .dc-canvas .dc-artboard-label {
