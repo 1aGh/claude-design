@@ -16,7 +16,9 @@ import { useEffect, useRef, useState } from 'react';
 
 import {
   IconChevronDown,
+  IconLetterA,
   IconPresentation,
+  IconSquare,
   SHAPE_KIND_ICONS,
   TOOL_ICONS,
 } from './canvas-icons.tsx';
@@ -214,6 +216,35 @@ const PALETTE_CSS = `
   background: color-mix(in oklab, var(--maude-hud-accent, #d63b1f) 14%, transparent);
   color: var(--maude-hud-accent, #d63b1f);
 }
+/* Stage I3 tail — "+ Element" insert popover. A vertical labeled list (not the
+   shape popover's icon grid): Div/Text/Image have no recognizable glyph on
+   their own, and this is a rare, must-be-legible action, not a recalled tool. */
+.dc-tool-palette .dc-tp-insert { position: relative; display: inline-flex; }
+.dc-tp-insert-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  min-width: 128px;
+  background: var(--maude-chrome-bg-0, #ffffff);
+  border: 1px solid var(--maude-chrome-fg-0, #1c1917);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px var(--maude-chrome-shadow, color-mix(in oklab, #1c1917 10%, transparent));
+  z-index: 8;
+}
+.dc-tp-insert-popover button {
+  width: auto;
+  height: auto;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+.dc-tp-insert-popover button span.dc-tp-insert-label { font-size: 12px; }
 `.trim();
 
 function ensurePaletteStyles(): void {
@@ -250,6 +281,34 @@ const SHAPE_KINDS: ReadonlyArray<{ kind: ShapeKind; label: string }> = [
   { kind: 'triangle-down', label: 'Triangle down' },
 ];
 
+/**
+ * Stage I3 tail — resolve the insert anchor for the tool-palette "+ Element"
+ * affordance's "or appends to the active artboard" mode (the plan's fallback
+ * when the user hasn't right-clicked a specific element). Growth-only: an
+ * artboard's `<article data-dc-screen>` carries NO `data-cd-id` of its own
+ * (`DCArtboard` doesn't forward it to the DOM — only its SOURCE JSX tag is
+ * stamped, unresolvable from here), so `applyInsertElement`'s `refId` can't
+ * target the artboard directly. Anchor on the artboard's LAST direct child
+ * that DOES carry a `data-cd-id` and insert `position:'after'` it — the exact
+ * relation the context-menu's element-relative insert already uses. Returns
+ * `null` for an empty (or artboard-less) canvas — a documented v1 limit; the
+ * per-element context-menu "Insert ▸ …" still works there once a first
+ * element exists. `doc` is injectable for testing without a real iframe.
+ */
+export function resolveInsertAnchor(
+  doc: Document = document
+): { refId: string; position: 'after' } | null {
+  const current = doc.querySelector('[data-dc-screen][aria-current="true"]');
+  const artboardEl = current ?? doc.querySelector('[data-dc-screen]');
+  if (!artboardEl) return null;
+  const body = artboardEl.querySelector(':scope > .dc-artboard-body');
+  if (!body) return null;
+  const kids = Array.from(body.children).reverse();
+  const last = kids.find((el) => el.hasAttribute('data-cd-id'));
+  const refId = last?.getAttribute('data-cd-id');
+  return refId ? { refId, position: 'after' } : null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 
@@ -259,19 +318,22 @@ export function ToolPalette() {
   const chrome = useChromeVisibility();
   const [mounted, setMounted] = useState(false);
   const [shapeOpen, setShapeOpen] = useState(false);
+  const [insertOpen, setInsertOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => setMounted(true), []);
   useEffect(() => {
-    if (!shapeOpen) return;
+    if (!shapeOpen && !insertOpen) return;
     const onDown = (e: PointerEvent) => {
       if (!containerRef.current?.contains(e.target as Node)) {
         setShapeOpen(false);
+        setInsertOpen(false);
       }
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setShapeOpen(false);
+        setInsertOpen(false);
       }
     };
     document.addEventListener('pointerdown', onDown, true);
@@ -280,11 +342,37 @@ export function ToolPalette() {
       document.removeEventListener('pointerdown', onDown, true);
       document.removeEventListener('keydown', onKey, true);
     };
-  }, [shapeOpen]);
+  }, [shapeOpen, insertOpen]);
   // Close the shape popover whenever the tool changes away from Shape.
   useEffect(() => {
     if (tool !== 'shape') setShapeOpen(false);
   }, [tool]);
+
+  // Stage I3 tail — insert a Div/Text/Image relative to the active artboard's
+  // last existing element (`resolveInsertAnchor`). Same request verbs the
+  // context-menu's per-element "Insert ▸ …" already posts (`insert-request` /
+  // `insert-image-request`, main-origin shell WRITES — DDR-054); a null anchor
+  // (empty/artboard-less canvas) is a silent no-op — a documented v1 limit.
+  const insertViaPalette = (kind: 'div' | 'text' | 'image') => {
+    setInsertOpen(false);
+    const anchor = resolveInsertAnchor();
+    if (!anchor) return;
+    try {
+      if (kind === 'image') {
+        window.parent.postMessage(
+          { dgn: 'insert-image-request', refId: anchor.refId, position: anchor.position },
+          '*'
+        );
+      } else {
+        window.parent.postMessage(
+          { dgn: 'insert-request', refId: anchor.refId, position: anchor.position, kind },
+          '*'
+        );
+      }
+    } catch {
+      /* detached / cross-origin teardown */
+    }
+  };
 
   if (!mounted) return null;
   // Presentation Mode hides the whole tool palette (clean artboards-only view).
@@ -393,6 +481,38 @@ export function ToolPalette() {
       </div>
       <div className="dc-tp-sep" />
       <div className="dc-tp-group">
+        <span className="dc-tp-insert">
+          <button
+            type="button"
+            aria-label="Insert element — Div, Text, or Image"
+            aria-haspopup="menu"
+            aria-expanded={insertOpen}
+            title="Insert element (appends to the active artboard)"
+            onClick={() => setInsertOpen((o) => !o)}
+          >
+            <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>
+              +
+            </span>
+          </button>
+          {insertOpen ? (
+            <div className="dc-tp-insert-popover" role="menu" aria-label="Insert element">
+              <button type="button" role="menuitem" onClick={() => insertViaPalette('div')}>
+                <IconSquare />
+                <span className="dc-tp-insert-label">Div</span>
+              </button>
+              <button type="button" role="menuitem" onClick={() => insertViaPalette('text')}>
+                <IconLetterA />
+                <span className="dc-tp-insert-label">Text</span>
+              </button>
+              <button type="button" role="menuitem" onClick={() => insertViaPalette('image')}>
+                <span aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>
+                  ▧
+                </span>
+                <span className="dc-tp-insert-label">Image</span>
+              </button>
+            </div>
+          ) : null}
+        </span>
         <button
           type="button"
           aria-label="Export (⌘E)"
