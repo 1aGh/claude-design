@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-07T05:57:20.569Z",
+  "generated": "2026-07-07T07:27:35.874Z",
   "currentPhase": null,
   "phases": [
     {
@@ -384,6 +384,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan extends DDR-148 (the shipped video-comp foundation) — read it and the shippe...",
       "planPath": ".ai/plans/archive/feature-video-editing-robustness.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-whiteboard-ai-toolkit",
+      "title": "Feature: Whiteboard AI toolkit — element-aware read + effortless authoring + plan-board recipes",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is FigJam v4 — it extends the v3 AI loop (DDR-100) and the brief-board ingest (DD...",
+      "planPath": ".ai/plans/archive/feature-whiteboard-ai-toolkit.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1114,6 +1125,17 @@
       "phaseKey": "19"
     },
     {
+      "id": "feature-element-editing-robustness",
+      "title": "Feature: Robust in-canvas + specimen element editing (Figma/Webflow-grade)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan is grounded in a four-agent read of the studio editing subsystems (selection...",
+      "planPath": ".ai/plans/feature-element-editing-robustness.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
       "id": "feature-photo-editor",
       "title": "Feature: In-app photo editor for Maude Studio",
       "status": "planned",
@@ -1121,17 +1143,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-photo-editor.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-whiteboard-ai-toolkit",
-      "title": "Feature: Whiteboard AI toolkit — element-aware read + effortless authoring + plan-board recipes",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is FigJam v4 — it extends the v3 AI loop (DDR-100) and the brief-board ingest (DD...",
-      "planPath": ".ai/plans/feature-whiteboard-ai-toolkit.md",
       "archived": false,
       "phaseKey": null
     }
