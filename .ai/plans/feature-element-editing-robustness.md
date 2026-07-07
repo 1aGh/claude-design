@@ -460,7 +460,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 
 > A 108-agent deep-research pass (all findings 3-0 verified against primary Figma/Webflow/Penpot docs) surfaced table-stakes affordances users of those tools reach for by muscle memory. **Already present in Maude → not re-added:** marquee/rubber-band select (`marquee-overlay.tsx`), command palette (`CommandPalette`, `app.jsx:559`), inline double-click text edit (`contenteditable .dc-text-editing`, `canvas-shell.tsx:320`), unit-switching, undo/redo. **Out of scope (no clean TSX analog):** vector boolean ops; prototyping links; element interaction-states / responsive breakpoints (note as a future plan). The tasks below are the confirmed gaps that reuse existing infra.
 
-#### Task L1: EXTEND keyboard nudge from artboards to elements
+#### ✅ Task L1: EXTEND keyboard nudge from artboards to elements — DONE (out-of-flow elements; in-flow no-op; live verify pending dogfood)
 
 - **Do**: `use-keyboard-discipline.tsx` already nudges **artboards** by arrow keys but explicitly scopes out elements (`:9` "arrow nudge applies to artboards only … would require an ephemeral CSS-transform overlay"). Extend it to the selected element: Arrow = 1px, Shift+Arrow = 10px (configurable), previewing via the optimistic `apply-style` overlay and committing `left/top` (absolute) or the appropriate offset through the Stage-D reposition lane on key-up (debounced), with one undo record per settle.
 - **Gotcha**: bail when a text input / `contenteditable` is focused (the guard already exists in the hook). For in-flow elements without `position`, nudge is ambiguous — either no-op with a hint or nudge via `margin` (decide during impl; prefer no-op + hint to avoid surprising layout shifts).

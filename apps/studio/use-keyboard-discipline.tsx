@@ -6,19 +6,16 @@
  *             into the dev-server's own inputs (file tree filter, etc.)
  *             never collides.
  *
- *             Scope decision — arrow nudge applies to **artboards** only.
- *             User content inside artboards has no live-position channel
- *             (canvas surface is HTML; element positions are CSS-derived
- *             from the compiled JSX, not directly manipulable). Element
- *             nudge would require either an ephemeral CSS-transform overlay
- *             (cleaner) or a TSX rewrite channel (heavier). Out of scope
- *             for this wave — the artboard channel + dragBus.commitPositions
- *             already exists, so we leverage that and document the
- *             limitation here.
+ *             Arrow nudge applies to artboards AND to a single OUT-OF-FLOW
+ *             element (position:absolute/fixed) — the latter added in Task L1
+ *             once the `reposition-request` channel existed (the original
+ *             "no live-position channel" limitation is resolved for out-of-flow
+ *             elements: preview inline, commit the settle via reposition-request).
+ *             In-flow elements stay a no-op (nudge is ambiguous with no left/top).
  *
- *             Cmd+D duplicate is also deferred — same architectural reason
- *             (no duplicate channel). Esc is owned by the input-router's
- *             onEscape callback, so we don't duplicate it here.
+ *             Cmd+D duplicate (Task L3) + Cmd+Opt+C/V copy/paste-style (Task L4)
+ *             are handled here too, relayed to the parent shell. Esc is owned by
+ *             the input-router's onEscape callback, so we don't duplicate it.
  *
  *             Distance:
  *               • Arrow      → 1 world-unit step (DDR-028 world units, not
@@ -26,10 +23,10 @@
  *               • Shift+Arrow → 10 world-unit step.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { useArtboardsContext, useDragStateContext } from './canvas-lib.tsx';
-import { scopedCdSelector, selectorIndex } from './dom-selection.ts';
+import { resolveSelectionEl, scopedCdSelector, selectorIndex } from './dom-selection.ts';
 import { isEditableTarget } from './input-router.tsx';
 import { type Selection, useSelectionSet } from './use-selection-set.tsx';
 
@@ -65,6 +62,16 @@ export function useKeyboardDiscipline(): void {
   const selSet = useSelectionSet();
   const artboardsCtx = useArtboardsContext();
   const dragBus = useDragStateContext();
+  // Element arrow-nudge burst (Task L1): accumulate left/top, preview inline, and
+  // commit once after a short pause (one undo per settle, not per keypress).
+  const nudgeRef = useRef<{
+    id: string;
+    beforeLeft: number;
+    beforeTop: number;
+    left: number;
+    top: number;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -178,10 +185,62 @@ export function useKeyboardDiscipline(): void {
         return;
       }
 
-      // Arrow nudge — artboards only (see file header for the why).
       const delta = nudgeDelta({ key: e.key, shift: e.shiftKey });
       if (!delta) return;
       if (isMeta || e.altKey) return; // modifier combos reserved for future
+
+      // Arrow nudge — a single OUT-OF-FLOW element (position:absolute/fixed).
+      // In-flow elements are a no-op (nudging a flow element is ambiguous — it has
+      // no free left/top). Preview inline, commit the settle via reposition-request.
+      {
+        const one = selSet.selected.length === 1 ? selSet.selected[0] : null;
+        if (one?.id) {
+          const el = resolveSelectionEl(document, one) as HTMLElement | null;
+          if (!el) return;
+          const cs = getComputedStyle(el);
+          if (cs.position !== 'absolute' && cs.position !== 'fixed') return; // no-op
+          e.preventDefault();
+          const prev = nudgeRef.current?.id === one.id ? nudgeRef.current : null;
+          const curLeft = prev
+            ? prev.left
+            : Number.parseFloat(el.style.left) || Number.parseFloat(cs.left) || 0;
+          const curTop = prev
+            ? prev.top
+            : Number.parseFloat(el.style.top) || Number.parseFloat(cs.top) || 0;
+          const beforeLeft = prev ? prev.beforeLeft : curLeft;
+          const beforeTop = prev ? prev.beforeTop : curTop;
+          const left = curLeft + delta.dx;
+          const top = curTop + delta.dy;
+          el.style.left = `${left}px`;
+          el.style.top = `${top}px`;
+          if (prev) clearTimeout(prev.timer);
+          const id = one.id;
+          const timer = setTimeout(() => {
+            const s = nudgeRef.current;
+            nudgeRef.current = null;
+            if (!s) return;
+            try {
+              window.parent.postMessage(
+                {
+                  dgn: 'reposition-request',
+                  id: s.id,
+                  left: s.left,
+                  top: s.top,
+                  beforeLeft: s.beforeLeft,
+                  beforeTop: s.beforeTop,
+                },
+                '*'
+              );
+            } catch {
+              /* detached / cross-origin */
+            }
+          }, 350);
+          nudgeRef.current = { id, beforeLeft, beforeTop, left, top, timer };
+          return;
+        }
+      }
+
+      // Arrow nudge — artboards only (see file header for the why).
       if (!artboardsCtx || !dragBus) return;
 
       const artboardSelections = selSet.selected.filter((s) => !!s.artboardId && !s.id);
