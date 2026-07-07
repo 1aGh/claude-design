@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-07T07:27:35.874Z",
+  "generated": "2026-07-07T09:28:39.464Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1125,6 +1125,28 @@
       "phaseKey": "19"
     },
     {
+      "id": "feature-background-export-notification-center",
+      "title": "Feature: Background export + export notification center (+ multi-artboard export correctness/perf fix)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-background-export-notification-center.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-desktop-intel-mac-support",
+      "title": "Feature: Intel Mac support for the desktop app",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate the local test build (Task 5) BEFORE touching CI — the exact Tauri universal-binary bundle path is asserted, not 100% confirmed against this repo's Tauri version.",
+      "planPath": ".ai/plans/feature-desktop-intel-mac-support.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
       "id": "feature-element-editing-robustness",
       "title": "Feature: Robust in-canvas + specimen element editing (Figma/Webflow-grade)",
       "status": "planned",
@@ -1132,6 +1154,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan is grounded in a four-agent read of the studio editing subsystems (selection...",
       "planPath": ".ai/plans/feature-element-editing-robustness.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-onboarding-and-design-system-migration",
+      "title": "Feature: Onboarding & Design-System Migration — bring users (and their existing brand) into Maude",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — most of this plan REUSES shipped infra (tour engine, readiness pattern, video-comp, f...",
+      "planPath": ".ai/plans/feature-onboarding-and-design-system-migration.md",
       "archived": false,
       "phaseKey": null
     },
