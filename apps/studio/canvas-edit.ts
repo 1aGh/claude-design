@@ -2968,9 +2968,16 @@ export interface AssembleClip {
 /** Reject a src that isn't a contained relative asset path (no ../, no scheme). */
 function assertContainedAssetSrc(src: string, canvasAbsPath: string): void {
   const t = src.trim();
-  if (!t || /\.\./.test(t) || /^\s*(javascript|vbscript|file|data|https?):/i.test(t)) {
+  // ALLOWLIST (G3 security, DDR-152 — hardened from a scheme denylist per the
+  // adversarial review): a contained asset src MUST be `assets/<flat-name>` and
+  // nothing else. This structurally excludes `..` traversal, absolute (`/etc/…`)
+  // and protocol-relative (`//evil/x.png`) hosts, and every URL scheme in ONE
+  // positive rule — the denylist the comment used to imply was never the real
+  // control (CSP was); this makes the source-write gate match that intent.
+  // Content-addressed assets are always flat (`assets/<sha8>.<ext>`).
+  if (!t || /\.\./.test(t) || !/^assets\/[A-Za-z0-9._-]+$/.test(t)) {
     throw new CanvasEditError(
-      'clip src must be a contained asset path (assets/…, no ../ or scheme)',
+      'asset src must be a contained path (assets/<name>, no ../ or scheme)',
       { canvas: canvasAbsPath, id: '' }
     );
   }

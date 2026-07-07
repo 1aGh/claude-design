@@ -3,7 +3,7 @@
 
 import crypto from 'node:crypto';
 import type { Dirent } from 'node:fs';
-import { mkdir, readdir, readFile, rename, rm, stat as statp } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, rename, rm, stat as statp } from 'node:fs/promises';
 import path from 'node:path';
 
 import { renderBriefBoard, validateCanvasName } from './canvas-create.ts';
@@ -685,6 +685,51 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
     return seq;
   }
+
+  // ── Structural-write throttle + source-size ceiling (G3 security, DDR-152) ──
+  // The new structural verbs (delete / insert-element / insert-artboard /
+  // resize-artboard) are the first that let an UNTRUSTED active canvas both
+  // *remove* and *grow* its own source: the shell relays a canvas's `dgn:*`
+  // request after gating only on `e.source === activeWin` — there is no user
+  // gesture on the wire, so a hostile on-load script can drive these in a loop.
+  // Two bounds close the disk-fill / silent-shred DoS the adversarial review
+  // flagged (mirrors the ASSET_SESSION_BUDGET the /_api/asset lane already has,
+  // DDR-088 — this is the OTHER untrusted-origin disk-write surface):
+  //   (a) a per-api token bucket caps the sustained rate. A human does a few
+  //       structural edits/sec; a scripted loop can't beat the refill, which
+  //       keeps every whole-file _history snapshot + RAM undo entry rate-bound.
+  //   (b) a growth op is refused once the source already exceeds
+  //       MAX_CANVAS_SOURCE, so inserts can't inflate the .tsx (and the snapshot
+  //       + undo copies it holds) without bound. Deletes/shrinks always pass.
+  // Bucket state is per-createApi (each test/instance starts full); env-tunable.
+  const STRUCTURAL_BURST = (() => {
+    const env = Number(process.env.MAUDE_STRUCTURAL_BURST);
+    return Number.isFinite(env) && env > 0 ? Math.floor(env) : 40;
+  })();
+  const STRUCTURAL_REFILL_PER_SEC = 8;
+  let structuralTokens = STRUCTURAL_BURST;
+  let structuralLastRefill = Date.now();
+  /** Consume one token; false when the caller is over the sustained rate. */
+  function takeStructuralToken(): boolean {
+    const now = Date.now();
+    structuralTokens = Math.min(
+      STRUCTURAL_BURST,
+      structuralTokens + ((now - structuralLastRefill) / 1000) * STRUCTURAL_REFILL_PER_SEC
+    );
+    structuralLastRefill = now;
+    if (structuralTokens < 1) return false;
+    structuralTokens -= 1;
+    return true;
+  }
+  const RATE_LIMITED = {
+    ok: false as const,
+    status: 429,
+    error: 'too many structural edits — slow down',
+  };
+  const MAX_CANVAS_SOURCE = (() => {
+    const env = Number(process.env.MAUDE_MAX_CANVAS_SOURCE);
+    return Number.isFinite(env) && env > 0 ? Math.floor(env) : 512 * 1024;
+  })();
 
   function fileSlug(file: string): string {
     return canvasSlugFromRel(file, paths.designRel);
@@ -1439,7 +1484,10 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       let size = 0;
       let mtimeMs = 0;
       try {
-        const st = await statp(path.join(assetsDir, name));
+        // lstat (not stat): a symlink planted under assets/ resolves to isFile()
+        // === false here → skipped. Defends the listing against a symlink that
+        // would otherwise be served by the /assets/<file> static route.
+        const st = await lstat(path.join(assetsDir, name));
         if (!st.isFile()) continue;
         size = st.size;
         mtimeMs = st.mtimeMs;
@@ -2248,6 +2296,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   > {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
+    if (!takeStructuralToken()) return RATE_LIMITED;
     const id = typeof input.id === 'string' ? input.id.trim() : '';
     if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid data-cd-id' };
     const idIndex = Number.isInteger(input.idIndex) ? (input.idIndex as number) : undefined;
@@ -2290,6 +2339,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   > {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
+    if (!takeStructuralToken()) return RATE_LIMITED;
     const refId = typeof input.refId === 'string' ? input.refId.trim() : '';
     if (!CD_ID_RE.test(refId)) {
       return { ok: false, status: 400, error: 'invalid reference data-cd-id' };
@@ -2308,6 +2358,10 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     ctx.bus.emit('activity:suppress', rel);
     try {
       const before = await Bun.file(r.abs).text();
+      if (before.length > MAX_CANVAS_SOURCE) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: false, status: 413, error: 'canvas source too large to grow' };
+      }
       const res = await insertElement(r.abs, refId, position as MovePosition, kind as InsertKind, {
         src,
         occurrence: refIndex,
@@ -2345,6 +2399,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   > {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
+    if (!takeStructuralToken()) return RATE_LIMITED;
     const id = typeof input.id === 'string' ? input.id.trim() : '';
     if (!/^[A-Za-z][\w-]{0,63}$/.test(id)) {
       return { ok: false, status: 400, error: 'invalid artboard id' };
@@ -2361,6 +2416,10 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     ctx.bus.emit('activity:suppress', rel);
     try {
       const before = await Bun.file(r.abs).text();
+      if (before.length > MAX_CANVAS_SOURCE) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: false, status: 413, error: 'canvas source too large to grow' };
+      }
       const res = await insertArtboard(r.abs, { id, label, width, height });
       const after = await Bun.file(r.abs).text();
       if (after === before) {
@@ -2392,6 +2451,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
+    if (!takeStructuralToken()) return RATE_LIMITED;
     const artboardId = typeof input.artboardId === 'string' ? input.artboardId.trim() : '';
     if (!/^[A-Za-z][\w-]{0,63}$/.test(artboardId)) {
       return { ok: false, status: 400, error: 'invalid artboard id' };

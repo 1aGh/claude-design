@@ -8157,6 +8157,7 @@ function App() {
         if (e.source === activeWin && okShape) {
           openAssetPickerRef.current?.({
             purpose: 'insert-image',
+            canvas: activePath,
             refId: m.refId,
             position: m.position,
             refIndex: Number.isInteger(m.refIndex) ? m.refIndex : undefined,
@@ -8170,6 +8171,7 @@ function App() {
         if (e.source === activeWin && typeof m.id === 'string') {
           openAssetPickerRef.current?.({
             purpose: 'replace-src',
+            canvas: activePath,
             id: m.id,
             before: typeof m.before === 'string' ? m.before : null,
           });
@@ -8881,6 +8883,14 @@ function App() {
       const req = assetPickerReq;
       setAssetPickerReq(null);
       if (!req || !pickedPath) return;
+      // G3 security (DDR-152) — the request captured refId/id against the canvas
+      // that was active when the picker opened; if the user switched canvases
+      // while the modal was up, those ids are meaningless (or worse, collide) on
+      // the now-active canvas. Abort rather than write to the wrong file.
+      if (req.canvas && req.canvas !== activePath) {
+        console.warn('[asset-picker] active canvas changed since request — aborting');
+        return;
+      }
       if (req.purpose === 'insert-image') {
         insertElementShell(req.refId, req.position || 'after', 'image', {
           src: pickedPath,
@@ -8924,14 +8934,18 @@ function App() {
   // Media-section "Replace…" (CssKnobs) → open the picker in replace mode with
   // the element's current src as the undo before-value (captured from the
   // Selection's `attrs.src`, not the resolved URL).
-  const onReplaceMedia = useCallback((elSel) => {
-    if (!elSel?.id) return;
-    setAssetPickerReq({
-      purpose: 'replace-src',
-      id: elSel.id,
-      before: elSel.attrs?.src ?? null,
-    });
-  }, []);
+  const onReplaceMedia = useCallback(
+    (elSel) => {
+      if (!elSel?.id) return;
+      setAssetPickerReq({
+        purpose: 'replace-src',
+        canvas: activePath,
+        id: elSel.id,
+        before: elSel.attrs?.src ?? null,
+      });
+    },
+    [activePath]
+  );
 
   const resolveComment = useCallback((id) => {
     wsSend({ type: 'comments-patch', id, patch: { status: 'resolved' } });

@@ -6,10 +6,23 @@
 
 import type { Dirent } from 'node:fs';
 import { existsSync } from 'node:fs';
-import { readdir } from 'node:fs/promises';
+import { readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { Context } from './context.ts';
+
+/**
+ * Per-slug snapshot cap (G3 security, DDR-152). The structural-edit routes
+ * (delete / insert / resize-artboard) each write a WHOLE-FILE snapshot here, and
+ * an untrusted active canvas can drive them in a loop — so `_history/<slug>/`
+ * was the uncapped disk-fill surface the adversarial review flagged. Pruning the
+ * oldest pairs bounds disk regardless of edit rate; 300 pairs is still a deep
+ * rollback runway for real work. Read lazily so tests can tune it via env.
+ */
+function maxSnapshotsPerSlug(): number {
+  const env = Number(process.env.MAUDE_MAX_SNAPSHOTS);
+  return Number.isFinite(env) && env > 0 ? Math.floor(env) : 300;
+}
 
 export interface Snapshot {
   slug: string;
@@ -92,7 +105,40 @@ export function createHistory(ctx: Context): History {
     };
     await Bun.write(contentPath, contentBytes);
     await Bun.write(meta.metaPath, JSON.stringify({ ...meta, file }, null, 2));
+    await pruneSnapshots(slug).catch(() => {
+      /* pruning is best-effort — never fail a snapshot over it */
+    });
     return meta;
+  }
+
+  /**
+   * Keep only the newest MAX_SNAPSHOTS_PER_SLUG snapshot pairs for a slug,
+   * unlinking the oldest content-blob + `.json` sidecar beyond the cap.
+   * Filenames are ts-derived (`tsForFilename`) so a lexical sort is chronological.
+   */
+  async function pruneSnapshots(slug: string): Promise<void> {
+    const dir = path.join(ctx.paths.historyDir, slug);
+    let names: string[];
+    try {
+      names = await readdir(dir);
+    } catch {
+      return; // no dir yet
+    }
+    const stems = names
+      .filter((n) => n.endsWith('.json'))
+      .map((n) => n.slice(0, -'.json'.length))
+      .sort();
+    const excess = stems.length - maxSnapshotsPerSlug();
+    if (excess <= 0) return;
+    for (const stem of stems.slice(0, excess)) {
+      for (const n of names) {
+        // The meta (`<stem>.json`) and its content blob (`<stem>.<ext>`) share
+        // the stem; the fixed-length ISO stem is never a prefix of another.
+        if (n === `${stem}.json` || n.startsWith(`${stem}.`)) {
+          await unlink(path.join(dir, n)).catch(() => {});
+        }
+      }
+    }
   }
 
   async function listSnapshots(file: string): Promise<Snapshot[]> {

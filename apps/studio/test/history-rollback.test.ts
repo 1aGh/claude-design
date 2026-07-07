@@ -45,6 +45,32 @@ describe('history.ts', () => {
     });
   });
 
+  test('prunes to the newest MAX_SNAPSHOTS_PER_SLUG pairs (G3 disk-fill bound)', async () => {
+    const prev = process.env.MAUDE_MAX_SNAPSHOTS;
+    process.env.MAUDE_MAX_SNAPSHOTS = '3';
+    try {
+      await withSandbox(async (ctx) => {
+        const hist = createHistory(ctx);
+        for (let i = 0; i < 6; i++) {
+          // Space the writes so Date.now() advances between them — real
+          // structural edits are seconds apart, so each snapshot gets a distinct
+          // increasing ts (a same-millisecond burst is not a production shape).
+          await hist.writeSnapshot('.design/ui/a.html', `<doc>v${i}</doc>`, `edit-${i}`);
+          await Bun.sleep(2);
+        }
+        const list = await hist.listSnapshots('.design/ui/a.html');
+        // Only the 3 newest survive; the newest content is intact.
+        expect(list.length).toBe(3);
+        const newest = list[list.length - 1];
+        const read = await hist.readSnapshot('.design/ui/a.html', newest?.ts ?? '');
+        expect(new TextDecoder().decode(read?.content)).toBe('<doc>v5</doc>');
+      });
+    } finally {
+      if (prev === undefined) delete process.env.MAUDE_MAX_SNAPSHOTS;
+      else process.env.MAUDE_MAX_SNAPSHOTS = prev;
+    }
+  });
+
   test('rollback overwrites the target file', async () => {
     await withSandbox(async (ctx) => {
       const hist = createHistory(ctx);

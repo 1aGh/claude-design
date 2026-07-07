@@ -41,12 +41,14 @@ function letters(src: string): string[] {
   return [...src.matchAll(/>([ABC])</g)].map((m) => m[1] as string);
 }
 
-async function boot(): Promise<{ root: string; designRoot: string; main: string; proc: unknown }> {
+async function boot(
+  extraEnv?: Record<string, string>
+): Promise<{ root: string; designRoot: string; main: string; proc: unknown }> {
   const { root, designRoot } = makeSandbox();
   mkdirSync(join(designRoot, 'ui'), { recursive: true });
   writeFileSync(join(designRoot, 'ui', 'List.tsx'), CANVAS_SRC);
   const port = nextPort();
-  const proc = await bootServer(root, port);
+  const proc = await bootServer(root, port, extraEnv);
   return { root, designRoot, main: `http://localhost:${port}`, proc };
 }
 
@@ -201,6 +203,65 @@ describe('POST /_api/insert-artboard + /_api/resize-artboard', () => {
         signal: AbortSignal.timeout(2000),
       });
       expect(forged.status).toBe(403);
+    } finally {
+      await killProc(proc as never);
+    }
+  });
+});
+
+// G3 security (DDR-152) — the structural-write disk-fill / silent-shred defenses
+// the adversarial review required: a per-api token bucket rate-caps the verbs,
+// and a source-size ceiling refuses a GROWTH op past MAX_CANVAS_SOURCE (a delete
+// / shrink always passes). Booted with tiny caps so the bounds trip immediately.
+describe('structural-write security caps', () => {
+  test('rate-caps a scripted burst of structural verbs (429 once the bucket is spent)', async () => {
+    const { designRoot, main, proc } = await boot({ MAUDE_STRUCTURAL_BURST: '2' });
+    try {
+      await divIdsByLine(main, designRoot); // warm pipeline/locator
+      const statuses: number[] = [];
+      for (let i = 0; i < 6; i++) {
+        const res = await fetch(`${main}/_api/insert-artboard`, {
+          method: 'POST',
+          body: JSON.stringify({
+            canvas: 'ui/List',
+            id: `ab${i}`,
+            label: `AB${i}`,
+            width: 390,
+            height: 844,
+          }),
+          signal: AbortSignal.timeout(2000),
+        });
+        statuses.push(res.status);
+      }
+      // First op always passes; the burst (2) is exhausted well before 6 rapid
+      // ops, so at least one 429 appears and successes stay bounded (timing-safe).
+      expect(statuses[0]).toBe(200);
+      expect(statuses).toContain(429);
+      expect(statuses.filter((s) => s === 200).length).toBeLessThanOrEqual(3);
+    } finally {
+      await killProc(proc as never);
+    }
+  });
+
+  test('refuses a growth op past the source-size ceiling but still allows a delete', async () => {
+    // Ceiling 100 bytes < the base canvas (~250B) → any insert is refused, but a
+    // delete (which shrinks the file) is unaffected.
+    const { designRoot, main, proc } = await boot({ MAUDE_MAX_CANVAS_SOURCE: '100' });
+    try {
+      const [aId, bId] = await divIdsByLine(main, designRoot);
+      const ins = await fetch(`${main}/_api/insert-element`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', refId: aId, position: 'after', kind: 'div' }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(ins.status).toBe(413);
+      const del = await fetch(`${main}/_api/delete-element`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', id: bId }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(del.status).toBe(200);
+      expect(letters(readFileSync(join(designRoot, 'ui', 'List.tsx'), 'utf8'))).toEqual(['A', 'C']);
     } finally {
       await killProc(proc as never);
     }
