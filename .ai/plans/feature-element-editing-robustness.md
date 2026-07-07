@@ -314,19 +314,19 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 
 ### Stage D — On-canvas drag-resize (+ move solidified by Stage A)
 
-#### Task D1: CREATE `use-element-resize.tsx`
+#### ✅ Task D1: CREATE `use-element-resize.tsx` — DONE
 
 - **Do**: New hook mirroring `use-annotation-resize.tsx`: given the current selection's world box (from `__maudeCanvasRects`/the selection bounds), render 8 screen-space handles (`nw/ne/sw/se` corners + `n/s/e/w` edges), constant 8×8px at any zoom, with correct resize cursors. On drag, compute the new `width`/`height` in world units (`dxClient / zoom`, mirroring `use-artboard-drag.tsx:146-152`), applying: Shift = aspect-lock (scale the opposite dimension proportionally), Alt = resize-from-center (grow/shrink symmetrically). For corner/edge handles that move the top or left edge, also adjust `left`/`top`. Live-preview every move via the optimistic `apply-style` postMessage (reuse `applyOptimisticStyle`); commit once on pointer-up.
 - **Gotcha**: Only elements with an explicit or resolvable box should show handles; skip inline text runs where width/height are meaningless. For **in-flow** elements, resizing writes explicit `width`/`height` (fine); it does **not** convert to absolute. For **absolute** elements a top/left-edge drag writes `width`+`left` (or `height`+`top`) together.
 - **Validate**: `maude design screenshot` mid-resize; confirm handles stay 8px at 50%/200% zoom.
 
-#### Task D2: RENDER the resize overlay in CanvasShell around the selection halo
+#### ✅ Task D2: RENDER the resize overlay in CanvasShell around the selection halo — DONE
 
 - **Do**: Mount `use-element-resize`'s overlay in `canvas-shell.tsx` alongside the existing selection halo (`:197-198`, `:2432-2440`), for a single non-annotation element selection in move-tool mode. Ensure it composes with `ReorderDrag` (`:2500-3046`) — a pointerdown on a handle must claim resize and **not** start a reorder/reposition drag (handle hit-test wins; `stopPropagation`).
 - **Gotcha**: The halo is `position:fixed` + rAF-tracked; handles must track the same rect so they don't lag during zoom/pan.
 - **Validate**: select an element → 8 handles appear; drag a corner → resizes; drag the body (not a handle) → still moves via the existing reorder/reposition path.
 
-#### Task D3: EXTEND `repositionElement` to commit width/height (+ left/top)
+#### ✅ Task D3: EXTEND `repositionElement` to commit width/height (+ left/top) — DONE (via sibling resizeElement)
 
 - **Do**: Extend `app.jsx:8244-8290` (or add a sibling `resizeElement`) so a resize commit chains the changed props (`width`, `height`, and `left`/`top` when the edge moved) on the same serialized `editApplyChainRef`, recording each to the undo stack (as reposition already does for `left`+`top`). Post via a new `dgn:'resize-request'` (mirror `reposition-request`, pinned to `activePath`, `:7773-7791`) or reuse `reposition-request` with an extended payload.
 - **Gotcha**: `/_api/edit-css` is single-property (`http.ts:1393`), so a 4-property resize is 4 serialized writes → 4 HMR reloads. The DDR-105-addendum reload-suppression window (1.5 s) + the serialized chain keep it from flickering, but verify the *final* rendered box is correct and Cmd+Z steps back cleanly. **Optional optimization (only if flicker is observed):** add a `POST /_api/edit-css-batch` that writes multiple `{property,value}` in one `editAttribute` pass + single reload — but that is a *new route* (add to neither canvas allowlist, `sameOriginWrite`-guard it) and needs its own test; prefer the serialized chain first.

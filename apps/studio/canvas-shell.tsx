@@ -98,6 +98,7 @@ import { showCanvasToast } from './use-canvas-media-drop.tsx';
 import { ChromeVisibilityProvider, useChromeVisibility } from './use-chrome-visibility.tsx';
 import { useCollab } from './use-collab.tsx';
 import { useCursorModifiers } from './use-cursor-modifiers.tsx';
+import { ElementResizeOverlay } from './use-element-resize.tsx';
 import { useKeyboardDiscipline } from './use-keyboard-discipline.tsx';
 import {
   MaybeSelectionSetProvider,
@@ -2083,6 +2084,7 @@ function CanvasRouter({
       <ElementMarqueeOverlay />
       <HoverHalo el={hoverEl} />
       <SelectionHalos />
+      <ElementResizeOverlay />
       <ReorderDrag />
       <LayersLiveSync />
       <GroupBbox />

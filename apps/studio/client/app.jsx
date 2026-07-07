@@ -6192,6 +6192,10 @@ function App() {
   // when the in-canvas drag posts dgn:'reposition-request' — the coordinate-
   // mode commit for out-of-flow (position:absolute/fixed) elements.
   const repositionElementRef = useRef(null);
+  // feature-element-editing-robustness Stage D — sibling ref for `resizeElement`
+  // (defined far below), read when the in-canvas resize overlay posts
+  // dgn:'resize-request' on pointer-up. Same origin-split as reposition.
+  const resizeElementRef = useRef(null);
   // Phase 12.1 — true between a layers-panel reorder and the fresh layers-tree
   // landing. A reorder churns positional data-cd-ids, so a rapid 2nd drag would
   // target stale ids; the Layers tree gates new drags on this until the rebuilt
@@ -7957,6 +7961,19 @@ function App() {
         if (e.source === activeWin && okShape) {
           repositionElementRef.current?.(m.id, m.left, m.top, m.beforeLeft, m.beforeTop);
         }
+      } else if (m.dgn === 'resize-request') {
+        // feature-element-editing-robustness Stage D — in-canvas drag-resize
+        // commit. Same trust model + confused-deputy guard as reposition-request:
+        // untrusted canvas REQUESTS, shell WRITES, pinned to the ACTIVE canvas
+        // (never `m.canvas`). Payload: { id, patch:{width,height,left?,top?},
+        // before:{width,height,left,top} } — px strings, before values null when
+        // the prop was unset (reset on undo).
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        const okShape =
+          typeof m.id === 'string' && m.patch && typeof m.patch === 'object';
+        if (e.source === activeWin && okShape) {
+          resizeElementRef.current?.(m.id, m.patch, m.before);
+        }
       } else if (m.dgn === 'open-inspector') {
         // Phase 12 — context-menu "Inspect" / tool-palette Inspect opens the right panel.
         openRightPanel('inspector');
@@ -8459,6 +8476,57 @@ function App() {
   useEffect(() => {
     repositionElementRef.current = repositionElement;
   }, [repositionElement]);
+
+  // feature-element-editing-robustness Stage D (Task D3) — commit an in-canvas
+  // drag-resize. `patch` = { width, height, left?, top? } (px strings); left/top
+  // are present only for a top/left-edge drag on an out-of-flow element. Writes
+  // each present property through the SAME main-origin `/_api/edit-css` endpoint
+  // the CSS panel + reposition use (no new write surface), serialized on the
+  // shared apply-edit chain, and records one undo entry per property (as
+  // reposition records left+top). Pinned to `activePath` (never `m.canvas`) —
+  // the confused-deputy guard DDR-138/DDR-054 established for reorder/reposition.
+  const resizeElement = useCallback(
+    (id, patch, before) => {
+      if (!id || !activePath || !patch || typeof patch !== 'object') return;
+      const canvas = activePath;
+      const b = before && typeof before === 'object' ? before : {};
+      const props = ['width', 'height', 'left', 'top'].filter(
+        (p) => typeof patch[p] === 'string' && patch[p]
+      );
+      if (!props.length) return;
+      const writeProp = (property, value) =>
+        fetch('/_api/edit-css', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ canvas, id, property, value }),
+        }).then((r) => r.json().catch(() => ({})));
+      let chain = editApplyChainRef.current.catch(() => {});
+      for (const p of props) {
+        chain = chain.then((prev) => {
+          if (prev && prev.ok === false) throw new Error(prev.error || `${p} write failed`);
+          return writeProp(p, patch[p]);
+        });
+      }
+      editApplyChainRef.current = chain
+        .then((last) => {
+          if (last && last.ok === false) throw new Error(last.error || 'resize write failed');
+          // Record one undo entry per written property (each Cmd+Z reverts one).
+          for (const p of props) {
+            recordSourceEdit({ op: 'css', canvas, id, key: p, before: b[p] ?? null, after: patch[p] });
+          }
+        })
+        .catch((err) => {
+          console.warn('[resize]', err?.message || err);
+          // Nothing (or only a prefix) persisted — tell the canvas to restore the
+          // pre-drag inline style so a phantom resize doesn't linger.
+          postToActiveCanvas({ dgn: 'resize-failed' });
+        });
+    },
+    [activePath, postToActiveCanvas, recordSourceEdit]
+  );
+  useEffect(() => {
+    resizeElementRef.current = resizeElement;
+  }, [resizeElement]);
 
   const resolveComment = useCallback((id) => {
     wsSend({ type: 'comments-patch', id, patch: { status: 'resolved' } });
