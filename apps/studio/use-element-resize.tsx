@@ -25,7 +25,7 @@
  */
 
 import { type ReactNode, useCallback, useEffect, useRef } from 'react';
-import { resolveSelectionEl } from './dom-selection.ts';
+import { globalCdOccurrence, resolveSelectionEl } from './dom-selection.ts';
 import { useSelectionSet } from './use-selection-set.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
 
@@ -252,6 +252,10 @@ interface ElResizeDrag {
   corner: ElResizeCorner | RotCorner;
   el: HTMLElement;
   cdId: string;
+  /** GLOBAL DOM-occurrence index of `el` among same-cd-id nodes (Stage H3). For a
+   *  reused component the server maps it to the dragged instance's `<Component/>`
+   *  usage so resizing one instance stays local; 0 for a normal element. */
+  idIndex: number;
   startClientX: number;
   startClientY: number;
   elZoom: number; // rect.width / offsetWidth — the element's own render scale
@@ -289,7 +293,7 @@ function postResizeRequest(drag: ElResizeDrag, r: ElResizeResult): void {
   if (typeof r.top === 'number') patch.top = `${r.top}px`;
   try {
     window.parent.postMessage(
-      { dgn: 'resize-request', id: drag.cdId, patch, before: drag.before },
+      { dgn: 'resize-request', id: drag.cdId, patch, before: drag.before, idIndex: drag.idIndex },
       '*'
     );
   } catch {
@@ -301,7 +305,13 @@ function postResizeRequest(drag: ElResizeDrag, r: ElResizeResult): void {
 function postRotateRequest(drag: ElResizeDrag, transform: string): void {
   try {
     window.parent.postMessage(
-      { dgn: 'resize-request', id: drag.cdId, patch: { transform }, before: drag.before },
+      {
+        dgn: 'resize-request',
+        id: drag.cdId,
+        patch: { transform },
+        before: drag.before,
+        idIndex: drag.idIndex,
+      },
       '*'
     );
   } catch {
@@ -473,6 +483,9 @@ export function ElementResizeOverlay(): ReactNode {
         corner,
         el,
         cdId: one.id,
+        // Stage H3 — which instance (global same-cd-id DOM occurrence) so a
+        // reused-component resize routes to its own `<Component/>` usage (local).
+        idIndex: globalCdOccurrence(document, one.id, el),
         startClientX: e.clientX,
         startClientY: e.clientY,
         elZoom: z,

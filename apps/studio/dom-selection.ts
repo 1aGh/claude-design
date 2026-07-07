@@ -147,6 +147,19 @@ export function selectorIndex(doc: Document, selector: string, el: Element | nul
 }
 
 /**
+ * GLOBAL occurrence index of `el` among EVERY node in the document that shares
+ * its `data-cd-id` — the DOM instance index the server-side reused-component
+ * usage resolver (`resolveUsageId`) expects, in source order. Distinct from a
+ * `Selection.index` (which counts within an artboard-SCOPED selector). Used to
+ * route a whole-instance move/resize per-occurrence (Stage H3) so it stays local
+ * to the dragged instance. Matches the reorder drag's own snapshot occurrence.
+ */
+export function globalCdOccurrence(doc: Document, cdId: string, el: Element | null): number {
+  if (!cdId || !el) return 0;
+  return selectorIndex(doc, `[data-cd-id="${cssEscape(cdId)}"]`, el);
+}
+
+/**
  * Resolve a stored Selection to its live element, artboard-scoped. Prefers the
  * id+artboardId scoped selector (the robust path), then the stored `selector`
  * (already scoped for recent selections; a legacy fallback for old comments).

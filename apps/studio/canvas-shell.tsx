@@ -3182,6 +3182,23 @@ function ReorderDrag() {
       if (!d || e.pointerId !== d.pointerId) return;
       if (!d.dragging) return; // a plain click — leave it to native handlers
       clearSettle(d);
+      // Occurrence index of a node among its like-id siblings, read from the
+      // PRE-drag snapshot (the live DOM already reflowed for an in-flow drop). For
+      // a reused component (many DOM nodes share one internal id) the server maps
+      // this to the parent's distinct <Component> USAGE; 0 for a normal element.
+      // Shared by the reposition (Stage H3 — instance move stays local) + reorder
+      // posts below, so both anchor to the same instance the user dragged.
+      const occ = (node: Element | null): number => {
+        if (!node || !d.snapshot) return 0;
+        const nid = node.getAttribute('data-cd-id');
+        const at = d.snapshot.indexOf(node);
+        if (!nid || at < 0) return 0;
+        let c = 0;
+        for (let k = 0; k < at; k++) {
+          if (d.snapshot[k]?.getAttribute('data-cd-id') === nid) c++;
+        }
+        return c;
+      };
       if (d.outOfFlow) {
         // Un-float: restore the pre-drag inline style (drops the drag-only
         // props AND the cursor-follow transform), then overlay the new
@@ -3206,6 +3223,7 @@ function ReorderDrag() {
             top,
             beforeLeft: Math.round(d.originLeft),
             beforeTop: Math.round(d.originTop),
+            idIndex: occ(d.el),
           },
           '*'
         );
@@ -3229,21 +3247,6 @@ function ReorderDrag() {
       // never persisted doesn't linger until the next canvas switch.
       lastCommit = d.origin ? { el: d.el, parent: d.origin.parent, next: d.origin.next } : null;
       suppressNextCanvasClick();
-      // Occurrence index of each node among its like-id siblings, read from the
-      // PRE-drag snapshot (the live DOM already reflowed). For a reused component
-      // (many DOM nodes share one internal id) the server maps this to the
-      // parent's distinct <Component> usage; 0 for a normal element.
-      const occ = (node: Element | null): number => {
-        if (!node || !d.snapshot) return 0;
-        const id = node.getAttribute('data-cd-id');
-        const at = d.snapshot.indexOf(node);
-        if (!id || at < 0) return 0;
-        let c = 0;
-        for (let k = 0; k < at; k++) {
-          if (d.snapshot[k]?.getAttribute('data-cd-id') === id) c++;
-        }
-        return c;
-      };
       const refNode = d.target?.kind === 'inside' ? d.target.container : (d.target?.el ?? null);
       window.parent.postMessage(
         {

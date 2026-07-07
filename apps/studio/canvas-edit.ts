@@ -262,7 +262,8 @@ export async function editAttribute(
   canvasAbsPath: string,
   id: string,
   attr: string,
-  value: string
+  value: string,
+  occurrence?: number
 ): Promise<EditResult> {
   return withLock(canvasAbsPath, async () => {
     const file = Bun.file(canvasAbsPath);
@@ -273,7 +274,7 @@ export async function editAttribute(
       });
     }
     const source = await file.text();
-    const next = applyEdit(canvasAbsPath, source, id, attr, value);
+    const next = applyEdit(canvasAbsPath, source, id, attr, value, occurrence);
     if (next.source === source) return { source, delta: 0, changed: false };
     const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
     await Bun.write(tmp, next.source);
@@ -294,7 +295,8 @@ export async function editAttribute(
 export async function removeAttribute(
   canvasAbsPath: string,
   id: string,
-  attr: string
+  attr: string,
+  occurrence?: number
 ): Promise<EditResult> {
   return withLock(canvasAbsPath, async () => {
     const file = Bun.file(canvasAbsPath);
@@ -305,7 +307,7 @@ export async function removeAttribute(
       });
     }
     const source = await file.text();
-    const next = applyRemove(canvasAbsPath, source, id, attr);
+    const next = applyRemove(canvasAbsPath, source, id, attr, occurrence);
     if (next.source === source) return { source, delta: 0, changed: false };
     const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
     await Bun.write(tmp, next.source);
@@ -320,7 +322,8 @@ export function applyRemove(
   canvasAbsPath: string,
   source: string,
   id: string,
-  attr: string
+  attr: string,
+  occurrence?: number
 ): EditResult {
   const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
   if (parsed.errors && parsed.errors.length > 0) {
@@ -332,6 +335,11 @@ export function applyRemove(
         id,
       }
     );
+  }
+  // Stage H3 — mirror applyEdit: a whole-instance reset routes to the dragged
+  // occurrence's `<Component/>` usage (no-op for a normal / single-usage element).
+  if (typeof occurrence === 'number' && Number.isFinite(occurrence)) {
+    id = resolveUsageId(parsed.program, id, occurrence);
   }
   const hit = findOpening(parsed.program, id);
   if (!hit) {
@@ -398,7 +406,8 @@ export function applyEdit(
   source: string,
   id: string,
   attr: string,
-  value: string
+  value: string,
+  occurrence?: number
 ): EditResult {
   const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
   if (parsed.errors && parsed.errors.length > 0) {
@@ -407,6 +416,19 @@ export function applyEdit(
       `oxc-parser failed on ${canvasAbsPath}: ${first?.message ?? 'unknown'}`,
       { canvas: canvasAbsPath, id }
     );
+  }
+
+  // feature-element-editing-robustness Stage H3 — when the caller passes an
+  // explicit DOM-occurrence index (a whole-component-instance move/resize), route
+  // the write to that occurrence's parent `<Component/>` USAGE so the edit stays
+  // LOCAL to the dragged instance (its own left/top/width/height) instead of
+  // mutating the shared inner definition (which would move every instance). A
+  // no-op for a normal element or a `.map()`ed single-usage one (resolveUsageId
+  // returns `id`). Deliberately gated on `occurrence` being present: the CssKnobs
+  // / paste-style paths pass NO occurrence, so styling an INNER shared element
+  // stays global-and-labeled — the H2 badge is the answer there (the chosen model).
+  if (typeof occurrence === 'number' && Number.isFinite(occurrence)) {
+    id = resolveUsageId(parsed.program, id, occurrence);
   }
 
   const hit = findOpening(parsed.program, id);

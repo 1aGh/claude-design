@@ -8245,7 +8245,14 @@ function App() {
           Number.isFinite(m.beforeLeft) &&
           Number.isFinite(m.beforeTop);
         if (e.source === activeWin && okShape) {
-          repositionElementRef.current?.(m.id, m.left, m.top, m.beforeLeft, m.beforeTop);
+          repositionElementRef.current?.(
+            m.id,
+            m.left,
+            m.top,
+            m.beforeLeft,
+            m.beforeTop,
+            Number.isInteger(m.idIndex) ? m.idIndex : undefined
+          );
         }
       } else if (m.dgn === 'resize-request') {
         // feature-element-editing-robustness Stage D — in-canvas drag-resize
@@ -8258,7 +8265,12 @@ function App() {
         const okShape =
           typeof m.id === 'string' && m.patch && typeof m.patch === 'object';
         if (e.source === activeWin && okShape) {
-          resizeElementRef.current?.(m.id, m.patch, m.before);
+          resizeElementRef.current?.(
+            m.id,
+            m.patch,
+            m.before,
+            Number.isInteger(m.idIndex) ? m.idIndex : undefined
+          );
         }
       } else if (m.dgn === 'delete-request') {
         // feature-element-editing-robustness Stage I — delete an element (Del key
@@ -8824,9 +8836,13 @@ function App() {
   // first (left) rather than clobbering it. Serialized on the shared
   // apply-edit chain so it can't race an in-flight write to the same file.
   const repositionElement = useCallback(
-    (id, left, top, beforeLeft, beforeTop) => {
+    (id, left, top, beforeLeft, beforeTop, idIndex) => {
       if (!id || !activePath) return;
       const canvas = activePath;
+      // Stage H3 — when the dragged target is a whole component INSTANCE the canvas
+      // passes its DOM-occurrence index; the server routes the left/top write to
+      // that instance's own `<Component/>` usage so moving one instance stays local.
+      const occ = Number.isInteger(idIndex) ? idIndex : undefined;
       // INV-2 (DDR-105) — arm the reload-suppression window BEFORE the edit-css
       // writes so the HMR reload is skipped and the canvas doesn't remount + drop
       // the selection (dogfood: "když pohnu elementem myší, ztratím focus"). Same
@@ -8837,7 +8853,7 @@ function App() {
         fetch('/_api/edit-css', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ canvas, id, property, value: `${value}px` }),
+          body: JSON.stringify({ canvas, id, property, value: `${value}px`, idIndex: occ }),
         }).then((r) => r.json().catch(() => ({})));
       editApplyChainRef.current = editApplyChainRef.current
         .catch(() => {})
@@ -8889,10 +8905,14 @@ function App() {
   // reposition records left+top). Pinned to `activePath` (never `m.canvas`) —
   // the confused-deputy guard DDR-138/DDR-054 established for reorder/reposition.
   const resizeElement = useCallback(
-    (id, patch, before) => {
+    (id, patch, before, idIndex) => {
       if (!id || !activePath || !patch || typeof patch !== 'object') return;
       const canvas = activePath;
       const b = before && typeof before === 'object' ? before : {};
+      // Stage H3 — a whole-instance resize carries its DOM-occurrence index so the
+      // width/height/left/top write lands on that instance's own `<Component/>`
+      // usage (local), not the shared inner definition. undefined for a plain element.
+      const occ = Number.isInteger(idIndex) ? idIndex : undefined;
       // `transform` rides the same lane for the rotate handle (Task L8).
       const props = ['width', 'height', 'left', 'top', 'transform'].filter(
         (p) => typeof patch[p] === 'string' && patch[p]
@@ -8906,7 +8926,7 @@ function App() {
         fetch('/_api/edit-css', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ canvas, id, property, value }),
+          body: JSON.stringify({ canvas, id, property, value, idIndex: occ }),
         }).then((r) => r.json().catch(() => ({})));
       let chain = editApplyChainRef.current.catch(() => {});
       for (const p of props) {

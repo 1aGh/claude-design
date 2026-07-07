@@ -294,6 +294,8 @@ export interface Api {
     id?: unknown;
     property?: unknown;
     value?: unknown;
+    reset?: unknown;
+    idIndex?: unknown;
   }): Promise<EditOpResult>;
   // Phase 12 (DDR-103) — inline text-content edit (POST /_api/edit-text). Main-origin only.
   editText(input: { canvas?: unknown; id?: unknown; text?: unknown }): Promise<EditOpResult>;
@@ -1970,11 +1972,20 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     property?: unknown;
     value?: unknown;
     reset?: unknown;
+    idIndex?: unknown;
   }): Promise<EditOpResult> {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
     const id = typeof input.id === 'string' ? input.id.trim() : '';
     if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid data-cd-id' };
+    // Stage H3 — optional DOM-occurrence index. Present only for a whole-instance
+    // move/resize (reposition/resize-request); routes the write to the dragged
+    // component instance's own `<Component/>` usage so it stays LOCAL. Absent for
+    // knob / paste-style edits (those stay global on the shared inner element).
+    const idIndex =
+      typeof input.idIndex === 'number' && Number.isInteger(input.idIndex) && input.idIndex >= 0
+        ? input.idIndex
+        : undefined;
     const property = typeof input.property === 'string' ? input.property.trim() : '';
     // CSS property names are ASCII letters + hyphens only (optionally a leading
     // `-` for vendor prefixes) — reject anything that could smuggle a second key
@@ -1989,7 +2000,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     if (input.reset === true) {
       return suppressedEdit(
         r.abs,
-        () => removeAttribute(r.abs, id, `style.${camel}`),
+        () => removeAttribute(r.abs, id, `style.${camel}`, idIndex),
         'reset failed'
       );
     }
@@ -2002,7 +2013,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     // `#fff`, `8px`, `700`, `1.5` all ride verbatim.
     return suppressedEdit(
       r.abs,
-      () => editAttribute(r.abs, id, `style.${camel}`, JSON.stringify(value)),
+      () => editAttribute(r.abs, id, `style.${camel}`, JSON.stringify(value), idIndex),
       'edit failed'
     );
   }
