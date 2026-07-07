@@ -3,9 +3,10 @@
  * @scope      apps/studio/comments-overlay.tsx
  * @purpose    Renders DS-styled comment pins (Phase 6 Task 2), the in-place
  *             composer bubble (Task 3), and the thread popover (Task 4)
- *             inside the canvas iframe. Sibling to `annotations-layer` —
- *             portals into `.dc-world` so CSS zoom + translate on the world
- *             plane scale every pin/popover uniformly with the artboards.
+ *             inside the canvas iframe. Sibling to `annotations-layer`, but
+ *             NOT portaled into `.dc-world` — renders as a screen-coord
+ *             `position: fixed` layer instead (DDR-034; see "Pin position
+ *             math" below).
  *
  * Data flow (Phase 6 Task 2 — pins only; composer + thread land in Task 3/4):
  *   1. Shell (`client/app.jsx`) pushes `{ dgn: 'comments-set', comments }`
@@ -23,9 +24,23 @@
  * gain a `comments-filter` channel in Task 6; until then the overlay always
  * hides resolved pins. Plan-aligned.
  *
- * Pin position math — see `offsetWithinWorld` below. We walk offsetParent up
- * to `.dc-world` to get pre-zoom world coords directly; CSS zoom on the world
- * plane then renders the pin at the right scale without us doing zoom math.
+ * Pin position math — see `resolveCommentTarget` below. Screen coords come
+ * straight from `getBoundingClientRect()` on the live target; CSS zoom on the
+ * world plane is already baked into that rect, so no zoom math is needed here.
+ *
+ * Target resolution + orphan cleanup — a canvas rewrite (`/design:edit`
+ * regenerating JSX) renumbers `data-cd-id` (DDR-019's documented AST-position
+ * trade-off), which can silently reanchor a comment to the wrong element or to
+ * nothing. `resolveCommentTarget` tries the stored selector first, falls back
+ * to a structural match via `resolveByDomPath` (dom-selection.ts) when the
+ * direct hit is missing or looks like the wrong element (tag mismatch), and —
+ * per DDR-034's deferred future-work item — `CommentPin` auto-deletes a
+ * comment whose target stays unresolvable past a short grace window.
+ *
+ * Popup placement — `CommentComposer` / `CommentThread` pick a side
+ * (left/right, above/below the anchor) that actually fits the viewport via
+ * `placeNearPoint`, instead of always growing down-right (which used to clip
+ * off-screen near the canvas edge).
  *
  * The legacy vanilla-JS `#dgn-pin-layer` injected by `inspect.ts` is hidden
  * on mount to avoid double-pins inside TSX canvases. The legacy layer still
@@ -34,6 +49,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { resolveByDomPath } from './dom-selection.ts';
 import { useCollab } from './use-collab.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 
@@ -92,8 +108,15 @@ export interface OverlayComment {
   author?: string;
   thread?: OverlayReply[];
   mentions?: string[];
-  // dom_path / tag / classes / html_excerpt unused at overlay layer; kept off
-  // the type to keep the surface tight.
+  /** Target's tag/classes/ancestor-path at creation time — unused for
+   * rendering, but the structural-fallback ingredients `resolveCommentTarget`
+   * reaches for when the stored `selector` no longer identifies the right
+   * element (see file header). Absent on legacy comments. */
+  tag?: string;
+  classes?: string;
+  dom_path?: string[];
+  // html_excerpt unused at overlay layer; kept off the type to keep the
+  // surface tight.
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -141,30 +164,90 @@ function deriveFile(): string | null {
 // halo chrome at z-index 5) instead of being portaled into `.dc-world` where
 // it would lose the stacking battle.
 
-function screenRectFor(
-  selector: string,
-  index?: number
-): {
+export interface TargetRef {
+  selector: string;
+  index?: number;
+  tag?: string;
+  classes?: string;
+  dom_path?: string[];
+}
+
+/**
+ * Resolve a comment (or in-progress selection)'s live target element. Tries
+ * the stored `data-cd-id` selector first — cheap, correct in the common case.
+ * A tag mismatch against what was captured at creation time is the tell that
+ * `data-cd-id` renumbered onto an unrelated element (DDR-019); when that
+ * happens, or the selector matches nothing at all, fall back to a structural
+ * match via `resolveByDomPath`.
+ */
+export function resolveCommentTarget(target: TargetRef): HTMLElement | null {
+  if (!target.selector) return null;
+  let el: HTMLElement | null = null;
+  try {
+    // index disambiguates a component repeated within one artboard (querySelector
+    // alone would always grab the first match). Absent/0 → first.
+    const all = document.querySelectorAll(target.selector);
+    const i = target.index && target.index > 0 && target.index < all.length ? target.index : 0;
+    el = (all[i] ?? all[0] ?? null) as HTMLElement | null;
+  } catch {
+    el = null;
+  }
+  if (el && target.tag && el.tagName.toLowerCase() !== target.tag.toLowerCase()) {
+    el = null;
+  }
+  if (!el && target.dom_path?.length) {
+    const artboardId = target.selector.match(/data-dc-screen="([^"]+)"/)?.[1];
+    el = resolveByDomPath(document, {
+      artboardId,
+      tag: target.tag,
+      classes: target.classes,
+      dom_path: target.dom_path,
+    }) as HTMLElement | null;
+  }
+  return el;
+}
+
+function screenRectFor(target: TargetRef): {
   x: number;
   y: number;
   w: number;
   h: number;
 } | null {
-  if (!selector) return null;
-  let el: HTMLElement | null = null;
-  try {
-    // index disambiguates a component repeated within one artboard (querySelector
-    // alone would always grab the first match). Absent/0 → first.
-    const all = document.querySelectorAll(selector);
-    const i = index && index > 0 && index < all.length ? index : 0;
-    el = (all[i] ?? all[0] ?? null) as HTMLElement | null;
-  } catch {
-    return null;
-  }
+  const el = resolveCommentTarget(target);
   if (!el?.isConnected) return null;
   const r = el.getBoundingClientRect();
   if (r.width === 0 && r.height === 0) return null;
   return { x: r.left, y: r.top, w: r.width, h: r.height };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Edge-aware popup placement — picks a side (left/right, above/below the
+// anchor point) that actually fits the viewport, falling back to an inward
+// clamp for the rare case where no side fully fits (tiny viewport). Mirrors
+// the pattern context-menu.tsx already uses for the same problem, but flips
+// axes instead of only clamping, per the explicit ask: always open toward
+// whichever side has room, not just "shifted back into view".
+export function placeNearPoint(
+  point: { x: number; y: number },
+  size: { w: number; h: number }
+): { x: number; y: number } {
+  const margin = 8;
+  const vw = typeof window !== 'undefined' ? window.innerWidth : point.x + size.w;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : point.y + size.h;
+
+  let x = point.x;
+  if (x + size.w + margin > vw) {
+    const flipped = point.x - size.w;
+    x = flipped >= margin ? flipped : Math.max(margin, vw - size.w - margin);
+  }
+
+  let y = point.y;
+  if (y + size.h + margin > vh) {
+    const flipped = point.y - size.h;
+    y = flipped >= margin ? flipped : Math.max(margin, vh - size.h - margin);
+  }
+
+  return { x, y };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -453,6 +536,7 @@ export function CommentsOverlay(): React.ReactNode {
             sequence={n}
             focused={focusedId === c.id}
             onClick={handlePinClick}
+            onOrphaned={handleDelete}
           />
         );
       })}
@@ -736,19 +820,28 @@ function MentionAwareTextarea({
 // reflow, font load). Falls back to the stored `bounds` when the target is
 // gone from the DOM.
 
+// How long a pin is allowed to stay unresolvable (no live target AND no
+// structural-fallback match) before its comment is presumed orphaned and
+// auto-deleted. Long enough to ride out a canvas HMR remount; short enough
+// that a genuinely deleted element's comment doesn't linger.
+const ORPHAN_GRACE_MS = 3000;
+
 function CommentPin({
   comment,
   sequence,
   focused,
   onClick,
+  onOrphaned,
 }: {
   comment: OverlayComment;
   sequence: number;
   focused: boolean;
   onClick: (id: string) => void;
+  onOrphaned: (id: string) => void;
 }) {
   const ref = useRef<HTMLButtonElement | null>(null);
   const rafRef = useRef<number | null>(null);
+  const unresolvedSinceRef = useRef<number | null>(null);
 
   useEffect(() => {
     const tick = () => {
@@ -756,17 +849,27 @@ function CommentPin({
       const pin = ref.current;
       if (!pin) return;
 
-      // Live screen-coord lookup mirrors SelectionHalos in canvas-shell.tsx.
-      // Falls back to stored bounds (a screen-coord capture at create time)
-      // when the target element is gone — better than vanishing entirely.
-      let pos = screenRectFor(comment.selector, comment.index);
-      if (!pos && comment.bounds) {
-        pos = {
-          x: comment.bounds.x,
-          y: comment.bounds.y,
-          w: comment.bounds.w,
-          h: comment.bounds.h,
-        };
+      // Live screen-coord lookup mirrors SelectionHalos in canvas-shell.tsx
+      // (resolveCommentTarget tries the stored selector, then a structural
+      // fallback). Falls back to stored bounds (a screen-coord capture at
+      // create time) when neither resolves — better than vanishing entirely.
+      let pos = screenRectFor(comment);
+      if (pos) {
+        unresolvedSinceRef.current = null;
+      } else {
+        if (unresolvedSinceRef.current == null) {
+          unresolvedSinceRef.current = Date.now();
+        } else if (Date.now() - unresolvedSinceRef.current > ORPHAN_GRACE_MS) {
+          onOrphaned(comment.id);
+        }
+        if (comment.bounds) {
+          pos = {
+            x: comment.bounds.x,
+            y: comment.bounds.y,
+            w: comment.bounds.w,
+            h: comment.bounds.h,
+          };
+        }
       }
       if (!pos) {
         pin.style.display = 'none';
@@ -786,7 +889,7 @@ function CommentPin({
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
-  }, [comment.selector, comment.bounds, comment.index]);
+  }, [comment, onOrphaned]);
 
   const author = comment.author?.trim() || 'unknown';
   const label = `Comment ${sequence} by ${author}`;
@@ -835,15 +938,17 @@ function CommentComposer({
 
   // Live anchor — composer tracks the target element via rAF so pan/zoom
   // while typing keeps the card glued to its anchor. Writes directly to the
-  // DOM so we don't re-render every frame.
+  // DOM so we don't re-render every frame. `placeNearPoint` picks whichever
+  // side actually fits the viewport instead of always growing down-right.
   useEffect(() => {
     const tick = () => {
       rafRef.current = null;
       const node = cardRef.current;
       if (!node) return;
       const anchor = computeAnchor(state);
-      node.style.left = `${Math.round(anchor.x)}px`;
-      node.style.top = `${Math.round(anchor.y)}px`;
+      const placed = placeNearPoint(anchor, { w: node.offsetWidth, h: node.offsetHeight });
+      node.style.left = `${Math.round(placed.x)}px`;
+      node.style.top = `${Math.round(placed.y)}px`;
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -960,15 +1065,17 @@ function CommentThread({
 
   // Live anchor — popover tracks the pin via rAF so it stays glued to its
   // target through pan / zoom (FigJam parity). Writing to the dialog style
-  // directly avoids re-rendering every frame.
+  // directly avoids re-rendering every frame. `placeNearPoint` picks whichever
+  // side actually fits the viewport instead of always growing down-right.
   useEffect(() => {
     const tick = () => {
       rafRef.current = null;
       const node = dialogRef.current;
       if (!node) return;
       const anchor = computeThreadAnchor(comment);
-      node.style.left = `${Math.round(anchor.x)}px`;
-      node.style.top = `${Math.round(anchor.y)}px`;
+      const placed = placeNearPoint(anchor, { w: node.offsetWidth, h: node.offsetHeight });
+      node.style.left = `${Math.round(placed.x)}px`;
+      node.style.top = `${Math.round(placed.y)}px`;
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -1180,7 +1287,7 @@ function computeThreadAnchor(comment: OverlayComment): { x: number; y: number } 
   // Resolve target's live screen rect; popover drops below the pin with small
   // breathing room. Stored bounds (capture-time screen coords) are the
   // last-resort fallback for orphaned pins.
-  const rect = comment.selector ? screenRectFor(comment.selector, comment.index) : null;
+  const rect = comment.selector ? screenRectFor(comment) : null;
   if (rect) {
     // Pin sits at (rect.right - 12, rect.top - 12). Place popover at the same
     // x for visual continuity, 16px below the top so it clears the pin.
@@ -1205,7 +1312,7 @@ function computeAnchor(state: ComposerState): { x: number; y: number } {
     return { x: state.clientX, y: state.clientY + 8 };
   }
   if (state.selection.selector) {
-    const rect = screenRectFor(state.selection.selector, state.selection.index);
+    const rect = screenRectFor(state.selection);
     if (rect) {
       return { x: rect.x, y: rect.y + rect.h + 8 };
     }

@@ -176,6 +176,63 @@ export function resolveSelectionEl(
 }
 
 /**
+ * Length of the trailing run `a` and `b` share, walked from the end. `domPath()`
+ * hops carry no positional (nth-child) info, so a shared suffix survives a
+ * sibling insertion/removal anywhere earlier in the tree — exactly the DDR-019
+ * `data-cd-id` renumbering case this fallback exists for.
+ */
+function matchingSuffixLength(a: string[], b: string[]): number {
+  let n = 0;
+  const max = Math.min(a.length, b.length);
+  for (let i = 1; i <= max; i++) {
+    if (a[a.length - i] !== b[b.length - i]) break;
+    n++;
+  }
+  return n;
+}
+
+/**
+ * Best-effort structural fallback for when a stored `data-cd-id` selector no
+ * longer identifies the intended element. A canvas rewrite (`/design:edit`
+ * regenerating JSX) renumbers `data-cd-id` — it's an AST-position fingerprint,
+ * not a stable identity (DDR-019) — so the id can end up on an unrelated
+ * element, or on none at all. This scores every stamped element in the
+ * artboard by how much of its live `domPath()` matches the STORED path
+ * (as a trailing run) plus authored-class overlap, and requires the leaf tag
+ * to match. Returns null when nothing scores above zero (no plausible match —
+ * the caller should treat the target as gone).
+ */
+export function resolveByDomPath(
+  doc: Document,
+  opts: { artboardId?: string | null; tag?: string; classes?: string; dom_path?: string[] }
+): Element | null {
+  const storedPath = opts.dom_path;
+  const wantTag = (opts.tag || '').toLowerCase();
+  if (!storedPath || storedPath.length === 0 || !wantTag) return null;
+  let scope: ParentNode = doc;
+  if (opts.artboardId) {
+    const artboard = doc.querySelector(`[data-dc-screen="${opts.artboardId}"]`);
+    if (artboard) scope = artboard;
+  }
+  const wantClasses = (opts.classes || '').split(/\s+/).filter(Boolean);
+  let best: Element | null = null;
+  let bestScore = 0;
+  for (const el of Array.from(scope.querySelectorAll('[data-cd-id]'))) {
+    if (el.tagName.toLowerCase() !== wantTag) continue;
+    const suffix = matchingSuffixLength(domPath(el), storedPath);
+    if (suffix === 0) continue;
+    const liveClasses = realClasses(el).split(/\s+/).filter(Boolean);
+    const overlap = wantClasses.filter((c) => liveClasses.includes(c)).length;
+    const score = suffix * 10 + overlap;
+    if (score > bestScore) {
+      bestScore = score;
+      best = el;
+    }
+  }
+  return best;
+}
+
+/**
  * Phase 12.2 — style maps for the CSS-knob properties. `authored` is what the
  * element sets INLINE (React renders `style={{padding:8}}` → `style="padding:8px"`),
  * so the knob pre-fills the EDITABLE source value and is blank when unset — not
