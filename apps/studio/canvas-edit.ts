@@ -747,6 +747,69 @@ function resolveUsageId(
 }
 
 /**
+ * Edit-scope verdict for the INV-3 predictability badge (feature-element-editing-
+ * robustness Stage H). Tells the Inspector whether a style/attr edit to `domId`
+ * stays LOCAL (this one rendered place) or is SHARED (changes N places).
+ */
+export interface EditScope {
+  scope: 'local' | 'shared';
+  /** Enclosing reused-component name when the element lives inside one, else null. */
+  componentName: string | null;
+  /** How many rendered places an edit to this element touches. */
+  affects: number;
+  /** single = a lone element · component = inside an N-usage component · mapped =
+   *  one source element rendered N× via `.map()` (DDR-139 §1). */
+  reason: 'single' | 'component' | 'mapped';
+}
+
+/**
+ * Resolve whether an edit to `domId` is local or shared — composing the SAME
+ * primitives `resolveUsageId` ships: the element's enclosing `componentName` plus
+ * the source usage count of that component. `renderedCount` is the number of DOM
+ * nodes carrying this cd-id (the client knows it): a single source element
+ * rendered N× through `.map()` is `shared` ('mapped') even with one source usage,
+ * so the badge never lies. A parse failure degrades to `local` (a badge must
+ * never crash selection). Pure — unit-tested without a DOM.
+ */
+export function resolveEditScope(
+  canvasAbsPath: string,
+  source: string,
+  domId: string,
+  renderedCount = 1
+): EditScope {
+  const rendered =
+    Number.isFinite(renderedCount) && renderedCount > 0 ? Math.floor(renderedCount) : 1;
+  let program: AnyNode;
+  try {
+    const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+    if (parsed.errors && parsed.errors.length > 0) {
+      return { scope: 'local', componentName: null, affects: 1, reason: 'single' };
+    }
+    program = parsed.program;
+  } catch {
+    return { scope: 'local', componentName: null, affects: 1, reason: 'single' };
+  }
+  const all = collectElementsFull(program);
+  const target = all.find((e) => e.id === domId);
+  const compName = target?.componentName || '';
+  // Usages of the enclosing component = distinct `<Component/>` tags in the tree.
+  // 0 for a top-level artboard element (the Canvas fn is never `<Canvas/>`'d).
+  const usages = compName ? all.filter((e) => e.tag === compName).length : 0;
+  if (usages > 1) {
+    return {
+      scope: 'shared',
+      componentName: compName,
+      affects: Math.max(usages, rendered),
+      reason: 'component',
+    };
+  }
+  if (rendered > 1) {
+    return { scope: 'shared', componentName: compName || null, affects: rendered, reason: 'mapped' };
+  }
+  return { scope: 'local', componentName: null, affects: 1, reason: 'single' };
+}
+
+/**
  * Move the element with `data-cd-id === id` to a position relative to the element
  * with `data-cd-id === refId`. Async wrapper: read, apply, atomic write under the
  * per-file mutex — identical persistence to `editAttribute`.

@@ -13,6 +13,7 @@ import {
   CanvasEditError,
   type ClipInfo,
   deleteElement,
+  type EditScope,
   editArrayElementString,
   editAttribute,
   enumerateClips,
@@ -26,6 +27,7 @@ import {
   removeClip,
   reorderClip,
   resizeArtboard,
+  resolveEditScope,
   retimeSequence,
   retimeSequenceByClip,
   editText as runEditText,
@@ -428,6 +430,12 @@ export interface Api {
     width?: unknown;
     height?: unknown;
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
+  /** Edit-scope verdict (local vs shared component instance) for the INV-3 badge. */
+  editScopeOp(input: {
+    canvas?: unknown;
+    id?: unknown;
+    rendered?: unknown;
+  }): Promise<({ ok: true } & EditScope) | { ok: false; status: number; error: string }>;
   // Undo/redo a prior reorder by seq (Cmd+Z from the canvas undo stack). Whole-
   // file content swap from the in-memory revert log — immune to the positional
   // data-cd-id churn a reorder causes (inverse-descriptor undo would go stale).
@@ -2489,6 +2497,34 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  /**
+   * Edit-scope verdict for the INV-3 predictability badge (Stage H). READ-only —
+   * parses the canvas + returns whether an edit to `id` is local or shared. No
+   * write, no undo, no rate-cap (a mere parse the shell runs on selection). The
+   * client supplies `rendered` = the DOM occurrence count of the cd-id so the
+   * `.map()` case is honest.
+   */
+  async function editScopeOp(input: {
+    canvas?: unknown;
+    id?: unknown;
+    rendered?: unknown;
+  }): Promise<({ ok: true } & EditScope) | { ok: false; status: number; error: string }> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const id = typeof input.id === 'string' ? input.id.trim() : '';
+    if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid data-cd-id' };
+    const rendered = Number.isFinite(Number(input.rendered))
+      ? Math.max(1, Math.round(Number(input.rendered)))
+      : 1;
+    try {
+      const source = await Bun.file(r.abs).text();
+      const scope = resolveEditScope(r.abs, source, id, rendered);
+      return { ok: true, ...scope };
+    } catch (err) {
+      return { ok: false, status: 500, error: err instanceof Error ? err.message : 'scope failed' };
+    }
+  }
+
   async function toggleHideOp(input: {
     canvas?: unknown;
     stableId?: unknown;
@@ -3123,6 +3159,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     insertElementOp,
     insertArtboardOp,
     resizeArtboardOp,
+    editScopeOp,
     reorderRevert,
     buildIndexData,
     buildSystemData,

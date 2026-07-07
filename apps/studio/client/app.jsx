@@ -5792,6 +5792,7 @@ function InspectorPanel({
   onRecordEdit,
   onReplaceMedia,
   onUndoRedo,
+  editScope,
   tab: tabProp,
   onTabChange,
   width,
@@ -6126,6 +6127,30 @@ function InspectorPanel({
           <StIcon name="x" size={14} />
         </button>
       </div>
+      {/* Stage H (INV-3) — edit-scope strip: is an edit local to this element or
+          shared across N rendered places? Visible across every tab so it's never
+          a surprise. Only for a single element selection with a resolved verdict. */}
+      {el?.id && !(Array.isArray(selected) && selected.length > 1) && editScope ? (
+        <div
+          className={`st-scope st-scope--${editScope.scope}`}
+          title={
+            editScope.scope === 'shared'
+              ? `Editing this element's style changes ${editScope.affects} place${
+                  editScope.affects === 1 ? '' : 's'
+                }${
+                  editScope.componentName ? ` (component ${editScope.componentName})` : ''
+                }. Move/resize a whole instance to keep it local.`
+              : 'This edit affects only this element.'
+          }
+        >
+          <span className="st-scope-dot" aria-hidden="true" />
+          {editScope.scope === 'shared'
+            ? `Shared${editScope.componentName ? ` · ${editScope.componentName}` : ''} · edits ${
+                editScope.affects
+              } place${editScope.affects === 1 ? '' : 's'}`
+            : 'Local · this element only'}
+        </div>
+      ) : null}
       <div className="st-rp-body">
         {!el ? (
           <div className="st-rp-empty">
@@ -6287,6 +6312,32 @@ function App() {
   useEffect(() => {
     selectedRef.current = selected;
   }, [selected]);
+
+  // Stage H (INV-3) — resolve the edit-scope (local vs shared component instance)
+  // for the current single selection so the Inspector can show whether an edit
+  // stays here or changes N places. Read-only GET, debounced by the selection id;
+  // aborts a stale in-flight fetch when the selection changes. Fetched with
+  // rendered=1 (source-usage-driven; the .map() refinement is a follow-up).
+  const [editScope, setEditScope] = useState(null);
+  useEffect(() => {
+    const one = Array.isArray(selected) ? (selected.length === 1 ? selected[0] : null) : selected;
+    const id = one && typeof one.id === 'string' ? one.id : null;
+    if (!id || !activePath) {
+      setEditScope(null);
+      return;
+    }
+    const ac = new AbortController();
+    const q = new URLSearchParams({ canvas: activePath, id });
+    fetch(`/_api/edit-scope?${q}`, { signal: ac.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (j?.ok) setEditScope(j);
+      })
+      .catch(() => {
+        /* aborted / offline — leave the last verdict, the badge just won't show */
+      });
+    return () => ac.abort();
+  }, [selected, activePath]);
   // feature-acp-context-hardening — halo re-apply retry ladder. A single
   // select-by-id post races the fresh iframe: dgn:'loaded' fires from the
   // inline inspector script at HTML-parse time, BEFORE the React canvas-shell
@@ -9576,6 +9627,7 @@ function App() {
               onOptimistic={applyOptimisticStyle}
               onRecordEdit={recordSourceEdit}
               onReplaceMedia={onReplaceMedia}
+              editScope={editScope}
               onUndoRedo={(dir) => postToActiveCanvas({ dgn: dir })}
               layersTree={layersTree}
               canvasFile={activePath}

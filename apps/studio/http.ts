@@ -1894,6 +1894,31 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       );
     },
 
+    '/_api/edit-scope': async (req: Request) => {
+      // Stage H (feature-element-editing-robustness) — the INV-3 predictability
+      // verdict. GET ?canvas&id&rendered → { ok, scope:'local'|'shared',
+      // componentName, affects, reason }. READ-only (a parse the shell runs on
+      // selection to render the Local/Shared badge). MAIN-ORIGIN ONLY: absent
+      // from CANVAS_SAFE_API + startCanvasServer routes (dual-allowlist, DDR-054);
+      // loopback-Host gated (DNS-rebinding); no sameOriginWrite (GET).
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const url = new URL(req.url);
+      const result = await api.editScopeOp({
+        canvas: url.searchParams.get('canvas') ?? undefined,
+        id: url.searchParams.get('id') ?? undefined,
+        rendered: url.searchParams.get('rendered') ?? undefined,
+      });
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
+    },
+
     '/_api/resize-artboard': async (req: Request) => {
       // Stage D4 — free-hand artboard resize. POST { canvas, artboardId, width?,
       // height? } → api.resizeArtboardOp (writes the NUMERIC width/height props on
