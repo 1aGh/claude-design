@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-07T20:13:37.182Z",
+  "generated": "2026-07-08T10:18:09.465Z",
   "currentPhase": null,
   "phases": [
     {
@@ -179,6 +179,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-desktop-intel-mac-support",
+      "title": "Feature: Intel Mac support for the desktop app",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate the local test build (Task 5) BEFORE touching CI — the exact Tauri universal-binary bundle path is asserted, not 100% confirmed against this repo's Tauri version.",
+      "planPath": ".ai/plans/archive/feature-desktop-intel-mac-support.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-docs-site-followups",
       "title": "Feature: docs-site MDCC-DSN/01 follow-ups",
       "status": "done",
@@ -208,6 +219,17 @@
       "date": null,
       "summary": "tracks on any node) is the cross-platform animation source; maude is its editor (/design:draw + motion utils). It extends the DDR-067 single-source invariant from static geometry to time. (alias /d...",
       "planPath": ".ai/plans/archive/feature-draw-animation-layer.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-element-editing-robustness",
+      "title": "Feature: Robust in-canvas + specimen element editing (Figma/Webflow-grade)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan is grounded in a four-agent read of the studio editing subsystems (selection...",
+      "planPath": ".ai/plans/archive/feature-element-editing-robustness.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1132,28 +1154,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-background-export-notification-center.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-desktop-intel-mac-support",
-      "title": "Feature: Intel Mac support for the desktop app",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate the local test build (Task 5) BEFORE touching CI — the exact Tauri universal-binary bundle path is asserted, not 100% confirmed against this repo's Tauri version.",
-      "planPath": ".ai/plans/feature-desktop-intel-mac-support.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-element-editing-robustness",
-      "title": "Feature: Robust in-canvas + specimen element editing (Figma/Webflow-grade)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan is grounded in a four-agent read of the studio editing subsystems (selection...",
-      "planPath": ".ai/plans/feature-element-editing-robustness.md",
       "archived": false,
       "phaseKey": null
     },
