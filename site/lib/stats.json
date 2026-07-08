@@ -20,6 +20,7 @@
   },
   "pageUpdated": {
     "cli.mdx": "2026-06-11",
+    "commands-design/board.mdx": "2026-07-07",
     "commands-design/browse.mdx": "2026-07-03",
     "commands-design/chat.mdx": "2026-07-03",
     "commands-design/critic.mdx": "2026-07-03",
