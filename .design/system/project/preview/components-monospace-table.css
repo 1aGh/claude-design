@@ -1,7 +1,0 @@
-table.mono{width:100%;border-collapse:collapse;border:1px solid var(--border-default);font-family:var(--font-mono);font-size:var(--type-sm)}
-  table.mono th{text-align:left;padding:var(--space-2) var(--space-4);background:var(--bg-2);border-bottom:1px solid var(--border-strong);font-weight:600;font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase;color:var(--fg-2)}
-  table.mono td{padding:var(--space-2) var(--space-4);border-bottom:1px solid var(--border-subtle);color:var(--fg-1);vertical-align:top}
-  table.mono td.num{text-align:right;font-variant-numeric:tabular-nums;color:var(--fg-0)}
-  table.mono td.id{color:var(--fg-0);font-weight:500}
-  table.mono tr:hover td{background:var(--bg-2)}
-  table.mono tr.head td{font-weight:600;color:var(--fg-0);background:var(--bg-2);border-top:1px solid var(--border-strong);text-transform:uppercase;letter-spacing:var(--tracking-wide);font-size:var(--type-xs)}

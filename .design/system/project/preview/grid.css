@@ -1,2 +1,0 @@
-.twelve{display:grid;grid-template-columns:repeat(12,1fr);gap:0;border:1px solid var(--border-default)}
-  .twelve > div{padding:var(--space-3);background:var(--bg-1);border:1px solid var(--border-default);margin:-1px 0 0 -1px;font-family:var(--font-mono);font-size:var(--type-xs);color:var(--fg-2);text-align:center}

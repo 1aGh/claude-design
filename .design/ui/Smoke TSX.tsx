@@ -1,6 +1,6 @@
 /**
  * @canvas      Smoke TSX — TSX runtime smoke (single artboard, useState round-trip)
- * @ds          project
+ * @ds          maude
  * @platform    web-desktop
  * @opt_out     none
  * @artboards   primary
@@ -11,9 +11,9 @@
  * @history     _history/ui_Smoke-TSX/
  * @handoff     bunx shadcn add file://./Smoke TSX.registry.json
  *
- * Authored under the project DS. Tokens + shared component classes load via the
+ * Authored under the maude DS. Tokens + shared component classes load via the
  * dev-server's _shell.html harness. The frame envelope below is imported from
- * the project-owned canvas library (virtual specifier → `_lib/canvas-lib.tsx`).
+ * the shared canvas library (virtual specifier → `@maude/canvas-lib`).
  */
 
 import { useState } from "react";
@@ -25,21 +25,26 @@ export default function SmokeTSX() {
   return (
     <DesignCanvas>
       <DCSection id="overview" title="TSX runtime smoke">
-        <DCArtboard id="primary" label="A · primary" width={720} height={320}>
-          <div className="mdcc" style={{ padding: 32, fontFamily: "monospace" }}>
-            <h1 data-dc-element="title">TSX smoke canvas</h1>
-            <button
-              type="button"
-              onClick={() => setN(n + 1)}
-              style={{
-                padding: "8px 14px",
-                border: "1px solid currentColor",
-                background: "transparent",
-                cursor: "pointer",
-              }}
-            >
-              clicked {n}
-            </button>
+        <DCArtboard id="primary" label="A · primary" width={696} height={404}>
+          <div className="maude" style={{ padding: 32, fontFamily: "monospace" , display: "flex" , flexDirection: "column" , alignItems: "flex-start" , width: "fit-content" , height: "fit-content" , paddingTop: "89.17px" , paddingRight: "89.17px" , paddingBottom: "89.17px" , paddingLeft: "89.17px" , gap: "11.95px" }}>
+           <img
+             src="assets/eb268f9c.png"
+             alt=""
+             style={{ maxWidth: "200px", marginTop: 16 , position: "absolute" , left: "466px" , top: "69px" , borderRadius: "10px" , height: "179px" , objectFit: "cover" , aspectRatio: "1 / 1" , width: "179px" }}
+           />
+           <h1 style={{ position: "static" , left: "2px" , top: "33px" , width: "271px" , height: "31.75px" , color: "#e60a0a" , marginTop: "0px" , marginBottom: "0px" }} data-dc-element="title">TSX smoke canvas</h1>
+           <h1 style={{ position: "static" , left: "2px" , top: "33px" , width: "263.68px" , height: "37.48px" , marginTop: "0px" , marginBottom: "0px" }} data-dc-element="title">TSX smoke canvas</h1>
+           <button
+             type="button"
+             onClick={() => setN(n + 1)}
+             style={{
+               padding: "8px 14px",
+               border: "1px solid currentColor",
+               background: "transparent",
+               cursor: "pointer" }}
+           >
+             clicked {n}
+           </button>
           </div>
         </DCArtboard>
       </DCSection>
