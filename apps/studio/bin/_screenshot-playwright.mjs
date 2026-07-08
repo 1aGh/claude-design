@@ -5,7 +5,7 @@
 //
 // Invocation (called by screenshot.sh — not directly by users):
 //   npm exec --package=playwright -- node _screenshot-playwright.mjs \
-//     --url <url> [--selector <css>] --out <path> [--timeout 8]
+//     --url <url> [--selector <css>] --out <path> [--timeout 8] [--theme <name>]
 //
 // First invocation may install chromium (~150 MB). Subsequent runs reuse cache.
 
@@ -20,7 +20,7 @@ const args = Object.fromEntries(
   }, [])
 );
 
-const { url, selector, out, timeout = '8' } = args;
+const { url, selector, out, timeout = '8', theme } = args;
 if (!url || !out) {
   console.error(
     'usage: _screenshot-playwright.mjs --url <url> [--selector <css>] --out <path> [--timeout 8]'
@@ -36,6 +36,19 @@ try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await ctx.newPage();
   await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
+
+  if (theme) {
+    // Dual-theme reality check (/design:new step 9): force every DS artboard
+    // theme wrapper to `theme` before capture, deterministically, instead of
+    // relying on whatever the canvas is pinned to. No-op if the canvas has no
+    // `[data-theme]` elements (e.g. a single-theme DS).
+    const n = await page.evaluate((t) => {
+      const els = document.querySelectorAll('[data-theme]');
+      els.forEach((el) => el.setAttribute('data-theme', t));
+      return els.length;
+    }, theme);
+    console.error(`→ theme override: forced data-theme="${theme}" on ${n} element(s)`);
+  }
 
   if (selector) {
     const loc = page.locator(selector).first();
