@@ -3,8 +3,10 @@
  * @scope      apps/studio/export-dialog.tsx
  * @purpose    Native `<dialog>`-based export modal. Three controls — format,
  *             scope, per-format options — plus a Recent tab populated by
- *             `/_api/export-history`. Submit fires `POST /_api/export`, the
- *             response is piped to a Blob URL anchor download. `⌘E` opens
+ *             `/_api/export-history`. Submit POSTs `/_api/export-jobs` and
+ *             closes immediately (feature-background-export-notification-
+ *             center) — the main-shell notification center owns status/
+ *             progress/completion from there, not this dialog. `⌘E` opens
  *             the dialog from anywhere inside the canvas; `⌘⇧E` re-runs the
  *             most recent export without opening (T10 fast path).
  *
@@ -293,7 +295,9 @@ export function ExportDialogProvider({ children }: { children: ReactNode }): Rea
     dialogRef.current?.close();
   }, []);
 
-  // Pre-load history when the dialog opens; refresh after each export.
+  // Loaded when the dialog opens. Submit now closes the dialog immediately
+  // (the job runs in the background) instead of refreshing this in place —
+  // the next open picks up whatever's finished by then.
   const loadHistory = useCallback(async () => {
     try {
       if (isCrossOriginFramed()) {
@@ -364,10 +368,13 @@ export function ExportDialogProvider({ children }: { children: ReactNode }): Rea
       setStatus(null);
       try {
         if (isCrossOriginFramed()) {
-          // Bridge through the main shell — the iframe can't reach /_api/export
-          // (canvas origin 403s it). The parent runs the export + triggers the
-          // download, then replies with the saved filename or an error string.
-          const res = await bridgeRequest<{ ok?: boolean; filename?: string; error?: string }>(
+          // Bridge through the main shell — the iframe can't reach
+          // /_api/export-jobs (canvas origin 403s it, DDR-060). The parent
+          // enqueues the job and replies with the id immediately; the
+          // trusted main-shell notification center (which already owns the
+          // WS connection) is the single place status/progress/completion
+          // live from here — this dialog no longer polls or receives bytes.
+          const res = await bridgeRequest<{ ok?: boolean; jobId?: string; error?: string }>(
             'export-request',
             'export-result',
             { payload: { format, scope, options } }
@@ -376,11 +383,10 @@ export function ExportDialogProvider({ children }: { children: ReactNode }): Rea
             setStatus({ text: `Export failed: ${res.error || 'unknown'}`, isError: true });
             return;
           }
-          setStatus({ text: `Saved ${res.filename ?? 'export'}`, isError: false });
-          void loadHistory();
+          close();
           return;
         }
-        const r = await fetch('/_api/export', {
+        const r = await fetch('/_api/export-jobs', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ format, scope, options }),
@@ -390,20 +396,7 @@ export function ExportDialogProvider({ children }: { children: ReactNode }): Rea
           setStatus({ text: `Export failed: ${text || r.status}`, isError: true });
           return;
         }
-        const disp = r.headers.get('Content-Disposition') ?? '';
-        const filename =
-          /filename="([^"]+)"/.exec(disp)?.[1] ?? `export${FORMAT_META[format].defaultExt}`;
-        const blob = await r.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        setStatus({ text: `Saved ${filename}`, isError: false });
-        void loadHistory();
+        close();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         setStatus({ text: `Export failed: ${msg}`, isError: true });
@@ -411,7 +404,7 @@ export function ExportDialogProvider({ children }: { children: ReactNode }): Rea
         setSubmitting(false);
       }
     },
-    [loadHistory]
+    [close]
   );
 
   const rerunLast = useCallback(async () => {

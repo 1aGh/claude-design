@@ -88,11 +88,15 @@ try {
         : screens[i];
     // Pin the captured element's own artboard to (0,0) right before its
     // capture so the world's multi-artboard layout doesn't push the bbox off
-    // the viewport.
-    await handle.evaluate((el) => {
+    // the viewport. Save the prior value so it can be restored right after
+    // this artboard's PDF is written — otherwise every artboard captured
+    // earlier in the loop stays stacked at (0,0) and bleeds into later pages.
+    const savedPos = await handle.evaluate((el) => {
       const ab = el.closest('[data-dc-screen]') ?? el;
+      const prev = { left: ab.style.left, top: ab.style.top };
       ab.style.left = '0px';
       ab.style.top = '0px';
+      return prev;
     });
     const rect = await handle.evaluate((el) => {
       const r = el.getBoundingClientRect();
@@ -120,6 +124,13 @@ try {
     });
     writeFileSync(targetPath, pdf);
     written.push(targetPath);
+    // Restore the artboard's original position now that its page is written.
+    await handle.evaluate((el, prev) => {
+      const ab = el.closest('[data-dc-screen]') ?? el;
+      ab.style.left = prev.left;
+      ab.style.top = prev.top;
+    }, savedPos);
+    if (multi) console.log(`MAUDE_PROGRESS {"current":${i + 1},"total":${screens.length}}`);
   }
 
   for (const w of written) console.log(w);

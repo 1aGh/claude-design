@@ -20,10 +20,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { getEncodeLibBundle, getWebRendererBundle } from './_browser-bundles.ts';
-import { exportShimPath, resolveExportRuntime } from './_runtime.ts';
+import { exportShimPath, runShim } from './_runtime.ts';
 import {
   canvasShellUrl,
   type ExportContext,
+  type ExportHooks,
   type ExportOptions,
   type ExportResult,
 } from './index.ts';
@@ -47,7 +48,8 @@ async function runVideo(
   format: VideoFormat,
   targets: Target[],
   options: ExportOptions,
-  ctx: ExportContext
+  ctx: ExportContext,
+  hooks?: ExportHooks
 ): Promise<ExportResult> {
   const el = targets.find((t): t is Extract<Target, { kind: 'element' }> => t.kind === 'element');
   if (!el) {
@@ -119,25 +121,18 @@ async function runVideo(
   }
 
   try {
-    const proc = Bun.spawn([resolveExportRuntime(), ...args], {
+    const stdoutLines = await runShim(args, {
       cwd: path.dirname(VIDEO_PLAYWRIGHT),
-      stdout: 'pipe',
-      stderr: 'pipe',
+      signal: hooks?.signal,
+      // No MAUDE_PROGRESS line from this shim yet — frame-count progress is a
+      // follow-up (video scope is always a single artboard, never multi).
     });
-    const [stdout, stderr] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ]);
-    const code = await proc.exited;
-    if (code !== 0) {
-      throw new Error(`_video-playwright exited ${code}: ${stderr.trim() || stdout.trim()}`);
-    }
     const body = new Uint8Array(readFileSync(outPath));
     // The container can differ from the request (mp4 → webm fallback when the
     // browser has no H.264 encoder). Read the summary line for the real ext.
     let ext: string = format;
     try {
-      const lastLine = stdout.trim().split('\n').filter(Boolean).pop() ?? '{}';
+      const lastLine = stdoutLines.at(-1) ?? '{}';
       const summary = JSON.parse(lastLine) as { container?: string };
       if (summary.container) ext = summary.container;
     } catch {
@@ -174,11 +169,14 @@ function resolveFrames(options: ExportOptions, fps: number | undefined): number 
 }
 
 export const mp4 = {
-  run: (t: Target[], o: ExportOptions, c: ExportContext) => runVideo('mp4', t, o, c),
+  run: (t: Target[], o: ExportOptions, c: ExportContext, h?: ExportHooks) =>
+    runVideo('mp4', t, o, c, h),
 };
 export const webm = {
-  run: (t: Target[], o: ExportOptions, c: ExportContext) => runVideo('webm', t, o, c),
+  run: (t: Target[], o: ExportOptions, c: ExportContext, h?: ExportHooks) =>
+    runVideo('webm', t, o, c, h),
 };
 export const gif = {
-  run: (t: Target[], o: ExportOptions, c: ExportContext) => runVideo('gif', t, o, c),
+  run: (t: Target[], o: ExportOptions, c: ExportContext, h?: ExportHooks) =>
+    runVideo('gif', t, o, c, h),
 };

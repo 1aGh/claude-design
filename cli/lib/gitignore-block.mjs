@@ -39,6 +39,7 @@ export function buildBlock(designRel = '.design') {
     `${root}/_locator.json`, // regenerable slug→path index
     `${root}/_export-history.json`,
     // Per-machine / per-user dirs.
+    `${root}/_export-jobs/`, // background-export job byte store (regenerable — feature-background-export-notification-center)
     `${root}/_state/`, // binary CRDT logs (regenerable from hub)
     `${root}/_history/`,
     `${root}/_trash/`, // soft-deleted canvases (recoverable locally — Phase 22 delete)

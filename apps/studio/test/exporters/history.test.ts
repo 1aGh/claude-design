@@ -55,12 +55,12 @@ describe('/_api/export-history — GET', () => {
     }
   });
 
-  test('caps to 5 most-recent entries', async () => {
+  test('caps to 20 most-recent entries', async () => {
     const { root } = makeSandbox();
     const port = nextPort();
     const proc = await bootServer(root, port);
     try {
-      for (let i = 0; i < 7; i += 1) {
+      for (let i = 0; i < 23; i += 1) {
         const r = await fetch(`http://localhost:${port}/_api/export`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -70,7 +70,36 @@ describe('/_api/export-history — GET', () => {
       }
       const r = await fetch(`http://localhost:${port}/_api/export-history`);
       const body = (await r.json()) as HistoryShape;
-      expect(body.history.length).toBe(5);
+      expect(body.history.length).toBe(20);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('old-shape entries (no id/status) still parse on a fresh boot', async () => {
+    const { root, designRoot } = makeSandbox();
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    mkdirSync(designRoot, { recursive: true });
+    writeFileSync(
+      join(designRoot, '_export-history.json'),
+      JSON.stringify([
+        {
+          format: 'png',
+          scope: 'artboard',
+          filename: 'legacy.png',
+          at: '2026-01-01T00:00:00.000Z',
+        },
+      ])
+    );
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const r = await fetch(`http://localhost:${port}/_api/export-history`);
+      expect(r.status).toBe(200);
+      const body = (await r.json()) as HistoryShape;
+      expect(body.history.length).toBe(1);
+      expect(body.history[0].format).toBe('png');
+      expect(body.history[0].filename).toBe('legacy.png');
     } finally {
       await killProc(proc);
     }

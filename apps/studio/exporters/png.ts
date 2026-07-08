@@ -12,10 +12,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import JSZip from 'jszip';
-import { exportShimPath, resolveExportRuntime } from './_runtime.ts';
+import { exportShimPath, runShim } from './_runtime.ts';
 import {
   canvasShellUrl,
   type ExportContext,
+  type ExportHooks,
   type ExportOptions,
   type ExportResult,
 } from './index.ts';
@@ -45,7 +46,8 @@ async function captureElement(
   target: Extract<Target, { kind: 'element' }>,
   ctx: ExportContext,
   outDir: string,
-  options: CaptureOptions
+  options: CaptureOptions,
+  hooks?: ExportHooks
 ): Promise<string[]> {
   const args = [
     PNG_PLAYWRIGHT,
@@ -68,23 +70,11 @@ async function captureElement(
     if (target.widen) args.push('--widen-to-artboard', '1');
     args.push('--out', path.join(outDir, `${target.canvasSlug}.png`));
   }
-  const proc = Bun.spawn([resolveExportRuntime(), ...args], {
+  return runShim(args, {
     cwd: path.dirname(PNG_PLAYWRIGHT),
-    stdout: 'pipe',
-    stderr: 'pipe',
+    signal: hooks?.signal,
+    onProgress: hooks?.onProgress,
   });
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const code = await proc.exited;
-  if (code !== 0) {
-    throw new Error(`_png-playwright exited ${code}: ${stderr.trim() || stdout.trim()}`);
-  }
-  return stdout
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean);
 }
 
 function readBytes(paths: string[]): Array<{ name: string; bytes: Uint8Array }> {
@@ -105,7 +95,8 @@ async function bundleZip(entries: Array<{ name: string; bytes: Uint8Array }>): P
 export async function run(
   targets: Target[],
   options: ExportOptions,
-  ctx: ExportContext
+  ctx: ExportContext,
+  hooks?: ExportHooks
 ): Promise<ExportResult> {
   if (!targets.length) {
     return { filename: 'export.png', contentType: 'image/png', body: new Uint8Array(0) };
@@ -128,9 +119,10 @@ export async function run(
 
   try {
     const written: string[] = [];
-    for (const t of elementTargets) {
-      const paths = await captureElement(t, ctx, tmp, captureOpts);
+    for (let i = 0; i < elementTargets.length; i += 1) {
+      const paths = await captureElement(elementTargets[i], ctx, tmp, captureOpts, hooks);
       written.push(...paths);
+      hooks?.onProgress?.({ current: i + 1, total: elementTargets.length });
     }
     const entries = readBytes(written);
 

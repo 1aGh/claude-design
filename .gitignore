@@ -18,6 +18,7 @@ dev-server/.cache/
 .design/_preflight.json
 .design/_locator.json
 .design/_export-history.json
+.design/_export-jobs/
 .design/_history/
 .design/_trash/
 .design/_draw/

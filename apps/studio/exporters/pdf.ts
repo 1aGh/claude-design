@@ -13,10 +13,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { PDFDocument } from 'pdf-lib';
-import { exportShimPath, resolveExportRuntime } from './_runtime.ts';
+import { exportShimPath, runShim } from './_runtime.ts';
 import {
   canvasShellUrl,
   type ExportContext,
+  type ExportHooks,
   type ExportOptions,
   type ExportResult,
 } from './index.ts';
@@ -29,7 +30,8 @@ async function capturePdf(
   target: Extract<Target, { kind: 'element' }>,
   ctx: ExportContext,
   outDir: string,
-  timeoutSec: number
+  timeoutSec: number,
+  hooks?: ExportHooks
 ): Promise<string[]> {
   const args = [
     PDF_PLAYWRIGHT,
@@ -49,29 +51,18 @@ async function capturePdf(
     args.push('--out', path.join(outDir, `${target.canvasSlug}.pdf`));
   }
 
-  const proc = Bun.spawn([resolveExportRuntime(), ...args], {
+  return runShim(args, {
     cwd: path.dirname(PDF_PLAYWRIGHT),
-    stdout: 'pipe',
-    stderr: 'pipe',
+    signal: hooks?.signal,
+    onProgress: hooks?.onProgress,
   });
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const code = await proc.exited;
-  if (code !== 0) {
-    throw new Error(`_pdf-playwright exited ${code}: ${stderr.trim() || stdout.trim()}`);
-  }
-  return stdout
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean);
 }
 
 export async function run(
   targets: Target[],
   options: ExportOptions,
-  ctx: ExportContext
+  ctx: ExportContext,
+  hooks?: ExportHooks
 ): Promise<ExportResult> {
   if (!targets.length) {
     return { filename: 'export.pdf', contentType: 'application/pdf', body: new Uint8Array(0) };
@@ -86,9 +77,14 @@ export async function run(
   const tmp = mkdtempSync(path.join(tmpdir(), 'maude-pdf-'));
   try {
     const written: string[] = [];
-    for (const t of elementTargets) {
-      const paths = await capturePdf(t, ctx, tmp, timeoutSec);
+    for (let i = 0; i < elementTargets.length; i += 1) {
+      const paths = await capturePdf(elementTargets[i], ctx, tmp, timeoutSec, hooks);
       written.push(...paths);
+      // Outer-loop tick (N separate top-level Targets — rare). The granular
+      // "K of M artboards" signal for canvas-as-separate comes from the
+      // shim's own MAUDE_PROGRESS lines via spawnShim's onProgress inside
+      // capturePdf, above — both funnel into the same hooks.onProgress.
+      hooks?.onProgress?.({ current: i + 1, total: elementTargets.length });
     }
     if (!written.length) {
       return { filename: 'export.pdf', contentType: 'application/pdf', body: new Uint8Array(0) };

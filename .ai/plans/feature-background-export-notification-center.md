@@ -149,42 +149,42 @@ Execute in order. Each task is atomic and testable.
 
 ### Phase A — Multi-target capture fix + progress instrumentation (fixes the reported bug; prerequisite for real progress data)
 
-### Task 1: FIX position-restore bug in `_png-playwright.mjs`
+### Task 1: FIX position-restore bug in `_png-playwright.mjs`  ✅
 
 - **Do**: In `captureHandle` (lines ~62-84), before setting `ab.style.left/top = '0px'`, save the artboard's current `left`/`top` (`el.style.left`, `el.style.top` — or the whole `style.cssText` for the artboard node to be safe against other mutated properties) into a variable. After `page.screenshot(...)` completes for that target, restore the saved values on the same element.
 - **Pattern**: The existing zero-then-never-restore code at lines 78-84.
 - **Gotcha**: The artboard element handle (`ab`) is resolved via `el.closest('[data-dc-screen]')` inside a `page.evaluate`/`elementHandle.evaluate` — the save/restore must happen in the SAME evaluate call (or paired evaluates against the same handle) so it's the identical DOM node.
 - **Validate**: manual — export `canvas-as-separate` PNG against a canvas with 3+ artboards, confirm all artboards' `left`/`top` styles are unchanged after the export completes (inspect via devtools or a quick script).
 
-### Task 2: FIX position-restore bug in `_pdf-playwright.mjs`
+### Task 2: FIX position-restore bug in `_pdf-playwright.mjs`  ✅
 
 - **Do**: Same save/restore fix in the `for (let i = 0; i < screens.length; i += 1)` loop (lines ~86-91).
 - **Pattern**: Task 1.
 - **Validate**: re-run the exact repro that failed live — `curl -X POST http://localhost:<port>/_api/export -d '{"format":"pdf","scope":"canvas-as-separate"}'` against a many-artboard canvas; confirm it now completes and every page renders its own artboard's actual content (spot-check 3-4 pages, not just page 1).
 
-### Task 3: FIX position-restore bug in `_svg-playwright.mjs`
+### Task 3: FIX position-restore bug in `_svg-playwright.mjs`  ✅
 
 - **Do**: Same fix, adapted to that shim's per-target loop shape (read the file in full first — confirm exact variable names before editing).
 - **Validate**: `canvas-as-separate` SVG export, spot-check 3+ files for correct isolated content.
 
-### Task 4: FIX position-restore bug in `_html-playwright.mjs`
+### Task 4: FIX position-restore bug in `_html-playwright.mjs`  ✅
 
 - **Do**: Same fix.
 - **Validate**: `canvas-as-separate` HTML export, spot-check.
 
-### Task 5: FIX position-restore bug in `_pptx-playwright.mjs`
+### Task 5: FIX position-restore bug in `_pptx-playwright.mjs`  ✅
 
 - **Do**: Same fix.
 - **Validate**: `canvas-as-separate` PPTX export, open in Keynote/PowerPoint, spot-check 3+ slides.
 
-### Task 6: ADD shared `spawnShim()` helper with incremental stdout progress parsing + abort support
+### Task 6: ADD shared `spawnShim()` helper with incremental stdout progress parsing + abort support  ✅
 
 - **Do**: In `apps/studio/exporters/_runtime.ts`, add `export async function spawnShim(args: string[], opts: { cwd: string; signal?: AbortSignal; onProgress?: (u: {current:number; total:number}) => void }): Promise<{ code: number; stdoutLines: string[]; stderr: string }>`. Internally: `Bun.spawn([resolveExportRuntime(), ...args], { cwd, stdout: 'pipe', stderr: 'pipe', signal: opts.signal })`; read `proc.stdout` incrementally (e.g. via a `TextDecoderStream` + line-splitting async iterator, NOT `new Response(proc.stdout).text()`), and for each line: if it matches `/^MAUDE_PROGRESS (.+)$/`, `JSON.parse` the rest and call `opts.onProgress`; otherwise push to `stdoutLines`. Collect `stderr` in full (unchanged). Await `proc.exited` for `code`.
 - **Pattern**: `apps/studio/exporters/pdf.ts:52-64` (`capturePdf`'s current spawn block) is the thing this helper replaces.
 - **Gotcha**: `Bun.spawn`'s `signal` option kills the child when the signal aborts — confirm this Bun version (`1.3.3` per `bun --version`) supports it; if not, fall back to `signal?.addEventListener('abort', () => proc.kill())`.
 - **Validate**: unit test — spawn a tiny fixture script that prints a `MAUDE_PROGRESS` line then exits, assert `onProgress` fired and the line didn't leak into `stdoutLines`.
 
-### Task 7: THREAD progress + abort-signal through the adapter interface
+### Task 7: THREAD progress + abort-signal through the adapter interface  ✅
 
 - **Do**: In `exporters/index.ts`, extend `Adapter.run` to `run(targets, options, ctx, hooks?: { onProgress?: (u:{current,total}) => void; signal?: AbortSignal }): Promise<ExportResult>`; extend `runExport(args)` to accept and forward an optional `hooks`. Update `pdf.ts`, `png.ts`, `svg.ts`, `html.ts`, `pptx.ts` to (a) use the new `spawnShim()` helper from Task 6 instead of their own spawn block, (b) call `hooks?.onProgress?.({current: i+1, total: elementTargets.length})` after each per-target loop iteration completes (`pdf.ts`'s `for (const t of elementTargets)` at lines 89-92, mirrored in the other 4). Update `video.ts` to also route through `spawnShim()` (no progress line needed there yet — video's own frame-count progress is a follow-up, out of scope here; just gain the abort-signal benefit).
 - **Pattern**: `pdf.ts:88-92`, `png.ts:131-134` — the exact loops to instrument.
@@ -193,46 +193,46 @@ Execute in order. Each task is atomic and testable.
 
 ### Phase B — Background job queue (server)
 
-### Task 8: CREATE `apps/studio/exporters/jobs.ts`
+### Task 8: CREATE `apps/studio/exporters/jobs.ts`  ✅
 
 - **Do**: Define `ExportJob` (see Solution B), a hand-rolled semaphore class capping concurrency at `Number(process.env.MAUDE_EXPORT_MAX_CONCURRENT) || 2`, and `createExportJobQueue(bus: Bus, designRoot: string, buildCtx: () => ExportContext-building-inputs)` returning `{ enqueue(args): {id, result: Promise<ExportResult>}, get(id), list() }`. `enqueue` acquires a semaphore slot (queued while waiting), transitions `queued→running`, calls `runExport({..., hooks: {onProgress, signal}})` with an `AbortController` timed at `DEFAULT_JOB_TIMEOUT_MS = 5 * 60 * 1000`, on success writes `result.body` to `<designRoot>/_export-jobs/<id>/<result.filename>` and transitions `running→done`, on failure/abort transitions `→failed` with `error`. Emits `bus.emit('export:job', {...job})` on every transition. Persists the ledger by re-deriving the array from the in-memory `Map` (sorted `finishedAt` desc, capped at 20) and `Bun.write`ing `_export-history.json` in one shot on every `done`/`failed` — no read-modify-write.
 - **Pattern**: the per-path mutex precedent at `http.ts:395`; the existing (`api.ts:2516-2540`) history shape being replaced.
 - **Gotcha**: sweep any pre-existing `_export-jobs/*` dirs on construction (orphaned from a prior process — job state doesn't survive a restart). Evict a completed job's bytes once its ledger entry rolls past the cap of 20 or after 24h.
 - **Validate**: covered by Task 21's test file.
 
-### Task 9: MOVE `ExportHistoryEntry`/history persistence out of `api.ts` into `jobs.ts`
+### Task 9: MOVE `ExportHistoryEntry`/history persistence out of `api.ts` into `jobs.ts`  ✅
 
 - **Do**: Remove `loadExportHistory`/`appendExportHistory`/`HISTORY_PATH`/`HISTORY_DEPTH` and the `ExportHistoryEntry` interface from `api.ts` (lines 176-182, 399-401, 2516-2540); re-export `ExportHistoryEntry` (extended with optional `id?`, `status?`, `startedAt?`, `finishedAt?`, `error?` fields — old entries without them must still parse) from `jobs.ts`. Update the one caller (`http.ts`'s `/_api/export-history` handler) to call the job queue's `loadHistory()`/`list()` instead of `api.loadExportHistory()`.
 - **Pattern**: existing call site at `http.ts:1819-1825`.
 - **Gotcha**: the two client "Recent" mini-lists (`export-dialog.tsx:296-315`, `app.jsx:873-881`) only read `format`/`scope`/`filename`/`at` — adding fields is additive, don't need client changes for back-compat.
 - **Validate**: `apps/studio/test/exporters/history.test.ts` stays green (adjust its import path if needed).
 
-### Task 10: WIRE `export:job` bus event into `ws.ts`
+### Task 10: WIRE `export:job` bus event into `ws.ts`  ✅
 
 - **Do**: Add `ctx.bus.on('export:job', (job) => broadcast({ type: 'export:job', payload: job }));` alongside the other `ctx.bus.on(...)` lines (`ws.ts:168-217`). Inspector-channel only (privileged — same class of data as `git-status`).
 - **Pattern**: `ws.ts:199` (`git-status`) — copy verbatim structure.
 - **Validate**: covered by Task 21/manual WS inspection.
 
-### Task 11: THREAD `exportJobs` through `server.ts` boot + `createHttp`
+### Task 11: THREAD `exportJobs` through `server.ts` boot + `createHttp`  ✅
 
 - **Do**: In `server.ts`, construct `const exportJobs = createExportJobQueue(ctx.bus, ctx.paths.designRoot, ...)` near the other singleton constructions (~lines 57-107); change `createHttp(ctx, api, inspect, aiActivity)` call to `createHttp(ctx, api, inspect, aiActivity, exportJobs)`. Update `createHttp`'s signature in `http.ts:597` to accept the 5th param.
 - **Pattern**: existing boot sequence lines 57-108.
 - **Validate**: `bun run apps/studio/server.ts --root <sandbox>` boots without error.
 
-### Task 12: UPDATE `http.ts` routes — `/_api/export` back-compat + new job routes
+### Task 12: UPDATE `http.ts` routes — `/_api/export` back-compat + new job routes  ✅
 
 - **Do**: Rewrite the `/_api/export` handler (lines 1827-1895) to call `exportJobs.enqueue({...})` and `await result` — same validated inputs, same response shape (bytes + headers), remove the now-redundant manual `api.appendExportHistory(...)` call (lines 1867-1880, now handled inside the queue). Add `POST /_api/export-jobs` (same body validation, `202 Response.json({jobId: id})` without awaiting `result`). Add `GET /_api/export-jobs` (`Response.json({jobs: exportJobs.list()})`). Add `GET /_api/export-jobs/download` reading `?id=`, 400 if missing, 404 if job/file not found, 409 if job not yet `done`, else stream the file from `_export-jobs/<id>/` with the stored `contentType`/`filename`.
 - **Pattern**: existing `/_api/export` handler for validation style (`isFormat`/`isScope`/`readJson`).
 - **Gotcha**: all 3 routes (existing + 2 new) stay **absent** from `CANVAS_SAFE_API` and `startCanvasServer`'s routes map — do not add them there.
 - **Validate**: `apps/studio/test/exporters/history.test.ts` (existing sync-contract test) stays green; new tests in Task 21.
 
-### Task 13: UPDATE the 3 runtime-state taxonomy lists for `_export-jobs/`
+### Task 13: UPDATE the 3 runtime-state taxonomy lists for `_export-jobs/`  ✅
 
 - **Do**: Add `_export-jobs` to the directory-pattern group in `apps/studio/git/service.ts`'s `isMaudeRuntimeState` (currently line 214, alongside `_history|_trash|_draw|_smoke|_canvas-state|_state|_chat|_comments|_untrusted`); add `` `${root}/_export-jobs/` `` to `cli/lib/gitignore-block.mjs`'s `buildBlock` lines list; add `.design/_export-jobs/` to the root `.gitignore`.
 - **Pattern**: exact 3-list convention documented in this repo's CLAUDE.md ("Runtime-state taxonomy is canonical in DDR-115... drifted once; update all three together").
 - **Validate**: `git status` in a sandbox project after an export never shows `_export-jobs/` as untracked.
 
-### Task 14: UPDATE `canvas-origin-gate.test.ts`
+### Task 14: UPDATE `canvas-origin-gate.test.ts`  ✅
 
 - **Do**: Add assertions that `POST /_api/export-jobs`, `GET /_api/export-jobs`, and `GET /_api/export-jobs/download` all 403 (or equivalent gate) when requested from the canvas origin, mirroring the existing `/_api/export` assertion (~line 65).
 - **Pattern**: existing test structure in that file.
@@ -240,37 +240,37 @@ Execute in order. Each task is atomic and testable.
 
 ### Phase C — Client notification center
 
-### Task 15: CREATE `apps/studio/client/export-center.jsx`
+### Task 15: CREATE `apps/studio/client/export-center.jsx`  ✅
 
 - **Do**: `useExportCenter()` hook (fetch `/_api/export-jobs` on mount, upsert from WS `export:job` messages passed in as an argument or via a small internal `window`-scoped subscribe — mirror how `useWhatsNew` self-contains its `fetch`, but this hook needs the live WS message, so accept a `wsMessage` prop/param the caller forwards from the existing `/_ws` handler, OR subscribe to a lightweight custom DOM event dispatched by the existing WS handler — pick whichever keeps `app.jsx`'s single WS connection as the only socket, do not open a second one). Export `ExportBadge`, `ExportToast`, `ExportPanel` components per Solution C.
 - **Pattern**: `apps/studio/client/whats-new.jsx` end-to-end (hook shape, component shape, panel Escape-key handling).
 - **Validate**: Task 25's component test.
 
-### Task 16: ADD styles for the new badge/panel/progress-bar
+### Task 16: ADD styles for the new badge/panel/progress-bar  ✅
 
 - **Do**: Add `.st-exports` menubar button styles (mirror `.st-assistant`'s `data-busy` pattern) and a `.st-export-progress`/`.st-export-progress-bar` determinate bar (tokens only) to `apps/studio/client/styles/3-shell-maude.css` (or `4-components.css`, matching where `.st-whatsnew`/`.mdcc-wn-*` currently live — check both and follow the existing split). Reuse `.st-toast`/`.help-modal-backdrop`/`.mdcc-wn-list` wholesale for the toast/panel shells — no new classes needed there.
 - **Pattern**: `3-shell-maude.css:83-87` (`.st-whatsnew[data-unseen]`), `components-toast-menu.tsx` DS spec for visual language.
 - **Validate**: visual check via the dev server (light + dark theme).
 
-### Task 17: WIRE the notification center into `app.jsx`
+### Task 17: WIRE the notification center into `app.jsx`  ✅
 
 - **Do**: Instantiate `const exportCenter = useExportCenter(...)` near `useWhatsNew` (`app.jsx:6534`). Add a WS handler branch `else if (m.type === 'export:job' && m.payload) { exportCenter.upsert(m.payload); }` in the WS `message` listener (`app.jsx:7137-7217`, alongside the `sync:status`/`git-status` branches). Render `<ExportBadge center={exportCenter} .../>` in the `.st-mb-right` block (`app.jsx:2818-2828` area, next to `.st-whatsnew`), `<ExportToast center={exportCenter} />` near `WhatsNewToast`'s mount (`app.jsx:8874`), `<ExportPanel center={exportCenter} />` near `WhatsNewPanel`'s mount (`app.jsx:9582`).
 - **Pattern**: exact `useWhatsNew`/`WhatsNewToast`/`WhatsNewPanel` wiring already in the file.
 - **Validate**: manual — trigger an export, confirm the badge shows a running-count, confirm the toast/panel update live without a page reload.
 
-### Task 18: UPDATE main-shell `ExportDialog.doExport()`
+### Task 18: UPDATE main-shell `ExportDialog.doExport()`  ✅
 
 - **Do**: In `app.jsx:894-961`, replace the `fetch('/_api/export', ...)` + blob/native-save logic with `fetch('/_api/export-jobs', ...)` → on `202 {jobId}`, call `onClose()` immediately (no more `setBusy`/blob handling in this function — that moves to the notification center's completion handler). Keep the `card.handoff` branch (copy-to-clipboard) untouched — that's not a render export.
 - **Pattern**: existing `doExport` structure (lines 894-961) — keep validation/options-building (`scale`, `audio`, `artboardId`, `selection`) identical, only the tail (fetch → response handling) changes.
 - **Validate**: manual — click Export, confirm the dialog closes immediately regardless of format; confirm the file eventually appears (web: auto-download when focused; native: toast "Save…" button).
 
-### Task 19: UPDATE in-canvas `export-dialog.tsx` submit + `runBridgedExport`
+### Task 19: UPDATE in-canvas `export-dialog.tsx` submit + `runBridgedExport`  ✅
 
 - **Do**: In `export-dialog.tsx`'s `submit` (lines 361-415), change both the bridged and same-origin-fallback branches to POST `/_api/export-jobs` instead of `/_api/export`, and on getting `{jobId}` back, close the dialog immediately (drop the blob-download logic from this file entirely — the main shell's notification center owns completion now, per the "one place owns status" design). In `app.jsx`'s `runBridgedExport` (lines 8183-8224), change the bridged `fetch` target to `/_api/export-jobs`, reply `{ ok: true, jobId }` immediately instead of waiting for/handling the blob.
 - **Pattern**: existing bridge protocol (`bridgeRequest('export-request', 'export-result', ...)`) — message names stay the same, only the payload/behavior changes.
 - **Validate**: manual — open the in-canvas dialog (⌘E inside a canvas iframe), submit, confirm it closes immediately and the export completes per the main-shell notification center.
 
-### Task 20: ADD completion finalize handler in the notification center
+### Task 20: ADD completion finalize handler in the notification center  ✅
 
 - **Do**: In `useExportCenter` (or a small helper it calls), on a job transitioning to `done`: web → if `document.hasFocus()`, fetch `/_api/export-jobs/download?id=`, create a blob URL, click a hidden `<a download>` (mirror the existing logic removed from `doExport` in Task 18), else leave it for manual download. Native → never auto-call `saveExport`; the toast/panel's "Save…" button (on click) fetches the bytes and calls `saveExport(filename, bytes)` (mirror `app.jsx:936-944`).
 - **Pattern**: the removed blob/native-save logic from `doExport`/`runBridgedExport` — relocated, not reinvented.
@@ -278,18 +278,18 @@ Execute in order. Each task is atomic and testable.
 
 ### Phase D — Tests
 
-### Task 21: ADD `apps/studio/test/exporters/jobs.test.ts`
+### Task 21: ADD `apps/studio/test/exporters/jobs.test.ts`  ✅
 
 - **Do**: Cover: concurrency cap is respected (start 3 render-heavy jobs with `MAUDE_EXPORT_MAX_CONCURRENT=2`, assert the 3rd stays `queued` until one of the first two finishes); `list()` returns a capped, sorted set; history persistence survives many jobs completing in quick succession without dropping entries (the race the current code has); a job's bytes are retrievable via the queue's own accessor after completion and gone after eviction.
 - **Pattern**: `apps/studio/test/exporters/history.test.ts`, `apps/studio/test/_helpers.ts` (`bootServer`/`makeSandbox`/`nextPort`/`killProc`).
 - **Validate**: `cd apps/studio && bun test test/exporters/jobs.test.ts`.
 
-### Task 22: EXTEND `apps/studio/test/exporters/history.test.ts`
+### Task 22: EXTEND `apps/studio/test/exporters/history.test.ts`  ✅
 
 - **Do**: Add a case asserting old-shape entries (no `id`/`status`) still parse via the moved loader; assert the ledger caps at the new depth (20) instead of 5.
 - **Validate**: `cd apps/studio && bun test test/exporters/history.test.ts`.
 
-### Task 23: ADD multi-target position-restore regression test
+### Task 23: ADD multi-target position-restore regression test  ✅
 
 - **Do**: New `apps/studio/test/export-shim-multi-capture.test.ts` (or the closest existing exporter-shim test file) — boot a sandbox with a fixture canvas containing 2+ artboards with distinct, easily-assertable content (e.g. distinct background colors/text), run `scope=canvas-as-separate` PNG export, decode both output PNGs (or inspect the shim's post-run DOM state via a debug flag / a lighter assertion: re-query the artboards' `style.left`/`style.top` after the shim process would have run against a live page — the exact assertion depends on what's feasible without a full pixel-diff; at minimum assert each output file's byte content differs meaningfully and neither is empty/corrupted-looking (non-trivial size), and ideally pixel-sample each output against its known distinct background color).
 - **Pattern**: `apps/studio/test/exporters/*.test.ts` conventions, `bootServer`/`makeSandbox`.
@@ -297,13 +297,13 @@ Execute in order. Each task is atomic and testable.
 
 ### Task 24: EXTEND `canvas-origin-gate.test.ts` — done in Task 14 (listed here only to keep phase-D numbering complete; no separate work).
 
-### Task 25: ADD `apps/studio/test/export-center.test.tsx`
+### Task 25: ADD `apps/studio/test/export-center.test.tsx`  ✅
 
 - **Do**: Client hook test mirroring `whats-new.test.ts` — assert `useExportCenter` correctly upserts jobs from a simulated `export:job` payload sequence (queued→running→done), derives `runningCount` correctly, and that the focus-gated auto-download rule only fires when `document.hasFocus()` is true (mock it).
 - **Pattern**: `apps/studio/test/whats-new.test.ts`, `apps/studio/test/use-agent-presence.test.tsx` (an existing `.tsx` hook test for a comparable live-update hook).
 - **Validate**: `cd apps/studio && bun test test/export-center.test.tsx`.
 
-### Task 26: MANUAL live verification against the real repro
+### Task 26: MANUAL live verification against the real repro  ✅
 
 - **Do**: Point the dev server at `/Users/iagh/git/alligators` (already running on port 4400 per `.design/_server.json`), re-run the exact `canvas-as-separate` PDF export that failed (3+ min, no response) and confirm it now (a) completes, (b) every page shows its own correct artboard (spot-check several, not just the first), (c) the notification center shows live "N of 22" progress while it runs. Separately, kick off a fast PNG export of a single artboard WHILE the PDF is still running and confirm it completes independently without waiting for the PDF.
 - **Validate**: this is the direct, literal repro of what the user reported — it must pass before considering the feature done.
@@ -327,13 +327,13 @@ This repo has no PRD/design-system doc or cross-platform scenario-runner setup f
 
 ## Acceptance Criteria
 
-- [ ] All 26 tasks completed
-- [ ] `/flow:utils-verify`-equivalent (lint + `bun test`) passes after each task group
-- [ ] The literal user repro passes: `canvas-as-separate` PDF export of the 22-artboard alligators canvas completes, every page is correct, and it's not required to block the UI while it runs
-- [ ] A quick PNG export completes independently while a slow PDF/video export is still running
-- [ ] Both export dialogs close immediately on submit; all export status/progress/completion lives in one menubar notification center
-- [ ] `/_api/export` (existing route) is byte-for-byte contract-unchanged — `/design:export` CLI wrapper needs zero changes
-- [ ] The 3 runtime-state taxonomy lists agree on `_export-jobs/` (git/service.ts, gitignore-block.mjs, root .gitignore)
-- [ ] `/_api/export-jobs`, `/_api/export-jobs` (GET), `/_api/export-jobs/download` all confirmed absent from the canvas-origin allowlist
-- [ ] No DDR-worthy decision left unrecorded — consider a DDR for "export job queue + notification center architecture" given this introduces a new privileged route pair and a new runtime-state directory (precedent: DDR-060, DDR-086, DDR-115 all documented comparable additions)
-- [ ] Code follows project conventions, no regressions
+- [x] All 26 tasks completed
+- [x] `/flow:utils-verify`-equivalent (lint + `bun test`) passes after each task group
+- [x] The literal user repro passes: `canvas-as-separate` PDF export of the 22-artboard alligators canvas completes, every page is correct, and it's not required to block the UI while it runs
+- [x] A quick PNG export completes independently while a slow PDF/video export is still running
+- [x] Both export dialogs close immediately on submit; all export status/progress/completion lives in one menubar notification center — main-shell dialog verified live via agent-browser; in-canvas bridged dialog verified by code symmetry + typecheck (both hit the same enqueue-and-close path), not live-clicked
+- [x] `/_api/export` (existing route) is byte-for-byte contract-unchanged — `/design:export` CLI wrapper needs zero changes
+- [x] The 3 runtime-state taxonomy lists agree on `_export-jobs/` (git/service.ts, gitignore-block.mjs, root .gitignore)
+- [x] `/_api/export-jobs`, `/_api/export-jobs` (GET), `/_api/export-jobs/download` all confirmed absent from the canvas-origin allowlist
+- [x] No DDR-worthy decision left unrecorded — [DDR-153](../decisions/DDR-153-export-job-queue-and-notification-center.md) recorded
+- [x] Code follows project conventions, no regressions

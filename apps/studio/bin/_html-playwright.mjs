@@ -62,13 +62,30 @@ try {
       world.style.zoom = '1';
       world.style.transform = 'none';
     }
-    for (const el of document.querySelectorAll('[data-dc-screen]')) {
-      el.style.left = '0px';
-      el.style.top = '0px';
-    }
   });
 
   const written = [];
+
+  // Pin one artboard to (0,0) for its capture, returning a restore function.
+  // Per-target rather than a one-shot reset of every `[data-dc-screen]` — a
+  // multi-target loop must not leave an already-captured artboard sitting at
+  // the origin, overlapping the next target's geometry (the scatter bug).
+  const pinArtboard = async (handle) => {
+    const saved = await handle.evaluate((el) => {
+      const ab = el.closest('[data-dc-screen]') ?? el;
+      const prev = { left: ab.style.left, top: ab.style.top };
+      ab.style.left = '0px';
+      ab.style.top = '0px';
+      return prev;
+    });
+    return async () => {
+      await handle.evaluate((el, prev) => {
+        const ab = el.closest('[data-dc-screen]') ?? el;
+        ab.style.left = prev.left;
+        ab.style.top = prev.top;
+      }, saved);
+    };
+  };
 
   if (multi) {
     if (!outDir) {
@@ -80,10 +97,13 @@ try {
     for (let i = 0; i < screens.length; i += 1) {
       const handle = screens[i];
       const id = (await handle.getAttribute('data-dc-screen')) ?? `artboard-${i + 1}`;
+      const restore = await pinArtboard(handle);
       const html = await serializeOne(handle, false);
+      await restore();
       const target = join(outDir, `${id}.html`);
       writeFileSync(target, html, 'utf8');
       written.push(target);
+      console.log(`MAUDE_PROGRESS {"current":${i + 1},"total":${screens.length}}`);
     }
   } else {
     if (!out) {
@@ -93,7 +113,9 @@ try {
     mkdirSync(dirname(out), { recursive: true });
     const handle = page.locator(selector ?? '[data-dc-screen]:first-of-type').first();
     await handle.waitFor({ state: 'visible', timeout: timeoutMs });
+    const restore = await pinArtboard(handle);
     const html = await serializeOne(handle, widen);
+    await restore();
     writeFileSync(out, html, 'utf8');
     written.push(out);
   }

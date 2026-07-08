@@ -216,6 +216,12 @@ export function createWs(
   // Assistant panel. Inspector clients only — same-origin shell, like the rest.
   ctx.bus.on('acp-focus', () => broadcast({ type: 'acp-focus' }));
 
+  // feature-background-export-notification-center — export job queue state
+  // changes (queued → running → progress ticks → done/failed). Full-snapshot
+  // payload per change, mirroring git-status/sync:status above. Inspector
+  // clients only — same privileged-data class as the rest of this feed.
+  ctx.bus.on('export:job', (job: unknown) => broadcast({ type: 'export:job', payload: job }));
+
   // HMR broadcaster — turns fs:any change events into `canvas-hmr` messages.
   // The iframe-side client (in _shell.html) decides reload strategy from `mode`.
   // Uses broadcastHmr so the segregated canvas origin's HMR-only sockets get it.

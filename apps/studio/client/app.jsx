@@ -29,11 +29,11 @@ import {
   onUpdateReady,
   pickMediaFile,
   restartToUpdate,
-  saveExport,
 } from './github.js';
 import { COLLAB_TOUR } from './tour/collab-tour.js';
 import { TourOverlay } from './tour/overlay.jsx';
 import { USAGE_TOUR } from './tour/usage-tour.js';
+import { ExportBadge, ExportPanel, ExportToast, useExportCenter } from './export-center.jsx';
 import { useWhatsNew, WhatsNewPanel, WhatsNewToast } from './whats-new.jsx';
 
 const USAGE_TOUR_STORE = 'mdcc-usage-tour-seen';
@@ -1079,7 +1079,10 @@ function ExportDialog({
     if (activeArtboardId) options.artboardId = activeArtboardId;
     if (selection?.selector) options.selection = selection;
     try {
-      const r = await fetch('/_api/export', {
+      // feature-background-export-notification-center — enqueue and close
+      // immediately; the menubar notification center owns status, progress,
+      // and completion (download / native Save…) from here on.
+      const r = await fetch('/_api/export-jobs', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ format: card.format, scope, options }),
@@ -1089,38 +1092,11 @@ function ExportDialog({
         setBusy(false);
         return;
       }
-      const disp = r.headers.get('Content-Disposition') || '';
-      const fn = /filename="([^"]+)"/.exec(disp);
-      const filename = (fn && fn[1]) || `export.${card.format}`;
-      const blob = await r.blob();
-      if (isNativeApp()) {
-        // Native: WKWebView swallows the `<a download>` blob (the file lands in
-        // an unknown default with no prompt). Route through a real OS save dialog
-        // so the export OFFERS a location. Cancel → soft no-op.
-        const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
-        const savedPath = await saveExport(filename, bytes);
-        if (savedPath) {
-          setStatus({ ok: true, msg: `Saved to ${savedPath}` });
-          loadRecent();
-        } else {
-          setStatus({ ok: true, msg: 'Save cancelled' });
-        }
-      } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        setStatus({ ok: true, msg: `Exported ${filename}` });
-        loadRecent();
-      }
+      onClose();
     } catch (err) {
       setStatus({ ok: false, msg: err && err.message ? err.message : String(err) });
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   return (
@@ -2680,6 +2656,7 @@ function Menubar({
   onOpenWhatsNew,
   onOpenReadiness,
   whatsNewCount,
+  exportCenter,
   artboardCount = 0,
   presence = null,
   inspectorOpen,
@@ -2993,6 +2970,7 @@ function Menubar({
             <StIcon name="sparkle" size={15} />
           </button>
         )}
+        {exportCenter && <ExportBadge center={exportCenter} />}
         <button
           type="button"
           className="st-whatsnew"
@@ -7049,6 +7027,7 @@ function App() {
   // toggles on its own and coexists with Inspector/Changes/Comments/Chat.
   const toggleTimeline = useCallback(() => setTimelineOpen((v) => !v), []);
   const whatsNew = useWhatsNew(MDCC_VERSION);
+  const exportCenter = useExportCenter();
   // Phase 29 (E4) — first-run onboarding wizard. The native shell boots a minimal
   // "welcome" project on first launch; we ask it whether this is a first run and, if
   // so, show the wizard OVER the (empty) canvas browser. Completing any door switches
@@ -7696,6 +7675,10 @@ function App() {
                 );
               } catch {}
             }
+          } else if (m.type === 'export:job' && m.payload) {
+            // feature-background-export-notification-center — full-snapshot
+            // job state on every queued/running/progress/done/failed change.
+            exportCenter.upsert(m.payload);
           } else if (m.type === 'sync:status' && m.payload) {
             // Phase 9 Task 8 — hub connection state for the offline banner.
             setSyncStatus(m.payload);
@@ -8854,7 +8837,12 @@ function App() {
         } catch {}
       };
       try {
-        const r = await fetch('/_api/export', {
+        // feature-background-export-notification-center — enqueue and reply
+        // with the job id immediately; the notification center (which
+        // already owns the WS connection) is the single place status/
+        // progress/completion live from here, regardless of which dialog
+        // created the job.
+        const r = await fetch('/_api/export-jobs', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(payload),
@@ -8863,28 +8851,8 @@ function App() {
           reply({ ok: false, error: (await r.text()) || String(r.status) });
           return;
         }
-        const disp = r.headers.get('Content-Disposition') || '';
-        const fn = /filename="([^"]+)"/.exec(disp);
-        const filename = (fn && fn[1]) || 'export';
-        const blob = await r.blob();
-        if (isNativeApp()) {
-          // Native: route the bridged in-canvas export through the OS save dialog
-          // too (WKWebView swallows the `<a download>` blob). Mirror the shell
-          // ExportDialog's doExport native branch.
-          const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
-          const savedPath = await saveExport(filename, bytes);
-          reply(savedPath ? { ok: true, filename } : { ok: false, error: 'Save cancelled' });
-          return;
-        }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        reply({ ok: true, filename });
+        const { jobId } = await r.json();
+        reply({ ok: true, jobId });
       } catch (err) {
         reply({ ok: false, error: err && err.message ? err.message : String(err) });
       }
@@ -10011,6 +9979,7 @@ function App() {
       <UpdateBanner update={updateReady} onDismiss={() => setUpdateReady(null)} />
       <SyncBanner status={syncStatus} />
       {!usageNudge && !tourSteps && <WhatsNewToast wn={whatsNew} />}
+      {!usageNudge && !tourSteps && <ExportToast center={exportCenter} />}
       {gitLifecycle && (
         <div role="status" aria-live="polite" className="st-banner st-banner--info">
           <span className="st-banner-dot" aria-hidden="true" />
@@ -10064,6 +10033,7 @@ function App() {
           onOpenReadiness={() => setReadinessOpen(true)}
           onOpenWhatsNew={whatsNew.openPanel}
           whatsNewCount={whatsNew.unseen.length}
+          exportCenter={exportCenter}
           artboardCount={activeArtboards}
           inspectorOpen={inspectorOpen}
           inspectorTab={inspectorTab}
@@ -10730,6 +10700,7 @@ function App() {
         }}
       />
       <WhatsNewPanel wn={whatsNew} onStartTour={startTour} />
+      <ExportPanel center={exportCenter} />
       <ReadinessDialog open={readinessOpen} onClose={() => setReadinessOpen(false)} />
       {usageNudge && !tourSteps && !collabNudge && (
         <div className="mdcc-tour-nudge" role="status" aria-live="polite">
