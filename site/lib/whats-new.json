@@ -1,7 +1,17 @@
 {
-  "generated": "2026-07-07T22:49:14.657Z",
+  "generated": "2026-07-08T09:54:04.527Z",
   "version": "0.40.0",
   "entries": [
+    {
+      "id": "desktop-intel-mac-support",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "title": "Desktop app now runs on Intel Macs",
+      "summary": "The macOS desktop app was Apple-Silicon-only — it now ships as a universal binary, so Intel Mac users can download and run it natively too, no Rosetta workaround needed.",
+      "learnMore": "https://maude.sh/desktop",
+      "surface": "design-ui"
+    },
     {
       "id": "element-editing-robustness",
       "version": null,

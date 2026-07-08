@@ -20,7 +20,7 @@ const SHORT: Record<KnownPlatform, string> = {
   linux: 'Linux',
 };
 const FILE: Record<KnownPlatform, string> = {
-  macos: '.dmg · Apple Silicon',
+  macos: '.dmg · Intel & Apple Silicon',
   windows: '.msi · 64-bit',
   linux: '.deb · Debian/Ubuntu',
 };

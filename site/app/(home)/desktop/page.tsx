@@ -74,7 +74,7 @@ export default function DesktopPage() {
           </p>
           <DownloadButton />
           <p className="mdcc-hero-fineprint">
-            Free and open source. Requires <strong>macOS 13+</strong> (Apple Silicon) or{' '}
+            Free and open source. Requires <strong>macOS 13+</strong> (Intel or Apple Silicon) or{' '}
             <strong>Windows 10+</strong> (64-bit). The AI editing pairs with your own{' '}
             <Link href="/docs/design">Claude Code</Link>.
           </p>
@@ -123,7 +123,7 @@ export default function DesktopPage() {
         <dl className="mdcc-about-meta">
           <div>
             <dt>macOS</dt>
-            <dd>13 Ventura or newer · Apple Silicon · .dmg</dd>
+            <dd>13 Ventura or newer · Intel or Apple Silicon · .dmg</dd>
           </div>
           <div>
             <dt>Windows</dt>

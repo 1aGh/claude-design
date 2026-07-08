@@ -26,6 +26,19 @@ name: Build desktop app (macOS .dmg + Windows .msi + Linux .deb)
 # (scripts/sync-sidecar.mjs) copies it into src-tauri/binaries/maude-server-<triple>
 # for Tauri's `externalBin`.
 #
+# macOS ships a UNIVERSAL binary (`tauri build --target universal-apple-darwin`)
+# rather than a second arm64/x86_64 matrix leg, because Tauri's default
+# `.app.tar.gz` updater artifact carries no arch token in its filename — two
+# legs would silently clobber each other's upload to the same GitHub Release.
+# Tauri's own universal-binary support only fat-binaries the main Rust
+# executable (which cargo compiles for both arches itself); it does NOT
+# auto-lipo `externalBin` sidecars (tauri-apps/tauri#3355) — it looks for a
+# pre-built binary literally named `<name>-universal-apple-darwin` and fails
+# to bundle otherwise. So the macOS leg builds both dev-server sidecar arches,
+# stages both dev-server + agent-browser sidecars for each arch, then runs
+# `lipo -create` itself to produce `maude-server-universal-apple-darwin` +
+# `agent-browser-universal-apple-darwin` before `tauri build` runs.
+#
 # Two signing keys are in play (Phase 32):
 #   • TAURI_SIGNING_PRIVATE_KEY (+ _PASSWORD) — ed25519 key that signs the UPDATER
 #     artifacts (createUpdaterArtifacts:true). The matching public key is pinned in
@@ -54,13 +67,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14 # arm64; matches build-binaries.yml's darwin-arm64 host
-            label: macos-arm64
-            target: bun-darwin-arm64
+          - os: macos-14 # arm64 host; builds a universal (arm64+x86_64) binary — target/sidecar_dist
+            label: macos-universal # are irrelevant here (both arches are hardcoded in the build step below)
             sidecar_slug: darwin-arm64
-            sidecar_dist: dist/maude-darwin-arm64
-            artifact_name: maude-desktop-macos-arm64
-            bundle_glob: apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            artifact_name: maude-desktop-macos-universal
+            bundle_glob: apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
           - os: windows-2022
             label: windows-x64
             target: bun-windows-x64
@@ -96,6 +108,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -111,14 +125,24 @@ jobs:
 
       - name: Build dev-server sidecar binary
         # Embed the committed dist/runtime/*.js verbatim (MAUDE_SKIP_RUNTIME_BUILD=1).
+        # macOS builds BOTH arches (arm64 + x86_64) — the "Build Tauri app" step
+        # below lipos them into a universal binary before `tauri build` runs;
+        # every other OS still builds its single matrix.target.
         shell: bash
         env:
           MAUDE_SKIP_RUNTIME_BUILD: '1'
         run: |
           cd apps/studio
           bun install
-          bun run build.ts --release --target=${{ matrix.target }}
-          test -f "${{ matrix.sidecar_dist }}" || { echo "::error::dev-server binary not produced at apps/studio/${{ matrix.sidecar_dist }}"; ls -la dist; exit 1; }
+          if [ "${{ matrix.os }}" = "macos-14" ]; then
+            bun run build.ts --release --target=bun-darwin-arm64
+            bun run build.ts --release --target=bun-darwin-x64
+            test -f dist/maude-darwin-arm64 || { echo "::error::dev-server binary not produced at apps/studio/dist/maude-darwin-arm64"; ls -la dist; exit 1; }
+            test -f dist/maude-darwin-x64 || { echo "::error::dev-server binary not produced at apps/studio/dist/maude-darwin-x64"; ls -la dist; exit 1; }
+          else
+            bun run build.ts --release --target=${{ matrix.target }}
+            test -f "${{ matrix.sidecar_dist }}" || { echo "::error::dev-server binary not produced at apps/studio/${{ matrix.sidecar_dist }}"; ls -la dist; exit 1; }
+          fi
 
       # ── macOS: build + notarize (when APPLE_* present) ──────────────────────────
       - name: Build Tauri app (.dmg)
@@ -137,6 +161,26 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         shell: bash
         run: |
+          # Stage BOTH arches' sidecars, then fuse each into a single
+          # `<name>-universal-apple-darwin` binary via lipo BEFORE `tauri build`.
+          # Tauri does NOT auto-lipo externalBin sidecars for a
+          # --target universal-apple-darwin build (that auto-lipo only applies
+          # to the main Rust binary, which cargo compiles for both arches
+          # itself) — it looks for a pre-built binary literally named
+          # `<name>-universal-apple-darwin` and fails to bundle otherwise
+          # (see tauri-apps/tauri#3355). So we build the fat binary ourselves.
+          cd apps/desktop
+          MAUDE_SIDECAR_SLUG=darwin-arm64 node scripts/sync-sidecar.mjs
+          MAUDE_SIDECAR_SLUG=darwin-arm64 node scripts/sync-agent-browser.mjs
+          MAUDE_SIDECAR_SLUG=darwin-x64 node scripts/sync-sidecar.mjs
+          MAUDE_SIDECAR_SLUG=darwin-x64 node scripts/sync-agent-browser.mjs
+          cd src-tauri/binaries
+          lipo -create -output maude-server-universal-apple-darwin \
+            maude-server-aarch64-apple-darwin maude-server-x86_64-apple-darwin
+          lipo -create -output agent-browser-universal-apple-darwin \
+            agent-browser-aarch64-apple-darwin agent-browser-x86_64-apple-darwin
+          cd ../../../..
+
           # Graceful-degradation: with no Apple cert secret configured the env
           # vars above arrive as EMPTY STRINGS (not unset), which still makes
           # tauri's macOS bundler attempt `security import` on an empty cert and
@@ -146,7 +190,7 @@ jobs:
           if [ -z "$APPLE_CERTIFICATE" ]; then
             unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
           fi
-          pnpm --filter @maude/desktop tauri build
+          pnpm --filter @maude/desktop tauri build --target universal-apple-darwin
 
           # tauri notarizes + staples the .app, but only *signs* the .dmg
           # container (it is NOT notarized). A browser-downloaded (quarantined)
@@ -155,7 +199,7 @@ jobs:
           # Only in the signed path — the unset above clears APPLE_CERTIFICATE
           # in the unsigned/dev path, so this is skipped there.
           if [ -n "$APPLE_CERTIFICATE" ]; then
-            DMG=$(ls apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg | head -1)
+            DMG=$(ls apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)
             echo "Notarizing dmg container: $DMG"
             xcrun notarytool submit "$DMG" \
               --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
@@ -255,9 +299,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
-            apps/desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz
-            apps/desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
+            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
             apps/desktop/src-tauri/target/release/bundle/msi/*.msi
             apps/desktop/src-tauri/target/release/bundle/msi/*.msi.sig
             apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe

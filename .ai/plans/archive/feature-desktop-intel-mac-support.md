@@ -84,7 +84,7 @@ change: stage both arches' sidecars, add the Rust `x86_64-apple-darwin` target, 
 
 Execute in order. Each task is atomic and testable.
 
-### Task 1: UPDATE Rust toolchain step to install both macOS targets
+### Task 1: UPDATE Rust toolchain step to install both macOS targets ✅ Task 1 — completed
 
 - **Do**: In `build-desktop.yml`'s `Install Rust` step (line ~97-98), add
   `targets: aarch64-apple-darwin,x86_64-apple-darwin` to the `dtolnay/rust-toolchain@stable`
@@ -95,7 +95,7 @@ Execute in order. Each task is atomic and testable.
   explicitly is harmless (rustup no-ops on an already-installed target).
 - **Validate**: `rustc --print target-list | grep apple-darwin` shows both after the step (or just proceed to Task 5's local repro).
 
-### Task 2: UPDATE dev-server sidecar build step to produce both arches
+### Task 2: UPDATE dev-server sidecar build step to produce both arches ✅ Task 2 — completed
 
 - **Do**: In the `Build dev-server sidecar binary` step (line ~112-121, `if: matrix.os == 'macos-14'`
   section — currently shared with other OSes via `matrix.target`/`matrix.sidecar_dist`), for the
@@ -111,7 +111,7 @@ Execute in order. Each task is atomic and testable.
   shape for this — only macOS needs it.
 - **Validate**: `ls apps/studio/dist/maude-darwin-*` shows both files after the step.
 
-### Task 3: UPDATE sidecar staging to run for both arches before `tauri build`
+### Task 3: UPDATE sidecar staging to run for both arches before `tauri build` ✅ Task 3 — completed (with a correction, see note below)
 
 - **Do**: Immediately before the `tauri build` invocation in the macOS build step, run both sync
   scripts twice, once per slug:
@@ -132,7 +132,15 @@ Execute in order. Each task is atomic and testable.
   confirmed true (both ship in the same npm package, not split by `optionalDependencies`).
 - **Validate**: `ls apps/desktop/src-tauri/binaries/` shows 4 files (2 sidecars × 2 arches) before `tauri build` runs.
 
-### Task 4: UPDATE the `tauri build` invocation + bundle glob paths to the universal target
+> **Correction found during Task 5's local repro (2026-07-08):** the plan's Solution-section assumption that "Tauri's `externalBin` sidecar resolution auto-lipos a universal sidecar when it finds both arch files staged" is **wrong**. Confirmed via `gh issue view 3355 --repo tauri-apps/tauri`: that auto-lipo only applies to the *main* Rust binary (cargo compiles both arches itself for `--target universal-apple-darwin`); `externalBin` sidecars are pre-built blobs Tauri just copies — for the universal target it looks for a binary literally named `<name>-universal-apple-darwin` and **fails to bundle** if that exact file isn't present. Fix: after staging all 4 arch-specific files above, run `lipo -create` yourself:
+> ```bash
+> cd apps/desktop/src-tauri/binaries
+> lipo -create -output maude-server-universal-apple-darwin maude-server-aarch64-apple-darwin maude-server-x86_64-apple-darwin
+> lipo -create -output agent-browser-universal-apple-darwin agent-browser-aarch64-apple-darwin agent-browser-x86_64-apple-darwin
+> ```
+> This is now landed in both `build-desktop.yml` (macOS build step) and verified locally (`tauri build --target universal-apple-darwin` succeeded on the second attempt, 6 files in `binaries/` before the build). Worth a DDR-106 addendum — see the updated Acceptance Criteria note.
+
+### Task 4: UPDATE the `tauri build` invocation + bundle glob paths to the universal target ✅ Task 4 — completed
 
 - **Do**:
   1. Change the macOS `tauri build` command (line ~149) to
@@ -150,7 +158,7 @@ Execute in order. Each task is atomic and testable.
 - **Validate**: `grep -n "release/bundle" .github/workflows/build-desktop.yml` shows no remaining
   bare `target/release/bundle` path on the macOS leg.
 
-### Task 5: Local repro BEFORE the CI edit (do this first in practice, confirms Tasks 1-4's paths)
+### Task 5: Local repro BEFORE the CI edit (do this first in practice, confirms Tasks 1-4's paths) ✅ Task 5 — completed
 
 - **Do**: On this machine (Apple Silicon), from `apps/desktop/`:
   1. `rustup target add x86_64-apple-darwin`
@@ -165,7 +173,7 @@ Execute in order. Each task is atomic and testable.
   the build fails at this step, not in CI — cheaper to find out here.
 - **Validate**: `lipo -info` output contains both `x86_64` and `arm64`; `.dmg` mounts and the app launches.
 
-### Task 6: UPDATE desktop docs copy (2 files)
+### Task 6: UPDATE desktop docs copy (2 files) ✅ Task 6 — completed (2 more spots found + fixed in `page.tsx`, see report)
 
 - **Do**:
   - `site/content/docs/desktop/index.mdx` line 23: `13 Ventura (Apple Silicon)` → `13 Ventura (Intel or Apple Silicon)`.
@@ -194,10 +202,18 @@ Execute in order. Each task is atomic and testable.
 
 ## Acceptance Criteria
 
-- [ ] Local universal build (Task 5) produces a `.dmg` whose `Maude.app` binary is a 2-arch fat binary (`lipo -info`)
-- [ ] `build-desktop.yml` macOS leg builds `--target universal-apple-darwin` with correct bundle-glob paths (Tasks 1-4)
-- [ ] `workflow_dispatch` dry run of `build-desktop.yml` succeeds end-to-end on the branch
-- [ ] Docs no longer claim macOS desktop is Apple-Silicon-only (Task 6)
-- [ ] `build-binaries.yml` (CLI release) untouched — already had `darwin-x64`, out of scope
-- [ ] No DDR-worthy decision left unrecorded — consider a short DDR addendum to DDR-106 noting the universal-binary choice + the "no arch token in filename" landmine this plan avoided, if `/flow:done` finds it non-obvious enough to warrant one
+- [x] Local universal build (Task 5) produces a `.dmg` whose `Maude.app` binary is a 2-arch fat binary (`lipo -info`) — verified `x86_64 arm64` on `maude-desktop`, `maude-server`, AND `agent-browser`; live-booted + dev-server confirmed serving on both native arm64 and Rosetta x86_64
+- [x] `build-desktop.yml` macOS leg builds `--target universal-apple-darwin` with correct bundle-glob paths (Tasks 1-4) — paths confirmed against the actual local build output, not guessed
+- [ ] `workflow_dispatch` dry run of `build-desktop.yml` succeeds end-to-end on the branch — **deferred**, needs a push + explicit user go-ahead (not run this session)
+- [x] Docs no longer claim macOS desktop is Apple-Silicon-only (Task 6) — grep-clean across `site/content` + `site/app/(home)/desktop` (2 extra spots found in `page.tsx` beyond the plan's named 2 files, also fixed)
+- [x] `build-binaries.yml` (CLI release) untouched — already had `darwin-x64`, out of scope (git diff confirms no changes)
+- [x] No DDR-worthy decision left unrecorded — DDR-106 addendum recorded (2026-07-08) documenting the universal-binary choice + the lipo-it-yourself landmine, confirmed against `tauri-apps/tauri#3355`
+
+## Retro
+
+- **What worked:** the plan's own "do Task 5 first" instruction was exactly right — the local repro caught a real, load-bearing wrong assumption (Tauri does NOT auto-lipo `externalBin` sidecars) before it ever touched CI, where the failure would have cost a wasted CI run and a confusing error with no local repro loop to debug it in.
+- **What worked:** scoping the plan tight ("CI-config + 2 doc-copy edits, no app/runtime code") made the `/flow:done` validate fan-out fast to reason about — every subagent (scenario/a11y/design-system/security/ethical-hacker) could quickly conclude "no new surface" instead of doing deep discovery, and 3 independent `/simplify` reviewers converged on the same follow-up theme (centralize the triple-naming/lipo logic in the sync scripts) without prompting, which is a good signal the diff was small enough to actually reason about fully.
+- **What to change next time:** the plan's "Must-Read Files" list named 2 site files for Task 6 but a grep of the stated validate scope (`site/app/(home)/desktop`) turned up 2 more instances in a file the plan didn't list (`page.tsx`). Future plans doing a "find every occurrence of X wording" task should grep first and enumerate every hit as an explicit sub-item, rather than naming files from memory/context — the validate command already existed to catch this, but it would have been cheaper to get it right at plan time.
+- **What to change next time:** this ran on a shared, actively-concurrent `main` (another session was mid-`/flow:done` on an unrelated feature throughout this whole session) — staging required manually diffing every touched shared file (STATE.md, whats-new.json, whats-new mirror) to confirm no entanglement before every commit. Worth a standing reminder in `/flow:execute`/`/flow:done`: on this repo, always re-check `git status` immediately before `git add`, not just at session start, since the tree can change under you mid-session.
+- **Follow-up (not applied, recorded for a future pass):** three independent `/simplify` reviewers flagged the same shape — the sidecar triple-naming + `lipo` fusion logic is hand-rolled in `build-desktop.yml` instead of living in `sync-sidecar.mjs`/`sync-agent-browser.mjs` (which already own the canonical slug→triple map). A `darwin-universal` slug that stages both arches and lipos them internally would remove the duplicated triple literals from the YAML and the redundant re-staging via `beforeBuildCommand`. Out of scope for this plan (touches shared build tooling used by every `tauri dev`/`build` invocation, not just CI) — worth its own small plan if the triple-hardcoding pattern gets copied elsewhere.
 ```
