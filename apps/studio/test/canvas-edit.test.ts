@@ -214,6 +214,56 @@ describe('canvas-edit / applyEdit', () => {
   });
 });
 
+describe('canvas-edit / applyEdit — Stage F2 media src-replace', () => {
+  test('replaces a literal <img src="…"> — the ordinary "Replace image…" case', () => {
+    const src = `function Demo() { return <img src="assets/old.png" alt="x" />; }`;
+    const ids = idsOf(src);
+    const id = ids.img as string;
+    const out = applyEdit(CANVAS, src, id, 'src', 'assets/12345678.png');
+    expect(out.source).toBe(
+      `function Demo() { return <img src="assets/12345678.png" alt="x" />; }`
+    );
+  });
+
+  test('replaces a trivial {"literal"} src expression', () => {
+    const src = `function Demo() { return <img src={"assets/old.png"} alt="x" />; }`;
+    const ids = idsOf(src);
+    const id = ids.img as string;
+    const out = applyEdit(CANVAS, src, id, 'src', 'assets/new.png');
+    expect(out.source).toContain('src="assets/new.png"');
+  });
+
+  test('refuses (does not corrupt) a src bound to a JS expression', () => {
+    // src={imageUrl} is a BINDING, not a static value — silently overwriting it
+    // would discard the binding. This is the exact gotcha the plan's Task F2
+    // flags for "Replace image…"; the context-menu comment already assumed
+    // this refusal existed (canvas-shell.tsx) — it didn't, until this fix.
+    const src = `function Demo({ imageUrl }) { return <img src={imageUrl} alt="x" />; }`;
+    const ids = idsOf(src);
+    const id = ids.img as string;
+    expect(() => applyEdit(CANVAS, src, id, 'src', 'assets/new.png')).toThrow(
+      /bound to a JS expression/
+    );
+    // Also refuses a member-expression / template-literal binding, not just a
+    // bare identifier.
+    const src2 = `function Demo({ item }) { return <img src={item.url} alt="x" />; }`;
+    const ids2 = idsOf(src2);
+    expect(() => applyEdit(CANVAS, src2, ids2.img as string, 'src', 'assets/new.png')).toThrow(
+      /bound to a JS expression/
+    );
+  });
+
+  test('a non-src attribute expression binding is unaffected (existing overwrite behavior)', () => {
+    // The refusal is scoped to `src` (the plan's stated gotcha) — an
+    // expression-bound `title` or similar still overwrites as before; widening
+    // the refusal to every attribute is a bigger, separate change.
+    const src = `function Demo({ label }) { return <button title={label}>x</button>; }`;
+    const ids = idsOf(src);
+    const out = applyEdit(CANVAS, src, ids.button as string, 'title', 'Fixed label');
+    expect(out.source).toContain('title="Fixed label"');
+  });
+});
+
 describe('canvas-edit / applyRemove (reset)', () => {
   test('removes one style key, leaving the siblings + object intact', () => {
     const src = 'function Demo() { return <div style={{ padding: 8, margin: 4 }}>x</div>; }';

@@ -90,7 +90,7 @@ const COMMENT_CLAIMS: ReadonlySet<RouterAction['kind']> = new Set<RouterAction['
 // bare DS specimen. On a UI canvas (`.dc-canvas` present) the inner shell owns
 // hover-halo painting + `resolveHoverTarget` element anchoring, so the lite
 // layer defers to it.
-function isBareSpecimen(): boolean {
+export function isBareSpecimen(): boolean {
   return typeof document !== 'undefined' && !document.querySelector('.dc-canvas');
 }
 
@@ -121,7 +121,7 @@ function pickSpecimenEl(clientX: number, clientY: number): HTMLElement | null {
 // specimen element always resolves to a cd-id the Inspector's `edit-css`/
 // `edit-attr` can target. Falls back to the bare hit when (defensively) nothing
 // is stamped, in which case the selection degrades to a `cssPath` selector.
-function pickSpecimenSelectEl(clientX: number, clientY: number): HTMLElement | null {
+export function pickSpecimenSelectEl(clientX: number, clientY: number): HTMLElement | null {
   const hit = pickSpecimenEl(clientX, clientY);
   if (!hit) return null;
   const stamped = hit.closest('[data-cd-id]') as HTMLElement | null;

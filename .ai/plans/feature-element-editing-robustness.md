@@ -444,12 +444,12 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 
 ### Stage K — Undo coverage + anti-flicker orchestration (INV-1 / INV-2 verification)
 
-#### Task K1: AUDIT + close undo coverage for every new op
+#### ✅ Task K1: AUDIT + close undo coverage for every new op — DONE (audit: all 8 op-classes PASS, already correctly wired via `recordSourceEdit`/the shared reorder-log seq — no new command files needed, a deliberate simplification, not a gap; closed the RCA doc's missing "element delete/insert" row; added `test/undo-sequence-byte-compare.test.ts` — resize→delete→insert→move→spacing-drag→5×undo LIFO → byte-identical `.tsx`, passing)
 
 - **Do**: Verify each new op records undo per INV-1: resize (D3/D4), delete (I2), insert element (I3), insert artboard (I4), media/bg-image swap (F2/F3), spacing drag (J1), position knobs (B3). CSS-shaped ops use `recordSourceEdit`; structural ops use their command builders. Cross-check against `.ai/logs/rca/issue-undo-redo-coverage-gaps.md` — this plan must close the "element delete/insert" row and add no new gaps. Confirm the `maude:invalidate-undo` self-write damping (`use-undo-stack.tsx:295-308`) isn't tripped by our own `patchCanvasMeta` writes (artboard insert/resize).
 - **Validate**: a scripted sequence — resize → delete → insert → move instance → spacing-drag → Cmd+Z ×5 — returns the canvas to its exact start (byte-compare the `.tsx`).
 
-#### Task K2: VERIFY anti-flicker across all new ops (INV-2)
+#### ✅ Task K2: VERIFY anti-flicker across all new ops (INV-2) — DONE (audit: apply-style-before-write + softReload PASS across all new ops, no hard `location.reload()`; NEEDS-FIX closed — added the missing reveal/settle transitions + `prefers-reduced-motion` collapse to `ElementResizeOverlay`'s handles/readout pill (switched display-toggle to opacity+pointer-events so they fade in on select), gave `.dc-spacing-handle`'s already-declared-but-dead reduced-motion rule a real transition to collapse, and the H2 scope badge now mounts with the existing shell `st-pop`/`--dur-soft` animation)
 
 - **Do**: Confirm every CSS-shaped op posts `dgn:'apply-style'` **before** its write so the 1.5s suppression window (`_shell.html:376`) skips the redundant reload; confirm structural ops (delete/insert) go through `softReload` (no white flash, holds last-good). Add reveal/settle transitions to the new overlays (resize handles, spacing handles, scope badge) using `--dur-soft`/`--ease-out` (`1-tokens-maude.css:102-108`) with the `prefers-reduced-motion` guard. No hard `location.reload()` on any element/spacing/media edit.
 - **Gotcha**: the video-comp exception (`_shell.html:361-376`) bypasses the CSS suppression on canvases with a mounted Remotion comp — verify resize/spacing on a video-comp artboard still settles cleanly (soft-reload, not skip).
@@ -484,19 +484,19 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha**: apply only *authored* props (not resolved computed) so you don't bake inherited/DS-token values into raw overrides — respect the DDR-104 authored-vs-computed distinction. This is the natural batch-write case that may justify the optional `edit-css-batch` route (Task D3).
 - **Validate**: style element A, copy its style, select B, paste-style → B gains A's authored props; Cmd+Z reverts as one step.
 
-#### Task L5: ADD distribute / equal-spacing / tidy-up as a multi-select operation
+#### ✅ Task L5: ADD distribute / equal-spacing / tidy-up as a multi-select operation — DONE (`computeAlign`/`computeDistribute`/`computeTidyGrid` in equal-spacing-detector.ts + ContextualToolbar align/distribute/tidy buttons, posting per-element `reposition-request` — no new route; scoped to absolute/fixed elements)
 
 - **Do**: On a multi-selection, add **Distribute horizontal/vertical spacing** (equalize gaps, keep outer elements fixed) and **Tidy up** (snap into a clean row/column/grid). Reuse `equal-spacing-detector.ts` (gap detection) + the align math; write results as `left/top` (absolute) or reorder (flow) via the existing lanes. **First verify the scope of the existing "G7 align cluster" (`canvas-shell.tsx:2171`)** — if it already aligns element multi-selections, extend it with distribute/tidy-up; if it's artboard/annotation-only, add element align (6 axes) too.
 - **Gotcha**: distribute/tidy-up on flow elements is ambiguous (they're not free-positioned) — scope the operation to absolutely-positioned siblings or offer "convert to a spaced flex container" as the flow-friendly alternative (ties into the Stage-M layout editor if built).
 - **Validate**: select 3 absolutely-positioned elements → Distribute → equal gaps; Tidy up → clean grid; Cmd+Z reverts.
 
-#### Task L6: ADD deep-select + right-click "Select layer" disambiguation
+#### ✅ Task L6: ADD deep-select + right-click "Select layer" disambiguation — DONE (dblclick-on-container drills one level past the current selection via a stamped-ancestor chain; "Select layer" submenu built from `elementsFromPoint` + `MenuItem.submenu` widened to a function form. v1 scope: no live Stage-H local/shared badge per candidate — deferred, noted in code, since the scope resolver is server-side/main-origin-only and unreachable from the iframe without a new request/reply round-trip)
 
 - **Do**: **Deep-select** — double-click (or a modifier-click) drills one nesting level down from the clicked container into its child (Figma parity), instead of only grabbing the outer wrapper. **Select layer** — a right-click submenu listing every element stacked under the cursor (Layers-panel order, with tag/label) so the user picks the exact one. Both build on `resolveHoverTarget` + `elementFromPoint` stacking + the Layers tree.
 - **Gotcha**: this directly serves the plan's *selection predictability* goal (deeply-nested TSX + overlapping elements are otherwise un-grabbable) — pair the "Select layer" list with the Stage-H scope badge so each candidate shows local-vs-shared.
 - **Validate**: double-click drills into a nested child; right-click an overlap → "Select layer" lists all stacked elements → picking one selects it exactly.
 
-#### Task L7: ADD live distance measurement + drag dimension readout
+#### ✅ Task L7: ADD live distance measurement + drag dimension readout — DONE (new `measure-overlay.tsx`: Alt-hover paints a red guide line + world-px pill on each gapped axis between the selection and the hovered element, via new pure `computePairGap`; resize drag gets a live W×H(+X,Y) readout pill in `use-element-resize.tsx`)
 
 - **Do**: **Alt/Option-hover measurement** — with one element selected, holding Alt and hovering another paints a red line + horizontal/vertical pixel distances (Figma parity); reuse `equal-spacing-detector.ts` + the `use-snap-guides.tsx` overlay. **Drag readout** — while dragging/resizing (Stage D) show a live W×H / X,Y pill. Both are read-only overlays in the fixed-rAF layer, honoring `prefers-reduced-motion`.
 - **Gotcha**: measurement must use world coords (post-Stage-A host-scroll-0 invariant) so numbers are correct at any zoom.
@@ -540,7 +540,7 @@ Execute in order. Tasks are grouped into dependency stages (A→G); the whole se
 - **Gotcha**: DDR numbering races on shared `main` (memory `project_ddr_numbering_races_on_shared_main`) — re-check `.ai/decisions/` immediately before numbering; the tentative next number is **DDR-152** (current max is 151). This may warrant **two** DDRs (the knob/scope UX decision and the structural-edit/undo decision) if one grows unwieldy.
 - **Validate**: DDR file(s) exist, index updated.
 
-#### Task G2: ADD tests for the new surfaces
+#### ✅ Task G2: ADD tests for the new surfaces — DONE (checklist audit: (a) camera-reveal.test.tsx, (c) element-resize.test.ts + element-structural-api.test.ts, (f) element-structural-edit.test.ts, (g) edit-scope-api.test.ts, (h) spacing-handles.test.ts were already covered by earlier stages; closed the 3 real gaps — (b) `knob-props-authored.test.ts` new, (d) `specimen-select.test.ts` new, (e) `canvas-edit.test.ts` media src-replace tests new, which caught + fixed a real bug: `editStringAttr` silently discarded a `src={expr}` binding instead of refusing, contradicting the context-menu's own "will refuse" comment — now throws `CanvasEditError`; (i) `undo-sequence-byte-compare.test.ts` new, see Task K1)
 
 - **Do**: (a) the Stage-A camera regression (Task A3); (b) a `dom-selection` test asserting the new `KNOB_PROPS` round-trip into `authored`; (c) resize-commit tests for element (`width/height/left/top`) and artboard (`width/height` attrs) + undo records; (d) a specimen-selection test asserting a bare-specimen element produces a `select-set` with a null-artboard selector; (e) a media src-replace test (`edit-attr` on `src`); (f) `canvas-edit.ts` structural tests: `applyDeleteElement`/`applyInsertElement`/`applyInsertArtboard` round-trip, reparse-gate rejects invalid results, shared-instance delete targets the usage; (g) an edit-scope resolver test (`local` vs `shared, instanceCount N`, incl. the `.map()` caveat); (h) a spacing-drag commit test; (i) the K1 whole-file byte-compare undo sequence. Mirror `canvas-edit.test.ts` / selection-test shapes.
 - **Validate**: `cd apps/studio && bun test`.
@@ -604,30 +604,30 @@ Run these to confirm zero regressions:
 
 ## Acceptance Criteria
 
-- [ ] All tasks completed (Stages A–M + G)
-- [ ] **Editor ergonomics parity** (Stage L): element keyboard-nudge (1/10px), keyboard tree traversal (parent/child/sibling + Esc), Cmd+D duplicate + Alt-drag-dup + paste-in-place, copy-style/paste-style (Cmd+Opt+C/V), distribute/equal-spacing/tidy-up, deep-select + right-click "Select layer", Alt-hover distance measurement + drag readout — all Cmd+Z reversible; the already-present ones (marquee, command palette, inline text edit) verified not regressed
-- [ ] **Flex/auto-layout editor** (Stage M): per-element Fixed/Hug/Fill sizing + grouped direction/wrap/distribution/gap/padding editor, gated by `display`; CSS-Grid track editor stubbed as a separate follow-up plan (`feature-grid-track-editor.md`), not built here
-- [ ] `/flow:utils-verify` passes after each task (Edit-Verify Loop, max 3 iterations)
-- [ ] Bug A (absolute-move pan jump) and Bug B (overflow-select shift + right strip) are **gone**, verified through the `select-by-id` channel specifically
-- [ ] On-canvas resize works with Figma-grammar (corner+edge handles, Shift aspect-lock, Alt from-center), constant handle size at any zoom, single coherent commit + Cmd+Z — for **elements and artboards** (artboard size via `edit-attr width/height`, DDR-027)
-- [ ] `position` (+ `top/right/bottom/left` inset), `transform`, `font-style`, `text-transform`/`text-decoration`, and media `object-fit`/`aspect-ratio`/`object-position` are curated knobs with live preview + provenance + undo
-- [ ] Selecting an element auto-opens the Inspector on the CSS tab **only** when no right panel is already open; preference-backed (default on)
-- [ ] Element selection + inspect + resize + edit works on DS specimens (`system/<ds>/preview/*.tsx`)
-- [ ] Image/video/background swap works for authored `<img>`/`<video>` (via `edit-attr`/`edit-css`) and annotation `ImageStroke`/`MediaRefStroke` (via the annotation model), through the asset picker
-- [ ] **Delete** an element (Del key + context menu + toolbar) and **insert** a new Div/Text/Image work in-artboard, both Cmd+Z reversible via whole-file snapshot
-- [ ] **Insert a new empty artboard** from a screen-size preset (Desktop/Laptop/Tablet/Mobile/Custom); it's clean, selectable, resizable, and accepts inserted elements
-- [ ] **On-canvas padding + gap drag** works with live preview + undo, gated correctly by `display`
-- [ ] **Undo/redo covers every edit op** (INV-1): the K1 byte-compare sequence returns the canvas to its exact start; the `.ai/logs/rca/issue-undo-redo-coverage-gaps.md` element-delete/insert gap is closed, no new gaps
-- [ ] **No hard flicker** on any edit (INV-2): CSS-shaped ops skip the redundant reload; structural ops soft-reload with no white flash; new affordances animate with DS motion tokens + honor `prefers-reduced-motion`; the WebKit filter-GPU ceiling is documented, not chased
-- [ ] **Reusable-component predictability** (INV-3, Option A): every selection shows Local vs Shared·N-places; moving/resizing a component **instance** stays local; inner-shared-element styling is global-and-labeled; **no** override/detach primitive was added
-- [ ] `/flow:validate` passes overall:
-  - [ ] Static (types, lint, format)
-  - [ ] Tests (full suite + the new Stage-G tests, incl. structural delete/insert/artboard, edit-scope, spacing, undo sequence)
-  - [ ] Build (client bundle rebuilt `--release` + committed; site/packages)
-  - [ ] `scenario-runner`: 0 blockers, parity OK on `web-desktop` (others `skipped`)
-  - [ ] `design-system-guard`: 0 blockers
-  - [ ] `a11y-auditor`: 0 blockers (new knobs + keyboard-resize + keyboard-delete + auto-open focus)
-- [ ] `/flow:validate-security`: 0 blockers — every new write route (`delete-element`/`insert-element`/`insert-artboard`/`delete-revert`/`edit-css-batch`?/`assets` GET) is main-origin-only + `sameOriginWrite`+loopback guarded + `activePath`-pinned + origin-gate-tested; specimen selection adds no canvas-origin write
-- [ ] The DDR(s) (Task G1) are recorded, superseding DDR-104 §3's OUT-list, extending DDR-138/139 to general delete/insert, and recording the declined override/detach path; cross-referencing DDR-103/105/019/027/054/088/050
-- [ ] Media-swap/framing stays orthogonal to `feature-photo-editor.md` (box/source via `edit-css`/`edit-attr`, not `/_api/photo-edit`); Inspector insertion points coordinated
-- [ ] Code follows project conventions, no regressions; the stale "display-only" banner (`app.jsx:5251-5255`) is corrected while in the file
+- [x] All tasks completed (Stages A–M + G) — F1 (fetch-by-URL) and L3-tail (Alt-drag-dup/paste-in-place) are DEFERRED, documented, and explicitly out of this pass's scope (see Task F1/L3 notes)
+- [x] **Editor ergonomics parity** (Stage L): element keyboard-nudge (1/10px), keyboard tree traversal (parent/child/sibling + Esc), Cmd+D duplicate (Alt-drag-dup + paste-in-place DEFERRED), copy-style/paste-style (Cmd+Opt+C/V), distribute/equal-spacing/tidy-up, deep-select + right-click "Select layer", Alt-hover distance measurement + drag readout — all Cmd+Z reversible; the already-present ones (marquee, command palette, inline text edit) verified not regressed
+- [x] **Flex/auto-layout editor** (Stage M): per-element Fixed/Hug/Fill sizing + grouped direction/wrap/distribution/gap/padding editor, gated by `display`; CSS-Grid track editor stubbed as a separate follow-up plan (`feature-grid-track-editor.md`), not built here
+- [x] `/flow:utils-verify` passes after each task (Edit-Verify Loop, max 3 iterations)
+- [x] Bug A (absolute-move pan jump) and Bug B (overflow-select shift + right strip) are **gone**, verified through the `select-by-id` channel specifically
+- [x] On-canvas resize works with Figma-grammar (corner+edge handles, Shift aspect-lock, Alt from-center), constant handle size at any zoom, single coherent commit + Cmd+Z — for **elements and artboards** (artboard size via `edit-attr width/height`, DDR-027)
+- [x] `position` (+ `top/right/bottom/left` inset), `transform`, `font-style`, `text-transform`/`text-decoration`, and media `object-fit`/`aspect-ratio`/`object-position` are curated knobs with live preview + provenance + undo
+- [x] Selecting an element auto-opens the Inspector on the CSS tab **only** when no right panel is already open; preference-backed (default on)
+- [x] Element selection + inspect + resize + edit works on DS specimens (`system/<ds>/preview/*.tsx`)
+- [x] Image/video/background swap works for authored `<img>`/`<video>` (via `edit-attr`/`edit-css`) and annotation `ImageStroke`/`MediaRefStroke` (via the annotation model), through the asset picker (fetch-by-URL variant DEFERRED — Task F1)
+- [x] **Delete** an element (Del key + context menu + toolbar) and **insert** a new Div/Text/Image work in-artboard, both Cmd+Z reversible via whole-file snapshot
+- [x] **Insert a new empty artboard** from a screen-size preset (Desktop/Laptop/Tablet/Mobile/Custom); it's clean, selectable, resizable, and accepts inserted elements
+- [x] **On-canvas padding + gap drag** works with live preview + undo, gated correctly by `display`
+- [x] **Undo/redo covers every edit op** (INV-1): the K1 byte-compare sequence (`test/undo-sequence-byte-compare.test.ts`) returns the canvas to its exact start; the `.ai/logs/rca/issue-undo-redo-coverage-gaps.md` element-delete/insert gap is closed, no new gaps
+- [x] **No hard flicker** on any edit (INV-2): CSS-shaped ops skip the redundant reload; structural ops soft-reload with no white flash; new affordances (resize handles/readout, spacing handles, scope badge) now animate their reveal with DS motion tokens + honor `prefers-reduced-motion`; the WebKit filter-GPU ceiling is documented, not chased
+- [x] **Reusable-component predictability** (INV-3, Option A): every selection shows Local vs Shared·N-places; moving/resizing a component **instance** stays local; inner-shared-element styling is global-and-labeled; **no** override/detach primitive was added
+- [ ] `/flow:validate` passes overall — **NOT YET RUN this session**, deferred to `/flow:done`:
+  - [x] Static (types, lint, format) — `bun tsc --noEmit` clean (6 pre-existing DDR-026-baseline errors only), biome clean
+  - [x] Tests (full suite + the new Stage-G tests, incl. structural delete/insert/artboard, edit-scope, spacing, undo sequence) — **2174 pass / 1 skip / 1 fail** (pre-existing flaky `git-api.test.ts`, clean in isolation)
+  - [x] Build (client bundle rebuilt `--release`; site/packages) — rebuilt this session (`client/styles/3-shell-maude.css` touched), **not yet committed**
+  - [ ] `scenario-runner`: 0 blockers, parity OK on `web-desktop` (others `skipped`) — the 3 Stage-G scenarios don't exist yet under `.ai/scenarios/`
+  - [ ] `design-system-guard`: 0 blockers — not run this session
+  - [ ] `a11y-auditor`: 0 blockers (new knobs + keyboard-resize + keyboard-delete + auto-open focus) — not run this session
+- [ ] `/flow:validate-security`: 0 blockers — **not run this session.** Every new write route (`delete-element`/`insert-element`/`insert-artboard`/`delete-revert`/`assets` GET) is main-origin-only + `sameOriginWrite`+loopback guarded + `activePath`-pinned + origin-gate-tested (per earlier G3 fan-out); specimen selection adds no canvas-origin write. This session's L5 align/distribute/tidy-up reuses the existing `reposition-request` message + `/_api/edit-css` write lane (no new route) — low incremental risk, but not yet adversarially reviewed. `edit-css-batch` was never built (the serialized-chain approach was sufficient, per Task D3's own note).
+- [x] The DDR(s) (Task G1) are recorded as DDR-152, superseding DDR-104 §3's OUT-list, extending DDR-138/139 to general delete/insert, and recording the declined override/detach path; cross-referencing DDR-103/105/019/027/054/088/050
+- [x] Media-swap/framing stays orthogonal to `feature-photo-editor.md` (box/source via `edit-css`/`edit-attr`, not `/_api/photo-edit`); Inspector insertion points coordinated
+- [x] Code follows project conventions, no regressions; the stale "display-only" banner (`app.jsx:5251-5255`) was corrected during Stage B/C work

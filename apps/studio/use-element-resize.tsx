@@ -47,6 +47,8 @@ const EL_RESIZE_CSS = `
   z-index: 6;
   pointer-events: auto;
   touch-action: none;
+  opacity: 0;
+  transition: opacity 120ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .dc-el-resize-handle[data-corner="nw"], .dc-el-resize-handle[data-corner="se"] { cursor: nwse-resize !important; }
 .dc-el-resize-handle[data-corner="ne"], .dc-el-resize-handle[data-corner="sw"] { cursor: nesw-resize !important; }
@@ -63,6 +65,34 @@ const EL_RESIZE_CSS = `
   border-radius: 0 !important;
   z-index: 5;
   cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cg fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath stroke='white' stroke-width='4' d='M4.8 13 A6 6 0 1 1 15.2 13 M2.2 10.8 L4.8 13 L7.4 10.9 M12.6 10.9 L15.2 13 L17.8 10.8'/%3E%3Cpath stroke='black' stroke-width='1.8' d='M4.8 13 A6 6 0 1 1 15.2 13 M2.2 10.8 L4.8 13 L7.4 10.9 M12.6 10.9 L15.2 13 L17.8 10.8'/%3E%3C/g%3E%3C/svg%3E") 10 10, alias !important;
+}
+/* Task L7 — live W×H (+ X,Y for an out-of-flow edge drag) readout pill, shown
+   only WHILE a resize is in flight (see the tick() gate below). */
+.dc-el-resize-readout {
+  position: fixed;
+  transform: translate(-50%, 12px);
+  font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11px;
+  padding: 3px 7px;
+  background: var(--maude-hud-accent, oklch(0.680 0.180 268));
+  color: var(--maude-hud-accent-fg, oklch(0.180 0.030 268));
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* INV-2 — reveal/settle collapses to 1ms, same idiom as every other overlay
+   stylesheet in this codebase (equal-spacing-handles.tsx, etc). This overlay
+   is mounted inside the canvas iframe's OWN document, which never loads the
+   shell's 1-tokens-maude.css — the prefers-reduced-motion guard has to be
+   re-declared per injected stylesheet, it doesn't cascade in from the shell.
+   Comment stays backtick-free — it lives inside the template literal. */
+@media (prefers-reduced-motion: reduce) {
+  .dc-el-resize-handle, .dc-el-resize-readout { transition-duration: 1ms; }
 }
 `.trim();
 
@@ -371,8 +401,16 @@ export function ElementResizeOverlay(): ReactNode {
   useEffect(() => {
     const c = containerRef.current;
     if (!c) return;
+    // INV-2 — opacity+pointer-events, not display:none, so a fresh selection's
+    // handles/readout FADE in rather than pop (the `transition` on both
+    // classes above). Interactivity (pointer-events) flips instantly — a
+    // handle is grabbable the moment it's selected, even mid-fade.
     const hideAll = () => {
-      for (const child of Array.from(c.children)) (child as HTMLElement).style.display = 'none';
+      for (const child of Array.from(c.children)) {
+        const h = child as HTMLElement;
+        h.style.opacity = '0';
+        h.style.pointerEvents = 'none';
+      }
     };
     if (!active || !one) {
       hideAll();
@@ -407,7 +445,9 @@ export function ElementResizeOverlay(): ReactNode {
       // zones (artboards don't rotate); an element gets the full 8 + 4 rotate set.
       const resizeCorners: ElResizeCorner[] = artboardOnly ? ['e', 's', 'se'] : EL_RESIZE_CORNERS;
       const rotateZones: RotCorner[] = artboardOnly ? [] : ['rot-nw', 'rot-ne', 'rot-sw', 'rot-se'];
-      const TOTAL = resizeCorners.length + rotateZones.length;
+      // +1 persistent slot (LAST child) for the Task L7 readout pill — always
+      // present, hidden via display:none outside an active drag.
+      const TOTAL = resizeCorners.length + rotateZones.length + 1;
       while (c.children.length < TOTAL) c.appendChild(document.createElement('div'));
       while (c.children.length > TOTAL) c.lastChild && c.removeChild(c.lastChild);
 
@@ -455,12 +495,40 @@ export function ElementResizeOverlay(): ReactNode {
         const halfH = isRot ? 10 : ns ? 3 : ew ? 7 : 4;
         handle.className = 'dc-el-resize-handle';
         handle.dataset.corner = corner;
-        handle.style.display = 'block';
+        handle.style.opacity = '1';
+        handle.style.pointerEvents = 'auto';
         handle.style.left = `${Math.round(ax - halfW)}px`;
         handle.style.top = `${Math.round(ay - halfH)}px`;
         // Orient the edge pills with the element; rotate zones stay unrotated.
         handle.style.transform = isRot ? '' : `rotate(${deg}deg)`;
       }
+
+      // Task L7 — live W×H (+X,Y when an edge drag moves the origin) readout,
+      // shown only while THIS element's resize handle is actually being
+      // dragged (dragRef is set by the pointerdown handler below). World
+      // units — offsetWidth/Height + the drag's own left/top, unaffected by
+      // the .dc-world zoom transform (same invariant Stage A's camera fix
+      // relies on), so the number reads correctly at any zoom.
+      const readout = c.children[handles.length] as HTMLElement;
+      const drag = dragRef.current;
+      if (drag && drag.el === el && !drag.corner.startsWith('rot-')) {
+        const w = drag.lastResult?.width ?? el.offsetWidth;
+        const h = drag.lastResult?.height ?? el.offsetHeight;
+        let label = `${Math.round(w)} × ${Math.round(h)}`;
+        const lx = drag.lastResult?.left;
+        const ly = drag.lastResult?.top;
+        if (typeof lx === 'number' || typeof ly === 'number') {
+          label += `  ·  ${Math.round(lx ?? drag.start.left)}, ${Math.round(ly ?? drag.start.top)}`;
+        }
+        readout.className = 'dc-el-resize-readout';
+        readout.textContent = label;
+        readout.style.opacity = '1';
+        readout.style.left = `${Math.round(cx)}px`;
+        readout.style.top = `${Math.round(cy + hh)}px`;
+      } else {
+        readout.style.opacity = '0';
+      }
+
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);

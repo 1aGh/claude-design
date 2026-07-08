@@ -31,7 +31,16 @@
 import { useEffect, useRef } from 'react';
 import { resolveSelectionEl } from './dom-selection.ts';
 import { isElementDragActive } from './drag-state.ts';
-import { useSelectionSet } from './use-selection-set.tsx';
+import {
+  type AlignAxisMode,
+  computeAlign,
+  computeDistribute,
+  computeTidyGrid,
+  type KeyedRect,
+  type MovedRect,
+  type SpacingAxis,
+} from './equal-spacing-detector.ts';
+import { type Selection, useSelectionSet } from './use-selection-set.tsx';
 
 const CTX_TOOLBAR_CSS = `
 .dc-elem-ctx-tb {
@@ -68,8 +77,12 @@ const CTX_TOOLBAR_CSS = `
   color: inherit;
   transition: background-color 80ms linear;
 }
-.dc-elem-ctx-tb button:hover {
+.dc-elem-ctx-tb button:hover:not(:disabled) {
   background: color-mix(in oklab, var(--maude-hud-accent, #d63b1f) 8%, transparent);
+}
+.dc-elem-ctx-tb button:disabled {
+  cursor: default;
+  opacity: 0.4;
 }
 .dc-elem-ctx-tb .dc-elem-ctx-count {
   padding: 4px 8px 4px 10px;
@@ -77,6 +90,17 @@ const CTX_TOOLBAR_CSS = `
   border-right: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.08));
   margin-right: 2px;
   font-variant-numeric: tabular-nums;
+}
+.dc-elem-ctx-tb .dc-elem-ctx-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dc-elem-ctx-tb .dc-elem-ctx-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--maude-chrome-border, rgba(0,0,0,0.10));
+  margin: 0 4px;
 }
 @media (prefers-reduced-motion: reduce) {
   .dc-elem-ctx-tb, .dc-elem-ctx-tb button { transition: none; }
@@ -132,6 +156,79 @@ function openComposerForSelection(
     }
   }
 }
+
+interface AlignTarget {
+  sel: Selection;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Resolve every selection to its current world-space box, gated on
+ * absolute/fixed positioning — align/distribute/tidy-up write `left`/`top`,
+ * which is only meaningful for out-of-flow elements (this codebase
+ * deliberately never does an implicit convert-to-absolute-on-drag; see the
+ * Stage-D dogfood notes). Returns `null` (all-or-nothing) if any selection
+ * doesn't resolve, or isn't out-of-flow, or has a non-numeric `left`/`top`
+ * (e.g. positioned via `right`/`bottom` instead — a known v1 limit).
+ */
+function resolveAlignTargets(sels: Selection[]): AlignTarget[] | null {
+  const out: AlignTarget[] = [];
+  for (const sel of sels) {
+    const node = resolveSelectionEl(document, sel);
+    if (!node) return null;
+    const cs = getComputedStyle(node as HTMLElement);
+    if (cs.position !== 'absolute' && cs.position !== 'fixed') return null;
+    const left = Number.parseFloat(cs.left);
+    const top = Number.parseFloat(cs.top);
+    if (!Number.isFinite(left) || !Number.isFinite(top)) return null;
+    out.push({
+      sel,
+      x: left,
+      y: top,
+      w: (node as HTMLElement).offsetWidth,
+      h: (node as HTMLElement).offsetHeight,
+    });
+  }
+  return out;
+}
+
+/** Post one `reposition-request` per moved rect — the same message shape +
+ *  write lane (`repositionElement` → `/_api/edit-css` ×2, per-prop undo) an
+ *  in-canvas element drag already posts. No new endpoint, no new trust
+ *  boundary; Cmd+Z steps back one element at a time (same N-step precedent
+ *  as Task L4's paste-style). */
+function commitMoves(targets: AlignTarget[], moved: MovedRect[]): void {
+  for (const m of moved) {
+    const t = targets[Number(m.key)];
+    if (!t || !t.sel.id) continue;
+    try {
+      window.parent.postMessage(
+        {
+          dgn: 'reposition-request',
+          id: t.sel.id,
+          left: m.x,
+          top: m.y,
+          beforeLeft: Math.round(t.x),
+          beforeTop: Math.round(t.y),
+          idIndex: t.sel.index ?? 0,
+        },
+        '*'
+      );
+    } catch {
+      /* detached / cross-origin */
+    }
+  }
+}
+
+function toKeyedRects(targets: AlignTarget[]): KeyedRect[] {
+  return targets.map((t, i) => ({ key: String(i), x: t.x, y: t.y, w: t.w, h: t.h }));
+}
+
+const ALIGN_DISABLED_TITLE =
+  'Align/distribute/tidy-up needs every selected element to be absolutely or fixed positioned (position knob in the CSS panel)';
 
 export function ContextualToolbar() {
   ensureStyles();
@@ -216,6 +313,30 @@ export function ContextualToolbar() {
   const primary = elementSelections[0];
   const count = elementSelections.length;
 
+  // Task L5 — align (≥2) / distribute (≥3) / tidy-up (≥2) for a multi-element
+  // selection. Button enablement is count-gated (matching MultiArtboardToolbar's
+  // G7 cluster); the absolute/fixed-positioning eligibility check happens lazily
+  // on click via `resolveAlignTargets` (a no-op + tooltip hint otherwise, rather
+  // than a per-frame DOM scan just to grey out a button).
+  const alignOk = count >= 2;
+  const distributeOk = count >= 3;
+
+  const runAlign = (mode: AlignAxisMode) => {
+    const targets = resolveAlignTargets(elementSelections);
+    if (!targets) return;
+    commitMoves(targets, computeAlign(toKeyedRects(targets), mode));
+  };
+  const runDistribute = (axis: SpacingAxis) => {
+    const targets = resolveAlignTargets(elementSelections);
+    if (!targets) return;
+    commitMoves(targets, computeDistribute(toKeyedRects(targets), axis));
+  };
+  const runTidyUp = () => {
+    const targets = resolveAlignTargets(elementSelections);
+    if (!targets) return;
+    commitMoves(targets, computeTidyGrid(toKeyedRects(targets)));
+  };
+
   return (
     <div ref={ref} className="dc-elem-ctx-tb" role="toolbar" aria-label="Element actions">
       <span className="dc-elem-ctx-count">{count === 1 ? '1 element' : `${count} elements`}</span>
@@ -259,6 +380,149 @@ export function ContextualToolbar() {
       >
         Comment
       </button>
+      {alignOk && (
+        <>
+          <span className="dc-elem-ctx-divider" aria-hidden="true" />
+          <button
+            type="button"
+            title={alignOk ? 'Align left' : ALIGN_DISABLED_TITLE}
+            aria-label="Align left"
+            onClick={() => runAlign('left')}
+          >
+            <span className="dc-elem-ctx-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <line x1="0.5" y1="0.5" x2="0.5" y2="13.5" stroke="currentColor" />
+                <rect x="1" y="2" width="7" height="3" fill="currentColor" />
+                <rect x="1" y="9" width="11" height="3" fill="currentColor" />
+              </svg>
+            </span>
+          </button>
+          <button
+            type="button"
+            title={alignOk ? 'Align center (horizontal)' : ALIGN_DISABLED_TITLE}
+            aria-label="Align center horizontally"
+            onClick={() => runAlign('center-x')}
+          >
+            <span className="dc-elem-ctx-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <line x1="7" y1="0.5" x2="7" y2="13.5" stroke="currentColor" />
+                <rect x="3.5" y="2" width="7" height="3" fill="currentColor" />
+                <rect x="1.5" y="9" width="11" height="3" fill="currentColor" />
+              </svg>
+            </span>
+          </button>
+          <button
+            type="button"
+            title={alignOk ? 'Align right' : ALIGN_DISABLED_TITLE}
+            aria-label="Align right"
+            onClick={() => runAlign('right')}
+          >
+            <span className="dc-elem-ctx-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <line x1="13.5" y1="0.5" x2="13.5" y2="13.5" stroke="currentColor" />
+                <rect x="6" y="2" width="7" height="3" fill="currentColor" />
+                <rect x="2" y="9" width="11" height="3" fill="currentColor" />
+              </svg>
+            </span>
+          </button>
+          <button
+            type="button"
+            title={alignOk ? 'Align top' : ALIGN_DISABLED_TITLE}
+            aria-label="Align top"
+            onClick={() => runAlign('top')}
+          >
+            <span className="dc-elem-ctx-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <line x1="0.5" y1="0.5" x2="13.5" y2="0.5" stroke="currentColor" />
+                <rect x="2" y="1" width="3" height="7" fill="currentColor" />
+                <rect x="9" y="1" width="3" height="11" fill="currentColor" />
+              </svg>
+            </span>
+          </button>
+          <button
+            type="button"
+            title={alignOk ? 'Align center (vertical)' : ALIGN_DISABLED_TITLE}
+            aria-label="Align center vertically"
+            onClick={() => runAlign('center-y')}
+          >
+            <span className="dc-elem-ctx-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <line x1="0.5" y1="7" x2="13.5" y2="7" stroke="currentColor" />
+                <rect x="2" y="3.5" width="3" height="7" fill="currentColor" />
+                <rect x="9" y="1.5" width="3" height="11" fill="currentColor" />
+              </svg>
+            </span>
+          </button>
+          <button
+            type="button"
+            title={alignOk ? 'Align bottom' : ALIGN_DISABLED_TITLE}
+            aria-label="Align bottom"
+            onClick={() => runAlign('bottom')}
+          >
+            <span className="dc-elem-ctx-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <line x1="0.5" y1="13.5" x2="13.5" y2="13.5" stroke="currentColor" />
+                <rect x="2" y="6" width="3" height="7" fill="currentColor" />
+                <rect x="9" y="2" width="3" height="11" fill="currentColor" />
+              </svg>
+            </span>
+          </button>
+          <span className="dc-elem-ctx-divider" aria-hidden="true" />
+          <button
+            type="button"
+            disabled={!distributeOk}
+            title={
+              distributeOk
+                ? 'Distribute horizontally — equal gaps between elements'
+                : 'Select at least 3 elements to distribute'
+            }
+            aria-label="Distribute horizontally"
+            onClick={() => runDistribute('x')}
+          >
+            <span className="dc-elem-ctx-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <rect x="0.5" y="3" width="3" height="8" fill="currentColor" />
+                <rect x="5.5" y="3" width="3" height="8" fill="currentColor" />
+                <rect x="10.5" y="3" width="3" height="8" fill="currentColor" />
+              </svg>
+            </span>
+          </button>
+          <button
+            type="button"
+            disabled={!distributeOk}
+            title={
+              distributeOk
+                ? 'Distribute vertically — equal gaps between elements'
+                : 'Select at least 3 elements to distribute'
+            }
+            aria-label="Distribute vertically"
+            onClick={() => runDistribute('y')}
+          >
+            <span className="dc-elem-ctx-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <rect x="3" y="0.5" width="8" height="3" fill="currentColor" />
+                <rect x="3" y="5.5" width="8" height="3" fill="currentColor" />
+                <rect x="3" y="10.5" width="8" height="3" fill="currentColor" />
+              </svg>
+            </span>
+          </button>
+          <button
+            type="button"
+            title="Tidy up — snap into a clean grid"
+            aria-label="Tidy up into a grid"
+            onClick={runTidyUp}
+          >
+            <span className="dc-elem-ctx-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <rect x="0.5" y="0.5" width="5.5" height="5.5" fill="currentColor" />
+                <rect x="8" y="0.5" width="5.5" height="5.5" fill="currentColor" />
+                <rect x="0.5" y="8" width="5.5" height="5.5" fill="currentColor" />
+                <rect x="8" y="8" width="5.5" height="5.5" fill="currentColor" />
+              </svg>
+            </span>
+          </button>
+        </>
+      )}
     </div>
   );
 }

@@ -1,7 +1,16 @@
 {
-  "generated": "2026-07-07T05:57:20.591Z",
+  "generated": "2026-07-07T22:49:14.657Z",
   "version": "0.40.0",
   "entries": [
+    {
+      "id": "element-editing-robustness",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Edit elements like Figma or Webflow",
+      "summary": "Selecting an element now opens the Inspector automatically, and drag handles let you resize it directly on the canvas (corner + edge, Shift to lock aspect, Alt to resize from center) — artboards get free-hand resize too. Delete an element with the Del key or the right-click menu, or insert a new div, text, or image straight into the artboard; add a whole new empty artboard from a Desktop/Laptop/Tablet/Mobile preset. The Inspector gained Position (with a constraints-style inset box), Transform, and Media sections (object-fit, aspect ratio), plus on-canvas dragging for padding and gaps. Swap a photo or video (or a background image) from a built-in asset picker. Editing now works on design-system specimens too, not just your UI canvases. A shared component always tells you plainly whether an edit is local to this artboard or shared across every place it's used, and moving one instance never drags the others along. Rounding it out: keyboard nudge + tree navigation, Cmd+D duplicate, copy/paste style, align and distribute a multi-selection, deep-select + \"Select layer\" for nested/overlapping elements, Alt-hover distance measurement, a free-hand rotate handle, and a proper Fixed/Hug/Fill sizing control for flex layouts. Every one of these is undoable with Cmd+Z.",
+      "surface": "design-ui"
+    },
     {
       "id": "whiteboard-ai-toolkit",
       "version": null,

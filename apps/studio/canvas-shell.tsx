@@ -86,6 +86,7 @@ import {
   useInputRouter,
 } from './input-router.tsx';
 import { ElementMarqueeOverlay } from './marquee-overlay.tsx';
+import { MeasureOverlay } from './measure-overlay.tsx';
 import { ParticipantsChrome } from './participants-chrome.tsx';
 import { ToolPalette } from './tool-palette.tsx';
 import { UndoHud } from './undo-hud.tsx';
@@ -429,6 +430,73 @@ function layerType(el: Element): string {
   if (tag === 'form') return 'form';
   if (tag === 'p' || tag === 'span' || tag === 'label') return 'text';
   return 'box';
+}
+
+// Task L6 — the stamped-ancestor chain from an artboard body down to `el`
+// (outermost first), mirroring `resolveHoverTarget`'s "top mode" climb
+// (input-router.tsx) but returning every rung instead of only the outermost —
+// deep-select needs the whole ladder to know what "one level deeper" means.
+function stampedChainToBody(el: Element): Element[] {
+  const bodyEl = el.closest('.dc-artboard-body');
+  const chain: Element[] = [];
+  let cur: Element | null = el;
+  while (cur && cur !== bodyEl) {
+    if (cur.hasAttribute('data-cd-id')) chain.push(cur);
+    cur = cur.parentElement;
+  }
+  return chain.reverse();
+}
+
+// Task L6 — "Select layer" submenu: every DISTINCT `[data-cd-id]` ancestor in
+// the full hit-stack under the cursor (topmost/frontmost first, matching
+// Layers-panel order), so overlapping/deeply-nested elements a single
+// elementFromPoint pick can't reach become individually selectable.
+// `elementsFromPoint` (unlike `elementFromPoint`) walks the WHOLE z-order
+// stack — including non-ancestor siblings visually underneath the frontmost
+// hit — so this also disambiguates true overlaps, not just nesting depth.
+function buildSelectLayerSubmenu(
+  target: ContextTarget,
+  selSet: { replace: (s: Selection | Selection[]) => void }
+): MenuItem[] {
+  if (typeof document === 'undefined' || typeof document.elementsFromPoint !== 'function') {
+    return [];
+  }
+  const hits = document.elementsFromPoint(target.clientX, target.clientY);
+  const seen = new Set<Element>();
+  const candidates: Element[] = [];
+  for (const hit of hits) {
+    const stamped = hit.closest?.('[data-cd-id]') ?? null;
+    if (!stamped || seen.has(stamped)) continue;
+    seen.add(stamped);
+    candidates.push(stamped);
+  }
+  if (candidates.length === 0) {
+    return [
+      {
+        id: 'select-layer-empty',
+        label: 'No stamped elements here',
+        disabled: true,
+        onSelect: () => {},
+      },
+    ];
+  }
+  return candidates.map((el, i) => {
+    const cdId = el.getAttribute('data-cd-id') ?? '';
+    const artboardId =
+      (el.closest('[data-dc-screen]') as HTMLElement | null)?.getAttribute('data-dc-screen') ??
+      null;
+    return {
+      id: `select-layer-${i}`,
+      label: `${layerLabel(el)} · ${layerType(el)}`,
+      onSelect: () => {
+        // `hoverTargetToSelection` computes the occurrence index itself
+        // (`selectorIndex` against the scoped selector) — no need to pass one.
+        selSet.replace(
+          hoverTargetToSelection({ el, cdId: cdId || null, artboardId } as HoverTarget)
+        );
+      },
+    };
+  });
 }
 
 function serializeArtboardTree(root: Element): LayerNode[] {
@@ -1372,6 +1440,25 @@ function buildRegistry(deps: {
             }
           },
         },
+        {
+          id: 'select-layer',
+          label: 'Select layer',
+          // Task L6 — every DISTINCT stamped ancestor in the cursor's full hit
+          // stack (elementsFromPoint sees through overlapping/nested elements a
+          // single elementFromPoint pick can't reach), Layers-order (topmost
+          // first), so overlapping/deeply-nested TSX becomes grabbable. A
+          // function submenu — resolved per-click against `target`, since the
+          // candidate set depends on where the user right-clicked.
+          //
+          // v1 scope: no live Stage-H local/shared badge on each candidate —
+          // that resolver is server-side/main-origin-only (`GET /_api/edit-scope`,
+          // canvas-edit.ts), unreachable from this iframe without a new
+          // request/reply round-trip; deferred rather than blocking this task.
+          onSelect: () => {
+            /* parent of a submenu — never invoked directly */
+          },
+          submenu: (t) => buildSelectLayerSubmenu(t, selSet),
+        },
       ],
       [
         {
@@ -2109,7 +2196,37 @@ function CanvasRouter({
       const stamped = (t?.closest?.('[data-cd-id]') as HTMLElement | null) ?? null;
       if (!stamped) return;
       const kids = Array.from(stamped.childNodes);
-      if (kids.length === 0 || !kids.every((n) => n.nodeType === 3)) return; // leaf-text only
+      const isLeafText = kids.length > 0 && kids.every((n) => n.nodeType === 3);
+      if (!isLeafText) {
+        // Task L6 — deep-select: a container (anything that isn't leaf-text)
+        // double-clicked here used to just bail — this is the exact gap the
+        // plan's deep-select task targets. Drill ONE level past whatever's
+        // currently selected along this click's own stamped-ancestor chain
+        // (Figma parity: repeated double-clicks walk progressively deeper);
+        // default to the outermost rung when nothing in the chain is
+        // currently selected. Mutually exclusive with text-edit below by
+        // construction — same capture-phase listener, same branch gate.
+        const chain = stampedChainToBody(stamped);
+        if (chain.length > 0) {
+          const sel = selSet.selected;
+          const currentId = sel.length === 1 ? sel[0]?.id : undefined;
+          const curIdx = currentId
+            ? chain.findIndex((n) => n.getAttribute('data-cd-id') === currentId)
+            : -1;
+          const next = curIdx >= 0 && curIdx + 1 < chain.length ? chain[curIdx + 1] : chain[0];
+          if (next) {
+            e.preventDefault();
+            e.stopPropagation();
+            const cdId = next.getAttribute('data-cd-id');
+            const artboardId =
+              (next.closest('[data-dc-screen]') as HTMLElement | null)?.getAttribute(
+                'data-dc-screen'
+              ) ?? null;
+            selSet.replace(hoverTargetToSelection({ el: next, cdId, artboardId } as HoverTarget));
+          }
+        }
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       editing = stamped;
@@ -2154,7 +2271,7 @@ function CanvasRouter({
       window.removeEventListener('message', onEditReverted);
       if (editing) teardown(editing);
     };
-  }, [hostRef]);
+  }, [hostRef, selSet]);
 
   // Cleanup any pending rAF on unmount.
   useEffect(
@@ -2254,6 +2371,7 @@ function CanvasRouter({
       <LayersLiveSync />
       <GroupBbox />
       <EqualSpacingHandles />
+      <MeasureOverlay />
       <ContextualToolbar />
       <MultiArtboardToolbar
         distributeArtboards={distributeArtboards}

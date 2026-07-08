@@ -42,6 +42,13 @@ const SPACING_CSS = `
   z-index: 4;
   pointer-events: auto;
   touch-action: none;
+  /* INV-2 — the idle-to-hover/dragging opacity bump (0.55/0.7 to 1, below) had
+     no transition, so the reduced-motion collapse further down was dead code
+     (nothing to collapse). Kept as a plain opacity transition, not a reveal/
+     unmount fade — this component still hard-toggles display to show/hide
+     the whole handle set (unlike the resize overlay's fade), so a handle is
+     grabbable the instant it appears, no half-visible window. */
+  transition: opacity 120ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .dc-spacing-handle--padding {
   width: 10px;

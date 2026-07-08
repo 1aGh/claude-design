@@ -60,8 +60,14 @@ export interface MenuItem {
    * chrome`). When present the row opens a submenu on hover / ArrowRight /
    * click and `onSelect` on THIS item is not invoked — only the chosen leaf's
    * `onSelect` fires. A disabled leaf carries `disabledHint` for its title.
+   *
+   * A FUNCTION form is resolved lazily by `MenuItemRow` at render time (not
+   * memoized at registry-build time) — for a per-click computed flyout like
+   * "Select layer" (every stamped element stacked under the cursor, which
+   * depends on `target.clientX/clientY` and can't be known when the static
+   * registry is built).
    */
-  submenu?: MenuItem[];
+  submenu?: MenuItem[] | ((target: ContextTarget) => MenuItem[]);
   /** Hover/title hint shown when the item is `disabled` (a11y affordance). */
   disabledHint?: string;
   onSelect: (target: ContextTarget) => void;
@@ -402,7 +408,11 @@ function MenuItemRow({
   const flyoutRef = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  if (!item.submenu || item.submenu.length === 0) {
+  // Resolve a function-form submenu against THIS click's target (e.g.
+  // "Select layer" computing candidates from `target.clientX/clientY`).
+  const submenuItems = typeof item.submenu === 'function' ? item.submenu(target) : item.submenu;
+
+  if (!submenuItems || submenuItems.length === 0) {
     return (
       <button
         type="button"
@@ -482,7 +492,7 @@ function MenuItemRow({
           onMouseEnter={cancelClose}
           onMouseLeave={scheduleClose}
         >
-          {item.submenu.map((sub) => (
+          {submenuItems.map((sub) => (
             <button
               key={sub.id}
               type="button"

@@ -448,7 +448,7 @@ export function applyEdit(
       id,
     });
   } else {
-    editStringAttr(s, hit.opening, attr, value);
+    editStringAttr(s, hit.opening, attr, value, canvasAbsPath, id);
   }
 
   const out = s.toString();
@@ -826,7 +826,12 @@ export function resolveEditScope(
     };
   }
   if (rendered > 1) {
-    return { scope: 'shared', componentName: compName || null, affects: rendered, reason: 'mapped' };
+    return {
+      scope: 'shared',
+      componentName: compName || null,
+      affects: rendered,
+      reason: 'mapped',
+    };
   }
   return { scope: 'local', componentName: null, affects: 1, reason: 'single' };
 }
@@ -2907,7 +2912,10 @@ export async function duplicateElement(
   return withLock(canvasAbsPath, async () => {
     const file = Bun.file(canvasAbsPath);
     if (!(await file.exists())) {
-      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, { canvas: canvasAbsPath, id });
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id,
+      });
     }
     const source = await file.text();
     const next = applyDuplicateElement(canvasAbsPath, source, id, occurrence);
@@ -3301,13 +3309,24 @@ export function assembleCompSource(
 // ---------------------------------------------------------------------------
 // Edit shapes.
 
-function editStringAttr(s: MagicString, opening: AnyNode, name: string, value: string): void {
+function editStringAttr(
+  s: MagicString,
+  opening: AnyNode,
+  name: string,
+  value: string,
+  canvasAbsPath: string,
+  id: string
+): void {
   const attr = findAttribute(opening, name);
   if (attr) {
     // Replace existing value. JSX attribute value forms we handle:
     //   - <Tag name="literal" />           → replace inside the quotes
     //   - <Tag name={'literal'} />         → wrap quotes around new value
     //   - <Tag name={expr} />              → replace the whole expression text
+    //     (ONLY when the expression is itself a trivial string literal — a
+    //     non-trivial expression is a BINDING, not a static value, and
+    //     blindly overwriting it would silently discard the binding. See the
+    //     `src` guard below.)
     //   - <Tag name />                     → no value node; add `="..."`
     const v = attr.value;
     if (!v) {
@@ -3326,6 +3345,20 @@ function editStringAttr(s: MagicString, opening: AnyNode, name: string, value: s
       return;
     }
     if (v.type === 'JSXExpressionContainer') {
+      const inner = v.expression;
+      // feature-element-editing-robustness Stage F2 — `src={someVar}` (or any
+      // other non-literal binding) is NOT a static value; overwriting it with a
+      // plain string literal would silently discard the binding, corrupting the
+      // author's intent (the exact "Replace image…" gotcha the plan calls out —
+      // canvas-shell.tsx's context-menu item assumed this refusal already
+      // existed; it didn't). `{'literal'}`/`{"literal"}` IS a trivial, safely
+      // overwritable case — only refuse a genuinely dynamic expression.
+      if (name === 'src' && !(inner?.type === 'Literal' || inner?.type === 'StringLiteral')) {
+        throw new CanvasEditError(
+          `"${name}" is bound to a JS expression ({…}), not a static value — edit it via /design:edit`,
+          { canvas: canvasAbsPath, id }
+        );
+      }
       // Replace the whole `{...}` with a plain quoted literal — keeps the
       // resulting JSX readable. Same JSX-attribute escaping as above (NOT
       // `JSON.stringify`, which would JS-escape a `"` and corrupt the source).
@@ -3333,7 +3366,10 @@ function editStringAttr(s: MagicString, opening: AnyNode, name: string, value: s
       return;
     }
     // Unknown shape — refuse rather than corrupt.
-    throw new Error(`Unsupported JSX attribute value shape: ${v.type}`);
+    throw new CanvasEditError(`Unsupported JSX attribute value shape: ${v.type}`, {
+      canvas: canvasAbsPath,
+      id,
+    });
   }
   // Attribute missing — insert right after the tag name (mirrors pipeline's
   // injection point so attribute order stays predictable).
