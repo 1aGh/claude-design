@@ -28,7 +28,7 @@
  *             the 180 ms position tween per the plan note.
  */
 
-import { useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { resolveSelectionEl } from './dom-selection.ts';
 import { isElementDragActive } from './drag-state.ts';
 import {
@@ -75,6 +75,8 @@ const CTX_TOOLBAR_CSS = `
   font: inherit;
   cursor: pointer;
   color: inherit;
+  display: inline-flex;
+  align-items: center;
   transition: background-color 80ms linear;
 }
 .dc-elem-ctx-tb button:hover:not(:disabled) {
@@ -203,7 +205,7 @@ function resolveAlignTargets(sels: Selection[]): AlignTarget[] | null {
 function commitMoves(targets: AlignTarget[], moved: MovedRect[]): void {
   for (const m of moved) {
     const t = targets[Number(m.key)];
-    if (!t || !t.sel.id) continue;
+    if (!t?.sel.id) continue;
     try {
       window.parent.postMessage(
         {
@@ -227,8 +229,27 @@ function toKeyedRects(targets: AlignTarget[]): KeyedRect[] {
   return targets.map((t, i) => ({ key: String(i), x: t.x, y: t.y, w: t.w, h: t.h }));
 }
 
-const ALIGN_DISABLED_TITLE =
-  'Align/distribute/tidy-up needs every selected element to be absolutely or fixed positioned (position knob in the CSS panel)';
+function CtxIconButton({
+  label,
+  title,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  title: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button type="button" title={title} aria-label={label} onClick={onClick} disabled={disabled}>
+      <span className="dc-elem-ctx-icon" aria-hidden="true">
+        {children}
+      </span>
+    </button>
+  );
+}
 
 export function ContextualToolbar() {
   ensureStyles();
@@ -316,8 +337,8 @@ export function ContextualToolbar() {
   // Task L5 — align (≥2) / distribute (≥3) / tidy-up (≥2) for a multi-element
   // selection. Button enablement is count-gated (matching MultiArtboardToolbar's
   // G7 cluster); the absolute/fixed-positioning eligibility check happens lazily
-  // on click via `resolveAlignTargets` (a no-op + tooltip hint otherwise, rather
-  // than a per-frame DOM scan just to grey out a button).
+  // on click via `resolveAlignTargets` (a silent no-op otherwise, rather than a
+  // per-frame DOM scan just to grey out a button).
   const alignOk = count >= 2;
   const distributeOk = count >= 3;
 
@@ -383,144 +404,105 @@ export function ContextualToolbar() {
       {alignOk && (
         <>
           <span className="dc-elem-ctx-divider" aria-hidden="true" />
-          <button
-            type="button"
-            title={alignOk ? 'Align left' : ALIGN_DISABLED_TITLE}
-            aria-label="Align left"
-            onClick={() => runAlign('left')}
-          >
-            <span className="dc-elem-ctx-icon" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <line x1="0.5" y1="0.5" x2="0.5" y2="13.5" stroke="currentColor" />
-                <rect x="1" y="2" width="7" height="3" fill="currentColor" />
-                <rect x="1" y="9" width="11" height="3" fill="currentColor" />
-              </svg>
-            </span>
-          </button>
-          <button
-            type="button"
-            title={alignOk ? 'Align center (horizontal)' : ALIGN_DISABLED_TITLE}
-            aria-label="Align center horizontally"
+          <CtxIconButton label="Align left" title="Align left" onClick={() => runAlign('left')}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <line x1="0.5" y1="0.5" x2="0.5" y2="13.5" stroke="currentColor" />
+              <rect x="1" y="2" width="7" height="3" fill="currentColor" />
+              <rect x="1" y="9" width="11" height="3" fill="currentColor" />
+            </svg>
+          </CtxIconButton>
+          <CtxIconButton
+            label="Align center horizontally"
+            title="Align center (horizontal)"
             onClick={() => runAlign('center-x')}
           >
-            <span className="dc-elem-ctx-icon" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <line x1="7" y1="0.5" x2="7" y2="13.5" stroke="currentColor" />
-                <rect x="3.5" y="2" width="7" height="3" fill="currentColor" />
-                <rect x="1.5" y="9" width="11" height="3" fill="currentColor" />
-              </svg>
-            </span>
-          </button>
-          <button
-            type="button"
-            title={alignOk ? 'Align right' : ALIGN_DISABLED_TITLE}
-            aria-label="Align right"
-            onClick={() => runAlign('right')}
-          >
-            <span className="dc-elem-ctx-icon" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <line x1="13.5" y1="0.5" x2="13.5" y2="13.5" stroke="currentColor" />
-                <rect x="6" y="2" width="7" height="3" fill="currentColor" />
-                <rect x="2" y="9" width="11" height="3" fill="currentColor" />
-              </svg>
-            </span>
-          </button>
-          <button
-            type="button"
-            title={alignOk ? 'Align top' : ALIGN_DISABLED_TITLE}
-            aria-label="Align top"
-            onClick={() => runAlign('top')}
-          >
-            <span className="dc-elem-ctx-icon" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <line x1="0.5" y1="0.5" x2="13.5" y2="0.5" stroke="currentColor" />
-                <rect x="2" y="1" width="3" height="7" fill="currentColor" />
-                <rect x="9" y="1" width="3" height="11" fill="currentColor" />
-              </svg>
-            </span>
-          </button>
-          <button
-            type="button"
-            title={alignOk ? 'Align center (vertical)' : ALIGN_DISABLED_TITLE}
-            aria-label="Align center vertically"
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <line x1="7" y1="0.5" x2="7" y2="13.5" stroke="currentColor" />
+              <rect x="3.5" y="2" width="7" height="3" fill="currentColor" />
+              <rect x="1.5" y="9" width="11" height="3" fill="currentColor" />
+            </svg>
+          </CtxIconButton>
+          <CtxIconButton label="Align right" title="Align right" onClick={() => runAlign('right')}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <line x1="13.5" y1="0.5" x2="13.5" y2="13.5" stroke="currentColor" />
+              <rect x="6" y="2" width="7" height="3" fill="currentColor" />
+              <rect x="2" y="9" width="11" height="3" fill="currentColor" />
+            </svg>
+          </CtxIconButton>
+          <CtxIconButton label="Align top" title="Align top" onClick={() => runAlign('top')}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <line x1="0.5" y1="0.5" x2="13.5" y2="0.5" stroke="currentColor" />
+              <rect x="2" y="1" width="3" height="7" fill="currentColor" />
+              <rect x="9" y="1" width="3" height="11" fill="currentColor" />
+            </svg>
+          </CtxIconButton>
+          <CtxIconButton
+            label="Align center vertically"
+            title="Align center (vertical)"
             onClick={() => runAlign('center-y')}
           >
-            <span className="dc-elem-ctx-icon" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <line x1="0.5" y1="7" x2="13.5" y2="7" stroke="currentColor" />
-                <rect x="2" y="3.5" width="3" height="7" fill="currentColor" />
-                <rect x="9" y="1.5" width="3" height="11" fill="currentColor" />
-              </svg>
-            </span>
-          </button>
-          <button
-            type="button"
-            title={alignOk ? 'Align bottom' : ALIGN_DISABLED_TITLE}
-            aria-label="Align bottom"
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <line x1="0.5" y1="7" x2="13.5" y2="7" stroke="currentColor" />
+              <rect x="2" y="3.5" width="3" height="7" fill="currentColor" />
+              <rect x="9" y="1.5" width="3" height="11" fill="currentColor" />
+            </svg>
+          </CtxIconButton>
+          <CtxIconButton
+            label="Align bottom"
+            title="Align bottom"
             onClick={() => runAlign('bottom')}
           >
-            <span className="dc-elem-ctx-icon" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <line x1="0.5" y1="13.5" x2="13.5" y2="13.5" stroke="currentColor" />
-                <rect x="2" y="6" width="3" height="7" fill="currentColor" />
-                <rect x="9" y="2" width="3" height="11" fill="currentColor" />
-              </svg>
-            </span>
-          </button>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <line x1="0.5" y1="13.5" x2="13.5" y2="13.5" stroke="currentColor" />
+              <rect x="2" y="6" width="3" height="7" fill="currentColor" />
+              <rect x="9" y="2" width="3" height="11" fill="currentColor" />
+            </svg>
+          </CtxIconButton>
           <span className="dc-elem-ctx-divider" aria-hidden="true" />
-          <button
-            type="button"
-            disabled={!distributeOk}
+          <CtxIconButton
+            label="Distribute horizontally"
             title={
               distributeOk
                 ? 'Distribute horizontally — equal gaps between elements'
                 : 'Select at least 3 elements to distribute'
             }
-            aria-label="Distribute horizontally"
+            disabled={!distributeOk}
             onClick={() => runDistribute('x')}
           >
-            <span className="dc-elem-ctx-icon" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <rect x="0.5" y="3" width="3" height="8" fill="currentColor" />
-                <rect x="5.5" y="3" width="3" height="8" fill="currentColor" />
-                <rect x="10.5" y="3" width="3" height="8" fill="currentColor" />
-              </svg>
-            </span>
-          </button>
-          <button
-            type="button"
-            disabled={!distributeOk}
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <rect x="0.5" y="3" width="3" height="8" fill="currentColor" />
+              <rect x="5.5" y="3" width="3" height="8" fill="currentColor" />
+              <rect x="10.5" y="3" width="3" height="8" fill="currentColor" />
+            </svg>
+          </CtxIconButton>
+          <CtxIconButton
+            label="Distribute vertically"
             title={
               distributeOk
                 ? 'Distribute vertically — equal gaps between elements'
                 : 'Select at least 3 elements to distribute'
             }
-            aria-label="Distribute vertically"
+            disabled={!distributeOk}
             onClick={() => runDistribute('y')}
           >
-            <span className="dc-elem-ctx-icon" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <rect x="3" y="0.5" width="8" height="3" fill="currentColor" />
-                <rect x="3" y="5.5" width="8" height="3" fill="currentColor" />
-                <rect x="3" y="10.5" width="8" height="3" fill="currentColor" />
-              </svg>
-            </span>
-          </button>
-          <button
-            type="button"
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <rect x="3" y="0.5" width="8" height="3" fill="currentColor" />
+              <rect x="3" y="5.5" width="8" height="3" fill="currentColor" />
+              <rect x="3" y="10.5" width="8" height="3" fill="currentColor" />
+            </svg>
+          </CtxIconButton>
+          <CtxIconButton
+            label="Tidy up into a grid"
             title="Tidy up — snap into a clean grid"
-            aria-label="Tidy up into a grid"
             onClick={runTidyUp}
           >
-            <span className="dc-elem-ctx-icon" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <rect x="0.5" y="0.5" width="5.5" height="5.5" fill="currentColor" />
-                <rect x="8" y="0.5" width="5.5" height="5.5" fill="currentColor" />
-                <rect x="0.5" y="8" width="5.5" height="5.5" fill="currentColor" />
-                <rect x="8" y="8" width="5.5" height="5.5" fill="currentColor" />
-              </svg>
-            </span>
-          </button>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <rect x="0.5" y="0.5" width="5.5" height="5.5" fill="currentColor" />
+              <rect x="8" y="0.5" width="5.5" height="5.5" fill="currentColor" />
+              <rect x="0.5" y="8" width="5.5" height="5.5" fill="currentColor" />
+              <rect x="8" y="8" width="5.5" height="5.5" fill="currentColor" />
+            </svg>
+          </CtxIconButton>
         </>
       )}
     </div>

@@ -206,9 +206,12 @@ export function MeasureOverlay() {
   useEffect(() => {
     const layer = layerRef.current;
     if (!layer) return;
-    if (!active || !one || !hoverEl) {
+    const hideBoth = () => {
       hideAxis(layer, 'x');
       hideAxis(layer, 'y');
+    };
+    if (!active || !one || !hoverEl) {
+      hideBoth();
       return;
     }
     let alive = true;
@@ -217,22 +220,14 @@ export function MeasureOverlay() {
       rafId = null;
       if (!alive) return;
       const selEl = resolveSelectionEl(document, one);
-      if (!selEl || !hoverEl.isConnected || selEl === hoverEl) {
-        hideAxis(layer, 'x');
-        hideAxis(layer, 'y');
-        rafId = requestAnimationFrame(tick);
-        return;
+      const a = selEl && selEl !== hoverEl && hoverEl.isConnected ? rectOf(selEl) : null;
+      const b = a ? rectOf(hoverEl) : null;
+      if (a && b) {
+        paintAxis(layer, 'x', a, b, zoom);
+        paintAxis(layer, 'y', a, b, zoom);
+      } else {
+        hideBoth();
       }
-      const a = rectOf(selEl);
-      const b = rectOf(hoverEl);
-      if (!a || !b) {
-        hideAxis(layer, 'x');
-        hideAxis(layer, 'y');
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-      paintAxis(layer, 'x', a, b, zoom);
-      paintAxis(layer, 'y', a, b, zoom);
       rafId = requestAnimationFrame(tick);
     };
     rafId = requestAnimationFrame(tick);

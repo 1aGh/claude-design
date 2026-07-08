@@ -446,7 +446,7 @@ export function ElementResizeOverlay(): ReactNode {
       const resizeCorners: ElResizeCorner[] = artboardOnly ? ['e', 's', 'se'] : EL_RESIZE_CORNERS;
       const rotateZones: RotCorner[] = artboardOnly ? [] : ['rot-nw', 'rot-ne', 'rot-sw', 'rot-se'];
       // +1 persistent slot (LAST child) for the Task L7 readout pill — always
-      // present, hidden via display:none outside an active drag.
+      // present, hidden via opacity outside an active drag.
       const TOTAL = resizeCorners.length + rotateZones.length + 1;
       while (c.children.length < TOTAL) c.appendChild(document.createElement('div'));
       while (c.children.length > TOTAL) c.lastChild && c.removeChild(c.lastChild);
