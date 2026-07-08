@@ -1,21 +1,23 @@
 ---
 name: flow:done
 category: daily
-description: Close out a feature — /validate gate (incl. cross-platform scenario) → DDR sweep → commit → push → PR → retro → archive
-argument-hint: "<optional: path to plan>"
+description: Close out a feature — /validate gate (incl. cross-platform scenario) → DDR sweep → commit → push → PR → retro → archive. `--quick` trims the gate to affected-scope checks only.
+argument-hint: "[--quick] [path to plan]"
 ---
 
 # /done — close out a feature
 
 This is the **final gate**. Run it after `/execute` when all tasks pass. It consolidates verification, commit, and push into a single action.
 
-Input: `$ARGUMENTS` — optionally a path to the plan file. If missing, use the one from `.ai/state/STATE.md`.
+Input: `$ARGUMENTS` — optionally `--quick` (anywhere in the string) plus a path to the plan file. If no path is given, use the one from `.ai/state/STATE.md`.
+
+**`--quick` trims Step 1 only** (full `/validate` → affected-scope checks — see below). Steps 2–7 (acceptance check, DDR sweep, code review, changelog/handoff/what's-new prompts, commit, push/PR, tracker sync, retro/archive) are **unchanged** — due diligence and tracking are exactly the parts `--quick` does not cut. Use it for routine/interim closes where you'll run a full `/flow:validate` before the branch merges to main; don't reach for it on anything from the `/flow:quick` guardrail list (auth, migrations, cross-package, CI config, security-sensitive).
 
 ## Process
 
-### 1. Run `/validate` (hard gate)
+### 1. Run `/validate` (hard gate) — or the quick equivalent
 
-`/validate` performs static analysis, tests, build, **cross-platform scenario** (`scenario-runner` subagent across 5 platforms), a11y audit, design consistency, and decision drift check.
+**Default (no `--quick`):** `/validate` performs static analysis, tests, build, **cross-platform scenario** (`scenario-runner` subagent across 5 platforms), a11y audit, design consistency, and decision drift check.
 
 If anything in `/validate` fails → stop. Return to `/execute` to fix. After the fix, run `/done` again.
 
@@ -23,14 +25,25 @@ If anything in `/validate` fails → stop. Return to `/execute` to fix. After th
 
 **Key gate:** the scenario report must have `blockers == 0` AND `parity_ok == true` (or a clear DDR explaining intentional divergence).
 
+**With `--quick`:** skip the `/validate` invocation entirely and run this reduced pipeline instead — the goal is affected-scope confidence, not exhaustive coverage:
+
+1. **Static gates**, blocking, same commands as `/validate` step 1 (`config.quality.{format,lint,typecheck}` — see `flow:quality-gates`), but no build.
+2. **Affected tests only** — same scope as `/flow:utils-verify` (tests touching changed files), not the full `quality.tests` suite.
+3. **Skipped:** `quality.build`, `scenario-runner` (cross-platform), `a11y-auditor`, `design-system-guard`. These are the expensive parts (DDR-061: "the cross-platform scenario alone is 2–3 min cold") and the reason `--quick` gets you from ~20 min to ~5.
+4. `security-auditor` + `ethical-hacker` are **not** skipped — they still run in Step 4 (Code review) below, same as always. Quick mode doesn't touch security due diligence.
+
+Record in the Step 8 report which gates were skipped so it's never silently unclear this wasn't a full validate (see updated report template in Step 8).
+
+**Stop condition unchanged:** any failing static gate or a failing affected test → stop, fix, retry — same as the full path.
+
 ### 2. Acceptance criteria check
 
 Walk through `## Acceptance Criteria` in the plan, check off or flag each criterion. Key items:
 
 - [ ] All tasks completed
-- [ ] `/validate` passes (incl. scenario, a11y, design system)
+- [ ] `/validate` passes (incl. scenario, a11y, design system) — under `--quick`, the static gates + affected tests pass instead; note the deferred full validate in STATE.md
 - [ ] No DDR-worthy decision left unrecorded
-- [ ] Scenario report linked in PR description
+- [ ] Scenario report linked in PR description — under `--quick`, omit and note "scenario deferred to full /flow:validate" instead
 
 If a criterion can't be met, **don't skip** — record a blocker in STATE.md and /pause.
 
@@ -207,7 +220,9 @@ Read `integrations.tracker` from `.ai/workflows.config.json`. If `provider` is n
 
 If `provider === "none"` or no MCP available → skip this step entirely. The command stays useful without any tracker.
 
-### 6c. CLAUDE.md debrief (optional)
+### 6c. CLAUDE.md debrief (optional — skipped in `--quick`)
+
+> Not tracking or due diligence — a conventions-capture nicety. Skip in `--quick` to save the extra subagent round-trip; run it later via a plain `/flow:done` or ad hoc.
 
 Invoke the `claude-md-keeper` skill with the feature's plan + commit diff as context:
 
@@ -236,10 +251,29 @@ If the active branch is *not* the baseline branch (typical PR flow where `main` 
 
 ### 8. Report
 
+Default (no `--quick`):
+
 ```
 ✓ Done: <feature name>
   Validate: ✓ all gates passed
   Scenario: 5/5 platforms PASS — <report path>
+  Code review: ✓ <verdict> — .ai/logs/code-reviews/<branch>.md
+  Simplifier: <files touched / skipped>
+  Commit: <hash> <subject>
+  PR: <URL or "—">
+  Tracker: <ticket id @ provider, status updated | "—">
+  DDRs recorded: <N>
+  Plan archived: .ai/plans/archive/<x>.plan.md
+  Time in execution: <approx>
+```
+
+With `--quick`, replace the `Validate` line and add a skip note so the trade-off is never silent:
+
+```
+⚡ Done (quick): <feature name>
+  Validate: ⚡ quick — static gates + affected tests only
+  Skipped:  build, cross-platform scenario, a11y audit, design-system check
+            → run a full /flow:validate before merging to main
   Code review: ✓ <verdict> — .ai/logs/code-reviews/<branch>.md
   Simplifier: <files touched / skipped>
   Commit: <hash> <subject>
