@@ -138,6 +138,14 @@ DS_THEMES=$(jq -r --arg ds "$TARGET_DS" --arg dt "$THEME" \
   '.designSystems[] | select(.name == $ds) | (.themes // [$dt] | join(","))' "$CFG")
 [[ -z "$DS_THEMES" ]] && DS_THEMES="$THEME"
 ALT_THEME=$(tr ',' '\n' <<< "$DS_THEMES" | grep -v -x -F "$THEME" | head -n1)
+# ALT_THEME feeds a filesystem path (step 9's $HIST/theme-$ALT_THEME) AND the
+# screenshot helper's --theme flag — config.json's themes[] is untrusted (same
+# posture as MOODBOARD_VARIANTS above), so reject anything outside a safe slug
+# charset rather than let a crafted ["dark","../../etc"] entry escape _history/.
+if [[ -n "$ALT_THEME" && ! "$ALT_THEME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "→ ignoring malformed theme name in designSystems[$TARGET_DS].themes — skipping dual-theme capture" >&2
+  ALT_THEME=""
+fi
 ```
 
 ### 1.5 Cache the DS-context pack (Phase C / DDR-061)

@@ -44,7 +44,9 @@ try {
     // `[data-theme]` elements (e.g. a single-theme DS).
     const n = await page.evaluate((t) => {
       const els = document.querySelectorAll('[data-theme]');
-      els.forEach((el) => el.setAttribute('data-theme', t));
+      els.forEach((el) => {
+        el.setAttribute('data-theme', t);
+      });
       return els.length;
     }, theme);
     console.error(`→ theme override: forced data-theme="${theme}" on ${n} element(s)`);

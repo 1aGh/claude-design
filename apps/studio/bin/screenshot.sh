@@ -65,6 +65,20 @@ while [ $# -gt 0 ]; do
 done
 
 # ---------- arg validation ----------
+# --theme ultimately traces back to config.json's designSystems[].themes[]
+# (untrusted, same posture as prep.sh's MOODBOARD_VARIANTS). Callers (e.g.
+# new.md step 9) build an --out-dir path from this value — reject anything
+# outside a safe slug charset here too, at the shared sink, rather than
+# trusting every caller to re-derive this guard.
+if [ -n "$THEME" ]; then
+  case "$THEME" in
+    *[!A-Za-z0-9._-]*|"")
+      echo "screenshot.sh: --theme '$THEME' contains unsafe characters (allowed: A-Za-z0-9._-)" >&2
+      exit 2
+      ;;
+  esac
+fi
+
 if [ $ALL_SCREENS -eq 1 ]; then
   [ -z "$OUT_DIR" ] && { echo "screenshot.sh: --all-screens needs --out-dir" >&2; exit 2; }
 else
@@ -249,8 +263,16 @@ navigate_once() {
 apply_theme_override() {
   [ -z "$THEME" ] && return 0
   [ "$ENGINE" = "agent-browser" ] || return 0
+  # THEME ultimately traces back to config.json's designSystems[].themes[]
+  # array — treated as untrusted input elsewhere in this codebase (see
+  # prep.sh's MOODBOARD_VARIANTS clamp). JSON-encode it via jq so it lands as
+  # a properly-escaped JS string literal in the eval'd expression below,
+  # instead of naively splicing the raw value into a JS string (which a
+  # crafted config value could break out of).
+  local theme_json
+  theme_json=$(jq -Rn --arg t "$THEME" '$t' 2>/dev/null) || return 0
   local n
-  n=$("$AB" eval "(function(t){var els=document.querySelectorAll('[data-theme]');els.forEach(function(el){el.setAttribute('data-theme',t)});return els.length})('$THEME')" 2>/dev/null)
+  n=$("$AB" eval "(function(t){var els=document.querySelectorAll('[data-theme]');els.forEach(function(el){el.setAttribute('data-theme',t)});return els.length})($theme_json)" 2>/dev/null)
   echo "→ theme override: forced data-theme=\"$THEME\" on $(printf '%s' "$n" | tr -d '[:space:]') element(s)" >&2
 }
 
