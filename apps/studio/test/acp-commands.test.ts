@@ -101,7 +101,8 @@ describe('Acp manager — warm frame broadcasts + open replays commands', () => 
       acp.onOpen(b.ws);
       const replay = b.frames.find((f) => f.t === 'commands');
       expect(replay).toBeDefined();
-      expect((replay?.commands as Array<{ name: string }>).length).toBe(2);
+      const replayCommands = replay?.commands as Array<{ name: string }>;
+      expect(replayCommands.length).toBe(2);
       acp.onClose(b.ws);
     } finally {
       acp.onClose(a.ws);
