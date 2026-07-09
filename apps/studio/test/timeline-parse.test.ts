@@ -124,4 +124,61 @@ export default function Canvas(){ return (<DesignCanvas>
     expect(reel.total).toBe(120);
     expect(reel.audio).toHaveLength(1);
   });
+
+  test('a clips array built via .flatMap() collapses to one generic row (documents the parser limit — see video-comp SKILL.md "Never build ... with .map()/.flatMap()")', () => {
+    const src = `
+const CLIP = 60; const XF = 15;
+const clips = ['assets/a.mp4', 'assets/b.mp4', 'assets/c.mp4', 'assets/d.mp4'];
+const TOTAL = clips.length * CLIP - (clips.length - 1) * XF;
+const ReelClip = ({ src }) => <AbsoluteFill/>;
+function Reel(){
+  return (<AbsoluteFill><TransitionSeries>
+    {clips.flatMap((src, i) => {
+      const seq = <TransitionSeries.Sequence key={\`s\${i}\`} durationInFrames={CLIP}><ReelClip src={src}/></TransitionSeries.Sequence>;
+      if (i === clips.length - 1) return [seq];
+      return [seq, <TransitionSeries.Transition key={\`t\${i}\`} presentation={fade()} timing={linearTiming({ durationInFrames: XF })}/>];
+    })}
+  </TransitionSeries></AbsoluteFill>);
+}
+`;
+    // Only ONE literal <TransitionSeries.Sequence> occurrence exists in the
+    // source text (written once inside the callback) — not the 4 clips that
+    // exist at runtime — and its durationInFrames={CLIP} is fine but the
+    // array-driven TOTAL isn't resolvable arithmetic, so scopedTotal falls
+    // back to the derived span.
+    const r = parseCompTimeline(src, 0);
+    expect(r.sequences).toHaveLength(1);
+    expect(r.sequences[0]).toMatchObject({ label: 'ReelClip', duration: 60 });
+  });
+
+  test('the corrected 4-literal-block worked example (video-comp SKILL.md) parses all 4 named clips + the literal-sum total', () => {
+    const src = `
+const XF = 15;
+const TOTAL = 60 + 60 + 60 + 60 - XF * 3;
+const Clip = ({ src, label }) => <AbsoluteFill/>;
+const Reel = () => (
+  <AbsoluteFill>
+    <TransitionSeries>
+      <TransitionSeries.Sequence name="clip-1" durationInFrames={60}><Clip src="assets/a.mp4" label="01" /></TransitionSeries.Sequence>
+      <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: XF })} />
+      <TransitionSeries.Sequence name="clip-2" durationInFrames={60}><Clip src="assets/b.mp4" label="02" /></TransitionSeries.Sequence>
+      <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: XF })} />
+      <TransitionSeries.Sequence name="clip-3" durationInFrames={60}><Clip src="assets/c.mp4" label="03" /></TransitionSeries.Sequence>
+      <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: XF })} />
+      <TransitionSeries.Sequence name="clip-4" durationInFrames={60}><Clip src="assets/d.mp4" label="04" /></TransitionSeries.Sequence>
+    </TransitionSeries>
+  </AbsoluteFill>
+);
+`;
+    const r = parseCompTimeline(src, 0);
+    expect(r.sequences).toHaveLength(4);
+    expect(r.sequences.map((s) => s.label)).toEqual(['clip-1', 'clip-2', 'clip-3', 'clip-4']);
+    expect(r.sequences.map((s) => s.duration)).toEqual([60, 60, 60, 60]);
+    // Sequence 1 at 0; each next clip starts durationInFrames - XF after the
+    // previous (the transition overlaps back), same crossfade math as the
+    // existing 2-clip test above.
+    expect(r.sequences.map((s) => s.from)).toEqual([0, 45, 90, 135]);
+    // 60*4 - 15*3 = 195, and it's a literal-arithmetic sum the parser resolves.
+    expect(r.total).toBe(195);
+  });
 });
