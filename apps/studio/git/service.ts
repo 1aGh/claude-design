@@ -741,7 +741,7 @@ export async function gitCheckout(dir: string, name: string): Promise<GitBranchR
       } else {
         const remoteNames = await git
           .listBranches({ fs, dir, remote: DEFAULT_REMOTE })
-          .catch(() => []);
+          .catch(() => [] as string[]);
         if (!remoteNames.includes(name))
           return { ok: false, error: "Couldn't find that draft — try Refresh." };
         await git.checkout({ fs, dir, ref: name, remote: DEFAULT_REMOTE, track: true });

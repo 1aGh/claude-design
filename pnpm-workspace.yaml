@@ -35,4 +35,10 @@ allowBuilds:
   edgedriver: false
   esbuild: true
   geckodriver: false
+  # dom-to-pptx@2.x pulls in puppeteer for its own standalone `dom-to-pptx-exporter`
+  # CLI — maude never invokes that. We only load dom-to-pptx's UMD bundle inside
+  # our own already-running Playwright/agent-browser session (see
+  # apps/studio/bin/_pptx-playwright.mjs + exporters/_browser-bundles.ts), so the
+  # postinstall's Chromium download is unused deadweight — deny it.
+  puppeteer: false
   sharp: true

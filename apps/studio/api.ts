@@ -1471,7 +1471,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
 
   async function saveAsset(bytes: Uint8Array): Promise<SaveAssetResult> {
     if (!bytes || bytes.length === 0) return { ok: false, status: 400, error: 'empty body' };
-    return saveAssetFromStream(new Response(bytes).body as ReadableStream<Uint8Array>);
+    return saveAssetFromStream(new Response(bytes as BodyInit).body as ReadableStream<Uint8Array>);
   }
 
   // Stage F1 (feature-element-editing-robustness) — list the versioned content-
@@ -3135,10 +3135,11 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       for (const m of matches) {
         const files = await findFiles(m.abs, m.rel, ['.tsx', '.html']);
         for (const f of files) {
-          const fname = f
-            .split('/')
-            .pop()
-            ?.replace(/\.(tsx|html)$/i, '');
+          const fname =
+            f
+              .split('/')
+              .pop()
+              ?.replace(/\.(tsx|html)$/i, '') ?? f;
           const group = f.split('/').slice(-2, -1)[0] || folderName;
           const label = fname.toLowerCase() === 'index' ? group : fname;
           items.push({ label, path: f, group });

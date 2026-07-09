@@ -350,7 +350,7 @@ export function ContextMenuView({
           el.querySelectorAll<HTMLButtonElement>('button.dc-menu-item:not([disabled])')
         );
         if (items.length === 0) return;
-        const idx = items.indexOf(document.activeElement);
+        const idx = items.indexOf(document.activeElement as HTMLButtonElement);
         const nextIdx =
           e.key === 'ArrowDown'
             ? (idx + 1) % items.length

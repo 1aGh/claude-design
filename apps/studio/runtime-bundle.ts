@@ -360,5 +360,5 @@ function subPathExternals(_pkg: RuntimePackage): string[] {
  * own cold-start is already the longest tail.
  */
 export async function prewarmRuntimeBundles(): Promise<void> {
-  await Promise.all(RUNTIME_PACKAGES.map(getRuntimeBundle));
+  await Promise.all(RUNTIME_PACKAGES.map((pkg) => getRuntimeBundle(pkg)));
 }
