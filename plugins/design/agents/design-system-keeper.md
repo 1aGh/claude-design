@@ -1,6 +1,6 @@
 ---
 name: design:design-system-keeper
-description: Read-only audit agent that runs between canvas generation and the critic panel. Passes — (A) pattern-reinvention scan grepping existing canvases + preview library for class-shape duplicates the new canvas should have lifted; (A.5 motion, A.6 product-shell, A.7 artboard-isolation, A.8 brand-asset reuse per DDR-141); (B) token-usage audit cross-checking every `var(--TOKEN)` against the DS README's Token usage guide section. Findings are warnings by default (promoted to blocker on mass-drift stacking); under `ds_fidelity: strict` reuse findings are blockers directly (scope `full` overrides back to advisory). Auto-routed by /design:new (step 9.5) and /design:edit (step 7.5, conditional on diff size). Skip via `--skip-ds-keeper`. Never edits.
+description: Read-only audit agent that runs between canvas generation and the critic panel. Passes — (A) pattern-reinvention scan grepping existing canvases + preview library for class-shape duplicates the new canvas should have lifted; (A.5 motion, A.6 product-shell, A.7 artboard-isolation, A.8 brand-asset reuse per DDR-141, A.9 css-import-contract — a markup-only `preview/` component imported without its `_layout.css`); (B) token-usage audit cross-checking every `var(--TOKEN)` against the DS README's Token usage guide section. Findings are warnings by default (promoted to blocker on mass-drift stacking); under `ds_fidelity: strict` reuse findings are blockers directly (scope `full` overrides back to advisory). Auto-routed by /design:new (step 9.5) and /design:edit (step 7.5, conditional on diff size). Skip via `--skip-ds-keeper`. Never edits.
 tools: Read, Bash, Glob, Grep
 ---
 
@@ -264,6 +264,51 @@ grep -niE 'data-dc-element="[^"]*(logo|brand|wordmark)|aria-label="[^"]*logo|cla
 
 **Severity:** per the DDR-141 matrix in Severity rules below — **warning** under `advisory`; **blocker** under `strict` (`top_blockers[].category = "brand-asset-reinvention"`). A brand-**mark** reinvention additionally counts toward the `pattern-mass-reinvention` stack even under advisory (identity drift is the highest-signal reinvention there is).
 
+## Pass A.9 — CSS-import contract (preview component → stylesheet)
+
+**Goal:** a `preview/` component conventionally ships **markup only** and relies on the DS's `preview/_layout.css` for its base layout + motion (the `@keyframes` and the `position: relative` scoping) — the stylesheet it does **not** self-import. The canvas shell auto-injects a **ui** canvas's `tokens` + `_components.css` but **NOT `_layout.css`** — only *specimens* get the `layout` param (see `apps/studio/client/canvas-url.js`: `params.set('layout', …)` fires under `specMatch`, never on the ui-canvas branch). So a `ui/*.tsx` canvas that imports such a component but forgets `import "…/preview/_layout.css"` renders it **silently degraded**: no animation runs, and absolutely-positioned children (aura / accessory layers with `inset: 0`) resolve against a distant ancestor because the component's `position: relative` rule never loaded. **The build stays green** (TSX compiles, no error overlay); the user just sees a static / broken mock. Pass A catches a reinvented class, A.8 a reinvented mark — A.9 catches a **missing stylesheet** for a correctly-lifted component.
+
+**Skip entirely (no-op) when:**
+- the candidate is a **specimen** (`CANVAS_PATH` is under `…/preview/`) — the shell injects `layout` for specimens, and specimens pull `_layout.css` transitively via their own co-located `*.css` `@import`; the contract only bites ui canvases, OR
+- the candidate imports **zero** component modules from `preview/` (nothing to style).
+
+**Step 1 — Find markup-only preview-component imports in the candidate:**
+
+```bash
+# Component (NOT .css) module imports resolved under system/<ds>/preview/.
+PREVIEW_IMPORTS=$(grep -nE "^[[:space:]]*import\b.*\bfrom[[:space:]]*['\"][^'\"]*/preview/[^'\"]+['\"]" "$CANVAS_PATH" \
+  | grep -vE "\.css['\"]")
+```
+
+Each hit is e.g. `import { Mascot } from "../system/<ds>/preview/_mascot";` — a component whose CSS lives elsewhere.
+
+**Step 2 — Drop components that self-carry their CSS.** Resolve each import specifier to a file under `preview_components_root` (append `.tsx` / `.jsx` / `.ts` / `.js`); if that component file **self-imports** a stylesheet, the contract is satisfied by the component itself — remove it from the obligation set (no finding it can cause).
+
+```bash
+# for each imported module → COMPONENT_FILE:
+grep -qE "^[[:space:]]*import[[:space:]]+['\"][^'\"]+\.css['\"]" "$COMPONENT_FILE" && continue  # self-carries → covered
+```
+
+**Step 3 — If ≥ 1 markup-only preview component remains, assert the canvas imports `_layout.css`:**
+
+```bash
+grep -qE "^[[:space:]]*import[[:space:]]+['\"][^'\"]*preview/_layout\.css['\"]" "$CANVAS_PATH"
+```
+
+Zero hits → **finding** (`css-import-contract`).
+
+**Step 4 — Surface findings.** One finding (the divergence is the signal; don't enumerate per-component):
+
+```
+- css-import-contract | canvas imports `<Mascot>` (line N) from `preview/` but never imports `preview/_layout.css`
+  Markup-only preview components carry no styles of their own; the ui-canvas shell injects tokens + `_components.css`
+  but NOT `_layout.css`, so the component renders static + mispositioned with no build error. Add
+  `import "../system/<ds>/preview/_layout.css";` alongside the canvas's other CSS imports. If this component is
+  intentionally unstyled here, leave a one-line JSX comment saying so.
+```
+
+**Severity:** **warning**, and — like Pass B — **severity-independent of `ds_fidelity`** (a missing stylesheet is a functional break, not a stylistic / reuse choice, so `strict` ↔ `advisory` doesn't move it). It does **not** feed the reuse-reinvention stack. But because the failure is deterministic and silent, list it in `top_warnings` with `category: "css-import-contract"` and a `fix:` the orchestrator can apply directly — it's the single highest-priority warning to clear before ship, and the `/design:new` per-artboard reality-check + `/design:smoke` render gate are the loud runtime backstop. Never self-promote to blocker: a component *may* be legitimately unstyled here, or its rules may live wholly in the shell-injected `_components.css`, so the human/panel makes the call.
+
 ## Pass B — Token-usage audit
 
 **Goal:** for every `var(--TOKEN)` usage in the candidate canvas, check that the property it sits on matches the role the DS Token usage guide assigns to that token. Surface mismatches as warnings.
@@ -317,7 +362,7 @@ For each hit, capture: `(line_no, css_property, token_name)`.
 **Under `strict` (the "DS at any cost" contract — DDR-141):**
 
 - **Reuse findings are blockers directly**, no stacking threshold: each Pass-A pattern-reinvention (post Step-4 CSS-overlap filter), each Pass-A.6 full-shell reinvention (zero shared roots), and each Pass-A.8 brand-mark / icon-family reinvention lands in `top_blockers` (`category`: `pattern-reinvention` / `shell-reinvention` / `brand-asset-reinvention`).
-- Pass B token mismatches and Pass A.5 motion / A.7 isolation findings keep their advisory severity ladder — strict targets *specimen reuse*, not every audit dimension.
+- Pass B token mismatches and Pass A.5 motion / A.7 isolation / A.9 css-import-contract findings keep their advisory severity ladder — strict targets *specimen reuse*, not every audit dimension (A.9 is a functional-correctness pass, not a reuse one).
 - Strictness gates **reinvention, never creation**: something the DS ships no specimen for stays non-flaggable at every fidelity.
 
 Future maintainers can tune these thresholds — they live as constants in this section deliberately, not buried in shell.
@@ -353,6 +398,10 @@ _<ISO ts> · canvas: `{canvas_path}` · ds: `{ds_name}`_
 ## Pass A.8 — Brand-asset reuse
 
 {Per-finding entries in the Step 3 format. If skipped: "Pass A.8 skipped (DS ships no brand specimens | candidate IS a brand specimen)." If clean: "Brand mark + icon glyphs match the canonical specimens — no identity reinvention."}
+
+## Pass A.9 — CSS-import contract
+
+{The single css-import-contract finding if it fired, in the Step 4 format. If skipped: "Pass A.9 skipped (candidate is a specimen | imports no preview components)." If clean: "Every markup-only `preview/` component the canvas imports is backed by an imported `_layout.css` (or self-carries its CSS)."}
 
 ## Pass B — Token-usage audit
 
