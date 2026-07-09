@@ -242,7 +242,8 @@ describe('token bridge fetch', () => {
     const calls = stubFetch(() => new Response('gho_secret\n', { status: 200 }));
     expect(tokenBridgeAvailable()).toBe(true);
     expect(await getGithubToken()).toBe('gho_secret');
-    expect((calls[0].init?.headers as Record<string, string>)['X-Maude-Token-Key']).toBe('k123');
+    const headers = calls[0].init?.headers as Record<string, string>;
+    expect(headers['X-Maude-Token-Key']).toBe('k123');
   });
 
   test('returns null on 404 (not signed in) and 403 (bad key)', async () => {
