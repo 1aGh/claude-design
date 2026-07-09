@@ -6878,6 +6878,15 @@ function App() {
   useEffect(() => {
     timelineCompIdRef.current = timelineCompId;
   }, [timelineCompId]);
+  // rca/issue-video-artboard-frame-reset-on-edit — last known playhead, read
+  // from the `timeline-comps` handler below (which fires on every comp
+  // (re)mount, incl. a ⌘R hard iframe reload) to re-seed the fresh Player
+  // instance. A ref, not state, so the handler always sees the latest value
+  // without pulling `timelineFrame` into that big message-listener's deps.
+  const timelineFrameRef = useRef(0);
+  useEffect(() => {
+    timelineFrameRef.current = timelineFrame;
+  }, [timelineFrame]);
   // The DCArtboard id the timeline scoped to (from parseCompTimeline). Used for
   // /_api/comp-clips + every clip op so the enumerator targets the SAME comp the
   // rows came from — `timelineCompId` is the Player's `videocomp-N` id, which
@@ -8729,6 +8738,23 @@ function App() {
             height: Math.max(1, Math.round(Number(c.height) || 0)),
           }));
         setActiveComps(safe);
+        // rca/issue-video-artboard-frame-reset-on-edit — the SAME comp
+        // re-announcing means its Player just remounted (an edit-triggered
+        // HMR remount, or a ⌘R hard iframe reload that wiped video-comp.tsx's
+        // own module-scope frame mirror too). The shell's `timelineFrame`
+        // survives either way (this component doesn't remount) — push it back
+        // down so the fresh Player opens where the Timeline left off, instead
+        // of the poster-frame default. Skip on a genuinely new comp/canvas
+        // (no prior id, or frame still at its post-switch 0).
+        const prevCompId = timelineCompIdRef.current;
+        const stillPresent = prevCompId && safe.some((c) => c.id === prevCompId);
+        if (stillPresent && timelineFrameRef.current > 0) {
+          postToActiveCanvas({
+            dgn: 'timeline-seek',
+            frame: timelineFrameRef.current,
+            id: prevCompId,
+          });
+        }
       } else if (m.dgn === 'timeline-frame' && typeof m.frame === 'number') {
         // Live playhead mirror from the Player (preview scrub/playback).
         const activeWin =
@@ -8916,6 +8942,7 @@ function App() {
     zoomCtlVisible,
     broadcastChrome,
     activePath,
+    postToActiveCanvas,
   ]);
 
   // Tell the active canvas iframe to drop any persistent selection (canvas

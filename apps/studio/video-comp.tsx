@@ -116,6 +116,18 @@ function registry(): Map<string, CompEntry> {
   return w.__maudeVideoComps;
 }
 
+// rca/issue-video-artboard-frame-reset-on-edit — the LAST live-preview frame
+// per comp, hoisted above every remount boundary (module scope, mirrors
+// canvas-lib.tsx's `liveViewport`). A canvas edit (ACP/agent/inspector/text)
+// remounts the canvas subtree (canvas-comment-mount.tsx `key={attempt}`), and
+// video-comp.tsx's own module survives that remount — so a fresh VideoComp
+// mount can read the Timeline's last position here instead of always opening
+// on the static `posterFrame`. A full page load clears it — correct; the
+// shell re-seeds via the `timeline-comps` re-announce (app.jsx) once the new
+// Player registers. Never touched during capture (`hideChrome()` forces the
+// deterministic frame 0 / render-shim frame regardless of this mirror).
+const liveTimelineFrame = new Map<string, number>();
+
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
@@ -301,9 +313,15 @@ export function VideoComp({
   // autoplay; capture never autoplays (the shim drives frames). Opens on a
   // poster frame ~35% in so a paused comp shows content, not an empty frame 0.
   const play = (autoPlay ?? false) && !capturing;
-  const posterFrame = capturing
+  const maxFrame = Math.max(0, durationInFrames - 1);
+  const posterFrame = capturing ? 0 : Math.min(maxFrame, Math.round(durationInFrames * 0.35));
+  // rca/issue-video-artboard-frame-reset-on-edit — reopen on the Timeline's
+  // last known frame for this comp (survives the remount that tore this
+  // instance down), not the fixed poster-frame formula. Falls back to
+  // posterFrame on a genuinely first-ever mount (nothing recorded yet).
+  const initialFrame = capturing
     ? 0
-    : Math.min(Math.max(0, durationInFrames - 1), Math.round(durationInFrames * 0.35));
+    : clamp(liveTimelineFrame.get(compId) ?? posterFrame, 0, maxFrame);
 
   // Register with the seek bridge for the lifetime of this mount.
   useEffect(() => {
@@ -353,8 +371,10 @@ export function VideoComp({
       if (!p) return;
       try {
         if (m.dgn === 'timeline-seek' && typeof m.frame === 'number') {
+          const f = clamp(Math.round(m.frame), 0, Math.max(0, durationInFrames - 1));
           p.pause();
-          p.seekTo(clamp(Math.round(m.frame), 0, Math.max(0, durationInFrames - 1)));
+          p.seekTo(f);
+          liveTimelineFrame.set(compId, f);
         } else if (m.dgn === 'timeline-play') {
           p.play();
         } else if (m.dgn === 'timeline-pause') {
@@ -382,7 +402,9 @@ export function VideoComp({
     if (!p) return;
     const onFrame = () => {
       try {
-        postToShell({ dgn: 'timeline-frame', id: compId, frame: p.getCurrentFrame() });
+        const f = p.getCurrentFrame();
+        liveTimelineFrame.set(compId, f);
+        postToShell({ dgn: 'timeline-frame', id: compId, frame: f });
       } catch {
         /* ignore */
       }
@@ -416,7 +438,7 @@ export function VideoComp({
         controls={showControls}
         loop={loopState}
         autoPlay={play}
-        initialFrame={posterFrame}
+        initialFrame={initialFrame}
         // Clicking the artboard must NOT toggle playback — it selects elements
         // for editing (the whole point of a canvas). Play only via the explicit
         // transport button (Player controls / Timeline panel). Same for the
