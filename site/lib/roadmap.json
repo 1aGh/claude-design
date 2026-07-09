@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-09T08:20:31.808Z",
+  "generated": "2026-07-09T17:03:56.043Z",
   "currentPhase": null,
   "phases": [
     {
@@ -428,6 +428,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is FigJam v4 — it extends the v3 AI loop (DDR-100) and the brief-board ingest (DD...",
       "planPath": ".ai/plans/archive/feature-whiteboard-ai-toolkit.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-whiteboard-annotation-improvements",
+      "title": "Feature: Whiteboard / annotation improvements",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. The FigJam-style draw layer lives in the SVG-annotation world — data model + serialize...",
+      "planPath": ".ai/plans/archive/feature-whiteboard-annotation-improvements.md",
       "archived": true,
       "phaseKey": null
     },
