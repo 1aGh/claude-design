@@ -9506,8 +9506,11 @@ function App() {
           t.tagName === 'SELECT' ||
           t.isContentEditable);
       if (editable) return;
-      if (!activePath || activePath === SYSTEM_TAB) return;
+      // Suppress the WKWebView back-nav unconditionally once focus isn't editable —
+      // the activePath/SYSTEM_TAB check below is app logic, not default-action gating,
+      // so it must not gate preventDefault (that gap caused the desktop "Starting…" hang).
       e.preventDefault();
+      if (!activePath || activePath === SYSTEM_TAB) return;
       const one = Array.isArray(selected) ? (selected.length === 1 ? selected[0] : null) : selected;
       if (one?.artboardId && !one.id) deleteArtboardShell(one.artboardId);
     };
