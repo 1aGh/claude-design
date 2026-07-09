@@ -13,7 +13,7 @@
     "e2e:onboarding": "wdio run ./wdio.onboarding.conf.ts"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
+    "@types/node": "^26.1.1",
     "@wdio/cli": "^9.20.0",
     "@wdio/globals": "^9.20.0",
     "@wdio/local-runner": "^9.20.0",
@@ -22,6 +22,6 @@
     "@wdio/tauri-service": "1.2.0",
     "expect-webdriverio": "^5.7.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.7.0"
+    "typescript": "^7.0.2"
   }
 }
