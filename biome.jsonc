@@ -127,6 +127,19 @@
           }
         }
       }
+    },
+    {
+      // Frozen test fixtures (annotations-roundtrip.test.ts, figjam-v3-model.test.ts) are
+      // hand-frozen byte-identical back-compat canaries — never editable, never rendered as
+      // product UI. Biome v2.5 newly-enforced noSvgWithoutTitle would otherwise flag them.
+      "includes": ["**/apps/studio/test/fixtures/*.svg"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noSvgWithoutTitle": "off"
+          }
+        }
+      }
     }
   ]
 }

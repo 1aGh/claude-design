@@ -11,6 +11,6 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
-    "agent-browser": "0.27.0"
+    "agent-browser": "0.31.1"
   }
 }
