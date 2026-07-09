@@ -10,7 +10,7 @@ import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 
 import { probeAcpAvailability } from './acp/probe.ts';
 import { deleteChat, listChats, readChatMessages } from './acp/transcript.ts';
-import { type Api, ASSET_MAX_VIDEO_BYTES } from './api.ts';
+import { ASSET_MAX_BYTES, type Api, ASSET_MAX_VIDEO_BYTES } from './api.ts';
 import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
@@ -836,8 +836,8 @@ export function createHttp(
     // expands to so Claude can Read it. MAIN-ORIGIN ONLY: sameOriginWrite CSRF gate
     // on POST + deliberately absent from CANVAS_SAFE_API + startCanvasServer routes,
     // so the untrusted canvas iframe is 403'd. The disk caps live in
-    // api.saveChatAttachment (magic-byte sniff / 10 MB / content-addressed name /
-    // session write budget).
+    // api.saveChatAttachment (magic-byte sniff / ASSET_MAX_BYTES / content-
+    // addressed name / session write budget).
     //
     // GET ?name=<sha8>.<ext> serves the pasted image back to the chat feed
     // (thumbnail + lightbox). The name is regex-allowlisted in
@@ -864,9 +864,12 @@ export function createHttp(
       if (!isLoopbackHost(req.headers.get('host')))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const declared = Number(req.headers.get('content-length') || '0');
-      if (Number.isFinite(declared) && declared > 10 * 1024 * 1024) {
+      if (Number.isFinite(declared) && declared > ASSET_MAX_BYTES) {
         return Response.json(
-          { ok: false, error: 'attachment exceeds the 10 MB cap' },
+          {
+            ok: false,
+            error: `attachment exceeds the ${Math.round(ASSET_MAX_BYTES / (1024 * 1024))} MB cap`,
+          },
           { status: 413, headers: { 'Cache-Control': 'no-store' } }
         );
       }
@@ -2458,7 +2461,7 @@ export function createHttp(
     '/_api/git-user', // presence display name
     '/_api/canvas-meta', // layout/viewport sidecar (GET + PATCH)
     '/_api/annotations', // annotation SVG (GET + PUT) — drives the collab bridge
-    '/_api/asset', // Phase 23 — capped binary image upload (sniff+10MB+sha8 name+no-SVG)
+    '/_api/asset', // Phase 23 — capped binary image upload (sniff+category cap+sha8 name+no-SVG)
     '/_api/git-committers', // @mention autocomplete
     '/_api/ai', // AI-activity banner
     '/_comments', // per-file comment list (renders pins)

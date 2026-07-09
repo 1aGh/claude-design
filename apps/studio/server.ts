@@ -242,7 +242,7 @@ function startCanvasServer(port: number): BunServer {
       '/_api/git-user': http.routes['/_api/git-user'],
       '/_api/canvas-meta': http.routes['/_api/canvas-meta'],
       '/_api/annotations': http.routes['/_api/annotations'],
-      // Phase 23 — capped binary image upload (magic-byte sniff + 10 MB +
+      // Phase 23 — capped binary image upload (magic-byte sniff + category cap +
       // content-addressed name + traversal guard + no-SVG, in api.saveAsset).
       // Bun matches `routes` BEFORE `fetch`, so the route must be listed here
       // explicitly — the CANVAS_SAFE_API entry alone only opens the fetch

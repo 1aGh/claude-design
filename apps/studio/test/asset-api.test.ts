@@ -11,7 +11,7 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { sniffImageType } from '../api.ts';
+import { ASSET_MAX_BYTES, sniffImageType } from '../api.ts';
 import { bootServer, killProc, makeSandbox, nextPort } from './_helpers.ts';
 
 // ── Minimal valid magic-byte headers (padded so length checks pass). ──────────
@@ -107,9 +107,9 @@ describe('asset-api / POST /_api/asset (endpoint round-trip)', () => {
     });
   });
 
-  test('rejects an oversize body (> 10 MB) with 413', async () => {
+  test('rejects an oversize body (> ASSET_MAX_BYTES) with 413', async () => {
     await withServer(async (port) => {
-      const big = new Uint8Array(10 * 1024 * 1024 + 1);
+      const big = new Uint8Array(ASSET_MAX_BYTES + 1);
       big.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0); // valid PNG header
       const res = await postAsset(port, big);
       expect(res.status).toBe(413);

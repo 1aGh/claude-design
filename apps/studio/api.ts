@@ -472,8 +472,19 @@ export { ASSET_IMAGE_HREF_RE, sanitizeAnnotationSvg } from './annotations-model.
 
 import { sanitizeAnnotationSvg } from './annotations-model.ts';
 
-/** Phase 23 — hard ceiling on a single uploaded asset (10 MB). */
-export const ASSET_MAX_BYTES = 10 * 1024 * 1024;
+/**
+ * Phase 23 — per-file ceiling for a still image. Raised 10 MB → 25 MB (still
+ * well under the video cap / MAX_REQUEST_BODY headroom) after a real drone
+ * photo tripped the old ceiling. Overridable via `MAUDE_ASSET_MAX_IMAGE_BYTES`
+ * (bytes), mirroring {@link ASSET_MAX_VIDEO_BYTES}'s override. The route lives
+ * on the (untrusted) canvas origin (DDR-088), and images stream through the
+ * same category-capped writer as video/audio (`saveAssetFromStream`), so
+ * raising this doesn't reintroduce the memory-amplification risk DDR-088 capped.
+ */
+export const ASSET_MAX_BYTES = (() => {
+  const env = Number(process.env.MAUDE_ASSET_MAX_IMAGE_BYTES);
+  return Number.isFinite(env) && env > 0 ? env : 25 * 1024 * 1024;
+})();
 
 /**
  * Phase 23 security review (DDR-088 follow-up) — aggregate per-server-instance
@@ -576,7 +587,7 @@ export interface AssetTypeInfo {
 
 /**
  * DDR-148 — per-file ceiling for time-based media (video + audio). Images keep
- * the tighter {@link ASSET_MAX_BYTES} 10 MB cap. Overridable via
+ * the tighter {@link ASSET_MAX_BYTES} cap. Overridable via
  * `MAUDE_ASSET_MAX_VIDEO_BYTES` (bytes) for power users. The route lives on the
  * (untrusted) canvas origin, so this cap + the session budget + the streamed
  * write are the trust mitigation, exactly like the image caps (DDR-088).
@@ -595,7 +606,9 @@ const UNSUPPORTED_ASSET_MSG =
   'unsupported media type — png/jpeg/gif/webp images or mp4/mov/webm/mp3/wav/m4a media only (SVG/script rejected)';
 
 function capError(category?: AssetCategory): string {
-  if (category === 'image') return 'image exceeds the 10 MB cap';
+  if (category === 'image') {
+    return `image exceeds the ${Math.round(ASSET_MAX_BYTES / (1024 * 1024))} MB cap`;
+  }
   const mb = Math.round(ASSET_MAX_VIDEO_BYTES / (1024 * 1024));
   return `media exceeds the ${mb} MB cap`;
 }
@@ -1316,8 +1329,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   // optional (DDR Task 9):
   //   • magic-byte sniff → true type ∈ {png,jpg,gif,webp}; a header lie or an
   //     SVG (script-bearing vector) is rejected — bytes decide, name is ignored.
-  //   • ≤ 10 MB ceiling (assets get their OWN cap; never routed through the 1 MB
-  //     SVG-text gate in saveAnnotations).
+  //   • per-category ceiling ({@link ASSET_MAX_BYTES} for images; assets get
+  //     their OWN cap; never routed through the 1 MB SVG-text gate in
+  //     saveAnnotations).
   //   • content-addressed name `assets/<sha8-of-bytes>.<ext>` → identical drops
   //     dedupe → a malicious canvas can't fill the disk with N copies of one
   //     image, and orphan-on-delete is safe (shared content survives).
@@ -1331,8 +1345,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
    * request body chunk-by-chunk so a 100 MB video never lands as a single
    * ArrayBuffer in RAM (the memory-amplification vector DDR-088 §review flagged
    * for the untrusted canvas origin — worse now that the per-file cap is 100 MB,
-   * not 10 MB). Sniffs the type from the head, applies the CATEGORY cap while
-   * streaming (image 10 MB · video/audio {@link ASSET_MAX_VIDEO_BYTES}), writes
+   * not a few MB). Sniffs the type from the head, applies the CATEGORY cap while
+   * streaming (image {@link ASSET_MAX_BYTES} · video/audio {@link ASSET_MAX_VIDEO_BYTES}), writes
    * to a temp file, then content-addresses (sha8) → dedupe-rename. Nothing is
    * ever parsed — only magic bytes are read. `saveAsset(bytes)` wraps this so
    * both the route and any programmatic caller share ONE tested path.
@@ -1519,13 +1533,17 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   //     the versioned `assets/`; pasted screenshots are ephemeral, not canvas media.
   //   • returns an ABSOLUTE path — Claude runs with its own cwd, so a project-
   //     relative string could miss; an absolute path always resolves.
-  // Same load-bearing caps as saveAsset (magic-byte sniff → no SVG/script, 10 MB,
-  // content-addressed name, shared session write budget). MAIN-ORIGIN ONLY at the
-  // route layer (the untrusted canvas can't reach it).
+  // Same load-bearing caps as saveAsset (magic-byte sniff → no SVG/script,
+  // ASSET_MAX_BYTES, content-addressed name, shared session write budget).
+  // MAIN-ORIGIN ONLY at the route layer (the untrusted canvas can't reach it).
   async function saveChatAttachment(bytes: Uint8Array): Promise<SaveAssetResult> {
     if (!bytes || bytes.length === 0) return { ok: false, status: 400, error: 'empty body' };
     if (bytes.length > ASSET_MAX_BYTES) {
-      return { ok: false, status: 413, error: 'attachment exceeds the 10 MB cap' };
+      return {
+        ok: false,
+        status: 413,
+        error: `attachment exceeds the ${Math.round(ASSET_MAX_BYTES / (1024 * 1024))} MB cap`,
+      };
     }
     const kind = sniffImageType(bytes);
     if (!kind) {

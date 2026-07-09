@@ -5,14 +5,14 @@
 //       the stored type AND category (→ which cap applies); a header lie / SVG /
 //       script is caught here;
 //   (2) the streaming POST endpoint (boots a real server) — video/audio happy
-//       path, per-category cap (image 10 MB stays tight; video honors the
-//       MAUDE_ASSET_MAX_VIDEO_BYTES override), content-addressed dedupe.
+//       path, per-category cap (image stays tighter than video; video honors
+//       the MAUDE_ASSET_MAX_VIDEO_BYTES override), content-addressed dedupe.
 
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { assetCapForCategory, sniffAssetType } from '../api.ts';
+import { ASSET_MAX_BYTES, assetCapForCategory, sniffAssetType } from '../api.ts';
 import { bootServer, killProc, makeSandbox, nextPort } from './_helpers.ts';
 
 // ── Minimal valid magic-byte headers (padded so the ≥12-byte sniff has data). ──
@@ -59,8 +59,8 @@ describe('video-asset / sniffAssetType (the widened type gate)', () => {
     expect(sniffAssetType(pad([...ascii('RIFF'), 0, 0, 0, 0, ...ascii('AVI ')]))).toBeNull();
   });
 
-  test('caps: image 10 MB tight, video/audio share the larger cap', () => {
-    expect(assetCapForCategory('image')).toBe(10 * 1024 * 1024);
+  test('caps: image stays tight, video/audio share the larger cap', () => {
+    expect(assetCapForCategory('image')).toBe(ASSET_MAX_BYTES);
     expect(assetCapForCategory('video')).toBeGreaterThan(assetCapForCategory('image'));
     expect(assetCapForCategory('audio')).toBe(assetCapForCategory('video'));
   });
