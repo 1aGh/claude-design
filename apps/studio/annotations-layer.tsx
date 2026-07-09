@@ -3223,19 +3223,8 @@ function AnnotationsSvg({
         />
       ) : null}
       {editingTarget?.kind === 'section' ? (
-        <StandaloneTextEditor
-          x={
-            Math.min(editingTarget.section.x, editingTarget.section.x + editingTarget.section.w) + 2
-          }
-          y={
-            Math.min(editingTarget.section.y, editingTarget.section.y + editingTarget.section.h) -
-            SECTION_LABEL_H -
-            2
-          }
-          fontSize={SECTION_LABEL_FONT}
-          color={editingTarget.section.color}
-          initialText={editingTarget.section.label}
-          singleLine
+        <SectionTitleEditor
+          section={editingTarget.section}
           onCommit={onCommitEdit}
           onCancel={onCancelEdit}
         />
@@ -3587,6 +3576,7 @@ function StandaloneTextEditor({
   align,
   listType,
   singleLine,
+  boxStyle,
   onCommit,
   onCancel,
 }: {
@@ -3604,6 +3594,9 @@ function StandaloneTextEditor({
   /** A one-line field (e.g. a section title rename) — plain Enter commits
    * instead of inserting a newline, matching a native text-input's Enter. */
   singleLine?: boolean;
+  /** Extra style merged onto the editable box — e.g. a section rename wants
+   * the same chip background/padding/radius the read-only label chip has. */
+  boxStyle?: CSSProperties;
   onCommit: (text: string, fmt?: EditorFmt) => void;
   onCancel: () => void;
 }) {
@@ -3692,6 +3685,7 @@ function StandaloneTextEditor({
           outline: 'none',
           background: 'transparent',
           cursor: 'text',
+          ...boxStyle,
         }}
         onBlur={() => commitOnce(ref.current?.innerText || '')}
         onKeyDown={(e) => {
@@ -4231,6 +4225,50 @@ function SectionLabelChip({
         {stroke.label}
       </text>
     </g>
+  );
+}
+
+/** Section title RENAME field — same chip visuals + zoom-invariant sizing as
+ * SectionLabelChip (read state), so switching into edit mode doesn't swap
+ * the pill for a bare, ambient-zoomed sliver of text (it used to: the editor
+ * had no background and its font-size wasn't counter-scaled, so at any zoom
+ * below 1× the chip effectively vanished mid-rename). */
+function SectionTitleEditor({
+  section,
+  onCommit,
+  onCancel,
+}: {
+  section: SectionStroke;
+  onCommit: (text: string, fmt?: EditorFmt) => void;
+  onCancel: () => void;
+}) {
+  const controller = useViewportControllerContext();
+  const zoom = controller?.viewport?.zoom || 1;
+  const fontSize = SECTION_LABEL_FONT / zoom;
+  const chipH = SECTION_LABEL_H / zoom;
+  const gap = 4 / zoom;
+  const padX = 9 / zoom;
+  const x = Math.min(section.x, section.x + section.w);
+  const y = Math.min(section.y, section.y + section.h);
+  return (
+    <StandaloneTextEditor
+      x={x}
+      y={y - chipH - gap}
+      fontSize={fontSize}
+      color={section.color}
+      initialText={section.label}
+      singleLine
+      boxStyle={{
+        background: `color-mix(in oklab, ${section.color} 16%, transparent)`,
+        borderRadius: `${5 / zoom}px`,
+        padding: `0 ${padX}px`,
+        minHeight: `${chipH}px`,
+        lineHeight: `${chipH}px`,
+        whiteSpace: 'nowrap',
+      }}
+      onCommit={onCommit}
+      onCancel={onCancel}
+    />
   );
 }
 
