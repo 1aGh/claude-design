@@ -473,7 +473,7 @@ export { ASSET_IMAGE_HREF_RE, sanitizeAnnotationSvg } from './annotations-model.
 import { sanitizeAnnotationSvg } from './annotations-model.ts';
 
 /**
- * Phase 23 — per-file ceiling for a still image. Raised 10 MB → 25 MB (still
+ * Phase 23 — per-file ceiling for a still image. Raised 10 MB → 50 MB (still
  * well under the video cap / MAX_REQUEST_BODY headroom) after a real drone
  * photo tripped the old ceiling. Overridable via `MAUDE_ASSET_MAX_IMAGE_BYTES`
  * (bytes), mirroring {@link ASSET_MAX_VIDEO_BYTES}'s override. The route lives
@@ -483,7 +483,7 @@ import { sanitizeAnnotationSvg } from './annotations-model.ts';
  */
 export const ASSET_MAX_BYTES = (() => {
   const env = Number(process.env.MAUDE_ASSET_MAX_IMAGE_BYTES);
-  return Number.isFinite(env) && env > 0 ? env : 25 * 1024 * 1024;
+  return Number.isFinite(env) && env > 0 ? env : 50 * 1024 * 1024;
 })();
 
 /**
