@@ -1,0 +1,328 @@
+{
+  "name": "Project status stickers",
+  "author": "Iconfinder",
+  "attributionUrl": "https://www.figma.com/community/file/1128224635870836270",
+  "license": "Figma Community (see attributionUrl for terms)",
+  "stickers": [
+    {
+      "file": "group-100.png",
+      "keywords": ["thumbs-up", "awesome", "approve"]
+    },
+    {
+      "file": "group-101.png",
+      "keywords": ["super-star", "star", "cool"]
+    },
+    {
+      "file": "group-102.png",
+      "keywords": ["off", "launch", "rocket"]
+    },
+    {
+      "file": "group-103.png",
+      "keywords": ["star", "sparkle", "favorite"]
+    },
+    {
+      "file": "group-104.png",
+      "keywords": ["hot", "fire", "skull"]
+    },
+    {
+      "file": "group-105.png",
+      "keywords": ["yeah", "rock-on", "excited"]
+    },
+    {
+      "file": "group-106.png",
+      "keywords": ["plus-one", "+1", "agree"]
+    },
+    {
+      "file": "group-107.png",
+      "keywords": ["no", "reject"]
+    },
+    {
+      "file": "group-108.png",
+      "keywords": ["hate-it", "dislike", "broken-heart"]
+    },
+    {
+      "file": "group-109.png",
+      "keywords": ["fresh", "new"]
+    },
+    {
+      "file": "group-110.png",
+      "keywords": ["sleepy", "zzz", "tired"]
+    },
+    {
+      "file": "group-111.png",
+      "keywords": ["meh", "unimpressed", "neutral"]
+    },
+    {
+      "file": "group-112.png",
+      "keywords": ["ok", "thumbs-up"]
+    },
+    {
+      "file": "group-113.png",
+      "keywords": ["nope", "no", "reject"]
+    },
+    {
+      "file": "group-114.png",
+      "keywords": ["star", "sparkle", "favorite"]
+    },
+    {
+      "file": "group-115.png",
+      "keywords": ["party-time", "celebrate", "party"]
+    },
+    {
+      "file": "group-117.png",
+      "keywords": ["peace", "peace-sign"]
+    },
+    {
+      "file": "group-118.png",
+      "keywords": ["omg", "surprised", "shocked"]
+    },
+    {
+      "file": "group-119.png",
+      "keywords": ["love-it", "heart", "like"]
+    },
+    {
+      "file": "group-120.png",
+      "keywords": ["ok", "okay-hand"]
+    },
+    {
+      "file": "group-121.png",
+      "keywords": ["great-idea", "idea", "lightbulb"]
+    },
+    {
+      "file": "group-122.png",
+      "keywords": ["hmm", "thinking", "question"]
+    },
+    {
+      "file": "group-41.png",
+      "keywords": ["lol", "funny", "laugh"]
+    },
+    {
+      "file": "group-42.png",
+      "keywords": ["sparkle", "shiny", "star"]
+    },
+    {
+      "file": "group-43.png",
+      "keywords": ["good-idea", "idea", "lightbulb"]
+    },
+    {
+      "file": "group-44.png",
+      "keywords": ["thanks", "thank-you"]
+    },
+    {
+      "file": "group-45.png",
+      "keywords": ["ok", "okay"]
+    },
+    {
+      "file": "group-46.png",
+      "keywords": ["done", "finished", "complete"]
+    },
+    {
+      "file": "group-47.png",
+      "keywords": ["flagged", "flag", "important"]
+    },
+    {
+      "file": "group-48.png",
+      "keywords": ["awesome", "great"]
+    },
+    {
+      "file": "group-49.png",
+      "keywords": ["dead", "skull", "killed-it"]
+    },
+    {
+      "file": "group-50.png",
+      "keywords": ["hot", "fire", "trending"]
+    },
+    {
+      "file": "group-51.png",
+      "keywords": ["done", "thumbs-up", "approved"]
+    },
+    {
+      "file": "group-52.png",
+      "keywords": ["meh", "unimpressed", "neutral"]
+    },
+    {
+      "file": "group-53.png",
+      "keywords": ["feedback", "question"]
+    },
+    {
+      "file": "group-54.png",
+      "keywords": ["work-busy", "busy", "clock"]
+    },
+    {
+      "file": "group-55.png",
+      "keywords": ["chill", "relax", "cool"]
+    },
+    {
+      "file": "group-56.png",
+      "keywords": ["almost-done", "nearly-finished", "hourglass"]
+    },
+    {
+      "file": "group-57.png",
+      "keywords": ["no", "reject"]
+    },
+    {
+      "file": "group-58.png",
+      "keywords": ["nope", "no", "reject"]
+    },
+    {
+      "file": "group-59.png",
+      "keywords": ["star", "favorite"]
+    },
+    {
+      "file": "group-60.png",
+      "keywords": ["peace", "peace-sign"]
+    },
+    {
+      "file": "group-61.png",
+      "keywords": ["hmm", "thinking", "question"]
+    },
+    {
+      "file": "group-62.png",
+      "keywords": ["thumbs-up", "awesome", "approve"]
+    },
+    {
+      "file": "group-63.png",
+      "keywords": ["ok", "okay-hand"]
+    },
+    {
+      "file": "group-64.png",
+      "keywords": ["love-it", "heart", "like"]
+    },
+    {
+      "file": "group-65.png",
+      "keywords": ["fresh", "new"]
+    },
+    {
+      "file": "group-66.png",
+      "keywords": ["off", "launch", "rocket"]
+    },
+    {
+      "file": "group-67.png",
+      "keywords": ["hate-it", "dislike", "broken-heart"]
+    },
+    {
+      "file": "group-68.png",
+      "keywords": ["wow", "heart", "surprised"]
+    },
+    {
+      "file": "group-69.png",
+      "keywords": ["yes", "agree"]
+    },
+    {
+      "file": "group-70.png",
+      "keywords": ["plus-one", "+1", "agree"]
+    },
+    {
+      "file": "group-71.png",
+      "keywords": ["party-time", "celebrate", "party"]
+    },
+    {
+      "file": "group-72.png",
+      "keywords": ["omg", "surprised", "shocked"]
+    },
+    {
+      "file": "group-73.png",
+      "keywords": ["hot", "fire", "skull"]
+    },
+    {
+      "file": "group-74.png",
+      "keywords": ["sleepy", "zzz", "tired"]
+    },
+    {
+      "file": "group-75.png",
+      "keywords": ["wow", "surprised"]
+    },
+    {
+      "file": "group-76.png",
+      "keywords": ["yeah", "rock-on", "excited"]
+    },
+    {
+      "file": "group-77.png",
+      "keywords": ["high-alert", "warning", "urgent"]
+    },
+    {
+      "file": "group-78.png",
+      "keywords": ["thumbs-down", "dislike"]
+    },
+    {
+      "file": "group-79.png",
+      "keywords": ["great-idea", "idea", "lightbulb"]
+    },
+    {
+      "file": "group-80.png",
+      "keywords": ["super-star", "star", "cool"]
+    },
+    {
+      "file": "group-81.png",
+      "keywords": ["wow", "heart", "surprised"]
+    },
+    {
+      "file": "group-82.png",
+      "keywords": ["done", "thumbs-up", "approved"]
+    },
+    {
+      "file": "group-83.png",
+      "keywords": ["wow", "surprised"]
+    },
+    {
+      "file": "group-84.png",
+      "keywords": ["work-busy", "busy", "clock"]
+    },
+    {
+      "file": "group-85.png",
+      "keywords": ["thumbs-down", "dislike"]
+    },
+    {
+      "file": "group-86.png",
+      "keywords": ["thanks", "thank-you"]
+    },
+    {
+      "file": "group-87.png",
+      "keywords": ["flagged", "flag", "important"]
+    },
+    {
+      "file": "group-88.png",
+      "keywords": ["dead", "skull"]
+    },
+    {
+      "file": "group-89.png",
+      "keywords": ["high-alert", "warning", "urgent"]
+    },
+    {
+      "file": "group-90.png",
+      "keywords": ["good-idea", "idea", "lightbulb"]
+    },
+    {
+      "file": "group-91.png",
+      "keywords": ["lol", "funny", "laugh"]
+    },
+    {
+      "file": "group-92.png",
+      "keywords": ["awesome", "great"]
+    },
+    {
+      "file": "group-93.png",
+      "keywords": ["hot", "fire"]
+    },
+    {
+      "file": "group-94.png",
+      "keywords": ["chill", "relax", "cool"]
+    },
+    {
+      "file": "group-96.png",
+      "keywords": ["done", "finished", "complete"]
+    },
+    {
+      "file": "group-97.png",
+      "keywords": ["feedback", "question"]
+    },
+    {
+      "file": "group-98.png",
+      "keywords": ["yes", "agree"]
+    },
+    {
+      "file": "group-99.png",
+      "keywords": ["almost-done", "nearly-finished", "hourglass"]
+    }
+  ]
+}

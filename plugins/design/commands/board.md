@@ -51,6 +51,20 @@ Use `--graph` when the board looks like a user-drawn flow (arrows connecting sha
 - **A template request** ("retro board", "kanban", "content calendar", "roadmap", "brainstorm", "checklist", "map out the <flow>") → match the request to a preset in skill `whiteboard` § "Preset fixtures", fill it with the user's REAL content (their actual retro items / actual post ideas / actual flow steps — never placeholder text; leave `cards: []` when the user wants a blank template to fill in live), and author it via `annotate --board`.
 - **Both** (a template request that also references something on the existing board, e.g. "turn these stickies into a kanban") → read the relevant notes' text first, fold them into the template's cards, then author.
 
+**Generation-verb + keyword → preset map.** `$ARGUMENTS` is free text (per the note above, "no rigid syntax") — a generation request is any phrasing that ASKS FOR something to be made, in English or Czech, not just the noun alone. Recognize the verb regardless of exact wording:
+
+| Trigger phrasing (EN) | Trigger phrasing (CZ) | Preset |
+| --- | --- | --- |
+| "retro", "sprint retro", "retrospective", "team retro" | "retro", "sprint retro", "retrospektiva" | Retro |
+| "kanban", "backlog board", "to-do board" | "kanban", "úkolovník" | Kanban |
+| "content calendar", "social calendar", "posting schedule" | "obsahový kalendář", "plán příspěvků" | Social-media content calendar |
+| "roadmap", "quarterly plan" | "roadmap", "plán na kvartály" | Roadmap |
+| "brainstorm", "mind map", "idea dump" | "brainstorming", "myšlenková mapa" | Brainstorm |
+| "checklist", "task list" | "checklist", "seznam úkolů" | Checklist |
+| "user flow", "flowchart", "map out the <flow>" | "user flow", "vývojový diagram", "mapa toku" | User flow / flowchart |
+
+Generation verbs that signal "make this" rather than "what is this": EN — "make me", "create", "build", "generate", "set up"; CZ — "udělej mi", "vytvoř mi", "uděláš", "připrav mi". E.g. `/design:board vytvoř mi team sprint retro` → verb "vytvoř mi" + keyword "sprint retro" → **Retro** preset, filled with the team's actual sprint context if given, else a blank ritual board.
+
 ### 4. Author
 
 ```bash

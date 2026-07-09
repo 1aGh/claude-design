@@ -1,0 +1,88 @@
+{
+  "name": "Opposing Thoughts Stickers",
+  "author": "Erik Leib",
+  "attributionUrl": "https://www.figma.com/community/file/1130195021486928915",
+  "license": "Figma Community (see attributionUrl for terms)",
+  "stickers": [
+    {
+      "file": "check-the-deets.png",
+      "keywords": ["check-the-deets", "check", "the", "deets"]
+    },
+    {
+      "file": "cut-it.png",
+      "keywords": ["cut-it", "cut", "it"]
+    },
+    {
+      "file": "dope.png",
+      "keywords": ["dope"]
+    },
+    {
+      "file": "fresh.png",
+      "keywords": ["fresh"]
+    },
+    {
+      "file": "hot.png",
+      "keywords": ["hot"]
+    },
+    {
+      "file": "idea.png",
+      "keywords": ["idea"]
+    },
+    {
+      "file": "keep-exploring.png",
+      "keywords": ["keep-exploring", "keep", "exploring"]
+    },
+    {
+      "file": "killed-it.png",
+      "keywords": ["killed-it", "killed", "it"]
+    },
+    {
+      "file": "love-it.png",
+      "keywords": ["love-it", "love", "it"]
+    },
+    {
+      "file": "not-sure.png",
+      "keywords": ["not-sure", "not", "sure"]
+    },
+    {
+      "file": "ok.png",
+      "keywords": ["ok"]
+    },
+    {
+      "file": "pure-gold.png",
+      "keywords": ["pure-gold", "pure", "gold"]
+    },
+    {
+      "file": "save-for-later.png",
+      "keywords": ["save-for-later", "save", "for", "later"]
+    },
+    {
+      "file": "steal-this.png",
+      "keywords": ["steal-this", "steal", "this"]
+    },
+    {
+      "file": "take-a-peek.png",
+      "keywords": ["take-a-peek", "take", "a", "peek"]
+    },
+    {
+      "file": "this-or-that.png",
+      "keywords": ["this-or-that", "this", "or", "that"]
+    },
+    {
+      "file": "thoughts.png",
+      "keywords": ["thoughts"]
+    },
+    {
+      "file": "vibes.png",
+      "keywords": ["vibes"]
+    },
+    {
+      "file": "winner.png",
+      "keywords": ["winner"]
+    },
+    {
+      "file": "wip.png",
+      "keywords": ["wip"]
+    }
+  ]
+}

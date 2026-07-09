@@ -74,11 +74,21 @@ export interface ArrowBind {
  *     element). Absent / empty = ungrouped. Serialized as `data-group-ids`.
  *   - `author` — provenance. `'ai'` when created through the
  *     `maude design annotate` write surface. Absent = human-drawn.
+ *   - `authorName` / `authorId` — Phase 3 (whiteboard-improvements): who drew
+ *     a human-authored stroke, stamped from presence identity (`useCollab`'s
+ *     `myName`/`myConnId` — git `user.name`, else an `anonymous-*` fallback).
+ *     Absent on AI-authored strokes and on any stroke drawn before this
+ *     field existed (back-compat — no author badge, not an error). Never
+ *     trust a wire/stored COLOR for this identity — badges re-derive their
+ *     color from the name via `colorForName` so they match the author's live
+ *     presence hue.
  */
 interface StrokeBase {
   id: string;
   groupIds?: string[];
   author?: 'ai';
+  authorName?: string;
+  authorId?: string;
   /**
    * FigJam v3 — rotation in degrees (clockwise) around the stroke's bbox
    * center. Absent / 0 = axis-aligned (back-compat). Honoured by the box-
@@ -553,6 +563,11 @@ export const IMAGE_MIN_SIZE = 16;
 export const IMAGE_MAX_DROP_SIDE = 480;
 export const LINK_DEFAULT_W = 260;
 export const LINK_DEFAULT_H = 76;
+// Phase 4 (whiteboard-improvements) — a sticker dropped from the picker has no
+// natural size to probe (unlike createImageFromFile's Image.onload path — the
+// shell already resolved it to a project asset by the time the canvas hears
+// about it) — one fixed, friendly on-board size for every sticker.
+export const STICKER_DROP_SIZE = 160;
 // DDR-150 P4 — media-reference chip (dropped video/audio → assets/ pointer).
 export const MEDIAREF_DEFAULT_W = 280;
 export const MEDIAREF_DEFAULT_H = 76;
@@ -926,6 +941,12 @@ function rootExtraAttrs(s: Stroke): string {
     extra += ` data-group-ids="${esc(s.groupIds.join(' '))}"`;
   }
   if (s.author === 'ai') extra += ' data-author="ai"';
+  // Phase 3 (whiteboard-improvements) — human author identity, independent of
+  // `data-author="ai"` (never both: a stroke is either agent- or human-drawn).
+  // escAttr (not esc) — these are attribute values, not element content; see
+  // the Phase 23 escAttr() docblock above for why a bare `>` here is unsafe.
+  if (s.authorName) extra += ` data-author-name="${escAttr(s.authorName)}"`;
+  if (s.authorId) extra += ` data-author-id="${escAttr(s.authorId)}"`;
   // FigJam v3 — rotation: `data-rot` is the round-trip source of truth; the
   // transform is presentational so the persisted SVG renders rotated in any
   // viewer. The pivot derives from stored geometry → idempotent re-serialize.
@@ -1302,6 +1323,33 @@ function parseBindAttr(raw: string | null): ArrowBind | null {
   return bind;
 }
 
+const AUTHOR_NAME_MAX_LEN = 64;
+
+/**
+ * Phase 3 (whiteboard-improvements) — an `authorName` parsed off disk may
+ * have come from a peer's synced `.annotations.svg` (untrusted foreign
+ * input, same class of risk `use-collab.tsx`'s `sanitizeForeignState` /
+ * `sanitizeName` already guard presence names against). Strips control
+ * chars, bidi overrides/isolates, zero-width chars, and the BOM; caps
+ * length. Mirrors that function's code-point ranges rather than importing
+ * it — this module stays dependency-free of the stateful collab layer.
+ */
+function sanitizeAuthorName(raw: string): string {
+  let cleaned = '';
+  for (const ch of raw) {
+    const cp = ch.codePointAt(0) ?? 0;
+    const unsafe =
+      cp <= 0x1f ||
+      (cp >= 0x7f && cp <= 0x9f) ||
+      (cp >= 0x200b && cp <= 0x200f) ||
+      (cp >= 0x202a && cp <= 0x202e) ||
+      (cp >= 0x2066 && cp <= 0x2069) ||
+      cp === 0xfeff;
+    if (!unsafe) cleaned += ch;
+  }
+  return cleaned.trim().slice(0, AUTHOR_NAME_MAX_LEN);
+}
+
 /** FigJam v3 — read the cross-tool root attrs back onto a parsed stroke. */
 function readSharedAttrs(el: Element, s: Stroke): void {
   const g = el.getAttribute('data-group-ids');
@@ -1310,6 +1358,16 @@ function readSharedAttrs(el: Element, s: Stroke): void {
     if (ids.length) s.groupIds = ids;
   }
   if (el.getAttribute('data-author') === 'ai') s.author = 'ai';
+  const authorName = el.getAttribute('data-author-name');
+  if (authorName) {
+    const cleaned = sanitizeAuthorName(authorName);
+    if (cleaned) s.authorName = cleaned;
+  }
+  const authorId = el.getAttribute('data-author-id');
+  if (authorId) {
+    const cleanedId = sanitizeAuthorName(authorId);
+    if (cleanedId) s.authorId = cleanedId;
+  }
   // FigJam v3 — rotation. `data-rot` is authoritative (the transform attr is
   // presentational); malformed / out-of-range values drop to axis-aligned.
   const rotRaw = el.getAttribute('data-rot');

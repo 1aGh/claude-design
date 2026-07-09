@@ -18,9 +18,11 @@ import { fileURLToPath } from 'node:url';
 import {
   type ArrowStroke,
   type EllipseStroke,
+  type ImageStroke,
   type PenStroke,
   type PolygonStroke,
   type RectStroke,
+  type SectionStroke,
   type StickyStroke,
   type Stroke,
   strokesToSvg,
@@ -50,6 +52,18 @@ interface Annotation {
     text: string;
   } | null;
   target?: { source: string; selector: { type: string; value: string }; geometry: unknown };
+  href?: string;
+  authorName?: string;
+  members?: Array<{
+    id: string;
+    tool: string;
+    order: number;
+    x: number | null;
+    y: number | null;
+    w: number | null;
+    h: number | null;
+    href?: string;
+  }>;
 }
 
 // Mirror api.ts fileSlug for the common (design-root-relative .tsx) case so the
@@ -170,6 +184,20 @@ describe('read-annotations / sticky', () => {
     const multi: StickyStroke = { ...sticky, text: 'line one\nline two' };
     const { annotations } = read(REL, strokesToSvg([multi]));
     expect(annotations[0]?.text).toBe('line one\nline two');
+  });
+
+  test('authorName containing `>` round-trips intact and does not corrupt sibling geometry (DDR-155/escAttr regression)', () => {
+    const authored: StickyStroke = { ...sticky, authorName: 'Bob> data-x="evil' };
+    const { annotations } = read(REL, strokesToSvg([authored]));
+    const [a] = annotations;
+    expect(a?.authorName).toBe('Bob> data-x="evil');
+    // The injected `>`/`"` must not have shifted the element scan and eaten
+    // the sibling geometry/text attributes.
+    expect(a?.x).toBe(40);
+    expect(a?.y).toBe(50);
+    expect(a?.w).toBe(200);
+    expect(a?.h).toBe(160);
+    expect(a?.text).toBe('Step 1: email + password');
   });
 });
 
@@ -559,5 +587,141 @@ describe('read-annotations / --rects element-level context', () => {
       'state.json': JSON.stringify({ artboards: [{ id: 'hero', x: 0, y: 0, w: 400, h: 300 }] }),
     }).annotations;
     expect(a && 'element' in a).toBe(false);
+  });
+});
+
+describe('read-annotations / section membership + reading order', () => {
+  test('members are ordered spatially (top-to-bottom, left-to-right), not by z/paint order', () => {
+    // Drawn out of visual order: B (top-right) first, A (top-left) second,
+    // C (bottom-left) third — so z = [B, A, C] but reading order must be
+    // [A, B, C].
+    const section: SectionStroke = {
+      id: 'sec1',
+      tool: 'section',
+      x: 0,
+      y: 0,
+      w: 400,
+      h: 400,
+      label: 'Board',
+      color: '#8884',
+    };
+    const stickyB: StickyStroke = {
+      id: 'stickyB',
+      tool: 'sticky',
+      color: '#fce8a6',
+      x: 200,
+      y: 20,
+      w: 120,
+      h: 120,
+      text: 'B',
+      fontSize: 14,
+    };
+    const stickyA: StickyStroke = {
+      id: 'stickyA',
+      tool: 'sticky',
+      color: '#fce8a6',
+      x: 20,
+      y: 20,
+      w: 120,
+      h: 120,
+      text: 'A',
+      fontSize: 14,
+    };
+    const stickyC: StickyStroke = {
+      id: 'stickyC',
+      tool: 'sticky',
+      color: '#fce8a6',
+      x: 20,
+      y: 220,
+      w: 120,
+      h: 120,
+      text: 'C',
+      fontSize: 14,
+    };
+    const { annotations } = read(REL, strokesToSvg([section, stickyB, stickyA, stickyC]));
+    const sec = annotations.find((a) => a.id === 'sec1');
+    expect(sec?.members?.map((m) => m.id)).toEqual(['stickyA', 'stickyB', 'stickyC']);
+    expect(sec?.members?.map((m) => m.order)).toEqual([0, 1, 2]);
+  });
+
+  test('image members carry their resolvable asset href', () => {
+    const section: SectionStroke = {
+      id: 'sec1',
+      tool: 'section',
+      x: 0,
+      y: 0,
+      w: 400,
+      h: 400,
+      label: 'Board',
+      color: '#8884',
+    };
+    const img: ImageStroke = {
+      id: 'img1',
+      tool: 'image',
+      x: 20,
+      y: 20,
+      w: 120,
+      h: 120,
+      href: 'assets/deadbeef.png',
+    };
+    const { annotations } = read(REL, strokesToSvg([section, img]));
+    const sec = annotations.find((a) => a.id === 'sec1');
+    expect(sec?.members).toEqual([
+      {
+        id: 'img1',
+        tool: 'image',
+        order: 0,
+        x: 20,
+        y: 20,
+        w: 120,
+        h: 120,
+        href: 'assets/deadbeef.png',
+      },
+    ]);
+  });
+
+  test('a stroke outside the section rect is not a member; a section with nothing inside gets an empty array', () => {
+    const section: SectionStroke = {
+      id: 'sec1',
+      tool: 'section',
+      x: 0,
+      y: 0,
+      w: 100,
+      h: 100,
+      label: 'Board',
+      color: '#8884',
+    };
+    const outside: StickyStroke = {
+      id: 'outside',
+      tool: 'sticky',
+      color: '#fce8a6',
+      x: 500,
+      y: 500,
+      w: 60,
+      h: 60,
+      text: 'far away',
+      fontSize: 14,
+    };
+    const { annotations } = read(REL, strokesToSvg([section, outside]));
+    const sec = annotations.find((a) => a.id === 'sec1');
+    expect(sec?.members).toEqual([]);
+    const other = annotations.find((a) => a.id === 'outside');
+    expect(other?.members).toBeUndefined();
+  });
+
+  test('a non-section stroke never gets a members field', () => {
+    const sticky: StickyStroke = {
+      id: 'lone',
+      tool: 'sticky',
+      color: '#fce8a6',
+      x: 0,
+      y: 0,
+      w: 60,
+      h: 60,
+      text: 'no section here',
+      fontSize: 14,
+    };
+    const { annotations } = read(REL, strokesToSvg([sticky]));
+    expect(annotations[0] && 'members' in annotations[0]).toBe(false);
   });
 });

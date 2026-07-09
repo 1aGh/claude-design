@@ -49,6 +49,16 @@ export const CLIENT_DIR: string = join(DEV_SERVER_ROOT, 'client');
 export const RUNTIME_BUNDLES_DIR: string = join(DIST_DIR, 'runtime');
 
 /**
+ * `<DEV_SERVER_ROOT>/stickers/` — bundled whiteboard sticker packs
+ * (feature-whiteboard-annotation-improvements, Phase 4). Ships with the
+ * `@1agh/maude` tarball (a subdir of `apps/studio`, already covered by the
+ * existing `files` entry — no separate packaging step). Resolved from
+ * DEV_SERVER_ROOT per DDR-045 — this is MAUDE's own bundled asset store, never
+ * the served project's.
+ */
+export const STICKERS_DIR: string = join(DEV_SERVER_ROOT, 'stickers');
+
+/**
  * Absolute path to a bundled plugin's loadable tree (`commands/`, `agents/`,
  * `skills/`, `hooks/`, `.claude-plugin/plugin.json`), or `null` when this layout
  * doesn't ship it. Feeds the ACP session-scoped plugin auto-bootstrap

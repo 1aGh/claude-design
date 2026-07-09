@@ -1,0 +1,68 @@
+{
+  "name": "Life Style Stickers",
+  "author": "Pelin ŞENOĞLU",
+  "attributionUrl": "https://www.figma.com/community/file/1228731654126072640",
+  "license": "Figma Community (see attributionUrl for terms)",
+  "stickers": [
+    {
+      "file": "best.png",
+      "keywords": ["best"]
+    },
+    {
+      "file": "come-on.png",
+      "keywords": ["come-on", "come", "on"]
+    },
+    {
+      "file": "cut.png",
+      "keywords": ["cut"]
+    },
+    {
+      "file": "detox.png",
+      "keywords": ["detox"]
+    },
+    {
+      "file": "just.png",
+      "keywords": ["just"]
+    },
+    {
+      "file": "mirror.png",
+      "keywords": ["mirror"]
+    },
+    {
+      "file": "nice.png",
+      "keywords": ["nice"]
+    },
+    {
+      "file": "objects.png",
+      "keywords": ["objects"]
+    },
+    {
+      "file": "ok.png",
+      "keywords": ["ok"]
+    },
+    {
+      "file": "queen.png",
+      "keywords": ["queen"]
+    },
+    {
+      "file": "star.png",
+      "keywords": ["star"]
+    },
+    {
+      "file": "sun.png",
+      "keywords": ["sun"]
+    },
+    {
+      "file": "water.png",
+      "keywords": ["water"]
+    },
+    {
+      "file": "yeah.png",
+      "keywords": ["yeah"]
+    },
+    {
+      "file": "you-can.png",
+      "keywords": ["you-can", "you", "can"]
+    }
+  ]
+}

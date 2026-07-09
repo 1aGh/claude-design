@@ -164,4 +164,15 @@ describe('buildStudioBrief — native session commands available (DDR-143)', () 
       buildStudioBrief({ designRel: '.design', projectLabel: 'maude', commandsAvailable: true })
     ).toBe(brief);
   });
+
+  test('names board + the whiteboard capability so it is reached for unprompted (Phase 5, whiteboard-improvements)', () => {
+    expect(brief).toContain('board');
+    expect(brief.toLowerCase()).toContain('whiteboard');
+  });
+
+  test('web path (commandsAvailable falsy) names board in the command family but skips the whiteboard capability fact (no in-session claim)', () => {
+    const web = buildStudioBrief({ designRel: '.design', projectLabel: 'maude' });
+    expect(web).toContain('board');
+    expect(web.toLowerCase()).not.toContain('whiteboard');
+  });
 });

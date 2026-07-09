@@ -330,6 +330,16 @@ export function isEditableTarget(t: EventTarget | null): boolean {
   const tag = el.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
   if (el.isContentEditable) return true;
+  // Dogfood fix — `.isContentEditable` is a computed/inherited property whose
+  // handling of the `contenteditable="plaintext-only"` token (the value the
+  // element-text-edit system uses, canvas-shell.tsx) has had cross-engine/
+  // version inconsistencies. Check the raw attribute too so a tool-letter
+  // shortcut (R, T, N, …) can never fire while that editor has focus,
+  // regardless of whether isContentEditable correctly reflects it in a given
+  // runtime — this was the reported bug (typing "R" while editing in-canvas
+  // text switched to the Rectangle tool).
+  const raw = el.getAttribute?.('contenteditable');
+  if (raw === 'true' || raw === 'plaintext-only' || raw === '') return true;
   return false;
 }
 

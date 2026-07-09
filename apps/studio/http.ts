@@ -10,7 +10,7 @@ import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 
 import { probeAcpAvailability } from './acp/probe.ts';
 import { deleteChat, listChats, readChatMessages } from './acp/transcript.ts';
-import { ASSET_MAX_BYTES, type Api, ASSET_MAX_VIDEO_BYTES } from './api.ts';
+import { type Api, ASSET_MAX_BYTES, ASSET_MAX_VIDEO_BYTES } from './api.ts';
 import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
@@ -24,7 +24,7 @@ import { gitShowFile } from './git/service.ts';
 import { createGitHubEndpoints } from './github/endpoints.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
-import { DEV_SERVER_ROOT } from './paths.ts';
+import { DEV_SERVER_ROOT, STICKERS_DIR } from './paths.ts';
 import { probeReadiness } from './readiness.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
 import { linkHub } from './sync/hub-link.ts';
@@ -1967,6 +1967,24 @@ export function createHttp(
       );
     },
 
+    '/_api/stickers': async (req: Request) => {
+      // Phase 4 (feature-whiteboard-annotation-improvements) — the bundled
+      // sticker catalogue for the StickerPicker. GET → { packs:[{slug, name,
+      // author, attributionUrl, license, stickers:[{file,keywords,url}]}] }.
+      // MAIN-ORIGIN ONLY: the picker is a shell dialog, same posture as
+      // /_api/assets above — absent from CANVAS_SAFE_API + startCanvasServer
+      // routes (dual-allowlist, DDR-054). Loopback-Host gated (DNS-rebinding);
+      // read-only, so no sameOriginWrite (GET).
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const r = await api.listStickers();
+      return Response.json(
+        { ok: true, packs: r.packs },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/edit-scope': async (req: Request) => {
       // Stage H (feature-element-editing-robustness) — the INV-3 predictability
       // verdict. GET ?canvas&id&rendered → { ok, scope:'local'|'shared',
@@ -2371,6 +2389,48 @@ export function createHttp(
           }
           return new Response('Not found', { status: 404 });
         }
+      }
+
+      // Phase 4 (feature-whiteboard-annotation-improvements) — bundled sticker
+      // PNGs, served from MAUDE's OWN STICKERS_DIR (paths.ts, DDR-045), never
+      // the served project's designRoot (unlike /assets/ above). MAIN-ORIGIN
+      // ONLY: absent from CANVAS_SAFE_API + startCanvasServer's own routes
+      // object (server.ts) — a canvas-origin request 404s via isCanvasSafeRoute
+      // before ever reaching here (dual-allowlist, DDR-054/DDR-088).
+      if (pathname.startsWith('/_stickers/')) {
+        const rest = pathname.slice('/_stickers/'.length);
+        let decoded = '';
+        try {
+          decoded = decodeURIComponent(rest);
+        } catch {
+          return new Response('Bad request', { status: 400 });
+        }
+        const parts = decoded.split('/');
+        const [pack, name] = parts;
+        if (
+          parts.length === 2 &&
+          pack &&
+          name &&
+          /^[a-z0-9-]+$/.test(pack) &&
+          !name.includes('..') &&
+          !name.includes('/') &&
+          !name.includes('\\') &&
+          ext(name) === '.png'
+        ) {
+          const abs = join(STICKERS_DIR, pack, name);
+          const f = Bun.file(abs);
+          if (await f.exists()) {
+            return new Response(f, {
+              headers: {
+                'Content-Type': 'image/png',
+                'Cache-Control': 'public, max-age=31536000, immutable', // bundled with this maude version, never changes at this URL
+                'X-Content-Type-Options': 'nosniff',
+              },
+            });
+          }
+          return new Response('Not found', { status: 404 });
+        }
+        return new Response('Not found', { status: 404 });
       }
 
       // Fall-through: serve user repo files (designRoot + everything under repoRoot).

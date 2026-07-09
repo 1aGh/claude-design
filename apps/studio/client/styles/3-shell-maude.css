@@ -513,6 +513,28 @@
 .st-ap-cell:hover { border-color: var(--accent, var(--border-strong, var(--border-default))); background: var(--bg-3); }
 .st-ap-thumb { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-xs); background: var(--bg-4, var(--bg-3)); display: block; }
 .st-ap-name { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ─── StickerPicker (feature-whiteboard-annotation-improvements Phase 4) ──── */
+.st-sticker-picker { width: 640px; }
+.st-sticker-picker .input {
+  font-family: var(--font-body); font-size: var(--type-sm); color: var(--fg-0);
+  background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4); width: 100%;
+  transition: border-color var(--dur-soft) var(--ease-out), box-shadow var(--dur-soft) var(--ease-out);
+}
+.st-sticker-picker .input::placeholder { color: var(--fg-3); }
+.st-sticker-picker .input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.st-sp-body { max-height: 56vh; overflow-y: auto; padding: 2px; display: flex; flex-direction: column; gap: var(--space-5); }
+.st-sp-pack-hd { display: flex; align-items: baseline; gap: var(--space-2); padding: 0 2px; }
+.st-sp-pack-name { font-family: var(--font-mono); font-size: var(--type-xs); font-weight: 600; color: var(--fg-1); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+.st-sp-pack-author { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-3); }
+.st-sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: var(--space-2); }
+.st-sp-cell { appearance: none; cursor: pointer; display: flex; flex-direction: column; align-items: center; padding: 6px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-2); transition: border-color var(--dur-soft) var(--ease-out), background var(--dur-soft) var(--ease-out); }
+.st-sp-cell:hover { border-color: var(--accent, var(--border-strong, var(--border-default))); background: var(--bg-3); }
+.st-sp-thumb { width: 100%; aspect-ratio: 1; object-fit: contain; display: block; }
+.st-sp-empty { color: var(--fg-2); font-family: var(--font-mono); font-size: var(--type-xs); padding: var(--space-6) 0; text-align: center; }
+.st-sp-ft { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); padding: var(--space-3) var(--space-5); border-top: 1px solid var(--border-subtle); font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); }
+.st-sp-ft a { color: var(--fg-2); }
 .st-cp-replace { width: 100%; justify-content: center; }
 /* Media "Replace…" — a full-width button, NOT inside the 3-col .st-cp-row grid
    (which would drop it into the 10px provenance-dot column and clip it). */

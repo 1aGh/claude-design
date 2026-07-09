@@ -38,6 +38,7 @@ import {
 } from './canvas-edit.ts';
 import type { Context } from './context.ts';
 import { createHistory } from './history.ts';
+import { STICKERS_DIR } from './paths.ts';
 
 // Directories that never hold user-facing canvases. Exported so the
 // external-canvas watcher (`canvas-list-watch.ts`) shares one source instead of
@@ -256,6 +257,9 @@ export interface Api {
   saveAsset(bytes: Uint8Array): Promise<SaveAssetResult>;
   /** Stage F1 — list content-addressed image/video assets for the AssetPicker. */
   listAssets(): Promise<{ ok: true; assets: AssetListing[] }>;
+  /** Phase 4 (feature-whiteboard-annotation-improvements) — the bundled sticker
+   *  catalogue (MAUDE's own, not the served project's) for the StickerPicker. */
+  listStickers(): Promise<{ ok: true; packs: StickerPack[] }>;
   /** DDR-148 — streaming variant for the HTTP route (100 MB video without a
    *  full in-RAM buffer). Sniffs + caps + content-addresses like saveAsset. */
   saveAssetFromStream(stream: ReadableStream<Uint8Array>): Promise<SaveAssetResult>;
@@ -581,6 +585,24 @@ export interface AssetListing {
   kind: 'image' | 'video';
   size: number;
   mtimeMs: number;
+}
+
+/** Phase 4 (feature-whiteboard-annotation-improvements) — one bundled sticker. */
+export interface StickerItem {
+  file: string;
+  keywords: string[];
+  /** Servable path — `/_stickers/<pack>/<file>` (main-origin static route). */
+  url: string;
+}
+
+/** A bundled sticker pack — one `apps/studio/stickers/<slug>/manifest.json`. */
+export interface StickerPack {
+  slug: string;
+  name: string;
+  author: string;
+  attributionUrl: string;
+  license: string;
+  stickers: StickerItem[];
 }
 
 /** DDR-148 — media category, decides which per-file cap applies. */
@@ -1531,6 +1553,59 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
     out.sort((a, b) => b.mtimeMs - a.mtimeMs);
     return { ok: true, assets: out.slice(0, 500) };
+  }
+
+  // Phase 4 (feature-whiteboard-annotation-improvements) — the bundled sticker
+  // catalogue for the StickerPicker. Reads from MAUDE's OWN `STICKERS_DIR`
+  // (paths.ts, DDR-045) — never the served project's designRoot, unlike
+  // listAssets above. A pack directory missing or with an invalid
+  // manifest.json is skipped, not fatal — one bad pack shouldn't blank the
+  // whole picker. MAIN-ORIGIN ONLY at the route layer (the picker is shell UI,
+  // same posture as listAssets/AssetPicker).
+  async function listStickers(): Promise<{ ok: true; packs: StickerPack[] }> {
+    let packDirs: string[] = [];
+    try {
+      const entries = await readdir(STICKERS_DIR, { withFileTypes: true });
+      packDirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+    } catch {
+      return { ok: true, packs: [] }; // no bundled stickers in this layout
+    }
+    const packs: StickerPack[] = [];
+    for (const slug of packDirs) {
+      try {
+        const manifestPath = path.join(STICKERS_DIR, slug, 'manifest.json');
+        const raw = await readFile(manifestPath, 'utf8');
+        const manifest = JSON.parse(raw) as {
+          name?: string;
+          author?: string;
+          attributionUrl?: string;
+          license?: string;
+          stickers?: Array<{ file?: string; keywords?: string[] }>;
+        };
+        const stickers: StickerItem[] = (manifest.stickers ?? [])
+          .filter(
+            (s): s is { file: string; keywords?: string[] } =>
+              typeof s.file === 'string' && !!s.file
+          )
+          .map((s) => ({
+            file: s.file,
+            keywords: Array.isArray(s.keywords)
+              ? s.keywords.filter((k) => typeof k === 'string')
+              : [],
+            url: `/_stickers/${slug}/${encodeURIComponent(s.file)}`,
+          }));
+        packs.push({
+          slug,
+          name: manifest.name ?? slug,
+          author: manifest.author ?? '',
+          attributionUrl: manifest.attributionUrl ?? '',
+          license: manifest.license ?? '',
+          stickers,
+        });
+      } catch {}
+    }
+    packs.sort((a, b) => a.name.localeCompare(b.name));
+    return { ok: true, packs };
   }
 
   // Phase 31 follow-up — persist an image pasted straight from the clipboard into
@@ -3259,6 +3334,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     saveAnnotations,
     saveAsset,
     listAssets,
+    listStickers,
     saveAssetFromStream,
     saveChatAttachment,
     resolveChatAttachment,

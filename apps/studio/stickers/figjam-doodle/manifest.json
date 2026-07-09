@@ -1,0 +1,104 @@
+{
+  "name": "FigJam Doodle Stickers",
+  "author": "CJ Xue",
+  "attributionUrl": "https://www.figma.com/community/file/1301623299668462371",
+  "license": "Figma Community (see attributionUrl for terms)",
+  "stickers": [
+    {
+      "file": "slice1.png",
+      "keywords": ["yes", "agree", "happy"]
+    },
+    {
+      "file": "slice10.png",
+      "keywords": ["bad", "thumbs-down"]
+    },
+    {
+      "file": "slice11.png",
+      "keywords": ["lovely", "sweet"]
+    },
+    {
+      "file": "slice12.png",
+      "keywords": ["good", "thumbs-up"]
+    },
+    {
+      "file": "slice13.png",
+      "keywords": ["deadline", "due-date", "urgent"]
+    },
+    {
+      "file": "slice14.png",
+      "keywords": ["confused", "thinking", "hmm"]
+    },
+    {
+      "file": "slice15.png",
+      "keywords": ["love", "crush", "admire"]
+    },
+    {
+      "file": "slice16.png",
+      "keywords": ["no-idea", "stuck", "blank"]
+    },
+    {
+      "file": "slice17.png",
+      "keywords": ["discuss", "talk", "meeting"]
+    },
+    {
+      "file": "slice18.png",
+      "keywords": ["group", "team", "together"]
+    },
+    {
+      "file": "slice19.png",
+      "keywords": ["hi-fi", "high-fidelity", "mockup"]
+    },
+    {
+      "file": "slice2.png",
+      "keywords": ["no", "disagree", "refuse"]
+    },
+    {
+      "file": "slice20.png",
+      "keywords": ["wireframe", "lo-fi", "sketch"]
+    },
+    {
+      "file": "slice21.png",
+      "keywords": ["questions", "ask", "confused"]
+    },
+    {
+      "file": "slice22.png",
+      "keywords": ["merge", "combine"]
+    },
+    {
+      "file": "slice23.png",
+      "keywords": ["new", "baby", "fresh-start"]
+    },
+    {
+      "file": "slice24.png",
+      "keywords": ["old", "legacy"]
+    },
+    {
+      "file": "slice3.png",
+      "keywords": ["fair", "ok", "neutral"]
+    },
+    {
+      "file": "slice4.png",
+      "keywords": ["love", "crush", "admire", "hearts"]
+    },
+    {
+      "file": "slice5.png",
+      "keywords": ["good-call", "nice-one", "agree"]
+    },
+    {
+      "file": "slice6.png",
+      "keywords": ["music", "listening", "headphones", "focus"]
+    },
+    {
+      "file": "slice7.png",
+      "keywords": ["research", "investigate"]
+    },
+    {
+      "file": "slice8.png",
+      "keywords": ["error", "bug", "broken", "robot"]
+    },
+    {
+      "file": "slice9.png",
+      "keywords": ["better", "improved"]
+    }
+  ]
+}

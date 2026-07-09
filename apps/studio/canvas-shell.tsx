@@ -328,6 +328,17 @@ const HALO_CSS = `
   border-radius: 1px;
   cursor: text;
 }
+/* Dogfood fix — hover affordance for the same leaf-text elements the dblclick
+   handler above enters edit mode on. The :not(:empty):not(:has(> *)) selector
+   proxies "all children are text nodes" (the exact isLeafText check happens
+   in JS on dblclick — this only needs to be a good-enough visual hint). Loses
+   to an active draw/annotation tool's !important global cursor override
+   (use-tool-mode.tsx), so it only shows in Move mode, same as the edit itself.
+   NOTE: keep this comment backtick-free — it lives inside a JS template
+   literal and a stray backtick closes it early (bun parse fail). */
+[data-cd-id]:not(:empty):not(:has(> *)):hover {
+  cursor: text;
+}
 /* Phase 12.1 (DDR-138) — in-canvas drag-to-reorder (Figma-style). Dragging a
    SELECTED element floats it with the cursor (via transform, applied inline —
    its box stays reserved so the origin shows empty space, and it stays in the
@@ -2225,6 +2236,55 @@ function CanvasRouter({
         })
       );
     }
+    // Enter contenteditable edit mode on a leaf-text `stamped` element, caret
+    // placed at (clientX, clientY) rather than a full select-all (that used to
+    // force a delete-and-retype for any edit that isn't a full replace).
+    // `caretRangeFromPoint` (WebKit/Chromium) and its standardized successor
+    // `caretPositionFromPoint` (Firefox + newer engines) both resolve the
+    // exact character under the pointer; select-all-contents is the fallback
+    // only when neither exists. Extracted so both the native dblclick path
+    // AND the annotation Text-tool's click-through (maude:enter-text-edit,
+    // dispatched from annotations-layer.tsx when its own click lands on an
+    // existing editable element) share one entry point.
+    function enterEditModeAt(stamped: HTMLElement, clientX: number, clientY: number): void {
+      if (editing) return;
+      editing = stamped;
+      original = stamped.textContent ?? '';
+      stamped.setAttribute('contenteditable', 'plaintext-only');
+      stamped.classList.add('dc-text-editing');
+      stamped.addEventListener('blur', onBlur, true);
+      stamped.addEventListener('keydown', onKey, true);
+      stamped.focus();
+      try {
+        const doc = document as Document & {
+          caretRangeFromPoint?: (x: number, y: number) => Range | null;
+          caretPositionFromPoint?: (
+            x: number,
+            y: number
+          ) => { offsetNode: Node; offset: number } | null;
+        };
+        let range: Range | null = null;
+        if (typeof doc.caretRangeFromPoint === 'function') {
+          range = doc.caretRangeFromPoint(clientX, clientY);
+        } else if (typeof doc.caretPositionFromPoint === 'function') {
+          const pos = doc.caretPositionFromPoint(clientX, clientY);
+          if (pos) {
+            range = document.createRange();
+            range.setStart(pos.offsetNode, pos.offset);
+            range.collapse(true);
+          }
+        }
+        if (!range) {
+          range = document.createRange();
+          range.selectNodeContents(stamped);
+        }
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      } catch {
+        /* selection API unavailable */
+      }
+    }
     const onDbl = (e: MouseEvent): void => {
       if (editing) return;
       const t = e.target as HTMLElement | null;
@@ -2264,22 +2324,20 @@ function CanvasRouter({
       }
       e.preventDefault();
       e.stopPropagation();
-      editing = stamped;
-      original = stamped.textContent ?? '';
-      stamped.setAttribute('contenteditable', 'plaintext-only');
-      stamped.classList.add('dc-text-editing');
-      stamped.addEventListener('blur', onBlur, true);
-      stamped.addEventListener('keydown', onKey, true);
-      stamped.focus();
-      try {
-        const range = document.createRange();
-        range.selectNodeContents(stamped);
-        const sel = window.getSelection();
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-      } catch {
-        /* selection API unavailable */
-      }
+      enterEditModeAt(stamped, e.clientX, e.clientY);
+    };
+    // Dogfood fix — the annotation Text tool's click-through: clicking an
+    // existing editable element with the Text (T) tool active should edit
+    // THAT text in place instead of dropping a new standalone annotation on
+    // top of it. annotations-layer.tsx hit-tests past its own input-capture
+    // overlay and dispatches this when the click resolves to a leaf-text
+    // `[data-cd-id]` element; canvas-shell owns the DOM/contentEditable side
+    // of editing, so it's the one that must act on it.
+    const onEnterTextEdit = (e: Event): void => {
+      const detail = (e as CustomEvent<{ el?: HTMLElement; clientX?: number; clientY?: number }>)
+        .detail;
+      if (!detail?.el || !host.contains(detail.el)) return;
+      enterEditModeAt(detail.el, detail.clientX ?? 0, detail.clientY ?? 0);
     };
     // The shell rejected the last inline text edit — revert the optimistic
     // contenteditable text so the canvas reflects the true (unsaved) source
@@ -2301,9 +2359,11 @@ function CanvasRouter({
     // Capture phase so we beat the fit-to-view dblclick handler.
     host.addEventListener('dblclick', onDbl, true);
     window.addEventListener('message', onEditReverted);
+    document.addEventListener('maude:enter-text-edit', onEnterTextEdit);
     return () => {
       host.removeEventListener('dblclick', onDbl, true);
       window.removeEventListener('message', onEditReverted);
+      document.removeEventListener('maude:enter-text-edit', onEnterTextEdit);
       if (editing) teardown(editing);
     };
   }, [hostRef, selSet]);

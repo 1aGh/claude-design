@@ -105,8 +105,15 @@ Args:
   --json              No-op (JSON is the only output form).
 
 FigJam v3 additive fields per annotation: z (render order), groupIds (deepest →
-shallowest), author ("ai" for annotate-verb strokes), and from/to host ids on
-bound arrows.
+shallowest), author ("ai" for annotate-verb strokes), authorName/authorId
+(human-drawn stickies), and from/to host ids on bound arrows.
+
+Section annotations additionally carry members: an array of every OTHER
+annotation whose center falls inside the section's rect, in SPATIAL reading
+order (top-to-bottom, left-to-right — not paint order), each as
+{ id, tool, order, x, y, w, h, href? }. Answers "what's in this section, and
+in what order" for prompts like "make a video / Instagram carousel from
+this section" without hand-computing containment.
 
 Emits JSON to stdout. A missing annotation file emits [] (exit 0).`;
 
@@ -395,6 +402,31 @@ function readUnknown(tool, attrs, inner) {
 // provenance, render order (z = document position). Applied uniformly after
 // the per-tool extraction; arrows additionally surface bound endpoints as
 // `from`/`to` host ids so a bound diagram reads back as a GRAPH.
+const AUTHOR_NAME_MAX_LEN = 64;
+
+// Phase 3 (whiteboard-improvements) — mirrors annotations-model.ts's
+// sanitizeAuthorName (same code-point ranges: control chars, bidi
+// overrides/isolates, zero-width chars, BOM) so a peer-synced
+// `.annotations.svg`'s authorName/authorId reads identically through
+// either surface. Every string this CLI returns is already treated as DATA
+// by the whiteboard skill's trust model — this additionally strips the
+// characters that could visually spoof an author name.
+function sanitizeAuthorName(raw) {
+  let cleaned = '';
+  for (const ch of raw) {
+    const cp = ch.codePointAt(0) ?? 0;
+    const unsafe =
+      cp <= 0x1f ||
+      (cp >= 0x7f && cp <= 0x9f) ||
+      (cp >= 0x200b && cp <= 0x200f) ||
+      (cp >= 0x202a && cp <= 0x202e) ||
+      (cp >= 0x2066 && cp <= 0x2069) ||
+      cp === 0xfeff;
+    if (!unsafe) cleaned += ch;
+  }
+  return cleaned.trim().slice(0, AUTHOR_NAME_MAX_LEN);
+}
+
 function withShared(o, attrs, z) {
   o.z = z;
   const g = attr(attrs, 'data-group-ids');
@@ -403,6 +435,16 @@ function withShared(o, attrs, z) {
     if (ids.length) o.groupIds = ids;
   }
   if (attr(attrs, 'data-author') === 'ai') o.author = 'ai';
+  const authorName = attr(attrs, 'data-author-name');
+  if (authorName) {
+    const cleaned = sanitizeAuthorName(decodeEntities(authorName));
+    if (cleaned) o.authorName = cleaned;
+  }
+  const authorId = attr(attrs, 'data-author-id');
+  if (authorId) {
+    const cleanedId = sanitizeAuthorName(decodeEntities(authorId));
+    if (cleanedId) o.authorId = cleanedId;
+  }
   if (o.tool === 'arrow') {
     const sb = parseBind(attr(attrs, 'data-start-bind'));
     if (sb) o.from = sb.hostId;
@@ -616,6 +658,85 @@ function anchorToElement(ann, elements) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Section membership + reading order (Phase 5, feature-whiteboard-
+// annotation-improvements). A common flow: the user drops several media/
+// stickies INTO a section, then asks "make a video from this" / "turn this
+// into an Instagram carousel" — the agent needs to know exactly which
+// annotations live in a given section, and in what visual order, without
+// hand-computing containment or guessing from raw x/y. Mirrors
+// `findElement`'s smallest-containing-rect convention (annotation CENTER
+// inside a rect), applied against SECTION rects instead of DOM element
+// rects.
+
+/**
+ * Spatial reading order — top-to-bottom, then left-to-right — NOT `z`
+ * (paint/document order): a user can drop stickies in any order they like,
+ * and assembling a carousel/video in PAINT order would visibly scramble it.
+ * Rows are bucketed by a Y-tolerance band (half the smallest member's
+ * height, floored at 16 units) so items a few units off from each other
+ * still read as "the same row"; `z` only breaks a true tie (same band, same
+ * x) between two members.
+ */
+function attachSectionMembers(annotations) {
+  const sections = annotations.filter((a) => a.tool === 'section' && a.id);
+  if (!sections.length) return annotations;
+
+  const centerOf = (a) => {
+    if (a.x == null || a.y == null) return null;
+    return { cx: a.x + (a.w || 0) / 2, cy: a.y + (a.h || 0) / 2 };
+  };
+
+  const membersBySection = new Map();
+  for (const section of sections) {
+    const sx1 = section.x;
+    const sy1 = section.y;
+    const sx2 = section.x + (section.w || 0);
+    const sy2 = section.y + (section.h || 0);
+    const candidates = [];
+    for (const a of annotations) {
+      if (a.tool === 'section' || !a.id) continue;
+      const c = centerOf(a);
+      if (!c) continue;
+      if (c.cx < sx1 || c.cx > sx2 || c.cy < sy1 || c.cy > sy2) continue;
+      candidates.push({ ann: a, c });
+    }
+    if (!candidates.length) {
+      membersBySection.set(section.id, []);
+      continue;
+    }
+    const heights = candidates.map((m) => m.ann.h || 0).filter((h) => h > 0);
+    const minHeight = heights.length ? Math.min(...heights) : 40;
+    const band = Math.max(16, minHeight / 2);
+    candidates.sort((m1, m2) => {
+      const dy = m1.c.cy - m2.c.cy;
+      if (Math.abs(dy) > band) return dy;
+      const dx = m1.c.cx - m2.c.cx;
+      if (dx !== 0) return dx;
+      return (m1.ann.z ?? 0) - (m2.ann.z ?? 0);
+    });
+    membersBySection.set(
+      section.id,
+      candidates.map((m, i) => ({
+        id: m.ann.id,
+        tool: m.ann.tool,
+        order: i,
+        x: m.ann.x,
+        y: m.ann.y,
+        w: m.ann.w,
+        h: m.ann.h,
+        ...(m.ann.href ? { href: m.ann.href } : null),
+      }))
+    );
+  }
+
+  return annotations.map((a) =>
+    a.tool === 'section' && membersBySection.has(a.id)
+      ? { ...a, members: membersBySection.get(a.id) }
+      : a
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main
 
 function main() {
@@ -674,6 +795,7 @@ function main() {
   if (artboards.length) {
     annotations = annotations.map((a) => anchorToArtboard(a, artboards));
   }
+  annotations = attachSectionMembers(annotations);
 
   if (args.graph) {
     process.stdout.write(`${JSON.stringify({ annotations, graph: buildGraph(annotations) })}\n`);
@@ -689,6 +811,7 @@ function main() {
 // canvas-rects manifest without a second implementation.
 export {
   anchorToElement,
+  attachSectionMembers,
   buildGraph,
   fileSlug,
   findElement,

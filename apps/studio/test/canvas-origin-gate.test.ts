@@ -162,6 +162,13 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // untrusted canvas origin must never read (or write) the user's pasted
         // chat images; a GET here 403s at the gate, not 404 from the handler.
         '/_api/acp/attachment',
+        // Phase 4 (feature-whiteboard-annotation-improvements) — the sticker
+        // catalogue + bundled sticker PNGs are MAIN-ORIGIN ONLY, same posture
+        // as /_api/assets above: the StickerPicker is shell UI, absent from
+        // CANVAS_SAFE_API + startCanvasServer's routes. A GET here 403s at
+        // the gate on both — the catalogue route and the static PNG serve.
+        '/_api/stickers',
+        '/_stickers/some-pack/some-sticker.png',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);

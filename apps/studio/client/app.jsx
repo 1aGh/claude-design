@@ -23,6 +23,7 @@ import { ReadinessDialog } from './panels/ReadinessList.jsx';
 import TimelinePanel from './panels/TimelinePanel.jsx';
 import { parseCompTimeline } from './panels/timeline-parse.js';
 import RepoBranchSwitcher from './panels/RepoBranchSwitcher.jsx';
+import StickerPicker from './panels/StickerPicker.jsx';
 import {
   appIsFirstRun,
   isNativeApp,
@@ -8608,6 +8609,14 @@ function App() {
             before: typeof m.before === 'string' ? m.before : null,
           });
         }
+      } else if (m.dgn === 'open-sticker-picker') {
+        // Phase 4 (whiteboard-improvements) — the toolbar's Stickers button.
+        // Confused-deputy gated + pinned to the active canvas like the other
+        // request verbs above.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin) {
+          openStickerPickerRef.current?.({ canvas: activePath });
+        }
       } else if (m.dgn === 'insert-artboard-request') {
         // Stage I4 — insert a new empty artboard from a screen-size preset.
         const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
@@ -9553,6 +9562,16 @@ function App() {
   useEffect(() => {
     openAssetPickerRef.current = (req) => setAssetPickerReq(req);
   }, []);
+
+  // Phase 4 (whiteboard-improvements) — { canvas: activePath } when open, null
+  // when closed. Mirrors assetPickerReq's ref-indirection (the message
+  // listener below is set up with a minimal dep array, so it reaches a FRESH
+  // opener via a ref rather than needing setStickerPickerReq in its own deps).
+  const [stickerPickerReq, setStickerPickerReq] = useState(null);
+  const openStickerPickerRef = useRef(null);
+  useEffect(() => {
+    openStickerPickerRef.current = (req) => setStickerPickerReq(req);
+  }, []);
   const onAssetPicked = useCallback(
     (pickedPath) => {
       const req = assetPickerReq;
@@ -9613,6 +9632,47 @@ function App() {
       }
     },
     [assetPickerReq, insertElementShell, activePath, recordSourceEdit, postToActiveCanvas]
+  );
+
+  // Phase 4 (whiteboard-improvements) — a bundled sticker has no project asset
+  // path yet (it lives in MAUDE's own STICKERS_DIR, main-origin-only per
+  // DDR-054), so re-upload its bytes through the SAME /_api/asset lane every
+  // other image source uses (content-addressed, canvas-origin-allowlisted) —
+  // then relay the resulting project-relative path down to the canvas exactly
+  // like replace-annotation-media above (the annotation model owns its own
+  // strokes; the shell performs no stroke write of its own).
+  const onStickerPicked = useCallback(
+    async (sticker) => {
+      const req = stickerPickerReq;
+      setStickerPickerReq(null);
+      if (!req || !sticker?.url) return;
+      // G3 security (DDR-152) — same re-check as onAssetPicked: the request
+      // captured the active canvas when the picker opened; abort rather than
+      // insert into whatever canvas happens to be active now.
+      if (req.canvas && req.canvas !== activePath) {
+        console.warn('[sticker-picker] active canvas changed since request — aborting');
+        return;
+      }
+      try {
+        const blob = await fetch(sticker.url).then((r) =>
+          r.ok ? r.blob() : Promise.reject(new Error(`HTTP ${r.status}`))
+        );
+        const res = await fetch('/_api/asset', {
+          method: 'POST',
+          headers: { 'content-type': blob.type || 'image/png' },
+          body: blob,
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok || !j.path) {
+          console.warn('[sticker-picker]', j.error || `upload failed (HTTP ${res.status})`);
+          return;
+        }
+        postToActiveCanvas({ dgn: 'insert-sticker', path: j.path });
+      } catch {
+        console.warn('[sticker-picker] could not load or upload that sticker');
+      }
+    },
+    [stickerPickerReq, activePath, postToActiveCanvas]
   );
   // Media-section "Replace…" (CssKnobs) → open the picker in replace mode with
   // the element's current src as the undo before-value (captured from the
@@ -10734,6 +10794,9 @@ function App() {
           onPick={onAssetPicked}
           onClose={() => setAssetPickerReq(null)}
         />
+      )}
+      {stickerPickerReq && (
+        <StickerPicker onPick={onStickerPicked} onClose={() => setStickerPickerReq(null)} />
       )}
       {diffTarget && (
         <DiffView

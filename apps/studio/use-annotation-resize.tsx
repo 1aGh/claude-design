@@ -98,7 +98,7 @@ function ensureResizeStyles(): void {
   document.head.appendChild(s);
 }
 
-type Corner =
+export type Corner =
   | 'nw'
   | 'ne'
   | 'sw'
@@ -132,9 +132,9 @@ function isRotCorner(c: Corner): boolean {
  * `padDX/padDY` shift a dragged handle's cursor back ONTO the true bbox
  * corner/edge so the shape doesn't grow by the pad on first move.
  */
-const padDX = (c: Corner): number =>
+export const padDX = (c: Corner): number =>
   c === 'nw' || c === 'sw' || c === 'w' ? 1 : c === 'ne' || c === 'se' || c === 'e' ? -1 : 0;
-const padDY = (c: Corner): number =>
+export const padDY = (c: Corner): number =>
   c === 'nw' || c === 'ne' || c === 'n' ? 1 : c === 'sw' || c === 'se' || c === 's' ? -1 : 0;
 
 /** Stroke types that expose resize handles. Text inherits its anchor bbox. */
@@ -227,7 +227,7 @@ function rotatedAnchorShift(
  * The no-modifier branch is algebraically identical to the previous
  * min/max corner math (verified against the resize round-trip tests).
  */
-function bboxResize(
+export function bboxResize(
   bbox: { x: number; y: number; w: number; h: number },
   corner: Corner,
   wx: number,

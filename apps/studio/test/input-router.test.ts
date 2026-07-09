@@ -348,6 +348,39 @@ describe('input-router / isEditableTarget', () => {
     const el = { tagName: 'DIV', isContentEditable: true } as HTMLElement;
     expect(isEditableTarget(el)).toBe(true);
   });
+
+  // Dogfood fix — the reported bug: typing "R" while editing in-canvas
+  // element text (canvas-shell.tsx's contenteditable="plaintext-only") fired
+  // the Rectangle tool shortcut. `.isContentEditable` SHOULD reflect
+  // "plaintext-only" per spec, but engine/version inconsistencies mean it
+  // can't be the only check — these lock in the raw-attribute fallback that
+  // now makes isEditableTarget resilient regardless.
+  test('contenteditable="plaintext-only" (isContentEditable false or unreliable) → true', () => {
+    const el = {
+      tagName: 'DIV',
+      isContentEditable: false,
+      getAttribute: (name: string) => (name === 'contenteditable' ? 'plaintext-only' : null),
+    } as unknown as HTMLElement;
+    expect(isEditableTarget(el)).toBe(true);
+  });
+
+  test('bare contenteditable="" attribute → true', () => {
+    const el = {
+      tagName: 'DIV',
+      isContentEditable: false,
+      getAttribute: (name: string) => (name === 'contenteditable' ? '' : null),
+    } as unknown as HTMLElement;
+    expect(isEditableTarget(el)).toBe(true);
+  });
+
+  test('plain div WITH a getAttribute method (real-element shape) still → false', () => {
+    const el = {
+      tagName: 'DIV',
+      isContentEditable: false,
+      getAttribute: () => null,
+    } as unknown as HTMLElement;
+    expect(isEditableTarget(el)).toBe(false);
+  });
 });
 
 // T25 — Drag-vs-click threshold. Centralized here so every drag-class gesture

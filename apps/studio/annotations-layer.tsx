@@ -115,6 +115,7 @@ import {
   SECTION_MIN_SIZE,
   type SectionStroke,
   SHAPE_DEFAULT_SIZE,
+  STICKER_DROP_SIZE,
   STICKY_CORNER_RADIUS,
   STICKY_DEFAULT_H,
   STICKY_DEFAULT_W,
@@ -156,7 +157,14 @@ import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.t
 import { buildAnnotationStrokesRecord } from './commands/annotation-strokes-command.ts';
 import { ensureMenuStyles as ensureCtxMenuStyles } from './context-menu.tsx';
 import { crossedDragThreshold, type Tool } from './input-router.tsx';
-import { AnnotationResizeOverlay } from './use-annotation-resize.tsx';
+import {
+  AnnotationResizeOverlay,
+  bboxResize,
+  type Corner,
+  padDX,
+  padDY,
+  type ResizeMods,
+} from './use-annotation-resize.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
 import {
@@ -168,7 +176,7 @@ import {
   useCanvasMediaDrop,
 } from './use-canvas-media-drop.tsx';
 import { useChromeVisibility } from './use-chrome-visibility.tsx';
-import { useCollab } from './use-collab.tsx';
+import { colorForName, useCollab } from './use-collab.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { type ShapeKind, useToolMode } from './use-tool-mode.tsx';
 import { useUndoSinks, useUndoStackOptional } from './use-undo-stack.tsx';
@@ -397,6 +405,30 @@ function resolveAssetHref(href: string): string {
 function isMediaPlayerTarget(e: Event): boolean {
   const t = e.target as Element | null;
   return !!(t && typeof t.closest === 'function' && t.closest('[data-mediaref-player]'));
+}
+
+/**
+ * Dogfood fix — the Text tool's click-through target. This layer's own
+ * input-capture div sits above the artboard content (z-index), so
+ * `elementsFromPoint` (the full z-stack at that point, topmost first) is
+ * needed to see past it. Mirrors canvas-shell.tsx's own `isLeafText` check
+ * exactly (all children are text nodes) so "would this be a leaf-text edit
+ * target" agrees between the Text-tool click-through and the native
+ * double-click path it delegates to.
+ */
+function findEditableElementAt(clientX: number, clientY: number): HTMLElement | null {
+  if (typeof document === 'undefined' || typeof document.elementsFromPoint !== 'function') {
+    return null;
+  }
+  const stack = document.elementsFromPoint(clientX, clientY);
+  for (const el of stack) {
+    const stamped = el.closest?.('[data-cd-id]') as HTMLElement | null;
+    if (!stamped) continue;
+    const kids = Array.from(stamped.childNodes);
+    const isLeafText = kids.length > 0 && kids.every((n) => n.nodeType === 3);
+    return isLeafText ? stamped : null;
+  }
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -645,7 +677,7 @@ export function useStrokesStore(): StrokesStoreValue | null {
 // the main tool palette, the in-canvas draw chrome, the minimap, and the
 // right-click menu. Clicks on these route to their own handlers.
 const CHROME_SELECTOR =
-  '.dc-annot-conn-dot, .dc-annot-ctx, .dc-tool-palette, .dc-annot-chrome, .dc-mm, .dc-context-menu, .dc-tp-popover, .dc-multi-artboard-tb, .dc-elem-ctx-tb, .dc-cv-eq-spacing-layer, .cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, .dc-annot-resize-handle, .dc-annot-rotate-zone, .dc-annot-editor';
+  '.dc-annot-conn-dot, .dc-annot-ctx, .dc-tool-palette, .dc-annot-chrome, .dc-mm, .dc-context-menu, .dc-tp-popover, .dc-multi-artboard-tb, .dc-elem-ctx-tb, .dc-cv-eq-spacing-layer, .cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, .dc-annot-resize-handle, .dc-annot-rotate-zone, .dc-annot-editor, [data-group-resize-corner]';
 
 const HINTS_KEY = 'maude-annot-hints-v1';
 
@@ -669,6 +701,81 @@ function showOnceHint(key: string, msg: string): void {
 // ToolPalette (a sibling under CanvasRouter, not a descendant of this layer)
 // can read the same state. Re-exported here for back-compat.
 export { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
+
+/**
+ * Phase 2 (whiteboard-improvements) — proportional group resize. Maps one
+ * stroke's geometry from its position inside the group's START bbox (`b0`)
+ * to the equivalent position inside the RESIZED bbox (`b1`) — the same
+ * affine transform applied to every selected member, so the whole selection
+ * scales as one rigid composition anchored at whichever corner `bboxResize`
+ * derived `b1` from (reused verbatim for the group's own outer bbox — see
+ * the pointerdown handler below). Returns null for a stroke with nothing to
+ * scale: anchored text inherits its host's bbox at render time already, so
+ * scaling it too would double-transform it.
+ */
+function scaleStrokeInGroup(
+  s: Stroke,
+  b0: { x: number; y: number; w: number; h: number },
+  b1: { x: number; y: number; w: number; h: number }
+): Partial<Stroke> | null {
+  if (s.tool === 'text' && s.anchorId != null && s.anchorId !== '') return null;
+  const sx = b0.w === 0 ? 1 : b1.w / b0.w;
+  const sy = b0.h === 0 ? 1 : b1.h / b0.h;
+  // Non-uniform group stretches (no Shift held) still need ONE scalar for
+  // things that don't have an independent width/height, like font size.
+  const avgScale = (sx + sy) / 2;
+  const tp = (px: number, py: number): [number, number] => [
+    b1.x + (px - b0.x) * sx,
+    b1.y + (py - b0.y) * sy,
+  ];
+  if (s.tool === 'pen') {
+    return { points: s.points.map(([px, py]) => tp(px, py)) } as Partial<PenStroke>;
+  }
+  if (s.tool === 'arrow') {
+    const [x1, y1] = tp(s.x1, s.y1);
+    const [x2, y2] = tp(s.x2, s.y2);
+    return { x1, y1, x2, y2 } as Partial<ArrowStroke>;
+  }
+  if (s.tool === 'ellipse') {
+    const [cx, cy] = tp(s.cx, s.cy);
+    return {
+      cx,
+      cy,
+      rx: Math.max(1, s.rx * sx),
+      ry: Math.max(1, s.ry * sy),
+    } as Partial<EllipseStroke>;
+  }
+  if (s.tool === 'text') {
+    // Standalone (unanchored) text — its own origin scales with the group;
+    // font size scales by the average factor so a non-uniform stretch keeps
+    // the text legible instead of only stretching its box.
+    const [x, y] = tp(s.x ?? 0, s.y ?? 0);
+    return {
+      x,
+      y,
+      fontSize: Math.max(6, Math.round(s.fontSize * avgScale)),
+    } as Partial<TextStroke>;
+  }
+  if (
+    s.tool === 'rect' ||
+    s.tool === 'polygon' ||
+    s.tool === 'link' ||
+    s.tool === 'mediaref' ||
+    s.tool === 'section' ||
+    s.tool === 'image' ||
+    s.tool === 'sticky'
+  ) {
+    const bb = strokeBBox(s);
+    if (!bb) return null;
+    const [x, y] = tp(bb.x, bb.y);
+    const patch: Partial<Stroke> = { x, y, w: Math.max(1, bb.w * sx), h: Math.max(1, bb.h * sy) };
+    if (s.tool === 'sticky') {
+      (patch as Partial<StickyStroke>).fontSize = Math.max(6, Math.round(s.fontSize * avgScale));
+    }
+    return patch;
+  }
+  return null;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
@@ -1068,6 +1175,7 @@ export function AnnotationsLayer() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onMessage = (e: MessageEvent) => {
+      if (e.source !== window.parent) return;
       const m = e.data as { dgn?: string; visible?: boolean } | null;
       if (!m || typeof m !== 'object' || !m.dgn) return;
       if (m.dgn === 'view-annotations') {
@@ -1101,6 +1209,39 @@ export function AnnotationsLayer() {
             : ({ ...s, src: path } as MediaRefStroke);
         });
         commitStrokes(before, after, 'replace media');
+        return;
+      }
+      // Phase 4 (whiteboard-improvements) — the shell's StickerPicker (main-
+      // origin) already uploaded the picked bundled sticker to a PROJECT asset
+      // path via /_api/asset (canvas-origin-allowlisted — the round-trip
+      // through the shell exists only because /_stickers/* itself is main-
+      // origin-only, same posture as AssetPicker/replace-annotation-media
+      // above). Drop it at the current viewport center — no cross-origin
+      // cursor position to reuse. Inlines the screenToWorld formula (that
+      // callback isn't declared until below this effect) against vpRef, which
+      // is.
+      if (m.dgn === 'insert-sticker' && typeof (m as { path?: unknown }).path === 'string') {
+        const path = (m as { path: string }).path;
+        const v = vpRef.current ?? { x: 0, y: 0, zoom: 1 };
+        const z = v.zoom || 1;
+        const cx = typeof window !== 'undefined' ? window.innerWidth / 2 : 0;
+        const cy = typeof window !== 'undefined' ? window.innerHeight / 2 : 0;
+        const wx = (cx - v.x) / z;
+        const wy = (cy - v.y) / z;
+        const size = STICKER_DROP_SIZE;
+        const id = rid();
+        const stroke: ImageStroke = {
+          id,
+          tool: 'image',
+          x: wx - size / 2,
+          y: wy - size / 2,
+          w: size,
+          h: size,
+          href: path,
+        };
+        const before = strokesRef.current;
+        commitStrokes(before, [...before, stroke], 'add sticker');
+        annotSel?.replace([id]);
       }
     };
     window.addEventListener('message', onMessage);
@@ -1387,6 +1528,9 @@ export function AnnotationsLayer() {
       } else if (tool === 'sticky') {
         // Phase 21 — drag-create a paper card. Default size if the user just
         // taps (no drag) is applied in endStroke.
+        // Phase 3 (whiteboard-improvements) — stamp who drew it from presence
+        // identity (git user.name via useCollab, else its anonymous-* / no-op
+        // fallback); collab is optional (test harnesses without a provider).
         setDrawing({
           id,
           tool: 'sticky',
@@ -1398,6 +1542,7 @@ export function AnnotationsLayer() {
           text: '',
           fontSize: DEFAULT_FONT_SIZE,
           cornerRadius: STICKY_CORNER_RADIUS,
+          ...(collab?.myName ? { authorName: collab.myName, authorId: collab.myConnId } : null),
         });
       } else if (tool === 'section') {
         // FigJam v3 — drag-create a labelled container; a bare tap drops the
@@ -1413,6 +1558,24 @@ export function AnnotationsLayer() {
           color: DEFAULT_SECTION_COLOR,
         });
       } else if (tool === 'text') {
+        // Dogfood fix — the Text tool clicking an EXISTING editable element
+        // (a leaf-text DOM node, not an annotation) should edit that text in
+        // place rather than drop a new standalone annotation on top of it.
+        // This layer's own input-capture div sits above the artboard content
+        // (z-index, .dc-annot-input), so elementsFromPoint is needed to see
+        // past it to whatever's actually under the cursor. canvas-shell.tsx
+        // owns the DOM/contentEditable side of in-place editing — it's the
+        // one that must act, so this only hit-tests + delegates.
+        const editableTarget = findEditableElementAt(e.clientX, e.clientY);
+        if (editableTarget) {
+          document.dispatchEvent(
+            new CustomEvent('maude:enter-text-edit', {
+              detail: { el: editableTarget, clientX: e.clientX, clientY: e.clientY },
+            })
+          );
+          setTool('move');
+          return true;
+        }
         // Phase 21 — single click drops an editable caret at the click point.
         // No stroke is created until the user commits real text (mirrors the
         // anchored double-click flow), so an empty caret leaves nothing behind.
@@ -1577,10 +1740,18 @@ export function AnnotationsLayer() {
       // AnnotationsLayer without the provider), so guard the call.
       if (annotSel) annotSel.replace(committed.id);
       // Phase 21 — a fresh sticky opens in edit mode (FigJam parity: drop a
-      // note, type immediately). Only meaningful deviation from rect/ellipse.
-      if (committed.tool === 'sticky') {
+      // note, type immediately). Phase 1 whiteboard-improvements — shapes get
+      // the same treatment (rect/ellipse/polygon are all AnchorHost, so
+      // setEditingId resolves them via editingTarget's 'anchored' branch same
+      // as a double-click would).
+      if (
+        committed.tool === 'sticky' ||
+        committed.tool === 'rect' ||
+        committed.tool === 'ellipse' ||
+        committed.tool === 'polygon'
+      ) {
         setEditingId(committed.id);
-        showOnceHint('chain', '⌘Enter commits and creates the next sticky beside it.');
+        showOnceHint('chain', '⌘Enter commits and creates the next one beside it.');
       }
     }
     // T18 / T19 — flip the tool back to Move after every commit UNLESS sticky
@@ -1695,6 +1866,20 @@ export function AnnotationsLayer() {
      *  so clone + move land as ONE step. */
     undoBase: Stroke[];
     altDup: boolean;
+  } | null>(null);
+
+  // Phase 2 (whiteboard-improvements) — proportional group resize drag state.
+  // See the gesture effect below (registered after strokesStoreRef).
+  const groupResizeRef = useRef<{
+    pointerId: number;
+    corner: Corner;
+    /** The selection's own union bbox at drag start — unpadded (AnnotGroupBbox
+     *  renders it with a screen-constant pad; the resize math works in the raw
+     *  content bbox, same convention single-resize's padDX/padDY correct for). */
+    groupB0: { x: number; y: number; w: number; h: number };
+    ids: string[];
+    /** Full-strokes undo baseline (the drag-start snapshot). */
+    undoBase: Stroke[];
   } | null>(null);
 
   // Drag-select marquee state. World-coord rectangle (anchor + cursor); the
@@ -2023,6 +2208,114 @@ export function AnnotationsLayer() {
   marqueeRef.current = marquee;
   const strokesStoreRef = useRef(strokesStore);
   strokesStoreRef.current = strokesStore;
+
+  // Phase 2 (whiteboard-improvements) — proportional group resize. A grabbed
+  // corner (AnnotGroupBbox's `[data-group-resize-corner]` handles) scales the
+  // SELECTION's own outer bbox via bboxResize — the exact single-shape corner-
+  // anchor / Shift-aspect-lock / Alt-center-scale math, applied here to the
+  // group's union bbox instead of one stroke's — then propagates that affine
+  // transform to every selected stroke via scaleStrokeInGroup. One local
+  // preview per pointermove, one commitStrokes on pointerup: mirrors the
+  // hull-drag gesture above. Registering pointermove/up unconditionally
+  // (no-op via the groupResizeRef null-check) rather than adding them inside
+  // onDown matches AnnotationResizeOverlay's own pattern in
+  // use-annotation-resize.tsx.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (tool !== 'move') return;
+    if (!annotSel) return;
+
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      const cornerEl = target?.closest?.('[data-group-resize-corner]') ?? null;
+      if (!cornerEl) return;
+      const corner = cornerEl.getAttribute('data-group-resize-corner') as Corner | null;
+      if (!corner) return;
+      const ids = annotSel.selectedIds;
+      if (ids.length < 2) return;
+      const idSet = new Set(ids);
+      const strokesNow = strokesStoreRef.current.strokes;
+      let xMin = Number.POSITIVE_INFINITY;
+      let yMin = Number.POSITIVE_INFINITY;
+      let xMax = Number.NEGATIVE_INFINITY;
+      let yMax = Number.NEGATIVE_INFINITY;
+      let any = false;
+      for (const s of strokesNow) {
+        if (!idSet.has(s.id)) continue;
+        const b = strokeBBox(s, anchorsById);
+        if (!b) continue;
+        any = true;
+        if (b.x < xMin) xMin = b.x;
+        if (b.y < yMin) yMin = b.y;
+        if (b.x + b.w > xMax) xMax = b.x + b.w;
+        if (b.y + b.h > yMax) yMax = b.y + b.h;
+      }
+      if (!any) return;
+      e.preventDefault();
+      e.stopPropagation();
+      groupResizeRef.current = {
+        pointerId: e.pointerId,
+        corner,
+        groupB0: { x: xMin, y: yMin, w: xMax - xMin, h: yMax - yMin },
+        ids,
+        undoBase: strokesNow,
+      };
+      try {
+        (cornerEl as Element & { setPointerCapture?: (id: number) => void }).setPointerCapture?.(
+          e.pointerId
+        );
+      } catch {
+        /* some browsers reject capture on synthetic events */
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      const d = groupResizeRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      const [wxRaw, wyRaw] = screenToWorld(e.clientX, e.clientY);
+      const zoom = vpRef.current?.zoom || 1;
+      // Handles render padded OFF the group bbox (screen-constant, same as
+      // AnnotGroupBbox's `pad`) — shift the cursor back onto the true corner
+      // so the first move doesn't jump-grow by the pad amount (mirrors
+      // single-resize applyResize's padDX/padDY correction).
+      const padWorld = HALO_PAD_PX / zoom;
+      const wx = wxRaw + padDX(d.corner) * padWorld;
+      const wy = wyRaw + padDY(d.corner) * padWorld;
+      const mods: ResizeMods = { shift: e.shiftKey, alt: e.altKey };
+      const groupB1 = bboxResize(d.groupB0, d.corner, wx, wy, mods, false);
+      const idSet = new Set(d.ids);
+      // Local React state only — no commitStrokes, no PUT, matching the
+      // hull-drag / single-resize preview convention (one undo record lands
+      // on pointerup, not one per pixel moved).
+      const next = recomputeBoundArrows(
+        d.undoBase.map((s) => {
+          if (!idSet.has(s.id)) return s;
+          const patch = scaleStrokeInGroup(s, d.groupB0, groupB1);
+          return patch ? ({ ...s, ...patch } as Stroke) : s;
+        })
+      );
+      setStrokesState(next);
+    };
+    const onUp = (e: PointerEvent) => {
+      const d = groupResizeRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      groupResizeRef.current = null;
+      const final = strokesRef.current;
+      // No-op drag (grabbed a handle, released without moving past the
+      // resize's own resolution) skips the undo record.
+      if (strokesShallowEqual(d.undoBase, final)) return;
+      commitStrokes(d.undoBase, final, `resize ${d.ids.length} strokes`);
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('pointermove', onMove, true);
+    document.addEventListener('pointerup', onUp, true);
+    document.addEventListener('pointercancel', onUp, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('pointermove', onMove, true);
+      document.removeEventListener('pointerup', onUp, true);
+      document.removeEventListener('pointercancel', onUp, true);
+    };
+  }, [tool, annotSel, screenToWorld, anchorsById, commitStrokes]);
 
   // Double-click enters text-edit mode: rect/ellipse (anchored text), sticky
   // (its own body), or a standalone text node (re-edit in place). Anchored text
@@ -3053,6 +3346,11 @@ function AnnotationsSvg({
           | TextStroke
           | undefined)
       : undefined;
+  // Same double-paint issue for a shape's anchored text — hide the read-only
+  // <text> stroke while TextEditor sits at the same bbox (Phase 1 jump-fix
+  // companion). Only applies once the TextStroke exists; a not-yet-created
+  // one has nothing to hide.
+  const editingAnchoredTextId = anchoredExisting?.id ?? null;
   return createPortal(
     <svg className="dc-annot-svg" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -3067,7 +3365,9 @@ function AnnotationsSvg({
           stroke={s}
           anchorsById={anchorsById}
           interactive={selectMode}
-          editing={s.id === editingStickyId || s.id === editingSectionId}
+          editing={
+            s.id === editingStickyId || s.id === editingSectionId || s.id === editingAnchoredTextId
+          }
         />
       ))}
       {selectedStrokes.map((s) => (
@@ -3320,6 +3620,27 @@ function MediaRefPlayers({
   );
 }
 
+// An empty flex-centered contentEditable has no line box for `justifyContent:
+// 'center'` to center — WebKit parks the caret at the box's top, then jumps it
+// to the true centered position the instant a real character exists. A
+// zero-width space gives the box real (invisible) content from mount, so the
+// caret starts centered and never jumps. Stripped back off on commit.
+const JUMP_SENTINEL = '\u200B';
+function stripJumpSentinel(text: string): string {
+  return text.startsWith(JUMP_SENTINEL) ? text.slice(JUMP_SENTINEL.length) : text;
+}
+
+// Phase 1 follow-up (whiteboard-improvements dogfood) \u2014 WebKit loses the
+// native blinking caret for a contentEditable nested inside a transformed
+// ancestor (.dc-world's imperative pan/zoom `transform`, canvas-lib.tsx).
+// translateZ(0) promotes the element onto its own compositing layer, which
+// restores native caret rendering; an explicit caretColor makes it
+// unmistakable regardless. Shared by every contentEditable text surface below.
+const CARET_FIX_STYLE = {
+  caretColor: 'var(--maude-hud-accent, #d63b1f)',
+  transform: 'translateZ(0)',
+} as const;
+
 function TextEditor({
   anchorId,
   host,
@@ -3352,6 +3673,14 @@ function TextEditor({
     fontSize: existing?.fontSize ?? DEFAULT_FONT_SIZE,
     align: existing?.align ?? 'center',
   });
+  // Both commit sites below (outside-click + Cmd/Ctrl+Enter) need the same
+  // sentinel-strip + marker-strip pipeline. Memoized so the outside-click
+  // effect below can depend on it directly instead of its own copy of
+  // existing?.listType (lint/correctness/useExhaustiveDependencies).
+  const toCommittedText = useCallback(
+    (raw: string) => stripEditorMarkers(stripJumpSentinel(raw), existing?.listType),
+    [existing?.listType]
+  );
 
   useEffect(() => {
     const el = ref.current;
@@ -3382,15 +3711,11 @@ function TextEditor({
       // FigJam v3 — the edit-mode text toolbar drives THIS editor; clicking
       // it must not commit-and-close the session.
       if ((e.target as Element | null)?.closest?.('.dc-annot-ctx')) return;
-      onCommit(
-        anchorId,
-        stripEditorMarkers(el.innerText || '', existing?.listType),
-        fmtRef.current
-      );
+      onCommit(anchorId, toCommittedText(el.innerText || ''), fmtRef.current);
     };
     document.addEventListener('pointerdown', onDown, true);
     return () => document.removeEventListener('pointerdown', onDown, true);
-  }, [anchorId, onCommit, existing?.listType, fmtRef]);
+  }, [anchorId, onCommit, fmtRef, toCommittedText]);
 
   if (!host) return null;
   const bbox = strokeBBox(host);
@@ -3430,6 +3755,7 @@ function TextEditor({
           outline: 'none',
           background: 'transparent',
           cursor: 'text',
+          ...CARET_FIX_STYLE,
         }}
         onKeyDown={(e) => {
           if (onFormatKey(e)) return; // Cmd/Ctrl+B/I/U
@@ -3441,11 +3767,7 @@ function TextEditor({
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
             const el = ref.current;
-            onCommit(
-              anchorId,
-              stripEditorMarkers(el?.innerText || '', existing?.listType),
-              fmtRef.current
-            );
+            onCommit(anchorId, toCommittedText(el?.innerText || ''), fmtRef.current);
             // FigJam v3 — ⌘Enter chains: commit, then spawn a CONNECTED
             // sibling shape (quick-create) from the host.
             document.dispatchEvent(
@@ -3454,7 +3776,7 @@ function TextEditor({
           }
         }}
       >
-        {initial}
+        {initial || JUMP_SENTINEL}
       </div>
     </foreignObject>
   );
@@ -3532,7 +3854,13 @@ function StickyEditor({
         contentEditable
         suppressContentEditableWarning
         aria-label="Edit sticky note text"
-        style={{ ...stickyBodyStyle(sticky), ...fmtStyle, outline: 'none', cursor: 'text' }}
+        style={{
+          ...stickyBodyStyle(sticky),
+          ...fmtStyle,
+          outline: 'none',
+          cursor: 'text',
+          ...CARET_FIX_STYLE,
+        }}
         onBlur={onBlur}
         onKeyDown={(e) => {
           if (onFormatKey(e)) return; // Cmd/Ctrl+B/I/U
@@ -3685,6 +4013,7 @@ function StandaloneTextEditor({
           outline: 'none',
           background: 'transparent',
           cursor: 'text',
+          ...CARET_FIX_STYLE,
           ...boxStyle,
         }}
         onBlur={() => commitOnce(ref.current?.innerText || '')}
@@ -4016,6 +4345,16 @@ function AnnotGroupBbox({
   const h = yMax - yMin + pad * 2;
   const handle = 6;
   const inset = 3;
+  // Screen-constant hit target — bigger than the visible 6×6 square (matches
+  // the single-resize DOM handles' generous grab area) so the corner stays
+  // easy to grab at any zoom.
+  const hit = 16 / zoom;
+  const cursorFor: Record<string, string> = {
+    nw: 'nwse-resize',
+    se: 'nwse-resize',
+    ne: 'nesw-resize',
+    sw: 'nesw-resize',
+  };
   const handles = [
     { corner: 'nw', x: x - inset, y: y - inset },
     { corner: 'ne', x: x + w - handle + inset, y: y - inset },
@@ -4036,20 +4375,42 @@ function AnnotGroupBbox({
         vectorEffect="non-scaling-stroke"
         rx={2}
       />
-      {handles.map((c) => (
-        <rect
-          key={c.corner}
-          x={c.x}
-          y={c.y}
-          width={handle}
-          height={handle}
-          fill="var(--maude-hud-accent, #d63b1f)"
-          stroke="var(--maude-chrome-bg-0, #ffffff)"
-          strokeWidth={1}
-          vectorEffect="non-scaling-stroke"
-          rx={1}
-        />
-      ))}
+      {/* Phase 2 (whiteboard-improvements) — proportional group resize: these
+          corners used to be decorative (pointerEvents inherited 'none' from
+          the wrapping <g>). Each now sets its OWN pointerEvents, which SVG
+          lets a descendant override independent of an ancestor's value, and
+          carries `data-group-resize-corner` for the drag gesture registered
+          in AnnotationsLayer to identify which corner was grabbed. */}
+      {handles.map((c) => {
+        const cx = c.x + handle / 2;
+        const cy = c.y + handle / 2;
+        return (
+          <g key={c.corner}>
+            <rect
+              x={cx - hit / 2}
+              y={cy - hit / 2}
+              width={hit}
+              height={hit}
+              fill="transparent"
+              pointerEvents="all"
+              data-group-resize-corner={c.corner}
+              style={{ cursor: cursorFor[c.corner] }}
+            />
+            <rect
+              x={c.x}
+              y={c.y}
+              width={handle}
+              height={handle}
+              fill="var(--maude-hud-accent, #d63b1f)"
+              stroke="var(--maude-chrome-bg-0, #ffffff)"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+              rx={1}
+              pointerEvents="none"
+            />
+          </g>
+        );
+      })}
     </g>
   );
 }
@@ -4300,7 +4661,8 @@ function StrokeNodeBase({
   stroke: Stroke;
   anchorsById: Map<string, AnchorHost>;
   interactive: boolean;
-  /** Phase 21 — sticky-only: hide the read-only body while its editor is up. */
+  /** Hide the read-only body/text while its editor is up (sticky, section, or
+   *  anchored shape text — whichever this stroke is). */
   editing?: boolean;
 }) {
   // In Move mode, individual stroke nodes claim pointer events so we can
@@ -4323,6 +4685,11 @@ function StrokeNodeBase({
       const host = anchorsById.get(stroke.anchorId);
       const bbox = host ? strokeBBox(host) : null;
       if (!bbox) return null;
+      // Its editor (TextEditor) paints the same bbox while active — skip the
+      // read-only <text> so the two don't double-paint (Phase 1 jump-fix
+      // companion: the editor was already exempt via editingStickyId's
+      // sibling, this stroke type never was).
+      if (editing) return null;
       const cy = bbox.y + bbox.h / 2;
       const align = stroke.align ?? 'center';
       const pad = 8;
@@ -4400,6 +4767,54 @@ function StrokeNodeBase({
               style={stickyBodyStyle(stroke)}
             >
               {stickyBodyText(stroke)}
+            </div>
+          </foreignObject>
+        )}
+        {/* Phase 3 (whiteboard-improvements) — author badge, bottom-right
+            corner. A name label (not an avatar — a full name/nickname reads
+            faster than initials and doesn't need a legend to decode). Color
+            re-derives from the (sanitized) name via colorForName — NEVER a
+            stored/wire color — so it matches the author's live presence hue
+            (cursor/avatar use the same function). foreignObject width is a
+            fixed generous box right-anchored via flex, since a name's pixel
+            width isn't known without measuring the DOM. */}
+        {stroke.authorName && (
+          <foreignObject
+            x={x + w - 160}
+            y={y + h - 20}
+            width={160}
+            height={20}
+            pointerEvents="none"
+          >
+            <div
+              xmlns="http://www.w3.org/1999/xhtml"
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                height: '100%',
+                paddingRight: 4,
+              }}
+            >
+              <span
+                title={stroke.authorName}
+                style={{
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  fontSize: 9,
+                  fontWeight: 600,
+                  fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+                  color: colorForName(stroke.authorName),
+                  background: 'rgba(255,255,255,0.78)',
+                  padding: '1px 5px',
+                  borderRadius: 8,
+                  lineHeight: 1.4,
+                }}
+              >
+                {stroke.authorName}
+              </span>
             </div>
           </foreignObject>
         )}

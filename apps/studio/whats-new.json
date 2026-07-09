@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "whiteboard-annotation-improvements",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Bulk resize, sticky authors & fun stickers",
+      "summary": "Select several stickies, shapes or images together and resize the whole group proportionally with live corner handles, instead of one at a time. Sticky notes now show who drew them with a name badge. Text editing got a real pass: a visible blinking caret everywhere you edit text, double-click places the caret where you clicked instead of selecting everything, hovering text shows a text cursor, and a new shape or sticky auto-focuses so you can start typing immediately. Also new: a searchable, FigJam-style sticker picker with genuinely fun (not emoji) bundled sticker packs, and /design:board now understands generation requests like \"make me a team sprint retro\" directly.",
+      "surface": "design-ui"
+    },
+    {
       "id": "background-export-notification-center",
       "version": "0.42.0",
       "date": "2026-07-09",
