@@ -45,6 +45,8 @@ const THEME_STORE = 'mdcc-theme';
 const SHOW_HIDDEN_STORE = 'mdcc-show-hidden';
 const SECTIONS_STORE = 'mdcc-sections-expanded';
 const SIDEBAR_STORE = 'mdcc-sidebar-open';
+const MINIMAP_STORE = 'mdcc-minimap-visible';
+const ZOOMCTL_STORE = 'mdcc-zoomctl-visible';
 const CANVAS_EXT_RE = /\.(tsx|html?)$/i;
 // Bun's `define` substitutes this at build time (see build.ts); falls back when
 // the bundle is consumed in a context that hasn't run the build.
@@ -2427,12 +2429,9 @@ function ViewDropdown({ panels, onToggle, onClose, onZoom, hasCanvas }) {
           <span className="st-dd-lead">
             <span className="st-dd-check">{p.checked ? <StIcon name="check" size={13} /> : null}</span>
             <span>{p.label}</span>
+            {p.phase ? <span className="st-dd-phase">{p.phase}</span> : null}
           </span>
-          {p.phase ? (
-            <span className="st-dd-phase">{p.phase}</span>
-          ) : p.shortcut ? (
-            <Kbd>{p.shortcut}</Kbd>
-          ) : null}
+          {p.shortcut ? <Kbd>{p.shortcut}</Kbd> : null}
         </button>
       ))}
       <div className="st-dd-sep" />
@@ -7114,8 +7113,8 @@ function App() {
   // persistent prefs broadcast to every open canvas iframe; presentMode is a
   // non-destructive "hide ALL chrome + shell, artboards only" overlay with an
   // Esc / floating-pill escape hatch back to the chrome.
-  const [minimapVisible, setMinimapVisible] = useState(true);
-  const [zoomCtlVisible, setZoomCtlVisible] = useState(true);
+  const [minimapVisible, setMinimapVisible] = useState(() => readBoolStore(MINIMAP_STORE, false));
+  const [zoomCtlVisible, setZoomCtlVisible] = useState(() => readBoolStore(ZOOMCTL_STORE, false));
   const [presentMode, setPresentMode] = useState(false);
   // P2/P3 (Plan C) — top-bar live state. (Zoom lives in the canvas toolbar pill,
   // so the top bar no longer mirrors it.)
@@ -7534,6 +7533,16 @@ function App() {
       localStorage.setItem(SECTIONS_STORE, JSON.stringify(sectionsExpanded));
     } catch {}
   }, [sectionsExpanded]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(MINIMAP_STORE, minimapVisible ? '1' : '0');
+    } catch {}
+  }, [minimapVisible]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(ZOOMCTL_STORE, zoomCtlVisible ? '1' : '0');
+    } catch {}
+  }, [zoomCtlVisible]);
 
   const toggleSection = useCallback((label, defaultOpen) => {
     setSectionsExpanded((prev) => {
