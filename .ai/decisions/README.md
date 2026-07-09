@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-154: Skill worked examples must be re-audited against later hard constraints](DDR-154-skill-worked-examples-must-be-reaudited-against-later-hard-constraints.md) — 2026-07-09, design/video/skills/docs/process/video-comp/timeline/ddr-150/worked-examples
 - [DDR-153: Background export job queue + menubar notification center](DDR-153-export-job-queue-and-notification-center.md) — 2026-07-08, studio/exporters/background-jobs/notification-center/runtime-state/taxonomy/semaphore/progress/websocket
 - [DDR-152: Element-editing robustness — curated-knob tier, on-canvas resize, specimen selection, media swap, structural delete/insert, edit-scope predictability, and the structural-write budget](DDR-152-element-editing-curated-tier-structural-edits-and-edit-scope.md) — 2026-07-07, studio/css-panel/curated-knobs/resize-handles/specimen-selection/media-swap/structural-edit/delete-insert/new-artboard/edit-scope/reusable-component/whole-file-undo/security/rate-cap/disk-budget
 - [DDR-151: Whiteboard AI toolkit — geometry manifest, element-level context, and the `--board` template engine](DDR-151-whiteboard-ai-toolkit-geometry-manifest-and-element-context.md) — 2026-07-07, annotations/figjam/whiteboard/geometry-manifest/element-context/canvas-rects/board-templates/dom-parser/skill/dev-server
