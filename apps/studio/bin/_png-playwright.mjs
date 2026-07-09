@@ -82,11 +82,16 @@ try {
     // artboard #2 (or any non-first selection's host) left the wrong artboard
     // at the origin (item 5 root cause). Each artboard carries
     // `style="left:…; top:…;"` for the world layout — zero the right one so the
-    // screenshot clip starts at the viewport origin.
-    await widenedHandle.evaluate((el) => {
+    // screenshot clip starts at the viewport origin. Save the prior value so it
+    // can be restored after this artboard's capture — otherwise every artboard
+    // processed earlier in a `--multi` loop is left stacked at (0,0) and bleeds
+    // into every subsequent target's clip region (the scatter bug).
+    const savedPos = await widenedHandle.evaluate((el) => {
       const ab = el.closest('[data-dc-screen]') ?? el;
+      const prev = { left: ab.style.left, top: ab.style.top };
       ab.style.left = '0px';
       ab.style.top = '0px';
+      return prev;
     });
     const rect = await widenedHandle.evaluate((el) => {
       const r = el.getBoundingClientRect();
@@ -118,6 +123,13 @@ try {
       },
     });
     written.push(target);
+    // Restore the artboard's original position now that its capture is done,
+    // so it doesn't stay pinned at (0,0) and corrupt the next target's clip.
+    await widenedHandle.evaluate((el, prev) => {
+      const ab = el.closest('[data-dc-screen]') ?? el;
+      ab.style.left = prev.left;
+      ab.style.top = prev.top;
+    }, savedPos);
   };
 
   if (multi) {
@@ -131,6 +143,7 @@ try {
       const handle = screens[i];
       const id = (await handle.getAttribute('data-dc-screen')) ?? `artboard-${i + 1}`;
       await captureHandle(handle, join(outDir, `${id}.png`));
+      console.log(`MAUDE_PROGRESS {"current":${i + 1},"total":${screens.length}}`);
     }
   } else {
     if (!out) {

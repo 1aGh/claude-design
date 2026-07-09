@@ -1,9 +1,0 @@
-.split{display:grid;grid-template-columns:260px 6px 1fr;border:1px solid var(--border-default);background:var(--bg-1);min-height:380px;font-family:var(--font-mono);font-size:var(--type-sm)}
-  .split .pane{background:var(--bg-1);padding:var(--space-3) 0;overflow-y:auto}
-  .split .gutter{background:var(--bg-2);border-left:1px solid var(--border-default);border-right:1px solid var(--border-default);cursor:col-resize;position:relative}
-  .split .gutter::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:1px;height:24px;background:var(--border-strong)}
-  .split .tree-row{padding:3px var(--space-4);color:var(--fg-1);white-space:nowrap;cursor:pointer}
-  .split .tree-row:hover{background:var(--bg-2);color:var(--fg-0)}
-  .split .tree-row.sel{background:var(--accent);color:var(--accent-fg)}
-  .split .tree-row.dir{color:var(--fg-0);font-weight:600}
-  .split .body{padding:var(--space-5);}

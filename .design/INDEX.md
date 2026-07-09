@@ -1,99 +1,360 @@
-# .design/ — canvas index
+# Canvas index — maude
 
-Auto-maintained by `/design:setup-docs`. Lists every canvas + design-system specimen the dev-server browses.
+<!-- AUTO-MAINTAINED by /design:setup-docs — do not edit by hand. Add notes to system/<project>/README.md or INDEX.md sections that aren't auto-generated. -->
 
-## Design systems
+_Auto-maintained by `/design:setup-docs`. Last updated 2026-07-08T00:00:00Z._
 
-### `project` — MDCC-DSN/01
+## All canvases
 
-Industrial-catalogue mood · Paper & Ink palette · Berkeley-forward mono · hard-edges signature · htmx-grain voice. Two-theme (paper-light + phosphor-dark equal-status).
+| File | Title | Platform | Sections | Artboards | Iter | Last modified |
+|---|---|---|---|---|---|---|
+| `Smoke TSX.tsx` | Smoke TSX | desktop | 1 | 1 | 36 | 2026-07-08T12:24 |
+| `Maude Video Intro.tsx` | Maude Video Intro | desktop | 1 | 2 | 24 | 2026-07-07T07:28 |
+| `Onboarding.tsx` | Onboarding | desktop | 5 | 5 | 2 | 2026-07-02T10:33 |
+| `Horizon Landing.tsx` | Horizon Landing | desktop | 0 | 1 | 6 | 2026-07-02T00:17 |
+| `Agency Hero.tsx` | Agency Hero | desktop | 0 | 1 | 4 | 2026-07-02T00:16 |
+| `ChatPanel.tsx` | ChatPanel | desktop | 1 | 4 | 15 | 2026-06-23T18:54 |
+| `CreateProject.tsx` | CreateProject | desktop | 1 | 4 | 1 | 2026-06-23T18:54 |
+| `DiffView.tsx` | DiffView | desktop | 1 | 3 | 8 | 2026-06-23T18:54 |
+| `GitHubIdentity.tsx` | GitHubIdentity | desktop | 1 | 5 | 1 | 2026-06-23T18:54 |
+| `GitPanel.tsx` | GitPanel | desktop | 1 | 5 | 12 | 2026-06-23T18:54 |
+| `LiveCollab.tsx` | LiveCollab | desktop | 1 | 5 | 1 | 2026-06-23T18:54 |
+| `OnboardingTour.tsx` | OnboardingTour | desktop | 1 | 5 | 1 | 2026-06-23T18:54 |
+| `RepoBranchSwitcher.tsx` | RepoBranchSwitcher | desktop | 1 | 6 | 9 | 2026-06-23T18:54 |
+| `Studio.tsx` | Studio | desktop | 1 | 6 | 10 | 2026-06-12T18:23 |
+| `Docs Infographics.tsx` | Docs Infographics | desktop | 1 | 8 | 9 | 2026-06-11T13:51 |
+| `Studio Intro Video.tsx` | Studio Intro Video | desktop | 1 | 15 | 2 | 2026-06-09T08:10 |
+| `Studio Docs.tsx` | Studio Docs | desktop | 1 | 7 | 16 | 2026-06-08T14:37 |
+| `Studio Hub.tsx` | Studio Hub | desktop | 1 | 7 | 8 | 2026-06-08T14:37 |
+| `Commands Overview.tsx` | Commands Overview | desktop | 3 | 5 | 18 | 2026-05-25T14:30 |
 
-#### Tokens + chrome
+## Per-canvas detail
 
-- `system/project/colors_and_type.css` — token authority
-- `system/project/preview/_layout.css` — specimen chrome (SKU framing, 1px hairlines)
-- `system/project/preview/_components.css` — component anatomy (.btn, .tile, .sku, .seg, …)
+### Smoke TSX.tsx
 
-#### Color specimens
+**Title:** Smoke TSX
+**Brief:** TSX runtime smoke — single artboard, useState round-trip.
+**Platform:** desktop
+**Sections:**
+- overview — TSX runtime smoke
+  - (1 artboard, unlabeled in meta)
+**Tokens used:** none (plain runtime smoke test, no DS tokens)
+**Iteration history:** 36 cycles · last edit 2026-07-08T12:24 · snapshots at `_history/ui-smoke_tsx/`
+**Latest screenshot:** none captured
 
-- `system/project/preview/colors-text.html` — ink ladder
-- `system/project/preview/colors-surfaces.html` — surface ladder
-- `system/project/preview/colors-accent.html` — accent showcase ★
-- `system/project/preview/colors-status.html` — semantic status family
-- `system/project/preview/colors-themes-side-by-side.html` — paper vs phosphor split
+---
 
-#### Typography + spacing
+### Maude Video Intro.tsx
 
-- `system/project/preview/type-scale.html` — 8-step mono ladder
-- `system/project/preview/type-mono.html` — code-grade mono specimen
-- `system/project/preview/spacing-scale.html` — 4px-base ladder
-- `system/project/preview/motion.html` — hover-only durations + easing
+**Title:** Maude Video Intro (no `.meta.json` — inferred from source comments)
+**Brief:** A video-comp demo (DDR-148): a ~4s branded intro authored as a canvas, two beats joined by a crossfade, frame-driven for deterministic MP4/GIF export via the Timeline panel.
+**Platform:** desktop
+**Sections:**
+- (unsectioned) — 2 artboards
+**Tokens used:** `--status-info`
+**Iteration history:** 24 cycles · last edit 2026-07-07T07:28 · snapshots at `_history/ui-maude_video_intro/`
+**Latest screenshot:** none captured
 
-#### Foundations
+---
 
-- `system/project/preview/borders.html` — 1px hairline catalog
-- `system/project/preview/elevation.html` — depth-via-rules ladder
-- `system/project/preview/focus.html` — focus-ring spec
-- `system/project/preview/grid.html` — character-friendly grid
-- `system/project/preview/iconography.html` — ASCII / Unicode-glyph catalog
-- `system/project/preview/opacity.html` — alpha ladder
-- `system/project/preview/radii.html` — sharp-corners spec (0/2/4)
-- `system/project/preview/selection.html` — text + element selection
+### Onboarding.tsx
 
-#### Components — universal
+**Title:** Onboarding
+**Brief:** First-run wizard — three doors, GitHub first · sign in, open or create a shared project, land in the canvas browser · zero terminal, under two minutes.
+**Platform:** desktop
+**Sections:**
+- onboarding — Onboarding — first-run wizard
+  - welcome — A · Welcome — three doors, GitHub first
+  - github — B · GitHub door — open a shared project or start new
+  - local — C · Local folder — drag-drop or choose
+  - hub — D · Team hub (advanced) — address + invite link
+  - success — E · You're in — the Save → Publish → Pull cycle
+**Tokens used:** `--bg-0` `--fg-0` `--status-info` `--status-success`
+**Iteration history:** 2 cycles · last edit 2026-07-02T10:33 · snapshots at `_history/ui-onboarding/`
+**Latest screenshot:** none captured
 
-- `system/project/preview/components-buttons.html` — primary / ghost / quiet
-- `system/project/preview/components-cards.html` — tiles + plain cards
-- `system/project/preview/components-inputs.html` — fields + textareas
-- `system/project/preview/components-toggles.html` — switches / checks / radios
-- `system/project/preview/components-dialogs.html` — modal + drawer
-- `system/project/preview/components-tooltips.html` — hover + focus tips
-- `system/project/preview/components-tables.html` — data table density
-- `system/project/preview/components-callout.html` — info / warn / error blocks
-- `system/project/preview/components-status.html` — status pills + dots
-- `system/project/preview/skeletons.html` — loading placeholders
+---
 
-#### Components — audience-developer
+### Horizon Landing.tsx
 
-- `system/project/preview/components-code-block.html` — syntax + line numbers
-- `system/project/preview/components-diff-view.html` — added / removed gutters
-- `system/project/preview/components-log-stream.html` — timestamps + levels
-- `system/project/preview/components-monospace-table.html` — data-grade mono table
-- `system/project/preview/components-terminal-pane.html` — prompt + cursor
+**Title:** Horizon Landing (no title in `.meta.json` — empty `{}`)
+**Brief:** not recorded in `.meta.json`
+**Platform:** desktop
+**Sections:**
+- (unsectioned) — 1 artboard
+**Tokens used:** none
+**Iteration history:** 6 cycles · last edit 2026-07-02T00:17 · snapshots at `_history/ui-horizon_landing/`
+**Latest screenshot:** none captured
 
-#### Components — platform-desktop
+---
 
-- `system/project/preview/components-resize-panels.html` — file-tree + main split
+### Agency Hero.tsx
 
-#### Brand moments
+**Title:** Agency Hero (no `.meta.json` — inferred from source comments)
+**Brief:** Funky white agency hero — engine-drawn organic-blob background (dot-grid + blobs on a dynamic-symmetry armature) with hero copy seated in the calm left quadrant.
+**Platform:** desktop
+**Sections:**
+- (unsectioned) — 1 artboard
+**Tokens used:** none (standalone illustrative composition, not built against maude tokens)
+**Iteration history:** 4 cycles · last edit 2026-07-02T00:16 · snapshots at `_history/ui-agency_hero/`
+**Latest screenshot:** none captured
 
-- `system/project/preview/empty-state.html` — voice + "DO/DON'T" panel ★
-- `system/project/preview/logo.html` — wordmark + glyph showcase ★
+---
 
-#### Compositions ("DS in use")
+### ChatPanel.tsx
 
-- `system/project/preview/ui_kits-desktop-showcase.html` — full mdcc-design-server mock ★★
-- `system/project/preview/ui_kits-desktop-index.html` — catalog launcher
+**Title:** ChatPanel
+**Brief:** The native ACP chat sidepanel (DDR-123): a right-docked chat panel where a developer drives Claude (`/design:edit`, `/design:new`, `/design:critic`, `/design:screenshot`) while watching the same canvas. Runs on the user's own installed `claude` CLI on their Pro/Max subscription — zero login in Maude, never API billing.
+**Platform:** desktop
+**Sections:**
+- chatpanel — ChatPanel · maude
+  - idle-ready — A · idle — ready to edit
+  - streaming-edit — B · streaming /design:edit + stop
+  - agent-editing — C · the edit lands on the canvas
+  - not-connected — D · not connected — how to connect
+**Tokens used (35):** `--accent` `--accent-muted` `--bg-0` `--bg-2` `--bg-3` `--bg-4` `--border-default` `--border-strong` `--border-subtle` `--dur-soft` `--ease-out` `--fg-0` `--fg-1` `--fg-2` `--fg-3` `--font-body` `--font-mono` `--lh-base` `--lh-sm` `--presence-agent` `--presence-offline` `--presence-online` `--radius-pill` `--radius-sm` `--radius-xs` `--space-1` `--space-2` `--space-3` `--space-4` `--status-error` `--status-success` `--tracking-wide` `--type-base` `--type-sm` `--type-xs`
+**Iteration history:** 15 cycles · last edit 2026-06-23T18:54 · snapshots at `_history/chatpanel/`
+**Latest screenshot:** `_history/chatpanel/004-screen-not-connected.png`
 
-(★ = signature specimen; ★★ = highest-leverage composition)
+---
 
-## Canvases under `ui/`
+### CreateProject.tsx
 
-| Canvas | DS | Platform | Artboards | Phase coverage | Notes |
-|---|---|---|---:|---|---|
-| `ui/Canvas Viewport.html` ★ | project | desktop | 10 | 3.5 / 4 / 5 / 6 / 8 / 12 | Dev-server canvas meta-design — every viewport state v1.0 → v1.3 (infinite canvas, draw, pin-comments, presentation, live collab, inspector + layers, project+DS tree, DS view, comments list). [Sidecar](./ui/Canvas%20Viewport.meta.json) · [Envelope](./_history/canvas-viewport/000-envelope.md) |
-| `ui/Docs Site.html` ★ | project | desktop | 4 | docs / marketing | Re-skin of fumadocs site under MDCC-DSN/01 — marketplace landing (catalog SKU grid + install snippet) + standalone docs (3-pane shell, `/design:new` article, cmd-K palette modal). [Sidecar](./ui/Docs%20Site.meta.json) · [Envelope](./_history/docs-site/000-envelope.md) |
-| `ui/Commands Overview.tsx` ★ | project | desktop | 5 | docs / commands | Diagram-flow visualization of the maude commandscape — two parallel sections (`/flow:*` + `/design:*`), each with a layered-DAG dependency subtree and a producer-consumer side-effects flow. `/flow:done` and `/design:new` as fan-out hubs; `STATE.md` and `_history/<slug>/` as gravity-well files. [Sidecar](./ui/Commands%20Overview.meta.json) · [Envelope](./_history/commands-overview/000-envelope.md) |
-| `ui/Sync Hub Admin.tsx` | project | desktop | 5 | Phase 9 · hub admin | In-hub operator console for `maude sync` (self-hostable Hocuspocus hub) under MDCC-DSN/01 — sign-in (HUB_SECRET), first-run bootstrap-key claim with fingerprint phishing-defense, dashboard (generate invite / connected peers / hub status / active tokens), issued-credential modal (one-time `mau_…` token receipt), and edge states (empty / rotate-kill-switch / auth-expired / 429). [Sidecar](./ui/Sync%20Hub%20Admin.meta.json) · [Envelope](./_history/sync-hub-admin/000-envelope.md) |
-| `ui/Studio.tsx` ★ | **maude** | desktop | 6 | 3.5 / 4 / 5 / 6 / 7 / 9 / 12 / 20–25 | Maude app-shell redesign under the `maude` DS ("Unified Pro Studio", dark-first). The layout the user likes — left file-tree · top menubar+tools+status · bottom context bar · right comments/inspector/CSS-knobs — across 6 artboards: **hero (interactive: collapse sidebar · menubar dropdown · theme flip · tool switch)** · review & presence (threads + AI agent activity) · annotate & draw · ⌘K command palette + What's New · inspect & live CSS knobs · light handoff & export. [Sidecar](./ui/Studio.meta.json) · [Envelope](./_history/studio/000-envelope.md) |
-| `ui/Studio Docs.tsx` ★ | **maude** | desktop | 7 | docs / marketing / infographic | Maude documentation redesign ("Studio Docs") under the `maude` DS — docs rendered AS the studio chrome (menubar · nav tree · dotted canvas), light theme as the reading/handoff surface. Built from the real `site/` (Fumadocs) IA. 7 artboards: **landing** (hero + watch-intro chip + install + catalog SKU cards) · docs home (real nav tree + "Pick a direction") · article reader (Getting Started + prose/code/callouts/TOC + **light reading inset**) · command reference (`/design:new` property table + source-of-truth) · ⌘K search palette · **`/docs/flow` with the flow-loop infographic embedded INLINE as a figure** (the in-markdown infographic) · **changelog & roadmap** (combined What's-New + Roadmap timeline — Now/Shipped/Next). Aspiration 4.5/5. [Sidecar](./ui/Studio%20Docs.meta.json) · [Envelope](./_history/studio-docs/000-envelope.md) |
-| `ui/Studio Intro Video.tsx` ★ | **maude** | desktop | 2 | intro film / storyboard | "Studio Intro Video" — the v3 intro film for the landing, extracted from Studio Docs. 2 artboards: **main-page placement** (hero "See Maude think." + Play CTA + 16:9 player with scrubber/chapters/captions) · **storyboard & script** (4-keyframe storyboard: blank canvas → agent draws → critics score → hand off · chapters/voiceover · specs). [Sidecar](./ui/Studio%20Intro%20Video.meta.json) · [Envelope](./_history/studio-intro-video/) |
-| `ui/Studio Hub.tsx` ★ | **maude** | desktop | 7 | hub redesign · Phase 9 + expansion | "Studio Hub" — the self-hostable Maude sync hub (`apps/hub`) reimagined under the `maude` DS, lifting the Studio app-shell chrome. Re-skins + expands `Sync Hub Admin` (project DS). 7 artboards: **landing** (public splash — real-time sync hero · console preview inset · Docker/Fly/Tailscale deploy targets) · **first-run onboarding wizard** (step rail · fingerprint claim · EXPIRES 24H) · dashboard/overview (app-shell: sidebar nav · stat row · peers · hub status · activity feed) · **peers & presence** (spatial presence map + violet AI-agent cursor — signature) · access tokens (scope chips · sessions · rotate-as-kill-switch confirm) · **invite-issued modal** (one-time `mau_…` credential reveal over inert shell — signature) · states & settings (sign-in · 429 · auth-expired · empty · TLS/storage/danger-zone). Aspiration 4.4/5. [Sidecar](./ui/Studio%20Hub.meta.json) · [Envelope](./_history/studio-hub/000-envelope.md) |
-| `ui/Docs Infographics.tsx` | **maude** | desktop | 8 | phase-17 · docs diagrams | "Docs Infographics" — 8 documentation-diagram primitives drawn in the `maude` DS, the visual spec for `site/components/mdcc/diagrams/*` (phase-17 Task 0 gate). Instrument-panel aesthetic: 1px hairlines, mono part-number stamps (`MDCC-DGM/*`), one indigo accent per board, oversized mono watermark per frame. 8 artboards: **ArchitectureMap** (Claude Code + 2 plugins + maude CLI + .ai//.design/ + crossing accent arrows) · **CommandFlow** (install→maude init→/flow:init→ready strip) · **LoopDiagram** (7-node circular /design: loop, active `edit`) · **CommandTree** (Setup/Daily/Validate ASCII tree) · **FileTree** (.ai/ skeleton, highlighted `workflows.config.json`) · **StatPanel** (42·11·2·1·0 stat strip) · **InspectorDiagram** (canvas iframe + Cmd+Click halo + _active.json leaders) · **DevServerSchema** (_server/_active/_history key panels + producer→consumer flow). Critic gate: 0 blockers · signature-moment 4.1/5. [Sidecar](./ui/Docs%20Infographics.meta.json) · [Envelope](./_history/ui-docs_infographics/000-envelope.md) |
+**Title:** CreateProject
+**Brief:** Start, open, and share a project from inside Maude — create a private GitHub repo, clone+open it, invite by username (no terminal, no GitHub.com).
+**Platform:** desktop
+**Sections:**
+- project — CreateProject — start, open, share
+  - new-project — A · Create a new project
+  - open-existing — B · Open an existing project
+  - creating — C · Setting up your project
+  - share — D · Share — invite by GitHub username
+**Tokens used (45):** `--accent` `--accent-fg` `--accent-muted` `--accent-tint` `--bg-0` `--bg-1` `--bg-2` `--bg-3` `--border-default` `--border-strong` `--border-subtle` `--canvas-bg` `--canvas-dot` `--canvas-grid` `--fg-0` `--fg-1` `--fg-2` `--font-body` `--font-display` `--font-mono` `--lh-base` `--lh-sm` `--presence-online` `--radius-md` `--radius-pill` `--radius-sm` `--radius-xs` `--shadow-lg` `--shadow-md` `--space-1`…`--space-7` `--status-info` `--status-success` `--tracking-tight` `--tracking-wide` `--type-base` `--type-lg` `--type-sm` `--type-xl` `--type-xs`
+**Iteration history:** 1 cycle (critic pass only) · last edit 2026-06-23T18:54 · report at `_history/createproject/_critic/`
+**Latest screenshot:** `_history/createproject/_critic/004-screen-share.png`
 
-## Research + history
+---
 
-- `_history/_system/project-df4b0d27-domain-research-discovery.json` — Round 0 research payload (anchors, OKLCH ranges, voice samples)
-- `_history/_system/project-000-scaffold-roster.yaml` — bootstrap roster (file set + batches + reconcile status)
-- `_history/_system/project-000-bootstrap-completeness.md` — completeness-critic report (written post-scaffold)
-- `_history/_system/project-000-bootstrap-screenshots/` — agent-browser screenshots of signature specimens
+### DiffView.tsx
+
+**Title:** DiffView
+**Brief:** Visual before/after comparison + Keep mine/theirs/both conflict picker — see the change, never a code diff.
+**Platform:** desktop
+**Sections:**
+- diff — DiffView — see the change, resolve a conflict
+  - compare — A · Before / after, side by side
+  - overlay — B · Overlay / slider compare
+  - conflict — C · Keep mine / theirs / both
+**Tokens used (46):** `--accent` `--accent-fg` `--accent-muted` `--accent-tint` `--bg-0`…`--bg-4` `--border-default` `--border-strong` `--border-subtle` `--canvas-bg` `--canvas-dot` `--canvas-grid` `--dv-split` `--fg-0` `--fg-1` `--fg-2` `--font-body` `--font-display` `--font-mono` `--lh-base` `--lh-xs` `--radius-lg` `--radius-md` `--radius-pill` `--radius-sm` `--radius-xs` `--shadow-lg` `--shadow-md` `--space-1`…`--space-8` `--status-info` `--status-success` `--status-warn` `--tracking-wide` `--type-base` `--type-lg` `--type-sm` `--type-xs`
+**Iteration history:** 8 cycles · last edit 2026-06-23T18:54 · transcript at `_history/diffview/chat.md`
+**Latest screenshot:** `_history/diffview/003-screen-conflict.png`
+
+---
+
+### GitHubIdentity.tsx
+
+**Title:** GitHubIdentity
+**Brief:** Sign in with GitHub — OAuth device flow → OS keychain · IdentityBar (signed-out / connected / sign-out) · plain words, no token paste.
+**Platform:** desktop
+**Sections:**
+- identity — GitHubIdentity — sign in, connected, sign out
+  - signed-out — A · Not signed in — Sign in with GitHub
+  - device-code — B · Device code — enter this code on github.com
+  - signed-in — C · Connected — account menu open
+  - sign-out — D · Sign out confirmation
+  - states — E · Edge states — expired · cancelled · connected · browser-only
+**Tokens used (52):** `--accent` `--accent-fg` `--accent-muted` `--accent-tint` `--bg-0`…`--bg-3` `--border-default` `--border-strong` `--border-subtle` `--canvas-bg` `--canvas-dot` `--canvas-grid` `--dur-soft` `--ease-out` `--fg-0`…`--fg-3` `--font-body` `--font-display` `--font-mono` `--lh-base` `--lh-sm` `--presence-online` `--radius-lg` `--radius-md` `--radius-pill` `--radius-sm` `--radius-xs` `--shadow-lg` `--shadow-md` `--space-1`…`--space-7` `--status-error` `--status-info` `--status-success` `--status-warn` `--tracking-tight` `--tracking-wide` `--type-2xl` `--type-base` `--type-lg` `--type-sm` `--type-xl` `--type-xs`
+**Iteration history:** 1 cycle (critic pass only) · last edit 2026-06-23T18:54 · report at `_history/githubidentity/_critic/`
+**Latest screenshot:** `_history/githubidentity/_critic/005-screen-states.png`
+
+---
+
+### GitPanel.tsx
+
+**Title:** GitPanel
+**Brief:** In-Maude git-awareness panel — see what you changed, Save version, Publish, Get latest (no terminal).
+**Platform:** desktop
+**Sections:**
+- git — GitPanel — see, save, publish
+  - changes — A · Changes, docked in the shell
+  - save-version — B · Save a version
+  - publish — C · Publish + Get latest nudge
+  - empty — D · Nothing to save
+  - conflict — E · Publish rejected — Get latest first
+**Tokens used (51):** `--accent` `--accent-fg` `--accent-muted` `--accent-tint` `--bg-0`…`--bg-3` `--border-default` `--border-strong` `--border-subtle` `--canvas-bg` `--canvas-dot` `--canvas-grid` `--dur-soft` `--ease-out` `--fg-0`…`--fg-3` `--font-body` `--font-display` `--font-mono` `--lh-base` `--presence-online` `--radius-lg` `--radius-pill` `--radius-sm` `--radius-xs` `--shadow-lg` `--shadow-md` `--space-1`…`--space-8` `--status-error` `--status-info` `--status-success` `--status-warn` `--tracking-tight` `--tracking-wide` `--type-base` `--type-lg` `--type-md` `--type-sm` `--type-xl` `--type-xs`
+**Iteration history:** 12 cycles · last edit 2026-06-23T18:54 · transcript at `_history/gitpanel/chat.md`
+**Latest screenshot:** `_history/gitpanel/005-screen-conflict.png`
+
+---
+
+### LiveCollab.tsx
+
+**Title:** LiveCollab
+**Brief:** Branch-scoped live multiplayer + soft editing-presence (maude DS) — same-draft cursors · agent editing · branch-scoped tree · get-latest · the room cue.
+**Platform:** desktop
+**Sections:**
+- livecollab — LiveCollab · maude
+  - same-branch-human — A · same draft · Anna is editing
+  - agent-editing — B · the AI agent is editing
+  - branch-scoped-tree — C · you see only your draft
+  - get-latest — D · a new canvas → Get latest
+  - room-cue — E · the room cue
+**Tokens used (31):** `--accent` `--accent-fg` `--bg-0`…`--bg-4` `--border-default` `--border-subtle` `--fg-0`…`--fg-3` `--font-body` `--font-mono` `--lc-ring` `--presence-agent` `--presence-away` `--presence-online` `--radius-lg` `--radius-md` `--radius-sm` `--shadow-md` `--shadow-sm` `--space-1`…`--space-5` `--type-sm` `--type-xs`
+**Iteration history:** 1 cycle (critic pass only) · last edit 2026-06-23T18:54 · report at `_history/livecollab/critique/`
+**Latest screenshot:** none captured
+
+---
+
+### OnboardingTour.tsx
+
+**Title:** OnboardingTour
+**Brief:** The version-control quick tour — two-layer infographic (live layer over Save → Publish → Pull) + coach-marks over the real controls · runs on the existing tour engine · no git jargon.
+**Platform:** desktop
+**Sections:**
+- tour — OnboardingTour — the collab quick tour
+  - infographic — A · The infographic — the two-layer model (hero)
+  - save — B · Coach-mark — Save changes locally
+  - publish — C · Coach-mark — Publish for everyone
+  - pull — D · Coach-mark — the live layer is automatic
+  - hard-thing — F · The one honest hard thing — apart, you pick (never a merge)
+**Tokens used (48):** `--accent` `--accent-fg` `--accent-muted` `--accent-tint` `--bg-0`…`--bg-3` `--border-default` `--border-strong` `--border-subtle` `--canvas-bg` `--canvas-dot` `--canvas-grid` `--fg-0` `--fg-1` `--fg-2` `--font-body` `--font-display` `--font-mono` `--lh-2xl` `--lh-base` `--lh-lg` `--lh-sm` `--presence-online` `--radius-lg` `--radius-md` `--radius-pill` `--radius-sm` `--shadow-lg` `--space-1`…`--space-7` `--status-info` `--status-success` `--tracking-tight` `--tracking-wide` `--type-2xl` `--type-3xl` `--type-base` `--type-lg` `--type-md` `--type-sm` `--type-xs`
+**Iteration history:** 1 cycle (critic pass only) · last edit 2026-06-23T18:54 · report at `_history/onboardingtour/critique/`
+**Latest screenshot:** none captured
+
+---
+
+### RepoBranchSwitcher.tsx
+
+**Title:** RepoBranchSwitcher
+**Brief:** Project + version switching as a compact bottom dock + upward popup (not a top header) · one trigger opens a single menu: Project (recent + open another) + Version (shared version / drafts / new draft / fold-back) · plain words, no git jargon.
+**Platform:** desktop
+**Sections:**
+- switcher — RepoBranchSwitcher — project + version dock
+  - resting — A · Resting — one compact line at the bottom, above the identity
+  - switch-popup — B · Popup — Project + Version in one menu, opens upward
+  - on-draft — C · On a draft — the 'Add to the Shared version' fold-back
+  - fold-confirm — D · Confirm — what becomes shared (no merge UI)
+  - new-draft — E · New draft — name a separate line of work
+  - switching — F · Switching — reuses the spinner idiom
+**Tokens used (47):** `--accent` `--accent-fg` `--accent-hover` `--accent-muted` `--accent-tint` `--bg-0`…`--bg-4` `--border-default` `--border-strong` `--canvas-bg` `--canvas-dot` `--canvas-grid` `--dur-soft` `--ease-out` `--fg-0`…`--fg-3` `--font-body` `--font-display` `--font-mono` `--lh-base` `--lh-md` `--presence-agent` `--presence-online` `--radius-md` `--radius-pill` `--radius-sm` `--shadow-lg` `--space-1`…`--space-7` `--status-warn` `--tracking-tight` `--tracking-wide` `--type-base` `--type-lg` `--type-md` `--type-sm` `--type-xs`
+**Iteration history:** 9 cycles · last edit 2026-06-23T18:54 · snapshots at `_history/repobranchswitcher/`
+**Latest screenshot:** `_history/repobranchswitcher/011-fold-confirm.png`
+
+---
+
+### Studio.tsx
+
+**Title:** Studio
+**Brief:** Maude app-shell redesign — the dotted canvas framed by one cohesive chrome material.
+**Platform:** desktop
+**Sections:**
+- app — Maude — app shell
+  - hero — A · studio · live
+  - comments — B · review & presence
+  - annotate — C · annotate & draw
+  - palette — D · command palette + what's new
+  - inspector — E · inspect & CSS knobs
+  - handoff — F · light · handoff & export
+**Tokens used (53):** `--accent` `--accent-fg` `--accent-muted` `--accent-tint` `--bg-0`…`--bg-4` `--border-default` `--border-strong` `--border-subtle` `--canvas-bg` `--canvas-dot` `--canvas-grid` `--dur-panel` `--dur-route` `--dur-soft` `--ease-in-out` `--ease-out` `--fg-0`…`--fg-3` `--font-body` `--font-display` `--font-mono` `--lh-base` `--presence-agent` `--presence-online` `--radius-lg` `--radius-md` `--radius-pill` `--radius-sm` `--radius-xs` `--shadow-lg` `--shadow-md` `--space-1`…`--space-5` `--status-error` `--status-info` `--status-success` `--status-warn` `--tracking-tight` `--tracking-wide` `--type-base` `--type-lg` `--type-md` `--type-sm` `--type-xs`
+**Iteration history:** 10 cycles · last edit 2026-06-12T18:23 · snapshots at `_history/studio/`
+**Latest screenshot:** `_history/studio/006-screen-handoff.png`
+
+---
+
+### Docs Infographics.tsx
+
+**Title:** Docs Infographics
+**Brief:** maude diagram primitives — 8 documentation diagrams (the visual spec for `site/components/mdcc/diagrams/*`, phase-17).
+**Platform:** desktop
+**Sections:**
+- diagrams — Docs Infographics — maude diagram primitives
+  - architecture-map — A · MDCC-DGM/MAP · ArchitectureMap
+  - command-flow — B · MDCC-DGM/FLW · CommandFlow
+  - loop-diagram — C · MDCC-DGM/LP · LoopDiagram
+  - command-tree — D · MDCC-DGM/TR · CommandTree
+  - file-tree — E · MDCC-DGM/FT · FileTree
+  - stat-panel — F · MDCC-DGM/STT · StatPanel
+  - inspector-diagram — G · MDCC-DGM/INS · InspectorDiagram
+  - dev-server-schema — H · MDCC-DGM/SRV · DevServerSchema
+**Tokens used (36):** `--accent` `--accent-muted` `--accent-tint` `--bg-0`…`--bg-3` `--border-default` `--border-strong` `--border-subtle` `--canvas-dot` `--canvas-grid` `--fg-0` `--fg-1` `--fg-2` `--font-body` `--font-display` `--font-mono` `--lh-sm` `--lh-xs` `--radius-md` `--radius-pill` `--radius-sm` `--radius-xs` `--space-1`…`--space-7` `--type-3xl` `--type-base` `--type-md` `--type-sm` `--type-xs`
+**Iteration history:** 9 cycles · last edit 2026-06-11T13:51 · transcript at `_history/ui-docs_infographics/chat.md`
+**Latest screenshot:** `_history/ui-docs_infographics/008-screen-dev-server-schema.png`
+
+---
+
+### Studio Intro Video.tsx
+
+**Title:** Studio Intro Video
+**Brief:** v5.2 showreel storyboard — one beat per artboard (filmstrip) + inline voiceover.
+**Platform:** desktop
+**Sections:**
+- showreel — Studio Intro Video — v5.2 showreel
+  - brief, s00, s10, s20, s30, s40, s50, s60, s65, s70, s80, s90, s92, s94, s96, s99 — 15 storyboard beats + cover
+**Tokens used (57):** `--accent` `--accent-fg` `--accent-muted` `--accent-tint` `--bg-0`…`--bg-4` `--border-default` `--border-strong` `--border-subtle` `--canvas-bg` `--canvas-dot` `--canvas-grid` `--fg-0`…`--fg-3` `--font-body` `--font-display` `--font-mono` `--lh-base` `--lh-lg` `--lh-md` `--lh-sm` `--lh-xs` `--presence-agent` `--radius-lg` `--radius-md` `--radius-pill` `--radius-sm` `--radius-xs` `--role` `--shadow-lg` `--shadow-md` `--shadow-sm` `--space-1`…`--space-8` `--status-error` `--status-info` `--status-success` `--tracking-tight` `--tracking-wide` `--type-2xl` `--type-base` `--type-lg` `--type-md` `--type-sm` `--type-xl` `--type-xs`
+**Iteration history:** 2 cycles · last edit 2026-06-09T08:10 · snapshots at `_history/studio-intro-video/`
+**Latest screenshot:** `_history/studio-intro-video/002-screen-storyboard.png`
+
+---
+
+### Studio Docs.tsx
+
+**Title:** Studio Docs
+**Brief:** Maude documentation redesign — docs rendered as the studio chrome (menubar · nav tree · dotted canvas) under the maude DS.
+**Platform:** desktop
+**Sections:**
+- docs — Studio Docs — maude documentation
+  - landing — A · landing
+  - docs-home — B · docs · home
+  - article — C · docs · article (+ light inset)
+  - command-ref — D · command reference
+  - search — E · ⌘K · search
+  - flow-docs — F · docs · flow (embedded infographic)
+  - changelog — G · changelog & roadmap
+**Tokens used (58):** `--accent` `--accent-fg` `--accent-muted` `--accent-tint` `--bg-0`…`--bg-3` `--border-default` `--border-strong` `--border-subtle` `--canvas-bg` `--canvas-dot` `--canvas-grid` `--dur-soft` `--ease-out` `--fg-0`…`--fg-3` `--font-body` `--font-display` `--font-mono` `--lh-2xl` `--lh-3xl` `--lh-base` `--lh-lg` `--lh-md` `--lh-sm` `--lh-xl` `--lh-xs` `--radius-lg` `--radius-md` `--radius-pill` `--radius-sm` `--radius-xs` `--shadow-lg` `--space-1`…`--space-8` `--status-info` `--status-success` `--status-warn` `--tracking-tight` `--tracking-wide` `--type-2xl` `--type-3xl` `--type-base` `--type-lg` `--type-md` `--type-sm` `--type-xl` `--type-xs`
+**Iteration history:** 16 cycles · last edit 2026-06-08T14:37 · transcript at `_history/studio-docs/chat.md`
+**Latest screenshot:** `_history/studio-docs/018-changelog.png`
+
+---
+
+### Studio Hub.tsx
+
+**Title:** Studio Hub
+**Brief:** Operator console for self-hosted Maude sync, reimagined under the maude DS — landing · onboarding · dashboard · presence · tokens · invite · settings.
+**Platform:** desktop
+**Sections:**
+- hub — Studio Hub · maude
+  - landing — A · landing · what Studio Hub is
+  - onboarding — B · first-run onboarding wizard
+  - dashboard — C · dashboard · operator console
+  - peers — D · peers & presence · who's on what
+  - tokens — E · access tokens · rotate kill-switch
+  - invite-modal — F · invite issued · single-use credential
+  - states — G · states · sign-in · errors · settings
+**Tokens used (62):** `--accent` `--accent-fg` `--accent-hover` `--accent-muted` `--accent-tint` `--bg-0`…`--bg-4` `--border-default` `--border-strong` `--border-subtle` `--canvas-bg` `--canvas-dot` `--canvas-grid` `--dur-soft` `--ease-out` `--fg-0`…`--fg-3` `--font-body` `--font-display` `--font-mono` `--lh-3xl` `--lh-base` `--lh-lg` `--lh-md` `--presence-agent` `--presence-offline` `--presence-online` `--radius-lg` `--radius-md` `--radius-pill` `--radius-sm` `--radius-xs` `--shadow-lg` `--shadow-md` `--shadow-sm` `--space-1`…`--space-8` `--status-error` `--status-info` `--status-success` `--status-warn` `--tracking-tight` `--tracking-wide` `--type-2xl` `--type-3xl` `--type-base` `--type-lg` `--type-md` `--type-sm` `--type-xl` `--type-xs`
+**Iteration history:** 8 cycles · last edit 2026-06-08T14:37 · snapshots at `_history/studio-hub/`
+**Latest screenshot:** `_history/studio-hub/005-screen-tokens.png`
+
+---
+
+### Commands Overview.tsx
+
+**Title:** Commands Overview (no title in `.meta.json` — layout-only meta)
+**Brief:** not recorded in `.meta.json` (5 diagram artboards: legend, flow-dep-graph, flow-sideeffects-flow, design-dep-graph, design-sideeffects-flow)
+**Platform:** desktop
+**Sections:**
+- (3 `DCSection` groups, unlabeled in meta) — 5 artboards: legend, flow-dep-graph, flow-sideeffects-flow, design-dep-graph, design-sideeffects-flow
+**Tokens used (11):** `--accent` `--accent-active` `--bg-0` `--bg-1` `--bg-2` `--border-default` `--border-strong` `--border-subtle` `--fg-0` `--fg-1` `--fg-2`
+**Iteration history:** 18 cycles · last edit 2026-05-25T14:30 · transcript at `_history/commands-overview/chat.md`
+**Latest screenshot:** `_history/commands-overview/022-iter3-stability.png`
+
+---
+
+## Statistics
+
+- Canvases: 19
+- Total artboards: 95
+- Total iterations across all canvases: 183
+- Tokens defined: 68 (`system/maude/colors_and_type.css`)
+- Tokens used by canvases: 74 distinct (includes canvas-local aliases such as `--dv-split`, `--lc-ring`, `--role`)
+- Components: no dedicated `components/` directory — component anatomy lives in `system/maude/preview/` (79 specimen files)
+- Last canvas modified: 2026-07-08T12:24 (`Smoke TSX.tsx`)

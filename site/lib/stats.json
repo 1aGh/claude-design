@@ -1,7 +1,7 @@
 {
-  "version": "v0.40.0",
+  "version": "v0.42.0",
   "nodeRange": ">=20",
-  "publishedDate": "2026-07-05",
+  "publishedDate": "2026-07-09",
   "contributors": 1,
   "plugins": {
     "design": {
@@ -75,7 +75,7 @@
     "design/index.mdx": "2026-06-12",
     "design/multi-ds.mdx": "2026-07-03",
     "design/video.mdx": "2026-07-04",
-    "desktop/index.mdx": "2026-07-03",
+    "desktop/index.mdx": "2026-07-08",
     "flow.mdx": "2026-06-11",
     "getting-started.mdx": "2026-07-03",
     "hub/deploy.mdx": "2026-06-05",

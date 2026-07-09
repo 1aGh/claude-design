@@ -11,10 +11,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import JSZip from 'jszip';
-import { exportShimPath, resolveExportRuntime } from './_runtime.ts';
+import { exportShimPath, runShim } from './_runtime.ts';
 import {
   canvasShellUrl,
   type ExportContext,
+  type ExportHooks,
   type ExportOptions,
   type ExportResult,
 } from './index.ts';
@@ -27,7 +28,8 @@ async function captureHtml(
   target: Extract<Target, { kind: 'element' }>,
   ctx: ExportContext,
   outDir: string,
-  timeoutSec: number
+  timeoutSec: number,
+  hooks?: ExportHooks
 ): Promise<string[]> {
   const args = [
     HTML_PLAYWRIGHT,
@@ -46,29 +48,18 @@ async function captureHtml(
     if (target.widen) args.push('--widen-to-artboard', '1');
     args.push('--out', path.join(outDir, `${target.canvasSlug}.html`));
   }
-  const proc = Bun.spawn([resolveExportRuntime(), ...args], {
+  return runShim(args, {
     cwd: path.dirname(HTML_PLAYWRIGHT),
-    stdout: 'pipe',
-    stderr: 'pipe',
+    signal: hooks?.signal,
+    onProgress: hooks?.onProgress,
   });
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const code = await proc.exited;
-  if (code !== 0) {
-    throw new Error(`_html-playwright exited ${code}: ${stderr.trim() || stdout.trim()}`);
-  }
-  return stdout
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean);
 }
 
 export async function run(
   targets: Target[],
   options: ExportOptions,
-  ctx: ExportContext
+  ctx: ExportContext,
+  hooks?: ExportHooks
 ): Promise<ExportResult> {
   if (!targets.length) {
     return { filename: 'export.zip', contentType: 'application/zip', body: new Uint8Array(0) };
@@ -83,9 +74,10 @@ export async function run(
   const tmp = mkdtempSync(path.join(tmpdir(), 'maude-html-'));
   try {
     const written: string[] = [];
-    for (const t of elementTargets) {
-      const paths = await captureHtml(t, ctx, tmp, timeoutSec);
+    for (let i = 0; i < elementTargets.length; i += 1) {
+      const paths = await captureHtml(elementTargets[i], ctx, tmp, timeoutSec, hooks);
       written.push(...paths);
+      hooks?.onProgress?.({ current: i + 1, total: elementTargets.length });
     }
     if (!written.length) {
       return { filename: 'export.zip', contentType: 'application/zip', body: new Uint8Array(0) };

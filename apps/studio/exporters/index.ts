@@ -74,8 +74,19 @@ export interface ExportResult {
   body: Uint8Array;
 }
 
+/** Progress + cancellation hooks threaded through to the shim-spawning layer. */
+export interface ExportHooks {
+  onProgress?: (update: { current: number; total: number }) => void;
+  signal?: AbortSignal;
+}
+
 export interface Adapter {
-  run(targets: Target[], options: ExportOptions, ctx: ExportContext): Promise<ExportResult>;
+  run(
+    targets: Target[],
+    options: ExportOptions,
+    ctx: ExportContext,
+    hooks?: ExportHooks
+  ): Promise<ExportResult>;
 }
 
 const REGISTRY: Record<Format, Adapter> = {
@@ -114,6 +125,7 @@ export async function runExport(args: {
   options: ExportOptions;
   resolve: Omit<ResolveScopeArgs, 'scope'>;
   ctx: ExportContext;
+  hooks?: ExportHooks;
 }): Promise<ExportResult> {
   // Thread the options bag into the resolver so submit-time selection /
   // active-artboard hints (DDR — selection-passthrough) win over the persisted
@@ -123,7 +135,7 @@ export async function runExport(args: {
   if (!adapter) {
     throw new Error(`unknown format: ${args.format}`);
   }
-  return adapter.run(targets, args.options, args.ctx);
+  return adapter.run(targets, args.options, args.ctx, args.hooks);
 }
 
 export type { Scope, Target };

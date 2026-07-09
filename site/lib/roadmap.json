@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-08T10:18:09.465Z",
+  "generated": "2026-07-09T08:20:31.808Z",
   "currentPhase": null,
   "phases": [
     {
@@ -164,6 +164,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This phase again touches the most load-bearing dev-server file (apps/studio/annotation...",
       "planPath": ".ai/plans/archive/feature-annotations-figjam-v3-ai-loop.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-background-export-notification-center",
+      "title": "Feature: Background export + export notification center (+ multi-artboard export correctness/perf fix)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-background-export-notification-center.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1145,17 +1156,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "feature-background-export-notification-center",
-      "title": "Feature: Background export + export notification center (+ multi-artboard export correctness/perf fix)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-background-export-notification-center.md",
-      "archived": false,
-      "phaseKey": null
     },
     {
       "id": "feature-grid-track-editor",

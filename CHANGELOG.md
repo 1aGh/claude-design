@@ -1,5 +1,59 @@
 # @1agh/maude
 
+## 0.42.0
+
+### Minor Changes
+
+- 4ff5fd8: Exports now run in the background with live progress, instead of blocking the dialog until the render finishes.
+
+  - `POST /_api/export` still works exactly as before (byte-for-byte, no CLI changes needed) — it now just wraps a background job internally.
+  - A new menubar "Exports" button shows a running/queued count, a toast on start and completion (progress bar for multi-artboard `canvas-as-separate` exports, indeterminate spinner otherwise), and a panel listing every export with Download/Save actions. Both dialogs (menubar + in-canvas) close immediately on submit.
+  - Multiple exports can run concurrently (default cap 2) — a quick PNG no longer has to wait behind a slow PDF/video render.
+
+  Also fixes a real correctness bug: `canvas-as-separate` (multi-artboard) exports in PNG/PDF/SVG/HTML/PPTX could scramble content — each per-artboard capture pinned the artboard's position for cropping but never restored it, so earlier artboards stayed stacked at the origin and bled into later captures. All 5 render shims now save and restore each artboard's position around its own capture.
+
+### Patch Changes
+
+- 308c156: Fix `/design:new` so canvases are reliably generated with both light and dark theme support on dual-theme design systems.
+
+  The prior dual-theme enforcement mechanism checked `config.json`'s `themeDefault` field for the literal value `"both"` — a value that field's schema (`dark | light` only) can never actually hold, so the check silently never fired. This let canvases ship with a token frozen at its default-theme value and invisible or low-contrast in the un-audited theme.
+
+  - `designSystems[].themes` is now the one authoritative signal for "this DS ships more than one theme" (schema + docs updated); bootstrap persists it going forward instead of leaving it to free-text description.
+  - `design-system-completeness-critic`'s V18 check now reads the correct field; a new V18c check catches a token declared in one theme block but silently missing from the other.
+  - `/design:new`'s post-write reality check now captures a second screenshot pass in the alternate theme whenever the target design system declares more than one, so both themes are visually confirmed before the canvas is considered done.
+
+## 0.41.0
+
+### Minor Changes
+
+- 0c601a0: Add Intel Mac support to the desktop app.
+
+  The macOS `.dmg` now ships as a universal (Intel + Apple Silicon) binary instead of Apple-Silicon-only — Intel Mac users can now download and run the Maude desktop app natively, with no Rosetta workaround required. Windows and Linux installers are unaffected.
+
+- ddbf1c5: Bring Studio's element editing up to Figma/Webflow-grade direct manipulation.
+
+  - **On-canvas drag-resize** for elements (8 handles + rotate zones, Shift-lock aspect, Alt from-center) and artboards (free-hand resize), plus a live W×H/X,Y readout while dragging.
+  - **Structural editing**: delete an element (Del key / context menu), insert a new div/text/image, and insert a whole new empty artboard from a Desktop/Laptop/Tablet/Mobile preset — all Cmd+Z reversible via whole-file snapshot undo.
+  - **Richer Inspector knobs**: Position (with a constraints-style inset box), Transform, extra Typography rows, and a Media section (`object-fit`/`aspect-ratio`/`object-position`) — promotes DDR-104's deferred OUT-list into curated, live-preview controls.
+  - **Auto-open the Inspector on select** (only when no right panel is already open), **on-canvas padding/gap drag**, and a **shared-component scope badge** ("Local" vs "Shared · edits N places") so editing a reused component's inner element is never a surprise, with instance move/resize routed to stay local.
+  - **Editing works on design-system specimens**, not just UI canvases, and **image/video/background swap** via a built-in asset picker (authored `<img>`/`<video>` and annotation media alike).
+  - **Editor ergonomics**: keyboard nudge + tree traversal, Cmd+D duplicate, copy/paste style, multi-select align/distribute/tidy-up, deep-select + right-click "Select layer" for nested/overlapping elements, Alt-hover distance measurement, and a free-hand rotate handle.
+  - **Flex/auto-layout editor**: per-element Fixed/Hug/Fill sizing plus a grouped direction/wrap/distribution/gap/padding editor (CSS-Grid tracks are a separate follow-up plan).
+  - Fixed two camera bugs: moving an absolute element no longer resets the pan, and selecting an overflowing element no longer shifts the layout or reveals a phantom strip.
+
+- fed71d4: Add a full two-way AI toolkit for the whiteboard/annotation layer.
+
+  The design plugin's FigJam-style draw layer (stickies, shapes, connectors) is now a complete two-way AI surface, not just a read-only channel:
+
+  - New `maude design canvas-rects` geometry manifest resolves artboard AND element-level context in world coordinates, so an agent understands which UI element a sketched note is drawn over, and can place new notes/shapes without ever hand-computing a coordinate.
+  - `read-annotations --rects` adds that element context to reads.
+  - `annotate` gains `--in`/`--pin` (pin a note beside a specific button or element, with an automatic pointer arrow), a `--board` template engine (retro, kanban, social-media calendar, roadmap, brainstorm, checklist, user-flow — all auto-laid-out), and id-preserving `move`/`set-text`/`set-color` ops.
+  - A new `/design:board` command and `whiteboard` skill package the whole read-understand-author-verify loop end to end.
+
+### Patch Changes
+
+- 04fad92: Add a `--quick` flag to `/flow:done` for fast, interim closes. It swaps the full `/flow:validate` gate (build + 5-platform cross-platform scenario + a11y audit + design-system-guard) for affected-scope static gates (format/lint/typecheck) plus affected-tests-only, cutting a routine close-out from ~20 min to ~5. DDR sweep, code review (including the security-auditor + ethical-hacker pass), tracker sync, and retro/archive are unchanged — `--quick` only trims Step 1, not tracking or due diligence. Use it for routine/interim closes where a full `/flow:validate` still runs before the branch merges to main.
+
 ## 0.40.0
 
 ### Minor Changes

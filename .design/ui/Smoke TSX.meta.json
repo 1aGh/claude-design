@@ -3,7 +3,7 @@
   "subtitle": "TSX runtime smoke — single artboard, useState round-trip",
   "brief": "Minimal canvas that exercises the dev-server pipeline end-to-end: data-cd-id injection, canvas-lib import via @maude/canvas-lib, React 19 useState.",
   "platform": "desktop",
-  "designSystem": "project",
+  "designSystem": "maude",
   "opt_out_scope": "none",
   "sections": [
     {
@@ -26,9 +26,20 @@
     "artboards": [
       {
         "id": "primary",
-        "x": 110.06833564434174,
-        "y": 189.361296698093
+        "x": 110,
+        "y": 189
+      },
+      {
+        "id": "sbywji5",
+        "x": 933,
+        "y": 189
+      },
+      {
+        "id": "smp4pd2",
+        "x": 1426,
+        "y": 189
       }
     ]
-  }
+  },
+  "last_modified": "2026-07-07T11:38:12.542Z"
 }

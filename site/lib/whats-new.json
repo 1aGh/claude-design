@@ -1,11 +1,28 @@
 {
-  "generated": "2026-07-08T09:54:04.527Z",
-  "version": "0.40.0",
+  "generated": "2026-07-09T08:10:44.959Z",
+  "version": "0.41.0",
   "entries": [
     {
-      "id": "desktop-intel-mac-support",
+      "id": "background-export-notification-center",
       "version": null,
       "date": null,
+      "kind": "feature",
+      "title": "Exports now run in the background",
+      "summary": "Hitting Export no longer locks up the dialog until the render finishes — it closes right away and a new Exports button in the menubar tracks progress, with a toast when it's ready and a Download/Save button. Multiple exports can run at once, so a quick PNG doesn't have to wait behind a slow PDF or video. Also fixes a bug where exporting every artboard on a canvas separately could scramble some of the pages.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour=\"exports\"]",
+          "title": "Exports run in the background",
+          "body": "Kick off an export and keep working — this button shows progress and lights up when it's ready to download or save.",
+          "placement": "bottom"
+        }
+      ]
+    },
+    {
+      "id": "desktop-intel-mac-support",
+      "version": "0.41.0",
+      "date": "2026-07-08",
       "kind": "improvement",
       "title": "Desktop app now runs on Intel Macs",
       "summary": "The macOS desktop app was Apple-Silicon-only — it now ships as a universal binary, so Intel Mac users can download and run it natively too, no Rosetta workaround needed.",
@@ -14,8 +31,8 @@
     },
     {
       "id": "element-editing-robustness",
-      "version": null,
-      "date": null,
+      "version": "0.41.0",
+      "date": "2026-07-08",
       "kind": "feature",
       "title": "Edit elements like Figma or Webflow",
       "summary": "Selecting an element now opens the Inspector automatically, and drag handles let you resize it directly on the canvas (corner + edge, Shift to lock aspect, Alt to resize from center) — artboards get free-hand resize too. Delete an element with the Del key or the right-click menu, or insert a new div, text, or image straight into the artboard; add a whole new empty artboard from a Desktop/Laptop/Tablet/Mobile preset. The Inspector gained Position (with a constraints-style inset box), Transform, and Media sections (object-fit, aspect ratio), plus on-canvas dragging for padding and gaps. Swap a photo or video (or a background image) from a built-in asset picker. Editing now works on design-system specimens too, not just your UI canvases. A shared component always tells you plainly whether an edit is local to this artboard or shared across every place it's used, and moving one instance never drags the others along. Rounding it out: keyboard nudge + tree navigation, Cmd+D duplicate, copy/paste style, align and distribute a multi-selection, deep-select + \"Select layer\" for nested/overlapping elements, Alt-hover distance measurement, a free-hand rotate handle, and a proper Fixed/Hug/Fill sizing control for flex layouts. Every one of these is undoable with Cmd+Z.",
@@ -23,8 +40,8 @@
     },
     {
       "id": "whiteboard-ai-toolkit",
-      "version": null,
-      "date": null,
+      "version": "0.41.0",
+      "date": "2026-07-08",
       "kind": "feature",
       "title": "The Assistant now reads and draws on your whiteboard",
       "summary": "Sketch stickies, shapes, and arrows on a canvas and the Assistant understands not just which artboard a note sits on, but which button or element it's pointing at. Ask it to pin a note next to something specific, and it'll drop it right there with an arrow pointing at it — no guessing coordinates. It can also lay out a whole tidy board for you: a sprint retro, a kanban, a week of social posts, a roadmap, a brainstorm, a user-flow diagram — just ask.",

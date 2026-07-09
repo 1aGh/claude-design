@@ -86,6 +86,23 @@
   border-radius: var(--radius-pill); background: var(--accent); border: 1.5px solid var(--bg-1);
 }
 
+/* feature-background-export-notification-center — menubar Exports button.
+   Mirrors .st-whatsnew's attribute-driven state (data-busy instead of
+   data-unseen — running/queued exports, not an unread count). */
+.st-exports {
+  position: relative; appearance: none; border: 0; background: transparent; cursor: pointer;
+  width: 26px; height: 26px; display: grid; place-items: center; border-radius: var(--radius-sm);
+  color: var(--fg-1); font-size: 13px;
+}
+.st-exports:hover { background: var(--bg-3); color: var(--fg-0); }
+.st-exports[data-busy="true"] { color: var(--accent); }
+.st-exports__count {
+  position: absolute; top: -2px; right: -2px; min-width: 14px; height: 14px; padding: 0 3px;
+  display: grid; place-items: center; border-radius: var(--radius-pill);
+  background: var(--accent); color: var(--accent-fg); font-family: var(--font-mono);
+  font-size: 9px; font-weight: 700; line-height: 1; border: 1.5px solid var(--bg-1);
+}
+
 /* ─── Menubar dropdown ────────────────────────────────────────────────────── */
 .st-dropdown {
   position: absolute; top: 38px; min-width: 230px;

@@ -16,7 +16,8 @@ import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
 import type { AiActivity } from './collab/ai-activity.ts';
 import type { Context } from './context.ts';
-import { isFormat, isScope, runExport } from './exporters/index.ts';
+import { type Format, isFormat, isScope, type Scope } from './exporters/index.ts';
+import { type ExportJobQueue, ExportQueueFullError } from './exporters/jobs.ts';
 import type { ActiveJsonShape } from './exporters/scope.ts';
 import { createGitEndpoints } from './git/endpoints.ts';
 import { gitShowFile } from './git/service.ts';
@@ -594,7 +595,13 @@ export interface Http {
   isCanvasSafeRoute(pathname: string): boolean;
 }
 
-export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActivity): Http {
+export function createHttp(
+  ctx: Context,
+  api: Api,
+  inspect: Inspect,
+  ai: AiActivity,
+  exportJobs: ExportJobQueue
+): Http {
   // Cache invalidation — when canvas-lib changes, every cached canvas bundle
   // is stale because canvas-lib is inlined into each one via the resolver
   // plugin. Drop the whole cache so the next request rebuilds with the fresh
@@ -721,6 +728,38 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
   const githubApi = createGitHubEndpoints(ctx);
   const gitJson = (r: { status: number; json: unknown }) =>
     Response.json(r.json, { status: r.status, headers: { 'Cache-Control': 'no-store' } });
+
+  // Shared by /_api/export and /_api/export-jobs — build the exportJobs.enqueue()
+  // args from a validated request body. `inspect.state` is the live `_active.json`;
+  // readers narrow to the resolver's subset locally so the export pipeline doesn't
+  // pin the wider ActiveState interface.
+  function buildExportArgs(
+    req: Request,
+    body: { format: Format; scope: Scope; options?: Record<string, unknown> }
+  ) {
+    const activeJson = inspect.state as unknown as ActiveJsonShape;
+    return {
+      format: body.format,
+      scope: body.scope,
+      options: body.options ?? {},
+      resolve: { activeJson, designRoot: ctx.paths.designRoot, repoRoot: ctx.paths.repoRoot },
+      ctx: {
+        designRoot: ctx.paths.designRoot,
+        repoRoot: ctx.paths.repoRoot,
+        // Adapters reach back into the server via this origin only when they
+        // need Playwright rendering (PNG / PDF / SVG / HTML). The host that
+        // received this request is, by definition, the one serving the canvas.
+        serverOrigin: new URL(req.url).origin,
+        // Mirror `client/app.jsx:85` — the per-DS tokensCssRel wins over the
+        // legacy top-level default (which still points at the pre-multi-DS
+        // layout `system/colors_and_type.css`). Without the per-DS path, the
+        // standalone `_canvas-shell.html` 404s on the tokens link and the
+        // rendered DOM uses `var(--bg-0)` unresolved → screenshots come out
+        // blank. See canvasShellUrl().
+        tokensCssRel: ctx.cfg.designSystems?.[0]?.tokensCssRel ?? ctx.cfg.tokensCssRel,
+      },
+    };
+  }
 
   const routes = {
     '/_health': () =>
@@ -2041,17 +2080,28 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
 
     '/_api/export-history': async (req: Request) => {
       // Phase 6.5 T10 — read-only recent-exports feed for the dialog's
-      // Recent tab. Writes happen as a side-effect of `/_api/export`.
+      // Recent tab. Writes happen as a side-effect of job completion
+      // (exporters/jobs.ts persistAndEvict) rather than this handler.
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      const history = await api.loadExportHistory();
+      const history = exportJobs.loadHistory();
       return Response.json({ history }, { headers: { 'Cache-Control': 'no-store' } });
     },
 
     '/_api/export': async (req: Request) => {
-      // Phase 6.5 — single dispatch endpoint for the export pipeline.
-      // POST body { format, scope, options? } → binary stream with
-      // Content-Disposition + Content-Type set by the adapter.
+      // feature-background-export-notification-center — thin wrapper over the
+      // job queue: enqueue() then await the SAME job's result. Byte-for-byte
+      // identical external contract to the old synchronous handler, so
+      // `/design:export` (CLI) and any other blocking caller need zero changes.
+      // sameOriginWrite CSRF + loopback-Host (DNS-rebinding) gated, matching
+      // the write-route convention elsewhere in this file (e.g.
+      // /_api/delete-element) — closed as part of the /flow:done security
+      // fan-out (defender finding: this POST now has a disk-write + queue-
+      // growth consequence a bare cross-origin form-POST could trigger).
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         format?: unknown;
         scope?: unknown;
@@ -2060,61 +2110,106 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       if (!body) return new Response('body required', { status: 400 });
       if (!isFormat(body.format)) return new Response('unknown or missing format', { status: 400 });
       if (!isScope(body.scope)) return new Response('unknown or missing scope', { status: 400 });
-      // `inspect.state` is the live `_active.json` — readers narrow to the
-      // resolver's subset locally so the export pipeline doesn't pin the
-      // wider ActiveState interface.
-      const activeJson = inspect.state as unknown as ActiveJsonShape;
+      const format = body.format;
+      const scope = body.scope;
       try {
-        const result = await runExport({
-          format: body.format,
-          scope: body.scope,
-          options: body.options ?? {},
-          resolve: { activeJson, designRoot: ctx.paths.designRoot, repoRoot: ctx.paths.repoRoot },
-          ctx: {
-            designRoot: ctx.paths.designRoot,
-            repoRoot: ctx.paths.repoRoot,
-            // Adapters reach back into the server via this origin only when
-            // they need Playwright rendering (PNG / PDF / SVG / HTML). The
-            // host that received this request is, by definition, the one
-            // serving the canvas.
-            serverOrigin: new URL(req.url).origin,
-            // Mirror `client/app.jsx:85` — the per-DS tokensCssRel wins over
-            // the legacy top-level default (which still points at the pre-
-            // multi-DS layout `system/colors_and_type.css`). Without the
-            // per-DS path, the standalone `_canvas-shell.html` 404s on the
-            // tokens link and the rendered DOM uses `var(--bg-0)` unresolved
-            // → screenshots come out blank. See canvasShellUrl().
-            tokensCssRel: ctx.cfg.designSystems?.[0]?.tokensCssRel ?? ctx.cfg.tokensCssRel,
-          },
-        });
-        // Fire-and-forget history append — failure here doesn't block the
-        // download. Synchronous await keeps the order: history reflects the
-        // export the moment the client sees a 200.
-        try {
-          await api.appendExportHistory({
-            format: body.format,
-            scope: body.scope,
-            options: body.options ?? {},
-            filename: result.filename,
-            at: new Date().toISOString(),
-          });
-        } catch {
-          /* ignore — history is best-effort */
-        }
+        const { result } = exportJobs.enqueue(
+          buildExportArgs(req, { format, scope, options: body.options })
+        );
+        const finished = await result;
         // Bun.serve accepts Uint8Array directly; the cast satisfies the
         // SharedArrayBuffer-strict BodyInit narrowing on @types/bun.
-        return new Response(result.body as unknown as BodyInit, {
+        return new Response(finished.body as unknown as BodyInit, {
           status: 200,
           headers: {
-            'Content-Type': result.contentType,
-            'Content-Disposition': `attachment; filename="${result.filename}"`,
+            'Content-Type': finished.contentType,
+            'Content-Disposition': `attachment; filename="${finished.filename}"`,
             'Cache-Control': 'no-store',
           },
         });
       } catch (err) {
+        if (err instanceof ExportQueueFullError) {
+          return new Response(err.message, { status: 429 });
+        }
         const msg = err instanceof Error ? err.message : String(err);
         return new Response(`export failed: ${msg}`, { status: 500 });
       }
+    },
+
+    '/_api/export-jobs': async (req: Request) => {
+      // feature-background-export-notification-center — the non-blocking
+      // sibling of /_api/export: same body, returns 202 { jobId } immediately
+      // without awaiting the render. MAIN-ORIGIN ONLY (absent from
+      // CANVAS_SAFE_API + startCanvasServer routes, same trust boundary as
+      // /_api/export today — DDR-060). loopback-Host gated on every method;
+      // the mutating POST is additionally sameOriginWrite CSRF gated (same
+      // /flow:done security fan-out fix as /_api/export above).
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method === 'GET') {
+        return Response.json(
+          { jobs: exportJobs.list() },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{
+        format?: unknown;
+        scope?: unknown;
+        options?: Record<string, unknown>;
+      }>(req, 64 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      if (!isFormat(body.format)) return new Response('unknown or missing format', { status: 400 });
+      if (!isScope(body.scope)) return new Response('unknown or missing scope', { status: 400 });
+      try {
+        const { id, result } = exportJobs.enqueue(
+          buildExportArgs(req, { format: body.format, scope: body.scope, options: body.options })
+        );
+        // This route deliberately doesn't await the render — the job's own
+        // status (surfaced via GET /_api/export-jobs + the export:job WS
+        // push) is the completion signal. A render failure still needs a
+        // handler here or it's an unhandled rejection on every failed/timed-
+        // out background job (security fan-out finding, /flow:done) — the
+        // failure is already recorded on the job record, so this is a no-op.
+        result.catch(() => {});
+        return Response.json(
+          { jobId: id },
+          { status: 202, headers: { 'Cache-Control': 'no-store' } }
+        );
+      } catch (err) {
+        if (err instanceof ExportQueueFullError) {
+          return new Response(err.message, { status: 429 });
+        }
+        throw err;
+      }
+    },
+
+    '/_api/export-jobs/download': async (req: Request) => {
+      // MAIN-ORIGIN ONLY, same boundary as /_api/export-jobs above.
+      // loopback-Host gated (read-only — no sameOriginWrite needed — but an
+      // unguessable job-scoped UUID plus this guard closes the DNS-rebinding
+      // angle the /flow:done security fan-out checked for).
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const id = new URL(req.url).searchParams.get('id');
+      if (!id) return new Response('id query param required', { status: 400 });
+      const dl = await exportJobs.getBytes(id);
+      if (!dl.ok) {
+        return new Response(dl.reason === 'not-done' ? 'job not finished' : 'Not found', {
+          status: dl.reason === 'not-done' ? 409 : 404,
+        });
+      }
+      return new Response(dl.bytes as unknown as BodyInit, {
+        status: 200,
+        headers: {
+          'Content-Type': dl.contentType,
+          'Content-Disposition': `attachment; filename="${dl.filename}"`,
+          'Cache-Control': 'no-store',
+        },
+      });
     },
 
     '/_canvas-state': async (req: Request) => {

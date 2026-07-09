@@ -1,5 +1,0 @@
-.space-row{display:grid;grid-template-columns:120px 64px 1fr 1fr;gap:var(--space-4);align-items:center;padding:var(--space-3) 0;border-bottom:1px solid var(--border-subtle);}
-  .space-row .label{font-family:var(--font-mono);font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase;color:var(--fg-2);}
-  .space-row .px{font-family:var(--font-mono);font-size:var(--type-sm);color:var(--fg-1);text-align:right;}
-  .space-row .bar{height:14px;background:var(--accent);}
-  .space-row .use{font-size:var(--type-sm);color:var(--fg-1);}

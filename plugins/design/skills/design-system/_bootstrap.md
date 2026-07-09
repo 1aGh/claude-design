@@ -629,7 +629,9 @@ This pattern overrides the `--accent*` family per-tenant — compatible with any
 
 **Default:** skip this section unless the discovery brief explicitly mentions "per-team", "per-tenant", or "multi-brand". Most DSes don't need it.
 
-**3. `[data-theme="dark|light"]` parameterization.** Always emit at least `[data-theme="dark"]` (or `[data-theme="light"]`, whichever is the default). When `config.json.themeDefault == "both"`, emit both blocks with identical token shapes but different surface/text values. The completeness-critic V18 enforces this.
+**3. `[data-theme="dark|light"]` parameterization.** Always emit at least `[data-theme="dark"]` (or `[data-theme="light"]`, whichever is the default). When Q4 (theme default) answers `both equal`, emit BOTH blocks — and **every** canonical family token declared in one block MUST be redeclared with a value in the other: `--bg-0` … `--bg-4`, `--fg-0` … `--fg-3`, `--border-subtle` / `--border-default` / `--border-strong`, plus (when active) `--accent*`, `--status-*`, `--presence-*` families. "Identical token shapes, different values" means the FULL family list above, not just a couple of named surface/text aliases — a token that exists in the default block but is silently absent from the alternate one **inherits the default block's value everywhere** (CSS cascade from the bare `:root` rule), which reads as correct in the default theme and near-invisible/wrong-contrast in the other (the exact studyfi-v3 `--fg-0` incident, 2026-07-08 — see `.ai/logs/rca/` theme regression writeup). Per V18b, scope at least one block to `.<rootClass>[data-theme="…"]` (not `:root`-only) so per-artboard theme switching works.
+>
+> **Persist the decision structurally — never only in prose.** Write `designSystems[<ds>].themes` in `config.json` from the raw Q4 answer: `both equal` → `["<default>", "<other>"]` (default theme first); `dark`/`light` → the single-element array. `themeDefault` alone can NEVER encode "both" (its schema enum is `dark|light` only) — `themes[]` is the one durable, machine-checkable signal every downstream consumer (completeness-critic V18/V18c, `/design:new` step 9's per-theme reality-check capture) reads. A DS description that says "both themes co-equal" in prose but omits the structured `themes` array is exactly the gap that let this regress silently — don't repeat it.
 
 ### Pre-scaffold — real-asset sweep + claim scan + emit `_scaffold-roster.yaml`
 
@@ -1091,7 +1093,7 @@ Both flatten into `system/<ds>/preview/` at scaffold time. **Never scaffold a pl
 
 Typical output: 18–30 scaffolded files (10 core + 8 foundations + 6 universal + 5–6 audience + 2–4 platform/ui_kit + 0–3 conditional family). See `_MAPPING.md` "Typical scaffold sizes" for per-profile counts.
 
-Write `<designRoot>/config.json` with `extensions: []`, `completenessProfile: "standard"`, computed `activeFamilies[]`, and the new DS entry in `designSystems[]`.
+Write `<designRoot>/config.json` with `extensions: []`, `completenessProfile: "standard"`, computed `activeFamilies[]`, and the new DS entry in `designSystems[]`. **The new DS entry's `themes[]` field is mandatory, never omitted** — derive it from the raw Q4 answer (`dark` → `["dark"]`; `light` → `["light"]`; `both equal` → `["dark","light"]` or `["light","dark"]`, default theme first). This is the only durable dual-theme signal downstream tooling reads (see "Namespace + parameterization patterns" § 3 above) — a re-bootstrap that changes Q4's answer MUST rewrite this array too, not just the free-text `description`.
 
 Write `<designRoot>/system/<ds>/SKILL.md` with `name: ${ds}-design` (or similar slug derived from the project label).
 

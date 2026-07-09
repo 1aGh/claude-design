@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/1aGh/maude/main/apps/studio/config.schema.json",
   "name": "maude",
   "designRoot": ".design",
-  "rootClass": "mdcc",
+  "rootClass": "maude",
   "canvasGroups": [
     {
       "label": "Design system",
@@ -21,20 +21,6 @@
     "mono"
   ],
   "designSystems": [
-    {
-      "name": "project",
-      "path": "system/project",
-      "description": "MDCC-DSN/01 — industrial-catalogue mood, Paper & Ink palette + amber-rust accent, Berkeley-forward mono everywhere, hard-edges (1px hairlines + SKU framing), htmx-grain voice over a U.S. Graphics catalog spine. Two-theme (paper-light + phosphor-dark equal-status).",
-      "tokensCssRel": "system/project/colors_and_type.css",
-      "rootClass": "mdcc",
-      "themeDefault": "light",
-      "themes": [
-        "light",
-        "dark"
-      ],
-      "newCanvasDir": "ui",
-      "newComponentDir": "system/project/preview"
-    },
     {
       "name": "maude",
       "path": "system/maude",

@@ -15,7 +15,8 @@ You are the orchestrator for local design-iteration. The mental model: **the pro
 |---|---|
 | `designRoot` | Repo-relative root for all canvas/system files. Default `.design`. |
 | `rootClass` | Body CSS class (e.g. `dugmate`, `app`). All canvases must keep `<body class="<rootClass>" …>` or whatever the project uses. |
-| `themeDefault` | Default `data-theme` value (`dark` or `light`). |
+| `themeDefault` | Default `data-theme` value (`dark` or `light`) — a single theme name, never `"both"`. |
+| `designSystems[].themes` | Authoritative list of themes that DS's tokens CSS ships (e.g. `["dark","light"]`). This — not `themeDefault` — is what to check for "does this DS require both themes". |
 | `tokensCssRel` | Path to design system CSS (relative to `designRoot`). Every canvas links it. |
 | `teamAccentDefault` | Optional default `data-team` value (or `null` if the project doesn't use team accents). |
 | `handoffTargets[]` | Where `/design:handoff` can migrate canvases. |
@@ -266,6 +267,8 @@ maude design screenshot \
 The helper queries `[data-dc-screen],[data-dc-slot]` in the live DOM, scrolls each artboard into view (defeats `DesignCanvas` pan/zoom lazy-mount), and writes `<NNN>-screen-<id>.png` per artboard. Output paths go to stdout (one per line), engine choice + per-screen status on stderr.
 
 **Why per-screen wins for canvases (retro 2026-05-09).** During the iOS Bikeshare Signup session, full-page snapshots showed only 1 of 6 artboards because DesignCanvas pans/zooms its world independently of document scroll. `[data-dc-screen]` element screenshots captured all 6 cleanly. The `--all-screens` mode is the default for `/design:new`.
+
+**Dual-theme DSes need a second pass in the alternate theme (2026-07-08).** A default-theme-only capture cannot catch a token that's frozen at its `:root` value and never redeclared inside the alternate `[data-theme="…"]` block — it renders correctly in the theme you captured and near-invisible/wrong-contrast in the one you didn't (the studyfi-v3 `--fg-0` regression this note exists to prevent). When `config.json`'s `designSystems[<ds>].themes` declares more than one theme, `/design:new` step 9 runs the `--all-screens` capture a second time with `--theme <alternate>` (forces every `[data-theme]` element to that value via a DOM eval, into its own `_history/<slug>/theme-<name>/` subdir) and reads BOTH sets before considering the canvas visually confirmed. `themeDefault` alone can never signal this — its schema enum is `dark|light` only, never `"both"`. See `/design:new` step 9 for the full capture + failure-handling contract.
 
 Failure handling:
 - Helper returns exit code 3 → capture failed (empty PNG, selector miss, or engine error). Surface stderr to the user — don't pretend the baseline exists.

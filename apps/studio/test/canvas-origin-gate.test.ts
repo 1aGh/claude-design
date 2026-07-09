@@ -63,6 +63,12 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_config',
         '/_sync-status',
         '/_api/export',
+        // feature-background-export-notification-center — the background job
+        // routes carry the same privileged data class as /_api/export (job
+        // status, progress, and eventually the rendered bytes); absent from
+        // CANVAS_SAFE_API + startCanvasServer's routes (dual-allowlist).
+        '/_api/export-jobs',
+        '/_api/export-jobs/download',
         '/_api/canvas',
         '/_api/edit-css',
         '/_api/edit-text',
