@@ -301,6 +301,10 @@ export async function uploadAndAnnounceMedia(
   showCanvasToast(`Added ${res.path}${warn} — snippet copied: ${snippet}`);
 }
 
+/** World-px stagger between cascaded drop targets so a batch Finder drop
+ * doesn't stack every clip on the exact same point. */
+const BATCH_DROP_CASCADE_PX = 28;
+
 export function useCanvasMediaDrop(opts: {
   enabled: boolean;
   screenToWorld: (cx: number, cy: number) => [number, number];
@@ -339,7 +343,40 @@ export function useCanvasMediaDrop(opts: {
     const onDrop = (e: DragEvent) => {
       body.classList.remove('dc-media-dragover');
       if (!e.dataTransfer) return;
-      const intent = classifyMediaPayload(payloadFromTransfer(e.dataTransfer));
+      const payload = payloadFromTransfer(e.dataTransfer);
+      // A multi-file Finder drop (select N clips → drag) previously fell through
+      // classifyMediaPayload's single-intent contract (designed for the
+      // drop-carries-both-a-file-and-a-uri-list case) and silently dropped every
+      // file past the first — forcing users to drop one at a time. Batch-dispatch
+      // every image/video/audio file here; classifyMediaPayload still owns the
+      // single-item path (including link/URL drops, which have no "files" list).
+      const mediaFiles = payload.files.filter(
+        (f) =>
+          typeof f.type === 'string' &&
+          (f.type.startsWith('image/') ||
+            f.type.startsWith('video/') ||
+            f.type.startsWith('audio/'))
+      );
+      if (mediaFiles.length > 1) {
+        e.preventDefault();
+        const [ox, oy] = screenToWorld(e.clientX, e.clientY);
+        mediaFiles.forEach((file, i) => {
+          const world: [number, number] = [
+            ox + i * BATCH_DROP_CASCADE_PX,
+            oy + i * BATCH_DROP_CASCADE_PX,
+          ];
+          const intent: MediaIntent = file.type.startsWith('image/')
+            ? { kind: 'image', file }
+            : {
+                kind: 'media',
+                file,
+                mediaKind: file.type.startsWith('video/') ? 'video' : 'audio',
+              };
+          dispatchIntent(intent, world);
+        });
+        return;
+      }
+      const intent = classifyMediaPayload(payload);
       if (!intent) return; // not media — leave the event for other handlers
       e.preventDefault();
       const world = screenToWorld(e.clientX, e.clientY);

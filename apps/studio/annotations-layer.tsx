@@ -3036,6 +3036,10 @@ function AnnotationsSvg({
   // A sticky whose body is being edited hides its read-only text so the
   // editor textarea (rendered below at the same bbox) isn't double-painted.
   const editingStickyId = editingTarget?.kind === 'sticky' ? editingTarget.sticky.id : null;
+  // Same double-paint issue for a section being renamed — its label chip must
+  // hide while the StandaloneTextEditor sits at the same spot, else the old
+  // label reads through behind the new text.
+  const editingSectionId = editingTarget?.kind === 'section' ? editingTarget.section.id : null;
   const anchoredExisting =
     editingTarget?.kind === 'anchored'
       ? (strokes.find((s) => s.tool === 'text' && s.anchorId === editingTarget.anchorId) as
@@ -3056,7 +3060,7 @@ function AnnotationsSvg({
           stroke={s}
           anchorsById={anchorsById}
           interactive={selectMode}
-          editing={s.id === editingStickyId}
+          editing={s.id === editingStickyId || s.id === editingSectionId}
         />
       ))}
       {selectedStrokes.map((s) => (
@@ -4166,6 +4170,56 @@ function GhostPreview({ ghost }: { ghost: GhostDescriptor }) {
  * Pointer events pass through the group, so hit-testing + the ctx-toolbar's
  * getBoundingClientRect positioning keep working on the rotated form.
  */
+/** Section title chip — deliberately screen-size-constant. The body/border
+ * scale with the world like everything else, but a title that shrinks to
+ * unreadable at zoom-out defeats the point of a label (matches the `r={5/zoom}`
+ * counter-scale convention used for halos/connector-dots elsewhere in this file). */
+function SectionLabelChip({
+  stroke,
+  x,
+  y,
+  hitMode,
+}: {
+  stroke: SectionStroke;
+  x: number;
+  y: number;
+  hitMode: 'visiblePainted' | 'none';
+}) {
+  const controller = useViewportControllerContext();
+  const zoom = controller?.viewport?.zoom || 1;
+  const fontSize = SECTION_LABEL_FONT / zoom;
+  const chipH = SECTION_LABEL_H / zoom;
+  const gap = 4 / zoom;
+  const padX = 9 / zoom;
+  const chipW = Math.max(56 / zoom, stroke.label.length * fontSize * 0.62 + 18 / zoom);
+  return (
+    <g pointerEvents={hitMode}>
+      <rect
+        x={x}
+        y={y - chipH - gap}
+        width={chipW}
+        height={chipH}
+        rx={5 / zoom}
+        ry={5 / zoom}
+        fill={stroke.color}
+        fillOpacity={0.16}
+      />
+      <text
+        x={x + padX}
+        y={y - chipH / 2 - gap}
+        dominantBaseline="middle"
+        fontSize={fontSize}
+        fill={stroke.color}
+        style={{
+          fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+        }}
+      >
+        {stroke.label}
+      </text>
+    </g>
+  );
+}
+
 function StrokeNode(props: {
   stroke: Stroke;
   anchorsById: Map<string, AnchorHost>;
@@ -4482,7 +4536,6 @@ function StrokeNodeBase({
     const y = Math.min(stroke.y, stroke.y + stroke.h);
     const w = Math.abs(stroke.w);
     const h = Math.abs(stroke.h);
-    const chipW = Math.max(56, stroke.label.length * SECTION_LABEL_FONT * 0.62 + 18);
     return (
       <g data-id={stroke.id} data-tool="section">
         {/* Region body — pure backdrop, CLICK-THROUGH (FigJam: content on a
@@ -4518,31 +4571,10 @@ function StrokeNodeBase({
             pointerEvents="stroke"
           />
         ) : null}
-        {/* Label chip above the top-left corner — also a grab handle. */}
-        <g pointerEvents={hitMode}>
-          <rect
-            x={x}
-            y={y - SECTION_LABEL_H - 4}
-            width={chipW}
-            height={SECTION_LABEL_H}
-            rx={5}
-            ry={5}
-            fill={stroke.color}
-            fillOpacity={0.16}
-          />
-          <text
-            x={x + 9}
-            y={y - SECTION_LABEL_H / 2 - 4}
-            dominantBaseline="middle"
-            fontSize={SECTION_LABEL_FONT}
-            fill={stroke.color}
-            style={{
-              fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
-            }}
-          >
-            {stroke.label}
-          </text>
-        </g>
+        {/* Label chip above the top-left corner — also a grab handle. Hidden
+            while the rename editor (StandaloneTextEditor) is up at the same
+            spot, else the old label reads through behind the new text. */}
+        {editing ? null : <SectionLabelChip stroke={stroke} x={x} y={y} hitMode={hitMode} />}
       </g>
     );
   }
