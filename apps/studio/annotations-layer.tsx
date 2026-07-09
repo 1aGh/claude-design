@@ -2045,15 +2045,22 @@ export function AnnotationsLayer() {
       const stroke = strokesRef.current.find((s) => s.id === id);
       if (stroke && outermostGroupOf(stroke) && annotSel) {
         e.preventDefault();
+        e.stopPropagation();
         annotSel.replace(id);
       }
       if (t === 'rect' || t === 'ellipse' || t === 'polygon' || t === 'sticky' || t === 'section') {
+        // A double-click we've claimed for editing must not also reach the
+        // canvas-shell dblclick-empty→fit() handler (bubble phase, below us) —
+        // without this it fired right after, so renaming a section or editing
+        // a shape's text jumped the viewport to fit().
         e.preventDefault();
+        e.stopPropagation();
         setEditingId(id);
         return;
       }
       if (t === 'text' && !node.getAttribute('data-anchor-id')) {
         e.preventDefault();
+        e.stopPropagation();
         setEditingId(id);
       }
     };
@@ -3228,6 +3235,7 @@ function AnnotationsSvg({
           fontSize={SECTION_LABEL_FONT}
           color={editingTarget.section.color}
           initialText={editingTarget.section.label}
+          singleLine
           onCommit={onCommitEdit}
           onCancel={onCancelEdit}
         />
@@ -3578,6 +3586,7 @@ function StandaloneTextEditor({
   underline,
   align,
   listType,
+  singleLine,
   onCommit,
   onCancel,
 }: {
@@ -3592,6 +3601,9 @@ function StandaloneTextEditor({
   underline?: boolean;
   align?: TextAlign;
   listType?: ListType;
+  /** A one-line field (e.g. a section title rename) — plain Enter commits
+   * instead of inserting a newline, matching a native text-input's Enter. */
+  singleLine?: boolean;
   onCommit: (text: string, fmt?: EditorFmt) => void;
   onCancel: () => void;
 }) {
@@ -3691,8 +3703,10 @@ function StandaloneTextEditor({
             onCancel();
             return;
           }
-          // Cmd/Ctrl+Enter commits; plain Enter inserts a newline (item 4a).
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+          // Cmd/Ctrl+Enter commits; plain Enter inserts a newline (item 4a) —
+          // EXCEPT a singleLine field (section rename), where plain Enter
+          // commits too, matching a native text-input's Enter-to-confirm.
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || singleLine)) {
             e.preventDefault();
             commitOnce(ref.current?.innerText || '');
           }
