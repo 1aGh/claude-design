@@ -93,6 +93,49 @@ const HISTORY_DEPTH = 20;
 const MAX_JOB_AGE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_JOB_TIMEOUT_MS = 5 * 60 * 1000;
 
+// Video/animation exports run a per-frame capture loop, so they legitimately
+// take far longer than the 5-min default that's fine for image exports. The
+// fast one-pass renderMediaOnWeb path is quick, but a comp that can't use it —
+// e.g. it overflows @remotion/web-renderer's recursive precompositing (RCA
+// issue-video-mp4-rendermediaonweb-stack-overflow) — degrades to frame-step
+// screenshots at ~1.5–2 s/frame (2× scale). A 900-frame comp then runs 20–30
+// min, so the image default would abort it mid-render (the "Target page closed
+// at frame ~180/900" failure). Size the budget to the WORK — a generous
+// per-frame estimate × the frame count — clamped to [5 min, 60 min]. The lower
+// bound is deliberately the same 5 min as image exports (not a flat 30 min): a
+// tiny clip that WEDGES shouldn't hold a scarce render slot for half an hour,
+// and a security review flagged that a hostile comp which reliably overflows
+// the renderer could otherwise turn a fast-fail into a long slot occupation.
+// The upper bound is a runaway backstop. MAUDE_EXPORT_VIDEO_TIMEOUT_MS overrides
+// end-to-end for renders bigger than the ceiling (e.g. if MAX_FRAMES is raised)
+// — it DELIBERATELY bypasses the 60-min cap, since removing the backstop is the
+// whole point of an operator escape hatch (trusted env, not attacker-reachable).
+const VIDEO_FORMATS = new Set(['mp4', 'webm', 'gif']);
+const VIDEO_TIMEOUT_MIN_MS = 5 * 60 * 1000; // 5 min — same baseline as image exports
+const VIDEO_TIMEOUT_CEIL_MS = 60 * 60 * 1000; // 60 min hard ceiling (runaway backstop)
+const VIDEO_PER_FRAME_BUDGET_MS = 2500; // ~2.5 s/frame — covers the slow frame-step path up to 3× scale
+const VIDEO_SETUP_BUDGET_MS = 60 * 1000; // boot + goto + renderMediaOnWeb attempt before fallback
+
+/** Wall-clock render budget for a job — sized to the frame count for video, 5 min otherwise. */
+function jobTimeoutMs(args: EnqueueArgs): number {
+  if (!VIDEO_FORMATS.has(args.format)) return DEFAULT_JOB_TIMEOUT_MS;
+  // Operator escape hatch — intentionally uncapped (see note above).
+  const envOverride = Number(process.env.MAUDE_EXPORT_VIDEO_TIMEOUT_MS);
+  if (Number.isFinite(envOverride) && envOverride > 0) return envOverride;
+  const o = args.options ?? {};
+  const fps = Number(o.fps) || 30;
+  const explicitFrames = Number(o.frames);
+  const durationMs = Number(o.durationMs);
+  const frames =
+    Number.isFinite(explicitFrames) && explicitFrames > 0
+      ? explicitFrames
+      : Number.isFinite(durationMs) && durationMs > 0
+        ? Math.round((durationMs / 1000) * fps)
+        : 900; // no duration hint → assume the frame cap (worst case)
+  const est = VIDEO_SETUP_BUDGET_MS + frames * VIDEO_PER_FRAME_BUDGET_MS;
+  return Math.min(VIDEO_TIMEOUT_CEIL_MS, Math.max(VIDEO_TIMEOUT_MIN_MS, est));
+}
+
 /**
  * Security fan-out finding (defender, /flow:done) — MEDIUM: `enqueue()` had
  * no cap on queued/running jobs, so a flood of `POST /_api/export-jobs`
@@ -258,11 +301,10 @@ export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQue
       const release = await semaphore.acquire();
       // Started here, not at enqueue — the timeout bounds RENDER time (the
       // intent), not queue-wait time. A job can legitimately sit `queued`
-      // behind MAUDE_EXPORT_MAX_CONCURRENT other jobs for longer than
-      // DEFAULT_JOB_TIMEOUT_MS; arming the timer before the semaphore
-      // resolves would abort it before it ever ran (code-review finding,
-      // /flow:done).
-      const timer = setTimeout(() => controller.abort(), DEFAULT_JOB_TIMEOUT_MS);
+      // behind MAUDE_EXPORT_MAX_CONCURRENT other jobs for longer than its
+      // render budget; arming the timer before the semaphore resolves would
+      // abort it before it ever ran (code-review finding, /flow:done).
+      const timer = setTimeout(() => controller.abort(), jobTimeoutMs(args));
       try {
         job.status = 'running';
         job.startedAt = new Date().toISOString();

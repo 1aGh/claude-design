@@ -8,7 +8,12 @@
 // (DOM containment resolution) and the `__maude_render_video__` bridge's
 // routing contract — it must merge the registered comp's component/meta with
 // the caller's opts and delegate to the injected `__maudeRenderVideo__`, and
-// fail clearly when either the comp or the render-lib injection is missing.
+// fail clearly when either the comp or the render-lib injection is missing, and
+// PROPAGATE a renderer failure as a rejection (the contract the capture shim's
+// try/catch relies on to fall back to frame-step screenshots — RCA
+// issue-video-mp4-rendermediaonweb-stack-overflow). The shim-level fallback
+// itself (renderMediaOnWeb throws → frame-step, video-only, degraded=true) is
+// verified live against a deep-precompositing comp — see that RCA's repro.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
@@ -144,6 +149,23 @@ describe('__maude_render_video__ bridge', () => {
     // skipped addScriptTag — e.g. gif/ordinary-artboard export never injects it).
     await expect(w.__maude_render_video__?.('reel', { container: 'mp4' })).rejects.toThrow(
       /render-lib bundle not injected/i
+    );
+  });
+
+  test('propagates a renderer failure (e.g. stack overflow) as a rejection the shim can catch', async () => {
+    // The capture shim (_video-playwright.mjs) wraps the __maude_render_video__
+    // page.evaluate in try/catch and degrades to frame-step screenshots when it
+    // rejects. That only works if the bridge surfaces __maudeRenderVideo__'s
+    // throw as a rejection rather than swallowing it — the exact failure mode
+    // of the RCA (@remotion/web-renderer overflowing on deep precompositing).
+    const w = window as unknown as RenderWindow;
+    installMaudeSeekBridge();
+    registerComp('reel', { fps: 30, durationInFrames: 228, width: 960, height: 540 }, () => null);
+    w.__maudeRenderVideo__ = async () => {
+      throw new RangeError('Maximum call stack size exceeded');
+    };
+    await expect(w.__maude_render_video__?.('reel', { container: 'mp4' })).rejects.toThrow(
+      /Maximum call stack size exceeded/
     );
   });
 });

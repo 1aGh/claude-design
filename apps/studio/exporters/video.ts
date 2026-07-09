@@ -129,12 +129,28 @@ async function runVideo(
     });
     const body = new Uint8Array(readFileSync(outPath));
     // The container can differ from the request (mp4 → webm fallback when the
-    // browser has no H.264 encoder). Read the summary line for the real ext.
+    // browser has no H.264 encoder). Read the summary line for the real ext, and
+    // for the degradation marker the shim sets when it had to fall back from the
+    // renderMediaOnWeb audio path to frame-step screenshots (RCA
+    // issue-video-mp4-rendermediaonweb-stack-overflow) — surfaced here so the
+    // dropped audio isn't silent (job stderr / logs; a UI toast is a follow-up).
     let ext: string = format;
     try {
       const lastLine = stdoutLines.at(-1) ?? '{}';
-      const summary = JSON.parse(lastLine) as { container?: string };
+      const summary = JSON.parse(lastLine) as {
+        container?: string;
+        degraded?: boolean;
+        audioDropped?: boolean;
+        fallbackReason?: string;
+      };
       if (summary.container) ext = summary.container;
+      if (summary.degraded) {
+        console.error(
+          `⚠ ${format} export degraded: the audio renderer failed ` +
+            `(${summary.fallbackReason ?? 'unknown'}), so this file was captured ` +
+            'frame-by-frame and has no audio.'
+        );
+      }
     } catch {
       /* keep the requested ext */
     }

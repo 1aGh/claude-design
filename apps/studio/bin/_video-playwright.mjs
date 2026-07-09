@@ -126,84 +126,132 @@ try {
   // — both fall through to the frame-step path below.
   const useRenderer = !!renderLib && format !== 'gif' && !!compId;
 
+  // When the whole-comp renderer path throws we DON'T fail the export. The most
+  // common cause is a `RangeError: Maximum call stack size exceeded` from
+  // @remotion/web-renderer's guardless recursive DOM precompositing on a
+  // deeply-nested comp (RCA issue-video-mp4-rendermediaonweb-stack-overflow):
+  // one native recursion level per nested opacity/transform/filter/mask layer,
+  // no depth cap. Instead we degrade to the frame-step screenshot + mediabunny
+  // path below, which goes through Chromium's native compositor and is immune to
+  // that recursion. The one cost is audio — the frame-step path is video-only —
+  // so a comp that overflows the audio renderer still exports, just muted. That
+  // beats a hard failure with no file. `video.ts` always passes --encode-lib
+  // (only --render-lib is conditional), so the fallback has all it needs here.
+  let renderFallbackReason = null;
+
   if (useRenderer) {
-    const t0 = Date.now();
-    const libSrc = readFileSync(renderLib, 'utf8');
-    await page.addScriptTag({ content: libSrc, type: 'module' });
-    await page.waitForFunction(() => typeof window.__maudeRenderVideo__ === 'function', {
-      timeout: timeoutMs,
-    });
+    try {
+      const t0 = Date.now();
+      const libSrc = readFileSync(renderLib, 'utf8');
+      await page.addScriptTag({ content: libSrc, type: 'module' });
+      await page.waitForFunction(() => typeof window.__maudeRenderVideo__ === 'function', {
+        timeout: timeoutMs,
+      });
 
-    const explicitFrames = Number(framesArg);
-    const frameRange =
-      Number.isFinite(explicitFrames) && explicitFrames > 0 ? [0, explicitFrames - 1] : null;
+      const explicitFrames = Number(framesArg);
+      const frameRange =
+        Number.isFinite(explicitFrames) && explicitFrames > 0 ? [0, explicitFrames - 1] : null;
 
-    const rendered = await page.evaluate(
-      async ({ compId, container, scale, muted, frameRange, licenseKey }) => {
-        return window.__maude_render_video__(compId, {
-          container,
-          scale,
-          muted,
+      const rendered = await page.evaluate(
+        async ({ compId, container, scale, muted, frameRange, licenseKey }) => {
+          return window.__maude_render_video__(compId, {
+            container,
+            scale,
+            muted,
+            frameRange,
+            licenseKey,
+          });
+        },
+        {
+          compId,
+          container: format,
+          scale: deviceScaleFactor,
+          muted: !wantAudio,
           frameRange,
           licenseKey,
-        });
-      },
-      {
+        }
+      );
+
+      writeFileSync(out, Buffer.from(rendered.b64, 'base64'));
+
+      // Comp meta for the summary (diagnostic only — video.ts reads `container`).
+      const compMeta = await page.evaluate(
+        (id) =>
+          (typeof window.__maude_comps__ === 'function' ? window.__maude_comps__() : []).find(
+            (c) => c.id === id
+          ) ?? null,
+        compId
+      );
+      const frameCount = frameRange
+        ? frameRange[1] - frameRange[0] + 1
+        : (compMeta?.durationInFrames ?? 0);
+
+      const result = {
+        fps: compMeta?.fps ?? null,
+        frameCount,
+        width: Math.round((compMeta?.width ?? 0) * deviceScaleFactor),
+        height: Math.round((compMeta?.height ?? 0) * deviceScaleFactor),
+        out,
+        bytes: rendered.bytes,
+        container: rendered.container,
+        codec: rendered.videoCodec,
+        audioCodec: rendered.audioCodec,
+      };
+      const ms = Date.now() - t0;
+      console.error(
+        `✓ rendered ${rendered.container}/${rendered.videoCodec}` +
+          `${rendered.audioCodec ? `+${rendered.audioCodec}` : ' (muted)'} → ${out} (${rendered.bytes} B) in ${ms}ms`
+      );
+      console.log(JSON.stringify(result));
+    } catch (err) {
+      // Collapse newlines — the message carries an in-page (untrusted canvas,
+      // DDR-054) error + stack, and it flows to console.error / the job's
+      // persisted error, so a forged "\n[FATAL] …" line can't be injected into
+      // the dev-server's stderr or the history ledger.
+      renderFallbackReason = oneLine(err instanceof Error ? err.message : String(err));
+      console.error(
+        `⚠ renderMediaOnWeb failed (${renderFallbackReason}); falling back to ` +
+          'frame-step screenshot capture — video will export WITHOUT audio'
+      );
+    }
+  }
+
+  // Frame-step path: the normal route for gif / ordinary / comp-less artboards
+  // (useRenderer === false), AND the graceful-degradation fallback when the
+  // renderer above threw (renderFallbackReason !== null).
+  if (!useRenderer || renderFallbackReason !== null) {
+    try {
+      await frameStepCapture({
+        page,
+        handle,
         compId,
-        container: format,
-        scale: deviceScaleFactor,
-        muted: !wantAudio,
-        frameRange,
-        licenseKey,
+        fpsArg,
+        framesArg,
+        dumpDir,
+        encodeLib,
+        format,
+        out,
+        mode,
+        deviceScaleFactor,
+        timeoutMs,
+        fallbackReason: renderFallbackReason,
+      });
+    } catch (fallbackErr) {
+      // If we only reached the frame-step path because the renderer already
+      // failed, surface BOTH failures so a genuine bug isn't hidden behind the
+      // fallback's own error.
+      if (renderFallbackReason !== null) {
+        const fb = oneLine(
+          fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
+        );
+        throw new Error(
+          `video export failed on both paths — renderMediaOnWeb: ${renderFallbackReason}; ` +
+            `frame-step fallback: ${fb}`,
+          { cause: fallbackErr }
+        );
       }
-    );
-
-    writeFileSync(out, Buffer.from(rendered.b64, 'base64'));
-
-    // Comp meta for the summary (diagnostic only — video.ts reads `container`).
-    const compMeta = await page.evaluate(
-      (id) =>
-        (typeof window.__maude_comps__ === 'function' ? window.__maude_comps__() : []).find(
-          (c) => c.id === id
-        ) ?? null,
-      compId
-    );
-    const frameCount = frameRange
-      ? frameRange[1] - frameRange[0] + 1
-      : (compMeta?.durationInFrames ?? 0);
-
-    const result = {
-      fps: compMeta?.fps ?? null,
-      frameCount,
-      width: Math.round((compMeta?.width ?? 0) * deviceScaleFactor),
-      height: Math.round((compMeta?.height ?? 0) * deviceScaleFactor),
-      out,
-      bytes: rendered.bytes,
-      container: rendered.container,
-      codec: rendered.videoCodec,
-      audioCodec: rendered.audioCodec,
-    };
-    const ms = Date.now() - t0;
-    console.error(
-      `✓ rendered ${rendered.container}/${rendered.videoCodec}` +
-        `${rendered.audioCodec ? `+${rendered.audioCodec}` : ' (muted)'} → ${out} (${rendered.bytes} B) in ${ms}ms`
-    );
-    console.log(JSON.stringify(result));
-  } else {
-    await frameStepCapture({
-      page,
-      handle,
-      compId,
-      fpsArg,
-      framesArg,
-      dumpDir,
-      encodeLib,
-      format,
-      out,
-      mode,
-      deviceScaleFactor,
-      timeoutMs,
-    });
+      throw fallbackErr;
+    }
   }
 } finally {
   await browser.close();
@@ -227,6 +275,10 @@ async function frameStepCapture({
   mode,
   deviceScaleFactor,
   timeoutMs,
+  // Set (to the renderer's error message) only when this run is the
+  // graceful-degradation fallback for a failed renderMediaOnWeb path; stamps
+  // `degraded`/`audioDropped` onto the stdout summary so video.ts can warn.
+  fallbackReason = null,
 }) {
   const rect0 = await handle.evaluate((el) => {
     const r = el.getBoundingClientRect();
@@ -356,6 +408,12 @@ async function frameStepCapture({
   }
 
   let result = { fps, frameCount, width: outW, height: outH, framePaths };
+  // Degradation marker — this run only encodes video (no audio), so when we're
+  // standing in for a failed audio renderer, tell the exporter the export is
+  // degraded and audio was dropped (RCA issue-video-mp4-rendermediaonweb-stack-overflow).
+  if (fallbackReason !== null) {
+    result = { ...result, degraded: true, audioDropped: true, fallbackReason };
+  }
   if (encoding) {
     const enc = await page.evaluate(
       async ({ isGif }) =>
@@ -449,4 +507,10 @@ async function seekFrame(page, frame, fps, mode) {
 /** Minimal CSS.escape for the data-dc-screen attribute selector. */
 function cssEscape(s) {
   return String(s).replace(/["\\\]]/g, '\\$&');
+}
+
+/** Collapse CR/LF runs to a single space — used to neutralize log/ledger
+ *  injection from untrusted in-page (canvas-origin, DDR-054) error text. */
+function oneLine(s) {
+  return String(s).replace(/[\r\n]+/g, ' ');
 }
