@@ -23,6 +23,7 @@ import {
   insertArtboard,
   insertClip,
   insertElement,
+  insertElementIntoArtboard,
   type MovePosition,
   moveElement,
   removeAttribute,
@@ -396,10 +397,16 @@ export interface Api {
   }): Promise<
     { ok: true; deletedId: string; seq?: number } | { ok: false; status: number; error: string }
   >;
-  /** Insert a synthesized div/text/image relative to a reference element. */
+  /**
+   * Insert a synthesized div/text/image relative to a reference element, OR —
+   * when the artboard has no element to anchor on yet — as a direct child of
+   * `artboardId` (the tool-palette "+ Element" empty-artboard fallback).
+   * Exactly one of `refId` / `artboardId` must be provided.
+   */
   insertElementOp(input: {
     canvas?: unknown;
     refId?: unknown;
+    artboardId?: unknown;
     position?: unknown;
     kind?: unknown;
     src?: unknown;
@@ -2365,10 +2372,12 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
-  /** Insert a synthesized element (div/text/image) relative to `refId`. */
+  /** Insert a synthesized element (div/text/image) relative to `refId`, or —
+   * empty-artboard fallback — as a direct child of `artboardId`. */
   async function insertElementOp(input: {
     canvas?: unknown;
     refId?: unknown;
+    artboardId?: unknown;
     position?: unknown;
     kind?: unknown;
     src?: unknown;
@@ -2379,13 +2388,29 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
     if (!takeStructuralToken()) return RATE_LIMITED;
-    const refId = typeof input.refId === 'string' ? input.refId.trim() : '';
-    if (!CD_ID_RE.test(refId)) {
+    const hasRefId = typeof input.refId === 'string' && input.refId.trim() !== '';
+    const hasArtboardId = typeof input.artboardId === 'string' && input.artboardId.trim() !== '';
+    if (hasRefId === hasArtboardId) {
+      return { ok: false, status: 400, error: 'provide exactly one of refId / artboardId' };
+    }
+    const refId = hasRefId ? (input.refId as string).trim() : '';
+    if (hasRefId && !CD_ID_RE.test(refId)) {
       return { ok: false, status: 400, error: 'invalid reference data-cd-id' };
+    }
+    const artboardId = hasArtboardId ? (input.artboardId as string).trim() : '';
+    if (hasArtboardId && !/^[A-Za-z][\w-]{0,63}$/.test(artboardId)) {
+      return { ok: false, status: 400, error: 'invalid artboard id' };
     }
     const position = input.position;
     if (typeof position !== 'string' || !MOVE_POSITIONS.has(position)) {
       return { ok: false, status: 400, error: 'invalid position' };
+    }
+    if (hasArtboardId && position !== 'inside-start' && position !== 'inside-end') {
+      return {
+        ok: false,
+        status: 400,
+        error: 'artboardId insert requires inside-start/inside-end',
+      };
     }
     const kind = input.kind;
     if (kind !== 'div' && kind !== 'text' && kind !== 'image') {
@@ -2401,10 +2426,18 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         ctx.bus.emit('activity:unsuppress', rel);
         return { ok: false, status: 413, error: 'canvas source too large to grow' };
       }
-      const res = await insertElement(r.abs, refId, position as MovePosition, kind as InsertKind, {
-        src,
-        occurrence: refIndex,
-      });
+      const res = hasArtboardId
+        ? await insertElementIntoArtboard(
+            r.abs,
+            artboardId,
+            position as 'inside-start' | 'inside-end',
+            kind as InsertKind,
+            { src }
+          )
+        : await insertElement(r.abs, refId, position as MovePosition, kind as InsertKind, {
+            src,
+            occurrence: refIndex,
+          });
       const after = await Bun.file(r.abs).text();
       if (after === before) {
         ctx.bus.emit('activity:unsuppress', rel);

@@ -1855,9 +1855,11 @@ export function createHttp(
     },
 
     '/_api/insert-element': async (req: Request) => {
-      // Stage I — insert a synthesized div/text/image relative to `refId`. POST
-      // { canvas, refId, position, kind, src?, refIndex? } → api.insertElementOp.
-      // Returns the new element's post-transpile id so the shell can select it.
+      // Stage I — insert a synthesized div/text/image relative to `refId`, OR —
+      // empty-artboard fallback — as a direct child of `artboardId` (exactly one
+      // of the two). POST { canvas, refId|artboardId, position, kind, src?,
+      // refIndex? } → api.insertElementOp. Returns the new element's
+      // post-transpile id so the shell can select it.
       // Whole-file undo seq. MAIN-ORIGIN ONLY (absent from both allowlists);
       // sameOriginWrite + loopback-Host gated. An `image` src is contained to
       // assets/ in the engine (no remote hotlink / ../ / scheme).
@@ -1869,6 +1871,7 @@ export function createHttp(
       const body = await readJson<{
         canvas?: unknown;
         refId?: unknown;
+        artboardId?: unknown;
         position?: unknown;
         kind?: unknown;
         src?: unknown;

@@ -2,7 +2,9 @@
 // "+ Element" affordance's anchor resolver: appends relative to the ACTIVE
 // artboard's last existing child (mirrors the context-menu's element-relative
 // insert, since an artboard's own `<article data-dc-screen>` carries no
-// `data-cd-id` of its own — DCArtboard doesn't forward it to the DOM).
+// `data-cd-id` of its own — DCArtboard doesn't forward it to the DOM), falling
+// back to the artboard's own `data-dc-screen` id (inside-end) when it has no
+// such child yet — the empty-artboard fix for the previously-silent no-op.
 //
 // Needs a live DOM (querySelector/:scope) — register happy-dom for this file
 // only, like canvas-hmr-runtime.test.tsx.
@@ -62,13 +64,13 @@ describe('tool-palette / resolveInsertAnchor', () => {
     expect(resolveInsertAnchor(document)).toEqual({ refId: '11111111', position: 'after' });
   });
 
-  test('returns null for an EMPTY artboard (no data-cd-id child to anchor on)', () => {
+  test('falls back to the artboard id (inside-end) for an EMPTY artboard — no longer a silent no-op', () => {
     document.body.innerHTML = `
       <article data-dc-screen="a1" aria-current="true">
         <div class="dc-artboard-body"></div>
       </article>
     `;
-    expect(resolveInsertAnchor(document)).toBeNull();
+    expect(resolveInsertAnchor(document)).toEqual({ artboardId: 'a1', position: 'inside-end' });
   });
 
   test('returns null when there is no artboard at all', () => {

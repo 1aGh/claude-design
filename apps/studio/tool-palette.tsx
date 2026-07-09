@@ -287,17 +287,22 @@ const SHAPE_KINDS: ReadonlyArray<{ kind: ShapeKind; label: string }> = [
  * when the user hasn't right-clicked a specific element). Growth-only: an
  * artboard's `<article data-dc-screen>` carries NO `data-cd-id` of its own
  * (`DCArtboard` doesn't forward it to the DOM — only its SOURCE JSX tag is
- * stamped, unresolvable from here), so `applyInsertElement`'s `refId` can't
- * target the artboard directly. Anchor on the artboard's LAST direct child
- * that DOES carry a `data-cd-id` and insert `position:'after'` it — the exact
- * relation the context-menu's element-relative insert already uses. Returns
- * `null` for an empty (or artboard-less) canvas — a documented v1 limit; the
- * per-element context-menu "Insert ▸ …" still works there once a first
- * element exists. `doc` is injectable for testing without a real iframe.
+ * stamped, unresolvable from here), so the primary anchor is the artboard's
+ * LAST direct child that DOES carry a `data-cd-id`, inserted `after` it — the
+ * exact relation the context-menu's element-relative insert already uses.
+ * When the artboard has NO such child yet (fresh/emptied artboard — the bug
+ * this fallback fixes, was previously a silent no-op), fall back to the
+ * artboard's own `data-dc-screen` id (its `DCArtboard id` prop verbatim) and
+ * insert `inside-end` of it directly — `applyInsertElementIntoArtboard`
+ * addresses the `<DCArtboard>` JSX node by that same id, mirroring
+ * `applyResizeArtboard`/`applyDeleteArtboard`. Returns `null` only when there
+ * is no artboard at all (or no `.dc-artboard-body` wrapper) — nothing to
+ * anchor on, artboard-less canvas. `doc` is injectable for testing without a
+ * real iframe.
  */
 export function resolveInsertAnchor(
   doc: Document = document
-): { refId: string; position: 'after' } | null {
+): { refId: string; position: 'after' } | { artboardId: string; position: 'inside-end' } | null {
   const current = doc.querySelector('[data-dc-screen][aria-current="true"]');
   const artboardEl = current ?? doc.querySelector('[data-dc-screen]');
   if (!artboardEl) return null;
@@ -306,7 +311,9 @@ export function resolveInsertAnchor(
   const kids = Array.from(body.children).reverse();
   const last = kids.find((el) => el.hasAttribute('data-cd-id'));
   const refId = last?.getAttribute('data-cd-id');
-  return refId ? { refId, position: 'after' } : null;
+  if (refId) return { refId, position: 'after' };
+  const artboardId = artboardEl.getAttribute('data-dc-screen');
+  return artboardId ? { artboardId, position: 'inside-end' } : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -349,25 +356,25 @@ export function ToolPalette() {
   }, [tool]);
 
   // Stage I3 tail — insert a Div/Text/Image relative to the active artboard's
-  // last existing element (`resolveInsertAnchor`). Same request verbs the
+  // last existing element, or — empty-artboard fallback — as a child of the
+  // artboard itself (`resolveInsertAnchor`). Same request verbs the
   // context-menu's per-element "Insert ▸ …" already posts (`insert-request` /
-  // `insert-image-request`, main-origin shell WRITES — DDR-054); a null anchor
-  // (empty/artboard-less canvas) is a silent no-op — a documented v1 limit.
+  // `insert-image-request`, main-origin shell WRITES — DDR-054), extended with
+  // an `artboardId` field for the fallback case; a null anchor (no artboard on
+  // canvas at all) is still a no-op — nothing to insert into.
   const insertViaPalette = (kind: 'div' | 'text' | 'image') => {
     setInsertOpen(false);
     const anchor = resolveInsertAnchor();
     if (!anchor) return;
+    const anchorFields =
+      'artboardId' in anchor
+        ? { artboardId: anchor.artboardId, position: anchor.position }
+        : { refId: anchor.refId, position: anchor.position };
     try {
       if (kind === 'image') {
-        window.parent.postMessage(
-          { dgn: 'insert-image-request', refId: anchor.refId, position: anchor.position },
-          '*'
-        );
+        window.parent.postMessage({ dgn: 'insert-image-request', ...anchorFields }, '*');
       } else {
-        window.parent.postMessage(
-          { dgn: 'insert-request', refId: anchor.refId, position: anchor.position, kind },
-          '*'
-        );
+        window.parent.postMessage({ dgn: 'insert-request', ...anchorFields, kind }, '*');
       }
     } catch {
       /* detached / cross-origin teardown */
@@ -513,6 +520,22 @@ export function ToolPalette() {
             </div>
           ) : null}
         </span>
+        <button
+          type="button"
+          aria-label="Stickers"
+          title="Stickers — searchable sticker picker"
+          onClick={() => {
+            try {
+              window.parent.postMessage({ dgn: 'open-sticker-picker' }, '*');
+            } catch {
+              /* detached / cross-origin teardown */
+            }
+          }}
+        >
+          <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>
+            🙂
+          </span>
+        </button>
         <button
           type="button"
           aria-label="Export (⌘E)"

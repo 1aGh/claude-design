@@ -8511,38 +8511,54 @@ function App() {
         const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
         if (e.source === activeWin && typeof m.id === 'string') pasteStyleRef.current?.(m.id);
       } else if (m.dgn === 'insert-request') {
-        // Stage I3 — insert a synthesized div/text/image relative to `refId`.
+        // Stage I3 — insert a synthesized div/text/image relative to `refId`,
+        // OR — empty-artboard fallback (tool-palette "+ Element" on a fresh
+        // artboard with no elements yet) — as a child of `artboardId`. Exactly
+        // one of the two must be present; the artboardId variant only makes
+        // sense inside-start/inside-end (no sibling to be before/after).
         const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        const hasRefId = typeof m.refId === 'string';
+        const hasArtboardId = typeof m.artboardId === 'string';
+        const okPosition =
+          m.position === 'before' ||
+          m.position === 'after' ||
+          m.position === 'inside-start' ||
+          m.position === 'inside-end';
         const okShape =
-          typeof m.refId === 'string' &&
+          hasRefId !== hasArtboardId &&
           (m.kind === 'div' || m.kind === 'text' || m.kind === 'image') &&
-          (m.position === 'before' ||
-            m.position === 'after' ||
-            m.position === 'inside-start' ||
-            m.position === 'inside-end');
+          okPosition &&
+          (!hasArtboardId || m.position === 'inside-start' || m.position === 'inside-end');
         if (e.source === activeWin && okShape) {
           insertElementShellRef.current?.(m.refId, m.position, m.kind, {
+            artboardId: hasArtboardId ? m.artboardId : undefined,
             src: typeof m.src === 'string' ? m.src : undefined,
             refIndex: Number.isInteger(m.refIndex) ? m.refIndex : undefined,
           });
         }
       } else if (m.dgn === 'insert-image-request') {
-        // Stage F/I3 — "Insert ▸ Image" from the canvas context menu. An image
-        // needs a contained asset src, so the shell opens the AssetPicker; the
-        // pick then drives insertElementShell(kind:'image'). Confused-deputy
-        // gated + pinned to the active canvas like the other request verbs.
+        // Stage F/I3 — "Insert ▸ Image" from the canvas context menu, or the
+        // tool-palette's empty-artboard fallback (`artboardId` in place of
+        // `refId`). An image needs a contained asset src, so the shell opens
+        // the AssetPicker; the pick then drives insertElementShell(kind:'image').
+        // Confused-deputy gated + pinned to the active canvas like the other
+        // request verbs.
         const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        const hasRefId = typeof m.refId === 'string';
+        const hasArtboardId = typeof m.artboardId === 'string';
         const okShape =
-          typeof m.refId === 'string' &&
+          hasRefId !== hasArtboardId &&
           (m.position === 'before' ||
             m.position === 'after' ||
             m.position === 'inside-start' ||
-            m.position === 'inside-end');
+            m.position === 'inside-end') &&
+          (!hasArtboardId || m.position === 'inside-start' || m.position === 'inside-end');
         if (e.source === activeWin && okShape) {
           openAssetPickerRef.current?.({
             purpose: 'insert-image',
             canvas: activePath,
             refId: m.refId,
+            artboardId: hasArtboardId ? m.artboardId : undefined,
             position: m.position,
             refIndex: Number.isInteger(m.refIndex) ? m.refIndex : undefined,
           });
@@ -9275,6 +9291,7 @@ function App() {
         '/_api/insert-element',
         {
           refId,
+          artboardId: typeof opts.artboardId === 'string' ? opts.artboardId : undefined,
           position,
           kind,
           src: typeof opts.src === 'string' ? opts.src : undefined,
@@ -9512,6 +9529,7 @@ function App() {
       }
       if (req.purpose === 'insert-image') {
         insertElementShell(req.refId, req.position || 'after', 'image', {
+          artboardId: req.artboardId,
           src: pickedPath,
           refIndex: req.refIndex,
         });

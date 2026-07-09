@@ -10,6 +10,7 @@ import {
   applyDeleteElement,
   applyInsertArtboard,
   applyInsertElement,
+  applyInsertElementIntoArtboard,
   applyResizeArtboard,
   CanvasEditError,
 } from '../canvas-edit.ts';
@@ -150,6 +151,51 @@ describe('canvas-edit / applyInsertElement', () => {
     const src = 'function Demo() { return <section><img src="assets/a.png" /></section>; }';
     const id = idsOf(src).img as string;
     expect(() => applyInsertElement(CANVAS, src, id, 'inside-end', 'div')).toThrow(CanvasEditError);
+  });
+});
+
+describe('canvas-edit / applyInsertElementIntoArtboard (empty-artboard fallback)', () => {
+  const emptyCanvas = [
+    'export default function Demo() {',
+    '  return (',
+    '    <DesignCanvas>',
+    '      <DCArtboard id="home" label="Home" width={1440} height={1024}>',
+    '      </DCArtboard>',
+    '    </DesignCanvas>',
+    '  );',
+    '}',
+  ].join('\n');
+
+  test("inserts a div as the artboard's only child (inside-end)", () => {
+    const out = applyInsertElementIntoArtboard(CANVAS, emptyCanvas, 'home', 'inside-end', 'div');
+    expect(out.source).toMatch(
+      /<DCArtboard id="home"[^>]*>[\s\S]*var\(--bg-2\)[\s\S]*<\/DCArtboard>/
+    );
+    expect(parses(out.source)).toBe(true);
+    expect(out.newId).toMatch(/^[0-9a-f]{8}$/);
+  });
+
+  test('inside-start lands the new element right after the opening tag', () => {
+    const out = applyInsertElementIntoArtboard(CANVAS, emptyCanvas, 'home', 'inside-start', 'text');
+    expect(out.source).toContain('<p style={{ margin: 0 }}>Text</p>');
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('image insert requires a contained asset src', () => {
+    expect(() =>
+      applyInsertElementIntoArtboard(CANVAS, emptyCanvas, 'home', 'inside-end', 'image')
+    ).toThrow(CanvasEditError);
+    const ok = applyInsertElementIntoArtboard(CANVAS, emptyCanvas, 'home', 'inside-end', 'image', {
+      src: 'assets/ab12cd34.png',
+    });
+    expect(ok.source).toContain('src="assets/ab12cd34.png"');
+    expect(parses(ok.source)).toBe(true);
+  });
+
+  test('unknown artboard id throws', () => {
+    expect(() =>
+      applyInsertElementIntoArtboard(CANVAS, emptyCanvas, 'nope', 'inside-end', 'div')
+    ).toThrow(CanvasEditError);
   });
 });
 

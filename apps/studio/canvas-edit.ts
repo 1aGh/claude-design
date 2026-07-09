@@ -2843,6 +2843,138 @@ export async function insertElement(
 }
 
 /**
+ * Insert a synthesized element as a child of the `<DCArtboard id="…">` itself —
+ * the empty-artboard fallback for the tool-palette "+ Element" affordance
+ * (Stage I3 tail addendum). `applyInsertElement` needs a sibling `data-cd-id`
+ * to anchor on; a freshly-scaffolded or fully-cleared artboard has none, so
+ * this variant anchors on the DCArtboard JSX node itself (addressed by its
+ * `id` PROP, same convention as `applyResizeArtboard`/`applyDeleteArtboard` —
+ * an artboard's rendered `<article data-dc-screen>` carries no `data-cd-id`).
+ * Only `inside-start`/`inside-end` make sense here (no sibling to be
+ * before/after). Pure; reparse-gated like `applyInsertElement`.
+ */
+export function applyInsertElementIntoArtboard(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string,
+  position: 'inside-start' | 'inside-end',
+  kind: InsertKind,
+  opts?: { src?: string }
+): { source: string; newId: string | null } {
+  if (kind === 'image') {
+    if (!opts?.src?.trim()) {
+      throw new CanvasEditError('insert image requires a contained asset src (assets/…)', {
+        canvas: canvasAbsPath,
+        id: artboardId,
+      });
+    }
+    assertContainedAssetSrc(opts.src, canvasAbsPath);
+  }
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  const artboards = collectJsxByTag(parsed.program, 'DCArtboard');
+  const target = artboards.find((a) => getStringAttr(a.openingElement, 'id') === artboardId);
+  if (!target) {
+    throw new CanvasEditError(`<DCArtboard id="${artboardId}"> not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id: artboardId,
+    });
+  }
+  if (target.openingElement?.selfClosing || !target.closingElement) {
+    throw new CanvasEditError(
+      `<DCArtboard id="${artboardId}"> is self-closing — cannot nest an element inside it`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+
+  const rStart = target.start as number;
+  const indentUnit = detectIndentUnit(source);
+  const newText = synthInsertElement(kind, opts?.src);
+  const targetIndent = lineStartInfo(source, rStart).indent + indentUnit;
+
+  let anchor: number;
+  let insertText: string;
+  if (position === 'inside-start') {
+    anchor = target.openingElement.end as number;
+    insertText = `\n${targetIndent}${newText}`;
+  } else {
+    const cStart = target.closingElement.start as number;
+    const cLine = lineStartInfo(source, cStart);
+    if (cLine.newlineBefore) {
+      anchor = cLine.indentStart - 1;
+      insertText = `\n${targetIndent}${newText}`;
+    } else {
+      anchor = cStart;
+      insertText = `${newText}`;
+    }
+  }
+
+  const s = new MagicString(source);
+  s.appendLeft(anchor, insertText);
+  const out = s.toString();
+  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (check.errors && check.errors.length > 0) {
+    throw new CanvasEditError(
+      `insert would produce invalid source (${check.errors[0]?.message ?? 'parse error'}); aborted`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  // Same post-insert id recomputation as applyInsertElement — single append,
+  // no removes, so the new element's `<` lands at this exact offset in `out`.
+  const prefixLen = insertText.indexOf(newText);
+  const elemStart = anchor + prefixLen;
+  let newId: string | null = null;
+  let fallback: string | null = null;
+  for (const { id: eid, node } of collectElements(check.program)) {
+    if ((node.start as number) === elemStart) {
+      newId = eid;
+      break;
+    }
+    if (out.slice(node.start as number, node.end as number) === newText) fallback = eid;
+  }
+  return { source: out, newId: newId ?? fallback };
+}
+
+/** Insert an element into an artboard by artboardId (no ref sibling) on disk. */
+export async function insertElementIntoArtboard(
+  canvasAbsPath: string,
+  artboardId: string,
+  position: 'inside-start' | 'inside-end',
+  kind: InsertKind,
+  opts?: { src?: string }
+): Promise<{ source: string; newId: string | null }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: artboardId,
+      });
+    }
+    const source = await file.text();
+    const next = applyInsertElementIntoArtboard(
+      canvasAbsPath,
+      source,
+      artboardId,
+      position,
+      kind,
+      opts
+    );
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
+/**
  * Duplicate the element with `data-cd-id === id` — insert a verbatim copy of its
  * source as the next sibling (Cmd+D, Task L3). Since the SOURCE carries no
  * data-cd-id (they're injected at transpile, not stored on disk), the clone gets
