@@ -47,7 +47,7 @@
     "themeDefault": {
       "type": "string",
       "enum": ["dark", "light"],
-      "description": "Default theme attribute (data-theme) for new canvases.",
+      "description": "Default theme attribute (data-theme) for new canvases. Can only ever be a single theme name — it is NOT the signal for whether a DS ships more than one theme. For that, check 'designSystems[].themes'.",
       "default": "dark"
     },
     "tokensCssRel": {
@@ -187,7 +187,7 @@
           "themes": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Optional list of theme names this DS supports (used by the System view's theme toggle when more than one theme is declared)."
+            "description": "Authoritative list of theme names this DS's tokens CSS actually ships (e.g. ['dark','light']). This is the ONLY field that should be checked to decide whether a DS is dual-theme — 'themeDefault' can never hold 'both' (enum is dark|light only), so a single-theme entry MUST still list its one theme (e.g. ['dark']), not omit the field. Bootstrap/re-bootstrap always populates this from the theme-default discovery answer. Drives the System view's theme toggle, design-system-completeness-critic V18/V18c, and /design:new step 9's per-theme reality-check capture."
           },
           "newCanvasDir": {
             "type": "string",

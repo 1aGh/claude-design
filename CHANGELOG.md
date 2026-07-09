@@ -1,5 +1,27 @@
 # @1agh/maude
 
+## 0.42.0
+
+### Minor Changes
+
+- 4ff5fd8: Exports now run in the background with live progress, instead of blocking the dialog until the render finishes.
+
+  - `POST /_api/export` still works exactly as before (byte-for-byte, no CLI changes needed) — it now just wraps a background job internally.
+  - A new menubar "Exports" button shows a running/queued count, a toast on start and completion (progress bar for multi-artboard `canvas-as-separate` exports, indeterminate spinner otherwise), and a panel listing every export with Download/Save actions. Both dialogs (menubar + in-canvas) close immediately on submit.
+  - Multiple exports can run concurrently (default cap 2) — a quick PNG no longer has to wait behind a slow PDF/video render.
+
+  Also fixes a real correctness bug: `canvas-as-separate` (multi-artboard) exports in PNG/PDF/SVG/HTML/PPTX could scramble content — each per-artboard capture pinned the artboard's position for cropping but never restored it, so earlier artboards stayed stacked at the origin and bled into later captures. All 5 render shims now save and restore each artboard's position around its own capture.
+
+### Patch Changes
+
+- 308c156: Fix `/design:new` so canvases are reliably generated with both light and dark theme support on dual-theme design systems.
+
+  The prior dual-theme enforcement mechanism checked `config.json`'s `themeDefault` field for the literal value `"both"` — a value that field's schema (`dark | light` only) can never actually hold, so the check silently never fired. This let canvases ship with a token frozen at its default-theme value and invisible or low-contrast in the un-audited theme.
+
+  - `designSystems[].themes` is now the one authoritative signal for "this DS ships more than one theme" (schema + docs updated); bootstrap persists it going forward instead of leaving it to free-text description.
+  - `design-system-completeness-critic`'s V18 check now reads the correct field; a new V18c check catches a token declared in one theme block but silently missing from the other.
+  - `/design:new`'s post-write reality check now captures a second screenshot pass in the alternate theme whenever the target design system declares more than one, so both themes are visually confirmed before the canvas is considered done.
+
 ## 0.41.0
 
 ### Minor Changes

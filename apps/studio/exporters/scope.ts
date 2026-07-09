@@ -115,6 +115,7 @@ const RAW_EXCLUDES = new Set([
   '_server.json',
   '_active.json',
   '_export-history.json',
+  '_export-jobs',
   '_history',
   '_comments',
   '_canvas-state',

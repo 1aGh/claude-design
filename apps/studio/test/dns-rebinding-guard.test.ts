@@ -44,6 +44,28 @@ describe('DNS-rebinding guard — source-write/read family requires a loopback H
       });
       expect(wEvil2.status).toBe(403);
 
+      // feature-background-export-notification-center (/flow:done security
+      // fan-out) — the export-jobs family joined the guard too: POST enqueue,
+      // GET list, GET download all require a loopback Host.
+      const wEvilExport = await fetch(`${base}/_api/export-jobs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', host: evilHost },
+        body: JSON.stringify({ format: 'zip', scope: 'project-raw' }),
+      });
+      expect(wEvilExport.status).toBe(403);
+      const wEvilExportSync = await fetch(`${base}/_api/export`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', host: evilHost },
+        body: JSON.stringify({ format: 'zip', scope: 'project-raw' }),
+      });
+      expect(wEvilExportSync.status).toBe(403);
+      const rEvilJobs = await fetch(`${base}/_api/export-jobs`, { headers: { host: evilHost } });
+      expect(rEvilJobs.status).toBe(403);
+      const rEvilDownload = await fetch(`${base}/_api/export-jobs/download?id=x`, {
+        headers: { host: evilHost },
+      });
+      expect(rEvilDownload.status).toBe(403);
+
       // READ routes (GET) — a rebound same-origin page could otherwise CORS-read
       // raw project source; the guard 403s them too.
       const rEvil = await fetch(`${base}/_api/canvas-source?file=ui/C.tsx`, {
@@ -67,6 +89,11 @@ describe('DNS-rebinding guard — source-write/read family requires a loopback H
         headers: { host: `127.0.0.1:${port}` },
       });
       expect(rOk2.status).toBe(200);
+      // Same false-positive check for the export-jobs family (loopback Host passes).
+      const rOkJobs = await fetch(`${base}/_api/export-jobs`, {
+        headers: { host: `localhost:${port}` },
+      });
+      expect(rOkJobs.status).toBe(200);
     } finally {
       await killProc(proc);
     }

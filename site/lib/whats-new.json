@@ -1,7 +1,24 @@
 {
-  "generated": "2026-07-08T11:33:43.373Z",
+  "generated": "2026-07-09T08:10:44.959Z",
   "version": "0.41.0",
   "entries": [
+    {
+      "id": "background-export-notification-center",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Exports now run in the background",
+      "summary": "Hitting Export no longer locks up the dialog until the render finishes — it closes right away and a new Exports button in the menubar tracks progress, with a toast when it's ready and a Download/Save button. Multiple exports can run at once, so a quick PNG doesn't have to wait behind a slow PDF or video. Also fixes a bug where exporting every artboard on a canvas separately could scramble some of the pages.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour=\"exports\"]",
+          "title": "Exports run in the background",
+          "body": "Kick off an export and keep working — this button shows progress and lights up when it's ready to download or save.",
+          "placement": "bottom"
+        }
+      ]
+    },
     {
       "id": "desktop-intel-mac-support",
       "version": "0.41.0",

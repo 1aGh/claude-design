@@ -67,3 +67,107 @@ export function resolveExportRuntime(): string {
   }
   return runtime;
 }
+
+export interface SpawnShimOptions {
+  /** cwd for the spawned shim — callers pass `path.dirname(<SHIM>)`. */
+  cwd: string;
+  /** Aborts the render — kills the child process. */
+  signal?: AbortSignal;
+  /** Fired for each `MAUDE_PROGRESS {"current":N,"total":M}` stdout line. */
+  onProgress?: (update: { current: number; total: number }) => void;
+}
+
+export interface SpawnShimResult {
+  code: number;
+  /** stdout lines with `MAUDE_PROGRESS` lines filtered out (written-file paths etc.). */
+  stdoutLines: string[];
+  stderr: string;
+}
+
+const PROGRESS_LINE = /^MAUDE_PROGRESS (.+)$/;
+
+/**
+ * Spawn a render shim (`bin/_{png,pdf,svg,html,pptx,video}-playwright.mjs`)
+ * via a resolved node/bun runtime, reading stdout INCREMENTALLY (not
+ * buffered via `new Response(proc.stdout).text()`) so a `MAUDE_PROGRESS`
+ * line written mid-render reaches `onProgress` as soon as it's flushed,
+ * instead of only after the whole process exits. Non-progress lines
+ * (written-file paths, the existing per-adapter contract) collect into
+ * `stdoutLines` in the order they arrived. Exit-code handling stays with the
+ * caller — this returns the same shape the old `Promise.all([...text()])`
+ * block did, so adapters keep their existing `if (code !== 0) throw …`.
+ */
+export async function spawnShim(args: string[], opts: SpawnShimOptions): Promise<SpawnShimResult> {
+  const proc = Bun.spawn([resolveExportRuntime(), ...args], {
+    cwd: opts.cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    signal: opts.signal,
+  });
+  // Bun.spawn's `signal` option kills the child on abort; this listener is a
+  // defensive fallback in case a given Bun build ignores it — cheap and
+  // idempotent (killing an already-exited process is a no-op).
+  const onAbort = () => {
+    try {
+      proc.kill();
+    } catch {
+      /* already exited */
+    }
+  };
+  opts.signal?.addEventListener('abort', onAbort);
+
+  const stderrPromise = new Response(proc.stderr).text();
+  const stdoutLines: string[] = [];
+  let buffer = '';
+  const consumeLine = (line: string) => {
+    if (!line) return;
+    const match = PROGRESS_LINE.exec(line);
+    if (!match) {
+      stdoutLines.push(line);
+      return;
+    }
+    try {
+      const update = JSON.parse(match[1]) as { current: number; total: number };
+      opts.onProgress?.(update);
+    } catch {
+      /* malformed progress line — drop it rather than treat it as a file path */
+    }
+  };
+
+  try {
+    const reader = proc.stdout.pipeThrough(new TextDecoderStream()).getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += value;
+      let newlineIdx = buffer.indexOf('\n');
+      while (newlineIdx !== -1) {
+        consumeLine(buffer.slice(0, newlineIdx).trim());
+        buffer = buffer.slice(newlineIdx + 1);
+        newlineIdx = buffer.indexOf('\n');
+      }
+    }
+    if (buffer.trim()) consumeLine(buffer.trim());
+  } finally {
+    opts.signal?.removeEventListener('abort', onAbort);
+  }
+
+  const [stderr, code] = await Promise.all([stderrPromise, proc.exited]);
+  return { code, stdoutLines, stderr };
+}
+
+/**
+ * `spawnShim()` + the exit-code check every adapter did identically
+ * (`if (code !== 0) throw new Error(...)`; `code review, /flow:done` — six
+ * near-copies collapsed into one). `args[0]` is the shim path by convention
+ * (every adapter builds it that way), used only for the error message.
+ */
+export async function runShim(args: string[], opts: SpawnShimOptions): Promise<string[]> {
+  const { code, stdoutLines, stderr } = await spawnShim(args, opts);
+  if (code !== 0) {
+    throw new Error(
+      `${path.basename(args[0])} exited ${code}: ${stderr.trim() || stdoutLines.join('\n').trim()}`
+    );
+  }
+  return stdoutLines;
+}

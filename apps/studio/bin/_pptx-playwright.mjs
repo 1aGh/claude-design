@@ -48,10 +48,6 @@ try {
       world.style.zoom = '1';
       world.style.transform = 'none';
     }
-    for (const el of document.querySelectorAll('[data-dc-screen]')) {
-      el.style.left = '0px';
-      el.style.top = '0px';
-    }
   });
   // dom-to-pptx ships a UMD bundle; addScriptTag exposes `window.domToPptx`.
   await page.addScriptTag({ path: bundlePath });
@@ -74,6 +70,17 @@ try {
   }
   await handle.waitFor({ state: 'visible', timeout: timeoutMs });
 
+  // Pin this artboard to (0,0) for its capture, restoring afterwards so a
+  // future multi-slide implementation doesn't inherit a stacked-at-origin bug
+  // (the scatter bug fixed in the png/pdf/svg/html shims).
+  const savedPos = await handle.evaluate((el) => {
+    const ab = el.closest('[data-dc-screen]') ?? el;
+    const prev = { left: ab.style.left, top: ab.style.top };
+    ab.style.left = '0px';
+    ab.style.top = '0px';
+    return prev;
+  });
+
   // Run dom-to-pptx inside the page. It returns a Blob; we serialise to a
   // byte array for transport across the playwright boundary.
   const bytesArray = await handle.evaluate(async (el) => {
@@ -87,6 +94,12 @@ try {
     const ab = await blob.arrayBuffer();
     return Array.from(new Uint8Array(ab));
   });
+
+  await handle.evaluate((el, prev) => {
+    const ab = el.closest('[data-dc-screen]') ?? el;
+    ab.style.left = prev.left;
+    ab.style.top = prev.top;
+  }, savedPos);
 
   writeFileSync(out, new Uint8Array(bytesArray));
   console.log(out);

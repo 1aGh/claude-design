@@ -13,10 +13,11 @@ import path from 'node:path';
 import JSZip from 'jszip';
 
 import { getBrowserBundle } from './_browser-bundles.ts';
-import { exportShimPath, resolveExportRuntime } from './_runtime.ts';
+import { exportShimPath, runShim } from './_runtime.ts';
 import {
   canvasShellUrl,
   type ExportContext,
+  type ExportHooks,
   type ExportOptions,
   type ExportResult,
 } from './index.ts';
@@ -30,7 +31,8 @@ async function captureSvg(
   ctx: ExportContext,
   outDir: string,
   timeoutSec: number,
-  bundlePath: string
+  bundlePath: string,
+  hooks?: ExportHooks
 ): Promise<string[]> {
   const args = [
     SVG_PLAYWRIGHT,
@@ -55,31 +57,20 @@ async function captureSvg(
   // Run via a resolved node/bun runtime so the shim's `import 'playwright'`
   // resolves against dev-server/node_modules (playwright is a devDep). `npm exec`
   // doesn't bridge the module path for ESM imports — confirmed against npm 10.x.
-  // resolveExportRuntime() replaces a hardcoded `'node'` so a compiled binary
-  // without `node` on PATH surfaces an actionable error, not `posix_spawn 'node'`.
-  const proc = Bun.spawn([resolveExportRuntime(), ...args], {
+  // runShim resolves the runtime internally so a compiled binary without
+  // `node` on PATH surfaces an actionable error, not `posix_spawn 'node'`.
+  return runShim(args, {
     cwd: path.dirname(SVG_PLAYWRIGHT),
-    stdout: 'pipe',
-    stderr: 'pipe',
+    signal: hooks?.signal,
+    onProgress: hooks?.onProgress,
   });
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const code = await proc.exited;
-  if (code !== 0) {
-    throw new Error(`_svg-playwright exited ${code}: ${stderr.trim() || stdout.trim()}`);
-  }
-  return stdout
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean);
 }
 
 export async function run(
   targets: Target[],
   options: ExportOptions,
-  ctx: ExportContext
+  ctx: ExportContext,
+  hooks?: ExportHooks
 ): Promise<ExportResult> {
   if (!targets.length) {
     return { filename: 'export.svg', contentType: 'image/svg+xml', body: new Uint8Array(0) };
@@ -96,9 +87,10 @@ export async function run(
 
   try {
     const written: string[] = [];
-    for (const t of elementTargets) {
-      const paths = await captureSvg(t, ctx, tmp, timeoutSec, bundlePath);
+    for (let i = 0; i < elementTargets.length; i += 1) {
+      const paths = await captureSvg(elementTargets[i], ctx, tmp, timeoutSec, bundlePath, hooks);
       written.push(...paths);
+      hooks?.onProgress?.({ current: i + 1, total: elementTargets.length });
     }
     if (!written.length) {
       return { filename: 'export.svg', contentType: 'image/svg+xml', body: new Uint8Array(0) };

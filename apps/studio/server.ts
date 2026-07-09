@@ -25,6 +25,7 @@ import { type AiActivityEntry, createAiActivity } from './collab/ai-activity.ts'
 import { createGitLifecycle } from './collab/git-lifecycle.ts';
 import { createCollab } from './collab/index.ts';
 import { createContext, reloadConfig } from './context.ts';
+import { createExportJobQueue } from './exporters/jobs.ts';
 import { createFsWatch } from './fs-watch.ts';
 import { createGitWatch } from './git/watch.ts';
 import { createHttp } from './http.ts';
@@ -105,7 +106,8 @@ const activity = createActivity(ctx);
 // rca/issue-canvas-hmr-optimistic-update-consistency).
 const acp = createAcp(ctx, aiActivity);
 const ws = createWs(ctx, api, inspect, collab, activity, acp);
-const http = createHttp(ctx, api, inspect, aiActivity);
+const exportJobs = createExportJobQueue(ctx.bus, ctx.paths.designRoot);
+const http = createHttp(ctx, api, inspect, aiActivity, exportJobs);
 const fsWatch = createFsWatch(ctx);
 
 // Port: --port arg > $PORT > $MDCC_DEV_PORT > 4399.

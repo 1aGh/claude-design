@@ -9,12 +9,18 @@
 #                 [--screen <id> | --element <id> | --selector <css> | --full]
 #                 [--all-screens] [--out <path>] [--out-dir <dir>]
 #                 [--timeout 8] [--engine auto|agent-browser|playwright]
-#                 [--root <repo>]
+#                 [--theme <name>] [--root <repo>]
 #
 # Notes:
 #   - Exactly one of --screen / --element / --selector / --full is required
 #     (or --all-screens which loops over every [data-dc-screen]/[data-dc-slot]).
 #   - --out required for single-shot modes; --out-dir required for --all-screens.
+#   - --theme <name> forces every `[data-theme]` element (DS artboard wrappers)
+#     to that value BEFORE capture, via a DOM eval — does not touch the actual
+#     canvas file or the running server's state. Used to capture a DS's
+#     alternate theme deterministically for the dual-theme reality check
+#     (/design:new step 9) instead of relying on whatever the canvas is pinned
+#     to. No-op if the canvas has no `[data-theme]` elements.
 #   - URL resolution: --url > --port + _active.json > _server.json + _active.json.
 #   - Stdout: written PNG paths, one per line (composable in for-loops).
 #   - Stderr: diagnostic, engine choice, timing.
@@ -30,6 +36,7 @@ TIMEOUT=8
 ENGINE="auto"
 ALL_SCREENS=0
 ROOT=""
+THEME=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -44,9 +51,10 @@ while [ $# -gt 0 ]; do
     --out-dir)  OUT_DIR="$2"; shift 2 ;;
     --timeout)  TIMEOUT="$2"; shift 2 ;;
     --engine)   ENGINE="$2"; shift 2 ;;
+    --theme)    THEME="$2"; shift 2 ;;
     --root)     ROOT="$2"; shift 2 ;;
     --help|-h)
-      sed -n '2,22p' "$0" | sed 's/^# \?//'
+      sed -n '2,27p' "$0" | sed 's/^# \?//'
       exit 0
       ;;
     *)
@@ -57,6 +65,20 @@ while [ $# -gt 0 ]; do
 done
 
 # ---------- arg validation ----------
+# --theme ultimately traces back to config.json's designSystems[].themes[]
+# (untrusted, same posture as prep.sh's MOODBOARD_VARIANTS). Callers (e.g.
+# new.md step 9) build an --out-dir path from this value — reject anything
+# outside a safe slug charset here too, at the shared sink, rather than
+# trusting every caller to re-derive this guard.
+if [ -n "$THEME" ]; then
+  case "$THEME" in
+    *[!A-Za-z0-9._-]*|"")
+      echo "screenshot.sh: --theme '$THEME' contains unsafe characters (allowed: A-Za-z0-9._-)" >&2
+      exit 2
+      ;;
+  esac
+fi
+
 if [ $ALL_SCREENS -eq 1 ]; then
   [ -z "$OUT_DIR" ] && { echo "screenshot.sh: --all-screens needs --out-dir" >&2; exit 2; }
 else
@@ -189,10 +211,12 @@ pw_screenshot() {
     return 1
   fi
   echo "→ playwright engine; first invocation may install chromium (~150MB, one-off)" >&2
+  local theme_args=()
+  [ -n "$THEME" ] && theme_args=(--theme "$THEME")
   if [ -n "$css" ]; then
-    npm exec --yes --package=playwright -- node "$pw_script" --url "$URL" --selector "$css" --out "$out" --timeout "$TIMEOUT" >&2 || return 1
+    npm exec --yes --package=playwright -- node "$pw_script" --url "$URL" --selector "$css" --out "$out" --timeout "$TIMEOUT" "${theme_args[@]}" >&2 || return 1
   else
-    npm exec --yes --package=playwright -- node "$pw_script" --url "$URL" --out "$out" --timeout "$TIMEOUT" >&2 || return 1
+    npm exec --yes --package=playwright -- node "$pw_script" --url "$URL" --out "$out" --timeout "$TIMEOUT" "${theme_args[@]}" >&2 || return 1
   fi
   [ -s "$out" ] || { echo "✗ playwright wrote no file: $out" >&2; return 1; }
   return 0
@@ -224,7 +248,32 @@ navigate_once() {
       echo "→ no DC mount detected after ${TIMEOUT}s — proceeding (may be a non-canvas page)" >&2
       sleep 1
     fi
+    apply_theme_override
   fi
+}
+
+# ---------- --theme override (dual-theme reality check) ----------
+# Forces every element carrying a `data-theme` attribute (DS artboard theme
+# wrappers) to $THEME, so the caller can deterministically capture a DS's
+# alternate theme instead of whatever the canvas happens to be pinned to.
+# agent-browser only — the playwright path applies it inside
+# _screenshot-playwright.mjs (passed via --theme) since that shim owns its own
+# page.evaluate. No-op when --theme wasn't passed or no [data-theme] elements
+# exist (e.g. a single-theme DS or a non-canvas page).
+apply_theme_override() {
+  [ -z "$THEME" ] && return 0
+  [ "$ENGINE" = "agent-browser" ] || return 0
+  # THEME ultimately traces back to config.json's designSystems[].themes[]
+  # array — treated as untrusted input elsewhere in this codebase (see
+  # prep.sh's MOODBOARD_VARIANTS clamp). JSON-encode it via jq so it lands as
+  # a properly-escaped JS string literal in the eval'd expression below,
+  # instead of naively splicing the raw value into a JS string (which a
+  # crafted config value could break out of).
+  local theme_json
+  theme_json=$(jq -Rn --arg t "$THEME" '$t' 2>/dev/null) || return 0
+  local n
+  n=$("$AB" eval "(function(t){var els=document.querySelectorAll('[data-theme]');els.forEach(function(el){el.setAttribute('data-theme',t)});return els.length})($theme_json)" 2>/dev/null)
+  echo "→ theme override: forced data-theme=\"$THEME\" on $(printf '%s' "$n" | tr -d '[:space:]') element(s)" >&2
 }
 
 capture() {

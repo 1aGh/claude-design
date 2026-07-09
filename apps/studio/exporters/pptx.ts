@@ -27,10 +27,11 @@ import path from 'node:path';
 import PptxGenJS from 'pptxgenjs';
 
 import { getBrowserBundle } from './_browser-bundles.ts';
-import { exportShimPath, resolveExportRuntime } from './_runtime.ts';
+import { exportShimPath, runShim } from './_runtime.ts';
 import {
   canvasShellUrl,
   type ExportContext,
+  type ExportHooks,
   type ExportOptions,
   type ExportResult,
 } from './index.ts';
@@ -51,25 +52,13 @@ function isElementTarget(t: Target): t is ElementTarget {
   return t.kind === 'element';
 }
 
-/** Spawn a playwright shim via a resolved runtime, returning the written file paths (stdout). */
-async function spawnShim(args: string[]): Promise<string[]> {
-  const proc = Bun.spawn([resolveExportRuntime(), ...args], {
+/** Spawn a playwright shim via the shared runtime, returning the written file paths (stdout). */
+function spawnPlaywrightShim(args: string[], hooks?: ExportHooks): Promise<string[]> {
+  return runShim(args, {
     cwd: path.dirname(args[0]),
-    stdout: 'pipe',
-    stderr: 'pipe',
+    signal: hooks?.signal,
+    onProgress: hooks?.onProgress,
   });
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const code = await proc.exited;
-  if (code !== 0) {
-    throw new Error(`${path.basename(args[0])} exited ${code}: ${stderr.trim() || stdout.trim()}`);
-  }
-  return stdout
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean);
 }
 
 // ─── SVG pre-processing (the fix that makes svg2pptx faithful) ────────────────
@@ -324,7 +313,8 @@ async function buildPngDeck(pngPaths: string[]): Promise<Uint8Array> {
 export async function run(
   targets: Target[],
   options: ExportOptions,
-  ctx: ExportContext
+  ctx: ExportContext,
+  hooks?: ExportHooks
 ): Promise<ExportResult> {
   const empty: ExportResult = {
     filename: 'export.pptx',
@@ -352,10 +342,15 @@ export async function run(
       try {
         const bundle = await getBrowserBundle('dom-to-svg', 'domToSvg');
         const svgFiles: string[] = [];
-        for (const t of elementTargets) {
+        for (let i = 0; i < elementTargets.length; i += 1) {
+          const t = elementTargets[i];
           svgFiles.push(
-            ...(await spawnShim(svgArgsFor(t, canvasShellUrl(ctx, t.file), svgDir, bundle)))
+            ...(await spawnPlaywrightShim(
+              svgArgsFor(t, canvasShellUrl(ctx, t.file), svgDir, bundle),
+              hooks
+            ))
           );
+          hooks?.onProgress?.({ current: i + 1, total: elementTargets.length });
         }
         if (!svgFiles.length) return empty;
         const deckBuffers: Uint8Array[] = [];
@@ -382,8 +377,12 @@ export async function run(
 
     // PNG fallback (faithful, universal, Canva-safe, not editable).
     const pngFiles: string[] = [];
-    for (const t of elementTargets) {
-      pngFiles.push(...(await spawnShim(pngArgsFor(t, canvasShellUrl(ctx, t.file), pngDir))));
+    for (let i = 0; i < elementTargets.length; i += 1) {
+      const t = elementTargets[i];
+      pngFiles.push(
+        ...(await spawnPlaywrightShim(pngArgsFor(t, canvasShellUrl(ctx, t.file), pngDir), hooks))
+      );
+      hooks?.onProgress?.({ current: i + 1, total: elementTargets.length });
     }
     if (!pngFiles.length) return empty;
     const body = await buildPngDeck(pngFiles);
