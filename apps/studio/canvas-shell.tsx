@@ -549,6 +549,18 @@ function getLastLayersArtboardId(): string | null {
   }
 }
 
+// DDR-148 — an artboard hosting a <VideoComp> stamps a `[data-comp-id]`
+// element inside it (see video-comp.tsx). Gates the artboard-chrome context
+// menu's "Open Timeline" entry to artboards that actually have a sequence.
+function artboardHasVideo(artboardId: string | null | undefined): boolean {
+  if (typeof document === 'undefined' || !artboardId) return false;
+  try {
+    return !!document.querySelector(`[data-dc-screen="${CSS.escape(artboardId)}"] [data-comp-id]`);
+  } catch {
+    return false;
+  }
+}
+
 function postLayersTree(artboardId: string | null | undefined): void {
   if (typeof document === 'undefined' || !artboardId) return;
   const root = document.querySelector(`[data-dc-screen="${CSS.escape(artboardId)}"]`);
@@ -1630,6 +1642,29 @@ function buildRegistry(deps: {
         },
         fitItem,
         resetItem,
+      ],
+      [
+        // DDR-148 — only meaningful (and only enabled) on a video-comp
+        // artboard; scopes + opens the shell's Timeline dock.
+        {
+          id: 'open-timeline',
+          label: 'Open Timeline',
+          shortcut: '⌘⇧T',
+          disabled: (target) => !artboardHasVideo(target.artboardId),
+          disabledHint: 'This artboard has no video sequence',
+          onSelect: (target) => {
+            if (!target.artboardId) return;
+            focusArtboard(target.artboardId);
+            try {
+              window.parent.postMessage(
+                { dgn: 'open-timeline-request', artboardId: target.artboardId },
+                '*'
+              );
+            } catch {
+              /* detached / cross-origin */
+            }
+          },
+        },
       ],
       [
         // G7 — align commands. Six modes; gated on ≥ 2 selected artboards

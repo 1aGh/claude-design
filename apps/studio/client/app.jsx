@@ -2740,6 +2740,7 @@ function Menubar({
     {
       id: 'timeline',
       label: 'Timeline',
+      shortcut: '⌘ ⇧ T',
       phase: hasComps ? 'video' : undefined,
       checked: timelineOpen,
       disabled: false,
@@ -8736,6 +8737,11 @@ function App() {
           mode: 'export',
           scope: m.detail && typeof m.detail.scope === 'string' ? m.detail.scope : undefined,
         });
+      } else if (m.dgn === 'open-timeline-request') {
+        // Artboard-chrome context menu's "Open Timeline" (video-comp artboards
+        // only). Scope the Timeline to the right-clicked artboard, then open it.
+        if (typeof m.artboardId === 'string') setCanvasActiveArtboard(m.artboardId.slice(0, 120));
+        setTimelineOpen(true);
       } else if (m.dgn === 'loaded' && m.file) {
         // iframe finished loading — drop the compile skeleton, push current
         // comments + carry over focused pin if any
@@ -9713,6 +9719,12 @@ function App() {
         setExportDialog({ mode: 'handoff' });
         return;
       }
+      // Cmd+Shift+T — toggle the Timeline (video-comp scrub) dock.
+      if (meta && e.shiftKey && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        toggleTimeline();
+        return;
+      }
       // Cmd+C / Ctrl+C — Phase 4.1 removed the shell-side comment-drop chord.
       // Canvas comment-drop is the `C` tool letter (press C in the canvas,
       // then click the element) or right-click "Add comment". Cmd+C now
@@ -9828,6 +9840,7 @@ function App() {
     clearActiveCanvasSelection,
     presentMode,
     exitPresent,
+    toggleTimeline,
   ]);
 
   const registerIframe = useCallback((path, el) => {

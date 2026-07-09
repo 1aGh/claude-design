@@ -54,7 +54,12 @@ export interface MenuItem {
   /** Right-aligned shortcut hint (e.g. `⌘C`, `⌫`). */
   shortcut?: string;
   destructive?: boolean;
-  disabled?: boolean;
+  /**
+   * A FUNCTION form is resolved per-click against `target` — same rationale as
+   * the function-form `submenu` below (e.g. "Open Timeline" only enabled when
+   * THIS right-clicked artboard actually contains a video sequence).
+   */
+  disabled?: boolean | ((target: ContextTarget) => boolean);
   /**
    * Optional nested flyout (e.g. `Theme ▸ DS default / Light / Dark / Follow
    * chrome`). When present the row opens a submenu on hover / ArrowRight /
@@ -411,17 +416,20 @@ function MenuItemRow({
   // Resolve a function-form submenu against THIS click's target (e.g.
   // "Select layer" computing candidates from `target.clientX/clientY`).
   const submenuItems = typeof item.submenu === 'function' ? item.submenu(target) : item.submenu;
+  // Same per-click resolution for a function-form `disabled` (e.g. "Open
+  // Timeline" only enabled on an artboard that actually contains video).
+  const disabled = typeof item.disabled === 'function' ? item.disabled(target) : item.disabled;
 
   if (!submenuItems || submenuItems.length === 0) {
     return (
       <button
         type="button"
         role="menuitem"
-        disabled={item.disabled}
-        title={item.disabled ? item.disabledHint : undefined}
+        disabled={disabled}
+        title={disabled ? item.disabledHint : undefined}
         className={`dc-menu-item${item.destructive ? ' is-destructive' : ''}`}
         onClick={() => {
-          if (item.disabled) return;
+          if (disabled) return;
           item.onSelect(target);
           onClose();
         }}
@@ -464,7 +472,7 @@ function MenuItemRow({
         role="menuitem"
         aria-haspopup="menu"
         aria-expanded={subOpen}
-        disabled={item.disabled}
+        disabled={disabled}
         className="dc-menu-item"
         onClick={() => (subOpen ? setSubOpen(false) : open())}
         onKeyDown={(e) => {
