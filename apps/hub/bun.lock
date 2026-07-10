@@ -5,26 +5,26 @@
     "": {
       "name": "@maude/hub",
       "dependencies": {
-        "@hocuspocus/extension-sqlite": "^4.0.0",
-        "@hocuspocus/server": "^4.0.0",
-        "better-sqlite3": "^12.10.0",
+        "@hocuspocus/extension-sqlite": "^4.3.0",
+        "@hocuspocus/server": "^4.3.0",
+        "better-sqlite3": "^12.11.1",
         "yjs": "^13.6.31",
       },
       "devDependencies": {
-        "@hocuspocus/provider": "^4.0.0",
+        "@hocuspocus/provider": "^4.3.0",
       },
     },
   },
   "packages": {
-    "@hocuspocus/common": ["@hocuspocus/common@4.1.0", "", { "dependencies": { "lib0": "^0.2.87" } }, "sha512-SOBbu0GcBMbLo7IYRDZC6gvEcoATbEFIC5KqzvLanC6dZZLkv91pYEBli+Exs/G71ELL3iUjSwnaf+gksxcjFA=="],
+    "@hocuspocus/common": ["@hocuspocus/common@4.3.0", "", { "dependencies": { "lib0": "^0.2.87" } }, "sha512-8USsMvso01aMKOSSyvb8oTAlfES/nBM+Y74XjW5Fy5ovmOaVpoRRBrktIrEVwydrp8Cr6C66ivc0orcW/3P+Kg=="],
 
-    "@hocuspocus/extension-database": ["@hocuspocus/extension-database@4.1.0", "", { "dependencies": { "@hocuspocus/server": "^4.1.0" }, "peerDependencies": { "yjs": "^13.6.8" } }, "sha512-jH70FcWxIVcN++IYuSfS4JPAJgowEjFXWU/59yNlSYHEl0tWNqtR4/JBpVVAJQd1gV1kV/EXsrlnoNzV8SeCuw=="],
+    "@hocuspocus/extension-database": ["@hocuspocus/extension-database@4.3.0", "", { "dependencies": { "@hocuspocus/server": "^4.3.0" }, "peerDependencies": { "yjs": "^13.6.8" } }, "sha512-iiFU2l+/lxXVREXS9VUMDJQCOzM3LWOlFs0ezNkFIrXUf7u4LyagCR5v5y8zoBxMGNE5NwzMkP4xBiDX/Tc90A=="],
 
-    "@hocuspocus/extension-sqlite": ["@hocuspocus/extension-sqlite@4.1.0", "", { "dependencies": { "@hocuspocus/extension-database": "^4.1.0", "better-sqlite3": "^12.6.2", "kleur": "^4.1.4" } }, "sha512-JtMOQ0cIGPnB3Q/jXTxNGxbXL9th4OK1yFXwglhwEXrooevS+TkPUYKNgZ9odhzW6OSN5HdwEriM3SR4ct83+g=="],
+    "@hocuspocus/extension-sqlite": ["@hocuspocus/extension-sqlite@4.3.0", "", { "dependencies": { "@hocuspocus/extension-database": "^4.3.0", "better-sqlite3": "^12.6.2", "kleur": "^4.1.4" } }, "sha512-4BPqkereOosxz0PlDg0QQNQQ039aXPLiXKz5kaEbpO7gISyClTHbwO0UhIEGOCkVmu6VKvTt6PrU+wtH575Z1Q=="],
 
-    "@hocuspocus/provider": ["@hocuspocus/provider@4.1.0", "", { "dependencies": { "@hocuspocus/common": "^4.1.0", "@lifeomic/attempt": "^3.0.2", "lib0": "^0.2.87" }, "peerDependencies": { "y-protocols": "^1.0.6", "yjs": "^13.6.8" } }, "sha512-K80V2yX4AMdpqgjIkexJioyI2Oq8pu8hjdFqY0INXKSpH8TQv9NMaDzJmlrZMYmUeKyRO2t7VhGyFK9jZQPnNw=="],
+    "@hocuspocus/provider": ["@hocuspocus/provider@4.3.0", "", { "dependencies": { "@hocuspocus/common": "^4.3.0", "@lifeomic/attempt": "^3.0.2", "lib0": "^0.2.87" }, "peerDependencies": { "y-protocols": "^1.0.6", "yjs": "^13.6.8" } }, "sha512-eS5dECLnJDgELI2AfZNvr5jS0B6IWFoo7eAUgwwOzy1bf7KdPagXAYCtSWqSXmLMwjABlubZJQg8FVrTefU0cA=="],
 
-    "@hocuspocus/server": ["@hocuspocus/server@4.1.0", "", { "dependencies": { "@hocuspocus/common": "^4.1.0", "async-mutex": "^0.5.0", "crossws": "^0.4.4", "kleur": "^4.1.4", "lib0": "^0.2.47" }, "peerDependencies": { "y-protocols": "^1.0.6", "yjs": "^13.6.8" } }, "sha512-mp0Of76kRkK/u+9pKXPLNV4NI2Cyjql/jVnudVb0z6xAd/i7mBDTK88p1I1sNoX9yvCvhY7lQlrvVx6sMcl8Xw=="],
+    "@hocuspocus/server": ["@hocuspocus/server@4.3.0", "", { "dependencies": { "@hocuspocus/common": "^4.3.0", "async-mutex": "^0.5.0", "crossws": "^0.4.4", "kleur": "^4.1.4", "lib0": "^0.2.47" }, "peerDependencies": { "y-protocols": "^1.0.6", "yjs": "^13.6.8" } }, "sha512-GX9ohUJAr6aIa2ewS0EPeyf3w12wLCBBSGfc76ZMOuZJZPUzDH6BJWFjkVlaVW3OmwZ5+jxdXXFUf6sAi4EIrg=="],
 
     "@lifeomic/attempt": ["@lifeomic/attempt@3.1.0", "", {}, "sha512-QZqem4QuAnAyzfz+Gj5/+SLxqwCAw2qmt7732ZXodr6VDWGeYLG6w1i/vYLa55JQM9wRuBKLmXmiZ2P0LtE5rw=="],
 
@@ -32,7 +32,7 @@
 
     "base64-js": ["base64-js@1.5.1", "", {}, "sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA=="],
 
-    "better-sqlite3": ["better-sqlite3@12.10.0", "", { "dependencies": { "bindings": "^1.5.0", "prebuild-install": "^7.1.1" } }, "sha512-CyzaZRQKyHkB2ZInfTTl2nvT33EbDpjkLEbE8/Zck3Ll6O0qqvuGdrJ45HgtH+HykRg88ITY3AdreBGN70aBSQ=="],
+    "better-sqlite3": ["better-sqlite3@12.11.1", "", { "dependencies": { "bindings": "^1.5.0", "prebuild-install": "^7.1.1" } }, "sha512-dq9AtApgg5PGFtBzPFSBl3HZQjHok5gaQCM6zh2Yk0aSmDCs1CbnVI8/HgASQkNKsWFpseIO9beg5xxpYhbIfA=="],
 
     "bindings": ["bindings@1.5.0", "", { "dependencies": { "file-uri-to-path": "1.0.0" } }, "sha512-p2q/t/mhvuOj/UeLlV6566GD/guowlr0hHxClI0W9m7MWYkL1F0hLo+0Aexs9HSPCtR1SXQ0TD3MMKrXZajbiQ=="],
 
