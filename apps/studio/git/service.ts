@@ -560,9 +560,20 @@ async function readRemoteUrl(dir: string, remote: string): Promise<string> {
  *  never to an arbitrary HTTPS host an attacker put in `remote.origin.url` (PAT
  *  exfil / SSRF). HTTP(S) urls only; ssh carries no token regardless. */
 function isTrustedTokenHost(url: string): boolean {
+  const u = (url || '').trim();
+  // SECURITY (F1 — parser-differential PAT exfil): the token-attach decision must NOT
+  // trust a `new URL()` parse that git+libcurl will REDO with a different grammar. A
+  // `https://github.com\@attacker/x` reads as host github.com under WHATWG but as host
+  // `attacker` under curl (backslash = path/userinfo char). Reject any byte that could
+  // re-open the authority — backslash, userinfo `@`, whitespace, control chars — then
+  // require the byte-exact canonical github.com https prefix, so the host resolves to
+  // github.com under BOTH parsers before the PAT is ever lent.
+  // Only printable ASCII (rejects whitespace, control, and non-ASCII homoglyphs),
+  // and no backslash / userinfo `@` — the two bytes that let curl re-resolve the host.
+  if (/[^\x21-\x7e]/.test(u) || u.includes('\\') || u.includes('@')) return false;
+  if (!/^https:\/\/github\.com\//i.test(u)) return false;
   try {
-    const h = new URL(url).hostname.toLowerCase();
-    return h === 'github.com' || h.endsWith('.github.com');
+    return new URL(u).hostname.toLowerCase() === 'github.com';
   } catch {
     return false;
   }
@@ -1049,7 +1060,7 @@ async function pushSystem(
   // disk). Without one, fall through to the user's configured credential helper /
   // SSH agent — the phase-27 "I cloned with system git" publish path.
   const args = tokenHeaderArgs(token);
-  args.push('push', remote, branch || 'HEAD');
+  args.push(...HARDENED_REMOTE_FLAGS, 'push', remote, branch || 'HEAD');
   const r = await runGit(dir, args);
   if (r.code === 0) return { ok: true };
   // 127 = no git binary on PATH (the ssh-remote-but-no-CLI case; ssh always routes here).
@@ -1073,13 +1084,17 @@ function isSafeGitPositional(v: string): boolean {
   return SAFE_GIT_POSITIONAL.test(v);
 }
 
-/** Ephemeral `git -c http.extraheader=…` args carrying a token as HTTPS basic
- *  auth, or `[]` when no token (fall back to the user's credential helper). The
- *  header is per-invocation so the PAT never lands in the on-disk remote URL. */
+/** Ephemeral `git -c http.<github>.extraheader=…` args carrying a token as HTTPS
+ *  basic auth, or `[]` when no token (fall back to the user's credential helper). The
+ *  header is per-invocation so the PAT never lands in the on-disk remote URL — AND it
+ *  is SCOPED to `https://github.com/` (not the global `http.extraheader`): git attaches
+ *  it only to a request whose curl-RESOLVED host is github.com, so a poisoned remote
+ *  that WHATWG reads as github.com but curl dials elsewhere never receives the PAT
+ *  (F1 defense-in-depth, on top of the isTrustedTokenHost strict-validate). */
 function tokenHeaderArgs(token: string | undefined): string[] {
   if (!token) return [];
   const auth = Buffer.from(`x-access-token:${token}`).toString('base64');
-  return ['-c', `http.extraheader=Authorization: Basic ${auth}`];
+  return ['-c', `http.https://github.com/.extraheader=Authorization: Basic ${auth}`];
 }
 
 function isNonFastForward(blob: string): boolean {
@@ -1176,7 +1191,7 @@ async function pullSystem(
     return { ok: false, error: 'Invalid remote or draft name.' };
   }
   const args = tokenHeaderArgs(token);
-  args.push('pull', '--no-rebase', remote, branch || 'HEAD');
+  args.push(...HARDENED_REMOTE_FLAGS, 'pull', '--no-rebase', remote, branch || 'HEAD');
   const r = await runGit(dir, args);
   if (r.code === 0) return { ok: true };
   if (r.code === 127)

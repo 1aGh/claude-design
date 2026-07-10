@@ -327,7 +327,16 @@ export function createGitEndpoints(ctx: Context): GitEndpoints {
       });
       return {
         status: 200,
-        json: { ok: true, shared: res.shared, prUrl: pr.html_url, prNumber: pr.number },
+        // Surface the resolved destination repo (F2): the user should SEE which
+        // owner/repo their draft was pushed to / PR'd against, not just "the Shared
+        // version" — a poisoned `origin` would otherwise silently target another repo.
+        json: {
+          ok: true,
+          shared: res.shared,
+          prUrl: pr.html_url,
+          prNumber: pr.number,
+          repo: `${gh.owner}/${gh.repo}`,
+        },
       };
     } catch (e) {
       // The draft IS pushed — a PR-creation failure is a partial success, not a hard

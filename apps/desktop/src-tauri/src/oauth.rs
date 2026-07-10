@@ -270,8 +270,19 @@ pub fn github_open_verification(url: String) -> Result<(), String> {
 /// opener (DDR-054 posture, same rationale as `github_open_verification`).
 #[tauri::command]
 pub fn open_github_url(url: String) -> Result<(), String> {
-    let allowed = url.starts_with("https://github.com/") && !url.contains(char::is_whitespace);
-    if !allowed {
+    // Host-locked to github.com (the trailing `/` closes the URL authority — no
+    // `@`/label host-smuggle), length-capped, and rejecting bytes that could re-open
+    // the authority (`@`, `\`) or that Rust std's Windows launcher has historically
+    // mishandled as cmd-metacharacters (CVE-2024-24576). The only caller passes a
+    // github.com PR html_url. (F3)
+    let ok = url.starts_with("https://github.com/")
+        && url.len() <= 2048
+        && !url.contains(|c: char| {
+            c.is_whitespace()
+                || c.is_control()
+                || matches!(c, '@' | '\\' | '&' | '|' | '^' | '<' | '>' | '"' | '\'' | '`')
+        });
+    if !ok {
         return Err("Refusing to open a non-GitHub URL.".to_string());
     }
     open::that(&url).map_err(|e| format!("Couldn't open the browser: {e}"))

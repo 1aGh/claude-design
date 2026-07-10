@@ -268,6 +268,22 @@ test('SECURITY: gitPush does not send the GitHub token to a non-GitHub HTTPS hos
   expect(r.error).toMatch(/github\.com/i); // refused by policy, token never attached
 });
 
+test('SECURITY: a backslash-@ host-confusion remote is refused, PAT never attached (F1)', async () => {
+  // `https://github.com\@evil` — new URL() parses host=github.com (backslash → '/'),
+  // but git/curl dials `evil` (backslash = path/userinfo char). The token-host allowlist
+  // must reject the parser differential and NOT lend the PAT — on every token path:
+  // explicit fetch, the unattended ahead/behind probe (the zero-click trigger), and push.
+  sh(['remote', 'add', 'origin', 'https://github.com\\@evil.example/x.git']);
+  const f = await gitFetchRemote(dir, 'tok_secret');
+  expect(f.ok).toBe(false);
+  expect(f.error).toMatch(/github\.com/i); // refused by policy — token never attached
+  const ab = await remoteAheadBehind(dir, 'tok_secret');
+  expect(ab).toEqual({ ahead: 0, behind: 0 }); // the unattended probe refuses too (0/0, no fetch)
+  const p = await gitPush(dir, 'tok_secret', {});
+  expect(p.ok).toBe(false);
+  expect(p.error).toMatch(/github\.com/i);
+});
+
 // ── transport-injection hardening (adversarial review of 75a2f0d) ────────────
 
 test('SECURITY: refuses to fetch an `ext::` (command-executing) remote — no spawn, no RCE', async () => {

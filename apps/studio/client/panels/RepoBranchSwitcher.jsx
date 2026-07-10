@@ -299,7 +299,7 @@ export default function RepoBranchSwitcher({ project, liveBranch, remoteSync, on
     const r = await postJson('/_api/git/fold', { name: branch }, { timeoutMs: 45000 });
     const j = r.json;
     if (r.ok && j?.ok && j.prUrl) {
-      setPrResult({ url: j.prUrl, number: j.prNumber });
+      setPrResult({ url: j.prUrl, number: j.prNumber, repo: j.repo });
       setFolding('');
       reloadBranches(); // the draft still exists (the PR references it) — keep the list
       return;
@@ -530,7 +530,7 @@ export default function RepoBranchSwitcher({ project, liveBranch, remoteSync, on
                 <>
                   <span className="rb-sheet-icon"><Icon name="share" size={20} /></span>
                   <h2 className="rb-sheet-title" id="rb-sheet-title">Pull request opened{prResult.number ? ` #${prResult.number}` : ''}</h2>
-                  <p className="rb-sheet-body" id="rb-sheet-body">Your draft <b>“{branch}”</b> is up as a pull request into <b>{sharedName}</b>. Review and merge it on GitHub — that keeps your team's review rules.</p>
+                  <p className="rb-sheet-body" id="rb-sheet-body">Your draft <b>“{branch}”</b> is up as a pull request into <b>{sharedName}</b>{prResult.repo ? <> of <b>{prResult.repo}</b></> : null}. Review and merge it on GitHub — that keeps your team's review rules.</p>
                   <p className="rb-sheet-meta rb-pr-url">{prResult.url}</p>
                   <div className="rb-sheet-actions">
                     <button type="button" className="btn btn--ghost" onClick={() => { setFoldConfirm(false); setPrResult(null); setPrCopied(false); }}>Close</button>
