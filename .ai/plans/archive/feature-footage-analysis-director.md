@@ -445,3 +445,42 @@ forecloses it.
 - [ ] Naming: `name: design:reel` / `design:footage-analyst` /
       `design:footage-director` (DDR-006); filenames group-prefixed (DDR-004).
 ```
+
+## Acceptance — met (2026-07-10)
+
+All criteria met. Feature landed on `main` in commit `1830343e` (schema + store +
+`/_api/footage` route + `ingest-footage`/`probe-footage` verbs + CLI dispatch + the
+two agents + skill + `/design:reel` command + DDR-163 + What's New + roadmap).
+**The owner live-gate is now satisfied** — the full pipeline was dogfooded
+end-to-end on real client footage (Alligators Brno recruiting folder → ingest → 6
+parallel vision analysts → director EDL → `<TransitionSeries>` codegen →
+capture-spine MP4), producing a 29 s director cut AND a 24 s effect-maxed cinematic
+cut. Ingest/probe were live-verified (dedupe, polyglot-skip, 6 real decoded
+keyframes); footage/edl schemas + the canvas-origin 403 gate are unit-green.
+
+## Retro
+
+- **The vision-only pipeline works and the output is genuinely good.** Six analysts
+  fanned out in parallel, the director assembled a coherent 35-beat arc that a human
+  editor endorsed ("jak to na sebe navazuje ty klipy… fakt dobrej"). Keyframe-vision
+  beat a heuristic shot-detector exactly as the plan bet.
+- **Sparse keyframe sampling misses baked graphics.** 12–14 frames over a 40 s
+  *finished-promo* clip straddled 1–2 s baked title cards → a beat landed on foreign
+  text. Fix folded back into `footage-analyst` (≥1 fps + flag baked text) and
+  `footage-director` (avoid those in-points). Raw footage is fine; edited promos need
+  denser sampling.
+- **The export path had more sharp edges than the authoring path.** Four real
+  export-cost realities surfaced only under a heavy comp — the `MAX_FRAMES=900`
+  silent truncation, 1080p memory death, full-frame `mix-blend-mode` renderer
+  crashes, and the `renderMediaOnWeb` hang-instead-of-fallback. All now documented
+  in the `video-comp` skill + DDR-148 addendum; two env gaps fixed (CLI mp4/webm/gif
+  formats, `MAUDE_NO_WATCH`). **Lesson for `/plan`: a "capture-spine export" feature
+  should budget an explicit hardening pass for long/heavy comps, not assume the
+  authoring green implies export green.**
+- **`renderMediaOnWeb` hang→frame-step fallback is a tracked follow-up** (DDR-148) —
+  the one genuine code bug left; everything else was env-tuning or authoring guidance.
+- **Remotion's ceiling is high.** A pure-frame-driven VFX + motion-graphics stack
+  (kinetic type, RGB split, slow-mo, VHS, glitch, light leaks, a self-drawing
+  chalkboard play-diagram, an animated infographic, a 3D CTA) all rendered
+  deterministically through the same capture spine — no new deps. Worth a showcase
+  canvas in the DS someday.

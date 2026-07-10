@@ -1,0 +1,238 @@
+{
+  "title": "Alligators Brno — Staň se Alligatorem (trimmed, 24 beats)",
+  "fps": 30,
+  "width": 1280,
+  "height": 720,
+  "beats": [
+    {
+      "clip": "assets/74678a8e.mp4",
+      "startSec": 0.7,
+      "durationFrames": 70,
+      "name": "cold-open-doorway",
+      "transition": null,
+      "overlay": {
+        "kind": "title",
+        "text": "ALLIGATORS BRNO"
+      },
+      "why": "brooding cold open, earns the title reveal"
+    },
+    {
+      "clip": "assets/74678a8e.mp4",
+      "startSec": 5,
+      "durationFrames": 34,
+      "name": "team-walkout",
+      "transition": null,
+      "why": "roster reveal"
+    },
+    {
+      "clip": "assets/66c0d998.mp4",
+      "startSec": 3.8,
+      "durationFrames": 28,
+      "name": "hook-tackle",
+      "transition": null,
+      "why": "hardest hit, first punch"
+    },
+    {
+      "clip": "assets/74678a8e.mp4",
+      "startSec": 32,
+      "durationFrames": 48,
+      "name": "locker-room-scream",
+      "transition": null,
+      "why": "raw emotional peak, belonging"
+    },
+    {
+      "clip": "assets/74678a8e.mp4",
+      "startSec": 9.6,
+      "durationFrames": 50,
+      "name": "grind-drills",
+      "transition": {
+        "presentation": "fade",
+        "frames": 15
+      },
+      "overlay": {
+        "kind": "title",
+        "text": "DŘINA"
+      },
+      "why": "opens the work movement"
+    },
+    {
+      "clip": "assets/66c0d998.mp4",
+      "startSec": 11.3,
+      "durationFrames": 34,
+      "name": "bench-press",
+      "transition": null,
+      "why": "off-season grind (shifted from 10.1s off a baked title card the sparse sample missed)"
+    },
+    {
+      "clip": "assets/66c0d998.mp4",
+      "startSec": 16.8,
+      "durationFrames": 30,
+      "name": "battle-ropes",
+      "transition": null,
+      "why": "textural work cut (carries an on-message baked caption)"
+    },
+    {
+      "clip": "assets/66c0d998.mp4",
+      "startSec": 13.4,
+      "durationFrames": 26,
+      "name": "agility-drill",
+      "transition": null,
+      "why": "fast texture cut"
+    },
+    {
+      "clip": "assets/74678a8e.mp4",
+      "startSec": 18.4,
+      "durationFrames": 30,
+      "name": "line-fire-off",
+      "transition": null,
+      "why": "disciplined, physical, closes the grind block"
+    },
+    {
+      "clip": "assets/314d43a3.mp4",
+      "startSec": 90.2,
+      "durationFrames": 40,
+      "name": "hero-run-45",
+      "transition": null,
+      "overlay": {
+        "kind": "title",
+        "text": "RYCHLOST"
+      },
+      "why": "cleanest explosive run, opens speed movement"
+    },
+    {
+      "clip": "assets/2e81036d.mp4",
+      "startSec": 261,
+      "durationFrames": 28,
+      "name": "breakaway-4",
+      "transition": null,
+      "why": "strongest moment of the historic semifinal"
+    },
+    {
+      "clip": "assets/2e81036d.mp4",
+      "startSec": 39,
+      "durationFrames": 24,
+      "name": "live-scramble",
+      "transition": null,
+      "why": "chaotic live-play energy"
+    },
+    {
+      "clip": "assets/6f213920.mp4",
+      "startSec": 130,
+      "durationFrames": 22,
+      "name": "friday-lights-run",
+      "transition": null,
+      "why": "under-the-lights grit"
+    },
+    {
+      "clip": "assets/2e81036d.mp4",
+      "startSec": 212,
+      "durationFrames": 20,
+      "name": "airborne-tackle",
+      "transition": null,
+      "why": "most kinetic frame, opens climax barrage"
+    },
+    {
+      "clip": "assets/9cab63a9.mp4",
+      "startSec": 44,
+      "durationFrames": 20,
+      "name": "sunlit-tackle",
+      "transition": null,
+      "why": "hard hit, warm light varies the palette"
+    },
+    {
+      "clip": "assets/2e81036d.mp4",
+      "startSec": 163,
+      "durationFrames": 18,
+      "name": "line-clash",
+      "transition": null,
+      "why": "quick collision flash"
+    },
+    {
+      "clip": "assets/74678a8e.mp4",
+      "startSec": 36.5,
+      "durationFrames": 22,
+      "name": "dusk-pursuit",
+      "transition": null,
+      "why": "polished-source pursuit, blue-hour contrast"
+    },
+    {
+      "clip": "assets/2e81036d.mp4",
+      "startSec": 461,
+      "durationFrames": 20,
+      "name": "goal-line-stand",
+      "transition": null,
+      "why": "highest-stakes trench moment"
+    },
+    {
+      "clip": "assets/74678a8e.mp4",
+      "startSec": 45.6,
+      "durationFrames": 36,
+      "name": "celebration-pop",
+      "transition": null,
+      "why": "euphoric payoff, releases climax tension (trimmed from 48f)"
+    },
+    {
+      "clip": "assets/74678a8e.mp4",
+      "startSec": 49.9,
+      "durationFrames": 66,
+      "name": "squad-huddle-flags",
+      "transition": {
+        "presentation": "fade",
+        "frames": 15
+      },
+      "overlay": {
+        "kind": "title",
+        "text": "SRDCE"
+      },
+      "why": "peak team-unity hero frame"
+    },
+    {
+      "clip": "assets/9cab63a9.mp4",
+      "startSec": 168,
+      "durationFrames": 48,
+      "name": "coach-moment",
+      "transition": null,
+      "overlay": {
+        "kind": "lower-third",
+        "text": "BRATRSTVÍ"
+      },
+      "why": "mentorship/belonging"
+    },
+    {
+      "clip": "assets/66c0d998.mp4",
+      "startSec": 6.9,
+      "durationFrames": 56,
+      "name": "join-us-ask",
+      "transition": null,
+      "why": "the literal ask — carries the baked PŘIDEJ SE K NÁM lower-third"
+    },
+    {
+      "clip": "assets/74678a8e.mp4",
+      "startSec": 54.3,
+      "durationFrames": 70,
+      "name": "walk-to-camera-cta",
+      "transition": {
+        "presentation": "fade",
+        "frames": 15
+      },
+      "overlay": {
+        "kind": "title",
+        "text": "STAŇ SE ALLIGATOREM"
+      },
+      "why": "most premium closing image, bold CTA"
+    },
+    {
+      "clip": "assets/9cab63a9.mp4",
+      "startSec": 271.5,
+      "durationFrames": 72,
+      "name": "crest-stinger",
+      "transition": null,
+      "overlay": {
+        "kind": "lower-third",
+        "text": "alligators.cz"
+      },
+      "why": "brand stinger to close on"
+    }
+  ],
+  "version": 1
+}

@@ -1,0 +1,18 @@
+{
+  "grain": {
+    "enabled": false,
+    "amount": 0,
+    "size": 6.5
+  },
+  "mask": {
+    "preset": "none",
+    "strength": 0.74
+  },
+  "pattern": {
+    "enabled": false
+  },
+  "duotone": {
+    "enabled": false
+  },
+  "version": 1
+}

@@ -1,0 +1,133 @@
+{
+  "asset": "assets/6f213920.mp4",
+  "durationSec": 224.537,
+  "width": 480,
+  "height": 360,
+  "keyframes": 16,
+  "shots": [
+    {
+      "start": 7,
+      "end": 14,
+      "kind": "action",
+      "motion": "pan",
+      "subject": "Live football play mid-field, dark jerseys vs white jerseys, ball carrier and pursuing defenders",
+      "lighting": "overcast daylight, flat and even",
+      "mood": "competitive, in-the-flow game energy",
+      "quality": 0.55,
+      "usable": true,
+      "note": "Clearest visibility of the whole reel — real game action in daylight; distant wide angle, no faces, good only as context B-roll."
+    },
+    {
+      "start": 14,
+      "end": 28,
+      "kind": "wide",
+      "motion": "static",
+      "subject": "Dead-ball lull — players clustered near sideline, a lone defensive back standing in space",
+      "lighting": "overcast daylight",
+      "mood": "flat, between-plays downtime",
+      "quality": 0.22,
+      "usable": false,
+      "note": "No athletic action; a huddle/reset moment. Off-brief for a hype cut."
+    },
+    {
+      "start": 28,
+      "end": 42,
+      "kind": "action",
+      "motion": "tracking",
+      "subject": "Ball carrier breaking upfield into open space with defenders in pursuit",
+      "lighting": "overcast daylight",
+      "mood": "burst of speed, breakaway tension",
+      "quality": 0.62,
+      "usable": true,
+      "note": "Best-lit athletic moment — a runner in space. Strongest daylight highlight, though SD and distant."
+    },
+    {
+      "start": 42,
+      "end": 56,
+      "kind": "detail",
+      "motion": "pan",
+      "subject": "End-zone / corner action shot through a foreground chain-link fence, players leaping",
+      "lighting": "overcast daylight",
+      "mood": "obstructed, incidental",
+      "quality": 0.28,
+      "usable": false,
+      "note": "Chain-link fence bisects the frame in the foreground — unusable no matter how good the play behind it is."
+    },
+    {
+      "start": 56,
+      "end": 84,
+      "kind": "action",
+      "motion": "tracking",
+      "subject": "Dusk game action — tackle in progress, runners and spread defenders across the field",
+      "lighting": "dusk, warm low sun fading",
+      "mood": "physical, grinding play",
+      "quality": 0.5,
+      "usable": true,
+      "note": "Golden-dusk light adds warmth; real tackles and runs, but still distant and softening as light drops."
+    },
+    {
+      "start": 84,
+      "end": 112,
+      "kind": "wide",
+      "motion": "pan",
+      "subject": "Line-of-scrimmage formations and snaps, both squads set at the trenches",
+      "lighting": "dusk turning to floodlit night",
+      "mood": "pre-snap anticipation, structured",
+      "quality": 0.45,
+      "usable": true,
+      "note": "Formation/snap moments — useful to show the trench and team size; static and low-energy on their own, good as connective tissue."
+    },
+    {
+      "start": 112,
+      "end": 154,
+      "kind": "action",
+      "motion": "tracking",
+      "subject": "Night floodlit plays — short-yardage snaps and an open-field carry with pursuit",
+      "lighting": "artificial floodlights, dark surround, some motion blur",
+      "mood": "under-the-lights night-game grit",
+      "quality": 0.48,
+      "usable": true,
+      "note": "Night-game 'Friday lights' feel is on-brief; open-field run near the end is the pick here. Dark + motion-blurred by the SD source."
+    },
+    {
+      "start": 154,
+      "end": 182,
+      "kind": "action",
+      "motion": "handheld",
+      "subject": "Night piles and scrums near the sideline, players stacking up, spectators behind",
+      "lighting": "floodlit, uneven and dark",
+      "mood": "congested, chaotic dead-ball",
+      "quality": 0.32,
+      "usable": false,
+      "note": "Mostly pile-ups and aftermath — messy and dark, reads as clutter rather than highlight."
+    },
+    {
+      "start": 182,
+      "end": 224.537,
+      "kind": "action",
+      "motion": "tracking",
+      "subject": "Night line-of-scrimmage set, then a ball carrier breaking free downfield with blockers ahead",
+      "lighting": "floodlit night",
+      "mood": "breakaway surge, crowd-energy potential",
+      "quality": 0.52,
+      "usable": true,
+      "note": "Ends on a downfield breakaway with lead blockers — the best night-game highlight beat, though dark and low-res."
+    }
+  ],
+  "summary": "Single elevated sideline camera (Hudl-style game film) of one full American-football game, 480x360 SD, running from overcast daylight into floodlit night. Content is squarely on-brief — real game action, tackles, snaps, and a couple of breakaway runs — but the footage is distant, faceless, low-resolution, and increasingly dark and motion-blurred in the night second half. Usable as action/context B-roll to establish 'real games, real team,' not as hero close-ups; no crowd, sideline, or portrait energy that a recruiting trailer leans on hardest. Best beats are the daylight breakaway (~35s) and the night downfield breakaway near the end.",
+  "tags": [
+    "american-football",
+    "game-film",
+    "sideline-wide",
+    "SD-480p",
+    "daylight-to-night",
+    "floodlit",
+    "action",
+    "breakaway-run",
+    "line-of-scrimmage",
+    "distant-no-faces",
+    "b-roll",
+    "on-brief"
+  ],
+  "version": 1
+}

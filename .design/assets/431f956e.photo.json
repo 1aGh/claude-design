@@ -1,0 +1,15 @@
+{
+  "backgroundRemoved": {
+    "enabled": true,
+    "maskAsset": "assets/b4344a53.png"
+  },
+  "version": 1,
+  "mask": {
+    "preset": "edge-fade",
+    "strength": 0
+  },
+  "pattern": {
+    "enabled": false,
+    "blend": "multiply"
+  }
+}

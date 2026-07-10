@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "backgroundRemoved": {
+    "enabled": true,
+    "maskAsset": "assets/c5edb01a.png"
+  },
+  "duotone": {
+    "enabled": false,
+    "colorA": "#e92424",
+    "colorB": "#34a962"
+  },
+  "grain": {
+    "enabled": false,
+    "amount": 0.21,
+    "size": 1
+  },
+  "pattern": {
+    "enabled": false,
+    "blend": "multiply",
+    "scale": 2.5,
+    "opacity": 0.43,
+    "type": "dots",
+    "color": "#d93333"
+  },
+  "mask": {
+    "preset": "none",
+    "strength": 0.17
+  }
+}

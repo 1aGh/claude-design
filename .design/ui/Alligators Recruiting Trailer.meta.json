@@ -1,0 +1,22 @@
+{
+  "title": "Alligators Brno — Recruiting Trailer",
+  "subtitle": "35-beat vision-directed cut from raw club footage (/design:reel dogfood) — cold open, DŘINA/RYCHLOST/SRDCE movements, accelerating action barrage, join-us ask, CTA close",
+  "brief": "Dynamic hype recruiting trailer for the Alligators Brno American-football club. Built end-to-end by feature-footage-analysis-director: ingest-footage → footage-analyst (vision, 6 clips in parallel) → footage-director EDL → this codegen. No music track ingested (vision-only pipeline) — compensated with accelerating cut pace + kinetic typography.",
+  "platform": "desktop",
+  "opt_out_scope": "full",
+  "status": "draft",
+  "tags": ["reel", "video", "footage-director", "dogfood"],
+  "sections": [
+    {
+      "id": "trailer",
+      "title": "Alligators Brno — Recruiting Trailer",
+      "subtitle": "1920x1080 · 30fps · ~38s · 35 beats"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "trailer",
+      "label": "Trailer"
+    }
+  ]
+}
