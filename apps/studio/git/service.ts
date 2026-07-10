@@ -579,6 +579,25 @@ function isTrustedTokenHost(url: string): boolean {
   }
 }
 
+/** True when the repo's LOCAL config declares a `url.<base>.insteadOf` / `pushInsteadOf`
+ *  rewrite. Only the SYSTEM git engine honors these (iso ignores them), and a rewrite
+ *  means the `remote.url` we validated is NOT the URL git will actually dial — a poisoned
+ *  `.git/config` (rides a clone/folder, no file-review sees it) could redirect a git op
+ *  to an attacker host (verify re-review — the surviving instance of the F1 "validate-here
+ *  / connect-there" class). `--local` so a user's OWN global ssh-rewrite doesn't false-
+ *  positive. The scoped token header already means no PAT leaks; the unattended probe
+ *  refuses on top of that so this zero-click path can't become a tokenless beacon. */
+async function configHasUrlRewrite(dir: string): Promise<boolean> {
+  if (!(await systemGitAvailable())) return false; // iso engine ignores insteadOf
+  const r = await runGit(dir, [
+    'config',
+    '--local',
+    '--get-regexp',
+    '^url\\..*\\.(insteadof|pushinsteadof)$',
+  ]);
+  return r.code === 0 && r.stdout.trim().length > 0;
+}
+
 /** Defense-in-depth for any `runGit` that resolves a config remote URL: disable the
  *  command-EXECUTING transports at the git layer too (`classifyRemoteUrl` already
  *  refuses them before we spawn — this is the backstop). Deliberately does NOT
@@ -1784,6 +1803,11 @@ async function remoteAheadBehindUncached(
   // so it only ever protected the now-dead iso path). github-only for http; ssh uses the
   // user's own key (DDR-131-accepted, same as the explicit Refresh).
   if (transport === 'http' && !trustedHttp) return { ahead: 0, behind: 0 };
+  // The raw `url` we validated is NOT necessarily the URL git will dial: a poisoned
+  // `url.<attacker>.insteadOf` config rewrite (system-engine-only) redirects this
+  // UNATTENDED probe to an attacker host. The scoped header means no PAT leaks, but
+  // refuse anyway so the zero-click background poll can't become a tokenless beacon.
+  if (await configHasUrlRewrite(dir)) return { ahead: 0, behind: 0 };
   if ((await systemGitAvailable()) || transport === 'ssh')
     return remoteAheadBehindSystem(dir, trustedHttp ? token : undefined, remote, branch);
   // iso engine, HTTP(S) to github (trustedHttp guaranteed by the guard above).
