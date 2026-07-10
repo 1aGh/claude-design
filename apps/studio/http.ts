@@ -1478,10 +1478,13 @@ export function createHttp(
         return new Response('cross-origin write rejected', { status: 403 });
       if (!isLoopbackHost(req.headers.get('host')))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
-      const body = await readJson<{ canvas?: unknown; id?: unknown; text?: unknown }>(
-        req,
-        16 * 1024
-      );
+      const body = await readJson<{
+        canvas?: unknown;
+        id?: unknown;
+        text?: unknown;
+        occurrence?: unknown;
+        before?: unknown;
+      }>(req, 16 * 1024);
       if (!body) return new Response('body required', { status: 400 });
       const result = await api.editText(body);
       if (!result.ok) {

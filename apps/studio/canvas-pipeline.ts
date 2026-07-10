@@ -181,23 +181,40 @@ function hasJsxAttr(opening: AnyNode, name: string): boolean {
  * TWO PREDICATES IN LOCKSTEP — if applyTextEdit's acceptance changes, this
  * must change with it, or the marker starts lying.
  */
-function isInlineEditableText(node: AnyNode): boolean {
+function inlineEditableKind(node: AnyNode): 'text' | 'var' | null {
   const children: AnyNode[] = Array.isArray(node?.children) ? node.children : [];
   const meaningful = children.filter(
     (c) => !(c?.type === 'JSXText' && typeof c.value === 'string' && c.value.trim() === '')
   );
-  if (meaningful.length !== 1) return false;
+  if (meaningful.length !== 1) return null;
   const only = meaningful[0];
-  if (only?.type === 'JSXText') return true;
+  if (only?.type === 'JSXText') return 'text';
   if (only?.type === 'JSXExpressionContainer') {
     const expr = only.expression;
-    return !!(
+    // A `{'string literal'}` rewrites in place (DDR-150 P1) — same as JSXText.
+    if (
       expr &&
       (expr.type === 'Literal' || expr.type === 'StringLiteral') &&
       typeof expr.value === 'string'
-    );
+    ) {
+      return 'text';
+    }
+    // A `{variable}` or `{item.prop}` — the string lives in a const or a
+    // `.map()`ed array; the edit engine traces it back at commit time
+    // (canvas-edit.ts resolveDynamicTextSpan). Computed forms (calls, template
+    // strings, `a + b`, ternaries) are NOT offered — no single source string.
+    if (expr?.type === 'Identifier') return 'var';
+    if (
+      expr?.type === 'MemberExpression' &&
+      !expr.computed &&
+      expr.object?.type === 'Identifier' &&
+      expr.property?.type === 'Identifier'
+    ) {
+      return 'var';
+    }
+    return null;
   }
-  return false;
+  return null;
 }
 
 function computeId(componentName: string, idx: number): string {
@@ -264,12 +281,15 @@ function walkInjectIds(
 
       // Phase 6 (unified-text-editing) — build-time editability marker, so
       // the shell's inline-edit entry and the edit engine can never disagree
-      // (isInlineEditableText mirrors applyTextEdit). Independent of the id
+      // (inlineEditableKind mirrors applyTextEdit's acceptance). `text` = a
+      // literal rewritten in place; `var` = a `{variable}` traced back to its
+      // source string at commit (canvas-edit.ts). Independent of the id
       // injection above: hand-authored data-cd-id elements still get it.
-      if (isInlineEditableText(node) && !hasJsxAttr(opening, 'data-cd-editable')) {
+      const editKind = inlineEditableKind(node);
+      if (editKind && !hasJsxAttr(opening, 'data-cd-editable')) {
         const insertAt: number | undefined = opening?.name?.end;
         if (typeof insertAt === 'number') {
-          s.appendLeft(insertAt, ' data-cd-editable="text"');
+          s.appendLeft(insertAt, ` data-cd-editable="${editKind}"`);
         }
       }
 

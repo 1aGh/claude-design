@@ -8321,7 +8321,15 @@ function App() {
         fetch('/_api/edit-text', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ canvas: m.file, id: m.id, text: m.text ?? '' }),
+          body: JSON.stringify({
+            canvas: m.file,
+            id: m.id,
+            text: m.text ?? '',
+            // Context for editing `{variable}` text — which rendered instance +
+            // its pre-edit text, so the engine targets the right source string.
+            ...(typeof m.occurrence === 'number' ? { occurrence: m.occurrence } : {}),
+            ...(typeof m.before === 'string' ? { before: m.before } : {}),
+          }),
         })
           .then((r) => r.json().catch(() => ({})))
           .then((j) => {

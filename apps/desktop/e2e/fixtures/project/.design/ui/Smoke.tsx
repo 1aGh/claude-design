@@ -10,6 +10,14 @@
  */
 import { DCArtboard, DCSection, DesignCanvas } from "@maude/canvas-lib";
 
+// Data-driven cards — the `{item.body}` case the var-editing follow-up traces
+// back to THIS array (each card renders one `<p data-cd-id>` N×).
+const CARDS = [
+  { key: "one", body: "First card body." },
+  { key: "two", body: "Second card body." },
+  { key: "three", body: "Third card body." },
+];
+
 export default function Smoke() {
   return (
     <DesignCanvas>
@@ -25,6 +33,13 @@ export default function Smoke() {
               sidecar, navigated the webview, and rendered a canvas.
             </p>
             <p data-testid="smoke-mixed" style={{ margin: "8px 0 0" }}>Total: {1 + 1} items</p>
+            <div data-testid="smoke-cards" style={{ marginTop: 8 }}>
+              {CARDS.map((c) => (
+                <p key={c.key} data-testid="smoke-card-body" style={{ margin: "2px 0" }}>
+                  {c.body}
+                </p>
+              ))}
+            </div>
           </div>
         </DCArtboard>
       </DCSection>

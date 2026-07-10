@@ -375,7 +375,8 @@ export function applyRemove(
 export async function editText(
   canvasAbsPath: string,
   id: string,
-  text: string
+  text: string,
+  opts?: DynamicTextOpts
 ): Promise<EditResult> {
   return withLock(canvasAbsPath, async () => {
     const file = Bun.file(canvasAbsPath);
@@ -386,7 +387,7 @@ export async function editText(
       });
     }
     const source = await file.text();
-    const next = applyTextEdit(canvasAbsPath, source, id, text);
+    const next = applyTextEdit(canvasAbsPath, source, id, text, opts);
     if (next.source === source) return { source, delta: 0, changed: false };
     const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
     await Bun.write(tmp, next.source);
@@ -456,16 +457,34 @@ export function applyEdit(
 }
 
 /**
+ * Extra context for editing text that comes from a `{variable}` rather than a
+ * literal (unified-text-editing follow-up). `occurrence` = which rendered
+ * instance the user edited (index among DOM nodes carrying this same cd-id — a
+ * `.map()` renders one source element N×); `before` = the pre-edit rendered
+ * text, used both to pick the right `.map()` item when the index drifts (a
+ * `.filter().map()` etc.) and to refuse a rewrite we can't confidently target.
+ */
+export interface DynamicTextOpts {
+  occurrence?: number;
+  before?: string;
+}
+
+/**
  * Pure variant of `editText` — parse, locate the JSXText child, overwrite its
  * source span (preserving the original leading/trailing whitespace so JSX
- * indentation survives), escaping the new text. Throws `CanvasEditError` for a
- * missing id, no text content, or mixed/expression children.
+ * indentation survives), escaping the new text. A single `{'literal'}` child is
+ * rewritten in place (DDR-150 P1). A single `{variable}` / `{item.prop}` child
+ * is resolved back to its source string (a local `const` or a `.map()`ed array
+ * element) when `opts` carries enough to target it unambiguously — otherwise it
+ * throws `CanvasEditError` (genuinely dynamic → route to /design:edit), same as
+ * mixed content.
  */
 export function applyTextEdit(
   canvasAbsPath: string,
   source: string,
   id: string,
-  text: string
+  text: string,
+  opts?: DynamicTextOpts
 ): EditResult {
   const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
   if (parsed.errors && parsed.errors.length > 0) {
@@ -507,13 +526,21 @@ export function applyTextEdit(
   // dynamic: refuse and route to /design:edit rather than delete the binding.
   if (meaningful.length === 1 && only?.type === 'JSXExpressionContainer') {
     const expr = (only as AnyNode).expression;
-    if (
-      expr &&
-      (expr.type === 'Literal' || expr.type === 'StringLiteral') &&
-      typeof expr.value === 'string'
-    ) {
+    // A single `{'string literal'}` — rewrite the literal in place (DDR-150 P1).
+    if (isStringLit(expr)) {
       const s = new MagicString(source);
       s.overwrite(expr.start as number, expr.end as number, JSON.stringify(text));
+      const out = s.toString();
+      return { source: out, delta: out.length - source.length };
+    }
+    // A single `{variable}` / `{item.prop}` — trace it back to its source string
+    // (a local const, or a `.map()`ed array element) and rewrite THERE. The
+    // literal that comes back is a JS string, so it round-trips through
+    // JSON.stringify like the `{'literal'}` case above (no JSX-entity surface).
+    const span = resolveDynamicTextSpan(parsed.program, hit.element, expr, opts);
+    if (span) {
+      const s = new MagicString(source);
+      s.overwrite(span.start as number, span.end as number, JSON.stringify(text));
       const out = s.toString();
       return { source: out, delta: out.length - source.length };
     }
@@ -539,6 +566,176 @@ export function applyTextEdit(
   s.overwrite(start, end, `${lead}${escapeJsxText(text)}${trail}`);
   const out = s.toString();
   return { source: out, delta: out.length - source.length };
+}
+
+// ---------------------------------------------------------------------------
+// Dynamic-text resolution (unified-text-editing follow-up). A `{variable}` /
+// `{item.prop}` text child has no literal to rewrite at the element — the
+// string lives in a `const` or a `.map()`ed data array. These helpers trace it
+// back to that source StringLiteral so inline editing works there too, WITHOUT
+// ever risking the wrong rewrite: the occurrence index picks the `.map()` item,
+// and the pre-edit text (`before`) both verifies that pick and rescues it when
+// the index drifts (`.filter().map()`, reorders). Anything we can't target
+// unambiguously returns null → the caller throws → routes to /design:edit.
+
+function isStringLit(n: AnyNode): boolean {
+  return !!(
+    n &&
+    (n.type === 'Literal' || n.type === 'StringLiteral') &&
+    typeof n.value === 'string'
+  );
+}
+
+/** Depth-first visit every AST node (skips location metadata keys). */
+function walkAst(root: AnyNode, fn: (node: AnyNode) => void): void {
+  function visit(node: AnyNode): void {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const c of node) visit(c);
+      return;
+    }
+    if (typeof node.type !== 'string') return;
+    fn(node);
+    for (const k of Object.keys(node)) {
+      if (k === 'loc' || k === 'range' || k === 'start' || k === 'end' || k === 'type') continue;
+      visit(node[k]);
+    }
+  }
+  visit(root);
+}
+
+/** The innermost `xs.map((param) => …)` whose callback param is `paramName`
+ *  and whose body byte-range encloses `element`. Returns the mapped array
+ *  expression (an Identifier or an inline ArrayExpression), or null. */
+function findEnclosingMapArray(
+  program: AnyNode,
+  element: AnyNode,
+  paramName: string
+): AnyNode | null {
+  const es = element.start as number;
+  const ee = element.end as number;
+  let best: AnyNode | null = null;
+  let bestSize = Number.POSITIVE_INFINITY;
+  walkAst(program, (node) => {
+    if (node.type !== 'CallExpression') return;
+    const callee = node.callee;
+    if (callee?.type !== 'MemberExpression' || callee.computed) return;
+    if (callee.property?.name !== 'map') return;
+    const cb = node.arguments?.[0];
+    if (cb?.type !== 'ArrowFunctionExpression' && cb?.type !== 'FunctionExpression') return;
+    const p0 = cb.params?.[0];
+    if (p0?.type !== 'Identifier' || p0.name !== paramName) return;
+    const body = cb.body;
+    if (typeof body?.start !== 'number' || typeof body?.end !== 'number') return;
+    if (!(body.start <= es && ee <= body.end)) return;
+    const size = (body.end as number) - (body.start as number);
+    if (size < bestSize) {
+      bestSize = size;
+      best = callee.object;
+    }
+  });
+  return best;
+}
+
+/** Resolve an array expression (an inline `[…]` or an Identifier bound to a
+ *  `const xs = […]`) to its ArrayExpression node. */
+function resolveArrayExpr(program: AnyNode, arrayExpr: AnyNode): AnyNode | null {
+  if (arrayExpr?.type === 'ArrayExpression') return arrayExpr;
+  if (arrayExpr?.type === 'Identifier') {
+    let found: AnyNode | null = null;
+    walkAst(program, (node) => {
+      if (
+        node.type === 'VariableDeclarator' &&
+        node.id?.type === 'Identifier' &&
+        node.id.name === arrayExpr.name &&
+        node.init?.type === 'ArrayExpression'
+      ) {
+        found = node.init;
+      }
+    });
+    return found;
+  }
+  return null;
+}
+
+/** The string-valued property `propName` of an ObjectExpression, or null. */
+function stringPropOf(objExpr: AnyNode, propName: string): AnyNode | null {
+  if (objExpr?.type !== 'ObjectExpression') return null;
+  for (const p of objExpr.properties ?? []) {
+    if (p?.type !== 'Property' || p.computed) continue;
+    const keyOk =
+      (p.key?.type === 'Identifier' && p.key.name === propName) ||
+      (isStringLit(p.key) && p.key.value === propName);
+    if (keyOk && isStringLit(p.value)) return p.value;
+  }
+  return null;
+}
+
+/**
+ * Trace a single `{variable}` / `{item.prop}` text expression back to the
+ * StringLiteral node that holds its text, or null when it can't be targeted
+ * confidently. `occurrence`/`before` come from the edited DOM instance.
+ */
+function resolveDynamicTextSpan(
+  program: AnyNode,
+  element: AnyNode,
+  expr: AnyNode,
+  opts?: DynamicTextOpts
+): AnyNode | null {
+  const beforeTrim = (opts?.before ?? '').trim();
+  const occ = typeof opts?.occurrence === 'number' && opts.occurrence >= 0 ? opts.occurrence : null;
+  const matches = (lit: AnyNode) => !beforeTrim || String(lit.value).trim() === beforeTrim;
+  // Pick from a candidate list: prefer the occurrence index (verified by
+  // `before` when present); else the UNIQUE `before`-match; else, only when we
+  // have no `before` to verify with, the raw index. Never guess between ties.
+  const pick = (cands: Array<AnyNode | null>): AnyNode | null => {
+    const at = occ != null ? cands[occ] : null;
+    if (at && matches(at)) return at;
+    if (beforeTrim) {
+      const hits = cands.filter((c): c is AnyNode => !!c && String(c.value).trim() === beforeTrim);
+      if (hits.length === 1) return hits[0] ?? null;
+      return null;
+    }
+    return at ?? null;
+  };
+
+  // {item.prop} — object-array cards.
+  if (
+    expr?.type === 'MemberExpression' &&
+    !expr.computed &&
+    expr.object?.type === 'Identifier' &&
+    expr.property?.type === 'Identifier'
+  ) {
+    const arrExpr = findEnclosingMapArray(program, element, expr.object.name);
+    if (!arrExpr) return null;
+    const arr = resolveArrayExpr(program, arrExpr);
+    if (!arr) return null;
+    return pick((arr.elements ?? []).map((el: AnyNode) => stringPropOf(el, expr.property.name)));
+  }
+
+  // {item} — string-array items.  OR  {localConst} — a module/function const.
+  if (expr?.type === 'Identifier') {
+    const arrExpr = findEnclosingMapArray(program, element, expr.name);
+    if (arrExpr) {
+      const arr = resolveArrayExpr(program, arrExpr);
+      if (!arr) return null;
+      return pick((arr.elements ?? []).map((el: AnyNode) => (isStringLit(el) ? el : null)));
+    }
+    let found: AnyNode | null = null;
+    walkAst(program, (node) => {
+      if (
+        node.type === 'VariableDeclarator' &&
+        node.id?.type === 'Identifier' &&
+        node.id.name === expr.name &&
+        isStringLit(node.init)
+      ) {
+        found = node.init;
+      }
+    });
+    return found && matches(found) ? found : null;
+  }
+
+  return null;
 }
 
 // ---------------------------------------------------------------------------

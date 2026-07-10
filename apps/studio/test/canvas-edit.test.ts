@@ -377,10 +377,13 @@ describe('canvas-edit / applyTextEdit', () => {
     expect(() => applyTextEdit(CANVAS, src, id, 'x')).toThrow(CanvasEditError);
   });
 
-  test('refuses an element whose only child is a JSX expression', () => {
-    const src = 'function Demo() { const t = "x"; return <h1>{t}</h1>; }';
+  // unified-text-editing follow-up — a `{identifier}` bound to a const string
+  // is now traced back to that const and edited THERE (was a hard refusal).
+  test('edits an {identifier} child bound to a const string (traces to the const)', () => {
+    const src = 'const t = "x";\nfunction Demo() { return <h1>{t}</h1>; }';
     const id = idsOf(src).h1 as string;
-    expect(() => applyTextEdit(CANVAS, src, id, 'x')).toThrow(CanvasEditError);
+    const out = applyTextEdit(CANVAS, src, id, 'New', { before: 'x' });
+    expect(out.source).toContain('const t = "New"');
   });
 
   test('refuses a self-closing / empty element (no text to edit)', () => {
@@ -412,10 +415,18 @@ describe('canvas-edit / applyTextEdit', () => {
     expect(() => transpileCanvasSource(CANVAS, out.source)).not.toThrow();
   });
 
-  test('still refuses a dynamic {identifier} child (routes to /design:edit)', () => {
-    const src = 'function Demo() { const title = "x"; return <h1>{title}</h1>; }';
+  test('still refuses a genuinely-computed expression child (routes to /design:edit)', () => {
+    // Call expression — no single source string to rewrite → hard refusal.
+    const src = 'const price = 9;\nfunction Demo() { return <h1>{price.toFixed(2)}</h1>; }';
     const id = idsOf(src).h1 as string;
-    expect(() => applyTextEdit(CANVAS, src, id, 'x')).toThrow(CanvasEditError);
+    expect(() => applyTextEdit(CANVAS, src, id, 'x', { before: '9.00' })).toThrow(CanvasEditError);
+  });
+
+  test('refuses an {identifier} that does not resolve to a string const', () => {
+    // `count` is a number const — no string to trace to → refuse.
+    const src = 'const count = 3;\nfunction Demo() { return <h1>{count}</h1>; }';
+    const id = idsOf(src).h1 as string;
+    expect(() => applyTextEdit(CANVAS, src, id, 'x', { before: '3' })).toThrow(CanvasEditError);
   });
 });
 

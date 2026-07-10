@@ -293,7 +293,13 @@ export interface Api {
     idIndex?: unknown;
   }): Promise<EditOpResult>;
   // Phase 12 (DDR-103) — inline text-content edit (POST /_api/edit-text). Main-origin only.
-  editText(input: { canvas?: unknown; id?: unknown; text?: unknown }): Promise<EditOpResult>;
+  editText(input: {
+    canvas?: unknown;
+    id?: unknown;
+    text?: unknown;
+    occurrence?: unknown;
+    before?: unknown;
+  }): Promise<EditOpResult>;
   // Phase 12.2 (DDR-104) — custom HTML attribute edit (POST /_api/edit-attr). Main-origin
   // only. The CSS panel's "custom HTML attribute" escape hatch (data-*, aria-*, role, …);
   // writes a plain JSX attribute via editAttribute's non-`style.` path.
@@ -2109,6 +2115,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     canvas?: unknown;
     id?: unknown;
     text?: unknown;
+    occurrence?: unknown;
+    before?: unknown;
   }): Promise<EditOpResult> {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
@@ -2117,7 +2125,23 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     if (typeof input.text !== 'string') return { ok: false, status: 400, error: 'text required' };
     if (input.text.length > 5000) return { ok: false, status: 413, error: 'text too long' };
     const text = input.text;
-    return suppressedEdit(r.abs, () => runEditText(r.abs, id, text), 'edit failed');
+    // Optional context for editing `{variable}` text (unified-text-editing
+    // follow-up): which rendered instance, and its pre-edit text — both used
+    // only to target the right source string; a bad/absent value just makes an
+    // unresolvable expression edit fail loud (route to /design:edit).
+    const occurrence =
+      typeof input.occurrence === 'number' &&
+      Number.isInteger(input.occurrence) &&
+      input.occurrence >= 0
+        ? input.occurrence
+        : undefined;
+    const before =
+      typeof input.before === 'string' && input.before.length <= 5000 ? input.before : undefined;
+    return suppressedEdit(
+      r.abs,
+      () => runEditText(r.abs, id, text, { occurrence, before }),
+      'edit failed'
+    );
   }
 
   async function editAttr(input: {

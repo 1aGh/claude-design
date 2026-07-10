@@ -79,14 +79,23 @@ describe('data-cd-editable build-time stamp', () => {
     for (const open of opens) {
       const id = /data-cd-id="([^"]+)"/.exec(open)?.[1];
       if (!id) continue;
-      const marked = open.includes('data-cd-editable="text"');
+      const kind = /data-cd-editable="(text|var)"/.exec(open)?.[1];
       let accepted = true;
       try {
         applyTextEdit('/virtual/Fixture.tsx', withIds, id, 'replacement');
       } catch {
         accepted = false;
       }
-      expect(`${open} accepted=${accepted}`).toBe(`${open} accepted=${marked}`);
+      // `text` (literal) MUST be accepted with no runtime context. `var`
+      // (a {variable}) is traced back at commit and needs occurrence/before —
+      // its acceptance is covered by dynamic-text-edit.test.ts, so only assert
+      // it isn't offered where the engine would hard-refuse a literal edit.
+      // Unmarked text-ish elements MUST be refused (no dead-end editor).
+      if (kind === 'text') {
+        expect(`${open} accepted=${accepted}`).toBe(`${open} accepted=true`);
+      } else if (!kind) {
+        expect(`${open} accepted=${accepted}`).toBe(`${open} accepted=false`);
+      }
     }
   });
 });

@@ -798,4 +798,105 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     await capture('h1-persisted-sibling-untouched');
     // after() restores the fixture byte-exact.
   });
+
+  // ── Variable-driven text: {c.body} in a .map traced back to the array ──────
+  it('variable text: editing the 2nd .map card rewrites CARDS[1].body only, persists through reload', async () => {
+    await waitForStableRect(H1, 20_000);
+    // The `.map()` renders one source <p data-cd-id> three times — same testid,
+    // same cd-id. Grab the SECOND card by DOM order and confirm it enters edit
+    // mode (the var marker opened the gate — no dead-end hint).
+    const cards = await browser.execute(() => {
+      const iframe = document.querySelector(
+        '[data-testid="canvas-frame"]'
+      ) as HTMLIFrameElement | null;
+      const doc = iframe?.contentDocument;
+      const els = Array.from(
+        doc?.querySelectorAll('[data-testid="smoke-card-body"]') ?? []
+      ) as HTMLElement[];
+      return {
+        count: els.length,
+        editable: els.map((e) => e.hasAttribute('data-cd-editable')),
+        texts: els.map((e) => e.textContent),
+        second: els[1]
+          ? (() => {
+              const r = els[1].getBoundingClientRect();
+              return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+            })()
+          : null,
+      };
+    });
+    expect(cards.count).toBe(3);
+    expect(cards.editable.every(Boolean)).toBe(true); // gate open (var marker)
+    expect(cards.texts).toEqual(['First card body.', 'Second card body.', 'Third card body.']);
+    if (!cards.second) throw new Error('no second card');
+
+    // Edit the SECOND card — dispatch on that exact element (querySelector
+    // would hit card 0). The commit carries occurrence=1 + before, so the
+    // engine rewrites CARDS[1].body, not card 0 or 2.
+    await browser.execute(
+      (x, y) => {
+        const iframe = document.querySelector(
+          '[data-testid="canvas-frame"]'
+        ) as HTMLIFrameElement | null;
+        const doc = iframe?.contentDocument;
+        const win = iframe?.contentWindow as (Window & typeof globalThis) | null;
+        const el = (
+          Array.from(
+            doc?.querySelectorAll('[data-testid="smoke-card-body"]') ?? []
+          ) as HTMLElement[]
+        )[1];
+        if (!el || !win) return false;
+        const opts = { bubbles: true, cancelable: true, view: win, clientX: x, clientY: y };
+        el.dispatchEvent(new win.PointerEvent('pointerdown', { ...opts, pointerId: 1 }));
+        el.dispatchEvent(new win.MouseEvent('mousedown', { ...opts, detail: 1 }));
+        el.dispatchEvent(new win.PointerEvent('pointerup', { ...opts, pointerId: 1 }));
+        el.dispatchEvent(new win.MouseEvent('mouseup', { ...opts, detail: 1 }));
+        el.dispatchEvent(new win.MouseEvent('click', { ...opts, detail: 1 }));
+        el.dispatchEvent(new win.MouseEvent('mousedown', { ...opts, detail: 2 }));
+        el.dispatchEvent(new win.MouseEvent('mouseup', { ...opts, detail: 2 }));
+        el.dispatchEvent(new win.MouseEvent('click', { ...opts, detail: 2 }));
+        el.dispatchEvent(new win.MouseEvent('dblclick', { ...opts, detail: 2 }));
+        return true;
+      },
+      Math.round(cards.second.cx),
+      Math.round(cards.second.cy)
+    );
+    await browser.pause(300);
+    // The editing element is the 2nd card; assert it entered edit mode.
+    const editingSecond = await browser.execute(() => {
+      const iframe = document.querySelector(
+        '[data-testid="canvas-frame"]'
+      ) as HTMLIFrameElement | null;
+      const doc = iframe?.contentDocument;
+      const els = Array.from(
+        doc?.querySelectorAll('[data-testid="smoke-card-body"]') ?? []
+      ) as HTMLElement[];
+      return els[1]?.getAttribute('contenteditable');
+    });
+    expect(editingSecond).toBe('plaintext-only');
+    await typeAtEnd(' EDITED');
+    await synthKey('Enter');
+    await browser.waitUntil(
+      async () => {
+        const texts = await browser.execute(() => {
+          const iframe = document.querySelector(
+            '[data-testid="canvas-frame"]'
+          ) as HTMLIFrameElement | null;
+          const doc = iframe?.contentDocument;
+          return Array.from(doc?.querySelectorAll('[data-testid="smoke-card-body"]') ?? []).map(
+            (e) => e.textContent
+          );
+        });
+        return texts[1]?.includes('EDITED') === true && !texts[0]?.includes('EDITED');
+      },
+      { timeout: 20_000, interval: 600, timeoutMsg: 'card edit never persisted through reload' }
+    );
+    // Disk proof: ONLY CARDS[1].body changed.
+    const smokePath = FIXTURE_FILES[0] as string;
+    const src = readFileSync(smokePath, 'utf8');
+    expect(src).toContain('Second card body. EDITED');
+    expect(src).toContain('First card body.'); // sibling untouched
+    expect(src).toContain('Third card body.');
+    await capture('var-card-persisted-only-second');
+  });
 });

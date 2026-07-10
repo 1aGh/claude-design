@@ -2226,8 +2226,22 @@ function CanvasRouter({
       const cdId = elx.getAttribute('data-cd-id');
       if (!cdId) return;
       const file = deriveFile();
+      // For `{variable}` text the engine needs to know WHICH rendered instance
+      // this is (a `.map()` renders one source element N×) — its index among
+      // same-cd-id nodes — plus the pre-edit text to target the right array
+      // item. Harmless for literal text (the engine ignores both there).
+      let occurrence = 0;
       try {
-        window.parent.postMessage({ dgn: 'edit-text', id: cdId, file, text }, '*');
+        const sameId = Array.from(document.querySelectorAll(`[data-cd-id="${CSS.escape(cdId)}"]`));
+        occurrence = Math.max(0, sameId.indexOf(elx));
+      } catch {
+        /* querySelectorAll/CSS.escape unavailable — occurrence stays 0 */
+      }
+      try {
+        window.parent.postMessage(
+          { dgn: 'edit-text', id: cdId, file, text, occurrence, before: original.trim() },
+          '*'
+        );
       } catch {
         /* detached / cross-origin */
       }
