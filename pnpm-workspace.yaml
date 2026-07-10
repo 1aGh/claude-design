@@ -35,4 +35,10 @@ allowBuilds:
   edgedriver: false
   esbuild: true
   geckodriver: false
+  # Transitive dep of onnxruntime-web (feature-photo-editor's ML background
+  # removal). Its postinstall only prints a semver-scheme lint warning (no
+  # native build, no functional side effect anything here depends on) —
+  # denied by default per this file's own convention above (build scripts
+  # run only on demonstrated need, e.g. better-sqlite3's real native compile).
+  protobufjs: false
   sharp: true
