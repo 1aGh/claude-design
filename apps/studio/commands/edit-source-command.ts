@@ -46,6 +46,14 @@ export interface EditSourcePayload {
   before: string | null;
   /** Value after the edit. `null` = the edit removed the prop/attr (the reset path). */
   after: string | null;
+  /**
+   * `op:'text'` only — which rendered instance this edit targeted (index among
+   * same-cd-id DOM nodes). Needed to re-apply a `{variable}` text edit through
+   * undo/redo: the engine traces the string back to the right `.map()` item or
+   * component-prop usage, and that resolution needs the occurrence. Undefined
+   * for literal text (the engine ignores it there) and for css/attr.
+   */
+  occurrence?: number;
 }
 
 /**
@@ -60,6 +68,14 @@ export type EditSourceApplyFn = (apply: {
   id: string;
   key: string;
   value: string | null;
+  /**
+   * `op:'text'` re-application only — the value CURRENTLY on disk (the side we
+   * replace FROM: `before` on redo, `after` on undo), so a `{variable}` edit
+   * can be traced to the right source string. Plus the occurrence. Ignored by
+   * css/attr and by literal-text edits.
+   */
+  from?: string | null;
+  occurrence?: number;
 }) => void | Promise<void>;
 
 export const EDIT_SOURCE_KIND = 'edit-source';
@@ -72,16 +88,27 @@ export interface EditSourceCommandInit {
 
 export function createEditSourceCommand(init: EditSourceCommandInit): EditCommand {
   const { payload, applyFn } = init;
-  const apply = (value: string | null) =>
-    applyFn({ op: payload.op, canvas: payload.canvas, id: payload.id, key: payload.key, value });
+  // `from` = the value on disk BEFORE this re-application (what a `{variable}`
+  // text resolver matches against). do() writes `after` over `before`; undo()
+  // writes `before` over `after`.
+  const apply = (value: string | null, from: string | null) =>
+    applyFn({
+      op: payload.op,
+      canvas: payload.canvas,
+      id: payload.id,
+      key: payload.key,
+      value,
+      from,
+      occurrence: payload.occurrence,
+    });
   return {
     kind: EDIT_SOURCE_KIND,
     label: init.label ?? defaultLabel(payload),
     async do() {
-      await apply(payload.after);
+      await apply(payload.after, payload.before);
     },
     async undo() {
-      await apply(payload.before);
+      await apply(payload.before, payload.after);
     },
   };
 }

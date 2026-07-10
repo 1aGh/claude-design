@@ -898,5 +898,43 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     expect(src).toContain('First card body.'); // sibling untouched
     expect(src).toContain('Third card body.');
     await capture('var-card-persisted-only-second');
+
+    // ── Undo / redo of the variable edit ──────────────────────────────────
+    const cardText = (i: number) =>
+      browser.execute((n) => {
+        const iframe = document.querySelector(
+          '[data-testid="canvas-frame"]'
+        ) as HTMLIFrameElement | null;
+        const doc = iframe?.contentDocument;
+        return (
+          Array.from(doc?.querySelectorAll('[data-testid="smoke-card-body"]') ?? [])[n]
+            ?.textContent ?? null
+        );
+      }, i) as Promise<string | null>;
+
+    // Undo (Edit-menu bridge) — re-targets CARDS[1] via the stored occurrence
+    // + the current disk value, rewriting it back to the original.
+    await postToCanvas({ dgn: 'undo' });
+    await browser.waitUntil(async () => (await cardText(1)) === 'Second card body.', {
+      timeout: 20_000,
+      interval: 600,
+      timeoutMsg: 'undo never reverted the variable edit',
+    });
+    expect(readFileSync(smokePath, 'utf8')).toContain('Second card body.');
+    expect(readFileSync(smokePath, 'utf8')).not.toContain('Second card body. EDITED');
+    await capture('var-card-undo-reverted');
+
+    // Redo — re-applies to CARDS[1] only.
+    await postToCanvas({ dgn: 'redo' });
+    await browser.waitUntil(async () => (await cardText(1))?.includes('EDITED') === true, {
+      timeout: 20_000,
+      interval: 600,
+      timeoutMsg: 'redo never re-applied the variable edit',
+    });
+    const afterRedo = readFileSync(smokePath, 'utf8');
+    expect(afterRedo).toContain('Second card body. EDITED');
+    expect(afterRedo).toContain('First card body.'); // still untouched
+    expect(afterRedo).toContain('Third card body.');
+    await capture('var-card-redo-reapplied');
   });
 });

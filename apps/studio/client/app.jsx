@@ -8362,6 +8362,11 @@ function App() {
         } else {
           url = '/_api/edit-text';
           body = { canvas: m.canvas, id: m.id, text: value ?? '' };
+          // Undo/redo of a `{variable}` text edit needs to re-target the source
+          // string: the occurrence + the value currently on disk (`from` — the
+          // side we're replacing FROM). Harmless for literal text.
+          if (typeof m.occurrence === 'number') body.occurrence = m.occurrence;
+          if (typeof m.from === 'string') body.before = m.from;
         }
         editApplyChainRef.current = editApplyChainRef.current
           .catch(() => {})

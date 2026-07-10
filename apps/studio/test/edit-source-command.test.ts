@@ -30,7 +30,30 @@ describe('createEditSourceCommand', () => {
       id: 'cd-1',
       key: 'color',
       value: 'blue',
+      // do() writes `after` over `before`, so `from` = before; css has no occurrence.
+      from: 'red',
+      occurrence: undefined,
     });
+  });
+
+  test('do()/undo() carry occurrence + from for a text edit (variable re-target)', async () => {
+    const applyFn = mock(() => {});
+    const textEdit: EditSourcePayload = {
+      op: 'text',
+      canvas: '.design/ui/Foo.tsx',
+      id: 'cd-9',
+      key: '',
+      before: 'Old',
+      after: 'New',
+      occurrence: 2,
+    };
+    const cmd = createEditSourceCommand({ payload: textEdit, applyFn });
+    await cmd.do();
+    // redo/do: write New over Old → from = Old.
+    expect(applyFn.mock.calls[0]?.[0]).toMatchObject({ value: 'New', from: 'Old', occurrence: 2 });
+    await cmd.undo();
+    // undo: write Old over New → from = New.
+    expect(applyFn.mock.calls[1]?.[0]).toMatchObject({ value: 'Old', from: 'New', occurrence: 2 });
   });
 
   test('undo() applies the BEFORE value', async () => {

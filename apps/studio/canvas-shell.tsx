@@ -2258,6 +2258,9 @@ function CanvasRouter({
           key: '',
           before: original.trim(),
           after: text,
+          // Carry the occurrence so undo/redo can re-target a `{variable}` edit
+          // (the .map()/component-prop resolution needs it — canvas-edit.ts).
+          occurrence,
         })
       );
     }
