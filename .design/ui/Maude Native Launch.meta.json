@@ -1,0 +1,33 @@
+{
+  "title": "Maude Native Launch",
+  "subtitle": "Launch video-comp — the 22.6 sneak peek → the full native desktop app",
+  "brief": "Social launch clip (~12s, no VO, music bed) for the native Maude desktop app. Callback to the June sneak peek (a single diff-viewer screen), then reveal the whole app across six frame-driven beats: june diff (dimmed) → zoom out → six-phase montage (shell/git/identity/collab/chat/distribution) → ready for non-technical people (no terminal) → runs on macOS + Windows → download CTA (maude.sh/desktop). On the maude DS (indigo accent, spark mark, Inter Tight). Diff red/green used only for the literal git-diff callback. Export ⌘E → MP4/GIF or /design:export mp4 --scope artboard.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "none",
+  "sections": [
+    {
+      "id": "Maude Native Launch",
+      "title": "Maude Native Launch",
+      "subtitle": "MAUDE/LAUNCH · sneak peek → the whole app · one artboard · music bed"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "launch",
+      "label": "Launch cut (~12s)"
+    }
+  ],
+  "layout": {
+    "artboards": [
+      {
+        "id": "launch",
+        "x": 0,
+        "y": 0
+      }
+    ]
+  },
+  "created": "2026-07-10",
+  "css_mode": "inline",
+  "iteration_count": 1
+}
