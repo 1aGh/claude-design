@@ -541,6 +541,16 @@ function classifyRemoteUrl(url: string): RemoteTransport {
   return 'unsafe';
 }
 
+/** True when a remote URL points at github.com (https or the scp-like ssh form).
+ *  Decides the fold path (DDR-162): a GitHub remote gets the PR flow (push draft +
+ *  open a pull request via the endpoint); anything else (no remote, a local/file
+ *  remote) keeps the local-merge path. Only a routing decision — the authoritative,
+ *  security-anchored owner/repo parse is `parseGitHubRemote` at the endpoint, which
+ *  rejects an embedded `evil.com/github.com/…` even if this heuristic didn't. */
+function isGitHubRemote(url: string): boolean {
+  return /(?:^|\/\/|@)github\.com[:/]/i.test((url || '').trim());
+}
+
 /** Read a remote's configured URL (empty string when missing). */
 async function readRemoteUrl(dir: string, remote: string): Promise<string> {
   return (await git.getConfig({ fs, dir, path: `remote.${remote}.url` }).catch(() => null)) || '';
@@ -767,8 +777,15 @@ export interface GitFoldResult {
   conflict?: boolean;
   authRequired?: boolean;
   error?: string;
-  /** The Shared-version branch the draft was added to. */
+  /** The Shared-version branch the draft was added to (local merge) or targeted (PR). */
   shared?: string;
+  /** PR flow (DDR-162): a GitHub remote exists, the draft branch was pushed, and the
+   *  endpoint should open a pull request `head → base`. When set, no local merge or
+   *  push of the Shared version happened — the merge lands on GitHub, post-review. */
+  prReady?: boolean;
+  head?: string;
+  base?: string;
+  remoteUrl?: string;
 }
 
 /** "Add this draft to the Shared version" (phase-29 / E4, Task 7): merge the draft
@@ -793,6 +810,29 @@ export async function gitFoldDraft(
   if (!branches.some((b) => b.name === draftName))
     return { ok: false, error: "That draft doesn't exist." };
 
+  // A GitHub remote → PR flow (DDR-162): publish the DRAFT branch (branch protection
+  // guards the Shared version, not the draft) and signal the endpoint to open a pull
+  // request draft→shared. We deliberately do NOT merge or push the Shared version here
+  // — pushing a protected `main` is exactly what GitHub forbids, and the reason the PR
+  // exists. The merge lands on GitHub after review.
+  const remoteUrl = await readRemoteUrl(dir, remote);
+  if (isGitHubRemote(remoteUrl)) {
+    const push = await gitPush(dir, token, { remote, ref: draftName });
+    if (!push.ok) {
+      if (push.authRequired) return { ok: false, authRequired: true, error: push.error };
+      if (push.conflict)
+        return {
+          ok: false,
+          conflict: true,
+          error: 'Your draft moved on the server — Get latest first, then add it.',
+        };
+      return { ok: false, error: push.error ?? 'Could not publish your draft.' };
+    }
+    return { ok: true, shared, prReady: true, head: draftName, base: shared, remoteUrl };
+  }
+
+  // No remote (or a non-GitHub local remote) → merge the draft into the Shared version
+  // locally; there's no PR host. Unchanged pre-PR-flow behavior.
   // Merge the draft into the Shared version (FF when possible, else a merge commit).
   try {
     if (USE_SYSTEM_GIT) {
@@ -866,11 +906,59 @@ export async function gitFoldDraft(
 
 // ── push (Publish) ─────────────────────────────────────────────────────────
 
+/** Publish / Get-latest transport routing — brings the network WRITE paths up to the
+ *  same DDR-131/DDR-133 gate the network READ paths already enforce (gitFetchRemote
+ *  `:1099`, remoteAheadBehind `:1628`). iso-git speaks HTTP(S) ONLY, so an ssh/git
+ *  remote MUST run through the system binary (the "unrecognized transport protocol:
+ *  ssh" bug was push/pull skipping this); a command-executing / non-github URL is
+ *  REFUSED before any spawn; and the keychain PAT rides only a trusted-host HTTPS
+ *  request. `none` (no remote configured) keeps the pre-gate routing so a local-only
+ *  project's tokenless publish still short-circuits to "sign in" unchanged. */
+type NetWriteRoute =
+  | { via: 'system'; tokenForSystem: string | undefined }
+  | { via: 'iso' }
+  | { via: 'legacy' }
+  | { via: 'authRequired' }
+  | { via: 'reject'; error: string };
+
+async function resolveNetWriteRoute(
+  dir: string,
+  remote: string,
+  token: string | undefined
+): Promise<NetWriteRoute> {
+  const url = await readRemoteUrl(dir, remote);
+  const transport = classifyRemoteUrl(url);
+  if (transport === 'none') return { via: 'legacy' };
+  // Command-executing transports (ext::/fd::/transport:: — the `::` helpers) are RCE:
+  // refuse BEFORE any spawn so neither engine ever resolves them. A plain file/local
+  // remote is NOT rejected here — it's a legitimate explicit local-repo transfer
+  // (handled by the system branch below), matching HARDENED_REMOTE_FLAGS' stance that
+  // only shell-spawning helpers are blocked, not file object transfer.
+  if (url.includes('::'))
+    return { via: 'reject', error: 'Maude can only sync github.com (HTTPS or SSH) projects.' };
+  const trustedHttp = transport === 'http' && isTrustedTokenHost(url);
+  if (transport === 'http' && !trustedHttp)
+    return { via: 'reject', error: 'Maude can only sync github.com projects.' };
+  // Tokenless github HTTPS with no system git to fall back on: iso can't authenticate
+  // → ask the user to sign in (mirrors gitFetchRemote `:1096`).
+  if (transport === 'http' && !token && !(await systemGitAvailable()))
+    return { via: 'authRequired' };
+  // System engine for: ssh (iso can't speak it), a file/local remote ('unsafe' minus
+  // the `::` helpers rejected above — e.g. a bare-repo path), or ANY remote once a git
+  // binary exists. The PAT rides only a trusted-host HTTPS request; ssh/local use the
+  // user's own key / on-disk path.
+  if ((await systemGitAvailable()) || transport === 'ssh' || transport === 'unsafe')
+    return { via: 'system', tokenForSystem: trustedHttp ? token : undefined };
+  return { via: 'iso' }; // github HTTPS + token, no system git present
+}
+
 /** Publish. `token` is optional in phase-27: the system-git engine falls back to
  *  the user's configured credential helper / SSH, so a developer-ish user who
  *  cloned with system git can publish today (no in-UI token). The iso-git default
  *  engine needs the token (no helper integration) → `authRequired` when absent,
- *  which the UI renders as "Sign in to publish" (phase-28 keychain fills it). */
+ *  which the UI renders as "Sign in to publish" (phase-28 keychain fills it).
+ *  Engine choice goes through resolveNetWriteRoute so an ssh remote reaches the git
+ *  binary instead of iso's HTTP-only transport (DDR-131/DDR-133 parity). */
 export async function gitPush(
   dir: string,
   token: string | undefined,
@@ -879,9 +967,21 @@ export async function gitPush(
   if (!isRepo(dir)) return { ok: false, error: 'This project is not versioned yet.' };
   invalidateRemoteProbe(dir); // a publish changes ahead/behind — re-probe next status
   const remote = opts.remote || 'origin';
-  return USE_SYSTEM_GIT
-    ? pushSystem(dir, token, remote, opts.ref)
-    : pushIso(dir, token, remote, opts.ref);
+  const route = await resolveNetWriteRoute(dir, remote, token);
+  switch (route.via) {
+    case 'reject':
+      return { ok: false, error: route.error };
+    case 'authRequired':
+      return { ok: false, authRequired: true, error: 'Sign in to publish.' };
+    case 'system':
+      return pushSystem(dir, route.tokenForSystem, remote, opts.ref);
+    case 'iso':
+      return pushIso(dir, token, remote, opts.ref);
+    case 'legacy':
+      return USE_SYSTEM_GIT
+        ? pushSystem(dir, token, remote, opts.ref)
+        : pushIso(dir, token, remote, opts.ref);
+  }
 }
 
 async function pushIso(
@@ -926,6 +1026,11 @@ async function pushIso(
   } catch (e) {
     const msg = errMsg(e);
     if (isNonFastForward(msg)) return { ok: false, conflict: true };
+    if (isTransportError(msg))
+      return {
+        ok: false,
+        error: 'Publishing needs the git command-line tool for this project’s connection.',
+      };
     return { ok: false, error: msg };
   }
 }
@@ -947,6 +1052,12 @@ async function pushSystem(
   args.push('push', remote, branch || 'HEAD');
   const r = await runGit(dir, args);
   if (r.code === 0) return { ok: true };
+  // 127 = no git binary on PATH (the ssh-remote-but-no-CLI case; ssh always routes here).
+  if (r.code === 127)
+    return {
+      ok: false,
+      error: 'Publishing needs the git command-line tool for this project’s connection.',
+    };
   if (isNonFastForward(`${r.stderr} ${r.stdout}`.toLowerCase()))
     return { ok: false, conflict: true };
   return { ok: false, error: r.stderr.trim() || 'Publish failed.' };
@@ -981,6 +1092,15 @@ function isNonFastForward(blob: string): boolean {
   );
 }
 
+/** iso-git speaks HTTP(S) only and throws "unrecognized transport protocol" on an
+ *  ssh/git remote. Routing now sends those to system git (resolveNetWriteRoute), so
+ *  this is a BELT: if a transport error ever still reaches an iso catch, map it to the
+ *  same "use the git CLI" copy gitFetchRemote shows (`:1153`) instead of leaking the
+ *  raw isomorphic-git string to the UI. */
+function isTransportError(blob: string): boolean {
+  return /unrecognized transport|unsupported|protocol/i.test(blob);
+}
+
 // ── pull (Get latest) ─────────────────────────────────────────────────────
 
 /** Get latest. Same optional-token model as gitPush (see its doc comment). */
@@ -991,9 +1111,22 @@ export async function gitPull(
 ): Promise<GitPullResult> {
   if (!isRepo(dir)) return { ok: false, error: 'This project is not versioned yet.' };
   invalidateRemoteProbe(dir); // a pull changes ahead/behind — re-probe next status
-  return USE_SYSTEM_GIT
-    ? pullSystem(dir, token, opts.remote || 'origin', opts.ref)
-    : pullIso(dir, token, opts.remote || 'origin', opts.ref);
+  const remote = opts.remote || 'origin';
+  const route = await resolveNetWriteRoute(dir, remote, token);
+  switch (route.via) {
+    case 'reject':
+      return { ok: false, error: route.error };
+    case 'authRequired':
+      return { ok: false, authRequired: true, error: 'Sign in to get the latest.' };
+    case 'system':
+      return pullSystem(dir, route.tokenForSystem, remote, opts.ref);
+    case 'iso':
+      return pullIso(dir, token, remote, opts.ref);
+    case 'legacy':
+      return USE_SYSTEM_GIT
+        ? pullSystem(dir, token, remote, opts.ref)
+        : pullIso(dir, token, remote, opts.ref);
+  }
 }
 
 async function pullIso(
@@ -1022,7 +1155,13 @@ async function pullIso(
     // `data` is the list of conflicted filepaths. DiffView opens on these.
     const conflictFiles = mergeConflictFiles(e);
     if (conflictFiles) return { ok: false, conflict: true, files: conflictFiles };
-    return { ok: false, error: errMsg(e) };
+    const msg = errMsg(e);
+    if (isTransportError(msg))
+      return {
+        ok: false,
+        error: 'Getting the latest needs the git command-line tool for this project’s connection.',
+      };
+    return { ok: false, error: msg };
   }
 }
 
@@ -1040,6 +1179,11 @@ async function pullSystem(
   args.push('pull', '--no-rebase', remote, branch || 'HEAD');
   const r = await runGit(dir, args);
   if (r.code === 0) return { ok: true };
+  if (r.code === 127)
+    return {
+      ok: false,
+      error: 'Getting the latest needs the git command-line tool for this project’s connection.',
+    };
   const blob = `${r.stderr}\n${r.stdout}`;
   if (/conflict/i.test(blob)) {
     // Parse `CONFLICT (content): Merge conflict in <path>` lines.

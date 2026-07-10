@@ -14,6 +14,8 @@ import {
   gitFetchRemote,
   gitFoldDraft,
   gitListBranches,
+  gitPull,
+  gitPush,
   remoteAheadBehind,
 } from '../git/service.ts';
 
@@ -111,6 +113,30 @@ test('fold: merges the draft into the Shared version locally; a tokenless publis
   expect((await gitListBranches(dir)).some((b) => b.name === 'nav')).toBe(true);
 });
 
+test('fold: a GitHub remote takes the PR path — pushes the draft, never locally merges main (DDR-162)', async () => {
+  // isGitHubRemote(github.com) → PR flow: publish the DRAFT branch (fails here — no
+  // real access) and NEVER merge/modify the local Shared version. `false` as the ssh
+  // command fails the transport instantly, so there's no network to github.com.
+  const prevSsh = process.env.GIT_SSH_COMMAND;
+  process.env.GIT_SSH_COMMAND = 'false';
+  const shared = (await gitListBranches(dir)).find((b) => b.current)?.name as string;
+  sh(['remote', 'add', 'origin', 'git@github.com:fake-org/fake-repo.git']);
+  await gitCreateBranch(dir, 'nav'); // now on 'nav'
+  writeFileSync(join(dir, 'b.txt'), 'draft work\n');
+  sh(['add', '.']);
+  sh(['commit', '-q', '-m', 'draft work']);
+  const r = await gitFoldDraft(dir, 'nav', undefined, {});
+  process.env.GIT_SSH_COMMAND = prevSsh ?? '';
+  // The draft push failed (fake repo) → not ok, and NOT the iso transport error…
+  expect(r.ok).toBe(false);
+  expect(r.error || '').not.toMatch(/unrecognized transport/i);
+  // …but crucially the Shared version was NEVER locally merged/modified…
+  sh(['checkout', shared]);
+  expect(existsSync(join(dir, 'b.txt'))).toBe(false);
+  // …and the draft still exists (nothing destroyed on a failed publish).
+  expect((await gitListBranches(dir)).some((b) => b.name === 'nav')).toBe(true);
+});
+
 // ── remote drafts (phase: surface remote branches) ───────────────────────────
 
 /** Stand up a bare "remote" with main + a teammate draft, clone it locally (system
@@ -195,6 +221,51 @@ test('an ssh remote routes to system git, never the iso transport error', async 
   expect(r.ok).toBe(false);
   expect(r.authRequired).toBeFalsy(); // ssh failure is not a GitHub sign-in prompt
   expect(r.error || '').not.toMatch(/unrecognized transport/i); // didn't fall into iso
+});
+
+// ── publish / get-latest over ssh (DDR-131/DDR-133 parity — the gap that shipped) ──
+// gitFetchRemote was hardened for ssh; gitPush/gitPull historically routed on the
+// USE_SYSTEM_GIT env flag only (default off) and fell into iso → "unrecognized
+// transport protocol: ssh". These prove the write paths now take the same gate.
+
+test('gitPush: an ssh remote routes to system git, never the iso transport error', async () => {
+  process.env.GIT_SSH_COMMAND =
+    'ssh -o BatchMode=yes -o ConnectTimeout=2 -o StrictHostKeyChecking=no';
+  sh(['remote', 'add', 'origin', 'git@nonexistent.invalid:team/app.git']);
+  const r = await gitPush(dir, undefined, {});
+  process.env.GIT_SSH_COMMAND = '';
+  expect(r.ok).toBe(false);
+  expect(r.authRequired).toBeFalsy(); // an ssh failure is not a GitHub sign-in prompt
+  expect(r.error || '').not.toMatch(/unrecognized transport/i); // didn't fall into iso
+});
+
+test('gitPull: an ssh remote routes to system git, never the iso transport error', async () => {
+  process.env.GIT_SSH_COMMAND =
+    'ssh -o BatchMode=yes -o ConnectTimeout=2 -o StrictHostKeyChecking=no';
+  sh(['remote', 'add', 'origin', 'git@nonexistent.invalid:team/app.git']);
+  const r = await gitPull(dir, undefined, {});
+  process.env.GIT_SSH_COMMAND = '';
+  expect(r.ok).toBe(false);
+  expect(r.authRequired).toBeFalsy();
+  expect(r.error || '').not.toMatch(/unrecognized transport/i);
+});
+
+test('SECURITY: gitPush refuses an unsafe (ext::) remote — no spawn, no RCE', async () => {
+  // A poisoned .git/config remote — must be refused BEFORE any git spawn (the payload
+  // never runs); classifyRemoteUrl reads the url via iso getConfig, not the git binary.
+  const sentinel = join(dir, 'PWNED_PUSH');
+  sh(['remote', 'add', 'origin', `ext::sh -c "touch ${sentinel}"`]);
+  const r = await gitPush(dir, 'tok_should_not_be_used', {});
+  expect(r.ok).toBe(false);
+  expect(r.error).toMatch(/github\.com/i); // "can only sync github.com…"
+  expect(existsSync(sentinel)).toBe(false); // payload NEVER executed
+});
+
+test('SECURITY: gitPush does not send the GitHub token to a non-GitHub HTTPS host', async () => {
+  sh(['remote', 'add', 'origin', 'https://evil.example.com/repo.git']);
+  const r = await gitPush(dir, 'tok_secret', {});
+  expect(r.ok).toBe(false);
+  expect(r.error).toMatch(/github\.com/i); // refused by policy, token never attached
 });
 
 // ── transport-injection hardening (adversarial review of 75a2f0d) ────────────

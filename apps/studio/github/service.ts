@@ -164,6 +164,73 @@ export async function createRepo(token: string, input: CreateRepoInput): Promise
   };
 }
 
+export interface PullRequest {
+  number: number;
+  html_url: string;
+}
+
+export interface CreatePullRequestInput {
+  /** The draft branch (same-repo head — a bare branch name). */
+  head: string;
+  /** The Shared-version branch the PR targets (main/master). */
+  base: string;
+  title: string;
+  body?: string;
+}
+
+/** Open a pull request `head → base` in the given repo. GitHub returns 422 both when
+ *  a PR for this head/base already exists AND when there are no commits between them;
+ *  we can't tell from the (friendly-mapped) message, so we probe for an already-open
+ *  PR — if one exists, re-running "Add to Shared version" links it instead of erroring;
+ *  otherwise it's a genuine no-op and we surface a friendly message. */
+export async function createPullRequest(
+  token: string,
+  owner: string,
+  repo: string,
+  input: CreatePullRequestInput
+): Promise<PullRequest> {
+  const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls`;
+  try {
+    const res = await api(token, path, {
+      method: 'POST',
+      body: { title: input.title, head: input.head, base: input.base, body: input.body ?? '' },
+    });
+    const r = (await res.json()) as { number: number; html_url: string };
+    return { number: r.number, html_url: r.html_url };
+  } catch (e) {
+    if (e instanceof GitHubApiError && e.status === 422) {
+      const existing = await findOpenPullRequest(token, owner, repo, input.head, input.base);
+      if (existing) return existing;
+      throw new GitHubApiError(
+        422,
+        'Nothing new to add — this draft already matches the Shared version.'
+      );
+    }
+    throw e;
+  }
+}
+
+/** The open PR for `head → base`, if any (recovers a link from the 422 above). */
+async function findOpenPullRequest(
+  token: string,
+  owner: string,
+  repo: string,
+  head: string,
+  base: string
+): Promise<PullRequest | null> {
+  const q =
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls` +
+    `?state=open&head=${encodeURIComponent(`${owner}:${head}`)}&base=${encodeURIComponent(base)}`;
+  const res = await api(token, q).catch(() => null);
+  if (!res) return null;
+  const list = (await res.json().catch(() => null)) as Array<{
+    number: number;
+    html_url: string;
+  }> | null;
+  if (!Array.isArray(list) || list.length === 0) return null;
+  return { number: list[0].number, html_url: list[0].html_url };
+}
+
 /**
  * Point the local project's `origin` at `remoteUrl` (iso-git, no network). Replaces
  * any existing remote of the same name so re-running "create project" is idempotent.

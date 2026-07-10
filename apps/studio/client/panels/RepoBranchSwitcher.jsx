@@ -103,6 +103,9 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
   const [draftName, setDraftName] = useState('');
   const [foldConfirm, setFoldConfirm] = useState(false);
   const [folding, setFolding] = useState('');
+  // After a GitHub-remote fold: { url, number } (PR opened) or { message } (draft
+  // pushed but no PR). Keeps the confirm sheet open to show the result (DDR-162).
+  const [prResult, setPrResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [switching, setSwitching] = useState('');
   const [err, setErr] = useState('');
@@ -248,17 +251,30 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
     else { setErr(r.json?.error || 'Could not create the draft.'); setBusy(false); }
   }
 
-  // "Add this draft to the Shared version" (Task 7) — merge + publish, then remove.
+  // "Add this draft to the Shared version" (Task 7 / DDR-162). On a GitHub remote this
+  // opens a pull request (the merge happens on GitHub, post-review) — surface the PR
+  // link and keep the sheet open. A local project merges directly (reload). A draft that
+  // pushed but couldn't open a PR (no sign-in / non-github) shows a heads-up.
   async function foldDraft() {
-    setFoldConfirm(false);
     setFolding(branch);
     setErr('');
-    const r = await postJson('/_api/git/fold', { name: branch });
-    if (r.ok && r.json?.ok) window.location.reload();
-    else {
-      setErr(r.status === 401 ? `Sign in with GitHub to merge into ${sharedName}.` : r.json?.error || 'Could not merge the branch.');
+    const r = await postJson('/_api/git/fold', { name: branch }, { timeoutMs: 45000 });
+    const j = r.json;
+    if (r.ok && j?.ok && j.prUrl) {
+      setPrResult({ url: j.prUrl, number: j.prNumber });
       setFolding('');
+      reloadBranches(); // the draft still exists (the PR references it) — keep the list
+      return;
     }
+    if (r.ok && j?.ok && j.prUnavailable) {
+      setPrResult({ message: j.error || 'Draft published, but the pull request could not be opened.' });
+      setFolding('');
+      reloadBranches();
+      return;
+    }
+    if (r.ok && j?.ok) { window.location.reload(); return; } // local merge (no remote)
+    setErr(r.status === 401 ? `Sign in with GitHub to add “${branch}” to ${sharedName}.` : j?.error || 'Could not add the branch.');
+    setFolding('');
   }
 
   async function switchRepo(path) {
@@ -376,7 +392,7 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
                   </span>
                   <Icon name="check" size={14} className="rb-pop-check" />
                 </button>
-                <button type="button" data-testid="switcher-merge" className="rb-fold" role="menuitem" onClick={() => { setOpen(false); setFoldConfirm(true); }}>
+                <button type="button" data-testid="switcher-merge" className="rb-fold" role="menuitem" onClick={() => { setOpen(false); setErr(''); setPrResult(null); setFoldConfirm(true); }}>
                   <span className="rb-fold-icon"><Icon name="arrow-up-to-line" size={15} /></span>
                   <span className="rb-fold-tx">
                     <span className="rb-fold-title">Merge this branch → {sharedName}</span>
@@ -459,19 +475,45 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
         {err && !open && !newDraft && !switching && <div className="rb-switcher-err" role="alert">{err}</div>}
       </div>
 
-      {/* Merge-to-default confirm — the one modal in this surface. No 3-way merge UI. */}
+      {/* Add-to-default confirm — the one modal in this surface. No 3-way merge UI.
+          After a GitHub-remote fold it flips to a pull-request result view (DDR-162). */}
       {foldConfirm && (
-        <div className="rb-scrim" role="presentation" onClick={() => setFoldConfirm(false)}>
-          <div className="rb-sheet" role="dialog" aria-modal="true" aria-labelledby="rb-sheet-title" aria-describedby="rb-sheet-body" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Escape') setFoldConfirm(false); }}>
-            <span className="rb-sheet-icon"><Icon name="arrow-up-to-line" size={20} /></span>
-            <h2 className="rb-sheet-title" id="rb-sheet-title">Merge this branch → {sharedName}</h2>
-            <p className="rb-sheet-body" id="rb-sheet-body">Everything in <b>“{currentDraft?.name || branch}”</b> becomes part of <b>{sharedName}</b> — the default branch everyone shares.</p>
-            <p className="rb-sheet-meta">Your work is now part of {sharedName}, kept in History. Teammates pick it up the next time they Get latest, and the empty branch is cleared away — nothing is lost.</p>
-            {err && <p className="rb-newdraft-err">{err}</p>}
-            <div className="rb-sheet-actions">
-              <button type="button" className="btn btn--ghost" onClick={() => { setFoldConfirm(false); setErr(''); }}>Cancel</button>
-              <button type="button" data-testid="switcher-merge-confirm" className="btn btn--primary" onClick={foldDraft}><Icon name="arrow-up-to-line" size={15} /> Merge → {sharedName}</button>
-            </div>
+        <div className="rb-scrim" role="presentation" onClick={() => { setFoldConfirm(false); setPrResult(null); }}>
+          <div className="rb-sheet" role="dialog" aria-modal="true" aria-labelledby="rb-sheet-title" aria-describedby="rb-sheet-body" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Escape') { setFoldConfirm(false); setPrResult(null); } }}>
+            {prResult ? (
+              prResult.url ? (
+                <>
+                  <span className="rb-sheet-icon"><Icon name="share" size={20} /></span>
+                  <h2 className="rb-sheet-title" id="rb-sheet-title">Pull request opened{prResult.number ? ` #${prResult.number}` : ''}</h2>
+                  <p className="rb-sheet-body" id="rb-sheet-body">Your draft <b>“{branch}”</b> is up as a pull request into <b>{sharedName}</b>. Review and merge it on GitHub — that keeps your team's review rules.</p>
+                  <div className="rb-sheet-actions">
+                    <button type="button" className="btn btn--ghost" onClick={() => { setFoldConfirm(false); setPrResult(null); }}>Close</button>
+                    <a className="btn btn--primary" data-testid="switcher-pr-link" href={prResult.url} target="_blank" rel="noreferrer noopener"><Icon name="share" size={15} /> Review on GitHub</a>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="rb-sheet-icon"><Icon name="share" size={20} /></span>
+                  <h2 className="rb-sheet-title" id="rb-sheet-title">Draft published</h2>
+                  <p className="rb-sheet-body" id="rb-sheet-body">{prResult.message}</p>
+                  <div className="rb-sheet-actions">
+                    <button type="button" data-testid="switcher-pr-dismiss" className="btn btn--primary" onClick={() => { setFoldConfirm(false); setPrResult(null); }}>Got it</button>
+                  </div>
+                </>
+              )
+            ) : (
+              <>
+                <span className="rb-sheet-icon"><Icon name="arrow-up-to-line" size={20} /></span>
+                <h2 className="rb-sheet-title" id="rb-sheet-title">Add this branch to {sharedName}</h2>
+                <p className="rb-sheet-body" id="rb-sheet-body">Propose everything in <b>“{currentDraft?.name || branch}”</b> to <b>{sharedName}</b> — the default branch everyone shares.</p>
+                <p className="rb-sheet-meta">On a shared GitHub project this opens a pull request for review; a local project merges directly. Nothing is lost — your work is kept in History.</p>
+                {err && <p className="rb-newdraft-err">{err}</p>}
+                <div className="rb-sheet-actions">
+                  <button type="button" className="btn btn--ghost" onClick={() => { setFoldConfirm(false); setErr(''); }}>Cancel</button>
+                  <button type="button" data-testid="switcher-merge-confirm" className="btn btn--primary" disabled={!!folding} onClick={foldDraft}><Icon name="arrow-up-to-line" size={15} /> {folding ? 'Adding…' : `Add to ${sharedName}`}</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -14,6 +14,8 @@
 // echoed, or persisted (it is stripped from the JSON we return on error).
 
 import type { Context } from '../context.ts';
+import { parseGitHubRemote } from '../github/endpoints.ts';
+import { createPullRequest, GitHubApiError } from '../github/service.ts';
 import { getGithubToken } from '../github/token.ts';
 import {
   type GitFileStatus,
@@ -284,19 +286,55 @@ export function createGitEndpoints(ctx: Context): GitEndpoints {
   }
 
   async function fold(body: unknown): Promise<GitEndpointResult> {
-    // Token resolution mirrors push (it publishes the Shared version): body token →
-    // keychain bridge → undefined → authRequired.
+    // Token resolution mirrors push: body token → keychain bridge → undefined. Needed
+    // for the GitHub PR API call; an ssh draft-push authenticates with the user's key.
     const token = readToken(body) ?? (await getGithubToken()) ?? undefined;
     const b = (body ?? {}) as { name?: unknown; remote?: unknown };
     const name = safeGitArg(b.name);
     if (name === undefined) return bad('Invalid draft name.');
     if (b.remote != null && safeRemoteArg(b.remote) === undefined) return bad('Invalid remote.');
     const res = await gitFoldDraft(dir, name, token, { remote: safeRemoteArg(b.remote) });
-    if (res.ok) return { status: 200, json: { ok: true, shared: res.shared } };
-    if (res.authRequired)
-      return { status: 401, json: { ok: false, authRequired: true, error: res.error } };
-    if (res.conflict) return { status: 409, json: { ok: false, conflict: true, error: res.error } };
-    return { status: 502, json: { ok: false, error: res.error ?? 'Could not add the draft.' } };
+    if (!res.ok) {
+      if (res.authRequired)
+        return { status: 401, json: { ok: false, authRequired: true, error: res.error } };
+      if (res.conflict)
+        return { status: 409, json: { ok: false, conflict: true, error: res.error } };
+      return { status: 502, json: { ok: false, error: res.error ?? 'Could not add the draft.' } };
+    }
+    // Local-merge path (no GitHub remote): the draft is already in the Shared version.
+    if (!res.prReady) return { status: 200, json: { ok: true, shared: res.shared } };
+    // PR path: the draft branch is pushed — open a pull request draft→shared. The merge
+    // itself happens on GitHub after review (this is how a protected `main` is added to).
+    const gh = res.remoteUrl ? parseGitHubRemote(res.remoteUrl) : null;
+    if (!gh)
+      return draftPublishedNoPr(
+        res.shared,
+        res.head,
+        'Draft published. Open a pull request on your Git host to add it to the Shared version.'
+      );
+    if (!token)
+      return draftPublishedNoPr(
+        res.shared,
+        res.head,
+        'Draft published. Sign in with GitHub in Maude to open the pull request.'
+      );
+    try {
+      const pr = await createPullRequest(token, gh.owner, gh.repo, {
+        head: res.head as string,
+        base: res.base as string,
+        title: `Add draft “${res.head}” to ${res.base}`,
+        body: 'Opened from Maude — “Add to Shared version”.',
+      });
+      return {
+        status: 200,
+        json: { ok: true, shared: res.shared, prUrl: pr.html_url, prNumber: pr.number },
+      };
+    } catch (e) {
+      // The draft IS pushed — a PR-creation failure is a partial success, not a hard
+      // fail. Surface the reason and keep the draft so the user can retry / open it.
+      const msg = e instanceof GitHubApiError ? e.message : 'Could not open the pull request.';
+      return draftPublishedNoPr(res.shared, res.head, msg);
+    }
   }
 
   async function fetchRemote(body: unknown): Promise<GitEndpointResult> {
@@ -333,6 +371,20 @@ export function createGitEndpoints(ctx: Context): GitEndpoints {
 function readToken(body: unknown): string | null {
   const t = (body as { token?: unknown })?.token;
   return typeof t === 'string' && t.length > 0 ? t : null;
+}
+
+/** Fold partial-success: the draft branch was pushed but no PR could be opened (no
+ *  sign-in, a non-GitHub remote, or the PR call failed). `ok:true` because the work IS
+ *  published; the UI shows `error` as a heads-up and keeps the draft for a retry. */
+function draftPublishedNoPr(
+  shared: string | undefined,
+  head: string | undefined,
+  error: string
+): GitEndpointResult {
+  return {
+    status: 200,
+    json: { ok: true, shared, published: head, prUnavailable: true, error },
+  };
 }
 
 /** DDR-112 — expand each selected path to include any DIRTY same-directory,

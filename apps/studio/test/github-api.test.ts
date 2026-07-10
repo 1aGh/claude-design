@@ -18,6 +18,7 @@ import git from 'isomorphic-git';
 import type { Context } from '../context.ts';
 import { createGitHubEndpoints, __testing as epTesting } from '../github/endpoints.ts';
 import {
+  createPullRequest,
   createRepo,
   GitHubApiError,
   getIdentity,
@@ -96,6 +97,59 @@ describe('GitHub REST request construction', () => {
     expect(err).toBeInstanceOf(GitHubApiError);
     expect((err as GitHubApiError).status).toBe(422);
     expect((err as GitHubApiError).message).toMatch(/already have a project with that name/i);
+  });
+
+  test('createPullRequest POSTs title/head/base/body and shapes the result', async () => {
+    const calls = stubFetch(() =>
+      json({ number: 12, html_url: 'https://github.com/octocat/acme/pull/12' }, 201)
+    );
+    const pr = await createPullRequest('t', 'octocat', 'acme', {
+      head: 'nav-redesign',
+      base: 'main',
+      title: 'Add draft',
+      body: 'hi',
+    });
+    expect(pr).toEqual({ number: 12, html_url: 'https://github.com/octocat/acme/pull/12' });
+    expect(calls[0].url).toBe('https://api.github.com/repos/octocat/acme/pulls');
+    expect(calls[0].init?.method).toBe('POST');
+    expect(JSON.parse(calls[0].init?.body as string)).toEqual({
+      title: 'Add draft',
+      head: 'nav-redesign',
+      base: 'main',
+      body: 'hi',
+    });
+  });
+
+  test('createPullRequest recovers the existing PR link on a 422 (already exists)', async () => {
+    const calls = stubFetch((_url, init) =>
+      init?.method === 'POST'
+        ? json({ message: 'A pull request already exists for octocat:nav.' }, 422)
+        : json([{ number: 7, html_url: 'https://github.com/octocat/acme/pull/7' }])
+    );
+    const pr = await createPullRequest('t', 'octocat', 'acme', {
+      head: 'nav',
+      base: 'main',
+      title: 'x',
+    });
+    expect(pr).toEqual({ number: 7, html_url: 'https://github.com/octocat/acme/pull/7' });
+    // the recovery GET filters by head=owner:branch + base + state=open
+    expect(calls[1].url).toContain('head=octocat%3Anav');
+    expect(calls[1].url).toContain('base=main');
+    expect(calls[1].url).toContain('state=open');
+  });
+
+  test('createPullRequest maps a 422 with no existing PR to a "nothing new" message', async () => {
+    stubFetch((_url, init) =>
+      init?.method === 'POST' ? json({ message: 'No commits between main and nav' }, 422) : json([])
+    );
+    const err = await createPullRequest('t', 'octocat', 'acme', {
+      head: 'nav',
+      base: 'main',
+      title: 'x',
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(GitHubApiError);
+    expect((err as GitHubApiError).status).toBe(422);
+    expect((err as GitHubApiError).message).toMatch(/nothing new to add/i);
   });
 
   test('inviteCollaborator PUTs permission=push, 201 = invited', async () => {
