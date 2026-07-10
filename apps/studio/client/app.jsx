@@ -24,6 +24,7 @@ import TimelinePanel from './panels/TimelinePanel.jsx';
 import { parseCompTimeline } from './panels/timeline-parse.js';
 import RepoBranchSwitcher from './panels/RepoBranchSwitcher.jsx';
 import StickerPicker from './panels/StickerPicker.jsx';
+import { PhotoKnobs } from './photo-knobs.jsx';
 import {
   appIsFirstRun,
   isNativeApp,
@@ -6075,6 +6076,20 @@ function ArtboardKnobs({ el, onResizeArtboard }) {
   );
 }
 
+// feature-photo-editor (Task 13/14) — derive the content-addressed photo asset a
+// DOM selection points at (an artboard `<img src="assets/<sha8>.<ext>">`). Prefers
+// the `photoAsset` the resolver stamped (dom-selection.ts), falling back to a scan
+// of the selection's src/html for a selection that reached the panel via a code
+// path predating that field. Returns null for a non-photo element.
+const PHOTO_ASSET_RE = /assets\/[0-9a-f]{8}\.[a-z0-9]+/i;
+function photoAssetOfSelection(el) {
+  if (!el || Array.isArray(el)) return null;
+  if (el.photoAsset) return el.photoAsset;
+  if ((el.tag || '').toLowerCase() !== 'img') return null;
+  const m = PHOTO_ASSET_RE.exec(`${el.attrs?.src || ''} ${el.html || ''}`);
+  return m ? m[0] : null;
+}
+
 function InspectorPanel({
   selected,
   onClose,
@@ -6095,6 +6110,14 @@ function InspectorPanel({
   onTabChange,
   width,
   resizing,
+  // feature-photo-editor (Task 13/15) — the Photo tab + its live-preview /
+  // bg-removal / undo channels. `photoSel` is the annotation-image target
+  // (threaded up separately since the annotation model has no DOM selection);
+  // an artboard `<img>` target is derived from `selected` instead.
+  photoSel,
+  onPhotoEdit,
+  onPhotoRemoveBackground,
+  onPhotoRecordEdit,
 }) {
   // Tab is controllable from the parent (the guided tour drives it to 'css' /
   // 'layers' so a spotlight step lands on a real row) but falls back to local
@@ -6393,10 +6416,25 @@ function InspectorPanel({
   };
   // `selected` may be a single element, an array (multi-select), or null.
   const el = Array.isArray(selected) ? selected[0] : selected;
+  // feature-photo-editor (Task 13) — resolve the Photo-tab target. Priority: an
+  // annotation-image threaded up (`photoSel`, no DOM selection) → a Photo-ONLY
+  // panel; else a content-addressed artboard `<img>` selection → Photo alongside
+  // the normal tabs.
+  const photoTarget = photoSel
+    ? { asset: photoSel.asset, kind: 'annotation-image' }
+    : (() => {
+        const a = photoAssetOfSelection(el);
+        return a ? { asset: a, kind: 'artboard-img' } : null;
+      })();
+  const photoOnly = photoTarget?.kind === 'annotation-image';
+  // An annotation-image has no element tabs; force Photo. Otherwise honor the
+  // requested tab, but drop off a stale 'photo' tab when the new selection isn't
+  // photo-eligible (so switching from a photo to a normal element lands sanely).
+  const effTab = photoOnly ? 'photo' : tab === 'photo' && !photoTarget ? 'inspect' : tab;
   const tabBtn = (id, label, icon) => (
     <button
       type="button"
-      className={'st-rp-tab' + (tab === id ? ' is-active' : '')}
+      className={'st-rp-tab' + (effTab === id ? ' is-active' : '')}
       onClick={() => setTab(id)}
     >
       <StIcon name={icon} size={14} />
@@ -6412,9 +6450,16 @@ function InspectorPanel({
       data-tour="inspector"
     >
       <div className="st-rp-tabs" data-tour="inspector-tabs">
-        {tabBtn('inspect', 'Inspect', 'sliders')}
-        {tabBtn('layers', 'Layers', 'layers')}
-        {tabBtn('css', 'CSS', 'code')}
+        {photoOnly ? (
+          tabBtn('photo', 'Photo', 'image')
+        ) : (
+          <>
+            {tabBtn('inspect', 'Inspect', 'sliders')}
+            {tabBtn('layers', 'Layers', 'layers')}
+            {tabBtn('css', 'CSS', 'code')}
+            {photoTarget ? tabBtn('photo', 'Photo', 'image') : null}
+          </>
+        )}
         <button
           type="button"
           className="st-iconbtn"
@@ -6450,7 +6495,16 @@ function InspectorPanel({
         </div>
       ) : null}
       <div className="st-rp-body">
-        {!el ? (
+        {effTab === 'photo' && photoTarget ? (
+          <PhotoKnobs
+            key={photoTarget.asset}
+            asset={photoTarget.asset}
+            ColorPicker={ColorPicker}
+            onEdit={(edit) => onPhotoEdit?.(photoTarget.asset, edit)}
+            onRemoveBackground={onPhotoRemoveBackground}
+            onRecordEdit={(before, after) => onPhotoRecordEdit?.(photoTarget.asset, before, after)}
+          />
+        ) : !el ? (
           <div className="st-rp-empty">
             {/* <p> wrapper — st-rp-empty is a flex column, bare text nodes +
                 kbd would stack as stretched flex items. */}
@@ -6458,7 +6512,7 @@ function InspectorPanel({
               Hold <Kbd>⌘</Kbd> inside the canvas and click an element to inspect it.
             </p>
           </div>
-        ) : tab === 'inspect' ? (
+        ) : effTab === 'inspect' ? (
           <>
             <div className="st-rp-hd">{el.selector || el.tag || 'element'}</div>
             <div className="st-insp-row">
@@ -6507,7 +6561,7 @@ function InspectorPanel({
             ) : null}
             <InspectComputed el={el} />
           </>
-        ) : tab === 'layers' ? (
+        ) : effTab === 'layers' ? (
           <>
             <div className="st-rp-hd">Layers{layersTree?.nodes?.length ? '' : ' · ancestry'}</div>
             {layersTree?.nodes?.length ? (
@@ -6937,6 +6991,13 @@ function App() {
   // Inspector tab is lifted so View ▸ Layers can open the panel ON the Layers
   // tab (the menu item sat disabled as "Phase 12" long after the tab shipped).
   const [inspectorTab, setInspectorTab] = useState('inspect');
+  // feature-photo-editor (Task 13) — the annotation-image Photo-tab target,
+  // threaded up from the annotation layer's "Edit Photo…" (the annotation model
+  // has no DOM selection to ride, unlike an artboard `<img>`). `{ asset, strokeId }`
+  // or null. Cleared whenever a normal DOM selection arrives so the two never
+  // fight over the panel. The shell-side photo undo stack lives alongside it.
+  const [photoSel, setPhotoSel] = useState(null);
+  const photoUndoRef = useRef({ undo: [], redo: [] });
   // feature-element-editing-robustness Stage C — auto-open the Inspector on the
   // CSS tab when a fresh single selection arrives AND no right panel is already
   // open. Preference-backed (default ON); disable it in the View menu. Refs keep
@@ -7156,6 +7217,54 @@ function App() {
     },
     [activePath]
   );
+
+  // ── feature-photo-editor — the Photo tab's three channels ─────────────────
+  // (1) live preview: broadcast the edit DOWN to the active canvas iframe, whose
+  //     canvas-lib bridge overlays a <PhotoLayer> pixi composite on the matching
+  //     image (Task 6/12). (2) undo: a shell-side stack (photo edits are sidecar
+  //     writes, not the canvas-side source-edit stack). (3) background removal:
+  //     the client-side @imgly ML flow (Task 12).
+  const onPhotoEdit = useCallback(
+    (asset, edit) => postToActiveCanvas({ dgn: 'photo-preview', asset, edit }),
+    [postToActiveCanvas]
+  );
+  const onPhotoRecordEdit = useCallback((asset, before, after) => {
+    photoUndoRef.current.undo.push({ asset, before, after });
+    photoUndoRef.current.redo.length = 0;
+  }, []);
+  // Task 12 — magic background removal, entirely client-side (WASM/WebGPU via
+  // @imgly/background-removal — NEVER the -node native-addon variant, DDR-070).
+  // The lib is DYNAMICALLY imported so a session that never removes a background
+  // pays zero bundle cost (the lazy-bundle guarantee). Fetches the source bytes,
+  // runs the matte, uploads it content-addressed through the SAME /_api/asset lane
+  // drag-drop uses, and returns the new `assets/<sha8>.png` for PhotoEdit.
+  const onPhotoRemoveBackground = useCallback(async (asset) => {
+    try {
+      const srcRes = await fetch(`/${asset.replace(/^\/+/, '')}`);
+      if (!srcRes.ok) return null;
+      const srcBlob = await srcRes.blob();
+      const { removeBackground } = await import('@imgly/background-removal');
+      // Inference is 100% CLIENT-SIDE (WASM/WebGPU) — the user's pixels NEVER
+      // leave the browser. Only the public model weights (~40 MB, identical for
+      // everyone) are fetched from IMG.LY's default host on first use; they're
+      // too large to bundle in the npm tarball (`resources.json` ships empty).
+      // Self-hosting those weights off the dev server for offline / air-gapped
+      // parity is the flagged Task-11 follow-up (a one-time download step) — until
+      // then the default host provides them, with no pixel-privacy exposure.
+      const matte = await removeBackground(srcBlob);
+      const up = await fetch('/_api/asset', {
+        method: 'POST',
+        headers: { 'content-type': matte.type || 'image/png' },
+        body: matte,
+      });
+      const j = await up.json().catch(() => ({}));
+      if (up.ok && j.path) return { maskAsset: j.path };
+      return null;
+    } catch (err) {
+      console.error('[photo] background removal failed', err);
+      return null;
+    }
+  }, []);
 
   // DDR-150 dogfood #7 — a file dragged from Finder and dropped on a shell area
   // with no drop target used to make the browser NAVIGATE AWAY to the file
@@ -8293,10 +8402,12 @@ function App() {
         if (e.source !== activeWin) return;
       }
       if (m.dgn === 'select' && m.selection) {
+        setPhotoSel(null); // a DOM selection supersedes an annotation-image Photo target
         wsSend({ type: 'select', selection: m.selection });
         setSelected(m.selection);
         maybeAutoOpenInspectorOnSelect(m.selection); // Stage C
       } else if (m.dgn === 'select-set') {
+        setPhotoSel(null);
         // Canvas multi-select. Payload shape:
         //   null              → empty selection
         //   Selection         → length-1 (back-compat with legacy single-element shape)
@@ -8320,6 +8431,7 @@ function App() {
           maybeAutoOpenInspectorOnSelect(payload); // Stage C
         }
       } else if (m.dgn === 'clear-select') {
+        setPhotoSel(null);
         wsSend({ type: 'clear-select' });
         setSelected(null);
       } else if (m.dgn === 'edit-text' && m.id) {
@@ -8642,6 +8754,19 @@ function App() {
             before: typeof m.before === 'string' ? m.before : null,
           });
         }
+      } else if (m.dgn === 'edit-annotation-photo-request') {
+        // feature-photo-editor (Task 17) — "Edit Photo…" on an annotation
+        // ImageStroke. The annotation model has no data-cd-id / DOM selection, so
+        // it can't ride the normal select path; instead the canvas posts its
+        // `assets/<sha8>.<ext>` href up and the shell opens the Photo-only tab on
+        // it. Same confused-deputy gate (DDR-054) + active-canvas pin as F3.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        const asset = PHOTO_ASSET_RE.exec(typeof m.asset === 'string' ? m.asset : '')?.[0] || null;
+        if (e.source === activeWin && typeof m.id === 'string' && asset) {
+          setPhotoSel({ asset, strokeId: m.id });
+          openRightPanel('inspector');
+          setInspectorTab('photo');
+        }
       } else if (m.dgn === 'open-sticker-picker') {
         // Phase 4 (whiteboard-improvements) — the toolbar's Stickers button.
         // Confused-deputy gated + pinned to the active canvas like the other
@@ -8686,7 +8811,12 @@ function App() {
         }
       } else if (m.dgn === 'open-inspector') {
         // Phase 12 — context-menu "Inspect" / tool-palette Inspect opens the right panel.
+        // feature-photo-editor (Task 16) — an optional `tab` lands the panel on a
+        // specific tab (the element "Edit Photo…" entry passes `tab: 'photo'`; the
+        // img is already selected via select-set, so the Photo tab derives its
+        // target from that selection's `photoAsset`).
         openRightPanel('inspector');
+        if (typeof m.tab === 'string') setInspectorTab(m.tab);
       } else if (m.dgn === 'present-enter') {
         // Canvas tool-palette "Presentation mode" button — Present Mode is a
         // shell-level state (hides the menubar / sidebar / panels), so the
@@ -10369,6 +10499,10 @@ function App() {
               onResizeArtboard={resizeArtboardShell}
               editScope={editScope}
               onUndoRedo={(dir) => postToActiveCanvas({ dgn: dir })}
+              photoSel={photoSel}
+              onPhotoEdit={onPhotoEdit}
+              onPhotoRemoveBackground={onPhotoRemoveBackground}
+              onPhotoRecordEdit={onPhotoRecordEdit}
               layersTree={layersTree}
               canvasFile={activePath}
               onSelectLayer={(n) =>

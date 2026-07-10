@@ -463,6 +463,15 @@ export function hoverTargetToSelection(target: HoverTarget, file?: string): Sele
     worldW: el instanceof HTMLElement ? Math.round(el.offsetWidth) : undefined,
     worldH: el instanceof HTMLElement ? Math.round(el.offsetHeight) : undefined,
     html: el ? (el.outerHTML ?? '').slice(0, 4000) : '',
+    // feature-photo-editor (Task 14) — flag a content-addressed artboard `<img>`
+    // so the Inspector can offer the Photo tab. Only a real `assets/<sha8>.<ext>`
+    // src qualifies (an external URL / SVG icon / data: URI has no sidecar).
+    ...(() => {
+      if (el?.tagName?.toLowerCase() !== 'img') return {};
+      const src = (el as HTMLImageElement).getAttribute?.('src') || '';
+      const m = /assets\/[0-9a-f]{8}\.[a-z0-9]+/i.exec(src);
+      return m ? { photoKind: 'artboard-img' as const, photoAsset: m[0] } : {};
+    })(),
     ...styleMapsFor(el),
   };
 }

@@ -84,6 +84,27 @@ export interface Selection {
    *  block child. Absent for a detached node / no parent. */
   parentDisplay?: string;
   parentFlexDirection?: string;
+  /** feature-photo-editor (Task 14) — set at selection resolution when the hit is
+   *  a content-addressed photo. `artboard-img` = an `<img src="assets/<sha8>.<ext>">`
+   *  authored in artboard TSX; `annotation-image` is threaded separately (the
+   *  annotation model has no data-cd-id, so it never rides this DOM-selection
+   *  path — see app.jsx's `edit-annotation-photo-request` handler). Absent for a
+   *  non-photo element or an `<img>` whose src isn't content-addressed. */
+  photoKind?: 'artboard-img' | 'annotation-image';
+  /** The resolved `assets/<sha8>.<ext>` source, when `photoKind` is set — the key
+   *  the Photo tab passes to `/_api/photo-edit`. */
+  photoAsset?: string;
+}
+
+/** feature-photo-editor — pull the content-addressed `assets/<sha8>.<ext>` out of
+ *  an image src (relative, absolute, or embedded in an outerHTML excerpt). Returns
+ *  null for a non-content-addressed src (external URL, SVG icon, data: URI) — those
+ *  aren't editable by the sidecar-keyed photo pipeline. Exported so both the
+ *  selection resolver and the Inspector's fallback derivation share one regex. */
+export function photoAssetFromString(s: string | null | undefined): string | null {
+  if (!s) return null;
+  const m = /assets\/[0-9a-f]{8}\.[a-z0-9]+/i.exec(s);
+  return m ? m[0] : null;
 }
 
 interface SelectionSetValue {

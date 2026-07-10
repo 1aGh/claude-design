@@ -40,7 +40,7 @@ async function loadPixi(): Promise<Pixi> {
   return pixiModule;
 }
 
-import type { AdjustmentsStep, MaskStep, PatternStep } from './filters.ts';
+import type { AdjustmentsStep, GrainStep, MaskStep, PatternStep } from './filters.ts';
 import {
   DUOTONE_FRAG_SOURCE,
   DUOTONE_VERT_SOURCE,
@@ -183,10 +183,12 @@ export function buildFilterGraph(
   edit: PhotoEdit
 ): {
   filters: Filter[];
+  grain: GrainStep | null;
   pattern: PatternStep | null;
   mask: MaskStep | null;
 } {
   const filters: Filter[] = [];
+  let grain: GrainStep | null = null;
   let pattern: PatternStep | null = null;
   let mask: MaskStep | null = null;
   for (const step of planPhotoPipeline(edit)) {
@@ -197,8 +199,12 @@ export function buildFilterGraph(
       case 'duotone':
         filters.push(realizeDuotone(pixi, step.colorA, step.colorB, step.intensity));
         break;
+      // Grain is realized as a monochrome-noise OVERLAY (below), not pixi's
+      // `NoiseFilter` — the filter is per-pixel with NO grain-SIZE concept, so the
+      // `size` knob did nothing. A noise texture drawn at 1/size resolution and
+      // nearest-scaled up gives real, size-controllable film grain.
       case 'grain':
-        filters.push(new pixi.NoiseFilter({ noise: clamp01(step.amount), seed: 0.5 }));
+        grain = step;
         break;
       case 'pattern':
         pattern = step;
@@ -208,20 +214,20 @@ export function buildFilterGraph(
         break;
     }
   }
-  return { filters, pattern, mask };
+  return { filters, grain, pattern, mask };
 }
 
 // ── Procedural pattern + mask textures (2D-canvas — reliable, no pixi Graphics) ─
 
-function drawPatternTile(type: PatternType, scale: number): HTMLCanvasElement {
+function drawPatternTile(type: PatternType, scale: number, color: string): HTMLCanvasElement {
   const size = Math.max(4, Math.round(16 * scale));
   const c = document.createElement('canvas');
   c.width = size;
   c.height = size;
   const ctx = c.getContext('2d');
   if (!ctx) return c;
-  ctx.strokeStyle = 'rgba(255,255,255,1)';
-  ctx.fillStyle = 'rgba(255,255,255,1)';
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
   ctx.lineWidth = Math.max(1, size / 16);
   const half = size / 2;
   switch (type) {
@@ -284,6 +290,56 @@ function drawMaskCanvas(width: number, height: number, step: MaskStep): HTMLCanv
   const g = ctx.createRadialGradient(cx, cy, Math.max(0, inner), cx, cy, r);
   g.addColorStop(0, 'rgba(255,255,255,1)');
   g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, c.width, c.height);
+  return c;
+}
+
+/**
+ * Monochrome film-grain tile drawn at 1/size resolution — nearest-scaled up to
+ * the sprite it gives `size`-px grain cells (size=1 → per-pixel, size=8 → coarse).
+ * Centered on mid-gray so a `soft-light`/`overlay` composite adds symmetric
+ * light+dark speckle instead of only darkening.
+ */
+function drawGrainCanvas(width: number, height: number, size: number): HTMLCanvasElement {
+  const cell = Math.max(1, Math.round(size));
+  const w = Math.max(1, Math.ceil(width / cell));
+  const h = Math.max(1, Math.ceil(height / cell));
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d');
+  if (!ctx) return c;
+  const img = ctx.createImageData(w, h);
+  for (let i = 0; i < img.data.length; i += 4) {
+    // Mid-gray ± spread — symmetric grain under soft-light.
+    const v = (128 + (Math.random() * 2 - 1) * 127) | 0;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+/**
+ * Vignette = a DARKENING overlay (transparent center → black edges), NOT an alpha
+ * mask. The earlier "vignette" fed the alpha mask, which CLIPPED the edges to
+ * transparency (they vanished) instead of darkening them. `strength` grows both
+ * the dark ring's reach and its opacity.
+ */
+function drawVignetteCanvas(width: number, height: number, strength: number): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(width));
+  c.height = Math.max(1, Math.round(height));
+  const ctx = c.getContext('2d');
+  if (!ctx) return c;
+  const s = clamp01(strength);
+  const cx = c.width / 2;
+  const cy = c.height / 2;
+  const r = Math.hypot(cx, cy);
+  const g = ctx.createRadialGradient(cx, cy, r * (1 - s) * 0.5, cx, cy, r);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, `rgba(0,0,0,${(0.35 + 0.6 * s).toFixed(3)})`);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, c.width, c.height);
   return c;
@@ -369,9 +425,26 @@ export class PhotoRenderer {
 
     const { edit, source, width, height } = this.opts;
     const srcUrl = this.resolve(resolveSourceUrl(edit, source));
+    // Decode the source on the MAIN thread via an <img> element. pixi's
+    // `Assets.load` decodes off-thread in a Web Worker (+ createImageBitmap),
+    // which the split-origin canvas CSP (DDR-054) silently blocks — `worker-src`
+    // falls back to `default-src 'none'`, so the worker never spawns, the texture
+    // never arrives, and the sprite renders blank (the live preview "does
+    // nothing", with no console error). An <img> respects `img-src` and needs no
+    // worker; the asset is same-origin to the canvas iframe, so the WebGL upload
+    // isn't tainted. (feature-photo-editor.)
     let texture: InstanceType<Pixi['Texture']>;
     try {
-      texture = await pixi.Assets.load(srcUrl);
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = srcUrl;
+      if (typeof img.decode === 'function') await img.decode();
+      else
+        await new Promise<void>((res, rej) => {
+          img.onload = () => res();
+          img.onerror = () => rej(new Error(`image load failed: ${srcUrl}`));
+        });
+      texture = pixi.Texture.from(img);
     } catch {
       texture = pixi.Texture.from(srcUrl);
     }
@@ -381,12 +454,27 @@ export class PhotoRenderer {
     sprite.width = Math.max(1, Math.round(width));
     sprite.height = Math.max(1, Math.round(height));
 
-    const { filters, pattern, mask } = buildFilterGraph(pixi, edit);
+    const { filters, grain, pattern, mask } = buildFilterGraph(pixi, edit);
     if (filters.length) sprite.filters = filters;
     app.stage.addChild(sprite);
 
+    // Grain — a nearest-scaled mid-gray noise overlay (soft-light) so `size`
+    // actually changes the grain cell (pixi's NoiseFilter had no size concept).
+    if (grain) {
+      const gTex = pixi.Texture.from(drawGrainCanvas(sprite.width, sprite.height, grain.size));
+      // biome-ignore lint/suspicious/noExplicitAny: pixi v8 scaleMode is a string union
+      if (gTex.source) (gTex.source as any).scaleMode = 'nearest';
+      const gSprite = new pixi.Sprite(gTex);
+      gSprite.width = sprite.width;
+      gSprite.height = sprite.height;
+      gSprite.alpha = clamp01(grain.amount);
+      // biome-ignore lint/suspicious/noExplicitAny: pixi v8 blendMode is a string union
+      (gSprite as any).blendMode = 'soft-light';
+      app.stage.addChild(gSprite);
+    }
+
     if (pattern) {
-      const tile = pixi.Texture.from(drawPatternTile(pattern.type, pattern.scale));
+      const tile = pixi.Texture.from(drawPatternTile(pattern.type, pattern.scale, pattern.color));
       const tiling = new pixi.TilingSprite({
         texture: tile,
         width: sprite.width,
@@ -399,12 +487,25 @@ export class PhotoRenderer {
     }
 
     if (mask) {
-      const maskTex = pixi.Texture.from(drawMaskCanvas(sprite.width, sprite.height, mask));
-      const maskSprite = new pixi.Sprite(maskTex);
-      maskSprite.width = sprite.width;
-      maskSprite.height = sprite.height;
-      app.stage.addChild(maskSprite);
-      app.stage.mask = maskSprite;
+      if (mask.preset === 'vignette') {
+        // Vignette DARKENS the edges (overlay) — it does not clip them.
+        const vig = new pixi.Sprite(
+          pixi.Texture.from(drawVignetteCanvas(sprite.width, sprite.height, mask.strength))
+        );
+        vig.width = sprite.width;
+        vig.height = sprite.height;
+        app.stage.addChild(vig);
+        app.stage.mask = null;
+      } else {
+        // radial-reveal / edge-fade → an alpha mask (fade to transparent).
+        const maskSprite = new pixi.Sprite(
+          pixi.Texture.from(drawMaskCanvas(sprite.width, sprite.height, mask))
+        );
+        maskSprite.width = sprite.width;
+        maskSprite.height = sprite.height;
+        app.stage.addChild(maskSprite);
+        app.stage.mask = maskSprite;
+      }
     } else {
       app.stage.mask = null;
     }

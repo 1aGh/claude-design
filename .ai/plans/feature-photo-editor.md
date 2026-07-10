@@ -220,7 +220,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 - **Gotcha**: **Never** import `@imgly/background-removal-node` anywhere in `apps/studio/` — it depends on `onnxruntime-node`, a native addon, which is bun-compile-hostile exactly like the `sharp` rejection in DDR-070. This must stay a lint/review-time invariant, not just a one-time choice — worth a one-line comment at the top of any file importing the browser package, similar to how `runtime-bundle.ts` comments its own constraints.
 - **Validate**: `cd apps/studio && bun run build` succeeds (confirms the compiled binary build doesn't choke on the new dep); `bun tsc --noEmit`.
 
-#### Task 12: CREATE the interactive "Remove Background" flow
+#### ◐ Task 12: CREATE the interactive "Remove Background" flow — CODE WIRED 2026-07-10 (`onPhotoRemoveBackground` in app.jsx: lazy `import('@imgly/background-removal')` → client-side matte → POST /_api/asset → writes `PhotoEdit.backgroundRemoved`; button+spinner+applied-toggle live in PhotoKnobs, verified rendering). Inference is 100% client-side (pixels never leave the browser); only the ~40 MB public model weights fetch from IMG.LY's default host on first use (too large to bundle — `resources.json` ships empty). **Self-hosting those weights (offline/air-gap) + the actual ML-cutout QUALITY = user-dogfood gate** (needs the model download + a human eye).
 
 - **Do**: In the Photo tab's Background section, a button runs `@imgly/background-removal` client-side against the selected photo's source asset, shows a progress/spinner state, and on completion: uploads the resulting matte via `POST /_api/asset` (Task 10), writes `PhotoEdit.backgroundRemoved` via `/_api/photo-edit` (Task 8), and the `<PhotoLayer>` immediately re-composites live. Must be toggle-able (non-destructive — turning it off restores the original).
 - **Pattern**: `CssKnobs`'s optimistic-preview-then-commit pattern (`app.jsx:4362-4394`).
@@ -228,37 +228,37 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 
 ### Stage E — Inspector UI
 
-#### ◐ Task 13: ADD the conditional "Photo" Inspector tab — INVESTIGATED (the flagged largest-unknown is now fully mapped: annotation ImageStroke selection is an isolated iframe-local model that never reaches InspectorPanel; needs a new upward `select-annotation` msg in annotations-layer.tsx ~:3152 + a gated shell handler ~app.jsx:8631 + a down-channel write). app.jsx tab mount + annotation threading = live-browser pass.
+#### ✅ Task 13: ADD the conditional "Photo" Inspector tab — DONE + LIVE-VERIFIED 2026-07-10. app.jsx: conditional Photo tab (4th tab on an artboard `<img>`; Photo-ONLY panel for an annotation-image via the new `photoSel` state + `edit-annotation-photo-request` handler, DDR-054-gated). Verified via agent-browser: real ⌘-click on `Smoke TSX`'s `<img>` → tabs `[Inspect, Layers, CSS, Photo]` → Photo tab active.
 
 - **Do**: Extend the `tabBtn` row (`app.jsx:5824-5837`) and tab-body branch chain (`:5847-5977`) with a `photo` tab, shown when the current selection is photo-eligible. Per your clarification: when the selection is an annotation `ImageStroke`, show **only** the Photo tab (no Inspect/Layers/CSS — those don't apply to annotation strokes); when the selection is an artboard `<img>`, show Photo alongside the existing three tabs.
 - **Gotcha**: `InspectorPanel`'s current tab set assumes a DOM-element selection; annotation-stroke selection is a different selection model (`AnnotationContextMenu`'s own selection registry, per `canvas-shell.tsx:749`'s comment) — verify `InspectorPanel` can even receive an annotation-stroke selection today, and if not, thread it through (this may be the single largest unknown in this plan; budget extra investigation time here).
 - **Validate**: Manual: select an artboard `<img>` → see 4 tabs; select a dropped photo in the annotation layer → see only Photo tab.
 
-#### ◐ Task 14: ADD the `isPhoto`/`photoKind` selection flag — artboard-`<img>` case is derivable from the existing `Selection` (`el.tag==='img' && el.attrs?.src`, use-selection-set.tsx:40-87); annotation case needs the Task-13 threading. Wiring = live-browser pass.
+#### ✅ Task 14: ADD the `isPhoto`/`photoKind` selection flag — DONE + LIVE-VERIFIED 2026-07-10. `Selection` gains `photoKind?: 'artboard-img'|'annotation-image'` + `photoAsset?` (use-selection-set.tsx) + a shared `photoAssetFromString` helper; set at resolution in `dom-selection.ts` `hoverTargetToSelection` for a content-addressed `<img>`. Verified: the real ⌘-click selection carried `photoAsset`, driving the Photo tab.
 
 - **Do**: Extend the `Selection` shape (`use-selection-set.tsx:40-73`) with a flag distinguishing `'artboard-img' | 'annotation-image' | null`, set at the point of selection resolution in `canvas-shell.tsx`.
 - **Validate**: `cd apps/studio && bun test`
 
-#### ◐ Task 15: BUILD `PhotoKnobs` — COMPONENT BUILT 2026-07-10 (`client/photo-knobs.jsx`, complete: Adjustments/Duotone/Grain/Pattern/Mask/Background sections, own sliders + injected ColorPicker, debounced PUT to /_api/photo-edit, optimistic onEdit + undo hook). Valid JSX (client/ is biome-excluded by repo policy). Mount into app.jsx + live pixel-preview data-flow + Remove-BG ML wiring = live-browser pass.
+#### ✅ Task 15: BUILD + MOUNT `PhotoKnobs` — DONE + LIVE-VERIFIED 2026-07-10. Component (`client/photo-knobs.jsx`) now MOUNTED in `InspectorPanel` with `ColorPicker` injected + `onPhotoEdit` (down-channel), `onPhotoRemoveBackground` (ML), `onPhotoRecordEdit` (shell-side photo-undo stack) wired. Verified via agent-browser: all 6 sections render (Adjustments/Duotone/Grain/Pattern/Mask/Background); driving the Brightness slider → sidecar `assets/eb268f9c.photo.json` = `{adjustments:{brightness:0.6}}` (GET route confirms) + header shows "saved" + live pixi preview composites (image visibly brighter). NOTE: full Cmd+Z on photo edits (shell-side stack exists; global keydown intercept) = remaining polish.
 
 - **Do**: New component mirroring `CssKnobs`'s structure exactly (sections, `makeScrub`, provenance dots, per-row/section reset): **Adjustments** (brightness/contrast/saturation/exposure/hue/sepia/grayscale/invert), **Duotone** (`ColorPicker` × 2 + intensity + enable), **Grain** (amount/size + enable), **Pattern** (type select + scale/opacity + blend-mode select), **Mask** (preset select + strength), **Background** (Remove Background button + before/after toggle). All writes go through `/_api/photo-edit` (Task 8) using the same optimistic/commit/undo-record helpers `CssKnobs` already has (reuse, don't reimplement).
 - **Validate**: `maude design screenshot` against a manual canvas exercising every knob; confirm Cmd+Z undoes each.
 
 ### Stage F — Context menu
 
-#### Task 16: ADD "Edit Photo…" to the element context-menu registry
+#### ✅ Task 16: ADD "Edit Photo…" to the element context-menu registry — DONE + LIVE-VERIFIED 2026-07-10. New `hidden?:` predicate on `MenuItem` (context-menu.tsx, + render-time filtering so a hidden item leaves no dangling separator); "Edit Photo…" entry in canvas-shell's element registry, gated to content-addressed `<img>`, selects it + posts `{dgn:'open-inspector', tab:'photo'}`. Verified: appears on the `<img>` (after Inspect), absent on a non-image `<button>` (14 items, no "Edit Photo…").
 
 - **Do**: In `canvas-shell.tsx`'s `'element'` registry section (~`:1236-1340`, alongside `fitItem`/`resetItem`/"Copy CSS"), add a conditional `MenuItem` shown only when the target is an `<img>`, that opens the Inspector and switches to the Photo tab — same open+focus wiring the existing "Inspect" entry uses (`app.jsx:7766`).
 - **Validate**: Right-click an artboard photo → "Edit Photo…" appears → click → Inspector opens on the Photo tab.
 
-#### Task 17: ADD "Edit Photo…" to `AnnotationContextMenu`
+#### ◐ Task 17: ADD "Edit Photo…" to `AnnotationContextMenu` — CODE DONE 2026-07-10 (live-verify deferred: the test canvas has no annotation `ImageStroke`). `canEditPhoto` prop (gated: exactly one content-addressed `ImageStroke`, tool==='image', not mediaref) + menu item + `edit-photo` action posting `{dgn:'edit-annotation-photo-request', id, asset: href}` upward (mirrors the LIVE-VERIFIED F3 `replace-annotation-media-request` pattern). tsc+biome clean. Live-verify with a canvas carrying a dropped/pasted photo alongside the ML dogfood.
 
 - **Do**: Same entry, gated on the stroke being an `ImageStroke`, in `annotations-layer.tsx:3745-3816`.
 - **Validate**: Right-click a dropped/pasted photo in the annotation layer → "Edit Photo…" appears → click → Inspector opens on the (annotation-only) Photo tab.
 
 ### Stage G — CLI / headless drivability
 
-#### Task 18: CREATE `apps/studio/bin/photo-bg-remove.sh`
+#### ⏸ Task 18: CREATE `apps/studio/bin/photo-bg-remove.sh` — DEFERRED to the ML-dogfood companion pass (2026-07-10). Two blockers make this a focused follow-up, not this session's work: (1) its E2E can only be proven by an actual model run (~40 MB download) — the same gate as Task 12's cutout quality; (2) a real cross-origin design decision — the harness canvas runs in the (split-origin, DDR-054) canvas iframe, but `/_api/asset` is NOT in `CANVAS_SAFE_API` (privileged main-origin only), so the matte upload can't POST directly from the harness; it must either round-trip the matte out through a DOM-attribute for the CLI to `curl`-upload, or the harness must run on a main-origin page. Best worked out with the model available. The PARAMETRIC headless path (`photo-adjust.sh`, Task 19) already satisfies "Claude drives edits headlessly"; this adds the ML leg.
 
 - **Do**: Mirror `draw-proof.sh`'s structure exactly: resolve the running server's port from `_server.json`; generate a throwaway harness canvas at `<designRoot>/_photo/<slug>.bgremove.tsx` importing a new canvas-lib `PhotoBgRemoveHarness` export that loads the target asset, runs `@imgly/background-removal` client-side, POSTs the result to `/_api/asset` + `/_api/photo-edit`, and sets a DOM marker (`data-photo-bgremove-status="done" data-photo-bgremove-result="assets/<sha8>.png"`); drive it headlessly via `agent-browser` (research whether its CLI already supports "wait for selector, read attribute" — if not, add a small `_photo-bgremove-playwright.mjs` shim mirroring `_motion-sample-playwright.mjs`); print the resulting asset path as the sole stdout line.
 - **Gotcha**: This is the task the whole "build headless bg-removal in v1" decision hinges on — budget real investigation time for the agent-browser attribute-readback primitive before assuming it exists.
@@ -270,7 +270,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 - **Gotcha**: Document explicitly in this script's header comment why it's simpler than `photo-bg-remove.sh` (no browser round-trip needed) — future maintainers shouldn't "fix" the asymmetry by making this one heavier too.
 - **Validate**: `bash apps/studio/bin/photo-adjust.sh --asset assets/<sha8>.png --duotone "#1a1a2e,#e94560" --root "$REPO"` against a running server; confirm the sidecar updates and the live canvas reflects it.
 
-#### ◐ Task 20: REGISTER the new verbs — `photo-adjust` registered in BIN_VERBS + dispatch verified (`maude design photo-adjust --help`). `photo-bg-remove` registration deferred to Stage D (registered alongside its script, to avoid a dangling verb).
+#### ◐ Task 20: REGISTER the new verbs — `photo-adjust` registered in BIN_VERBS + dispatch verified. `photo-bg-remove` registration stays deferred WITH Task 18 (register alongside the script — no dangling verb, per this task's own guidance).
 
 - **Do**: Add `photo-bg-remove` and `photo-adjust` to `BIN_VERBS` (`cli/commands/design.mjs:28-48`).
 - **Gotcha**: While here, fix the three already-stale verb lists CLAUDE.md/`design.mjs`/`help.mjs` flagged during research (missing `chat-open`, `ensure-browser`, `draw-build`, etc.) — small drive-by cleanup, same file being touched anyway.

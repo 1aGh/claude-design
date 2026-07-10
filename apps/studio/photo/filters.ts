@@ -93,6 +93,8 @@ export interface PatternStep {
   scale: number;
   opacity: number;
   blend: PatternBlend;
+  /** `#rrggbb` ink color for the pattern tile. */
+  color: string;
 }
 
 export interface MaskStep {
@@ -116,6 +118,7 @@ const PATTERN_DEFAULT_TYPE: PatternType = 'dots';
 const PATTERN_DEFAULT_SCALE = 1;
 const PATTERN_DEFAULT_OPACITY = 0.5;
 const PATTERN_DEFAULT_BLEND: PatternBlend = 'normal';
+const PATTERN_DEFAULT_COLOR = '#ffffff';
 const MASK_DEFAULT_STRENGTH = 0.6;
 
 const EPS = 1e-6;
@@ -190,6 +193,7 @@ export function planPhotoPipeline(edit: PhotoEdit | null | undefined): PhotoPipe
       scale: p.scale ?? PATTERN_DEFAULT_SCALE,
       opacity: p.opacity ?? PATTERN_DEFAULT_OPACITY,
       blend: p.blend ?? PATTERN_DEFAULT_BLEND,
+      color: p.color ?? PATTERN_DEFAULT_COLOR,
     };
   }
 

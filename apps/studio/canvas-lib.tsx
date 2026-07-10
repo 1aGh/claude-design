@@ -2171,6 +2171,10 @@ export interface PhotoLayerProps {
   /** Resolve a relative asset path to a fetchable URL (defaults to identity —
    *  relative `assets/…` already resolves against the canvas iframe origin). */
   resolveUrl?: (rel: string) => string;
+  /** Fired once the pixi compositor has mounted + drawn its first frame. The
+   *  preview bridge hides the original element only AFTER this, so a background
+   *  cutout never flashes the untouched original underneath (and no flicker). */
+  onReady?: () => void;
 }
 
 export function PhotoLayer({
@@ -2182,6 +2186,7 @@ export function PhotoLayer({
   className,
   style,
   resolveUrl,
+  onReady,
 }: PhotoLayerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<{ destroy(): void; update(e: PhotoEdit): void } | null>(null);
@@ -2214,6 +2219,7 @@ export function PhotoLayer({
           return;
         }
         rendererRef.current = r;
+        onReady?.();
       })
       .catch((err) => {
         console.error('[PhotoLayer] compositor failed to mount', err);
@@ -2223,7 +2229,7 @@ export function PhotoLayer({
       rendererRef.current?.destroy();
       rendererRef.current = null;
     };
-  }, [active, source, width, height, resolveUrl]);
+  }, [active, source, width, height, resolveUrl, onReady]);
 
   // Live-update the mounted compositor on edit-param change (no re-create).
   useEffect(() => {
@@ -2249,6 +2255,159 @@ export function PhotoLayer({
   );
 }
 PhotoLayer.displayName = 'PhotoLayer';
+
+// PhotoPreviewBridge (feature-photo-editor, Task 12) — the LIVE in-canvas preview
+// of Photo-tab edits. The editing UI (PhotoKnobs) runs in the cross-origin shell,
+// so it can't touch these images directly; it broadcasts `dgn:'photo-preview'
+// { asset, edit }` DOWN, and this bridge — mounted in canvas-shell's chrome layer
+// (OUTSIDE `.dc-world`, so screen coords aren't fighting the pan/zoom transform),
+// INSIDE the canvas iframe — overlays a real <PhotoLayer> pixi composite on the
+// matching image (artboard `<img>` OR annotation `<image>` alike). A neutral edit
+// removes the overlay, restoring the untouched original (non-destructive). Zero
+// cost until the first non-default edit arrives: no overlay, no pixi, no rAF loop.
+
+/** First `<img>`/SVG `<image>` in the doc whose source contains `asset`
+ *  (`assets/<sha8>.<ext>`). Both image contexts live in this same iframe doc. */
+function findPhotoEl(asset: string): Element | null {
+  if (typeof document === 'undefined') return null;
+  const nodes = document.querySelectorAll('img, image');
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    const src =
+      n.getAttribute('src') || n.getAttribute('href') || n.getAttribute('xlink:href') || '';
+    if (src.includes(asset)) return n;
+  }
+  return null;
+}
+
+export function PhotoPreviewBridge() {
+  const [edits, setEdits] = useState<Map<string, PhotoEdit>>(() => new Map());
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const m = e.data as { dgn?: string; asset?: unknown; edit?: unknown } | null;
+      if (!m) return;
+      if (m.dgn !== 'photo-preview' || typeof m.asset !== 'string') return;
+      const asset = m.asset;
+      const edit = (m.edit ?? null) as PhotoEdit | null;
+      setEdits((prev) => {
+        const next = new Map(prev);
+        if (!edit || isDefaultEdit(edit)) next.delete(asset);
+        else next.set(asset, edit);
+        return next;
+      });
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+  if (edits.size === 0) return null;
+  return (
+    <>
+      {[...edits.entries()].map(([asset, edit]) => (
+        <PhotoPreviewOverlay key={asset} asset={asset} edit={edit} />
+      ))}
+    </>
+  );
+}
+PhotoPreviewBridge.displayName = 'PhotoPreviewBridge';
+
+interface OverlayBox {
+  left: number;
+  top: number;
+  w: number;
+  h: number;
+  worldW: number;
+  worldH: number;
+}
+
+// One overlay per edited image. A rAF loop tracks the target's live screen rect
+// (`getBoundingClientRect` already reflects the `.dc-world` pan/zoom transform, so
+// no manual world→screen projection is needed). The <PhotoLayer> renders at the
+// image's STABLE world size and is CSS-stretched to fill the screen box — so a
+// pan/zoom only restyles the container (cheap) and never thrashes the pixi
+// Application (which would tear down + rebuild on a width/height change).
+function PhotoPreviewOverlay({ asset, edit }: { asset: string; edit: PhotoEdit }) {
+  const [box, setBox] = useState<OverlayBox | null>(null);
+  // Hide the ORIGINAL element while the composite is on top. Without this a
+  // background cutout (transparent where the background was) lets the untouched
+  // original show straight through — "the background is removed but the bottom
+  // layer stays." Restored the moment the edit goes neutral (overlay unmounts) or
+  // the user toggles `applied` off. Hidden only AFTER the pixi first frame
+  // (onReady) so there's no blank flash while the compositor mounts.
+  const hiddenRef = useRef<{ el: HTMLElement; prev: string } | null>(null);
+  const restoreOriginal = useCallback(() => {
+    if (hiddenRef.current) {
+      hiddenRef.current.el.style.visibility = hiddenRef.current.prev;
+      hiddenRef.current = null;
+    }
+  }, []);
+  const hideOriginal = useCallback(() => {
+    const el = findPhotoEl(asset) as HTMLElement | null;
+    if (!el || hiddenRef.current?.el === el) return;
+    restoreOriginal();
+    hiddenRef.current = { el, prev: el.style.visibility };
+    el.style.visibility = 'hidden';
+  }, [asset, restoreOriginal]);
+  // Always un-hide on unmount (the overlay is keyed by asset, so unmount is the
+  // asset-change path too). hideOriginal restores any prior el before re-hiding.
+  useEffect(() => restoreOriginal, [restoreOriginal]);
+  useEffect(() => {
+    let raf = 0;
+    let prev = '';
+    const tick = () => {
+      const el = findPhotoEl(asset);
+      if (el) {
+        const r = el.getBoundingClientRect();
+        const svgBox = (el as unknown as SVGGraphicsElement).getBBox?.();
+        const worldW = (el as HTMLElement).offsetWidth || svgBox?.width || r.width || 1;
+        const worldH = (el as HTMLElement).offsetHeight || svgBox?.height || r.height || 1;
+        const next: OverlayBox = {
+          left: r.left,
+          top: r.top,
+          w: r.width,
+          h: r.height,
+          worldW: Math.max(1, Math.round(worldW)),
+          worldH: Math.max(1, Math.round(worldH)),
+        };
+        const sig = `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)},${next.worldW},${next.worldH}`;
+        if (sig !== prev) {
+          prev = sig;
+          setBox(next);
+        }
+      } else if (prev !== 'gone') {
+        prev = 'gone';
+        setBox(null);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, [asset]);
+  if (!box || box.w < 1 || box.h < 1) return null;
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        left: box.left,
+        top: box.top,
+        width: box.w,
+        height: box.h,
+        pointerEvents: 'none',
+        overflow: 'hidden',
+        zIndex: 30,
+      }}
+      aria-hidden="true"
+    >
+      <PhotoLayer
+        source={asset}
+        edit={edit}
+        width={box.worldW}
+        height={box.worldH}
+        style={{ width: '100%', height: '100%' }}
+        onReady={hideOriginal}
+      />
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SnapGuideOverlay (Phase 4.2) — renders 1 px guide lines while a drag is in

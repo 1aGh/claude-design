@@ -109,6 +109,10 @@ export interface PhotoPattern {
   /** 0 … 1 overlay opacity. */
   opacity?: number;
   blend?: PatternBlend;
+  /** `#rrggbb` ink color the pattern is drawn in (default white). Load-bearing
+   *  for the blend modes: a WHITE pattern under `multiply` is a no-op (white ×
+   *  base = base) so the pattern "vanishes" — a dark color makes multiply darken. */
+  color?: string;
 }
 
 /** Preset alpha mask + its strength (0 … 1). */
@@ -322,12 +326,14 @@ export function validatePhotoEdit(input: unknown): ValidationResult {
     const p = input.pattern;
     if (!isPlainObject(p)) errors.push('pattern: must be an object');
     else {
-      assertKeys(errors, p, ['enabled', 'type', 'scale', 'opacity', 'blend'], 'pattern');
+      assertKeys(errors, p, ['enabled', 'type', 'scale', 'opacity', 'blend', 'color'], 'pattern');
       bool(errors, p, 'enabled');
       if ('type' in p && p.type != null && !PATTERN_TYPES.includes(p.type as PatternType))
         errors.push(`pattern.type: must be one of ${PATTERN_TYPES.join(', ')}`);
       if ('blend' in p && p.blend != null && !PATTERN_BLENDS.includes(p.blend as PatternBlend))
         errors.push(`pattern.blend: must be one of ${PATTERN_BLENDS.join(', ')}`);
+      if ('color' in p && p.color != null && (typeof p.color !== 'string' || !HEX_RE.test(p.color)))
+        errors.push('pattern.color: must be a #rrggbb hex color');
       num(errors, p, 'scale', 0.1, 16);
       num(errors, p, 'opacity', 0, 1);
     }

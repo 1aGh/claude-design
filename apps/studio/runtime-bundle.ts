@@ -234,7 +234,16 @@ export async function getRuntimeBundle(
   // The `as any` cast tolerates names like `__INTERNAL_DO_NOT_USE_OR_WARN`
   // that aren't declared in the package's .d.ts; the destructure still
   // succeeds at runtime, which is what matters.
-  const entryContent = `import * as __mod__ from ${JSON.stringify(pkg)};\n${
+  // pixi.js compiles shaders with `new Function()` — which the split-origin
+  // canvas iframe's strict CSP (DDR-054) forbids (no `unsafe-eval`), so the
+  // photo compositor threw "Current environment does not allow unsafe-eval" and
+  // the live preview silently failed in the DEFAULT mode (only same-origin, the
+  // opt-out, had no CSP to trip). pixi ships `pixi.js/unsafe-eval` — a
+  // side-effect module that swaps the eval-based shader/uniform sync for
+  // eval-free polyfills. Baking it into the runtime bundle here makes EVERY
+  // canvas's `import('pixi.js')` CSP-safe transparently (feature-photo-editor).
+  const sideEffects = pkg === 'pixi.js' ? `import "pixi.js/unsafe-eval";\n` : '';
+  const entryContent = `${sideEffects}import * as __mod__ from ${JSON.stringify(pkg)};\n${
     exportNames.length > 0
       ? `const {\n${namedLines}\n} = __mod__ as any;\n` + `export {\n${namedLines}\n};\n`
       : ''

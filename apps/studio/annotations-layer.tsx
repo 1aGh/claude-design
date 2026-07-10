@@ -3156,6 +3156,21 @@ export function AnnotationsLayer() {
         } catch {
           /* detached / cross-origin teardown */
         }
+      } else if (action === 'edit-photo') {
+        // feature-photo-editor (Task 17) — "Edit Photo…" on an ImageStroke. Same
+        // untrusted-origin REQUEST shape as Replace (DDR-054); the shell opens the
+        // Photo-only Inspector tab on this stroke's content-addressed asset.
+        if (sel.length !== 1) return;
+        const target = strokesById.get(sel[0] as string);
+        if (target?.tool !== 'image') return;
+        try {
+          window.parent.postMessage(
+            { dgn: 'edit-annotation-photo-request', id: target.id, asset: target.href },
+            '*'
+          );
+        } catch {
+          /* detached / cross-origin teardown */
+        }
       }
     },
     [annotSel, copySelection, pasteStrokesText, strokesById]
@@ -3239,6 +3254,11 @@ export function AnnotationsLayer() {
           canReplace={
             selectedStrokes.length === 1 &&
             (selectedStrokes[0]?.tool === 'image' || selectedStrokes[0]?.tool === 'mediaref')
+          }
+          canEditPhoto={
+            selectedStrokes.length === 1 &&
+            selectedStrokes[0]?.tool === 'image' &&
+            /assets\/[0-9a-f]{8}\.[a-z0-9]+/i.test((selectedStrokes[0] as ImageStroke).href || '')
           }
           onAction={onMenuAction}
           onClose={() => setCtxMenu(null)}
@@ -4345,6 +4365,7 @@ function AnnotationContextMenu({
   selCount,
   canUngroup,
   canReplace,
+  canEditPhoto,
   onAction,
   onClose,
 }: {
@@ -4353,6 +4374,8 @@ function AnnotationContextMenu({
   canUngroup: boolean;
   /** Stage F3 — exactly one ImageStroke/MediaRefStroke is selected. */
   canReplace: boolean;
+  /** feature-photo-editor (Task 17) — exactly one content-addressed ImageStroke. */
+  canEditPhoto: boolean;
   onAction: (action: string) => void;
   onClose: () => void;
 }) {
@@ -4420,6 +4443,7 @@ function AnnotationContextMenu({
       {item('paste', 'Paste', '⌘V')}
       {item('duplicate', 'Duplicate', '⌘D')}
       {canReplace ? item('replace', 'Replace…') : null}
+      {canEditPhoto ? item('edit-photo', 'Edit Photo…') : null}
       <div className="dc-menu-sep" aria-hidden="true" />
       {item('front', 'Bring to front', ']')}
       {item('forward', 'Bring forward', '⌘]')}

@@ -75,6 +75,13 @@ export interface MenuItem {
   submenu?: MenuItem[] | ((target: ContextTarget) => MenuItem[]);
   /** Hover/title hint shown when the item is `disabled` (a11y affordance). */
   disabledHint?: string;
+  /**
+   * Fully REMOVE the item for a target (vs. `disabled`, which greys it in place).
+   * Resolved per-click. Use when an entry is meaningless — not merely
+   * unavailable — for the right-clicked element (e.g. "Edit Photo…" only makes
+   * sense on an `<img>`, so it shouldn't appear at all on a `<div>`).
+   */
+  hidden?: boolean | ((target: ContextTarget) => boolean);
   onSelect: (target: ContextTarget) => void;
 }
 
@@ -376,9 +383,19 @@ export function ContextMenuView({
     };
   }, [target.clientX, target.clientY, onClose, pos.x, pos.y]);
 
+  // Resolve per-target `hidden` and drop now-empty sections (so a section that
+  // held only a hidden item doesn't leave a dangling separator).
+  const visibleSections = sections
+    .map((section) =>
+      section.filter((item) => {
+        const h = typeof item.hidden === 'function' ? item.hidden(target) : item.hidden;
+        return !h;
+      })
+    )
+    .filter((section) => section.length > 0);
   return (
     <div ref={ref} className="dc-context-menu" role="menu" style={{ left: pos.x, top: pos.y }}>
-      {sections.map((section, si) => {
+      {visibleSections.map((section, si) => {
         const sectionKey = section.map((i) => i.id).join('|') || `s${si}`;
         return (
           <div key={sectionKey} role="group">

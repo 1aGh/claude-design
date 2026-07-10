@@ -41,6 +41,7 @@ import { AnnotationsLayer } from './annotations-layer.tsx';
 import { ArtboardMarqueeOverlay } from './artboard-marquee.tsx';
 import {
   type ArtboardRect,
+  PhotoPreviewBridge,
   SnapGuideOverlay,
   useArtboardsContext,
   useDragStateContext,
@@ -1470,6 +1471,34 @@ function buildRegistry(deps: {
           },
         },
         {
+          // feature-photo-editor (Task 16) — only on a content-addressed `<img>`.
+          // Selects it (so the Inspector derives the Photo target from the
+          // selection's `photoAsset`) + opens the Inspector on the Photo tab.
+          id: 'edit-photo',
+          label: 'Edit Photo…',
+          hidden: (target) => {
+            const el = target.el as HTMLImageElement | null;
+            if (el?.tagName?.toLowerCase() !== 'img') return true;
+            return !/assets\/[0-9a-f]{8}\.[a-z0-9]+/i.test(el.getAttribute?.('src') || '');
+          },
+          onSelect: (target) => {
+            if (target.el) {
+              selSet.replace(
+                hoverTargetToSelection({
+                  el: target.el,
+                  cdId: target.cdId ?? null,
+                  artboardId: target.artboardId ?? null,
+                } as HoverTarget)
+              );
+            }
+            try {
+              window.parent.postMessage({ dgn: 'open-inspector', tab: 'photo' }, '*');
+            } catch {
+              /* detached / cross-origin */
+            }
+          },
+        },
+        {
           id: 'select-layer',
           label: 'Select layer',
           // Task L6 — every DISTINCT stamped ancestor in the cursor's full hit
@@ -2488,6 +2517,7 @@ function CanvasRouter({
         alignArtboards={alignArtboards}
       />
       <SnapGuideOverlay />
+      <PhotoPreviewBridge />
       <UndoHud />
       <CursorsOverlay />
       <AiBanner />

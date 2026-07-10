@@ -351,6 +351,11 @@ export function PhotoKnobs({ asset, initialEdit, ColorPicker, onEdit, onRemoveBa
                 ))}
               </select>
             </div>
+            <div style={S.row}>
+              <span style={S.label}>Color</span>
+              <ColorSwatch value={pat.color} fallback="#ffffff" ColorPicker={ColorPicker} onApply={(hex) => setSection('pattern', { color: hex }, true)} />
+              <span style={{ ...S.num, flex: 1, textAlign: 'left', opacity: 0.5 }}>tip: dark + multiply</span>
+            </div>
             <Slider label="Scale" value={pat.scale ?? 1} min={0.25} max={4} step={0.25} onChange={(v) => setSection('pattern', { scale: v })} onCommit={() => setSection('pattern', { scale: pat.scale ?? 1 }, true)} />
             <Slider label="Opacity" value={pat.opacity ?? 0.5} min={0} max={1} onChange={(v) => setSection('pattern', { opacity: v })} onCommit={() => setSection('pattern', { opacity: pat.opacity ?? 0.5 }, true)} />
           </>
