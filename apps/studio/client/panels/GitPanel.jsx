@@ -364,6 +364,14 @@ export default function GitPanel({
                 getLatest: true,
               }
         );
+      else if (kind === 'publish' && /protected branch|GH006/i.test(res.error || ''))
+        // A protected default branch rejects a direct Publish — point at the PR flow
+        // (DDR-162): the way to add work to a protected branch is a draft + a pull request.
+        setBanner({
+          variant: 'warn',
+          title: 'This branch is protected',
+          text: 'It needs a pull request. Switch to a draft, then use “Add to Shared version” to open one.',
+        });
       else setBanner({ variant: 'error', text: res.error || 'Something went wrong.' });
       return res;
     } finally {
