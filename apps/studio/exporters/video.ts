@@ -124,8 +124,12 @@ async function runVideo(
     const stdoutLines = await runShim(args, {
       cwd: path.dirname(VIDEO_PLAYWRIGHT),
       signal: hooks?.signal,
-      // No MAUDE_PROGRESS line from this shim yet — frame-count progress is a
-      // follow-up (video scope is always a single artboard, never multi).
+      // Frame-step capture emits `MAUDE_PROGRESS {current,total}` per frame → a
+      // live "N of M" progress bar in the Exports panel. This is exactly the
+      // slow path (the renderMediaOnWeb-overflow fallback can run many minutes);
+      // the fast one-pass renderer finishes before progress matters and reports
+      // none until done (it exposes no per-frame hook) — acceptable.
+      onProgress: hooks?.onProgress,
     });
     const body = new Uint8Array(readFileSync(outPath));
     // The container can differ from the request (mp4 → webm fallback when the

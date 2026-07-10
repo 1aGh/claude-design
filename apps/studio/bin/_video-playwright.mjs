@@ -404,6 +404,12 @@ async function frameStepCapture({
         { b64, isGif }
       );
     }
+    // Machine-readable progress (stdout) — spawnShim parses `MAUDE_PROGRESS`
+    // lines → onProgress → job.progress → the live bar in the Exports panel, so
+    // a long frame-step render (the renderMediaOnWeb-overflow fallback) shows
+    // "N of M" instead of a static "Exporting…". Filtered out of the summary
+    // stdout the exporter reads. Human log stays throttled on stderr.
+    console.log(`MAUDE_PROGRESS {"current":${f + 1},"total":${frameCount}}`);
     if (f % 30 === 0) console.error(`frame ${f + 1}/${frameCount}`);
   }
 
