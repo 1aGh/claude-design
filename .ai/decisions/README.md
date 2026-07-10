@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-161: In-app photo editor — pixi.js WebGL pipeline, the `PhotoEdit` sidecar, and the headless edit surface](DDR-161-in-app-photo-editor-webgl-pipeline-and-photoedit-sidecar.md) — 2026-07-10, studio/canvas-runtime/photo/pixi/webgl/raster/sidecar/imgly/background-removal/cli/headless/lazy-bundle/security
 - [DDR-160: Inline-editing variable-driven text — source-tracing resolver, occurrence targeting, and reload-durable undo](DDR-160-inline-editing-variable-text-and-undo-persistence.md) — 2026-07-10, studio/canvas-runtime/text-editing/ast/canvas-edit/occurrence/undo/sessionStorage/dx
 - [DDR-159: desktop-e2e is the cross-platform verification substitute for WKWebView-specific canvas behavior](DDR-159-desktop-e2e-substitute-for-wkwebview-canvas-behavior.md) — 2026-07-09, testing/desktop-e2e/wkwebview/scenario-runner/synthetic-events/verification/harness
 - [DDR-158: Unified text editing — custom blinking caret + annotation editors as plain HTML in the world div](DDR-158-unified-text-editing-custom-caret-and-world-html-editors.md) — 2026-07-09, studio/canvas-runtime/text-editing/caret/webkit/foreignObject/contenteditable/annotations/persistence/editability

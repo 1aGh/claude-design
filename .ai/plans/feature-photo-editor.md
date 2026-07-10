@@ -304,7 +304,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 - **Gotcha**: This is BREAKER's flagged risk (headless proof screenshots captured via Chromium agent-browser may not match what a real WKWebView user sees) — treat any visual/behavioral delta as a finding to document, not silently ignore.
 - **Validate**: Manual dogfooding session against `pnpm build:desktop` output.
 
-#### Task 26: RECORD the architecture DDR
+#### ✅ Task 26: RECORD the architecture DDR — completed 2026-07-10 (DDR-161; captures pixi activation, PhotoEdit sidecar, /_api/photo-edit route, headless-harness pattern, the BUILDER/SHIPPER/BREAKER debate with top risks verbatim as accepted trade-offs, + the 2 implementation deviations & the bundle-fragility bug fix)
 
 - **Do**: Via `/flow:record-ddr`, record the photo-editor architecture decision — pixi.js activation (superseding DDR-024's "parked" status for this specific use case), the new `PhotoEdit` non-destructive object, the new `/_api/photo-edit` route, and the headless-harness pattern extension. Cross-reference DDR-024, DDR-070, DDR-088, DDR-054, DDR-104, DDR-115. Include the debate outcome (BUILDER's approach chosen over SHIPPER/BREAKER's SVG-filter alternative) in the "Alternatives considered" section, quoting their top risks verbatim as accepted trade-offs.
 - **Validate**: DDR file exists under `.ai/decisions/`, numbered per the next-available-number check (see `project_ddr_numbering_races_on_shared_main` convention — re-check the decisions dir immediately before numbering).
