@@ -194,20 +194,20 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 
 ### Stage C — Persistence + API surface
 
-#### Task 8: CREATE `apps/studio/photo-store.ts` + `/_api/photo-edit` route
+#### ✅ Task 8: CREATE `apps/studio/photo-store.ts` + `/_api/photo-edit` route — completed 2026-07-10 (createPhotoStore(ctx); DDR-088 cap stack: sha8+containment+validatePhotoEdit+64KB cap; GET/PUT)
 
 - **Do**: `photo-store.ts` mirrors `inspect.ts`'s save/schedule pattern: `getPhotoEdit(assetSha8)`, `savePhotoEdit(assetSha8, edit)` reading/writing `assets/<sha8>.photo.json`. Add `GET`/`PUT /_api/photo-edit?asset=<sha8>` in `apps/studio/http.ts`.
 - **Pattern**: `DDR-088`'s asset-write cap stack — strict sha8-hex regex (mirror `ASSET_IMAGE_HREF_RE`), JSON-schema validate against `PhotoEdit` (Task 1), size cap (64 KB is generous for parameters), resolved-path containment assert.
 - **Gotcha**: This is a **new** write route — walk the DDR-088 threat table (stored-XSS via a crafted field, path traversal via the asset param, oversized-body DoS) explicitly, don't assume "it's just JSON" is automatically safe.
 - **Validate**: `cd apps/studio && bun test` (new test, see Task 23).
 
-#### Task 9: ADD `/_api/photo-edit` to BOTH canvas-origin allowlists
+#### ✅ Task 9: ADD `/_api/photo-edit` to BOTH canvas-origin allowlists — completed 2026-07-10 (CANVAS_SAFE_API + server.ts routes map; dual-allowlist proven by test — canvas-origin GET 200 / DELETE 405 / PUT 200)
 
 - **Do**: Add the route to `CANVAS_SAFE_API` (`http.ts:2139-2147`) AND the `startCanvasServer` `routes` map (`server.ts:238-252`) in the **same commit**.
 - **Gotcha**: This is the exact bug class that bit DDR-088's own rollout (Bun matches `routes` before the `fetch` fallthrough — a route in only `CANVAS_SAFE_API` 404s from the canvas iframe). Add a `test/canvas-origin-gate.test.ts`-style assertion (GET→405, POST-from-canvas-origin succeeds) so a future refactor can't silently drop it from one list.
 - **Validate**: `cd apps/studio && bun test`
 
-#### Task 10: WIRE background-removal output through the existing `/_api/asset` route
+#### ✅ Task 10: WIRE background-removal output through the existing `/_api/asset` route — verified 2026-07-10 (no change needed: PhotoEdit.backgroundRemoved.maskAsset holds the `assets/<sha8>.png` that /_api/asset returns; matte upload reuses that route as-is)
 
 - **Do**: Confirm (don't modify) that the bg-removal cutout/alpha-matte PNG uploads via the existing `POST /_api/asset` exactly like drag-drop images do today, and that its returned `assets/<sha8>.png` path is what gets written into `PhotoEdit.backgroundRemoved.maskAsset`.
 - **Validate**: Integration test combining Task 8's route + the existing asset-api test fixtures.
@@ -288,7 +288,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 
 ### Stage H — Guardrails + parity
 
-#### Task 23: CREATE `apps/studio/test/photo-edit-api.test.ts`
+#### ✅ Task 23: CREATE `apps/studio/test/photo-edit-api.test.ts` — completed 2026-07-10 (10 pass: sha8 traversal, round-trip, malformed-reject, size-cap 413, method-gate 405, dual-allowlist canvas-origin)
 
 - **Do**: Mirror `asset-api.test.ts`/`canvas-origin-gate.test.ts`: schema validation rejects malformed `PhotoEdit` JSON, size cap enforced, path containment holds against a crafted `asset` param, GET/PUT both work, and the route's presence in both allowlists is asserted.
 - **Validate**: `cd apps/studio && bun test`

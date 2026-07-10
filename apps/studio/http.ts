@@ -25,6 +25,7 @@ import { createGitHubEndpoints } from './github/endpoints.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
 import { DEV_SERVER_ROOT, STICKERS_DIR } from './paths.ts';
+import { createPhotoStore, PHOTO_EDIT_MAX_BYTES } from './photo-store.ts';
 import { probeReadiness } from './readiness.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
 import { linkHub } from './sync/hub-link.ts';
@@ -721,6 +722,7 @@ export function createHttp(
   // `routes` map (the dual-allowlist rule), so the untrusted canvas iframe origin
   // can never reach status/commit/publish/get-latest. http.ts owns the gating;
   // git/endpoints.ts owns the orchestration.
+  const photoStore = createPhotoStore(ctx);
   const gitApi = createGitEndpoints(ctx);
   // Phase 28 (E3) — `/_api/github/*`. Same dual-allowlist rule: main-origin only,
   // and every route is token-bearing (server-held keychain token via the loopback
@@ -968,6 +970,43 @@ export function createHttp(
         const next = await api.patchCanvasMeta(body.file, body.patch);
         if (!next) return new Response('Not found or rejected', { status: 404 });
         return Response.json(next, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      return new Response('Method not allowed', { status: 405 });
+    },
+
+    '/_api/photo-edit': async (req: Request) => {
+      // feature-photo-editor (Stage C, Task 8) — non-destructive PhotoEdit sidecar.
+      //   GET ?asset=<sha8 | assets/<sha8>.<ext>>  → stored PhotoEdit or {}
+      //   PUT/POST ?asset=<...> body { …PhotoEdit } → validated + persisted
+      // CANVAS-SAFE (listed in BOTH CANVAS_SAFE_API below AND startCanvasServer's
+      // `routes` map — Bun matches `routes` before `fetch`, so a one-list entry
+      // 404s from the canvas iframe, the DDR-088 rollout bug). Reached from the
+      // canvas origin by <PhotoLayer> (GET) and the headless bg-remove harness
+      // (PUT), so NO sameOriginWrite (it would block the legit canvas origin);
+      // the photo-store cap stack (sha8 validate + containment + validatePhotoEdit
+      // + size cap) is the load-bearing mitigation. loopback-Host gates DNS-
+      // rebinding on every method.
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const asset = new URL(req.url).searchParams.get('asset');
+      if (req.method === 'GET') {
+        const edit = await photoStore.getPhotoEdit(asset);
+        return Response.json(edit ?? {}, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      if (req.method === 'PUT' || req.method === 'POST') {
+        const body = await readJson<unknown>(req, PHOTO_EDIT_MAX_BYTES + 1024);
+        if (body == null) return new Response('body required', { status: 400 });
+        const result = await photoStore.savePhotoEdit(asset, body);
+        if (!result.ok) {
+          return Response.json(
+            { ok: false, error: result.error },
+            { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+          );
+        }
+        return Response.json(
+          { ok: true, path: result.path, edit: result.edit },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
       }
       return new Response('Method not allowed', { status: 405 });
     },
@@ -2528,6 +2567,7 @@ export function createHttp(
     '/_api/canvas-meta', // layout/viewport sidecar (GET + PATCH)
     '/_api/annotations', // annotation SVG (GET + PUT) — drives the collab bridge
     '/_api/asset', // Phase 23 — capped binary image upload (sniff+category cap+sha8 name+no-SVG)
+    '/_api/photo-edit', // feature-photo-editor — PhotoEdit sidecar GET/PUT (cap-stack gated). MIRROR in server.ts routes.
     '/_api/git-committers', // @mention autocomplete
     '/_api/ai', // AI-activity banner
     '/_comments', // per-file comment list (renders pins)
