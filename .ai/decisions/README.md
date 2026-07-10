@@ -9,6 +9,8 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-159: desktop-e2e is the cross-platform verification substitute for WKWebView-specific canvas behavior](DDR-159-desktop-e2e-substitute-for-wkwebview-canvas-behavior.md) — 2026-07-09, testing/desktop-e2e/wkwebview/scenario-runner/synthetic-events/verification/harness
+- [DDR-158: Unified text editing — custom blinking caret + annotation editors as plain HTML in the world div](DDR-158-unified-text-editing-custom-caret-and-world-html-editors.md) — 2026-07-09, studio/canvas-runtime/text-editing/caret/webkit/foreignObject/contenteditable/annotations/persistence/editability
 - [DDR-157: Video export survives a renderer overflow — frame-step fallback + render-sized job timeout](DDR-157-video-export-renderer-overflow-fallback-and-render-sized-timeout.md) — 2026-07-09, studio/exporters/video/remotion/web-renderer/fallback/dos/timeout/resilience/trust-model
 - [DDR-156: Bundled whiteboard sticker packs — sourcing, licensing, and rasterization](DDR-156-bundled-sticker-pack-sourcing-and-attribution.md) — 2026-07-09, whiteboard/stickers/licensing/attribution/assets/npm-tarball/playwright/rasterization
 - [DDR-155: Sticky-note author identity — privacy posture, sanitization, and badge color](DDR-155-sticky-author-identity-privacy-and-badge-color.md) — 2026-07-09, annotations/whiteboard/figjam/presence/privacy/collab/sanitization/trust-model

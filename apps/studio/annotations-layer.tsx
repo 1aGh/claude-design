@@ -26,6 +26,7 @@ import {
   createContext,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type RefObject,
   useCallback,
   useContext,
   useEffect,
@@ -157,6 +158,7 @@ import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.t
 import { buildAnnotationStrokesRecord } from './commands/annotation-strokes-command.ts';
 import { ensureMenuStyles as ensureCtxMenuStyles } from './context-menu.tsx';
 import { crossedDragThreshold, type Tool } from './input-router.tsx';
+import { mountCaret, placeCaretAt } from './text-caret.ts';
 import {
   AnnotationResizeOverlay,
   bboxResize,
@@ -408,8 +410,8 @@ function isMediaPlayerTarget(e: Event): boolean {
 }
 
 /**
- * Dogfood fix — the Text tool's click-through target. This layer's own
- * input-capture div sits above the artboard content (z-index), so
+ * Dogfood fix — the Text tool's click-through target for ARTBOARD text. This
+ * layer's own input-capture div sits above the artboard content (z-index), so
  * `elementsFromPoint` (the full z-stack at that point, topmost first) is
  * needed to see past it. Mirrors canvas-shell.tsx's own `isLeafText` check
  * exactly (all children are text nodes) so "would this be a leaf-text edit
@@ -427,6 +429,46 @@ function findEditableElementAt(clientX: number, clientY: number): HTMLElement | 
     const kids = Array.from(stamped.childNodes);
     const isLeafText = kids.length > 0 && kids.every((n) => n.nodeType === 3);
     return isLeafText ? stamped : null;
+  }
+  return null;
+}
+
+/**
+ * Phase 4 (unified-text-editing) — the Text tool's click-through target for
+ * ANNOTATION strokes. Deliberately GEOMETRIC (world-coord bbox containment),
+ * not DOM elementsFromPoint: while a draw tool is armed, every stroke node
+ * renders with pointer-events:none (`hitMode`), which makes it invisible to
+ * DOM hit-testing — measured in the WKWebView harness. Walks strokes topmost
+ * (last-rendered) first. An anchored text is skipped — its HOST shape's bbox
+ * already covers it and resolves to the same editor. A section matches only
+ * on its label CHIP (geometry mirrored from SectionLabelChip) so a click
+ * inside the region body still drops a NEW text there.
+ */
+const TEXT_EDITABLE_TOOLS = new Set(['text', 'sticky', 'rect', 'ellipse', 'polygon', 'section']);
+
+function findTextStrokeAt(
+  wx: number,
+  wy: number,
+  strokes: readonly Stroke[],
+  zoom: number
+): string | null {
+  for (let i = strokes.length - 1; i >= 0; i--) {
+    const s = strokes[i];
+    if (!s || !TEXT_EDITABLE_TOOLS.has(s.tool)) continue;
+    if (s.tool === 'section') {
+      const x = Math.min(s.x, s.x + s.w);
+      const y = Math.min(s.y, s.y + s.h);
+      const fontSize = SECTION_LABEL_FONT / zoom;
+      const chipH = SECTION_LABEL_H / zoom;
+      const gap = 4 / zoom;
+      const chipW = Math.max(56 / zoom, s.label.length * fontSize * 0.62 + 18 / zoom);
+      if (wx >= x && wx <= x + chipW && wy >= y - chipH - gap && wy <= y - gap) return s.id;
+      continue;
+    }
+    if (s.tool === 'text' && s.anchorId != null && s.anchorId !== '') continue;
+    const bb = strokeBBox(s);
+    if (!bb) continue;
+    if (wx >= bb.x && wx <= bb.x + bb.w && wy >= bb.y && wy <= bb.y + bb.h) return s.id;
   }
   return null;
 }
@@ -605,6 +647,12 @@ const ANNOT_CSS = `
    See DDR-067. (No backticks in this comment: the whole block is a JS template
    literal, so a backtick here would terminate the string.) */
 .dc-annot-editor, .dc-annot-editor * { cursor: text !important; }
+/* Phase 7 (unified-text-editing) — hover affordance parity with artboard leaf
+   text: a standalone text stroke invites editing with the I-beam in Move mode
+   (double-click / Text-tool click enters its editor in place). Shapes and
+   stickies keep the selection arrow — their whole body is a move/select
+   target first. */
+.dc-annot-svg text[data-tool="text"] { cursor: text; }
 /* FigJam v3 — connection dots on a selected bindable shape. The important flag
    beats use-tool-mode's blanket star-cursor rule (same fight as the editor +
    resize handles — DDR-067). */
@@ -864,6 +912,12 @@ export function AnnotationsLayer() {
     [visibilityCtx]
   );
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Phase 3 (unified-text-editing) — the click that OPENED the editor, so the
+  // editor can place a collapsed caret at that exact character on mount
+  // instead of select-all. Set only by pointer entry paths (double-click /
+  // text-tool click-through); keyboard entries (Enter, fresh-create,
+  // ⌘Enter chain) leave it null → select-all, the rename convention.
+  const [editCaretPoint, setEditCaretPoint] = useState<{ x: number; y: number } | null>(null);
 
   const fileRef = useRef<string | undefined>(undefined);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1558,16 +1612,34 @@ export function AnnotationsLayer() {
           color: DEFAULT_SECTION_COLOR,
         });
       } else if (tool === 'text') {
-        // Dogfood fix — the Text tool clicking an EXISTING editable element
-        // (a leaf-text DOM node, not an annotation) should edit that text in
-        // place rather than drop a new standalone annotation on top of it.
-        // This layer's own input-capture div sits above the artboard content
-        // (z-index, .dc-annot-input), so elementsFromPoint is needed to see
-        // past it to whatever's actually under the cursor. canvas-shell.tsx
-        // owns the DOM/contentEditable side of in-place editing — it's the
-        // one that must act, so this only hit-tests + delegates.
+        // Dogfood fix + Phase 4 (unified-text-editing) — the Text tool
+        // clicking EXISTING editable text edits it in place rather than
+        // dropping a new standalone annotation on top of it. Precedence is
+        // z-order: annotation strokes paint above artboard content, so the
+        // geometric stroke hit-test (findTextStrokeAt — DOM hit-testing can't
+        // see pointer-events:none stroke nodes while a tool is armed) runs
+        // first; then artboard leaf-text (delegated to canvas-shell.tsx,
+        // which owns the DOM/contentEditable side, via maude:enter-text-edit).
+        const strokeId = findTextStrokeAt(wx, wy, strokesRef.current, vpRef.current?.zoom || 1);
+        if (strokeId) {
+          setEditCaretPoint({ x: e.clientX, y: e.clientY });
+          setEditingId(strokeId);
+          if (annotSel) annotSel.replace(strokeId);
+          setTool('move');
+          return true;
+        }
         const editableTarget = findEditableElementAt(e.clientX, e.clientY);
         if (editableTarget) {
+          // Phase 6 — leaf-looking text the engine would refuse (mixed /
+          // expression source; no build-time data-cd-editable marker) gets an
+          // honest hint, not a new annotation dropped on top of it.
+          if (!editableTarget.hasAttribute('data-cd-editable')) {
+            showCanvasToast(
+              'This text is filled in from code (a variable) — edit it via chat or /design:edit.'
+            );
+            setTool('move');
+            return true;
+          }
           document.dispatchEvent(
             new CustomEvent('maude:enter-text-edit', {
               detail: { el: editableTarget, clientX: e.clientX, clientY: e.clientY },
@@ -2348,12 +2420,14 @@ export function AnnotationsLayer() {
         // a shape's text jumped the viewport to fit().
         e.preventDefault();
         e.stopPropagation();
+        setEditCaretPoint({ x: e.clientX, y: e.clientY });
         setEditingId(id);
         return;
       }
       if (t === 'text' && !node.getAttribute('data-anchor-id')) {
         e.preventDefault();
         e.stopPropagation();
+        setEditCaretPoint({ x: e.clientX, y: e.clientY });
         setEditingId(id);
       }
     };
@@ -2492,6 +2566,7 @@ export function AnnotationsLayer() {
       const target = editingTargetRef.current;
       setEditingId(null);
       setPendingText(null);
+      setEditCaretPoint(null);
       if (!target) return;
       if (target.kind === 'anchored') commitText(target.anchorId, text, fmt);
       else if (target.kind === 'sticky') commitStickyText(target.sticky.id, text, fmt);
@@ -2511,6 +2586,7 @@ export function AnnotationsLayer() {
   const cancelEditing = useCallback(() => {
     setEditingId(null);
     setPendingText(null);
+    setEditCaretPoint(null);
   }, []);
 
   /**
@@ -3134,6 +3210,7 @@ export function AnnotationsLayer() {
           addTextHintId={editingTarget ? null : addTextHintId}
           ghost={ghostPreview}
           editingTarget={editingTarget}
+          editCaretPoint={editCaretPoint}
           inkColor={color}
           onCommitEdit={commitEditing}
           onCancelEdit={cancelEditing}
@@ -3288,6 +3365,7 @@ function AnnotationsSvg({
   addTextHintId,
   ghost,
   editingTarget,
+  editCaretPoint,
   inkColor,
   onCommitEdit,
   onCancelEdit,
@@ -3320,6 +3398,8 @@ function AnnotationsSvg({
   addTextHintId: string | null;
   ghost: GhostDescriptor | null;
   editingTarget: EditingTarget;
+  /** The click that opened the editor — caret-at-click on mount (Phase 3). */
+  editCaretPoint: { x: number; y: number } | null;
   /** Live default ink (theme-aware) for a not-yet-born pending text caret. */
   inkColor: string;
   onCommitEdit: (text: string, fmt?: EditorFmt) => void;
@@ -3351,150 +3431,219 @@ function AnnotationsSvg({
   // companion). Only applies once the TextStroke exists; a not-yet-created
   // one has nothing to hide.
   const editingAnchoredTextId = anchoredExisting?.id ?? null;
-  return createPortal(
-    <svg className="dc-annot-svg" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        {/* Phase 21 — soft "lifted paper" drop shadow for sticky notes. */}
-        <filter id="dc-sticky-shadow" x="-25%" y="-25%" width="150%" height="170%">
-          <feDropShadow dx="0" dy="4" stdDeviation="8" floodColor="#000000" floodOpacity="0.28" />
-        </filter>
-      </defs>
-      {strokes.map((s) => (
-        <StrokeNode
-          key={s.id}
-          stroke={s}
-          anchorsById={anchorsById}
-          interactive={selectMode}
-          editing={
-            s.id === editingStickyId || s.id === editingSectionId || s.id === editingAnchoredTextId
-          }
-        />
-      ))}
-      {selectedStrokes.map((s) => (
-        <SelectionHalo
-          key={`halo-${s.id}`}
-          stroke={s}
-          anchorsById={anchorsById}
-          multi={selectedStrokes.length > 1}
-        />
-      ))}
-      <AnnotGroupBbox selectedStrokes={selectedStrokes} anchorsById={anchorsById} />
-      {marquee ? (
-        <rect
-          className="dc-annot-marquee"
-          x={Math.min(marquee.ax, marquee.bx)}
-          y={Math.min(marquee.ay, marquee.by)}
-          width={Math.abs(marquee.bx - marquee.ax)}
-          height={Math.abs(marquee.by - marquee.ay)}
-          vectorEffect="non-scaling-stroke"
-        />
-      ) : null}
-      {/* FigJam v3 — smart guides: solid 1px accent lines at the snapped edge/
+  // A standalone text being re-edited hides its read-only <text> too — the
+  // editor paints at the same x/y, so leaving it visible double-paints (the
+  // pre-Phase-2 "ghost" under the editor).
+  const editingStandaloneTextId =
+    editingTarget?.kind === 'standalone' ? editingTarget.text.id : null;
+  return (
+    <>
+      {createPortal(
+        <svg className="dc-annot-svg" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            {/* Phase 21 — soft "lifted paper" drop shadow for sticky notes. */}
+            <filter id="dc-sticky-shadow" x="-25%" y="-25%" width="150%" height="170%">
+              <feDropShadow
+                dx="0"
+                dy="4"
+                stdDeviation="8"
+                floodColor="#000000"
+                floodOpacity="0.28"
+              />
+            </filter>
+          </defs>
+          {strokes.map((s) => (
+            <StrokeNode
+              key={s.id}
+              stroke={s}
+              anchorsById={anchorsById}
+              interactive={selectMode}
+              editing={
+                s.id === editingStickyId ||
+                s.id === editingSectionId ||
+                s.id === editingAnchoredTextId ||
+                s.id === editingStandaloneTextId
+              }
+            />
+          ))}
+          {selectedStrokes.map((s) => (
+            <SelectionHalo
+              key={`halo-${s.id}`}
+              stroke={s}
+              anchorsById={anchorsById}
+              multi={selectedStrokes.length > 1}
+            />
+          ))}
+          <AnnotGroupBbox selectedStrokes={selectedStrokes} anchorsById={anchorsById} />
+          {marquee ? (
+            <rect
+              className="dc-annot-marquee"
+              x={Math.min(marquee.ax, marquee.bx)}
+              y={Math.min(marquee.ay, marquee.by)}
+              width={Math.abs(marquee.bx - marquee.ax)}
+              height={Math.abs(marquee.by - marquee.ay)}
+              vectorEffect="non-scaling-stroke"
+            />
+          ) : null}
+          {/* FigJam v3 — smart guides: solid 1px accent lines at the snapped edge/
           center, painted only while a drag is actively snapping. */}
-      {snapGuides?.map((g, i) => (
-        <line
-          // biome-ignore lint/suspicious/noArrayIndexKey: guides are positional + rebuilt per move tick
-          key={`guide-${i}`}
-          x1={g.axis === 'x' ? g.at : g.from}
-          y1={g.axis === 'x' ? g.from : g.at}
-          x2={g.axis === 'x' ? g.at : g.to}
-          y2={g.axis === 'x' ? g.to : g.at}
-          stroke="var(--maude-hud-accent, #d63b1f)"
-          strokeWidth={1}
-          vectorEffect="non-scaling-stroke"
-          pointerEvents="none"
-        />
-      ))}
-      {/* FigJam v3 — bind hint: halo the host a dragged arrow endpoint would
+          {snapGuides?.map((g, i) => (
+            <line
+              // biome-ignore lint/suspicious/noArrayIndexKey: guides are positional + rebuilt per move tick
+              key={`guide-${i}`}
+              x1={g.axis === 'x' ? g.at : g.from}
+              y1={g.axis === 'x' ? g.from : g.at}
+              x2={g.axis === 'x' ? g.at : g.to}
+              y2={g.axis === 'x' ? g.to : g.at}
+              stroke="var(--maude-hud-accent, #d63b1f)"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="none"
+            />
+          ))}
+          {/* FigJam v3 — bind hint: halo the host a dragged arrow endpoint would
           magnetically attach to. */}
-      <BindHintHalo strokes={strokes} bindHintId={bindHintId} />
-      {/* FigJam v3 — connection dots on a single selected bindable shape;
+          <BindHintHalo strokes={strokes} bindHintId={bindHintId} />
+          {/* FigJam v3 — connection dots on a single selected bindable shape;
           dragging one draws a bound connector (rendered below as a draft). */}
-      {selectMode && !connDraft && selectedStrokes.length === 1 && selectedStrokes[0] ? (
-        <ConnectorDots stroke={selectedStrokes[0]} />
-      ) : null}
-      {connDraft ? (
-        <g
-          stroke={inkColor}
-          strokeWidth={2.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-          fill="none"
-          pointerEvents="none"
-        >
-          {arrowPrimitives({
-            x1: connDraft.x1,
-            y1: connDraft.y1,
-            x2: connDraft.x2,
-            y2: connDraft.y2,
-            width: 2.5,
-            color: inkColor,
-            lineType: 'curved',
-            startBind: connDraft.startBind,
-            ...(connDraft.endBind ? { endBind: connDraft.endBind } : {}),
-          }).map((prim, i) => renderArrowPrimitive(prim, i))}
-        </g>
-      ) : null}
-      {/* FigJam v3 — hover affordance: an empty shape invites text. */}
-      <AddTextHint strokes={strokes} hintId={addTextHintId} />
-      {/* FigJam v3 — resize chrome: live W × H label at the box corner plus a
+          {selectMode && !connDraft && selectedStrokes.length === 1 && selectedStrokes[0] ? (
+            <ConnectorDots stroke={selectedStrokes[0]} />
+          ) : null}
+          {connDraft ? (
+            <g
+              stroke={inkColor}
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+              fill="none"
+              pointerEvents="none"
+            >
+              {arrowPrimitives({
+                x1: connDraft.x1,
+                y1: connDraft.y1,
+                x2: connDraft.x2,
+                y2: connDraft.y2,
+                width: 2.5,
+                color: inkColor,
+                lineType: 'curved',
+                startBind: connDraft.startBind,
+                ...(connDraft.endBind ? { endBind: connDraft.endBind } : {}),
+              }).map((prim, i) => renderArrowPrimitive(prim, i))}
+            </g>
+          ) : null}
+          {/* FigJam v3 — hover affordance: an empty shape invites text. */}
+          <AddTextHint strokes={strokes} hintId={addTextHintId} />
+          {/* FigJam v3 — resize chrome: live W × H label at the box corner plus a
           dashed halo on any neighbour whose dimension the resize just matched
           (the "same size as that one" quota). */}
-      {resizeInfo?.box ? (
-        <g pointerEvents="none">
-          {resizeInfo.matchIds.map((id) => {
-            const m = strokes.find((s) => s.id === id);
-            const bb = m ? strokeBBox(m) : null;
-            if (!bb) return null;
-            return (
-              <rect
-                key={`dim-${id}`}
-                x={bb.x - 2}
-                y={bb.y - 2}
-                width={bb.w + 4}
-                height={bb.h + 4}
-                fill="none"
-                stroke="var(--maude-hud-accent, #d63b1f)"
-                strokeWidth={1.5}
-                strokeDasharray="5 3"
-                vectorEffect="non-scaling-stroke"
-                rx={2}
-              />
-            );
-          })}
-          <text
-            x={resizeInfo.box.x + resizeInfo.box.w / 2}
-            y={resizeInfo.box.y + resizeInfo.box.h + 18}
-            textAnchor="middle"
-            fontSize={11}
-            fill="var(--maude-hud-accent, #d63b1f)"
-            style={{
-              fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
-            }}
-          >
-            {`${Math.round(resizeInfo.box.w)} × ${Math.round(resizeInfo.box.h)}`}
-          </text>
-        </g>
-      ) : null}
-      {ghost ? <GhostPreview ghost={ghost} /> : null}
-      {editingTarget?.kind === 'anchored' ? (
+          {resizeInfo?.box ? (
+            <g pointerEvents="none">
+              {resizeInfo.matchIds.map((id) => {
+                const m = strokes.find((s) => s.id === id);
+                const bb = m ? strokeBBox(m) : null;
+                if (!bb) return null;
+                return (
+                  <rect
+                    key={`dim-${id}`}
+                    x={bb.x - 2}
+                    y={bb.y - 2}
+                    width={bb.w + 4}
+                    height={bb.h + 4}
+                    fill="none"
+                    stroke="var(--maude-hud-accent, #d63b1f)"
+                    strokeWidth={1.5}
+                    strokeDasharray="5 3"
+                    vectorEffect="non-scaling-stroke"
+                    rx={2}
+                  />
+                );
+              })}
+              <text
+                x={resizeInfo.box.x + resizeInfo.box.w / 2}
+                y={resizeInfo.box.y + resizeInfo.box.h + 18}
+                textAnchor="middle"
+                fontSize={11}
+                fill="var(--maude-hud-accent, #d63b1f)"
+                style={{
+                  fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+                }}
+              >
+                {`${Math.round(resizeInfo.box.w)} × ${Math.round(resizeInfo.box.h)}`}
+              </text>
+            </g>
+          ) : null}
+          {ghost ? <GhostPreview ghost={ghost} /> : null}
+        </svg>,
+        target
+      )}
+      <AnnotEditors
+        worldRef={worldRef}
+        editingTarget={editingTarget}
+        anchoredExisting={anchoredExisting}
+        caretPoint={editCaretPoint}
+        inkColor={inkColor}
+        onCommitEdit={onCommitEdit}
+        onCancelEdit={onCancelEdit}
+      />
+    </>
+  );
+}
+
+/**
+ * The active annotation text editor, rendered as PLAIN HTML absolutely
+ * positioned in the world div — NOT as SVG foreignObject. Same architectural
+ * move as MediaRefPlayers below (read its docblock): foreignObject content
+ * under the transformed `.dc-world` mis-hit-tests clicks at most zoom levels
+ * (WebKit + Chromium), and the `.dc-annot-svg` root's pointer-events:none
+ * additionally swallowed in-editor clicks — so caret-at-click could never
+ * work. HTML children of the transformed div hit-test correctly by
+ * construction. World coords map 1:1 (the div carries the pan/zoom
+ * transform), so each editor's old foreignObject x/y/w/h becomes left/top/
+ * width/height verbatim. The [data-annot-editor] attr keeps document-capture
+ * annotation handlers out (isAnnotEditorTarget guard, mirroring
+ * [data-mediaref-player]).
+ */
+function AnnotEditors({
+  worldRef,
+  editingTarget,
+  anchoredExisting,
+  caretPoint,
+  inkColor,
+  onCommitEdit,
+  onCancelEdit,
+}: {
+  worldRef: ReturnType<typeof useWorldRefContext>;
+  editingTarget: EditingTarget;
+  anchoredExisting: TextStroke | undefined;
+  caretPoint: { x: number; y: number } | null;
+  inkColor: string;
+  onCommitEdit: (text: string, fmt?: EditorFmt) => void;
+  onCancelEdit: () => void;
+}) {
+  const target = worldRef?.current ?? null;
+  if (!target || !editingTarget) return null;
+  return createPortal(
+    <>
+      {editingTarget.kind === 'anchored' ? (
         <TextEditor
           anchorId={editingTarget.anchorId}
           host={editingTarget.host}
           existing={anchoredExisting}
+          caretPoint={caretPoint}
           onCommit={(_anchorId, text, fmt) => onCommitEdit(text, fmt)}
           onCancel={onCancelEdit}
         />
       ) : null}
-      {editingTarget?.kind === 'sticky' ? (
+      {editingTarget.kind === 'sticky' ? (
         <StickyEditor
           sticky={editingTarget.sticky}
+          caretPoint={caretPoint}
           onCommit={onCommitEdit}
           onCancel={onCancelEdit}
         />
       ) : null}
-      {editingTarget?.kind === 'standalone' ? (
+      {editingTarget.kind === 'standalone' ? (
         <StandaloneTextEditor
           x={editingTarget.text.x ?? 0}
           y={editingTarget.text.y ?? 0}
@@ -3507,11 +3656,12 @@ function AnnotationsSvg({
           underline={editingTarget.text.underline}
           align={editingTarget.text.align ?? 'left'}
           listType={editingTarget.text.listType}
+          caretPoint={caretPoint}
           onCommit={onCommitEdit}
           onCancel={onCancelEdit}
         />
       ) : null}
-      {editingTarget?.kind === 'pending' ? (
+      {editingTarget.kind === 'pending' ? (
         <StandaloneTextEditor
           x={editingTarget.x}
           y={editingTarget.y}
@@ -3522,14 +3672,15 @@ function AnnotationsSvg({
           onCancel={onCancelEdit}
         />
       ) : null}
-      {editingTarget?.kind === 'section' ? (
+      {editingTarget.kind === 'section' ? (
         <SectionTitleEditor
           section={editingTarget.section}
+          caretPoint={caretPoint}
           onCommit={onCommitEdit}
           onCancel={onCancelEdit}
         />
       ) : null}
-    </svg>,
+    </>,
     target
   );
 }
@@ -3630,27 +3781,79 @@ function stripJumpSentinel(text: string): string {
   return text.startsWith(JUMP_SENTINEL) ? text.slice(JUMP_SENTINEL.length) : text;
 }
 
-// Phase 1 follow-up (whiteboard-improvements dogfood) \u2014 WebKit loses the
-// native blinking caret for a contentEditable nested inside a transformed
-// ancestor (.dc-world's imperative pan/zoom `transform`, canvas-lib.tsx).
-// translateZ(0) promotes the element onto its own compositing layer, which
-// restores native caret rendering; an explicit caretColor makes it
-// unmistakable regardless. Shared by every contentEditable text surface below.
+// Unified caret style across every contentEditable text surface (annotation
+// editors here + the artboard inline editor's `.dc-text-editing` CSS in
+// canvas-shell.tsx use the SAME `--maude-hud-accent` so the caret reads the
+// same everywhere). An explicit caretColor makes the caret visible against any
+// background. NOTE: deliberately NO `transform: translateZ(0)` / `will-change`
+// here \u2014 promoting a contentEditable onto its own compositing layer is a known
+// WebKit caret-BLINK killer (the compositor caches the layer and never repaints
+// the blink, so the caret shows as a static line). A prior dogfood pass added
+// translateZ(0) to "restore" the caret and instead froze its blink; removing it
+// lets WebKit run the native blink. The editor already lives inside the
+// transformed `.dc-world`, but that ancestor transform alone does not stop the
+// blink \u2014 only a compositing trigger ON the editable does.
 const CARET_FIX_STYLE = {
-  caretColor: 'var(--maude-hud-accent, #d63b1f)',
-  transform: 'translateZ(0)',
+  caretColor: 'var(--maude-hud-accent, #4a63e7)',
 } as const;
+
+/**
+ * Phase 3 (unified-text-editing) — shared caret behavior for every annotation
+ * editor. On mount: focus, place a collapsed caret at the entry click point
+ * (`placeCaretAt`, the SAME chain the artboard's enterEditModeAt uses;
+ * keyboard entry has no point → select-all, the rename convention), and mount
+ * the custom blinking caret (text-caret.ts) for the session. Afterwards every
+ * plain in-editor click re-places the caret from its coordinates on pointerup
+ * so repositioning never depends on native hit-testing (synthetic e2e clicks
+ * take the same path — untrusted events get no UA caret action at all).
+ * Shift-clicks and drag-selections keep native behavior; ⌘A stays native.
+ */
+function useEditorCaret(
+  ref: RefObject<HTMLDivElement | null>,
+  caretPoint: { x: number; y: number } | null | undefined
+) {
+  const entryPointRef = useRef(caretPoint ?? null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    placeCaretAt(el, window, entryPointRef.current ?? undefined);
+    return mountCaret(el, window);
+  }, [ref]);
+  const downRef = useRef<{ x: number; y: number } | null>(null);
+  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    downRef.current = e.button === 0 && !e.shiftKey ? { x: e.clientX, y: e.clientY } : null;
+  }, []);
+  const onPointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const d = downRef.current;
+      downRef.current = null;
+      if (!d || e.shiftKey) return;
+      // A real drag is a range-selection gesture — leave it to the engine.
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 3) return;
+      const el = ref.current;
+      if (!el) return;
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) return; // double-click word-select etc.
+      placeCaretAt(el, window, { x: e.clientX, y: e.clientY }, false);
+    },
+    [ref]
+  );
+  return { onPointerDown, onPointerUp };
+}
 
 function TextEditor({
   anchorId,
   host,
   existing,
+  caretPoint,
   onCommit,
   onCancel,
 }: {
   anchorId: string;
   host: AnchorHost | null;
   existing: TextStroke | undefined;
+  caretPoint?: { x: number; y: number } | null;
   onCommit: (anchorId: string, text: string, fmt?: EditorFmt) => void;
   onCancel: () => void;
 }) {
@@ -3682,23 +3885,9 @@ function TextEditor({
     [existing?.listType]
   );
 
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.focus();
-    // Select all so a re-edit replaces existing text easily.
-    try {
-      const r = document.createRange();
-      r.selectNodeContents(el);
-      const sel = window.getSelection();
-      if (sel) {
-        sel.removeAllRanges();
-        sel.addRange(r);
-      }
-    } catch {
-      /* selection API blocked */
-    }
-  }, []);
+  // Caret-at-click on entry + custom blinking caret + click re-placement
+  // (select-all only for keyboard entry — see useEditorCaret).
+  const caretHandlers = useEditorCaret(ref, caretPoint);
 
   // Commit on outside click; cancel-on-Esc handled in onKeyDown below.
   useEffect(() => {
@@ -3725,7 +3914,19 @@ function TextEditor({
   // default align = centre).
   const align = existing?.align ?? 'center';
   return (
-    <foreignObject x={bbox.x} y={bbox.y} width={Math.max(20, bbox.w)} height={Math.max(20, bbox.h)}>
+    // Plain HTML host in the world div (NOT foreignObject — see AnnotEditors'
+    // docblock): world coords map 1:1 to left/top, clicks hit-test correctly.
+    <div
+      data-annot-editor="1"
+      style={{
+        position: 'absolute',
+        left: bbox.x,
+        top: bbox.y,
+        width: Math.max(20, bbox.w),
+        height: Math.max(20, bbox.h),
+        zIndex: 5,
+      }}
+    >
       <div
         ref={ref}
         className="dc-annot-editor"
@@ -3757,6 +3958,8 @@ function TextEditor({
           cursor: 'text',
           ...CARET_FIX_STYLE,
         }}
+        onPointerDown={caretHandlers.onPointerDown}
+        onPointerUp={caretHandlers.onPointerUp}
         onKeyDown={(e) => {
           if (onFormatKey(e)) return; // Cmd/Ctrl+B/I/U
           if (e.key === 'Escape') {
@@ -3764,40 +3967,46 @@ function TextEditor({
             onCancel();
             return;
           }
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+          // Unified across every text surface: plain Enter commits,
+          // Shift+Enter inserts a newline (falls through untouched). ⌘/Ctrl
+          // +Enter also commits AND chains a connected sibling (quick-create).
+          if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             const el = ref.current;
             onCommit(anchorId, toCommittedText(el?.innerText || ''), fmtRef.current);
-            // FigJam v3 — ⌘Enter chains: commit, then spawn a CONNECTED
-            // sibling shape (quick-create) from the host.
-            document.dispatchEvent(
-              new CustomEvent('maude:chain-create', { detail: { id: anchorId } })
-            );
+            if (e.metaKey || e.ctrlKey) {
+              document.dispatchEvent(
+                new CustomEvent('maude:chain-create', { detail: { id: anchorId } })
+              );
+            }
           }
         }}
       >
         {initial || JUMP_SENTINEL}
       </div>
-    </foreignObject>
+    </div>
   );
 }
 
-// Phase 21 — sticky body editor. A textarea hosted in a foreignObject at the
-// card's bbox, so it word-wraps + moves with CSS zoom natively. Commit on blur,
-// cancel on Esc; Enter inserts a newline (sticky is multi-line).
+// Phase 21 — sticky body editor, hosted as plain HTML at the card's bbox in
+// the world div (word-wrap + zoom come from the div's own box + the world
+// transform). Commit on blur, cancel on Esc; Enter commits, Shift+Enter
+// inserts a newline.
 function StickyEditor({
   sticky,
+  caretPoint,
   onCommit,
   onCancel,
 }: {
   sticky: StickyStroke;
+  caretPoint?: { x: number; y: number } | null;
   onCommit: (text: string, fmt?: EditorFmt) => void;
   onCancel: () => void;
 }) {
   // A flex-centered contentEditable (NOT a textarea) so the edit view matches
   // the committed `.dc-sticky-body` exactly — text stays centered, no jump on
-  // commit. Multi-line: Enter inserts a line break; Esc cancels; blur / Cmd+Enter
-  // commit; Cmd/Ctrl+B/I/U format (unified with the other editors — item 4d).
+  // commit. Multi-line: Shift+Enter inserts a line break, plain Enter commits;
+  // Esc cancels; blur commits; Cmd/Ctrl+B/I/U format (unified with the others).
   const ref = useRef<HTMLDivElement | null>(null);
   const doneRef = useRef(false);
   const {
@@ -3825,30 +4034,18 @@ function StickyEditor({
     if (to?.closest?.('.dc-annot-ctx')) return;
     commit();
   };
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.focus();
-    try {
-      const r = document.createRange();
-      r.selectNodeContents(el);
-      const sel = window.getSelection();
-      if (sel) {
-        sel.removeAllRanges();
-        sel.addRange(r);
-      }
-    } catch {
-      /* selection API blocked */
-    }
-  }, []);
+  // Caret-at-click on entry + custom blinking caret + click re-placement.
+  const caretHandlers = useEditorCaret(ref, caretPoint);
   const x = Math.min(sticky.x, sticky.x + sticky.w);
   const y = Math.min(sticky.y, sticky.y + sticky.h);
   const w = Math.abs(sticky.w);
   const h = Math.abs(sticky.h);
   return (
-    <foreignObject x={x} y={y} width={w} height={h}>
+    <div
+      data-annot-editor="1"
+      style={{ position: 'absolute', left: x, top: y, width: w, height: h, zIndex: 5 }}
+    >
       <div
-        xmlns="http://www.w3.org/1999/xhtml"
         ref={ref}
         className="dc-annot-editor dc-sticky-body"
         contentEditable
@@ -3862,6 +4059,8 @@ function StickyEditor({
           ...CARET_FIX_STYLE,
         }}
         onBlur={onBlur}
+        onPointerDown={caretHandlers.onPointerDown}
+        onPointerUp={caretHandlers.onPointerUp}
         onKeyDown={(e) => {
           if (onFormatKey(e)) return; // Cmd/Ctrl+B/I/U
           if (e.key === 'Escape') {
@@ -3870,14 +4069,16 @@ function StickyEditor({
             onCancel();
             return;
           }
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+          // Unified: plain Enter commits, Shift+Enter inserts a newline.
+          // ⌘/Ctrl+Enter also commits AND chains the next sticky beside it.
+          if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             commit();
-            // FigJam v3 — ⌘Enter chains: commit this body, then ask the layer
-            // to spawn + edit the next sticky beside it.
-            document.dispatchEvent(
-              new CustomEvent('maude:chain-create', { detail: { id: sticky.id } })
-            );
+            if (e.metaKey || e.ctrlKey) {
+              document.dispatchEvent(
+                new CustomEvent('maude:chain-create', { detail: { id: sticky.id } })
+              );
+            }
           }
         }}
       >
@@ -3885,7 +4086,7 @@ function StickyEditor({
             doesn't flicker; stripped back to raw text on commit. */}
         {stickyBodyText(sticky)}
       </div>
-    </foreignObject>
+    </div>
   );
 }
 
@@ -3905,6 +4106,7 @@ function StandaloneTextEditor({
   listType,
   singleLine,
   boxStyle,
+  caretPoint,
   onCommit,
   onCancel,
 }: {
@@ -3919,6 +4121,8 @@ function StandaloneTextEditor({
   underline?: boolean;
   align?: TextAlign;
   listType?: ListType;
+  /** The click that opened the editor — caret lands there (Phase 3). */
+  caretPoint?: { x: number; y: number } | null;
   /** A one-line field (e.g. a section title rename) — plain Enter commits
    * instead of inserting a newline, matching a native text-input's Enter. */
   singleLine?: boolean;
@@ -3954,22 +4158,8 @@ function StandaloneTextEditor({
     },
     [onCommit, listType, fmtRef]
   );
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.focus();
-    try {
-      const r = document.createRange();
-      r.selectNodeContents(el);
-      const sel = window.getSelection();
-      if (sel) {
-        sel.removeAllRanges();
-        sel.addRange(r);
-      }
-    } catch {
-      /* selection API blocked */
-    }
-  }, []);
+  // Caret-at-click on entry + custom blinking caret + click re-placement.
+  const caretHandlers = useEditorCaret(ref, caretPoint);
   // Commit on outside click.
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -3986,12 +4176,23 @@ function StandaloneTextEditor({
     return () => document.removeEventListener('pointerdown', onDown, true);
   }, [commitOnce]);
   return (
-    // Generous box so multi-line text isn't clipped while typing (item 4a). The
-    // empty area is transparent + pointer-pass-through (the SVG root is
-    // pointer-events:none), so outside-click still commits.
-    <foreignObject x={x} y={y} width={640} height={480}>
+    // Generous box so multi-line text isn't clipped while typing (item 4a).
+    // The host passes pointer events through (empty area is not the editor —
+    // outside-click must still commit); only the editable itself is
+    // interactive, so clicks in it place the caret.
+    <div
+      data-annot-editor="1"
+      style={{
+        position: 'absolute',
+        left: x,
+        top: y,
+        width: 640,
+        height: 480,
+        zIndex: 5,
+        pointerEvents: 'none',
+      }}
+    >
       <div
-        xmlns="http://www.w3.org/1999/xhtml"
         ref={ref}
         className="dc-annot-editor"
         contentEditable
@@ -4000,6 +4201,9 @@ function StandaloneTextEditor({
         style={{
           display: 'inline-block',
           minWidth: '8px',
+          // The pass-through host (above) is inert — re-enable events HERE so
+          // in-editor clicks place the caret instead of falling through.
+          pointerEvents: 'auto',
           // pre-wrap so Enter inserts a real newline (multi-line text), not a
           // commit; long lines also wrap within the box.
           whiteSpace: 'pre-wrap',
@@ -4017,6 +4221,8 @@ function StandaloneTextEditor({
           ...boxStyle,
         }}
         onBlur={() => commitOnce(ref.current?.innerText || '')}
+        onPointerDown={caretHandlers.onPointerDown}
+        onPointerUp={caretHandlers.onPointerUp}
         onKeyDown={(e) => {
           if (onFormatKey(e)) return; // Cmd/Ctrl+B/I/U
           if (e.key === 'Escape') {
@@ -4026,10 +4232,10 @@ function StandaloneTextEditor({
             onCancel();
             return;
           }
-          // Cmd/Ctrl+Enter commits; plain Enter inserts a newline (item 4a) —
-          // EXCEPT a singleLine field (section rename), where plain Enter
-          // commits too, matching a native text-input's Enter-to-confirm.
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || singleLine)) {
+          // Unified: plain Enter commits, Shift+Enter inserts a newline. A
+          // singleLine field (section rename) is a title — Shift+Enter commits
+          // too rather than adding a newline the one-line chip can't show.
+          if (e.key === 'Enter' && (!e.shiftKey || singleLine)) {
             e.preventDefault();
             commitOnce(ref.current?.innerText || '');
           }
@@ -4037,7 +4243,7 @@ function StandaloneTextEditor({
       >
         {listPrefixedBody(initialText, listType)}
       </div>
-    </foreignObject>
+    </div>
   );
 }
 
@@ -4561,6 +4767,9 @@ function SectionLabelChip({
   const gap = 4 / zoom;
   const padX = 9 / zoom;
   const chipW = Math.max(56 / zoom, stroke.label.length * fontSize * 0.62 + 18 / zoom);
+  // NOTE: this chip geometry (chipW/chipH/gap vs the region's y) is mirrored
+  // by findTextStrokeAt's section branch — the Text tool's click-through
+  // renames a section only from its label chip. Keep the two in sync.
   return (
     <g pointerEvents={hitMode}>
       <rect
@@ -4596,10 +4805,12 @@ function SectionLabelChip({
  * below 1× the chip effectively vanished mid-rename). */
 function SectionTitleEditor({
   section,
+  caretPoint,
   onCommit,
   onCancel,
 }: {
   section: SectionStroke;
+  caretPoint?: { x: number; y: number } | null;
   onCommit: (text: string, fmt?: EditorFmt) => void;
   onCancel: () => void;
 }) {
@@ -4618,6 +4829,7 @@ function SectionTitleEditor({
       fontSize={fontSize}
       color={section.color}
       initialText={section.label}
+      caretPoint={caretPoint}
       singleLine
       boxStyle={{
         background: `color-mix(in oklab, ${section.color} 16%, transparent)`,
@@ -4718,6 +4930,9 @@ function StrokeNodeBase({
         </text>
       );
     }
+    // Its editor (StandaloneTextEditor) paints at the same x/y while active —
+    // skip the read-only <text> so the two don't double-paint (the "ghost").
+    if (editing) return null;
     const align = stroke.align ?? 'left';
     const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
     const tx = stroke.x ?? 0;

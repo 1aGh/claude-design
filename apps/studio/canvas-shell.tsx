@@ -88,6 +88,7 @@ import {
 import { ElementMarqueeOverlay } from './marquee-overlay.tsx';
 import { MeasureOverlay } from './measure-overlay.tsx';
 import { ParticipantsChrome } from './participants-chrome.tsx';
+import { mountCaret, placeCaretAt } from './text-caret.ts';
 import { ToolPalette } from './tool-palette.tsx';
 import { UndoHud } from './undo-hud.tsx';
 import {
@@ -327,6 +328,11 @@ const HALO_CSS = `
   outline-offset: 1px;
   border-radius: 1px;
   cursor: text;
+  /* Unify the caret with the annotation editors (CARET_FIX_STYLE in
+     annotations-layer.tsx) — same accent, visible against any background.
+     No compositing trigger here (no translateZ/will-change) so WebKit keeps
+     blinking the native caret. */
+  caret-color: var(--maude-hud-accent, #4a63e7);
 }
 /* Dogfood fix — hover affordance for the same leaf-text elements the dblclick
    handler above enters edit mode on. The :not(:empty):not(:has(> *)) selector
@@ -2180,6 +2186,9 @@ function CanvasRouter({
     if (!host) return;
     let editing: HTMLElement | null = null;
     let original = '';
+    // Unified custom blinking caret (text-caret.ts) — mounted for the whole
+    // edit session, disposed in teardown. Hides the native caret while up.
+    let caretDispose: (() => void) | null = null;
     // DDR-150 P1 — the committed-but-unconfirmed edit, so a shell rejection
     // (dynamic/mixed content the engine refuses) can revert the optimistic
     // contenteditable text instead of letting it silently vanish on the next
@@ -2196,6 +2205,8 @@ function CanvasRouter({
       }
     };
     function teardown(elx: HTMLElement): void {
+      caretDispose?.();
+      caretDispose = null;
       elx.removeAttribute('contenteditable');
       elx.classList.remove('dc-text-editing');
       elx.removeEventListener('blur', onBlur, true);
@@ -2255,35 +2266,10 @@ function CanvasRouter({
       stamped.addEventListener('blur', onBlur, true);
       stamped.addEventListener('keydown', onKey, true);
       stamped.focus();
-      try {
-        const doc = document as Document & {
-          caretRangeFromPoint?: (x: number, y: number) => Range | null;
-          caretPositionFromPoint?: (
-            x: number,
-            y: number
-          ) => { offsetNode: Node; offset: number } | null;
-        };
-        let range: Range | null = null;
-        if (typeof doc.caretRangeFromPoint === 'function') {
-          range = doc.caretRangeFromPoint(clientX, clientY);
-        } else if (typeof doc.caretPositionFromPoint === 'function') {
-          const pos = doc.caretPositionFromPoint(clientX, clientY);
-          if (pos) {
-            range = document.createRange();
-            range.setStart(pos.offsetNode, pos.offset);
-            range.collapse(true);
-          }
-        }
-        if (!range) {
-          range = document.createRange();
-          range.selectNodeContents(stamped);
-        }
-        const sel = window.getSelection();
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-      } catch {
-        /* selection API unavailable */
-      }
+      // Unified placement chain (text-caret.ts) — the annotation editors use
+      // the exact same helper, so caret-at-click can never diverge per surface.
+      placeCaretAt(stamped, window, { x: clientX, y: clientY });
+      caretDispose = mountCaret(stamped, window);
     }
     const onDbl = (e: MouseEvent): void => {
       if (editing) return;
@@ -2324,6 +2310,18 @@ function CanvasRouter({
       }
       e.preventDefault();
       e.stopPropagation();
+      // Phase 6 (unified-text-editing) — only offer inline edit where the
+      // engine will actually save: the build-time data-cd-editable marker
+      // (canvas-pipeline.ts) mirrors applyTextEdit's acceptance. The DOM-only
+      // isLeafText heuristic above can't tell `<p>Total: {1 + 1} items</p>`
+      // (mixed source, engine refuses, DDR-150 dead end) from honest static
+      // text — the AST-stamped marker can.
+      if (!stamped.hasAttribute('data-cd-editable')) {
+        showCanvasToast(
+          'This text is filled in from code (a variable) — edit it via chat or /design:edit.'
+        );
+        return;
+      }
       enterEditModeAt(stamped, e.clientX, e.clientY);
     };
     // Dogfood fix — the annotation Text tool's click-through: clicking an

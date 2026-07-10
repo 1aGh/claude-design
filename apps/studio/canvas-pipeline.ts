@@ -158,17 +158,44 @@ function jsxElementName(opening: AnyNode): string {
   return '?';
 }
 
-function hasDataCdIdAttr(opening: AnyNode): boolean {
+function hasJsxAttr(opening: AnyNode, name: string): boolean {
   const attrs = opening?.attributes;
   if (!Array.isArray(attrs)) return false;
   for (const a of attrs) {
-    if (
-      a?.type === 'JSXAttribute' &&
-      a.name?.type === 'JSXIdentifier' &&
-      a.name.name === 'data-cd-id'
-    ) {
+    if (a?.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier' && a.name.name === name) {
       return true;
     }
+  }
+  return false;
+}
+
+/**
+ * Phase 6 (unified-text-editing) — mirror of `applyTextEdit`'s editability
+ * test (canvas-edit.ts): the element's children are exactly ONE meaningful
+ * node, and it is either a static JSXText or a `{'string literal'}`
+ * expression container (DDR-150 P1). Elements that pass get a build-time
+ * `data-cd-editable="text"` marker so the shell only offers inline editing
+ * where a commit will actually save — the rendered DOM cannot distinguish
+ * `<p>Total: {1 + 1} items</p>` (multiple text nodes, mixed source → the
+ * engine refuses the edit) from honest leaf text, but the AST can. KEEP THE
+ * TWO PREDICATES IN LOCKSTEP — if applyTextEdit's acceptance changes, this
+ * must change with it, or the marker starts lying.
+ */
+function isInlineEditableText(node: AnyNode): boolean {
+  const children: AnyNode[] = Array.isArray(node?.children) ? node.children : [];
+  const meaningful = children.filter(
+    (c) => !(c?.type === 'JSXText' && typeof c.value === 'string' && c.value.trim() === '')
+  );
+  if (meaningful.length !== 1) return false;
+  const only = meaningful[0];
+  if (only?.type === 'JSXText') return true;
+  if (only?.type === 'JSXExpressionContainer') {
+    const expr = only.expression;
+    return !!(
+      expr &&
+      (expr.type === 'Literal' || expr.type === 'StringLiteral') &&
+      typeof expr.value === 'string'
+    );
   }
   return false;
 }
@@ -215,7 +242,7 @@ function walkInjectIds(
       const idx = frame.jsxIndex;
       frame.jsxIndex += 1;
 
-      if (!hasDataCdIdAttr(opening)) {
+      if (!hasJsxAttr(opening, 'data-cd-id')) {
         const id = computeId(frame.componentName, idx);
         // Insert " data-cd-id=\"<id>\"" right after the tag name. magic-string's
         // appendLeft puts the new text before any subsequent attribute. JSX
@@ -232,6 +259,17 @@ function walkInjectIds(
             componentName: frame.componentName,
           };
           locator[id] = entry;
+        }
+      }
+
+      // Phase 6 (unified-text-editing) — build-time editability marker, so
+      // the shell's inline-edit entry and the edit engine can never disagree
+      // (isInlineEditableText mirrors applyTextEdit). Independent of the id
+      // injection above: hand-authored data-cd-id elements still get it.
+      if (isInlineEditableText(node) && !hasJsxAttr(opening, 'data-cd-editable')) {
+        const insertAt: number | undefined = opening?.name?.end;
+        if (typeof insertAt === 'number') {
+          s.appendLeft(insertAt, ' data-cd-editable="text"');
         }
       }
 

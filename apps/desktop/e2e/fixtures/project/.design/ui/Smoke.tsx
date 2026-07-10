@@ -19,11 +19,12 @@ export default function Smoke() {
             data-testid="smoke-artboard-content"
             style={{ padding: 32, fontFamily: "system-ui, sans-serif", color: "#111" }}
           >
-            <h1 style={{ margin: "0 0 8px" }}>Maude desktop E2E</h1>
-            <p style={{ margin: 0 }}>
+            <h1 data-testid="smoke-h1" style={{ margin: "0 0 8px" }}>Maude desktop E2E</h1>
+            <p data-testid="smoke-p" style={{ margin: 0 }}>
               Deterministic, static canvas — proves the native shell booted the
               sidecar, navigated the webview, and rendered a canvas.
             </p>
+            <p data-testid="smoke-mixed" style={{ margin: "8px 0 0" }}>Total: {1 + 1} items</p>
           </div>
         </DCArtboard>
       </DCSection>

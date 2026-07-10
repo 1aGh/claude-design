@@ -107,7 +107,8 @@ export interface EmitOptions {
 // Strip data-cd-id from source — the inverse of canvas-pipeline.ts pass 1.
 
 /**
- * Remove every ` data-cd-id="<hex>"` attribute from a TSX source string.
+ * Remove every pipeline-emitted attribute — ` data-cd-id="<hex>"` and the
+ * Phase-6 ` data-cd-editable="text"` marker — from a TSX source string.
  * Pure: caller persists. Uses the same oxc-parser + magic-string toolchain as
  * the pipeline that emitted them.
  */
@@ -136,7 +137,7 @@ export function stripDataCdId(canvasAbsPath: string, source: string): string {
           if (
             a?.type === 'JSXAttribute' &&
             a.name?.type === 'JSXIdentifier' &&
-            a.name.name === 'data-cd-id' &&
+            (a.name.name === 'data-cd-id' || a.name.name === 'data-cd-editable') &&
             typeof a.start === 'number' &&
             typeof a.end === 'number'
           ) {

@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-09T17:03:56.043Z",
+  "generated": "2026-07-09T22:01:11.374Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1198,6 +1198,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-photo-editor.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-unified-text-editing",
+      "title": "Feature: Unified text editing across artboards, canvases, and annotations",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. Every behavioral claim in this plan was measured in the real WKWebView via the desktop...",
+      "planPath": ".ai/plans/feature-unified-text-editing.md",
       "archived": false,
       "phaseKey": null
     }
