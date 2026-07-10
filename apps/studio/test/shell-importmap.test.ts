@@ -22,7 +22,15 @@ import { join } from 'node:path';
 import { DEV_SERVER_ROOT } from '../paths.ts';
 import { RUNTIME_PACKAGES, slugFor } from '../runtime-bundle.ts';
 
-const SHELL_HTML_PATH = join(DEV_SERVER_ROOT, '..', '..', 'plugins', 'design', 'templates', '_shell.html');
+const SHELL_HTML_PATH = join(
+  DEV_SERVER_ROOT,
+  '..',
+  '..',
+  'plugins',
+  'design',
+  'templates',
+  '_shell.html'
+);
 
 describe('_shell.html importmap agrees with RUNTIME_PACKAGES', () => {
   const shellHtml = readFileSync(SHELL_HTML_PATH, 'utf8');

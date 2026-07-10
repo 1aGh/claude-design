@@ -4,6 +4,10 @@
 // @remotion/transitions only (the canvas VideoComp wrapper + @remotion/media audio
 // are dropped for the render). Keep visuals in sync with the canvas file.
 
+import { loadFont } from '@remotion/google-fonts/InterTight';
+import { linearTiming, TransitionSeries } from '@remotion/transitions';
+import { fade } from '@remotion/transitions/fade';
+import { slide } from '@remotion/transitions/slide';
 import {
   AbsoluteFill,
   Composition,
@@ -12,10 +16,6 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
-import { TransitionSeries, linearTiming } from '@remotion/transitions';
-import { fade } from '@remotion/transitions/fade';
-import { slide } from '@remotion/transitions/slide';
-import { loadFont } from '@remotion/google-fonts/InterTight';
 
 const { fontFamily: INTER_TIGHT } = loadFont('normal', { weights: ['500', '600', '700'] });
 

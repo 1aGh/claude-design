@@ -19,6 +19,7 @@ import type { Context } from './context.ts';
 import { type Format, isFormat, isScope, type Scope } from './exporters/index.ts';
 import { type ExportJobQueue, ExportQueueFullError } from './exporters/jobs.ts';
 import type { ActiveJsonShape } from './exporters/scope.ts';
+import { createFootageStore, FOOTAGE_MAX_BYTES } from './footage-store.ts';
 import { createGitEndpoints } from './git/endpoints.ts';
 import { gitShowFile } from './git/service.ts';
 import { createGitHubEndpoints } from './github/endpoints.ts';
@@ -26,7 +27,6 @@ import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
 import { DEV_SERVER_ROOT, STICKERS_DIR } from './paths.ts';
 import { createPhotoStore, PHOTO_EDIT_MAX_BYTES } from './photo-store.ts';
-import { createFootageStore, FOOTAGE_MAX_BYTES } from './footage-store.ts';
 import { probeReadiness } from './readiness.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
 import { linkHub } from './sync/hub-link.ts';
@@ -1039,7 +1039,9 @@ export function createHttp(
       const isEdl = !asset && !!slug;
 
       if (req.method === 'GET') {
-        const data = isEdl ? await footageStore.getEdl(slug) : await footageStore.getAnalysis(asset);
+        const data = isEdl
+          ? await footageStore.getEdl(slug)
+          : await footageStore.getAnalysis(asset);
         return Response.json(data ?? {}, { headers: { 'Cache-Control': 'no-store' } });
       }
       if (req.method === 'PUT' || req.method === 'POST') {
@@ -1054,10 +1056,7 @@ export function createHttp(
             { status: result.status, headers: { 'Cache-Control': 'no-store' } }
           );
         }
-        return Response.json(
-          { ok: true, ...result },
-          { headers: { 'Cache-Control': 'no-store' } }
-        );
+        return Response.json({ ok: true, ...result }, { headers: { 'Cache-Control': 'no-store' } });
       }
       return new Response('Method not allowed', { status: 405 });
     },
