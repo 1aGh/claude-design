@@ -56,6 +56,17 @@ export const RUNTIME_PACKAGES = [
   // (Originally parked by DDR-024 for snapshot-to-texture rendering; the photo
   // editor is the first real activation — see the photo-editor architecture DDR.)
   'pixi.js',
+  // @imgly/background-removal (feature-photo-editor) — client-side ML background
+  // removal (WASM/WebGPU via onnxruntime-web, ZERO native deps; the Node/native
+  // `-node` variant is NEVER imported — bun-compile-hostile, DDR-070 sharp-class
+  // exclusion). Externalised for the same lazy per-iframe bundling as pixi: the
+  // bg-remove harness (PhotoBgRemoveHarness) reaches it through a runtime
+  // `import('@imgly/background-removal')`, so a canvas that never removes a
+  // background pays zero cost. Model weights (~11–44 MB isnet) are fetched at
+  // first use (IMG.LY CDN by default; `publicPath` self-hosts for air-gapped —
+  // a documented follow-up, see the photo-editor DDR). Pre-built into
+  // dist/runtime + floored in .min-sizes.json.
+  '@imgly/background-removal',
   // Phase 3.7 / DDR-049 — Motion One (motion/react) is the canonical motion
   // library for the canvas-lib + handoff pipeline. Externalised here so the
   // canvas-lib motion helpers (<MotionDemo>, etc.) resolve through the same

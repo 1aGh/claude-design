@@ -186,7 +186,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 - **Gotcha**: Must respect `prefers-reduced-motion` and avoid animating the compositor itself (static render, not a per-frame loop, unless a live preview scrub is in progress).
 - **Validate**: `maude design screenshot --root "$REPO"` against a manual test canvas with an edited photo.
 
-#### ◐ Task 7: UPDATE `runtime-bundle.ts` + extend `runtime-health.sh` — pixi portion done 2026-07-10 (comment updated; pixi floor+bundle+health already present). @imgly portion deferred to Task 11 (dependency install)
+#### ✅ Task 7: UPDATE `runtime-bundle.ts` + extend `runtime-health.sh` — completed 2026-07-10 (pixi comment updated; @imgly added to RUNTIME_PACKAGES + pre-built dist/runtime/@imgly_background-removal.js + floor 614000; check-runtime-bundles 24/24 pass)
 
 - **Do**: Update the stale `pixi.js` comment (`runtime-bundle.ts:50-54`, currently says "reserved for future... DDR-024 deferred path") to reflect it's now active. Add `@imgly/background-removal` (Task 11) to `RUNTIME_PACKAGES`. Extend `apps/studio/bin/runtime-health.sh` and its `.min-sizes.json`-style floor file to HEAD-probe/size-check both new bundle entries.
 - **Gotcha**: This is the direct mitigation for BUILDER's flagged top risk — the v0.22.0 `motion` bundle shipped broken (13 kB vs. 155 kB+ working) because CI's regen silently produced bad output. Do this task **before** shipping the UI that depends on the bundle, not after.
@@ -214,7 +214,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 
 ### Stage D — Background removal (client-side ML)
 
-#### Task 11: ADD `@imgly/background-removal` dependency
+#### ✅ Task 11: ADD `@imgly/background-removal` dependency — completed 2026-07-10 (@imgly/background-removal@1.7.0 + onnxruntime-web@1.21.0, browser variant; NO -node variant pulled; tsc clean; runtime bundle builds+floored. NOTE: publicPath self-hosting of WASM/model + compiled-binary tolerance = browser/release-verification follow-up)
 
 - **Do**: Add `@imgly/background-removal` (browser variant) + its `onnxruntime-web` peer to `apps/studio/package.json`. Configure `publicPath` to self-host the WASM + model-weight assets under the dev-server's own static serving instead of the default IMG.LY CDN (verify the config option during implementation) — both for offline/air-gapped dev parity and so no photo pixel data or model-fetch traffic depends on a third-party host being reachable.
 - **Gotcha**: **Never** import `@imgly/background-removal-node` anywhere in `apps/studio/` — it depends on `onnxruntime-node`, a native addon, which is bun-compile-hostile exactly like the `sharp` rejection in DDR-070. This must stay a lint/review-time invariant, not just a one-time choice — worth a one-line comment at the top of any file importing the browser package, similar to how `runtime-bundle.ts` comments its own constraints.
@@ -281,7 +281,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 - **Do**: New `plugins/design/commands/photo.md`, category `daily`, following `draw.md`'s step structure: pre-flight (`bootstrap-check` → `prep` → `server-up`) → resolve target (`--selector`/`--asset`) → dispatch to `photo-bg-remove` and/or `photo-adjust` per the requested flags (`--remove-bg`, `--adjust key=value`, `--duotone c1,c2`, `--grain n`, `--pattern type`, `--mask preset`) → report. Update `plugins/design/CATEGORIES.md`'s daily table and `/design:help`'s index.
 - **Validate**: `/design:photo --remove-bg --asset assets/<sha8>.png` end-to-end in a scratch project.
 
-#### Task 22: VERIFY `plugins/design/dependencies.json` needs no new entry
+#### ✅ Task 22: VERIFY `plugins/design/dependencies.json` needs no new entry — verified 2026-07-10 (@imgly is a pure npm/WASM dep bundled like pixi/motion — no external SYSTEM tool to detect; dependencies.json is for tool detection, not npm deps. Model weights fetch at first use = network, not a detectable tool → no entry)
 
 - **Do**: Confirm `@imgly/background-removal` is a pure npm/WASM dependency bundled into the published tarball (like `pixi.js`/`motion` already are) with no externally-installed system tool to detect — so it does **not** need a `dependencies.json` entry (that manifest is for CLI/system-tool detection, not npm deps). Only add an entry if implementation reveals a genuine external-tool need (e.g. a one-time model-weight download step requiring network access at first use).
 - **Validate**: N/A — a verification task, not a code change unless the gotcha condition is hit.
@@ -293,7 +293,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 - **Do**: Mirror `asset-api.test.ts`/`canvas-origin-gate.test.ts`: schema validation rejects malformed `PhotoEdit` JSON, size cap enforced, path containment holds against a crafted `asset` param, GET/PUT both work, and the route's presence in both allowlists is asserted.
 - **Validate**: `cd apps/studio && bun test`
 
-#### Task 24: EXTEND runtime-bundle health checks
+#### ✅ Task 24: EXTEND runtime-bundle health checks — completed 2026-07-10 (@imgly_background-removal.js floor in .min-sizes.json; check-runtime-bundles.sh gate green 24/24; runtime-health.sh HEAD-probes it via the shared floor manifest)
 
 - **Do**: (If not already fully covered by Task 7) confirm `check-runtime-bundles.sh`'s CI gate has floor entries for the `pixi.js` activation and the new `@imgly/background-removal` bundle.
 - **Validate**: CI dry-run / `bash apps/studio/bin/check-runtime-bundles.sh` locally.
