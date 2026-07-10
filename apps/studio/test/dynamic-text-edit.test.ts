@@ -91,6 +91,38 @@ describe('dynamic text edit — resolveDynamicTextSpan via applyTextEdit', () =>
     expect(source).toContain('HEADLINE = "A new headline"');
   });
 
+  test('{prop.field} — component fed BEATS[k] resolves to BEATS[k].field', () => {
+    // A reusable component whose `beat` prop is fed `BEATS[0..2]` at each usage
+    // (the Remotion-style pattern). Editing the 2nd usage's caption must hit
+    // BEATS[1].caption via occurrence, not card 0 or 2.
+    const SRC2 = `const BEATS = [
+  { n: "01", caption: "Beat one caption." },
+  { n: "02", caption: "Beat two caption." },
+  { n: "03", caption: "Beat three caption." },
+];
+function GuideBeat({ beat }: { beat: (typeof BEATS)[number] }) {
+  return <p>{beat.caption}</p>;
+}
+export default function Reel() {
+  return (
+    <div>
+      <GuideBeat beat={BEATS[0]} />
+      <GuideBeat beat={BEATS[1]} />
+      <GuideBeat beat={BEATS[2]} />
+    </div>
+  );
+}`;
+    const built = transpileCanvasSource(CANVAS, SRC2).withIds;
+    const pId = /<p\s+data-cd-id="([^"]+)"[^>]*>\s*\{beat\.caption\}/.exec(built)?.[1] as string;
+    const { source } = applyTextEdit(CANVAS, built, pId, 'Beat two EDITED', {
+      occurrence: 1,
+      before: 'Beat two caption.',
+    });
+    expect(source).toContain('caption: "Beat two EDITED"');
+    expect(source).toContain('caption: "Beat one caption."');
+    expect(source).toContain('caption: "Beat three caption."');
+  });
+
   test('genuinely computed text still refuses (routes to /design:edit)', () => {
     const spanId = ids(withIds, 'span', 'price\\.toFixed');
     expect(() =>

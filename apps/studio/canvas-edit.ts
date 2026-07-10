@@ -537,7 +537,7 @@ export function applyTextEdit(
     // (a local const, or a `.map()`ed array element) and rewrite THERE. The
     // literal that comes back is a JS string, so it round-trips through
     // JSON.stringify like the `{'literal'}` case above (no JSX-entity surface).
-    const span = resolveDynamicTextSpan(parsed.program, hit.element, expr, opts);
+    const span = resolveDynamicTextSpan(parsed.program, hit.element, expr, id, opts);
     if (span) {
       const s = new MagicString(source);
       s.overwrite(span.start as number, span.end as number, JSON.stringify(text));
@@ -658,84 +658,188 @@ function resolveArrayExpr(program: AnyNode, arrayExpr: AnyNode): AnyNode | null 
   return null;
 }
 
-/** The string-valued property `propName` of an ObjectExpression, or null. */
-function stringPropOf(objExpr: AnyNode, propName: string): AnyNode | null {
+/** The value node of property `propName` on an ObjectExpression, or null. */
+function objPropValue(objExpr: AnyNode, propName: string): AnyNode | null {
   if (objExpr?.type !== 'ObjectExpression') return null;
   for (const p of objExpr.properties ?? []) {
     if (p?.type !== 'Property' || p.computed) continue;
     const keyOk =
       (p.key?.type === 'Identifier' && p.key.name === propName) ||
       (isStringLit(p.key) && p.key.value === propName);
-    if (keyOk && isStringLit(p.value)) return p.value;
+    if (keyOk) return p.value ?? null;
   }
   return null;
 }
 
 /**
- * Trace a single `{variable}` / `{item.prop}` text expression back to the
+ * Bounded expression evaluator — resolve `expr` to a concrete value node
+ * (a StringLiteral, ObjectExpression, or ArrayExpression) by following const
+ * bindings, numeric array indices (`XS[0]`), and object-field access
+ * (`obj.field`). Returns null for anything genuinely computed (calls, template
+ * strings, arithmetic). Depth-capped so a cyclic const can't loop.
+ */
+function resolveValueNode(program: AnyNode, expr: AnyNode, depth = 0): AnyNode | null {
+  if (!expr || depth > 8) return null;
+  if (isStringLit(expr)) return expr;
+  if (expr.type === 'ObjectExpression' || expr.type === 'ArrayExpression') return expr;
+  if (expr.type === 'Identifier') {
+    let init: AnyNode | null = null;
+    walkAst(program, (n) => {
+      if (
+        n.type === 'VariableDeclarator' &&
+        n.id?.type === 'Identifier' &&
+        n.id.name === expr.name &&
+        n.init
+      ) {
+        init = n.init;
+      }
+    });
+    return init ? resolveValueNode(program, init, depth + 1) : null;
+  }
+  if (expr.type === 'MemberExpression') {
+    const obj = resolveValueNode(program, expr.object, depth + 1);
+    if (!obj) return null;
+    if (expr.computed) {
+      const idx = expr.property;
+      if (
+        (idx?.type === 'Literal' || idx?.type === 'NumericLiteral') &&
+        typeof idx.value === 'number' &&
+        obj.type === 'ArrayExpression'
+      ) {
+        return resolveValueNode(program, obj.elements?.[idx.value], depth + 1);
+      }
+      return null;
+    }
+    if (expr.property?.type === 'Identifier') {
+      return resolveValueNode(program, objPropValue(obj, expr.property.name), depth + 1);
+    }
+    return null;
+  }
+  return null;
+}
+
+/** Ordered value-expressions of a `<CompName propName={…}>` usage, one per
+ *  usage in source order (aligns with the DOM occurrence of the element the
+ *  prop feeds). null slot = a usage that omits the prop. */
+function componentUsageValues(
+  program: AnyNode,
+  componentName: string,
+  propName: string
+): Array<AnyNode | null> | null {
+  if (!componentName) return null;
+  const out: Array<AnyNode | null> = [];
+  walkAst(program, (node) => {
+    if (node.type !== 'JSXElement') return;
+    const name = node.openingElement?.name;
+    if (name?.type !== 'JSXIdentifier' || name.name !== componentName) return;
+    let val: AnyNode | null = null;
+    for (const a of node.openingElement?.attributes ?? []) {
+      if (
+        a?.type === 'JSXAttribute' &&
+        a.name?.type === 'JSXIdentifier' &&
+        a.name.name === propName
+      ) {
+        val =
+          a.value?.type === 'JSXExpressionContainer'
+            ? a.value.expression
+            : isStringLit(a.value)
+              ? a.value
+              : null;
+        break;
+      }
+    }
+    out.push(val);
+  });
+  return out.length ? out : null;
+}
+
+/**
+ * Trace a single `{base}` / `{base.field}` text expression back to the
  * StringLiteral node that holds its text, or null when it can't be targeted
- * confidently. `occurrence`/`before` come from the edited DOM instance.
+ * confidently. `base` is resolved through three bindings — a `.map()` callback
+ * param (array items), a component PROP (each `<Comp prop={…}>` usage), or a
+ * local `const` — and each candidate is run through the bounded evaluator
+ * (`beat.caption` where `beat={BEATS[0]}` → `BEATS[0].caption`). The occurrence
+ * index picks the slot; `before` verifies it and rescues a drifted index; ties
+ * are never guessed. `occurrence`/`before` come from the edited DOM instance.
  */
 function resolveDynamicTextSpan(
   program: AnyNode,
   element: AnyNode,
   expr: AnyNode,
+  id: string,
   opts?: DynamicTextOpts
 ): AnyNode | null {
-  const beforeTrim = (opts?.before ?? '').trim();
-  const occ = typeof opts?.occurrence === 'number' && opts.occurrence >= 0 ? opts.occurrence : null;
-  const matches = (lit: AnyNode) => !beforeTrim || String(lit.value).trim() === beforeTrim;
-  // Pick from a candidate list: prefer the occurrence index (verified by
-  // `before` when present); else the UNIQUE `before`-match; else, only when we
-  // have no `before` to verify with, the raw index. Never guess between ties.
-  const pick = (cands: Array<AnyNode | null>): AnyNode | null => {
-    const at = occ != null ? cands[occ] : null;
-    if (at && matches(at)) return at;
-    if (beforeTrim) {
-      const hits = cands.filter((c): c is AnyNode => !!c && String(c.value).trim() === beforeTrim);
-      if (hits.length === 1) return hits[0] ?? null;
-      return null;
-    }
-    return at ?? null;
-  };
-
-  // {item.prop} — object-array cards.
-  if (
+  // Decompose into base Identifier + optional single field.
+  let baseName: string;
+  let field: string | null;
+  if (expr?.type === 'Identifier') {
+    baseName = expr.name;
+    field = null;
+  } else if (
     expr?.type === 'MemberExpression' &&
     !expr.computed &&
     expr.object?.type === 'Identifier' &&
     expr.property?.type === 'Identifier'
   ) {
-    const arrExpr = findEnclosingMapArray(program, element, expr.object.name);
-    if (!arrExpr) return null;
-    const arr = resolveArrayExpr(program, arrExpr);
-    if (!arr) return null;
-    return pick((arr.elements ?? []).map((el: AnyNode) => stringPropOf(el, expr.property.name)));
+    baseName = expr.object.name;
+    field = expr.property.name;
+  } else {
+    return null;
   }
 
-  // {item} — string-array items.  OR  {localConst} — a module/function const.
-  if (expr?.type === 'Identifier') {
-    const arrExpr = findEnclosingMapArray(program, element, expr.name);
-    if (arrExpr) {
-      const arr = resolveArrayExpr(program, arrExpr);
-      if (!arr) return null;
-      return pick((arr.elements ?? []).map((el: AnyNode) => (isStringLit(el) ? el : null)));
-    }
-    let found: AnyNode | null = null;
-    walkAst(program, (node) => {
+  // Candidate value-expressions for `base`, one per rendered slot.
+  let candidates: Array<AnyNode | null> | null = null;
+  // (1) a `.map()` callback param → the array items.
+  const arrExpr = findEnclosingMapArray(program, element, baseName);
+  if (arrExpr) {
+    const arr = resolveArrayExpr(program, arrExpr);
+    candidates = arr ? (arr.elements ?? []) : null;
+  }
+  // (2) a component prop → each `<Comp base={…}>` usage's value.
+  if (!candidates) {
+    const componentName =
+      collectElementsFull(program).find((e) => e.id === id)?.componentName ?? '';
+    candidates = componentUsageValues(program, componentName, baseName);
+  }
+  // (3) a local const → a single candidate.
+  if (!candidates) {
+    let init: AnyNode | null = null;
+    walkAst(program, (n) => {
       if (
-        node.type === 'VariableDeclarator' &&
-        node.id?.type === 'Identifier' &&
-        node.id.name === expr.name &&
-        isStringLit(node.init)
+        n.type === 'VariableDeclarator' &&
+        n.id?.type === 'Identifier' &&
+        n.id.name === baseName
       ) {
-        found = node.init;
+        init = n.init ?? null;
       }
     });
-    return found && matches(found) ? found : null;
+    candidates = init ? [init] : null;
   }
+  if (!candidates) return null;
 
-  return null;
+  // Resolve each candidate to a StringLiteral (applying `.field` when present).
+  const lits: Array<AnyNode | null> = candidates.map((c) => {
+    const base = resolveValueNode(program, c);
+    if (!base) return null;
+    if (field) {
+      const v = resolveValueNode(program, objPropValue(base, field));
+      return isStringLit(v) ? v : null;
+    }
+    return isStringLit(base) ? base : null;
+  });
+
+  // Pick: occurrence index (verified by `before`), else the UNIQUE `before`
+  // match, else — only with no `before` to verify — the raw index. No guessing.
+  const beforeTrim = (opts?.before ?? '').trim();
+  const occ = typeof opts?.occurrence === 'number' && opts.occurrence >= 0 ? opts.occurrence : null;
+  const at = occ != null ? lits[occ] : null;
+  if (at && (!beforeTrim || String(at.value).trim() === beforeTrim)) return at;
+  if (beforeTrim) {
+    const hits = lits.filter((c): c is AnyNode => !!c && String(c.value).trim() === beforeTrim);
+    return hits.length === 1 ? (hits[0] ?? null) : null;
+  }
+  return at ?? null;
 }
 
 // ---------------------------------------------------------------------------
