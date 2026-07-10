@@ -106,6 +106,11 @@ import {
   diffLayoutPositions,
 } from './commands/move-artboards-command.ts';
 import { scopedCdSelector, selectorIndex, shortText } from './dom-selection.ts';
+// Photo editor (feature-photo-editor) — schema.ts is DEPENDENCY-FREE (no pixi),
+// so this static import is safe and adds zero bundle cost. The WebGL compositor
+// (photo/pipeline.ts, which imports pixi.js) is loaded via a DYNAMIC import
+// inside <PhotoLayer> only when an edited photo actually mounts — see there.
+import { isDefaultEdit, type PhotoEdit } from './photo/schema.ts';
 import { AgentPresenceProvider, useAgentPresence } from './use-agent-presence.tsx';
 import { type DragState, useArtboardDrag } from './use-artboard-drag.tsx';
 import {
@@ -2135,6 +2140,115 @@ export function DrawProof({
   );
 }
 DrawProof.displayName = 'DrawProof';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PhotoLayer (feature-photo-editor, Task 6) — the non-destructive WebGL photo
+// compositor surface. Renders a source photo (artboard `<img>` or annotation
+// `ImageStroke`) with a live `PhotoEdit` applied through pixi.js.
+//
+// LAZY-BUNDLE GUARANTEE (the plan's load-bearing acceptance criterion + BUILDER's
+// flagged top risk): an UNEDITED photo (`isDefaultEdit(edit)`) renders as the
+// plain `<img>` and NEVER touches pixi. The compositor module (photo/pipeline.ts)
+// is only reached through a DYNAMIC `import()` inside the effect, so a canvas
+// with zero edited photos pays zero pixi.js/bg-removal cost. Verified empirically
+// against `buildCanvasModule` (no eager `pixi.js` import in the default-edit
+// bundle) — see test/photo-canvas-bundle.test.ts.
+//
+// A11y: the pixi output is a `<canvas>` (a black box to AT), so it carries
+// `role="img"` + `aria-label` from `alt` (validation step 7 requirement).
+// Reduced-motion: the compositor renders statically (autoStart:false, no ticker).
+
+export interface PhotoLayerProps {
+  /** Relative `assets/<sha8>.<ext>` source (validated upstream). */
+  source: string;
+  /** Live non-destructive edit. Absent / neutral ⇒ plain `<img>`, no pixi. */
+  edit?: PhotoEdit | null;
+  width: number;
+  height: number;
+  alt?: string;
+  className?: string;
+  style?: CSSProperties;
+  /** Resolve a relative asset path to a fetchable URL (defaults to identity —
+   *  relative `assets/…` already resolves against the canvas iframe origin). */
+  resolveUrl?: (rel: string) => string;
+}
+
+export function PhotoLayer({
+  source,
+  edit,
+  width,
+  height,
+  alt = '',
+  className,
+  style,
+  resolveUrl,
+}: PhotoLayerProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rendererRef = useRef<{ destroy(): void; update(e: PhotoEdit): void } | null>(null);
+  const active = !isDefaultEdit(edit);
+
+  // Mount / tear down the pixi compositor only while an edit is active. The
+  // compositor is DYNAMICALLY imported (lazy-bundle guarantee — see header).
+  // Re-created only when the source/box identity changes; edit-param changes are
+  // pushed via the second effect below (no teardown → smooth live scrub).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `edit` is deliberately excluded — re-creating the pixi Application on every scrub would thrash; edit updates flow through the second effect's `update()` (mount seeds from the current edit).
+  useEffect(() => {
+    if (!active) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let disposed = false;
+    import('./photo/pipeline.ts')
+      .then(({ PhotoRenderer }) =>
+        PhotoRenderer.create({
+          canvas,
+          source,
+          edit: (edit ?? {}) as PhotoEdit,
+          width,
+          height,
+          resolveUrl,
+        })
+      )
+      .then((r) => {
+        if (disposed) {
+          r.destroy();
+          return;
+        }
+        rendererRef.current = r;
+      })
+      .catch((err) => {
+        console.error('[PhotoLayer] compositor failed to mount', err);
+      });
+    return () => {
+      disposed = true;
+      rendererRef.current?.destroy();
+      rendererRef.current = null;
+    };
+  }, [active, source, width, height, resolveUrl]);
+
+  // Live-update the mounted compositor on edit-param change (no re-create).
+  useEffect(() => {
+    if (active && edit && rendererRef.current) rendererRef.current.update(edit);
+  }, [edit, active]);
+
+  if (!active) {
+    const src = resolveUrl ? resolveUrl(source) : source;
+    return (
+      <img src={src} width={width} height={height} alt={alt} className={className} style={style} />
+    );
+  }
+  return (
+    <canvas
+      ref={canvasRef}
+      width={width}
+      height={height}
+      role="img"
+      aria-label={alt || 'Edited photo'}
+      className={className}
+      style={{ width, height, display: 'block', ...style }}
+    />
+  );
+}
+PhotoLayer.displayName = 'PhotoLayer';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SnapGuideOverlay (Phase 4.2) — renders 1 px guide lines while a drag is in

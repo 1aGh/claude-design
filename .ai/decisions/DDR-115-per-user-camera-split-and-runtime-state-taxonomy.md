@@ -48,8 +48,11 @@ This **revises** the Phase-4 decision that the camera lives inline in `.meta.jso
 | `_history/`, `_trash/`, `_draw/`, `_smoke/` | **IGNORED** |
 | `_server.json/.log/.lock`, `_active.json`, `_sync.json`, `_preflight.json` | **IGNORED** |
 | `_locator.json`, `_export-history.json` | **IGNORED** (regenerable index) |
+| `assets/**` (incl. `assets/<sha8>.<ext>` binaries **and** `assets/<sha8>.photo.json` sidecars) | **VERSIONED** — see Addendum 2026-07-10 |
 
 All three lists now agree on this set.
+
+> **Addendum (2026-07-10, feature-photo-editor):** `assets/**` was already VERSIONED *in practice* (asset binaries have never been gitignored — none of the three lists match them), but the table did not state it explicitly. Made explicit here before a **second** file type — the non-destructive `assets/<sha8>.photo.json` PhotoEdit sidecar (dependency-free schema in `apps/studio/photo/schema.ts`) — was introduced under `assets/`. Both the source binary and its `.photo.json` sidecar are content-addressed, durable, and travel via git so an edited photo reproduces identically on any peer. A regression guard (`apps/studio/test/photo-taxonomy.test.ts`) now asserts `.photo.json`-shaped paths are classified VERSIONED by `isMaudeRuntimeState` and matched by neither `cli/lib/gitignore-block.mjs` nor the root `.gitignore` — the automated form of the "all three lists agree" invariant. No behavior change: this is a documentation + guard addition, the classification was already correct.
 
 ### 4. Annotations → versioned; Comments → hub-sync-only
 

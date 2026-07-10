@@ -47,11 +47,14 @@ export const RUNTIME_PACKAGES = [
   'react-dom/client',
   'react/jsx-runtime',
   'react/jsx-dev-runtime',
-  // Phase 4 — Pixi.js v8 available as a per-iframe runtime bundle. Lazy-built
-  // on first request; canvases that don't `import 'pixi.js'` never pay the
-  // ~500 KB bundle cost. Reserved for future snapshot-to-texture rendering
-  // (DDR-024 deferred path) and any high-end designer-tool overlays a canvas
-  // wants to draw via WebGL.
+  // Pixi.js v8 — per-iframe runtime bundle for the non-destructive photo editor
+  // (feature-photo-editor). The canvas-lib `<PhotoLayer>` reaches the WebGL
+  // compositor (`photo/pipeline.ts`) through a LAZY runtime `import('pixi.js')`,
+  // so a canvas with no edited photo never pays the ~500 KB bundle cost (the
+  // lazy-bundle guarantee — regression-tested in test/photo-canvas-bundle.test.ts).
+  // Pre-built into dist/runtime/pixi-js.js + floored in .min-sizes.json.
+  // (Originally parked by DDR-024 for snapshot-to-texture rendering; the photo
+  // editor is the first real activation — see the photo-editor architecture DDR.)
   'pixi.js',
   // Phase 3.7 / DDR-049 — Motion One (motion/react) is the canonical motion
   // library for the canvas-lib + handoff pipeline. Externalised here so the

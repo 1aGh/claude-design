@@ -145,20 +145,20 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 
 ### Stage A — Data model + taxonomy (foundation)
 
-#### Task 1: CREATE the `PhotoEdit` schema
+#### ✅ Task 1: CREATE the `PhotoEdit` schema — completed 2026-07-10 (tsc + biome clean)
 
 - **Do**: Define the `PhotoEdit` TypeScript type in a new `apps/studio/photo/schema.ts`: `{ source: string /* assets/<sha8>.<ext> */, adjustments: { brightness, contrast, saturation, exposure, hue, sepia, grayscale, invert }, duotone: { enabled, colorA, colorB, intensity }, grain: { enabled, amount, size }, pattern: { enabled, type, scale, opacity, blend }, mask: { preset: 'none'|'vignette'|'radial-reveal'|'edge-fade', strength }, backgroundRemoved: { enabled, maskAsset } }`. All fields optional/defaultable so an empty sidecar renders as "unedited."
 - **Pattern**: Mirror `annotations-model.ts`'s style of a flat, explicit TS interface per stroke type (`ImageStroke`, `:235-250`).
 - **Gotcha**: Keep this file dependency-free (no `pixi.js` import) — it's imported by both the server (`photo-store.ts`, Task 8) and the client compositor, and the server bundle must not pull in a WebGL lib.
 - **Validate**: `cd apps/studio && bun tsc --noEmit`
 
-#### Task 2: RECORD the DDR-115 taxonomy addition
+#### ✅ Task 2: RECORD the DDR-115 taxonomy addition — completed 2026-07-10 (dated addendum)
 
 - **Do**: Add an explicit row to DDR-115's §3 table (`.ai/decisions/DDR-115-...md`): `assets/**` (including the new `assets/<sha8>.photo.json` sidecar) → **VERSIONED**. This is currently true in practice (assets aren't gitignored) but not explicitly stated in the table — make it explicit before adding a second file type under `assets/`.
 - **Gotcha**: This is a doc edit to an *Accepted* DDR — add as a dated addendum note, don't rewrite history.
 - **Validate**: Manual read-through; no automated check.
 
-#### Task 3: ADD a regression guard for the three-list taxonomy invariant
+#### ✅ Task 3: ADD a regression guard for the three-list taxonomy invariant — completed 2026-07-10 (photo-taxonomy.test.ts, 4 pass)
 
 - **Do**: Add/extend a test (near `apps/studio/git/service.ts`'s existing `isMaudeRuntimeState` tests, or a new small test file) asserting `assets/<sha8>.photo.json`-shaped paths are classified VERSIONED by `isMaudeRuntimeState`, are **not** matched by any glob in `cli/lib/gitignore-block.mjs`, and are **not** matched by the root `.gitignore`.
 - **Pattern**: `.ai/decisions/DDR-115-...md`'s own "all three lists now agree" framing — this test is the automated version of that manual invariant.
@@ -166,27 +166,27 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 
 ### Stage B — WebGL photo-compositing engine
 
-#### Task 4: CREATE `apps/studio/photo/filters.ts`
+#### ✅ Task 4: CREATE `apps/studio/photo/filters.ts` — completed 2026-07-10 (pure planner split; 9 tests, tsc+biome clean)
 
 - **Do**: Build the pixi.js filter-graph constructor: wrap `PIXI.ColorMatrixFilter`'s built-in methods (`.contrast()`, `.saturate()`, `.hue()`, `.sepia()`, `.grayscale()`, `.negative()`, `.brightness()`) for the Adjustments section; wrap `PIXI.NoiseFilter` for Grain; hand-author a custom `DuotoneFilter` (a small `PIXI.Filter` with a GLSL fragment shader doing luminance → two-color gradient-map lerp, since duotone is a per-pixel remap that `ColorMatrixFilter`'s linear affine transform cannot express); build Pattern via `PIXI.TilingSprite` + blend mode; build the three preset Masks (vignette/radial-reveal/edge-fade) via `PIXI.Graphics`-based alpha masks. Export one `buildFilterGraph(edit: PhotoEdit): PIXI.Filter[]` entry point.
 - **Pattern**: `apps/studio/draw/primitives.ts:448-490` (`fe()`/`filter()` generic builders) for the "parametric, composable" API shape — not reused directly (different rendering technology), but same design language.
 - **Gotcha**: Order matters — adjustments → duotone → grain → pattern → mask must be a fixed, documented pipeline order (store as a comment in this file) since filters aren't commutative.
 - **Validate**: `cd apps/studio && bun test` (unit test the filter-graph builder against a few `PhotoEdit` fixtures, asserting filter count/order, not pixel output).
 
-#### Task 5: CREATE `apps/studio/photo/pipeline.ts`
+#### ✅ Task 5: CREATE `apps/studio/photo/pipeline.ts` — completed 2026-07-10 (pixi v8 realizer; pure logic 10 tests; render path browser-verified in Task 6/25)
 
 - **Do**: The `pixi.js` `Application`/texture-load/filter-apply orchestration: given a source image URL + a `PhotoEdit`, load the texture, build a `Sprite`, apply `buildFilterGraph()`'s output, render to the canvas element.
 - **Gotcha**: One `PIXI.Application` per edited photo, not a shared global renderer — matches pixi.js v8 guidance and avoids cross-canvas state bleed between multiple edited photos on one artboard.
 - **Validate**: `cd apps/studio && bun test`
 
-#### Task 6: CREATE the `<PhotoLayer>` canvas-lib export
+#### ✅ Task 6: CREATE the `<PhotoLayer>` canvas-lib export — completed 2026-07-10 (lazy-bundle guarantee EMPIRICALLY VERIFIED + regression-tested; visual render pending live screenshot)
 
 - **Do**: Add `<PhotoLayer source={url} edit={PhotoEdit}>` to `canvas-lib.tsx`, mounting `photo/pipeline.ts`'s renderer sized to the source element's rendered box. Gate mounting on the sidecar actually existing / edits being non-default — an unedited photo renders as the plain `<img>`/`<image>` with **zero** pixi.js cost, preserving the lazy-bundle guarantee.
 - **Pattern**: `DrawProof`'s export shape (`canvas-lib.tsx:1841-1920`) for how canvas-lib exports a runtime-bundle-dependent component.
 - **Gotcha**: Must respect `prefers-reduced-motion` and avoid animating the compositor itself (static render, not a per-frame loop, unless a live preview scrub is in progress).
 - **Validate**: `maude design screenshot --root "$REPO"` against a manual test canvas with an edited photo.
 
-#### Task 7: UPDATE `runtime-bundle.ts` + extend `runtime-health.sh`
+#### ◐ Task 7: UPDATE `runtime-bundle.ts` + extend `runtime-health.sh` — pixi portion done 2026-07-10 (comment updated; pixi floor+bundle+health already present). @imgly portion deferred to Task 11 (dependency install)
 
 - **Do**: Update the stale `pixi.js` comment (`runtime-bundle.ts:50-54`, currently says "reserved for future... DDR-024 deferred path") to reflect it's now active. Add `@imgly/background-removal` (Task 11) to `RUNTIME_PACKAGES`. Extend `apps/studio/bin/runtime-health.sh` and its `.min-sizes.json`-style floor file to HEAD-probe/size-check both new bundle entries.
 - **Gotcha**: This is the direct mitigation for BUILDER's flagged top risk — the v0.22.0 `motion` bundle shipped broken (13 kB vs. 155 kB+ working) because CI's regen silently produced bad output. Do this task **before** shipping the UI that depends on the bundle, not after.
