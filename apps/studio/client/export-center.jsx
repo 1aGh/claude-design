@@ -255,6 +255,34 @@ function ProgressBar({ progress }) {
   );
 }
 
+// Per-job anchor for the ETA: the FIRST progress sample the client sees. For a
+// video export that's the first frame-step frame — after the (progress-less)
+// renderMediaOnWeb attempt — so the rate is measured over real capture work and
+// isn't skewed by that pre-roll. Keyed by job id; cleared when the job ends.
+const etaAnchors = new Map();
+
+/** Rough "~N min left" from the rate since the first observed progress sample.
+ *  Recomputes on every progress update (frame-step emits ~1–2/s), so it ticks
+ *  down live without a timer. Returns null until there's enough delta to trust. */
+function etaLabel(job) {
+  const cur = job.progress?.current;
+  const total = job.progress?.total;
+  if (!cur || !total || cur >= total) {
+    etaAnchors.delete(job.id);
+    return null;
+  }
+  let anchor = etaAnchors.get(job.id);
+  if (!anchor || cur < anchor.c) {
+    anchor = { t: Date.now(), c: cur };
+    etaAnchors.set(job.id, anchor);
+  }
+  const doneSinceAnchor = cur - anchor.c;
+  if (doneSinceAnchor < 3) return null; // need a few frames to estimate a rate
+  const remainingMs = ((Date.now() - anchor.t) / doneSinceAnchor) * (total - cur);
+  if (remainingMs < 45_000) return '<1 min left';
+  return `~${Math.round(remainingMs / 60_000)} min left`;
+}
+
 function StatusPill({ job }) {
   const statusText =
     job.status === 'queued'
@@ -266,7 +294,13 @@ function StatusPill({ job }) {
         : job.status === 'done'
           ? 'Ready'
           : 'Failed';
-  return <span className={`st-export-pill st-export-pill--${job.status}`}>{statusText}</span>;
+  const eta = job.status === 'running' ? etaLabel(job) : null;
+  return (
+    <span className={`st-export-pill st-export-pill--${job.status}`}>
+      {statusText}
+      {eta ? ` · ${eta}` : ''}
+    </span>
+  );
 }
 
 export function ExportBadge({ center }) {
