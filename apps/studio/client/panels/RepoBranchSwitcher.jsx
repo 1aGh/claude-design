@@ -43,6 +43,8 @@ function Icon({ name, size = 16, className }) {
     // refresh drafts — a circular arrow.
     refresh: (<><path d="M12.5 8a4.5 4.5 0 1 1-1.3-3.2" /><polyline points="12.8 2.5 12.8 5 10.3 5" /></>),
     spinner: <path d="M8 2.2a5.8 5.8 0 1 0 5.8 5.8" />,
+    // "get latest" — pull the shared version's new commits down.
+    download: (<><line x1="8" y1="2.5" x2="8" y2="10.5" /><polyline points="5 7.5 8 10.5 11 7.5" /><line x1="3.5" y1="13.2" x2="12.5" y2="13.2" /></>),
   }[name];
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -93,7 +95,7 @@ async function postJson(url, body, opts = {}) {
   }
 }
 
-export default function RepoBranchSwitcher({ project, liveBranch }) {
+export default function RepoBranchSwitcher({ project, liveBranch, remoteSync, onGetLatest }) {
   const native = isNativeApp();
   const [status, setStatus] = useState(null); // { repo, branch }
   const [branches, setBranches] = useState([]);
@@ -107,6 +109,8 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
   // pushed but no PR). Keeps the confirm sheet open to show the result (DDR-162).
   const [prResult, setPrResult] = useState(null);
   const [prCopied, setPrCopied] = useState(false);
+  // Get-latest (pull) busy state for the dock nudge.
+  const [pulling, setPulling] = useState(false);
 
   // Open the PR in the OS browser. A WKWebView anchor can't reach the default browser,
   // so native goes through the Tauri opener (github.com host-locked in Rust); an older
@@ -272,6 +276,19 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
     else { setErr(r.json?.error || 'Could not create the draft.'); setBusy(false); }
   }
 
+  // "Get latest" from the dock nudge — pull the shared version's new commits. Reuses
+  // the app's pull handler (onGetLatest = gitGetLatest): on success it re-probes so the
+  // nudge clears; a content conflict opens the visual resolver (handled in app.jsx).
+  async function getLatest() {
+    if (pulling || !onGetLatest) return;
+    setPulling(true);
+    setErr('');
+    const r = await onGetLatest();
+    setPulling(false);
+    if (r && !r.ok && !r.conflict)
+      setErr(r.status === 401 || r.authRequired ? 'Sign in with GitHub to get the latest.' : r.error || 'Could not get the latest.');
+  }
+
   // "Add this draft to the Shared version" (Task 7 / DDR-162). On a GitHub remote this
   // opens a pull request (the merge happens on GitHub, post-review) — surface the PR
   // link and keep the sheet open. A local project merges directly (reload). A draft that
@@ -353,6 +370,13 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
 
   return (
     <div className="rb-dock-wrap">
+      {remoteSync?.remoteAhead && !switching && !folding && (
+        <button type="button" data-testid="switcher-get-latest" className="btn btn--primary rb-getlatest" onClick={getLatest} disabled={pulling} title={`Get the latest ${sharedName}`}>
+          <Icon name={pulling ? 'spinner' : 'download'} size={14} className={pulling ? 'rb-spin' : ''} />
+          <span className="rb-getlatest-tx">{pulling ? 'Getting the latest…' : 'Get latest'}</span>
+          {!pulling && remoteSync.behind > 0 && <span className="rb-getlatest-sub">{remoteSync.behind} new on {sharedName}</span>}
+        </button>
+      )}
       <div className="rb-dock" ref={rootRef}>
         {open && (
           <div className="rb-pop rb-pop--up" id="rb-switch-pop" role="menu" aria-label="Switch project or version" data-testid="repo-switcher-popup">

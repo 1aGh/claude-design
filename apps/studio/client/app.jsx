@@ -1651,6 +1651,8 @@ function Sidebar({
   dirtyByPath,
   project,
   gitBranch,
+  remoteSync,
+  onGetLatest,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
@@ -1892,7 +1894,7 @@ function Sidebar({
       {/* Phase 29 (E4) — the project + draft switcher: a compact one-line dock that
           opens UPWARD, sitting directly above the GitHub identity avatar so the two
           form one bottom dock. Renders nothing until the project is a git repo. */}
-      <RepoBranchSwitcher project={project} liveBranch={gitBranch} />
+      <RepoBranchSwitcher project={project} liveBranch={gitBranch} remoteSync={remoteSync} onGetLatest={onGetLatest} />
       {/* Phase 28 (E3) — GitHub identity as a compact avatar docked at the BOTTOM:
           sign in, connected account + New/Pull/Share, sign out. Self-contained
           (owns its device-code + CreateProject dialogs). Renders nothing in browser. */}
@@ -7883,8 +7885,11 @@ function App() {
   useEffect(() => {
     if (gitStatus?.repo === false) return; // solo / non-git project — no remote
     refreshRemoteSync();
-    if (!changesOpen) return; // only keep polling while the panel is visible
-    const id = setInterval(refreshRemoteSync, 60000);
+    // Poll in the background too — not only while Changes is open — so the dock's
+    // "Get latest" nudge surfaces a teammate's publish proactively. Slower cadence
+    // when the panel is closed to stay network-polite (the ahead/behind probe is
+    // TTL-cached server-side, so a missed tick is cheap to re-issue).
+    const id = setInterval(refreshRemoteSync, changesOpen ? 60000 : 120000);
     return () => clearInterval(id);
   }, [gitStatus?.repo, changesOpen, refreshRemoteSync]);
 
@@ -10280,6 +10285,8 @@ function App() {
             dirtyByPath={dirtyByPath}
             project={project}
             gitBranch={gitStatus?.branch}
+            remoteSync={remoteSync}
+            onGetLatest={gitGetLatest}
           />
           {sidebarOpen && (
             <PanelGrip

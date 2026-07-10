@@ -1909,6 +1909,13 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
   box-shadow: 0 -10px 18px -12px color-mix(in oklab, var(--bg-0) 80%, transparent);
 }
 .rb-dock { position: relative; }
+/* Proactive "remote has updates" nudge — a full-width primary button above the dock
+   trigger, shown when the tracking remote is ahead (status.remoteAhead). */
+.rb-getlatest { width: 100%; justify-content: flex-start; gap: var(--space-2); animation: rb-getlatest-in var(--dur-soft, 160ms) var(--ease-out, ease-out); }
+.rb-getlatest-tx { flex: 0 0 auto; }
+.rb-getlatest-sub { margin-left: auto; font-weight: 500; opacity: 0.9; font-size: var(--type-xs); white-space: nowrap; }
+@keyframes rb-getlatest-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .rb-getlatest { animation: none; } }
 /* The compact one-line trigger — "📁 <project> · ◐ <version> ⌃" */
 .rb-trigger {
   display: flex; align-items: center; gap: var(--space-2);
