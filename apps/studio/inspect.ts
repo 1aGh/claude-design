@@ -482,7 +482,13 @@ const INSPECTOR_SCRIPT = `
       return;
     }
     if (e.shiftKey) {
-      var id = k === 'i' ? 'inspector' : k === 'm' ? 'comments' : k === 'e' ? 'export' : k === 'h' ? 'handoff' : null;
+      // ⌘⇧T (timeline) + ⌘⇧G (changes) were missing here, so with focus inside
+      // the canvas iframe they never reached the shell — opening the Timeline
+      // (and its Space/arrow transport, which needs the dock focused) silently
+      // stopped working after a canvas interaction moved focus into the iframe.
+      // ⌘⇧T is also the browser "reopen closed tab" chord, so the preventDefault
+      // below is doubly load-bearing.
+      var id = k === 'i' ? 'inspector' : k === 'm' ? 'comments' : k === 'e' ? 'export' : k === 'h' ? 'handoff' : k === 't' ? 'timeline' : k === 'g' ? 'changes' : null;
       if (id) {
         e.preventDefault();
         try { window.parent.postMessage({ dgn: 'shell-shortcut', id: id }, '*'); } catch (err) {}

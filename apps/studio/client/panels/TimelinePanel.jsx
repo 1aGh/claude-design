@@ -145,6 +145,17 @@ export default function TimelinePanel({
   const clamped = clamp(Math.round(frame), 0, totalFrames - 1);
   const trackRef = useRef(null);
   const draggingRef = useRef(false);
+  const rootRef = useRef(null);
+  // Focus the dock the moment it opens. The transport shortcuts (Space play,
+  // arrow frame-step) live on the SHELL window, so they only fire when focus is
+  // in the shell — but opening the Timeline via ⌘⇧T while focus sat in the
+  // canvas iframe (the common case after any text/element interaction) used to
+  // leave focus stuck in the iframe, so Space/arrows silently did nothing.
+  // Pulling focus here on mount (mount === open, the panel is conditionally
+  // rendered) hands the transport keys a shell focus target immediately.
+  useEffect(() => {
+    rootRef.current?.focus();
+  }, []);
   // Drag-to-retime a sequence's duration: { index, startX, startDur, rowW, curDur }.
   const [retimeDrag, setRetimeDrag] = useState(null);
   // Drag the block body to move a clip's `from`: { index, startX, startFrom, rowW, curFrom }.
@@ -337,8 +348,10 @@ export default function TimelinePanel({
 
   return (
     <aside
+      ref={rootRef}
+      tabIndex={-1}
       className={`tl-panel${resizing ? ' is-resizing' : ''}${dropActive ? ' is-drop' : ''}`}
-      style={height ? { height } : undefined}
+      style={{ ...(height ? { height } : {}), outline: 'none' }}
       onDragOver={(e) => {
         if (!onDropMedia || !hasFiles(e.dataTransfer)) return;
         e.preventDefault();

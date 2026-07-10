@@ -8815,6 +8815,8 @@ function App() {
         else if (m.id === 'inspector') toggleRightPanel('inspector');
         else if (m.id === 'assistant' && isNativeApp()) toggleRightPanel('assistant');
         else if (m.id === 'comments') toggleRightPanel('comments');
+        else if (m.id === 'changes') toggleRightPanel('changes');
+        else if (m.id === 'timeline') toggleTimeline();
         else if (m.id === 'export') setExportDialog({ mode: 'export' });
         else if (m.id === 'handoff') setExportDialog({ mode: 'handoff' });
       } else if (m.dgn === 'open-export') {
