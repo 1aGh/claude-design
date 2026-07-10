@@ -83,3 +83,7 @@ apps/studio/bun.lock
 
 # Postinstall/serve side-channel cache (machine-specific compiled-binary path)
 cli/.platform-binary-path
+
+# Local env files — may hold API keys (feature-ai-media-generation); never commit.
+.env.local
+.env*.local

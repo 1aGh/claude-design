@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-10T22:19:18.935Z",
+  "generated": "2026-07-10T22:53:34.101Z",
   "currentPhase": null,
   "phases": [
     {
@@ -340,6 +340,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — most of the machinery already exists; this is a surgical split + a three-file reconci...",
       "planPath": ".ai/plans/archive/feature-per-user-camera-split-and-runtime-state-cleanup.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-photo-editor",
+      "title": "Feature: In-app photo editor for Maude Studio",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-photo-editor.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1235,13 +1246,13 @@
       "phaseKey": null
     },
     {
-      "id": "feature-photo-editor",
-      "title": "Feature: In-app photo editor for Maude Studio",
+      "id": "fix-photo-editor-followup-debt",
+      "title": "Feature: Fix photo-editor follow-up debt (security + design-system + a11y)",
       "status": "planned",
       "shipTarget": null,
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-photo-editor.md",
+      "planPath": ".ai/plans/fix-photo-editor-followup-debt.md",
       "archived": false,
       "phaseKey": null
     }

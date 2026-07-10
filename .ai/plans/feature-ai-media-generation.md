@@ -4,7 +4,7 @@ Validate docs and codebase patterns before implementing. Pay attention to existi
 
 ## Description
 
-Let a Maude user bring their own API keys (Google/Nano Banana, ElevenLabs, fal.ai, …) — and optionally run local models — to **generate and edit media inside Maude**: images, video clips, music, sound effects, voiceover, and speech-to-text for automatic subtitles. A proper **Settings page** manages keys, providers, and local engines from the UI. Generation is reachable three ways:
+Let a Maude user bring their own API keys (Google/Nano Banana for image+video, ElevenLabs for audio) — and optionally run local models — to **generate and edit media inside Maude**: images, video clips, music, sound effects, voiceover, and speech-to-text for automatic subtitles. A proper **Settings page** manages keys, providers, and local engines from the UI. Generation is reachable three ways:
 
 1. **On-demand / prompt-driven** — `/design:new "generate an AI carousel about X"`, `/design:edit "generate a hero image via AI"`, or a UI generate action.
 2. **Proactive / AI-initiated** — while editing a reel/canvas, the design agent can *notice a gap* and propose generation ("you have no clip for this beat — generate one?"; "this social post could use a hero — want me to make it?"), surfaced as one confirmable decision.
@@ -22,13 +22,17 @@ Maude can *arrange, edit, and export* media (photo-editor DDR-161, footage→dir
 
 ## Solution
 
-A **provider-adapter spine** in the dev-server (`apps/studio/generation/`) that normalizes every provider — cloud aggregator, direct-BYOK provider, or local runtime — to one `submit → Job → assets[]` contract, with the produced bytes localized into the existing `assets/<sha8>` store. Keys live in the OS keychain (native) or a `0600` per-user file (browser), are injected **server-side** at request time, and **never cross to the untrusted canvas iframe** (DDR-054). A privileged async route (`/_api/generate-jobs`, modeled on the export-job queue) drives generation; a Settings panel manages keys + engines; a `maude design generate` CLI verb lets slash commands invoke it; and a footage-director-style **media-generation director** agent + a `WANTS_GENERATE` command seam wire up the prompt-driven and proactive paths.
+A **provider-adapter spine** in the dev-server (`apps/studio/generation/`) that normalizes every provider — direct-BYOK provider or local runtime — to one `submit → Job → assets[]` contract, with the produced bytes localized into the existing `assets/<sha8>` store. Keys live in the OS keychain (native) or a `0600` per-user file (browser), are injected **server-side** at request time, and **never cross to the untrusted canvas iframe** (DDR-054). A privileged async route (`/_api/generate-jobs`, modeled on the export-job queue) drives generation; a Settings panel manages keys + engines; a `maude design generate` CLI verb lets slash commands invoke it; and a footage-director-style **media-generation director** agent + a `WANTS_GENERATE` command seam wire up the prompt-driven and proactive paths.
+
+> **Owner product principles (2026-07-11) — load-bearing, apply to every phase:**
+> 1. **BYOK, direct providers only — no aggregator.** Google (image/video) + ElevenLabs (audio). The user brings their own key per provider; we don't build a breadth-broker (fal) for them. fal/OpenRouter/Vercel-AI-Gateway stay out; the adapter interface remains open so one could drop in later.
+> 2. **Generation is never a dead-end modal.** A finished asset **lands on the canvas / in the spine automatically** (image → placed on the active artboard; clip → EDL beat; audio → EDL track). The modal is at most a prompt bar; manual "insert" is a secondary affordance, not the path.
+> 3. **Generation is agent-drivable, not just UI.** Every modality is reachable from **`maude design generate` (CLI), `/design:generate` + `WANTS_GENERATE` in `/design:edit`/`/design:new` (slash), the `ai-generation` skill, AND the ACP chat panel** (which drives the user's own `claude`). The key is always resolved server-side, so the agent triggers generation but never holds the key.
 
 **Approach decisions taken (rationale in Design Decisions → Architecture):**
 
-- **Hybrid provider strategy, not one or the other.** Direct-BYOK adapters for the flagship providers the user named (Google **Nano Banana** for image, **ElevenLabs** for the whole audio stack) — truest BYOK, cheapest (no aggregator markup), the user's own key → the provider directly — **plus** one aggregator adapter (**fal.ai**) for breadth (FLUX/Recraft/Ideogram/Seedream image; Veo 3.1/Kling/Seedance/Hailuo video) so we don't hand-integrate a dozen providers. All behind the same adapter interface.
-- **fal.ai is the aggregator, called directly from the machine — never a hosted router.** Type-A BYOK (fal bills the user's own fal account; prompts + keys stay between the user and fal). We deliberately do **not** make OpenRouter/Vercel-AI-Gateway a *required* spine — they insert a hosted dependency that contradicts the local/private premise. They can drop in later as optional `openai-compatible`-family adapters.
-- **Poll/SSE, never webhooks.** A laptop has no public URL. fal (poll + SSE `/status/stream`), Veo (`operation.done` poll), ComfyUI (WS + poll) all support this. Webhook branch stays unused.
+- **Direct-BYOK only — NO aggregator (decided 2026-07-11, owner).** Direct adapters for the flagship providers the user named: Google **Nano Banana** for image (+ Veo for video), **ElevenLabs** for the whole audio stack — truest BYOK, cheapest (no aggregator markup), the user's own key → the provider directly. **fal.ai is dropped** — the owner's call is "don't build the aggregator abstraction for the user; keep it simple, they bring their own direct-provider key." Google + ElevenLabs cover image/video/audio/STT for v1. The adapter interface stays aggregator-ready (`fal-queue` shape documented) so fal/Replicate can drop in later as an optional adapter if breadth is ever wanted — but it is **not built** now. Consequence: the model breadth fal would have added (FLUX/Recraft/Ideogram/Seedream, Kling/Seedance/Hailuo) is **out of scope**; image = Nano Banana, video = Veo, audio = ElevenLabs.
+- **Poll/SSE, never webhooks.** A laptop has no public URL. Veo (`operation.done` poll), ComfyUI (WS + poll) support this. Webhook branch stays unused. (fal's SSE `/status/stream` is moot now that fal is dropped.)
 - **Local generation is post-v1; local *background-removal* and local *transcription* ship early** — bg-removal already exists client-side (@imgly, DDR-161) and local whisper.cpp gives free, no-key, word-timestamped subtitles. Full local *image/video generation* (ComfyUI/Draw Things, 7–23 GB downloads, GPU-gated, 2–4× slower on Mac) is a later "power-user/offline" engine behind the same adapter.
 - **Phased, image-first backbone.** Phase 0 stands up the whole spine (adapter, keys, route, Settings shell, CLI verb) and proves it end-to-end with the *simplest* modality — **image via Nano Banana** (synchronous, single REST call, base64 out, drops into the existing asset + photo-editor spine with almost no new surface). Audio (highest user-stated value) and video (async, heaviest UX) follow on the proven spine. **This ordering is a de-risking choice, not a value judgment — it is swappable** (see Open Questions).
 
@@ -38,8 +42,8 @@ A **provider-adapter spine** in the dev-server (`apps/studio/generation/`) that 
 - **Complexity**: High
 - **App/Package**: `apps/studio` (spine, routes, Settings client), `apps/desktop` (keychain), `cli/` (`maude design generate` + deps), `plugins/design` (commands/agents/skills for prompt-driven + proactive paths)
 - **Affected Systems**: dev-server HTTP + trust boundary (DDR-054/088), asset pipeline (DDR-088), config schema, keychain bridge (DDR-123-adjacent), footage EDL (DDR-163), video-comp (DDR-148), photo-editor (DDR-161), design-plugin commands/agents
-- **Dependencies (new)**: `ollama` (soft, post-v1 local), `whisper.cpp`/`whisper-cli` (soft, for local subtitles), provider HTTP clients (no SDK required — plain `fetch` in the sidecar); `fal` client optional
-- **New DDR**: reserve the next number (**likely DDR-164** — re-check `.ai/decisions/` + the uncommitted README index diff immediately before writing, per the shared-main numbering race) for "BYOK AI media generation — provider-adapter spine, key custody, trust boundary."
+- **Dependencies (new)**: `ollama` (soft, post-v1 local), `whisper.cpp`/`whisper-cli` (soft, for local subtitles), provider HTTP clients (no SDK required — plain `fetch` in the sidecar). ~~`fal` client~~ — dropped (no aggregator).
+- **DDR**: ✅ **DDR-164 written + accepted 2026-07-11** — "BYOK AI media generation — provider-adapter spine, key custody, trust boundary" (`.ai/decisions/DDR-164-byok-ai-media-generation-provider-adapter-spine.md`).
 
 ---
 
@@ -62,7 +66,7 @@ A **provider-adapter spine** in the dev-server (`apps/studio/generation/`) that 
 
 **Asset spine (where generated bytes land):**
 - `apps/studio/http.ts:2162` (`/_api/asset`), `apps/studio/api.ts:1389` (`saveAssetFromStream`), `:673` (`sniffAssetType` — image/video/audio magic-byte), `:1530` (`listAssets` — note: does NOT list audio, extend if the picker needs it) — Why: reuse the streaming, content-addressed, capped write path for generated bytes.
-- `apps/studio/bin/_fetch-asset.mjs:405` (`fetchAsset` — https-only, DNS-pinned SSRF gate, magic-byte, content-addressed, realpath-contained; currently **rejects non-image** — must extend to accept generated video/audio URLs) + `apps/studio/bin/fetch-asset.sh` — Why: the egress-hardening template every provider download must copy; the fal/Veo "output is an expiring URL" path localizes through this.
+- `apps/studio/bin/_fetch-asset.mjs:405` (`fetchAsset` — https-only, DNS-pinned SSRF gate, magic-byte, content-addressed, realpath-contained; currently **rejects non-image** — must extend to accept generated video/audio URLs) + `apps/studio/bin/fetch-asset.sh` — Why: the egress-hardening template every provider download must copy; the **Veo** "output is an expiring URL" path (Phase 3) localizes through this.
 
 **Modality-attach seams:**
 - Photo-editor: `apps/studio/photo/schema.ts:143` (`PhotoEdit`, `source`), `apps/studio/http.ts:983` (`/_api/photo-edit`), `plugins/design/commands/photo.md` — Why: a generated image is a valid `PhotoEdit.source`; image-gen composes with the parametric editor.
@@ -94,8 +98,8 @@ A **provider-adapter spine** in the dev-server (`apps/studio/generation/`) that 
 - `apps/studio/generation/keys.ts` — request-time key resolution (keychain bridge → `~/.config/maude` fallback), never cached/logged.
 - `apps/studio/generation/adapters/gemini.ts` — Nano Banana image (+ Veo video in the video phase): sync `:generateContent`, base64 out.
 - `apps/studio/generation/adapters/elevenlabs.ts` — Music / SFX / TTS / Scribe STT.
-- `apps/studio/generation/adapters/fal.ts` — the `fal-queue` shape (submit → `request_id` → poll/SSE → URL); reaches image+video+audio breadth.
-- `apps/studio/generation/adapters/openai-compatible.ts` — OpenAI images/TTS + local Ollama/LM Studio/whisper-server (post-v1 for local; OpenAI image optional).
+- ~~`apps/studio/generation/adapters/fal.ts`~~ — **DROPPED** (owner decision 2026-07-11, no aggregator). The `fal-queue` shape stays documented in `types.ts` so it can be added later, but no adapter is built.
+- `apps/studio/generation/adapters/openai-compatible.ts` — local Ollama/LM Studio/whisper-server only (post-v1 local). (OpenAI image/TTS de-scoped with the aggregator decision — direct providers are Google + ElevenLabs.)
 - `apps/studio/generation/jobs.ts` — generation job queue (mirror `exporters/jobs.ts`: counting semaphore, in-memory Map, cost/usage capture).
 - `apps/studio/generation/download.ts` — localize a URL/base64/file result into `assets/<sha8>` via the hardened egress path (reuse/extend `_fetch-asset.mjs` discipline).
 - `apps/studio/generation/captions.ts` — word-timestamp JSON → SRT/VTT + re-flow (shared by every STT provider).
@@ -105,8 +109,8 @@ A **provider-adapter spine** in the dev-server (`apps/studio/generation/`) that 
 - `apps/desktop/src-tauri/src/generation_keys.rs` — keychain set/get/delete per provider + bridge extension (+ the 3-edit Tauri-command wiring: `generate_handler`, capabilities allow-list, `build.rs` `commands()`).
 - `plugins/design/agents/media-generation-director.md` — read-only gap→generation-plan agent (footage-director contract).
 - `plugins/design/skills/ai-generation/SKILL.md` — the AI-media generation vocabulary (provider capability map, prompt conventions, licensing caveats, asset-localization rule) + auto-load triggers.
-- `plugins/design/commands/generate.md` — `/design:generate` explicit entry point (+ the `WANTS_GENERATE` seam added to `edit.md`/`new.md`).
-- `.ai/decisions/DDR-16x-byok-ai-media-generation.md` — the decision record.
+- `plugins/design/commands/generate.md` — `/design:generate` explicit entry point (+ the `WANTS_GENERATE` seam added to `edit.md`/`new.md`). Reachable the same way from the **ACP chat panel** (the panel drives the user's own `claude`, which has the design plugin loaded) — see the ACP validation task.
+- `.ai/decisions/DDR-164-byok-ai-media-generation-provider-adapter-spine.md` — the decision record (**written; Phase 0 accepted 2026-07-11**).
 
 ### Design canvases
 
@@ -147,12 +151,14 @@ Three adapter *shapes* cover ~80%: `fal-queue` (fal, +Replicate/Eachlabs variant
 
 ### Provider selection (v1)
 
-| Modality | Direct BYOK (flagship) | Aggregator (breadth) | Local |
+> **fal / aggregator column dropped (owner decision 2026-07-11).** Direct BYOK only. The "Aggregator (breadth)" column below is struck — kept greyed for the record so a future re-scope knows exactly what breadth was deferred.
+
+| Modality | Direct BYOK (flagship — BUILT) | ~~Aggregator (breadth — DROPPED)~~ | Local |
 | --- | --- | --- | --- |
-| **Image** | **Google Nano Banana** `gemini-2.5-flash-image` (+ Pro `gemini-3-pro-image`) — sync, base64, gen+maskless-edit+text+4K | **fal.ai** → FLUX Kontext/Fill, Recraft (SVG/vector + $0.01 bg-remove), Ideogram (text), Seedream | bg-removal already exists (@imgly, DDR-161); rembg/BiRefNet-ONNX optional |
-| **Audio** | **ElevenLabs** — Music + SFX + TTS v3 (+ cloning) + Scribe STT (one key covers the stack) | fal (audio breadth) | — |
-| **Subtitles/STT** | ElevenLabs Scribe (accuracy) / Groq Whisper (managed, $0.04/hr) | — | **whisper.cpp `large-v3-turbo` — the default, no key**, SRT/VTT + word timestamps, ~10× RT on Apple Silicon |
-| **Video** | **Google Veo 3.1** (Gemini API, native synced audio + i2v) | **fal.ai** → Veo 3.1 / Kling / Seedance / Hailuo (all image-to-video) | none v1 (24GB+ GPU, minutes/clip) |
+| **Image** | **Google Nano Banana** `gemini-2.5-flash-image` (+ Pro `gemini-3-pro-image`) — sync, base64, gen+maskless-edit+text+4K | ~~fal → FLUX/Recraft/Ideogram/Seedream~~ | bg-removal already exists (@imgly, DDR-161); rembg/BiRefNet-ONNX optional |
+| **Audio** | **ElevenLabs** — Music + SFX + TTS v3 (+ cloning) + Scribe STT (one key covers the stack) | ~~fal (audio breadth)~~ | — |
+| **Subtitles/STT** | ElevenLabs Scribe (accuracy) / Groq Whisper (managed, $0.04/hr) — optional cloud fallback | — | **whisper.cpp `large-v3-turbo` — the default, no key**, SRT/VTT + word timestamps, ~10× RT on Apple Silicon |
+| **Video** | **Google Veo 3.1** (Gemini API, native synced audio + i2v) | ~~fal → Kling / Seedance / Hailuo~~ | none v1 (24GB+ GPU, minutes/clip) |
 
 Explicitly **avoid OpenAI Sora 2** (API sunsets 2026-09-24). **Avoid building on Suno/Udio** (no official API — grey-market wrappers only). Surface **licensing caveats** in the UI (music commercial-rights tiers, voice-cloning consent, MusicGen non-commercial weights).
 
@@ -219,24 +225,35 @@ Execute in phase order. Each phase is independently shippable; `/flow:done` at e
 - **Do**: DDR-16x (spine, custody, trust boundary). Security fan-out (defender + ethical-hacker) on the new egress + secret + route surface. What's New pending entry. Live-verify image gen end-to-end split-origin.
 - **Validate**: full studio suite + CLI reachability + `canvas-origin-gate` + security review 0 blockers ≥ medium.
 
-### Phase 1 — Image: full generation + editing + prompt-driven seam
+### Phase 1 — Image: auto-insert + editing + agent/command/ACP seam (fal DROPPED)
 
-#### Task 1.1: ADD the fal-queue adapter
-- **Do**: `adapters/fal.ts` — `submit → request_id → poll/SSE → URL`; localize URL → `assets/`. Reaches FLUX Kontext/Fill, Recraft, Ideogram, Seedream. `listModels()` from fal's catalog.
-- **Gotcha**: fal output URLs **expire (~min)** — download immediately.
-- **Validate**: stubbed queue lifecycle test.
+> **Re-scoped 2026-07-11 (owner).** fal is out (Task 1.1 deleted). The through-line of this phase is the owner's two hard requirements: **(a) generation is not a dead-end modal — a finished image lands ON the canvas automatically**, and **(b) generation is agent-drivable — from `/design:generate`, from a prompt in `/design:edit`/`/design:new`, AND from the ACP chat panel**, not only the UI. Image breadth stays Nano Banana only.
+
+#### ~~Task 1.1: ADD the fal-queue adapter~~ — **DROPPED (no aggregator).** The `fal-queue` shape stays documented in `types.ts`; no adapter is built. The expiring-URL localizer it needed is deferred to Phase 3 (Veo returns a URL) — that is where the SSRF-hardened URL egress in `download.ts` (gated off in Phase 0) is first wired.
+
+#### Task 1.1 (new): AUTO-INSERT a generated image onto the active canvas (default UX)
+- **Do**: make "generate → land on the canvas" the default, not a manual modal step. On job `done`, splice an `<img src="assets/<sha8>.png">` into the **active artboard** of the active canvas via the existing main-origin source-write path (mirror `/_api/insert-element` / the AssetPicker drop flow), positioned sensibly (artboard-centered or at the last click). The `generate-dialog.jsx` built in Phase 0 collapses to a lightweight **prompt bar** whose primary action is "Generate → insert" (the manual "Copy path"/"Insert" buttons stay only as a secondary affordance for "generate without placing").
+- **Pattern**: the AssetPicker → canvas insert flow (`onAssetPicked` in `app.jsx`); `/_api/insert-element` (main-origin source-write, DDR-054); the `WANTS_DRAW` inline-output convention (`output_mode:"inline"`).
+- **Gotcha**: the insert is a **source-write** — main-origin only; the canvas iframe never writes. Content-addressed `assets/<sha8>` ref only (no data: URL). Respect the active-canvas + selected-artboard signals (`_active.json`) so it lands where the user is looking.
+- **Validate**: open a canvas → Generate "a red circle" → the image appears **on the artboard** with no manual insert step; the `.tsx` source gains a content-addressed `<img>`; live-verify in split-origin.
 
 #### Task 1.2: WIRE image-editing to the photo-editor
-- **Do**: a generated image is a valid `PhotoEdit.source`; maskless-edit prompts (Nano Banana) and inpaint (FLUX Fill / Recraft) exposed as generate ops that write a new asset the photo-editor can then adjust. Extend `listAssets` to surface generated images in the AssetPicker.
-- **Pattern**: `photo/schema.ts:143`; `/_api/photo-edit`.
-- **Validate**: generate → open in Photo tab → adjust → sidecar persists.
+- **Do**: a generated image is a valid `PhotoEdit.source`; maskless-edit prompts (Nano Banana — `sourceAsset` read into an `inlineData` part alongside the text) are exposed as a generate op that writes a **new** asset the photo-editor can then adjust. Extend `listAssets` to surface generated images in the AssetPicker. (Inpaint via FLUX Fill/Recraft is **out** — that was fal; Nano Banana maskless-edit is the v1 edit path.)
+- **Pattern**: `photo/schema.ts:143`; `/_api/photo-edit`; the Phase-0 `sourceAsset` field already validated in `types.ts`.
+- **Validate**: generate → the image is on the canvas (Task 1.1) → open in Photo tab → adjust → sidecar persists; "edit this image: <prompt>" produces a new Nano-Banana-edited asset.
 
-#### Task 1.3: ADD the `WANTS_GENERATE` command seam (prompt-driven)
-- **Do**: `plugins/design/commands/generate.md` (`/design:generate`) + a `WANTS_GENERATE` grep branch in `edit.md` (alongside step 4.6) and a generation pre-pass in `new.md` (alongside 5a/9.6) routing to `maude design generate` and splicing the `/assets/<sha8>` ref in. `plugins/design/skills/ai-generation/SKILL.md` (auto-load triggers + capability map + licensing caveats + assets-only rule).
-- **Pattern**: `edit.md:401`–`:437` `WANTS_DRAW`→`draw-agent`.
+#### Task 1.3: ADD the `/design:generate` command + `WANTS_GENERATE` seam (agent + prompt driven)
+- **Do**: `plugins/design/commands/generate.md` (`/design:generate`) + a `WANTS_GENERATE` grep branch in `edit.md` (alongside step 4.6) and a generation pre-pass in `new.md` (alongside 5a/9.6) routing to `maude design generate` and **splicing the `/assets/<sha8>` ref in** (same auto-insert as Task 1.1). `plugins/design/skills/ai-generation/SKILL.md` (auto-load triggers + capability map + prompt conventions + licensing caveats + assets-only rule). This is the layer that lets **an AI agent generate via the CLI** (`maude design generate` already ships from Phase 0).
+- **Pattern**: `edit.md:401`–`:437` `WANTS_DRAW`→`draw-agent` (`output_mode:"inline"`, jump to render).
 - **Validate**: `/design:edit "generate a hero image of X via AI"` produces + inserts an asset; `/design:new "generate an AI carousel about X"` scaffolds with generated imagery.
 
-#### Task 1.4: Phase-1 gate — critics (draw/graphic/brand), security, What's New.
+#### Task 1.4: WIRE generation into the ACP chat panel (agent-in-app path)
+- **Do**: make "generate an image of X" work **from the native ACP chat panel**. The panel already drives the user's own `claude` CLI with the design plugin loaded, so once Task 1.3 lands the transitive path exists — this task makes it **explicit and tested**: confirm the ACP `claude` can reach the running dev server's generate route (the key is resolved **server-side** from the 0600 file, so the DDR-123 env-scrub does NOT block it — the agent triggers, it never holds the key), the `ai-generation` skill auto-loads in that session, and the produced asset lands on the canvas via the same auto-insert. Document the flow in the `ai-generation` skill so the ACP agent knows to prefer `/design:generate` / `maude design generate` over hand-rolling.
+- **Pattern**: DDR-123 ACP sidepanel; `acp/env.ts` scrub (assert generation keeps working *because* the key is server-side, not in the agent env); the Phase-0 `maude design generate` verb.
+- **Gotcha**: the ACP agent must NOT be handed a key — it calls the verb/command, the sidecar resolves the key. Prompt-injection posture: an ACP turn that generates is still user-initiated (the user typed the request); the unattended-proposal path is Phase 4, gated separately.
+- **Validate**: in the native app, type "generate a hero image of a mountain lake" in the ACP chat → an image is generated and inserted onto the active canvas, end-to-end, without the user touching the modal.
+
+#### Task 1.5: Phase-1 gate — critics (draw/graphic/brand), security, What's New, live-verify auto-insert + ACP path.
 
 ### Phase 2 — Audio: ElevenLabs stack + local-Whisper subtitles + EDL audio
 
@@ -334,11 +351,11 @@ Per phase:
 
 ## Open Questions (prose — decide before/at execute)
 
-1. **First-modality ordering.** Recommended **image-first** (Phase 0 proof) because it's the cheapest end-to-end validation of the whole spine (sync, single call, drops into the existing asset+photo spine). **Audio is the highest stated value** (ElevenLabs, subtitles) — if you'd rather prove the spine on audio first, Phases 0/1/2 swap cleanly (the spine is modality-agnostic). Video is intentionally last (async, heaviest UX).
-2. **v1 scope.** Proposed v1 = **Phases 0–2** (spine + image + audio), with video (Phase 3), proactive (Phase 4), and local engines (Phase 5) as fast-follows. Confirm, or pull video into v1.
-3. **Aggregator dependency.** Recommended **hybrid** (direct Nano Banana + ElevenLabs for the flagship BYOK, fal for breadth). fal requires the user to hold a fal account/key — acceptable? Or direct-providers-only for v1 (narrower model choice, zero aggregator)?
-4. **Local subtitles dependency.** whisper.cpp as a **soft** dep (auto-detected, graceful fallback to Groq/Scribe cloud when absent) — acceptable, or make cloud STT the default and local opt-in?
+1. **First-modality ordering.** ✅ **DECIDED — image-first** (Phase 0 done + live-gated 2026-07-11). Phase 1 completes image (auto-insert + editing + agent/ACP seam), then audio (Phase 2). Video last.
+2. **v1 scope.** ✅ **DECIDED — v1 = Phases 0–2** (spine + image + audio). Video (Phase 3), proactive (Phase 4), local engines (Phase 5) are fast-follows.
+3. **Aggregator dependency.** ✅ **DECIDED (2026-07-11, owner) — NO aggregator. Direct BYOK only: Google + ElevenLabs.** fal is dropped ("don't solve breadth for the user; they bring their own direct-provider key"). Google + ElevenLabs cover image/video/audio/STT for v1. The `fal-queue` shape stays documented so an optional fal/Replicate adapter can drop in later, but it is not built.
+4. **Local subtitles dependency.** whisper.cpp as a **soft** dep (auto-detected, graceful fallback to Groq/Scribe cloud when absent) — **recommended default**; revisit at Phase 2 if the local dep is unwanted.
 
 ## Research Appendix
 
-> Full provider landscape (image / video / audio / architecture), model ids, output shapes, pricing (dated July 2026 — re-verify before hardcoding), and source links are captured in the plan research and summarized in Design Decisions → Provider selection. Key invariants: Nano Banana = sync base64; fal/Veo = async poll, URL out (expiring); ElevenLabs = one key for the audio stack; local whisper.cpp = free no-key subtitles with word timestamps; avoid Sora 2 (sunset) and Suno/Udio (no official API).
+> Full provider landscape (image / video / audio / architecture), model ids, output shapes, pricing (dated July 2026 — re-verify before hardcoding), and source links are captured in the plan research and summarized in Design Decisions → Provider selection. Key invariants: Nano Banana = sync base64; Veo = async poll, URL out (expiring); ElevenLabs = one key for the audio stack; local whisper.cpp = free no-key subtitles with word timestamps; avoid Sora 2 (sunset) and Suno/Udio (no official API). **fal / aggregator = dropped (owner, 2026-07-11) — direct BYOK only.**
