@@ -281,6 +281,41 @@ future change:
 4. For a determinism check, decode two renders to frames and compare via SSIM
    (`ffmpeg -lavfi ssim`), not a hash.
 
+## Addendum — export-cost realities + full-VFX dogfood (2026-07-10)
+
+The `/design:reel` footage-director pipeline (DDR-163) was dogfooded end-to-end on
+real client footage (Alligators Brno recruiting trailer) AND a deliberately
+effect-maxed "cinematic cut" (kinetic type + RGB split, freeze/flash, slow-mo,
+VHS, glitch, light leaks, an animated chalkboard play-diagram, an animated
+value-bar infographic, a 3D CTA). Both rendered to MP4 through this capture spine.
+Four export-cost/reliability realities surfaced — now documented in the
+`video-comp` skill's new **"Export cost & reliability"** section; recorded here as
+the authoritative source:
+
+1. **`MAX_FRAMES = 900` (30 s @ 30 fps) silently truncates** a longer comp's ending
+   (`exporters/video.ts`). A 38 s / 1143-frame cut lost its CTA+crest until trimmed
+   to 867 frames. The `footage-director` now targets ≤ ~840 frames.
+2. **Full-frame `mix-blend-mode` / `filter` layers per frame crash the capture
+   renderer** ("Execution context was destroyed") under compositing pressure — this
+   was the real cause of random mid-render deaths on the effect-dense cut (NOT an
+   HMR reload, the first hypothesis). Fix: keep heavy blends brief/small-area; make
+   always-on full-frame layers plain `opacity`.
+3. **1080p frame-step encode hit memory pressure** and died (`addVideoFrame` on
+   `undefined`, ~frame 190); **1280×720 renders reliably** (scale up via `scale=2`).
+4. **`renderMediaOnWeb` (the whole-comp mp4/webm audio path) HANGS on a complex
+   comp** instead of throwing, so its frame-step fallback never fires → export
+   times out. Vision-only comps should force the frame-step path (no `--render-lib`).
+   **Fixing the hang→fallback (a timeout/guard around `renderMediaOnWeb` so it
+   degrades to frame-step) is a tracked follow-up.**
+
+**Two real environment gaps fixed in the same pass:** (a) `maude design export`'s
+CLI allow-list was missing `mp4`/`webm`/`gif` (the server supported them all along)
+— added, with video formats defaulting to `--scope artboard`; (b) a headless
+render server now honors `MAUDE_NO_WATCH=1` (`fs-watch.ts`) so no HMR broadcast can
+interrupt a long capture (defensive; the compositing crash above was the actual
+culprit). The pipeline itself validated cleanly: ingest → per-clip vision analyst
+fan-out → director EDL → codegen → capture-spine MP4.
+
 ## Linked
 
 Plan: [`.ai/plans/feature-video-animation-layer.md`](../plans/archive/feature-video-animation-layer.md).

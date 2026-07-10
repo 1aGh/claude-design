@@ -23,6 +23,16 @@ maude design probe-footage "$ASSET" --root "$ROOT" --frames 12 --out-dir "$TMPDI
 
 It prints a JSON manifest: `{ asset, durationSec, width, height, outDir, frames:[{index, t, png}] }`. For a longer clip (> ~20 s) ask for more frames (`--frames 20`, cap 64); for a very short clip 8 is enough. The PNGs are throwaway scratch under `/tmp` — never write into `assets/`.
 
+**Sample densely enough to catch baked graphics (2026-07-10 dogfood lesson).** A
+*finished-promo* source clip (not raw footage) often carries its OWN baked-in title
+cards / lower-thirds ("PŘICHÁZÍ NOVÁ SEZÓNA", "CHCEŠ MAKAT?", a channel bug) that
+last only 1–2 s. A sparse 12-frame sample over a 40 s clip (~1 frame / 3 s)
+**straddles and misses** them, so a shot the director picks can land on foreign
+text. Aim for **≥ ~1 frame per second** on any clip that looks like an edited promo
+(re-probe with a higher `--frames` if the summary/tags suggest it), and in each shot's
+`note` **flag any baked on-screen text / title card / logo bug you see** — so the
+director avoids those in-points (or uses them deliberately, e.g. a real "JOIN US").
+
 ## 2. Watch the frames
 
 **Read every keyframe PNG** (in `t` order) with the Read tool. Reason over the **sequence**, not any single frame — motion, subject continuity, and shot boundaries only reveal themselves across frames (DDR-094 — a freeze-frame lies; a single frame can look great while the shot is unusable). For each stretch of frames that belongs together, form a **shot**:

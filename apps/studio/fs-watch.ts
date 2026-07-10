@@ -34,6 +34,16 @@ export function createFsWatch(ctx: Context): FsWatch {
 
   function start() {
     if (watcher) return;
+    // Capture/CI opt-out (MAUDE_NO_WATCH=1): a headless render server has no
+    // interactive editor to hot-reload, so it never needs the watcher. It's a
+    // DEFENSIVE measure for long video exports — an HMR hard-reload broadcast
+    // fired mid-capture (from a concurrent write to designRoot, e.g. a peer edit
+    // or a runtime-state save NOT in the skip-list below) destroys the Playwright
+    // page's execution context. (NB: in the 2026-07-10 cinematic-cut dogfood the
+    // ACTUAL cause of the "Execution context was destroyed" crashes turned out to
+    // be renderer compositing pressure — too many full-frame mix-blend-mode /
+    // filter layers per frame — not the watcher; this guard is belt-and-braces.)
+    if (process.env.MAUDE_NO_WATCH === '1') return;
     try {
       watcher = watch(ctx.paths.designRoot, { recursive: true }, (_event, filename) => {
         if (!filename) return;

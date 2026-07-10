@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-10T15:47:22.239Z",
+  "generated": "2026-07-10T18:19:51.647Z",
   "currentPhase": null,
   "phases": [
     {
@@ -241,6 +241,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan is grounded in a four-agent read of the studio editing subsystems (selection...",
       "planPath": ".ai/plans/archive/feature-element-editing-robustness.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-footage-analysis-director",
+      "title": "Feature: Footage analysis + AI director — from a folder of clips to a cut, in one prompt",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — this feature is a new layer on top of the shipped video-comp spine (DDR-148), not a r...",
+      "planPath": ".ai/plans/archive/feature-footage-analysis-director.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1189,17 +1200,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "feature-footage-analysis-director",
-      "title": "Feature: Footage analysis + AI director — from a folder of clips to a cut, in one prompt",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — this feature is a new layer on top of the shipped video-comp spine (DDR-148), not a r...",
-      "planPath": ".ai/plans/feature-footage-analysis-director.md",
-      "archived": false,
-      "phaseKey": null
     },
     {
       "id": "feature-grid-track-editor",

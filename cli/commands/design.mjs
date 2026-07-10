@@ -48,9 +48,11 @@ const BIN_VERBS = new Set([
   'ensure-browser',
   'fetch-asset',
   // feature-photo-editor (Stage G). `photo-adjust` is the thin non-browser
-  // parametric verb (curl → /_api/photo-edit). `photo-bg-remove` (the client-side
-  // @imgly ML harness) is registered alongside its script when Stage D lands.
+  // parametric verb (curl → /_api/photo-edit). `photo-bg-remove` is the
+  // client-side @imgly ML harness (throwaway proof canvas + agent-browser
+  // attribute poll — see photo-bg-remove.sh's header for why).
   'photo-adjust',
+  'photo-bg-remove',
   // feature-footage-analysis-director. `ingest-footage` copies a folder of raw
   // clips into assets/ (content-addressed, magic-byte sniffed). `probe-footage`
   // decodes ONE clip in headless Chromium → keyframe PNGs for the footage-analyst's
@@ -464,7 +466,22 @@ async function runExport({ args }) {
   }
 
   const format = positional[0];
-  const VALID_FORMATS = new Set(['png', 'pdf', 'svg', 'html', 'pptx', 'canva', 'zip']);
+  // Includes the temporal formats (DDR-148): mp4/webm/gif render through the
+  // capture spine, same POST /_api/export the UI ⌘E dialog uses. Video export
+  // is always artboard-scoped (the comp's registered meta drives fps/duration).
+  const VALID_FORMATS = new Set([
+    'png',
+    'pdf',
+    'svg',
+    'html',
+    'pptx',
+    'canva',
+    'zip',
+    'mp4',
+    'webm',
+    'gif',
+  ]);
+  const VIDEO_FORMATS = new Set(['mp4', 'webm', 'gif']);
   if (!format || !VALID_FORMATS.has(format)) {
     process.stderr.write(
       `maude design export: missing or unknown <format>. Try one of: ${Array.from(VALID_FORMATS).join(', ')}\n`
@@ -472,7 +489,10 @@ async function runExport({ args }) {
     process.exit(2);
   }
 
-  const scope = flags.scope ?? 'canvas-as-separate';
+  // Video formats default to artboard scope (the only scope video supports —
+  // scope.ts resolves the artboard under the active canvas); other formats keep
+  // the canvas-as-separate default.
+  const scope = flags.scope ?? (VIDEO_FORMATS.has(format) ? 'artboard' : 'canvas-as-separate');
   const VALID_SCOPES = new Set(['selection', 'artboard', 'canvas-as-separate', 'project-raw']);
   if (!VALID_SCOPES.has(scope)) {
     process.stderr.write(`maude design export: unknown --scope "${scope}"\n`);

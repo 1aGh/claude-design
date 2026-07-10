@@ -240,11 +240,89 @@ inspect, replace-media). Don't reach for a loop to shorten it.
     GIF is palette-quantized. Both render deterministically through the capture
     spine — **no native binaries, no user install**.
 
+## Pushing it — VFX & motion graphics (all frame-driven)
+
+Remotion + plain React/SVG/CSS goes *far* beyond stitch-and-title. Everything
+below is a **pure function of `useCurrentFrame()`** (the iron law) — build it by
+hand from `interpolate`/`spring`/`random`; there is **no** effects library to
+import. Proven in the Alligators cinematic-cut dogfood (2026-07-10):
+
+- **Cinematic grade** — a CSS `filter` on the `<OffthreadVideo>` (`contrast`
+  `saturate` `brightness` `hue-rotate` `sepia`) + a teal/orange gradient wash div.
+- **Ken-Burns** — per-clip `transform: scale()/translate()` driven by clip progress.
+- **Slow-mo / speed ramp** — `<OffthreadVideo playbackRate={0.5} />` (deterministic).
+- **Impact camera shake** — `translate`/`rotate` by `random(\`seed${Math.floor(frame)}\`)`.
+- **Impact zoom-punch** — a quick `scale` spike over the first ~10 frames of a hit.
+- **Kinetic typography** — split text to `<span>`s, per-letter `spring({frame: frame - i*2})`
+  stagger + a **RGB chromatic split** via `text-shadow` (red +Xpx / cyan −Xpx) that
+  shrinks as it settles.
+- **3D card CTA** — `perspective()` + `rotateY()` + `translateZ()` spring-in, with an
+  expanding-ring "shockwave" (`scale()` + fading opacity).
+- **Freeze / hit flash** — a full-frame white `<AbsoluteFill>` whose opacity spikes
+  for ~3 frames; pair with `<Freeze frame={N}>` for a bullet-time hold.
+- **Glitch / RGB-split stab** — two `clipPath`-sliced colour layers offset by a
+  seeded random x, flashed for ~5 frames between hard cuts.
+- **Radial speed-lines** — an SVG `<mask>` of N random-length lines from centre over a
+  radial-gradient rect (anime burst); flash it during a hero run.
+- **Light-leak sweep** — an animated radial gradient translated across, `screen` blend.
+- **VHS / archival treatment** — `repeating-linear-gradient` scanlines + a `REC ●`
+  bug + a frame-derived timecode; makes low-res source footage read as *intentional*.
+- **Split-screen** — a flex row of N `<OffthreadVideo>` with a `clipPath` wipe-in.
+- **Motion-graphic infographics** (Remotion's home turf):
+  - **animated chalkboard play diagram** — an SVG route that draws itself via
+    `strokeDasharray`/`strokeDashoffset`, with a ball-carrier dot walking the same
+    waypoints (parametric `pointAt(t)`, **no DOM measurement** → deterministic);
+  - **animated value bars / counters** — `spring`-filled bar widths + a counting `%`
+    (use `overshootClamping: true` and clamp so the number never exceeds its target).
+
+**`motion` (Framer Motion) is bundled but UNUSABLE inside a comp** — its `animate`
+runs on wall-clock, which the frame-stepping capture can't seek. Motion here is
+*always* Remotion-driven. **Cheap moving film grain:** a static feTurbulence noise
+baked into a `data:` URI `background-image`, scrolled by a seeded-random offset each
+frame — never a live per-frame `<feTurbulence>` (that re-runs the filter every frame).
+
+## Export cost & reliability (learned the hard way — 2026-07-10 dogfood)
+
+The capture spine screenshots every frame in Chromium, so **per-frame compositing
+cost is real** and a few limits bite:
+
+- **≤ ~28 s at 30 fps.** The video exporter hard-caps at `MAX_FRAMES = 900`
+  (`apps/studio/exporters/video.ts`) — 30 s @ 30 fps. A longer comp's **ending is
+  silently truncated**. Author within the cap (or drop fps); the `footage-director`
+  targets this. A 38 s cut lost its CTA+crest until trimmed to 24 beats / 867 frames.
+- **Prefer 1280×720 for heavy comps.** 1920×1080 frame-step encode hit memory
+  pressure and died mid-render (`addVideoFrame` on `undefined`, ~frame 190). 720p
+  renders reliably; scale up via `--option scale=2` if you need 1080p output.
+- **Budget full-frame `mix-blend-mode` / `filter` layers.** Many *always-on*
+  full-screen blend layers (grain `overlay`, grade `soft-light`, scanline `multiply`,
+  …) force a per-frame GPU→CPU readback and **crash the capture renderer**
+  ("Execution context was destroyed"). Keep heavy blends **brief and small-area**
+  (glitch/leak stabs over a few frames are fine); make **always-on** full-frame
+  layers plain `opacity`, not a blend mode. This was the real cause of random
+  mid-render crashes on the effect-dense cut.
+- **`renderMediaOnWeb` (the mp4/webm whole-comp audio path) can HANG** on a complex
+  comp instead of throwing, so its built-in frame-step fallback never fires and the
+  export times out. For a **vision-only / no-audio** comp, force the reliable
+  frame-step path (drive `_video-playwright.mjs` without `--render-lib`, or export
+  `gif`). Fixing the hang→fallback is a tracked DDR-148 follow-up.
+- **Set the active canvas before a CLI export.** `/_api/export` scope resolves from
+  `_active.json`, which is driven by the **live studio shell selection** — open the
+  canvas tab (file-tree click) so the artboard resolves; a hand-written `_active.json`
+  is not enough once the shell is running.
+- **Headless render server:** set `MAUDE_NO_WATCH=1` so no HMR hard-reload can
+  interrupt a long capture (defensive — a peer/runtime-state write to `designRoot`
+  otherwise reloads the capture page).
+
 ## Verify motion over time — freeze-frames lie (DDR-094)
 
 A single screenshot can look right while nothing actually animates. When you
 check a comp, seek to **two** different frames (or scrub in the Player) and
 confirm the output changes. The motion-critic enforces this as a hard gate.
+
+**Seek any frame to verify without a full export:** the Player exposes
+`window.__maude_seek__(frame)` on the capture shell — open
+`_canvas-shell.html?canvas=…&hide-chrome=1`, `__maude_seek__(N)`, screenshot. Far
+cheaper than a multi-minute render when checking a specific beat / motion-graphic.
 
 ## License note (surface once to the user)
 
