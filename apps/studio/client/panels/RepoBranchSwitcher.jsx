@@ -19,7 +19,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { appRecentProjects, isNativeApp, openLocalProject, pickDirectory } from '../github.js';
+import { appRecentProjects, isNativeApp, openGitHubUrl, openLocalProject, pickDirectory } from '../github.js';
 
 const SHARED = new Set(['main', 'master']);
 
@@ -106,6 +106,27 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
   // After a GitHub-remote fold: { url, number } (PR opened) or { message } (draft
   // pushed but no PR). Keeps the confirm sheet open to show the result (DDR-162).
   const [prResult, setPrResult] = useState(null);
+  const [prCopied, setPrCopied] = useState(false);
+
+  // Open the PR in the OS browser. A WKWebView anchor can't reach the default browser,
+  // so native goes through the Tauri opener (github.com host-locked in Rust); an older
+  // desktop build without that command falls back to copy-to-clipboard. Web just opens.
+  async function reviewPr(url) {
+    if (!isNativeApp()) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    try {
+      await openGitHubUrl(url);
+    } catch {
+      try {
+        await navigator.clipboard.writeText(url);
+        setPrCopied(true);
+      } catch {
+        /* clipboard blocked — the URL is shown selectable in the sheet */
+      }
+    }
+  }
   const [busy, setBusy] = useState(false);
   const [switching, setSwitching] = useState('');
   const [err, setErr] = useState('');
@@ -392,7 +413,7 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
                   </span>
                   <Icon name="check" size={14} className="rb-pop-check" />
                 </button>
-                <button type="button" data-testid="switcher-merge" className="rb-fold" role="menuitem" onClick={() => { setOpen(false); setErr(''); setPrResult(null); setFoldConfirm(true); }}>
+                <button type="button" data-testid="switcher-merge" className="rb-fold" role="menuitem" onClick={() => { setOpen(false); setErr(''); setPrResult(null); setPrCopied(false); setFoldConfirm(true); }}>
                   <span className="rb-fold-icon"><Icon name="arrow-up-to-line" size={15} /></span>
                   <span className="rb-fold-tx">
                     <span className="rb-fold-title">Merge this branch → {sharedName}</span>
@@ -478,17 +499,18 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
       {/* Add-to-default confirm — the one modal in this surface. No 3-way merge UI.
           After a GitHub-remote fold it flips to a pull-request result view (DDR-162). */}
       {foldConfirm && (
-        <div className="rb-scrim" role="presentation" onClick={() => { setFoldConfirm(false); setPrResult(null); }}>
-          <div className="rb-sheet" role="dialog" aria-modal="true" aria-labelledby="rb-sheet-title" aria-describedby="rb-sheet-body" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Escape') { setFoldConfirm(false); setPrResult(null); } }}>
+        <div className="rb-scrim" role="presentation" onClick={() => { setFoldConfirm(false); setPrResult(null); setPrCopied(false); }}>
+          <div className="rb-sheet" role="dialog" aria-modal="true" aria-labelledby="rb-sheet-title" aria-describedby="rb-sheet-body" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Escape') { setFoldConfirm(false); setPrResult(null); setPrCopied(false); } }}>
             {prResult ? (
               prResult.url ? (
                 <>
                   <span className="rb-sheet-icon"><Icon name="share" size={20} /></span>
                   <h2 className="rb-sheet-title" id="rb-sheet-title">Pull request opened{prResult.number ? ` #${prResult.number}` : ''}</h2>
                   <p className="rb-sheet-body" id="rb-sheet-body">Your draft <b>“{branch}”</b> is up as a pull request into <b>{sharedName}</b>. Review and merge it on GitHub — that keeps your team's review rules.</p>
+                  <p className="rb-sheet-meta rb-pr-url">{prResult.url}</p>
                   <div className="rb-sheet-actions">
-                    <button type="button" className="btn btn--ghost" onClick={() => { setFoldConfirm(false); setPrResult(null); }}>Close</button>
-                    <a className="btn btn--primary" data-testid="switcher-pr-link" href={prResult.url} target="_blank" rel="noreferrer noopener"><Icon name="share" size={15} /> Review on GitHub</a>
+                    <button type="button" className="btn btn--ghost" onClick={() => { setFoldConfirm(false); setPrResult(null); setPrCopied(false); }}>Close</button>
+                    <button type="button" className="btn btn--primary" data-testid="switcher-pr-link" onClick={() => reviewPr(prResult.url)}><Icon name="share" size={15} /> {prCopied ? 'Link copied — paste in your browser' : 'Review on GitHub'}</button>
                   </div>
                 </>
               ) : (
@@ -497,7 +519,7 @@ export default function RepoBranchSwitcher({ project, liveBranch }) {
                   <h2 className="rb-sheet-title" id="rb-sheet-title">Draft published</h2>
                   <p className="rb-sheet-body" id="rb-sheet-body">{prResult.message}</p>
                   <div className="rb-sheet-actions">
-                    <button type="button" data-testid="switcher-pr-dismiss" className="btn btn--primary" onClick={() => { setFoldConfirm(false); setPrResult(null); }}>Got it</button>
+                    <button type="button" data-testid="switcher-pr-dismiss" className="btn btn--primary" onClick={() => { setFoldConfirm(false); setPrResult(null); setPrCopied(false); }}>Got it</button>
                   </div>
                 </>
               )

@@ -261,6 +261,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             oauth::github_sign_in,
             oauth::github_open_verification,
+            oauth::open_github_url,
             keychain::github_is_signed_in,
             keychain::github_sign_out,
             pick_directory,

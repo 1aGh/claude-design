@@ -35,6 +35,10 @@ export const signOut = () => invoke('github_sign_out');
 export const isSignedIn = () => invoke('github_is_signed_in');
 export const openVerification = () =>
   invoke('github_open_verification', { url: 'https://github.com/login/device' });
+/** Open a github.com URL (PR link, repo page) in the OS browser. Native only; the
+ *  Rust side host-locks it to github.com. Throws on an older desktop build without
+ *  the command — callers fall back to copy-to-clipboard. */
+export const openGitHubUrl = (url) => invoke('open_github_url', { url });
 /** Show the device code as soon as the shell has it. Returns an unlisten promise. */
 export const onDeviceCode = (cb) => listen('github://device-code', cb);
 /** Fire when sign-in completes (any surface) so other surfaces can flip live. cb(login). */

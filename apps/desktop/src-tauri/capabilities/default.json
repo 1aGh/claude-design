@@ -10,6 +10,7 @@
     "core:default",
     "allow-github-sign-in",
     "allow-github-open-verification",
+    "allow-open-github-url",
     "allow-github-is-signed-in",
     "allow-github-sign-out",
     "allow-pick-directory",

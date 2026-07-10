@@ -262,3 +262,17 @@ pub fn github_open_verification(url: String) -> Result<(), String> {
     }
     open::that(&url).map_err(|e| format!("Couldn't open the browser: {e}"))
 }
+
+/// `#[tauri::command]` — open a github.com URL (a PR link, repo page, …) in the OS
+/// browser. Host-locked to github.com: the prefix requires the char after the host to
+/// be `/`, so `github.com@evil` / `github.com.evil` can't smuggle another host, and we
+/// reject whitespace — the untrusted webview can't turn this into an arbitrary-URL
+/// opener (DDR-054 posture, same rationale as `github_open_verification`).
+#[tauri::command]
+pub fn open_github_url(url: String) -> Result<(), String> {
+    let allowed = url.starts_with("https://github.com/") && !url.contains(char::is_whitespace);
+    if !allowed {
+        return Err("Refusing to open a non-GitHub URL.".to_string());
+    }
+    open::that(&url).map_err(|e| format!("Couldn't open the browser: {e}"))
+}

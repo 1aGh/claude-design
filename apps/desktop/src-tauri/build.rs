@@ -9,6 +9,7 @@ fn main() {
             tauri_build::AppManifest::new().commands(&[
                 "github_sign_in",
                 "github_open_verification",
+                "open_github_url",
                 "github_is_signed_in",
                 "github_sign_out",
                 "pick_directory",
