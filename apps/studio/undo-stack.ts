@@ -256,17 +256,83 @@ function ensureStoreMap(): Map<string, UndoStackState> {
   return host.__maude_undo_stacks;
 }
 
-/** Load saved state for a canvas file. Returns empty state on miss. */
-export function loadStackState(canvasFile: string): UndoStackState {
-  return ensureStoreMap().get(canvasFile) ?? createUndoStackState();
+// ── Durable layer: sessionStorage (DDR-050 follow-up) ────────────────────────
+// The window/window.top Map above is the fast in-memory path, but it lives on a
+// window object — and in the segregated canvas origin (DDR-054) that IS the
+// canvas iframe's OWN window, which a full iframe reload destroys. An artboard
+// TEXT edit rewrites the `.tsx` → HMR reload of the canvas iframe → the Map is
+// wiped → Cmd+Z after the edit finds an empty stack. (Annotation edits write a
+// sidecar SVG, never reload the iframe, so their history survives — the exact
+// asymmetry users hit.) sessionStorage is per-ORIGIN and survives a reload, so
+// it's the durable backstop: every save mirrors here, every load falls back to
+// it when the Map misses (i.e. right after a reload rebuilt the window).
+const SS_PREFIX = 'maude-undo:';
+const SS_MAX_BYTES = 512 * 1024;
+
+function getSessionStore(): Storage | null {
+  try {
+    return typeof window !== 'undefined' && window.sessionStorage ? window.sessionStorage : null;
+  } catch {
+    return null; // sessionStorage can throw in sandboxed / disabled contexts
+  }
 }
 
-/** Persist state for a canvas file. */
+function isUndoStackState(v: unknown): v is UndoStackState {
+  return (
+    !!v &&
+    typeof v === 'object' &&
+    Array.isArray((v as UndoStackState).past) &&
+    Array.isArray((v as UndoStackState).future)
+  );
+}
+
+/** Load saved state for a canvas file. Returns empty state on miss. */
+export function loadStackState(canvasFile: string): UndoStackState {
+  const map = ensureStoreMap();
+  const cached = map.get(canvasFile);
+  if (cached) return cached;
+  // Map missed (fresh window after an iframe reload) — restore from the durable
+  // per-origin layer, then warm the Map so subsequent reads are in-memory.
+  try {
+    const raw = getSessionStore()?.getItem(SS_PREFIX + canvasFile);
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      if (isUndoStackState(parsed)) {
+        map.set(canvasFile, parsed);
+        return parsed;
+      }
+    }
+  } catch {
+    /* corrupt / unavailable — fall through to empty */
+  }
+  return createUndoStackState();
+}
+
+/** Persist state for a canvas file — to the in-memory Map AND the durable
+ *  sessionStorage layer, so it survives the HMR iframe reload a text edit
+ *  triggers. */
 export function saveStackState(canvasFile: string, state: UndoStackState): void {
   ensureStoreMap().set(canvasFile, state);
+  try {
+    const s = JSON.stringify(state);
+    if (s.length <= SS_MAX_BYTES) getSessionStore()?.setItem(SS_PREFIX + canvasFile, s);
+  } catch {
+    /* quota / serialization failure — the in-memory Map still holds it */
+  }
 }
 
 /** Test seam — wipe the cross-iframe store between bun:test cases. */
 export function _clearStackStore(): void {
   getStoreHost().__maude_undo_stacks = new Map();
+  try {
+    const ss = getSessionStore();
+    if (ss) {
+      for (let i = ss.length - 1; i >= 0; i--) {
+        const k = ss.key(i);
+        if (k?.startsWith(SS_PREFIX)) ss.removeItem(k);
+      }
+    }
+  } catch {
+    /* no sessionStorage in this runtime */
+  }
 }

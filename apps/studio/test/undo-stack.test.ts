@@ -208,4 +208,37 @@ describe('cross-iframe persistence (loadStackState / saveStackState)', () => {
     expect(reloaded.past.length).toBe(2);
     expect(reloaded.future.length).toBe(1);
   });
+
+  test('survives a WINDOW-STORE WIPE via sessionStorage (split-origin iframe reload)', () => {
+    // Split-origin canvas: the store lives on the iframe window, which a full
+    // reload (the HMR reload a `.tsx` text edit triggers) destroys. The durable
+    // sessionStorage layer must restore it. Install a fake window + sessionStorage.
+    const backing = new Map<string, string>();
+    const fakeSS = {
+      getItem: (k: string) => backing.get(k) ?? null,
+      setItem: (k: string, v: string) => backing.set(k, v),
+      removeItem: (k: string) => backing.delete(k),
+      key: (i: number) => [...backing.keys()][i] ?? null,
+      clear: () => backing.clear(),
+      get length() {
+        return backing.size;
+      },
+    };
+    const g = globalThis as unknown as { window?: unknown };
+    const prev = g.window;
+    g.window = { sessionStorage: fakeSS }; // no `top` → store host = this window
+    try {
+      _clearStackStore();
+      saveStackState('ui/Split.tsx', { past: [rec('kept')], future: [] });
+      expect(backing.size).toBe(1); // mirrored to sessionStorage
+      // Simulate the iframe reload: the window's in-memory Map is gone.
+      (g.window as { __maude_undo_stacks?: unknown }).__maude_undo_stacks = new Map();
+      const restored = loadStackState('ui/Split.tsx');
+      expect(restored.past.length).toBe(1);
+      expect(restored.past[0]?.label).toBe('kept');
+    } finally {
+      _clearStackStore();
+      g.window = prev;
+    }
+  });
 });
