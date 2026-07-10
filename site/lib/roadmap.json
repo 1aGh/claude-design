@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-09T22:01:11.374Z",
+  "generated": "2026-07-10T08:33:50.114Z",
   "currentPhase": null,
   "phases": [
     {
@@ -395,6 +395,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to the canvas-origin split (DDR-054 — the in-iframe overlays are untrusted, treat them differently from the shell), the CSS la...",
       "planPath": ".ai/plans/archive/feature-studio-maude-ds-redesign.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-unified-text-editing",
+      "title": "Feature: Unified text editing across artboards, canvases, and annotations",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. Every behavioral claim in this plan was measured in the real WKWebView via the desktop...",
+      "planPath": ".ai/plans/archive/feature-unified-text-editing.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1198,17 +1209,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-photo-editor.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-unified-text-editing",
-      "title": "Feature: Unified text editing across artboards, canvases, and annotations",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. Every behavioral claim in this plan was measured in the real WKWebView via the desktop...",
-      "planPath": ".ai/plans/feature-unified-text-editing.md",
       "archived": false,
       "phaseKey": null
     }

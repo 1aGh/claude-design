@@ -248,3 +248,25 @@ Per the repo (no global lint/typecheck gate for canvas runtime beyond Biome; DDR
 - DDR: "Unified text editing — custom caret + foreignObject→world-HTML" (the two mechanisms + why native-caret/foreignObject were rejected, grounded in the measured WKWebView baseline).
 - DDR: "desktop-e2e is the cross-platform verification substitute for WKWebView-specific canvas behavior" (why `scenario-runner`/Chromium is N/A; synthetic-event driving; user-visual gate for temporal blink).
 - Note for CLAUDE.md/`desktop-e2e` skill: `@wdio/tauri-service` MUST stay pinned `1.1.0` (1.2.0 reintroduced the broken `installMockSyncOverride` import — re-confirmed 2026-07-09); native WebDriver input does not penetrate the canvas iframe (drive via synthetic events inside the same-origin frame).
+
+---
+
+## Retro (closed 2026-07-10 via /flow:done)
+
+**Shipped:** all 8 phases (custom blinking caret, foreignObject→world-HTML annotation editors, caret-at-click, text-tool click-through, keyboard unification, `data-cd-editable` persistence gate + sibling-rewrite rundown, visual unification + smoke). Then a large **unrequested-but-user-driven follow-up** the plan never scoped: inline editing of variable-driven text (`.map()` items, component props fed `BEATS[k]`, local consts) via a source-tracing AST resolver, plus its undo/redo and reload-durable-undo fixes. DDR-158 / DDR-159 / DDR-160. Six commits on `main` (`97eb1643`, `d7362b50`, `e9b56d93`, `9e20383b`, `78c1ff43`, `247fff34`), not pushed.
+
+**What worked**
+- The measured-WKWebView-baseline discipline (the plan's opening rule) paid off repeatedly: every "it should work" static analysis that contradicted the real WKWebView (rAF throttling for occluded windows, foreignObject hit-testing, split-origin store loss) was resolved by trusting the measurement, not the reasoning.
+- Incremental commits + a clean concurrent-session split (staging only my hunks via `git apply --cached` on a filtered patch for the shared `app.jsx`) kept a busy shared `main` tree safe throughout.
+- Root-causing over patching: the "undo works in annotations but not artboards" asymmetry led straight to the split-origin store-on-iframe-window mechanism — a symptom-first patch would have missed it.
+- The security fan-out earned its keep: the attacker found a real MEDIUM (the durable-undo store as a persistent cross-canvas poison primitive + the ungated write relays) that the defender rated LOW; landing the three cheap fixes closed a write path strictly more dangerous than the already-guarded `select` path.
+
+**What didn't / friction**
+- **The harness can't verify the two things that mattered most to the user.** Custom-caret BLINK (temporal) and the split-origin undo fix (cross-origin iframe) are both un-observable from desktop-e2e (forces same-origin) and agent-browser (can't penetrate the cross-origin iframe). Both are shipped on unit-test + code-analysis confidence with an explicit user-visual gate. This is a structural gap in the verification story, not a one-off.
+- **Snapshot/restore of the concurrent session's uncommitted `dist/` bundle bit me:** on the final security rebuild I overwrote my own snapshot and had to `git checkout` `dist/*` to HEAD, discarding the concurrent session's uncommitted (regenerable) bundle. A dedicated snapshot path per rebuild, or never touching repo `dist/` at all (build straight into the staged `.app`), would avoid it.
+- **The e2e's same-origin mode masked a real split-origin bug** (undo persistence) — a green suite gave false confidence until the user reported it. Worth a same-origin-vs-split-origin note wherever the harness is trusted.
+
+**Change for next /plan or /execute**
+- When a feature is WKWebView/split-origin-specific, budget for the verification ceiling UP FRONT: name the user-visual gates in the plan's acceptance criteria (this plan did, for blink) and add a "same-origin harness can't see X" caveat next to every store/persistence/origin claim.
+- For any dev-server rebuild during execute, build into the staged `.app` resources directly and never round-trip through repo `dist/` on a shared tree.
+- A follow-up the user explicitly requests mid-execute (here: variable editing) is worth its own DDR even without a plan file — DDR-160 was written at /flow:done, which is late; recording the decision when it's made keeps the rationale fresh.
