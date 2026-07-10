@@ -38,6 +38,7 @@ export function buildBlock(designRel = '.design') {
     `${root}/_preflight.json`,
     `${root}/_locator.json`, // regenerable slug→path index
     `${root}/_export-history.json`,
+    `${root}/_generate-history.json`, // AI-media generation job ledger (regenerable — feature-ai-media-generation, DDR-16x)
     // Per-machine / per-user dirs.
     `${root}/_export-jobs/`, // background-export job byte store (regenerable — feature-background-export-notification-center)
     `${root}/_state/`, // binary CRDT logs (regenerable from hub)

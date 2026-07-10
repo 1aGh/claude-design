@@ -231,6 +231,49 @@
         }
       },
       "additionalProperties": false
+    },
+    "generation": {
+      "type": "object",
+      "description": "BYOK AI-media generation preferences (feature-ai-media-generation, DDR-16x). NON-SECRET ONLY — provider API keys are NEVER in this committed config; they live in the OS keychain (native) or ~/.config/maude/keys.json mode 0600 (browser). This block only carries routing/UI preferences. Hot-reloadable — Settings saves take effect without a server restart.",
+      "properties": {
+        "defaultImageProvider": {
+          "type": "string",
+          "description": "Provider id used when an image-generation request leaves the provider unspecified (e.g. 'gemini', 'fal'). Must be a registered provider that supports the image modality.",
+          "default": "gemini"
+        },
+        "defaultModels": {
+          "type": "object",
+          "description": "Per-provider default model id (e.g. { \"gemini\": \"gemini-2.5-flash-image\" }). Used when a request leaves the model unspecified.",
+          "additionalProperties": { "type": "string" },
+          "default": {}
+        },
+        "preferLocalWhenAvailable": {
+          "type": "boolean",
+          "description": "When a local runtime (Ollama / ComfyUI / Draw Things, post-v1) is detected on loopback, prefer it over a cloud provider for the same modality (free, offline, private). Inert until local engines ship (Phase 5).",
+          "default": false
+        },
+        "providers": {
+          "type": "object",
+          "description": "Per-provider non-secret toggles keyed by provider id. `enabled: false` hides a provider from the generate UI even if a key is present. `localEndpoint` overrides the default host:port for a local runtime.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "description": "Whether this provider is offered in the generate UI. Default true.",
+                "default": true
+              },
+              "localEndpoint": {
+                "type": "string",
+                "description": "Override host:port for a local runtime provider (e.g. '127.0.0.1:11434' for Ollama). Ignored for cloud providers."
+              }
+            },
+            "additionalProperties": false
+          },
+          "default": {}
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

@@ -222,6 +222,11 @@ export function createWs(
   // clients only — same privileged-data class as the rest of this feed.
   ctx.bus.on('export:job', (job: unknown) => broadcast({ type: 'export:job', payload: job }));
 
+  // feature-ai-media-generation (DDR-16x) — generation job queue state changes
+  // (queued → running → done/failed). Same privileged-data class + snapshot
+  // shape as export:job; the notification center reuses the export-center chrome.
+  ctx.bus.on('generate:job', (job: unknown) => broadcast({ type: 'generate:job', payload: job }));
+
   // HMR broadcaster — turns fs:any change events into `canvas-hmr` messages.
   // The iframe-side client (in _shell.html) decides reload strategy from `mode`.
   // Uses broadcastHmr so the segregated canvas origin's HMR-only sockets get it.

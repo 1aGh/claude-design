@@ -2,6 +2,23 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "ai-media-generation",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Generate images with your own AI key",
+      "summary": "Bring your own Google (Nano Banana) API key and generate images right inside Maude — from the new Generate action (⌘K → \"Generate with AI\") or the command line. Add your key under File → Settings — AI generation (⌘,); it's stored only on your machine, sent straight to the provider, and never touches a canvas or your git history. Every generated image lands in your assets as a normal file you can place, edit in the Photo tab, and export. Audio and video generation are on the way.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour=\"menubar-file\"]",
+          "title": "AI generation settings",
+          "body": "Open File → Settings — AI generation (⌘,) to add your provider key, then Generate with AI from the ⌘K palette.",
+          "placement": "bottom"
+        }
+      ]
+    },
+    {
       "id": "photo-editor",
       "version": "0.43.0",
       "date": "2026-07-10",

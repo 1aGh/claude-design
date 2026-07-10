@@ -22,7 +22,9 @@ import OnboardingWizard from './panels/OnboardingWizard.jsx';
 import { ReadinessDialog } from './panels/ReadinessList.jsx';
 import TimelinePanel from './panels/TimelinePanel.jsx';
 import { parseCompTimeline } from './panels/timeline-parse.js';
+import GenerateDialog from './generate-dialog.jsx';
 import RepoBranchSwitcher from './panels/RepoBranchSwitcher.jsx';
+import SettingsPanel from './panels/SettingsPanel.jsx';
 import StickerPicker from './panels/StickerPicker.jsx';
 import { PhotoKnobs } from './photo-knobs.jsx';
 import {
@@ -2591,6 +2593,10 @@ function FileDropdown({ onAction, onClose, hasCanvas }) {
         { id: 'export', label: 'Export…', shortcut: '⇧⌘E' },
         { id: 'handoff', label: 'Handoff to production', shortcut: '⇧⌘H' },
         { sep: true },
+        // feature-ai-media-generation (DDR-16x) — BYOK generate action + settings.
+        { id: 'generate', label: 'Generate with AI…' },
+        { id: 'settings', label: 'Settings — AI generation…', shortcut: '⌘,' },
+        { sep: true },
         { id: 'reload', label: 'Reload canvas', shortcut: '⌘R', disabled: !hasCanvas },
         { id: 'close', label: 'Close canvas', disabled: !hasCanvas },
       ]}
@@ -2678,6 +2684,8 @@ function Menubar({
   onNewCanvas,
   onAssembleVideo,
   onOpenExport,
+  onOpenSettings,
+  onOpenGenerate,
   onReload,
   onCloseCanvas,
   onInsertArtboard,
@@ -2885,6 +2893,8 @@ function Menubar({
             else if (id === 'assemble') onAssembleVideo?.();
             else if (id === 'export') onOpenExport?.('export');
             else if (id === 'handoff') onOpenExport?.('handoff');
+            else if (id === 'generate') onOpenGenerate?.();
+            else if (id === 'settings') onOpenSettings?.();
             else if (id === 'reload') onReload?.();
             else if (id === 'close') onCloseCanvas?.();
           }}
@@ -6943,6 +6953,10 @@ function App() {
   // T5/T6 (Plan C) — shell-level export/handoff dialog + inspector panel state.
   // The palette (T4) drives them; the dialog (T5) + panel (T6) consume them.
   const [exportDialog, setExportDialog] = useState(null); // null | { mode: 'export'|'handoff', scope? }
+  // feature-ai-media-generation (DDR-16x) — BYOK provider-key Settings modal +
+  // the AI generate action.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [generateOpen, setGenerateOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   // DDR-148 — Timeline panel (right dock) for scrubbing a video-comp. `activeComps`
   // is populated from the iframe's `timeline-comps` announce; `timelineFrame` from
@@ -10110,6 +10124,13 @@ function App() {
         setExportDialog({ mode: 'handoff' });
         return;
       }
+      // Cmd+, — open Settings (AI generation keys). The platform convention for
+      // a settings/preferences surface (feature-ai-media-generation, DDR-16x).
+      if (meta && !e.shiftKey && !e.altKey && e.key === ',') {
+        e.preventDefault();
+        setSettingsOpen(true);
+        return;
+      }
       // Cmd+Shift+T — toggle the Timeline (video-comp scrub) dock.
       if (meta && e.shiftKey && (e.key === 't' || e.key === 'T')) {
         e.preventDefault();
@@ -10293,6 +10314,21 @@ function App() {
         kbd: '⇧⌘H',
         run: () => setExportDialog({ mode: 'handoff' }),
       },
+      {
+        id: 'generate',
+        group: 'Canvas',
+        label: 'Generate with AI…',
+        icon: 'sparkle',
+        run: () => setGenerateOpen(true),
+      },
+      {
+        id: 'settings',
+        group: 'Canvas',
+        label: 'Settings — AI generation…',
+        icon: 'sliders',
+        kbd: '⌘,',
+        run: () => setSettingsOpen(true),
+      },
       // ── View ────────────────────────────────────────────────────────────
       {
         id: 'system',
@@ -10473,6 +10509,8 @@ function App() {
           }}
           onAssembleVideo={assembleVideo}
           onOpenExport={(mode) => setExportDialog({ mode })}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenGenerate={() => setGenerateOpen(true)}
           onReload={reloadActive}
           onCloseCanvas={() => activePath && closeTab(activePath)}
           presence={
@@ -11072,6 +11110,8 @@ function App() {
           onClose={() => setExportDialog(null)}
         />
       )}
+      {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+      {generateOpen && <GenerateDialog onClose={() => setGenerateOpen(false)} />}
       {assetPickerReq && (
         <AssetPicker
           designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}

@@ -20,6 +20,22 @@ import { type Format, isFormat, isScope, type Scope } from './exporters/index.ts
 import { type ExportJobQueue, ExportQueueFullError } from './exporters/jobs.ts';
 import type { ActiveJsonShape } from './exporters/scope.ts';
 import { createFootageStore, FOOTAGE_MAX_BYTES } from './footage-store.ts';
+import { localizeGenAsset } from './generation/download.ts';
+import { type GenerationJobQueue, GenerationQueueFullError } from './generation/jobs.ts';
+import {
+  configuredProviders,
+  deleteProviderKey,
+  getProviderKey,
+  isConfigured,
+  setProviderKey,
+} from './generation/keys.ts';
+import {
+  createAdapter,
+  getProviderDescriptor,
+  hasProvider,
+  listProviders,
+} from './generation/registry.ts';
+import { validateGenRequest } from './generation/types.ts';
 import { createGitEndpoints } from './git/endpoints.ts';
 import { gitShowFile } from './git/service.ts';
 import { createGitHubEndpoints } from './github/endpoints.ts';
@@ -602,7 +618,8 @@ export function createHttp(
   api: Api,
   inspect: Inspect,
   ai: AiActivity,
-  exportJobs: ExportJobQueue
+  exportJobs: ExportJobQueue,
+  generateJobs: GenerationJobQueue
 ): Http {
   // Cache invalidation — when canvas-lib changes, every cached canvas bundle
   // is stale because canvas-lib is inlined into each one via the resolver
@@ -2326,6 +2343,135 @@ export function createHttp(
           'Cache-Control': 'no-store',
         },
       });
+    },
+
+    // feature-ai-media-generation (DDR-16x) — the background AI-media generation
+    // job queue. The privileged sibling of /_api/export-jobs: MAIN-ORIGIN ONLY
+    // (absent from CANVAS_SAFE_API + startCanvasServer's routes — the untrusted
+    // canvas iframe must never reach a route that resolves a provider KEY and
+    // makes an outbound provider call; it sees only the produced /assets/<sha8>).
+    // loopback-Host gated on every method; the mutating POST is additionally
+    // sameOriginWrite CSRF-gated. See DDR-16x + the canvas-origin-gate test.
+    '/_api/generate-jobs': async (req: Request) => {
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method === 'GET') {
+        return Response.json(
+          { jobs: generateJobs.list() },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<Record<string, unknown>>(req, 64 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const check = validateGenRequest(body);
+      if (!check.ok) return new Response(check.errors.join('; '), { status: 400 });
+      const genReq = body as unknown as import('./generation/types.ts').GenRequest;
+      if (!hasProvider(genReq.provider))
+        return new Response(`unknown provider: ${genReq.provider}`, { status: 400 });
+      const descriptor = getProviderDescriptor(genReq.provider);
+      if (descriptor && !descriptor.modalities.includes(genReq.modality))
+        return new Response(`provider ${genReq.provider} cannot do ${genReq.modality}`, {
+          status: 400,
+        });
+
+      try {
+        const { id } = generateJobs.enqueue({
+          provider: genReq.provider,
+          modality: genReq.modality,
+          model: genReq.model,
+          // The job's work: resolve the key AT RUN TIME (never cached), build the
+          // per-request adapter context with the saveAsset-backed localizer, and
+          // submit → result → localize each produced asset into assets/<sha8>.
+          run: async (signal) => {
+            const apiKey = await getProviderKey(genReq.provider);
+            const adapter = createAdapter(genReq.provider, {
+              apiKey,
+              signal,
+              localize: (asset) => localizeGenAsset(asset, { saveAsset: api.saveAsset }),
+            });
+            const job = await adapter.submit(genReq);
+            const result = await job.result();
+            const assets: string[] = [];
+            for (const asset of result.assets) {
+              assets.push(await localizeGenAsset(asset, { saveAsset: api.saveAsset }));
+            }
+            return { assets, usage: result.usage };
+          },
+        });
+        // Don't await the run — the job's own status (GET + the generate:job WS
+        // push) is the completion signal. A failure is recorded on the job
+        // record, so swallow the rejection here to avoid an unhandled rejection.
+        return Response.json(
+          { jobId: id },
+          { status: 202, headers: { 'Cache-Control': 'no-store' } }
+        );
+      } catch (err) {
+        if (err instanceof GenerationQueueFullError)
+          return new Response(err.message, { status: 429 });
+        throw err;
+      }
+    },
+
+    // feature-ai-media-generation (DDR-16x) — inert provider catalogue for the
+    // Settings panel + generate dialog: descriptors (id/label/modalities/notes/
+    // keyUrl) + presence-only `configured` flags. NO secret ever crosses here.
+    // MAIN-ORIGIN ONLY, loopback-gated.
+    '/_api/generate/providers': async (req: Request) => {
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      const configured = new Set(configuredProviders());
+      return Response.json(
+        {
+          providers: listProviders().map((d) => ({ ...d, configured: configured.has(d.id) })),
+        },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    // feature-ai-media-generation (DDR-16x) — key management. WRITE-ONLY from the
+    // main origin: POST sets a key, DELETE removes one, GET reports presence only
+    // ({configured:[...]}) — a key value is NEVER echoed back (mirrors
+    // github_is_signed_in). MAIN-ORIGIN ONLY, loopback + sameOriginWrite gated.
+    '/_api/generate/keys': async (req: Request) => {
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method === 'GET') {
+        return Response.json(
+          { configured: configuredProviders() },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{ provider?: unknown; key?: unknown }>(req, 16 * 1024);
+      if (!body || typeof body.provider !== 'string')
+        return new Response('provider required', { status: 400 });
+      if (!hasProvider(body.provider))
+        return new Response(`unknown provider: ${body.provider}`, { status: 400 });
+      try {
+        if (req.method === 'DELETE') {
+          deleteProviderKey(body.provider);
+          return Response.json({ configured: false }, { headers: { 'Cache-Control': 'no-store' } });
+        }
+        if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+        if (typeof body.key !== 'string' || !body.key.trim())
+          return new Response('key required', { status: 400 });
+        setProviderKey(body.provider, body.key);
+        // Presence flag only — never the key. Deliberately does not read the
+        // value back so a proxy/log between here and the client can't capture it.
+        return Response.json(
+          { configured: isConfigured(body.provider) },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      } catch (err) {
+        return new Response(err instanceof Error ? err.message : 'key write failed', {
+          status: 400,
+        });
+      }
     },
 
     '/_canvas-state': async (req: Request) => {

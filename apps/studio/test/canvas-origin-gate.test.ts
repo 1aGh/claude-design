@@ -175,6 +175,14 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // untrusted canvas origin must never read/write the director's analysis —
         // a GET here 403s at the gate, not 405 from a reached handler.
         '/_api/footage',
+        // feature-ai-media-generation (DDR-16x) — the generation job queue +
+        // provider catalogue + key routes are MAIN-ORIGIN ONLY (they resolve a
+        // provider KEY and make outbound provider calls). The untrusted canvas
+        // origin must never reach them — it sees only the produced /assets/<sha8>.
+        // A GET here 403s at the gate, not 405/200 from a reached handler.
+        '/_api/generate-jobs',
+        '/_api/generate/providers',
+        '/_api/generate/keys',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);

@@ -55,7 +55,23 @@ export interface DevServerConfig {
   newCanvasDir: string;
   newComponentDir: string;
   linkedHub?: LinkedHub;
+  /**
+   * feature-ai-media-generation (DDR-16x) — BYOK generation preferences.
+   * NON-SECRET ONLY: provider keys live in the OS keychain / ~/.config/maude/
+   * keys.json (0600), NEVER here. Hot-reloadable via the full in-place cfg swap
+   * in reloadConfig (only designRoot + linkedHub are boot-pinned). See
+   * config.schema.json for the field contract.
+   */
+  generation?: GenerationConfig;
   _source: ConfigSource;
+}
+
+/** Non-secret AI-media generation preferences (DDR-16x). Keys are NOT here. */
+export interface GenerationConfig {
+  defaultImageProvider?: string;
+  defaultModels?: Record<string, string>;
+  preferLocalWhenAvailable?: boolean;
+  providers?: Record<string, { enabled?: boolean; localEndpoint?: string }>;
 }
 
 const DEFAULT_CONFIG: Omit<DevServerConfig, '_source'> = {

@@ -1652,3 +1652,131 @@
   background: var(--u-accent);
   color: var(--u-accent-fg);
 }
+
+/* ── Settings — AI generation (feature-ai-media-generation, DDR-16x) ─────── */
+.st-settings-intro {
+  font-size: var(--type-xs, 12px);
+  color: var(--fg-3);
+  line-height: 1.5;
+  margin: 6px 0 12px;
+}
+.st-settings-intro code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  color: var(--fg-2);
+}
+.st-provider-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.st-provider-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.st-provider-name {
+  font-family: var(--font-mono);
+  font-size: var(--type-sm, 13px);
+  color: var(--fg-1);
+  font-weight: 600;
+}
+.st-provider-card .st-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--fg-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill, 999px);
+  padding: 1px 7px;
+}
+.st-provider-card .st-pill.is-local {
+  color: var(--accent);
+  border-color: var(--accent-muted, var(--accent));
+}
+.st-provider-configured {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--accent);
+}
+.st-provider-modalities {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  margin-top: 4px;
+}
+.st-provider-notes {
+  font-size: 11px;
+  color: var(--fg-3);
+  line-height: 1.5;
+  margin-top: 6px;
+}
+.st-provider-keylink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: none;
+  margin-top: 6px;
+}
+.st-provider-keylink:hover {
+  text-decoration: underline;
+}
+.st-provider-keyrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.st-provider-keyinput {
+  flex: 1;
+  min-width: 0;
+}
+.st-provider-status {
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+/* ── Generate dialog (feature-ai-media-generation, DDR-16x) ─────────────── */
+.st-gen-prompt {
+  width: 100%;
+  resize: vertical;
+  min-height: 60px;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  margin-bottom: 10px;
+}
+.st-gen-go {
+  color: var(--accent);
+  border-color: var(--accent-muted, var(--accent));
+}
+.st-gen-result {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+}
+.st-gen-thumb {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+}
+.st-gen-result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

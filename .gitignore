@@ -19,6 +19,7 @@ dev-server/.cache/
 .design/_locator.json
 .design/_export-history.json
 .design/_export-jobs/
+.design/_generate-history.json
 .design/_history/
 .design/_trash/
 .design/_draw/

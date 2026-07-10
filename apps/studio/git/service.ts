@@ -209,7 +209,9 @@ function underPrefix(filepath: string, prefix: string): boolean {
  *      double-transports through git. */
 function isMaudeRuntimeState(p: string): boolean {
   return (
-    /(^|\/)_(?:server|active|sync|preflight|locator|export-history)\.json$/.test(p) ||
+    /(^|\/)_(?:server|active|sync|preflight|locator|export-history|generate-history)\.json$/.test(
+      p
+    ) ||
     /(^|\/)_server\.(?:lock|log)$/.test(p) ||
     /(^|\/)_(?:history|trash|draw|photo|smoke|canvas-state|state|chat|comments|untrusted|export-jobs)(?:\/|$)/.test(
       p

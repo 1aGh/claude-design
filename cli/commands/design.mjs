@@ -60,6 +60,11 @@ const BIN_VERBS = new Set([
   // reads the clip as a file:// resource).
   'ingest-footage',
   'probe-footage',
+  // feature-ai-media-generation (Phase 0, DDR-16x). `generate` is the thin
+  // non-browser BYOK verb (curl → /_api/generate-jobs → poll → print the
+  // produced /assets/<sha8>.<ext>). The provider call happens server-side (the
+  // sidecar resolves the key from the keychain / ~/.config/maude/keys.json).
+  'generate',
 ]);
 
 // Bin verbs that boot the dev-server (directly, or by shelling into server-up.sh).
