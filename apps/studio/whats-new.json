@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "unified-text-editing",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Edit any text on the canvas, inline",
+      "summary": "Every kind of text on the canvas now edits the same predictable way — click to place a blinking caret, type, Enter to confirm, Shift+Enter for a new line — across an element's copy, shape and sticky labels, standalone text, and section titles. Text that's filled in from a list or variable (like cards built from data) is now editable in place too: double-click and change the words directly, and it's traced back to the right source. Only genuinely computed text still sends you to chat or /design:edit.",
+      "surface": "design-ui"
+    },
+    {
       "id": "whiteboard-annotation-improvements",
       "version": null,
       "date": null,

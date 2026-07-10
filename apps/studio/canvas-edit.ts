@@ -387,6 +387,15 @@ export async function editText(
       });
     }
     const source = await file.text();
+    // Byte cap before the AST walk (ethical-hacker F-C) — a real canvas is well
+    // under this; a pathologically large attacker-authored file that would make
+    // the resolver's per-candidate walk expensive is refused up front.
+    if (source.length > 4_000_000) {
+      throw new CanvasEditError(`canvas too large to edit inline (${source.length} bytes)`, {
+        canvas: canvasAbsPath,
+        id,
+      });
+    }
     const next = applyTextEdit(canvasAbsPath, source, id, text, opts);
     if (next.source === source) return { source, delta: 0, changed: false };
     const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
@@ -817,6 +826,13 @@ function resolveDynamicTextSpan(
     candidates = init ? [init] : null;
   }
   if (!candidates) return null;
+  // Complexity cap (ethical-hacker F-C): each candidate runs a full-program
+  // walkAst per resolution step, so an attacker-authored canvas with a huge
+  // array of `{identifier}` items could make this O(N × program). A real
+  // `.map()`/usage list is tiny; anything past the cap is refused (a single
+  // edit couldn't confidently target one of thousands of slots anyway).
+  const MAX_CANDIDATES = 1000;
+  if (candidates.length > MAX_CANDIDATES) return null;
 
   // Resolve each candidate to a StringLiteral (applying `.field` when present).
   const lits: Array<AnyNode | null> = candidates.map((c) => {

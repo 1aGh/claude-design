@@ -8265,7 +8265,22 @@ function App() {
       // canvas must not be able to plant a selection with no user gesture. The
       // user can only click the visible active canvas, so a non-active source is
       // never a legitimate selection.
-      if (m.dgn === 'select' || m.dgn === 'select-set' || m.dgn === 'clear-select') {
+      //
+      // The SAME gate now covers the privileged SOURCE-WRITE relays — `edit-text`
+      // (inline text commit) and `apply-edit` (undo/redo re-application). Both
+      // ride into a main-origin `.tsx` rewrite; a write path is strictly more
+      // dangerous than a selection, yet was previously ungated (ethical-hacker
+      // F-B, DDR-160 follow-up). A background/synced untrusted canvas (DDR-054)
+      // must not drive a gestureless write into another canvas — and inline edits
+      // + Cmd+Z always originate in the ACTIVE canvas the user is looking at, so
+      // a non-active source is never legitimate here either.
+      if (
+        m.dgn === 'select' ||
+        m.dgn === 'select-set' ||
+        m.dgn === 'clear-select' ||
+        m.dgn === 'edit-text' ||
+        m.dgn === 'apply-edit'
+      ) {
         const activeWin =
           activePath && activePath !== SYSTEM_TAB
             ? iframesRef.current.get(activePath)?.contentWindow

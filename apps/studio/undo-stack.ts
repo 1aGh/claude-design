@@ -277,12 +277,38 @@ function getSessionStore(): Storage | null {
   }
 }
 
+// DDR-054 §2g — strip dangerous keys at parse time so a poisoned sessionStorage
+// entry can't seed `__proto__` / `constructor` / `prototype` own-properties into
+// a rehydrated record (mirrors the sync-lane reviver, sync/codec.ts).
+function parseJsonSafe(s: string): unknown {
+  return JSON.parse(s, (key, value) => {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') return undefined;
+    return value;
+  });
+}
+
+/** A well-formed persisted record — `kind`/`label` strings, a `payload`
+ *  property present. Rejects a malformed/poisoned sessionStorage entry BEFORE
+ *  it can reach the command rebuilder (defence-in-depth on the durable layer —
+ *  the apply boundary is already path-contained + inert-write-only). */
+function isCommandRecord(v: unknown): v is CommandRecord {
+  return (
+    !!v &&
+    typeof v === 'object' &&
+    typeof (v as CommandRecord).kind === 'string' &&
+    typeof (v as CommandRecord).label === 'string' &&
+    'payload' in (v as object)
+  );
+}
+
 function isUndoStackState(v: unknown): v is UndoStackState {
   return (
     !!v &&
     typeof v === 'object' &&
     Array.isArray((v as UndoStackState).past) &&
-    Array.isArray((v as UndoStackState).future)
+    Array.isArray((v as UndoStackState).future) &&
+    (v as UndoStackState).past.every(isCommandRecord) &&
+    (v as UndoStackState).future.every(isCommandRecord)
   );
 }
 
@@ -296,7 +322,7 @@ export function loadStackState(canvasFile: string): UndoStackState {
   try {
     const raw = getSessionStore()?.getItem(SS_PREFIX + canvasFile);
     if (raw) {
-      const parsed = JSON.parse(raw) as unknown;
+      const parsed = parseJsonSafe(raw);
       if (isUndoStackState(parsed)) {
         map.set(canvasFile, parsed);
         return parsed;
