@@ -579,23 +579,21 @@ function isTrustedTokenHost(url: string): boolean {
   }
 }
 
-/** True when the repo's LOCAL config declares a `url.<base>.insteadOf` / `pushInsteadOf`
- *  rewrite. Only the SYSTEM git engine honors these (iso ignores them), and a rewrite
- *  means the `remote.url` we validated is NOT the URL git will actually dial — a poisoned
- *  `.git/config` (rides a clone/folder, no file-review sees it) could redirect a git op
- *  to an attacker host (verify re-review — the surviving instance of the F1 "validate-here
- *  / connect-there" class). `--local` so a user's OWN global ssh-rewrite doesn't false-
- *  positive. The scoped token header already means no PAT leaks; the unattended probe
- *  refuses on top of that so this zero-click path can't become a tokenless beacon. */
-async function configHasUrlRewrite(dir: string): Promise<boolean> {
-  if (!(await systemGitAvailable())) return false; // iso engine ignores insteadOf
-  const r = await runGit(dir, [
-    'config',
-    '--local',
-    '--get-regexp',
-    '^url\\..*\\.(insteadof|pushinsteadof)$',
-  ]);
-  return r.code === 0 && r.stdout.trim().length > 0;
+/** The URL git will ACTUALLY dial for `remote`, after any `url.<base>.insteadOf`
+ *  rewrite — the URL that must be host-validated, NOT the raw `remote.url`. A poisoned
+ *  `.git/config` `url.<attacker>.insteadOf = https://github.com/` (rides a clone/folder,
+ *  no file-review sees it) makes the SYSTEM engine dial the attacker even though
+ *  `remote.url` is a clean github URL; this is the surviving instance of the F1
+ *  "validate-here / connect-there" class (verify re-review). `git ls-remote --get-url`
+ *  applies insteadOf and prints WITHOUT touching the network. iso-git ignores insteadOf,
+ *  so when there's no system git the raw URL IS the effective one. */
+async function effectiveRemoteUrl(dir: string, remote: string): Promise<string> {
+  const raw = await readRemoteUrl(dir, remote);
+  if (!raw) return ''; // no remote → 'none'
+  if (!(await systemGitAvailable())) return raw;
+  const r = await runGit(dir, [...HARDENED_REMOTE_FLAGS, 'ls-remote', '--get-url', remote]);
+  const eff = r.code === 0 ? r.stdout.trim() : '';
+  return eff || raw;
 }
 
 /** Defense-in-depth for any `runGit` that resolves a config remote URL: disable the
@@ -956,7 +954,7 @@ async function resolveNetWriteRoute(
   remote: string,
   token: string | undefined
 ): Promise<NetWriteRoute> {
-  const url = await readRemoteUrl(dir, remote);
+  const url = await effectiveRemoteUrl(dir, remote); // post-insteadOf — the URL git dials
   const transport = classifyRemoteUrl(url);
   if (transport === 'none') return { via: 'legacy' };
   // Command-executing transports (ext::/fd::/transport:: — the `::` helpers) are RCE:
@@ -1256,7 +1254,7 @@ export async function gitFetchRemote(
   // binary — but a command-executing (`ext::`) / local (`file://`) URL must be
   // REFUSED, never handed to `git fetch` (it would run as the user). And the GitHub
   // token may only ride a github.com HTTPS request, never an attacker-chosen host.
-  const url = await readRemoteUrl(dir, remote);
+  const url = await effectiveRemoteUrl(dir, remote); // post-insteadOf — the URL git dials
   const transport = classifyRemoteUrl(url);
   if (transport === 'none') return { ok: false, error: 'This project has no remote to refresh.' };
   if (transport === 'unsafe')
@@ -1791,7 +1789,7 @@ async function remoteAheadBehindUncached(
   // remote URL before touching the git binary. A command-executing (`ext::`) or
   // local (`file://`) URL is refused (return 0/0, no spawn); the token rides only a
   // github.com HTTPS request, never an attacker-chosen host.
-  const url = await readRemoteUrl(dir, remote);
+  const url = await effectiveRemoteUrl(dir, remote); // post-insteadOf — the URL git dials
   const transport = classifyRemoteUrl(url);
   if (transport === 'none' || transport === 'unsafe') return { ahead: 0, behind: 0 };
   const trustedHttp = transport === 'http' && isTrustedTokenHost(url);
@@ -1803,11 +1801,6 @@ async function remoteAheadBehindUncached(
   // so it only ever protected the now-dead iso path). github-only for http; ssh uses the
   // user's own key (DDR-131-accepted, same as the explicit Refresh).
   if (transport === 'http' && !trustedHttp) return { ahead: 0, behind: 0 };
-  // The raw `url` we validated is NOT necessarily the URL git will dial: a poisoned
-  // `url.<attacker>.insteadOf` config rewrite (system-engine-only) redirects this
-  // UNATTENDED probe to an attacker host. The scoped header means no PAT leaks, but
-  // refuse anyway so the zero-click background poll can't become a tokenless beacon.
-  if (await configHasUrlRewrite(dir)) return { ahead: 0, behind: 0 };
   if ((await systemGitAvailable()) || transport === 'ssh')
     return remoteAheadBehindSystem(dir, trustedHttp ? token : undefined, remote, branch);
   // iso engine, HTTP(S) to github (trustedHttp guaranteed by the guard above).
