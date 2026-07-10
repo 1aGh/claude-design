@@ -264,19 +264,19 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 - **Gotcha**: This is the task the whole "build headless bg-removal in v1" decision hinges on — budget real investigation time for the agent-browser attribute-readback primitive before assuming it exists.
 - **Validate**: `bash apps/studio/bin/photo-bg-remove.sh --asset assets/<sha8>.png --root "$REPO"` against a running server; confirm it prints a valid new asset path and the harness canvas cleans up (or is gitignored under `_photo/`).
 
-#### Task 19: CREATE `apps/studio/bin/photo-adjust.sh`
+#### ✅ Task 19: CREATE `apps/studio/bin/photo-adjust.sh` — completed 2026-07-10 (thin curl→/_api/photo-edit verb; E2E-VERIFIED live: set/merge/reset + invalid-asset reject against a booted sandbox server)
 
 - **Do**: A thin non-browser verb: validates args, `curl`s (or Bun-fetches) directly to the running server's `/_api/photo-edit` route to write parametric edits (adjustments/duotone/grain/pattern/mask) — no harness canvas, no agent-browser, since there's no ML inference step here.
 - **Gotcha**: Document explicitly in this script's header comment why it's simpler than `photo-bg-remove.sh` (no browser round-trip needed) — future maintainers shouldn't "fix" the asymmetry by making this one heavier too.
 - **Validate**: `bash apps/studio/bin/photo-adjust.sh --asset assets/<sha8>.png --duotone "#1a1a2e,#e94560" --root "$REPO"` against a running server; confirm the sidecar updates and the live canvas reflects it.
 
-#### Task 20: REGISTER the new verbs
+#### ◐ Task 20: REGISTER the new verbs — `photo-adjust` registered in BIN_VERBS + dispatch verified (`maude design photo-adjust --help`). `photo-bg-remove` registration deferred to Stage D (registered alongside its script, to avoid a dangling verb).
 
 - **Do**: Add `photo-bg-remove` and `photo-adjust` to `BIN_VERBS` (`cli/commands/design.mjs:28-48`).
 - **Gotcha**: While here, fix the three already-stale verb lists CLAUDE.md/`design.mjs`/`help.mjs` flagged during research (missing `chat-open`, `ensure-browser`, `draw-build`, etc.) — small drive-by cleanup, same file being touched anyway.
 - **Validate**: `node cli/bin/maude.mjs design photo-adjust --help` (or equivalent) resolves without a 404.
 
-#### Task 21: CREATE `/design:photo` slash command
+#### ✅ Task 21: CREATE `/design:photo` slash command — completed 2026-07-10 (plugins/design/commands/photo.md + CATEGORIES daily row; parametric path E2E-proven; --remove-bg documented → dispatches to the Stage-D photo-bg-remove verb; passes reachability guard)
 
 - **Do**: New `plugins/design/commands/photo.md`, category `daily`, following `draw.md`'s step structure: pre-flight (`bootstrap-check` → `prep` → `server-up`) → resolve target (`--selector`/`--asset`) → dispatch to `photo-bg-remove` and/or `photo-adjust` per the requested flags (`--remove-bg`, `--adjust key=value`, `--duotone c1,c2`, `--grain n`, `--pattern type`, `--mask preset`) → report. Update `plugins/design/CATEGORIES.md`'s daily table and `/design:help`'s index.
 - **Validate**: `/design:photo --remove-bg --asset assets/<sha8>.png` end-to-end in a scratch project.

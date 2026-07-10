@@ -47,6 +47,10 @@ const BIN_VERBS = new Set([
   'chat-open',
   'ensure-browser',
   'fetch-asset',
+  // feature-photo-editor (Stage G). `photo-adjust` is the thin non-browser
+  // parametric verb (curl → /_api/photo-edit). `photo-bg-remove` (the client-side
+  // @imgly ML harness) is registered alongside its script when Stage D lands.
+  'photo-adjust',
 ]);
 
 // Bin verbs that boot the dev-server (directly, or by shelling into server-up.sh).
