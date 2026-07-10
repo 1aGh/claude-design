@@ -1,5 +1,51 @@
 # @1agh/maude
 
+## 0.43.0
+
+### Minor Changes
+
+- 009b114: Publish, Get-latest, and "Add to Shared version" now work on SSH remotes and open a pull request on protected branches, plus a proactive "Get latest" nudge in the dock.
+
+  - **SSH remotes work.** Publishing, getting the latest, and adding a draft to the Shared version over an `ssh://` / `git@github.com:…` remote no longer fail with `unrecognized transport protocol: "ssh"`. The write paths now route SSH remotes through the system `git` binary (using your own key), matching how Refresh already worked — a plain file/local remote is handled too, and a non-github or command-executing remote is refused.
+  - **"Add to Shared version" opens a pull request.** On a GitHub project, adding a draft to the Shared version pushes your draft branch and opens a pull request into `main` — the merge happens on GitHub after review, so it works even when `main` is protected and a direct push would be rejected. The pull-request link is shown right in the dialog (opens in your browser, or copies to the clipboard as a fallback). A local-only project still merges directly. If Publish hits a protected branch, the message now points you at the pull-request flow instead of showing a raw git error.
+  - **Proactive "Get latest" nudge.** When a teammate publishes and the shared version moves ahead, a blue "Get latest — N new on main" button now appears in the bottom dock (not just buried in the Changes panel), so you're told to pull without hunting for it. Clicking it gets the latest; a content conflict opens the visual resolver.
+
+- 247fff3: Unified text editing across every canvas surface, with inline editing of variable-driven text.
+
+  - Every editable text surface — an artboard element's copy, a shape's text, a sticky, a standalone text-tool label, and a section title — now behaves like one predictable WYSIWYG editor: click to place a caret, type or select normally, Enter to confirm, Shift+Enter for a newline, with a visible blinking caret everywhere and no ghosting or overlap.
+  - The four annotation editors were moved off SVG `<foreignObject>` to plain HTML in the world div (the `MediaRefPlayers` pattern), so clicks hit-test correctly at any zoom — caret-at-click, text-tool click-through onto existing text, and no duplicate/ghost editor, by construction. Entering an annotation editor now places the caret at the clicked character instead of selecting everything.
+  - A shared, engine-independent custom blinking caret (`caret-color: transparent` + a CSS-animated caret element positioned at the live selection) replaces the native caret, which froze under WebKit's transformed canvas — so the caret blinks identically on all five surfaces.
+  - Text that comes from a `{variable}` — a `.map()` over a data array, a component prop fed `BEATS[0]`, or a local `const` — is now editable inline: double-click and change the words, and the edit is traced back to the right source string (picked by which rendered instance you edited and verified against the pre-edit text, so it never rewrites the wrong item). Genuinely computed text (`{price.toFixed(2)}`, template strings) still routes to chat / `/design:edit` with a clear reason instead of a dead-end editor. Undo/redo works for these edits and now survives the canvas reload.
+  - A build-time `data-cd-editable` marker gates inline-edit entry so you're only offered an editor where the change will actually save.
+
+- 501f1c0: Whiteboard/annotation improvements: bulk resize, sticky authorship, smarter `/design:board`, and a sticker picker.
+
+  - Selecting multiple annotation elements together now shows live, draggable corner handles that resize the whole group proportionally about a shared origin, instead of only resizing one element at a time.
+  - Sticky notes now show who drew them — a name/nickname badge (not an avatar), colored to match that author's live presence cursor.
+  - `/design:board` now understands generation requests (e.g. "vytvoř mi team sprint retro" / "make me a team sprint retro"), and Maude Desktop's ACP chat can discover the whiteboard skill on its own instead of requiring the skill to be invoked explicitly.
+  - Fixed shape/text-annotation editing: the caret no longer jumps from the top of the box to center on the first keystroke, a blinking caret is now visible everywhere text is edited, double-clicking places the caret at the click point instead of selecting all text, hovering editable text now shows a text cursor, and the Text tool now edits existing text in place instead of stacking a new annotation on top.
+  - Newly created shapes and sticky notes auto-focus into text-edit mode immediately, so you can start typing without an extra click.
+  - Keyboard shortcuts (e.g. `R` for the rectangle tool) no longer fire while actively typing inside a text/shape/sticky editor.
+  - Added a searchable, FigJam-style sticker picker with four bundled "fun/crazy" sticker packs (with attribution) — not emoji.
+  - `read-annotations`/`canvas-rects` now tag which section each element belongs to and in what reading order, so board-driven generation (e.g. "make a video from this section") understands section contents as a group.
+
+### Patch Changes
+
+- 9465575: Catch canvases that use a design-system component without importing its stylesheet.
+
+  - When a canvas uses a component from a design system's `preview/` folder (a mascot, a brand logo, any shared specimen component), that component's animation and layout live in the DS's shared `_layout.css` — which the canvas has to import itself. Forgetting it used to render the component silently static and mispositioned (no animation, floating accessory layers), with no error at all.
+  - `/design:new` and `/design:edit` now write that required import up front when a canvas pulls in a `preview/` component, and the `design-system-keeper` audit warns if it's ever missing — so the "looks broken but the build is green" case gets caught instead of shipping.
+
+- 9ba8b1f: Video export (MP4/WebM) of complex video-comps no longer fails or hangs. A deeply-nested composition could overflow the one-pass audio renderer (`renderMediaOnWeb`); the export now falls back to frame-by-frame capture and produces a valid (video-only) file instead of erroring. Long renders also get a frame-count-sized time budget, so a 900-frame comp that legitimately takes ~9 minutes isn't aborted mid-render by the old fixed 5-minute cap (overridable via `MAUDE_EXPORT_VIDEO_TIMEOUT_MS`).
+- c561f80: Fix several whiteboard section-title bugs and raise the image upload cap.
+
+  - A section's title chip now stays a constant on-screen size at any zoom level, instead of shrinking to unreadable when zoomed out.
+  - Double-clicking a section (or sticky/shape) to rename it no longer also triggers the canvas's "fit to view" zoom.
+  - The rename editor now confirms on plain Enter (matching a native text input) instead of inserting a newline — Cmd/Ctrl+Enter is still reserved for multi-line standalone text notes.
+  - The rename editor's box now matches the read-only chip's background/padding/size, instead of rendering as a bare, tiny sliver of text mid-rename.
+  - Dragging multiple image/video/audio files from Finder onto a canvas now adds all of them in one drop, instead of only the first file (previously required dropping one at a time).
+  - The per-image upload cap is raised from 10 MB to 50 MB (env-overridable via `MAUDE_ASSET_MAX_IMAGE_BYTES`), matching the existing video/audio cap pattern.
+
 ## 0.42.0
 
 ### Minor Changes
