@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-163: Footage-analysis + AI director layer — vision keyframes over ffmpeg, EDL as the director artifact](DDR-163-footage-analysis-director-layer.md) — 2026-07-10, studio/video/footage/remotion/vision/keyframes/edl/director/transitions/sidecar/cli/agents/security
 - [DDR-162: "Add to Shared version" opens a pull request on GitHub remotes; SSH-remote parity for publish/get-latest](DDR-162-pr-flow-for-add-to-shared-version.md) — 2026-07-10, studio/git/github/pull-request/ssh/transport/collaboration/branch-protection/security
 - [DDR-161: In-app photo editor — pixi.js WebGL pipeline, the `PhotoEdit` sidecar, and the headless edit surface](DDR-161-in-app-photo-editor-webgl-pipeline-and-photoedit-sidecar.md) — 2026-07-10, studio/canvas-runtime/photo/pixi/webgl/raster/sidecar/imgly/background-removal/cli/headless/lazy-bundle/security
 - [DDR-160: Inline-editing variable-driven text — source-tracing resolver, occurrence targeting, and reload-durable undo](DDR-160-inline-editing-variable-text-and-undo-persistence.md) — 2026-07-10, studio/canvas-runtime/text-editing/ast/canvas-edit/occurrence/undo/sessionStorage/dx

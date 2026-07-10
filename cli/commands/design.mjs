@@ -51,6 +51,13 @@ const BIN_VERBS = new Set([
   // parametric verb (curl → /_api/photo-edit). `photo-bg-remove` (the client-side
   // @imgly ML harness) is registered alongside its script when Stage D lands.
   'photo-adjust',
+  // feature-footage-analysis-director. `ingest-footage` copies a folder of raw
+  // clips into assets/ (content-addressed, magic-byte sniffed). `probe-footage`
+  // decodes ONE clip in headless Chromium → keyframe PNGs for the footage-analyst's
+  // vision pass. Neither boots the dev server (probe is server-independent — it
+  // reads the clip as a file:// resource).
+  'ingest-footage',
+  'probe-footage',
 ]);
 
 // Bin verbs that boot the dev-server (directly, or by shelling into server-up.sh).
@@ -144,7 +151,7 @@ Dev-tooling (dispatch to the dev-server bash helpers — DDR-062):
   screenshot · server-up · prep · slug · bootstrap-check · runtime-health
   smoke · canvas-edit · handoff · asset-sweep · visual-sanity · fetch-asset
   draw-build · draw-proof · svg-optimize · to-lottie · read-annotations · annotate
-  canvas-rects
+  canvas-rects · ingest-footage · probe-footage
         Invoke the bundled helper of the same name. maude resolves it from its
         own package root and sets CLAUDE_PLUGIN_ROOT for the child; stdout,
         stderr, and exit code pass straight through (so command-substitution

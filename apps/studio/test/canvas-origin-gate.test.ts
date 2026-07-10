@@ -169,6 +169,12 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // the gate on both — the catalogue route and the static PNG serve.
         '/_api/stickers',
         '/_stickers/some-pack/some-sticker.png',
+        // feature-footage-analysis-director — the footage-analysis + EDL sidecar
+        // route is MAIN-ORIGIN ONLY (written by the analyst/director agents over
+        // loopback; absent from CANVAS_SAFE_API + startCanvasServer's routes). The
+        // untrusted canvas origin must never read/write the director's analysis —
+        // a GET here 403s at the gate, not 405 from a reached handler.
+        '/_api/footage',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);

@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "footage-analysis-director-reel",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Turn a folder of clips into a cut — Maude watches your footage first",
+      "summary": "New /design:reel: point Maude at a folder of raw video (or the clips already on your canvas) and it actually WATCHES the footage first — pulling keyframes from each clip to find the good shots and read its character — then directs them like an editor into a graphics-laden cut with titles and transitions, ready to scrub on the Timeline and export to MP4. It can use several moments from one clip, orders them so they tell a story, and needs no extra install (frames are decoded in the browser, no ffmpeg). Analysis is vision-only; drop in a music track and it rides under the finished cut.",
+      "surface": "design-ui"
+    },
+    {
       "id": "ssh-remote-publish-and-pr-flow",
       "version": null,
       "date": null,

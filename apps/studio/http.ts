@@ -26,6 +26,7 @@ import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
 import { DEV_SERVER_ROOT, STICKERS_DIR } from './paths.ts';
 import { createPhotoStore, PHOTO_EDIT_MAX_BYTES } from './photo-store.ts';
+import { createFootageStore, FOOTAGE_MAX_BYTES } from './footage-store.ts';
 import { probeReadiness } from './readiness.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
 import { linkHub } from './sync/hub-link.ts';
@@ -723,6 +724,11 @@ export function createHttp(
   // can never reach status/commit/publish/get-latest. http.ts owns the gating;
   // git/endpoints.ts owns the orchestration.
   const photoStore = createPhotoStore(ctx);
+  // feature-footage-analysis-director — footage-analysis + EDL sidecars.
+  // MAIN-ORIGIN ONLY (privileged): the `/_api/footage` route is intentionally
+  // absent from CANVAS_SAFE_API + startCanvasServer's `routes` map, so the
+  // untrusted canvas iframe origin can never read/write the director's analysis.
+  const footageStore = createFootageStore(ctx);
   const gitApi = createGitEndpoints(ctx);
   // Phase 28 (E3) — `/_api/github/*`. Same dual-allowlist rule: main-origin only,
   // and every route is token-bearing (server-held keychain token via the loopback
@@ -1005,6 +1011,51 @@ export function createHttp(
         }
         return Response.json(
           { ok: true, path: result.path, edit: result.edit },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return new Response('Method not allowed', { status: 405 });
+    },
+
+    '/_api/footage': async (req: Request) => {
+      // feature-footage-analysis-director (Task 2) — FootageAnalysis + EDL sidecars.
+      //   GET  ?asset=<sha8|assets/…>          → stored FootageAnalysis or {}
+      //   GET  ?slug=<cut-slug>                → stored Edl or {}
+      //   PUT/POST ?asset=<…> body {FootageAnalysis} → validated + persisted
+      //   PUT/POST ?slug=<…>  body {Edl}             → validated + persisted
+      // MAIN-ORIGIN ONLY (privileged — NOT in CANVAS_SAFE_API / startCanvasServer
+      // routes): written by the footage-analyst / footage-director agents over
+      // loopback, never the untrusted canvas iframe. A GET from the canvas origin
+      // 403s at the gate (canvas-origin-gate.test.ts). loopback-Host gates
+      // DNS-rebinding on every method; the footage-store cap stack (sha8/slug
+      // validate + containment + validate{FootageAnalysis,Edl} + size cap) is the
+      // load-bearing mitigation for the caller-derived write path.
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const params = new URL(req.url).searchParams;
+      const asset = params.get('asset');
+      const slug = params.get('slug');
+      if (!asset && !slug) return new Response('asset or slug required', { status: 400 });
+      const isEdl = !asset && !!slug;
+
+      if (req.method === 'GET') {
+        const data = isEdl ? await footageStore.getEdl(slug) : await footageStore.getAnalysis(asset);
+        return Response.json(data ?? {}, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      if (req.method === 'PUT' || req.method === 'POST') {
+        const body = await readJson<unknown>(req, FOOTAGE_MAX_BYTES + 1024);
+        if (body == null) return new Response('body required', { status: 400 });
+        const result = isEdl
+          ? await footageStore.saveEdl(slug, body)
+          : await footageStore.saveAnalysis(asset, body);
+        if (!result.ok) {
+          return Response.json(
+            { ok: false, error: result.error },
+            { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+          );
+        }
+        return Response.json(
+          { ok: true, ...result },
           { headers: { 'Cache-Control': 'no-store' } }
         );
       }

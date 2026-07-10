@@ -31,6 +31,7 @@ Default verbs. No prefix. Members:
 | `/design:to-lottie` | Productionize a maude animation → ONE `.lottie` from code (web + mobile, 1:1; emitter, not converter) |
 | `/design:to-rn` | FALLBACK — native react-native-svg + Reanimated component from the IR (light animation only) |
 | `/design:board` | Read the whiteboard with artboard + ELEMENT context, and/or author a whole tidy template (retro / kanban / social calendar / roadmap / brainstorm / checklist / user-flow) onto it — skill `whiteboard` |
+| `/design:reel` | From a folder of raw clips (or the active canvas's clips) to a directed, graphics-laden video cut in one prompt — ingest → footage-analyst (vision) → footage-director (EDL) → `<TransitionSeries>` codegen → critics; skills `footage-director` + `video-comp` |
 | `/design:help` | Print this grouped index |
 
 The bare `/design` form was a one-version compat stub in v0.8 that redirected to `/design:edit`. **Removed in v0.9** — only `/design:edit` resolves now.
