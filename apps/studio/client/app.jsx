@@ -6912,7 +6912,9 @@ function App() {
   const [activeComps, setActiveComps] = useState([]);
   const [timelineFrame, setTimelineFrame] = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
-  const [timelineLoop, setTimelineLoop] = useState(true);
+  // Default off — looping is an explicit opt-in per session, not a surprise
+  // once the user presses Play (rca/issue-video-artboard-loop-defaults-on).
+  const [timelineLoop, setTimelineLoop] = useState(false);
   const [timelineMuted, setTimelineMuted] = useState(false);
   const [timelineVolume, setTimelineVolume] = useState(1);
   const [timelineHeight, setTimelineHeight] = useState(216);
@@ -8938,6 +8940,17 @@ function App() {
         // artboard's Player must not fight it for the readout (multi-comp canvas).
         if (m.id && timelineCompIdRef.current && m.id !== timelineCompIdRef.current) return;
         if (Number.isFinite(m.frame)) setTimelineFrame(Math.max(0, Math.round(m.frame)));
+      } else if (m.dgn === 'timeline-ended') {
+        // The Player stopped itself at the last frame (loop off) — resync the
+        // shell's Play/Pause button, which otherwise has no way to learn
+        // playback ended on its own (rca/issue-video-artboard-loop-defaults-on).
+        const activeWin =
+          activePath && activePath !== SYSTEM_TAB
+            ? iframesRef.current.get(activePath)?.contentWindow
+            : null;
+        if (e.source !== activeWin) return;
+        if (m.id && timelineCompIdRef.current && m.id !== timelineCompIdRef.current) return;
+        setTimelinePlaying(false);
       } else if (m.dgn === 'toggle-palette') {
         // ⌘K pressed while focus was inside the canvas iframe — the injected
         // inspector forwards the chord here since the iframe's keydown never

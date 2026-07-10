@@ -238,7 +238,7 @@ export interface VideoCompProps extends VideoCompMeta {
   /** Show the Player's own transport chrome in PREVIEW. Auto-hidden during
    *  capture/export (the `?hide-chrome=1` shell flag). Default true. */
   controls?: boolean;
-  /** Loop preview playback. Default true. */
+  /** Loop preview playback. Default false — the user opts in via the Timeline. */
   loop?: boolean;
   /**
    * Autoplay in preview. Default: play unless the viewer prefers reduced motion
@@ -293,7 +293,7 @@ export function VideoComp({
   id,
   inputProps,
   controls,
-  loop = true,
+  loop = false,
   autoPlay,
 }: VideoCompProps) {
   const ref = useRef<PlayerRef | null>(null);
@@ -413,6 +413,25 @@ export function VideoComp({
     return () => {
       try {
         p.removeEventListener('frameupdate', onFrame);
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [compId]);
+
+  // iframe → shell: with loop off (now the default), the Player stops itself
+  // at the last frame — nothing else tells the Timeline panel's Play/Pause
+  // button to flip back to Play, so it reads "still playing" forever. Mirror
+  // the Player's own `ended` event so the shell can resync (rca/issue-video-
+  // artboard-loop-defaults-on).
+  useEffect(() => {
+    const p = ref.current;
+    if (!p) return;
+    const onEnded = () => postToShell({ dgn: 'timeline-ended', id: compId });
+    p.addEventListener('ended', onEnded);
+    return () => {
+      try {
+        p.removeEventListener('ended', onEnded);
       } catch {
         /* ignore */
       }

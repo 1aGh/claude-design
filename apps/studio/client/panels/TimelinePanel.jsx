@@ -112,7 +112,7 @@ export default function TimelinePanel({
   total = 0,
   frame = 0,
   playing = false,
-  loop = true,
+  loop = false,
   onSeek,
   onPlay,
   onPause,
