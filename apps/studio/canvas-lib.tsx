@@ -87,6 +87,7 @@ import {
   createContext,
   Fragment,
   isValidElement,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
@@ -123,13 +124,14 @@ import { CollabProvider, canvasSlugFromPath } from './use-collab.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { MaybeToolProvider, useToolModeOptional } from './use-tool-mode.tsx';
 import { UndoStackProvider, useUndoSinks, useUndoStackOptional } from './use-undo-stack.tsx';
+// DDR-148 — video-comp canvas kind. Imported (not just re-exported below) so
+// DCArtboard can identity-match <VideoComp> for the header badge. Its
+// `remotion`/`@remotion/player` imports resolve through the canvas importmap
+// (RUNTIME_PACKAGES), same as react/motion.
+import { VideoComp } from './video-comp.tsx';
 
 export type { CompSnapshot, VideoCompMeta, VideoCompProps } from './video-comp.tsx';
-// DDR-148 — video-comp canvas kind. Re-exported so `@maude/canvas-lib` exposes
-// <VideoComp> (Remotion composition mounted in <Player> + the deterministic
-// seek bridge). Its `remotion`/`@remotion/player` imports resolve through the
-// canvas importmap (RUNTIME_PACKAGES), same as react/motion.
-export { VideoComp } from './video-comp.tsx';
+export { VideoComp };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Module constants
@@ -325,6 +327,28 @@ button.dc-artboard-label {
   width: 100%;
 }
 button.dc-artboard-label:focus-visible { outline: 2px solid var(--maude-hud-accent, #d63b1f); outline-offset: -2px; }
+/* DDR-148 — video-artboard badge, overlaid top-right of the header. Opens
+   the timeline panel (same postMessage the context-menu entry sends). */
+.dc-canvas .dc-artboard-video-badge {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  appearance: none;
+  border: none;
+  border-radius: 3px;
+  background: var(--bg-2, #e8e3d8);
+  color: var(--fg-1, #4a3f30);
+  cursor: pointer;
+}
+.dc-canvas .dc-artboard-video-badge:hover { background: color-mix(in oklab, var(--fg-0, #2a2520) 12%, var(--bg-2, #e8e3d8)); }
+.dc-canvas .dc-artboard-video-badge:focus-visible { outline: 2px solid var(--maude-hud-accent, #d63b1f); outline-offset: 1px; }
 /* Active-artboard ring is in canvas-shell HALO_CSS (subtle 1 px tint). */
 /* Phase 4.2 — drag chrome. */
 .dc-canvas[data-active-tool="move"] .dc-artboard-label { cursor: grab; }
@@ -454,6 +478,29 @@ function harvestArtboards(children: ReactNode): ArtboardSeed[] {
   }
   visit(children);
   return out;
+}
+
+/**
+ * Does this artboard's subtree contain a <VideoComp>? Same identity-match +
+ * displayName-fallback walk as harvestArtboards, short-circuiting on the
+ * first hit — used to badge video artboards in DCArtboard's header.
+ */
+function subtreeHasVideoComp(children: ReactNode): boolean {
+  function visit(node: ReactNode): boolean {
+    if (node == null || typeof node === 'boolean') return false;
+    if (Array.isArray(node)) return node.some(visit);
+    if (!isValidElement(node)) return false;
+    const type = node.type;
+    if (
+      type === VideoComp ||
+      (typeof type === 'function' && (type as { displayName?: string }).displayName === 'VideoComp')
+    ) {
+      return true;
+    }
+    const childProp = (node.props as { children?: ReactNode } | null | undefined)?.children;
+    return childProp != null ? visit(childProp) : false;
+  }
+  return visit(children);
 }
 
 function synthDefaultGrid(seeds: ArtboardSeed[]): ArtboardRect[] {
@@ -1766,6 +1813,21 @@ export function DCArtboard({
   // its presence color + show its funny name instead of the generic file label.
   const agent = useAgentPresence();
   const rect = ctx ? ctx.rectFor(id) : null;
+  // DDR-148 — badge video artboards in the header; clicking the badge opens
+  // the timeline panel via the same postMessage the context-menu "Open
+  // Timeline" entry already sends (canvas-shell.tsx artboardHasVideo/handler).
+  const hasVideo = useMemo(() => subtreeHasVideoComp(children), [children]);
+  const openTimeline = useCallback(
+    (e: ReactMouseEvent<HTMLButtonElement>) => {
+      e.stopPropagation();
+      try {
+        window.parent.postMessage({ dgn: 'open-timeline-request', artboardId: id }, '*');
+      } catch {
+        /* detached / cross-origin */
+      }
+    },
+    [id]
+  );
 
   // Drag hook — always called (hook rules). Inert outside DesignCanvas
   // (allRects empty, enabled=false), so specimens / legacy uses get a plain
@@ -1877,6 +1939,33 @@ export function DCArtboard({
         <button type="button" className="dc-artboard-label sku" aria-label={`Artboard ${label}`}>
           {label}
         </button>
+        {hasVideo ? (
+          <button
+            type="button"
+            className="dc-artboard-video-badge"
+            aria-label={`Open timeline — ${label}`}
+            title="Video artboard — open timeline"
+            onClick={openTimeline}
+          >
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true">
+              <rect
+                x="1.5"
+                y="4.5"
+                width="8"
+                height="7"
+                rx="1.2"
+                stroke="currentColor"
+                strokeWidth="1.3"
+              />
+              <path
+                d="M9.5 7l4-2.3v6.6l-4-2.3"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        ) : null}
         <div className="dc-artboard-body">{children}</div>
       </article>
       {showActivity ? (
