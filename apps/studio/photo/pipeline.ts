@@ -362,6 +362,13 @@ export interface PhotoRendererOptions {
   height: number;
   /** Resolve a relative `assets/…` path to a fetchable URL (canvas-lib supplies). */
   resolveUrl?: (rel: string) => string;
+  /** Backing-buffer multiplier. Defaults to `devicePixelRatio` — right for the
+   *  live on-canvas `<PhotoLayer>` authoring path, where `width`/`height` are a
+   *  small CSS box that needs DPR upscaling to look sharp. `renderPhotoDataUrl`
+   *  (below) passes `1` — it already renders at the source's NATIVE resolution,
+   *  so an extra DPR multiplier would only upscale further with no real detail
+   *  gained, while risking the GPU max-texture-size ceiling on large photos. */
+  resolution?: number;
 }
 
 /**
@@ -393,11 +400,22 @@ export class PhotoRenderer {
     if (this.destroyed) return;
     this.pixi = pixi;
     const { canvas, width, height } = this.opts;
+    // Backing-buffer resolution must be DPR-aware — `width`/`height` are the
+    // logical (CSS) box size. Without `resolution`, pixi rasterizes 1 device
+    // px per CSS px, so on any HiDPI/Retina display the composite is visibly
+    // softer/lower-res than the plain `<img>` it replaces (which the browser
+    // scales DPR-aware natively). `autoDensity: true` keeps the canvas's CSS
+    // size at the logical width/height while the backing store scales up.
+    const dpr =
+      this.opts.resolution ??
+      (typeof window !== 'undefined' ? Math.max(1, window.devicePixelRatio || 1) : 1);
     const app = new pixi.Application();
     await app.init({
       canvas,
       width: Math.max(1, Math.round(width)),
       height: Math.max(1, Math.round(height)),
+      resolution: dpr,
+      autoDensity: true,
       backgroundAlpha: 0,
       antialias: true,
       preference: 'webgl', // WKWebView WebGPU is partial (Task 25); pin WebGL.
@@ -525,4 +543,65 @@ export class PhotoRenderer {
 /** Convenience: true when the edit needs pixi at all (else render the plain img). */
 export function needsCompositor(edit: PhotoEdit | null | undefined): boolean {
   return !isDefaultEdit(edit);
+}
+
+/** Decode `url` far enough to read its intrinsic pixel size, capped at `maxDim`
+ *  on the long edge (GPU max-texture-size safety, mirrors the DDR-088 cap-stack
+ *  posture elsewhere in this feature). */
+async function naturalSize(
+  url: string,
+  maxDim: number
+): Promise<{ width: number; height: number }> {
+  const img = new Image();
+  img.decoding = 'async';
+  img.src = url;
+  if (typeof img.decode === 'function') await img.decode();
+  else
+    await new Promise<void>((res, rej) => {
+      img.onload = () => res();
+      img.onerror = () => rej(new Error(`image load failed: ${url}`));
+    });
+  const w = img.naturalWidth || 1;
+  const h = img.naturalHeight || 1;
+  const scale = Math.min(1, maxDim / Math.max(w, h));
+  return { width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)) };
+}
+
+export interface RenderPhotoDataUrlOptions {
+  /** Original (unedited) `assets/<sha8>.<ext>` source. */
+  source: string;
+  edit: PhotoEdit;
+  resolveUrl?: (rel: string) => string;
+  /** Long-edge cap in px. Default 4096 (safe GPU texture ceiling). */
+  maxDimension?: number;
+}
+
+/**
+ * Bake a `PhotoEdit` composite to a `data:image/png` URL, rendered at the
+ * SOURCE's native resolution (not whatever CSS box the DOM element currently
+ * happens to occupy). This is what lets the caller swap a real `<img>`/
+ * `<image>` element's `src`/`href` directly instead of floating a separately
+ * WebGL-rendered decoy on top of it (feature-photo-editor iteration 2) — the
+ * baked bitmap stays sharp across resize/zoom because the BROWSER scales it
+ * the same way it would the untouched original, no re-bake required.
+ */
+export async function renderPhotoDataUrl(opts: RenderPhotoDataUrlOptions): Promise<string> {
+  const resolve = (rel: string) => (opts.resolveUrl ? opts.resolveUrl(rel) : rel);
+  const srcUrl = resolve(resolveSourceUrl(opts.edit, opts.source));
+  const { width, height } = await naturalSize(srcUrl, opts.maxDimension ?? 4096);
+  const canvas = document.createElement('canvas');
+  const renderer = await PhotoRenderer.create({
+    canvas,
+    source: opts.source,
+    edit: opts.edit,
+    width,
+    height,
+    resolveUrl: opts.resolveUrl,
+    resolution: 1, // already native resolution — see PhotoRendererOptions.resolution doc.
+  });
+  try {
+    return canvas.toDataURL('image/png');
+  } finally {
+    renderer.destroy();
+  }
 }

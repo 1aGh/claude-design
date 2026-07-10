@@ -54,8 +54,15 @@ function prune(edit) {
 
 // ── small inline-styled primitives ──────────────────────────────────────────
 
+// Theme tokens — the REAL shell tokens (client/styles/1-tokens.css), defined
+// for both `:root`/`[data-theme="light"]` and `[data-theme="dark"]`. Earlier
+// this used invented `--st-*` names (--st-fg/--st-border/--st-btn-bg/--st-mono)
+// that were never actually declared anywhere in the stylesheet, so every rule
+// silently fell back to its hardcoded dark-mode default — the panel looked
+// fine in dark mode purely by coincidence and was low-contrast/washed out in
+// light mode.
 const S = {
-  body: { padding: '10px 12px', fontSize: 12, color: 'var(--st-fg, #ddd)', overflowY: 'auto' },
+  body: { padding: '10px 12px', fontSize: 12, color: 'var(--fg-0)', overflowY: 'auto' },
   sec: { marginBottom: 14 },
   secHead: {
     display: 'flex',
@@ -64,27 +71,27 @@ const S = {
     fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: '.06em',
-    opacity: 0.7,
+    color: 'var(--fg-2)',
     margin: '4px 0 8px',
   },
   row: { display: 'flex', alignItems: 'center', gap: 8, margin: '5px 0' },
-  label: { flex: '0 0 78px', fontSize: 11, opacity: 0.85 },
+  label: { flex: '0 0 78px', fontSize: 11, color: 'var(--fg-1)' },
   range: { flex: 1, minWidth: 0 },
   num: {
     flex: '0 0 42px',
     textAlign: 'right',
-    fontFamily: 'var(--st-mono, ui-monospace, monospace)',
+    fontFamily: 'var(--font-mono, ui-monospace, monospace)',
     fontSize: 11,
-    opacity: 0.75,
+    color: 'var(--fg-2)',
   },
   btn: {
     font: 'inherit',
     fontSize: 11,
     padding: '5px 10px',
     borderRadius: 6,
-    border: '1px solid var(--st-border, #444)',
-    background: 'var(--st-btn-bg, #2a2a2a)',
-    color: 'inherit',
+    border: '1px solid var(--border-default)',
+    background: 'var(--bg-3)',
+    color: 'var(--fg-0)',
     cursor: 'pointer',
   },
   reset: {
@@ -94,8 +101,7 @@ const S = {
     borderRadius: 4,
     border: '1px solid transparent',
     background: 'transparent',
-    color: 'inherit',
-    opacity: 0.6,
+    color: 'var(--fg-2)',
     cursor: 'pointer',
   },
   select: {
@@ -103,9 +109,9 @@ const S = {
     fontSize: 11,
     padding: '3px 6px',
     borderRadius: 5,
-    border: '1px solid var(--st-border, #444)',
-    background: 'var(--st-btn-bg, #2a2a2a)',
-    color: 'inherit',
+    border: '1px solid var(--border-default)',
+    background: 'var(--bg-3)',
+    color: 'var(--fg-0)',
   },
 };
 
@@ -268,9 +274,9 @@ export function PhotoKnobs({ asset, initialEdit, ColorPicker, onEdit, onRemoveBa
 
   return (
     <div style={S.body} data-testid="photo-knobs">
-      <div style={{ ...S.secHead, marginTop: 0, opacity: 0.5, textTransform: 'none', letterSpacing: 0 }}>
-        <span style={{ fontFamily: 'var(--st-mono, monospace)', fontSize: 10 }}>{asset}</span>
-        <span style={{ fontSize: 10 }}>
+      <div style={{ ...S.secHead, marginTop: 0, color: 'var(--fg-3)', textTransform: 'none', letterSpacing: 0 }}>
+        <span style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 10 }}>{asset}</span>
+        <span style={{ fontSize: 10, color: saveState === 'error' ? 'var(--status-error)' : undefined }}>
           {saveState === 'saving' ? 'saving…' : saveState === 'error' ? '⚠ save failed' : saveState === 'saved' ? 'saved' : ''}
         </span>
       </div>
@@ -354,7 +360,7 @@ export function PhotoKnobs({ asset, initialEdit, ColorPicker, onEdit, onRemoveBa
             <div style={S.row}>
               <span style={S.label}>Color</span>
               <ColorSwatch value={pat.color} fallback="#ffffff" ColorPicker={ColorPicker} onApply={(hex) => setSection('pattern', { color: hex }, true)} />
-              <span style={{ ...S.num, flex: 1, textAlign: 'left', opacity: 0.5 }}>tip: dark + multiply</span>
+              <span style={{ ...S.num, flex: 1, textAlign: 'left', color: 'var(--fg-3)' }}>tip: dark + multiply</span>
             </div>
             <Slider label="Scale" value={pat.scale ?? 1} min={0.25} max={4} step={0.25} onChange={(v) => setSection('pattern', { scale: v })} onCommit={() => setSection('pattern', { scale: pat.scale ?? 1 }, true)} />
             <Slider label="Opacity" value={pat.opacity ?? 0.5} min={0} max={1} onChange={(v) => setSection('pattern', { opacity: v })} onCommit={() => setSection('pattern', { opacity: pat.opacity ?? 0.5 }, true)} />
@@ -380,26 +386,47 @@ export function PhotoKnobs({ asset, initialEdit, ColorPicker, onEdit, onRemoveBa
 
       <Section title="Background">
         <div style={{ ...S.row, gap: 10 }}>
-          <button
-            type="button"
-            style={{ ...S.btn, opacity: bgBusy ? 0.6 : 1 }}
-            disabled={bgBusy || !onRemoveBackground}
-            data-testid="photo-remove-bg"
-            onClick={async () => {
-              if (!onRemoveBackground) return;
-              setBgBusy(true);
-              try {
-                const res = await onRemoveBackground(asset);
-                if (res?.maskAsset) setSection('backgroundRemoved', { enabled: true, maskAsset: res.maskAsset }, true);
-              } finally {
-                setBgBusy(false);
-              }
-            }}
-          >
-            {bgBusy ? 'Removing…' : '✦ Remove Background'}
-          </button>
-          {bg.maskAsset && (
-            <Toggle checked={bg.enabled} onChange={(v) => setSection('backgroundRemoved', { enabled: v }, true)} label="applied" />
+          {bg.maskAsset ? (
+            <>
+              <Toggle checked={bg.enabled} onChange={(v) => setSection('backgroundRemoved', { enabled: v }, true)} label="applied" />
+              <button
+                type="button"
+                style={{ ...S.reset, opacity: bgBusy ? 0.6 : 1 }}
+                disabled={bgBusy || !onRemoveBackground}
+                title="Run background removal again"
+                onClick={async () => {
+                  if (!onRemoveBackground) return;
+                  setBgBusy(true);
+                  try {
+                    const res = await onRemoveBackground(asset);
+                    if (res?.maskAsset) setSection('backgroundRemoved', { enabled: true, maskAsset: res.maskAsset }, true);
+                  } finally {
+                    setBgBusy(false);
+                  }
+                }}
+              >
+                {bgBusy ? 'removing…' : 'redo'}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              style={{ ...S.btn, opacity: bgBusy ? 0.6 : 1 }}
+              disabled={bgBusy || !onRemoveBackground}
+              data-testid="photo-remove-bg"
+              onClick={async () => {
+                if (!onRemoveBackground) return;
+                setBgBusy(true);
+                try {
+                  const res = await onRemoveBackground(asset);
+                  if (res?.maskAsset) setSection('backgroundRemoved', { enabled: true, maskAsset: res.maskAsset }, true);
+                } finally {
+                  setBgBusy(false);
+                }
+              }}
+            >
+              {bgBusy ? 'Removing…' : '✦ Remove Background'}
+            </button>
           )}
         </div>
       </Section>

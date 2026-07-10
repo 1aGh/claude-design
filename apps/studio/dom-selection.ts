@@ -466,10 +466,26 @@ export function hoverTargetToSelection(target: HoverTarget, file?: string): Sele
     // feature-photo-editor (Task 14) — flag a content-addressed artboard `<img>`
     // so the Inspector can offer the Photo tab. Only a real `assets/<sha8>.<ext>`
     // src qualifies (an external URL / SVG icon / data: URI has no sidecar).
+    // `data-photo-asset` (stamped by canvas-lib's PhotoPreviewBridge the first
+    // time it bakes an edit into this element) is checked FIRST — once an edit
+    // is applied, the live `src` is a `data:` URL (the baked composite), which
+    // no longer matches the asset regex. Without this, an already-edited photo
+    // would lose its Photo tab the moment you select it (the exact regression
+    // this fixes — the bridge's own direct-src-swap made the element's `src`
+    // stop being a reliable asset key).
     ...(() => {
       if (el?.tagName?.toLowerCase() !== 'img') return {};
+      // The canvas iframe is untrusted content (DDR-054) — an authored `<img
+      // data-photo-asset="...">` is attacker-controllable, so the tag is only
+      // trusted when it actually has the `assets/<sha8>.<ext>` shape (security
+      // review finding: an unshaped value would ride unbounded into
+      // `_active.json`/the WS broadcast via inspect.ts's `enrich()`).
+      const assetRe = /assets\/[0-9a-f]{8}\.[a-z0-9]+/i;
+      const tagged = (el as HTMLElement).getAttribute?.('data-photo-asset');
+      if (tagged && assetRe.test(tagged))
+        return { photoKind: 'artboard-img' as const, photoAsset: tagged };
       const src = (el as HTMLImageElement).getAttribute?.('src') || '';
-      const m = /assets\/[0-9a-f]{8}\.[a-z0-9]+/i.exec(src);
+      const m = assetRe.exec(src);
       return m ? { photoKind: 'artboard-img' as const, photoAsset: m[0] } : {};
     })(),
     ...styleMapsFor(el),

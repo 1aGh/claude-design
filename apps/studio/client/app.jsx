@@ -3963,6 +3963,12 @@ function cssSplitUnit(v) {
 // is for the SAME element we already hold locally, preserve those fields instead
 // of clobbering them to empty (else the server round-trip wipes the custom-CSS /
 // custom-attr rows + computed readout right after selection).
+// feature-photo-editor — `photoKind`/`photoAsset` (dom-selection.ts) are the SAME
+// class of client-only DOM-derived field and belong in this list for the same
+// reason: without it, every server-pushed `selected`/`snapshot` restore (a canvas
+// switch, a reconnect, the persisted `_active.json` on boot — none of which carry
+// these fields) silently drops the Inspector's Photo tab until the next fresh
+// click re-derives it live — the "tab is there, then it's gone" flicker.
 function mergeSelClientFields(incoming, prev) {
   if (!incoming || Array.isArray(incoming) || Array.isArray(prev) || !prev) return incoming;
   if (!incoming.id || incoming.id !== prev.id) return incoming;
@@ -3972,6 +3978,8 @@ function mergeSelClientFields(incoming, prev) {
     computed: incoming.computed ?? prev.computed,
     customStyles: incoming.customStyles ?? prev.customStyles,
     attrs: incoming.attrs ?? prev.attrs,
+    photoKind: incoming.photoKind ?? prev.photoKind,
+    photoAsset: incoming.photoAsset ?? prev.photoAsset,
   };
 }
 
@@ -6086,7 +6094,18 @@ function photoAssetOfSelection(el) {
   if (!el || Array.isArray(el)) return null;
   if (el.photoAsset) return el.photoAsset;
   if ((el.tag || '').toLowerCase() !== 'img') return null;
-  const m = PHOTO_ASSET_RE.exec(`${el.attrs?.src || ''} ${el.html || ''}`);
+  const html = el.html || '';
+  // Once an edit is baked, the element's LIVE src is a `data:` URL (canvas-lib's
+  // PhotoPreviewBridge swaps it in directly) — it never matches PHOTO_ASSET_RE,
+  // so a REPLAYED/serialized selection (a WS resync, or the persisted
+  // `_active.json` restored on boot) that arrives without the dedicated
+  // `photoAsset` field would otherwise permanently lose the Photo tab for any
+  // already-edited photo. The element still carries the `data-photo-asset` tag
+  // the bridge stamped, and that DOES survive into an outerHTML snapshot — check
+  // it before falling back to the plain assets/<sha8> src scan.
+  const tagged = /data-photo-asset="([^"]+)"/.exec(html);
+  if (tagged) return tagged[1];
+  const m = PHOTO_ASSET_RE.exec(`${el.attrs?.src || ''} ${html}`);
   return m ? m[0] : null;
 }
 
@@ -7222,10 +7241,12 @@ function App() {
 
   // ── feature-photo-editor — the Photo tab's three channels ─────────────────
   // (1) live preview: broadcast the edit DOWN to the active canvas iframe, whose
-  //     canvas-lib bridge overlays a <PhotoLayer> pixi composite on the matching
-  //     image (Task 6/12). (2) undo: a shell-side stack (photo edits are sidecar
-  //     writes, not the canvas-side source-edit stack). (3) background removal:
-  //     the client-side @imgly ML flow (Task 12).
+  //     canvas-lib `PhotoPreviewBridge` bakes the composite and swaps it directly
+  //     into the matching `<img>`/`<image>` element's src/href (iteration 2 — see
+  //     the bridge's own header comment for why it's a direct swap, not an
+  //     overlay). (2) undo: a shell-side stack (photo edits are sidecar writes,
+  //     not the canvas-side source-edit stack). (3) background removal: the
+  //     client-side @imgly ML flow (Task 12).
   const onPhotoEdit = useCallback(
     (asset, edit) => postToActiveCanvas({ dgn: 'photo-preview', asset, edit }),
     [postToActiveCanvas]

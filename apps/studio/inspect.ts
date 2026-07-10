@@ -47,6 +47,19 @@ export interface SelectedElement {
    * degrade to canvas-wide — never trust the positional id when stale.
    */
   stale?: boolean;
+  /**
+   * feature-photo-editor (Task 14) — which photo-editing context this
+   * selection is (an artboard `<img>` vs. an annotation `ImageStroke`), and
+   * the resolved `assets/<sha8>.<ext>` source. Client-derived (dom-selection.ts
+   * re-reads the live DOM, including a `data-photo-asset` tag stamped after an
+   * edit bakes) — round-tripped here (not dropped like the OTHER client-only
+   * fields such as `authored`/`computed`/`attrs`) because, unlike those, there
+   * is no cheap way to re-derive it from a plain server-side restore: losing it
+   * silently drops the Inspector's Photo tab on every canvas switch / reconnect
+   * until a fresh click re-selects the element.
+   */
+  photoKind?: 'artboard-img' | 'annotation-image';
+  photoAsset?: string;
 }
 
 /**
@@ -240,6 +253,19 @@ export function createInspect(
       v,
       canvas_mtime: mtimeFor(file),
       ...(id ? { id, canvas: deriveCanvasSlug(file) } : {}),
+      ...(() => {
+        if (sel.photoKind !== 'artboard-img' && sel.photoKind !== 'annotation-image') return {};
+        // `photoAsset` traces back to client-derived DOM state (a
+        // `data-photo-asset` attribute inside the untrusted canvas iframe,
+        // DDR-054) — unlike the sibling `text` field it had no shape/length
+        // constraint before persisting to `_active.json` and broadcasting to
+        // every connected WS peer (security review finding). It's always a
+        // fixed-shape `assets/<sha8>.<ext>` reference, so an unshaped value
+        // is dropped outright rather than merely truncated.
+        const asset = String(sel.photoAsset || '');
+        if (!/^assets\/[0-9a-f]{8}\.[a-z0-9]+$/i.test(asset)) return {};
+        return { photoKind: sel.photoKind, photoAsset: asset };
+      })(),
     };
   }
 

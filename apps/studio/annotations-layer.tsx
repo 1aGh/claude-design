@@ -2011,7 +2011,18 @@ export function AnnotationsLayer() {
       // branch below and DESELECTED them.
       let ids: string[] | null = null;
       if (strokeId) {
-        elementSel?.clear();
+        // feature-photo-editor — an image-stroke hit routes to the Photo-only
+        // Inspector tab (`edit-annotation-photo-request`, the singleSelectedImageId
+        // effect below), which the shell shows via `photoSel` taking priority over
+        // the DOM `selected` channel. `elementSel.clear()` posts a DEBOUNCED
+        // (50ms, use-selection-set.tsx POST_DEBOUNCE_MS) `select-set: null` — that
+        // lands AFTER the (undebounced) photo-request and the shell's `select-set`
+        // handler unconditionally nulls `photoSel` back out, so the Photo tab
+        // flickers open then goes blank. Skip the clear for an image stroke: it
+        // isn't needed (photoSel already takes precedence in tab resolution) and
+        // is the only case that races with a still-in-flight photo-tab request.
+        const strokeTool = target?.closest?.('[data-id][data-tool]')?.getAttribute('data-tool');
+        if (strokeTool !== 'image') elementSel?.clear();
         // FigJam v3 — clicking a group member acts on the WHOLE outermost
         // group. Double-click deep-selects the member (see the dblclick
         // handler); an already-selected stroke keeps the current selection, so
@@ -3187,6 +3198,34 @@ export function AnnotationsLayer() {
       );
     }
   }, [selCount]);
+
+  // feature-photo-editor — auto-open the Inspector's Photo tab whenever the
+  // annotation selection becomes exactly one ImageStroke. Previously this
+  // only fired from the "Edit Photo…" context-menu action; a plain click/
+  // select left the Inspector showing its no-selection placeholder, since an
+  // annotation stroke has no data-cd-id / DOM selection to ride the normal
+  // `select`/`select-set` path. An ImageStroke has no OTHER inspectable
+  // surface (Task 13: Photo is the only tab for this content type), so
+  // requiring a right-click detour to reach it was pure friction. Same
+  // `edit-annotation-photo-request` message + confused-deputy gate (DDR-054)
+  // the context-menu action already used.
+  const singleSelectedImageId =
+    selCount === 1 && strokesById.get(annotSel?.selectedIds[0] as string)?.tool === 'image'
+      ? (annotSel?.selectedIds[0] as string)
+      : null;
+  useEffect(() => {
+    if (!singleSelectedImageId) return;
+    const s = strokesById.get(singleSelectedImageId);
+    if (s?.tool !== 'image') return;
+    try {
+      window.parent.postMessage(
+        { dgn: 'edit-annotation-photo-request', id: s.id, asset: s.href },
+        '*'
+      );
+    } catch {
+      /* detached / cross-origin teardown */
+    }
+  }, [singleSelectedImageId, strokesById]);
 
   // Selected stroke halos — bboxes in world coords, vector-effect non-scaling-stroke.
   const selectedStrokes = useMemo(() => {

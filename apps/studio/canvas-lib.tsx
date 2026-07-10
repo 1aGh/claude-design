@@ -2345,23 +2345,55 @@ export function PhotoLayer({
 }
 PhotoLayer.displayName = 'PhotoLayer';
 
-// PhotoPreviewBridge (feature-photo-editor, Task 12) — the LIVE in-canvas preview
-// of Photo-tab edits. The editing UI (PhotoKnobs) runs in the cross-origin shell,
-// so it can't touch these images directly; it broadcasts `dgn:'photo-preview'
-// { asset, edit }` DOWN, and this bridge — mounted in canvas-shell's chrome layer
-// (OUTSIDE `.dc-world`, so screen coords aren't fighting the pan/zoom transform),
-// INSIDE the canvas iframe — overlays a real <PhotoLayer> pixi composite on the
-// matching image (artboard `<img>` OR annotation `<image>` alike). A neutral edit
-// removes the overlay, restoring the untouched original (non-destructive). Zero
-// cost until the first non-default edit arrives: no overlay, no pixi, no rAF loop.
+// PhotoPreviewBridge (feature-photo-editor) — applies a live/persisted
+// PhotoEdit DIRECTLY to the real photo element (artboard `<img>` or
+// annotation `<image>`) by swapping its `src`/`href` to a baked data URL,
+// instead of floating a separate WebGL-rendered decoy on top of it.
+//
+// Iteration 1 of this bridge did the "decoy" version: a `position:fixed` div
+// tracked the real element's screen rect via a per-frame rAF loop and hid the
+// original underneath (`visibility:hidden`) while a live `<PhotoLayer>` pixi
+// canvas rendered on top. That broke every bit of free native DOM behavior
+// the real element used to have:
+//   - cmd+click / right-click hit-testing landed on whatever was BEHIND the
+//     now-invisible original (a hidden element isn't hit-testable), while the
+//     decoy was `pointer-events:none` so it couldn't take the click either —
+//     net result, nothing was clickable.
+//   - the decoy rendered at a STABLE "world" pixel size and was CSS-stretched
+//     to the live screen box on zoom; the stretch didn't reliably track the
+//     real box, so the visible photo grew/shrank relative to its own frame.
+//   - it needed its own z-index (originally 30 — drew over the context menu)
+//     instead of just sitting at the element's normal stacking position.
+//   - it only knew about an edit via the transient postMessage below, so any
+//     iframe remount (Cmd+R, HMR) reset it to nothing until a human reopened
+//     the Inspector and nudged a knob.
+// Swapping the REAL element's `src`/`href` sidesteps all of it: resize, zoom,
+// hit-testing, and stacking become the browser's native `<img>`/`<image>`
+// behavior, not a hand-rolled tracker. Non-destructive still holds — only the
+// LIVE DOM attribute is mutated, never the authored TSX/SVG source; the
+// on-disk `PhotoEdit` sidecar (`/_api/photo-edit`) stays the persisted source
+// of truth, re-applied by the hydration scan below on every canvas (re)mount.
+// The bake is at the source's NATIVE resolution (`renderPhotoDataUrl`), so
+// the result stays sharp across any later resize/zoom with no re-bake.
 
-/** First `<img>`/SVG `<image>` in the doc whose source contains `asset`
- *  (`assets/<sha8>.<ext>`). Both image contexts live in this same iframe doc. */
+/** `assets/<sha8>.<ext>` substring inside a `src`/`href`/`xlink:href`. */
+const ASSET_REF_RE = /assets\/[0-9a-f]{8}\.[a-z0-9]+/i;
+
+/** Matches a photo element by the `data-photo-asset` tag `apply()` stamps on
+ *  first touch, falling back to a literal src/href substring match for an
+ *  element this bridge hasn't touched yet. The tag is load-bearing: once
+ *  baked, the element's `src`/`href` is a `data:` URL that no longer contains
+ *  the original asset path, so the substring match alone would lose track of
+ *  it on the very next edit. */
 function findPhotoEl(asset: string): Element | null {
   if (typeof document === 'undefined') return null;
-  const nodes = document.querySelectorAll('img, image');
-  for (let i = 0; i < nodes.length; i++) {
-    const n = nodes[i];
+  // Scoped to img/image (not a bare `[data-photo-asset]` attribute selector) —
+  // the canvas iframe is untrusted content (DDR-054); an authored canvas could
+  // otherwise stamp the tag on an arbitrary element to redirect a bake.
+  for (const n of document.querySelectorAll('img[data-photo-asset], image[data-photo-asset]')) {
+    if (n.getAttribute('data-photo-asset') === asset) return n;
+  }
+  for (const n of document.querySelectorAll('img, image')) {
     const src =
       n.getAttribute('src') || n.getAttribute('href') || n.getAttribute('xlink:href') || '';
     if (src.includes(asset)) return n;
@@ -2369,8 +2401,86 @@ function findPhotoEl(asset: string): Element | null {
   return null;
 }
 
+function extractAssetRef(el: Element): string | null {
+  // Only trust `data-photo-asset` when it actually has the `assets/<sha8>.<ext>`
+  // shape — the tag is attacker-controllable (untrusted canvas content,
+  // DDR-054), and an unshaped value would otherwise ride unbounded into
+  // `_active.json`/the WS broadcast via inspect.ts's `enrich()`.
+  const tagged = el.getAttribute('data-photo-asset');
+  if (tagged && ASSET_REF_RE.test(tagged)) return tagged;
+  const ref =
+    el.getAttribute('src') || el.getAttribute('href') || el.getAttribute('xlink:href') || '';
+  return ref.match(ASSET_REF_RE)?.[0] ?? null;
+}
+
+function setPhotoElSrc(el: Element, url: string): void {
+  if (el.tagName.toLowerCase() === 'image') {
+    el.setAttribute(el.hasAttribute('xlink:href') ? 'xlink:href' : 'href', url);
+  } else {
+    el.setAttribute('src', url);
+  }
+}
+
+const BAKE_DEBOUNCE_MS = 80;
+
 export function PhotoPreviewBridge() {
-  const [edits, setEdits] = useState<Map<string, PhotoEdit>>(() => new Map());
+  // The ORIGINAL (unedited) src/href per asset, captured the first time this
+  // bridge touches that element — so turning an edit off restores exactly
+  // what the element pointed to, not a guess.
+  const originalRef = useRef<Map<string, string>>(new Map());
+  // Per-asset bake generation — guards a slow (or out-of-order) render from
+  // clobbering a NEWER edit that already resolved first.
+  const tokenRef = useRef<Map<string, number>>(new Map());
+  const bakeTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const bake = useCallback((asset: string, original: string, edit: PhotoEdit) => {
+    const token = (tokenRef.current.get(asset) ?? 0) + 1;
+    tokenRef.current.set(asset, token);
+    import('./photo/pipeline.ts')
+      .then(({ renderPhotoDataUrl }) => renderPhotoDataUrl({ source: original, edit }))
+      .then((dataUrl) => {
+        if (tokenRef.current.get(asset) !== token) return; // superseded by a newer edit
+        const live = findPhotoEl(asset);
+        if (live) setPhotoElSrc(live, dataUrl);
+      })
+      .catch((err) => {
+        console.error('[PhotoPreviewBridge] bake failed', err);
+      });
+  }, []);
+
+  const apply = useCallback(
+    (asset: string, edit: PhotoEdit | null) => {
+      const el = findPhotoEl(asset);
+      if (!el) return;
+      if (!el.hasAttribute('data-photo-asset')) el.setAttribute('data-photo-asset', asset);
+      if (!originalRef.current.has(asset)) {
+        const orig =
+          el.getAttribute('src') || el.getAttribute('href') || el.getAttribute('xlink:href') || '';
+        originalRef.current.set(asset, orig);
+      }
+      const original = originalRef.current.get(asset) ?? '';
+      const timers = bakeTimers.current;
+      clearTimeout(timers.get(asset));
+      if (!edit || isDefaultEdit(edit)) {
+        timers.delete(asset);
+        setPhotoElSrc(el, original);
+        return;
+      }
+      timers.set(
+        asset,
+        setTimeout(() => bake(asset, original, edit), BAKE_DEBOUNCE_MS)
+      );
+    },
+    [bake]
+  );
+
+  useEffect(() => {
+    const timers = bakeTimers.current;
+    return () => {
+      for (const t of timers.values()) clearTimeout(t);
+    };
+  }, []);
+
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       const m = e.data as { dgn?: string; asset?: unknown; edit?: unknown } | null;
@@ -2378,125 +2488,73 @@ export function PhotoPreviewBridge() {
       if (m.dgn !== 'photo-preview' || typeof m.asset !== 'string') return;
       const asset = m.asset;
       const edit = (m.edit ?? null) as PhotoEdit | null;
-      setEdits((prev) => {
-        const next = new Map(prev);
-        if (!edit || isDefaultEdit(edit)) next.delete(asset);
-        else next.set(asset, edit);
-        return next;
-      });
+      apply(asset, edit);
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
-  }, []);
-  if (edits.size === 0) return null;
-  return (
-    <>
-      {[...edits.entries()].map(([asset, edit]) => (
-        <PhotoPreviewOverlay key={asset} asset={asset} edit={edit} />
-      ))}
-    </>
-  );
+  }, [apply]);
+  // Boot-time (+ ongoing) hydration from the PERSISTED sidecar, not just the
+  // live `photo-preview` message above. Without this, a saved PhotoEdit is
+  // invisible after anything that re-mounts the canvas doc (Cmd+R, an
+  // HMR remount, or a resize that recreates the photo's DOM node) — the
+  // message-only bridge starts every fresh mount with an empty `edits` map,
+  // and nothing re-sends the already-saved edit until a human happens to
+  // reopen the Inspector Photo tab and touch a knob. A MutationObserver
+  // re-scan (not just an initial one-shot) is what makes this self-heal after
+  // those remounts, since the photo element's DOM node is often a NEW node
+  // post-remount, not the one the original message targeted.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    let cancelled = false;
+    let raf = 0;
+    // Every asset gets AT MOST one fetch attempt for this bridge's lifetime —
+    // without this, a canvas whose DOM keeps mutating (an animation, a
+    // re-rendering component) reissues the full unfetched set on every
+    // mutation frame, forever (security review finding: unbounded fetch
+    // amplification against the dev server from a zero-gesture background
+    // scan).
+    const attempted = new Set<string>();
+    // Safety ceiling per pass — a pathological/hostile canvas DOM (thousands
+    // of img/image elements) shouldn't be able to fan out unbounded fetches
+    // in one scan; the next mutation-triggered pass picks up where this left
+    // off since `attempted` persists across passes.
+    const MAX_SCAN_PER_PASS = 500;
+    const scan = () => {
+      let scanned = 0;
+      for (const n of document.querySelectorAll('img, image')) {
+        const asset = extractAssetRef(n);
+        if (!asset || attempted.has(asset)) continue;
+        if (++scanned > MAX_SCAN_PER_PASS) break;
+        attempted.add(asset);
+        fetch(`/_api/photo-edit?asset=${encodeURIComponent(asset)}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((edit) => {
+            if (cancelled || !edit || isDefaultEdit(edit)) return;
+            apply(asset, edit);
+          })
+          .catch(() => {});
+      }
+    };
+    scan();
+    const observer = new MutationObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(scan);
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['src', 'href'],
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [apply]);
+  return null; // mutates the real elements directly — no visible DOM of its own.
 }
 PhotoPreviewBridge.displayName = 'PhotoPreviewBridge';
-
-interface OverlayBox {
-  left: number;
-  top: number;
-  w: number;
-  h: number;
-  worldW: number;
-  worldH: number;
-}
-
-// One overlay per edited image. A rAF loop tracks the target's live screen rect
-// (`getBoundingClientRect` already reflects the `.dc-world` pan/zoom transform, so
-// no manual world→screen projection is needed). The <PhotoLayer> renders at the
-// image's STABLE world size and is CSS-stretched to fill the screen box — so a
-// pan/zoom only restyles the container (cheap) and never thrashes the pixi
-// Application (which would tear down + rebuild on a width/height change).
-function PhotoPreviewOverlay({ asset, edit }: { asset: string; edit: PhotoEdit }) {
-  const [box, setBox] = useState<OverlayBox | null>(null);
-  // Hide the ORIGINAL element while the composite is on top. Without this a
-  // background cutout (transparent where the background was) lets the untouched
-  // original show straight through — "the background is removed but the bottom
-  // layer stays." Restored the moment the edit goes neutral (overlay unmounts) or
-  // the user toggles `applied` off. Hidden only AFTER the pixi first frame
-  // (onReady) so there's no blank flash while the compositor mounts.
-  const hiddenRef = useRef<{ el: HTMLElement; prev: string } | null>(null);
-  const restoreOriginal = useCallback(() => {
-    if (hiddenRef.current) {
-      hiddenRef.current.el.style.visibility = hiddenRef.current.prev;
-      hiddenRef.current = null;
-    }
-  }, []);
-  const hideOriginal = useCallback(() => {
-    const el = findPhotoEl(asset) as HTMLElement | null;
-    if (!el || hiddenRef.current?.el === el) return;
-    restoreOriginal();
-    hiddenRef.current = { el, prev: el.style.visibility };
-    el.style.visibility = 'hidden';
-  }, [asset, restoreOriginal]);
-  // Always un-hide on unmount (the overlay is keyed by asset, so unmount is the
-  // asset-change path too). hideOriginal restores any prior el before re-hiding.
-  useEffect(() => restoreOriginal, [restoreOriginal]);
-  useEffect(() => {
-    let raf = 0;
-    let prev = '';
-    const tick = () => {
-      const el = findPhotoEl(asset);
-      if (el) {
-        const r = el.getBoundingClientRect();
-        const svgBox = (el as unknown as SVGGraphicsElement).getBBox?.();
-        const worldW = (el as HTMLElement).offsetWidth || svgBox?.width || r.width || 1;
-        const worldH = (el as HTMLElement).offsetHeight || svgBox?.height || r.height || 1;
-        const next: OverlayBox = {
-          left: r.left,
-          top: r.top,
-          w: r.width,
-          h: r.height,
-          worldW: Math.max(1, Math.round(worldW)),
-          worldH: Math.max(1, Math.round(worldH)),
-        };
-        const sig = `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)},${next.worldW},${next.worldH}`;
-        if (sig !== prev) {
-          prev = sig;
-          setBox(next);
-        }
-      } else if (prev !== 'gone') {
-        prev = 'gone';
-        setBox(null);
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    tick();
-    return () => cancelAnimationFrame(raf);
-  }, [asset]);
-  if (!box || box.w < 1 || box.h < 1) return null;
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        left: box.left,
-        top: box.top,
-        width: box.w,
-        height: box.h,
-        pointerEvents: 'none',
-        overflow: 'hidden',
-        zIndex: 30,
-      }}
-      aria-hidden="true"
-    >
-      <PhotoLayer
-        source={asset}
-        edit={edit}
-        width={box.worldW}
-        height={box.worldH}
-        style={{ width: '100%', height: '100%' }}
-        onReady={hideOriginal}
-      />
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SnapGuideOverlay (Phase 4.2) — renders 1 px guide lines while a drag is in
