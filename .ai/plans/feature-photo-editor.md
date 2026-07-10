@@ -228,18 +228,18 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 
 ### Stage E — Inspector UI
 
-#### Task 13: ADD the conditional "Photo" Inspector tab
+#### ◐ Task 13: ADD the conditional "Photo" Inspector tab — INVESTIGATED (the flagged largest-unknown is now fully mapped: annotation ImageStroke selection is an isolated iframe-local model that never reaches InspectorPanel; needs a new upward `select-annotation` msg in annotations-layer.tsx ~:3152 + a gated shell handler ~app.jsx:8631 + a down-channel write). app.jsx tab mount + annotation threading = live-browser pass.
 
 - **Do**: Extend the `tabBtn` row (`app.jsx:5824-5837`) and tab-body branch chain (`:5847-5977`) with a `photo` tab, shown when the current selection is photo-eligible. Per your clarification: when the selection is an annotation `ImageStroke`, show **only** the Photo tab (no Inspect/Layers/CSS — those don't apply to annotation strokes); when the selection is an artboard `<img>`, show Photo alongside the existing three tabs.
 - **Gotcha**: `InspectorPanel`'s current tab set assumes a DOM-element selection; annotation-stroke selection is a different selection model (`AnnotationContextMenu`'s own selection registry, per `canvas-shell.tsx:749`'s comment) — verify `InspectorPanel` can even receive an annotation-stroke selection today, and if not, thread it through (this may be the single largest unknown in this plan; budget extra investigation time here).
 - **Validate**: Manual: select an artboard `<img>` → see 4 tabs; select a dropped photo in the annotation layer → see only Photo tab.
 
-#### Task 14: ADD the `isPhoto`/`photoKind` selection flag
+#### ◐ Task 14: ADD the `isPhoto`/`photoKind` selection flag — artboard-`<img>` case is derivable from the existing `Selection` (`el.tag==='img' && el.attrs?.src`, use-selection-set.tsx:40-87); annotation case needs the Task-13 threading. Wiring = live-browser pass.
 
 - **Do**: Extend the `Selection` shape (`use-selection-set.tsx:40-73`) with a flag distinguishing `'artboard-img' | 'annotation-image' | null`, set at the point of selection resolution in `canvas-shell.tsx`.
 - **Validate**: `cd apps/studio && bun test`
 
-#### Task 15: BUILD `PhotoKnobs`
+#### ◐ Task 15: BUILD `PhotoKnobs` — COMPONENT BUILT 2026-07-10 (`client/photo-knobs.jsx`, complete: Adjustments/Duotone/Grain/Pattern/Mask/Background sections, own sliders + injected ColorPicker, debounced PUT to /_api/photo-edit, optimistic onEdit + undo hook). Valid JSX (client/ is biome-excluded by repo policy). Mount into app.jsx + live pixel-preview data-flow + Remove-BG ML wiring = live-browser pass.
 
 - **Do**: New component mirroring `CssKnobs`'s structure exactly (sections, `makeScrub`, provenance dots, per-row/section reset): **Adjustments** (brightness/contrast/saturation/exposure/hue/sepia/grayscale/invert), **Duotone** (`ColorPicker` × 2 + intensity + enable), **Grain** (amount/size + enable), **Pattern** (type select + scale/opacity + blend-mode select), **Mask** (preset select + strength), **Background** (Remove Background button + before/after toggle). All writes go through `/_api/photo-edit` (Task 8) using the same optimistic/commit/undo-record helpers `CssKnobs` already has (reuse, don't reimplement).
 - **Validate**: `maude design screenshot` against a manual canvas exercising every knob; confirm Cmd+Z undoes each.
