@@ -1915,7 +1915,19 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .rb-getlatest-tx { flex: 0 0 auto; }
 .rb-getlatest-sub { margin-left: auto; font-weight: 500; opacity: 0.9; font-size: var(--type-xs); white-space: nowrap; }
 @keyframes rb-getlatest-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .rb-getlatest { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .rb-getlatest, .rb-resume { animation: none; } }
+/* "Continue on <draft>" resume nudge — a subtle secondary row (not the primary blue),
+   shown above the dock trigger when you're on the Shared version but have a draft. */
+.rb-resume { display: flex; align-items: center; gap: var(--space-1); width: 100%; animation: rb-getlatest-in var(--dur-soft, 160ms) var(--ease-out, ease-out); }
+.rb-resume-go { flex: 1 1 auto; display: flex; align-items: center; gap: var(--space-2); min-width: 0; text-align: left; padding: var(--space-2) var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-2); color: var(--fg-1); cursor: pointer; font-size: var(--type-sm); transition: border-color var(--dur-soft) var(--ease-out), background var(--dur-soft) var(--ease-out); }
+.rb-resume-go:hover { border-color: var(--border-strong); background: var(--bg-3); }
+.rb-resume-go:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rb-resume-icon { color: var(--status-warn); flex: 0 0 auto; display: grid; place-items: center; }
+.rb-resume-tx { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-resume-arrow { color: var(--fg-3); flex: 0 0 auto; }
+.rb-resume-x { flex: 0 0 auto; display: grid; place-items: center; width: 28px; height: 28px; border: none; border-radius: var(--radius-md); background: transparent; color: var(--fg-3); cursor: pointer; }
+.rb-resume-x:hover { background: var(--bg-3); color: var(--fg-1); }
+.rb-resume-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* The compact one-line trigger — "📁 <project> · ◐ <version> ⌃" */
 .rb-trigger {
   display: flex; align-items: center; gap: var(--space-2);

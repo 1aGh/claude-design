@@ -45,6 +45,8 @@ function Icon({ name, size = 16, className }) {
     spinner: <path d="M8 2.2a5.8 5.8 0 1 0 5.8 5.8" />,
     // "get latest" — pull the shared version's new commits down.
     download: (<><line x1="8" y1="2.5" x2="8" y2="10.5" /><polyline points="5 7.5 8 10.5 11 7.5" /><line x1="3.5" y1="13.2" x2="12.5" y2="13.2" /></>),
+    // dismiss (×) — used by the "continue on <draft>" resume nudge.
+    close: (<><line x1="4" y1="4" x2="12" y2="12" /><line x1="12" y1="4" x2="4" y2="12" /></>),
   }[name];
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -111,6 +113,8 @@ export default function RepoBranchSwitcher({ project, liveBranch, remoteSync, on
   const [prCopied, setPrCopied] = useState(false);
   // Get-latest (pull) busy state for the dock nudge.
   const [pulling, setPulling] = useState(false);
+  // "Continue on <draft>?" nudge — dismissed for this session once the user opts out.
+  const [resumeDismissed, setResumeDismissed] = useState(false);
 
   // Open the PR in the OS browser. A WKWebView anchor can't reach the default browser,
   // so native goes through the Tauri opener (github.com host-locked in Rust); an older
@@ -336,6 +340,16 @@ export default function RepoBranchSwitcher({ project, liveBranch, remoteSync, on
 
   const slug = slugify(draftName);
   const currentDraft = onShared ? null : branches.find((b) => b.current);
+  // On the Shared version with a draft around? Offer to jump back to the most
+  // recently-worked local draft. Maude shows whatever branch HEAD is, so after a
+  // merge / Get-latest you land on the Shared version — this saves the manual switch
+  // back to the draft you were iterating on. Dismissible for the session.
+  const resumeDraft =
+    onShared && !resumeDismissed && !switching && !folding
+      ? [...branches]
+          .filter((b) => !SHARED.has(b.name) && b.where !== 'remote')
+          .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0]
+      : null;
 
   // Search-miss (DDR-133, Task 4): a typed name that matches no LOCAL or already-
   // fetched remote branch offers an explicit remote search (the bounded fetch),
@@ -376,6 +390,16 @@ export default function RepoBranchSwitcher({ project, liveBranch, remoteSync, on
           <span className="rb-getlatest-tx">{pulling ? 'Getting the latest…' : 'Get latest'}</span>
           {!pulling && remoteSync.behind > 0 && <span className="rb-getlatest-sub">{remoteSync.behind} new on {sharedName}</span>}
         </button>
+      )}
+      {resumeDraft && (
+        <div className="rb-resume" data-testid="switcher-resume">
+          <button type="button" className="rb-resume-go" onClick={() => switchDraft(resumeDraft.name)} title={`Switch to ${resumeDraft.name}`}>
+            <span className="rb-resume-icon"><Icon name="draft" size={13} /></span>
+            <span className="rb-resume-tx">Continue on <b>{resumeDraft.name}</b></span>
+            <Icon name="chevron-right" size={12} className="rb-resume-arrow" />
+          </button>
+          <button type="button" className="rb-resume-x" data-testid="switcher-resume-dismiss" aria-label="Dismiss" onClick={() => setResumeDismissed(true)}><Icon name="close" size={12} /></button>
+        </div>
       )}
       <div className="rb-dock" ref={rootRef}>
         {open && (
