@@ -1,0 +1,32 @@
+---
+title: /design:reel
+description: "From a folder of raw clips (or the clips on the active canvas) to a directed, graphics-laden video cut — in one prompt. Ingests + content-addresses the footage, fans out the footage-analyst to WATCH each clip (vision keyframes), has the footage-director assemble an Edit Decision List, generates a Timeline-parseable `<TransitionSeries>` video-comp, and runs the motion + design critics. Vision-only (no audio analysis). Wraps `maude design ingest-footage`/`probe-footage` + the footage-analyst/footage-director agents + skill footage-director."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:reel` |
+| **Category** | `daily` (daily) |
+| **Argument hint** | `<Name> [<folder-path>] \"<brief>\" [--from-canvas] [--target-seconds N] [--fps N] [--aspect 16:9\|9:16\|1:1] [--frames N] [--music assets/<sha8>.mp3] [--no-critic]` |
+| **Source** | [`plugins/design/commands/reel.md`](https://github.com/1aGh/maude/blob/main/plugins/design/commands/reel.md) |
+
+## Description
+
+From a folder of raw clips (or the clips on the active canvas) to a directed, graphics-laden video cut — in one prompt. Ingests + content-addresses the footage, fans out the footage-analyst to WATCH each clip (vision keyframes), has the footage-director assemble an Edit Decision List, generates a Timeline-parseable `&lt;TransitionSeries>` video-comp, and runs the motion + design critics. Vision-only (no audio analysis). Wraps `maude design ingest-footage`/`probe-footage` + the footage-analyst/footage-director agents + skill footage-director.
+
+## Invocation
+
+```text
+/design:reel <Name> [<folder-path>] \"<brief>\" [--from-canvas] [--target-seconds N] [--fps N] [--aspect 16:9|9:16|1:1] [--frames N] [--music assets/<sha8>.mp3] [--no-critic]
+```
+
+## Summary
+
+Turns raw footage into a finished, editable cut. This is the **front half** the `video-comp` skill never had: Maude **understands the footage first** (finds the good shots, reads the character of each clip), then directs them like an editor into a `&lt;TransitionSeries>` composition with titles/graphics — which you can th
+## Source of truth
+
+<Callout type="note" title="Generated from frontmatter">
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file: [**`plugins/design/commands/reel.md`**](https://github.com/1aGh/maude/blob/main/plugins/design/commands/reel.md).
+
+</Callout>

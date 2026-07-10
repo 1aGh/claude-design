@@ -110,6 +110,8 @@ export const COMMAND_CATALOG = [
       { name: 'handoff', category: 'daily' },
       { name: 'to-lottie', category: 'daily' },
       { name: 'to-rn', category: 'daily' },
+      { name: 'photo', category: 'daily' },
+      { name: 'reel', category: 'daily' },
       { name: 'help', category: 'daily' },
       { name: 'init', category: 'setup' },
       { name: 'setup-ds', category: 'setup' },
