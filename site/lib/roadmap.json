@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-10T18:19:51.647Z",
+  "generated": "2026-07-10T18:46:00.300Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1200,6 +1200,17 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
+    },
+    {
+      "id": "feature-ai-media-generation",
+      "title": "Feature: AI Media Generation (bring-your-own-key) — photo · video · audio",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a multi-phase epic — execute one phase at a time, each phase is independently...",
+      "planPath": ".ai/plans/feature-ai-media-generation.md",
+      "archived": false,
+      "phaseKey": null
     },
     {
       "id": "feature-grid-track-editor",
