@@ -392,6 +392,26 @@ const INSPECTOR_SCRIPT = `
     '@keyframes dc-activity-glow { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.85; } }',
     '@keyframes dc-activity-wave { from { transform: translateY(-100%); } to { transform: translateY(100%); } }',
     '@media (prefers-reduced-motion: reduce) { html .dc-activity-rim { transition: none; } html .dc-activity-rim::after { animation: none; opacity: 0.55; } html .dc-activity-scan { display: none; } }',
+    /* feature-photo-editor — background-removal busy reveal. A data-photo-busy
+       attribute toggle on the real img/image element (set by canvas-lib.tsx's
+       PhotoPreviewBridge on a photo-busy postMessage from the shell), styled
+       here at the same single injection point as the .dc-activity-* agent-edit
+       chrome above — same "something is actively happening" rim + pulse
+       language. Deliberately NOT a floating tracked overlay: that's the exact
+       architecture DDR-161's addendum removed from the live-edit preview
+       (z-index/resize/hit-testing bugs) — an attribute on the element itself
+       moves for free with pan/zoom/resize, no separate rect sync needed.
+       Deliberately opacity-only (not a moving mask-position sweep, tried
+       first): the ML pass runs single-threaded WASM on the main thread
+       (confirmed live — env.wasm.numThreads falls back without
+       crossOriginIsolated), which blocks per-frame style/paint work for the
+       ENTIRE inference; a mask-position animation froze mid-sweep for that
+       whole window. opacity is one of the few properties browsers composite
+       off the main thread unconditionally, so the pulse keeps animating
+       exactly when the page is busiest — the one moment it needs to. */
+    'html [data-photo-busy] { outline: 2px solid var(--mdcc-activity, hsl(210 90% 58%)); outline-offset: 2px; animation: dc-photo-busy-pulse 1100ms ease-in-out infinite; will-change: opacity; }',
+    '@keyframes dc-photo-busy-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }',
+    '@media (prefers-reduced-motion: reduce) { html [data-photo-busy] { animation: none; opacity: 0.75; } }',
     /* Phase 13.1 / DDR-077 — "holding last good render" toast, shown when an
        agent edit produced a broken intermediate (build/render error) and the
        canvas is held instead of flashing white. Amber = warn, distinct from the

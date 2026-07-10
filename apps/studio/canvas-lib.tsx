@@ -2483,8 +2483,17 @@ export function PhotoPreviewBridge() {
 
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
-      const m = e.data as { dgn?: string; asset?: unknown; edit?: unknown } | null;
+      const m = e.data as { dgn?: string; asset?: unknown; edit?: unknown; busy?: unknown } | null;
       if (!m) return;
+      // Background-removal busy shimmer (Task 12 reveal) — a `data-photo-busy`
+      // attribute toggle on the real element, styled by inspect.ts's single CSS
+      // injection point (mirrors `.dc-activity-scan`'s sweep language). No
+      // separate tracked overlay — see the header comment above `apply()`.
+      if (m.dgn === 'photo-busy' && typeof m.asset === 'string') {
+        const el = findPhotoEl(m.asset);
+        el?.toggleAttribute('data-photo-busy', !!m.busy);
+        return;
+      }
       if (m.dgn !== 'photo-preview' || typeof m.asset !== 'string') return;
       const asset = m.asset;
       const edit = (m.edit ?? null) as PhotoEdit | null;
@@ -2555,6 +2564,95 @@ export function PhotoPreviewBridge() {
   return null; // mutates the real elements directly — no visible DOM of its own.
 }
 PhotoPreviewBridge.displayName = 'PhotoPreviewBridge';
+
+// PhotoBgRemoveHarness (feature-photo-editor, Task 18) — the headless CLI proof
+// harness `photo-bg-remove.sh` mounts inside a throwaway `_photo/<slug>.bgremove.tsx`
+// canvas (mirrors DrawProof's role for the draw engine). Runs the EXACT SAME
+// client-side ML flow the interactive "Remove Background" button uses (Task 12,
+// app.jsx `onPhotoRemoveBackground`) — @imgly/background-removal, WASM/WebGPU,
+// pixels never leave the browser — then persists the result and reports back to
+// the driving CLI script via DOM attributes it polls (no return value crosses
+// the process boundary; agent-browser reads attributes off the DOM instead).
+//
+// `/_api/asset` and `/_api/photo-edit` are BOTH canvas-safe routes (see their
+// CANVAS_SAFE_API comments in http.ts), so this harness posts directly from the
+// canvas origin — no main-origin relay / cross-origin workaround needed, despite
+// the split-origin (DDR-054) boundary the rest of the canvas runs inside.
+
+export interface PhotoBgRemoveHarnessProps {
+  /** Relative `assets/<sha8>.<ext>` source to remove the background from. */
+  source: string;
+}
+
+export function PhotoBgRemoveHarness({ source }: PhotoBgRemoveHarnessProps) {
+  const [status, setStatus] = useState<'pending' | 'done' | 'error'>('pending');
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const ranRef = useRef(false);
+
+  useEffect(() => {
+    if (ranRef.current) return; // one ML pass per mount — a dev-mode double-effect must not double-run it
+    ranRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const srcRes = await fetch(`/${source.replace(/^\/+/, '')}`);
+        if (!srcRes.ok) throw new Error(`source fetch failed: ${srcRes.status}`);
+        const srcBlob = await srcRes.blob();
+        const { removeBackground } = await import('@imgly/background-removal');
+        const matte = await removeBackground(srcBlob);
+        const up = await fetch('/_api/asset', {
+          method: 'POST',
+          headers: { 'content-type': matte.type || 'image/png' },
+          body: matte,
+        });
+        const upJson = (await up.json().catch(() => ({}))) as { path?: string };
+        if (!up.ok || !upJson.path) throw new Error(`asset upload failed: ${up.status}`);
+        const maskAsset = upJson.path;
+
+        // Merge onto whatever's already in the sidecar (mirrors photo-adjust.sh's
+        // merge-by-default behavior) instead of clobbering unrelated fields.
+        const base: unknown = await fetch(`/_api/photo-edit?asset=${encodeURIComponent(source)}`)
+          .then((r) => (r.ok ? r.json() : {}))
+          .catch(() => ({}));
+        const nextEdit = {
+          ...(base && typeof base === 'object' ? base : {}),
+          backgroundRemoved: { enabled: true, maskAsset },
+        };
+        const put = await fetch(`/_api/photo-edit?asset=${encodeURIComponent(source)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(nextEdit),
+        });
+        if (!put.ok) throw new Error(`photo-edit save failed: ${put.status}`);
+        if (cancelled) return;
+        setResult(maskAsset);
+        setStatus('done');
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : String(err));
+        setStatus('error');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [source]);
+
+  return (
+    <div
+      data-photo-bgremove-status={status}
+      data-photo-bgremove-result={result ?? ''}
+      data-photo-bgremove-error={error ?? ''}
+      style={{ padding: 24, font: '13px monospace' }}
+    >
+      photo-bg-remove: {status}
+      {result ? ` → ${result}` : ''}
+      {error ? ` (${error})` : ''}
+    </div>
+  );
+}
+PhotoBgRemoveHarness.displayName = 'PhotoBgRemoveHarness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SnapGuideOverlay (Phase 4.2) — renders 1 px guide lines while a drag is in

@@ -6134,9 +6134,11 @@ function InspectorPanel({
   // (threaded up separately since the annotation model has no DOM selection);
   // an artboard `<img>` target is derived from `selected` instead.
   photoSel,
+  photoRev,
   onPhotoEdit,
   onPhotoRemoveBackground,
   onPhotoRecordEdit,
+  onPhotoUndoRedo,
 }) {
   // Tab is controllable from the parent (the guided tour drives it to 'css' /
   // 'layers' so a spotlight step lands on a real row) but falls back to local
@@ -6446,6 +6448,22 @@ function InspectorPanel({
         return a ? { asset: a, kind: 'artboard-img' } : null;
       })();
   const photoOnly = photoTarget?.kind === 'annotation-image';
+  // Cmd+Z / Cmd+Shift+Z (or Cmd+Y) while focus is still inside a Photo-tab
+  // slider — mirrors `onKnobKeyDown` above for the same reason: the window-
+  // level shortcut listener bails out whenever `document.activeElement` is an
+  // `<input>` (native text-undo would otherwise win), so a commit-then-Cmd+Z
+  // with the slider still focused needs its own forwarder here.
+  const onPhotoKnobKeyDown = (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === 'z') {
+      e.preventDefault();
+      onPhotoUndoRedo?.(e.shiftKey ? 'redo' : 'undo');
+    } else if (k === 'y') {
+      e.preventDefault();
+      onPhotoUndoRedo?.('redo');
+    }
+  };
   // An annotation-image has no element tabs; force Photo. Otherwise honor the
   // requested tab, but drop off a stale 'photo' tab when the new selection isn't
   // photo-eligible (so switching from a photo to a normal element lands sanely).
@@ -6515,14 +6533,16 @@ function InspectorPanel({
       ) : null}
       <div className="st-rp-body">
         {effTab === 'photo' && photoTarget ? (
-          <PhotoKnobs
-            key={photoTarget.asset}
-            asset={photoTarget.asset}
-            ColorPicker={ColorPicker}
-            onEdit={(edit) => onPhotoEdit?.(photoTarget.asset, edit)}
-            onRemoveBackground={onPhotoRemoveBackground}
-            onRecordEdit={(before, after) => onPhotoRecordEdit?.(photoTarget.asset, before, after)}
-          />
+          <div onKeyDown={onPhotoKnobKeyDown}>
+            <PhotoKnobs
+              key={`${photoTarget.asset}:${photoRev ?? 0}`}
+              asset={photoTarget.asset}
+              ColorPicker={ColorPicker}
+              onEdit={(edit) => onPhotoEdit?.(photoTarget.asset, edit)}
+              onRemoveBackground={onPhotoRemoveBackground}
+              onRecordEdit={(before, after) => onPhotoRecordEdit?.(photoTarget.asset, before, after)}
+            />
+          </div>
         ) : !el ? (
           <div className="st-rp-empty">
             {/* <p> wrapper — st-rp-empty is a flex column, bare text nodes +
@@ -7019,6 +7039,10 @@ function App() {
   // fight over the panel. The shell-side photo undo stack lives alongside it.
   const [photoSel, setPhotoSel] = useState(null);
   const photoUndoRef = useRef({ undo: [], redo: [] });
+  // Bumped by the Cmd+Z/Cmd+Shift+Z photo-undo handler below so the mounted
+  // PhotoKnobs (keyed on `asset:photoRev`) remounts and re-fetches the sidecar
+  // it just PUT, instead of drifting from its own stale local `edit` state.
+  const [photoRev, setPhotoRev] = useState(0);
   // feature-element-editing-robustness Stage C — auto-open the Inspector on the
   // CSS tab when a fresh single selection arrives AND no right panel is already
   // open. Preference-backed (default ON); disable it in the View menu. Refs keep
@@ -7255,39 +7279,79 @@ function App() {
     photoUndoRef.current.undo.push({ asset, before, after });
     photoUndoRef.current.redo.length = 0;
   }, []);
+  // Pops the shell-side photo-undo stack, re-persists the reverted edit through
+  // the same PUT route PhotoKnobs itself uses, re-broadcasts it to the live
+  // preview, and bumps `photoRev` so the mounted PhotoKnobs (keyed on
+  // `asset:photoRev`) remounts and re-fetches instead of drifting from its own
+  // stale local state. Returns false (does nothing) when the requested stack is
+  // empty, so callers can fall through to the canvas's own undo stack.
+  const performPhotoUndo = useCallback(
+    (redo) => {
+      const stack = redo ? photoUndoRef.current.redo : photoUndoRef.current.undo;
+      if (!stack.length) return false;
+      const entry = stack.pop();
+      (redo ? photoUndoRef.current.undo : photoUndoRef.current.redo).push(entry);
+      const edit = (redo ? entry.after : entry.before) || {};
+      onPhotoEdit(entry.asset, edit);
+      fetch(`/_api/photo-edit?asset=${encodeURIComponent(entry.asset)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(edit),
+      }).catch(() => {});
+      setPhotoRev((v) => v + 1);
+      return true;
+    },
+    [onPhotoEdit]
+  );
   // Task 12 — magic background removal, entirely client-side (WASM/WebGPU via
   // @imgly/background-removal — NEVER the -node native-addon variant, DDR-070).
   // The lib is DYNAMICALLY imported so a session that never removes a background
   // pays zero bundle cost (the lazy-bundle guarantee). Fetches the source bytes,
   // runs the matte, uploads it content-addressed through the SAME /_api/asset lane
   // drag-drop uses, and returns the new `assets/<sha8>.png` for PhotoEdit.
-  const onPhotoRemoveBackground = useCallback(async (asset) => {
-    try {
-      const srcRes = await fetch(`/${asset.replace(/^\/+/, '')}`);
-      if (!srcRes.ok) return null;
-      const srcBlob = await srcRes.blob();
-      const { removeBackground } = await import('@imgly/background-removal');
-      // Inference is 100% CLIENT-SIDE (WASM/WebGPU) — the user's pixels NEVER
-      // leave the browser. Only the public model weights (~40 MB, identical for
-      // everyone) are fetched from IMG.LY's default host on first use; they're
-      // too large to bundle in the npm tarball (`resources.json` ships empty).
-      // Self-hosting those weights off the dev server for offline / air-gapped
-      // parity is the flagged Task-11 follow-up (a one-time download step) — until
-      // then the default host provides them, with no pixel-privacy exposure.
-      const matte = await removeBackground(srcBlob);
-      const up = await fetch('/_api/asset', {
-        method: 'POST',
-        headers: { 'content-type': matte.type || 'image/png' },
-        body: matte,
-      });
-      const j = await up.json().catch(() => ({}));
-      if (up.ok && j.path) return { maskAsset: j.path };
-      return null;
-    } catch (err) {
-      console.error('[photo] background removal failed', err);
-      return null;
-    }
-  }, []);
+  const onPhotoRemoveBackground = useCallback(
+    async (asset) => {
+      // Scan/shimmer reveal on the live photo while the ML pass runs, the same
+      // "something is actively happening here" language as the agent-edit
+      // artboard rim (artboard-activity-overlay.tsx) — but applied directly to
+      // the photo element itself (a `data-photo-busy` attribute + injected CSS
+      // mask sweep, inspect.ts) rather than a floating tracked overlay. A
+      // floating decoy is exactly the architecture DDR-161's addendum tore out
+      // for the live-edit preview (z-index/resize/hit-testing bugs); an
+      // attribute toggle on the real element sidesteps that whole class.
+      postToActiveCanvas({ dgn: 'photo-busy', asset, busy: true });
+      try {
+        const srcRes = await fetch(`/${asset.replace(/^\/+/, '')}`);
+        if (!srcRes.ok) return null;
+        const srcBlob = await srcRes.blob();
+        const { removeBackground } = await import('@imgly/background-removal');
+        // Inference is 100% CLIENT-SIDE (WASM/WebGPU) — the user's pixels NEVER
+        // leave the browser. Only the public model weights (~40 MB, identical for
+        // everyone) are fetched from IMG.LY's default host on first use; they're
+        // too large to bundle in the npm tarball (`resources.json` ships empty).
+        // Self-hosting those weights off the dev server for offline / air-gapped
+        // parity is the flagged Task-11 follow-up (a one-time download step) — until
+        // then the default host provides them, with no pixel-privacy exposure.
+        const matte = await removeBackground(srcBlob);
+        const up = await fetch('/_api/asset', {
+          method: 'POST',
+          headers: { 'content-type': matte.type || 'image/png' },
+          body: matte,
+        });
+        const j = await up.json().catch(() => ({}));
+        if (up.ok && j.path) return { maskAsset: j.path };
+        return null;
+      } catch (err) {
+        console.error('[photo] background removal failed', err);
+        return null;
+      } finally {
+        // Always clears, success or failure — an errored pass must not leave
+        // the shimmer stuck on the photo forever.
+        postToActiveCanvas({ dgn: 'photo-busy', asset, busy: false });
+      }
+    },
+    [postToActiveCanvas]
+  );
 
   // DDR-150 dogfood #7 — a file dragged from Finder and dropped on a shell area
   // with no drop target used to make the browser NAVIGATE AWAY to the file
@@ -9976,8 +10040,19 @@ function App() {
           ) {
             return; // the timeline shortcuts effect claims it
           }
-          e.preventDefault();
           const redo = e.key === 'y' || e.key === 'Y' || e.shiftKey;
+          // feature-photo-editor — photo edits are sidecar writes (`/_api/photo-edit`),
+          // invisible to the canvas's own source-edit undo stack, so they need
+          // their own owner here. Claims the keypress only while the Photo tab
+          // is the one on screen AND it actually has something to undo/redo —
+          // otherwise falls through to the canvas stack as before. (Focus still
+          // inside a Photo-tab slider is handled separately by
+          // `onPhotoKnobKeyDown`, mirroring `onKnobKeyDown` for CSS knobs.)
+          if (inspectorTab === 'photo' && performPhotoUndo(redo)) {
+            e.preventDefault();
+            return;
+          }
+          e.preventDefault();
           postToActiveCanvas({ dgn: redo ? 'redo' : 'undo' });
           return;
         }
@@ -10157,6 +10232,8 @@ function App() {
     presentMode,
     exitPresent,
     toggleTimeline,
+    inspectorTab,
+    performPhotoUndo,
   ]);
 
   const registerIframe = useCallback((path, el) => {
@@ -10534,9 +10611,11 @@ function App() {
               editScope={editScope}
               onUndoRedo={(dir) => postToActiveCanvas({ dgn: dir })}
               photoSel={photoSel}
+              photoRev={photoRev}
               onPhotoEdit={onPhotoEdit}
               onPhotoRemoveBackground={onPhotoRemoveBackground}
               onPhotoRecordEdit={onPhotoRecordEdit}
+              onPhotoUndoRedo={(dir) => performPhotoUndo(dir === 'redo')}
               layersTree={layersTree}
               canvasFile={activePath}
               onSelectLayer={(n) =>

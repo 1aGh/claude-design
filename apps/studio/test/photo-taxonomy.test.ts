@@ -40,6 +40,26 @@ describe('DDR-115 taxonomy — assets/<sha8>.photo.json is VERSIONED', () => {
     expect(isMaudeRuntimeState('.design/_canvas-state/x.view.json')).toBe(true);
   });
 
+  // `_photo/` (Task 18/20's headless bg-remove proof canvases, mirroring
+  // `_draw/`'s draw-proof canvases) must agree as IGNORED across all three lists.
+  test('_photo/ (headless bg-remove proof canvases) is IGNORED across all three lists', () => {
+    expect(isMaudeRuntimeState('.design/_photo/smoke-tsx.bgremove.tsx')).toBe(true);
+
+    const block = buildBlock('.design');
+    expect(block).toContain('.design/_photo/');
+
+    const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+    if (top.status !== 0) {
+      console.warn('git rev-parse failed; skipping root .gitignore ground-truth check');
+      return;
+    }
+    const root = top.stdout.trim();
+    const r = spawnSync('git', ['check-ignore', '-q', '--', '.design/_photo/x.bgremove.tsx'], {
+      cwd: root,
+    });
+    expect(r.status).toBe(0);
+  });
+
   test('the gitignore-block template ignores no assets/ path', () => {
     for (const root of ['.design', 'design', 'mock']) {
       const block = buildBlock(root);

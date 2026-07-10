@@ -2,6 +2,23 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "photo-editor",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Edit photos right on the canvas",
+      "summary": "A new Photo tab in the Inspector lets you tune any photo on your canvas — brightness, contrast, saturation, exposure, hue, sepia, grayscale, duotone, grain, pattern overlays, and vignette/reveal masks — with a live preview, whether it's an image you placed in an artboard or one you dropped/pasted onto the canvas. One click removes the background entirely (runs in your browser, no upload). Reach it from the Inspector's Photo tab or right-click \"Edit Photo…\". Every edit is also scriptable headlessly via /design:photo, so an agent can tune a photo without touching a slider.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour=\"inspector-tabs\"]",
+          "title": "Photo tab",
+          "body": "Select any photo on the canvas and a Photo tab appears here — adjustments, duotone, grain, pattern, masks, and one-click background removal.",
+          "placement": "bottom"
+        }
+      ]
+    },
+    {
       "id": "footage-analysis-director-reel",
       "version": null,
       "date": null,

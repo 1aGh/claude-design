@@ -1,7 +1,51 @@
 {
-  "generated": "2026-07-09T17:01:54.315Z",
+  "generated": "2026-07-10T18:32:49.913Z",
   "version": "0.42.0",
   "entries": [
+    {
+      "id": "photo-editor",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Edit photos right on the canvas",
+      "summary": "A new Photo tab in the Inspector lets you tune any photo on your canvas — brightness, contrast, saturation, exposure, hue, sepia, grayscale, duotone, grain, pattern overlays, and vignette/reveal masks — with a live preview, whether it's an image you placed in an artboard or one you dropped/pasted onto the canvas. One click removes the background entirely (runs in your browser, no upload). Reach it from the Inspector's Photo tab or right-click \"Edit Photo…\". Every edit is also scriptable headlessly via /design:photo, so an agent can tune a photo without touching a slider.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour=\"inspector-tabs\"]",
+          "title": "Photo tab",
+          "body": "Select any photo on the canvas and a Photo tab appears here — adjustments, duotone, grain, pattern, masks, and one-click background removal.",
+          "placement": "bottom"
+        }
+      ]
+    },
+    {
+      "id": "footage-analysis-director-reel",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Turn a folder of clips into a cut — Maude watches your footage first",
+      "summary": "New /design:reel: point Maude at a folder of raw video (or the clips already on your canvas) and it actually WATCHES the footage first — pulling keyframes from each clip to find the good shots and read its character — then directs them like an editor into a graphics-laden cut with titles and transitions, ready to scrub on the Timeline and export to MP4. It can use several moments from one clip, orders them so they tell a story, and needs no extra install (frames are decoded in the browser, no ffmpeg). Analysis is vision-only; drop in a music track and it rides under the finished cut.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "ssh-remote-publish-and-pr-flow",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Share to a protected branch — via a pull request",
+      "summary": "On a GitHub project, \"Add to Shared version\" now pushes your draft and opens a pull request into main, so it works even when main is protected and a direct push would be rejected — the pull-request link opens right from the dialog. Publishing and getting the latest now work on SSH remotes too, and a blue \"Get latest\" button appears in the dock the moment a teammate's work is ahead, so you're nudged to pull without hunting for it.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "unified-text-editing",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Edit any text on the canvas, inline",
+      "summary": "Every kind of text on the canvas now edits the same predictable way — click to place a blinking caret, type, Enter to confirm, Shift+Enter for a new line — across an element's copy, shape and sticky labels, standalone text, and section titles. Text that's filled in from a list or variable (like cards built from data) is now editable in place too: double-click and change the words directly, and it's traced back to the right source. Only genuinely computed text still sends you to chat or /design:edit.",
+      "surface": "design-ui"
+    },
     {
       "id": "whiteboard-annotation-improvements",
       "version": null,
