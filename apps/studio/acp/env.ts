@@ -31,6 +31,28 @@ export const SUBSCRIPTION_SCRUBBED_ENV_KEYS = [
 const PROVIDER_REDIRECT_RE = /^(ANTHROPIC_|CLAUDE_CODE_USE_|AWS_BEARER_TOKEN_BEDROCK)/i;
 
 /**
+ * feature-ai-media-generation (DDR-164) — the BYOK generation key-custody env
+ * vars. The ACP `claude` subprocess NEVER needs these: the dev-server (a separate
+ * process, with its own unscrubbed env) resolves provider keys; the agent only
+ * TRIGGERS generation through `maude design generate`. So scrub them from the
+ * child:
+ *   • `MAUDE_GEN_KEY_ENDPOINT` / `MAUDE_GEN_KEY_KEY` — the Phase-5.1 native
+ *     keychain-bridge loopback endpoint + its access key. Inheriting these would
+ *     let a prompt-injected agent query the bridge for every provider key. This
+ *     is DDR-164 **F3**, brought forward from Phase 5.1 so the tripwire is armed
+ *     BEFORE the bridge is wired, never after.
+ *   • `MAUDE_GEN_KEYS_PATH` — a custom key-file location. Scrubbing it removes the
+ *     signpost to a non-default `keys.json` from the child (defense-in-depth).
+ * NOTE this does NOT make the key unreachable to a compromised same-UID agent —
+ * it can still read the DEFAULT `~/.config/maude/keys.json` (0600, owner = the
+ * agent's own user) off disk. That residual is the pre-existing full-tool-agent
+ * trifecta (documented in the `ai-generation` skill + DDR-164), not something an
+ * env-scrub can close. This pattern's job is narrower: never HAND the child an
+ * env pointer/credential it doesn't need.
+ */
+const GENERATION_KEY_CUSTODY_RE = /^MAUDE_GEN_KEY/i;
+
+/**
  * Return a copy of `source` with the billing/provider-redirect keys removed and
  * any `undefined` values dropped (Bun.spawn's `env` wants Record<string,string>).
  * Pure — never mutates the input, so `process.env` stays intact for the parent.
@@ -42,6 +64,7 @@ export function scrubAgentEnv(
   for (const [key, value] of Object.entries(source)) {
     if (value === undefined) continue;
     if (PROVIDER_REDIRECT_RE.test(key)) continue;
+    if (GENERATION_KEY_CUSTODY_RE.test(key)) continue;
     out[key] = value;
   }
   return out;

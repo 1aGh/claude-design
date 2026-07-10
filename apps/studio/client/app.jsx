@@ -9632,6 +9632,32 @@ function App() {
     [structuralWrite]
   );
 
+  // feature-ai-media-generation Phase 1 (Task 1.1) — auto-insert a generated
+  // image onto the canvas where the user is looking, so generation is never a
+  // dead-end modal. The image landed in the content-addressed asset store
+  // (assets/<sha8>.png) via the privileged /_api/generate-jobs route; splice it
+  // into the active artboard through the SAME main-origin source-write lane the
+  // AssetPicker uses (insertElementShell → /_api/insert-element). Returns true
+  // when it placed the image, false when there's no target artboard (no canvas
+  // open / no active artboard) so the caller can fall back to a manual affordance.
+  const insertGeneratedImage = useCallback(
+    (assetPath) => {
+      if (typeof assetPath !== 'string' || !assetPath) return false;
+      if (!activePath) return false;
+      // Respect the active-canvas + selected-artboard signals (_active.json): an
+      // explicit selection wins, else the viewport-active artboard canvas-lib
+      // reports on pan. Without a target artboard we can't source-write.
+      const artboardId = selectedRef.current?.artboardId ?? canvasActiveArtboard ?? null;
+      if (!artboardId) return false;
+      // Insert as the last child of the artboard (empty or not — the engine's
+      // insertElementIntoArtboard handles both). Content-addressed src only; the
+      // route contains an `image` src to assets/ (no remote hotlink / scheme).
+      insertElementShell(undefined, 'inside-end', 'image', { artboardId, src: assetPath });
+      return true;
+    },
+    [activePath, canvasActiveArtboard, insertElementShell]
+  );
+
   const duplicateElementShell = useCallback(
     (id, idIndex) => {
       structuralWrite(
@@ -11111,7 +11137,9 @@ function App() {
         />
       )}
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
-      {generateOpen && <GenerateDialog onClose={() => setGenerateOpen(false)} />}
+      {generateOpen && (
+        <GenerateDialog onClose={() => setGenerateOpen(false)} onInsert={insertGeneratedImage} />
+      )}
       {assetPickerReq && (
         <AssetPicker
           designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}

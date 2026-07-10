@@ -1,12 +1,17 @@
 // generate-dialog.jsx — the in-app AI-media generate action (feature-ai-media-
-// generation, Phase 0, DDR-16x). Prompt → provider/model/aspect → enqueue on
-// the privileged /_api/generate-jobs route → poll the job → show the produced
-// content-addressed asset. Sibling of `maude design generate` (same route).
+// generation, DDR-16x). Prompt → provider/model/aspect → enqueue on the
+// privileged /_api/generate-jobs route → poll the job → the produced content-
+// addressed asset lands ON the active canvas artboard by default (Phase 1 Task
+// 1.1 — generation is never a dead-end modal). "Place on canvas" can be
+// unchecked to generate-without-placing; the Copy path / Insert buttons are the
+// secondary affordance. Sibling of `maude design generate` (same route).
 //
 // Main-origin shell UI (the route is privileged — never canvas-reachable).
 // Modal chrome mirrors ExportDialog (st-scrim / st-dialog); a running job polls
 // the job list every 1.5s until done/failed (the same completion signal the
-// notification center consumes via the generate:job WS push).
+// notification center consumes via the generate:job WS push). Auto-insert reuses
+// the AssetPicker's main-origin source-write lane (insertElementShell →
+// /_api/insert-element) via the `onInsert` prop passed by app.jsx.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -57,7 +62,17 @@ export default function GenerateDialog({ onClose, onInsert }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null); // { ok, msg }
   const [resultAsset, setResultAsset] = useState(null);
+  // feature-ai-media-generation Phase 1 (Task 1.1) — auto-insert the finished
+  // image onto the canvas by default (generation is never a dead-end modal). The
+  // user can uncheck "Place on canvas" to generate-without-placing (the manual
+  // Copy path / Insert buttons remain the secondary affordance).
+  const [placeOnCanvas, setPlaceOnCanvas] = useState(true);
+  const [placed, setPlaced] = useState(null); // null | true (inserted) | false (no target)
   const pollRef = useRef(null);
+  // Guard against a double-insert: onInsert's identity changes when the active
+  // artboard changes, which would otherwise re-fire the auto-insert effect and
+  // splice the SAME asset twice. Record the last auto-inserted path.
+  const autoInsertedRef = useRef(null);
 
   // Load the image-capable providers + their configured status.
   useEffect(() => {
@@ -94,6 +109,21 @@ export default function GenerateDialog({ onClose, onInsert }) {
   }, [onClose]);
 
   useEffect(() => () => clearInterval(pollRef.current), []);
+
+  // Auto-insert the moment a result lands (keyed on resultAsset so the fresh
+  // onInsert prop is used, never the stale one captured in the poll closure).
+  // onInsert returns false when there's no target artboard (no canvas open) — in
+  // that case fall back to the manual Insert/Copy affordances below.
+  useEffect(() => {
+    if (!resultAsset || !placeOnCanvas || typeof onInsert !== 'function') return;
+    // Insert each result at most once, even if onInsert's identity changes.
+    if (autoInsertedRef.current === resultAsset) return;
+    autoInsertedRef.current = resultAsset;
+    const ok = onInsert(resultAsset) === true;
+    setPlaced(ok);
+    if (ok) setStatus({ ok: true, msg: 'Placed on canvas ✓' });
+    else setStatus({ ok: true, msg: 'Generated — open a canvas artboard to place it, or insert below.' });
+  }, [resultAsset, placeOnCanvas, onInsert]);
 
   const current = providers.find((p) => p.id === provider);
   const notConfigured = current && !current.configured;
@@ -137,6 +167,8 @@ export default function GenerateDialog({ onClose, onInsert }) {
     setBusy(true);
     setStatus(null);
     setResultAsset(null);
+    setPlaced(null);
+    autoInsertedRef.current = null;
     try {
       const body = {
         modality: 'image',
@@ -243,6 +275,19 @@ export default function GenerateDialog({ onClose, onInsert }) {
               ))}
             </select>
           </div>
+          {onInsert && (
+            <label className="st-dialog-row" style={{ gap: 8, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={placeOnCanvas}
+                onChange={(e) => setPlaceOnCanvas(e.target.checked)}
+                aria-label="Place the generated image on the canvas"
+              />
+              <span className="st-dialog-lbl" style={{ margin: 0 }}>
+                Place on canvas
+              </span>
+            </label>
+          )}
           {notConfigured && (
             <div className="st-provider-status" style={{ color: 'var(--fg-3)' }}>
               No key for {current.label} — add one in Settings (⌘,).
@@ -259,8 +304,23 @@ export default function GenerateDialog({ onClose, onInsert }) {
                 >
                   <Icon name="copy" size={13} /> Copy path
                 </button>
-                {onInsert && (
-                  <button type="button" className="st-btn" onClick={() => onInsert(resultAsset)}>
+                {/* Manual Insert stays as a secondary affordance — for a
+                    generate-without-placing run, or when auto-insert found no
+                    target artboard (placed === false). */}
+                {onInsert && placed !== true && (
+                  <button
+                    type="button"
+                    className="st-btn"
+                    onClick={() => {
+                      const ok = onInsert(resultAsset) === true;
+                      setPlaced(ok);
+                      setStatus(
+                        ok
+                          ? { ok: true, msg: 'Placed on canvas ✓' }
+                          : { ok: false, msg: 'Open a canvas and select an artboard first.' }
+                      );
+                    }}
+                  >
                     Insert
                   </button>
                 )}

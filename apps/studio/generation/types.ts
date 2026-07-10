@@ -163,6 +163,13 @@ export interface AdapterContext {
   apiKey: string | null;
   /** Localize a produced asset into `assets/<sha8>.<ext>`; returns the rel path. */
   localize(asset: GenAsset): Promise<string>;
+  /**
+   * Read a content-addressed `assets/<sha8>.<ext>` source's bytes + sniffed mime
+   * for edit / image-to-video flows (a `GenRequest.sourceAsset`). Host-provided
+   * so the adapter never touches the filesystem; returns null for an unknown or
+   * contained-out path. Absent when the host wires no source access (Phase 0).
+   */
+  readSourceAsset?(rel: string): Promise<{ bytes: Uint8Array; mime: string } | null>;
   /** AbortSignal so a cancelled job tears down its provider request. */
   signal?: AbortSignal;
 }

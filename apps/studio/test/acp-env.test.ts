@@ -62,4 +62,34 @@ describe('scrubAgentEnv — subscription guardrail', () => {
     const out = scrubAgentEnv();
     expect('ANTHROPIC_API_KEY' in out).toBe(false);
   });
+
+  // feature-ai-media-generation Phase 1 (Task 1.4) + DDR-164 F3 — the ACP chat
+  // panel can TRIGGER generation because the BYOK provider key is resolved
+  // SERVER-SIDE (the dev-server, a separate process, reads the 0600 file /
+  // keychain via keys.ts). The ACP `claude` subprocess never needs a generation
+  // key-custody env var, so we SCRUB them: the Phase-5.1 keychain-bridge endpoint
+  // + key (`MAUDE_GEN_KEY_*` — F3, brought forward so the tripwire is armed before
+  // the bridge is wired) AND a custom key-file path (`MAUDE_GEN_KEYS_PATH`). This
+  // does NOT make the key unreachable to a compromised same-UID agent (it can
+  // still read the default keys.json off disk — the pre-existing full-tool-agent
+  // trifecta, documented, not closable by an env-scrub); it only ensures the child
+  // is never HANDED a pointer/credential it doesn't need. Meanwhile the `maude`
+  // CLI on PATH still resolves, so generation keeps working through the scrub.
+  test('scrubs the generation key-custody env vars, keeps CLI PATH (Task 1.4 / DDR-164 F3)', () => {
+    const out = scrubAgentEnv({
+      PATH: '/usr/local/bin:/usr/bin',
+      MAUDE_GEN_KEYS_PATH: '/Users/x/.config/maude/keys.json',
+      MAUDE_GEN_KEY_ENDPOINT: 'http://127.0.0.1:9/keychain', // Phase-5.1 bridge — MUST be scrubbed (F3)
+      MAUDE_GEN_KEY_KEY: 'per-launch-bridge-secret',
+      ANTHROPIC_API_KEY: 'sk-should-be-scrubbed',
+    });
+    // The generate CLI stays reachable (the sidecar, not this child, holds the key).
+    expect(out.PATH).toBe('/usr/local/bin:/usr/bin');
+    // Every generation key-custody var is stripped from the agent env.
+    expect('MAUDE_GEN_KEYS_PATH' in out).toBe(false);
+    expect('MAUDE_GEN_KEY_ENDPOINT' in out).toBe(false);
+    expect('MAUDE_GEN_KEY_KEY' in out).toBe(false);
+    // The subscription guardrail still fires.
+    expect('ANTHROPIC_API_KEY' in out).toBe(false);
+  });
 });

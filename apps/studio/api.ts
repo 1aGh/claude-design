@@ -257,6 +257,11 @@ export interface Api {
   saveAsset(bytes: Uint8Array): Promise<SaveAssetResult>;
   /** Stage F1 — list content-addressed image/video assets for the AssetPicker. */
   listAssets(): Promise<{ ok: true; assets: AssetListing[] }>;
+  /** feature-ai-media-generation (Task 1.2) — read a content-addressed
+   *  `assets/<sha8>.<ext>` source's bytes + sniffed mime for the image-edit /
+   *  image-to-video generation flows. Contained to <designRoot>/assets/;
+   *  null for an unknown/contained-out path. */
+  readAssetBytes(rel: unknown): Promise<{ bytes: Uint8Array; mime: string } | null>;
   /** Phase 4 (feature-whiteboard-annotation-improvements) — the bundled sticker
    *  catalogue (MAUDE's own, not the served project's) for the StickerPicker. */
   listStickers(): Promise<{ ok: true; packs: StickerPack[] }>;
@@ -1559,6 +1564,50 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
     out.sort((a, b) => b.mtimeMs - a.mtimeMs);
     return { ok: true, assets: out.slice(0, 500) };
+  }
+
+  // feature-ai-media-generation (Task 1.2) — read a content-addressed source
+  // asset's bytes + authoritative (magic-byte-SNIFFED, not extension-trusted)
+  // mime, for the image-edit / image-to-video generation flows (Nano Banana
+  // maskless edit reads the source into an inlineData part). The provider adapter
+  // never touches the filesystem — the generation route wires this onto
+  // AdapterContext.readSourceAsset. Contained to <designRoot>/assets/ (an lstat
+  // isFile guard defeats a planted symlink, mirroring listAssets); returns null
+  // for an unknown / traversing / oversized path. Capped at ASSET_MAX_BYTES so a
+  // huge source can't be buffered into RAM before an outbound provider POST.
+  async function readAssetBytes(rel: unknown): Promise<{ bytes: Uint8Array; mime: string } | null> {
+    if (typeof rel !== 'string' || !rel.startsWith('assets/')) return null;
+    const name = rel.slice('assets/'.length);
+    if (
+      !name ||
+      name.includes('/') ||
+      name.includes('\\') ||
+      name.includes('..') ||
+      name.startsWith('_')
+    )
+      return null;
+    const assetsDir = path.join(paths.designRoot, 'assets');
+    const fileAbs = path.join(assetsDir, name);
+    // Containment backstop — the name is validated above; assert the join anyway.
+    if (path.resolve(fileAbs) !== path.join(path.resolve(assetsDir), name)) return null;
+    try {
+      const st = await lstat(fileAbs);
+      if (!st.isFile() || st.size > ASSET_MAX_BYTES) return null;
+    } catch {
+      return null;
+    }
+    const bytes = new Uint8Array(await readFile(fileAbs));
+    const info = sniffAssetType(bytes);
+    if (!info) return null; // not a recognised raster/video/audio — reject
+    const mime =
+      info.ext === 'jpg'
+        ? 'image/jpeg'
+        : info.category === 'image'
+          ? `image/${info.ext}`
+          : info.category === 'video'
+            ? `video/${info.ext}`
+            : `audio/${info.ext}`;
+    return { bytes, mime };
   }
 
   // Phase 4 (feature-whiteboard-annotation-improvements) — the bundled sticker
@@ -3358,6 +3407,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     saveAnnotations,
     saveAsset,
     listAssets,
+    readAssetBytes,
     listStickers,
     saveAssetFromStream,
     saveChatAttachment,

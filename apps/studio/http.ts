@@ -2391,6 +2391,10 @@ export function createHttp(
               apiKey,
               signal,
               localize: (asset) => localizeGenAsset(asset, { saveAsset: api.saveAsset }),
+              // Task 1.2 — source-asset access for the maskless-edit / i2v flows
+              // (Nano Banana reads the source into an inlineData part). Contained
+              // to assets/ host-side; the adapter never touches the filesystem.
+              readSourceAsset: (rel) => api.readAssetBytes(rel),
             });
             const job = await adapter.submit(genReq);
             const result = await job.result();

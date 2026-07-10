@@ -14,7 +14,13 @@
 #
 # Usage:
 #   generate.sh --prompt "<text>" [--provider gemini] [--model <id>]
-#     [--modality image] [--aspect 1:1] [--root <repo>] [--timeout <sec>]
+#     [--modality image] [--aspect 1:1] [--source assets/<sha8>.<ext>]
+#     [--root <repo>] [--timeout <sec>]
+#
+# --source turns the call into a maskless EDIT (Nano Banana): the content-
+# addressed source image is read server-side into the request and the prompt
+# describes the change; a NEW content-addressed asset is produced (the original
+# is never mutated).
 #
 # The key is NEVER passed here — it lives server-side. Add it in Settings
 # (⌘,) or drop it into ~/.config/maude/keys.json (mode 0600).
@@ -28,7 +34,7 @@
 
 set -euo pipefail
 
-PROMPT="" PROVIDER="gemini" MODEL="" MODALITY="image" ASPECT="" REPO="" TIMEOUT="180"
+PROMPT="" PROVIDER="gemini" MODEL="" MODALITY="image" ASPECT="" SOURCE="" REPO="" TIMEOUT="180"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -37,9 +43,10 @@ while [ $# -gt 0 ]; do
     --model)    MODEL="$2"; shift 2 ;;
     --modality) MODALITY="$2"; shift 2 ;;
     --aspect)   ASPECT="$2"; shift 2 ;;
+    --source)   SOURCE="$2"; shift 2 ;;
     --root)     REPO="$2"; shift 2 ;;
     --timeout)  TIMEOUT="$2"; shift 2 ;;
-    --help|-h)  sed -n '2,29p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    --help|-h)  sed -n '2,35p' "$0" | sed 's/^# \?//'; exit 0 ;;
     *) echo "generate.sh: unknown arg '$1'" >&2; exit 2 ;;
   esac
 done
@@ -60,13 +67,18 @@ PORT=$(jq -r '.port // empty' "$STATE" 2>/dev/null)
 
 BASE="http://127.0.0.1:$PORT/_api/generate-jobs"
 
+# Normalize a --source to the `assets/<sha8>.<ext>` form the route validates
+# (strip a leading slash the canvas-relative writers emit).
+SOURCE="${SOURCE#/}"
+
 # Build the request body — jq handles all prompt escaping. Omit empty optionals.
 BODY=$(jq -n \
   --arg modality "$MODALITY" --arg provider "$PROVIDER" --arg model "$MODEL" \
-  --arg prompt "$PROMPT" --arg aspect "$ASPECT" '
+  --arg prompt "$PROMPT" --arg aspect "$ASPECT" --arg source "$SOURCE" '
   { modality: $modality, provider: $provider, prompt: $prompt }
   + (if $model  != "" then { model: $model }        else {} end)
-  + (if $aspect != "" then { aspectRatio: $aspect } else {} end)')
+  + (if $aspect != "" then { aspectRatio: $aspect } else {} end)
+  + (if $source != "" then { sourceAsset: $source }  else {} end)')
 
 echo "generate.sh: submitting to $PROVIDER ($MODALITY)…" >&2
 RESP=$(curl -s -X POST -H 'Content-Type: application/json' -d "$BODY" "$BASE")

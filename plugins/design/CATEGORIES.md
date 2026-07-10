@@ -22,6 +22,7 @@ Default verbs. No prefix. Members:
 | `/design:edit` | Iterate on the active canvas with auto-critic loop |
 | `/design:new` | Scaffold a new multi-artboard canvas project (or, with `--blank`, an annotation-only **brief board**; ingests a board's notes when run on an annotated brief-board) |
 | `/design:draw` | Generate a verified SVG mark (logo / icon / illustration / diagram / spot) via the geometry engine + visual self-verify loop |
+| `/design:generate` | Generate media from your own AI provider key (BYOK — Nano Banana image v1; audio/video later) and land it on the canvas — key resolved server-side, skill `ai-generation` |
 | `/design:photo` | Edit a photo in the active canvas headlessly — adjustments / duotone / grain / pattern / mask (parametric, no browser) + magic background removal (client-side ML) via the non-destructive PhotoEdit sidecar |
 | `/design:critic` | Spawn the critic panel (or single agent / all critics) |
 | `/design:browse` | Boot the local dev server |

@@ -7,7 +7,7 @@
       "date": null,
       "kind": "feature",
       "title": "Generate images with your own AI key",
-      "summary": "Bring your own Google (Nano Banana) API key and generate images right inside Maude — from the new Generate action (⌘K → \"Generate with AI\") or the command line. Add your key under File → Settings — AI generation (⌘,); it's stored only on your machine, sent straight to the provider, and never touches a canvas or your git history. Every generated image lands in your assets as a normal file you can place, edit in the Photo tab, and export. Audio and video generation are on the way.",
+      "summary": "Bring your own Google (Nano Banana) API key and generate images right inside Maude — and the image lands straight on your canvas, not in a dead-end dialog. Use the Generate action (⌘K → \"Generate with AI\"), the command line, or just ask in the chat panel (\"generate a hero image of a mountain lake\"); the finished picture drops onto the artboard you're looking at. Add your key under File → Settings — AI generation (⌘,); it's stored only on your machine, sent straight to the provider, and never touches a canvas or your git history. Want to change a generated image? Ask to edit it (\"make the sky purple\") for a fresh AI-edited version, or fine-tune it in the Photo tab — every result is a normal asset you can place, edit, and export. Audio and video generation are on the way.",
       "surface": "design-ui",
       "tour": [
         {

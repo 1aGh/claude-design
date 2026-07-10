@@ -81,6 +81,79 @@ describe('gemini adapter', () => {
     await expect(job.result()).rejects.toThrow(/no image/);
   });
 
+  // Task 1.2 — the maskless-edit flow reads the source asset into an inlineData
+  // part alongside the prompt (via the host-provided readSourceAsset).
+  test('an edit request sends the source image as an inlineData part', async () => {
+    let sentBody: {
+      contents?: Array<{
+        parts?: Array<{ text?: string; inlineData?: { mimeType?: string; data?: string } }>;
+      }>;
+    } | null = null;
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      sentBody = JSON.parse(String(init.body));
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            { content: { parts: [{ inlineData: { mimeType: 'image/png', data: PNG_1x1_B64 } }] } },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    const adapter = createGeminiAdapter(
+      ctxWith({
+        readSourceAsset: async () => ({
+          bytes: new Uint8Array([137, 80, 78, 71]),
+          mime: 'image/png',
+        }),
+      })
+    );
+    const job = await adapter.submit({
+      modality: 'image',
+      provider: 'gemini',
+      prompt: 'make the sky purple',
+      sourceAsset: 'assets/deadbeef.png',
+    });
+    await job.result();
+    const parts = sentBody?.contents?.[0]?.parts ?? [];
+    // Source image FIRST, then the instruction text (Gemini's edit order).
+    expect(parts[0]?.inlineData?.mimeType).toBe('image/png');
+    expect(typeof parts[0]?.inlineData?.data).toBe('string');
+    expect(parts[1]?.text).toBe('make the sky purple');
+  });
+
+  test('an edit request with no source-asset reader fails fast', async () => {
+    let called = false;
+    globalThis.fetch = (async () => {
+      called = true;
+      return new Response('{}');
+    }) as typeof fetch;
+    const adapter = createGeminiAdapter(ctxWith()); // no readSourceAsset
+    const job = await adapter.submit({
+      modality: 'image',
+      provider: 'gemini',
+      prompt: 'edit',
+      sourceAsset: 'assets/deadbeef.png',
+    });
+    await expect(job.result()).rejects.toThrow(/source-asset access/);
+    expect(called).toBe(false);
+  });
+
+  test('an edit whose source is not an image is rejected', async () => {
+    const adapter = createGeminiAdapter(
+      ctxWith({
+        readSourceAsset: async () => ({ bytes: new Uint8Array([0, 0, 0]), mime: 'video/mp4' }),
+      })
+    );
+    const job = await adapter.submit({
+      modality: 'image',
+      provider: 'gemini',
+      prompt: 'edit',
+      sourceAsset: 'assets/deadbeef.mp4',
+    });
+    await expect(job.result()).rejects.toThrow(/not an image/);
+  });
+
   // security fan-out F2 — an env-poisoned non-default base is refused before the
   // key-bearing request (unless MAUDE_GEN_ALLOW_CUSTOM_BASE is opted in).
   test('a non-allowlisted MAUDE_GEMINI_API_BASE is refused without touching the network', async () => {

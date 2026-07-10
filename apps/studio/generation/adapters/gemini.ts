@@ -137,9 +137,33 @@ interface GeminiResponse {
   error?: { message?: string };
 }
 
-/** Build the request body — text prompt + optional image config. */
-function buildBody(req: GenRequest): unknown {
+/**
+ * Build the request body — text prompt + optional source image (maskless edit,
+ * Nano Banana's strength: the source is read into an `inlineData` part alongside
+ * the text) + optional aspect config. Async because the source-asset read is
+ * host-provided (ctx.readSourceAsset) so the adapter never touches the FS.
+ */
+async function buildBody(req: GenRequest, ctx: AdapterContext): Promise<unknown> {
   const parts: Array<Record<string, unknown>> = [];
+
+  // Edit flow (Task 1.2): the source image goes FIRST, then the instruction text
+  // (Gemini's documented image-editing order). Requires the host to have wired
+  // readSourceAsset; a sourceAsset with no reader is a hard error (never a
+  // silent text-only generation that ignores the requested edit).
+  if (req.sourceAsset) {
+    if (!ctx.readSourceAsset) {
+      throw new Error('image editing requires source-asset access, which is not wired');
+    }
+    const src = await ctx.readSourceAsset(req.sourceAsset);
+    if (!src) throw new Error(`source asset not found or unreadable: ${req.sourceAsset}`);
+    if (!src.mime.startsWith('image/')) {
+      throw new Error(`source asset is not an image (${src.mime}) — cannot edit`);
+    }
+    parts.push({
+      inlineData: { mimeType: src.mime, data: Buffer.from(src.bytes).toString('base64') },
+    });
+  }
+
   if (req.prompt) parts.push({ text: req.prompt });
 
   const body: Record<string, unknown> = {
@@ -196,6 +220,9 @@ export function createGeminiAdapter(ctx: AdapterContext): ProviderAdapter {
     assertSafeBase(GEMINI_API_BASE);
     const url = `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent`;
 
+    // Build the body first (an edit flow reads the source asset host-side here).
+    const requestBody = JSON.stringify(await buildBody(req, ctx));
+
     let res: Response;
     try {
       res = await fetch(url, {
@@ -205,7 +232,7 @@ export function createGeminiAdapter(ctx: AdapterContext): ProviderAdapter {
           // Key ONLY in the header — never the query string (redirect/log leak).
           'x-goog-api-key': ctx.apiKey,
         },
-        body: JSON.stringify(buildBody(req)),
+        body: requestBody,
         signal: ctx.signal ?? AbortSignal.timeout(120_000),
       });
     } catch (err) {
