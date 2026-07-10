@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-10T08:33:50.114Z",
+  "generated": "2026-07-10T11:12:55.689Z",
   "currentPhase": null,
   "phases": [
     {
@@ -373,6 +373,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-site-positioning-copywriting.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-ssh-remote-publish-and-pr-flow",
+      "title": "Feature: SSH-remote publish/merge + PR-based \"Add to Shared version\"",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. The git engine layer (apps/studio/git/service.ts) is dense and security-reviewed — mir...",
+      "planPath": ".ai/plans/archive/feature-ssh-remote-publish-and-pr-flow.md",
       "archived": true,
       "phaseKey": null
     },

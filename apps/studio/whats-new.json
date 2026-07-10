@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "ssh-remote-publish-and-pr-flow",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Share to a protected branch — via a pull request",
+      "summary": "On a GitHub project, \"Add to Shared version\" now pushes your draft and opens a pull request into main, so it works even when main is protected and a direct push would be rejected — the pull-request link opens right from the dialog. Publishing and getting the latest now work on SSH remotes too, and a blue \"Get latest\" button appears in the dock the moment a teammate's work is ahead, so you're nudged to pull without hunting for it.",
+      "surface": "design-ui"
+    },
+    {
       "id": "unified-text-editing",
       "version": null,
       "date": null,

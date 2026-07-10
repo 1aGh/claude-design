@@ -211,3 +211,13 @@ Run to confirm zero regressions (this repo has no `typecheck` gate — DDR-026 b
 - [ ] `pnpm lint` + `cd apps/studio && bun test` + `pnpm test:dev-server` green; no regressions.
 - [ ] `/flow:done`: whats-new entry added (user-visible collaboration change); `site/lib/roadmap.json` regenerated (new plan file).
 ```
+
+---
+
+## Retro
+
+- **Splitting A (transport) from B (PR flow) paid off.** Part A was a small, self-contained fix (mirror the existing `gitFetchRemote` gate) that shipped immediate value and unblocked B's draft-push. Landing it as its own commit first — before the larger, DDR-gated B — kept each reviewable. Worth repeating: when an RCA surfaces a "cheap fix + real feature" pair, sequence them.
+- **The concurrent-session hazard was the biggest surprise, not the code.** A parallel `feature-photo-editor` `/flow:execute` was live in the *same working tree*; my initial `git checkout -b` switched the shared tree out from under it. Recovery cost real care (isolate my commit, restore `main`, then a worktree). Lesson for `/plan`: when STATE shows another feature `in-progress`, **plan a `git worktree` from task 0** rather than a branch-in-place — and expect a **DDR-number race** (mine drafted as 161, renumbered to 162 after photo-editor committed its 161 to `main` first).
+- **A "show a link" UI hid a native-shell dependency the plan missed.** "Review on GitHub" can't open the OS browser from WKWebView without a Tauri command — a Rust change that needs a **desktop rebuild** to reach the user. Mitigated by designing the client to degrade (clipboard fallback) so the bundle-only path works immediately. For any desktop-shell feature, the plan should call out up-front which parts need a rebuild vs. reach users via the live-served bundle, and design the interim path in.
+- **Two of the shipped pieces were user-driven follow-ups, not in the plan** (the PR-link opener + the proactive "Get latest" dock nudge). Both were natural extensions discovered by dogfooding the exact flow. The plan correctly scoped the core; the polish emerged from real use — a healthy pattern, but it means the "done" surface is wider than the plan's task list.
+- **B8 is a real harness ceiling, not a skipped step.** The full loop (live ssh push → PR against a *protected* GitHub `main`) can't be fabricated in a scratch test because the ahead/behind probe and PR API are github-only by security design. Routing + REST shape are unit-covered; the live pass is genuinely user-dogfood. Accept + document rather than pretend-verify.
