@@ -1,0 +1,35 @@
+{
+  "title": "Whisper vs ElevenLabs",
+  "subtitle": "Local whisper.cpp vs ElevenLabs Scribe — same 8s clip, side by side",
+  "brief": "Dogfood of the user-chosen transcription engine feature (DDR-164): the caaftv-mixzone-8s clip transcribed twice — local whisper.cpp (ggml-base multilingual, no key, segment-level) and the dev server's ElevenLabs Scribe cloud route (key resolved server-side). Each artboard plays its own video copy and lists its own SRT cues, click-to-seek. Straight quality comparison, not production subtitle UI.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "palette",
+  "kind": "canvas",
+  "brief_sha": "whispervelevenlabs",
+  "sections": [
+    {
+      "id": "comparison",
+      "title": "Whisper vs ElevenLabs",
+      "subtitle": "Same 8s clip (caaftv-mixzone) · local whisper.cpp vs ElevenLabs Scribe"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "local-whisper",
+      "label": "A · Local whisper",
+      "note": "video + click-to-seek transcript from caaftv-local.srt, whisper.cpp ggml-base.bin multilingual model"
+    },
+    {
+      "id": "elevenlabs-scribe",
+      "label": "B · ElevenLabs Scribe",
+      "note": "video + click-to-seek transcript from fd55083e-cloud.srt, cloud STT via dev server"
+    }
+  ],
+  "layout": {
+    "artboards": [
+      { "id": "local-whisper", "x": 0, "y": 0 },
+      { "id": "elevenlabs-scribe", "x": 720, "y": 0 }
+    ]
+  }
+}
