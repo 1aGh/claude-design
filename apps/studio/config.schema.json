@@ -257,6 +257,23 @@
           "description": "When a local runtime (Ollama / ComfyUI / Draw Things, post-v1) is detected on loopback, prefer it over a cloud provider for the same modality (free, offline, private). Inert until local engines ship (Phase 5).",
           "default": false
         },
+        "transcription": {
+          "type": "object",
+          "description": "Speech-to-text / subtitle engine preference (Task 2.6, DDR-164). The engine is an EXPLICIT user choice, never an automatic fallback: a chosen-but-unavailable engine errors clearly and Maude never silently switches to another. `maude design transcribe --provider` overrides this per-call.",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "enum": ["whisper", "elevenlabs", "groq"],
+              "description": "Which engine transcribes when no --provider flag is given. `whisper` = local whisper.cpp (free, offline, no key); `elevenlabs` = ElevenLabs Scribe (cloud, key); `groq` = Groq Whisper (cloud, key). Absent ⇒ whisper.",
+              "default": "whisper"
+            },
+            "model": {
+              "type": "string",
+              "description": "Optional engine-specific model id override (e.g. a Groq 'whisper-large-v3-turbo', an ElevenLabs 'scribe_v1', or a local ggml model name). Absent ⇒ the engine's own default."
+            }
+          },
+          "additionalProperties": false
+        },
         "providers": {
           "type": "object",
           "description": "Per-provider non-secret toggles keyed by provider id. `enabled: false` hides a provider from the generate UI even if a key is present. `localEndpoint` overrides the default host:port for a local runtime.",

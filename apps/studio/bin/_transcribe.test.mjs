@@ -4,9 +4,19 @@
 // (then captions.ts renders the SRT — covered in captions.test.ts).
 
 import { describe, expect, test } from 'bun:test';
-
-import { whisperJsonToWords } from './_transcribe.mjs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { wordsToSrt } from '../generation/captions.ts';
+import { resolveProvider, whisperJsonToWords } from './_transcribe.mjs';
+
+function tmpRepo(config) {
+  const root = mkdtempSync(join(tmpdir(), 'maude-transcribe-'));
+  mkdirSync(join(root, '.design'), { recursive: true });
+  if (config !== undefined)
+    writeFileSync(join(root, '.design', 'config.json'), JSON.stringify(config));
+  return root;
+}
 
 const WHISPER_JSON = JSON.stringify({
   transcription: [
@@ -41,5 +51,30 @@ describe('whisperJsonToWords', () => {
   test('tolerates missing offsets', () => {
     const words = whisperJsonToWords(JSON.stringify({ transcription: [{ text: 'x' }] }));
     expect(words).toEqual([{ text: 'x', start: 0, end: 0 }]);
+  });
+});
+
+describe('resolveProvider (Task 2.6 — explicit engine choice, no silent switch)', () => {
+  test('an explicit valid flag wins over config', () => {
+    const repo = tmpRepo({ generation: { transcription: { provider: 'groq' } } });
+    expect(resolveProvider('elevenlabs', repo)).toEqual({
+      provider: 'elevenlabs',
+      defaulted: false,
+    });
+  });
+
+  test('falls back to the project config default', () => {
+    const repo = tmpRepo({ generation: { transcription: { provider: 'groq' } } });
+    expect(resolveProvider(undefined, repo)).toEqual({ provider: 'groq', defaulted: false });
+  });
+
+  test('defaults to local whisper (marked defaulted) when nothing is set', () => {
+    const repo = tmpRepo(); // no config
+    expect(resolveProvider(undefined, repo)).toEqual({ provider: 'whisper', defaulted: true });
+  });
+
+  test('a malformed config provider is ignored → whisper default', () => {
+    const repo = tmpRepo({ generation: { transcription: { provider: 'bogus' } } });
+    expect(resolveProvider(undefined, repo)).toEqual({ provider: 'whisper', defaulted: true });
   });
 });

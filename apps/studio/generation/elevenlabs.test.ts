@@ -4,7 +4,7 @@
 
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { createElevenLabsAdapter } from './adapters/elevenlabs.ts';
+import { createElevenLabsAdapter, parseHistory } from './adapters/elevenlabs.ts';
 import { createAdapter, providersForModality } from './registry.ts';
 import type { AdapterContext, GenRequest } from './types.ts';
 
@@ -174,5 +174,50 @@ describe('registry', () => {
     expect(providersForModality('transcription').some((p) => p.id === 'elevenlabs')).toBe(true);
     const adapter = createAdapter('elevenlabs', ctxWith());
     expect(adapter.descriptor.id).toBe('elevenlabs');
+  });
+});
+
+describe('elevenlabs history (Task 2.5 — reuse-before-you-pay)', () => {
+  test('parseHistory maps items, drops id-less, converts date_unix → ISO', () => {
+    const items = parseHistory({
+      history: [
+        { history_item_id: 'h1', text: 'warm lofi loop', voice_id: 'v1', date_unix: 1_700_000_000 },
+        { text: 'no id — dropped' },
+        { history_item_id: 'h2', text: 'sfx whoosh' },
+      ],
+    });
+    expect(items.map((i) => i.id)).toEqual(['h1', 'h2']);
+    expect(items[0].text).toBe('warm lofi loop');
+    expect(items[0].voiceId).toBe('v1');
+    expect(items[0].at).toBe(new Date(1_700_000_000 * 1000).toISOString());
+    expect(items[1].at).toBeUndefined();
+  });
+
+  test('parseHistory tolerates an empty / missing history', () => {
+    expect(parseHistory({})).toEqual([]);
+    expect(parseHistory({ history: [] })).toEqual([]);
+  });
+
+  test('listHistory GETs /v1/history with the key in the header only', async () => {
+    const { calls } = stub(
+      () =>
+        new Response(JSON.stringify({ history: [{ history_item_id: 'h1', text: 'x' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+    );
+    const items = await createElevenLabsAdapter(ctxWith()).listHistory?.();
+    expect(items?.[0].id).toBe('h1');
+    expect(calls[0].url).toContain('/v1/history');
+    expect(String(calls[0].init.headers['xi-api-key'])).toBe('sk-eleven-test');
+    expect(calls[0].url).not.toContain('sk-eleven-test');
+  });
+
+  test('fetchHistoryAudio GETs the item audio and yields audio bytes', async () => {
+    const { calls } = stub(audioRes);
+    const asset = await createElevenLabsAdapter(ctxWith()).fetchHistoryAudio?.('h1');
+    expect(asset?.kind).toBe('audio');
+    expect(asset?.bytes?.byteLength).toBe(MP3.byteLength);
+    expect(calls[0].url).toContain('/v1/history/h1/audio');
   });
 });

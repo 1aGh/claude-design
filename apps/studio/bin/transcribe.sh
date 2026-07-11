@@ -10,8 +10,15 @@
 #
 # Usage:
 #   transcribe.sh --source <assets/x.mp4|file> [--root <repo>]
-#     [--format srt|vtt|both] [--model <ggml.bin>] [--whisper <bin>]
+#     [--provider whisper|elevenlabs|groq]
+#     [--format srt|vtt|both] [--model <id>] [--whisper <bin>]
 #     [--lang <code>] [--segments]
+#
+# The engine is an EXPLICIT user choice (Task 2.6, DDR-164), never an automatic
+# fallback: --provider wins, else the project's generation.transcription.provider
+# config, else local whisper — and it SAYS which it chose. A chosen cloud engine
+# (elevenlabs / groq) needs the dev server running (the key is resolved
+# server-side) and an assets/<sha8> source; whisper is local, free, no key.
 #
 # whisper.cpp is a SOFT dependency (plugins/design/dependencies.json). A ggml
 # model is required (--model / $MAUDE_WHISPER_MODEL); whisper.cpp ships no default

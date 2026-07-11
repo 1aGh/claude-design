@@ -183,6 +183,14 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/generate-jobs',
         '/_api/generate/providers',
         '/_api/generate/keys',
+        // Task 2.6 — the non-secret transcription-engine preference writes into
+        // .design/config.json + hot-reloads; still MAIN-ORIGIN ONLY (the canvas
+        // must not steer the user's engine choice).
+        '/_api/generate/prefs',
+        // Task 2.5 — reuse-before-you-pay audio search + history re-download
+        // resolve the provider key server-side; MAIN-ORIGIN ONLY.
+        '/_api/generate/audio-search',
+        '/_api/generate/audio-reuse',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);

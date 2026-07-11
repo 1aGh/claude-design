@@ -15,6 +15,7 @@ import {
   ELEVENLABS_MODELS,
 } from './adapters/elevenlabs.ts';
 import { createGeminiAdapter, GEMINI_DESCRIPTOR, GEMINI_MODELS } from './adapters/gemini.ts';
+import { createGroqAdapter, GROQ_DESCRIPTOR, GROQ_MODELS } from './adapters/groq.ts';
 import type {
   AdapterContext,
   AdapterFactory,
@@ -41,6 +42,13 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     descriptor: ELEVENLABS_DESCRIPTOR,
     factory: createElevenLabsAdapter,
     models: ELEVENLABS_MODELS,
+  },
+  // Task 2.6 — Groq managed Whisper STT (transcription only). A CHOSEN cloud
+  // engine, never auto-selected; the local whisper.cpp path stays the default.
+  groq: {
+    descriptor: GROQ_DESCRIPTOR,
+    factory: createGroqAdapter,
+    models: GROQ_MODELS,
   },
 };
 

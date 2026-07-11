@@ -143,6 +143,23 @@ export interface Job {
 }
 
 /**
+ * One re-usable past generation from a provider's history (Task 2.5). The user's
+ * OWN prior audio, re-downloadable for NO credit (already paid) — ranked against
+ * a query alongside the project's local generated audio so reuse beats paying
+ * for a near-identical new generation.
+ */
+export interface HistoryAudioItem {
+  /** Provider-scoped id used to re-fetch the bytes (`fetchHistoryAudio`). */
+  id: string;
+  /** The stored source text / prompt this item was generated from (match key). */
+  text: string;
+  /** ISO timestamp when it was produced (recency tie-break). */
+  at?: string;
+  /** e.g. a voice_id for TTS — surfaced for provenance, never trusted blindly. */
+  voiceId?: string;
+}
+
+/**
  * The one interface every adapter implements. `submit` returns immediately —
  * even sync providers hand back a resolved Job so the host queue is uniform.
  */
@@ -151,6 +168,18 @@ export interface ProviderAdapter {
   /** Refresh the model catalogue (aggregators). Static providers may omit it. */
   listModels?(): Promise<ModelDescriptor[]>;
   submit(req: GenRequest): Promise<Job>;
+  /**
+   * Task 2.5 — list the user's re-usable audio history (ElevenLabs). Optional;
+   * only providers with a free re-download history implement it. Used by the
+   * audio-search route to offer reuse before a paid generation.
+   */
+  listHistory?(): Promise<HistoryAudioItem[]>;
+  /**
+   * Task 2.5 — re-fetch a history item's bytes (NO credit — already paid) as an
+   * audio GenAsset the host localizes into `assets/<sha8>`. Optional, paired
+   * with `listHistory`.
+   */
+  fetchHistoryAudio?(id: string): Promise<GenAsset>;
 }
 
 /**

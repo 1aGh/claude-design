@@ -18,7 +18,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { sameOriginWrite } from '../http.ts';
+import { sameOriginRead, sameOriginWrite } from '../http.ts';
 
 const SELF = 'http://localhost:4399';
 const post = (origin?: string): Request =>
@@ -50,6 +50,28 @@ describe('CSRF Origin guard — sameOriginWrite (DDR-105)', () => {
 
   test('rejects an unparseable Origin rather than letting it through', () => {
     expect(sameOriginWrite(post('not a url'))).toBe(false);
+  });
+});
+
+describe('CSRF read guard — sameOriginRead (Task 2.5 F1, Fetch-Metadata)', () => {
+  const get = (secFetchSite?: string): Request =>
+    new Request(`${SELF}/_api/generate/audio-search?q=x`, {
+      method: 'GET',
+      headers: { ...(secFetchSite ? { 'sec-fetch-site': secFetchSite } : {}) },
+    });
+
+  test('rejects a cross-site browser GET (key-bearing fan-out must not be CSRF-triggerable)', () => {
+    expect(sameOriginRead(get('cross-site'))).toBe(false);
+    expect(sameOriginRead(get('same-site'))).toBe(false);
+  });
+
+  test('allows a same-origin browser GET', () => {
+    expect(sameOriginRead(get('same-origin'))).toBe(true);
+    expect(sameOriginRead(get('none'))).toBe(true); // direct navigation
+  });
+
+  test('allows a non-browser client (CLI / curl — no Sec-Fetch-Site header)', () => {
+    expect(sameOriginRead(get())).toBe(true);
   });
 });
 

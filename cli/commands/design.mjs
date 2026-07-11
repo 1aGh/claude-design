@@ -70,6 +70,11 @@ const BIN_VERBS = new Set([
   // the shared captions.ts reflow. No dev server; whisper.cpp is a SOFT dep with
   // ElevenLabs Scribe / Groq Whisper as the cloud fallback.
   'transcribe',
+  // feature-ai-media-generation (Task 2.5, DDR-164). `audio-search` is the
+  // reuse-before-you-pay verb: search the project's own generated audio + the
+  // user's ElevenLabs history before spending credits on a new music/SFX/VO
+  // track. Runs server-side (key resolved by the sidecar); needs a dev server.
+  'audio-search',
 ]);
 
 // Bin verbs that boot the dev-server (directly, or by shelling into server-up.sh).
@@ -164,6 +169,7 @@ Dev-tooling (dispatch to the dev-server bash helpers — DDR-062):
   smoke · canvas-edit · handoff · asset-sweep · visual-sanity · fetch-asset
   draw-build · draw-proof · svg-optimize · to-lottie · read-annotations · annotate
   canvas-rects · ingest-footage · probe-footage
+  generate · transcribe · audio-search
         Invoke the bundled helper of the same name. maude resolves it from its
         own package root and sets CLAUDE_PLUGIN_ROOT for the child; stdout,
         stderr, and exit code pass straight through (so command-substitution

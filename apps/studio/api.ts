@@ -37,6 +37,12 @@ import {
   toggleClipHidden,
 } from './canvas-edit.ts';
 import type { Context } from './context.ts';
+import {
+  type AudioMatch,
+  type Candidate,
+  rankMatches,
+  sanitizeReuseText,
+} from './generation/audio-library.ts';
 import { createHistory } from './history.ts';
 import { STICKERS_DIR } from './paths.ts';
 
@@ -262,6 +268,24 @@ export interface Api {
    *  image-to-video generation flows. Contained to <designRoot>/assets/;
    *  null for an unknown/contained-out path. */
   readAssetBytes(rel: unknown): Promise<{ bytes: Uint8Array; mime: string } | null>;
+  /** feature-ai-media-generation (Task 2.6) — write a caption sidecar
+   *  (`assets/<sha8>.srt|.vtt`) next to a content-addressed source, so a cloud
+   *  STT result lands where the local whisper path also writes it. Contained to
+   *  <designRoot>/assets/; text byte-capped; format allowlisted. */
+  writeCaptionSidecar(
+    sourceRel: unknown,
+    format: unknown,
+    text: unknown
+  ): Promise<{ ok: boolean; path?: string; error?: string }>;
+  /** feature-ai-media-generation (Task 2.5) — write the audio-intent sidecar
+   *  (`assets/<sha8>.audio.json`) for reuse-before-you-pay search. */
+  writeAudioIntent(
+    assetRel: unknown,
+    meta: { kind?: string; prompt?: string; provider?: string; model?: string; at?: string }
+  ): Promise<{ ok: boolean; path?: string; error?: string }>;
+  /** feature-ai-media-generation (Task 2.5) — keyword-search the project's own
+   *  generated audio by recorded intent; ranked reuse candidates. */
+  searchAudioLibrary(query: unknown, limit?: number): Promise<AudioMatch[]>;
   /** Phase 4 (feature-whiteboard-annotation-improvements) — the bundled sticker
    *  catalogue (MAUDE's own, not the served project's) for the StickerPicker. */
   listStickers(): Promise<{ ok: true; packs: StickerPack[] }>;
@@ -1612,6 +1636,156 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
             ? `video/${info.ext}`
             : `audio/${info.ext}`;
     return { bytes, mime };
+  }
+
+  // feature-ai-media-generation (Task 2.6, DDR-164) — write a caption SIDECAR
+  // (SRT/VTT text) next to a content-addressed source asset, so a CLOUD STT
+  // result (ElevenLabs Scribe / Groq) lands in the SAME place the local whisper
+  // path writes it: `assets/<sha8>.srt` beside `assets/<sha8>.<ext>`. Local +
+  // cloud subtitles therefore live at one predictable path (the EDL caption
+  // track / a video-comp `<track>` reads `assets/<sha8>.srt`). The caption text
+  // is NOT run through the media magic-byte store (it isn't media) — it is a
+  // versioned text sidecar, mirroring `.meta.json` / `.annotations.svg`.
+  //
+  // Contained to <designRoot>/assets/ exactly like readAssetBytes: the source
+  // must be a validated `assets/<sha8>.<ext>` name, the format is allowlisted,
+  // and the text is byte-capped. Returns the sidecar rel path or null on a bad
+  // source / format.
+  async function writeCaptionSidecar(
+    sourceRel: unknown,
+    format: unknown,
+    text: unknown
+  ): Promise<{ ok: boolean; path?: string; error?: string }> {
+    if (typeof sourceRel !== 'string' || !sourceRel.startsWith('assets/'))
+      return { ok: false, error: 'source must be an assets/<sha8>.<ext> path' };
+    const srcName = sourceRel.slice('assets/'.length);
+    if (
+      !srcName ||
+      srcName.includes('/') ||
+      srcName.includes('\\') ||
+      srcName.includes('..') ||
+      srcName.startsWith('_')
+    )
+      return { ok: false, error: 'invalid source asset name' };
+    const fmt = format === 'vtt' ? 'vtt' : format === 'srt' ? 'srt' : null;
+    if (!fmt) return { ok: false, error: 'format must be srt or vtt' };
+    if (typeof text !== 'string' || !text.trim()) return { ok: false, error: 'empty caption text' };
+    if (text.length > 4 * 1024 * 1024) return { ok: false, error: 'caption text too large' };
+
+    // Strip the source extension → `<sha8>` (or the whole name if none), append
+    // the caption format. A dotless source name keeps its whole name as the base.
+    const dot = srcName.lastIndexOf('.');
+    const base = dot > 0 ? srcName.slice(0, dot) : srcName;
+    const outName = `${base}.${fmt}`;
+    const assetsDir = path.join(paths.designRoot, 'assets');
+    const fileAbs = path.join(assetsDir, outName);
+    if (path.resolve(fileAbs) !== path.join(path.resolve(assetsDir), outName))
+      return { ok: false, error: 'resolved sidecar path escapes assets dir' };
+    try {
+      await mkdir(assetsDir, { recursive: true });
+      await Bun.write(fileAbs, text);
+      return { ok: true, path: `assets/${outName}` };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'sidecar write failed' };
+    }
+  }
+
+  // feature-ai-media-generation (Task 2.5, DDR-164) — write the AUDIO INTENT
+  // sidecar (`assets/<sha8>.audio.json`) next to a generated audio asset: the
+  // durable, semantic "what was this audio FOR" index that reuse-before-you-pay
+  // searches. Byte-content-addressing already dedups identical outputs; this adds
+  // the "do we already have a warm lo-fi loop?" lookup. Contained to assets/ like
+  // the caption sidecar; the intent is inert non-secret metadata.
+  async function writeAudioIntent(
+    assetRel: unknown,
+    meta: { kind?: string; prompt?: string; provider?: string; model?: string; at?: string }
+  ): Promise<{ ok: boolean; path?: string; error?: string }> {
+    if (typeof assetRel !== 'string' || !assetRel.startsWith('assets/'))
+      return { ok: false, error: 'asset must be an assets/<sha8>.<ext> path' };
+    const name = assetRel.slice('assets/'.length);
+    if (
+      !name ||
+      name.includes('/') ||
+      name.includes('\\') ||
+      name.includes('..') ||
+      name.startsWith('_')
+    )
+      return { ok: false, error: 'invalid asset name' };
+    const dot = name.lastIndexOf('.');
+    const base = dot > 0 ? name.slice(0, dot) : name;
+    const outName = `${base}.audio.json`;
+    const assetsDir = path.join(paths.designRoot, 'assets');
+    const fileAbs = path.join(assetsDir, outName);
+    if (path.resolve(fileAbs) !== path.join(path.resolve(assetsDir), outName))
+      return { ok: false, error: 'resolved sidecar path escapes assets dir' };
+    const record = {
+      asset: assetRel,
+      kind: meta.kind,
+      prompt: typeof meta.prompt === 'string' ? meta.prompt.slice(0, 8000) : undefined,
+      provider: meta.provider,
+      model: meta.model,
+      at: meta.at ?? new Date().toISOString(),
+    };
+    try {
+      await mkdir(assetsDir, { recursive: true });
+      await Bun.write(fileAbs, `${JSON.stringify(record, null, 2)}\n`);
+      return { ok: true, path: `assets/${outName}` };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'intent write failed' };
+    }
+  }
+
+  // feature-ai-media-generation (Task 2.5) — search the project's OWN generated
+  // audio by intent (keyword overlap against the recorded prompt/kind), so the
+  // reuse-first path can offer an existing track before paying for a new
+  // generation. Reads the `assets/<sha8>.audio.json` sidecars; ranks with the
+  // shared pure scorer (generation/audio-library.ts) so local + provider-history
+  // results are comparable. Best-effort — a malformed sidecar is skipped.
+  async function searchAudioLibrary(query: unknown, limit = 10): Promise<AudioMatch[]> {
+    if (typeof query !== 'string' || !query.trim()) return [];
+    const assetsDir = path.join(paths.designRoot, 'assets');
+    let entries: string[];
+    try {
+      entries = await readdir(assetsDir);
+    } catch {
+      return [];
+    }
+    // F2 (ethical-hacker) — an intent sidecar is a peer-synced, hence UNTRUSTED
+    // (DDR-054), file: a hostile branch peer could commit a giant `.audio.json`
+    // or thousands of them to OOM the reader (the F1 RAM-DoS class, on disk). A
+    // real intent record is tiny → cap the per-file read AND the number scanned.
+    const MAX_SIDECAR_BYTES = 256 * 1024;
+    const MAX_SIDECARS = 4000;
+    const candidates: Candidate[] = [];
+    let scanned = 0;
+    for (const name of entries) {
+      if (!name.endsWith('.audio.json')) continue;
+      if (++scanned > MAX_SIDECARS) break;
+      try {
+        const fileAbs = path.join(assetsDir, name);
+        const st = await lstat(fileAbs);
+        if (!st.isFile() || st.size > MAX_SIDECAR_BYTES) continue;
+        const raw = await readFile(fileAbs, 'utf8');
+        const intent = JSON.parse(raw) as Record<string, unknown>;
+        const asset =
+          typeof intent.asset === 'string'
+            ? intent.asset
+            : `assets/${name.replace(/\.audio\.json$/, '')}`;
+        candidates.push({
+          source: 'local',
+          ref: asset,
+          // Sanitize the peer-synced (untrusted) prompt before it can be echoed
+          // into an agent context (F3).
+          text: sanitizeReuseText(intent.prompt),
+          kind: typeof intent.kind === 'string' ? intent.kind : undefined,
+          provider: typeof intent.provider === 'string' ? intent.provider : undefined,
+          at: typeof intent.at === 'string' ? intent.at : undefined,
+        });
+      } catch {
+        /* skip a malformed sidecar */
+      }
+    }
+    return rankMatches(query, candidates, { limit });
   }
 
   // Phase 4 (feature-whiteboard-annotation-improvements) — the bundled sticker
@@ -3412,6 +3586,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     saveAsset,
     listAssets,
     readAssetBytes,
+    writeCaptionSidecar,
+    writeAudioIntent,
+    searchAudioLibrary,
     listStickers,
     saveAssetFromStream,
     saveChatAttachment,

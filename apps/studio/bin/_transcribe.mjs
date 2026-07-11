@@ -61,14 +61,56 @@ function parseArgs(argv) {
     if (a === '--source') out.source = next();
     else if (a === '--root') out.root = next();
     else if (a === '--out') out.out = next();
-    else if (a === '--format') out.format = next(); // srt | vtt | both
+    else if (a === '--format')
+      out.format = next(); // srt | vtt | both
     else if (a === '--model') out.model = next();
     else if (a === '--whisper') out.whisper = next();
+    else if (a === '--provider')
+      out.provider = next(); // whisper | elevenlabs | groq
     else if (a === '--lang') out.lang = next();
-    else if (a === '--segments') out.words = false; // segment-level, not per-word
+    else if (a === '--segments')
+      out.words = false; // segment-level, not per-word
     else if (a === '--help' || a === '-h') out.help = true;
   }
   return out;
+}
+
+const CLOUD_PROVIDERS = new Set(['elevenlabs', 'groq']);
+const KNOWN_PROVIDERS = new Set(['whisper', 'elevenlabs', 'groq']);
+
+/**
+ * Resolve the transcription engine as an EXPLICIT choice (Task 2.6): the
+ * --provider flag wins; else the project's `generation.transcription.provider`
+ * config default; else `whisper` (local, free) — and we SAY which we chose.
+ * Maude never silently reaches for a paid cloud engine. Returns { provider,
+ * defaulted } where `defaulted` means neither the flag nor config set it.
+ */
+export function resolveProvider(flag, repo) {
+  if (flag) {
+    if (!KNOWN_PROVIDERS.has(flag)) {
+      process.stderr.write(
+        `transcribe: unknown --provider '${flag}' (use whisper | elevenlabs | groq)\n`
+      );
+      process.exit(2);
+    }
+    return { provider: flag, defaulted: false };
+  }
+  const configured = readConfigProvider(repo);
+  if (configured && KNOWN_PROVIDERS.has(configured))
+    return { provider: configured, defaulted: false };
+  return { provider: 'whisper', defaulted: true };
+}
+
+/** Read `.design/config.json` → generation.transcription.provider, or null. */
+function readConfigProvider(repo) {
+  try {
+    const raw = readFileSync(join(repo, '.design', 'config.json'), 'utf8');
+    const cfg = JSON.parse(raw);
+    const p = cfg?.generation?.transcription?.provider;
+    return typeof p === 'string' ? p : null;
+  } catch {
+    return null;
+  }
 }
 
 function resolveWhisper(explicit) {
@@ -89,12 +131,118 @@ function resolveWhisper(explicit) {
   return null;
 }
 
-function main() {
+/**
+ * Cloud STT path (Task 2.6): the user CHOSE elevenlabs / groq. The transcription
+ * runs on the dev server's privileged generate route (the key is resolved
+ * server-side — never handed to this CLI), which writes the SRT sidecar next to
+ * the source and returns its `assets/<sha8>.srt` path. No-silent-switch: if the
+ * server is down or the source isn't an assets/ path, we ERROR clearly naming
+ * the fix AND the local alternative — we NEVER quietly fall back to whisper.
+ */
+async function runCloud(args, repo, provider) {
+  const source = args.source;
+  if (!source.startsWith('assets/') || source.includes('..')) {
+    process.stderr.write(
+      `transcribe: cloud engine '${provider}' needs a content-addressed source (assets/<sha8>.<ext>).\n` +
+        '  Ingest the file into the project first, or use --provider whisper for an arbitrary local path.\n'
+    );
+    process.exit(2);
+  }
+  const serverPath = join(repo, '.design', '_server.json');
+  if (!existsSync(serverPath)) {
+    process.stderr.write(
+      `transcribe: cloud engine '${provider}' needs the dev server running (it resolves your key server-side).\n` +
+        '  Start it: maude design server-up   — or use --provider whisper (local, no server, no key).\n'
+    );
+    process.exit(1);
+  }
+  let port;
+  try {
+    port = JSON.parse(readFileSync(serverPath, 'utf8'))?.port;
+  } catch {
+    /* handled below */
+  }
+  if (!port) {
+    process.stderr.write(`transcribe: could not read a port from ${serverPath}\n`);
+    process.exit(1);
+  }
+
+  const base = `http://127.0.0.1:${port}/_api/generate-jobs`;
+  const body = { modality: 'transcription', provider, sourceAsset: source };
+  if (args.model) body.model = args.model;
+  if (args.lang) body.params = { language: args.lang };
+
+  process.stderr.write(`transcribe: submitting to ${provider} (cloud STT)…\n`);
+  let jobId;
+  try {
+    const res = await fetch(base, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      process.stderr.write(
+        `transcribe: ${provider} enqueue rejected: ${json?.error ?? res.status}\n`
+      );
+      process.exit(3);
+    }
+    jobId = json.jobId;
+  } catch (err) {
+    process.stderr.write(`transcribe: could not reach the dev server: ${err?.message ?? err}\n`);
+    process.exit(1);
+  }
+  if (!jobId) {
+    process.stderr.write('transcribe: enqueue returned no job id\n');
+    process.exit(3);
+  }
+
+  const deadline = Date.now() + 300_000;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 2000));
+    let job;
+    try {
+      const jobs = await (await fetch(base)).json();
+      job = Array.isArray(jobs?.jobs) ? jobs.jobs.find((j) => j.id === jobId) : null;
+    } catch {
+      /* transient — keep polling until the deadline */
+    }
+    if (job?.status === 'done') {
+      const out = job.assets?.[0];
+      if (!out) {
+        process.stderr.write('transcribe: job done but produced no caption sidecar\n');
+        process.exit(3);
+      }
+      // Chosen engine may only produce SRT; the shared reflow output is SRT. If a
+      // VTT was asked for, note that the cloud path currently writes SRT only.
+      process.stdout.write(`${out.startsWith('/') ? out.slice(1) : out}\n`);
+      return;
+    }
+    if (job?.status === 'failed') {
+      process.stderr.write(
+        `transcribe: ${provider} transcription failed: ${job.error ?? 'unknown'}\n`
+      );
+      process.exit(3);
+    }
+    if (Date.now() >= deadline) {
+      process.stderr.write(`transcribe: timed out waiting for ${provider} (job ${jobId})\n`);
+      process.exit(3);
+    }
+  }
+}
+
+async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     process.stderr.write(
       'usage: maude design transcribe --source <assets/x.mp4|file> [--root <repo>]\n' +
-        '  [--format srt|vtt|both] [--model <ggml.bin>] [--whisper <bin>] [--lang <code>] [--segments]\n'
+        '  [--provider whisper|elevenlabs|groq] [--format srt|vtt|both] [--model <id>]\n' +
+        '  [--whisper <bin>] [--lang <code>] [--segments]\n' +
+        '\n' +
+        '  The engine is an EXPLICIT choice: --provider wins, else the project\n' +
+        '  generation.transcription.provider, else local whisper (never a silent\n' +
+        '  switch to a paid cloud engine). whisper = local/free/no-key;\n' +
+        '  elevenlabs|groq = cloud (needs the dev server + a key in Settings).\n'
     );
     process.exit(0);
   }
@@ -104,6 +252,21 @@ function main() {
   }
 
   const repo = args.root || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+
+  // Resolve the engine as an explicit choice (Task 2.6). A chosen cloud engine
+  // routes through the dev server (key server-side); the local default stays
+  // whisper. We NEVER auto-switch between them.
+  const { provider, defaulted } = resolveProvider(args.provider, repo);
+  if (defaulted)
+    process.stderr.write(
+      'transcribe: no engine configured — using local whisper ' +
+        '(set generation.transcription.provider or pass --provider to choose)\n'
+    );
+  if (CLOUD_PROVIDERS.has(provider)) {
+    await runCloud(args, repo, provider);
+    return;
+  }
+
   // Resolve the input: an `assets/<name>` under the design root, or a plain path.
   // For the assets/ form, reject `..` so the content-addressed branch can't be
   // used to climb out of <designRoot>/assets/ (parity with api.readAssetBytes —

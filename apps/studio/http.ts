@@ -16,10 +16,17 @@ import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
 import type { AiActivity } from './collab/ai-activity.ts';
 import type { Context } from './context.ts';
+import { reloadConfig } from './context.ts';
 import { type Format, isFormat, isScope, type Scope } from './exporters/index.ts';
 import { type ExportJobQueue, ExportQueueFullError } from './exporters/jobs.ts';
 import type { ActiveJsonShape } from './exporters/scope.ts';
 import { createFootageStore, FOOTAGE_MAX_BYTES } from './footage-store.ts';
+import {
+  type AudioMatch,
+  type Candidate,
+  rankMatches,
+  sanitizeReuseText,
+} from './generation/audio-library.ts';
 import { localizeGenAsset } from './generation/download.ts';
 import { type GenerationJobQueue, GenerationQueueFullError } from './generation/jobs.ts';
 import {
@@ -29,6 +36,11 @@ import {
   isConfigured,
   setProviderKey,
 } from './generation/keys.ts';
+import {
+  isTranscriptionProvider,
+  readTranscriptionProvider,
+  writeTranscriptionProvider,
+} from './generation/prefs.ts';
 import {
   createAdapter,
   getProviderDescriptor,
@@ -227,6 +239,24 @@ export function sameOriginWrite(req: Request): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * CSRF guard for a key-bearing / side-effecting GET (Task 2.5 audio-search —
+ * ethical-hacker F1). A cross-site page can issue a `no-cors` GET to
+ * `127.0.0.1:<port>` that passes the `isLoopbackHost` DNS-rebind guard AND may
+ * omit `Origin` (browsers don't reliably stamp Origin on a simple cross-origin
+ * GET), so `sameOriginWrite` alone can't fend it off. Browsers DO always send
+ * the Fetch-Metadata `Sec-Fetch-Site` header, and non-browser clients (the CLI,
+ * curl, bun:test) never do — so reject any request whose `Sec-Fetch-Site` is
+ * present and is not `same-origin`/`none`. A missing header (CLI) is allowed.
+ * Prevents a cross-site page from driving the user's key-bearing provider
+ * fan-out + disk scan as a confused deputy.
+ */
+export function sameOriginRead(req: Request): boolean {
+  const site = req.headers.get('sec-fetch-site');
+  if (!site) return true; // non-browser client (CLI / curl) → allow
+  return site === 'same-origin' || site === 'none';
 }
 
 function safePathUnderRoot(reqUrl: string, repoRoot: string): string | null {
@@ -2411,7 +2441,35 @@ export function createHttp(
             const result = await job.result();
             const assets: string[] = [];
             for (const asset of result.assets) {
-              assets.push(await localizeGenAsset(asset, { saveAsset: api.saveAsset }));
+              // Task 2.6 — a CLOUD STT result (ElevenLabs Scribe / Groq) is
+              // caption TEXT, not media: it lands as a `assets/<sha8>.srt|.vtt`
+              // sidecar next to its source (the SAME path the local whisper verb
+              // writes), never through the magic-byte media store. Everything
+              // else (image/video/audio) localizes into the content-addressed
+              // media store as before.
+              if (asset.kind === 'transcription' && typeof asset.text === 'string') {
+                if (!genReq.sourceAsset)
+                  throw new Error('transcription result has no source asset to sidecar');
+                const fmt = asset.mime === 'text/vtt' ? 'vtt' : 'srt';
+                const saved = await api.writeCaptionSidecar(genReq.sourceAsset, fmt, asset.text);
+                if (!saved.ok || !saved.path)
+                  throw new Error(`caption sidecar write failed: ${saved.error ?? 'unknown'}`);
+                assets.push(saved.path);
+              } else {
+                assets.push(await localizeGenAsset(asset, { saveAsset: api.saveAsset }));
+              }
+            }
+            // Task 2.5 — record the AUDIO INTENT next to a generated audio asset
+            // (the durable, semantic reuse index) so a later near-identical
+            // request can offer the existing track instead of paying again.
+            if (genReq.modality === 'audio' && assets.length > 0) {
+              const kind = (genReq.params as Record<string, unknown> | undefined)?.audioKind;
+              await api.writeAudioIntent(assets[0], {
+                kind: typeof kind === 'string' ? kind : undefined,
+                prompt: genReq.prompt,
+                provider: genReq.provider,
+                model: genReq.model,
+              });
             }
             return { assets, usage: result.usage };
           },
@@ -2486,6 +2544,130 @@ export function createHttp(
         return new Response(err instanceof Error ? err.message : 'key write failed', {
           status: 400,
         });
+      }
+    },
+
+    // feature-ai-media-generation (Task 2.6, DDR-164) — NON-SECRET generation
+    // preferences (the transcription-engine choice). GET returns the current
+    // choice; POST persists it into `.design/config.json` and hot-reloads the
+    // config so the next transcribe picks it up without a restart. MAIN-ORIGIN
+    // ONLY, loopback + sameOriginWrite gated. NEVER touches a key — that's the
+    // separate /_api/generate/keys route.
+    '/_api/generate/prefs': async (req: Request) => {
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method === 'GET') {
+        return Response.json(
+          { transcriptionProvider: readTranscriptionProvider(ctx.paths.repoRoot) },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{ transcriptionProvider?: unknown }>(req, 4 * 1024);
+      const provider = body?.transcriptionProvider;
+      if (!isTranscriptionProvider(provider))
+        return new Response('transcriptionProvider must be whisper|elevenlabs|groq', {
+          status: 400,
+        });
+      try {
+        await writeTranscriptionProvider(ctx.paths.repoRoot, provider);
+        reloadConfig(ctx);
+        return Response.json(
+          { transcriptionProvider: provider },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      } catch (err) {
+        return new Response(err instanceof Error ? err.message : 'prefs write failed', {
+          status: 400,
+        });
+      }
+    },
+
+    // feature-ai-media-generation (Task 2.5, DDR-164) — reuse-before-you-pay for
+    // AUDIO. GET searches the project's OWN generated audio (intent sidecars) and,
+    // when ElevenLabs is configured, the user's re-downloadable History (free —
+    // already paid), returning ranked reuse candidates. MAIN-ORIGIN ONLY,
+    // loopback-gated (it resolves the provider key server-side).
+    '/_api/generate/audio-search': async (req: Request) => {
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      // F1 (ethical-hacker) — this GET resolves the user's key + fans out to the
+      // provider, so it must NOT be cross-site-triggerable (a no-cors GET can slip
+      // past the loopback guard). Fetch-Metadata gate: browser cross-site → 403;
+      // the CLI (no Sec-Fetch-Site) → allowed.
+      if (!sameOriginRead(req)) return new Response('cross-site read rejected', { status: 403 });
+      const q = new URL(req.url).searchParams.get('q') ?? '';
+      if (!q.trim()) return new Response('q query param required', { status: 400 });
+      const local: AudioMatch[] = await api.searchAudioLibrary(q, 10);
+      let history: AudioMatch[] = [];
+      // Only reach the provider when its key is present (no key → local-only).
+      if (isConfigured('elevenlabs')) {
+        try {
+          const apiKey = await getProviderKey('elevenlabs');
+          const adapter = createAdapter('elevenlabs', {
+            apiKey,
+            localize: (asset) => localizeGenAsset(asset, { saveAsset: api.saveAsset }),
+          });
+          if (adapter.listHistory) {
+            const items = await adapter.listHistory();
+            const candidates: Candidate[] = items.map((it) => ({
+              source: 'history' as const,
+              ref: it.id,
+              // History `text` is the user's own generation source, but a TTS of
+              // attacker-supplied text could carry injection — sanitize before it
+              // reaches the agent-facing output (F3).
+              text: sanitizeReuseText(it.text),
+              provider: 'elevenlabs',
+              at: it.at,
+            }));
+            history = rankMatches(q, candidates, { limit: 10 });
+          }
+        } catch {
+          // History is best-effort (rate limits / transient) — degrade to local.
+          history = [];
+        }
+      }
+      return Response.json({ local, history }, { headers: { 'Cache-Control': 'no-store' } });
+    },
+
+    // feature-ai-media-generation (Task 2.5) — reuse a History item: re-download
+    // its bytes (NO credit — already paid) through the host's magic-byte-sniffed
+    // saveAsset, localize into assets/<sha8>, and record the audio intent so the
+    // reused track is itself searchable. MAIN-ORIGIN ONLY, loopback +
+    // sameOriginWrite gated.
+    '/_api/generate/audio-reuse': async (req: Request) => {
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{ id?: unknown }>(req, 8 * 1024);
+      const id = body?.id;
+      if (typeof id !== 'string' || !id.trim())
+        return new Response('history item id required', { status: 400 });
+      if (!isConfigured('elevenlabs'))
+        return new Response('no ElevenLabs key configured', { status: 400 });
+      try {
+        const apiKey = await getProviderKey('elevenlabs');
+        const adapter = createAdapter('elevenlabs', {
+          apiKey,
+          localize: (asset) => localizeGenAsset(asset, { saveAsset: api.saveAsset }),
+        });
+        if (!adapter.fetchHistoryAudio)
+          return new Response('provider has no history re-download', { status: 400 });
+        const asset = await adapter.fetchHistoryAudio(id);
+        const rel = await localizeGenAsset(asset, { saveAsset: api.saveAsset });
+        await api.writeAudioIntent(rel, {
+          kind: 'tts',
+          prompt: `reused from ElevenLabs history ${id}`,
+          provider: 'elevenlabs',
+        });
+        return Response.json({ asset: rel }, { headers: { 'Cache-Control': 'no-store' } });
+      } catch (err) {
+        return new Response(err instanceof Error ? err.message : 'reuse failed', { status: 400 });
       }
     },
 

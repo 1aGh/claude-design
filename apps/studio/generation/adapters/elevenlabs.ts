@@ -24,6 +24,7 @@ import type {
   GenAsset,
   GenRequest,
   GenResult,
+  HistoryAudioItem,
   Job,
   ModelDescriptor,
   ProviderAdapter,
@@ -148,6 +149,38 @@ interface ScribeResponse {
 }
 interface ErrorResponse {
   detail?: { message?: string } | string;
+}
+
+// Task 2.5 — ElevenLabs History (GET /v1/history). The user's re-downloadable
+// past generations; matching + reuse spends NO credit (already paid).
+interface HistoryItemRaw {
+  history_item_id?: string;
+  text?: string;
+  voice_id?: string;
+  date_unix?: number;
+}
+interface HistoryResponseRaw {
+  history?: HistoryItemRaw[];
+}
+
+/** Pure History-response → HistoryAudioItem[] (exported for unit test). */
+export function parseHistory(json: HistoryResponseRaw): HistoryAudioItem[] {
+  const items = Array.isArray(json?.history) ? json.history : [];
+  const out: HistoryAudioItem[] = [];
+  for (const it of items) {
+    const id = typeof it.history_item_id === 'string' ? it.history_item_id : '';
+    if (!id) continue;
+    out.push({
+      id,
+      text: typeof it.text === 'string' ? it.text : '',
+      voiceId: typeof it.voice_id === 'string' ? it.voice_id : undefined,
+      at:
+        typeof it.date_unix === 'number' && Number.isFinite(it.date_unix)
+          ? new Date(it.date_unix * 1000).toISOString()
+          : undefined,
+    });
+  }
+  return out;
 }
 
 /** A sync Job wrapper — already resolved (mirrors the Gemini adapter). */
@@ -283,6 +316,44 @@ export function createElevenLabsAdapter(ctx: AdapterContext): ProviderAdapter {
     return { assets: [asset], usage: { ms: Date.now() - started }, raw: { text: json.text } };
   }
 
+  // Task 2.5 — the user's re-usable audio history. Re-downloading spends NO
+  // credit (already paid). Rate-limited LIST → the route caches the listing;
+  // the audio GET localizes through the host's saveAsset (magic-byte sniff).
+  async function listHistory(): Promise<HistoryAudioItem[]> {
+    assertSafeBase(API_BASE);
+    const res = await fetch(`${API_BASE}/v1/history?page_size=100`, {
+      headers: { 'xi-api-key': requireKey() },
+      signal: ctx.signal ?? AbortSignal.timeout(30_000),
+    });
+    const text = await readTextCapped(res, 8 * 1024 * 1024);
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try {
+        const j = JSON.parse(text) as ErrorResponse;
+        const d = j.detail;
+        msg = (typeof d === 'string' ? d : d?.message) ?? msg;
+      } catch {
+        /* keep status */
+      }
+      throw new Error(`ElevenLabs history error: ${msg}`);
+    }
+    return parseHistory(JSON.parse(text) as HistoryResponseRaw);
+  }
+
+  async function fetchHistoryAudio(id: string): Promise<GenAsset> {
+    // The id is provider-scoped and used ONLY in a fixed, non-interpolated path
+    // segment (encodeURIComponent) — no query, no key leak.
+    assertSafeBase(API_BASE);
+    const res = await fetch(`${API_BASE}/v1/history/${encodeURIComponent(id)}/audio`, {
+      headers: { 'xi-api-key': requireKey() },
+      signal: ctx.signal ?? AbortSignal.timeout(120_000),
+    });
+    if (!res.ok) throw new Error(`ElevenLabs history audio error: HTTP ${res.status}`);
+    const bytes = await readBytesCapped(res, MAX_RESPONSE_BYTES);
+    if (bytes.byteLength === 0) throw new Error('ElevenLabs history returned an empty audio body');
+    return { kind: 'audio', mime: res.headers.get('content-type') || 'audio/mpeg', bytes };
+  }
+
   return {
     descriptor: ELEVENLABS_DESCRIPTOR,
     async listModels() {
@@ -293,5 +364,7 @@ export function createElevenLabsAdapter(ctx: AdapterContext): ProviderAdapter {
       const run = req.modality === 'transcription' ? runTranscription(req) : runAudio(req);
       return doneJob(id, run);
     },
+    listHistory,
+    fetchHistoryAudio,
   };
 }

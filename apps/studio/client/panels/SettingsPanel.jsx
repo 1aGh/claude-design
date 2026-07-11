@@ -164,6 +164,98 @@ function ProviderCard({ provider, onChanged }) {
   );
 }
 
+// Task 2.6 — the subtitle/transcription engine is an EXPLICIT user choice, never
+// an automatic fallback. This radio persists to generation.transcription.provider
+// (the /_api/generate/prefs route); `maude design transcribe` reads the same
+// default. Local whisper is free/offline/no-key; the cloud engines need a key
+// (managed in the provider cards above).
+const TRANSCRIPTION_ENGINES = [
+  {
+    id: 'whisper',
+    label: 'Local whisper.cpp',
+    note: 'Free · offline · no key · runs on your hardware',
+  },
+  {
+    id: 'elevenlabs',
+    label: 'ElevenLabs Scribe',
+    note: 'Cloud · accuracy · needs an ElevenLabs key',
+  },
+  { id: 'groq', label: 'Groq Whisper', note: 'Cloud · fast · needs a Groq key' },
+];
+
+function TranscriptionEngineCard() {
+  const [engine, setEngine] = useState(null); // null = loading
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState(null);
+
+  useEffect(() => {
+    fetch('/_api/generate/prefs')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d) => setEngine(d?.transcriptionProvider || 'whisper'))
+      .catch(() => setEngine('whisper'));
+  }, []);
+
+  async function choose(id) {
+    if (id === engine) return;
+    const prev = engine;
+    setEngine(id);
+    setBusy(true);
+    setStatus(null);
+    try {
+      const res = await fetch('/_api/generate/prefs', {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain' },
+        body: JSON.stringify({ transcriptionProvider: id }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setStatus({ ok: true, msg: 'Saved.' });
+    } catch (err) {
+      setEngine(prev); // revert on failure — no silent state drift
+      setStatus({ ok: false, msg: err && err.message ? err.message : 'save failed' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="st-provider-card">
+      <div className="st-provider-hd">
+        <span className="st-provider-name">Subtitles — transcription engine</span>
+      </div>
+      <div className="st-provider-notes">
+        Which engine turns audio into subtitles. This is an explicit choice — Maude never silently
+        switches engines; a chosen-but-unavailable engine tells you how to fix it.
+      </div>
+      <div className="st-engine-radios" role="radiogroup" aria-label="Transcription engine">
+        {TRANSCRIPTION_ENGINES.map((e) => (
+          <label key={e.id} className={'st-engine-radio' + (engine === e.id ? ' is-selected' : '')}>
+            <input
+              type="radio"
+              name="transcription-engine"
+              value={e.id}
+              checked={engine === e.id}
+              disabled={busy || engine === null}
+              onChange={() => choose(e.id)}
+            />
+            <span className="st-engine-radio-body">
+              <span className="st-engine-radio-label">{e.label}</span>
+              <span className="st-engine-radio-note">{e.note}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      {status && (
+        <div
+          className="st-provider-status"
+          style={{ color: status.ok ? 'var(--accent)' : 'var(--danger, #e5484d)' }}
+        >
+          {status.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPanel({ onClose }) {
   const [providers, setProviders] = useState(null); // null = loading
   const [error, setError] = useState(null);
@@ -228,6 +320,8 @@ export default function SettingsPanel({ onClose }) {
           {providers?.length === 0 && (
             <div className="st-settings-intro">No providers registered.</div>
           )}
+          <div className="st-rp-hd">Subtitles</div>
+          <TranscriptionEngineCard />
         </div>
       </div>
     </div>

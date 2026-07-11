@@ -1746,6 +1746,46 @@
   margin-top: 6px;
 }
 
+/* ── Transcription-engine selector (Task 2.6) ───────────────────────────── */
+.st-engine-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.st-engine-radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+  cursor: pointer;
+}
+.st-engine-radio.is-selected {
+  border-color: var(--accent);
+  background: var(--bg-2);
+}
+.st-engine-radio input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+.st-engine-radio-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.st-engine-radio-label {
+  font-size: var(--type-sm, 13px);
+  color: var(--fg-1);
+  font-weight: 600;
+}
+.st-engine-radio-note {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
 /* ── Generate dialog (feature-ai-media-generation, DDR-16x) ─────────────── */
 .st-gen-prompt {
   width: 100%;
