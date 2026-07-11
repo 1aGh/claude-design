@@ -94,16 +94,49 @@ async function readTextCapped(res: Response, maxBytes: number): Promise<string> 
   return new TextDecoder().decode(Buffer.concat(chunks));
 }
 
+// Video is far heavier than a JSON image response — a separate, higher cap for
+// the Veo MP4 download (still bounded against a wedged/hostile upstream). F1.
+const MAX_VIDEO_BYTES = Math.max(
+  1024 * 1024,
+  Number(process.env.MAUDE_VEO_MAX_RESPONSE_BYTES) || 256 * 1024 * 1024
+);
+
+/** Read a Response body into bytes with a hard cap (F1) — for the Veo MP4. */
+async function readBytesCapped(res: Response, maxBytes: number): Promise<Uint8Array> {
+  const declared = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new Error(`Veo response too large (${declared} > ${maxBytes} bytes)`);
+  }
+  const body = res.body;
+  if (!body) return new Uint8Array(await res.arrayBuffer());
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw new Error(`Veo response exceeded ${maxBytes} bytes`);
+      }
+      chunks.push(value);
+    }
+  }
+  return new Uint8Array(Buffer.concat(chunks));
+}
+
 export const GEMINI_DESCRIPTOR: ProviderDescriptor = {
   id: 'gemini',
-  label: 'Google Gemini (Nano Banana)',
+  label: 'Google Gemini (Nano Banana + Veo)',
   kind: 'cloud',
   auth: 'api-key',
   keychainService: 'com.maude.app.gemini',
-  modalities: ['image'],
+  modalities: ['image', 'video'],
   keyUrl: 'https://aistudio.google.com/apikey',
   notes:
-    'Nano Banana image generation. Your Google AI Studio key bills your own Google account. Generated images may carry a SynthID watermark; review Google’s usage terms for commercial use.',
+    'Nano Banana image generation + Veo video (async, native synced audio + image-to-video). Your Google AI Studio key bills your own Google account. Generated media may carry a SynthID watermark; review Google’s usage terms for commercial use. A video clip takes 1–several minutes.',
 };
 
 export const GEMINI_MODELS: ModelDescriptor[] = [
@@ -123,9 +156,29 @@ export const GEMINI_MODELS: ModelDescriptor[] = [
     costNote: 'higher — 1K/2K/4K',
     sync: true,
   },
+  {
+    id: 'veo-3.1-generate-preview',
+    label: 'Veo 3.1 (video, native audio)',
+    modality: 'video',
+    aspectRatios: ['16:9', '9:16'],
+    costNote: 'per second — see Google pricing',
+    sync: false,
+  },
 ];
 
 const DEFAULT_MODEL = 'gemini-2.5-flash-image';
+const DEFAULT_VIDEO_MODEL = 'veo-3.1-generate-preview';
+// A Veo clip takes 1–several minutes; bound the poll so a stuck operation can't
+// pin a job slot forever. Env-overridable for slower models / long clips.
+const VIDEO_POLL_TIMEOUT_MS = Math.max(
+  60_000,
+  Number(process.env.MAUDE_VEO_TIMEOUT_MS) || 10 * 60 * 1000
+);
+const VIDEO_POLL_INTERVAL_MS = 10_000;
+/** Poll cadence, read at CALL time so a test can shrink it via env. */
+function videoPollInterval(): number {
+  return Math.max(1, Number(process.env.MAUDE_VEO_POLL_INTERVAL_MS) || VIDEO_POLL_INTERVAL_MS);
+}
 
 /** The subset of the Gemini generateContent response we read. */
 interface GeminiResponse {
@@ -135,6 +188,55 @@ interface GeminiResponse {
   }>;
   promptFeedback?: { blockReason?: string };
   error?: { message?: string };
+}
+
+/** The subset of the Veo long-running-operation response we read. Veo's exact
+ *  shape has shifted across previews, so `extractVideoUri` walks it defensively. */
+interface VeoOperation {
+  name?: string;
+  done?: boolean;
+  error?: { message?: string };
+  response?: unknown;
+}
+
+/** Pull the operation name from a predictLongRunning start response. */
+export function extractOperationName(json: unknown): string | null {
+  if (json && typeof json === 'object' && typeof (json as { name?: unknown }).name === 'string')
+    return (json as { name: string }).name;
+  return null;
+}
+
+/**
+ * Walk a done Veo operation for the generated video URI. Veo has returned it at
+ * `response.generateVideoResponse.generatedSamples[].video.uri` and at
+ * `...generatedVideos[].video.uri` across previews — so recursively find the
+ * first `{ uri | fileUri }` string under any `video`/`file` object. Pure +
+ * exported so the parse is unit-testable without a live operation.
+ */
+export function extractVideoUri(op: VeoOperation): string | null {
+  const seen = new Set<unknown>();
+  const walk = (node: unknown): string | null => {
+    if (!node || typeof node !== 'object' || seen.has(node)) return null;
+    seen.add(node);
+    const o = node as Record<string, unknown>;
+    for (const key of ['uri', 'fileUri', 'videoUri']) {
+      const v = o[key];
+      if (typeof v === 'string' && /^https:\/\//.test(v)) return v;
+    }
+    for (const v of Object.values(o)) {
+      if (Array.isArray(v)) {
+        for (const item of v) {
+          const hit = walk(item);
+          if (hit) return hit;
+        }
+      } else if (v && typeof v === 'object') {
+        const hit = walk(v);
+        if (hit) return hit;
+      }
+    }
+    return null;
+  };
+  return walk(op.response);
 }
 
 /**
@@ -206,6 +308,56 @@ function doneJob(id: string, result: Promise<GenResult>): Job {
     result: () => guarded,
     cancel: () => {},
   };
+}
+
+/** An ASYNC Job (Veo video): status starts `running`, `cancel()` aborts the
+ *  in-flight poll/download via the shared controller. */
+function runningJob(id: string, result: Promise<GenResult>, controller: AbortController): Job {
+  let status: 'running' | 'done' | 'failed' = 'running';
+  const guarded = result.then(
+    (r) => {
+      status = 'done';
+      return r;
+    },
+    (err) => {
+      status = 'failed';
+      throw err;
+    }
+  );
+  return {
+    id,
+    status: () => status,
+    async *events() {
+      yield { status: 'running' as const };
+      try {
+        await guarded;
+        yield { status: 'done' as const };
+      } catch (err) {
+        yield {
+          status: 'failed' as const,
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+    result: () => guarded,
+    cancel: () => controller.abort(),
+  };
+}
+
+/** Sleep that rejects promptly if the signal aborts (so cancel/timeout is snappy). */
+function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(new Error('aborted'));
+    const t = setTimeout(resolve, ms);
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(t);
+        reject(new Error('aborted'));
+      },
+      { once: true }
+    );
+  });
 }
 
 export function createGeminiAdapter(ctx: AdapterContext): ProviderAdapter {
@@ -280,6 +432,93 @@ export function createGeminiAdapter(ctx: AdapterContext): ProviderAdapter {
     return { assets, usage: { ms: Date.now() - started }, raw: json };
   }
 
+  /**
+   * Veo video (ASYNC): start a long-running operation, poll it to completion,
+   * then download the produced MP4 WITH the key (the Veo URI is on Google's host
+   * and requires `x-goog-api-key` — so the ADAPTER downloads it, mirroring
+   * ElevenLabs history-audio, rather than handing a key-bearing URL to
+   * download.ts). Returns the bytes as a normal video GenAsset the host
+   * localizes into assets/<sha8>.mp4.
+   */
+  async function runVideo(req: GenRequest, signal: AbortSignal): Promise<GenResult> {
+    if (!ctx.apiKey) throw new Error('no Google Gemini key configured — add one in Settings');
+    if (!req.prompt) throw new Error('video generation requires a prompt');
+    assertSafeBase(GEMINI_API_BASE);
+    const started = Date.now();
+    const model =
+      req.model && GEMINI_MODELS.some((m) => m.id === req.model && m.modality === 'video')
+        ? req.model
+        : DEFAULT_VIDEO_MODEL;
+
+    // Optional image-to-video seed (Task 3.2 seeds a generated still here).
+    let image: { mimeType: string; bytesBase64Encoded: string } | undefined;
+    if (req.sourceAsset) {
+      if (!ctx.readSourceAsset) throw new Error('image-to-video requires source-asset access');
+      const src = await ctx.readSourceAsset(req.sourceAsset);
+      if (!src) throw new Error(`source asset not found or unreadable: ${req.sourceAsset}`);
+      if (!src.mime.startsWith('image/'))
+        throw new Error(`i2v seed must be an image (${src.mime})`);
+      image = { mimeType: src.mime, bytesBase64Encoded: Buffer.from(src.bytes).toString('base64') };
+    }
+
+    const startBody = JSON.stringify({
+      instances: [{ prompt: req.prompt, ...(image ? { image } : {}) }],
+      parameters: { ...(req.aspectRatio ? { aspectRatio: req.aspectRatio } : {}) },
+    });
+    const startRes = await fetch(
+      `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:predictLongRunning`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': ctx.apiKey },
+        body: startBody,
+        signal,
+      }
+    );
+    const startJson = JSON.parse(await readTextCapped(startRes, MAX_RESPONSE_BYTES));
+    if (!startRes.ok)
+      throw new Error(`Veo start error: ${startJson?.error?.message ?? `HTTP ${startRes.status}`}`);
+    const opName = extractOperationName(startJson);
+    if (!opName) throw new Error('Veo did not return an operation name');
+
+    // Poll the operation (10s cadence) until done or the wall-clock cap.
+    const deadline = Date.now() + VIDEO_POLL_TIMEOUT_MS;
+    const interval = videoPollInterval();
+    let op: VeoOperation | null = null;
+    for (;;) {
+      await abortableSleep(interval, signal);
+      const pollRes = await fetch(`${GEMINI_API_BASE}/${opName}`, {
+        headers: { 'x-goog-api-key': ctx.apiKey },
+        signal,
+      });
+      op = JSON.parse(await readTextCapped(pollRes, MAX_RESPONSE_BYTES)) as VeoOperation;
+      if (!pollRes.ok)
+        throw new Error(`Veo poll error: ${op?.error?.message ?? `HTTP ${pollRes.status}`}`);
+      if (op.error) throw new Error(`Veo failed: ${op.error.message ?? 'unknown'}`);
+      if (op.done) break;
+      if (Date.now() >= deadline) throw new Error('Veo timed out (operation still running)');
+    }
+
+    const uri = extractVideoUri(op);
+    if (!uri) throw new Error('Veo operation finished but produced no video URI');
+    // Download the MP4 with the key. Re-assert https + the Google host (the URI
+    // is provider-issued, but a compromised/rerouted response must not exfiltrate
+    // the key to another host).
+    const u = new URL(uri);
+    if (u.protocol !== 'https:' || u.hostname !== GEMINI_ALLOWED_HOST)
+      throw new Error(`Veo video URI host not allowlisted (${u.hostname})`);
+    const dlRes = await fetch(uri, { headers: { 'x-goog-api-key': ctx.apiKey }, signal });
+    if (!dlRes.ok) throw new Error(`Veo video download failed: HTTP ${dlRes.status}`);
+    const bytes = await readBytesCapped(dlRes, MAX_VIDEO_BYTES);
+    if (bytes.byteLength === 0) throw new Error('Veo returned an empty video');
+
+    const asset: GenAsset = {
+      kind: 'video',
+      mime: dlRes.headers.get('content-type') || 'video/mp4',
+      bytes,
+    };
+    return { assets: [asset], usage: { ms: Date.now() - started }, raw: op };
+  }
+
   return {
     descriptor: GEMINI_DESCRIPTOR,
     async listModels() {
@@ -287,8 +526,16 @@ export function createGeminiAdapter(ctx: AdapterContext): ProviderAdapter {
     },
     async submit(req: GenRequest): Promise<Job> {
       const id = `gen_${crypto.randomUUID()}`;
-      // Sync provider — kick off the single call and wrap it in an already-
-      // resolving Job so the queue treats it uniformly with async providers.
+      if (req.modality === 'video') {
+        // Async provider — a real running Job that polls the operation. cancel()
+        // aborts the poll/download; the queue's own timeout also flows in.
+        const controller = new AbortController();
+        if (ctx.signal)
+          ctx.signal.addEventListener('abort', () => controller.abort(), { once: true });
+        return runningJob(id, runVideo(req, controller.signal), controller);
+      }
+      // Sync image — kick off the single call and wrap it in an already-resolving
+      // Job so the queue treats it uniformly with async providers.
       return doneJob(id, runOnce(req));
     },
   };

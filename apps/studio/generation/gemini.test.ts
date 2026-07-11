@@ -5,7 +5,7 @@
 
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { createGeminiAdapter } from './adapters/gemini.ts';
+import { createGeminiAdapter, extractOperationName, extractVideoUri } from './adapters/gemini.ts';
 import { localizeGenAsset } from './download.ts';
 import { createAdapter, providersForModality } from './registry.ts';
 import type { AdapterContext } from './types.ts';
@@ -248,5 +248,103 @@ describe('registry', () => {
 
   test('an unknown provider throws', () => {
     expect(() => createAdapter('nope', ctxWith())).toThrow(/unknown provider/);
+  });
+});
+
+describe('veo video (Task 3.1 — async operation lifecycle)', () => {
+  // A minimal MP4 (ftyp box) so a magic-byte sniff downstream would accept it.
+  const MP4 = new Uint8Array([
+    0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0, 0, 0, 0, 0x6d, 0x70,
+    0x34, 0x32, 0x69, 0x73, 0x6f, 0x6d,
+  ]);
+
+  test('extractOperationName reads the start-response name', () => {
+    expect(extractOperationName({ name: 'operations/abc' })).toBe('operations/abc');
+    expect(extractOperationName({})).toBeNull();
+  });
+
+  test('extractVideoUri walks nested shapes for the first https uri', () => {
+    expect(
+      extractVideoUri({
+        response: {
+          generateVideoResponse: {
+            generatedSamples: [{ video: { uri: 'https://generativelanguage.googleapis.com/v/1' } }],
+          },
+        },
+      })
+    ).toBe('https://generativelanguage.googleapis.com/v/1');
+    expect(
+      extractVideoUri({
+        response: {
+          generatedVideos: [
+            { video: { fileUri: 'https://generativelanguage.googleapis.com/v/2' } },
+          ],
+        },
+      })
+    ).toBe('https://generativelanguage.googleapis.com/v/2');
+    expect(extractVideoUri({ response: {} })).toBeNull();
+  });
+
+  test('submit(video) drives start → poll(done) → download and yields MP4 bytes', async () => {
+    process.env.MAUDE_VEO_POLL_INTERVAL_MS = '1';
+    const calls: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      calls.push(String(url));
+      if (String(url).includes(':predictLongRunning'))
+        return new Response(JSON.stringify({ name: 'operations/xyz' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      if (String(url).includes('operations/xyz'))
+        return new Response(
+          JSON.stringify({
+            done: true,
+            response: {
+              generatedSamples: [
+                {
+                  video: {
+                    uri: 'https://generativelanguage.googleapis.com/v1beta/files/x:download',
+                  },
+                },
+              ],
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      // the video download
+      return new Response(MP4, { status: 200, headers: { 'content-type': 'video/mp4' } });
+    }) as typeof fetch;
+
+    const adapter = createGeminiAdapter(ctxWith());
+    const job = await adapter.submit({ modality: 'video', provider: 'gemini', prompt: 'a wave' });
+    const res = await job.result();
+    delete process.env.MAUDE_VEO_POLL_INTERVAL_MS;
+    expect(res.assets[0].kind).toBe('video');
+    expect(res.assets[0].bytes?.byteLength).toBe(MP4.byteLength);
+    expect(calls.some((u) => u.includes(':predictLongRunning'))).toBe(true);
+    expect(calls.some((u) => u.includes('operations/xyz'))).toBe(true);
+  });
+
+  test('a video URI off the Google host is rejected (no key exfil)', async () => {
+    process.env.MAUDE_VEO_POLL_INTERVAL_MS = '1';
+    globalThis.fetch = (async (url: string) => {
+      if (String(url).includes(':predictLongRunning'))
+        return new Response(JSON.stringify({ name: 'operations/xyz' }), { status: 200 });
+      return new Response(
+        JSON.stringify({ done: true, response: { video: { uri: 'https://evil.example/v.mp4' } } }),
+        { status: 200 }
+      );
+    }) as typeof fetch;
+    const job = await createGeminiAdapter(ctxWith()).submit({
+      modality: 'video',
+      provider: 'gemini',
+      prompt: 'x',
+    });
+    await expect(job.result()).rejects.toThrow(/host not allowlisted/);
+    delete process.env.MAUDE_VEO_POLL_INTERVAL_MS;
+  });
+
+  test('gemini is now registered for the video modality', () => {
+    expect(providersForModality('video').some((p) => p.id === 'gemini')).toBe(true);
   });
 });
