@@ -282,6 +282,60 @@ export function emptyFootageAnalysis(asset?: string): FootageAnalysis {
   return { version: FOOTAGE_ANALYSIS_VERSION, ...(asset ? { asset } : {}), shots: [] };
 }
 
+/** The provenance tag every AI-generated clip's sidecar carries. The
+ *  footage-analyst preserves it when it enriches the stub with real shots. It is
+ *  an ADVISORY hint, not a trust boundary — the sidecar is versioned + peer-
+ *  editable (DDR-054), so a peer can add/strip it; nothing security-relevant keys
+ *  off it (it only labels a beat in the UI). */
+export const AI_GENERATED_TAG = 'ai-generated';
+
+/**
+ * A provenance `FootageAnalysis` stub for an AI-GENERATED clip (DDR-164 Phase 3,
+ * Task 3.2). Written by the `/_api/generate-jobs` route the moment a video job
+ * lands, so the generated clip is immediately KNOWN to the footage pipeline —
+ * `getAnalysis` returns non-null and the reel director can see the clip is
+ * synthetic (the `ai-generated` tag) and read what it was generated FOR (the
+ * prompt, as the summary) without re-watching.
+ *
+ * It carries NO shots on purpose: the `footage-analyst` still probes the
+ * keyframes and fills the real shot list (so `isEmptyAnalysis` is true and the
+ * reel's shot-aware cache re-analyzes it), but the provenance tag + summary
+ * survive. Duration/dimensions are unknown until that probe, so they are omitted.
+ */
+export function generatedClipAnalysis(
+  asset: string,
+  provenance: { provider?: string; model?: string; prompt?: string } = {}
+): FootageAnalysis {
+  const tags = [AI_GENERATED_TAG];
+  if (provenance.provider) tags.push(provenance.provider);
+  const label = [provenance.provider, provenance.model].filter(Boolean).join(' · ');
+  // This is the LOCAL generation request's prompt (not a peer file), but its text
+  // becomes the sidecar `summary`, which IS versioned + peer-syncable (DDR-054)
+  // and read by the footage agents downstream. Map C0/C1 control chars to spaces
+  // (matching generation's sanitizeReuseText) so it can't fabricate multi-line
+  // instructions, then collapse whitespace; bounded to the summary cap below. The
+  // agents' own "treat sidecar text as data" posture is the mitigation for
+  // arbitrary PEER-authored summaries — this only cleans what we write.
+  const prompt = [...(provenance.prompt ?? '')]
+    .map((ch) => {
+      const c = ch.charCodeAt(0);
+      return (c >= 0x00 && c <= 0x1f) || (c >= 0x7f && c <= 0x9f) ? ' ' : ch;
+    })
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
+  let summary = `AI-generated clip${label ? ` (${label})` : ''}${prompt ? ` — ${prompt}` : ''}`;
+  if (summary.length > 3900) summary = `${summary.slice(0, 3900)}…`;
+  return {
+    version: FOOTAGE_ANALYSIS_VERSION,
+    asset,
+    keyframes: 0,
+    shots: [],
+    summary,
+    tags,
+  };
+}
+
 // ── structural validation (dependency-free — no Ajv) ─────────────────────────
 // Mirrors photo/schema.ts: the `/_api/footage` route validates untrusted JSON
 // with these before persisting. Unknown keys / wrong types / out-of-range

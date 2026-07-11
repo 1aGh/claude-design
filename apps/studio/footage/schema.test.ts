@@ -7,11 +7,13 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  AI_GENERATED_TAG,
   EDL_VERSION,
   type Edl,
   emptyFootageAnalysis,
   FOOTAGE_ANALYSIS_VERSION,
   type FootageAnalysis,
+  generatedClipAnalysis,
   isEmptyAnalysis,
   validateEdl,
   validateFootageAnalysis,
@@ -241,5 +243,45 @@ describe('validateEdl', () => {
 
   test('rejects an unknown top-level key (audioTracks typo)', () => {
     expect(validateEdl({ ...GOOD_EDL, audioTrack: [] }).ok).toBe(false);
+  });
+});
+
+describe('generatedClipAnalysis (Task 3.2 — AI-clip provenance stub)', () => {
+  test('produces a VALID, empty-shots, ai-generated-tagged analysis', () => {
+    const a = generatedClipAnalysis('assets/deadbeef.mp4', {
+      provider: 'gemini',
+      model: 'veo-3.1-generate-preview',
+      prompt: 'a drone push over a mountain lake at dawn',
+    });
+    expect(validateFootageAnalysis(a)).toEqual({ ok: true, errors: [] });
+    expect(a.asset).toBe('assets/deadbeef.mp4');
+    // Empty shots ⇒ the reel's shot-aware cache still runs the analyst on it.
+    expect(isEmptyAnalysis(a)).toBe(true);
+    expect(a.tags).toContain(AI_GENERATED_TAG);
+    expect(a.tags).toContain('gemini');
+    expect(a.summary).toContain('mountain lake');
+  });
+
+  test('tolerates a missing prompt/provider and stays valid', () => {
+    const a = generatedClipAnalysis('assets/abcd1234.webm');
+    expect(validateFootageAnalysis(a)).toEqual({ ok: true, errors: [] });
+    expect(a.tags).toEqual([AI_GENERATED_TAG]);
+  });
+
+  test('maps C0/C1 control chars and caps an oversized prompt under the summary limit', () => {
+    const a = generatedClipAnalysis('assets/beadfeed.mp4', {
+      provider: 'gemini',
+      // C0 newline + C1 NEL (\u0085) must both collapse to a space — no fabricated lines.
+      prompt: `injected  line\n\u0085next${'x'.repeat(8000)}`,
+    });
+    expect(validateFootageAnalysis(a).ok).toBe(true);
+    expect(a.summary?.length ?? 0).toBeLessThanOrEqual(3901);
+    // No C0 (0x00–0x1f) or C1 (0x7f–0x9f) control byte survives into the sidecar.
+    expect(
+      [...(a.summary ?? '')].some((c) => {
+        const n = c.charCodeAt(0);
+        return n <= 0x1f || (n >= 0x7f && n <= 0x9f);
+      })
+    ).toBe(false);
   });
 });

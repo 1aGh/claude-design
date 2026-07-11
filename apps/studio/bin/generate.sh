@@ -14,19 +14,25 @@
 #
 # Usage:
 #   generate.sh --prompt "<text>" [--provider gemini|elevenlabs] [--model <id>]
-#     [--modality image|audio] [--aspect 1:1] [--source assets/<sha8>.<ext>]
+#     [--modality image|audio|video] [--aspect 16:9] [--source assets/<sha8>.<ext>]
 #     [--kind music|sfx|tts] [--voice <voice_id>] [--duration <seconds>]
 #     [--root <repo>] [--timeout <sec>]
 #
 # --source turns an IMAGE call into a maskless EDIT (Nano Banana): the content-
 # addressed source image is read server-side into the request and the prompt
 # describes the change; a NEW content-addressed asset is produced (the original
-# is never mutated).
+# is never mutated). For --modality video it is the image-to-video SEED (a still
+# → a clip, so a generated clip can match a generated hero's style).
 #
 # --modality audio (provider elevenlabs): --kind music (default) | sfx | tts.
 # tts needs --voice <voice_id>; music/sfx take an optional --duration in seconds.
 # Produces assets/<sha8>.mp3. (Transcription is a separate verb: `maude design
 # transcribe`, which writes SRT/VTT.)
+#
+# --modality video (provider gemini / Veo 3.1): ASYNC — the clip takes ~1–10 min;
+# the poll timeout defaults to 600s for video (180s otherwise). Produces
+# assets/<sha8>.mp4 + a provenance assets/<sha8>.footage.json stub so the clip is
+# reel-ready (see /design:reel Step 1.5).
 #
 # The key is NEVER passed here — it lives server-side. Add it in Settings
 # (⌘,) or drop it into ~/.config/maude/keys.json (mode 0600).
@@ -40,7 +46,7 @@
 
 set -euo pipefail
 
-PROMPT="" PROVIDER="gemini" MODEL="" MODALITY="image" ASPECT="" SOURCE="" REPO="" TIMEOUT="180"
+PROMPT="" PROVIDER="gemini" MODEL="" MODALITY="image" ASPECT="" SOURCE="" REPO="" TIMEOUT=""
 # Audio params (Phase 2) — kind = music|sfx|tts; voice = an ElevenLabs voice_id
 # (required for tts); duration = seconds (music/sfx length).
 KIND="" VOICE="" DURATION=""
@@ -69,6 +75,12 @@ done
 # asset path".
 [ -n "$PROMPT" ] || { echo "generate.sh: --prompt is required" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "generate.sh: jq is required" >&2; exit 1; }
+
+# Async video (Veo) takes minutes — default the poll window wider than the
+# seconds-fast image/audio calls unless the caller pinned --timeout explicitly.
+if [ -z "$TIMEOUT" ]; then
+  if [ "$MODALITY" = "video" ]; then TIMEOUT="600"; else TIMEOUT="180"; fi
+fi
 
 if [ -z "$REPO" ]; then
   REPO="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"

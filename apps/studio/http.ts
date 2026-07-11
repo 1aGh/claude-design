@@ -20,6 +20,7 @@ import { reloadConfig } from './context.ts';
 import { type Format, isFormat, isScope, type Scope } from './exporters/index.ts';
 import { type ExportJobQueue, ExportQueueFullError } from './exporters/jobs.ts';
 import type { ActiveJsonShape } from './exporters/scope.ts';
+import { generatedClipAnalysis } from './footage/schema.ts';
 import { createFootageStore, FOOTAGE_MAX_BYTES } from './footage-store.ts';
 import {
   type AudioMatch,
@@ -2486,6 +2487,26 @@ export function createHttp(
                 provider: genReq.provider,
                 model: genReq.model,
               });
+            }
+            // Task 3.2 — a generated VIDEO clip gets a provenance FootageAnalysis
+            // stub next to it (assets/<sha8>.footage.json), so it is immediately
+            // KNOWN to the footage/reel pipeline: the director sees the clip is
+            // synthetic (the `ai-generated` tag) and what it was made for (the
+            // prompt), and the footage-analyst later fills the real shots. A
+            // sidecar hiccup must NOT lose the (expensive) clip — best-effort.
+            if (genReq.modality === 'video' && assets.length > 0) {
+              try {
+                await footageStore.saveAnalysis(
+                  assets[0],
+                  generatedClipAnalysis(assets[0], {
+                    provider: genReq.provider,
+                    model: genReq.model,
+                    prompt: genReq.prompt,
+                  })
+                );
+              } catch {
+                /* provenance-only — the clip already landed in assets/ */
+              }
             }
             return { assets, usage: result.usage };
           },

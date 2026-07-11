@@ -1,7 +1,16 @@
 {
-  "generated": "2026-07-11T10:21:33.710Z",
+  "generated": "2026-07-11T14:11:19.737Z",
   "version": "0.43.0",
   "entries": [
+    {
+      "id": "ai-video-generation",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Generate video clips for your reels",
+      "summary": "The BYOK generator now makes video. Bring your own Google key and generate a clip with Veo — a text prompt (\"slow drone push over an alpine lake at dawn\"), or seed it from a still you already generated so the clip matches your hero's look. The clip lands in your assets like any other footage, and Maude treats it as first-class: when you build a reel it watches the generated clip alongside your real footage and places it as a beat, so you can fill a missing shot without hand-sourcing one. Video takes a few minutes and runs in the background — you'll get the finished clip when it's ready. Add your key under File → Settings — AI generation (⌘,); it stays on your machine.",
+      "surface": "design-ui"
+    },
     {
       "id": "ai-audio-generation",
       "version": null,
