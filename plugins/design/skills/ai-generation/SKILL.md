@@ -35,11 +35,13 @@ REF=$(maude design generate --prompt "make the sky deep purple" --source assets/
 | Modality | Provider (BYOK, direct) | Model | Shape | Notes |
 |---|---|---|---|---|
 | **Image** | Google **Nano Banana** | `gemini-2.5-flash-image` (default), `gemini-3-pro-image-preview` (Pro) | **sync** — base64 in one call | gen + **maskless edit** (via `--source`) + text-in-image. Aspects: `1:1 2:3 3:2 3:4 4:3 4:5 5:4 9:16 16:9` (+ `21:9` Pro). |
-| _Audio (Phase 2)_ | ElevenLabs | Music / SFX / TTS v3 / Scribe STT | async-ish | one key covers the audio stack. |
+| **Audio** | **ElevenLabs** | Music (`/v1/music`) · SFX (`/v1/sound-generation`) · TTS (`eleven_v3`) · Scribe STT | **sync** — mp3 in one call | one key covers the whole stack. `maude design generate --modality audio --kind music\|sfx\|tts` (`tts` needs `--voice`). Lands `assets/<sha8>.mp3`. |
+| **Subtitles** | local **whisper.cpp** (default) / ElevenLabs Scribe · Groq (cloud fallback) | `large-v3-turbo` | local, no key | `maude design transcribe --source <asset>` → word-timestamped SRT/VTT (free, offline). Cloud Scribe/Groq when whisper.cpp is absent. |
 | _Video (Phase 3)_ | Google Veo 3.1 | via Gemini API | **async** — poll, expiring URL | native synced audio + image-to-video. |
-| _Subtitles (Phase 2)_ | local whisper.cpp | `large-v3-turbo` | local, no key | word-timestamped SRT/VTT, free. |
 
-Direct BYOK only — **no aggregator** (owner decision 2026-07-11): the user brings their own direct-provider key. Image = Nano Banana only; there is no FLUX/Recraft/Ideogram breadth in v1.
+Direct BYOK only — **no aggregator** (owner decision 2026-07-11): the user brings their own direct-provider key. Image = Nano Banana; audio = ElevenLabs. There is no FLUX/Recraft/Ideogram/fal breadth in v1.
+
+**Compose into a reel (Phase 2):** generated music/SFX/voiceover become `Edl.audioTracks[]` (layered — duck the music bed under VO with a negative `gainDb`) and transcribed subtitles become the `Edl.captions` track — both rendered by the footage-director codegen (`<Audio>` + a frame-driven caption overlay). Audio is carried by the `renderMediaOnWeb` export path; captions survive the frame-step fallback too.
 
 ## Prompt conventions
 

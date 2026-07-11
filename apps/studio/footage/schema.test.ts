@@ -192,4 +192,54 @@ describe('validateEdl', () => {
   test('rejects a music bed with a non-relative asset', () => {
     expect(validateEdl({ ...GOOD_EDL, music: { asset: 'http://x/y.mp3' } }).ok).toBe(false);
   });
+
+  // feature-ai-media-generation Phase 2 — layered audio tracks + captions.
+  test('accepts layered audioTracks (music/VO/SFX)', () => {
+    const r = validateEdl({
+      ...GOOD_EDL,
+      audioTracks: [
+        { asset: 'assets/aaaaaaaa.mp3', kind: 'music', gainDb: -12, fadeOutFrames: 30 },
+        { asset: 'assets/bbbbbbbb.mp3', kind: 'voiceover', startFrame: 15, durationFrames: 90 },
+        { asset: 'assets/cccccccc.mp3', kind: 'sfx', startFrame: 40, name: 'whoosh' },
+      ],
+    });
+    expect(r).toEqual({ ok: true, errors: [] });
+  });
+
+  test('rejects an audio track with a bad kind / non-relative asset / out-of-range gain', () => {
+    expect(
+      validateEdl({ ...GOOD_EDL, audioTracks: [{ asset: 'assets/a.mp3', kind: 'bass' }] }).ok
+    ).toBe(false);
+    expect(validateEdl({ ...GOOD_EDL, audioTracks: [{ asset: 'http://x/a.mp3' }] }).ok).toBe(false);
+    expect(
+      validateEdl({ ...GOOD_EDL, audioTracks: [{ asset: 'assets/a.mp3', gainDb: 999 }] }).ok
+    ).toBe(false);
+    expect(validateEdl({ ...GOOD_EDL, audioTracks: [{ kind: 'music' }] }).ok).toBe(false); // asset required
+  });
+
+  test('accepts a captions track', () => {
+    const r = validateEdl({
+      ...GOOD_EDL,
+      captions: {
+        style: 'lower-third',
+        cues: [
+          { startSec: 0, endSec: 0.8, text: 'Hello there.' },
+          { startSec: 1.0, endSec: 1.8, text: 'This is Maude.' },
+        ],
+      },
+    });
+    expect(r).toEqual({ ok: true, errors: [] });
+  });
+
+  test('rejects captions with a bad style, missing text, or non-array cues', () => {
+    expect(validateEdl({ ...GOOD_EDL, captions: { style: 'sideways', cues: [] } }).ok).toBe(false);
+    expect(validateEdl({ ...GOOD_EDL, captions: { cues: [{ startSec: 0, endSec: 1 }] } }).ok).toBe(
+      false
+    ); // text required
+    expect(validateEdl({ ...GOOD_EDL, captions: { cues: 'nope' } }).ok).toBe(false);
+  });
+
+  test('rejects an unknown top-level key (audioTracks typo)', () => {
+    expect(validateEdl({ ...GOOD_EDL, audioTrack: [] }).ok).toBe(false);
+  });
 });

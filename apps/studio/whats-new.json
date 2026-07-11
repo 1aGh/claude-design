@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "ai-audio-generation",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Generate music, voiceover & subtitles",
+      "summary": "The BYOK generator now does audio. Bring your own ElevenLabs key and generate a music bed, sound effects, or a text-to-speech voiceover — one key covers the whole stack — and the track lands in your assets ready to drop under a reel. Subtitles are free and need no key at all: `maude design transcribe` runs whisper.cpp locally on any clip and writes word-timed SRT/VTT captions (ElevenLabs Scribe or Groq are the cloud fallback if you'd rather). In a reel, generated music/voiceover become layered audio tracks (the music ducks under the voice) and the subtitles become a caption track that renders right on the video. Add your ElevenLabs key under File → Settings — AI generation (⌘,); it's stored only on your machine.",
+      "surface": "design-ui"
+    },
+    {
       "id": "ai-media-generation",
       "version": null,
       "date": null,

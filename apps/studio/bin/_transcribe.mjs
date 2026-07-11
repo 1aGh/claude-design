@@ -72,7 +72,14 @@ function parseArgs(argv) {
 }
 
 function resolveWhisper(explicit) {
-  const candidates = [explicit, process.env.MAUDE_WHISPER_CLI, 'whisper-cli', 'whisper', 'main'].filter(
+  // Security (Phase-2 ethical-hacker): do NOT include the bare name `main`
+  // (whisper.cpp's legacy binary) in the fallback chain — it is one of the most
+  // common executable names in the wild, and the probe below EXECUTES each
+  // candidate (`--help`). A user running this inside an untrusted repo with `.`
+  // on $PATH could otherwise auto-run a seeded `main`. Only the explicit
+  // --whisper / $MAUDE_WHISPER_CLI (owner's own choice) and the specific
+  // whisper-cli / whisper names are probed.
+  const candidates = [explicit, process.env.MAUDE_WHISPER_CLI, 'whisper-cli', 'whisper'].filter(
     Boolean
   );
   for (const c of candidates) {
@@ -98,6 +105,15 @@ function main() {
 
   const repo = args.root || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   // Resolve the input: an `assets/<name>` under the design root, or a plain path.
+  // For the assets/ form, reject `..` so the content-addressed branch can't be
+  // used to climb out of <designRoot>/assets/ (parity with api.readAssetBytes —
+  // the network Scribe path is fully contained; keep this local path close). The
+  // plain-path branch intentionally accepts an owner-named file (transcribing an
+  // arbitrary local clip is a legitimate CLI use; there is no untrusted caller).
+  if (args.source.startsWith('assets/') && args.source.includes('..')) {
+    process.stderr.write('transcribe: invalid assets/ path (no "..")\n');
+    process.exit(1);
+  }
   const input = args.source.startsWith('assets/')
     ? join(repo, '.design', args.source)
     : resolve(repo, args.source);

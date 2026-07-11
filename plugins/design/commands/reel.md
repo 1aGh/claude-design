@@ -91,9 +91,20 @@ Read the EDL (`GET /_api/footage?slug=<slug>`) and generate
 `<designRoot>/ui/<Name>.tsx` following the skill's **EDL → `<TransitionSeries>`
 codegen contract**: one **literal** `<TransitionSeries.Sequence name>` block per
 beat (NEVER `.map()`), `<OffthreadVideo startFrom>` for each in-point, literal-sum
-`TOTAL`, DS-token'd overlays, the `<Audio>` bed if `music` is set, and the
-`<VideoComp>` meta from the EDL's fps/dimensions. Write a `<Name>.meta.json`
-sidecar (title/subtitle/tags `["reel","video"]`) as `/design:new` does.
+`TOTAL`, DS-token'd overlays, the `<Audio>` bed if `music` is set, **layered
+`<Audio>` tracks (music/VO/SFX) for each `audioTracks[]` and a frame-driven
+caption overlay for `captions`** (feature-ai-media-generation Phase 2 — generated
+music/voiceover from ElevenLabs, subtitles from `maude design transcribe`; see the
+skill's Audio/Captions codegen bullets), and the `<VideoComp>` meta from the EDL's
+fps/dimensions. Write a `<Name>.meta.json` sidecar (title/subtitle/tags
+`["reel","video"]`) as `/design:new` does.
+
+> **Audio in export:** `<Audio>` tracks are carried by the primary
+> `renderMediaOnWeb` export path. The frame-step fallback (used when
+> `renderMediaOnWeb` overflows — DDR-148) captures video only and drops audio,
+> surfacing a `⚠ … has no audio` warning (`exporters/video.ts`). Captions are a
+> visual overlay and survive both paths. A frame-step audio muxer is a tracked
+> follow-up.
 
 ## Step 5 — Verify + critics
 

@@ -197,6 +197,52 @@ export interface EdlMusic {
   fadeOutFrames?: number;
 }
 
+/** feature-ai-media-generation Phase 2 — the role an audio track plays in the cut. */
+export type EdlAudioKind = 'music' | 'voiceover' | 'sfx';
+
+/**
+ * One audio track in the cut (DDR-164 Phase 2). Generalizes the single `music`
+ * bed into a LIST so a reel can layer generated music + voiceover + per-beat
+ * SFX. `startFrame`/`durationFrames` place + trim it on the OUTPUT timeline (at
+ * the Edl's `fps`); omit both for a whole-reel bed. The codegen emits an
+ * `<Audio src="assets/…">` inside a `<Sequence from={startFrame}>`.
+ */
+export interface EdlAudioTrack {
+  /** `assets/<sha8>.<ext>` audio asset. */
+  asset: string;
+  /** Role — drives default gain/ducking guidance in the codegen. Default 'music'. */
+  kind?: EdlAudioKind;
+  /** Where the track enters, OUTPUT frames from the start. Default 0. */
+  startFrame?: number;
+  /** Trim length in OUTPUT frames. Omit ⇒ play to the end of the source. */
+  durationFrames?: number;
+  /** Volume adjustment in dB (negative = quieter; e.g. a −12 dB music bed under VO). */
+  gainDb?: number;
+  fadeInFrames?: number;
+  fadeOutFrames?: number;
+  /** Stable Timeline identity ("vo", "bed", "whoosh-3"). */
+  name?: string;
+}
+
+/** One rendered caption cue on the OUTPUT timeline — SECONDS (matches captions.ts). */
+export interface EdlCaptionCue {
+  startSec: number;
+  endSec: number;
+  text: string;
+}
+
+/**
+ * The caption/subtitle track (DDR-164 Phase 2), fed by `generation/captions.ts`
+ * (whisper.cpp local or ElevenLabs Scribe / Groq cloud). Stored as parsed cues
+ * (seconds) rather than a raw SRT file so the codegen can render them as overlays
+ * without re-parsing; the codegen converts seconds → frames at the Edl's `fps`.
+ */
+export interface EdlCaptions {
+  cues: EdlCaptionCue[];
+  /** Where the caption sits on screen. Default 'lower-third'. */
+  style?: 'lower-third' | 'centered' | 'top';
+}
+
 /**
  * The edit decision list — the director's output, one per cut. `beats` is the
  * ordered timeline; the composition's total length = sum(durationFrames) −
@@ -211,7 +257,12 @@ export interface Edl {
   width?: number;
   height?: number;
   beats?: EdlBeat[];
+  /** A single whole-reel music bed (kept for backwards compatibility). */
   music?: EdlMusic | null;
+  /** feature-ai-media-generation Phase 2 — layered audio (music/VO/SFX). */
+  audioTracks?: EdlAudioTrack[];
+  /** feature-ai-media-generation Phase 2 — the caption/subtitle track. */
+  captions?: EdlCaptions | null;
 }
 
 // ── shared helpers ───────────────────────────────────────────────────────────
@@ -432,7 +483,7 @@ export function validateEdl(input: unknown): ValidationResult {
   assertKeys(
     errors,
     input,
-    ['version', 'title', 'fps', 'width', 'height', 'beats', 'music'],
+    ['version', 'title', 'fps', 'width', 'height', 'beats', 'music', 'audioTracks', 'captions'],
     'root'
   );
   if ('version' in input && input.version != null && typeof input.version !== 'number')
@@ -477,6 +528,79 @@ export function validateEdl(input: unknown): ValidationResult {
       assetRel(errors, m, 'asset', 'music');
       if (!('asset' in m) || m.asset == null) errors.push('music.asset: required');
       intGe(errors, m, 'fadeOutFrames', 0, 'music');
+    }
+  }
+
+  // feature-ai-media-generation Phase 2 — layered audio tracks (music/VO/SFX).
+  if ('audioTracks' in input && input.audioTracks != null) {
+    if (!Array.isArray(input.audioTracks)) errors.push('audioTracks: must be an array');
+    else if (input.audioTracks.length > 64) errors.push('audioTracks: more than 64 items');
+    else
+      input.audioTracks.forEach((raw, i) => {
+        const where = `audioTracks[${i}]`;
+        if (!isPlainObject(raw)) {
+          errors.push(`${where}: must be an object`);
+          return;
+        }
+        assertKeys(
+          errors,
+          raw,
+          [
+            'asset',
+            'kind',
+            'startFrame',
+            'durationFrames',
+            'gainDb',
+            'fadeInFrames',
+            'fadeOutFrames',
+            'name',
+          ],
+          where
+        );
+        assetRel(errors, raw, 'asset', where);
+        if (!('asset' in raw) || raw.asset == null) errors.push(`${where}.asset: required`);
+        if (
+          'kind' in raw &&
+          raw.kind != null &&
+          !['music', 'voiceover', 'sfx'].includes(raw.kind as string)
+        )
+          errors.push(`${where}.kind: must be music|voiceover|sfx`);
+        intGe(errors, raw, 'startFrame', 0, where);
+        intGe(errors, raw, 'durationFrames', 1, where);
+        num(errors, raw, 'gainDb', -60, 24, where);
+        intGe(errors, raw, 'fadeInFrames', 0, where);
+        intGe(errors, raw, 'fadeOutFrames', 0, where);
+        str(errors, raw, 'name', 120, where);
+      });
+  }
+
+  // feature-ai-media-generation Phase 2 — the caption/subtitle track.
+  if ('captions' in input && input.captions != null) {
+    const c = input.captions;
+    if (!isPlainObject(c)) errors.push('captions: must be an object');
+    else {
+      assertKeys(errors, c, ['cues', 'style'], 'captions');
+      if (
+        'style' in c &&
+        c.style != null &&
+        !['lower-third', 'centered', 'top'].includes(c.style as string)
+      )
+        errors.push('captions.style: must be lower-third|centered|top');
+      if (!('cues' in c) || !Array.isArray(c.cues)) errors.push('captions.cues: must be an array');
+      else if (c.cues.length > 5000) errors.push('captions.cues: more than 5000 items');
+      else
+        c.cues.forEach((raw, i) => {
+          const where = `captions.cues[${i}]`;
+          if (!isPlainObject(raw)) {
+            errors.push(`${where}: must be an object`);
+            return;
+          }
+          assertKeys(errors, raw, ['startSec', 'endSec', 'text'], where);
+          num(errors, raw, 'startSec', 0, 24 * 3600, where);
+          num(errors, raw, 'endSec', 0, 24 * 3600, where);
+          str(errors, raw, 'text', 2000, where);
+          if (!('text' in raw) || raw.text == null) errors.push(`${where}.text: required`);
+        });
     }
   }
 
