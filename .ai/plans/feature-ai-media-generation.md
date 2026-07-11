@@ -285,6 +285,19 @@ Execute in phase order. Each phase is independently shippable; `/flow:done` at e
 - **Gotcha**: ElevenLabs History is **cross-project + includes non-Maude generations** (privacy + relevance) → don't auto-import blindly; match on metadata and surface provenance. History re-download is free but the LIST call may be rate-limited — cache the listing. A TTS of *exact* text is usually wanted fresh; scope reuse to music/SFX by default.
 - **Validate**: generate a music track; issue a near-identical request → the search offers the existing asset and (on reuse) NO new ElevenLabs credit is spent (assert via the History re-download path / local hit, not a new `/v1/music` POST); the reel/proactive path reuses a fitting existing bed instead of regenerating.
 
+#### Task 2.6 (follow-up): USER-CHOSEN transcription engine — local whisper vs cloud Scribe/Groq
+> **Owner decision (2026-07-11).** The transcription engine is an **explicit USER CHOICE, NOT an automatic fallback.** Maude must never silently pick or switch engines. The user selects: **local whisper.cpp** (free, offline, no key) OR **cloud** (ElevenLabs Scribe / Groq Whisper — accuracy/managed, needs a key). The shipped Phase-2 increment built only the local `maude design transcribe` (whisper-only; on missing whisper it just prints guidance, it does NOT auto-call the cloud). This task adds the **selectable switch** + finishes the cloud path.
+
+- **Do**:
+  - **CLI**: `maude design transcribe --provider whisper|elevenlabs|groq` — an EXPLICIT selector (no `auto` mode). Absent flag ⇒ read the user's configured default (below); if none is set, **do nothing clever — use `whisper` and say so**, never silently reach for a paid cloud engine.
+  - **Config default**: `generation.transcription.provider` in `.design/config.json` (`"whisper"` default) so the user sets their preference once. Add to `config.schema.json` (non-secret).
+  - **UI**: a transcription-engine selector in the Settings panel (radio: Local whisper.cpp / ElevenLabs Scribe / Groq), with the cost/key/offline note per engine (mirrors the provider cost badges).
+  - **Routing**: `whisper` → the local `_transcribe.mjs` shim (server-free, key-free — already built); `elevenlabs`/`groq` → the dev-server generation route (`modality:transcription`, key resolved server-side). This requires **finishing the deferred caption-output wiring** (Task 2.3 left `localizeGenAsset` guarding transcription text): a cloud STT result must land its SRT/VTT somewhere usable — a `<sha8>.srt` sidecar next to the source and/or straight into the EDL `captions` track.
+  - **No-silent-switch failure UX**: if the CHOSEN engine is unavailable (whisper.cpp/model missing, or no cloud key) → a clear error naming that engine's fix **and** the other option (“install whisper.cpp, or pick ElevenLabs in Settings”) — but never auto-run the other one.
+- **Pattern**: the ElevenLabs adapter's existing `transcription` method (`adapters/elevenlabs.ts`, already emits an SRT via `captions.ts`); the generate-route job flow (Phase 0); the Settings provider-selector idiom.
+- **Gotcha**: local + cloud must produce the SAME caption shape (both already funnel through `captions.ts` — keep that the single reflow point). Groq is an OpenAI-compatible Whisper endpoint (word timestamps via `response_format=verbose_json`); ElevenLabs Scribe returns its own word JSON — both normalize to `CaptionWord[]` before `captions.ts`.
+- **Validate**: `--provider whisper` transcribes locally; `--provider elevenlabs` (with a key) transcribes via the cloud route and lands an SRT; with NO flag + NO config, it uses whisper and prints which engine it chose; a chosen-but-unavailable engine errors without falling through to the other.
+
 ### Phase 3 — Video: async generation into the EDL/video-comp
 
 #### Task 3.1: ADD Veo (Gemini) + fal video to the adapters
@@ -367,6 +380,7 @@ Per phase:
 3. **Aggregator dependency.** ✅ **DECIDED (2026-07-11, owner) — NO aggregator. Direct BYOK only: Google + ElevenLabs.** fal is dropped ("don't solve breadth for the user; they bring their own direct-provider key"). Google + ElevenLabs cover image/video/audio/STT for v1. The `fal-queue` shape stays documented so an optional fal/Replicate adapter can drop in later, but it is not built.
 4. **Local subtitles dependency.** whisper.cpp as a **soft** dep (auto-detected, graceful fallback to Groq/Scribe cloud when absent) — **recommended default**; revisit at Phase 2 if the local dep is unwanted.
 5. **Reuse-before-generate.** ✅ **DECIDED (2026-07-11, owner) — AUDIO-ONLY, library-search-first.** Music/SFX: always query the audio library (ElevenLabs History — free re-download — + Maude-local generated audio) and prefer an existing suitable track before paying for a new generation. **Images are explicitly OUT** — cheap, single-use, and already reusable straight from `assets/`, so no image cache. Tracked as **Task 2.5** (follow-up, DDR-worthy); not in the shipped Phase-2 increment (2.1–2.4).
+6. **Transcription engine choice.** ✅ **DECIDED (2026-07-11, owner) — USER PICKS, not automatic.** The subtitle engine is an explicit user choice (local whisper.cpp vs cloud ElevenLabs Scribe / Groq) via a `--provider` flag + a `generation.transcription.provider` config default + a Settings selector — **no silent auto-fallback** (a chosen-but-unavailable engine errors clearly, it never quietly runs the other). Tracked as **Task 2.6** (follow-up); the shipped increment built local whisper only, so this adds the switch + finishes the cloud caption-output path.
 
 ## Research Appendix
 
