@@ -107,6 +107,12 @@ export const saveExport = (filename, bytes) => invoke('save_export', { filename,
  */
 export const pickMediaFile = () => invoke('pick_media_file');
 
+/**
+ * feature-bulk-media-insert — multi-select counterpart to pickMediaFile.
+ * Resolves to `[{name, bytes:[...]}, ...]` (empty array if cancelled).
+ */
+export const pickMediaFiles = () => invoke('pick_media_files');
+
 // ── Tauri shell: auto-update (Phase 32 / Task 1) ────────────────────────────────
 // The shell downloads + stages a newer build in the background and emits
 // `update-ready` with { version, notes }. The client shows a banner; clicking

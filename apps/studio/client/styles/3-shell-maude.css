@@ -509,10 +509,24 @@
 .st-ap-err { color: var(--danger, #e5484d); font-family: var(--font-mono); font-size: var(--type-xs); }
 .st-ap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--space-3); max-height: 52vh; overflow-y: auto; padding: 2px; }
 .st-ap-empty { grid-column: 1 / -1; color: var(--fg-2); font-family: var(--font-mono); font-size: var(--type-xs); padding: var(--space-6) 0; text-align: center; }
-.st-ap-cell { appearance: none; cursor: pointer; display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-2); text-align: left; transition: border-color var(--dur-soft) var(--ease-out), background var(--dur-soft) var(--ease-out); }
+.st-ap-cell { position: relative; appearance: none; cursor: pointer; display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-2); text-align: left; transition: border-color var(--dur-soft) var(--ease-out), background var(--dur-soft) var(--ease-out); }
 .st-ap-cell:hover { border-color: var(--accent, var(--border-strong, var(--border-default))); background: var(--bg-3); }
 .st-ap-thumb { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-xs); background: var(--bg-4, var(--bg-3)); display: block; }
 .st-ap-name { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* feature-bulk-media-insert — multi-select grid state + destination toggle + confirm bar */
+.st-ap-cell[data-selected="true"] { border-color: var(--accent); background: var(--bg-3); }
+.st-ap-check { position: absolute; top: 6px; right: 6px; width: 18px; height: 18px; border-radius: var(--radius-pill); border: 1px solid var(--border-default); background: var(--bg-1); color: var(--accent-fg, #fff); display: grid; place-items: center; }
+.st-ap-cell[data-selected="true"] .st-ap-check { background: var(--accent); border-color: var(--accent); }
+.st-ap-confirm { flex-wrap: wrap; }
+.st-ap-count { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+.st-ap-seg { display: inline-flex; border: 1px solid var(--border-default); border-radius: var(--radius-sm); overflow: hidden; background: var(--bg-2); }
+.st-ap-seg-btn { appearance: none; border: 0; background: transparent; color: var(--fg-2); font-size: var(--type-xs); font-family: var(--font-mono); padding: var(--space-2) var(--space-3); cursor: pointer; }
+.st-ap-seg-btn[aria-pressed="true"] { background: var(--bg-4); color: var(--fg-0); }
+.st-ap-seg-btn:disabled { opacity: 0.45; cursor: default; }
+.st-ap-seg-btn + .st-ap-seg-btn { border-left: 1px solid var(--border-subtle); }
+.st-ap-dest-note { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+.st-ap-confirm-spacer { flex: 1; }
 
 /* ─── StickerPicker (feature-whiteboard-annotation-improvements Phase 4) ──── */
 .st-sticker-picker { width: 640px; }

@@ -360,16 +360,21 @@ export function ToolPalette() {
   // artboard itself (`resolveInsertAnchor`). Same request verbs the
   // context-menu's per-element "Insert ▸ …" already posts (`insert-request` /
   // `insert-image-request`, main-origin shell WRITES — DDR-054), extended with
-  // an `artboardId` field for the fallback case; a null anchor (no artboard on
-  // canvas at all) is still a no-op — nothing to insert into.
+  // an `artboardId` field for the fallback case; a null anchor is still a
+  // no-op for div/text (nothing to insert into) but NOT for image —
+  // feature-bulk-media-insert still posts `insert-image-request` with no
+  // refId/artboardId, so an artboard-less canvas opens the picker (in
+  // annotation-only mode, Task 7) instead of silently doing nothing.
   const insertViaPalette = (kind: 'div' | 'text' | 'image') => {
     setInsertOpen(false);
     const anchor = resolveInsertAnchor();
-    if (!anchor) return;
+    if (!anchor && kind !== 'image') return;
     const anchorFields =
-      'artboardId' in anchor
-        ? { artboardId: anchor.artboardId, position: anchor.position }
-        : { refId: anchor.refId, position: anchor.position };
+      anchor == null
+        ? {}
+        : 'artboardId' in anchor
+          ? { artboardId: anchor.artboardId, position: anchor.position }
+          : { refId: anchor.refId, position: anchor.position };
     try {
       if (kind === 'image') {
         window.parent.postMessage({ dgn: 'insert-image-request', ...anchorFields }, '*');

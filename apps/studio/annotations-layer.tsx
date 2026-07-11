@@ -158,6 +158,7 @@ import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.t
 import { buildAnnotationStrokesRecord } from './commands/annotation-strokes-command.ts';
 import { ensureMenuStyles as ensureCtxMenuStyles } from './context-menu.tsx';
 import { crossedDragThreshold, type Tool } from './input-router.tsx';
+import { createMediaCommitChain } from './media-commit-chain.ts';
 import { mountCaret, placeCaretAt } from './text-caret.ts';
 import {
   AnnotationResizeOverlay,
@@ -170,6 +171,7 @@ import {
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
 import {
+  BATCH_DROP_CASCADE_PX,
   isHttpUrl,
   linkDomain,
   prettifyUrl,
@@ -394,6 +396,22 @@ function canvasDesignRel(): string {
  */
 function resolveAssetHref(href: string): string {
   return /^assets\//.test(href) ? `/${canvasDesignRel()}/${href}` : href;
+}
+
+// feature-bulk-media-insert Task 11 — classify an already-uploaded
+// `assets/<sha8>.<ext>` path client-side, mirroring the same extension sets
+// `listAssets` uses server-side (api.ts). The picker only ever surfaces paths
+// it already listed via /_api/assets, so every path resolves to one of these;
+// `null` (unrecognized) is treated as "skip" by the caller.
+const ANNOTATION_IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg']);
+const ANNOTATION_VIDEO_EXT = new Set(['mp4', 'webm', 'mov', 'm4v', 'ogg']);
+const ANNOTATION_AUDIO_EXT = new Set(['mp3', 'wav', 'm4a', 'aac', 'flac', 'oga', 'opus']);
+function classifyAssetPathKind(path: string): 'image' | 'video' | 'audio' | null {
+  const ext = (path.split('.').pop() || '').toLowerCase();
+  if (ANNOTATION_IMAGE_EXT.has(ext)) return 'image';
+  if (ANNOTATION_VIDEO_EXT.has(ext)) return 'video';
+  if (ANNOTATION_AUDIO_EXT.has(ext)) return 'audio';
+  return null;
 }
 
 /**
@@ -935,6 +953,18 @@ export function AnnotationsLayer() {
    */
   const strokesRef = useRef<Stroke[]>(strokes);
   strokesRef.current = strokes;
+  // Phase 23 batch-drop fix — see media-commit-chain.ts. Every async media
+  // completion (image upload swap, video/audio upload commit) that can be
+  // triggered concurrently (N Finder files dropped at once) enqueues onto
+  // this instead of calling commitStrokes directly off a `strokesRef.current`
+  // read, so two completions landing before a render commit don't clobber
+  // each other.
+  const mediaCommitChainRef = useRef(
+    createMediaCommitChain<Stroke>(
+      () => strokesRef.current,
+      (s) => s.id
+    )
+  );
 
   const isDraw =
     tool === 'pen' ||
@@ -1222,6 +1252,89 @@ export function AnnotationsLayer() {
     };
   }, [strokes, setStrokes, commitStrokes]);
 
+  // feature-bulk-media-insert Task 11 — the picker's "Add as annotation"
+  // confirm posts N already-uploaded asset paths in ONE message; unlike
+  // createImageFromFile/createMediaReference (which each race an independent
+  // upload), every path here is already on disk, so this resolves every
+  // image's natural size up front (Promise.all) and performs exactly ONE
+  // commitStrokes for the whole batch — correct by construction, no chain
+  // needed since there's no per-item async race once all N are resolved.
+  const createMediaFromAssetPaths = useCallback(
+    (paths: readonly string[], world: [number, number]) => {
+      if (typeof window === 'undefined' || !paths.length) return;
+      const classified = paths
+        .map((path) => ({ path, kind: classifyAssetPathKind(path) }))
+        .filter((it): it is { path: string; kind: 'image' | 'video' | 'audio' } => it.kind != null);
+      if (!classified.length) return;
+
+      type Resolved = { path: string; kind: 'image' | 'video' | 'audio'; w: number; h: number };
+      const probeOne = (path: string, kind: 'image' | 'video' | 'audio'): Promise<Resolved> => {
+        if (kind !== 'image') {
+          const h = kind === 'video' ? MEDIAREF_VIDEO_H : MEDIAREF_DEFAULT_H;
+          return Promise.resolve({ path, kind, w: MEDIAREF_DEFAULT_W, h });
+        }
+        return new Promise<Resolved>((resolve) => {
+          const probe = new Image();
+          probe.onload = () => {
+            const natW = probe.naturalWidth || IMAGE_MAX_DROP_SIDE;
+            const natH = probe.naturalHeight || Math.round(IMAGE_MAX_DROP_SIDE * 0.66);
+            const longest = Math.max(natW, natH) || 1;
+            const scale = longest > IMAGE_MAX_DROP_SIDE ? IMAGE_MAX_DROP_SIDE / longest : 1;
+            resolve({
+              path,
+              kind: 'image',
+              w: Math.max(IMAGE_MIN_SIZE, Math.round(natW * scale)),
+              h: Math.max(IMAGE_MIN_SIZE, Math.round(natH * scale)),
+            });
+          };
+          // Couldn't decode — fall back to a small square rather than
+          // dropping this item from the batch (the file is already on disk).
+          probe.onerror = () => resolve({ path, kind: 'image', w: 64, h: 64 });
+          probe.src = resolveAssetHref(path);
+        });
+      };
+
+      void Promise.all(classified.map(({ path, kind }) => probeOne(path, kind))).then(
+        (resolved) => {
+          const before = strokesRef.current;
+          const added: Stroke[] = resolved.map((item, i) => {
+            const cx = world[0] + i * BATCH_DROP_CASCADE_PX;
+            const cy = world[1] + i * BATCH_DROP_CASCADE_PX;
+            if (item.kind === 'image') {
+              return {
+                id: rid(),
+                tool: 'image',
+                x: cx - item.w / 2,
+                y: cy - item.h / 2,
+                w: item.w,
+                h: item.h,
+                href: item.path,
+              } as ImageStroke;
+            }
+            return {
+              id: rid(),
+              tool: 'mediaref',
+              x: cx - item.w / 2,
+              y: cy - item.h / 2,
+              w: item.w,
+              h: item.h,
+              src: item.path,
+              mediaKind: item.kind,
+              title: item.path.split('/').pop() || item.path,
+            } as MediaRefStroke;
+          });
+          commitStrokes(
+            before,
+            [...before, ...added],
+            `add ${added.length} item${added.length === 1 ? '' : 's'}`
+          );
+          annotSel?.replace(added.map((s) => s.id));
+        }
+      );
+    },
+    [commitStrokes, annotSel]
+  );
+
   // Menubar bridge (Phase 5.1 Task 10) — listen for postMessages from the
   // dev-server shell. `selection-clear` + `tool-set` live in canvas-shell
   // (those providers are above us); we own visibility + annotation-select-all
@@ -1297,10 +1410,29 @@ export function AnnotationsLayer() {
         commitStrokes(before, [...before, stroke], 'add sticker');
         annotSel?.replace([id]);
       }
+      // feature-bulk-media-insert Task 11 — the shell's AssetPicker (main-
+      // origin) multi-select "Add as annotation" confirm. Every path is
+      // already an uploaded assets/… path (no upload step here); same
+      // viewport-center placement as insert-sticker above (no cross-origin
+      // cursor position to reuse).
+      if (m.dgn === 'insert-annotation-media' && Array.isArray((m as { paths?: unknown }).paths)) {
+        const paths = (m as { paths: unknown[] }).paths.filter(
+          (p): p is string => typeof p === 'string'
+        );
+        if (paths.length) {
+          const v = vpRef.current ?? { x: 0, y: 0, zoom: 1 };
+          const z = v.zoom || 1;
+          const cx = typeof window !== 'undefined' ? window.innerWidth / 2 : 0;
+          const cy = typeof window !== 'undefined' ? window.innerHeight / 2 : 0;
+          const wx = (cx - v.x) / z;
+          const wy = (cy - v.y) / z;
+          createMediaFromAssetPaths(paths, [wx, wy]);
+        }
+      }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [annotSel, strokes, setVisible, commitStrokes]);
+  }, [annotSel, strokes, setVisible, commitStrokes, createMediaFromAssetPaths]);
 
   // Document-level toggle: Shift+P (presentation). Annotation-shortcut help is
   // owned by the dev-server menubar (Help button); we no longer ship an
@@ -1355,17 +1487,37 @@ export function AnnotationsLayer() {
         };
         // Local-only insert — the blob: href must NOT reach the server (it's
         // ephemeral + would be stripped by the sanitizer); we commit only the
-        // assets/… form once the upload lands.
-        setStrokesState([...strokesRef.current, optimistic]);
+        // assets/… form once the upload lands. Functional updater — a batch
+        // drop fires this for every file independently, so two optimistic
+        // inserts landing before a render commit must compose against each
+        // other rather than each overwriting the other's array snapshot.
+        setStrokesState((prev) => [...prev, optimistic]);
         void uploadAsset(file).then((res) => {
-          const cur = strokesRef.current;
           if ('path' in res) {
-            const after = cur.map((s) => (s.id === id ? ({ ...s, href: res.path } as Stroke) : s));
-            const beforeForUndo = cur.filter((s) => s.id !== id);
-            commitStrokes(beforeForUndo, after, 'add image');
+            // Batch-drop fix (see media-commit-chain.ts) — N concurrent
+            // uploads resolve at unpredictable relative speed; enqueue the
+            // swap instead of reading strokesRef.current directly, so this
+            // completion always builds on the latest accumulated state
+            // rather than a stale pre-render snapshot another completion
+            // already moved past.
+            void mediaCommitChainRef.current.enqueue((before) => {
+              if (!before.some((s) => s.id === id)) return null; // erased mid-flight
+              const after = before.map((s) =>
+                s.id === id ? ({ ...s, href: res.path } as Stroke) : s
+              );
+              // The optimistic blob: entry was never itself committed (see
+              // above), so the undo "before" excludes it — undo should
+              // remove the image outright, not restore a revoked blob:.
+              const commitBefore = before.filter((s) => s.id !== id);
+              return { after, commitBefore, label: 'add image' };
+            }, commitStrokes);
             annotSel?.replace([id]);
           } else {
-            setStrokesState(cur.filter((s) => s.id !== id));
+            // Failure cleanup — no undo record (the optimistic stroke was
+            // never committed), so a plain functional updater (not the
+            // chain) is enough: it still composes correctly against any
+            // chain-driven setStrokesState queued in the same batch.
+            setStrokesState((prev) => prev.filter((s) => s.id !== id));
             showCanvasToast(`Image upload failed — ${res.error}`);
           }
           URL.revokeObjectURL(blobUrl);
@@ -1433,8 +1585,15 @@ export function AnnotationsLayer() {
           mediaKind,
           title: (file.name || res.path).slice(0, 300),
         };
-        const before = strokesRef.current;
-        commitStrokes(before, [...before, ref], `add ${mediaKind} reference`);
+        // Batch-drop fix (see media-commit-chain.ts) — same accumulator
+        // chain as createImageFromFile's swap, so a video/audio upload
+        // resolving interleaved with concurrent image uploads (or other
+        // media uploads) in the same batch never commits against a stale
+        // pre-render snapshot.
+        void mediaCommitChainRef.current.enqueue(
+          (before) => ({ after: [...before, ref], label: `add ${mediaKind} reference` }),
+          commitStrokes
+        );
         annotSel?.replace([id]);
         const sizeMb = file.size / (1024 * 1024);
         showCanvasToast(

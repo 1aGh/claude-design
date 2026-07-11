@@ -191,6 +191,71 @@ async fn pick_media_file(app: tauri::AppHandle) -> Result<Option<PickedMedia>, S
     }
 }
 
+/// feature-bulk-media-insert — multi-select counterpart to `pick_media_file`.
+/// Same read-and-return-bytes shape, `.pick_files()` (plural) instead of
+/// `.pick_file()`. Returns an empty Vec on cancel (not an error) so the JS
+/// side can treat "nothing picked" uniformly with an empty selection.
+#[tauri::command]
+async fn pick_media_files(app: tauri::AppHandle) -> Result<Vec<PickedMedia>, String> {
+    // E2E (debug builds only): mirrors MAUDE_E2E_OPEN_PATH but plural —
+    // comma-separated source paths, never read in a release build.
+    #[cfg(debug_assertions)]
+    if let Ok(p) = std::env::var("MAUDE_E2E_OPEN_PATHS") {
+        if !p.is_empty() {
+            let mut out = Vec::new();
+            for part in p.split(',') {
+                let part = part.trim();
+                if part.is_empty() {
+                    continue;
+                }
+                let bytes = std::fs::read(part).map_err(|e| format!("Couldn’t read the file: {e}"))?;
+                let name = std::path::Path::new(part)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("upload")
+                    .to_string();
+                out.push(PickedMedia { name, bytes });
+            }
+            return Ok(out);
+        }
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter(
+            "Media",
+            &[
+                "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "mp4", "webm", "mov", "m4v",
+                "ogg",
+            ],
+        )
+        .pick_files(move |picked| {
+            let _ = tx.send(picked.map(|files| {
+                files
+                    .into_iter()
+                    .filter_map(|f| f.into_path().ok())
+                    .collect::<Vec<_>>()
+            }));
+        });
+    let paths = rx.await.map_err(|_| "Open dialog closed unexpectedly.".to_string())?;
+    match paths {
+        Some(paths) => {
+            let mut out = Vec::with_capacity(paths.len());
+            for p in paths {
+                let bytes = std::fs::read(&p).map_err(|e| format!("Couldn’t read the file: {e}"))?;
+                let name = p
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("upload")
+                    .to_string();
+                out.push(PickedMedia { name, bytes });
+            }
+            Ok(out)
+        }
+        None => Ok(Vec::new()), // cancelled — not an error
+    }
+}
+
 /// Switch the app to a local project folder (the freshly cloned copy) — same
 /// in-process switch as File ▸ Open Project (NOT app.restart()).
 #[tauri::command]
@@ -267,6 +332,7 @@ pub fn run() {
             pick_directory,
             save_export,
             pick_media_file,
+            pick_media_files,
             open_local_project,
             app_state::app_is_first_run,
             app_state::app_get_last_project,

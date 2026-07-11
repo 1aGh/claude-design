@@ -32,6 +32,7 @@ import {
   isNativeApp,
   onUpdateReady,
   pickMediaFile,
+  pickMediaFiles,
   restartToUpdate,
 } from './github.js';
 import { COLLAB_TOUR } from './tour/collab-tour.js';
@@ -847,6 +848,23 @@ const PNG_SCALES = [
   { value: 3, label: '3× (max)' },
 ];
 
+// feature-bulk-media-insert — best-effort MIME guess from a filename extension.
+// Only used to classify a natively-picked file (Rust returns `{name, bytes}`,
+// no type) for the destination-toggle's image/video/audio split; the actual
+// upload is always magic-byte-sniffed server-side, so a wrong guess here
+// can't misrepresent what gets stored, only which picker UI state it shows.
+const EXT_MIME = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', avif: 'image/avif', svg: 'image/svg+xml',
+  mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', m4v: 'video/mp4', ogg: 'video/ogg',
+  mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', aac: 'audio/aac',
+  flac: 'audio/flac', oga: 'audio/ogg', opus: 'audio/opus',
+};
+function mimeFromExt(name) {
+  const ext = String(name || '').split('.').pop()?.toLowerCase();
+  return EXT_MIME[ext] || 'application/octet-stream';
+}
+
 // feature-element-editing-robustness Stage F1 — AssetPicker. A shell modal that
 // lists the versioned content-addressed media under <designRoot>/assets/ (via the
 // main-origin-only GET /_api/assets) and lets the user pick one — or upload a new
@@ -854,16 +872,38 @@ const PNG_SCALES = [
 // Insert. Thumbnails load from the main origin's designRoot static serve
 // (/${designRel}/${asset.path}); never a remote hotlink (the CSP split origin
 // blocks those — memory reference_canvas_images_download_first).
-function AssetPicker({ designRel, onPick, onClose }) {
+function AssetPicker({
+  designRel,
+  onPick,
+  onClose,
+  multiple = false,
+  hasArtboardAnchor = false,
+  onPickMany,
+}) {
   const [assets, setAssets] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  // feature-bulk-media-insert — multi-select state. `kindByPath` merges the
+  // fetched listing with freshly uploaded assets (the upload response carries
+  // no `kind`, so a just-uploaded file's kind comes from its own File.type).
+  const [selected, setSelected] = useState(() => new Set());
+  const [kindByPath, setKindByPath] = useState({});
+  const [destination, setDestination] = useState(hasArtboardAnchor ? 'artboard' : 'annotation');
 
   useEffect(() => {
     let alive = true;
     fetch('/_api/assets')
       .then((r) => r.json())
-      .then((j) => alive && setAssets(j.ok ? j.assets : []))
+      .then((j) => {
+        if (!alive) return;
+        const list = j.ok ? j.assets : [];
+        setAssets(list);
+        setKindByPath((prev) => {
+          const next = { ...prev };
+          for (const a of list) next[a.path] = a.kind;
+          return next;
+        });
+      })
       .catch(() => alive && setAssets([]));
     return () => {
       alive = false;
@@ -881,28 +921,84 @@ function AssetPicker({ designRel, onPick, onClose }) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
 
+  const hasNonImageSelected = Array.from(selected).some((p) => (kindByPath[p] || 'image') !== 'image');
+  const artboardDisabled = !hasArtboardAnchor || hasNonImageSelected;
+  const artboardDisabledReason = !hasArtboardAnchor
+    ? 'No artboard on this canvas'
+    : hasNonImageSelected
+      ? 'Video/audio can only be added as annotations'
+      : '';
+  // Force off "Add to artboard" the moment it becomes unavailable (e.g. a
+  // video gets added to an until-now all-image selection).
+  useEffect(() => {
+    if (artboardDisabled && destination === 'artboard') setDestination('annotation');
+  }, [artboardDisabled, destination]);
+
+  const toggleSelected = (path) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
+  // Shared upload core — both the single-pick `doUpload` and the multi-file
+  // `doUploadMany` post through here, so neither duplicates the request shape.
+  const uploadOne = async (f) => {
+    const res = await fetch('/_api/asset', {
+      method: 'POST',
+      headers: { 'content-type': f.type || 'application/octet-stream' },
+      body: f,
+    });
+    const j = await res.json().catch(() => ({}));
+    // /_api/asset returns 201 { path } on success — NO `ok` field (the bug: a
+    // `j.ok` check always failed → "upload failed" even on a good upload).
+    if (res.ok && j.path) return { ok: true, path: j.path };
+    return { ok: false, error: j.error || `upload failed (HTTP ${res.status})` };
+  };
+
   const doUpload = async (f) => {
     if (!f) return;
     setBusy(true);
     setErr(null);
-    try {
-      const res = await fetch('/_api/asset', {
-        method: 'POST',
-        headers: { 'content-type': f.type || 'application/octet-stream' },
-        body: f,
+    const res = await uploadOne(f);
+    setBusy(false);
+    if (res.ok) onPick(res.path);
+    else setErr(res.error);
+  };
+
+  const kindOfMime = (mime) => {
+    if (typeof mime === 'string' && mime.startsWith('video/')) return 'video';
+    if (typeof mime === 'string' && mime.startsWith('audio/')) return 'audio';
+    return 'image';
+  };
+
+  // Multi-file upload — each file uploads independently/concurrently (the
+  // route is idempotent + content-addressed, so no ordering concern); every
+  // one that succeeds joins the selection as it resolves.
+  const doUploadMany = async (files) => {
+    if (!files.length) return;
+    setBusy(true);
+    setErr(null);
+    const results = await Promise.all(
+      files.map((f) => uploadOne(f).then((r) => ({ ...r, file: f })))
+    );
+    setBusy(false);
+    const ok = results.filter((r) => r.ok);
+    const failed = results.length - ok.length;
+    if (failed > 0) setErr(`${failed} of ${results.length} uploads failed`);
+    if (ok.length) {
+      setKindByPath((prev) => {
+        const next = { ...prev };
+        for (const r of ok) next[r.path] = kindOfMime(r.file.type);
+        return next;
       });
-      const j = await res.json().catch(() => ({}));
-      // /_api/asset returns 201 { path } on success — NO `ok` field (the bug: a
-      // `j.ok` check always failed → "upload failed" even on a good upload).
-      if (res.ok && j.path) {
-        onPick(j.path);
-        return;
-      }
-      setErr(j.error || `upload failed (HTTP ${res.status})`);
-    } catch {
-      setErr('upload failed');
-    } finally {
-      setBusy(false);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const r of ok) next.add(r.path);
+        return next;
+      });
     }
   };
 
@@ -915,6 +1011,15 @@ function AssetPicker({ designRel, onPick, onClose }) {
     setBusy(true);
     setErr(null);
     try {
+      if (multiple) {
+        const picked = await pickMediaFiles();
+        const files = (picked || []).map(
+          (p) => new File([new Uint8Array(p.bytes)], p.name, { type: mimeFromExt(p.name) })
+        );
+        setBusy(false);
+        if (files.length) await doUploadMany(files);
+        return;
+      }
       const picked = await pickMediaFile();
       if (picked?.bytes) {
         // Blob from the byte array; the server sniffs the type, so no content-type
@@ -925,7 +1030,7 @@ function AssetPicker({ designRel, onPick, onClose }) {
     } catch (e) {
       setErr(e?.message || 'open failed');
     }
-    setBusy(false); // only reached on cancel / error (doUpload owns the success path)
+    setBusy(false); // only reached on cancel / error (doUpload/doUploadMany own the success path)
   };
 
   // Browser — imperative <input>, mirrors the proven replaceMediaViaPicker
@@ -939,6 +1044,7 @@ function AssetPicker({ designRel, onPick, onClose }) {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*,video/*';
+    if (multiple) input.multiple = true;
     input.style.cssText =
       'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
     document.body.appendChild(input);
@@ -947,9 +1053,11 @@ function AssetPicker({ designRel, onPick, onClose }) {
     };
     window.addEventListener('focus', () => setTimeout(cleanup, 300), { once: true });
     input.addEventListener('change', () => {
-      const file = input.files?.[0];
+      const files = input.files ? Array.from(input.files) : [];
       cleanup();
-      if (file) doUpload(file);
+      if (!files.length) return;
+      if (multiple) doUploadMany(files);
+      else doUpload(files[0]);
     });
     input.click();
   };
@@ -984,25 +1092,71 @@ function AssetPicker({ designRel, onPick, onClose }) {
             ) : assets.length === 0 ? (
               <div className="st-ap-empty">No assets yet — upload one.</div>
             ) : (
-              assets.map((a) => (
-                <button
-                  type="button"
-                  key={a.path}
-                  className="st-ap-cell"
-                  title={`${a.name} · ${Math.max(1, Math.round(a.size / 1024))} KB`}
-                  onClick={() => onPick(a.path)}
-                >
-                  {a.kind === 'video' ? (
-                    <video className="st-ap-thumb" src={assetUrl(a.path)} muted playsInline />
-                  ) : (
-                    <img className="st-ap-thumb" src={assetUrl(a.path)} alt={a.name} loading="lazy" />
-                  )}
-                  <span className="st-ap-name">{a.name}</span>
-                </button>
-              ))
+              assets.map((a) => {
+                const isSelected = multiple && selected.has(a.path);
+                return (
+                  <button
+                    type="button"
+                    key={a.path}
+                    className="st-ap-cell"
+                    data-selected={isSelected ? 'true' : undefined}
+                    aria-pressed={multiple ? isSelected : undefined}
+                    title={`${a.name} · ${Math.max(1, Math.round(a.size / 1024))} KB`}
+                    onClick={() => (multiple ? toggleSelected(a.path) : onPick(a.path))}
+                  >
+                    {multiple && (
+                      <span className="st-ap-check" aria-hidden="true">
+                        {isSelected ? <StIcon name="check" size={12} /> : null}
+                      </span>
+                    )}
+                    {a.kind === 'video' ? (
+                      <video className="st-ap-thumb" src={assetUrl(a.path)} muted playsInline />
+                    ) : (
+                      <img className="st-ap-thumb" src={assetUrl(a.path)} alt={a.name} loading="lazy" />
+                    )}
+                    <span className="st-ap-name">{a.name}</span>
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
+        {multiple && selected.size > 0 && (
+          <div className="st-dialog-ft st-ap-confirm">
+            <span className="st-ap-count">{selected.size} selected</span>
+            <div className="st-ap-seg" role="radiogroup" aria-label="Insert as">
+              <button
+                type="button"
+                className="st-ap-seg-btn"
+                aria-pressed={destination === 'artboard'}
+                disabled={artboardDisabled}
+                onClick={() => setDestination('artboard')}
+              >
+                Add to artboard
+              </button>
+              <button
+                type="button"
+                className="st-ap-seg-btn"
+                aria-pressed={destination === 'annotation'}
+                onClick={() => setDestination('annotation')}
+              >
+                Add as annotation
+              </button>
+            </div>
+            {artboardDisabled && <span className="st-ap-dest-note">{artboardDisabledReason}</span>}
+            <span className="st-ap-confirm-spacer" />
+            <button type="button" className="btn btn--ghost" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => onPickMany?.(Array.from(selected), destination)}
+            >
+              Insert
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -8831,17 +8985,21 @@ function App() {
         }
       } else if (m.dgn === 'insert-image-request') {
         // Stage F/I3 — "Insert ▸ Image" from the canvas context menu, or the
-        // tool-palette's empty-artboard fallback (`artboardId` in place of
-        // `refId`). An image needs a contained asset src, so the shell opens
-        // the AssetPicker; the pick then drives insertElementShell(kind:'image').
-        // Confused-deputy gated + pinned to the active canvas like the other
-        // request verbs.
+        // tool-palette's Image tool (`artboardId` in place of `refId` for its
+        // empty-artboard fallback, or NEITHER when the canvas has no artboard
+        // at all — feature-bulk-media-insert). An image needs a contained
+        // asset src, so the shell opens the AssetPicker in bulk mode; the
+        // confirm then drives insertElementShell(kind:'image') per path (Task
+        // 10) or a single batched annotation insert. Confused-deputy gated +
+        // pinned to the active canvas like the other request verbs.
         const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
         const hasRefId = typeof m.refId === 'string';
         const hasArtboardId = typeof m.artboardId === 'string';
+        const noAnchor = !hasRefId && !hasArtboardId;
         const okShape =
-          hasRefId !== hasArtboardId &&
-          (m.position === 'before' ||
+          (hasRefId !== hasArtboardId || noAnchor) &&
+          (noAnchor ||
+            m.position === 'before' ||
             m.position === 'after' ||
             m.position === 'inside-start' ||
             m.position === 'inside-end') &&
@@ -8852,8 +9010,14 @@ function App() {
             canvas: activePath,
             refId: m.refId,
             artboardId: hasArtboardId ? m.artboardId : undefined,
-            position: m.position,
+            position: noAnchor ? undefined : m.position,
             refIndex: Number.isInteger(m.refIndex) ? m.refIndex : undefined,
+            multiple: true,
+            // Artboard destination is possible whenever there's ANY resolvable
+            // anchor — a refId (context-menu, or the tool-palette's normal
+            // last-element case) inserts inside the SAME artboard that
+            // element already lives in, not just the artboardId fallback.
+            hasArtboardAnchor: !noAnchor,
           });
         }
       } else if (m.dgn === 'replace-media-request') {
@@ -9963,6 +10127,36 @@ function App() {
       }
     },
     [assetPickerReq, insertElementShell, activePath, recordSourceEdit, postToActiveCanvas]
+  );
+
+  // feature-bulk-media-insert Task 10 — the picker's multi-select confirm.
+  // `destination === 'artboard'`: loop insertElementShell once per path
+  // (already race-safe via editApplyChainRef, no new serialization needed);
+  // always appended `inside-end` of whichever artboard is currently active —
+  // NOT the single-pick request's own refId/position, which only made sense
+  // for inserting exactly one image relative to one anchor. `destination ===
+  // 'annotation'`: one batched message so the canvas-side handler (Task 11)
+  // performs a single atomic commit instead of N racing ones.
+  const onPickMany = useCallback(
+    (paths, destination) => {
+      const req = assetPickerReq;
+      setAssetPickerReq(null);
+      if (!req || !Array.isArray(paths) || !paths.length) return;
+      if (req.canvas && req.canvas !== activePath) {
+        console.warn('[asset-picker] active canvas changed since request — aborting');
+        return;
+      }
+      if (destination === 'artboard') {
+        const artboardId = selectedRef.current?.artboardId ?? canvasActiveArtboard ?? null;
+        if (!artboardId) return;
+        for (const src of paths) {
+          insertElementShell(undefined, 'inside-end', 'image', { artboardId, src });
+        }
+        return;
+      }
+      postToActiveCanvas({ dgn: 'insert-annotation-media', paths });
+    },
+    [assetPickerReq, activePath, insertElementShell, canvasActiveArtboard, postToActiveCanvas]
   );
 
   // Phase 4 (whiteboard-improvements) — a bundled sticker has no project asset
@@ -11173,6 +11367,9 @@ function App() {
           designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}
           onPick={onAssetPicked}
           onClose={() => setAssetPickerReq(null)}
+          multiple={!!assetPickerReq.multiple}
+          hasArtboardAnchor={!!assetPickerReq.hasArtboardAnchor}
+          onPickMany={onPickMany}
         />
       )}
       {stickerPickerReq && (

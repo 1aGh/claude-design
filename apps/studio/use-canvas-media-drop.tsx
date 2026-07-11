@@ -302,8 +302,10 @@ export async function uploadAndAnnounceMedia(
 }
 
 /** World-px stagger between cascaded drop targets so a batch Finder drop
- * doesn't stack every clip on the exact same point. */
-const BATCH_DROP_CASCADE_PX = 28;
+ * doesn't stack every clip on the exact same point. Exported — the picker's
+ * batched "Add as annotation" insert (annotations-layer.tsx) reuses the same
+ * stagger so both entry points cascade identically. */
+export const BATCH_DROP_CASCADE_PX = 28;
 
 export function useCanvasMediaDrop(opts: {
   enabled: boolean;
