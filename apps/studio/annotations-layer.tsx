@@ -398,6 +398,49 @@ function resolveAssetHref(href: string): string {
   return /^assets\//.test(href) ? `/${canvasDesignRel()}/${href}` : href;
 }
 
+/**
+ * An optimistic ImageStroke's `blob:`/`data:` href must never be PUT to the
+ * server. `sanitizeAnnotationSvg` (api.ts) strips an href it doesn't
+ * recognize — keeping the `<image>` element, dropping only the attribute —
+ * so the server's STORED + broadcast SVG silently diverges from whatever the
+ * client just sent. That divergence defeats the collab-echo self-suppression
+ * guard below (the `recentSelfSvgsRef` history): the echo's content no
+ * longer matches anything we recorded as "already applied", so a real
+ * `setStrokesState` fires from the (href-stripped) server copy — which can
+ * wipe out a SIBLING
+ * stroke's still-in-flight optimistic insert that was never itself part of
+ * that PUT. This is the concrete failure a 3-file concurrent drop hit: one
+ * image ended up href-stripped (a blank frame) and another was dropped
+ * entirely once an unrelated commit's echo round-tripped while both were
+ * still uploading. See media-commit-chain.ts for the sibling accumulator fix
+ * — this closes the other half, at the persistence layer.
+ */
+/**
+ * Fold any stroke `prev` has that `incoming` doesn't know about (by id) into
+ * `incoming`, instead of replacing `prev` outright. Every write into the
+ * `strokes` state that carries a fully-computed array (a chain commit's
+ * `next`, or a collab-echo's parsed SVG) needs this rather than a bare
+ * `setStrokesState(incoming)` — `incoming` was computed from a snapshot
+ * taken BEFORE this exact call, so a SIBLING file's optimistic insert (a
+ * separate, non-chain functional update queued in the SAME React batch) can
+ * still be in flight and has no way to be reflected in it. A direct value
+ * setter REPLACES whatever that functional updater produced outright,
+ * silently erasing the sibling's brand-new stroke. Confirmed via live
+ * testing: this was the root cause of a deterministic loss rate under a
+ * rapid-fire batch-drop stress test that neither the media-commit-chain
+ * accumulator nor the collab-echo history fix touched, since both operate
+ * one layer up from the actual setState call.
+ */
+function reconcileIncoming(prev: readonly Stroke[], incoming: readonly Stroke[]): Stroke[] {
+  const incomingIds = new Set(incoming.map((s) => s.id));
+  const extra = prev.filter((s) => !incomingIds.has(s.id));
+  return extra.length ? [...incoming, ...extra] : (incoming as Stroke[]);
+}
+
+function isEphemeralHref(s: Stroke): boolean {
+  return s.tool === 'image' && /^(?:blob|data):/i.test(s.href);
+}
+
 // feature-bulk-media-insert Task 11 — classify an already-uploaded
 // `assets/<sha8>.<ext>` path client-side, mirroring the same extension sets
 // `listAssets` uses server-side (api.ts). The picker only ever surfaces paths
@@ -991,10 +1034,28 @@ export function AnnotationsLayer() {
   }, [ghostCapable, visible]);
 
   // Load existing annotations on mount.
-  // Phase 8 Task 5 — seed lastAppliedSvgRef so the first Y.Map observe (when
-  // collab connects shortly after this fetch lands) doesn't re-apply the
-  // same content we just hydrated from REST.
-  const lastAppliedSvgRef = useRef<string>('');
+  // Self-echo suppression (Phase 8 Task 5, hardened — feature-bulk-media-
+  // insert follow-up). A single "last applied" string only catches the MOST
+  // RECENT self-write: when the chain fires several rapid commits (a batch
+  // drop), the server's broadcast of an EARLIER commit can arrive after a
+  // LATER local commit has already moved "last applied" on — so the earlier
+  // echo no longer matches, gets misread as a foreign change, and rolls
+  // local state BACK to that stale snapshot. This is the confirmed cause of
+  // images silently vanishing after a multi-file drop (live-tested: 12
+  // mismatched/misapplied echoes correlated exactly with lost strokes across
+  // a 30-batch stress run). Track a bounded HISTORY of our own recent writes
+  // instead of just the latest one, so an out-of-order echo of any recent
+  // self-write is still recognized and suppressed.
+  const RECENT_SELF_SVG_CAP = 64;
+  const recentSelfSvgsRef = useRef<Set<string>>(new Set());
+  const rememberSelfSvg = useCallback((svg: string) => {
+    const set = recentSelfSvgsRef.current;
+    set.add(svg);
+    if (set.size > RECENT_SELF_SVG_CAP) {
+      const oldest = set.values().next().value;
+      if (oldest !== undefined) set.delete(oldest);
+    }
+  }, []);
   useEffect(() => {
     const file = deriveFile();
     fileRef.current = file;
@@ -1009,7 +1070,7 @@ export function AnnotationsLayer() {
         const loaded = svgToStrokes(text);
         if (loaded.length) {
           setStrokesState(loaded);
-          lastAppliedSvgRef.current = text;
+          rememberSelfSvg(text);
         }
       })
       .catch(() => {
@@ -1018,14 +1079,15 @@ export function AnnotationsLayer() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [rememberSelfSvg]);
 
   // Phase 8 Task 5 — observe the Y.Map.annotations for live updates from
-  // other tabs. Bail when the incoming SVG STRING is identical to the one
-  // we last applied (covers the local echo round-trip without missing real
-  // foreign changes). The prior length+first/last-id check was wrong: a
-  // resize / move keeps the same id list, so all three predicates matched
-  // even though geometry changed — foreign edits silently disappeared.
+  // other tabs. Bail when the incoming SVG STRING matches any RECENT
+  // self-write (covers the local echo round-trip, including an
+  // out-of-order one, without missing real foreign changes). The prior
+  // length+first/last-id check was wrong: a resize / move keeps the same id
+  // list, so all three predicates matched even though geometry changed —
+  // foreign edits silently disappeared.
   const collab = useCollab();
   useEffect(() => {
     if (!collab) return;
@@ -1033,9 +1095,10 @@ export function AnnotationsLayer() {
     const apply = () => {
       const svg = map.get('svg');
       if (typeof svg !== 'string' || !svg) return;
-      if (svg === lastAppliedSvgRef.current) return;
-      lastAppliedSvgRef.current = svg;
-      setStrokesState(svgToStrokes(svg));
+      if (recentSelfSvgsRef.current.has(svg)) return;
+      rememberSelfSvg(svg);
+      const incoming = svgToStrokes(svg);
+      setStrokesState((prev) => reconcileIncoming(prev, incoming));
     };
     apply();
     map.observe(apply);
@@ -1046,12 +1109,28 @@ export function AnnotationsLayer() {
         /* doc destroyed before unmount */
       }
     };
-  }, [collab]);
+  }, [collab, rememberSelfSvg]);
 
   const undoStack = useUndoStackOptional();
   const undoSinks = useUndoSinks();
   const undoStackRef = useRef(undoStack);
   undoStackRef.current = undoStack;
+
+  // feature-bulk-media-insert follow-up — dedicated PUT dispatch queue.
+  // The undo-stack's own `inFlightRef` serializes its PUSH TASKS (each
+  // awaits `cmd.do()` before the next task starts), but live network
+  // capture during a rapid-fire batch drop showed the actual PUT REQUESTS
+  // still overlapping (request N+1 starting before request N's response
+  // arrived) — some other async hop between "task starts" and "fetch
+  // fires" lets them interleave. Since every PUT body here is a strictly
+  // growing superset (the media-commit-chain guarantees each commit is at
+  // least as complete as the last), overlap is dangerous: if an EARLIER
+  // (smaller) request's write lands on disk AFTER a LATER (larger) one's,
+  // the smaller snapshot wins and silently erases the larger one's extra
+  // strokes. A dedicated chain — mirroring `editApplyChainRef` in
+  // client/app.jsx — makes the fetch DISPATCH itself wait for the
+  // previous one's response, independent of whatever the undo-stack does.
+  const putChainRef = useRef<Promise<void>>(Promise.resolve());
 
   /**
    * Apply a `Stroke[]` snapshot: update local React state AND fire-and-forget
@@ -1066,25 +1145,37 @@ export function AnnotationsLayer() {
    * we push a command, so the server only sees one PUT per edit instead
    * of two-step racing.
    */
-  const putStrokes = useCallback((next: readonly Stroke[]) => {
-    setStrokesState(next as Stroke[]);
-    const file = fileRef.current;
-    if (!file) return Promise.resolve();
-    const svg = strokesToSvg(next);
-    // Phase 8 Task 5 — record the SVG we just authored locally so the
-    // server-broadcast echo (PUT → onAnnotationsChanged → syncRoom* →
-    // Y.Map.observe) doesn't trigger a redundant setStrokesState.
-    lastAppliedSvgRef.current = svg;
-    return fetch('/_api/annotations', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file, svg }),
-    })
-      .then(() => undefined)
-      .catch(() => {
-        /* swallow — user sees uncommitted state until the next stroke */
-      });
-  }, []);
+  const putStrokes = useCallback(
+    (next: readonly Stroke[]) => {
+      // See reconcileIncoming — a direct setStrokesState(next) here can
+      // clobber a sibling file's concurrent optimistic insert.
+      setStrokesState((prev) => reconcileIncoming(prev, next));
+      const file = fileRef.current;
+      if (!file) return Promise.resolve();
+      const persistable = next.some(isEphemeralHref)
+        ? next.filter((s) => !isEphemeralHref(s))
+        : next;
+      const svg = strokesToSvg(persistable);
+      // Phase 8 Task 5 — record the SVG we just authored locally so the
+      // server-broadcast echo (PUT → onAnnotationsChanged → syncRoom* →
+      // Y.Map.observe) doesn't trigger a redundant setStrokesState.
+      rememberSelfSvg(svg);
+      const dispatch = () =>
+        fetch('/_api/annotations', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file, svg }),
+        })
+          .then(() => undefined)
+          .catch(() => {
+            /* swallow — user sees uncommitted state until the next stroke */
+          });
+      const chained = putChainRef.current.then(dispatch, dispatch);
+      putChainRef.current = chained;
+      return chained;
+    },
+    [rememberSelfSvg]
+  );
 
   // Register the strokes put sink with the undo provider so the rebuilt
   // AnnotationStrokesCommand (after a canvas switch + return) routes through
@@ -1296,39 +1387,49 @@ export function AnnotationsLayer() {
 
       void Promise.all(classified.map(({ path, kind }) => probeOne(path, kind))).then(
         (resolved) => {
-          const before = strokesRef.current;
-          const added: Stroke[] = resolved.map((item, i) => {
-            const cx = world[0] + i * BATCH_DROP_CASCADE_PX;
-            const cy = world[1] + i * BATCH_DROP_CASCADE_PX;
-            if (item.kind === 'image') {
+          // Ids generated up front (stable regardless of chain timing) so
+          // they're available for the selection call below without waiting
+          // on the chain to settle.
+          const withIds = resolved.map((item, i) => ({ ...item, id: rid(), i }));
+          const label = `add ${withIds.length} item${withIds.length === 1 ? '' : 's'}`;
+          // Batch-drop fix (see media-commit-chain.ts) — every path here is
+          // already resolved, so THIS call alone is race-free by
+          // construction, but a SECOND overlapping bulk-insert (or a
+          // concurrent drag-drop via createImageFromFile/createMediaReference)
+          // can still land while this one's Promise.all was in flight (large
+          // photos take real, non-trivial decode time) — both read/write the
+          // same `strokes` state, so this must enqueue onto the shared chain
+          // too, not read `strokesRef.current` + commit directly.
+          void mediaCommitChainRef.current.enqueue((before) => {
+            const added: Stroke[] = withIds.map((item) => {
+              const cx = world[0] + item.i * BATCH_DROP_CASCADE_PX;
+              const cy = world[1] + item.i * BATCH_DROP_CASCADE_PX;
+              if (item.kind === 'image') {
+                return {
+                  id: item.id,
+                  tool: 'image',
+                  x: cx - item.w / 2,
+                  y: cy - item.h / 2,
+                  w: item.w,
+                  h: item.h,
+                  href: item.path,
+                } as ImageStroke;
+              }
               return {
-                id: rid(),
-                tool: 'image',
+                id: item.id,
+                tool: 'mediaref',
                 x: cx - item.w / 2,
                 y: cy - item.h / 2,
                 w: item.w,
                 h: item.h,
-                href: item.path,
-              } as ImageStroke;
-            }
-            return {
-              id: rid(),
-              tool: 'mediaref',
-              x: cx - item.w / 2,
-              y: cy - item.h / 2,
-              w: item.w,
-              h: item.h,
-              src: item.path,
-              mediaKind: item.kind,
-              title: item.path.split('/').pop() || item.path,
-            } as MediaRefStroke;
-          });
-          commitStrokes(
-            before,
-            [...before, ...added],
-            `add ${added.length} item${added.length === 1 ? '' : 's'}`
-          );
-          annotSel?.replace(added.map((s) => s.id));
+                src: item.path,
+                mediaKind: item.kind,
+                title: item.path.split('/').pop() || item.path,
+              } as MediaRefStroke;
+            });
+            return { after: [...before, ...added], label };
+          }, commitStrokes);
+          annotSel?.replace(withIds.map((item) => item.id));
         }
       );
     },
@@ -1501,14 +1602,23 @@ export function AnnotationsLayer() {
             // rather than a stale pre-render snapshot another completion
             // already moved past.
             void mediaCommitChainRef.current.enqueue((before) => {
-              if (!before.some((s) => s.id === id)) return null; // erased mid-flight
-              const after = before.map((s) =>
+              // The optimistic insert above is a plain (non-chain) setState
+              // — on a fast (e.g. localhost) round trip, THIS SAME file's
+              // own upload can resolve before React has even rendered that
+              // insert, so `before` (fresh off strokesRef.current, or the
+              // chain's reconciled memory) may not have it yet. We know it
+              // exists — we just created it — so fold it back in rather
+              // than reading its absence as "erased mid-flight" (a real
+              // erase is a deliberate, human-timescale gesture; this is a
+              // sub-render-cycle race, not a delete).
+              const base = before.some((s) => s.id === id) ? before : [...before, optimistic];
+              const after = base.map((s) =>
                 s.id === id ? ({ ...s, href: res.path } as Stroke) : s
               );
               // The optimistic blob: entry was never itself committed (see
               // above), so the undo "before" excludes it — undo should
               // remove the image outright, not restore a revoked blob:.
-              const commitBefore = before.filter((s) => s.id !== id);
+              const commitBefore = base.filter((s) => s.id !== id);
               return { after, commitBefore, label: 'add image' };
             }, commitStrokes);
             annotSel?.replace([id]);

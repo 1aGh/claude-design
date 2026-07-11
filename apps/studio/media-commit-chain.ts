@@ -77,9 +77,23 @@ export function createMediaCommitChain<T>(
   function reconcile(): readonly T[] {
     const fresh = getSnapshot();
     if (!remembered) return fresh;
-    const freshKeys = new Set(fresh.map(keyOf));
-    const notYetRendered = remembered.filter((item) => !freshKeys.has(keyOf(item)));
-    return notYetRendered.length ? [...fresh, ...notYetRendered] : fresh;
+    // Prefer `remembered`'s value for any id the CHAIN itself produced —
+    // not just fold in ids fresh is missing. `fresh` (getSnapshot) can
+    // contain a STALE value for an id the chain already swapped: e.g. an
+    // image stroke's optimistic (blob:) href is set via a separate, non-
+    // chain setState, and `fresh` catches up to THAT before it catches up
+    // to the chain's OWN later commit swapping it to the real href — same
+    // id, stale value. Checking "is the id present" (the previous version
+    // of this function) said "yes, already rendered" and used fresh's
+    // stale copy, silently reverting the swap — which then gets filtered
+    // out entirely as still-ephemeral at the persistence layer. `remembered`
+    // is always at least as fresh as anything the chain has itself
+    // touched, so it wins on overlap; anything fresh has that remembered
+    // doesn't (an external, non-chain edit made while idle) still comes
+    // through via the second spread.
+    const rememberedKeys = new Set(remembered.map(keyOf));
+    const notInRemembered = fresh.filter((item) => !rememberedKeys.has(keyOf(item)));
+    return [...remembered, ...notInRemembered];
   }
 
   const enqueue: MediaCommitChain<T>['enqueue'] = (mutate, onCommit) => {

@@ -140,6 +140,49 @@ describe('media-commit-chain / no-loss under concurrent completions', () => {
     expect(last.after.some((it) => it.id === 'b')).toBe(true);
   });
 
+  test('a snapshot with a STALE VALUE for a chain-owned id (not just a missing one) does not revert it', async () => {
+    // The real bug this closes: `fresh` (getSnapshot) can contain the SAME
+    // id the chain just committed, but with a stale value — e.g. an image
+    // stroke's optimistic (blob:) href is set via a separate, non-chain
+    // setState, and `fresh` catches up to THAT before it catches up to the
+    // chain's own later commit swapping it to the real href. Checking only
+    // "is the id present" (the previous implementation) treated this as
+    // "already rendered, trust fresh" and used the stale copy — silently
+    // reverting the swap, which then gets filtered out entirely as
+    // still-ephemeral at the persistence layer one level up. Confirmed live
+    // against a real dev server: a single 3-file drop lost exactly one file
+    // most of the time, always the one whose swap commit landed while
+    // `fresh` still only reflected its pre-swap optimistic value.
+    const snapshot: Item[] = [{ id: 'img-optimistic', href: 'blob:x' } as unknown as Item];
+    const chain = createMediaCommitChain<Item>(() => snapshot, keyOf);
+    const commits: Array<{ after: readonly Item[] }> = [];
+    const onCommit = (_before: readonly Item[], after: readonly Item[]) => {
+      commits.push({ after });
+    };
+
+    // The chain's own commit swaps the id to its real value...
+    await chain.enqueue(
+      (before) => ({
+        after: before.map((it) =>
+          it.id === 'img-optimistic' ? { ...it, href: 'assets/real.png' } : it
+        ),
+      }),
+      onCommit
+    );
+    // ...but `snapshot` (fresh) hasn't re-rendered to reflect that swap yet
+    // — it still shows the SAME id with the stale, optimistic href. This
+    // models the render lag, not a delete/re-add.
+
+    const after = await chain.enqueue(
+      (before) => ({ after: [...before, { id: 'sibling' }] }),
+      onCommit
+    );
+
+    const img = after.find((it) => it.id === 'img-optimistic') as unknown as { href: string };
+    expect(img?.href).toBe('assets/real.png');
+    expect(after.some((it) => it.id === 'sibling')).toBe(true);
+  });
+
   test('commitBefore overrides the before passed to onCommit without affecting the accumulator', async () => {
     const snapshot: Item[] = [{ id: 'optimistic' }];
     const chain = createMediaCommitChain<Item>(() => snapshot, keyOf);
