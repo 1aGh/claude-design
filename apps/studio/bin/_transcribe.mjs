@@ -20,10 +20,57 @@
 // Exit: 0 ok / 1 dependency-or-input problem / 3 transcription failed.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 
 import { wordsToSrt, wordsToVtt } from '../generation/captions.ts';
+import { resolveWhisperModel } from '../generation/whisper-models.ts';
+
+/** Read `.design/config.json` → generation.transcription.whisperModel, or null
+ *  (the preferred managed model id, e.g. "base"). */
+function readConfigWhisperModel(repo) {
+  try {
+    const cfg = JSON.parse(readFileSync(join(repo, '.design', 'config.json'), 'utf8'));
+    const m = cfg?.generation?.transcription?.whisperModel;
+    return typeof m === 'string' ? m : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * whisper.cpp can't decode arbitrary containers (mp4/mov/m4a) unless built with
+ * ffmpeg — the owner hit this on a real clip (GOTCHA C). If the input isn't
+ * already a WAV and system ffmpeg is present, transcode to a temp 16 kHz mono
+ * WAV (whisper's native rate) and transcribe THAT. Best-effort: no ffmpeg → we
+ * pass the original through and let whisper try (with the existing hint on
+ * failure). Returns { path, cleanup } — cleanup removes the temp file (if any).
+ */
+function ensureWav(input) {
+  if (/\.wav$/i.test(input)) return { path: input, cleanup: () => {} };
+  const ffmpeg = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+  if (ffmpeg.error) return { path: input, cleanup: () => {} }; // no ffmpeg → try as-is
+  // Security (ethical-hacker Finding 1): write into a FRESH 0700 private dir
+  // (mkdtemp), NOT a predictable `/tmp/maude-transcribe-<name>-<pid>.wav`. On a
+  // shared/multi-user host (Linux CI, the hub Docker image) a co-tenant could
+  // pre-plant a symlink at a guessable path and ffmpeg's `-y` would follow it
+  // and overwrite the target. An unguessable per-run dir removes the primitive.
+  const dir = mkdtempSync(join(tmpdir(), 'maude-transcribe-'));
+  const wav = join(dir, `${basename(input, extname(input))}.wav`);
+  process.stderr.write('transcribe: converting to 16 kHz mono WAV via ffmpeg…\n');
+  const conv = spawnSync(
+    'ffmpeg',
+    ['-y', '-i', input, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', wav],
+    { stdio: ['ignore', 'ignore', 'inherit'] }
+  );
+  const cleanup = () => rmSync(dir, { recursive: true, force: true });
+  if (conv.status !== 0 || !existsSync(wav)) {
+    cleanup();
+    return { path: input, cleanup: () => {} }; // conversion failed → fall back
+  }
+  return { path: wav, cleanup };
+}
 
 /**
  * whisper.cpp `-oj` JSON → word timings. With `-ml 1` each `transcription[]`
@@ -295,30 +342,48 @@ async function main() {
     process.exit(1);
   }
 
-  const model = args.model || process.env.MAUDE_WHISPER_MODEL;
+  // Model resolution (Task 2.7 — one-click): explicit --model / $MAUDE_WHISPER_MODEL
+  // wins; otherwise auto-resolve a model downloaded via Settings ("Download &
+  // enable"), preferring the configured `generation.transcription.whisperModel`.
+  const model =
+    args.model ||
+    process.env.MAUDE_WHISPER_MODEL ||
+    resolveWhisperModel(readConfigWhisperModel(repo));
   if (!model || !existsSync(model)) {
     process.stderr.write(
-      'transcribe: a whisper.cpp model is required (whisper.cpp has no default / auto-download).\n' +
-        '  Pass --model <ggml-large-v3-turbo.bin> or set $MAUDE_WHISPER_MODEL.\n' +
-        '  Download: https://huggingface.co/ggerganov/whisper.cpp (e.g. ggml-large-v3-turbo.bin)\n'
+      'transcribe: no whisper.cpp model available.\n' +
+        '  One-click: open Settings (⌘,) → Subtitles → "Download model" (base is a good multilingual default).\n' +
+        '  Or pass --model <ggml-*.bin> / set $MAUDE_WHISPER_MODEL, or use a cloud engine (--provider elevenlabs|groq).\n'
     );
     process.exit(1);
   }
+
+  // The owner's Czech-footage gotcha: an English-only `.en` model garbles other
+  // languages. Warn (don't block — the user may know their audio is English).
+  if (/\.en\.bin$/i.test(model) && args.lang && args.lang.toLowerCase() !== 'en') {
+    process.stderr.write(
+      `transcribe: WARNING — model ${basename(model)} is English-only but --lang ${args.lang} was given; expect garbled output. Use a multilingual model (e.g. ggml-base.bin).\n`
+    );
+  }
+
+  // Transcode to a WAV whisper.cpp can always read (GOTCHA C), when needed.
+  const wav = ensureWav(input);
 
   const outBase = args.out
     ? args.out.replace(/\.(srt|vtt|json)$/i, '')
     : join(dirname(input), basename(input, extname(input)));
 
   // whisper.cpp: JSON output for the shared reflow, `-ml 1` for word-level timings.
-  const flags = ['-m', model, '-f', input, '-oj', '-of', outBase];
+  const flags = ['-m', model, '-f', wav.path, '-oj', '-of', outBase];
   if (args.words) flags.push('-ml', '1');
   if (args.lang) flags.push('-l', args.lang);
 
   process.stderr.write(`transcribe: running ${whisper} (${basename(model)})…\n`);
   const run = spawnSync(whisper, flags, { stdio: ['ignore', 'inherit', 'inherit'] });
+  wav.cleanup();
   if (run.status !== 0) {
     process.stderr.write(
-      `transcribe: whisper.cpp exited ${run.status ?? '?'} — a non-WAV input may need an ffmpeg-enabled build (convert to 16kHz WAV first).\n`
+      `transcribe: whisper.cpp exited ${run.status ?? '?'} — if the input is a non-WAV container, install ffmpeg so Maude can auto-convert it (or convert to 16 kHz mono WAV first).\n`
     );
     process.exit(3);
   }

@@ -270,6 +270,11 @@
             "model": {
               "type": "string",
               "description": "Optional engine-specific model id override (e.g. a Groq 'whisper-large-v3-turbo', an ElevenLabs 'scribe_v1', or a local ggml model name). Absent ⇒ the engine's own default."
+            },
+            "whisperModel": {
+              "type": "string",
+              "enum": ["tiny", "base", "base.en", "small", "large-v3-turbo"],
+              "description": "Preferred managed local whisper.cpp model id (Task 2.7). Downloaded via Settings → Subtitles → 'Download model' into a per-machine cache; `maude design transcribe --provider whisper` auto-resolves it (no --model). Absent ⇒ any downloaded multilingual model. 'base' is the recommended default; '.en' variants are English-only."
             }
           },
           "additionalProperties": false

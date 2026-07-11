@@ -1,6 +1,6 @@
 # Task 2.7 feasibility spike — transformers.js whisper (word timestamps in the sidecar)
 
-**Date:** 2026-07-11 · **Verdict: PASS → build approach B (zero-install WASM/JS whisper).**
+**Date:** 2026-07-11 · **Spike verdict: B is functionally feasible.** · **Build outcome: approach A shipped** (B blocked on a native-dep / DDR-070 conflict — see the resolution note at the bottom).
 
 The plan gated the one-click local-subtitle build on a spike (DDR-164 Open-Question 7):
 in-process transformers.js whisper must produce word-level timestamps, at tolerable
@@ -40,3 +40,22 @@ speed + memory, running MAIN-origin / in the sidecar (not the untrusted canvas r
 
 `scratchpad/whisper-spike/spike3.mjs` (stereo→mono + 44.1k→16k resample; the earlier
 garbled "[BIRDS CHIRPING]" run was a WAV-parse bug in the harness, not the model).
+
+## Resolution (2026-07-11) — shipped approach A, not B
+
+Building B revealed the packaging fork wasn't a preference but a **blocker**:
+`@huggingface/transformers@3.8.1` hard-depends on **`sharp` + `onnxruntime-node`**,
+the exact native "bun-compile-hostile" class **DDR-070 excludes**. A clean `npm add`
+is impossible; B would require vendoring the prebuilt browser bundle + allowlisting
+`cdn.jsdelivr.net` (WASM) and `huggingface.co` (models) in the canvas CSP — a
+DDR-worthy vendoring + CDN commitment. `device:'wasm'` is also unsupported in the
+transformers.js **Node** build (only `cpu` = onnxruntime-node), so sidecar-WASM is
+out — B would have to run in a browser proof-canvas harness (the @imgly pattern).
+
+**Owner chose approach A:** keep the fast native whisper.cpp engine (already validated
+on real footage) and remove the *friction* instead — a one-click managed model
+download (`generation/whisper-models.ts` + `/_api/generate/whisper-model` + a Settings
+card), `--provider whisper` model auto-resolution, and auto-ffmpeg container decode.
+No new runtime dependency; native binary still required (brew / build). True
+binary-free zero-install (B) stays a documented future option behind the vendoring
+decision.

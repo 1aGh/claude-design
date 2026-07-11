@@ -1786,6 +1786,55 @@
   color: var(--fg-3);
 }
 
+/* ── Local whisper model download (Task 2.7) ────────────────────────────── */
+.st-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.st-model-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+}
+.st-model-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.st-model-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  font-size: var(--type-sm, 13px);
+  color: var(--fg-1);
+  font-weight: 600;
+}
+.st-model-size {
+  font-size: 11px;
+  color: var(--fg-3);
+  font-weight: 400;
+}
+.st-model-progress {
+  font-size: 11px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.st-model-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 /* ── Generate dialog (feature-ai-media-generation, DDR-16x) ─────────────── */
 .st-gen-prompt {
   width: 100%;

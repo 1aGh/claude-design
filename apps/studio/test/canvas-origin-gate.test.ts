@@ -191,6 +191,9 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // resolve the provider key server-side; MAIN-ORIGIN ONLY.
         '/_api/generate/audio-search',
         '/_api/generate/audio-reuse',
+        // Task 2.7 — managed whisper-model download (egress + local disk write);
+        // MAIN-ORIGIN ONLY.
+        '/_api/generate/whisper-model',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);

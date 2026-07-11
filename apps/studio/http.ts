@@ -48,6 +48,12 @@ import {
   listProviders,
 } from './generation/registry.ts';
 import { validateGenRequest } from './generation/types.ts';
+import {
+  downloadWhisperModel,
+  getWhisperModel,
+  listWhisperModels,
+  removeWhisperModel,
+} from './generation/whisper-models.ts';
 import { createGitEndpoints } from './git/endpoints.ts';
 import { gitShowFile } from './git/service.ts';
 import { createGitHubEndpoints } from './github/endpoints.ts';
@@ -662,6 +668,16 @@ export function createHttp(
   exportJobs: ExportJobQueue,
   generateJobs: GenerationJobQueue
 ): Http {
+  // Task 2.7 (approach A) — in-flight whisper-model download state (one at a
+  // time), polled by the Settings "Download model" card via GET
+  // /_api/generate/whisper-model. Closure-scoped: one server, one download.
+  let whisperDownload: {
+    id: string;
+    received: number;
+    total: number;
+    error?: string;
+  } | null = null;
+
   // Cache invalidation — when canvas-lib changes, every cached canvas bundle
   // is stale because canvas-lib is inlined into each one via the resolver
   // plugin. Drop the whole cache so the next request rebuilds with the fresh
@@ -2669,6 +2685,71 @@ export function createHttp(
       } catch (err) {
         return new Response(err instanceof Error ? err.message : 'reuse failed', { status: 400 });
       }
+    },
+
+    // feature-ai-media-generation (Task 2.7 approach A, DDR-164) — managed local
+    // whisper.cpp GGML models: GET lists the registry + which are downloaded +
+    // any in-flight download; POST {id} downloads one (SSRF-hardened, from the
+    // frozen ggerganov/whisper.cpp allowlist); DELETE {id} reclaims disk. This is
+    // the "one-click local subtitles" model half — after a download,
+    // `maude design transcribe --provider whisper` auto-resolves it. MAIN-ORIGIN
+    // ONLY, loopback + sameOriginWrite gated.
+    '/_api/generate/whisper-model': async (req: Request) => {
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method === 'GET') {
+        return Response.json(
+          { models: listWhisperModels(), downloading: whisperDownload },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{ id?: unknown }>(req, 4 * 1024);
+      const id = typeof body?.id === 'string' ? body.id : '';
+      if (!getWhisperModel(id)) return new Response('unknown model id', { status: 400 });
+
+      if (req.method === 'DELETE') {
+        const removed = await removeWhisperModel(id);
+        return Response.json({ removed }, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (whisperDownload && !whisperDownload.error)
+        return new Response(`a download is already in progress (${whisperDownload.id})`, {
+          status: 409,
+        });
+      // Kick off the streamed download; progress is polled via GET. Swallow the
+      // rejection here (recorded on the state) to avoid an unhandled rejection.
+      // A generous wall-clock timeout (ethical-hacker Finding 3) so a stalled
+      // connection aborts → errors → frees the single slot instead of wedging it
+      // forever (large models on a slow link can legitimately take many minutes).
+      whisperDownload = { id, received: 0, total: 0 };
+      void downloadWhisperModel(
+        id,
+        (received, total) => {
+          if (whisperDownload && whisperDownload.id === id) {
+            whisperDownload.received = received;
+            whisperDownload.total = total;
+          }
+        },
+        AbortSignal.timeout(45 * 60_000)
+      )
+        .then(() => {
+          if (whisperDownload?.id === id) whisperDownload = null; // done → drops out of GET
+        })
+        .catch((err) => {
+          if (whisperDownload?.id === id)
+            whisperDownload = {
+              id,
+              received: whisperDownload.received,
+              total: whisperDownload.total,
+              error: err instanceof Error ? err.message : 'download failed',
+            };
+        });
+      return Response.json(
+        { started: id },
+        { status: 202, headers: { 'Cache-Control': 'no-store' } }
+      );
     },
 
     '/_canvas-state': async (req: Request) => {

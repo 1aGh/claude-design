@@ -256,6 +256,135 @@ function TranscriptionEngineCard() {
   );
 }
 
+// Task 2.7 (approach A) — one-click local whisper.cpp models. The engine binary
+// is still a soft dep, but the MODEL half is one click: download a ggml model
+// into a Maude-managed cache and `--provider whisper` auto-resolves it. Polls
+// the download progress from the privileged /_api/generate/whisper-model route.
+function WhisperModelCard() {
+  const [state, setState] = useState(null); // { models, downloading } | null
+  const [err, setErr] = useState(null);
+
+  const load = useCallback(() => {
+    fetch('/_api/generate/whisper-model')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then(setState)
+      .catch((e) => setErr(e && e.message ? e.message : 'failed to load models'));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Poll while a download is in flight.
+  useEffect(() => {
+    if (!state?.downloading) return undefined;
+    const t = setInterval(load, 1000);
+    return () => clearInterval(t);
+  }, [state?.downloading, load]);
+
+  async function download(id) {
+    setErr(null);
+    try {
+      const res = await fetch('/_api/generate/whisper-model', {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain' },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      load();
+    } catch (e) {
+      setErr(e && e.message ? e.message : 'download failed');
+    }
+  }
+
+  async function remove(id) {
+    setErr(null);
+    try {
+      const res = await fetch('/_api/generate/whisper-model', {
+        method: 'DELETE',
+        headers: { 'content-type': 'text/plain' },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      load();
+    } catch (e) {
+      setErr(e && e.message ? e.message : 'remove failed');
+    }
+  }
+
+  const dl = state?.downloading;
+  const pctOf = (r, t) => (t > 0 ? Math.min(100, Math.round((r / t) * 100)) : 0);
+
+  return (
+    <div className="st-provider-card">
+      <div className="st-provider-hd">
+        <span className="st-provider-name">Local subtitle models (whisper.cpp)</span>
+      </div>
+      <div className="st-provider-notes">
+        Download a model once and local subtitles work offline, free, with no key. Requires the
+        whisper.cpp binary (<code>brew install whisper-cpp</code>). Models are stored on this machine
+        only and never committed.
+      </div>
+      {err && (
+        <div className="st-provider-status" style={{ color: 'var(--danger, #e5484d)' }}>
+          {err}
+        </div>
+      )}
+      {dl?.error && (
+        <div className="st-provider-status" style={{ color: 'var(--danger, #e5484d)' }}>
+          Download of {dl.id} failed: {dl.error}
+        </div>
+      )}
+      {state === null && !err && <div className="st-settings-intro">Loading…</div>}
+      <div className="st-model-list">
+        {(state?.models || []).map((m) => {
+          const busy = dl && !dl.error && dl.id === m.id;
+          return (
+            <div key={m.id} className="st-model-row">
+              <div className="st-model-info">
+                <span className="st-model-label">
+                  {m.label}
+                  <span className={'st-pill' + (m.multilingual ? '' : ' is-local')}>
+                    {m.multilingual ? 'multilingual' : 'English-only'}
+                  </span>
+                  <span className="st-model-size">~{m.sizeMB} MB</span>
+                </span>
+                <span className="st-engine-radio-note">{m.note}</span>
+                {busy && (
+                  <span className="st-model-progress">
+                    Downloading… {pctOf(dl.received, dl.total)}%
+                  </span>
+                )}
+              </div>
+              <div className="st-model-actions">
+                {m.downloaded ? (
+                  <>
+                    <span className="st-provider-configured">
+                      <Icon name="check" size={12} /> ready
+                    </span>
+                    <button type="button" className="st-btn" onClick={() => remove(m.id)}>
+                      Remove
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="st-btn"
+                    disabled={!!(dl && !dl.error)}
+                    onClick={() => download(m.id)}
+                  >
+                    {busy ? 'Downloading…' : 'Download'}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPanel({ onClose }) {
   const [providers, setProviders] = useState(null); // null = loading
   const [error, setError] = useState(null);
@@ -322,6 +451,7 @@ export default function SettingsPanel({ onClose }) {
           )}
           <div className="st-rp-hd">Subtitles</div>
           <TranscriptionEngineCard />
+          <WhisperModelCard />
         </div>
       </div>
     </div>
