@@ -274,6 +274,17 @@ Execute in phase order. Each phase is independently shippable; `/flow:done` at e
 
 #### Task 2.4: Phase-2 gate — motion/copy critics (captions), security, What's New.
 
+#### Task 2.5 (follow-up): Library-search-first for AUDIO — reuse before you pay
+> **Owner decision (2026-07-11).** Reuse-first is **AUDIO-ONLY**. Images are cheap, mostly single-use, and already land in `assets/` where the agent can pick them up again — so **no image generation cache** (a repeat image request just generates; content-addressing already dedups identical bytes). For **music + SFX** (and re-usable voiceover), the value is real: **always run a query-search into the audio library first and prefer an existing suitable track before spending credits on a new generation.** Not built in the initial Phase-2 increment (Tasks 2.1–2.4, shipped) — this is the tracked enhancement. **DDR-worthy** (exact vs fuzzy match; reuse-first-silent vs surface-a-choice; provider-history vs local index).
+
+- **Do**: before an **audio** `submit` (music/SFX; opt-in for VO), run a **query-search over two sources** and prefer a match over generating new:
+  1. **ElevenLabs History** — `GET /v1/history` (+ `GET /v1/history/{id}/audio` to pull the bytes). The user's OWN past generations; **re-downloading spends NO credits** (already paid). Match on the stored source text/prompt + `voice_id`/settings metadata. Localize the chosen item into `assets/<sha8>.mp3` like any generated asset.
+  2. **Maude-local generated audio** — the project's own `assets/*.mp3`. Needs a small **intent index** so local audio is searchable by *what it was for*, not just by bytes: extend the Phase-0 `_generate-history.json` ledger to record the request `(modality, kind, prompt, params)` per produced asset (or an `assets/<sha8>.audio.json` sidecar). Byte-content-addressing already dedups identical outputs; this adds *semantic* "do we already have a warm lo-fi loop?" lookup.
+- **UX / matching**: exact/keyword match first (cheap, deterministic); fuzzy/embedding similarity is a later nicety (see the cost table in the plan discussion). **Surface it as a choice on the interactive path** — *"You already have `assets/abc.mp3` for a similar prompt — reuse (free) or generate new?"* — with a `--reuse` / `--fresh` CLI flag; default **reuse-first on the agent / proactive-director path** (Phase 4): the director MUST search the audio library before proposing a paid generation for a reel beat. A new `maude design audio-search "<query>"` verb (or a search step folded into `maude design generate --modality audio`) exposes it.
+- **Pattern**: the Phase-0 job ledger (`generation/jobs.ts` `_generate-history.json`); the content-addressed `assets/` store; the ElevenLabs adapter's `assertSafeBase` + `readBytesCapped` discipline for the History fetch (same egress hardening — the History audio URL localizes through the hardened path, NOT a raw fetch).
+- **Gotcha**: ElevenLabs History is **cross-project + includes non-Maude generations** (privacy + relevance) → don't auto-import blindly; match on metadata and surface provenance. History re-download is free but the LIST call may be rate-limited — cache the listing. A TTS of *exact* text is usually wanted fresh; scope reuse to music/SFX by default.
+- **Validate**: generate a music track; issue a near-identical request → the search offers the existing asset and (on reuse) NO new ElevenLabs credit is spent (assert via the History re-download path / local hit, not a new `/v1/music` POST); the reel/proactive path reuses a fitting existing bed instead of regenerating.
+
 ### Phase 3 — Video: async generation into the EDL/video-comp
 
 #### Task 3.1: ADD Veo (Gemini) + fal video to the adapters
@@ -355,6 +366,7 @@ Per phase:
 2. **v1 scope.** ✅ **DECIDED — v1 = Phases 0–2** (spine + image + audio). Video (Phase 3), proactive (Phase 4), local engines (Phase 5) are fast-follows.
 3. **Aggregator dependency.** ✅ **DECIDED (2026-07-11, owner) — NO aggregator. Direct BYOK only: Google + ElevenLabs.** fal is dropped ("don't solve breadth for the user; they bring their own direct-provider key"). Google + ElevenLabs cover image/video/audio/STT for v1. The `fal-queue` shape stays documented so an optional fal/Replicate adapter can drop in later, but it is not built.
 4. **Local subtitles dependency.** whisper.cpp as a **soft** dep (auto-detected, graceful fallback to Groq/Scribe cloud when absent) — **recommended default**; revisit at Phase 2 if the local dep is unwanted.
+5. **Reuse-before-generate.** ✅ **DECIDED (2026-07-11, owner) — AUDIO-ONLY, library-search-first.** Music/SFX: always query the audio library (ElevenLabs History — free re-download — + Maude-local generated audio) and prefer an existing suitable track before paying for a new generation. **Images are explicitly OUT** — cheap, single-use, and already reusable straight from `assets/`, so no image cache. Tracked as **Task 2.5** (follow-up, DDR-worthy); not in the shipped Phase-2 increment (2.1–2.4).
 
 ## Research Appendix
 
