@@ -238,8 +238,13 @@
       "properties": {
         "defaultImageProvider": {
           "type": "string",
-          "description": "Provider id used when an image-generation request leaves the provider unspecified (e.g. 'gemini', 'fal'). Must be a registered provider that supports the image modality.",
+          "description": "Provider id used when an image-generation request leaves the provider unspecified (e.g. 'gemini'). Must be a registered provider that supports the image modality.",
           "default": "gemini"
+        },
+        "defaultAudioProvider": {
+          "type": "string",
+          "description": "Provider id used when an audio-generation request (music / sfx / voiceover) leaves the provider unspecified. Must be a registered provider that supports the audio modality (v1: 'elevenlabs').",
+          "default": "elevenlabs"
         },
         "defaultModels": {
           "type": "object",

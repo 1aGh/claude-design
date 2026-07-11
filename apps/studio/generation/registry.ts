@@ -9,6 +9,11 @@
 // per-request with the resolved key + localizer injected (AdapterContext), so a
 // key never lives on a long-held adapter object.
 
+import {
+  createElevenLabsAdapter,
+  ELEVENLABS_DESCRIPTOR,
+  ELEVENLABS_MODELS,
+} from './adapters/elevenlabs.ts';
 import { createGeminiAdapter, GEMINI_DESCRIPTOR, GEMINI_MODELS } from './adapters/gemini.ts';
 import type {
   AdapterContext,
@@ -31,6 +36,11 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     descriptor: GEMINI_DESCRIPTOR,
     factory: createGeminiAdapter,
     models: GEMINI_MODELS,
+  },
+  elevenlabs: {
+    descriptor: ELEVENLABS_DESCRIPTOR,
+    factory: createElevenLabsAdapter,
+    models: ELEVENLABS_MODELS,
   },
 };
 

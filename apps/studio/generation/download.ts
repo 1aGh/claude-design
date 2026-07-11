@@ -35,6 +35,20 @@ function decodeBase64(data: string): Uint8Array {
  * provider that returns an SVG/HTML/script blob is rejected there).
  */
 export async function localizeGenAsset(asset: GenAsset, deps: LocalizeDeps): Promise<string> {
+  // A transcription result is caption TEXT (SRT/VTT), not media — it must never
+  // hit the magic-byte-sniffed media store (saveAsset would reject it anyway).
+  // Captions are consumed by the `maude design transcribe` verb (which writes the
+  // SRT/VTT directly) and, once wired, the EDL caption track — never localized as
+  // an `assets/<sha8>` media path here (Phase 2.2 / 2.3). Fail loud rather than
+  // silently drop it, so a premature transcription-through-the-media-queue is
+  // caught at the seam instead of producing a mislabelled asset.
+  if (asset.kind === 'transcription' || typeof asset.text === 'string') {
+    throw new Error(
+      'transcription/caption output is not localized to the media asset store — ' +
+        'it is handled by the transcribe verb / EDL caption track (Phase 2.2/2.3)'
+    );
+  }
+
   let bytes: Uint8Array | null = null;
 
   const maybeBase64 = (asset as unknown as { base64?: unknown }).base64;

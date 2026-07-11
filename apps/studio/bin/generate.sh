@@ -13,14 +13,20 @@
 # Reached via `maude design generate` (never a raw bin path — DDR-062).
 #
 # Usage:
-#   generate.sh --prompt "<text>" [--provider gemini] [--model <id>]
-#     [--modality image] [--aspect 1:1] [--source assets/<sha8>.<ext>]
+#   generate.sh --prompt "<text>" [--provider gemini|elevenlabs] [--model <id>]
+#     [--modality image|audio] [--aspect 1:1] [--source assets/<sha8>.<ext>]
+#     [--kind music|sfx|tts] [--voice <voice_id>] [--duration <seconds>]
 #     [--root <repo>] [--timeout <sec>]
 #
-# --source turns the call into a maskless EDIT (Nano Banana): the content-
+# --source turns an IMAGE call into a maskless EDIT (Nano Banana): the content-
 # addressed source image is read server-side into the request and the prompt
 # describes the change; a NEW content-addressed asset is produced (the original
 # is never mutated).
+#
+# --modality audio (provider elevenlabs): --kind music (default) | sfx | tts.
+# tts needs --voice <voice_id>; music/sfx take an optional --duration in seconds.
+# Produces assets/<sha8>.mp3. (Transcription is a separate verb: `maude design
+# transcribe`, which writes SRT/VTT.)
 #
 # The key is NEVER passed here — it lives server-side. Add it in Settings
 # (⌘,) or drop it into ~/.config/maude/keys.json (mode 0600).
@@ -35,6 +41,9 @@
 set -euo pipefail
 
 PROMPT="" PROVIDER="gemini" MODEL="" MODALITY="image" ASPECT="" SOURCE="" REPO="" TIMEOUT="180"
+# Audio params (Phase 2) — kind = music|sfx|tts; voice = an ElevenLabs voice_id
+# (required for tts); duration = seconds (music/sfx length).
+KIND="" VOICE="" DURATION=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -44,13 +53,20 @@ while [ $# -gt 0 ]; do
     --modality) MODALITY="$2"; shift 2 ;;
     --aspect)   ASPECT="$2"; shift 2 ;;
     --source)   SOURCE="$2"; shift 2 ;;
+    --kind)     KIND="$2"; shift 2 ;;
+    --voice)    VOICE="$2"; shift 2 ;;
+    --duration) DURATION="$2"; shift 2 ;;
     --root)     REPO="$2"; shift 2 ;;
     --timeout)  TIMEOUT="$2"; shift 2 ;;
-    --help|-h)  sed -n '2,35p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    --help|-h)  sed -n '2,41p' "$0" | sed 's/^# \?//'; exit 0 ;;
     *) echo "generate.sh: unknown arg '$1'" >&2; exit 2 ;;
   esac
 done
 
+# generate.sh produces MEDIA (image / audio) from a prompt. Transcription is a
+# different shape (audio → captions) reached via `maude design transcribe`, which
+# writes SRT/VTT files — not this verb, whose contract is "print the produced
+# asset path".
 [ -n "$PROMPT" ] || { echo "generate.sh: --prompt is required" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "generate.sh: jq is required" >&2; exit 1; }
 
@@ -71,14 +87,25 @@ BASE="http://127.0.0.1:$PORT/_api/generate-jobs"
 # (strip a leading slash the canvas-relative writers emit).
 SOURCE="${SOURCE#/}"
 
+# Build the audio params object (only the set keys) — audioKind / voice_id /
+# durationSeconds are opaque to the spine; each adapter validates its own subset.
+PARAMS=$(jq -n --arg kind "$KIND" --arg voice "$VOICE" --arg dur "$DURATION" '
+  {}
+  + (if $kind  != "" then { audioKind: $kind }               else {} end)
+  + (if $voice != "" then { voice_id: $voice }               else {} end)
+  + (if $dur   != "" then { durationSeconds: ($dur|tonumber) } else {} end)')
+
 # Build the request body — jq handles all prompt escaping. Omit empty optionals.
 BODY=$(jq -n \
   --arg modality "$MODALITY" --arg provider "$PROVIDER" --arg model "$MODEL" \
-  --arg prompt "$PROMPT" --arg aspect "$ASPECT" --arg source "$SOURCE" '
-  { modality: $modality, provider: $provider, prompt: $prompt }
+  --arg prompt "$PROMPT" --arg aspect "$ASPECT" --arg source "$SOURCE" \
+  --argjson params "$PARAMS" '
+  { modality: $modality, provider: $provider }
+  + (if $prompt != "" then { prompt: $prompt }      else {} end)
   + (if $model  != "" then { model: $model }        else {} end)
   + (if $aspect != "" then { aspectRatio: $aspect } else {} end)
-  + (if $source != "" then { sourceAsset: $source }  else {} end)')
+  + (if $source != "" then { sourceAsset: $source } else {} end)
+  + (if ($params|length) > 0 then { params: $params } else {} end)')
 
 echo "generate.sh: submitting to $PROVIDER ($MODALITY)…" >&2
 RESP=$(curl -s -X POST -H 'Content-Type: application/json' -d "$BODY" "$BASE")

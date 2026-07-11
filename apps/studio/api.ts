@@ -593,7 +593,7 @@ export interface AssetListing {
   path: string;
   name: string;
   ext: string;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
   size: number;
   mtimeMs: number;
 }
@@ -1536,6 +1536,10 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const assetsDir = path.join(paths.designRoot, 'assets');
     const IMG = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.svg']);
     const VID = new Set(['.mp4', '.webm', '.mov', '.m4v', '.ogg']);
+    // feature-ai-media-generation Phase 2 — generated audio (ElevenLabs music /
+    // SFX / voiceover) is content-addressed under assets/ like any other media;
+    // surface it in the picker so a generated track can be dropped into an EDL.
+    const AUD = new Set(['.mp3', '.wav', '.m4a', '.aac', '.flac', '.oga', '.opus']);
     let entries: string[] = [];
     try {
       entries = await readdir(assetsDir);
@@ -1545,7 +1549,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const out: AssetListing[] = [];
     for (const name of entries) {
       const ext = path.extname(name).toLowerCase();
-      const kind = IMG.has(ext) ? 'image' : VID.has(ext) ? 'video' : null;
+      const kind = IMG.has(ext) ? 'image' : VID.has(ext) ? 'video' : AUD.has(ext) ? 'audio' : null;
       if (!kind) continue;
       let size = 0;
       let mtimeMs = 0;

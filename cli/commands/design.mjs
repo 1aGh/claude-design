@@ -65,6 +65,11 @@ const BIN_VERBS = new Set([
   // produced /assets/<sha8>.<ext>). The provider call happens server-side (the
   // sidecar resolves the key from the keychain / ~/.config/maude/keys.json).
   'generate',
+  // feature-ai-media-generation (Phase 2, DDR-164). `transcribe` is the local,
+  // no-key subtitle verb: spawn whisper.cpp on an audio/video file → SRT/VTT via
+  // the shared captions.ts reflow. No dev server; whisper.cpp is a SOFT dep with
+  // ElevenLabs Scribe / Groq Whisper as the cloud fallback.
+  'transcribe',
 ]);
 
 // Bin verbs that boot the dev-server (directly, or by shelling into server-up.sh).

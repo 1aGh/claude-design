@@ -195,6 +195,24 @@
       "fallbackBehavior": "Phase 31 (DDR-123) — the native ACP chat sidepanel drives the user's OWN installed `claude` CLI on their Pro/Max subscription (never API billing). Without it the panel shows the not-connected explainer ('run `claude` in a terminal and `/login`'); every other design surface is unaffected.",
       "usedBy": ["dev-server/acp/probe.ts", "dev-server/acp/bridge.ts"],
       "docsUrl": "https://docs.claude.com/en/docs/claude-code"
+    },
+    {
+      "id": "whisper-cpp",
+      "type": "cli",
+      "hardness": "soft",
+      "check": {
+        "command": "whisper-cli --help",
+        "expectExit": 0
+      },
+      "install": {
+        "darwin": "brew install whisper-cpp",
+        "linux": "https://github.com/ggml-org/whisper.cpp#quick-start",
+        "preferred": "https://github.com/ggml-org/whisper.cpp"
+      },
+      "autoInstall": false,
+      "fallbackBehavior": "feature-ai-media-generation Phase 2 (DDR-164) — `maude design transcribe` uses whisper.cpp for local, no-key, word-timestamped subtitles (the DEFAULT subtitle path). Without it, transcription falls back to cloud STT (ElevenLabs Scribe / Groq Whisper) via a provider key. whisper.cpp also needs a ggml model file (--model / $MAUDE_WHISPER_MODEL); it ships no default and does not auto-download — see https://huggingface.co/ggerganov/whisper.cpp (e.g. ggml-large-v3-turbo.bin).",
+      "usedBy": ["dev-server/bin/transcribe.sh", "dev-server/bin/_transcribe.mjs"],
+      "docsUrl": "https://github.com/ggml-org/whisper.cpp"
     }
   ]
 }
