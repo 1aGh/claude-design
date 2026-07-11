@@ -4090,7 +4090,7 @@ function useAllDsTokens(cfg, designRel, activeName) {
 // `seed` is the resolved current colour (hex). Drag updates the picker UI live;
 // commits on pointer-up (one source write per drag); the hex field commits on
 // blur/Enter.
-function ColorPicker({ seed, onApply }) {
+function ColorPicker({ seed, label, onApply }) {
   const [hsv, setHsv] = useState(() => rgbToHsv(hexToRgb(seed || '#000000')));
   const hsvRef = useRef(hsv);
   hsvRef.current = hsv;
@@ -4145,6 +4145,31 @@ function ColorPicker({ seed, onApply }) {
     document.addEventListener('pointermove', move);
     document.addEventListener('pointerup', up);
   };
+  // Keyboard equivalents for dragSV/dragHue (feature-photo-editor follow-up
+  // debt, Task 18) — the pad + hue bar were pointer-only. Arrow keys nudge
+  // the same `setHsv`/`onApply` path the drag handlers use; shift = a bigger
+  // step (mirrors makeScrub's shift=×10 modifier convention elsewhere).
+  const nudgeHsv = (patch) => {
+    const next = { ...hsvRef.current, ...patch };
+    setHsv(next);
+    onApply(rgbToHex(hsvToRgb(next)));
+  };
+  const onSvKeyDown = (e) => {
+    const step = e.shiftKey ? 0.1 : 0.02;
+    const deltas = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
+    const d = deltas[e.key];
+    if (!d) return;
+    e.preventDefault();
+    nudgeHsv({ s: clamp01(hsvRef.current.s + d[0]), v: clamp01(hsvRef.current.v + d[1]) });
+  };
+  const onHueKeyDown = (e) => {
+    const step = e.shiftKey ? 20 : 2;
+    const deltas = { ArrowLeft: -step, ArrowRight: step };
+    const d = deltas[e.key];
+    if (d == null) return;
+    e.preventDefault();
+    nudgeHsv({ h: Math.min(360, Math.max(0, hsvRef.current.h + d)) });
+  };
   const eyedrop = async () => {
     try {
       // EyeDropper is Chromium-only; guarded.
@@ -4166,9 +4191,10 @@ function ColorPicker({ seed, onApply }) {
         type="button"
         ref={svRef}
         className="st-cp-cpick-sv"
-        aria-label="saturation and value"
+        aria-label={label ? `${label} saturation and value` : 'saturation and value'}
         style={{ background: `hsl(${hsv.h} 100% 50%)` }}
         onPointerDown={dragSV}
+        onKeyDown={onSvKeyDown}
       >
         <span className="st-cp-cpick-svwhite" />
         <span className="st-cp-cpick-svblack" />
@@ -4193,8 +4219,9 @@ function ColorPicker({ seed, onApply }) {
           type="button"
           ref={hueRef}
           className="st-cp-cpick-hue"
-          aria-label="hue"
+          aria-label={label ? `${label} hue` : 'hue'}
           onPointerDown={dragHue}
+          onKeyDown={onHueKeyDown}
         >
           <span className="st-cp-cpick-huethumb" style={{ left: `${(hsv.h / 360) * 100}%` }} />
         </button>
@@ -4203,7 +4230,7 @@ function ColorPicker({ seed, onApply }) {
         className="st-cp-fin"
         type="text"
         value={hex}
-        aria-label="hex value"
+        aria-label={label ? `${label} hex value` : 'hex value'}
         onChange={(e) => {
           const v = e.target.value;
           if (/^#?[0-9a-f]{6}$/i.test(v)) setHsv(rgbToHsv(hexToRgb(v)));
@@ -6548,6 +6575,7 @@ function InspectorPanel({
               key={`${photoTarget.asset}:${photoRev ?? 0}`}
               asset={photoTarget.asset}
               ColorPicker={ColorPicker}
+              StIcon={StIcon}
               onEdit={(edit) => onPhotoEdit?.(photoTarget.asset, edit)}
               onRemoveBackground={onPhotoRemoveBackground}
               onRecordEdit={(before, after) => onPhotoRecordEdit?.(photoTarget.asset, before, after)}

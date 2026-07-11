@@ -48,4 +48,15 @@ describe('cspForCanvasShell — A6 hardening', () => {
     const csp = cspForCanvasShell(SHELL);
     expect(csp).not.toContain('frame-ancestors');
   });
+
+  // fix-photo-editor-followup-debt Task 22 — the narrow, documented
+  // `connect-src` exception for @imgly/background-removal's model-weight CDN.
+  // Regression guard against both directions of drift: the exception being
+  // silently reverted, AND further hosts creeping in beside it.
+  test('connect-src carries the exact staticimgly.com exception, no more', () => {
+    const csp = cspForCanvasShell(SHELL);
+    expect(csp).toContain("connect-src 'self' https://staticimgly.com");
+    const connectSrc = csp.split('; ').find((d) => d.startsWith('connect-src'));
+    expect(connectSrc).toBe("connect-src 'self' https://staticimgly.com");
+  });
 });

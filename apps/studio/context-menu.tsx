@@ -216,10 +216,19 @@ const MENU_CSS = `
   font: inherit;
   color: inherit;
 }
-.dc-context-menu .dc-menu-item:hover,
-.dc-context-menu .dc-menu-item:focus-visible {
+.dc-context-menu .dc-menu-item:hover {
   background: color-mix(in oklab, var(--maude-chrome-fg-0, #1c1917) 8%, transparent);
-  outline: none;
+}
+.dc-context-menu .dc-menu-item:focus-visible {
+  /* fix-photo-editor-followup-debt Task 16 — was outline: none (an
+     ~1.05:1-contrast, effectively invisible focus ring). Reuses
+     --maude-hud-accent (canvas-lib.tsx's own established focus-visible
+     token for this chrome family — artboard labels, zoom toolbar) rather
+     than inventing a new one; -2px inset offset matches that same
+     convention for a control inside a bordered container. */
+  background: color-mix(in oklab, var(--maude-chrome-fg-0, #1c1917) 8%, transparent);
+  outline: 2px solid var(--maude-hud-accent, #d63b1f);
+  outline-offset: -2px;
 }
 .dc-context-menu .dc-menu-item[disabled] {
   opacity: 0.45;

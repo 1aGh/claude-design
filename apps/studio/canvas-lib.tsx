@@ -2489,7 +2489,13 @@ export function PhotoPreviewBridge() {
       // attribute toggle on the real element, styled by inspect.ts's single CSS
       // injection point (mirrors `.dc-activity-scan`'s sweep language). No
       // separate tracked overlay — see the header comment above `apply()`.
-      if (m.dgn === 'photo-busy' && typeof m.asset === 'string') {
+      // `m.asset` must pass the same shape check `extractAssetRef` applies
+      // elsewhere in this file (fix-photo-editor-followup-debt, Task 8) —
+      // an empty string previously matched EVERY photo element via
+      // `findPhotoEl`'s substring-match fallback (`src.includes('')` is always
+      // true), so an empty/malformed `asset` is now a no-op instead of toggling
+      // the busy shimmer on every photo on the canvas.
+      if (m.dgn === 'photo-busy' && typeof m.asset === 'string' && ASSET_REF_RE.test(m.asset)) {
         const el = findPhotoEl(m.asset);
         el?.toggleAttribute('data-photo-busy', !!m.busy);
         return;

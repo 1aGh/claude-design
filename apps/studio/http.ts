@@ -122,6 +122,17 @@ function ext(p: string): string {
  * external page can no longer reframe the canvas. When `mainOrigin` is unknown
  * (tests / pre-boot) the directive is OMITTED rather than set to `'self'` —
  * `'self'` alone would forbid the legit cross-origin embed and blank the canvas.
+ *
+ * `connect-src` narrow exception (fix-photo-editor-followup-debt, Task 7):
+ * `@imgly/background-removal`'s model weights (~11-44 MB) fetch from IMG.LY's
+ * own CDN, `https://staticimgly.com`, on first client-side use — there is no
+ * self-hosting mechanism today (a separate, larger follow-up; see DDR-054's
+ * dated addendum for this decision, and `.ai/state/STATE.md` for tracking).
+ * The inference itself stays 100% client-side (pixels never leave the
+ * browser) — only the weight DOWNLOAD needs this one extra origin. This is
+ * the ONLY documented exception to the `connect-src 'self'` invariant above —
+ * do not read it as precedent for adding further hosts without the same
+ * scrutiny (exact hostname, no wildcard subdomain, a DDR record).
  */
 export function cspForCanvasShell(html: string, mainOrigin?: string): string {
   const hashes: string[] = [];
@@ -138,7 +149,7 @@ export function cspForCanvasShell(html: string, mainOrigin?: string): string {
   const directives = [
     "default-src 'none'",
     `script-src ${scriptSrc}`,
-    "connect-src 'self'",
+    "connect-src 'self' https://staticimgly.com",
     "img-src 'self' data: blob:",
     // DDR-148 — a video-comp's <Video>/<Audio> loads media from the canvas
     // origin's own designRoot (assets/). Same inert-bytes trust as img-src
