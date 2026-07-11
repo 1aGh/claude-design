@@ -28,7 +28,18 @@ import { registerCommand } from '../undo-stack.ts';
  * test stub) AND updates the iframe's local strokes state. The
  * annotations-layer `putStrokes` is the production binding.
  */
-export type StrokesPutFn = (next: readonly Stroke[]) => void | Promise<void>;
+/**
+ * `before` is the baseline THIS command's `next` was computed from — passed
+ * through so the consumer can distinguish "an id `prev` still has that
+ * `before` already lacked too" (a genuinely concurrent addition, fold it in)
+ * from "an id `before` had that `next` deliberately dropped" (this command's
+ * own delete — must stay dropped even if React's rendered state hasn't
+ * caught up yet). See `reconcileCommit` in annotations-layer.tsx.
+ */
+export type StrokesPutFn = (
+  next: readonly Stroke[],
+  before?: readonly Stroke[]
+) => void | Promise<void>;
 
 export interface AnnotationStrokesPayload {
   before: readonly Stroke[];
@@ -58,10 +69,10 @@ export function createAnnotationStrokesCommand(init: AnnotationStrokesCommandIni
     kind,
     label,
     async do() {
-      await putFn(after.map(cloneStroke));
+      await putFn(after.map(cloneStroke), before.map(cloneStroke));
     },
     async undo() {
-      await putFn(before.map(cloneStroke));
+      await putFn(before.map(cloneStroke), after.map(cloneStroke));
     },
   };
 }

@@ -90,6 +90,23 @@ describe('createAnnotationStrokesCommand', () => {
     expect(putFn.mock.calls[1]?.[0]).toEqual([pen1]);
   });
 
+  test('do() passes the pre-op BEFORE as putFn\'s second arg; undo() passes the post-op AFTER', async () => {
+    // The live-bug regression this locks in: putStrokes needs its own
+    // command's baseline to tell a delete (an id `before` had that `next`
+    // dropped) apart from a genuinely concurrent sibling addition (an id
+    // `prev` has that this command's OWN before/next never knew about).
+    const putFn = mock(() => Promise.resolve());
+    const cmd = createAnnotationStrokesCommand({
+      before: [pen1, pen2],
+      after: [pen1],
+      putFn,
+    });
+    await cmd.do();
+    expect(putFn.mock.calls[0]).toEqual([[pen1], [pen1, pen2]]);
+    await cmd.undo();
+    expect(putFn.mock.calls[1]).toEqual([[pen1, pen2], [pen1]]);
+  });
+
   test('default label — add 2 strokes', () => {
     const cmd = createAnnotationStrokesCommand({
       before: [pen1],

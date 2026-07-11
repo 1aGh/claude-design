@@ -415,30 +415,56 @@ function resolveAssetHref(href: string): string {
  * still uploading. See media-commit-chain.ts for the sibling accumulator fix
  * — this closes the other half, at the persistence layer.
  */
-/**
- * Fold any stroke `prev` has that `incoming` doesn't know about (by id) into
- * `incoming`, instead of replacing `prev` outright. Every write into the
- * `strokes` state that carries a fully-computed array (a chain commit's
- * `next`, or a collab-echo's parsed SVG) needs this rather than a bare
- * `setStrokesState(incoming)` — `incoming` was computed from a snapshot
- * taken BEFORE this exact call, so a SIBLING file's optimistic insert (a
- * separate, non-chain functional update queued in the SAME React batch) can
- * still be in flight and has no way to be reflected in it. A direct value
- * setter REPLACES whatever that functional updater produced outright,
- * silently erasing the sibling's brand-new stroke. Confirmed via live
- * testing: this was the root cause of a deterministic loss rate under a
- * rapid-fire batch-drop stress test that neither the media-commit-chain
- * accumulator nor the collab-echo history fix touched, since both operate
- * one layer up from the actual setState call.
- */
-function reconcileIncoming(prev: readonly Stroke[], incoming: readonly Stroke[]): Stroke[] {
-  const incomingIds = new Set(incoming.map((s) => s.id));
-  const extra = prev.filter((s) => !incomingIds.has(s.id));
-  return extra.length ? [...incoming, ...extra] : (incoming as Stroke[]);
-}
-
 function isEphemeralHref(s: Stroke): boolean {
   return s.tool === 'image' && /^(?:blob|data):/i.test(s.href);
+}
+
+/**
+ * Fold a local mutation's `next` against the live-rendered `prev`, restoring
+ * only strokes that are genuinely concurrent additions from ANOTHER
+ * in-flight commit — never reverting THIS mutation's own deletions.
+ * Disambiguated via `opBefore`, the baseline this mutation's `next` was
+ * itself computed from: an id present in `prev` but absent from BOTH
+ * `opBefore` and `next` was added by someone else after `opBefore` was
+ * captured (fold it in — this is the sibling-insert race this helper was
+ * originally written for). An id present in `opBefore` but absent from
+ * `next` was deliberately removed BY THIS MUTATION and must stay removed
+ * even though `prev` (React's rendered state) hasn't caught up to that
+ * removal yet.
+ *
+ * The prior version of this helper compared only `prev` against `next` —
+ * exactly the shape of every delete (an id in `prev`, absent from `next`) —
+ * so it silently folded every erased stroke straight back in locally, while
+ * the smaller, correct set still went out over PUT. Backspace looked like a
+ * no-op until a reload picked up the server's already-correct copy.
+ */
+export function reconcileCommit(
+  prev: readonly Stroke[],
+  opBefore: readonly Stroke[],
+  next: readonly Stroke[]
+): Stroke[] {
+  const beforeIds = new Set(opBefore.map((s) => s.id));
+  const nextIds = new Set(next.map((s) => s.id));
+  const extra = prev.filter((s) => !beforeIds.has(s.id) && !nextIds.has(s.id));
+  return extra.length ? [...next, ...extra] : (next as Stroke[]);
+}
+
+/**
+ * Fold a FOREIGN collab-echo snapshot against local state. A foreign
+ * broadcast legitimately omits an id that was deleted (by us or a peer) —
+ * reviving it just because local `prev` hasn't caught up would make deletes
+ * unsyncable across tabs/peers. The only strokes worth resurrecting here are
+ * ones that are still purely local, not-yet-synced optimistic previews (an
+ * ephemeral blob:/data: href image mid-upload) that a foreign broadcast could
+ * never have known about in the first place.
+ */
+export function reconcileForeignEcho(
+  prev: readonly Stroke[],
+  incoming: readonly Stroke[]
+): Stroke[] {
+  const incomingIds = new Set(incoming.map((s) => s.id));
+  const extra = prev.filter((s) => !incomingIds.has(s.id) && isEphemeralHref(s));
+  return extra.length ? [...incoming, ...extra] : (incoming as Stroke[]);
 }
 
 // feature-bulk-media-insert Task 11 — classify an already-uploaded
@@ -1098,7 +1124,7 @@ export function AnnotationsLayer() {
       if (recentSelfSvgsRef.current.has(svg)) return;
       rememberSelfSvg(svg);
       const incoming = svgToStrokes(svg);
-      setStrokesState((prev) => reconcileIncoming(prev, incoming));
+      setStrokesState((prev) => reconcileForeignEcho(prev, incoming));
     };
     apply();
     map.observe(apply);
@@ -1146,10 +1172,15 @@ export function AnnotationsLayer() {
    * of two-step racing.
    */
   const putStrokes = useCallback(
-    (next: readonly Stroke[]) => {
-      // See reconcileIncoming — a direct setStrokesState(next) here can
-      // clobber a sibling file's concurrent optimistic insert.
-      setStrokesState((prev) => reconcileIncoming(prev, next));
+    (next: readonly Stroke[], opBefore?: readonly Stroke[]) => {
+      // See reconcileCommit — a direct setStrokesState(next) here can
+      // clobber a sibling file's concurrent optimistic insert; folding
+      // blindly against `prev` (no `opBefore`) can just as easily revert
+      // this very mutation's own delete. `opBefore` (this command's
+      // baseline) disambiguates the two.
+      setStrokesState((prev) =>
+        opBefore ? reconcileCommit(prev, opBefore, next) : (next as Stroke[])
+      );
       const file = fileRef.current;
       if (!file) return Promise.resolve();
       const persistable = next.some(isEphemeralHref)
