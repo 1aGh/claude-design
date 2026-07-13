@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-13T06:38:36.069Z",
+  "generated": "2026-07-13T12:43:35.435Z",
   "currentPhase": null,
   "phases": [
     {
@@ -142,6 +142,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan continues the Phase 31 (DDR-123) native ACP chat panel and builds directly o...",
       "planPath": ".ai/plans/archive/feature-acp-slash-command-autocomplete.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-ai-media-generation",
+      "title": "Feature: AI Media Generation (bring-your-own-key) — photo · video · audio",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a multi-phase epic — execute one phase at a time, each phase is independently...",
+      "planPath": ".ai/plans/archive/feature-ai-media-generation.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1235,17 +1246,6 @@
       "phaseKey": "19"
     },
     {
-      "id": "feature-ai-media-generation",
-      "title": "Feature: AI Media Generation (bring-your-own-key) — photo · video · audio",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a multi-phase epic — execute one phase at a time, each phase is independently...",
-      "planPath": ".ai/plans/feature-ai-media-generation.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
       "id": "feature-grid-track-editor",
       "title": "Feature: CSS-Grid track editor (on-canvas columns/rows + track drag-resize)",
       "status": "planned",
@@ -1257,6 +1257,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-local-media-generation",
+      "title": "Feature: Power-user local media generation + native keychain (post-v1)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is the extracted Phase 5 of feature-ai-media-generation (closed at Phase 4, 2026-...",
+      "planPath": ".ai/plans/feature-local-media-generation.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
       "id": "feature-onboarding-and-design-system-migration",
       "title": "Feature: Onboarding & Design-System Migration — bring users (and their existing brand) into Maude",
       "status": "planned",
@@ -1264,6 +1275,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — most of this plan REUSES shipped infra (tour engine, readiness pattern, video-comp, f...",
       "planPath": ".ai/plans/feature-onboarding-and-design-system-migration.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-unified-settings-modal",
+      "title": "Feature: Unified Settings modal (vertical tabs + internal scroll)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-unified-settings-modal.md",
       "archived": false,
       "phaseKey": null
     }
