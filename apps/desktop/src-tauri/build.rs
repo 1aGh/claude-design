@@ -21,6 +21,8 @@ fn main() {
                 "restart_to_update",
                 "prefs_get_crash_reporting",
                 "prefs_set_crash_reporting",
+                "prefs_get_claude_auto_setup",
+                "prefs_set_claude_auto_setup",
                 "save_export",
                 "pick_media_file",
                 "pick_media_files",

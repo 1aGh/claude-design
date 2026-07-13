@@ -1181,7 +1181,32 @@
   }
   .rdy-copy:hover { color: var(--fg-0); background: var(--bg-3); }
   .rdy-foot { display: flex; justify-content: flex-end; }
+  /* DDR-166 T0c/T0d — verbatim install command + Sign-in action rows. */
+  .rdy-cmd {
+    margin-top: var(--space-2); display: flex; gap: var(--space-2);
+    align-items: center; flex-wrap: wrap;
+  }
+  .rdy-cmd-tx {
+    font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-0);
+    background: var(--bg-3); padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-xs); overflow-wrap: anywhere; flex: 1 1 auto;
+  }
+  .rdy-fix-tx--err { color: var(--status-error); }
+  .rdy-fallback-label { display: block; margin-top: var(--space-2); color: var(--fg-3); }
+  /* DDR-166 Decision 3 — the resolved-binary disclosure shown before Sign-in. */
+  .rdy-resolved-path { display: block; margin-top: var(--space-2); color: var(--fg-3); word-break: break-all; }
+  .rdy-resolved-path code { font-family: var(--font-mono); color: var(--fg-1); }
+  .rdy-signin {
+    flex-shrink: 0; cursor: pointer;
+    font-size: var(--type-xs); font-weight: 600; color: var(--bg-0);
+    background: var(--accent); border: 1px solid var(--accent);
+    border-radius: var(--radius-xs); padding: 3px 10px;
+  }
+  .rdy-signin:hover { filter: brightness(1.08); }
   /* Help ▸ Check AI editing readiness… modal (reuses .help-modal chrome). */
   .rdy-modal { max-width: 520px; }
   .rdy-modal-note { margin: 0 0 var(--space-3); color: var(--fg-2); font-size: var(--type-sm); line-height: var(--lh-md); }
+  /* DDR-166 Decision 5 — auto-setup opt-out, mirrors .ob-crash-optin. */
+  .rdy-autosetup-toggle { display: flex; align-items: flex-start; gap: var(--space-2); margin-top: var(--space-3); color: var(--fg-2); font-size: var(--type-xs); line-height: var(--lh-md); cursor: pointer; text-align: left; }
+  .rdy-autosetup-toggle input { margin-top: 2px; flex: 0 0 auto; accent-color: var(--accent); cursor: pointer; }
 }

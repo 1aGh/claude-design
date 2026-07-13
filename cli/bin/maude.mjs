@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 // maude — Maude CLI. Scaffold .ai workspace, run dev servers, manage config.
-import { fileURLToPath } from 'node:url';
 import { runUpdateCheck } from '../lib/update-check.mjs';
+import { resolvePkgRoot } from '../lib/pkg-root.mjs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const CLI_ROOT = resolve(__dirname, '..');
-const PKG_ROOT = resolve(CLI_ROOT, '..');
+// DDR-166 T0b — real-disk resolution, safe inside a `bun build --compile`
+// standalone binary (see pkg-root.mjs's own doc comment for why the previous
+// `dirname(fileURLToPath(import.meta.url))` walk-up broke there).
+const PKG_ROOT = resolvePkgRoot();
 
 const COMMANDS = {
   init: () => import('../commands/init.mjs'),

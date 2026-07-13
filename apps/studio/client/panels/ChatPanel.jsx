@@ -870,7 +870,7 @@ function Composer({
   );
 
   return (
-    <div className="chat-composer">
+    <div className="chat-composer" data-testid="chat-composer">
       <ThreadPrimitive.If running={false}>
         {/* Context attachment chip (feature-acp-context-hardening) — the visible
             reveal of the fenced <maude-context> block the send will prepend
@@ -986,37 +986,32 @@ function Composer({
   );
 }
 
-function NotConnected({ reason, claudeMissing, readiness, readinessLoading, onRecheck }) {
+// DDR-166 T0f — the guided, button-driven cold start. Every actionable step
+// (install command, Sign in) now lives in ReadinessList itself; this shell no
+// longer carries its own terminal-instruction copy, so there's nothing here to
+// go stale relative to what the rows actually offer.
+function NotConnected({ reason, readiness, readinessLoading, onRecheck }) {
   return (
-    <div className="chat-disabled">
+    <div className="chat-disabled" data-testid="acp-not-connected">
       <span className="chat-disabled-mark">
         <Spark size={28} />
       </span>
       <div className="chat-disabled-title">AI editing isn't ready yet</div>
       <div className="chat-disabled-sub">
         {reason ? <p>{reason}</p> : null}
-        {readiness ? (
-          <p>AI editing pairs with a Claude Code you have installed. Here's what it still needs:</p>
-        ) : claudeMissing ? (
-          <p>
-            Install it with <code>npm i -g @anthropic-ai/claude-code</code>, then run{' '}
-            <code>claude</code> and <code>/login</code> in a terminal.
-          </p>
-        ) : (
-          <p>
-            Open a terminal, run <code>claude</code> and <code>/login</code>, then reopen this panel.
-          </p>
-        )}
+        <p>AI editing pairs with a Claude Code you have installed. Here's what it still needs:</p>
       </div>
       {readiness ? (
         <ReadinessList report={readiness} loading={readinessLoading} refresh={onRecheck} />
-      ) : null}
+      ) : (
+        <p className="chat-disabled-sub">Checking what's needed…</p>
+      )}
       <div className="chat-trust">
         <div className="chat-trust-row">
           <Check /> Runs on your Pro/Max subscription
         </div>
         <div className="chat-trust-row">
-          <Check /> No login inside Maude
+          <Check /> Signs in via Claude Code's own login — Maude never sees your credentials
         </div>
         <div className="chat-trust-row">
           <Check /> Never metered API billing
@@ -1200,25 +1195,13 @@ export default function ChatPanel({
   }, [effort]);
 
   // Availability is global (is claude installed) — a single probe, no connection.
-  const [status, setStatus] = useState({ available: null, reason: undefined, claudeMissing: false });
+  const [status, setStatus] = useState({ available: null, reason: undefined });
   const probeStatus = useCallback(
     () =>
       fetch('/_api/acp/status')
         .then((r) => r.json())
-        .then((d) =>
-          setStatus({
-            available: d.available,
-            reason: d.reason,
-            claudeMissing: !!d.adapterEntry && !d.claudePath,
-          })
-        )
-        .catch(() =>
-          setStatus({
-            available: false,
-            reason: 'Could not reach the Claude bridge.',
-            claudeMissing: false,
-          })
-        ),
+        .then((d) => setStatus({ available: d.available, reason: d.reason }))
+        .catch(() => setStatus({ available: false, reason: 'Could not reach the Claude bridge.' })),
     []
   );
   useEffect(() => {
@@ -1509,7 +1492,6 @@ export default function ChatPanel({
         {status.available === false ? (
           <NotConnected
             reason={status.reason}
-            claudeMissing={status.claudeMissing}
             readiness={readiness}
             readinessLoading={readinessLoading}
             onRecheck={recheck}

@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-166: Zero-terminal ACP cold start — drive the user's own `claude auth login`/`status`, bundle `maude`, fetch-not-package-manager provisioning](DDR-166-zero-terminal-acp-cold-start.md) — 2026-07-13, studio/acp/onboarding/desktop/tauri/claude-cli/oauth/keychain/plugin-bootstrap/security
 - [DDR-165: Annotation-state concurrency fixes — chain-owned accumulator + baseline-aware reconciliation, never presence-only](DDR-165-annotation-commit-reconciliation-baseline-not-presence.md) — 2026-07-11, studio/annotations-layer/concurrency/reconciliation/collab/echo-suppression/media-intake/bulk-insert/regression-prevention/security
 - [DDR-164: BYOK AI media generation — provider-adapter spine, key custody, trust boundary](DDR-164-byok-ai-media-generation-provider-adapter-spine.md) — 2026-07-11, studio/generation/byok/provider-adapter/gemini/nano-banana/fal/elevenlabs/keychain/key-custody/trust-boundary/job-queue/settings/cli/security
 - [DDR-163: Footage-analysis + AI director layer — vision keyframes over ffmpeg, EDL as the director artifact](DDR-163-footage-analysis-director-layer.md) — 2026-07-10, studio/video/footage/remotion/vision/keyframes/edl/director/transitions/sidecar/cli/agents/security

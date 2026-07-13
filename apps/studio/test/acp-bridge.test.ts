@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { AcpBridge } from '../acp/bridge.ts';
-import { probeAcpAvailability } from '../acp/probe.ts';
+import { probeAcpAvailability, probeAcpAvailabilityAuthed } from '../acp/probe.ts';
 
 const FIXTURE = join(import.meta.dir, 'fixtures', 'mock-acp-agent.mjs');
 const TEST_ENV_KEYS = [
@@ -259,5 +259,38 @@ describe('probeAcpAvailability — not-connected detection', () => {
     const probe = probeAcpAvailability();
     expect(probe.available).toBe(true);
     expect(probe.adapterEntry).toBe(FIXTURE);
+  });
+});
+
+describe('probeAcpAvailabilityAuthed — DDR-166 T0d, logged-out must not read as available', () => {
+  const AUTH_FIXTURE = join(import.meta.dir, 'fixtures', 'fake-claude-auth.mjs');
+
+  afterEach(() => {
+    delete process.env.FAKE_CLAUDE_LOGGED_IN;
+  });
+
+  test('installed but NOT signed in reports available:false (the bug this closes)', async () => {
+    process.env.MAUDE_ACP_ADAPTER_ENTRY = FIXTURE;
+    process.env.MAUDE_CLAUDE_BIN = AUTH_FIXTURE;
+    process.env.FAKE_CLAUDE_LOGGED_IN = '0';
+    const probe = await probeAcpAvailabilityAuthed();
+    expect(probe.available).toBe(false);
+    expect(probe.reason ?? '').toMatch(/signed in/i);
+  });
+
+  test('installed AND signed in reports available:true', async () => {
+    process.env.MAUDE_ACP_ADAPTER_ENTRY = FIXTURE;
+    process.env.MAUDE_CLAUDE_BIN = AUTH_FIXTURE;
+    process.env.FAKE_CLAUDE_LOGGED_IN = '1';
+    const probe = await probeAcpAvailabilityAuthed();
+    expect(probe.available).toBe(true);
+  });
+
+  test('not installed still reports the plain not-installed reason (no auth spawn attempted)', async () => {
+    process.env.MAUDE_ACP_ADAPTER_ENTRY = FIXTURE;
+    process.env.MAUDE_CLAUDE_BIN = join(import.meta.dir, 'no-such-claude-bin');
+    const probe = await probeAcpAvailabilityAuthed();
+    expect(probe.available).toBe(false);
+    expect(probe.reason ?? '').toMatch(/Claude Code/i);
   });
 });

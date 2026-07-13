@@ -78,6 +78,41 @@ fn resolve_login_path() -> Option<String> {
     None
 }
 
+/// DDR-166 T0b — stage the bundled `maude` binary as the ONLY entry in a
+/// narrow, single-purpose directory, and return that entry's own path (the
+/// symlink, not the real target — this is exactly what a PATH lookup for
+/// `maude` will resolve to, so it's also what `MAUDE_BUNDLED_CLI_PATH` must
+/// equal for `readiness.ts`'s bundled-vs-real-PATH comparison to match).
+///
+/// Returns `None` when the bundled binary isn't next to our own executable —
+/// the expected case under `tauri dev`, where `externalBin` is triple-named
+/// under `src-tauri/binaries` rather than staged beside the dev binary (same
+/// condition `MAUDE_AGENT_BROWSER` above degrades under). No regression: PATH
+/// resolution then falls through to whatever's genuinely on the user's PATH.
+fn stage_bundled_cli_link(app: &AppHandle) -> Option<PathBuf> {
+    let exe = if cfg!(windows) { "maude.exe" } else { "maude" };
+    let bundled = std::env::current_exe().ok()?.parent()?.join(exe);
+    if !bundled.is_file() {
+        return None;
+    }
+    let dir = app.path().app_cache_dir().ok()?.join("bin-link");
+    std::fs::create_dir_all(&dir).ok()?;
+    let link = dir.join(exe);
+    // Idempotent: always refresh, so a stale symlink from a prior version
+    // (or a same-user-writable location, per the F4 rationale this mirrors)
+    // never lingers pointed at the wrong — or a tampered — target.
+    let _ = std::fs::remove_file(&link);
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&bundled, &link).ok()?;
+    }
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_file(&bundled, &link).ok()?;
+    }
+    Some(link)
+}
+
 /// Spawn the dev-server sidecar and store the child in managed state. Drains the
 /// command's event stream; on unexpected termination (not a quit), respawns with
 /// linear backoff up to `MAX_RESTARTS`. Re-entrant: the respawn path calls back in.
@@ -104,10 +139,27 @@ pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
     // claude) then sees the real PATH. Best-effort: on failure we leave PATH
     // untouched (no regression). The /_api/preflight readiness probe reports what's
     // still genuinely missing on top of this.
-    if let Some(login_path) = resolve_login_path() {
-        eprintln!("[maude] sidecar PATH ← login shell ({} entries)", login_path.split(':').count());
-        command = command.env("PATH", login_path);
+    let base_path = resolve_login_path().unwrap_or_else(|| std::env::var("PATH").unwrap_or_default());
+    eprintln!("[maude] sidecar PATH ← login shell ({} entries)", base_path.split(':').count());
+
+    // DDR-166 T0b — expose the bundled `maude` CLI on the sidecar's PATH so the
+    // ACP-spawned `claude`'s Bash-tool shell-outs (`maude design <verb>`, per
+    // DDR-062's "never a raw bin path" convention) resolve it even with no
+    // global install. NOT via `current_exe().parent()` prepended wholesale —
+    // that directory also holds `maude-server`/`agent-browser`, and per the
+    // Attacker-F4 rationale a few lines above, exposing an entire multi-binary
+    // directory for unqualified PATH lookup lets a same-user attacker who can
+    // write there shadow every name in it for every dev-server child. Instead:
+    // stage `maude` alone as the ONLY entry in a narrow, single-purpose
+    // directory, and APPEND (not prepend) that directory — a user's own newer
+    // global `maude` (e.g. `npm i -g @1agh/maude`) still wins on precedence;
+    // this is a floor, not a forced ceiling.
+    let mut path = base_path;
+    if let Some(link) = stage_bundled_cli_link(app) {
+        path = format!("{path}:{}", link.parent().unwrap_or(&link).display());
+        command = command.env("MAUDE_BUNDLED_CLI_PATH", link.to_string_lossy().to_string());
     }
+    command = command.env("PATH", path);
 
     // Point the screenshot helper at the bundled `agent-browser` engine (DDR-144)
     // by an EXPLICIT env var rather than prepending our dir to PATH. Attacker-F4:
@@ -128,12 +180,45 @@ pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
         }
     }
 
+    // DDR-166 T0b — same single-binary env-pointer pattern as MAUDE_AGENT_BROWSER
+    // above, for the bundled `maude-server` binary itself: the compiled `maude`
+    // CLI's BOOT_VERBS (server-up/visual-sanity/smoke, cli/commands/design.mjs)
+    // resolve their own copy of this same binary via npm-package lookup, which
+    // breaks inside a compiled binary (no npm package to resolve — DDR-045-class
+    // trap). Pre-setting this short-circuits that resolution entirely: the CLI's
+    // own dispatch already checks `!process.env.MAUDE_DEV_SERVER_BIN` before
+    // trying to resolve it itself. This is also literally the exact binary
+    // already running as this sidecar, so it's always correct.
+    if let Some(sb) = std::env::current_exe().ok().and_then(|p| {
+        let exe = if cfg!(windows) { "maude-server.exe" } else { "maude-server" };
+        p.parent().map(|d| d.join(exe))
+    }) {
+        if sb.is_file() {
+            command = command.env("MAUDE_DEV_SERVER_BIN", sb.to_string_lossy().to_string());
+        }
+    }
+
     // Pass through the canvas-origin-split override (DDR-063) so a WKWebView that
     // can't load the cross-origin canvas iframe can be debugged / fall back to
     // same-origin via `MAUDE_CANVAS_ORIGIN_SPLIT=0 tauri dev`.
     if let Ok(split) = std::env::var("MAUDE_CANVAS_ORIGIN_SPLIT") {
         command = command.env("MAUDE_CANVAS_ORIGIN_SPLIT", split);
     }
+
+    // DDR-166 — deterministic E2E stub for claude-readiness states that are
+    // otherwise near-impossible to reproduce on an already-set-up dev machine
+    // (mirrors MAUDE_E2E_FAKE_GITHUB_LOGIN in oauth.rs). Never set in a normal
+    // launch; readiness.ts is the consumer.
+    if let Ok(v) = std::env::var("MAUDE_E2E_FORCE_CLAUDE_STATUS") {
+        command = command.env("MAUDE_E2E_FORCE_CLAUDE_STATUS", v);
+    }
+
+    // DDR-166 Decision 5 — pass the settings-UI opt-out for auto-install/
+    // auto-sign-in to the sidecar at spawn time. Read fresh on every spawn
+    // (including respawn/switch_project), so a toggle takes effect on the
+    // next project switch or app launch without needing extra plumbing.
+    let auto_setup = crate::prefs::load(app).claude_auto_setup;
+    command = command.env("MAUDE_CLAUDE_AUTOSETUP_ENABLED", if auto_setup { "1" } else { "0" });
 
     // Loopback GitHub-token bridge (DDR-108): the dev-server's /_api/github/*
     // endpoints fetch the keychain token from this endpoint at request time, with
@@ -270,8 +355,27 @@ pub fn kill_server(app: &AppHandle) {
     if let Some(state) = app.try_state::<SidecarState>() {
         state.shutting_down.store(true, Ordering::SeqCst);
         if let Some(child) = state.child.lock().expect("sidecar mutex poisoned").take() {
+            // DDR-166 — `CommandChild::kill()` alone sends SIGKILL (it wraps
+            // `std::process::Child::kill`), which the Bun sidecar's own
+            // `process.on('SIGTERM', shutdown)` handler (server.ts) never
+            // sees — so its cleanup (killing an in-flight claude-install/
+            // sign-in grandchild, per this DDR's own previously-unanswered
+            // "how does app-quit reach the grandchild" question) never runs.
+            // Security-review finding. Fix: SIGTERM first via the system
+            // `kill` (no new crate dependency — mirrors resolve_login_path's
+            // existing shell-out-to-a-system-binary pattern), a short bounded
+            // grace period for the handler to run, THEN the existing
+            // guaranteed-termination SIGKILL fallback either way.
+            let pid = child.pid();
+            #[cfg(unix)]
+            {
+                let _ = std::process::Command::new("kill")
+                    .args(["-TERM", &pid.to_string()])
+                    .status();
+                std::thread::sleep(Duration::from_millis(400));
+            }
             let _ = child.kill();
-            eprintln!("[maude] dev-server sidecar killed on quit");
+            eprintln!("[maude] dev-server sidecar killed on quit (pid {pid})");
         }
     }
 }

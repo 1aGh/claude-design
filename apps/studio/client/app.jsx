@@ -3199,6 +3199,7 @@ function Menubar({
           <button
             type="button"
             className="st-assistant"
+            data-testid="assistant-toggle"
             data-active={assistantOpen ? 'true' : 'false'}
             data-busy={assistantBusy ? 'true' : 'false'}
             data-unseen={assistantUnseen ? 'true' : 'false'}

@@ -7,7 +7,8 @@
 // not-connected explainer (where a user actually hits the wall). Both also use it
 // as the persistent re-check surface — `refresh()` re-probes without a reinstall.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { getClaudeAutoSetup, isNativeApp, setClaudeAutoSetup } from '../github.js';
 
 /** Fetch + cache the readiness report. `refresh()` re-probes (the re-check button). */
 export function useReadiness(enabled = true) {
@@ -82,7 +83,165 @@ function Inline({ text }) {
   return <>{parts}</>;
 }
 
-function Row({ item }) {
+// DDR-166 T0d — a bounded, cancelable poll after "Sign in" is clicked. Capped
+// duration (not indefinite), single-flight (the button disables while
+// polling), and its copy is static text — no animation, so it costs nothing
+// under prefers-reduced-motion.
+const SIGNIN_POLL_MS = 2000;
+const SIGNIN_POLL_MAX_MS = 120000;
+// The installer itself is fire-and-forget server-side (avoids Bun's default
+// 10s idle timeout on a slow network) — poll for its result the same way.
+const INSTALL_POLL_MS = 1500;
+const INSTALL_POLL_MAX_MS = 90000;
+
+// DDR-166 T0c/T0d — one component drives both the "install then sign in"
+// chain (mode='install') and the "sign in only" case (mode='signin'), since
+// the poll-after-signin logic is identical either way. The install step
+// itself is a single distinct network call, not a loop — only the sign-in
+// half needs polling (the browser-OAuth completion signal).
+function SetupAction({ mode, refresh }) {
+  const [phase, setPhase] = useState('idle'); // idle | installing | waiting | error
+  const [error, setError] = useState(null);
+  const timerRef = useRef({ interval: null, deadline: 0 });
+
+  const stopPoll = () => {
+    if (timerRef.current.interval) clearInterval(timerRef.current.interval);
+    timerRef.current.interval = null;
+  };
+
+  const pollForSignin = () => {
+    setPhase('waiting');
+    timerRef.current.deadline = Date.now() + SIGNIN_POLL_MAX_MS;
+    timerRef.current.interval = setInterval(async () => {
+      if (Date.now() > timerRef.current.deadline) {
+        stopPoll();
+        setPhase('error');
+        setError('Sign-in timed out — try again.');
+        return;
+      }
+      const report = await refresh();
+      const claudeItem = report?.items?.find((i) => i.id === 'claude');
+      if (claudeItem?.status === 'present') stopPoll();
+    }, SIGNIN_POLL_MS);
+  };
+
+  const runSignin = async () => {
+    const res = await fetch('/_api/claude/signin', { method: 'POST' })
+      .then((r) => r.json())
+      .catch(() => ({ ok: false, reason: 'Could not reach Maude.' }));
+    if (!res.ok) {
+      setPhase('error');
+      setError(res.reason || 'Could not start sign-in.');
+      return;
+    }
+    pollForSignin();
+  };
+
+  const pollForInstall = () => {
+    setPhase('installing');
+    timerRef.current.deadline = Date.now() + INSTALL_POLL_MAX_MS;
+    timerRef.current.interval = setInterval(async () => {
+      if (Date.now() > timerRef.current.deadline) {
+        stopPoll();
+        setPhase('error');
+        setError('Install timed out — you can also run the command below yourself.');
+        return;
+      }
+      const state = await fetch('/_api/claude/install-status')
+        .then((r) => r.json())
+        .catch(() => null);
+      if (!state || state.phase !== 'done') return; // still running
+      stopPoll();
+      if (!state.ok) {
+        setPhase('error');
+        setError(state.reason || 'Install failed — you can also run the command below yourself.');
+        return;
+      }
+      // One click covers both steps: only on verified-fresh install success
+      // does this move straight into sign-in with no second click needed.
+      await runSignin();
+    }, INSTALL_POLL_MS);
+  };
+
+  const start = async () => {
+    setError(null);
+    if (mode === 'install') {
+      const res = await fetch('/_api/claude/install', { method: 'POST' })
+        .then((r) => r.json())
+        .catch(() => ({ ok: false, reason: 'Could not reach Maude.' }));
+      if (!res.ok) {
+        setPhase('error');
+        setError(res.reason || 'Could not start the installer.');
+        return;
+      }
+      pollForInstall();
+    } else {
+      await runSignin();
+    }
+  };
+
+  const cancel = async () => {
+    stopPoll();
+    setPhase('idle');
+    await fetch('/_api/claude/signin-cancel', { method: 'POST' }).catch(() => {});
+  };
+
+  useEffect(() => () => stopPoll(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (phase === 'installing') {
+    return (
+      <span className="rdy-fix">
+        <span className="rdy-fix-tx">Installing Claude Code…</span>
+      </span>
+    );
+  }
+  if (phase === 'waiting') {
+    return (
+      <span className="rdy-fix">
+        <span className="rdy-fix-tx">Waiting for you to finish signing in in your browser…</span>
+        <button type="button" className="rdy-copy" onClick={cancel}>
+          Cancel
+        </button>
+      </span>
+    );
+  }
+  return (
+    <span className="rdy-fix">
+      {error ? <span className="rdy-fix-tx rdy-fix-tx--err">{error}</span> : null}
+      <button
+        type="button"
+        className="rdy-signin"
+        data-testid={mode === 'install' ? 'acp-setup-install' : 'acp-setup-signin'}
+        onClick={start}
+      >
+        {mode === 'install' ? 'Set up AI editing' : 'Sign in to Claude'}
+      </button>
+    </span>
+  );
+}
+
+function InstallCommand({ command }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard?.writeText(command).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      },
+      () => {}
+    );
+  };
+  return (
+    <span className="rdy-cmd">
+      <code className="rdy-cmd-tx">{command}</code>
+      <button type="button" className="rdy-copy" onClick={copy} aria-label="Copy install command">
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </span>
+  );
+}
+
+function Row({ item, refresh }) {
   const [copied, setCopied] = useState(false);
   const copyFix = () => {
     const cmds = item.remediation?.replace(/`/g, '') ?? '';
@@ -95,7 +254,10 @@ function Row({ item }) {
     );
   };
   return (
-    <li className={`rdy-row rdy-row--${item.status}${item.required ? '' : ' rdy-row--opt'}`}>
+    <li
+      className={`rdy-row rdy-row--${item.status}${item.required ? '' : ' rdy-row--opt'}`}
+      data-testid={`rdy-row-${item.id}`}
+    >
       <span className="rdy-ic" aria-hidden="true">
         <StatusIcon status={item.status} />
       </span>
@@ -109,10 +271,32 @@ function Row({ item }) {
             <span className="rdy-fix-tx">
               <Inline text={item.remediation} />
             </span>
-            <button type="button" className="rdy-copy" onClick={copyFix} aria-label={`Copy the fix for ${item.label}`}>
-              {copied ? 'Copied' : 'Copy'}
-            </button>
+            {!item.installCommand && !item.action ? (
+              <button type="button" className="rdy-copy" onClick={copyFix} aria-label={`Copy the fix for ${item.label}`}>
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            ) : null}
           </span>
+        ) : null}
+        {item.action === 'signin' && item.resolvedPath ? (
+          <span className="rdy-fix-tx rdy-resolved-path">
+            {item.resolvedViaMaude ? 'Installed by Maude: ' : 'Found on your PATH: '}
+            <code>{item.resolvedPath}</code>
+          </span>
+        ) : null}
+        {(item.action === 'install' || item.action === 'signin') && refresh ? (
+          <SetupAction mode={item.action} refresh={refresh} />
+        ) : null}
+        {item.installCommand ? (
+          <>
+            {item.action === 'install' ? (
+              <span className="rdy-fix-tx rdy-fallback-label">
+                Clicking above runs this command, then opens your browser to sign in. Prefer to do it
+                yourself?
+              </span>
+            ) : null}
+            <InstallCommand command={item.installCommand} />
+          </>
         ) : null}
       </span>
     </li>
@@ -124,7 +308,7 @@ export default function ReadinessList({ report, loading, refresh }) {
     <div className="rdy">
       <ul className="rdy-list">
         {report?.items?.map((it) => (
-          <Row key={it.id} item={it} />
+          <Row key={it.id} item={it} refresh={refresh} />
         ))}
       </ul>
       {refresh ? (
@@ -135,6 +319,41 @@ export default function ReadinessList({ report, loading, refresh }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+// DDR-166 Decision 5 — the settings-UI opt-out for the auto-install/auto-
+// sign-in buttons above. DEFAULT ON. Native-only (the toggle is backed by a
+// Tauri command); a terminal-launched `maude design serve` web session has
+// no automated action to opt out of in the first place.
+function AutoSetupToggle() {
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    getClaudeAutoSetup()
+      .then((v) => alive && setOn(v !== false))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  if (!isNativeApp()) return null;
+  return (
+    <label className="rdy-autosetup-toggle">
+      <input
+        type="checkbox"
+        checked={on}
+        onChange={(e) => {
+          const next = e.target.checked;
+          setOn(next);
+          setClaudeAutoSetup(next).catch(() => setOn(!next));
+        }}
+      />
+      <span>
+        Offer to install Claude Code and sign in automatically. Turn off to see only the copy-paste
+        command — takes effect next launch or project switch.
+      </span>
+    </label>
   );
 }
 
@@ -182,6 +401,7 @@ export function ReadinessDialog({ open, onClose }) {
               {loading ? 'Checking…' : "Couldn't reach the readiness probe."}
             </p>
           )}
+          <AutoSetupToggle />
         </div>
       </div>
     </div>

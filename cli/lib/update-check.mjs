@@ -15,6 +15,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isCompiledBinary } from './pkg-root.mjs';
 
 const PKG_NAME = '@1agh/maude';
 const REGISTRY_URL = `https://registry.npmjs.org/${PKG_NAME}/latest`;
@@ -31,6 +32,13 @@ function shouldSkip() {
   if (process.env.NO_UPDATE_NOTIFIER) return true;
   if (process.env.CI) return true;
   if (!process.stderr.isTTY) return true;
+  // DDR-166 T0b — a Tauri-bundled `maude` binary updates via the app's own
+  // auto-updater (DDR-126), not `npm i -g @1agh/maude@latest`; the notice
+  // would be actively wrong advice. Also sidesteps spawnDetachedRefresh()'s
+  // self-respawn, which re-invokes `import.meta.url` as a script path — a
+  // real file:// path in dev/node, but Bun's virtual `/$bunfs/root` inside
+  // this exact compiled binary (DDR-045-class trap).
+  if (isCompiledBinary()) return true;
   return false;
 }
 

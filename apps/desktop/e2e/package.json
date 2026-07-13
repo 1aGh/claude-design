@@ -10,7 +10,8 @@
     "e2e:build": "cd .. && pnpm tauri build --debug",
     "e2e:lifecycle": "wdio run ./wdio.lifecycle.conf.ts",
     "e2e:switchrepos": "wdio run ./wdio.switchrepos.conf.ts",
-    "e2e:onboarding": "wdio run ./wdio.onboarding.conf.ts"
+    "e2e:onboarding": "wdio run ./wdio.onboarding.conf.ts",
+    "e2e:acp-cold-start": "wdio run ./wdio.acp-cold-start.conf.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

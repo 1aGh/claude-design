@@ -8,7 +8,15 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, watch } from 'node:fs';
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 
-import { probeAcpAvailability } from './acp/probe.ts';
+import {
+  cancelSignin,
+  getClaudeAuthStatus,
+  getInstallState,
+  isSigninInFlight,
+  startInstall,
+  startSignin,
+} from './acp/login-state.ts';
+import { probeAcpAvailabilityAuthed } from './acp/probe.ts';
 import { deleteChat, listChats, readChatMessages } from './acp/transcript.ts';
 import { type Api, ASSET_MAX_BYTES, ASSET_MAX_VIDEO_BYTES } from './api.ts';
 import { buildCanvasModule } from './canvas-build.ts';
@@ -861,8 +869,17 @@ export function createHttp(
     // MAIN-ORIGIN ONLY — absent from CANVAS_SAFE_API + startCanvasServer routes,
     // so the untrusted canvas iframe is 403'd. The native shell reads this to
     // decide between the enabled panel and the not-connected explainer.
-    '/_api/acp/status': () =>
-      Response.json(probeAcpAvailability(), { headers: { 'Cache-Control': 'no-store' } }),
+    // Explicit CSRF + DNS-rebind gate added alongside DDR-166: this route's
+    // `claudePath` field can now reveal a Maude-auto-installed binary's exact
+    // path, and this file's other ACP-adjacent routes all double-gate —
+    // security-review finding that this one had none at all, pre-existing
+    // but newly worth closing given what this diff makes it able to reveal.
+    '/_api/acp/status': async (req: Request) => {
+      if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      return Response.json(await probeAcpAvailabilityAuthed(), { headers: { 'Cache-Control': 'no-store' } });
+    },
 
     // DDR-128 — first-open AI-editing readiness. Read-only probe of the AI-editing
     // dependency chain (claude CLI · maude CLI · maude marketplace + plugins in the
@@ -878,6 +895,84 @@ export function createHttp(
       if (!isLoopbackHost(req.headers.get('host')))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       return Response.json(await probeReadiness(), { headers: { 'Cache-Control': 'no-store' } });
+    },
+
+    // DDR-166 T0c (Addendum 2) — install Claude Code from Maude by running the
+    // exact official one-liner once, ephemerally (no persistent Maude-managed
+    // cache — that design was rejected on security review; see
+    // installClaudeCli()'s own doc comment for the fix). MAIN-ORIGIN ONLY,
+    // same CSRF + DNS-rebind double gate as every other privileged route.
+    '/_api/claude/install': (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      // Fire-and-forget — the install can run past Bun's default 10s idle
+      // timeout on a slow network, so this returns as soon as the spawn is
+      // confirmed started; the panel polls /_api/claude/install-status for
+      // the result, the same shape /_api/claude/signin-status already uses.
+      const result = startInstall();
+      return Response.json(result, {
+        status: result.ok ? 200 : 409,
+        headers: { 'Cache-Control': 'no-store' },
+      });
+    },
+    // GET route with a real subprocess side effect downstream (signin-status
+    // spawns `claude auth status`) — sameOriginWrite alone doesn't gate a GET
+    // (browsers don't reliably stamp Origin on a simple cross-origin GET,
+    // per this file's own sameOriginRead doc comment, written for exactly
+    // this class of route after a prior ethical-hacker finding on
+    // audio-search). Security-review finding against the first cut of these
+    // two routes, which used the wrong guard.
+    '/_api/claude/install-status': (req: Request) => {
+      if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      return Response.json(getInstallState(), { headers: { 'Cache-Control': 'no-store' } });
+    },
+
+    // DDR-166 T0d — sign in to Claude from Maude, driving the user's OWN `claude`
+    // CLI through its own `auth login`/`auth status` subcommands (never Maude's
+    // own OAuth, never a token Maude holds). MAIN-ORIGIN ONLY — absent from
+    // CANVAS_SAFE_API + startCanvasServer routes, same CSRF + DNS-rebind double
+    // gate as every other privileged POST route (DDR-088). Zero new Tauri
+    // commands (Decision 0) — this lives in the same Bun process as bridge.ts/
+    // env.ts, so it reuses the literal scrubAgentEnv/resolveClaudePath the chat
+    // spawn already uses.
+    '/_api/claude/signin': (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const result = startSignin();
+      return Response.json(result, {
+        status: result.ok ? 200 : 409,
+        headers: { 'Cache-Control': 'no-store' },
+      });
+    },
+    '/_api/claude/signin-cancel': (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      cancelSignin();
+      return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
+    },
+    // Read-only poll target — the panel calls this (or /_api/preflight, which
+    // folds the same status in) on an interval while a sign-in is in flight.
+    // Narrowed fields only (never email/orgId/orgName — see login-state.ts).
+    '/_api/claude/signin-status': async (req: Request) => {
+      if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const status = await getClaudeAuthStatus();
+      return Response.json(
+        { ...status, inFlight: isSigninInFlight() },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
     },
 
     // Phase 31 (DDR-123) — `/design:chat` focus hook. `maude design chat-open`

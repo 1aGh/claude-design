@@ -341,6 +341,8 @@ pub fn run() {
             updater::restart_to_update,
             prefs::prefs_get_crash_reporting,
             prefs::prefs_set_crash_reporting,
+            prefs::prefs_get_claude_auto_setup,
+            prefs::prefs_set_claude_auto_setup,
         ])
         .menu(menu::build_menu)
         .on_menu_event(|app, event| {

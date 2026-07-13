@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-prefs-set-claude-auto-setup"
+description = "Enables the prefs_set_claude_auto_setup command without any pre-configured scope."
+commands.allow = ["prefs_set_claude_auto_setup"]
+
+[[permission]]
+identifier = "deny-prefs-set-claude-auto-setup"
+description = "Denies the prefs_set_claude_auto_setup command without any pre-configured scope."
+commands.deny = ["prefs_set_claude_auto_setup"]

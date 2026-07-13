@@ -17,6 +17,7 @@
 import { spawn } from 'node:child_process';
 
 import { createAcp } from './acp/index.ts';
+import { cancelInstall, cancelSignin } from './acp/login-state.ts';
 import { createActivity } from './activity.ts';
 import { ASSET_MAX_VIDEO_BYTES, createApi } from './api.ts';
 import { bootSelfHeal } from './boot-self-heal.ts';
@@ -466,6 +467,14 @@ if (!process.env.NO_OPEN) {
 
 async function shutdown() {
   console.log('\n  Stopping…');
+  // DDR-166 — reap in-flight claude-provisioning grandchildren before this
+  // process exits. Security-review finding: neither the SIGTERM/SIGINT path
+  // here nor sidecar.rs's child.kill() on the Tauri side propagate to a
+  // spawned `claude auth login`/installer child by default, so quitting
+  // mid-signin or mid-install orphaned it — exactly the DDR's own named-but-
+  // previously-unanswered "how does app-quit reach the grandchild" question.
+  cancelSignin();
+  cancelInstall();
   fsWatch.stop();
   try {
     gitWatch.stop();

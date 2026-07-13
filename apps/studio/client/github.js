@@ -128,3 +128,11 @@ export const restartToUpdate = () => invoke('restart_to_update');
 export const getCrashReporting = () => invoke('prefs_get_crash_reporting');
 /** Set the opt-in state. */
 export const setCrashReporting = (enabled) => invoke('prefs_set_crash_reporting', { enabled });
+
+// ── Tauri shell: AI-editing auto-setup opt-out (DDR-166 Decision 5) ─────────────
+// Local-file-only, DEFAULT ON (unlike crash reporting — this is an opt-OUT).
+// Reachable from the readiness checklist, without a terminal.
+/** Current opt-in state (boolean) — whether install/sign-in buttons are offered. */
+export const getClaudeAutoSetup = () => invoke('prefs_get_claude_auto_setup');
+/** Set the opt-in state. Takes effect on the next sidecar spawn (app launch / project switch). */
+export const setClaudeAutoSetup = (enabled) => invoke('prefs_set_claude_auto_setup', { enabled });

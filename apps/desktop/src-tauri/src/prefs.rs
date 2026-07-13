@@ -17,10 +17,27 @@ use tauri::Manager;
 /// Mirrors prefs.json's crash_reporting so the panic hook reads it lock-free.
 pub static CRASH_REPORTING: AtomicBool = AtomicBool::new(false);
 
-#[derive(Default, Serialize, Deserialize)]
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct Prefs {
     #[serde(default)]
     pub crash_reporting: bool,
+    /// DDR-166 Decision 5 — the primary opt-out for the auto-install/auto-
+    /// sign-in AI-editing setup flow. DEFAULT ON (unlike crash_reporting):
+    /// this is an opt-OUT for locked-down/enterprise machines, not an
+    /// opt-in. A settings-UI toggle, not just an env var — the whole point
+    /// is that it must be reachable without ever opening a terminal.
+    #[serde(default = "default_true")]
+    pub claude_auto_setup: bool,
+}
+
+impl Default for Prefs {
+    fn default() -> Self {
+        Prefs { crash_reporting: false, claude_auto_setup: true }
+    }
 }
 
 fn prefs_path(app: &tauri::AppHandle) -> Option<PathBuf> {
@@ -65,4 +82,16 @@ pub fn prefs_set_crash_reporting(app: tauri::AppHandle, enabled: bool) {
     pr.crash_reporting = enabled;
     save(&app, &pr);
     CRASH_REPORTING.store(enabled, Ordering::Relaxed);
+}
+
+#[tauri::command]
+pub fn prefs_get_claude_auto_setup(app: tauri::AppHandle) -> bool {
+    load(&app).claude_auto_setup
+}
+
+#[tauri::command]
+pub fn prefs_set_claude_auto_setup(app: tauri::AppHandle, enabled: bool) {
+    let mut pr = load(&app);
+    pr.claude_auto_setup = enabled;
+    save(&app, &pr);
 }

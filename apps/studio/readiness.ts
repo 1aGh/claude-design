@@ -14,6 +14,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { getClaudeAuthStatus } from './acp/login-state.ts';
 import { isNativePluginContext } from './acp/plugin-bootstrap.ts';
 import { resolveAdapterEntry, resolveClaudePath } from './acp/probe.ts';
 import { resolveBrowser } from './bin/_ensure-browser.mjs';
@@ -32,6 +33,19 @@ export interface ReadinessItem {
   detail: string;
   /** Copy-paste-able fix, present only when the item is not satisfied. */
   remediation?: string;
+  /** Verbatim shell command for a dedicated code-block + Copy affordance (DDR-166 T0c) — kept separate from the prose `remediation`. */
+  installCommand?: string;
+  /** UI action hint (DDR-166): 'install' renders a "Set up AI editing" button that runs the official installer then auto-chains to sign-in; 'signin' renders a "Sign in to Claude" button alone. */
+  action?: 'install' | 'signin';
+  /**
+   * DDR-166 Decision 3 (binding — a security-review-mandated control, not
+   * cosmetic): the resolved absolute path of the binary a Sign-in click is
+   * about to spawn, shown BEFORE the button so a pre-existing PATH-hijacked
+   * `claude` isn't invisible to the one human capable of noticing it's wrong.
+   */
+  resolvedPath?: string;
+  /** True when `resolvedPath` is the binary Maude itself just installed (content-pinned — see probe.ts `setTrustedClaudeBin`), not something already on the user's PATH. */
+  resolvedViaMaude?: boolean;
 }
 
 export interface ReadinessReport {
@@ -164,37 +178,95 @@ export function scanPlugins(): PluginScan {
  * (DDR-128 hardening) so this can't be turned into a spawn-storm from a drive-by page.
  */
 export async function probeReadiness(): Promise<ReadinessReport> {
-  const [claude, maude, agentBrowser] = await Promise.all([
+  let [claude, maude, agentBrowser] = await Promise.all([
     (async () => resolveClaudePath() ?? (await resolveOnPath('claude')))(),
     resolveOnPath('maude'),
     resolveOnPath('agent-browser'),
   ]);
 
+  // Deterministic E2E stub for the two claude-readiness states that are
+  // otherwise near-impossible to reproduce on a real, already-set-up dev
+  // machine (mirrors MAUDE_E2E_FAKE_GITHUB_LOGIN in oauth.rs — same problem,
+  // same shape of fix: a real state that needs a pristine/logged-out machine
+  // to occur naturally gets a narrow, explicitly-named override instead of a
+  // hand-rolled sandbox that fights the OS's own PATH resolution). Never
+  // affects real users — unset in every normal launch.
+  const e2eForce = process.env.MAUDE_E2E_FORCE_CLAUDE_STATUS;
+  // A verified, explicitly-provisioned MAUDE_CLAUDE_BIN override (T0c's
+  // install flow, once its freshness+hash check passes) must never be
+  // clobbered back to "missing"/"signed-out" by this coarser stub — mirrors
+  // the same precedence fix in probe.ts's resolveClaudePath(). Without this,
+  // the acp-cold-start scenario could never observe its OWN install actually
+  // taking effect after starting from a forced-missing state.
+  const hasVerifiedOverride = !!process.env.MAUDE_CLAUDE_BIN && claude === process.env.MAUDE_CLAUDE_BIN;
+  if (e2eForce === 'missing' && !hasVerifiedOverride) claude = null;
+  else if (e2eForce === 'signed-out' && !hasVerifiedOverride) claude = claude || '/usr/bin/claude'; // present, but auth probe below is also stubbed
+
   const items: ReadinessItem[] = [];
 
+  // DDR-166 T0d — honest 3-state instead of presence-only: not installed (an
+  // "install" action, T0c — runs the same verbatim official one-liner a user
+  // would type themselves, live-verified 2026-07-13 against
+  // code.claude.com/docs/en/quickstart.md; the copy-paste command below stays
+  // as the fallback/opt-out path) / installed-but-signed-out (a "Sign in"
+  // action, T0d) / signed-in-on-subscription.
+  const authStatus =
+    e2eForce === 'signed-out' ? { loggedIn: false } : claude ? await getClaudeAuthStatus() : null;
+  const signedIn = !!authStatus?.loggedIn;
+  const offSubscription = signedIn && authStatus?.apiProvider && authStatus.apiProvider !== 'firstParty';
+  // DDR-166 Decision 5 — the settings-UI opt-out (prefs.rs `claude_auto_setup`,
+  // DEFAULT ON) reaches the dev-server as an env var set fresh at each sidecar
+  // spawn. Disabled → fall back to guide-only: no automated action offered,
+  // same posture as before T0c/T0d existed (still shows the copy-paste
+  // command below, just no button).
+  const autoSetupEnabled = process.env.MAUDE_CLAUDE_AUTOSETUP_ENABLED !== '0';
   items.push({
     id: 'claude',
     label: 'Claude Code (the `claude` CLI)',
     required: true,
-    status: claude ? 'present' : 'missing',
-    detail: claude
-      ? 'Installed — AI editing drives it on your own Pro/Max subscription.'
-      : 'Not found on PATH.',
-    remediation: claude
-      ? undefined
-      : 'Install Claude Code, then run `claude` and `/login` once. AI editing runs on your own Pro/Max subscription — never API billing.',
+    status: claude && signedIn ? 'present' : 'missing',
+    detail: !claude
+      ? 'Not found on PATH.'
+      : signedIn
+        ? offSubscription
+          ? `Signed in, but not on a Claude subscription (${authStatus?.apiProvider}) — AI editing may bill metered API usage.`
+          : `Signed in${authStatus?.subscriptionType ? ` · ${authStatus.subscriptionType}` : ''} — AI editing runs on your own Pro/Max subscription.`
+        : 'Installed, but not signed in.',
+    remediation: !claude
+      ? 'Install Claude Code, then sign in. AI editing runs on your own Pro/Max subscription — never API billing.'
+      : signedIn
+        ? undefined
+        : 'Sign in to connect it to your Pro/Max subscription.',
+    installCommand: !claude ? 'curl -fsSL https://claude.ai/install.sh | bash' : undefined,
+    action: !autoSetupEnabled ? undefined : !claude ? 'install' : !signedIn ? 'signin' : undefined,
+    resolvedPath: claude ?? undefined,
+    resolvedViaMaude: !!claude && claude === process.env.MAUDE_CLAUDE_BIN,
   });
 
-  items.push({
-    id: 'maude',
-    label: 'maude CLI',
-    required: true,
-    status: maude ? 'present' : 'missing',
-    detail: maude ? 'On PATH — `/design:edit` can reach its helpers.' : 'Not found on PATH.',
-    remediation: maude
-      ? undefined
-      : 'Install it: `npm i -g @1agh/maude`. `/design:edit` shells out to `maude design …`, so it must be on PATH.',
-  });
+  // DDR-166 T0b — `maude` is bundled into the packaged app (compiled via
+  // apps/desktop/scripts/build-cli-binary.mjs, shipped as `externalBin`
+  // `binaries/maude`; sidecar.rs stages it into its own narrow, single-binary
+  // PATH directory and sets MAUDE_BUNDLED_CLI_PATH to that exact path). This
+  // row disappears entirely for the end user rather than surfacing an
+  // `npm i -g` instruction for something already shipped — it's an internal
+  // plumbing detail, not a recognizable capability like the agent-browser/
+  // adapter rows below. In dev contexts where the bundling step hasn't run
+  // (a bare `bun run server.ts`, `maude design serve`), MAUDE_BUNDLED_CLI_PATH
+  // is unset and this falls through to the pre-T0b behavior unchanged.
+  const bundledCliPath = process.env.MAUDE_BUNDLED_CLI_PATH || null;
+  const maudeIsBundled = !!bundledCliPath && maude === bundledCliPath;
+  if (!maudeIsBundled) {
+    items.push({
+      id: 'maude',
+      label: 'maude CLI',
+      required: true,
+      status: maude ? 'present' : 'missing',
+      detail: maude ? 'On PATH — `/design:edit` can reach its helpers.' : 'Not found on PATH.',
+      remediation: maude
+        ? undefined
+        : 'Install it: `npm i -g @1agh/maude`. `/design:edit` shells out to `maude design …`, so it must be on PATH.',
+    });
+  }
 
   const scan = scanPlugins();
   // DDR-143 — on the native/desktop path the ACP chat session AUTO-LOADS the

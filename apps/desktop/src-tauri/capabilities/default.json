@@ -25,6 +25,8 @@
     "allow-restart-to-update",
     "allow-prefs-get-crash-reporting",
     "allow-prefs-set-crash-reporting",
+    "allow-prefs-get-claude-auto-setup",
+    "allow-prefs-set-claude-auto-setup",
     "wdio-webdriver:default"
   ]
 }
