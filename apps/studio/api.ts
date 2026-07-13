@@ -34,6 +34,8 @@ import {
   retimeSequence,
   retimeSequenceByClip,
   editText as runEditText,
+  setArtboardHug,
+  setArtboardStyle,
   toggleClipHidden,
 } from './canvas-edit.ts';
 import type { Context } from './context.ts';
@@ -469,6 +471,22 @@ export interface Api {
     artboardId?: unknown;
     width?: unknown;
     height?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
+  /** Toggle an artboard's Hug/Fixed height sizing mode (CSS-panel control). */
+  setArtboardHugOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    fixed?: unknown;
+    freezeHeight?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
+  /** Set artboard "more settings" — background / padding / layout / gap. */
+  setArtboardStyleOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    background?: unknown;
+    padding?: unknown;
+    layout?: unknown;
+    gap?: unknown;
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
   /** Duplicate an element (Cmd+D) — a copy as the next sibling, whole-file undo. */
   duplicateElementOp(input: {
@@ -2887,6 +2905,137 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  /** Toggle an artboard's Hug/Fixed height sizing mode (CSS-panel control). */
+  async function setArtboardHugOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    fixed?: unknown;
+    freezeHeight?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    if (!takeStructuralToken()) return RATE_LIMITED;
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId.trim() : '';
+    if (!/^[A-Za-z][\w-]{0,63}$/.test(artboardId)) {
+      return { ok: false, status: 400, error: 'invalid artboard id' };
+    }
+    if (typeof input.fixed !== 'boolean') {
+      return { ok: false, status: 400, error: 'fixed (boolean) required' };
+    }
+    const fixed = input.fixed;
+    const freezeHeight = Number.isFinite(Number(input.freezeHeight))
+      ? Math.max(64, Math.min(8192, Math.round(Number(input.freezeHeight))))
+      : undefined;
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      await setArtboardHug(r.abs, artboardId, fixed, freezeHeight);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-set-artboard-hug');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'set-artboard-hug failed',
+      };
+    }
+  }
+
+  const ARTBOARD_LAYOUT_VALUES = new Set(['block', 'flex-col', 'flex-row', 'grid']);
+
+  /** Set artboard "more settings" — background / padding / layout / gap. */
+  async function setArtboardStyleOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    background?: unknown;
+    padding?: unknown;
+    layout?: unknown;
+    gap?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    if (!takeStructuralToken()) return RATE_LIMITED;
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId.trim() : '';
+    if (!/^[A-Za-z][\w-]{0,63}$/.test(artboardId)) {
+      return { ok: false, status: 400, error: 'invalid artboard id' };
+    }
+    const patch: {
+      background?: string | null;
+      padding?: number | null;
+      layout?: string | null;
+      gap?: number | null;
+    } = {};
+    if ('background' in input) {
+      if (input.background === null) patch.background = null;
+      else if (typeof input.background === 'string' && input.background.length <= 256) {
+        patch.background = input.background;
+      } else {
+        return { ok: false, status: 400, error: 'invalid background' };
+      }
+    }
+    if ('layout' in input) {
+      if (input.layout === null) patch.layout = null;
+      else if (typeof input.layout === 'string' && ARTBOARD_LAYOUT_VALUES.has(input.layout)) {
+        patch.layout = input.layout;
+      } else {
+        return { ok: false, status: 400, error: 'invalid layout' };
+      }
+    }
+    const clampBoxDim = (v: unknown): number | null | undefined => {
+      if (v === null) return null;
+      if (v === undefined) return undefined;
+      return Number.isFinite(Number(v)) ? Math.max(0, Math.min(512, Math.round(Number(v)))) : NaN;
+    };
+    if ('padding' in input) {
+      const p = clampBoxDim(input.padding);
+      if (Number.isNaN(p)) return { ok: false, status: 400, error: 'invalid padding' };
+      patch.padding = p;
+    }
+    if ('gap' in input) {
+      const g = clampBoxDim(input.gap);
+      if (Number.isNaN(g)) return { ok: false, status: 400, error: 'invalid gap' };
+      patch.gap = g;
+    }
+    if (Object.keys(patch).length === 0) {
+      return { ok: false, status: 400, error: 'no style props given' };
+    }
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      await setArtboardStyle(r.abs, artboardId, patch);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-set-artboard-style');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'set-artboard-style failed',
+      };
+    }
+  }
+
   /** Duplicate an element (Cmd+D) — insert a copy as the next sibling. */
   async function duplicateElementOp(input: {
     canvas?: unknown;
@@ -3610,6 +3759,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     insertElementOp,
     insertArtboardOp,
     resizeArtboardOp,
+    setArtboardHugOp,
+    setArtboardStyleOp,
     deleteArtboardOp,
     duplicateElementOp,
     editScopeOp,

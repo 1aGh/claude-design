@@ -12,6 +12,8 @@ import {
   applyInsertElement,
   applyInsertElementIntoArtboard,
   applyResizeArtboard,
+  applySetArtboardHug,
+  applySetArtboardStyle,
   CanvasEditError,
 } from '../canvas-edit.ts';
 import { transpileCanvasSource } from '../canvas-pipeline.ts';
@@ -228,6 +230,112 @@ describe('canvas-edit / applyResizeArtboard (D4)', () => {
 
   test('unknown artboard id throws', () => {
     expect(() => applyResizeArtboard(CANVAS, canvas, 'nope', 100, 100)).toThrow(CanvasEditError);
+  });
+});
+
+describe('canvas-edit / applySetArtboardHug (Hug ⇄ Fixed toggle)', () => {
+  const canvas = [
+    'export default function Demo() {',
+    '  return (',
+    '    <DesignCanvas>',
+    '      <DCArtboard id="home" label="Home" width={1440} height={1024}>',
+    '        <div>content</div>',
+    '      </DCArtboard>',
+    '    </DesignCanvas>',
+    '  );',
+    '}',
+  ].join('\n');
+
+  test('fixed=true adds the bare boolean prop, no string/expr value', () => {
+    const out = applySetArtboardHug(CANVAS, canvas, 'home', true);
+    expect(out.source).toMatch(/<DCArtboard\b[^>]*\bfixed\b(?!=)[^>]*>/);
+    expect(out.source).not.toContain('fixed={true}');
+    expect(out.source).not.toContain('fixed="true"');
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('fixed=true with freezeHeight also pins height (numeric prop)', () => {
+    const out = applySetArtboardHug(CANVAS, canvas, 'home', true, 777);
+    expect(out.source).toContain('fixed');
+    expect(out.source).toContain('height={777}');
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('fixed=true is idempotent — no duplicate attr on a board already pinned', () => {
+    const once = applySetArtboardHug(CANVAS, canvas, 'home', true);
+    const twice = applySetArtboardHug(CANVAS, once.source, 'home', true);
+    expect(twice.source.match(/\bfixed\b/g)?.length).toBe(1);
+  });
+
+  test('fixed=false removes the prop, height untouched', () => {
+    const pinned = applySetArtboardHug(CANVAS, canvas, 'home', true, 777);
+    const out = applySetArtboardHug(CANVAS, pinned.source, 'home', false);
+    expect(out.source).not.toContain('fixed');
+    expect(out.source).toContain('height={777}'); // stays as the hug floor
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('fixed=false on an already-hug board is a no-op', () => {
+    const out = applySetArtboardHug(CANVAS, canvas, 'home', false);
+    expect(out.source).toBe(canvas);
+  });
+
+  test('unknown artboard id throws', () => {
+    expect(() => applySetArtboardHug(CANVAS, canvas, 'nope', true)).toThrow(CanvasEditError);
+  });
+});
+
+describe('canvas-edit / applySetArtboardStyle (background/padding/layout/gap)', () => {
+  const canvas = [
+    'export default function Demo() {',
+    '  return (',
+    '    <DesignCanvas>',
+    '      <DCArtboard id="home" label="Home" width={1440} height={1024}>',
+    '        <div>content</div>',
+    '      </DCArtboard>',
+    '    </DesignCanvas>',
+    '  );',
+    '}',
+  ].join('\n');
+
+  test('writes background/layout as string literals, padding/gap as numeric', () => {
+    const out = applySetArtboardStyle(CANVAS, canvas, 'home', {
+      background: 'var(--bg-1)',
+      layout: 'flex-col',
+      padding: 16,
+      gap: 8,
+    });
+    expect(out.source).toContain('background="var(--bg-1)"');
+    expect(out.source).toContain('layout="flex-col"');
+    expect(out.source).toContain('padding={16}');
+    expect(out.source).toContain('gap={8}');
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('padding/gap of 0 is written verbatim, not clamped to 1', () => {
+    const out = applySetArtboardStyle(CANVAS, canvas, 'home', { padding: 0, gap: 0 });
+    expect(out.source).toContain('padding={0}');
+    expect(out.source).toContain('gap={0}');
+  });
+
+  test('null resets a previously-set prop (removes the attribute)', () => {
+    const styled = applySetArtboardStyle(CANVAS, canvas, 'home', { background: 'red' });
+    const out = applySetArtboardStyle(CANVAS, styled.source, 'home', { background: null });
+    expect(out.source).not.toContain('background=');
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('an absent key leaves that prop untouched', () => {
+    const styled = applySetArtboardStyle(CANVAS, canvas, 'home', { background: 'red', padding: 4 });
+    const out = applySetArtboardStyle(CANVAS, styled.source, 'home', { padding: 8 });
+    expect(out.source).toContain('background="red"'); // untouched
+    expect(out.source).toContain('padding={8}');
+  });
+
+  test('unknown artboard id throws', () => {
+    expect(() => applySetArtboardStyle(CANVAS, canvas, 'nope', { padding: 4 })).toThrow(
+      CanvasEditError
+    );
   });
 });
 

@@ -42,6 +42,7 @@ import {
   readTranscriptionProvider,
   writeTranscriptionProvider,
 } from './generation/prefs.ts';
+import { readUiPrefs, writeUiPrefs, type UiPrefs } from './ui-prefs.ts';
 import {
   createAdapter,
   getProviderDescriptor,
@@ -2208,6 +2209,71 @@ export function createHttp(
       );
     },
 
+    '/_api/set-artboard-hug': async (req: Request) => {
+      // Artboard "hug height" default — Hug ⇄ Fixed toggle in the CSS panel.
+      // POST { canvas, artboardId, fixed, freezeHeight? } → api.setArtboardHugOp
+      // (writes/removes the bare `fixed` prop on <DCArtboard id="…">; freezeHeight
+      // optionally pins `height` at the board's current measured size so pinning
+      // to Fixed doesn't snap the box). Whole-file undo seq. MAIN-ORIGIN ONLY;
+      // sameOriginWrite + loopback-Host gated, mirrors /_api/resize-artboard.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        artboardId?: unknown;
+        fixed?: unknown;
+        freezeHeight?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.setArtboardHugOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    '/_api/set-artboard-style': async (req: Request) => {
+      // Artboard "more settings" — background / padding / layout / gap, applied
+      // to .dc-artboard-body. POST { canvas, artboardId, background?, padding?,
+      // layout?, gap? } (each key: value to set, `null` to reset, absent to leave
+      // untouched) → api.setArtboardStyleOp. Whole-file undo seq. MAIN-ORIGIN
+      // ONLY; sameOriginWrite + loopback-Host gated, mirrors /_api/resize-artboard.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        artboardId?: unknown;
+        background?: unknown;
+        padding?: unknown;
+        layout?: unknown;
+        gap?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.setArtboardStyleOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/delete-artboard': async (req: Request) => {
       // Delete an artboard by its `id` prop (Backspace / context-menu on a frame).
       // POST { canvas, artboardId } → api.deleteArtboardOp (removes the
@@ -2618,6 +2684,63 @@ export function createHttp(
       } catch (err) {
         return new Response(err instanceof Error ? err.message : 'prefs write failed', {
           status: 400,
+        });
+      }
+    },
+
+    // feature-unified-settings-modal — NON-SECRET UI / view preferences (theme +
+    // the Canvas & View toggles), persisted to `~/.config/maude/prefs.json` so
+    // they survive a restart and a cleared localStorage. GET returns the merged
+    // prefs; POST merge-patches only the provided keys. MAIN-ORIGIN ONLY, loopback
+    // + sameOriginWrite gated (never reachable from the untrusted canvas origin).
+    '/_api/ui-prefs': async (req: Request) => {
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method === 'GET') {
+        return Response.json(readUiPrefs(), { headers: { 'Cache-Control': 'no-store' } });
+      }
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<Record<string, unknown>>(req, 4 * 1024);
+      if (!body || typeof body !== 'object')
+        return new Response('body must be a JSON object', { status: 400 });
+      // Build a clean patch — only well-typed known keys pass through, so a bad
+      // field is rejected rather than silently resetting a stored value.
+      const patch: Partial<UiPrefs> = {};
+      if ('theme' in body) {
+        if (body.theme !== 'light' && body.theme !== 'dark')
+          return new Response('theme must be light|dark', { status: 400 });
+        patch.theme = body.theme;
+      }
+      for (const k of ['minimap', 'zoom', 'annotations', 'autoOpenInspector'] as const) {
+        if (k in body) {
+          if (typeof body[k] !== 'boolean')
+            return new Response(`${k} must be a boolean`, { status: 400 });
+          patch[k] = body[k] as boolean;
+        }
+      }
+      if ('layersMode' in body) {
+        if (body.layersMode !== 'separate' && body.layersMode !== 'in-inspector')
+          return new Response('layersMode must be separate|in-inspector', { status: 400 });
+        patch.layersMode = body.layersMode;
+      }
+      if ('panelSides' in body) {
+        const ps = body.panelSides;
+        if (!ps || typeof ps !== 'object' || Array.isArray(ps))
+          return new Response('panelSides must be an object', { status: 400 });
+        for (const v of Object.values(ps as Record<string, unknown>)) {
+          if (v !== 'left' && v !== 'right')
+            return new Response('panelSides values must be left|right', { status: 400 });
+        }
+        // writeUiPrefs → coerce keeps only known ids, so unknown keys are dropped.
+        patch.panelSides = ps as UiPrefs['panelSides'];
+      }
+      try {
+        return Response.json(writeUiPrefs(patch), { headers: { 'Cache-Control': 'no-store' } });
+      } catch (err) {
+        return new Response(err instanceof Error ? err.message : 'ui-prefs write failed', {
+          status: 500,
         });
       }
     },

@@ -398,6 +398,11 @@ export interface WorldContextValue {
   rectFor: (id: string) => ArtboardRect | null;
   /** All artboards in render order, with resolved world-coord positions. */
   artboards: ArtboardRect[];
+  /** Hug-mode artboards report their measured DOM height here so the shared
+   *  ArtboardRect model (drag hit-test, marquee, fit-to-screen, culling) stays
+   *  in sync with content that grows/shrinks. Runtime-only — never persisted
+   *  to meta; a fixed-mode board never calls this. */
+  reportMeasuredHeight: (id: string, h: number) => void;
   /** Current pan/zoom state. `null` until the first useLayoutEffect runs. */
   viewport: ViewportState | null;
   /** id of the artboard closest to the viewport center (recomputed on settle). */
@@ -1635,16 +1640,33 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   // useLayoutEffect writes the initial transform before first paint.
   const worldStyle: CSSProperties = { visibility: 'hidden' };
 
+  // Hug-mode height feedback (artboard "hug height" default). A hug board's
+  // CSS height is `auto` (content-driven) — the DOM is authoritative, and this
+  // just mirrors the measured height into the shared ArtboardRect model so
+  // OTHER consumers (marquee, distribute, fit-to-screen, off-screen culling)
+  // see the current box. Never touches meta/JSX — purely runtime state, unlike
+  // commitArtboardPositions/applyArtboardLayout which persist. A no-op guard
+  // on <1px delta avoids a ResizeObserver → setState → render → (stable, since
+  // CSS height never reads back rect.h in hug mode) loop.
+  const reportMeasuredHeight = useCallback((id: string, h: number) => {
+    setArtboards((prev) => {
+      const cur = prev.find((r) => r.id === id);
+      if (!cur || Math.abs(cur.h - h) < 1) return prev;
+      return prev.map((r) => (r.id === id ? { ...r, h } : r));
+    });
+  }, []);
+
   const ctxValue = useMemo<WorldContextValue>(
     () => ({
       rectFor,
       artboards,
+      reportMeasuredHeight,
       viewport: controller.viewport,
       activeArtboardId,
       hostRef,
       worldRef,
     }),
-    [rectFor, artboards, controller.viewport, activeArtboardId]
+    [rectFor, artboards, reportMeasuredHeight, controller.viewport, activeArtboardId]
   );
 
   const showMiniMap = controls?.minimap !== false;
@@ -1793,12 +1815,30 @@ export function DCArtboard({
   label,
   width,
   height,
+  fixed,
+  background,
+  padding,
+  layout,
+  gap,
   children,
 }: {
   id: string;
   label: string;
   width: number;
   height: number;
+  /** Height sizing mode. Default (omitted/false) = HUG — the board grows to
+   *  fit content; `height` becomes a min-height floor rather than an exact
+   *  size. `true` = FIXED — today's behavior, `height` is exact and overflow
+   *  clips. Width is always exact regardless of this flag. */
+  fixed?: boolean;
+  /** `.dc-artboard-body` background (CSS color/token, e.g. "var(--bg-1)"). */
+  background?: string;
+  /** `.dc-artboard-body` padding, px, all sides. */
+  padding?: number;
+  /** `.dc-artboard-body` layout mode. Default = the engine's plain block flow. */
+  layout?: 'block' | 'flex-col' | 'flex-row' | 'grid';
+  /** `.dc-artboard-body` gap, px — only visible under flex-col/flex-row/grid. */
+  gap?: number;
   children: ReactNode;
 }) {
   const ctx = useWorldContext();
@@ -1860,11 +1900,67 @@ export function DCArtboard({
     }
   }, [dragHook.dragState, dragBus]);
 
+  // Hug default (artboard "hug height") — the authored `height` prop is a
+  // FLOOR (min-height), not an exact size, unless `fixed` pins it. The floor
+  // stays stable across renders (it only changes when the JSX prop itself is
+  // edited), so it never ratchets up from a previously-larger measured value
+  // the way feeding `rect.h` back as the floor would.
+  const heightFloor = typeof height === 'number' ? height : VP_GRID.h;
+  const articleRef = useRef<HTMLElement | null>(null);
+  const measured = useArtboardBounds(articleRef as RefObject<HTMLElement | null>);
+  useEffect(() => {
+    if (!ctx || fixed) return;
+    if (dragHook.dragState.kind !== 'idle') return;
+    if (measured.height <= 0) return;
+    ctx.reportMeasuredHeight(id, Math.round(measured.height));
+  }, [ctx, fixed, dragHook.dragState.kind, measured.height, id]);
+
+  // Phase 2 — background/padding/layout/gap apply to the BODY (content box),
+  // not the frame (label header stays chrome-styled). Undefined keys are
+  // simply absent from the style object — no engine-CSS default is clobbered.
+  const bodyStyle = useMemo<CSSProperties>(() => {
+    const st: CSSProperties = {};
+    if (background) st.background = background;
+    if (typeof padding === 'number') st.padding = padding;
+    if (typeof gap === 'number') st.gap = gap;
+    if (layout === 'flex-col') {
+      st.display = 'flex';
+      st.flexDirection = 'column';
+    } else if (layout === 'flex-row') {
+      st.display = 'flex';
+      st.flexDirection = 'row';
+    } else if (layout === 'grid') {
+      st.display = 'grid';
+    }
+    return st;
+  }, [background, padding, gap, layout]);
+
+  // Read-back surface for the Inspector's ArtboardKnobs panel — the SAME
+  // generic "custom HTML attributes" escape hatch dom-selection.ts already
+  // scrapes off the selected element (styleMapsFor → Selection.attrs), so the
+  // panel pre-fills current state with no new plumbing. React omits an
+  // attribute entirely when its value is `undefined`.
+  const readBackAttrs = {
+    'data-dc-fixed': fixed ? 'true' : undefined,
+    'data-dc-bg': background,
+    'data-dc-padding': typeof padding === 'number' ? String(padding) : undefined,
+    'data-dc-layout': layout,
+    'data-dc-gap': typeof gap === 'number' ? String(gap) : undefined,
+  };
+
   if (!ctx || !rect) {
     return (
-      <article className="dc-artboard" data-dc-screen={id} style={{ width, height }}>
+      <article
+        className="dc-artboard"
+        data-dc-screen={id}
+        ref={articleRef}
+        style={fixed ? { width, height } : { width, height: 'auto', minHeight: heightFloor }}
+        {...readBackAttrs}
+      >
         <header className="dc-artboard-label sku">{label}</header>
-        <div className="dc-artboard-body">{children}</div>
+        <div className="dc-artboard-body" style={bodyStyle}>
+          {children}
+        </div>
       </article>
     );
   }
@@ -1917,11 +2013,16 @@ export function DCArtboard({
         className={`dc-artboard dc-positioned${isInDrag ? ' dc-dragging' : ''}`}
         data-dc-screen={id}
         aria-current={isActive ? 'true' : undefined}
+        ref={articleRef}
+        {...readBackAttrs}
         style={{
           left: liveX,
           top: liveY,
           width: rect.w,
-          height: rect.h,
+          // Hug default: height:auto + minHeight floor, content dictates the
+          // box; the ResizeObserver above mirrors the settled size back into
+          // rect.h for other consumers. Fixed: today's exact-height behavior.
+          ...(fixed ? { height: rect.h } : { height: 'auto', minHeight: heightFloor }),
           // Off-screen artboards skip layout+paint. On a large multi-board
           // canvas (e.g. an 18-board moodboard) every board otherwise paints
           // onto one huge .dc-world plane whose device-pixel size exceeds
@@ -1966,7 +2067,9 @@ export function DCArtboard({
             </svg>
           </button>
         ) : null}
-        <div className="dc-artboard-body">{children}</div>
+        <div className="dc-artboard-body" style={bodyStyle}>
+          {children}
+        </div>
       </article>
       {showActivity ? (
         <ArtboardActivityOverlay

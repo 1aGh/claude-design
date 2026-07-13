@@ -3406,8 +3406,14 @@ function collectJsxByTag(program: AnyNode, tagName: string): AnyNode[] {
  * `width="430"` and break the numeric prop. Overwrites an existing `{expr}` or
  * `"literal"`, or inserts the attribute after the tag name if missing.
  */
-function writeNumericAttr(s: MagicString, opening: AnyNode, name: string, value: number): void {
-  const num = Math.max(1, Math.round(value));
+function writeNumericAttr(
+  s: MagicString,
+  opening: AnyNode,
+  name: string,
+  value: number,
+  min = 1
+): void {
+  const num = Math.max(min, Math.round(value));
   const attr = findAttribute(opening, name);
   if (attr) {
     const v = attr.value;
@@ -3485,6 +3491,195 @@ export async function resizeArtboard(
     }
     const source = await file.text();
     const next = applyResizeArtboard(canvasAbsPath, source, artboardId, width, height);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
+/**
+ * Write/clear a BARE JSX boolean attribute (`<DCArtboard fixed>`, not
+ * `fixed={true}` or a string). `value=false` reuses `removeStringAttr`'s
+ * generic span-plus-leading-whitespace removal (it doesn't care whether the
+ * attribute it's removing has a value) — only the `true` insert path is new.
+ */
+function writeBooleanAttr(
+  s: MagicString,
+  opening: AnyNode,
+  name: string,
+  value: boolean,
+  source: string
+): void {
+  if (!value) {
+    removeStringAttr(s, opening, name, source);
+    return;
+  }
+  if (findAttribute(opening, name)) return; // already present in some form
+  const insertAt: number | undefined = opening?.name?.end;
+  if (typeof insertAt !== 'number') throw new Error('Opening element has no resolvable name range');
+  s.appendLeft(insertAt, ` ${name}`);
+}
+
+/**
+ * Toggle an artboard's height sizing mode (Hug ⇄ Fixed CSS-panel control).
+ * `fixed=true` adds the bare `fixed` prop and, when `freezeHeight` is given
+ * (the board's current measured height), also writes it as the exact
+ * `height` — so pinning to Fixed doesn't snap the box back to whatever the
+ * JSX `height` floor happened to be. `fixed=false` removes the `fixed` prop;
+ * `height` is left as-is (it resumes being the hug floor). Same id-prop
+ * addressing as applyResizeArtboard (DDR-027 — an artboard frame carries no
+ * data-cd-id). Pure; reparse-gated.
+ */
+export function applySetArtboardHug(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string,
+  fixed: boolean,
+  freezeHeight?: number
+): { source: string } {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  const artboards = collectJsxByTag(parsed.program, 'DCArtboard');
+  const target = artboards.find((a) => getStringAttr(a.openingElement, 'id') === artboardId);
+  if (!target) {
+    throw new CanvasEditError(`<DCArtboard id="${artboardId}"> not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id: artboardId,
+    });
+  }
+  const s = new MagicString(source);
+  writeBooleanAttr(s, target.openingElement, 'fixed', fixed, source);
+  if (fixed && typeof freezeHeight === 'number') {
+    writeNumericAttr(s, target.openingElement, 'height', freezeHeight);
+  }
+  const out = s.toString();
+  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (check.errors && check.errors.length > 0) {
+    throw new CanvasEditError(
+      `artboard hug-toggle produced invalid source (${check.errors[0]?.message ?? 'parse error'})`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  return { source: out };
+}
+
+/** Set an artboard's Hug/Fixed mode on disk (atomic write + cross-process lock). */
+export async function setArtboardHug(
+  canvasAbsPath: string,
+  artboardId: string,
+  fixed: boolean,
+  freezeHeight?: number
+): Promise<{ source: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: artboardId,
+      });
+    }
+    const source = await file.text();
+    const next = applySetArtboardHug(canvasAbsPath, source, artboardId, fixed, freezeHeight);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
+/** Patch shape for {@link applySetArtboardStyle} — `null` resets/removes that
+ *  prop back to the engine default; `undefined`/absent leaves it untouched. */
+export interface ArtboardStylePatch {
+  background?: string | null;
+  padding?: number | null;
+  layout?: string | null;
+  gap?: number | null;
+}
+
+/**
+ * Write the artboard "more settings" props (background / padding / layout /
+ * gap) — applied to `.dc-artboard-body` by DCArtboard, not the frame chrome.
+ * String props (background/layout) reuse `editStringAttr`/`removeStringAttr`;
+ * numeric props (padding/gap) reuse `writeNumericAttr` with a 0 floor (unlike
+ * width/height, 0 padding/gap is a normal value, not a degenerate one). Same
+ * id-prop addressing + reparse-gate as applyResizeArtboard/applySetArtboardHug.
+ */
+export function applySetArtboardStyle(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string,
+  patch: ArtboardStylePatch
+): { source: string } {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  const artboards = collectJsxByTag(parsed.program, 'DCArtboard');
+  const target = artboards.find((a) => getStringAttr(a.openingElement, 'id') === artboardId);
+  if (!target) {
+    throw new CanvasEditError(`<DCArtboard id="${artboardId}"> not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id: artboardId,
+    });
+  }
+  const s = new MagicString(source);
+  const opening = target.openingElement;
+  if ('background' in patch) {
+    if (patch.background == null) removeStringAttr(s, opening, 'background', source);
+    else editStringAttr(s, opening, 'background', patch.background, canvasAbsPath, artboardId);
+  }
+  if ('layout' in patch) {
+    if (patch.layout == null) removeStringAttr(s, opening, 'layout', source);
+    else editStringAttr(s, opening, 'layout', patch.layout, canvasAbsPath, artboardId);
+  }
+  if ('padding' in patch) {
+    if (patch.padding == null) removeStringAttr(s, opening, 'padding', source);
+    else writeNumericAttr(s, opening, 'padding', patch.padding, 0);
+  }
+  if ('gap' in patch) {
+    if (patch.gap == null) removeStringAttr(s, opening, 'gap', source);
+    else writeNumericAttr(s, opening, 'gap', patch.gap, 0);
+  }
+  const out = s.toString();
+  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (check.errors && check.errors.length > 0) {
+    throw new CanvasEditError(
+      `artboard style edit produced invalid source (${check.errors[0]?.message ?? 'parse error'})`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  return { source: out };
+}
+
+/** Set an artboard's style props on disk (atomic write + cross-process lock). */
+export async function setArtboardStyle(
+  canvasAbsPath: string,
+  artboardId: string,
+  patch: ArtboardStylePatch
+): Promise<{ source: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: artboardId,
+      });
+    }
+    const source = await file.text();
+    const next = applySetArtboardStyle(canvasAbsPath, source, artboardId, patch);
     if (next.source === source) return next;
     const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
     await Bun.write(tmp, next.source);

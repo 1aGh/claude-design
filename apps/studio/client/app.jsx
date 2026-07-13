@@ -52,6 +52,77 @@ const SECTIONS_STORE = 'mdcc-sections-expanded';
 const SIDEBAR_STORE = 'mdcc-sidebar-open';
 const MINIMAP_STORE = 'mdcc-minimap-visible';
 const ZOOMCTL_STORE = 'mdcc-zoomctl-visible';
+const ANNOT_STORE = 'mdcc-annotations-visible';
+const AUTOOPEN_STORE = 'maude-auto-open-inspector';
+
+// feature-unified-settings-modal — the Settings modal's view prefs are ALSO
+// persisted to disk (~/.config/maude/prefs.json via /_api/ui-prefs), so they
+// survive a restart even if localStorage is cleared (the native WKWebView
+// case). localStorage stays the synchronous init source (no boot flash); disk
+// is the durable, cross-restart source of truth reconciled on mount.
+function persistUiPrefs(patch) {
+  try {
+    fetch('/_api/ui-prefs', {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: JSON.stringify(patch),
+    }).catch(() => {});
+  } catch {}
+}
+
+// feature-configurable-panel-docking — the dockable shell panels. Each can live
+// in the LEFT or RIGHT slot (persisted in UiPrefs.panelSides); each slot is a
+// single-panel-at-a-time surface with a tab strip over the panels assigned to
+// it. Order here = tab order within a slot. `assistant` is native-only.
+const DOCK_PANELS = [
+  { id: 'tree', label: 'Files' },
+  { id: 'layers', label: 'Layers' },
+  { id: 'inspector', label: 'Inspector' },
+  { id: 'comments', label: 'Comments' },
+  { id: 'changes', label: 'Changes' },
+  { id: 'assistant', label: 'Assistant' },
+];
+const PANEL_SIDES_DEFAULTS = {
+  tree: 'left',
+  layers: 'left',
+  inspector: 'right',
+  comments: 'right',
+  changes: 'right',
+  assistant: 'right',
+};
+const PANEL_SIDES_STORE = 'mdcc-panel-sides';
+const LAYERS_MODE_STORE = 'mdcc-layers-mode';
+
+// feature-configurable-panel-docking — one dock slot (left or right). Owns the
+// resizable width + a tab strip over the panels assigned to the slot; renders
+// the active panel (passed as children). Collapses to 0 width when nothing is
+// visibly open (it may still host an always-mounted hidden ChatPanel).
+function DockSlot({ side, width, open, ids, activeId, onPick, children }) {
+  return (
+    <div
+      className={'st-dockslot st-dockslot--' + side + (open ? '' : ' is-collapsed')}
+      style={{ width: open ? width : 0, flexBasis: open ? width : 0 }}
+    >
+      {open && ids.length > 1 && (
+        <div className="st-docktabs" role="tablist" aria-label={side + ' panels'}>
+          {ids.map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={activeId === id}
+              className={'st-docktab' + (activeId === id ? ' is-active' : '')}
+              onClick={() => onPick(id)}
+            >
+              {(DOCK_PANELS.find((p) => p.id === id) || {}).label || id}
+            </button>
+          ))}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
 const CANVAS_EXT_RE = /\.(tsx|html?)$/i;
 // Bun's `define` substitutes this at build time (see build.ts); falls back when
 // the bundle is consumed in a context that hasn't run the build.
@@ -2749,7 +2820,7 @@ function FileDropdown({ onAction, onClose, hasCanvas }) {
         { sep: true },
         // feature-ai-media-generation (DDR-16x) — BYOK generate action + settings.
         { id: 'generate', label: 'Generate with AI…' },
-        { id: 'settings', label: 'Settings — AI generation…', shortcut: '⌘,' },
+        { id: 'settings', label: 'Settings…', shortcut: '⌘,' },
         { sep: true },
         { id: 'reload', label: 'Reload canvas', shortcut: '⌘R', disabled: !hasCanvas },
         { id: 'close', label: 'Close canvas', disabled: !hasCanvas },
@@ -6182,7 +6253,14 @@ function resolveArtboardIdFromSelection(el) {
 // /_api/resize-artboard, NOT edit-css — DDR-027 numeric JSX props) + the SAME
 // SCREEN_PRESETS the "+ Artboard" menu uses, so picking "Tablet" resizes the
 // CURRENT artboard to 834×1194 in one click instead of typing both fields.
-function ArtboardKnobs({ el, onResizeArtboard }) {
+const ARTBOARD_LAYOUT_OPTIONS = [
+  ['', 'Block (default)'],
+  ['flex-col', 'Flex ↓ (column)'],
+  ['flex-row', 'Flex → (row)'],
+  ['grid', 'Grid'],
+];
+
+function ArtboardKnobs({ el, onResizeArtboard, onSetArtboardHug, onSetArtboardStyle }) {
   const artboardId = resolveArtboardIdFromSelection(el);
   // Dogfood 2026-07-07 (round 2) — `worldW`/`worldH` (zoom-independent) are
   // undefined for a selection that reached here via a code path predating
@@ -6210,6 +6288,25 @@ function ArtboardKnobs({ el, onResizeArtboard }) {
   const activePreset = Object.entries(SCREEN_PRESETS).find(
     ([, p]) => p.width === w && p.height === h
   )?.[0];
+  // Hug default (artboard "hug height") — current mode + the "more settings"
+  // (background/padding/layout/gap) read off the SAME generic `attrs` escape
+  // hatch dom-selection.ts already scrapes for every selection (the `data-dc-*`
+  // attributes DCArtboard stamps on the frame purely for this panel to read
+  // its own resolved props back — see canvas-lib.tsx readBackAttrs).
+  const fixed = el.attrs?.['data-dc-fixed'] === 'true';
+  const bg = el.attrs?.['data-dc-bg'] ?? '';
+  const padding = el.attrs?.['data-dc-padding'] ?? '';
+  const layoutMode = el.attrs?.['data-dc-layout'] ?? '';
+  const gap = el.attrs?.['data-dc-gap'] ?? '';
+  const setHug = (nextFixed) => {
+    if (!artboardId) return;
+    const freezeHeight = nextFixed && Number.isFinite(h) ? Math.round(h) : undefined;
+    onSetArtboardHug?.(artboardId, nextFixed, freezeHeight);
+  };
+  const commitStyle = (patch) => {
+    if (!artboardId) return;
+    onSetArtboardStyle?.(artboardId, patch);
+  };
   return (
     <section className="st-cp-sec">
       <div className="st-cp-sechd-row">
@@ -6242,12 +6339,17 @@ function ArtboardKnobs({ el, onResizeArtboard }) {
             type="number"
             min="1"
             aria-label="artboard height"
-            key={`h:${h ?? ''}`}
+            readOnly={!fixed}
+            title={fixed ? undefined : 'Hug — grows to fit content. Switch to Fixed to set an exact height.'}
+            key={`h:${h ?? ''}:${fixed}`}
             defaultValue={h ?? ''}
             onKeyDown={(e) => {
               if (e.key === 'Enter') e.currentTarget.blur();
             }}
-            onBlur={(e) => commitSize(null, Number.parseFloat(e.currentTarget.value))}
+            onBlur={(e) => {
+              if (!fixed) return;
+              commitSize(null, Number.parseFloat(e.currentTarget.value));
+            }}
           />
         </div>
       </div>
@@ -6270,6 +6372,104 @@ function ArtboardKnobs({ el, onResizeArtboard }) {
             </option>
           ))}
         </select>
+      </div>
+      <div style={{ padding: '0 12px 8px' }}>
+        <div className="st-cp-modeseg" role="group" aria-label="artboard height sizing mode">
+          <span className="st-cp-modeax" aria-hidden="true">
+            H
+          </span>
+          {[
+            [false, 'Hug'],
+            [true, 'Fixed'],
+          ].map(([val, label]) => (
+            <button
+              key={label}
+              type="button"
+              className={`st-cp-modebtn${fixed === val ? ' is-active' : ''}`}
+              aria-pressed={fixed === val}
+              onClick={() => setHug(val)}
+              title={`${label} height`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="st-cp-sechd-row">
+        <span className="st-cp-sechd">Style</span>
+      </div>
+      <div style={{ padding: '4px 12px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="st-cp-num" style={{ width: '100%' }}>
+          <span className="st-cp-numlead" aria-hidden="true">
+            Bg
+          </span>
+          <input
+            className="st-cp-numin"
+            type="text"
+            aria-label="artboard background"
+            placeholder="var(--bg-1)"
+            key={`bg:${bg}`}
+            defaultValue={bg}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
+            onBlur={(e) => commitStyle({ background: e.currentTarget.value.trim() || null })}
+          />
+        </div>
+        <select
+          className="st-cp-nsel"
+          aria-label="artboard body layout"
+          value={layoutMode}
+          onChange={(e) => commitStyle({ layout: e.currentTarget.value || null })}
+        >
+          {ARTBOARD_LAYOUT_OPTIONS.map(([val, label]) => (
+            <option key={val} value={val}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <div className="st-cp-num">
+            <span className="st-cp-numlead" aria-hidden="true">
+              Pad
+            </span>
+            <input
+              className="st-cp-numin"
+              type="number"
+              min="0"
+              aria-label="artboard padding"
+              key={`pad:${padding}`}
+              defaultValue={padding}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+              onBlur={(e) => {
+                const v = e.currentTarget.value;
+                commitStyle({ padding: v === '' ? null : Number.parseFloat(v) });
+              }}
+            />
+          </div>
+          <div className="st-cp-num">
+            <span className="st-cp-numlead" aria-hidden="true">
+              Gap
+            </span>
+            <input
+              className="st-cp-numin"
+              type="number"
+              min="0"
+              aria-label="artboard gap"
+              key={`gap:${gap}`}
+              defaultValue={gap}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+              onBlur={(e) => {
+                const v = e.currentTarget.value;
+                commitStyle({ gap: v === '' ? null : Number.parseFloat(v) });
+              }}
+            />
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -6314,6 +6514,8 @@ function InspectorPanel({
   onRecordEdit,
   onReplaceMedia,
   onResizeArtboard,
+  onSetArtboardHug,
+  onSetArtboardStyle,
   onUndoRedo,
   editScope,
   tab: tabProp,
@@ -6866,7 +7068,12 @@ function InspectorPanel({
             )}
           </>
         ) : !el.id && resolveArtboardIdFromSelection(el) ? (
-          <ArtboardKnobs el={el} onResizeArtboard={onResizeArtboard} />
+          <ArtboardKnobs
+            el={el}
+            onResizeArtboard={onResizeArtboard}
+            onSetArtboardHug={onSetArtboardHug}
+            onSetArtboardStyle={onSetArtboardStyle}
+          />
         ) : (
           <CssKnobs
             el={el}
@@ -7140,6 +7347,21 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  // feature-configurable-panel-docking — Layers as its own openable panel (when
+  // layersMode==='separate'), plus the per-panel side map + layers mode. All
+  // three hydrate from disk (/_api/ui-prefs) on mount and persist on change,
+  // mirroring the view-pref pattern.
+  const [layersOpen, setLayersOpen] = useState(false);
+  const [panelSide, setPanelSide] = useState(() =>
+    readJsonStore(PANEL_SIDES_STORE, PANEL_SIDES_DEFAULTS)
+  );
+  const [layersMode, setLayersMode] = useState(() => {
+    try {
+      const v = localStorage.getItem(LAYERS_MODE_STORE);
+      if (v === 'separate' || v === 'in-inspector') return v;
+    } catch {}
+    return 'separate';
+  });
   // DDR-148 — Timeline panel (right dock) for scrubbing a video-comp. `activeComps`
   // is populated from the iframe's `timeline-comps` announce; `timelineFrame` from
   // its live `timeline-frame`. Empty comps ⇒ the panel shows its empty state.
@@ -7273,14 +7495,57 @@ function App() {
   // ~13 call sites and only some closed their siblings, so a panel opened via a
   // path that left a sibling `true` rendered *behind* it under the fixed
   // precedence — looking like the new panel "overlapped" the old one.)
-  const openRightPanel = useCallback((which) => {
-    setChangesOpen(which === 'changes');
-    setInspectorOpen(which === 'inspector');
-    setCommentsPanelOpen(which === 'comments');
-    setAssistantOpen(which === 'assistant');
-    // NOTE: the Timeline is a BOTTOM dock (DDR-148), NOT part of the right-rail
-    // mutual-exclusion — it stays open when a right panel opens.
+  // feature-configurable-panel-docking — generic, SIDE-AWARE panel management.
+  // A slot (left/right) shows one panel at a time, so opening a panel closes any
+  // OTHER open panel ON THE SAME SIDE (panels on the other side are independent).
+  // A live ref carries the current open + side maps so the callbacks stay stable
+  // yet never act on stale state. (The Timeline is a BOTTOM dock, DDR-148, and is
+  // NOT part of either slot's mutual-exclusion.)
+  const panelStateRef = useRef({ open: {}, side: PANEL_SIDES_DEFAULTS });
+  panelStateRef.current = {
+    open: {
+      tree: sidebarOpen,
+      layers: layersOpen,
+      inspector: inspectorOpen,
+      comments: commentsPanelOpen,
+      changes: changesOpen,
+      assistant: assistantOpen,
+    },
+    side: panelSide,
+  };
+  const setPanelOpen = useCallback((id, val) => {
+    if (id === 'tree') setSidebarOpen(val);
+    else if (id === 'layers') setLayersOpen(val);
+    else if (id === 'inspector') setInspectorOpen(val);
+    else if (id === 'comments') setCommentsPanelOpen(val);
+    else if (id === 'changes') setChangesOpen(val);
+    else if (id === 'assistant') setAssistantOpen(val);
   }, []);
+  const sideOf = useCallback(
+    (id) => panelStateRef.current.side?.[id] || PANEL_SIDES_DEFAULTS[id],
+    []
+  );
+  const openPanelExclusive = useCallback(
+    (id) => {
+      const side = sideOf(id);
+      setPanelOpen(id, true);
+      for (const p of DOCK_PANELS) {
+        if (p.id !== id && sideOf(p.id) === side) setPanelOpen(p.id, false);
+      }
+    },
+    [setPanelOpen, sideOf]
+  );
+  const togglePanel = useCallback(
+    (id) => {
+      if (panelStateRef.current.open?.[id]) setPanelOpen(id, false);
+      else openPanelExclusive(id);
+    },
+    [openPanelExclusive, setPanelOpen]
+  );
+  // Legacy name kept for the many call sites; now side-aware (opens `which` and
+  // closes only same-side siblings, so a panel moved to the left is unaffected).
+  const openRightPanel = openPanelExclusive;
+  const toggleRightPanel = togglePanel;
   // feature-element-editing-robustness Stage C (Task C1) — open the Inspector on
   // the CSS tab for a fresh SINGLE selection, but only when nothing is already
   // docked on the right (never override an open Layers/Inspect/Comments panel)
@@ -7296,47 +7561,6 @@ function App() {
     },
     [openRightPanel]
   );
-  // Functional updates so this is stale-closure-safe inside the keydown /
-  // postMessage listeners; opening always clears the sibling panels.
-  const toggleRightPanel = useCallback((which) => {
-    if (which === 'inspector') {
-      setInspectorOpen((v) => {
-        if (!v) {
-          setChangesOpen(false);
-          setCommentsPanelOpen(false);
-          setAssistantOpen(false);
-        }
-        return !v;
-      });
-    } else if (which === 'comments') {
-      setCommentsPanelOpen((v) => {
-        if (!v) {
-          setChangesOpen(false);
-          setInspectorOpen(false);
-          setAssistantOpen(false);
-        }
-        return !v;
-      });
-    } else if (which === 'changes') {
-      setChangesOpen((v) => {
-        if (!v) {
-          setInspectorOpen(false);
-          setCommentsPanelOpen(false);
-          setAssistantOpen(false);
-        }
-        return !v;
-      });
-    } else if (which === 'assistant') {
-      setAssistantOpen((v) => {
-        if (!v) {
-          setChangesOpen(false);
-          setInspectorOpen(false);
-          setCommentsPanelOpen(false);
-        }
-        return !v;
-      });
-    }
-  }, []);
   // DDR-148 — the Timeline is a BOTTOM dock, independent of the right rail: it
   // toggles on its own and coexists with Inspector/Changes/Comments/Chat.
   const toggleTimeline = useCallback(() => setTimelineOpen((v) => !v), []);
@@ -7402,7 +7626,7 @@ function App() {
     setup: (step) => {
       if (!step) return;
       if ((step.canvas || step.requireSelection) && tabs.length === 0) {
-        setSidebarOpen(true);
+        openPanelExclusive('tree');
         setTimeout(() => {
           try {
             document.querySelector('.st-sidebar [role="treeitem"]')?.click();
@@ -7422,7 +7646,13 @@ function App() {
       localStorage.setItem(USAGE_TOUR_STORE, '1');
     } catch {}
   }, []);
-  const [annotationsVisible, setAnnotationsVisible] = useState(true);
+  const [annotationsVisible, setAnnotationsVisible] = useState(() =>
+    readBoolStore(ANNOT_STORE, true)
+  );
+  // feature-unified-settings-modal — gate the disk-write effect until the boot
+  // GET /_api/ui-prefs has reconciled (disk-wins), so we never clobber a stored
+  // pref with the localStorage/default value on the first render.
+  const [uiPrefsHydrated, setUiPrefsHydrated] = useState(false);
   // Canvas-chrome visibility (View menu). minimap + zoom-controls are
   // persistent prefs broadcast to every open canvas iframe; presentMode is a
   // non-destructive "hide ALL chrome + shell, artboards only" overlay with an
@@ -7947,6 +8177,77 @@ function App() {
       localStorage.setItem(ZOOMCTL_STORE, zoomCtlVisible ? '1' : '0');
     } catch {}
   }, [zoomCtlVisible]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(ANNOT_STORE, annotationsVisible ? '1' : '0');
+    } catch {}
+  }, [annotationsVisible]);
+
+  // feature-unified-settings-modal — reconcile view prefs with the on-disk store
+  // once on mount (disk wins over the localStorage/default init: it survives a
+  // cleared localStorage). Applying a value that already matches is a no-op, so
+  // there's no flash in the common case. On failure we still mark hydrated so
+  // writes resume best-effort.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/_api/ui-prefs')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((p) => {
+        if (cancelled || !p || typeof p !== 'object') return;
+        if (p.theme === 'light' || p.theme === 'dark') setTheme(p.theme);
+        if (typeof p.minimap === 'boolean') setMinimapVisible(p.minimap);
+        if (typeof p.zoom === 'boolean') setZoomCtlVisible(p.zoom);
+        if (typeof p.annotations === 'boolean') setAnnotationsVisible(p.annotations);
+        if (typeof p.autoOpenInspector === 'boolean') setAutoOpenInspector(p.autoOpenInspector);
+        if (p.panelSides && typeof p.panelSides === 'object')
+          setPanelSide({ ...PANEL_SIDES_DEFAULTS, ...p.panelSides });
+        if (p.layersMode === 'separate' || p.layersMode === 'in-inspector')
+          setLayersMode(p.layersMode);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setUiPrefsHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Mirror every view pref to disk once hydrated. The barrier stops the initial
+  // render (localStorage/default values) from overwriting the disk store before
+  // the boot GET has reconciled.
+  useEffect(() => {
+    if (!uiPrefsHydrated) return;
+    persistUiPrefs({
+      theme,
+      minimap: minimapVisible,
+      zoom: zoomCtlVisible,
+      annotations: annotationsVisible,
+      autoOpenInspector,
+      panelSides: panelSide,
+      layersMode,
+    });
+  }, [
+    uiPrefsHydrated,
+    theme,
+    minimapVisible,
+    zoomCtlVisible,
+    annotationsVisible,
+    autoOpenInspector,
+    panelSide,
+    layersMode,
+  ]);
+  // localStorage mirror for panel sides + layers mode (synchronous no-flash init).
+  useEffect(() => {
+    try {
+      localStorage.setItem(PANEL_SIDES_STORE, JSON.stringify(panelSide));
+    } catch {}
+  }, [panelSide]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAYERS_MODE_STORE, layersMode);
+    } catch {}
+  }, [layersMode]);
 
   const toggleSection = useCallback((label, defaultOpen) => {
     setSectionsExpanded((prev) => {
@@ -9987,6 +10288,28 @@ function App() {
     },
     [structuralWrite]
   );
+
+  // Artboard "hug height" default — Hug ⇄ Fixed toggle from ArtboardKnobs
+  // (CSS panel). Direct shell-side action (no canvas postMessage round trip,
+  // unlike resizeArtboardShell's drag-overlay caller), so no *ShellRef needed.
+  const setArtboardHugShell = useCallback(
+    (artboardId, fixed, freezeHeight) => {
+      structuralWrite(
+        '/_api/set-artboard-hug',
+        { artboardId, fixed, freezeHeight },
+        { label: fixed ? 'pin artboard height' : 'hug artboard height' }
+      );
+    },
+    [structuralWrite]
+  );
+
+  // Artboard "more settings" (background/padding/layout/gap) from ArtboardKnobs.
+  const setArtboardStyleShell = useCallback(
+    (artboardId, patch) => {
+      structuralWrite('/_api/set-artboard-style', { artboardId, ...patch }, { label: 'artboard style' });
+    },
+    [structuralWrite]
+  );
   // Refs the (stale-closure) onMessage handlers below read.
   const deleteElementShellRef = useRef(null);
   const insertElementShellRef = useRef(null);
@@ -10415,7 +10738,7 @@ function App() {
       }
       if (meta && (e.key === 'f' || e.key === 'F')) {
         e.preventDefault();
-        if (!sidebarOpen) setSidebarOpen(true);
+        if (!sidebarOpen) openPanelExclusive('tree');
         setTimeout(() => {
           const inp = document.querySelector('.st-search input');
           if (inp) inp.focus();
@@ -10434,7 +10757,7 @@ function App() {
       if (e.key === 't' || e.key === 'T') {
         if (e.shiftKey || meta) return;
         e.preventDefault();
-        setSidebarOpen((v) => !v);
+        togglePanel('tree');
         return;
       }
       // H — toggle show-hidden (sidecars + project/runtime orphans)
@@ -10458,7 +10781,7 @@ function App() {
       // which the browser reserves for New Window and never delivers).
       if ((e.key === 'n' || e.key === 'N') && !meta && !e.shiftKey) {
         e.preventDefault();
-        setSidebarOpen(true);
+        openPanelExclusive('tree');
         setTimeout(
           () => document.querySelector('[aria-label="New blank brief board"]')?.click(),
           60
@@ -10539,7 +10862,7 @@ function App() {
         icon: 'plus',
         kbd: 'N',
         run: () => {
-          setSidebarOpen(true);
+          openPanelExclusive('tree');
           setTimeout(
             () => document.querySelector('[aria-label="New blank brief board"]')?.click(),
             60
@@ -10572,7 +10895,7 @@ function App() {
       {
         id: 'settings',
         group: 'Canvas',
-        label: 'Settings — AI generation…',
+        label: 'Settings…',
         icon: 'sliders',
         kbd: '⌘,',
         run: () => setSettingsOpen(true),
@@ -10659,6 +10982,151 @@ function App() {
     [openSystem, toggleTheme, reloadActive, whatsNew]
   );
 
+  // feature-configurable-panel-docking — resolve, for each slot, the panels
+  // assigned to it and which one is active (the open one). Layers is only a
+  // dockable panel in `separate` mode; Assistant is native-only.
+  const panelAvailable = (id) =>
+    id === 'assistant' ? isNativeApp() : id === 'layers' ? layersMode === 'separate' : true;
+  const idsForSide = (side) =>
+    DOCK_PANELS.filter(
+      (p) => panelAvailable(p.id) && (panelSide[p.id] || PANEL_SIDES_DEFAULTS[p.id]) === side
+    ).map((p) => p.id);
+  const panelIsOpen = {
+    tree: sidebarOpen,
+    layers: layersOpen,
+    inspector: inspectorOpen,
+    comments: commentsPanelOpen,
+    changes: changesOpen,
+    assistant: assistantOpen,
+  };
+  const leftIds = idsForSide('left');
+  const rightIds = idsForSide('right');
+  const leftActive = leftIds.find((id) => panelIsOpen[id]) || null;
+  const rightActive = rightIds.find((id) => panelIsOpen[id]) || null;
+  const leftHostsAssistant = isNativeApp() && (panelSide.assistant || 'right') === 'left';
+  const rightHostsAssistant = isNativeApp() && (panelSide.assistant || 'right') === 'right';
+  const resizingFor = (id) =>
+    (panelSide[id] || PANEL_SIDES_DEFAULTS[id]) === 'left' ? dragSide === 'sb' : dragSide === 'rp';
+  const activeCanvasFile =
+    activePath && activePath !== SYSTEM_TAB && /\.(tsx|html)$/i.test(activePath) ? activePath : null;
+
+  // Render a panel body by id (width undefined ⇒ fills the .st-dockslot wrapper,
+  // which owns the resizable width). Assistant is handled separately below as an
+  // always-mounted ChatPanel so its stream survives a tab switch.
+  const renderPanelBody = (id) => {
+    if (id === 'tree')
+      return (
+        <Sidebar
+          groups={groups}
+          activePath={activePath}
+          activeDsName={activePath === SYSTEM_TAB ? (systemData?.ds?.name ?? null) : null}
+          onOpen={openTab}
+          onOpenSystem={openSystem}
+          wsConnected={wsConnected}
+          search={search}
+          setSearch={setSearch}
+          commentsByFile={commentsByFile}
+          showHidden={showHidden}
+          sectionsExpanded={sectionsExpanded}
+          onToggleSection={toggleSection}
+          onNewBoard={createBoard}
+          onDeleteBoard={deleteBoard}
+          onRefresh={refreshTree}
+          refreshing={treeRefreshing}
+          collapsed={false}
+          onCollapse={() => togglePanel('tree')}
+          resizing={resizingFor('tree')}
+          dirtyByPath={dirtyByPath}
+          project={project}
+          gitBranch={gitStatus?.branch}
+          remoteSync={remoteSync}
+          onGetLatest={gitGetLatest}
+        />
+      );
+    if (id === 'changes')
+      return (
+        <GitPanel
+          status={gitStatus && remoteSync ? { ...gitStatus, ...remoteSync } : gitStatus}
+          project={project}
+          readOnly={!isNativeApp()}
+          resizing={resizingFor('changes')}
+          onClose={() => setChangesOpen(false)}
+          onCommit={gitCommit}
+          onDiscard={gitDiscard}
+          onPublish={gitPublish}
+          onGetLatest={gitGetLatest}
+          loadLog={gitLoadLog}
+          onOpenCanvas={(p) => openTab(p)}
+          onOpenDiff={(file) => setDiffTarget({ file, beforeSha: 'HEAD', conflict: false })}
+          activeCanvas={activeCanvasFile}
+          onPreviewVersion={(sha) => setDiffTarget({ file: activePath, beforeSha: sha, conflict: false })}
+          designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}
+        />
+      );
+    if (id === 'inspector' || id === 'layers')
+      return (
+        <InspectorPanel
+          layersOnly={id === 'layers'}
+          selected={selected}
+          cfg={cfg}
+          tab={id === 'layers' ? 'layers' : inspectorTab}
+          onTabChange={setInspectorTab}
+          onClose={() => (id === 'layers' ? setLayersOpen(false) : setInspectorOpen(false))}
+          onOptimistic={applyOptimisticStyle}
+          onRecordEdit={recordSourceEdit}
+          onReplaceMedia={onReplaceMedia}
+          onResizeArtboard={resizeArtboardShell}
+          onSetArtboardHug={setArtboardHugShell}
+          onSetArtboardStyle={setArtboardStyleShell}
+          editScope={editScope}
+          onUndoRedo={(dir) => postToActiveCanvas({ dgn: dir })}
+          photoSel={photoSel}
+          photoRev={photoRev}
+          onPhotoEdit={onPhotoEdit}
+          onPhotoRemoveBackground={onPhotoRemoveBackground}
+          onPhotoRecordEdit={onPhotoRecordEdit}
+          onPhotoUndoRedo={(dir) => performPhotoUndo(dir === 'redo')}
+          layersTree={layersTree}
+          canvasFile={activePath}
+          onSelectLayer={(n) =>
+            postToActiveCanvas({
+              dgn: 'select-by-id',
+              id: n.id,
+              artboardId: layersTree?.artboardId,
+              index: n.index,
+            })
+          }
+          onHoverLayer={(n) =>
+            postToActiveCanvas({
+              dgn: 'highlight',
+              id: n ? n.id : null,
+              artboardId: layersTree?.artboardId,
+              index: n ? n.index : 0,
+            })
+          }
+          onReorderLayer={reorderLayer}
+          layersBusyRef={layersBusyRef}
+          resizing={resizingFor(id)}
+        />
+      );
+    if (id === 'comments')
+      return (
+        <CommentsPanel
+          commentsByFile={commentsByFile}
+          filter={commentsFilter}
+          setFilter={setCommentsFilter}
+          activePath={activePath}
+          focusedId={focusedCommentId}
+          onJump={jumpToComment}
+          onResolve={resolveComment}
+          onReopen={reopenComment}
+          onDelete={deleteComment}
+          resizing={resizingFor('comments')}
+        />
+      );
+    return null;
+  };
+
   return (
     <div
       className={'maude' + (presentMode ? ' is-present' : '')}
@@ -10704,7 +11172,7 @@ function App() {
           onToggleChanges={() => toggleRightPanel('changes')}
           onOpenSystem={openSystem}
           sidebarOpen={sidebarOpen}
-          onToggleSidebar={() => setSidebarOpen((v) => !v)}
+          onToggleSidebar={() => togglePanel('tree')}
           showHidden={showHidden}
           onToggleShowHidden={() => setShowHidden((v) => !v)}
           onOpenHelp={() => setHelpOpen(true)}
@@ -10739,17 +11207,20 @@ function App() {
           assistantBusy={assistantBusy}
           assistantUnseen={assistantUnseen}
           onOpenLayers={() => {
-            // Toggle: already open on Layers → close; otherwise open on Layers
-            // (clearing the sibling panels — one dock slot).
-            if (inspectorOpen && inspectorTab === 'layers') {
+            // feature-configurable-panel-docking — Layers is its own dockable
+            // panel when layersMode==='separate' (toggle it), else it's the
+            // Inspector's Layers tab (open the inspector on that tab).
+            if (layersMode === 'separate') {
+              togglePanel('layers');
+            } else if (inspectorOpen && inspectorTab === 'layers') {
               setInspectorOpen(false);
             } else {
               setInspectorTab('layers');
-              openRightPanel('inspector');
+              openPanelExclusive('inspector');
             }
           }}
           onNewCanvas={() => {
-            setSidebarOpen(true);
+            openPanelExclusive('tree');
             setTimeout(
               () => document.querySelector('[aria-label="New blank brief board"]')?.click(),
               60
@@ -10780,44 +11251,44 @@ function App() {
           }
         />
         <div className={'st-body' + (dragSide ? ' is-resizing' : '')} ref={bodyRef}>
+          {/* LEFT dock slot (feature-configurable-panel-docking) — the collapsed
+              rail shows when the left slot is empty; the tree's expand hooks open
+              it on the tree tab. */}
           <CollapsedRail
-            shown={!sidebarOpen}
-            onExpand={() => setSidebarOpen(true)}
+            shown={!leftActive}
+            onExpand={() => openPanelExclusive('tree')}
             onSearch={() => {
-              setSidebarOpen(true);
+              openPanelExclusive('tree');
               setTimeout(() => document.querySelector('.st-search input')?.focus(), 60);
             }}
           />
-          <Sidebar
-            groups={groups}
-            activePath={activePath}
-            activeDsName={activePath === SYSTEM_TAB ? (systemData?.ds?.name ?? null) : null}
-            onOpen={openTab}
-            onOpenSystem={openSystem}
-            wsConnected={wsConnected}
-            search={search}
-            setSearch={setSearch}
-            commentsByFile={commentsByFile}
-            showHidden={showHidden}
-            sectionsExpanded={sectionsExpanded}
-            onToggleSection={toggleSection}
-            onNewBoard={createBoard}
-            onDeleteBoard={deleteBoard}
-            onRefresh={refreshTree}
-            refreshing={treeRefreshing}
-            collapsed={!sidebarOpen}
-            onCollapse={() => setSidebarOpen(false)}
-            width={sbSize.w}
-            resizing={dragSide === 'sb'}
-            dirtyByPath={dirtyByPath}
-            project={project}
-            gitBranch={gitStatus?.branch}
-            remoteSync={remoteSync}
-            onGetLatest={gitGetLatest}
-          />
-          {sidebarOpen && (
+          {(leftActive || leftHostsAssistant) && (
+            <DockSlot
+              side="left"
+              width={sbSize.w}
+              open={!!leftActive}
+              ids={leftIds}
+              activeId={leftActive}
+              onPick={togglePanel}
+            >
+              {leftHostsAssistant && (
+                <ChatPanel
+                  hidden={leftActive !== 'assistant'}
+                  activeCanvas={activeCanvasFile}
+                  selected={selected}
+                  designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}
+                  resizing={resizingFor('assistant')}
+                  onClose={() => setAssistantOpen(false)}
+                  onBusyChange={setAssistantBusy}
+                  onFinished={handleAssistantFinished}
+                />
+              )}
+              {leftActive && leftActive !== 'assistant' && renderPanelBody(leftActive)}
+            </DockSlot>
+          )}
+          {leftActive && (
             <PanelGrip
-              label="Resize files panel"
+              label="Resize left panel"
               size={sbSize}
               active={dragSide === 'sb'}
               onPointerDown={(e) => {
@@ -10894,6 +11365,8 @@ function App() {
               onRecordEdit={recordSourceEdit}
               onReplaceMedia={onReplaceMedia}
               onResizeArtboard={resizeArtboardShell}
+          onSetArtboardHug={setArtboardHugShell}
+          onSetArtboardStyle={setArtboardStyleShell}
               editScope={editScope}
               onUndoRedo={(dir) => postToActiveCanvas({ dgn: dir })}
               photoSel={photoSel}
@@ -11358,7 +11831,23 @@ function App() {
           onClose={() => setExportDialog(null)}
         />
       )}
-      {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsPanel
+          onClose={() => setSettingsOpen(false)}
+          initialTab={typeof settingsOpen === 'string' ? settingsOpen : undefined}
+          theme={theme}
+          onSetTheme={setTheme}
+          minimapVisible={minimapVisible}
+          onToggleMinimap={toggleMinimap}
+          zoomCtlVisible={zoomCtlVisible}
+          onToggleZoomCtl={toggleZoomCtl}
+          annotationsVisible={annotationsVisible}
+          onToggleAnnotations={toggleAnnotations}
+          autoOpenInspector={autoOpenInspector}
+          onToggleAutoOpenInspector={() => setAutoOpenInspector((v) => !v)}
+          hasCanvas={!!activePath && activePath !== SYSTEM_TAB}
+        />
+      )}
       {generateOpen && (
         <GenerateDialog onClose={() => setGenerateOpen(false)} onInsert={insertGeneratedImage} />
       )}
