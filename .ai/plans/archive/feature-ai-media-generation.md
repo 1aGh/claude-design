@@ -350,21 +350,11 @@ Execute in phase order. Each phase is independently shippable; `/flow:done` at e
 
 #### Task 4.3: Phase-4 gate — security (prompt-injection focus), scenario, What's New.
 
-### Phase 5 (post-v1) — Local generation engines + native keychain
+### Phase 5 (post-v1) — Local generation engines + native keychain → **EXTRACTED to its own plan**
 
-> **⏸ DEFERRED — owner-dogfood session (2026-07-13).** The epic is **closed at Phase 4**: Phases 0–4 (spine + image + audio + video + proactive) are all shipped, committed, and — for video — live-validated with a real Veo key. Phase 5 is explicitly *post-v1* and native/local-heavy with a verification ceiling that a headless session can't clear: **5.1** is Rust (`generation_keys.rs` + bridge + the 3-edit Tauri wiring) and there is **no `cargo` here** — and per DDR-045 an unverified native path shipped broken twice, so it must be built + verified on a real desktop build (the TS half — the `MAUDE_GEN_KEY_ENDPOINT` bridge hook in `keys.ts` — is **already done**); **5.2** local engines need a running Ollama/ComfyUI to verify; **5.3** desktop-e2e needs a bundled `.app`. Pick this up in a machine-local session with cargo + a desktop build + a local runtime.
-
-#### Task 5.1: ADD OS-keychain custody (native tier)
-- **Do**: `apps/desktop/src-tauri/src/generation_keys.rs` — per-provider keychain set/get/delete + bridge extension (sidecar reads via the loopback bridge); `keys.ts` prefers keychain when the bridge env is present, falls back to the `0600` file.
-- **Pattern**: `keychain.rs` + `sidecar.rs:138` + `github/token.ts`. **3-edit Tauri-command rule** + real desktop-build verify.
-- **Validate**: desktop build; a key set in the app never appears in the webview or on disk in the repo.
-
-#### Task 5.2: ADD local runtime engines (image/video)
-- **Do**: `adapters/openai-compatible.ts` (Ollama/LM-Studio) + `comfyui-local` (`POST /prompt` → `/history` poll → `/view`) + a `Draw Things` Mac path; localhost detection probes from the sidecar (~100–300ms `GET` at 11434/1234/8188); "engine cards" in Settings with cost/offline/VRAM/download-size + explicit multi-GB download consent + "prefer local when available".
-- **Pattern**: the architecture research appendix (§3 detection table).
-- **Validate**: with a local runtime running, an engine card lights up and generation routes locally at $0 cost.
-
-#### Task 5.3: Phase-5 gate + desktop-e2e scenario for Settings/keys.
+> **➡ MOVED (2026-07-13, owner).** This epic is **CLOSED at Phase 4** (spine + image + audio + video + proactive — all shipped, committed, video live-validated with a real Veo key). Phase 5 (native OS-keychain custody 5.1 + local runtime engines 5.2 + desktop-e2e 5.3) is native/local-heavy with a verification ceiling a headless session can't clear (needs `cargo` + a real desktop build + a running local runtime — DDR-045 shipped an unverified native path broken twice), so it has been **extracted into its own standalone power-user plan** rather than lingering as a deferred tail here:
+>
+> **→ `.ai/plans/feature-local-media-generation.md`** (Phase-5.1/5.2/5.3 fully re-scoped as Tasks 1–8, with the owner-run verification gate made explicit). Pick it up in a machine-local session with cargo + a desktop build + a local runtime. The TS half of 5.1 (the `MAUDE_GEN_KEY_ENDPOINT` bridge hook in `keys.ts`) is **already done**.
 
 ---
 
@@ -411,3 +401,24 @@ Per phase:
 ## Research Appendix
 
 > Full provider landscape (image / video / audio / architecture), model ids, output shapes, pricing (dated July 2026 — re-verify before hardcoding), and source links are captured in the plan research and summarized in Design Decisions → Provider selection. Key invariants: Nano Banana = sync base64; Veo = async poll, URL out (expiring); ElevenLabs = one key for the audio stack; local whisper.cpp = free no-key subtitles with word timestamps; avoid Sora 2 (sunset) and Suno/Udio (no official API). **fal / aggregator = dropped (owner, 2026-07-11) — direct BYOK only.**
+
+---
+
+## Retro (closed at Phase 4 — 2026-07-13, `/flow:done --quick`)
+
+**Outcome.** BYOK AI-media generation shipped Phases 0–4 (spine + key custody + Settings + image via Nano Banana → audio via ElevenLabs + local Whisper → video via Veo → proactive gap-director), all committed on `main` (`f4771e23` … `3c2d1139`), video live-validated with a real Veo key. Phase 5 (native keychain + local runtime engines + desktop-e2e) extracted to `.ai/plans/feature-local-media-generation.md` and this plan archived.
+
+**What worked**
+- **Image-first de-risking backbone (Phase 0).** Standing up the *whole* spine (adapter contract, key custody, privileged route + job queue, Settings shell, CLI verb) against the simplest modality (sync base64 image) meant audio/video/proactive were incremental drops onto proven rails, not net-new architecture each time. The `submit → Job` contract with sync providers returning an already-`done` Job (callers never branch) paid off exactly as intended.
+- **Per-phase security fan-out caught real bugs before commit** — F1/F2 (RAM-DoS + key-egress redirect) in Phase 0, the G1–G3 CSRF→SSRF / DoS / prompt-injection chain in Phase 2.5, the off-host-URI key-exfil in Veo (3.1), and the structural consent-bypass in the proactive director (4.3, fixed by *dropping the director's `Bash` tool* so it structurally can't spend). Adversarial review earned its place at every gate.
+- **Owner live-gates in split-origin mode** surfaced what stubs hid (the DDR-045/photo-editor lesson) — the Veo path only proved out with a real key + a real clip.
+
+**What didn't / friction**
+- **Concurrent sessions on a shared `main` tree** were the dominant tax the whole way — every phase's STATE note documents "not this session's files" scoping, and this very close ran with another session's `feature-unified-settings-modal` WIP (uncommitted `api.ts`/`http.ts`/`SettingsPanel.jsx`/`dist/*`) in the tree. It forced atomic per-file staging and made a normal full-suite validate impossible at close (would test the other session's WIP). It worked, but it's fragile.
+- **The plan grew a long tail of owner-decision follow-ups** (2.5/2.6/2.7, the reuse-first + transcription-engine-choice + one-click-local-subtitle decisions) that landed *after* the "shipped Phase 2" increment. Right calls, but the plan document became the changelog for them — a sign these were really their own mini-features.
+- **Phase 5's verification ceiling was clear from the start** yet stayed embedded as a "deferred tail" until this extraction. Splitting it out one phase earlier would have kept this plan's scope cleaner.
+
+**Change for next `/plan` / `/execute`**
+- **Extract native/local-verification-ceiling work into its own plan at planning time**, not at close. If a phase's `Validate` needs `cargo` + a desktop build + a local runtime, it's a different *kind* of work than the headless-verifiable cloud spine — plan it separately from the start.
+- **On a known-concurrent `main`, prefer a short-lived feature branch** for a multi-phase epic, or at minimum record the shared-tree scoping contract once at plan top rather than re-deriving it in every phase's STATE note.
+- **Promote owner-decision follow-ups to their own task IDs up front** when the plan already anticipates them (the "Open Questions" that were really "Phase 2.5/2.6/2.7") — cheaper than folding decisions into a shipped phase's notes afterward.
