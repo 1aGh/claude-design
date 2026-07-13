@@ -1,0 +1,38 @@
+{
+  "title": "How to make video",
+  "subtitle": "Reference canvas seeded into every new project — 7 artboards, one per video capability",
+  "brief": "Onboarding reference canvas (companion to How to use Maude.tsx). Seeded by scaffold-design.ts on every new project. One artboard per video-comp capability: starting a comp, the Timeline, the Assistant for video, turning raw footage into a cut, AI video/audio generation, automatic captions, export.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "none",
+  "sections": [
+    {
+      "id": "how-to-make-video",
+      "title": "How to make video",
+      "subtitle": "REFERENCE · 7 artboards, one per video capability"
+    }
+  ],
+  "artboards": [
+    { "id": "start-video-comp", "label": "01 · Start a video comp" },
+    { "id": "timeline", "label": "02 · Edit on the Timeline" },
+    { "id": "ai-assistant-video", "label": "03 · AI Assistant for video" },
+    { "id": "footage-to-cut", "label": "04 · Footage into a cut" },
+    { "id": "generate-video-audio", "label": "05 · Generate video & audio" },
+    { "id": "captions", "label": "06 · Automatic captions" },
+    { "id": "export", "label": "07 · Export" }
+  ],
+  "layout": {
+    "artboards": [
+      { "id": "start-video-comp", "x": 0, "y": 0 },
+      { "id": "timeline", "x": 1120, "y": 0 },
+      { "id": "ai-assistant-video", "x": 2240, "y": 0 },
+      { "id": "footage-to-cut", "x": 3360, "y": 0 },
+      { "id": "generate-video-audio", "x": 4480, "y": 0 },
+      { "id": "captions", "x": 5600, "y": 0 },
+      { "id": "export", "x": 6720, "y": 0 }
+    ]
+  },
+  "created": "2026-07-13",
+  "css_mode": "inline",
+  "iteration_count": 1
+}

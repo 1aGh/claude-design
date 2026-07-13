@@ -1,0 +1,33 @@
+{
+  "title": "Maude Explainer",
+  "subtitle": "The product showreel — 14 beats, real VO + music, embedded from the shipped site/public/demo.mp4",
+  "brief": "Phase 1 / T1 (onboarding plan, DDR-166 context). Not a from-scratch composition — embeds the already-produced v5 showreel (cold open, DS-from-a-conversation, canvas, it-draws, critics, talk-through-the-canvas, multiplayer, draw-as-code, animate, handoff, second-brain, daily-loop, the-gate, end-card) as a single <Video> clip, since the real composition lives in the separate scripts/video/final/ Remotion workspace (non-bundled deps). Source of truth for edits is scripts/video/final/src/scenes/v5/.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "none",
+  "sections": [
+    {
+      "id": "Maude Explainer",
+      "title": "Maude Explainer",
+      "subtitle": "MAUDE/EXPLAINER · 14-beat showreel · VO + music · embedded final render"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "explainer",
+      "label": "Showreel (~105s, VO + music)"
+    }
+  ],
+  "layout": {
+    "artboards": [
+      {
+        "id": "explainer",
+        "x": 0,
+        "y": 0
+      }
+    ]
+  },
+  "created": "2026-07-13",
+  "css_mode": "inline",
+  "iteration_count": 1
+}

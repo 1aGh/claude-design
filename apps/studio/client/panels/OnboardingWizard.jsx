@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import ReadinessList, { useReadiness } from './ReadinessList.jsx';
+import IntroVideoDialog from './IntroVideoDialog.jsx';
 import {
   cloneRepo,
   createProject,
@@ -51,6 +52,7 @@ function Icon({ name, size = 16, className }) {
     external: (<><path d="M6 3.5H3.2A.7.7 0 0 0 2.5 4.2v8.6a.7.7 0 0 0 .7.7h8.6a.7.7 0 0 0 .7-.7V10" /><line x1="8" y1="8" x2="13" y2="3" /><polyline points="9.5 3 13 3 13 6.5" /></>),
     back: <polyline points="10 3.5 5.5 8 10 12.5" />,
     spinner: <path d="M8 2.2a5.8 5.8 0 1 0 5.8 5.8" />,
+    play: <polygon points="5 3.2 12.8 8 5 12.8" fill="currentColor" stroke="none" />,
   }[name];
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -179,13 +181,23 @@ function AiReadiness() {
 
 // ── A · Welcome (door picker) ────────────────────────────────────────────────
 function Welcome({ onGithub, onLocal, onHub, signing, signedIn, identity }) {
+  const [introOpen, setIntroOpen] = useState(false);
   return (
     <main className="ob-main">
       <header className="ob-head">
         <span className="ob-eyebrow">Welcome</span>
         <h1>How would you like to start?</h1>
         <p>{signedIn ? `You're signed in as @${identity?.login || 'GitHub'}. Open a project, or start a new one.` : "Most people sign in with GitHub — it's the simplest way to work with a team."}</p>
+        <button
+          type="button"
+          data-testid="onboarding-watch-intro"
+          className="ob-watch-intro"
+          onClick={() => setIntroOpen(true)}
+        >
+          <Icon name="play" size={13} /> Watch the intro
+        </button>
       </header>
+      <IntroVideoDialog open={introOpen} onClose={() => setIntroOpen(false)} />
       <div className="ob-doors">
         <button type="button" data-testid="ob-door-github" className="ob-door ob-door--primary" aria-label="Continue with GitHub — recommended" onClick={onGithub} disabled={signing}>
           <span className="ob-door-icon ob-door-icon--gh"><GitHubMark size={26} /></span>

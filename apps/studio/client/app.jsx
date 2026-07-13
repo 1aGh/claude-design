@@ -20,6 +20,7 @@ import GitPanel from './panels/GitPanel.jsx';
 import IdentityBar from './panels/IdentityBar.jsx';
 import OnboardingWizard from './panels/OnboardingWizard.jsx';
 import { ReadinessDialog } from './panels/ReadinessList.jsx';
+import IntroVideoDialog from './panels/IntroVideoDialog.jsx';
 import TimelinePanel from './panels/TimelinePanel.jsx';
 import { parseCompTimeline } from './panels/timeline-parse.js';
 import GenerateDialog from './generate-dialog.jsx';
@@ -2747,6 +2748,7 @@ function HelpDropdown({ onAction, onClose }) {
         { id: 'help', label: 'Help · commands & flows', shortcut: 'F1' },
         { sep: true },
         { id: 'tour', label: 'Take the tour' },
+        { id: 'watch-intro', label: 'Watch the intro' },
         // The collab "how sharing works" course teaches the plain-words Save →
         // Publish → Pull cycle — a non-technical, native-app concern. A web-studio
         // dev already knows git, so it's hidden there (DDR-119).
@@ -2889,6 +2891,7 @@ function Menubar({
   postToActiveCanvas,
   onOpenWhatsNew,
   onOpenReadiness,
+  onWatchIntro,
   whatsNewCount,
   exportCenter,
   artboardCount = 0,
@@ -3189,6 +3192,7 @@ function Menubar({
             else if (id === 'collab-tour') onStartCollabTour?.();
             else if (id === 'readiness') onOpenReadiness?.();
             else if (id === 'whatsnew') onOpenWhatsNew?.();
+            else if (id === 'watch-intro') onWatchIntro?.();
           }}
           onClose={() => setOpenMenu(null)}
         />
@@ -3264,23 +3268,23 @@ function Viewport({
               localhost:{typeof window !== 'undefined' ? window.location.port : '4399'}
             </span>
           </div>
-          <div className="st-empty-title">No canvas open</div>
+          <div className="st-empty-title">Nothing open yet</div>
           <div className="st-empty-body">
-            ← Click a <code>.tsx</code> (or legacy <code>.html</code>) file in the tree, or open the{' '}
-            <strong>Design system</strong> view above it.
+            ← Pick a screen from the list on the left, or open <strong>Design system</strong> above
+            it to see your colors, type, and components.
             <br />
             <br />
-            Opening a file replaces the active canvas. <Kbd>⌘R</Kbd> reloads it; File ▸ Close
-            canvas clears the stage.
-            <br />
-            <br />
-            <strong>Element selection:</strong> hold <Kbd>⌘</Kbd> inside the canvas and hover for a
-            preview, click to select. <Kbd>⌘⇧</Kbd>+click adds to a multi-selection. <Kbd>V</Kbd>
-            /<Kbd>H</Kbd>/<Kbd>C</Kbd> swap tool; right-click opens the context menu.
-            <br />
-            <br />
-            Active file, selection, and comments are tracked in <code>_active.json</code> +{' '}
-            <code>_comments/</code> — Claude reads them when you run <code>/design</code>.
+            <strong>To select something on the canvas:</strong> hold <Kbd>⌘</Kbd> and hover to
+            preview an element, click to select it — <Kbd>⌘⇧</Kbd>+click selects more than one.
+            Right-click for more options.
+            {isNativeApp() ? (
+              <>
+                <br />
+                <br />
+                Claude can see whatever's selected when you ask for a change in the Assistant
+                panel, so pointing is often faster than describing it.
+              </>
+            ) : null}
           </div>
         </div>
       )}
@@ -7346,6 +7350,7 @@ function App() {
   const [sectionsExpanded, setSectionsExpanded] = useState(() => readJsonStore(SECTIONS_STORE, {}));
   const [helpOpen, setHelpOpen] = useState(false);
   const [readinessOpen, setReadinessOpen] = useState(false);
+  const [introOpen, setIntroOpen] = useState(false);
   // ? cheat-sheet (DS components-shortcuts-overlay) — separate from the deep
   // Help modal (F1), which keeps commands & flows.
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -11201,6 +11206,7 @@ function App() {
           onTogglePresent={togglePresent}
           postToActiveCanvas={postToActiveCanvas}
           onOpenReadiness={() => setReadinessOpen(true)}
+          onWatchIntro={() => setIntroOpen(true)}
           onOpenWhatsNew={whatsNew.openPanel}
           whatsNewCount={whatsNew.unseen.length}
           exportCenter={exportCenter}
@@ -11840,6 +11846,7 @@ function App() {
       <WhatsNewPanel wn={whatsNew} onStartTour={startTour} />
       <ExportPanel center={exportCenter} />
       <ReadinessDialog open={readinessOpen} onClose={() => setReadinessOpen(false)} />
+      <IntroVideoDialog open={introOpen} onClose={() => setIntroOpen(false)} />
       {usageNudge && !tourSteps && !collabNudge && (
         <div className="mdcc-tour-nudge" role="status" aria-live="polite">
           <div className="mdcc-tour-nudge__body">

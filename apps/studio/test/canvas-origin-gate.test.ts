@@ -169,6 +169,10 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // the gate on both — the catalogue route and the static PNG serve.
         '/_api/stickers',
         '/_stickers/some-pack/some-sticker.png',
+        // DDR-166 Phase 1 / T2 — the bundled intro-video media serve is
+        // MAIN-ORIGIN ONLY, same posture as /_stickers above: a Maude-product
+        // asset, absent from CANVAS_SAFE_API + startCanvasServer's routes.
+        '/_media/intro.mp4',
         // feature-footage-analysis-director — the footage-analysis + EDL sidecar
         // route is MAIN-ORIGIN ONLY (written by the analyst/director agents over
         // loopback; absent from CANVAS_SAFE_API + startCanvasServer's routes). The

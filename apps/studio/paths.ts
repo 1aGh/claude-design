@@ -59,6 +59,16 @@ export const RUNTIME_BUNDLES_DIR: string = join(DIST_DIR, 'runtime');
 export const STICKERS_DIR: string = join(DEV_SERVER_ROOT, 'stickers');
 
 /**
+ * `<DEV_SERVER_ROOT>/media/` — bundled Maude-product media (the intro
+ * showreel, DDR-166 Phase 1 T2). Same shape as `STICKERS_DIR`: ships with the
+ * `@1agh/maude` tarball (a subdir of `apps/studio`, already covered by the
+ * existing `files` entry), resolved from DEV_SERVER_ROOT per DDR-045 — this is
+ * MAUDE's OWN asset store, never the served project's `.design/assets/`, so
+ * every user sees the same intro regardless of which project is open.
+ */
+export const MEDIA_DIR: string = join(DEV_SERVER_ROOT, 'media');
+
+/**
  * Absolute path to a bundled plugin's loadable tree (`commands/`, `agents/`,
  * `skills/`, `hooks/`, `.claude-plugin/plugin.json`), or `null` when this layout
  * doesn't ship it. Feeds the ACP session-scoped plugin auto-bootstrap

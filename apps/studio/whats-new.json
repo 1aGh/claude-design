@@ -2,6 +2,22 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "watch-the-intro",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Watch the intro, right inside Maude",
+      "summary": "There's now a short product showreel (about a minute and a half) you can watch without leaving the app — Help → Watch the intro, or the same button on the welcome screen the first time you open Maude. It walks through the whole loop: a design system built from a conversation, the infinite canvas, pointing and commenting to direct an AI edit, live multiplayer, and shipping the result. Also lands as its own canvas (Maude Explainer) if you want to open it in the canvas browser like anything else.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour=\"help\"]",
+          "title": "Watch the intro",
+          "body": "Help → Watch the intro plays the full showreel without leaving Maude."
+        }
+      ]
+    },
+    {
       "id": "bulk-media-insert",
       "version": null,
       "date": null,

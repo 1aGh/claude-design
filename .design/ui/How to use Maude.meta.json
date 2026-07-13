@@ -1,0 +1,44 @@
+{
+  "title": "How to use Maude",
+  "subtitle": "Reference canvas seeded into every new project — 10 artboards, one per capability",
+  "brief": "Onboarding reference canvas (replaces the Phase 1 explainer-video plan item). Seeded alongside Welcome.tsx by scaffold-design.ts on every new project. One artboard per capability cluster: start here, design system, editing, AI assistant, point/comment/draw iteration, AI image generation (Nano Banana), photo editing, media & templates, save/share/collaborate, draw-as-code. Honest inline mini-mockups (no live screenshots — has to work with zero server state on a freshly scaffolded project).",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "none",
+  "sections": [
+    {
+      "id": "how-to-use-maude",
+      "title": "How to use Maude",
+      "subtitle": "REFERENCE · 10 artboards, one per capability"
+    }
+  ],
+  "artboards": [
+    { "id": "start-here", "label": "01 · Start here" },
+    { "id": "design-system", "label": "02 · Design system" },
+    { "id": "edit-canvas", "label": "03 · Edit a canvas" },
+    { "id": "ai-assistant", "label": "04 · AI Assistant" },
+    { "id": "point-comment-draw", "label": "05 · Point, comment, draw" },
+    { "id": "generate-images", "label": "06 · Generate images" },
+    { "id": "photo-editing", "label": "07 · Photo editing" },
+    { "id": "media-and-templates", "label": "08 · Media & templates" },
+    { "id": "save-share-collab", "label": "09 · Save, share, collaborate" },
+    { "id": "draw-as-code", "label": "10 · Draw as code" }
+  ],
+  "layout": {
+    "artboards": [
+      { "id": "start-here", "x": 0, "y": 0 },
+      { "id": "design-system", "x": 1120, "y": 0 },
+      { "id": "edit-canvas", "x": 2240, "y": 0 },
+      { "id": "ai-assistant", "x": 3360, "y": 0 },
+      { "id": "point-comment-draw", "x": 4480, "y": 0 },
+      { "id": "generate-images", "x": 5600, "y": 0 },
+      { "id": "photo-editing", "x": 6720, "y": 0 },
+      { "id": "media-and-templates", "x": 7840, "y": 0 },
+      { "id": "save-share-collab", "x": 8960, "y": 0 },
+      { "id": "draw-as-code", "x": 10080, "y": 0 }
+    ]
+  },
+  "created": "2026-07-13",
+  "css_mode": "inline",
+  "iteration_count": 1
+}

@@ -69,7 +69,7 @@ import { gitShowFile } from './git/service.ts';
 import { createGitHubEndpoints } from './github/endpoints.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
-import { DEV_SERVER_ROOT, STICKERS_DIR } from './paths.ts';
+import { DEV_SERVER_ROOT, MEDIA_DIR, STICKERS_DIR } from './paths.ts';
 import { createPhotoStore, PHOTO_EDIT_MAX_BYTES } from './photo-store.ts';
 import { probeReadiness } from './readiness.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
@@ -3184,6 +3184,39 @@ export function createHttp(
             });
           }
           return new Response('Not found', { status: 404 });
+        }
+        return new Response('Not found', { status: 404 });
+      }
+
+      // DDR-166 Phase 1 / T2 — bundled Maude-product media (the intro
+      // showreel), served from MAUDE's OWN MEDIA_DIR (paths.ts, DDR-045),
+      // never the served project's designRoot — every user of the canvas
+      // browser sees the same intro regardless of which project is open.
+      // Same shape as /_stickers/ above: MAIN-ORIGIN ONLY (absent from
+      // CANVAS_SAFE_API + startCanvasServer's routes), Range-capable via
+      // serveMediaFile (the wizard/Help player needs to scrub).
+      if (pathname.startsWith('/_media/')) {
+        const name = pathname.slice('/_media/'.length);
+        let decoded = '';
+        try {
+          decoded = decodeURIComponent(name);
+        } catch {
+          return new Response('Bad request', { status: 400 });
+        }
+        if (
+          decoded &&
+          !decoded.includes('..') &&
+          !decoded.includes('/') &&
+          !decoded.includes('\\') &&
+          RANGE_MEDIA_EXTS.has(ext(decoded))
+        ) {
+          const abs = join(MEDIA_DIR, decoded);
+          if (await Bun.file(abs).exists()) {
+            return serveMediaFile(abs, req, {
+              'Cache-Control': 'public, max-age=31536000, immutable', // bundled with this maude version, never changes at this URL
+              'X-Content-Type-Options': 'nosniff',
+            });
+          }
         }
         return new Response('Not found', { status: 404 });
       }

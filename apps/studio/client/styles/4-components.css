@@ -859,6 +859,12 @@
 }
 .help-modal-body::-webkit-scrollbar { width: 6px; }
 .help-modal-body::-webkit-scrollbar-thumb { background: var(--u-border); }
+
+/* Watch-the-intro player (DDR-166 Phase 1 / T2) — wider modal, no padding
+   around the video so it fills edge-to-edge. */
+.help-modal--wide { width: min(960px, 100%); }
+.intro-video-body { padding: 0; overflow: hidden; }
+.intro-video-el { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; }
 .help-modal-body details {
   margin: 0 0 var(--u-s-2);
   border-bottom: 1px solid var(--u-border-subtle);
