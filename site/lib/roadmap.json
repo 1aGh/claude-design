@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-13T12:43:35.435Z",
+  "generated": "2026-07-13T13:56:35.473Z",
   "currentPhase": null,
   "phases": [
     {
@@ -450,6 +450,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to the canvas-origin split (DDR-054 — the in-iframe overlays are untrusted, treat them differently from the shell), the CSS la...",
       "planPath": ".ai/plans/archive/feature-studio-maude-ds-redesign.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-unified-settings-modal",
+      "title": "Feature: Unified Settings modal (vertical tabs + internal scroll)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-unified-settings-modal.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1275,17 +1286,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — most of this plan REUSES shipped infra (tour engine, readiness pattern, video-comp, f...",
       "planPath": ".ai/plans/feature-onboarding-and-design-system-migration.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-unified-settings-modal",
-      "title": "Feature: Unified Settings modal (vertical tabs + internal scroll)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-unified-settings-modal.md",
       "archived": false,
       "phaseKey": null
     }
