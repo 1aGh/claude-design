@@ -1,0 +1,76 @@
+{
+  "asset": "assets/b409185a.mov",
+  "durationSec": 64.478,
+  "width": 1508,
+  "height": 996,
+  "keyframes": 64,
+  "shots": [
+    {
+      "start": 0,
+      "end": 7.6,
+      "kind": "establishing",
+      "motion": "static",
+      "subject": "idle Maude canvas (empty 'mvp-test' artboard) plus a brief macOS Cmd+Tab app-switcher overlay",
+      "mood": "idle / setup",
+      "quality": 0.1,
+      "usable": false,
+      "note": "dead air before anything happens on the canvas, includes an accidental app-switcher flash — skip, matches brief's 'avoid empty waiting' guidance"
+    },
+    {
+      "start": 7.6,
+      "end": 9.6,
+      "kind": "action",
+      "motion": "static",
+      "subject": "a portrait photo (athlete on a field) is dragged from Finder and dropped onto the canvas",
+      "mood": "task starting",
+      "quality": 0.4,
+      "usable": true,
+      "note": "the import/drop-in beat — short, low-detail, but a legible 'starting the edit' opener; no baked text/logos visible"
+    },
+    {
+      "start": 9.6,
+      "end": 14.6,
+      "kind": "detail",
+      "motion": "push-in",
+      "subject": "Photo inspector panel opens on the right: Brightness/Contrast/Saturation/Exposure/Hue/Sepia/Grayscale/Invert sliders plus a '+ Remove Background' button; photo is selected and resized larger on canvas",
+      "lighting": "dark UI rail over light canvas",
+      "mood": "functional, clean UI",
+      "quality": 0.65,
+      "usable": true,
+      "note": "BEST moment in this segment for the brief's background-removal beat — clearly shows the Remove Background affordance and the adjustment sliders, cursor briefly hovers the Exposure slider, but nothing is actually dragged or clicked here and no background removal completes in this clip"
+    },
+    {
+      "start": 14.6,
+      "end": 15.6,
+      "kind": "transition",
+      "motion": "static",
+      "subject": "toolbar click switches the right rail from the Photo panel to the Assistant (Claude) chat panel",
+      "quality": 0.2,
+      "usable": true,
+      "note": "quick panel-switch click; only useful as connective tissue"
+    },
+    {
+      "start": 15.6,
+      "end": 64.478,
+      "kind": "other",
+      "motion": "static",
+      "subject": "user slowly types a multi-line prompt into the Assistant chat box: 'Create new mvp IG post with this photo, remove background and use mvp template.' followed by 'Jan Miklica', 'Linebacker', '8 t...' — prompt is never submitted before the clip ends",
+      "mood": "static, deliberate typing",
+      "quality": 0.15,
+      "usable": true,
+      "note": "~49s of near-static screen (blinking caret + characters appearing) — no click/drag action; the phrase 'remove background and use mvp template' only becomes legible around t=44-48s if a text-reveal insert is ever wanted, otherwise this is exactly the 'empty waiting' the brief says to avoid and should be skipped or heavily trimmed"
+    }
+  ],
+  "summary": "Segment 1 of 8 of a raw screen recording of the Maude photo editor. It opens on an idle canvas (skippable dead air + an accidental app-switcher flash), then the user drags an athlete portrait onto the canvas and the Photo inspector panel opens — the clearest shot here for the brief's 'AI background removal' beat, showing the adjustment sliders and a 'Remove Background' button, though it is never clicked. The user then switches to the Assistant chat panel and spends the rest of the clip (~49s) slowly typing a prompt asking Claude to build an IG post, remove the background, and use the 'mvp' template with player details — no removal, template application, or finished result is actually shown completing; that presumably lands in a later segment. Overall this clip is mostly setup/typing rather than the fast, visual before/after payoff the brief wants.",
+  "tags": [
+    "screen-recording",
+    "photo-editor",
+    "raw-footage",
+    "setup",
+    "background-removal-affordance",
+    "chat-prompt",
+    "segment-1-of-8",
+    "no-completed-result"
+  ],
+  "version": 1
+}

@@ -11,5 +11,11 @@
   "pattern": {
     "enabled": false,
     "blend": "multiply"
+  },
+  "duotone": {
+    "enabled": false
+  },
+  "grain": {
+    "enabled": false
   }
 }

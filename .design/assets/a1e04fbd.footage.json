@@ -1,0 +1,104 @@
+{
+  "asset": "assets/a1e04fbd.mov",
+  "durationSec": 59.152,
+  "width": 1508,
+  "height": 996,
+  "keyframes": 20,
+  "shots": [
+    {
+      "start": 0,
+      "end": 7,
+      "kind": "other",
+      "motion": "static",
+      "subject": "Maude Studio canvas (MVP sports poster) with Claude/Maude-chat assistant panel reading an open design comment",
+      "lighting": "dark UI chrome, on-screen only",
+      "mood": "quiet/reading",
+      "quality": 0.1,
+      "usable": false,
+      "note": "Static chat-read time — nothing changes on screen; no photo-editor UI visible at all."
+    },
+    {
+      "start": 7,
+      "end": 15.5,
+      "kind": "detail",
+      "motion": "static",
+      "subject": "portrait image layer selected on the poster; floating 'Inspect / Copy CSS / Copy ID / Comment' toolbar appears above it",
+      "mood": "focused",
+      "quality": 0.2,
+      "usable": true,
+      "note": "Element-selection + inspector-toolbar click — a real UI action, but it's the general canvas inspector, not a photo-editor tool."
+    },
+    {
+      "start": 15.5,
+      "end": 19.5,
+      "kind": "other",
+      "motion": "static",
+      "subject": "same poster, selection cleared, assistant text continues in sidebar",
+      "quality": 0.1,
+      "usable": false,
+      "note": "Dead reading time again."
+    },
+    {
+      "start": 19.5,
+      "end": 33,
+      "kind": "other",
+      "motion": "static",
+      "subject": "poster unchanged across ~13s while assistant narrates a crop/positioning fix it already applied off-screen",
+      "quality": 0.08,
+      "usable": false,
+      "note": "Long static hold, cursor idle — the described 'live drag' is never actually shown happening on screen."
+    },
+    {
+      "start": 33,
+      "end": 37.5,
+      "kind": "close",
+      "motion": "push-in",
+      "subject": "hard zoom to ~900% on the poster's stat row; an inline text field ('tackly') is highlighted for editing",
+      "mood": "engaged/precise",
+      "quality": 0.3,
+      "usable": true,
+      "note": "Cleanest close-up action beat in the segment — sharp push-in + visible inline text-edit box. Still poster-copy editing, not AI bg-removal/template work."
+    },
+    {
+      "start": 37.5,
+      "end": 40.5,
+      "kind": "action",
+      "motion": "static",
+      "subject": "an 'Undo: delete' toast flashes top-of-canvas and the crop tightens to a torso-filling frame",
+      "quality": 0.3,
+      "usable": true,
+      "note": "Quick, legible edit/undo moment with an immediate visual result — good pace, wrong feature."
+    },
+    {
+      "start": 40.5,
+      "end": 49.5,
+      "kind": "medium",
+      "motion": "pull-out",
+      "subject": "camera zooms back out from ~74% to ~48%, revealing the full poster card; a secondary reference cutout photo present earlier is gone from the canvas",
+      "mood": "settling/reveal",
+      "quality": 0.2,
+      "usable": true,
+      "note": "Wide reveal of the finished poster card — reads like a generic 'result' cutaway, but it's a sports poster, not a photo-editor output."
+    },
+    {
+      "start": 49.5,
+      "end": 59.15,
+      "kind": "detail",
+      "motion": "push-in",
+      "subject": "top caption label ('HRÁC ZÁPASU') is inline-edited (highlighted blue), then the whole poster gets full-frame selection/resize handles",
+      "quality": 0.25,
+      "usable": true,
+      "note": "Two small clean UI beats back to back (text edit, then frame-select) closing out the segment."
+    }
+  ],
+  "summary": "This 7-of-8 segment is NOT photo-editor footage: it is a raw screen recording of Maude Studio's general canvas editor, showing the Claude/Maude-chat assistant autonomously resolving a design comment on a sports 'MVP' poster — nudging an image crop, inline-editing text labels, selecting/inspecting layers, and zooming in and out to check results. There is no AI background-removal pass, no template picker, no slider-driven crop/exposure adjustment, and no distinct before/after comparison anywhere in this stretch — the five brief beats (auto bg-removal, template pick, slider edit, fast finished result, user iterating on it) simply aren't present. Roughly 40% of the clip is dead reading time with zero on-screen change; the rest is small, legible UI actions (selection, inline text edit, undo toast, zoom) that are clean but off-topic for a photo-editor trailer. Recommend pulling the photo-editor beats from a different segment of the 8-part recording.",
+  "tags": [
+    "studio-ui",
+    "ai-chat-assistant",
+    "canvas-editing",
+    "sports-poster",
+    "off-brief",
+    "no-photo-editor-content"
+  ],
+  "version": 1
+}

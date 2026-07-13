@@ -1,0 +1,56 @@
+{
+  "asset": "assets/5edfccf7.mov",
+  "durationSec": 59.819,
+  "width": 1508,
+  "height": 996,
+  "keyframes": 20,
+  "shots": [
+    {
+      "start": 0,
+      "end": 44.9,
+      "kind": "other",
+      "motion": "static",
+      "subject": "Maude studio: mvp-test IG-post canvas holding a pinned photo of a soccer/football player (jersey #11, head bowed over helmet); Claude assistant sidebar scrolling through reasoning text about identifying the correct player photo and planning an AI background-removal + score-mvp template step",
+      "lighting": "dark app chrome, light canvas artboard, static screen capture",
+      "mood": "methodical, talky, low-energy",
+      "quality": 0.12,
+      "usable": false,
+      "note": "Long ~45s static hold: cursor frozen, canvas unchanged, only the assistant's chat text scrolls. This is the AI PLANNING the background removal/template step in prose — nothing visual happens on screen. Reads as empty-waiting per brief; skip."
+    },
+    {
+      "start": 44.9,
+      "end": 52.8,
+      "kind": "detail",
+      "motion": "other",
+      "subject": "View menu opened over the canvas; cursor hovers Minimap then Presentation Mode entries",
+      "lighting": "dark dropdown menu over light canvas",
+      "mood": "brisk, exploratory",
+      "quality": 0.35,
+      "usable": true,
+      "note": "Only genuine click/hover UI action in this segment — sharp and readable menu, real cursor movement. Not one of the brief's 5 target moments (no bg-removal/template/slider/result visible) but usable as a quick app-polish cutaway if nothing better exists elsewhere."
+    },
+    {
+      "start": 52.8,
+      "end": 59.8,
+      "kind": "other",
+      "motion": "static",
+      "subject": "Menu closed, canvas static again; assistant sidebar shows a Terminal step starting (kicking off the background-removal script) but no visible result renders in this clip",
+      "lighting": "dark app chrome, light canvas artboard",
+      "mood": "quiet, pending",
+      "quality": 0.1,
+      "usable": false,
+      "note": "Terminal command for background removal is launched but its result never appears before the clip ends — the visual payoff (before/after, template applied) must be in a later segment. Empty-waiting; skip."
+    }
+  ],
+  "summary": "Third of eight ~60s raw screen-recording segments of Maude's Claude assistant working an IG 'MVP post' canvas: nearly the entire clip is a static hold on a pinned player photo while the assistant sidebar scrolls prose about identifying the right photo and planning an AI background-removal + score-mvp template step. The only real on-screen interaction is a brief View-menu hover around 46-52s. The five moments the brief is hunting for (auto background removal happening, template pick, slider edit, fast finished result, user iterating) are not visually demonstrated anywhere in this segment — by the clip's end the background-removal terminal command has only just been kicked off, with no rendered result yet. This segment reads as setup/talk, not payoff; the director should look to adjacent segments (likely 4th-6th of 8) for the actual before/after reveal and template/slider action.",
+  "tags": [
+    "screen-recording",
+    "ui",
+    "ai-chat",
+    "static",
+    "no-payoff-in-segment",
+    "background-removal-planned-not-shown",
+    "mvp-template"
+  ],
+  "version": 1
+}

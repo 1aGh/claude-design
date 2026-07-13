@@ -1,0 +1,58 @@
+{
+  "asset": "assets/3e564439.mov",
+  "durationSec": 60.068,
+  "width": 1508,
+  "height": 996,
+  "keyframes": 20,
+  "shots": [
+    {
+      "start": 0,
+      "end": 25.5,
+      "kind": "other",
+      "motion": "static",
+      "subject": "Maude Studio canvas parked on unedited football-player source photo (Jan Miklica), selected with alt-text tooltip; assistant chat panel reads codebase conventions before running background removal",
+      "lighting": "flat UI/screen capture",
+      "mood": "idle, exploratory",
+      "quality": 0.15,
+      "usable": false,
+      "note": "Long static wait while the assistant only reads context — nothing changes on screen for 25s; this is exactly the 'empty waiting' the brief says to avoid, no click/drag/reveal."
+    },
+    {
+      "start": 25.5,
+      "end": 40.5,
+      "kind": "other",
+      "motion": "static",
+      "subject": "Assistant panel text scrolls to 'Background removal succeeded, producing assets/bcb3253b.png' then 'Clean cutout — background is removed correctly'; canvas itself still shows the original, unedited photo",
+      "lighting": "flat UI/screen capture",
+      "mood": "quiet confirmation",
+      "quality": 0.4,
+      "usable": true,
+      "note": "Only spot in this segment where the AI background-removal success is confirmed (brief item 1) — but it's a text-only confirmation in the sidebar, no visual before/after reveal on the canvas. Usable as a narrated/text-overlay beat, not a true action shot."
+    },
+    {
+      "start": 40.5,
+      "end": 58.5,
+      "kind": "other",
+      "motion": "static",
+      "subject": "Assistant status flips Working -> Edit; chat narrates building a new MVP IG-post artboard from the mvp-square/score-mvp template with Jan Miklica's stats; canvas remains frozen on the original unedited photo the whole time",
+      "lighting": "flat UI/screen capture",
+      "mood": "build in progress",
+      "quality": 0.3,
+      "usable": true,
+      "note": "Template choice (score-mvp / mvp-square) is named here, matching brief item 2, but with zero visual payoff within this clip -- the actual template render most likely lands in the next segment (5/8); flag for continuity when picking adjacent clip."
+    }
+  ],
+  "summary": "60-second raw screen-recording segment (4 of 8) of Maude Studio's photo-editor workflow. The canvas is parked the entire time on an unedited football-player source photo (Jan Miklica) -- it never visually changes -- while the AI assistant sidepanel autonomously narrates a background-removal pipeline: reading codebase conventions, invoking the ML-based /design:photo background removal, confirming a clean cutout ('assets/bcb3253b.png'), then switching into an Edit pass to build a new MVP Instagram-post artboard from the score-mvp/mvp-square template using Jan Miklica's stats. No user click, drag, or slider interaction is visible anywhere in this clip, and there is no on-screen before/after reveal of either the background removal or the template application -- both are only described in scrolling chat text. Text is sharp and legible throughout. Overall this segment is mostly the 'empty waiting' the brief explicitly wants to avoid; its only value is the two narrated confirmation lines (background-removal success, template-build kickoff), which could work as short text-overlay/voiceover beats but are not the crisp action shots (click, slider drag, visual before/after) the brief is hunting for -- those likely land in adjacent segments once the canvas actually updates.",
+  "tags": [
+    "screen-recording",
+    "ui",
+    "ai-assistant",
+    "background-removal",
+    "empty-waiting",
+    "chat-panel",
+    "maude-studio",
+    "photo-editor",
+    "no-visual-payoff"
+  ],
+  "version": 1
+}

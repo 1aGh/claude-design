@@ -30,7 +30,7 @@ export default function SmokeTSX() {
            <img
              src="assets/431f956e.jpg"
              alt=""
-             style={{ maxWidth: "200px", marginTop: 16 , position: "absolute" , left: "389.96px" , top: "29px" , borderRadius: "10px" , height: "290.26px" , objectFit: "cover" , aspectRatio: "1 / 1" , width: "244.04px" }}
+             style={{ maxWidth: "200px", marginTop: 16 , position: "absolute" , left: "389.96px" , top: "30px" , borderRadius: "10px" , height: "290.26px" , objectFit: "cover" , aspectRatio: "1 / 1" , width: "244.04px" }}
            />
            <h1 style={{ position: "static" , left: "2px" , top: "33px" , width: "271px" , height: "31.75px" , color: "#e60a0a" , marginTop: "0px" , marginBottom: "0px" }} data-dc-element="title">TSX smoke canvas</h1>
            <h1 style={{ position: "static" , left: "2px" , top: "33px" , width: "263.68px" , height: "37.48px" , marginTop: "0px" , marginBottom: "0px" }} data-dc-element="title">TSX smoke canvas</h1>

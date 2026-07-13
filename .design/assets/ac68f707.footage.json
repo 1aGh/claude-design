@@ -1,0 +1,93 @@
+{
+  "asset": "assets/ac68f707.mov",
+  "durationSec": 60.792,
+  "width": 1508,
+  "height": 996,
+  "keyframes": 20,
+  "shots": [
+    {
+      "start": 0,
+      "end": 9,
+      "kind": "establishing",
+      "motion": "static",
+      "subject": "finished MVP trading-card IG post canvas (Jan Miklica #11) with the AI chat sidebar narrating a background-removal already done",
+      "lighting": "dark-theme studio UI",
+      "mood": "calm, informational",
+      "quality": 0.3,
+      "usable": true,
+      "note": "opens after the fact — chat text says background removal is already done, we never see it happen live; static hold, low-action context shot"
+    },
+    {
+      "start": 9,
+      "end": 13,
+      "kind": "detail",
+      "motion": "static",
+      "subject": "user selects the cutout photo layer on canvas; selection toolbar (Inspect / Copy CSS / Copy ID / Comment) pops up",
+      "lighting": "dark-theme studio UI",
+      "mood": "purposeful",
+      "quality": 0.5,
+      "usable": true,
+      "note": "quick, legible UI-selection beat; short and clean if trimmed to a couple seconds"
+    },
+    {
+      "start": 13,
+      "end": 30.4,
+      "kind": "detail",
+      "motion": "static",
+      "subject": "user types a feedback comment on the photo: \"make this oversize just leave the torso in the canvas\"",
+      "lighting": "dark-theme studio UI",
+      "mood": "focused, iterative",
+      "quality": 0.4,
+      "usable": true,
+      "note": "real 'user iterates on the result' beat but it's ~17s of slow text entry in a small box — sharp/readable, needs a hard speed-up or trim, not a click/drag moment"
+    },
+    {
+      "start": 30.4,
+      "end": 39.5,
+      "kind": "detail",
+      "motion": "static",
+      "subject": "comment saved (badge shows 1 open comment); user then types into the AI chat box: \"I add some comments, resolve them\"",
+      "lighting": "dark-theme studio UI",
+      "mood": "handoff to AI",
+      "quality": 0.35,
+      "usable": true,
+      "note": "shows the comment->prompt handoff; still mostly typing, modest action value"
+    },
+    {
+      "start": 39.5,
+      "end": 54.7,
+      "kind": "other",
+      "motion": "static",
+      "subject": "Claude Code reads the canvas comment and reasons/streams text in the sidebar (\"Working…\"), explaining the crop math while running an edit",
+      "lighting": "dark-theme studio UI",
+      "mood": "process, waiting",
+      "quality": 0.15,
+      "usable": true,
+      "note": "long scrolling-text 'thinking' stretch, canvas art itself doesn't change — this is exactly the empty-waiting kind of footage the brief says to avoid; skip or use only as a 1-2s montage flash"
+    },
+    {
+      "start": 54.7,
+      "end": 60.79,
+      "kind": "detail",
+      "motion": "push-in",
+      "subject": "live-collab banner (\"Claude is editing this canvas\") then the AI-applied recrop lands: photo goes from flat cutout to an oversized torso-filling crop with the stadium/pitch environment now visible behind the subject, both on the card and the reference thumbnail",
+      "lighting": "dark-theme studio UI, warm stadium tones in the revealed photo",
+      "mood": "payoff, satisfying reveal",
+      "quality": 0.85,
+      "usable": true,
+      "note": "best moment in this segment — an AI edit lands and completely changes the shot in seconds; strong 'result in a few seconds' beat, pair with the pre-edit frame (t~53) for a before/after cut"
+    }
+  ],
+  "summary": "A ~60s mid-sequence chunk (6 of 8) of a raw Maude-studio screen recording: it opens after an AI background-removal has already finished (told, not shown), then follows a full comment-driven iteration loop on an MVP trading-card IG post — selecting the cutout photo, typing a canvas comment asking for an oversized/tighter crop, handing it to the Claude Code chat agent, watching it reason through the crop math for ~15s, and landing on a dramatic recrop reveal in the final 3 seconds where the flat cutout becomes an oversized hero crop with the stadium environment visible. Mostly static UI with legible on-screen text; the only real motion/energy is the final reveal, and there is one long stretch of pure agent 'thinking' text the brief explicitly wants avoided.",
+  "tags": [
+    "screen-recording",
+    "maude-studio",
+    "photo-editor",
+    "canvas-comment",
+    "ai-chat-iteration",
+    "recrop-reveal",
+    "dark-theme-ui",
+    "trading-card-template"
+  ],
+  "version": 1
+}

@@ -1,0 +1,54 @@
+{
+  "asset": "assets/30783aa8.mov",
+  "durationSec": 56.41,
+  "width": 1508,
+  "height": 996,
+  "keyframes": 20,
+  "shots": [
+    {
+      "start": 0,
+      "end": 23.97,
+      "kind": "detail",
+      "motion": "static",
+      "subject": "Maude Studio UI, Assistant chat panel — user types a multi-line brief requesting a new MVP Instagram post, background removal, and the 'mvp' template, with player stats (Jan Miklica, Linebacker, 8 tackles, 1 sack, 1 interception, 'agains Brno Sigrs'). The canvas behind shows the untouched source photo (football player on a green pitch, stadium bg still IN, i.e. the true 'before' plate) selected on the mvp-test artboard.",
+      "lighting": "dark-theme app UI, no in-world lighting to speak of",
+      "mood": "focused, deliberate setup",
+      "quality": 0.4,
+      "usable": true,
+      "note": "Slow, mostly-static typing stretch (prompt grows char by char) — thin on its own, but useful as a quick 'writing the brief' cutaway (speed-ramp it) and doubles as the BEFORE plate for background removal. Prompt has a visible typo ('agains Brno Sigrs') — avoid a lingering hold on that line if the reel reads the text."
+    },
+    {
+      "start": 23.97,
+      "end": 29.62,
+      "kind": "action",
+      "motion": "static",
+      "subject": "cursor moves over the model picker / send control in the Assistant composer, then the send is clicked — chat flips to a 'Working…' state with an elapsed timer",
+      "mood": "anticipation, kickoff",
+      "quality": 0.65,
+      "usable": true,
+      "note": "The one real click moment in this segment: model selector (Sonnet -> Fast) then send. Short (~3-5s) but reads clearly as 'user hits go' — good connective beat into the AI-working stretch."
+    },
+    {
+      "start": 29.62,
+      "end": 56.41,
+      "kind": "other",
+      "motion": "static",
+      "subject": "Assistant panel streams Claude's reasoning text (opening the mvp-test canvas, locating the real MVP template at social/score-mvp.tsx, listing 6 candidate player-photo assets, reading a file) while the canvas itself never changes — same football photo, same layout, cursor idle mid-canvas",
+      "mood": "waiting, procedural",
+      "quality": 0.15,
+      "usable": false,
+      "note": "Dead air on the canvas for ~27s — only the chat text scrolls (Working… 0:02 through 0:28+); no background removal, no template swap, no slider, no before/after reveal actually happens on screen in this segment. Matches the brief's 'skip empty waiting' guidance — the payoff (bg removal / template apply) is presumably in a later segment of this 8-part recording, not here."
+    }
+  ],
+  "summary": "Segment 2/8 of a raw screen recording of the Maude Studio photo-editor workflow: the user finishes typing a detailed MVP Instagram-post brief (player stats, remove background, use the mvp template) into the Assistant chat, clicks send, and then the rest of the ~56s clip is Claude 'Working…' — streaming its planning/reasoning text (finding the real template file, listing candidate photos) while the canvas itself stays completely static on the original, background-intact photo. No background removal, template application, slider interaction, or before/after result is actually visible in this segment; the strongest usable beat is the brief-typing setup and the send-click kickoff.",
+  "tags": [
+    "ui-screen-recording",
+    "photo-editor",
+    "assistant-chat",
+    "prompt-typing",
+    "ai-working",
+    "no-visible-edit",
+    "before-plate"
+  ],
+  "version": 1
+}

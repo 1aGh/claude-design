@@ -12,7 +12,7 @@ export default function AgencyHero() {
       <DCArtboard id="hero" label="Agency Hero" width={1200} height={800}>
         <div style={{ position: 'relative', width: 1200, height: 800, overflow: 'hidden', fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif', color: '#16161c' }}>
           <style>{'.ah-bg svg{position:absolute;inset:0;width:100%;height:100%;display:block}'}</style>
-          <div className="ah-bg" style={{ position: 'absolute', inset: 0 }} dangerouslySetInnerHTML={{ __html: BG }} />
+          <div className="ah-bg" style={{ position: 'absolute', inset: 0 , left: "0px" , top: "0px" }} dangerouslySetInnerHTML={{ __html: BG }} />
 
           {/* top bar */}
           <header style={{ position: 'absolute', top: 36, left: 56, right: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -26,7 +26,7 @@ export default function AgencyHero() {
           {/* hero copy — calm left quadrant */}
           <div style={{ position: 'absolute', left: 56, top: 250, maxWidth: 600 }}>
             <p style={{ margin: 0, fontSize: 13, letterSpacing: '0.26em', textTransform: 'uppercase', fontWeight: 700, color: '#6b6b73' }}>Independent brand studio</p>
-            <h1 style={{ margin: '20px 0 0', fontSize: 88, lineHeight: 0.96, fontWeight: 800, letterSpacing: '-0.035em' }}>
+            <h1 style={{ margin: '20px 0 0', fontSize: "88px", lineHeight: 0.96, fontWeight: 800, letterSpacing: '-0.035em' , paddingBottom: "0px" , paddingTop: "0px" }}>
               Brands with<br />a <span style={{ fontStyle: 'italic', color: '#ff4d4f' }}>pulse</span>.
             </h1>
             <p style={{ margin: '26px 0 0', fontSize: 18, lineHeight: 1.55, color: '#3a3a42', maxWidth: 440 }}>

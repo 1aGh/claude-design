@@ -1,0 +1,90 @@
+{
+  "asset": "assets/df1fd2f2.mov",
+  "durationSec": 59.305,
+  "width": 1508,
+  "height": 996,
+  "keyframes": 20,
+  "shots": [
+    {
+      "start": 0,
+      "end": 7.413,
+      "kind": "other",
+      "motion": "static",
+      "subject": "Maude AI chat narrating background-removal kickoff; original football-player reference photo (grass+goalpost still in frame, bg not yet removed) beside the flat MVP card template",
+      "lighting": "flat UI screen capture",
+      "mood": "focused, technical setup",
+      "quality": 0.3,
+      "usable": true,
+      "note": "context-setting only — chat text describes locating the asset and starting removal, canvas hasn't changed yet; weak on its own"
+    },
+    {
+      "start": 7.413,
+      "end": 13.344,
+      "kind": "other",
+      "motion": "static",
+      "subject": "template mid-build (stat row '8 1 1' tackles/sack/interception, title, name) still without the composited photo; chat text confirms 'Background removal succeeded... Clean cutout'",
+      "lighting": "flat UI screen capture",
+      "mood": "confirming, procedural",
+      "quality": 0.45,
+      "usable": true,
+      "note": "chat literally announces the automatic bg-removal success here, but the canvas payoff hasn't landed yet — pairs better as lead-in than as the hero clip"
+    },
+    {
+      "start": 13.344,
+      "end": 16.309,
+      "kind": "detail",
+      "motion": "static",
+      "subject": "template card shown with a purple selection outline, about to receive the cutout; chat says it's building the MVP IG-post artboard from the template pattern",
+      "mood": "anticipatory",
+      "quality": 0.4,
+      "usable": true,
+      "note": "brief pre-reveal beat, selection outline reads as 'about to update'"
+    },
+    {
+      "start": 16.309,
+      "end": 22.239,
+      "kind": "product",
+      "motion": "static",
+      "subject": "the money shot: template flips from flat/text-only to a fully composited hero card with the AI background-removed player cleanly wired in behind the MVP/11 graphic",
+      "lighting": "moody dark-green stadium card lighting, crisp UI chrome around it",
+      "mood": "satisfying payoff",
+      "quality": 0.95,
+      "usable": true,
+      "note": "STRONGEST clip for brief #1 (automatic bg removal) + #4 (finished result in seconds): clean before (flat template, t~16.3) -> after (composited card, t~19.3) inside a 3s window; sharp, readable, no foreign baked text"
+    },
+    {
+      "start": 22.239,
+      "end": 54.857,
+      "kind": "product",
+      "motion": "static",
+      "subject": "finished MVP card held steady on canvas while the agent narrates verification/polish steps (file size, asset paths, meta.json, screenshot check, two spotted typos)",
+      "mood": "steady, procedural",
+      "quality": 0.45,
+      "usable": true,
+      "note": "long static hold (~32s) — good for a short cutaway of the finished deliverable but visually repetitive; trim hard, don't use the whole span, no manual slider/drag editing appears anywhere in this stretch"
+    },
+    {
+      "start": 54.857,
+      "end": 59.305,
+      "kind": "detail",
+      "motion": "static",
+      "subject": "assistant panel flips from 'Working…' to 'Ready · Claude Code' and reveals an empty chat input ('Ask Claude to change this canvas...') with model/speed toggle",
+      "mood": "hand-off, invitation to iterate",
+      "quality": 0.8,
+      "usable": true,
+      "note": "best match for brief #5 (user iterates on the result themselves): clean, readable, short hand-off beat — use near-verbatim"
+    }
+  ],
+  "summary": "Segment 5 of 8 of a raw Maude screen recording: this stretch is driven entirely by the AI chat agent (Claude Code), not the manual slider-based Photo Editor panel — it locates the source photo, runs automatic background removal, confirms and compresses the cutout, then composites it into a pre-built 'MVP' Instagram sports-card template. The standout moment is a clean ~3s before/after flip around 16-19s where the template goes from flat/text-only to a fully composited hero card. After that the canvas holds static on the finished card for roughly 30s while the agent narrates verification/polish steps with no new visual information, then ends with the assistant flipping to a 'Ready' state and an empty chat input, cueing the human to type the next edit. No manual slider or drag-to-edit UI appears anywhere in this segment.",
+  "tags": [
+    "screen-recording",
+    "ai-chat-workflow",
+    "background-removal",
+    "template-composite",
+    "before-after",
+    "ig-post-card",
+    "ready-state",
+    "no-slider-ui"
+  ],
+  "version": 1
+}

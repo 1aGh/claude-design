@@ -1,0 +1,111 @@
+{
+  "asset": "assets/c34ec202.mov",
+  "durationSec": 60.777,
+  "width": 1508,
+  "height": 996,
+  "keyframes": 20,
+  "shots": [
+    {
+      "start": 0,
+      "end": 3,
+      "kind": "detail",
+      "motion": "static",
+      "subject": "Claude chat sidebar mid-turn (Working.../Stop), dense paragraph about crop cleanup",
+      "lighting": "dark UI theme",
+      "mood": "technical/reading",
+      "quality": 0.25,
+      "usable": true,
+      "note": "AI actively working on the photo, but it's a wall of text scrolling in a sidebar — not a click/drag action; weak on its own for a fast reel"
+    },
+    {
+      "start": 3,
+      "end": 13.6,
+      "kind": "detail",
+      "motion": "static",
+      "subject": "Inspector Inspect/Layers tabs cycling on the selected background-removed player-cutout img layer",
+      "lighting": "dark UI theme",
+      "mood": "technical",
+      "quality": 0.4,
+      "usable": true,
+      "note": "shows the app's layer/inspect chrome around the cutout element; informative but not an active moment"
+    },
+    {
+      "start": 15,
+      "end": 18.3,
+      "kind": "product",
+      "motion": "static",
+      "subject": "Inspector Photo tab: 'BACKGROUND: applied / redo' badge plus full adjustment-slider stack (brightness, contrast, saturation, exposure, hue, sepia, grayscale, invert, duotone, grain, pattern, mask)",
+      "lighting": "dark UI theme",
+      "mood": "clean/confident",
+      "quality": 0.9,
+      "usable": true,
+      "note": "HERO shot for AI background removal — crisp, readable 'applied' badge + the whole slider panel in one frame; best match for brief item (1)"
+    },
+    {
+      "start": 18.3,
+      "end": 25.8,
+      "kind": "detail",
+      "motion": "static",
+      "subject": "Inspect panel cycling back from the photo element to a stat-label div",
+      "quality": 0.3,
+      "usable": true,
+      "note": "bridge/transition between the photo panel and the text-edit sequence, low standalone value"
+    },
+    {
+      "start": 25.8,
+      "end": 37.9,
+      "kind": "action",
+      "motion": "static",
+      "subject": "user clicks into the 'tackly' stat label and starts typing a correction; a color-swatch toolbar pops up",
+      "mood": "hands-on iteration",
+      "quality": 0.6,
+      "usable": true,
+      "note": "good 'user iterates on the result' beat — visible click-to-edit plus a colorful swatch toolbar pop, brief item (5)"
+    },
+    {
+      "start": 37.9,
+      "end": 50.1,
+      "kind": "detail",
+      "motion": "static",
+      "subject": "continued typo-fix typing ('tac'->'tackels') with an inline suggestion chip 'Tackles x'",
+      "quality": 0.5,
+      "usable": true,
+      "note": "same quick-edit beat continued; slightly repetitive with the prior shot, use only one of the two"
+    },
+    {
+      "start": 50.1,
+      "end": 53.2,
+      "kind": "detail",
+      "motion": "static",
+      "subject": "inline text edit rejected — toast: \"Couldn't save that text - element has dynamic content - edit it via /design:edit. Edit it via chat.\"",
+      "mood": "friction/error",
+      "quality": 0.1,
+      "usable": false,
+      "note": "error/failure toast breaks the polished flow the reel wants — skip"
+    },
+    {
+      "start": 53.2,
+      "end": 60.7,
+      "kind": "wide",
+      "motion": "pull-out",
+      "subject": "finished MVP poster next to the isolated background-removed player cutout, then the assistant chat reopens confirming the crop/background-removal is 'Resolved'",
+      "lighting": "dark UI theme, poster pops with green/gold color",
+      "mood": "payoff/completion",
+      "quality": 0.8,
+      "usable": true,
+      "note": "clean poster-vs-isolated-cutout pairing = de facto before/after for background removal, chat text confirms it's done; strong closing beat"
+    }
+  ],
+  "summary": "Final ~60s segment (8/8) of a raw Maude Studio screen recording: opens mid-turn with the AI assistant chat finishing an autonomous crop/background-removal cleanup on a football 'MVP' poster (mvp-test canvas), briefly surfaces the Inspector's Photo tab with a clear 'BACKGROUND: applied / redo' badge and the full adjustment-slider stack, then follows the user manually fixing a stat-label typo (tackly -> tackels, with an inline suggestion chip and a color-swatch toolbar) before one inline edit fails with a 'dynamic content' error toast, and closes on a clean zoomed-out pairing of the finished poster beside its isolated background-removed cutout while the assistant chat confirms the removal is 'Resolved'. Crisp 1508x996 dark-theme UI throughout, no blur or dead air; the standout on-brief beats are the Photo-panel badge (~t15-18s) and the poster-vs-cutout payoff (~t53-60s). No template-picker or live slider-drag moment appears in this particular segment.",
+  "tags": [
+    "screen-recording",
+    "photo-editor",
+    "background-removal",
+    "inspector-panel",
+    "text-edit",
+    "ui-demo",
+    "maude-studio",
+    "before-after"
+  ],
+  "version": 1
+}

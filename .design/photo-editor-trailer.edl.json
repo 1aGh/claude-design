@@ -1,0 +1,99 @@
+{
+  "title": "Maude Photo Editor Trailer",
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "beats": [
+    {
+      "clip": "assets/b409185a.mov",
+      "startSec": 7.6,
+      "durationFrames": 30,
+      "name": "open",
+      "transition": null,
+      "why": "cold open — photo dragged onto the canvas, the task starting; short and punchy to match the fast/energetic brief tone"
+    },
+    {
+      "clip": "assets/b409185a.mov",
+      "startSec": 10,
+      "durationFrames": 75,
+      "name": "panel-reveal",
+      "transition": null,
+      "why": "push-in reveal of the Photo inspector — Remove Background button + full adjustment-slider stack; strongest UI-establishing shot, title card lands here",
+      "overlay": {
+        "kind": "title",
+        "text": "Maude Photo Editor"
+      }
+    },
+    {
+      "clip": "assets/30783aa8.mov",
+      "startSec": 24,
+      "durationFrames": 70,
+      "name": "kickoff",
+      "transition": null,
+      "why": "the one real click in this segment — user hits send and the assistant flips to Working…; reads clearly as 'go' and bridges into the AI doing the work"
+    },
+    {
+      "clip": "assets/df1fd2f2.mov",
+      "startSec": 16.3,
+      "durationFrames": 100,
+      "name": "before-after",
+      "transition": null,
+      "why": "the money shot — template flips from flat/text-only to a fully composited hero card as the AI-cut photo lands; strongest proof of automatic bg removal + template compositing",
+      "overlay": {
+        "kind": "caption",
+        "text": "AI removes the background — automatically"
+      }
+    },
+    {
+      "clip": "assets/c34ec202.mov",
+      "startSec": 15,
+      "durationFrames": 70,
+      "name": "badge-proof",
+      "transition": null,
+      "why": "Inspector Photo tab's 'BACKGROUND: applied / redo' badge and slider stack — a crisp concrete confirmation beat right after the reveal, without needing narration"
+    },
+    {
+      "clip": "assets/ac68f707.mov",
+      "startSec": 56.5,
+      "durationFrames": 90,
+      "name": "recrop-payoff",
+      "transition": null,
+      "why": "second wow moment — an AI-applied oversize recrop snaps in under 3s, flat cutout to full hero crop with environment revealed; push-in motion breaks up the run of static UI shots",
+      "overlay": {
+        "kind": "caption",
+        "text": "Done in seconds"
+      }
+    },
+    {
+      "clip": "assets/df1fd2f2.mov",
+      "startSec": 55,
+      "durationFrames": 55,
+      "name": "ready-handoff",
+      "transition": null,
+      "why": "assistant flips Working… to Ready with an empty chat input — a clean beat cueing the handoff from AI back to the human before the manual-edit close"
+    },
+    {
+      "clip": "assets/c34ec202.mov",
+      "startSec": 25.8,
+      "durationFrames": 85,
+      "name": "manual-edit",
+      "transition": null,
+      "why": "user clicks into the stat label and starts a manual correction with the color-swatch toolbar popping up — the brief's closing point that the person stays in control after the AI does the heavy lifting"
+    },
+    {
+      "clip": "assets/c34ec202.mov",
+      "startSec": 53.5,
+      "durationFrames": 90,
+      "name": "close-logo",
+      "transition": {
+        "presentation": "fade",
+        "frames": 15
+      },
+      "why": "wide pull-out pairing the finished poster with its isolated cutout as the assistant confirms 'Resolved' — a calm, breathing close for the logo",
+      "overlay": {
+        "kind": "logo"
+      }
+    }
+  ],
+  "version": 1
+}
