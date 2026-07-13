@@ -42,9 +42,15 @@ export function ChromeVisibilityProvider({
   children: ReactNode;
   initial?: Partial<ChromeVisibilityState>;
 }) {
+  // Defaults MUST match the app-shell's own default view-prefs (app.jsx
+  // MINIMAP_STORE / ZOOMCTL_STORE both default false) — otherwise a freshly
+  // loaded canvas shows the minimap/zoom before (or instead of, when the seed
+  // races the early inline-script `dgn:'loaded'`) the shell's OFF state is
+  // applied, so a user with both toggled off still sees them. `present` is a
+  // transient overlay, never persisted, so it stays false.
   const [state, setState] = useState<ChromeVisibilityState>({
-    minimap: initial?.minimap ?? true,
-    zoom: initial?.zoom ?? true,
+    minimap: initial?.minimap ?? false,
+    zoom: initial?.zoom ?? false,
     present: initial?.present ?? false,
   });
   const setChrome = useCallback((patch: Partial<ChromeVisibilityState>) => {

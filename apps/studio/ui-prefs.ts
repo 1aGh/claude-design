@@ -1,0 +1,128 @@
+// ui-prefs.ts — disk-backed UI / view preferences (feature-unified-settings-modal).
+//
+// The Settings modal's non-secret UI prefs (theme + the Canvas & View toggles)
+// persist here so they survive a restart AND a cleared browser localStorage
+// (the native WKWebView shell is the case that motivated an explicit on-disk
+// store rather than trusting localStorage alone). Stored GLOBALLY per user, not
+// per-project — these are user preferences, not canvas state — at
+// `~/.config/maude/prefs.json` (XDG-aware, same location discipline as
+// generation/keys.ts's keys.json and sync/hubs-config.ts's hubs.json).
+//
+// NON-SECRET by construction: this file only ever holds boolean/enum view
+// toggles. It is never versioned and never served to a canvas — the GET/POST
+// routes are MAIN-ORIGIN ONLY (privileged), like /_api/generate/prefs.
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+
+/** The dockable shell panels the Layout tab can move between the two sides. */
+export const DOCK_PANEL_IDS = [
+  'tree',
+  'layers',
+  'inspector',
+  'comments',
+  'changes',
+  'assistant',
+] as const;
+export type DockPanelId = (typeof DOCK_PANEL_IDS)[number];
+export type DockSide = 'left' | 'right';
+export type PanelSides = Record<DockPanelId, DockSide>;
+
+export interface UiPrefs {
+  theme: 'light' | 'dark';
+  minimap: boolean;
+  zoom: boolean;
+  annotations: boolean;
+  autoOpenInspector: boolean;
+  /** Which side each dockable panel lives on (feature-configurable-panel-docking). */
+  panelSides: PanelSides;
+  /** Whether Layers is its own dockable panel or a tab inside the Inspector. */
+  layersMode: 'separate' | 'in-inspector';
+}
+
+// Defaults MUST agree with app.jsx's initial state (THEME default 'dark',
+// MINIMAP/ZOOMCTL false, annotations on, auto-open-inspector on) and with
+// use-chrome-visibility.tsx's provider defaults. Panel defaults mirror the
+// pre-docking shell: tree + layers on the left, everything else on the right;
+// Layers ships as its own panel (`separate`), docked left.
+export const PANEL_SIDES_DEFAULTS: PanelSides = {
+  tree: 'left',
+  layers: 'left',
+  inspector: 'right',
+  comments: 'right',
+  changes: 'right',
+  assistant: 'right',
+};
+export const UI_PREFS_DEFAULTS: UiPrefs = {
+  theme: 'dark',
+  minimap: false,
+  zoom: false,
+  annotations: true,
+  autoOpenInspector: true,
+  panelSides: { ...PANEL_SIDES_DEFAULTS },
+  layersMode: 'separate',
+};
+
+/** Resolve the on-disk path to prefs.json (mirrors keys.ts's XDG logic). */
+export function uiPrefsPath(): string {
+  if (process.env.MAUDE_UI_PREFS_PATH) return process.env.MAUDE_UI_PREFS_PATH;
+  const xdg = process.env.XDG_CONFIG_HOME;
+  const base = xdg && xdg.length > 0 ? xdg : join(homedir(), '.config');
+  return join(base, 'maude', 'prefs.json');
+}
+
+function coercePanelSides(raw: unknown): PanelSides {
+  const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const out = { ...PANEL_SIDES_DEFAULTS };
+  for (const id of DOCK_PANEL_IDS) {
+    if (o[id] === 'left' || o[id] === 'right') out[id] = o[id] as DockSide;
+  }
+  return out;
+}
+
+function coerce(raw: unknown): UiPrefs {
+  const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
+  return {
+    theme: o.theme === 'light' || o.theme === 'dark' ? o.theme : UI_PREFS_DEFAULTS.theme,
+    minimap: bool(o.minimap, UI_PREFS_DEFAULTS.minimap),
+    zoom: bool(o.zoom, UI_PREFS_DEFAULTS.zoom),
+    annotations: bool(o.annotations, UI_PREFS_DEFAULTS.annotations),
+    autoOpenInspector: bool(o.autoOpenInspector, UI_PREFS_DEFAULTS.autoOpenInspector),
+    panelSides: coercePanelSides(o.panelSides),
+    layersMode: o.layersMode === 'in-inspector' ? 'in-inspector' : UI_PREFS_DEFAULTS.layersMode,
+  };
+}
+
+/** Current UI prefs merged over the defaults (defaults when missing/unreadable). */
+export function readUiPrefs(): UiPrefs {
+  const path = uiPrefsPath();
+  if (!existsSync(path)) return { ...UI_PREFS_DEFAULTS };
+  try {
+    return coerce(JSON.parse(readFileSync(path, 'utf8')));
+  } catch {
+    return { ...UI_PREFS_DEFAULTS };
+  }
+}
+
+/**
+ * Persist a partial patch over the on-disk prefs (only the provided keys change;
+ * every other stored value is preserved). Returns the merged result. Best-effort
+ * — a write failure throws so the route can surface it.
+ */
+export function writeUiPrefs(patch: Partial<UiPrefs>): UiPrefs {
+  const cur = readUiPrefs();
+  // panelSides is deep-merged so a partial patch (one panel moved) preserves the
+  // other panels' sides instead of resetting them to defaults via coerce.
+  const merged: Partial<UiPrefs> = {
+    ...cur,
+    ...patch,
+    panelSides: { ...cur.panelSides, ...(patch.panelSides ?? {}) },
+  };
+  const next = coerce(merged);
+  const path = uiPrefsPath();
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(next, null, 2)}\n`);
+  return next;
+}

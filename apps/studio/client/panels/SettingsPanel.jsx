@@ -385,9 +385,209 @@ function WhisperModelCard() {
   );
 }
 
-export default function SettingsPanel({ onClose }) {
+// feature-unified-settings-modal — one modal for every Maude preference, laid
+// out as a left vertical tab rail + an internally-scrolling pane. Categories:
+const TABS = [
+  { id: 'appearance', label: 'Appearance' },
+  { id: 'canvas-view', label: 'Canvas & View' },
+  { id: 'layout', label: 'Layout' },
+  { id: 'ai-generation', label: 'AI generation' },
+  { id: 'subtitles', label: 'Subtitles' },
+];
+const SETTINGS_TAB_STORE = 'mdcc-settings-tab';
+
+// feature-configurable-panel-docking — the panels the Layout tab can dock. Order
+// = display order. (Assistant is native-only; moving it is a no-op in the browser.)
+const LAYOUT_PANELS = [
+  { id: 'tree', label: 'Files' },
+  { id: 'layers', label: 'Layers' },
+  { id: 'inspector', label: 'Inspector' },
+  { id: 'comments', label: 'Comments' },
+  { id: 'changes', label: 'Changes' },
+  { id: 'assistant', label: 'Assistant' },
+];
+
+function SideToggle({ value, disabled, onChange }) {
+  return (
+    <span className="st-sidetoggle" role="radiogroup" aria-label="Panel side">
+      {['left', 'right'].map((s) => (
+        <button
+          key={s}
+          type="button"
+          role="radio"
+          aria-checked={value === s}
+          disabled={disabled}
+          className={'st-sidebtn' + (value === s ? ' is-active' : '')}
+          onClick={() => onChange(s)}
+        >
+          {s === 'left' ? 'Left' : 'Right'}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+const LAYERS_MODE_OPTIONS = [
+  { id: 'separate', label: 'Separate panel', note: 'Layers docks on its own (default: left).' },
+  { id: 'in-inspector', label: 'Inside Inspector', note: 'Layers is a tab within the Inspector.' },
+];
+function LayoutTab({ panelSide, onSetPanelSide, layersMode, onSetLayersMode }) {
+  return (
+    <>
+      <div className="st-provider-card">
+        <div className="st-provider-hd">
+          <span className="st-provider-name">Layers panel</span>
+        </div>
+        <div className="st-provider-notes">
+          Show Layers as its own dockable panel, or as a tab inside the Inspector.
+        </div>
+        <div className="st-engine-radios" role="radiogroup" aria-label="Layers mode">
+          {LAYERS_MODE_OPTIONS.map((o) => (
+            <label
+              key={o.id}
+              className={'st-engine-radio' + (layersMode === o.id ? ' is-selected' : '')}
+            >
+              <input
+                type="radio"
+                name="layers-mode"
+                checked={layersMode === o.id}
+                onChange={() => onSetLayersMode(o.id)}
+              />
+              <span className="st-engine-radio-body">
+                <span className="st-engine-radio-label">{o.label}</span>
+                <span className="st-engine-radio-note">{o.note}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+      <div className="st-provider-card">
+        <div className="st-provider-hd">
+          <span className="st-provider-name">Panel positions</span>
+        </div>
+        <div className="st-provider-notes">
+          Dock each panel to the left or right side. Each side shows one panel at a time, with tabs
+          to switch between the panels docked there.
+        </div>
+        {LAYOUT_PANELS.map((p) => {
+          const disabled = p.id === 'layers' && layersMode !== 'separate';
+          return (
+            <div key={p.id} className={'st-pref-row' + (disabled ? ' is-disabled' : '')}>
+              <span className="st-pref-body">
+                <span className="st-pref-label">{p.label}</span>
+                {disabled && (
+                  <span className="st-pref-note">
+                    Layers is inside the Inspector — choose “Separate panel” above to dock it.
+                  </span>
+                )}
+              </span>
+              <SideToggle
+                value={panelSide?.[p.id] || 'left'}
+                disabled={disabled}
+                onChange={(s) => onSetPanelSide(p.id, s)}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// A labeled switch row. The `checked`/`onChange` are owned by app.jsx state
+// (single source of truth) so the modal and the View menu never diverge.
+function PrefToggleRow({ label, note, checked, disabled, reason, onChange }) {
+  return (
+    <label className={'st-pref-row' + (disabled ? ' is-disabled' : '')}>
+      <span className="st-pref-body">
+        <span className="st-pref-label">{label}</span>
+        {(reason || note) && <span className="st-pref-note">{disabled && reason ? reason : note}</span>}
+      </span>
+      <input
+        type="checkbox"
+        className="st-switch"
+        role="switch"
+        aria-checked={!!checked}
+        checked={!!checked}
+        disabled={disabled}
+        onChange={(e) => onChange?.(e.target.checked)}
+      />
+    </label>
+  );
+}
+
+// Appearance — theme control. Reuses the transcription-engine radio density so
+// the whole modal reads as one system. Wired to app.jsx `theme` + `onSetTheme`.
+const THEME_OPTIONS = [
+  { id: 'light', label: 'Light', note: 'Bright shell chrome' },
+  { id: 'dark', label: 'Dark', note: 'Dim shell chrome' },
+];
+function AppearanceTab({ theme, onSetTheme }) {
+  return (
+    <div className="st-provider-card">
+      <div className="st-provider-hd">
+        <span className="st-provider-name">Theme</span>
+      </div>
+      <div className="st-provider-notes">
+        Controls Maude’s own chrome — menubar, sidebar, canvas plane, minimap, zoom HUD. Artboards
+        keep their own design-system theme.
+      </div>
+      <div className="st-engine-radios" role="radiogroup" aria-label="Theme">
+        {THEME_OPTIONS.map((o) => (
+          <label key={o.id} className={'st-engine-radio' + (theme === o.id ? ' is-selected' : '')}>
+            <input
+              type="radio"
+              name="maude-theme"
+              value={o.id}
+              checked={theme === o.id}
+              onChange={() => onSetTheme?.(o.id)}
+            />
+            <span className="st-engine-radio-body">
+              <span className="st-engine-radio-label">{o.label}</span>
+              <span className="st-engine-radio-note">{o.note}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function SettingsPanel({
+  onClose,
+  initialTab,
+  theme,
+  onSetTheme,
+  minimapVisible,
+  onToggleMinimap,
+  zoomCtlVisible,
+  onToggleZoomCtl,
+  annotationsVisible,
+  onToggleAnnotations,
+  autoOpenInspector,
+  onToggleAutoOpenInspector,
+  hasCanvas = false,
+  panelSide,
+  onSetPanelSide,
+  layersMode,
+  onSetLayersMode,
+}) {
   const [providers, setProviders] = useState(null); // null = loading
   const [error, setError] = useState(null);
+  const [tab, setTab] = useState(() => {
+    if (initialTab && TABS.some((t) => t.id === initialTab)) return initialTab;
+    try {
+      const v = localStorage.getItem(SETTINGS_TAB_STORE);
+      if (v && TABS.some((t) => t.id === v)) return v;
+    } catch {}
+    return 'appearance';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SETTINGS_TAB_STORE, tab);
+    } catch {}
+  }, [tab]);
 
   const load = useCallback(() => {
     fetch('/_api/generate/providers')
@@ -414,6 +614,28 @@ export default function SettingsPanel({ onClose }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Vertical roving focus over the tab rail (native-menu parity).
+  function onRailKey(e) {
+    const idx = TABS.findIndex((t) => t.id === tab);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      setTab(TABS[(idx + 1) % TABS.length].id);
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      setTab(TABS[(idx - 1 + TABS.length) % TABS.length].id);
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      setTab(TABS[0].id);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      setTab(TABS[TABS.length - 1].id);
+    }
+  }
+
+  // Minimap / zoom-controls are canvas-scoped — mirror the View menu's
+  // `disabled: !activePath || isSystem` gate and say why inline.
+  const canvasReason = !hasCanvas ? 'Open a canvas to use this.' : undefined;
+
   return (
     <div
       className="st-scrim"
@@ -422,36 +644,144 @@ export default function SettingsPanel({ onClose }) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="st-dialog" role="dialog" aria-modal="true" aria-label="Settings">
+      <div className="st-dialog is-settings" role="dialog" aria-modal="true" aria-label="Settings">
         <div className="st-dialog-hd">
-          <span className="st-dialog-title">Settings — AI generation</span>
+          <span className="st-dialog-title">Settings</span>
           <button type="button" className="st-iconbtn" aria-label="Close" onClick={onClose}>
             <Icon name="x" size={15} />
           </button>
         </div>
-        <div className="st-dialog-bd">
-          <div className="st-rp-hd">Provider keys</div>
-          <p className="st-settings-intro">
-            Bring your own API keys to generate images (and, soon, audio + video) inside Maude. Keys
-            are stored on this machine only — in your OS keychain or a private{' '}
-            <code>~/.config/maude/keys.json</code> (mode 0600) — sent straight to the provider, and
-            never committed, logged, or exposed to a canvas.
-          </p>
-          {error && (
-            <div className="st-provider-status" style={{ color: 'var(--danger, #e5484d)' }}>
-              {error}
-            </div>
-          )}
-          {providers === null && !error && <div className="st-settings-intro">Loading…</div>}
-          {providers?.map((p) => (
-            <ProviderCard key={p.id} provider={p} onChanged={load} />
-          ))}
-          {providers?.length === 0 && (
-            <div className="st-settings-intro">No providers registered.</div>
-          )}
-          <div className="st-rp-hd">Subtitles</div>
-          <TranscriptionEngineCard />
-          <WhisperModelCard />
+        <div className="st-settings-tabs">
+          <div
+            className="st-settings-rail"
+            role="tablist"
+            aria-orientation="vertical"
+            aria-label="Settings categories"
+            onKeyDown={onRailKey}
+          >
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                id={`st-stab-${t.id}`}
+                aria-controls={`st-spanel-${t.id}`}
+                aria-selected={tab === t.id}
+                tabIndex={tab === t.id ? 0 : -1}
+                className={'st-settings-tab' + (tab === t.id ? ' is-active' : '')}
+                onClick={() => setTab(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="st-settings-pane">
+            {/* Appearance */}
+            <section
+              role="tabpanel"
+              id="st-spanel-appearance"
+              aria-labelledby="st-stab-appearance"
+              hidden={tab !== 'appearance'}
+            >
+              <div className="st-rp-hd">Appearance</div>
+              <AppearanceTab theme={theme} onSetTheme={onSetTheme} />
+            </section>
+
+            {/* Canvas & View — the persistent View-menu prefs, one canonical home. */}
+            <section
+              role="tabpanel"
+              id="st-spanel-canvas-view"
+              aria-labelledby="st-stab-canvas-view"
+              hidden={tab !== 'canvas-view'}
+            >
+              <div className="st-rp-hd">Canvas &amp; View</div>
+              <PrefToggleRow
+                label="Minimap"
+                note="Show the canvas minimap overlay."
+                checked={minimapVisible}
+                disabled={!hasCanvas}
+                reason={canvasReason}
+                onChange={() => onToggleMinimap?.()}
+              />
+              <PrefToggleRow
+                label="Zoom controls"
+                note="Show the floating zoom controls on the canvas."
+                checked={zoomCtlVisible}
+                disabled={!hasCanvas}
+                reason={canvasReason}
+                onChange={() => onToggleZoomCtl?.()}
+              />
+              <PrefToggleRow
+                label="Annotations"
+                note="Show annotation pins and overlays on the canvas."
+                checked={annotationsVisible}
+                onChange={() => onToggleAnnotations?.()}
+              />
+              <PrefToggleRow
+                label="Auto-open Inspector on select"
+                note="Open the Inspector automatically when you select an element."
+                checked={autoOpenInspector}
+                onChange={() => onToggleAutoOpenInspector?.()}
+              />
+            </section>
+
+            {/* Layout — dock panels left/right + Layers mode. */}
+            <section
+              role="tabpanel"
+              id="st-spanel-layout"
+              aria-labelledby="st-stab-layout"
+              hidden={tab !== 'layout'}
+            >
+              <div className="st-rp-hd">Layout</div>
+              <LayoutTab
+                panelSide={panelSide}
+                onSetPanelSide={onSetPanelSide}
+                layersMode={layersMode}
+                onSetLayersMode={onSetLayersMode}
+              />
+            </section>
+
+            {/* AI generation — BYOK provider keys (kept mounted so the fetch runs once). */}
+            <section
+              role="tabpanel"
+              id="st-spanel-ai-generation"
+              aria-labelledby="st-stab-ai-generation"
+              hidden={tab !== 'ai-generation'}
+            >
+              <div className="st-rp-hd">Provider keys</div>
+              <p className="st-settings-intro">
+                Bring your own API keys to generate images (and, soon, audio + video) inside Maude.
+                Keys are stored on this machine only — in your OS keychain or a private{' '}
+                <code>~/.config/maude/keys.json</code> (mode 0600) — sent straight to the provider,
+                and never committed, logged, or exposed to a canvas.
+              </p>
+              {error && (
+                <div className="st-provider-status" style={{ color: 'var(--danger, #e5484d)' }}>
+                  {error}
+                </div>
+              )}
+              {providers === null && !error && <div className="st-settings-intro">Loading…</div>}
+              {providers?.map((p) => (
+                <ProviderCard key={p.id} provider={p} onChanged={load} />
+              ))}
+              {providers?.length === 0 && (
+                <div className="st-settings-intro">No providers registered.</div>
+              )}
+            </section>
+
+            {/* Subtitles — kept mounted so WhisperModelCard's download poll survives
+                a tab switch (unmounting mid-download would drop the interval). */}
+            <section
+              role="tabpanel"
+              id="st-spanel-subtitles"
+              aria-labelledby="st-stab-subtitles"
+              hidden={tab !== 'subtitles'}
+            >
+              <div className="st-rp-hd">Subtitles</div>
+              <TranscriptionEngineCard />
+              <WhisperModelCard />
+            </section>
+          </div>
         </div>
       </div>
     </div>

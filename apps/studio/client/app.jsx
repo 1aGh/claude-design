@@ -6532,13 +6532,19 @@ function InspectorPanel({
   onPhotoRemoveBackground,
   onPhotoRecordEdit,
   onPhotoUndoRedo,
+  // feature-configurable-panel-docking — when true this instance IS the standalone
+  // Layers panel: it forces the Layers view and hides the tab bar (the tab strip
+  // lives on the dock slot instead). `hideLayersTab` drops the inline Layers tab
+  // when Layers has been split into its own panel.
+  layersOnly = false,
+  hideLayersTab = false,
 }) {
   // Tab is controllable from the parent (the guided tour drives it to 'css' /
   // 'layers' so a spotlight step lands on a real row) but falls back to local
   // state for normal use. A user click both updates local state and notifies the
   // parent, so the two stay in lockstep whichever owns it.
   const [tabState, setTabState] = useState('inspect');
-  const tab = tabProp ?? tabState;
+  const tab = layersOnly ? 'layers' : (tabProp ?? tabState);
   const setTab = (t) => {
     setTabState(t);
     onTabChange?.(t);
@@ -6879,13 +6885,17 @@ function InspectorPanel({
       aria-label="Inspector"
       data-tour="inspector"
     >
-      <div className="st-rp-tabs" data-tour="inspector-tabs">
+      <div
+        className="st-rp-tabs"
+        data-tour="inspector-tabs"
+        style={layersOnly ? { display: 'none' } : undefined}
+      >
         {photoOnly ? (
           tabBtn('photo', 'Photo', 'image')
         ) : (
           <>
             {tabBtn('inspect', 'Inspect', 'sliders')}
-            {tabBtn('layers', 'Layers', 'layers')}
+            {!hideLayersTab && tabBtn('layers', 'Layers', 'layers')}
             {tabBtn('css', 'CSS', 'code')}
             {photoTarget ? tabBtn('photo', 'Photo', 'image') : null}
           </>
@@ -11067,6 +11077,7 @@ function App() {
       return (
         <InspectorPanel
           layersOnly={id === 'layers'}
+          hideLayersTab={layersMode === 'separate'}
           selected={selected}
           cfg={cfg}
           tab={id === 'layers' ? 'layers' : inspectorTab}
@@ -11312,9 +11323,9 @@ function App() {
               onIframeLoad={onIframeLoad}
             />
           </div>
-          {(inspectorOpen || commentsPanelOpen || changesOpen || assistantOpen) && (
+          {rightActive && (
             <PanelGrip
-              label="Resize side panel"
+              label="Resize right panel"
               dir="rtl"
               size={rpSize}
               active={dragSide === 'rp'}
@@ -11325,113 +11336,32 @@ function App() {
               }}
             />
           )}
-          {/* Right dock — one panel at a time. Changes (E2) takes precedence,
-              then Inspector (T6), then the comments panel. */}
-          {changesOpen ? (
-            <GitPanel
-              status={
-                gitStatus && remoteSync ? { ...gitStatus, ...remoteSync } : gitStatus
-              }
-              project={project}
-              readOnly={!isNativeApp()}
+          {/* RIGHT dock slot (feature-configurable-panel-docking). The Assistant
+              (ACP) chat stays MOUNTED (display:none when inactive) so its stream
+              survives a tab switch — DDR-123. Native-only. */}
+          {(rightActive || rightHostsAssistant) && (
+            <DockSlot
+              side="right"
               width={rpSize.w}
-              resizing={dragSide === 'rp'}
-              onClose={() => setChangesOpen(false)}
-              onCommit={gitCommit}
-              onDiscard={gitDiscard}
-              onPublish={gitPublish}
-              onGetLatest={gitGetLatest}
-              loadLog={gitLoadLog}
-              onOpenCanvas={(p) => openTab(p)}
-              onOpenDiff={(file) => setDiffTarget({ file, beforeSha: 'HEAD', conflict: false })}
-              activeCanvas={
-                activePath && activePath !== SYSTEM_TAB && /\.(tsx|html)$/i.test(activePath)
-                  ? activePath
-                  : null
-              }
-              onPreviewVersion={(sha) =>
-                setDiffTarget({ file: activePath, beforeSha: sha, conflict: false })
-              }
-              designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}
-            />
-          ) : inspectorOpen ? (
-            <InspectorPanel
-              selected={selected}
-              cfg={cfg}
-              tab={inspectorTab}
-              onTabChange={setInspectorTab}
-              onClose={() => setInspectorOpen(false)}
-              onOptimistic={applyOptimisticStyle}
-              onRecordEdit={recordSourceEdit}
-              onReplaceMedia={onReplaceMedia}
-              onResizeArtboard={resizeArtboardShell}
-          onSetArtboardHug={setArtboardHugShell}
-          onSetArtboardStyle={setArtboardStyleShell}
-              editScope={editScope}
-              onUndoRedo={(dir) => postToActiveCanvas({ dgn: dir })}
-              photoSel={photoSel}
-              photoRev={photoRev}
-              onPhotoEdit={onPhotoEdit}
-              onPhotoRemoveBackground={onPhotoRemoveBackground}
-              onPhotoRecordEdit={onPhotoRecordEdit}
-              onPhotoUndoRedo={(dir) => performPhotoUndo(dir === 'redo')}
-              layersTree={layersTree}
-              canvasFile={activePath}
-              onSelectLayer={(n) =>
-                postToActiveCanvas({
-                  dgn: 'select-by-id',
-                  id: n.id,
-                  artboardId: layersTree?.artboardId,
-                  index: n.index,
-                })
-              }
-              onHoverLayer={(n) =>
-                postToActiveCanvas({
-                  dgn: 'highlight',
-                  id: n ? n.id : null,
-                  artboardId: layersTree?.artboardId,
-                  index: n ? n.index : 0,
-                })
-              }
-              onReorderLayer={reorderLayer}
-              layersBusyRef={layersBusyRef}
-              width={rpSize.w}
-              resizing={dragSide === 'rp'}
-            />
-          ) : commentsPanelOpen ? (
-            <CommentsPanel
-              commentsByFile={commentsByFile}
-              filter={commentsFilter}
-              setFilter={setCommentsFilter}
-              activePath={activePath}
-              focusedId={focusedCommentId}
-              onJump={jumpToComment}
-              onResolve={resolveComment}
-              onReopen={reopenComment}
-              onDelete={deleteComment}
-              width={rpSize.w}
-              resizing={dragSide === 'rp'}
-            />
-          ) : null}
-          {/* Phase 31 (DDR-123) — the ACP chat panel stays MOUNTED (display:none
-              when inactive) so the chat keeps streaming + its history survives a
-              switch to Changes/Inspector/Comments. Native-only. */}
-          {isNativeApp() && (
-            <ChatPanel
-              hidden={!assistantOpen}
-              activeCanvas={
-                activePath && activePath !== SYSTEM_TAB && /\.(tsx|html)$/i.test(activePath)
-                  ? activePath
-                  : null
-              }
-              selected={selected}
-              designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}
-              width={rpSize.w}
-              resizing={dragSide === 'rp'}
-              onClose={() => setAssistantOpen(false)}
-              onBusyChange={setAssistantBusy}
-              onFinished={handleAssistantFinished}
-            />
+              open={!!rightActive}
+              ids={rightIds}
+              activeId={rightActive}
+              onPick={togglePanel}
+            >
+              {rightHostsAssistant && (
+                <ChatPanel
+                  hidden={rightActive !== 'assistant'}
+                  activeCanvas={activeCanvasFile}
+                  selected={selected}
+                  designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}
+                  resizing={resizingFor('assistant')}
+                  onClose={() => setAssistantOpen(false)}
+                  onBusyChange={setAssistantBusy}
+                  onFinished={handleAssistantFinished}
+                />
+              )}
+              {rightActive && rightActive !== 'assistant' && renderPanelBody(rightActive)}
+            </DockSlot>
           )}
         </div>
         {/* DDR-148 — Timeline is a BOTTOM dock (full-width strip below the stage,
@@ -11846,6 +11776,14 @@ function App() {
           autoOpenInspector={autoOpenInspector}
           onToggleAutoOpenInspector={() => setAutoOpenInspector((v) => !v)}
           hasCanvas={!!activePath && activePath !== SYSTEM_TAB}
+          panelSide={panelSide}
+          onSetPanelSide={(id, side) => setPanelSide((prev) => ({ ...prev, [id]: side }))}
+          layersMode={layersMode}
+          onSetLayersMode={(m) => {
+            setLayersMode(m);
+            // Leaving separate mode retires the standalone Layers panel.
+            if (m !== 'separate') setLayersOpen(false);
+          }}
         />
       )}
       {generateOpen && (

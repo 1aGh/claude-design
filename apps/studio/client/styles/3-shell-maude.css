@@ -212,6 +212,20 @@
 .st-body > .main { flex: 1; min-width: 0; }
 .st-body > .st-rpanel { flex: 0 0 304px; }
 
+/* ─── Dock slot (feature-configurable-panel-docking) ──────────────────────────
+ * A left/right slot: an optional tab strip over the active panel, which fills the
+ * remaining height. The wrapper owns the resizable width; the inner panel fills
+ * it (width:100% wins over the panel's own inline width, which we no longer set). */
+.st-dockslot { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; flex: none; }
+.st-dockslot.is-collapsed { width: 0 !important; flex-basis: 0 !important; }
+.st-dockslot > .st-rpanel,
+.st-dockslot > .st-sidebar { flex: 1 1 auto; width: 100%; min-height: 0; }
+.st-docktabs { display: flex; gap: 2px; padding: var(--space-2) var(--space-2) 0; border-bottom: 1px solid var(--border-subtle); background: var(--bg-1); flex: none; }
+.st-docktab { appearance: none; border: 0; background: transparent; cursor: pointer; padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm) var(--radius-sm) 0 0; color: var(--fg-3); font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); transition: color var(--dur-soft) var(--ease-out), background var(--dur-soft) var(--ease-out); }
+.st-docktab:hover { color: var(--fg-1); background: var(--bg-2); }
+.st-docktab.is-active { color: var(--fg-0); background: var(--bg-2); box-shadow: inset 0 -2px 0 var(--accent); }
+.st-docktab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
 /* ─── Left sidebar — file tree ────────────────────────────────────────────── */
 .st-sidebar {
   width: 252px; flex: 0 0 252px;
@@ -495,6 +509,44 @@
 .st-dialog-lbl { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
 .st-select { flex: 1; appearance: none; background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); font-family: var(--font-body); font-size: var(--type-sm); cursor: pointer; }
 .st-dialog-ft { display: flex; align-items: center; gap: var(--space-3); justify-content: flex-end; padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border-subtle); }
+
+/* ── Unified Settings modal (feature-unified-settings-modal) ────────────────
+ * One modal for every Maude preference: a vertical tab rail + an internally
+ * scrolling pane, so no category can push the dialog off-screen. Extends the
+ * shared .st-dialog shell (which already clips + pops). */
+.st-dialog.is-settings { width: 760px; }
+.st-settings-tabs { display: grid; grid-template-columns: 184px 1fr; min-height: 0; }
+.st-settings-rail { display: flex; flex-direction: column; gap: 2px; padding: var(--space-4); border-right: 1px solid var(--border-subtle); background: var(--bg-0); }
+.st-settings-tab { appearance: none; border: 0; background: transparent; text-align: left; cursor: pointer; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); color: var(--fg-2); font-family: var(--font-body); font-size: var(--type-sm); transition: background var(--dur-soft) var(--ease-out), color var(--dur-soft) var(--ease-out); }
+.st-settings-tab:hover { background: var(--bg-3); color: var(--fg-0); }
+.st-settings-tab.is-active { background: var(--accent-tint); color: var(--fg-0); font-weight: 600; }
+.st-settings-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* The scrolling pane — this is the fix for the AI-generation section overflowing
+ * the viewport; the pane scrolls, the page never does. */
+.st-settings-pane { max-height: min(72vh, 620px); overflow-y: auto; padding: var(--space-5); }
+.st-settings-pane .st-rp-hd { margin-bottom: var(--space-3); }
+.st-pref-row { display: flex; align-items: flex-start; gap: var(--space-4); justify-content: space-between; padding: var(--space-3) 0; border-bottom: 1px solid var(--border-subtle); cursor: pointer; }
+.st-pref-row:last-child { border-bottom: 0; }
+.st-pref-row.is-disabled { cursor: default; opacity: 0.6; }
+.st-pref-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.st-pref-label { font-size: var(--type-sm); color: var(--fg-0); font-weight: 500; }
+.st-pref-note { font-size: var(--type-xs); color: var(--fg-3); line-height: 1.45; }
+/* Switch — styled checkbox; compositor-only transition (transform/background). */
+.st-switch { appearance: none; flex: none; position: relative; width: 34px; height: 20px; border-radius: 999px; background: var(--bg-4); border: 1px solid var(--border-default); cursor: pointer; transition: background var(--dur-soft) var(--ease-out); margin-top: 2px; }
+.st-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--fg-2); transition: transform var(--dur-soft) var(--ease-out), background var(--dur-soft) var(--ease-out); }
+.st-switch:checked { background: var(--accent); border-color: var(--accent); }
+.st-switch:checked::after { transform: translateX(14px); background: var(--accent-fg); }
+.st-switch:disabled { cursor: default; }
+.st-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .st-switch, .st-switch::after, .st-settings-tab { transition-duration: 1ms; } }
+/* Layout tab — left/right segmented control per panel. */
+.st-sidetoggle { display: inline-flex; flex: none; border: 1px solid var(--border-default); border-radius: var(--radius-sm); overflow: hidden; }
+.st-sidebtn { appearance: none; border: 0; background: var(--bg-2); color: var(--fg-2); cursor: pointer; font-family: var(--font-mono); font-size: var(--type-xs); padding: var(--space-1) var(--space-3); min-width: 46px; transition: background var(--dur-soft) var(--ease-out), color var(--dur-soft) var(--ease-out); }
+.st-sidebtn + .st-sidebtn { border-left: 1px solid var(--border-default); }
+.st-sidebtn:hover:not(:disabled) { background: var(--bg-3); color: var(--fg-0); }
+.st-sidebtn.is-active { background: var(--accent); color: var(--accent-fg); }
+.st-sidebtn:disabled { opacity: 0.5; cursor: default; }
+.st-sidebtn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .st-export-recent { display: flex; flex-direction: column; gap: 2px; max-height: 132px; overflow-y: auto; }
 .st-export-recent-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font-size: var(--type-xs); color: var(--fg-2); }
 .st-export-recent-row:hover { background: var(--bg-2); }
