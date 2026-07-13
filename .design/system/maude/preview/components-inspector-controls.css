@@ -1,0 +1,306 @@
+/* components-inspector-controls.css — layout for the inspector-controls specimen.
+ *
+ * FULLY INTERACTIVE + real-panel principles: this canvas re-implements the shared
+ * control library (apps/studio/client/inspector-controls.jsx) AND the surrounding
+ * CssKnobs behaviours inline — a standalone canvas can't import the client .jsx —
+ * so scrub (incl. Alt = opposite side, Alt+Shift = all four), keyboard stepping,
+ * provenance status dots, and the token popover (Custom + Variables tabs) all
+ * actually work here. Icons are lucide-react (no hand-drawn SVG). The `.icp-*`
+ * classes are a 1:1 visual mirror of the shipped `.st-cp-*` classes in
+ * apps/studio/client/styles/3-shell-maude.css.
+ *
+ * .seg / .switch / .select / .panel anatomy is LIFTED from _components.css. */
+
+/* lucide icons inherit currentColor + size via props; keep them from shrinking */
+.icp-i { flex: none; display: block; }
+
+/* doc-wide scrub cursor while a drag is live */
+body.icp-scrubbing, body.icp-scrubbing * { cursor: ew-resize !important; user-select: none !important; }
+body.icp-scrubbing.icp-scrubbing--dial, body.icp-scrubbing.icp-scrubbing--dial * { cursor: grabbing !important; }
+
+/* ─── Field — label + control [+ help] (gallery cell) ──────────────────────── */
+.icp-fld { display: grid; gap: var(--space-2); align-content: start; }
+.icp-fld-label { font-size: var(--type-sm); color: var(--fg-1); }
+.icp-fld-help { font-size: var(--type-xs); color: var(--fg-2); line-height: 1.5; }
+.icp-fld.is-disabled { opacity: 0.55; }
+
+.icp-fld-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(228px, 1fr)); gap: var(--space-5); margin: 0 0 var(--space-5); }
+/* flex-START so uneven help text doesn't bottom-align controls at different heights */
+.icp-row { display: flex; align-items: flex-start; gap: var(--space-5); flex-wrap: wrap; margin: 0 0 var(--space-4); }
+
+/* ─── Provenance dot (token-bound · raw override · inherited) ───────────────── */
+.icp-prov {
+  width: 9px; height: 9px; border-radius: 50%; border: 0; padding: 0; flex: none;
+  cursor: default; position: relative;
+}
+.icp-prov--bound { background: var(--accent); }
+.icp-prov--raw { background: var(--fg-1); }
+.icp-prov--inherit { background: transparent; box-shadow: inset 0 0 0 1.5px var(--border-strong); }
+.icp-prov.is-resettable { cursor: pointer; }
+.icp-prov.is-resettable:hover { box-shadow: 0 0 0 3px var(--accent-tint); }
+
+/* ─── Inspector row (prov · label · control) — the real .st-cp-row anatomy ──── */
+.icp-inrow { display: grid; grid-template-columns: 12px 82px 1fr; align-items: center; gap: var(--space-3); min-height: 30px; padding: 2px 0; }
+.icp-inrow.is-unset { opacity: 0.5; transition: opacity var(--dur-soft) var(--ease-out); }
+.icp-inrow.is-unset:hover, .icp-inrow.is-unset:focus-within { opacity: 1; }
+.icp-inrow-label { font-size: var(--type-xs); color: var(--fg-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icp-inrow-ctl { min-width: 0; display: flex; align-items: center; gap: var(--space-2); }
+
+/* ─── NumberField — icon/grip drag handle · mono input · steppers ──────────── */
+.icp-num {
+  display: inline-flex; align-items: stretch; width: 100%; min-width: 0;
+  background: var(--bg-3); border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs); overflow: hidden; min-height: 26px;
+  transition: border-color var(--dur-soft) var(--ease-out), box-shadow var(--dur-soft) var(--ease-out);
+}
+.icp-num:hover { border-color: var(--border-strong); }
+.icp-num:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.icp-num.is-disabled { opacity: 0.55; pointer-events: none; }
+.icp-num-lead {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; color: var(--fg-2); cursor: ew-resize; touch-action: none;
+  font-family: var(--font-mono); font-size: 10px;
+}
+.icp-num-lead:hover { color: var(--fg-1); background: var(--bg-2); }
+.icp-num-grip { display: inline-block; width: 7px; height: 12px; opacity: 0.7; background-image: radial-gradient(currentColor 0.8px, transparent 0.8px); background-size: 3px 4px; background-position: center; }
+.icp-num-lead:hover .icp-num-grip { opacity: 1; }
+.icp-num-in { flex: 1 1 auto; min-width: 0; width: 100%; appearance: none; border: 0; background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); padding: 3px var(--space-2); }
+.icp-num-in:focus { outline: none; }
+.icp-num-in:disabled { color: var(--fg-3); }
+.icp-num-step { flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--border-subtle); }
+.icp-num-stepb { appearance: none; border: 0; background: transparent; color: var(--fg-2); line-height: 0; padding: 0 5px; cursor: pointer; flex: 1; display: grid; place-items: center; }
+.icp-num-stepb:hover { color: var(--fg-0); background: var(--bg-2); }
+.icp-num-unit { flex: none; appearance: none; border: 0; border-left: 1px solid var(--border-subtle); background: var(--bg-2); color: var(--fg-2); font-family: var(--font-mono); font-size: 10px; padding: 0 var(--space-2); cursor: pointer; }
+.icp-num-suffix { flex: none; display: inline-flex; align-items: center; padding: 0 6px; color: var(--fg-2); font-family: var(--font-mono); font-size: 10px; border-left: 1px solid var(--border-subtle); background: var(--bg-2); }
+.icp-num--compact { flex: 0 0 62px; }
+.icp-num--compact .icp-num-in { text-align: right; }
+
+/* ─── Slider / SliderField ─────────────────────────────────────────────────── */
+.icp-sfield { display: flex; align-items: center; gap: var(--space-3); min-width: 0; width: 100%; flex: 1 1 auto; }
+.icp-slider { flex: 1 1 auto; min-width: 56px; padding: 6px 0; }
+.icp-track { position: relative; height: 4px; border-radius: var(--radius-pill); background: var(--bg-4); cursor: pointer; outline: none; }
+.icp-track:focus-visible { box-shadow: 0 0 0 3px var(--accent-tint); }
+.icp-fill { position: absolute; top: 0; bottom: 0; border-radius: var(--radius-pill); background: var(--accent); }
+.icp-zero { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--border-strong); }
+.icp-thumb { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: var(--fg-0); border: 2px solid var(--accent); transform: translate(-50%, -50%); }
+.icp-track:focus-visible .icp-thumb { box-shadow: 0 0 0 3px var(--accent-tint); }
+
+/* ─── Icon button group + icon toggles ─────────────────────────────────────── */
+.icp-iconseg { display: inline-flex; border: 1px solid var(--border-default); border-radius: var(--radius-sm); overflow: hidden; background: var(--bg-2); }
+.icp-iconseg button { appearance: none; border: 0; background: transparent; color: var(--fg-2); min-width: 30px; height: 26px; display: grid; place-items: center; cursor: pointer; transition: background var(--dur-soft) var(--ease-out), color var(--dur-soft) var(--ease-out); }
+.icp-iconseg button + button { border-left: 1px solid var(--border-subtle); }
+.icp-iconseg button:hover:not(.is-active) { color: var(--fg-0); background: var(--bg-3); }
+.icp-iconseg button.is-active { background: var(--bg-4); color: var(--fg-0); }
+.icp-iconseg button[aria-pressed="true"] { background: var(--accent-tint); color: var(--accent); }
+
+/* ─── 9-point alignment pad ────────────────────────────────────────────────── */
+.icp-alignpad { width: 72px; height: 72px; display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); flex: none; }
+.icp-alignpad button { appearance: none; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; }
+.icp-alignpad button::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--fg-3); transition: background var(--dur-soft) var(--ease-out); }
+.icp-alignpad button:hover::before { background: var(--fg-1); }
+.icp-alignpad button.is-active::before { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+
+/* ─── Box-model spacing diagram (Webflow signature) ────────────────────────── */
+.icp-box { position: relative; width: 236px; padding: 32px; border: 1px dashed var(--border-default); border-radius: var(--radius-sm); background: var(--bg-2); }
+.icp-box-inner { position: relative; padding: 30px; border: 1px dashed var(--border-subtle); border-radius: var(--radius-xs); background: var(--bg-1); display: grid; place-items: center; }
+.icp-box-core { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 10px; color: var(--fg-2); padding: 10px 16px; text-align: center; }
+.icp-box-tag { position: absolute; top: 3px; left: 6px; font-family: var(--font-mono); font-size: 9px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-3); pointer-events: none; }
+.icp-box-v { position: absolute; width: 34px; height: 20px; appearance: none; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; text-align: center; padding: 0; cursor: ew-resize; }
+.icp-box-v.is-zero { color: var(--fg-3); }
+.icp-box-v:hover, .icp-box-v:focus { border-color: var(--border-strong); background: var(--bg-3); outline: none; color: var(--fg-0); }
+.icp-box-v:focus { cursor: text; }
+.icp-box-v--t { top: 3px; left: 50%; transform: translateX(-50%); }
+.icp-box-v--b { bottom: 3px; left: 50%; transform: translateX(-50%); }
+.icp-box-v--l { left: 2px; top: 50%; transform: translateY(-50%); }
+.icp-box-v--r { right: 2px; top: 50%; transform: translateY(-50%); }
+
+/* ─── Corner-radius control — uniform field + detach → 2×2 quad (Figma) ─────── */
+.icp-radius { display: grid; gap: var(--space-2); flex: 1 1 auto; min-width: 0; }
+.icp-corners { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.icp-corner { display: flex; align-items: center; gap: 6px; min-height: 26px; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: 0 8px; }
+.icp-corner:hover { border-color: var(--border-strong); }
+.icp-corner:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.icp-corner input { flex: 1; min-width: 0; width: 100%; appearance: none; border: 0; background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; padding: 0; }
+.icp-corner input:focus { outline: none; }
+/* per-corner glyph — a CSS corner bracket (one rounded corner), oriented per cell */
+.icp-cnr { flex: none; width: 11px; height: 11px; border: 1.5px solid var(--fg-2); box-sizing: border-box; }
+.icp-cnr--tl { border-right: 0; border-bottom: 0; border-top-left-radius: 4px; }
+.icp-cnr--tr { border-left: 0; border-bottom: 0; border-top-right-radius: 4px; }
+.icp-cnr--bl { border-right: 0; border-top: 0; border-bottom-left-radius: 4px; }
+.icp-cnr--br { border-left: 0; border-top: 0; border-bottom-right-radius: 4px; }
+
+/* ─── Paired fields + link ─────────────────────────────────────────────────── */
+.icp-pair { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.icp-pair > .icp-num { flex: 1 1 0; }
+.icp-link { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--fg-2); cursor: pointer; }
+.icp-link:hover { color: var(--fg-0); background: var(--bg-3); }
+.icp-link.is-on { color: var(--accent); border-color: var(--accent-muted); background: var(--accent-tint); }
+
+/* ─── Angle dial ───────────────────────────────────────────────────────────── */
+.icp-dial { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-default); background: var(--bg-3); position: relative; cursor: grab; touch-action: none; }
+.icp-dial:active { cursor: grabbing; }
+.icp-dial:hover { border-color: var(--border-strong); }
+.icp-dial-needle { position: absolute; top: 50%; left: 50%; width: 11px; height: 1.5px; background: var(--accent); border-radius: 1px; transform-origin: left center; transform: rotate(var(--angle, 0deg)); }
+.icp-dial::after { content: ""; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; border-radius: 50%; background: var(--fg-1); transform: translate(-50%, -50%); }
+
+/* ─── Compact native select (mirrors .st-cp-nsel — 26px, single caret) ─────── */
+.icp-selwrap { position: relative; display: inline-flex; align-items: center; min-width: 0; }
+.icp-nsel {
+  appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; box-sizing: border-box;
+  cursor: pointer; background: var(--bg-3); border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs); color: var(--fg-0); font-family: var(--font-body);
+  font-size: var(--type-xs); padding: 3px 22px 3px var(--space-2); min-height: 26px;
+  transition: border-color var(--dur-soft) var(--ease-out), box-shadow var(--dur-soft) var(--ease-out);
+}
+.icp-nsel:hover { border-color: var(--border-strong); }
+.icp-nsel:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.icp-selcaret { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--fg-2); display: grid; }
+
+/* ─── Border composite row (width · style · colour) — fits one 26px line ────── */
+.icp-border { flex: 1 1 auto; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.icp-border .icp-num { flex: 0 0 46px; }
+.icp-border .icp-selwrap { flex: 1 1 auto; min-width: 52px; }
+
+/* ─── DS checkbox (custom box + check — matches the toggle/accent language) ── */
+.icp-check { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--type-sm); color: var(--fg-1); cursor: pointer; }
+.icp-check input { position: absolute; opacity: 0; width: 0; height: 0; }
+.icp-check-box { flex: none; width: 15px; height: 15px; border-radius: var(--radius-xs); border: 1px solid var(--border-strong); background: var(--bg-3); display: grid; place-items: center; color: transparent; transition: background var(--dur-soft) var(--ease-out), border-color var(--dur-soft) var(--ease-out); }
+.icp-check input:checked + .icp-check-box { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.icp-check input:focus-visible + .icp-check-box { box-shadow: 0 0 0 3px var(--accent-tint); }
+
+/* ─── Token colour trigger + popover (Custom · Variables) ──────────────────── */
+.icp-tokwrap { position: relative; display: inline-flex; }
+.icp-swatch2 { flex: none; width: 20px; height: 20px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); cursor: pointer; padding: 0; position: relative; overflow: hidden; }
+.icp-swatch2.is-bound { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+.icp-colorrow { display: flex; align-items: center; gap: var(--space-2); flex: 1 1 auto; min-width: 0; }
+.icp-colorval { flex: 1 1 auto; min-width: 0; appearance: none; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); color: var(--fg-0); font-family: var(--font-mono); font-size: var(--type-xs); padding: 4px var(--space-2); min-height: 26px; overflow: hidden; text-overflow: ellipsis; }
+.icp-colorval.is-bound { color: var(--accent); }
+.icp-colorval:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+
+.icp-pop { position: absolute; z-index: 50; top: calc(100% + 4px); left: 0; width: 224px; max-height: 300px; overflow: auto; background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); padding: var(--space-2); }
+.icp-poptabs { display: flex; gap: var(--space-1); margin-bottom: var(--space-2); }
+.icp-poptab { flex: 1; appearance: none; border: 0; background: transparent; color: var(--fg-2); font-size: var(--type-xs); font-family: var(--font-body); padding: var(--space-2); border-radius: var(--radius-xs); cursor: pointer; }
+.icp-poptab.is-active { background: var(--bg-4); color: var(--fg-0); }
+.icp-pop-custom { display: grid; gap: var(--space-2); }
+.icp-pop-hexrow { display: flex; align-items: center; gap: var(--space-2); }
+.icp-pop-native { width: 34px; height: 26px; padding: 0; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: none; cursor: pointer; }
+
+/* ─── Inline HSV colour picker (mirrors the real ColorPicker) ───────────────── */
+.icp-cpick { display: grid; gap: var(--space-2); }
+.icp-cpick-hexrow { display: flex; align-items: center; gap: var(--space-2); }
+.icp-cpick-hexsw { flex: none; width: 34px; height: 26px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); }
+.icp-cpick-hex { flex: 1 1 auto; min-width: 0; appearance: none; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); color: var(--fg-0); font-family: var(--font-mono); font-size: var(--type-xs); padding: 4px var(--space-2); }
+.icp-cpick-hex:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.icp-cpick-sv { position: relative; width: 100%; height: 118px; border: 0; padding: 0; border-radius: var(--radius-xs); overflow: hidden; cursor: crosshair; }
+.icp-cpick-svwhite { position: absolute; inset: 0; background: linear-gradient(to right, #fff, rgba(255,255,255,0)); }
+.icp-cpick-svblack { position: absolute; inset: 0; background: linear-gradient(to top, #000, rgba(0,0,0,0)); }
+.icp-cpick-knob { position: absolute; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.5); transform: translate(-50%, -50%); pointer-events: none; }
+.icp-cpick-controls { display: flex; align-items: center; gap: var(--space-3); }
+.icp-cpick-eye { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); color: var(--fg-1); cursor: pointer; }
+.icp-cpick-eye:hover { border-color: var(--border-strong); color: var(--fg-0); }
+.icp-cpick-preview { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-default); }
+.icp-cpick-hue { position: relative; flex: 1 1 auto; height: 12px; border: 0; padding: 0; border-radius: var(--radius-pill); cursor: pointer; background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
+.icp-cpick-huethumb { position: absolute; top: 50%; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.4); transform: translate(-50%, -50%); pointer-events: none; }
+.icp-cpick-rgb { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
+.icp-cpick-rgbf { display: grid; gap: 2px; justify-items: center; }
+.icp-cpick-rgbf input { width: 100%; text-align: center; appearance: none; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); padding: 3px 2px; }
+.icp-cpick-rgbf input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.icp-cpick-rgbf span { font-family: var(--font-mono); font-size: 9px; color: var(--fg-3); }
+
+/* ─── Collapsable panel section (caret toggle + section reset) — real sec() ── */
+.icp-sechd-row { display: flex; align-items: center; gap: var(--space-2); }
+.icp-sechd { flex: 1 1 auto; appearance: none; cursor: pointer; display: flex; align-items: center; gap: var(--space-2); background: transparent; border: 0; text-align: left; font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-3); padding: 0; }
+.icp-sechd:hover { color: var(--fg-1); }
+.icp-caret { display: inline-grid; place-items: center; color: var(--fg-3); transition: transform var(--dur-flip) var(--ease-out); }
+.icp-sechd[aria-expanded="false"] .icp-caret { transform: rotate(-90deg); }
+.icp-secreset { flex: none; width: 20px; height: 20px; display: grid; place-items: center; appearance: none; border: 0; background: transparent; color: var(--fg-3); border-radius: var(--radius-xs); cursor: pointer; }
+.icp-secreset:hover { color: var(--fg-0); background: var(--bg-3); }
+/* animated collapse — grid-rows 0fr→1fr keeps the DOM + interpolates height.
+ * Respects reduced-motion automatically via the --dur-* token collapse. */
+.icp-sec-anim { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-panel) var(--ease-in-out); }
+.icp-sec-anim.is-open { grid-template-rows: 1fr; }
+.icp-sec-inner { overflow: hidden; min-height: 0; }
+.icp-sec-anim.is-open .icp-sec-inner { padding-top: var(--space-2); }
+.icp-pop-search { display: flex; align-items: center; gap: 6px; padding: 4px 6px; margin-bottom: var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); color: var(--fg-2); }
+.icp-pop-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--fg-0); font-size: var(--type-xs); }
+.icp-pop-search input:focus { outline: none; }
+.icp-pop-row { display: flex; align-items: center; gap: var(--space-2); width: 100%; appearance: none; border: 0; background: transparent; padding: 4px 6px; border-radius: var(--radius-xs); cursor: pointer; text-align: left; }
+.icp-pop-row:hover { background: var(--bg-3); }
+.icp-pop-row.is-on { background: var(--accent-tint); }
+.icp-pop-cswatch { flex: none; width: 14px; height: 14px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); }
+.icp-pop-name { flex: 1 1 auto; min-width: 0; font-size: var(--type-xs); color: var(--fg-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icp-pop-val { flex: none; font-family: var(--font-mono); font-size: 9px; color: var(--fg-3); }
+
+/* ─── Composite colour field — ONE compact shell for every colour control ──── *
+ * The swatch is a FLUSH prefix segment (like a NumberField's icon handle): it
+ * fills the left cell, a 1px divider separates it from the value — no gap, so the
+ * swatch + input + alpha + eye read as ONE field, not a chip floating inside. */
+/* NOT overflow:hidden — that clipped the swatch popover. Instead the swatch
+ * rounds its own left corners + the last segment its right corners, so the flush
+ * look holds while the popover can escape the field. */
+.icp-cf { display: flex; align-items: stretch; min-height: 26px; min-width: 0; flex: 1 1 auto; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); transition: border-color var(--dur-soft) var(--ease-out), box-shadow var(--dur-soft) var(--ease-out); }
+.icp-cf:hover { border-color: var(--border-strong); }
+.icp-cf:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.icp-cf .icp-tokwrap { display: flex; align-items: stretch; }
+.icp-cf > *:last-child { border-top-right-radius: 2px; border-bottom-right-radius: 2px; }
+.icp-cf-sw { flex: none; width: 26px; border: 0; border-right: 1px solid var(--border-default); border-radius: 2px 0 0 2px; padding: 0; cursor: pointer; position: relative; }
+.icp-cf-in { flex: 1 1 auto; min-width: 0; width: 100%; border: 0; background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-size: var(--type-xs); text-transform: uppercase; padding: 0 var(--space-2); }
+.icp-cf-in.is-bound { color: var(--accent); text-transform: none; }
+.icp-cf-in:focus { outline: none; }
+.icp-cf-alpha { flex: none; width: 42px; border: 0; border-left: 1px solid var(--border-default); background: transparent; color: var(--fg-1); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); text-align: right; padding: 0 6px; }
+.icp-cf-alpha:focus { outline: none; }
+.icp-cf-eye { flex: none; width: 26px; border: 0; border-left: 1px solid var(--border-default); background: transparent; color: var(--fg-2); cursor: pointer; display: grid; place-items: center; }
+.icp-cf-eye:hover { color: var(--fg-0); background: var(--bg-2); }
+.icp-cf-eye.is-off { color: var(--fg-3); }
+.icp-alpha { flex: none; width: 40px; border: 0; border-left: 1px solid var(--border-subtle); background: transparent; color: var(--fg-1); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); text-align: right; padding: 0 4px; }
+.icp-alpha:focus { outline: none; }
+.icp-eye { flex: none; width: 22px; height: 22px; display: grid; place-items: center; border: 0; background: transparent; color: var(--fg-2); cursor: pointer; border-radius: var(--radius-xs); }
+.icp-eye:hover { color: var(--fg-0); background: var(--bg-2); }
+.icp-eye.is-off { color: var(--fg-3); }
+
+/* ─── Value-token binding (◇ button + bound chip) ──────────────────────────── */
+.icp-tokfield { display: flex; align-items: center; gap: var(--space-2); flex: 1 1 auto; min-width: 0; }
+.icp-tokfield > .icp-num, .icp-tokfield > .icp-boundchip { flex: 1 1 auto; min-width: 0; }
+.icp-tokbtn { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-2); color: var(--fg-2); cursor: pointer; position: relative; }
+.icp-tokbtn:hover { border-color: var(--border-strong); color: var(--fg-0); }
+.icp-tokbtn.is-bound { border-color: var(--accent); color: var(--accent); background: var(--accent-tint); }
+/* the value field, once bound to a token, shows the token name (accent) + detach */
+.icp-boundchip { display: flex; align-items: center; gap: var(--space-2); min-height: 26px; border: 1px solid var(--accent-muted); border-radius: var(--radius-xs); background: var(--accent-tint); padding: 0 var(--space-2); }
+.icp-boundchip-lead { display: inline-grid; place-items: center; color: var(--accent); }
+.icp-boundchip-name { flex: 1 1 auto; min-width: 0; font-family: var(--font-mono); font-size: var(--type-xs); color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icp-boundchip-x { flex: none; appearance: none; border: 0; background: transparent; color: var(--accent); cursor: pointer; display: grid; place-items: center; padding: 0 2px; }
+.icp-boundchip-x:hover { color: var(--fg-0); }
+/* split-corners / detach toggle (▢) — same language as the aspect link */
+.icp-splitbtn { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--fg-2); cursor: pointer; }
+.icp-splitbtn:hover { color: var(--fg-0); background: var(--bg-3); }
+.icp-splitbtn.is-on { color: var(--accent); border-color: var(--accent-muted); background: var(--accent-tint); }
+
+/* ─── Position inset box — compact, element bar in the center (Webflow) ─────── */
+.icp-insetbox { position: relative; width: 100%; max-width: 300px; height: 104px; border: 1px dashed var(--border-default); border-radius: var(--radius-sm); background: var(--bg-2); }
+.icp-insetbox-core { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); min-width: 84px; height: 26px; padding: 0 12px; display: grid; place-items: center; border: 1px solid var(--accent); border-radius: var(--radius-xs); background: var(--accent-tint); font-family: var(--font-mono); font-size: 10px; color: var(--accent); white-space: nowrap; }
+.icp-inset-v { position: absolute; width: 44px; height: 20px; appearance: none; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; text-align: center; padding: 0; cursor: ew-resize; }
+.icp-inset-v.is-auto { color: var(--fg-3); }
+.icp-inset-v:hover, .icp-inset-v:focus { border-color: var(--border-strong); background: var(--bg-3); outline: none; }
+.icp-inset-v:focus { cursor: text; }
+.icp-inset-v--t { top: 6px; left: 50%; transform: translateX(-50%); }
+.icp-inset-v--b { bottom: 6px; left: 50%; transform: translateX(-50%); }
+.icp-inset-v--l { left: 6px; top: 50%; transform: translateY(-50%); }
+.icp-inset-v--r { right: 6px; top: 50%; transform: translateY(-50%); }
+.icp-insetbox .icp-box-tag { color: var(--accent); }
+.icp-note { font-size: var(--type-xs); color: var(--fg-3); font-style: italic; margin-top: var(--space-2); max-width: 340px; }
+
+/* ─── States gallery + legend ──────────────────────────────────────────────── */
+.icp-states { display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: var(--space-4) var(--space-3); }
+.icp-state-tag { font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-3); }
+.icp-legend { display: flex; flex-wrap: wrap; gap: var(--space-5); margin: 0 0 var(--space-4); }
+.icp-legend-item { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--type-sm); color: var(--fg-1); }
+.icp-legend-item code { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+
+/* ─── Panel-scale composition ──────────────────────────────────────────────── */
+/* overflow visible (not the DS .panel's hidden) so a colour/token popover opened
+ * from inside a panel isn't clipped by the panel's rounded-corner clip. */
+.icp-panel { margin: 0 0 var(--space-5); width: 300px; max-width: 100%; overflow: visible; }
+.icp-panel .panel-hd .hd-meta { margin-left: auto; text-transform: none; letter-spacing: 0; color: var(--fg-2); font-size: var(--type-xs); }
+.icp-panel-sec { padding: var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+.icp-panel-sec:last-child { border-bottom: 0; }
+.icp-panel-sub { font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-3); margin: 0 0 var(--space-2); }
