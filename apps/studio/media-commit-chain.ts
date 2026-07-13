@@ -23,13 +23,16 @@
  *             could hand the next link a `getSnapshot()` that hasn't caught
  *             up yet — reproducing the same loss one level down (confirmed
  *             empirically against a real dev server: see the Task 5 write-up).
- *             Instead, every idle read is RECONCILED against `remembered` (the
- *             last array this chain itself produced): anything in
- *             `remembered` whose key is missing from the fresh snapshot is
- *             assumed not-yet-rendered and is folded back in. This is correct
- *             regardless of render timing, and still lets an unrelated
- *             synchronous edit (pen/shape/drag, made while idle) through via
- *             the fresh snapshot itself.
+ *             Instead, every idle read is RECONCILED against `remembered`
+ *             (the last array this chain itself produced): for every id the
+ *             chain itself has ever touched, `remembered`'s value WINS
+ *             outright, even if the fresh snapshot also contains that id —
+ *             presence alone isn't enough, since fresh can hold a STALE
+ *             value for an id the chain already updated (see `reconcile()`
+ *             below and DDR-165). Only ids fresh has that the chain has
+ *             never touched get folded in from it, which is what still lets
+ *             an unrelated synchronous edit (pen/shape/drag, made while
+ *             idle) through.
  *
  *             Framework/DOM-free by design so the no-loss guarantee is
  *             testable without React or a real image decode/upload — see

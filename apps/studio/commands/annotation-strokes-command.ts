@@ -27,8 +27,7 @@ import { registerCommand } from '../undo-stack.ts';
  * Push-once callable that submits a full `Stroke[]` to the server (or its
  * test stub) AND updates the iframe's local strokes state. The
  * annotations-layer `putStrokes` is the production binding.
- */
-/**
+ *
  * `before` is the baseline THIS command's `next` was computed from — passed
  * through so the consumer can distinguish "an id `prev` still has that
  * `before` already lacked too" (a genuinely concurrent addition, fold it in)
@@ -38,7 +37,7 @@ import { registerCommand } from '../undo-stack.ts';
  */
 export type StrokesPutFn = (
   next: readonly Stroke[],
-  before?: readonly Stroke[]
+  before: readonly Stroke[]
 ) => void | Promise<void>;
 
 export interface AnnotationStrokesPayload {

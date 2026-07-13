@@ -158,7 +158,7 @@ import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.t
 import { buildAnnotationStrokesRecord } from './commands/annotation-strokes-command.ts';
 import { ensureMenuStyles as ensureCtxMenuStyles } from './context-menu.tsx';
 import { crossedDragThreshold, type Tool } from './input-router.tsx';
-import { createMediaCommitChain } from './media-commit-chain.ts';
+import { createMediaCommitChain, type MediaCommitResult } from './media-commit-chain.ts';
 import { mountCaret, placeCaretAt } from './text-caret.ts';
 import {
   AnnotationResizeOverlay,
@@ -404,12 +404,12 @@ function resolveAssetHref(href: string): string {
  * recognize — keeping the `<image>` element, dropping only the attribute —
  * so the server's STORED + broadcast SVG silently diverges from whatever the
  * client just sent. That divergence defeats the collab-echo self-suppression
- * guard below (the `recentSelfSvgsRef` history): the echo's content no
- * longer matches anything we recorded as "already applied", so a real
- * `setStrokesState` fires from the (href-stripped) server copy — which can
- * wipe out a SIBLING
- * stroke's still-in-flight optimistic insert that was never itself part of
- * that PUT. This is the concrete failure a 3-file concurrent drop hit: one
+ * guard (the `recentSelfSvgsRef` history, near `putStrokes` below): the
+ * echo's content no longer matches anything we recorded as "already
+ * applied", so a real `setStrokesState` fires from the (href-stripped)
+ * server copy — which can wipe out a SIBLING stroke's still-in-flight
+ * optimistic insert that was never itself part of that PUT. This is the
+ * concrete failure a 3-file concurrent drop hit: one
  * image ended up href-stripped (a blank frame) and another was dropped
  * entirely once an unrelated commit's echo round-tripped while both were
  * still uploading. See media-commit-chain.ts for the sibling accumulator fix
@@ -465,6 +465,38 @@ export function reconcileForeignEcho(
   const incomingIds = new Set(incoming.map((s) => s.id));
   const extra = prev.filter((s) => !incomingIds.has(s.id) && isEphemeralHref(s));
   return extra.length ? [...incoming, ...extra] : (incoming as Stroke[]);
+}
+
+/**
+ * Decide what `createImageFromFile`'s post-upload swap should do with a
+ * given `before` chain link. Extracted as a pure function (no React) so the
+ * delete-during-upload race is unit-testable: `wasDeleted` reflects whether
+ * `deleteStrokes` recorded this id (via `deletedStrokeIdsRef`) before the
+ * upload resolved — checking that FIRST, rather than inferring intent from
+ * `before`'s membership alone, is what stops a Backspace-then-still-
+ * uploading image from resurrecting once the upload lands (and syncing the
+ * resurrection to every collab peer). When not deleted, an id absent from
+ * `before` is assumed to be render lag (this same file's optimistic insert
+ * hasn't rendered yet) rather than a delete, and gets folded back in.
+ */
+export function resolveImageUploadSwap(
+  before: readonly Stroke[],
+  id: string,
+  optimistic: Stroke,
+  realHref: string,
+  wasDeleted: boolean
+): MediaCommitResult<Stroke> | null {
+  if (wasDeleted) {
+    if (!before.some((s) => s.id === id)) return null;
+    return { after: before.filter((s) => s.id !== id), label: 'add image' };
+  }
+  const base = before.some((s) => s.id === id) ? before : [...before, optimistic];
+  const after = base.map((s) => (s.id === id ? ({ ...s, href: realHref } as Stroke) : s));
+  // The optimistic blob: entry was never itself committed, so the undo
+  // "before" excludes it — undo should remove the image outright, not
+  // restore a revoked blob:.
+  const commitBefore = base.filter((s) => s.id !== id);
+  return { after, commitBefore, label: 'add image' };
 }
 
 // feature-bulk-media-insert Task 11 — classify an already-uploaded
@@ -1034,6 +1066,31 @@ export function AnnotationsLayer() {
       (s) => s.id
     )
   );
+  // Live-security-review finding (feature-bulk-media-insert follow-up) —
+  // `createImageFromFile`'s upload-completion swap folds its optimistic
+  // stroke back in whenever the chain's `before` doesn't have it yet,
+  // reasoning "render lag, not a delete" (see the comment there). That
+  // reasoning has no way to tell a genuine delete apart from render lag by
+  // array membership alone — if the user drops an image then hits
+  // Backspace before the upload resolves, the id is legitimately gone, and
+  // the old code resurrected it anyway once the upload landed (and synced
+  // the resurrection to every collab peer). Tracked explicitly here instead
+  // of inferred: `deleteStrokes` records every id it removes; the swap
+  // checks (and consumes) this before assuming absence means lag. Bounded
+  // like `recentSelfSvgsRef` below — only ever holds ids a delete has
+  // touched, which is small in practice, but capped for safety.
+  const DELETED_STROKE_IDS_CAP = 128;
+  const deletedStrokeIdsRef = useRef<Set<string>>(new Set());
+  const rememberDeletedIds = useCallback((ids: readonly string[]) => {
+    const set = deletedStrokeIdsRef.current;
+    for (const id of ids) {
+      set.add(id);
+      if (set.size > DELETED_STROKE_IDS_CAP) {
+        const oldest = set.values().next().value;
+        if (oldest !== undefined) set.delete(oldest);
+      }
+    }
+  }, []);
 
   const isDraw =
     tool === 'pen' ||
@@ -1172,15 +1229,13 @@ export function AnnotationsLayer() {
    * of two-step racing.
    */
   const putStrokes = useCallback(
-    (next: readonly Stroke[], opBefore?: readonly Stroke[]) => {
+    (next: readonly Stroke[], before: readonly Stroke[]) => {
       // See reconcileCommit — a direct setStrokesState(next) here can
       // clobber a sibling file's concurrent optimistic insert; folding
-      // blindly against `prev` (no `opBefore`) can just as easily revert
-      // this very mutation's own delete. `opBefore` (this command's
-      // baseline) disambiguates the two.
-      setStrokesState((prev) =>
-        opBefore ? reconcileCommit(prev, opBefore, next) : (next as Stroke[])
-      );
+      // blindly against `prev` (no baseline) can just as easily revert this
+      // very mutation's own delete. `before` (this command's own baseline)
+      // disambiguates the two.
+      setStrokesState((prev) => reconcileCommit(prev, before, next));
       const file = fileRef.current;
       if (!file) return Promise.resolve();
       const persistable = next.some(isEphemeralHref)
@@ -1265,6 +1320,12 @@ export function AnnotationsLayer() {
         (s) => !set.has(s.id) && !(s.tool === 'text' && s.anchorId != null && set.has(s.anchorId))
       );
       if (filtered.length === prev.length) return;
+      // Record every id actually removed (not just the requested `ids` —
+      // bound text anchors get swept too) so an in-flight image upload's
+      // swap (see deletedStrokeIdsRef above) knows this id is a genuine
+      // delete, not render lag, if it resolves after this point.
+      const filteredIds = new Set(filtered.map((s) => s.id));
+      rememberDeletedIds(prev.filter((s) => !filteredIds.has(s.id)).map((s) => s.id));
       // FigJam v3 — deleting a bind host strips the bind (endpoint frozen,
       // arrow survives); singleton/empty groups dissolve (tldraw lifecycle).
       commitStrokes(prev, recomputeBoundArrows(normalizeGroups(filtered)));
@@ -1372,7 +1433,7 @@ export function AnnotationsLayer() {
       previewStroke,
       commitGesture,
     };
-  }, [strokes, setStrokes, commitStrokes]);
+  }, [strokes, setStrokes, commitStrokes, rememberDeletedIds]);
 
   // feature-bulk-media-insert Task 11 — the picker's "Add as annotation"
   // confirm posts N already-uploaded asset paths in ONE message; unlike
@@ -1632,33 +1693,22 @@ export function AnnotationsLayer() {
             // completion always builds on the latest accumulated state
             // rather than a stale pre-render snapshot another completion
             // already moved past.
-            void mediaCommitChainRef.current.enqueue((before) => {
-              // The optimistic insert above is a plain (non-chain) setState
-              // — on a fast (e.g. localhost) round trip, THIS SAME file's
-              // own upload can resolve before React has even rendered that
-              // insert, so `before` (fresh off strokesRef.current, or the
-              // chain's reconciled memory) may not have it yet. We know it
-              // exists — we just created it — so fold it back in rather
-              // than reading its absence as "erased mid-flight" (a real
-              // erase is a deliberate, human-timescale gesture; this is a
-              // sub-render-cycle race, not a delete).
-              const base = before.some((s) => s.id === id) ? before : [...before, optimistic];
-              const after = base.map((s) =>
-                s.id === id ? ({ ...s, href: res.path } as Stroke) : s
-              );
-              // The optimistic blob: entry was never itself committed (see
-              // above), so the undo "before" excludes it — undo should
-              // remove the image outright, not restore a revoked blob:.
-              const commitBefore = base.filter((s) => s.id !== id);
-              return { after, commitBefore, label: 'add image' };
-            }, commitStrokes);
-            annotSel?.replace([id]);
+            void mediaCommitChainRef.current
+              .enqueue((before) => {
+                const wasDeleted = deletedStrokeIdsRef.current.has(id);
+                if (wasDeleted) deletedStrokeIdsRef.current.delete(id);
+                return resolveImageUploadSwap(before, id, optimistic, res.path, wasDeleted);
+              }, commitStrokes)
+              .then((after) => {
+                if (after.some((s) => s.id === id)) annotSel?.replace([id]);
+              });
           } else {
             // Failure cleanup — no undo record (the optimistic stroke was
             // never committed), so a plain functional updater (not the
             // chain) is enough: it still composes correctly against any
             // chain-driven setStrokesState queued in the same batch.
             setStrokesState((prev) => prev.filter((s) => s.id !== id));
+            deletedStrokeIdsRef.current.delete(id); // never reached the chain — nothing to consume there
             showCanvasToast(`Image upload failed — ${res.error}`);
           }
           URL.revokeObjectURL(blobUrl);

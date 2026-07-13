@@ -90,7 +90,7 @@ describe('createAnnotationStrokesCommand', () => {
     expect(putFn.mock.calls[1]?.[0]).toEqual([pen1]);
   });
 
-  test('do() passes the pre-op BEFORE as putFn\'s second arg; undo() passes the post-op AFTER', async () => {
+  test("do() passes the pre-op BEFORE as putFn's second arg; undo() passes the post-op AFTER", async () => {
     // The live-bug regression this locks in: putStrokes needs its own
     // command's baseline to tell a delete (an id `before` had that `next`
     // dropped) apart from a genuinely concurrent sibling addition (an id

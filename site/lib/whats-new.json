@@ -1,7 +1,16 @@
 {
-  "generated": "2026-07-11T14:11:19.737Z",
+  "generated": "2026-07-11T14:29:47.768Z",
   "version": "0.43.0",
   "entries": [
+    {
+      "id": "bulk-media-insert",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Insert several photos at once",
+      "summary": "The media picker now supports multi-select — pick several photos (or a mix of photos, videos, and audio) in one go instead of one at a time. Choose whether they land inside your artboard or float on the canvas as annotations; the picker figures out the sensible default (video and audio always go on the canvas, since only images can drop into an artboard) and lets you switch. Dragging several files from Finder onto the canvas at once is also more reliable now — every dropped file lands, even in a large batch.",
+      "surface": "design-ui"
+    },
     {
       "id": "ai-video-generation",
       "version": null,

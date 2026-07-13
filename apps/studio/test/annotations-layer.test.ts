@@ -20,9 +20,10 @@ import {
   penPathD,
   polygonPoints,
   polygonVertices,
+  type RectStroke,
   reconcileCommit,
   reconcileForeignEcho,
-  type RectStroke,
+  resolveImageUploadSwap,
   rid,
   STICKY_PALETTE,
   type StickyStroke,
@@ -430,10 +431,46 @@ describe('annotations-layer / strokes round-trip is stable for arrays', () => {
 });
 
 describe('annotations-layer / reconcileCommit (live-bug regression — delete must stick)', () => {
-  const a: RectStroke = { id: 'a', tool: 'rect', color: '#000', width: 2, x: 0, y: 0, w: 10, h: 10 };
-  const b: RectStroke = { id: 'b', tool: 'rect', color: '#000', width: 2, x: 20, y: 0, w: 10, h: 10 };
-  const c: RectStroke = { id: 'c', tool: 'rect', color: '#000', width: 2, x: 40, y: 0, w: 10, h: 10 };
-  const d: RectStroke = { id: 'd', tool: 'rect', color: '#000', width: 2, x: 60, y: 0, w: 10, h: 10 };
+  const a: RectStroke = {
+    id: 'a',
+    tool: 'rect',
+    color: '#000',
+    width: 2,
+    x: 0,
+    y: 0,
+    w: 10,
+    h: 10,
+  };
+  const b: RectStroke = {
+    id: 'b',
+    tool: 'rect',
+    color: '#000',
+    width: 2,
+    x: 20,
+    y: 0,
+    w: 10,
+    h: 10,
+  };
+  const c: RectStroke = {
+    id: 'c',
+    tool: 'rect',
+    color: '#000',
+    width: 2,
+    x: 40,
+    y: 0,
+    w: 10,
+    h: 10,
+  };
+  const d: RectStroke = {
+    id: 'd',
+    tool: 'rect',
+    color: '#000',
+    width: 2,
+    x: 60,
+    y: 0,
+    w: 10,
+    h: 10,
+  };
 
   test('a delete stays deleted even when the rendered `prev` has not caught up yet', () => {
     // This is exactly the reported bug: Backspace computes next = before
@@ -467,8 +504,26 @@ describe('annotations-layer / reconcileCommit (live-bug regression — delete mu
 });
 
 describe('annotations-layer / reconcileForeignEcho (deletes must sync across tabs/peers)', () => {
-  const a: RectStroke = { id: 'a', tool: 'rect', color: '#000', width: 2, x: 0, y: 0, w: 10, h: 10 };
-  const b: RectStroke = { id: 'b', tool: 'rect', color: '#000', width: 2, x: 20, y: 0, w: 10, h: 10 };
+  const a: RectStroke = {
+    id: 'a',
+    tool: 'rect',
+    color: '#000',
+    width: 2,
+    x: 0,
+    y: 0,
+    w: 10,
+    h: 10,
+  };
+  const b: RectStroke = {
+    id: 'b',
+    tool: 'rect',
+    color: '#000',
+    width: 2,
+    x: 20,
+    y: 0,
+    w: 10,
+    h: 10,
+  };
   const optimisticImage: ImageStroke = {
     id: 'img',
     tool: 'image',
@@ -489,6 +544,60 @@ describe('annotations-layer / reconcileForeignEcho (deletes must sync across tab
     const prev = [a, optimisticImage];
     const incoming = [a]; // the peer's broadcast was authored before our upload started
     expect(reconcileForeignEcho(prev, incoming)).toEqual([a, optimisticImage]);
+  });
+});
+
+describe('annotations-layer / resolveImageUploadSwap (delete-during-upload must not resurrect)', () => {
+  // Adversarial-review finding: dropping an image, then Backspacing it
+  // before its upload resolves, used to resurrect it once the upload
+  // landed — the swap read "id absent from `before`" as render lag
+  // unconditionally, with no way to tell that apart from a genuine delete.
+  const optimistic: ImageStroke = {
+    id: 'img-1',
+    tool: 'image',
+    x: 0,
+    y: 0,
+    w: 10,
+    h: 10,
+    href: 'blob:optimistic-preview',
+  };
+  const sibling: RectStroke = {
+    id: 'sib',
+    tool: 'rect',
+    color: '#000',
+    width: 2,
+    x: 20,
+    y: 0,
+    w: 10,
+    h: 10,
+  };
+
+  test('deleted before the chain caught up to the optimistic insert (common case) → stays gone, no undo record', () => {
+    const before = [sibling]; // render lag — optimistic insert not reflected yet
+    const result = resolveImageUploadSwap(before, 'img-1', optimistic, 'assets/real.png', true);
+    expect(result).toBeNull();
+  });
+
+  test('deleted after the chain already had the optimistic entry → explicitly stripped from `after`', () => {
+    const before = [sibling, optimistic];
+    const result = resolveImageUploadSwap(before, 'img-1', optimistic, 'assets/real.png', true);
+    expect(result?.after).toEqual([sibling]);
+  });
+
+  test('NOT deleted + render lag (the original, still-valid case) → swaps to the real href', () => {
+    const before = [sibling]; // optimistic insert hasn't rendered into `before` yet
+    const result = resolveImageUploadSwap(before, 'img-1', optimistic, 'assets/real.png', false);
+    const img = result?.after.find((s) => s.id === 'img-1') as unknown as { href: string };
+    expect(img?.href).toBe('assets/real.png');
+    expect(result?.commitBefore).toEqual([sibling]); // undo excludes the never-committed blob: entry
+  });
+
+  test('NOT deleted, already present in `before` → swaps in place, sibling order preserved', () => {
+    const before = [sibling, optimistic];
+    const result = resolveImageUploadSwap(before, 'img-1', optimistic, 'assets/real.png', false);
+    expect(result?.after.map((s) => s.id)).toEqual(['sib', 'img-1']);
+    const img = result?.after.find((s) => s.id === 'img-1') as unknown as { href: string };
+    expect(img?.href).toBe('assets/real.png');
   });
 });
 
