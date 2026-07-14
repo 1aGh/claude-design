@@ -308,9 +308,10 @@ Execute in phase order. Each phase is independently shippable. Task IDs `T#` for
 - **Gotcha**: extraction is best-effort — the LOCK gate still lets the user correct; never present extracted values as final without the Stage-3/4 confirm. Also: use `server.ts` for manual dev-server verification in this repo, never the stale `server.mjs` entry point (the latter 404s on `/_client/client.bundle.js`).
 - **Validate**: `/design:setup-ds test --from-brand <fixtures>` producing a DS whose accent/type/logo trace to the upload, plus the `design-system-completeness-critic` pass, are still NOT yet run live — that's a full Stage 1-4 walkthrough, out of scope for this task's own live-verify (which covered upload→extraction→panel display).
 
-**T13: RE-CUT the explainer to show the real upload→setup flow**
+**T13: RE-CUT the explainer to show the real upload→setup flow** — ⏭️ DEFERRED 2026-07-14 (owner call)
 - **Do**: Update the P1 video-comp to include the now-real "upload brand manual → get a design system" beat. Re-export MP4/GIF/poster; refresh site + What's-New.
-- **Validate**: re-export clean; site build green.
+- **Deferred because**: this is a genuine video-production task (new ElevenLabs VO, a new Playwright screen-capture "tape" of the Brand-upload panel, a full re-render + re-score of the 14-scene `scripts/video/final/src/scenes/v5/` showreel per `_signoff.md`'s discipline) — different in kind and cost from T9-T12's code/security work. Owner chose to skip it for now rather than spend on a full re-cut or a lighter partial edit. Revisit whenever the video gets its next refresh pass.
+- **Validate**: re-export clean; site build green. (Not run — task deferred before implementation.)
 
 ### Phase 4 — Migration: LLM-vision reconstruction (experimental follow-up)
 
