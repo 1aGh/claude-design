@@ -73,7 +73,8 @@ export function uiPrefsPath(): string {
 }
 
 function coercePanelSides(raw: unknown): PanelSides {
-  const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const o =
+    raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const out = { ...PANEL_SIDES_DEFAULTS };
   for (const id of DOCK_PANEL_IDS) {
     if (o[id] === 'left' || o[id] === 'right') out[id] = o[id] as DockSide;
@@ -82,7 +83,8 @@ function coercePanelSides(raw: unknown): PanelSides {
 }
 
 function coerce(raw: unknown): UiPrefs {
-  const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const o =
+    raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
   return {
     theme: o.theme === 'light' || o.theme === 'dark' ? o.theme : UI_PREFS_DEFAULTS.theme,

@@ -26,13 +26,13 @@ export default function SmokeTSX() {
     <DesignCanvas>
       <DCSection id="overview" title="TSX runtime smoke">
         <DCArtboard id="primary" label="A · primary" width={696} height={404}>
-          <div className="maude" style={{ padding: 32, fontFamily: "monospace" , display: "flex" , flexDirection: "column" , alignItems: "flex-start" , width: "fit-content" , height: "fit-content" , paddingTop: "89.17px" , paddingRight: "89.17px" , paddingBottom: "89.17px" , paddingLeft: "89.17px" , gap: "11.95px" }}>
+          <div className="maude" style={{ padding: 32, fontFamily: "monospace" }}>
            <img
              src="assets/431f956e.jpg"
              alt=""
              style={{ maxWidth: "200px", marginTop: 16 , position: "absolute" , left: "389.96px" , top: "30px" , borderRadius: "10px" , height: "290.26px" , objectFit: "cover" , aspectRatio: "1 / 1" , width: "244.04px" }}
            />
-           <h1 style={{ position: "static" , left: "2px" , top: "33px" , width: "271px" , height: "31.75px" , color: "#e60a0a" , marginTop: "0px" , marginBottom: "0px" }} data-dc-element="title">TSX smoke canvas</h1>
+           <h1 style={{ position: "static" , left: "2px" , top: "33px" , width: "271px" , height: "31.74px" , color: "#e60a0a" , marginTop: "0px" , marginBottom: "0px" , transform: "rotate(0.05deg)" }} data-dc-element="title">TSX smoke canvas</h1>
            <h1 style={{ position: "static" , left: "2px" , top: "33px" , width: "263.68px" , height: "37.48px" , marginTop: "0px" , marginBottom: "0px" }} data-dc-element="title">TSX smoke canvas</h1>
            <button
              type="button"

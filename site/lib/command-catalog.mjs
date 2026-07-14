@@ -112,6 +112,7 @@ export const COMMAND_CATALOG = [
       { name: 'to-rn', category: 'daily' },
       { name: 'photo', category: 'daily' },
       { name: 'reel', category: 'daily' },
+      { name: 'generate', category: 'daily' },
       { name: 'help', category: 'daily' },
       { name: 'init', category: 'setup' },
       { name: 'setup-ds', category: 'setup' },

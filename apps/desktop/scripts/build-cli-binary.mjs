@@ -58,7 +58,15 @@ const outPath = join(BIN_DIR, `maude-${target.triple}${exe}`);
 mkdirSync(BIN_DIR, { recursive: true });
 
 const proc = Bun.spawn(
-  ['bun', 'build', '--compile', `--target=${target.bun}`, '--minify', `--outfile=${outPath}`, ENTRY],
+  [
+    'bun',
+    'build',
+    '--compile',
+    `--target=${target.bun}`,
+    '--minify',
+    `--outfile=${outPath}`,
+    ENTRY,
+  ],
   { cwd: REPO_ROOT, stdout: 'inherit', stderr: 'inherit' }
 );
 const code = await proc.exited;

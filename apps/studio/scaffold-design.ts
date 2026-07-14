@@ -588,117 +588,119 @@ export default function Canvas() {
 `;
 
 const HOW_TO_USE_MAUDE_META = {
-  "title": "How to use Maude",
-  "subtitle": "Reference canvas seeded into every new project \u2014 10 artboards, one per capability",
-  "brief": "Onboarding reference canvas (replaces the Phase 1 explainer-video plan item). Seeded alongside Welcome.tsx by scaffold-design.ts on every new project. One artboard per capability cluster: start here, design system, editing, AI assistant, point/comment/draw iteration, AI image generation (Nano Banana), photo editing, media & templates, save/share/collaborate, draw-as-code. Honest inline mini-mockups (no live screenshots \u2014 has to work with zero server state on a freshly scaffolded project).",
-  "platform": "desktop",
-  "designSystem": "maude",
-  "opt_out_scope": "none",
-  "sections": [
+  title: 'How to use Maude',
+  subtitle:
+    'Reference canvas seeded into every new project \u2014 10 artboards, one per capability',
+  brief:
+    'Onboarding reference canvas (replaces the Phase 1 explainer-video plan item). Seeded alongside Welcome.tsx by scaffold-design.ts on every new project. One artboard per capability cluster: start here, design system, editing, AI assistant, point/comment/draw iteration, AI image generation (Nano Banana), photo editing, media & templates, save/share/collaborate, draw-as-code. Honest inline mini-mockups (no live screenshots \u2014 has to work with zero server state on a freshly scaffolded project).',
+  platform: 'desktop',
+  designSystem: 'maude',
+  opt_out_scope: 'none',
+  sections: [
     {
-      "id": "how-to-use-maude",
-      "title": "How to use Maude",
-      "subtitle": "REFERENCE \u00b7 10 artboards, one per capability"
-    }
+      id: 'how-to-use-maude',
+      title: 'How to use Maude',
+      subtitle: 'REFERENCE \u00b7 10 artboards, one per capability',
+    },
   ],
-  "artboards": [
+  artboards: [
     {
-      "id": "start-here",
-      "label": "01 \u00b7 Start here"
+      id: 'start-here',
+      label: '01 \u00b7 Start here',
     },
     {
-      "id": "design-system",
-      "label": "02 \u00b7 Design system"
+      id: 'design-system',
+      label: '02 \u00b7 Design system',
     },
     {
-      "id": "edit-canvas",
-      "label": "03 \u00b7 Edit a canvas"
+      id: 'edit-canvas',
+      label: '03 \u00b7 Edit a canvas',
     },
     {
-      "id": "ai-assistant",
-      "label": "04 \u00b7 AI Assistant"
+      id: 'ai-assistant',
+      label: '04 \u00b7 AI Assistant',
     },
     {
-      "id": "point-comment-draw",
-      "label": "05 \u00b7 Point, comment, draw"
+      id: 'point-comment-draw',
+      label: '05 \u00b7 Point, comment, draw',
     },
     {
-      "id": "generate-images",
-      "label": "06 \u00b7 Generate images"
+      id: 'generate-images',
+      label: '06 \u00b7 Generate images',
     },
     {
-      "id": "photo-editing",
-      "label": "07 \u00b7 Photo editing"
+      id: 'photo-editing',
+      label: '07 \u00b7 Photo editing',
     },
     {
-      "id": "media-and-templates",
-      "label": "08 \u00b7 Media & templates"
+      id: 'media-and-templates',
+      label: '08 \u00b7 Media & templates',
     },
     {
-      "id": "save-share-collab",
-      "label": "09 \u00b7 Save, share, collaborate"
+      id: 'save-share-collab',
+      label: '09 \u00b7 Save, share, collaborate',
     },
     {
-      "id": "draw-as-code",
-      "label": "10 \u00b7 Draw as code"
-    }
+      id: 'draw-as-code',
+      label: '10 \u00b7 Draw as code',
+    },
   ],
-  "layout": {
-    "artboards": [
+  layout: {
+    artboards: [
       {
-        "id": "start-here",
-        "x": 0,
-        "y": 0
+        id: 'start-here',
+        x: 0,
+        y: 0,
       },
       {
-        "id": "design-system",
-        "x": 1120,
-        "y": 0
+        id: 'design-system',
+        x: 1120,
+        y: 0,
       },
       {
-        "id": "edit-canvas",
-        "x": 2240,
-        "y": 0
+        id: 'edit-canvas',
+        x: 2240,
+        y: 0,
       },
       {
-        "id": "ai-assistant",
-        "x": 3360,
-        "y": 0
+        id: 'ai-assistant',
+        x: 3360,
+        y: 0,
       },
       {
-        "id": "point-comment-draw",
-        "x": 4480,
-        "y": 0
+        id: 'point-comment-draw',
+        x: 4480,
+        y: 0,
       },
       {
-        "id": "generate-images",
-        "x": 5600,
-        "y": 0
+        id: 'generate-images',
+        x: 5600,
+        y: 0,
       },
       {
-        "id": "photo-editing",
-        "x": 6720,
-        "y": 0
+        id: 'photo-editing',
+        x: 6720,
+        y: 0,
       },
       {
-        "id": "media-and-templates",
-        "x": 7840,
-        "y": 0
+        id: 'media-and-templates',
+        x: 7840,
+        y: 0,
       },
       {
-        "id": "save-share-collab",
-        "x": 8960,
-        "y": 0
+        id: 'save-share-collab',
+        x: 8960,
+        y: 0,
       },
       {
-        "id": "draw-as-code",
-        "x": 10080,
-        "y": 0
-      }
-    ]
+        id: 'draw-as-code',
+        x: 10080,
+        y: 0,
+      },
+    ],
   },
-  "css_mode": "inline",
-  "iteration_count": 1
+  css_mode: 'inline',
+  iteration_count: 1,
 };
 
 // ── "How to make video" — the video-comp companion (7 artboards). Same
@@ -1139,90 +1141,92 @@ export default function Canvas() {
 `;
 
 const HOW_TO_MAKE_VIDEO_META = {
-  "title": "How to make video",
-  "subtitle": "Reference canvas seeded into every new project \u2014 7 artboards, one per video capability",
-  "brief": "Onboarding reference canvas (companion to How to use Maude.tsx). Seeded by scaffold-design.ts on every new project. One artboard per video-comp capability: starting a comp, the Timeline, the Assistant for video, turning raw footage into a cut, AI video/audio generation, automatic captions, export.",
-  "platform": "desktop",
-  "designSystem": "maude",
-  "opt_out_scope": "none",
-  "sections": [
+  title: 'How to make video',
+  subtitle:
+    'Reference canvas seeded into every new project \u2014 7 artboards, one per video capability',
+  brief:
+    'Onboarding reference canvas (companion to How to use Maude.tsx). Seeded by scaffold-design.ts on every new project. One artboard per video-comp capability: starting a comp, the Timeline, the Assistant for video, turning raw footage into a cut, AI video/audio generation, automatic captions, export.',
+  platform: 'desktop',
+  designSystem: 'maude',
+  opt_out_scope: 'none',
+  sections: [
     {
-      "id": "how-to-make-video",
-      "title": "How to make video",
-      "subtitle": "REFERENCE \u00b7 7 artboards, one per video capability"
-    }
+      id: 'how-to-make-video',
+      title: 'How to make video',
+      subtitle: 'REFERENCE \u00b7 7 artboards, one per video capability',
+    },
   ],
-  "artboards": [
+  artboards: [
     {
-      "id": "start-video-comp",
-      "label": "01 \u00b7 Start a video comp"
+      id: 'start-video-comp',
+      label: '01 \u00b7 Start a video comp',
     },
     {
-      "id": "timeline",
-      "label": "02 \u00b7 Edit on the Timeline"
+      id: 'timeline',
+      label: '02 \u00b7 Edit on the Timeline',
     },
     {
-      "id": "ai-assistant-video",
-      "label": "03 \u00b7 AI Assistant for video"
+      id: 'ai-assistant-video',
+      label: '03 \u00b7 AI Assistant for video',
     },
     {
-      "id": "footage-to-cut",
-      "label": "04 \u00b7 Footage into a cut"
+      id: 'footage-to-cut',
+      label: '04 \u00b7 Footage into a cut',
     },
     {
-      "id": "generate-video-audio",
-      "label": "05 \u00b7 Generate video & audio"
+      id: 'generate-video-audio',
+      label: '05 \u00b7 Generate video & audio',
     },
     {
-      "id": "captions",
-      "label": "06 \u00b7 Automatic captions"
+      id: 'captions',
+      label: '06 \u00b7 Automatic captions',
     },
     {
-      "id": "export",
-      "label": "07 \u00b7 Export"
-    }
+      id: 'export',
+      label: '07 \u00b7 Export',
+    },
   ],
-  "layout": {
-    "artboards": [
+  layout: {
+    artboards: [
       {
-        "id": "start-video-comp",
-        "x": 0,
-        "y": 0
+        id: 'start-video-comp',
+        x: 0,
+        y: 0,
       },
       {
-        "id": "timeline",
-        "x": 1120,
-        "y": 0
+        id: 'timeline',
+        x: 1120,
+        y: 0,
       },
       {
-        "id": "ai-assistant-video",
-        "x": 2240,
-        "y": 0
+        id: 'ai-assistant-video',
+        x: 2240,
+        y: 0,
       },
       {
-        "id": "footage-to-cut",
-        "x": 3360,
-        "y": 0
+        id: 'footage-to-cut',
+        x: 3360,
+        y: 0,
       },
       {
-        "id": "generate-video-audio",
-        "x": 4480,
-        "y": 0
+        id: 'generate-video-audio',
+        x: 4480,
+        y: 0,
       },
       {
-        "id": "captions",
-        "x": 5600,
-        "y": 0
+        id: 'captions',
+        x: 5600,
+        y: 0,
       },
       {
-        "id": "export",
-        "x": 6720,
-        "y": 0
-      }
-    ]
+        id: 'export',
+        x: 6720,
+        y: 0,
+      },
+    ],
   },
-  "css_mode": "inline",
-  "iteration_count": 1
+  css_mode: 'inline',
+  iteration_count: 1,
 };
 
 /** Whether `dir` is already a Maude project (has `.design/config.json`). */

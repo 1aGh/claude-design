@@ -5,7 +5,9 @@
 const [, , cmd, sub] = process.argv;
 if (cmd === 'auth' && sub === 'status') {
   const loggedIn = process.env.FAKE_CLAUDE_LOGGED_IN === '1';
-  process.stdout.write(JSON.stringify({ loggedIn, apiProvider: loggedIn ? 'firstParty' : undefined }));
+  process.stdout.write(
+    JSON.stringify({ loggedIn, apiProvider: loggedIn ? 'firstParty' : undefined })
+  );
   process.exit(0);
 }
 process.exit(1);

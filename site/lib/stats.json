@@ -5,9 +5,9 @@
   "contributors": 1,
   "plugins": {
     "design": {
-      "commands": 20,
-      "skills": 6,
-      "agents": 19
+      "commands": 21,
+      "skills": 7,
+      "agents": 20
     },
     "flow": {
       "commands": 30,

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { resolvePkgRoot } from '../lib/pkg-root.mjs';
 // maude — Maude CLI. Scaffold .ai workspace, run dev servers, manage config.
 import { runUpdateCheck } from '../lib/update-check.mjs';
-import { resolvePkgRoot } from '../lib/pkg-root.mjs';
 
 // DDR-166 T0b — real-disk resolution, safe inside a `bun build --compile`
 // standalone binary (see pkg-root.mjs's own doc comment for why the previous

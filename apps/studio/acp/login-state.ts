@@ -9,14 +9,14 @@ import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { resolveClaudePath, setTrustedClaudeBin } from './probe.ts';
 import { scrubAgentEnv } from './env.ts';
+import { resolveClaudePath, setTrustedClaudeBin } from './probe.ts';
 
 // getClaudeAuthStatus lives in probe.ts now (probeAcpAvailabilityAuthed needs
 // it too, and probe.ts is the lower-level module — login-state.ts building on
 // probe.ts, not the other way around, avoids a circular import). Re-exported
 // here so existing `from './login-state.ts'` imports keep working.
-export { getClaudeAuthStatus, type ClaudeAuthStatus } from './probe.ts';
+export { type ClaudeAuthStatus, getClaudeAuthStatus } from './probe.ts';
 
 // Single-flight guard (security review finding: concurrent sign-in attempts
 // must be rejected, not queued or raced — and the child must not outlive the
@@ -40,7 +40,8 @@ function autoSetupDisabled(): boolean {
 }
 
 export function startSignin(): { ok: boolean; reason?: string } {
-  if (autoSetupDisabled()) return { ok: false, reason: 'Automatic setup is turned off in Settings.' };
+  if (autoSetupDisabled())
+    return { ok: false, reason: 'Automatic setup is turned off in Settings.' };
   if (signinChild) return { ok: false, reason: 'A sign-in is already in progress.' };
   const bin = resolveClaudePath();
   if (!bin) return { ok: false, reason: 'Claude Code is not installed.' };
@@ -169,8 +170,10 @@ export function getInstallState(): InstallState {
 let installChild: ReturnType<typeof Bun.spawn> | null = null;
 
 export function startInstall(): { ok: boolean; reason?: string } {
-  if (autoSetupDisabled()) return { ok: false, reason: 'Automatic setup is turned off in Settings.' };
-  if (installState.phase === 'running') return { ok: false, reason: 'An install is already in progress.' };
+  if (autoSetupDisabled())
+    return { ok: false, reason: 'Automatic setup is turned off in Settings.' };
+  if (installState.phase === 'running')
+    return { ok: false, reason: 'An install is already in progress.' };
   installState = { phase: 'running' };
   const startedAt = Date.now();
   (async () => {
@@ -199,14 +202,19 @@ export function startInstall(): { ok: boolean; reason?: string } {
         installChild = null;
       }
       if (code !== 0) {
-        installState = { phase: 'done', ok: false, reason: `The installer exited with an error (code ${code}).` };
+        installState = {
+          phase: 'done',
+          ok: false,
+          reason: `The installer exited with an error (code ${code}).`,
+        };
         return;
       }
       if (!existsSync(WELL_KNOWN_INSTALL_PATH)) {
         installState = {
           phase: 'done',
           ok: false,
-          reason: 'The installer reported success, but no binary was found at the expected location.',
+          reason:
+            'The installer reported success, but no binary was found at the expected location.',
         };
         return;
       }
@@ -227,7 +235,9 @@ export function startInstall(): { ok: boolean; reason?: string } {
       // resolution (probe.ts's own doc comment covers why there's
       // deliberately no mtime-caching shortcut — an earlier draft had one,
       // and it was itself trivially bypassable by the same attacker).
-      const sha256 = createHash('sha256').update(readFileSync(WELL_KNOWN_INSTALL_PATH)).digest('hex');
+      const sha256 = createHash('sha256')
+        .update(readFileSync(WELL_KNOWN_INSTALL_PATH))
+        .digest('hex');
       setTrustedClaudeBin(WELL_KNOWN_INSTALL_PATH, sha256);
       process.env.MAUDE_CLAUDE_BIN = WELL_KNOWN_INSTALL_PATH;
       installState = { phase: 'done', ok: true };

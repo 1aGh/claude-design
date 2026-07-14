@@ -1,0 +1,16 @@
+{
+  "duotone": {
+    "enabled": false,
+    "colorA": "#5a1212"
+  },
+  "mask": {
+    "preset": "none"
+  },
+  "grain": {
+    "enabled": false
+  },
+  "pattern": {
+    "enabled": false
+  },
+  "version": 1
+}

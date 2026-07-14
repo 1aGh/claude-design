@@ -25,7 +25,9 @@ const COLD_START = process.env.MAUDE_E2E_FAKE_CLAUDE_INSTALL === '1';
 describe('acp-cold-start (native-desktop)', () => {
   before(async function () {
     if (!COLD_START) this.skip(); // wrong config — not applicable
-    startReport('acp-cold-start (native-desktop) — guided install → sign-in → connected, zero terminal');
+    startReport(
+      'acp-cold-start (native-desktop) — guided install → sign-in → connected, zero terminal'
+    );
     await browser.setTimeout({ script: 60_000 });
   });
 
@@ -54,7 +56,11 @@ describe('acp-cold-start (native-desktop)', () => {
     // "Installing…" text is a real (if brief) intermediate render.
     try {
       await browser.waitUntil(
-        async () => (await $('.rdy-fix-tx')).getText().then((t) => t.includes('Installing')).catch(() => false),
+        async () =>
+          (await $('.rdy-fix-tx'))
+            .getText()
+            .then((t) => t.includes('Installing'))
+            .catch(() => false),
         { timeout: 4_000, interval: 200 }
       );
       await capture('02-installing');
@@ -73,7 +79,9 @@ describe('acp-cold-start (native-desktop)', () => {
       async () => {
         const errorTx = await $('.rdy-fix-tx--err');
         if (await errorTx.isDisplayed().catch(() => false)) {
-          throw new Error(`install/sign-in reported an error: ${await errorTx.getText().catch(() => '?')}`);
+          throw new Error(
+            `install/sign-in reported an error: ${await errorTx.getText().catch(() => '?')}`
+          );
         }
         const cancel = await $('.rdy-copy');
         const notConnected = await $(tid('acp-not-connected'));
