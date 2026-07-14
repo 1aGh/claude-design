@@ -250,7 +250,11 @@ export function NumberField({
       <input
         ref={ref}
         className="st-cp-numin"
+        role="spinbutton"
         aria-label={ariaLabel}
+        aria-valuenow={numOf(value)}
+        aria-valuemin={min}
+        aria-valuemax={max}
         defaultValue={fmt(value)}
         inputMode="decimal"
         onFocus={onFocus}
@@ -259,10 +263,10 @@ export function NumberField({
       />
       {steppers ? (
         <span className="st-cp-step">
-          <button type="button" className="st-cp-stepb" tabIndex={-1} aria-label={`increase ${ariaLabel || ''}`.trim()} onClick={() => bump(1, 1)}>
+          <button type="button" className="st-cp-stepb" tabIndex={-1} aria-label={`increase ${ariaLabel || 'value'}`} onClick={() => bump(1, 1)}>
             ▲
           </button>
-          <button type="button" className="st-cp-stepb" tabIndex={-1} aria-label={`decrease ${ariaLabel || ''}`.trim()} onClick={() => bump(-1, 1)}>
+          <button type="button" className="st-cp-stepb" tabIndex={-1} aria-label={`decrease ${ariaLabel || 'value'}`} onClick={() => bump(-1, 1)}>
             ▼
           </button>
         </span>
@@ -569,8 +573,39 @@ export function AngleDial({ value, onChange, ariaLabel = 'rotation' }) {
     document.addEventListener('pointermove', move);
     document.addEventListener('pointerup', up);
   };
+  // Keyboard is a first-class stepper for the dial (WAI-ARIA slider): Arrow ±1°
+  // (Shift ×10), Page ±15°, Home/End → 0/360. Mirrors `Slider`'s onKeyDown so
+  // the rotation is reachable without a pointer (WCAG 2.1.1 / 4.1.2).
+  const cur = value ?? 0;
+  const onKeyDown = (e) => {
+    const big = e.shiftKey ? 10 : 1;
+    let next = null;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = cur + big;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = cur - big;
+    else if (e.key === 'PageUp') next = cur + 15;
+    else if (e.key === 'PageDown') next = cur - 15;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = 360;
+    if (next != null) {
+      e.preventDefault();
+      onChange(clampTo(next, 0, 360));
+    }
+  };
   return (
-    <button ref={ref} type="button" className="st-cp-dial" aria-label={ariaLabel} title="drag to rotate" onPointerDown={onPointerDown}>
+    <button
+      ref={ref}
+      type="button"
+      className="st-cp-dial"
+      role="slider"
+      aria-label={ariaLabel}
+      aria-valuemin={0}
+      aria-valuemax={360}
+      aria-valuenow={cur}
+      aria-valuetext={`${cur}°`}
+      title="drag to rotate · arrows to nudge"
+      onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+    >
       <span className="st-cp-dial-needle" style={{ '--angle': `${value}deg` }} />
     </button>
   );
@@ -623,10 +658,10 @@ export function ColorField({ swatch, displayValue, bound, alpha, visible, ariaLa
         readOnly={!onValue}
       />
       {onAlpha ? (
-        <input className="st-cp-cf-alpha" aria-label={`${ariaLabel} alpha`} value={`${alpha}`} onChange={(e) => onAlpha(clampTo(Number.parseFloat(e.target.value) || 0, 0, 100))} onFocus={(e) => e.currentTarget.select()} />
+        <input className="st-cp-cf-alpha" aria-label={`${ariaLabel || 'colour'} alpha`} value={`${alpha}`} onChange={(e) => onAlpha(clampTo(Number.parseFloat(e.target.value) || 0, 0, 100))} onFocus={(e) => e.currentTarget.select()} />
       ) : null}
       {onVisible ? (
-        <button type="button" className={`st-cp-cf-eye${visible ? '' : ' is-off'}`} aria-pressed={visible} aria-label={`${ariaLabel} visibility`} onClick={() => onVisible(!visible)}>
+        <button type="button" className={`st-cp-cf-eye${visible ? '' : ' is-off'}`} aria-pressed={visible} aria-label={`${ariaLabel || 'colour'} visibility`} onClick={() => onVisible(!visible)}>
           {visible ? <Ic as={Eye} /> : <Ic as={EyeOff} />}
         </button>
       ) : null}

@@ -78,7 +78,7 @@ body.icp-scrubbing.icp-scrubbing--dial, body.icp-scrubbing.icp-scrubbing--dial *
 /* ─── Slider / SliderField ─────────────────────────────────────────────────── */
 .icp-sfield { display: flex; align-items: center; gap: var(--space-3); min-width: 0; width: 100%; flex: 1 1 auto; }
 .icp-slider { flex: 1 1 auto; min-width: 56px; padding: 6px 0; }
-.icp-track { position: relative; height: 4px; border-radius: var(--radius-pill); background: var(--bg-4); cursor: pointer; outline: none; }
+.icp-track { position: relative; height: 4px; border-radius: var(--radius-pill); background: var(--bg-2); cursor: pointer; outline: none; }
 .icp-track:focus-visible { box-shadow: 0 0 0 3px var(--accent-tint); }
 .icp-fill { position: absolute; top: 0; bottom: 0; border-radius: var(--radius-pill); background: var(--accent); }
 .icp-zero { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--border-strong); }
@@ -104,7 +104,7 @@ body.icp-scrubbing.icp-scrubbing--dial, body.icp-scrubbing.icp-scrubbing--dial *
 .icp-box { position: relative; width: 236px; padding: 32px; border: 1px dashed var(--border-default); border-radius: var(--radius-sm); background: var(--bg-2); }
 .icp-box-inner { position: relative; padding: 30px; border: 1px dashed var(--border-subtle); border-radius: var(--radius-xs); background: var(--bg-1); display: grid; place-items: center; }
 .icp-box-core { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 10px; color: var(--fg-2); padding: 10px 16px; text-align: center; }
-.icp-box-tag { position: absolute; top: 3px; left: 6px; font-family: var(--font-mono); font-size: 9px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-3); pointer-events: none; }
+.icp-box-tag { position: absolute; top: 3px; left: 6px; font-family: var(--font-mono); font-size: 9px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); pointer-events: none; }
 .icp-box-v { position: absolute; width: 34px; height: 20px; appearance: none; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; text-align: center; padding: 0; cursor: ew-resize; }
 .icp-box-v.is-zero { color: var(--fg-3); }
 .icp-box-v:hover, .icp-box-v:focus { border-color: var(--border-strong); background: var(--bg-3); outline: none; color: var(--fg-0); }
@@ -140,6 +140,7 @@ body.icp-scrubbing.icp-scrubbing--dial, body.icp-scrubbing.icp-scrubbing--dial *
 .icp-dial { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-default); background: var(--bg-3); position: relative; cursor: grab; touch-action: none; }
 .icp-dial:active { cursor: grabbing; }
 .icp-dial:hover { border-color: var(--border-strong); }
+.icp-dial:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
 .icp-dial-needle { position: absolute; top: 50%; left: 50%; width: 11px; height: 1.5px; background: var(--accent); border-radius: 1px; transform-origin: left center; transform: rotate(var(--angle, 0deg)); }
 .icp-dial::after { content: ""; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; border-radius: 50%; background: var(--fg-1); transform: translate(-50%, -50%); }
 
@@ -209,7 +210,7 @@ body.icp-scrubbing.icp-scrubbing--dial, body.icp-scrubbing.icp-scrubbing--dial *
 
 /* ─── Collapsable panel section (caret toggle + section reset) — real sec() ── */
 .icp-sechd-row { display: flex; align-items: center; gap: var(--space-2); }
-.icp-sechd { flex: 1 1 auto; appearance: none; cursor: pointer; display: flex; align-items: center; gap: var(--space-2); background: transparent; border: 0; text-align: left; font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-3); padding: 0; }
+.icp-sechd { flex: 1 1 auto; appearance: none; cursor: pointer; display: flex; align-items: center; gap: var(--space-2); background: transparent; border: 0; text-align: left; font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); padding: 0; }
 .icp-sechd:hover { color: var(--fg-1); }
 .icp-caret { display: inline-grid; place-items: center; color: var(--fg-3); transition: transform var(--dur-flip) var(--ease-out); }
 .icp-sechd[aria-expanded="false"] .icp-caret { transform: rotate(-90deg); }
@@ -287,11 +288,11 @@ body.icp-scrubbing.icp-scrubbing--dial, body.icp-scrubbing.icp-scrubbing--dial *
 .icp-inset-v--l { left: 6px; top: 50%; transform: translateY(-50%); }
 .icp-inset-v--r { right: 6px; top: 50%; transform: translateY(-50%); }
 .icp-insetbox .icp-box-tag { color: var(--accent); }
-.icp-note { font-size: var(--type-xs); color: var(--fg-3); font-style: italic; margin-top: var(--space-2); max-width: 340px; }
+.icp-note { font-size: var(--type-xs); color: var(--fg-2); font-style: italic; margin-top: var(--space-2); max-width: 340px; }
 
 /* ─── States gallery + legend ──────────────────────────────────────────────── */
 .icp-states { display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: var(--space-4) var(--space-3); }
-.icp-state-tag { font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-3); }
+.icp-state-tag { font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); }
 .icp-legend { display: flex; flex-wrap: wrap; gap: var(--space-5); margin: 0 0 var(--space-4); }
 .icp-legend-item { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--type-sm); color: var(--fg-1); }
 .icp-legend-item code { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
@@ -303,4 +304,4 @@ body.icp-scrubbing.icp-scrubbing--dial, body.icp-scrubbing.icp-scrubbing--dial *
 .icp-panel .panel-hd .hd-meta { margin-left: auto; text-transform: none; letter-spacing: 0; color: var(--fg-2); font-size: var(--type-xs); }
 .icp-panel-sec { padding: var(--space-4); border-bottom: 1px solid var(--border-subtle); }
 .icp-panel-sec:last-child { border-bottom: 0; }
-.icp-panel-sub { font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-3); margin: 0 0 var(--space-2); }
+.icp-panel-sub { font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); margin: 0 0 var(--space-2); }

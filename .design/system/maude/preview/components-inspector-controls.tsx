@@ -197,7 +197,7 @@ function NumberField({ value, min, max, step = 1, lead, scrub = true, steppers =
       {scrub ? (
         <span className="icp-num-lead" role="presentation" aria-hidden="true" title="Drag to change · Shift ×10 · Alt fine" onPointerDown={disabled ? undefined : onScrub}>{lead ?? <span className="icp-num-grip" />}</span>
       ) : lead ? (<span className="icp-num-lead" aria-hidden="true">{lead}</span>) : null}
-      <input ref={ref} className="icp-num-in" aria-label={ariaLabel} defaultValue={fmt(value)} inputMode="decimal" disabled={disabled} onFocus={onFocus} onKeyDown={onKeyDown} onBlur={onBlur} />
+      <input ref={ref} className="icp-num-in" role="spinbutton" aria-label={ariaLabel} aria-valuenow={Number(value) || 0} aria-valuemin={min} aria-valuemax={max} defaultValue={fmt(value)} inputMode="decimal" disabled={disabled} onFocus={onFocus} onKeyDown={onKeyDown} onBlur={onBlur} />
       {steppers ? (
         <span className="icp-num-step">
           <button type="button" className="icp-num-stepb" tabIndex={-1} aria-label={`increase ${ariaLabel}`} onClick={() => bump(1, 1)} style={{ transform: "rotate(180deg)" }}><Ic as={ChevronDown} size={11} /></button>
@@ -338,7 +338,18 @@ function AngleDial({ value, onChange }: { value: number; onChange: (n: number) =
     const up = () => { document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); document.body.classList.remove("icp-scrubbing", "icp-scrubbing--dial"); };
     document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
   };
-  return <button ref={ref} type="button" className="icp-dial" aria-label="rotation dial" title="drag to rotate" onPointerDown={onPointerDown}><span className="icp-dial-needle" style={{ ["--angle" as string]: `${value}deg` }} /></button>;
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const big = e.shiftKey ? 10 : 1;
+    let next: number | null = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") next = value + big;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowDown") next = value - big;
+    else if (e.key === "PageUp") next = value + 15;
+    else if (e.key === "PageDown") next = value - 15;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = 360;
+    if (next != null) { e.preventDefault(); onChange(Math.max(0, Math.min(360, next))); }
+  };
+  return <button ref={ref} type="button" className="icp-dial" role="slider" aria-label="rotation dial" aria-valuemin={0} aria-valuemax={360} aria-valuenow={value} aria-valuetext={`${value}°`} title="drag to rotate · arrows to nudge" onPointerDown={onPointerDown} onKeyDown={onKeyDown}><span className="icp-dial-needle" style={{ ["--angle" as string]: `${value}deg` }} /></button>;
 }
 
 /* ── box-model spacing box with the FULL scrub grammar ─────────────────────
@@ -661,7 +672,7 @@ export default function ComponentsInspectorControls() {
         </dl>
 
         <h2 data-no>Provenance <span className="h2-aside">every row says where its value came from</span></h2>
-        <p>
+        <p style={{ fontSize: "14px" }}>
           The leading dot on each inspector row is load-bearing, exactly like the panel:
           it tells you whether a property is bound to a token, a raw override, or just
           inherited — and a resettable dot double-clicks back to the inherited value.
@@ -743,7 +754,7 @@ export default function ComponentsInspectorControls() {
         <p>Auto-layout alignment is a 3×3 pad — one click sets both axes at once. Per-axis sizing is a segmented Fixed / Hug / Fill, and rotation pairs a draggable dial with the exact numeric.</p>
         <div className="icp-row">
           <Field label="Align content" help={`current: ${padAlign}`}><AlignPad value={padAlign} onChange={setPadAlign} /></Field>
-          <Field label="Width sizing"><div className="seg" role="radiogroup" aria-label="width sizing mode">{["fixed", "hug", "fill"].map((m) => <button key={m} type="button" role="radio" aria-checked={sizingMode === m} aria-pressed={sizingMode === m} onClick={() => setSizingMode(m)}>{m}</button>)}</div></Field>
+          <Field label="Width sizing"><div className="seg" role="radiogroup" aria-label="width sizing mode">{["fixed", "hug", "fill"].map((m) => <button key={m} type="button" role="radio" aria-checked={sizingMode === m} onClick={() => setSizingMode(m)}>{m}</button>)}</div></Field>
           <Field label="Rotation" help="Drag the dial or scrub the field."><div className="icp-pair"><AngleDial value={rotation} onChange={setRotation} /><NumberField value={rotation} min={0} max={360} ariaLabel="rotation" lead={<Ic as={RotateCw} />} steppers={false} unitSlot={<span className="icp-num-suffix" aria-hidden="true">°</span>} onChange={(n) => setRotation(((n % 360) + 360) % 360)} /></div></Field>
         </div>
 
@@ -817,7 +828,7 @@ export default function ComponentsInspectorControls() {
         </div>
 
         <h2 data-no>Typography <span className="h2-aside">a complex section — the full text row stack</span></h2>
-        <p>
+        <p style={{ fontWeight: "400" , color: "var(--fg-0)" }}>
           The typography stack shows the provenance dots doing real work: colour is
           token-bound (accent dot), size is a raw override, line-height is inherited
           (dimmed row). Text align is an icon group; style is a multi-toggle.
