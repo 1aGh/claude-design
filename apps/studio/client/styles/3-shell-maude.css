@@ -366,6 +366,10 @@
 .st-empty-body { max-width: 540px; font-size: var(--type-sm); line-height: 1.7; color: var(--fg-2); }
 .st-empty-body code { font-family: var(--font-mono); font-size: var(--type-xs); background: var(--bg-2); color: var(--accent); padding: 1px 5px; border-radius: var(--radius-xs); }
 .st-empty-body strong { color: var(--fg-0); font-weight: 600; }
+/* DDR-166 plan, Phase 2 (T7) — persistent "Setup" affordance, shown only while
+   the project's own setup (design system / first canvas / brand assets) is
+   incomplete; auto-hides once probeSetupReadiness() reports ready. */
+.st-empty-quick-setup { pointer-events: auto; margin-top: var(--space-2); }
 
 /* ═══ Task 6 — right panel (Inspector / Comments) + palette + toast ═══════════ */
 .st-rpanel {
@@ -867,6 +871,7 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-dial { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-default); background: var(--bg-3); position: relative; cursor: grab; touch-action: none; padding: 0; }
 .st-cp-dial:active { cursor: grabbing; }
 .st-cp-dial:hover { border-color: var(--border-strong); }
+.st-cp-dial:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
 .st-cp-dial-needle { position: absolute; top: 50%; left: 50%; width: 11px; height: 1.5px; background: var(--accent); border-radius: 1px; transform-origin: left center; transform: rotate(var(--angle, 0deg)); }
 .st-cp-dial::after { content: ""; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; border-radius: 50%; background: var(--fg-1); transform: translate(-50%, -50%); }
 
@@ -987,7 +992,7 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 
 /* opacity slider — role=slider, focusable */
 .st-cp-slider { flex: 1 1 auto; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-.st-cp-track { position: relative; flex: 1 1 auto; height: 6px; border-radius: 3px; background: var(--bg-4); border: 1px solid var(--border-default); cursor: pointer; }
+.st-cp-track { position: relative; flex: 1 1 auto; height: 6px; border-radius: 3px; background: var(--bg-2); border: 1px solid var(--border-default); cursor: pointer; }
 .st-cp-track:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .st-cp-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--accent); }
 .st-cp-thumb { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: var(--fg-0); border: 2px solid var(--accent); transform: translate(-50%, -50%); }

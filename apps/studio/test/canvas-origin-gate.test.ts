@@ -198,6 +198,10 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // Task 2.7 — managed whisper-model download (egress + local disk write);
         // MAIN-ORIGIN ONLY.
         '/_api/generate/whisper-model',
+        // DDR-166 plan, Phase 2 (T6) — the design-setup readiness probe (project/
+        // design-system/first-canvas/brand-assets progress) is a shell/onboarding
+        // concern, same posture as /_api/preflight above; MAIN-ORIGIN ONLY.
+        '/_api/setup-readiness',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);

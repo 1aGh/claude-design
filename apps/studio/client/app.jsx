@@ -21,6 +21,7 @@ import IdentityBar from './panels/IdentityBar.jsx';
 import OnboardingWizard from './panels/OnboardingWizard.jsx';
 import { ReadinessDialog } from './panels/ReadinessList.jsx';
 import IntroVideoDialog from './panels/IntroVideoDialog.jsx';
+import SetupChecklistDialog, { useSetupReadiness } from './panels/SetupChecklist.jsx';
 import TimelinePanel from './panels/TimelinePanel.jsx';
 import { parseCompTimeline } from './panels/timeline-parse.js';
 import GenerateDialog from './generate-dialog.jsx';
@@ -70,6 +71,7 @@ import {
 } from './github.js';
 import { COLLAB_TOUR } from './tour/collab-tour.js';
 import { TourOverlay } from './tour/overlay.jsx';
+import { QUICK_SETUP_TOUR } from './tour/quick-setup-tour.js';
 import { USAGE_TOUR } from './tour/usage-tour.js';
 import { ExportBadge, ExportPanel, ExportToast, useExportCenter } from './export-center.jsx';
 import { useWhatsNew, WhatsNewPanel, WhatsNewToast } from './whats-new.jsx';
@@ -2785,6 +2787,10 @@ function HelpDropdown({ onAction, onClose }) {
         // Publish → Pull cycle — a non-technical, native-app concern. A web-studio
         // dev already knows git, so it's hidden there (DDR-119).
         ...(isNativeApp() ? [{ id: 'collab-tour', label: 'How sharing works' }] : []),
+        // DDR-166 plan, Phase 2 (T7) — the quick-setup journey (design system →
+        // first canvas → first AI edit) is a native, no-terminal concern same as
+        // the two tours above.
+        ...(isNativeApp() ? [{ id: 'quick-setup', label: 'Quick setup' }] : []),
         ...(isNativeApp() ? [{ id: 'readiness', label: 'Check AI editing readiness…' }] : []),
         { id: 'whatsnew', label: "What's new" },
       ]}
@@ -2923,6 +2929,7 @@ function Menubar({
   postToActiveCanvas,
   onOpenWhatsNew,
   onOpenReadiness,
+  onOpenQuickSetup,
   onWatchIntro,
   whatsNewCount,
   exportCenter,
@@ -3222,6 +3229,7 @@ function Menubar({
             else if (id === 'help') onOpenHelp?.();
             else if (id === 'tour') onStartTour?.();
             else if (id === 'collab-tour') onStartCollabTour?.();
+            else if (id === 'quick-setup') onOpenQuickSetup?.();
             else if (id === 'readiness') onOpenReadiness?.();
             else if (id === 'whatsnew') onOpenWhatsNew?.();
             else if (id === 'watch-intro') onWatchIntro?.();
@@ -3285,6 +3293,8 @@ function Viewport({
   cfg,
   loadingPath,
   onIframeLoad,
+  showQuickSetup,
+  onStartQuickSetup,
 }) {
   return (
     <div className="viewport st-stage" data-tour="viewport">
@@ -3318,6 +3328,16 @@ function Viewport({
               </>
             ) : null}
           </div>
+          {showQuickSetup && (
+            <button
+              type="button"
+              data-testid="st-empty-start-quick-setup"
+              className="btn btn--primary st-empty-quick-setup"
+              onClick={onStartQuickSetup}
+            >
+              Start quick setup
+            </button>
+          )}
         </div>
       )}
       {tabs.map((t) => {
@@ -7446,6 +7466,11 @@ function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [readinessOpen, setReadinessOpen] = useState(false);
   const [introOpen, setIntroOpen] = useState(false);
+  const [quickSetupOpen, setQuickSetupOpen] = useState(false);
+  // DDR-166 plan, Phase 2 (T7) — the persistent "Setup" affordance in the empty
+  // canvas state (below) only renders while the project's own setup (design
+  // system / first canvas / brand assets) is incomplete; native-only concern.
+  const { report: setupReadiness } = useSetupReadiness(isNativeApp());
   // ? cheat-sheet (DS components-shortcuts-overlay) — separate from the deep
   // Help modal (F1), which keeps commands & flows.
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -11301,6 +11326,7 @@ function App() {
           onTogglePresent={togglePresent}
           postToActiveCanvas={postToActiveCanvas}
           onOpenReadiness={() => setReadinessOpen(true)}
+          onOpenQuickSetup={() => setQuickSetupOpen(true)}
           onWatchIntro={() => setIntroOpen(true)}
           onOpenWhatsNew={whatsNew.openPanel}
           whatsNewCount={whatsNew.unseen.length}
@@ -11423,6 +11449,8 @@ function App() {
               cfg={cfg}
               loadingPath={loadingPath}
               onIframeLoad={onIframeLoad}
+              showQuickSetup={isNativeApp() && !!setupReadiness && !setupReadiness.ready}
+              onStartQuickSetup={() => setQuickSetupOpen(true)}
             />
           </div>
           {rightActive && (
@@ -11942,6 +11970,11 @@ function App() {
       <ExportPanel center={exportCenter} />
       <ReadinessDialog open={readinessOpen} onClose={() => setReadinessOpen(false)} />
       <IntroVideoDialog open={introOpen} onClose={() => setIntroOpen(false)} />
+      <SetupChecklistDialog
+        open={quickSetupOpen}
+        onClose={() => setQuickSetupOpen(false)}
+        onStartTour={() => startTour(QUICK_SETUP_TOUR)}
+      />
       {usageNudge && !tourSteps && !collabNudge && (
         <div className="mdcc-tour-nudge" role="status" aria-live="polite">
           <div className="mdcc-tour-nudge__body">

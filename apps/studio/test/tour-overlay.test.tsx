@@ -8,6 +8,7 @@
 import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { TourOverlay } from '../client/tour/overlay.jsx';
+import { QUICK_SETUP_TOUR } from '../client/tour/quick-setup-tour.js';
 
 const STEP = { target: '.x', title: 'Welcome', body: 'Body copy here' };
 
@@ -59,6 +60,21 @@ describe('TourOverlay', () => {
     expect(html).toContain('mdcc-tour__graphic');
     expect(html).toContain('TWO-LAYER-DIAGRAM');
     expect(html).toContain('Working together');
+  });
+
+  test('QUICK_SETUP_TOUR (DDR-166 plan, Phase 2 / T7) is a well-formed, renderable deck', () => {
+    expect(QUICK_SETUP_TOUR.length).toBeGreaterThan(1);
+    for (const step of QUICK_SETUP_TOUR) {
+      expect(typeof step.title).toBe('string');
+      expect(step.title.length).toBeGreaterThan(0);
+      expect(typeof step.body).toBe('string');
+      expect(step.body.length).toBeGreaterThan(0);
+    }
+    const html = renderToStaticMarkup(
+      <TourOverlay open steps={QUICK_SETUP_TOUR} onClose={() => {}} onComplete={() => {}} />
+    );
+    expect(html).toContain('mdcc-tour__title');
+    expect(html).toContain(`1 / ${QUICK_SETUP_TOUR.length}`);
   });
 
   test('closed or empty renders nothing', () => {

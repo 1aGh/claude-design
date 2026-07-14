@@ -25,6 +25,7 @@ import { TranspileError } from './canvas-pipeline.ts';
 import type { AiActivity } from './collab/ai-activity.ts';
 import type { Context } from './context.ts';
 import { reloadConfig } from './context.ts';
+import { probeSetupReadiness } from './design-setup-readiness.ts';
 import { type Format, isFormat, isScope, type Scope } from './exporters/index.ts';
 import { type ExportJobQueue, ExportQueueFullError } from './exporters/jobs.ts';
 import type { ActiveJsonShape } from './exporters/scope.ts';
@@ -50,7 +51,6 @@ import {
   readTranscriptionProvider,
   writeTranscriptionProvider,
 } from './generation/prefs.ts';
-import { readUiPrefs, writeUiPrefs, type UiPrefs } from './ui-prefs.ts';
 import {
   createAdapter,
   getProviderDescriptor,
@@ -74,6 +74,7 @@ import { createPhotoStore, PHOTO_EDIT_MAX_BYTES } from './photo-store.ts';
 import { probeReadiness } from './readiness.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
 import { linkHub } from './sync/hub-link.ts';
+import { readUiPrefs, type UiPrefs, writeUiPrefs } from './ui-prefs.ts';
 import { loadWhatsNew } from './whats-new.ts';
 import { isLoopbackHost } from './ws.ts';
 
@@ -878,7 +879,9 @@ export function createHttp(
       if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
       if (!isLoopbackHost(req.headers.get('host')))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
-      return Response.json(await probeAcpAvailabilityAuthed(), { headers: { 'Cache-Control': 'no-store' } });
+      return Response.json(await probeAcpAvailabilityAuthed(), {
+        headers: { 'Cache-Control': 'no-store' },
+      });
     },
 
     // DDR-128 — first-open AI-editing readiness. Read-only probe of the AI-editing
@@ -895,6 +898,22 @@ export function createHttp(
       if (!isLoopbackHost(req.headers.get('host')))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       return Response.json(await probeReadiness(), { headers: { 'Cache-Control': 'no-store' } });
+    },
+
+    // DDR-166 plan, Phase 2 (T6) — design-setup readiness (project ✓ / design
+    // system ✓ / first canvas ✓ / brand assets ✓), distinct from the AI-editing
+    // dependency probe above. Read-only, cheap (a few existsSync/readdir calls
+    // scoped to designRoot) — same double gate as every other privileged
+    // read here even though it can't shell out, for consistency with the rest
+    // of this file's onboarding-surface routes. The quick-setup checklist
+    // (SetupChecklist.jsx) polls this.
+    '/_api/setup-readiness': async (req: Request) => {
+      if (!sameOriginWrite(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      return Response.json(await probeSetupReadiness(ctx), {
+        headers: { 'Cache-Control': 'no-store' },
+      });
     },
 
     // DDR-166 T0c (Addendum 2) — install Claude Code from Maude by running the
