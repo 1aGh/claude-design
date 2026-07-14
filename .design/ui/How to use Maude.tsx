@@ -92,6 +92,13 @@ function Icon({ name, size = 16, style }: { name: string; size?: number; style?:
     </svg>
   );
 }
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd style={{ display: "inline-block", padding: "1px 6px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-default)", background: "var(--bg-2)", fontFamily: "var(--font-mono)", fontSize: "var(--type-xs)", color: "var(--fg-0)" }}>
+      {children}
+    </kbd>
+  );
+}
 
 /* ── Shared frame chrome ── */
 function Board({ children }: { children: React.ReactNode }) {
@@ -129,6 +136,36 @@ function FeatureCard({ icon, title, body }: { icon: string; title: string; body:
 }
 function CardRow({ children }: { children: React.ReactNode }) {
   return <div style={{ display: "flex", gap: "var(--space-4)", flexWrap: "wrap" }}>{children}</div>;
+}
+// A real, hands-on instruction — every one of these describes something you
+// can genuinely do RIGHT NOW on this artboard or in this app (verified
+// against the actual keyboard-shortcut table in client/app.jsx, not guessed).
+function TryIt({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "flex-start", padding: "var(--space-4)", borderRadius: "var(--radius-md)", background: "var(--accent-tint)", border: "1px solid var(--accent-muted)" }}>
+      <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: "var(--type-xs)", letterSpacing: "var(--tracking-wide)", textTransform: "uppercase", color: "var(--accent)" }}>Try it</span>
+      <span style={{ fontSize: "var(--type-sm)", lineHeight: "var(--lh-sm)", color: "var(--fg-0)" }}>{children}</span>
+    </div>
+  );
+}
+// A big hand-drawn-feel curved arrow + numbered callout, pointing at a real
+// interactive target elsewhere in the artboard (the same "point at it"
+// vocabulary the product itself uses for annotations).
+function PointAt({ x, y, w = 150, h = 70, flip = false, children }: { x: number; y: number; w?: number; h?: number; flip?: boolean; children: React.ReactNode }) {
+  const path = flip ? `M${w - 6} 6 C ${w * 0.35} 4, ${w * 0.1} ${h * 0.5}, 6 ${h - 6}` : `M6 6 C ${w * 0.65} 4, ${w * 0.9} ${h * 0.5}, ${w - 6} ${h - 6}`;
+  return (
+    <div style={{ position: "absolute", left: x, top: y, width: w, height: h, pointerEvents: "none" }}>
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ position: "absolute", inset: 0, overflow: "visible" }} aria-hidden>
+        <path d={path} stroke="var(--presence-agent)" strokeWidth="2" fill="none" strokeLinecap="round" markerEnd="url(#pointAtArrow)" />
+        <defs>
+          <marker id="pointAtArrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+            <path d="M0 0 L8 4 L0 8 Z" fill="var(--presence-agent)" />
+          </marker>
+        </defs>
+      </svg>
+      <div style={{ position: "absolute", top: 0, [flip ? "right" : "left"]: 0, maxWidth: w - 10, fontSize: "var(--type-xs)", fontWeight: 700, color: "var(--presence-agent)", textAlign: flip ? "right" : "left" }}>{children}</div>
+    </div>
+  );
 }
 function StepRow({ n, title, body }: { n: number; title: string; body: string }) {
   return (
@@ -178,6 +215,7 @@ function ArtStartHere() {
             <FeatureCard icon="terminal" title="No terminal needed" body="Everything here — browsing, editing, saving, sharing — works from the app. The Assistant is the only thing that pairs with a Claude Code you install once." />
           </CardRow>
         </div>
+        <TryIt>Click "How to make video.tsx" in the file list on the left, right now — that's the real file tree, not a picture of it.</TryIt>
       </Body>
     </Board>
   );
@@ -207,6 +245,7 @@ function ArtDesignSystem() {
             <StepRow n={3} title="A complete, tokenized system" body="Colors, type ladder, spacing, motion, and a component library — every value a token, nothing hardcoded." />
           </div>
         </div>
+        <TryIt>Open the Assistant (<Kbd>⌘⇧A</Kbd>) and type <code>/design:setup-ds</code> — it starts the real interview.</TryIt>
       </Body>
     </Board>
   );
@@ -218,29 +257,25 @@ function ArtEditCanvas() {
     <Board>
       <ArtHeader n={3} total={10} eyebrow="Editing" title="Edit a canvas" />
       <Body>
-        <Lede>Click any text to edit it inline. Hold <b>⌘</b> and hover to preview an element, click to select it — the Inspector opens with everything about it: its properties, its layer position, and its live CSS.</Lede>
-        <div style={{ display: "flex", gap: "var(--space-5)" }}>
-          <Panel style={{ width: 280, flexShrink: 0 }}>
-            <div style={{ display: "flex", borderBottom: "1px solid var(--border-subtle)" }}>
-              {["Inspect", "Layers", "CSS"].map((t, i) => (
-                <span key={t} style={{ padding: "var(--space-3) var(--space-4)", fontSize: "var(--type-sm)", borderBottom: i === 0 ? "2px solid var(--accent)" : "2px solid transparent", color: i === 0 ? "var(--fg-0)" : "var(--fg-2)" }}>{t}</span>
-              ))}
-            </div>
-            <div style={{ padding: "var(--space-4)", display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-              {[["Type", "Button"], ["Text", "Get started"], ["Fill", "var(--accent)"], ["Radius", "var(--radius-md)"]].map(([k, v]) => (
-                <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "6px 8px", borderRadius: "var(--radius-sm)", fontSize: "var(--type-sm)" }}>
-                  <span style={{ color: "var(--fg-2)" }}>{k}</span>
-                  <span style={{ fontFamily: "var(--font-mono)", color: "var(--fg-0)" }}>{v}</span>
-                </div>
-              ))}
-            </div>
-          </Panel>
-          <CardRow>
-            <FeatureCard icon="pen" title="Inline text edit" body="Click any text on the canvas and type — no dialog, no round-trip." />
-            <FeatureCard icon="sliders" title="Bind to a token" body="Drag a color or spacing value onto a design token to bind it — change the token, every use updates." />
-            <FeatureCard icon="layers" title="Drag to reorder" body="Reorder elements right on the canvas or in the Layers tab, Figma-style." />
-          </CardRow>
+        <Lede>This isn't a mockup — the button below is a real element on this real artboard. Try the two moves that cover most editing:</Lede>
+        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: "var(--space-7)", padding: "var(--space-4) 0" }}>
+          <div
+            data-dc-element="try-it-button"
+            style={{ padding: "16px 30px", borderRadius: "var(--radius-md)", background: "var(--accent)", color: "var(--bg-0)", fontFamily: "var(--font-display)", fontSize: "var(--type-md)", fontWeight: 700, cursor: "pointer" }}
+          >
+            Get started
+          </div>
+          <div style={{ position: "relative", width: 260, height: 90 }}>
+            <PointAt x={0} y={0} w={130} h={60}>① ⌘-click this button</PointAt>
+            <div style={{ position: "absolute", left: 0, bottom: 0, maxWidth: 250, fontSize: "var(--type-sm)", color: "var(--fg-2)" }}>The Inspector opens (or press <Kbd>⌘⇧I</Kbd>) — try changing its Fill or Radius, or double-click "Get started" to retype it.</div>
+          </div>
         </div>
+        <TryIt><Kbd>⌘</Kbd>-click the button above right now. Then in the Inspector's CSS tab, change its background — this artboard updates live, the same way any canvas does.</TryIt>
+        <CardRow>
+          <FeatureCard icon="pen" title="Inline text edit" body="Double-click any text on the canvas and type — no dialog, no round-trip." />
+          <FeatureCard icon="sliders" title="Bind to a token" body="Drag a color or spacing value onto a design token to bind it — change the token, every use updates." />
+          <FeatureCard icon="layers" title="Drag to reorder" body="Reorder elements right on the canvas, or open Layers (⌘⇧I) to drag them there instead." />
+        </CardRow>
       </Body>
     </Board>
   );
@@ -267,6 +302,7 @@ function ArtAiAssistant() {
             <FeatureCard icon="sparkle" title="Runs on your subscription" body="Install Claude Code once, sign in, and the Assistant just works — no separate API key, ever." />
           </CardRow>
         </div>
+        <TryIt>Press <Kbd>⌘⇧A</Kbd> right now to open the Assistant — it's the sparkle icon, top-right of the window.</TryIt>
       </Body>
     </Board>
   );
@@ -278,20 +314,20 @@ function ArtPointCommentDraw() {
     <Board>
       <ArtHeader n={5} total={10} eyebrow="✦ The signature move" title="Point, comment, draw → it acts" />
       <Body>
-        <Lede>You don't have to describe a change in words. ⌘-click an element to select it, drop a comment pin on a pixel, or draw right on the canvas with the annotation tools — the Assistant reads all of it as context for the next request.</Lede>
-        <div style={{ display: "flex", gap: "var(--space-5)" }}>
-          <Panel style={{ width: 340, flexShrink: 0, position: "relative", minHeight: 180 }}>
-            <div style={{ position: "absolute", left: 40, top: 40, width: 160, height: 90, borderRadius: "var(--radius-md)", background: "var(--bg-2)", border: "1px solid var(--accent)" }} />
-            <span style={{ position: "absolute", left: 210, top: 50, display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: "var(--radius-md)", background: "var(--bg-2)", border: "1px solid var(--border-default)", fontSize: "var(--type-sm)" }}><Icon name="pin" size={13} style={{ color: "var(--accent)" }} /> tighten this spacing</span>
-            <Icon name="cursor" size={20} style={{ position: "absolute", left: 90, top: 60, color: "var(--accent)" }} />
-            <svg style={{ position: "absolute", left: 60, top: 150, width: 140, height: 50 }} viewBox="0 0 140 50"><path d="M5 45 C 40 5, 90 5, 130 25" stroke="var(--presence-agent)" strokeWidth="2" fill="none" strokeLinecap="round" /></svg>
-          </Panel>
-          <CardRow>
-            <FeatureCard icon="cursor" title="⌘-click to select" body="Hover for a preview, click to select — ⌘⇧+click adds more than one to the selection." />
-            <FeatureCard icon="pin" title="Comment on a pixel" body="Pin a note to an exact spot, not a vague description — the Assistant reads it as scoped context." />
-            <FeatureCard icon="highlighter" title="Draw & annotate" body="Highlighter, sticky notes, shapes and freehand marks — a real whiteboard layer over the canvas." />
-          </CardRow>
+        <Lede>You don't have to describe a change in words. The box below is real — try it:</Lede>
+        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: "var(--space-7)" }}>
+          <div data-dc-element="try-it-annotate-target" style={{ width: 160, height: 90, borderRadius: "var(--radius-md)", background: "var(--bg-2)", border: "1px solid var(--accent)" }} />
+          <div style={{ position: "relative", width: 260, height: 90 }}>
+            <PointAt x={0} y={0} w={130} h={60}>① ⌘-click this box</PointAt>
+            <div style={{ position: "absolute", left: 0, bottom: 0, maxWidth: 250, fontSize: "var(--type-sm)", color: "var(--fg-2)" }}>② right-click it for the annotation menu, or press <Kbd>⌘⇧M</Kbd> to open Comments and drop a pin on it.</div>
+          </div>
         </div>
+        <TryIt>Right-click the box above right now — the context menu has highlighter, sticky notes, and freehand drawing. Anything you mark stays attached to that exact spot as context for the Assistant.</TryIt>
+        <CardRow>
+          <FeatureCard icon="cursor" title="⌘-click to select" body="Hover for a preview, click to select — ⌘⇧+click adds more than one to the selection." />
+          <FeatureCard icon="pin" title="Comment on a pixel" body="Pin a note to an exact spot, not a vague description — the Assistant reads it as scoped context." />
+          <FeatureCard icon="highlighter" title="Draw & annotate" body="Highlighter, sticky notes, shapes and freehand marks — a real whiteboard layer over the canvas." />
+        </CardRow>
       </Body>
     </Board>
   );
@@ -317,6 +353,7 @@ function ArtGenerateImages() {
             <FeatureCard icon="sliders" title="Stays on your machine" body="Add your key under File → Settings — AI generation. It's sent straight to the provider, never touches git history." />
           </CardRow>
         </div>
+        <TryIt>Press <Kbd>⌘K</Kbd> right now and pick "Generate with AI…" from the list.</TryIt>
       </Body>
     </Board>
   );
@@ -350,6 +387,7 @@ function ArtPhotoEditing() {
             <FeatureCard icon="check" title="Non-destructive" body="Adjustments live as metadata next to the asset — revert anytime, the source file never changes." />
           </CardRow>
         </div>
+        <TryIt>Drop any photo from Finder onto this canvas, ⌘-click it, then open the Photo tab (<Kbd>⌘⇧I</Kbd>) to try Remove background.</TryIt>
       </Body>
     </Board>
   );
@@ -367,6 +405,7 @@ function ArtMediaTemplates() {
           <FeatureCard icon="arrow-right" title="Paste a link" body="Paste a URL onto the canvas and it unfurls — no manual screenshotting." />
           <FeatureCard icon="grid" title="Create & delete canvases" body="Right-click the file tree — new canvas, new folder, rename, delete — all without a terminal." />
         </CardRow>
+        <TryIt>Drag any image file from Finder and drop it right on this artboard, now — it lands as a real asset.</TryIt>
       </Body>
     </Board>
   );
@@ -386,6 +425,7 @@ function ArtSaveShareCollab() {
             <FeatureCard icon="play" title="Present Mode" body="Strip the chrome down to just your artboards for a clean walkthrough or a client call." />
           </CardRow>
         </div>
+        <TryIt>Press <Kbd>⌘⇧G</Kbd> right now to open Changes — it tracks everything since your last save, live.</TryIt>
       </Body>
     </Board>
   );
@@ -411,6 +451,7 @@ function ArtDrawAsCode() {
             <FeatureCard icon="check" title="WCAG + grid-checked" body="Every mark clears a legibility, contrast, and grid-alignment gate before it's considered done." />
           </CardRow>
         </div>
+        <TryIt>Open the Assistant (<Kbd>⌘⇧A</Kbd>) and ask it to draw a simple compass icon — watch it build from geometry, not guess a path.</TryIt>
       </Body>
     </Board>
   );

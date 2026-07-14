@@ -15,7 +15,8 @@
  * applied as inline custom properties on `Board`.
  */
 
-import { DCArtboard, DCSection, DesignCanvas } from "@maude/canvas-lib";
+import { DCArtboard, DCSection, DesignCanvas, VideoComp } from "@maude/canvas-lib";
+import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 
 // Copied from system/maude/colors_and_type.css (dark theme) — kept in sync
 // by eye with How to use Maude.tsx's identical block (a fixed onboarding
@@ -79,6 +80,39 @@ function Icon({ name, size = 16, style }: { name: string; size?: number; style?:
       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={style}>
       {ICONS[name]}
     </svg>
+  );
+}
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd style={{ display: "inline-block", padding: "1px 6px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-default)", background: "var(--bg-2)", fontFamily: "var(--font-mono)", fontSize: "var(--type-xs)", color: "var(--fg-0)" }}>
+      {children}
+    </kbd>
+  );
+}
+// Real, hands-on instructions (same shape as How to use Maude.tsx's TryIt —
+// verified against the actual keyboard-shortcut table in client/app.jsx).
+function TryIt({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "flex-start", padding: "var(--space-4)", borderRadius: "var(--radius-md)", background: "var(--accent-tint)", border: "1px solid var(--accent-muted)" }}>
+      <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: "var(--type-xs)", letterSpacing: "var(--tracking-wide)", textTransform: "uppercase", color: "var(--accent)" }}>Try it</span>
+      <span style={{ fontSize: "var(--type-sm)", lineHeight: "var(--lh-sm)", color: "var(--fg-0)" }}>{children}</span>
+    </div>
+  );
+}
+function PointAt({ x, y, w = 150, h = 70, flip = false, children }: { x: number; y: number; w?: number; h?: number; flip?: boolean; children: React.ReactNode }) {
+  const path = flip ? `M${w - 6} 6 C ${w * 0.35} 4, ${w * 0.1} ${h * 0.5}, 6 ${h - 6}` : `M6 6 C ${w * 0.65} 4, ${w * 0.9} ${h * 0.5}, ${w - 6} ${h - 6}`;
+  return (
+    <div style={{ position: "absolute", left: x, top: y, width: w, height: h, pointerEvents: "none" }}>
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ position: "absolute", inset: 0, overflow: "visible" }} aria-hidden>
+        <path d={path} stroke="var(--presence-agent, #c34fd8)" strokeWidth="2" fill="none" strokeLinecap="round" markerEnd="url(#pointAtArrowV)" />
+        <defs>
+          <marker id="pointAtArrowV" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+            <path d="M0 0 L8 4 L0 8 Z" fill="var(--presence-agent, #c34fd8)" />
+          </marker>
+        </defs>
+      </svg>
+      <div style={{ position: "absolute", top: 0, [flip ? "right" : "left"]: 0, maxWidth: w - 10, fontSize: "var(--type-xs)", fontWeight: 700, color: "var(--presence-agent, #c34fd8)", textAlign: flip ? "right" : "left" }}>{children}</div>
+    </div>
   );
 }
 
@@ -154,16 +188,44 @@ function ArtStartVideoComp() {
           <CardRow>
             <FeatureCard icon="film" title="Ask for it in words" body="&ldquo;Cut these three clips together with a crossfade and a title card&rdquo; — the Assistant writes the comp." />
             <FeatureCard icon="play" title="Free scrub & preview" body="A real embedded player, right in the canvas — no separate render just to check a frame." />
-            <FeatureCard icon="download" title="Export MP4 or GIF" body="⌘E, or /design:export mp4 — through Maude's own capture spine. No renderer install, no native binaries." />
+            <FeatureCard icon="download" title="Export MP4 or GIF" body="⌘⇧E, or /design:export mp4 — through Maude's own capture spine. No renderer install, no native binaries." />
           </CardRow>
         </div>
+        <TryIt>Ask the Assistant (<Kbd>⌘⇧A</Kbd>) to add a video comp to this canvas — a 2-second title card is a good first try.</TryIt>
       </Body>
     </Board>
   );
 }
 
+// A real, tiny frame-driven Remotion comp — not a mockup. 90 frames @ 30fps
+// (3s): a mark springs in, then keeps rotating for the rest of the loop, so
+// scrubbing the REAL Timeline against this REAL comp shows real motion at
+// every point, not a frozen frame (DDR-094 — freeze-frames lie).
+const TIMELINE_DEMO_FRAMES = 90;
+const TimelineDemoAnim = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const pop = spring({ frame, fps, config: { damping: 200 } });
+  const scale = interpolate(pop, [0, 1], [0.6, 1]);
+  const rotate = interpolate(frame, [0, TIMELINE_DEMO_FRAMES], [0, 360]);
+  return (
+    <AbsoluteFill style={{ background: "#0b0e16", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ width: 56, height: 56, borderRadius: 14, background: "#7c8cf8", transform: `scale(${scale}) rotate(${rotate}deg)` }} />
+    </AbsoluteFill>
+  );
+};
+
 /* ────────────────────────── 02 · Edit on the Timeline ─────────────────── */
-function ArtTimeline() {
+// Accepts the VideoComp as `children` (not rendered inline) — canvas-lib.tsx's
+// `subtreeHasVideoComp()` walks the STATIC JSX tree via `props.children` to
+// decide whether to render the real top-right video badge, and it does NOT
+// reach inside a function component's own return value — only literal JSX
+// nesting from the DCArtboard call site down. So the VideoComp must arrive
+// as a literal child at that call site (see Canvas() below), not be
+// constructed inside this function's own body. Real bug, caught by checking
+// `document.querySelector('.dc-artboard-video-badge')` live and finding
+// nothing, not by assuming the mockup-style code would just work.
+function ArtTimeline({ children }: { children: React.ReactNode }) {
   const clips = [
     { w: 90, label: "intro" },
     { w: 140, label: "clip-a" },
@@ -172,22 +234,43 @@ function ArtTimeline() {
   ];
   return (
     <Board>
+      {/* Points at the REAL video-artboard badge canvas-lib.tsx renders top-right
+          (top:4px, right:6px) the instant any real <VideoComp> is in this
+          artboard's subtree — not drawn by this canvas, just aimed at. */}
+      <svg width={140} height={60} viewBox="0 0 140 60" style={{ position: "absolute", right: 26, top: 46, overflow: "visible", pointerEvents: "none" }} aria-hidden>
+        <path d="M110 54 C 60 54, 20 30, 8 6" stroke="var(--presence-agent, #c34fd8)" strokeWidth="2" fill="none" strokeLinecap="round" markerEnd="url(#pointAtBadge)" />
+        <defs>
+          <marker id="pointAtBadge" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+            <path d="M0 0 L8 4 L0 8 Z" fill="var(--presence-agent, #c34fd8)" />
+          </marker>
+        </defs>
+      </svg>
+      <div style={{ position: "absolute", right: 30, top: 50, width: 130, fontSize: "var(--type-xs)", fontWeight: 700, color: "var(--presence-agent, #c34fd8)", textAlign: "right" }}>
+        ① that real icon — or ⌘⇧T
+      </div>
       <ArtHeader n={2} total={7} eyebrow="Video" title="Edit on the Timeline" />
       <Body>
-        <Lede>Open the Timeline panel to hand-edit a comp: drag a clip to retime it, right-click to trim, reorder, replace, or remove — every change lands back in real, readable TSX source.</Lede>
-        <Panel style={{ padding: "var(--space-4)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 2, marginBottom: "var(--space-3)" }}>
-            <Icon name="play" size={13} />
-            <span style={{ marginLeft: 8, fontFamily: "var(--font-mono)", fontSize: "var(--type-xs)", color: "var(--fg-3)" }}>00:00 / 00:12</span>
-          </div>
-          <div style={{ display: "flex", height: 44, borderRadius: "var(--radius-sm)", overflow: "hidden", border: "1px solid var(--border-default)" }}>
-            {clips.map((c, i) => (
-              <div key={c.label} style={{ width: c.w, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, background: i % 2 === 0 ? "var(--bg-2)" : "var(--bg-3)", borderRight: i < clips.length - 1 ? "1px solid var(--border-subtle)" : "none", fontSize: "var(--type-xs)", fontFamily: "var(--font-mono)", color: "var(--fg-1)" }}>
-                <Icon name="drag" size={11} style={{ color: "var(--fg-3)" }} /> {c.label}
-              </div>
-            ))}
-          </div>
-        </Panel>
+        <Lede>The clip on the left is a real, playing Remotion comp — not a screenshot. Click the small video icon in this artboard's own top-right corner (real chrome, not drawn by this canvas), or press <Kbd>⌘⇧T</Kbd>, to open the real Timeline and scrub it.</Lede>
+        <div style={{ display: "flex", gap: "var(--space-5)" }}>
+          <Panel style={{ width: 220, flexShrink: 0, overflow: "hidden" }}>
+            {children}
+          </Panel>
+          <Panel style={{ flex: 1, padding: "var(--space-4)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 2, marginBottom: "var(--space-3)" }}>
+              <Icon name="play" size={13} />
+              <span style={{ marginLeft: 8, fontFamily: "var(--font-mono)", fontSize: "var(--type-xs)", color: "var(--fg-3)" }}>00:00 / 00:12</span>
+            </div>
+            <div style={{ display: "flex", height: 44, borderRadius: "var(--radius-sm)", overflow: "hidden", border: "1px solid var(--border-default)" }}>
+              {clips.map((c, i) => (
+                <div key={c.label} style={{ width: c.w, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, background: i % 2 === 0 ? "var(--bg-2)" : "var(--bg-3)", borderRight: i < clips.length - 1 ? "1px solid var(--border-subtle)" : "none", fontSize: "var(--type-xs)", fontFamily: "var(--font-mono)", color: "var(--fg-1)" }}>
+                  <Icon name="drag" size={11} style={{ color: "var(--fg-3)" }} /> {c.label}
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: "var(--space-2)", fontSize: "var(--type-xs)", color: "var(--fg-3)" }}>(a 4-clip cut, for scale — the real player on the left is the actual demo)</div>
+          </Panel>
+        </div>
+        <TryIt>Click the small video-camera icon in this artboard's own top-right corner right now (or press <Kbd>⌘⇧T</Kbd>) — the real Timeline opens, and you can scrub the clip on the left frame by frame.</TryIt>
         <CardRow>
           <FeatureCard icon="drag" title="Drag to retime" body="Move, trim, or resize a clip directly on the track — the underlying frame math updates with it." />
           <FeatureCard icon="scissors" title="Split, reorder, replace" body="Right-click for the full clip menu — the same vocabulary as a real NLE, scoped to what a comp needs." />
@@ -220,6 +303,7 @@ function ArtAiAssistantVideo() {
             ))}
           </div>
         </div>
+        <TryIt>Open the Assistant (<Kbd>⌘⇧A</Kbd>) and paste one of the prompts on the right, against any video comp you've already added.</TryIt>
       </Body>
     </Board>
   );
@@ -248,6 +332,7 @@ function ArtFootageToCut() {
           <FeatureCard icon="wand" title="A real edit decision list" body="Beats, transitions, and an optional music bed — a story, not just clips concatenated in folder order." />
           <FeatureCard icon="film" title="Then it becomes a comp" body="The EDL turns into real, hand-editable TSX on the Timeline — pull a different shot, retime a beat, it's all still yours." />
         </CardRow>
+        <TryIt>Drag a folder of real clips from Finder onto this canvas, then ask the Assistant (<Kbd>⌘⇧A</Kbd>) for "a reel from these clips."</TryIt>
       </Body>
     </Board>
   );
@@ -265,6 +350,7 @@ function ArtGenerateVideoAudio() {
           <FeatureCard icon="waveform" title="Music, SFX & voiceover" body="One key covers music beds, sound effects, and text-to-speech — the track lands ready to drop under a reel." />
           <FeatureCard icon="check" title="Reuse before you pay" body="Before spending credits, Maude searches audio you've already generated (and your provider history) for a match." />
         </CardRow>
+        <TryIt>Add your key under File → Settings — AI generation, then ask the Assistant for "a 4-second clip of ocean waves at sunset."</TryIt>
       </Body>
     </Board>
   );
@@ -293,6 +379,7 @@ function ArtCaptions() {
             <FeatureCard icon="sparkle" title="You choose the engine" body="Local, Scribe, or Groq — an explicit setting, never a silent default to a paid cloud engine." />
           </CardRow>
         </div>
+        <TryIt>Select a clip on this canvas, then ask the Assistant (<Kbd>⌘⇧A</Kbd>) to "add captions to this clip."</TryIt>
       </Body>
     </Board>
   );
@@ -304,14 +391,14 @@ function ArtExport() {
     <Board>
       <ArtHeader n={7} total={7} eyebrow="Ship it" title="Export" />
       <Body>
-        <Lede>⌘E opens the export dialog — MP4 (H.264) or palette-quantized GIF, resolved from the comp's own frame rate and duration. Everything renders through Maude's own capture spine: no renderer binaries, no install step for whoever opens the project next.</Lede>
+        <Lede><Kbd>⌘⇧E</Kbd> opens the export dialog — MP4 (H.264) or palette-quantized GIF, resolved from the comp's own frame rate and duration. Everything renders through Maude's own capture spine: no renderer binaries, no install step for whoever opens the project next.</Lede>
         <div style={{ display: "flex", gap: "var(--space-5)" }}>
           <Panel style={{ width: 260, padding: "var(--space-5)", display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
             <div style={{ display: "flex", gap: "var(--space-2)" }}>
               <Chip style={{ background: "var(--accent-tint)", color: "var(--accent)", borderColor: "var(--accent-muted)" }}>MP4</Chip>
               <Chip>GIF</Chip>
             </div>
-            <PrimaryButton style={{ alignSelf: "flex-start" }}><Icon name="download" size={13} /> Export ⌘E</PrimaryButton>
+            <PrimaryButton style={{ alignSelf: "flex-start" }}><Icon name="download" size={13} /> Export ⌘⇧E</PrimaryButton>
           </Panel>
           <CardRow>
             <FeatureCard icon="download" title="No install, ever" body="Rendering happens through the same headless capture Maude already uses for screenshots — nothing new to set up." />
@@ -319,6 +406,7 @@ function ArtExport() {
             <FeatureCard icon="check" title="Same command, from the CLI" body="/design:export mp4 --scope artboard works headlessly too — useful once a cut is part of a repeatable pipeline." />
           </CardRow>
         </div>
+        <TryIt>Press <Kbd>⌘⇧E</Kbd> right now — the real export dialog opens for whatever's active.</TryIt>
       </Body>
     </Board>
   );
@@ -329,7 +417,11 @@ export default function Canvas() {
     <DesignCanvas>
       <DCSection id="how-to-make-video" title="How to make video" subtitle="REFERENCE · 7 artboards, one per video capability">
         <DCArtboard id="start-video-comp" label="01 · Start a video comp" width={1040} height={640}><ArtStartVideoComp /></DCArtboard>
-        <DCArtboard id="timeline" label="02 · Edit on the Timeline" width={1040} height={640}><ArtTimeline /></DCArtboard>
+        <DCArtboard id="timeline" label="02 · Edit on the Timeline" width={1040} height={640}>
+          <ArtTimeline>
+            <VideoComp component={TimelineDemoAnim} durationInFrames={TIMELINE_DEMO_FRAMES} fps={30} width={220} height={140} />
+          </ArtTimeline>
+        </DCArtboard>
         <DCArtboard id="ai-assistant-video" label="03 · AI Assistant for video" width={1040} height={640}><ArtAiAssistantVideo /></DCArtboard>
         <DCArtboard id="footage-to-cut" label="04 · Footage into a cut" width={1040} height={640}><ArtFootageToCut /></DCArtboard>
         <DCArtboard id="generate-video-audio" label="05 · Generate video & audio" width={1040} height={640}><ArtGenerateVideoAudio /></DCArtboard>
