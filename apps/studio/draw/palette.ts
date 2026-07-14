@@ -150,6 +150,40 @@ export function oklchToHex(o: Oklch): string {
   return toHex(oklchToRgb(o));
 }
 
+function srgb8ToLinear(c8: number): number {
+  const c = c8 / 255;
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+/**
+ * Convert clamped sRGB 0–255 to OKLCH — the exact inverse of {@link oklchToRgb}
+ * (same Björn Ottosson constants). Used by DDR-172's token importer to
+ * normalize hex/rgb() input colors into a DS's declared `oklch` colorSpace.
+ */
+export function rgbToOklch({ r, g, b }: Rgb): Oklch {
+  const rLin = srgb8ToLinear(r);
+  const gLin = srgb8ToLinear(g);
+  const bLin = srgb8ToLinear(b);
+
+  const lc = 0.4122214708 * rLin + 0.5363325363 * gLin + 0.0514459929 * bLin;
+  const mc = 0.2119034982 * rLin + 0.6806995451 * gLin + 0.1073969566 * bLin;
+  const sc = 0.0883024619 * rLin + 0.2817188376 * gLin + 0.6299787005 * bLin;
+
+  const l_ = Math.cbrt(lc);
+  const m_ = Math.cbrt(mc);
+  const s_ = Math.cbrt(sc);
+
+  const l = 0.2104542553 * l_ + 0.793617785 * m_ - 0.0040720468 * s_;
+  const a = 1.9779984951 * l_ - 2.428592205 * m_ + 0.4505937099 * s_;
+  const bComp = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.808675766 * s_;
+
+  const c = Math.sqrt(a * a + bComp * bComp);
+  let h = (Math.atan2(bComp, a) * 180) / Math.PI;
+  if (h < 0) h += 360;
+
+  return { l, c, h };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Ramp generation
 // ─────────────────────────────────────────────────────────────────────────────

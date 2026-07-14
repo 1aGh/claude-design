@@ -53,6 +53,12 @@ const BIN_VERBS = new Set([
   // available — see the DDR's addendum on why the planned rasterization
   // mechanism doesn't work under browser automation.
   'import-asset',
+  // DDR-172 (Phase 3 / T11). `import-tokens` is the token-file sibling of
+  // `import-asset`: parses W3C design-tokens / Style-Dictionary JSON or raw
+  // CSS custom properties, maps recognized tokens onto the DS CSS-variable
+  // contract, and patches (theme-block-scoped) or scaffolds the target
+  // design system. CLI-only — no HTTP route, no in-app panel.
+  'import-tokens',
   // feature-photo-editor (Stage G). `photo-adjust` is the thin non-browser
   // parametric verb (curl → /_api/photo-edit). `photo-bg-remove` is the
   // client-side @imgly ML harness (throwaway proof canvas + agent-browser
