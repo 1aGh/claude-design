@@ -292,6 +292,10 @@ Execute in phase order. Each phase is independently shippable. Task IDs `T#` for
 - **Pattern**: DS contract in `core/colors_and_type.css.tpl` + `_MAPPING.md`; verb pattern from T10.
 - **Validate**: `import-tokens.test.mjs` (fixtures: a Style-Dictionary export, a raw CSS-vars file, a partial set). Live: import a real `tokens.json` → `design-system-completeness-critic` passes on the produced DS.
 
+**T12a: RECORD the content-handoff DDR (do FIRST — gates T12, per DDR-167's own explicit scope boundary)**
+- **Do**: DDR-167 (T9) covers the byte-ingestion pipeline only and explicitly says T12's hand-off of extracted file content into `ux-research-agent`'s discovery payload is OUT of its scope and needs its own review before it ships (an ethical-hacker Round-1 finding on DDR-167 — "T12 is the actual trifecta-completing step and has no DDR gate"). Author that DDR (or a DDR-167 amendment): extracted text/labels (visible SVG `<text>`/`<title>`/`<desc>`, OCR'd/rendered PDF-page text) must be threaded into the agent payload as untrusted DATA, never as instructions — mirroring `sanitizeReuseText` (DDR-164 §G3) — with no auto-triggered `WebFetch`/`WebSearch` off file-derived URLs.
+- **Validate**: reviewed by `ethical-hacker` + `security-auditor` before T12 code, same discipline as T9/T14.
+
 **T12: GENERALIZE `--imprint` into a file-backed brand prior + in-app upload panel**
 - **Do**: Extend `/design:setup-ds` with `--from-brand <file(s)>` (PDF/images/logo): run T10 ingestion → extract palette + type cues + logo → seed the `ux-research-agent` discovery payload (schema at `ux-research-agent.md:181-366`) AND write DDR-141 brand specimens (`preview/logo.*`, `assets/logos/`). Thread through Stage 2→3→4 unchanged (payload-driven). Build the in-app **Brand-upload panel** (from T8) calling `maude design import-*` + kicking the seeded bootstrap.
 - **Pattern**: `--imprint` steer (`setup-ds.md:24`); `_bootstrap.md` Stage-2 payload handoff (:263-276).
