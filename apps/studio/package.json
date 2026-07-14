@@ -49,6 +49,7 @@
     "jszip": "^3.10.1",
     "lib0": "^0.2.117",
     "lightningcss": "^1.27.0",
+    "lucide-react": "^1.24.0",
     "magic-string": "^0.30.21",
     "mediabunny": "^1.50.7",
     "motion": "^12.42.2",
