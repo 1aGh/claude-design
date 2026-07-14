@@ -306,6 +306,20 @@
   min-width: 16px; height: 16px; padding: 0 4px; display: inline-flex; align-items: center; justify-content: center;
   border-radius: var(--radius-pill); background: var(--accent); color: var(--accent-fg); flex: none;
 }
+/* DDR-174 (T15) — "reconstructed from an image, experimental" marker. Sits left
+   of the git/open-count badges (which already claim margin-left:auto), so this
+   one gets an explicit left margin instead of fighting for the auto slot.
+   `--status-warn` stays on the border only (a UI-component outline needs just
+   3:1, which it clears) — a11y-auditor caught it also being used as 9px TEXT
+   color failing WCAG AA in light theme (~3.46:1 vs the required 4.5:1); the
+   sibling `.st-git-badge[data-kind="M"]` avoids this by using the warn token
+   as a fill with a fixed dark foreground instead. Text uses `--fg-2` (the
+   DS's own documented AA-clearing muted-text token) so both themes pass. */
+.st-row-exp-badge {
+  margin-left: 6px; font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.02em;
+  line-height: 1; padding: 2px 4px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-xs); border: 1px dashed var(--status-warn); color: var(--fg-2); flex: none;
+}
 /* delete affordance — sibling of the row button (can't nest buttons). */
 .st-row-wrap { position: relative; display: flex; align-items: center; }
 .st-row-wrap .st-row { flex: 1; }

@@ -5,9 +5,9 @@
   "contributors": 1,
   "plugins": {
     "design": {
-      "commands": 21,
+      "commands": 22,
       "skills": 7,
-      "agents": 20
+      "agents": 22
     },
     "flow": {
       "commands": 30,
@@ -25,14 +25,15 @@
     "commands-design/chat.mdx": "2026-07-03",
     "commands-design/critic.mdx": "2026-07-03",
     "commands-design/draw.mdx": "2026-07-03",
-    "commands-design/edit.mdx": "2026-07-03",
+    "commands-design/edit.mdx": "2026-07-14",
     "commands-design/export.mdx": "2026-07-05",
+    "commands-design/generate.mdx": "2026-07-14",
     "commands-design/handoff.mdx": "2026-07-03",
     "commands-design/help.mdx": "2026-06-11",
     "commands-design/init.mdx": "2026-06-11",
     "commands-design/new.mdx": "2026-07-03",
     "commands-design/photo.mdx": "2026-07-10",
-    "commands-design/reel.mdx": "2026-07-10",
+    "commands-design/reel.mdx": "2026-07-14",
     "commands-design/rollback.mdx": "2026-07-03",
     "commands-design/screenshot.mdx": "2026-07-03",
     "commands-design/setup-docs.mdx": "2026-06-11",

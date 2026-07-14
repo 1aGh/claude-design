@@ -8,12 +8,13 @@
 #
 # Usage:
 #   import-asset.sh <local-path> --root <repo> [--design-root .design]
-#                   [--kind svg|pdf] [--json]
+#                   [--kind svg|pdf|raster] [--json]
 #
 # stdout on success = one reference path per line (e.g. /assets/a44d3d60.svg).
 # PDF import is not yet available (DDR-167 addendum) — the verb accepts a
 # .pdf input and fails loud naming why, rather than silently rejecting it as
-# an unknown flag.
+# an unknown flag. `raster` (PNG/JPEG, magic-byte sniffed) content-addresses
+# a local image as-is — added for DDR-174/T15's vision-reconstruction source.
 #
 # Exit: 0 ok · 1 not-yet-available/other · 2 usage · 3 sanitize/validation
 #       reject · 4 read/parse error · 5 unsupported media type ·

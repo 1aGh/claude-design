@@ -48,11 +48,11 @@ export class ImportAssetError extends Error {
 // Mirrors _fetch-asset.mjs's containedAssetPath/assetName exactly.
 // ============================================================================
 
-/** Content-addressed `<sha8>.<ext>` name. `ext` in {svg, png}. */
+/** Content-addressed `<sha8>.<ext>` name. `ext` in {svg, png, jpg}. */
 export function assetName(bytes, ext) {
   const sha8 = createHash('sha256').update(bytes).digest('hex').slice(0, 8);
   const name = `${sha8}.${ext}`;
-  if (!/^[a-z0-9]{8}\.(svg|png)$/.test(name)) {
+  if (!/^[a-z0-9]{8}\.(svg|png|jpg)$/.test(name)) {
     throw new ImportAssetError(6, `generated name failed the charset contract: ${name}`);
   }
   return name;
@@ -632,6 +632,84 @@ export async function importPdf(inputPath, { root, designRootRel = '.design' }) 
 }
 
 // ============================================================================
+// Decision 4 (DDR-174, T15) — local raster (PNG/JPEG) ingestion. The vision-
+// reconstruction flow's source image (a Figma-frame export) is a plain raster,
+// not SVG/PDF — this is the "same asset-upload gate any other image upload
+// already goes through" DDR-174 Decision 4 assumes exists, extended to a local
+// CLI path (the browser drag-drop `POST /_api/asset` already accepts PNG/JPEG,
+// just not from a bare filesystem path with no browser in the loop). No
+// sanitize step is needed (raster pixels carry no markup/script surface the
+// way SVG does) — containment + magic-byte re-sniff is the whole control.
+// ============================================================================
+
+export const RASTER_MAX_BYTES = 25 * 1024 * 1024;
+
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const JPEG_MAGIC = [0xff, 0xd8, 0xff];
+
+/** Sniff the REAL format from bytes — never trust the input filename's extension. */
+export function sniffRasterKind(bytes) {
+  if (PNG_MAGIC.every((b, i) => bytes[i] === b)) return 'png';
+  if (JPEG_MAGIC.every((b, i) => bytes[i] === b)) return 'jpg';
+  return null;
+}
+
+/**
+ * Realpath-then-open, LEAF-symlink rejection checked against the ORIGINAL
+ * (pre-resolution) path — mirrors `_import-tokens.mjs`'s `readTokenFileCapped`,
+ * the corrected form of this repo's own symlink check (T11 found and fixed a
+ * structurally-inert version of this same check elsewhere in this file,
+ * `readPdfCapped`, which walks the POST-resolution path and can therefore
+ * never observe a symlink — flagged there as a follow-up, not silently
+ * repeated here).
+ */
+export function readRasterCapped(inputPath, maxBytes = RASTER_MAX_BYTES) {
+  const absOriginal = resolve(inputPath);
+  let leafStat;
+  try {
+    leafStat = lstatSync(absOriginal);
+  } catch (err) {
+    throw new ImportAssetError(4, `could not resolve path: ${err?.message ?? err}`);
+  }
+  if (leafStat.isSymbolicLink()) {
+    throw new ImportAssetError(3, `refusing a path whose target is a symlink: ${absOriginal}`);
+  }
+  let real;
+  try {
+    real = realpathSync(inputPath);
+  } catch (err) {
+    throw new ImportAssetError(4, `could not resolve path: ${err?.message ?? err}`);
+  }
+  let buf;
+  try {
+    buf = readFileSync(real);
+  } catch (err) {
+    throw new ImportAssetError(4, `could not read file: ${err?.message ?? err}`);
+  }
+  if (buf.length === 0) throw new ImportAssetError(4, 'file is empty');
+  if (buf.length > maxBytes) {
+    throw new ImportAssetError(
+      4,
+      `raster image exceeds the ${Math.round(maxBytes / (1024 * 1024))} MB cap`
+    );
+  }
+  return buf;
+}
+
+/** Full raster import: capped symlink-safe read → magic-byte sniff → contained write. */
+export function importRaster(inputPath, { root, designRootRel = '.design' }) {
+  const buf = readRasterCapped(inputPath);
+  const kind = sniffRasterKind(buf);
+  if (!kind) {
+    throw new ImportAssetError(
+      5,
+      'not a recognized raster image (expected a PNG or JPEG magic-byte signature)'
+    );
+  }
+  return writeContainedAsset(root, designRootRel, buf, kind);
+}
+
+// ============================================================================
 // CLI entry
 // ============================================================================
 
@@ -665,15 +743,16 @@ function parseArgv(argv) {
   return out;
 }
 
-const HELP = `import-asset — hardened local-file SVG/PDF ingestion (reached via \`maude design import-asset\`)
+const HELP = `import-asset — hardened local-file SVG/PDF/raster ingestion (reached via \`maude design import-asset\`)
 
 Usage:
   maude design import-asset <local-path> --root <repo> [--design-root .design]
-                            [--kind svg|pdf] [--json]
+                            [--kind svg|pdf|raster] [--json]
 
-Sanitizes (SVG) or rasterizes (PDF, one PNG per page) a LOCAL file, content-
-addresses the result(s) as <designRoot>/assets/<sha8>.<ext>, and prints the
-reference path(s). See DDR-167 for the full security posture.
+Sanitizes (SVG), rasterizes (PDF, one PNG per page), or content-addresses as-is
+(raster PNG/JPEG — DDR-174 T15's vision-reconstruction source image path) a
+LOCAL file, writing the result(s) to <designRoot>/assets/<sha8>.<ext> and
+printing the reference path(s). See DDR-167 for the full security posture.
 
 Exit: 0 ok · 2 usage · 3 sanitize/validation reject · 4 read/parse error ·
       5 unsupported media type · 6 write/containment error · 1 other.`;
@@ -697,9 +776,17 @@ async function main() {
   const root = opts.root || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   try {
     let results;
-    const kind = opts.kind || (opts.file.toLowerCase().endsWith('.pdf') ? 'pdf' : 'svg');
+    const lower = opts.file.toLowerCase();
+    const defaultKind = lower.endsWith('.pdf')
+      ? 'pdf'
+      : lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')
+        ? 'raster'
+        : 'svg';
+    const kind = opts.kind || defaultKind;
     if (kind === 'pdf') {
       results = await importPdf(opts.file, { root, designRootRel: opts.designRoot });
+    } else if (kind === 'raster' || kind === 'png' || kind === 'jpg') {
+      results = [importRaster(opts.file, { root, designRootRel: opts.designRoot })];
     } else {
       const text = readFileSync(opts.file, 'utf8');
       results = [await importSvg(text, { root, designRootRel: opts.designRoot })];

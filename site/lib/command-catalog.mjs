@@ -113,6 +113,7 @@ export const COMMAND_CATALOG = [
       { name: 'photo', category: 'daily' },
       { name: 'reel', category: 'daily' },
       { name: 'generate', category: 'daily' },
+      { name: 'import', category: 'daily' },
       { name: 'help', category: 'daily' },
       { name: 'init', category: 'setup' },
       { name: 'setup-ds', category: 'setup' },

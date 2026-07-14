@@ -1596,7 +1596,18 @@ function DsFolderRow({ name, dsName, depth, defaultOpen, active, onOpenSystem, c
   );
 }
 
-function FileRow({ file, activePath, onOpen, onDelete, openCount: oc, depth, kind, sidecar, dirty }) {
+function FileRow({
+  file,
+  activePath,
+  onOpen,
+  onDelete,
+  openCount: oc,
+  depth,
+  kind,
+  sidecar,
+  dirty,
+  experimentalKind,
+}) {
   const isSel = file.path === activePath;
   const isCanvas = CANVAS_EXT_RE.test(file.name);
   // Non-canvas rows (PROJECT *.md, RUNTIME _active.json, ...) are display-only —
@@ -1640,6 +1651,15 @@ function FileRow({ file, activePath, onOpen, onDelete, openCount: oc, depth, kin
         <StIcon name="file" size={13} />
       </span>
       <span className="st-row-name">{label}</span>
+      {experimentalKind === 'reconstructed-experimental' && (
+        <span
+          className="st-row-exp-badge"
+          title="Reconstructed from an image via /design:import --reconstruct — experimental, lossy, review before trusting (DDR-174)"
+          aria-label="Reconstructed, experimental"
+        >
+          exp
+        </span>
+      )}
       {dirty && (
         <span className="st-git-badge" data-kind={dirty} title={`Unsaved (${dirty})`} aria-label={`Unsaved, ${dirty}`}>
           {dirty}
@@ -1682,6 +1702,7 @@ function CanvasRow({
   showHidden,
   forceOpen,
   dirtyByPath,
+  experimentalKind,
 }) {
   const dirty = dirtyByPath?.get(primary.path);
   const hasSidecars = sidecars.length > 0;
@@ -1703,6 +1724,7 @@ function CanvasRow({
         depth={depth}
         kind={kind}
         dirty={dirty}
+        experimentalKind={experimentalKind}
       />
     );
   }
@@ -1736,6 +1758,15 @@ function CanvasRow({
           <StIcon name="chevron-right" className={'st-chev' + (open ? ' is-open' : '')} size={13} />
         </span>
         <span className="st-row-name">{displayName(primary.name)}</span>
+        {experimentalKind === 'reconstructed-experimental' && (
+          <span
+            className="st-row-exp-badge"
+            title="Reconstructed from an image via /design:import --reconstruct — experimental, lossy, review before trusting (DDR-174)"
+            aria-label="Reconstructed, experimental"
+          >
+            exp
+          </span>
+        )}
         {dirty && (
           <span className="st-git-badge" data-kind={dirty} title={`Unsaved (${dirty})`} aria-label={`Unsaved, ${dirty}`}>
             {dirty}
@@ -1774,6 +1805,7 @@ function Tree({
   onOpenSystem,
   onDelete,
   dirtyByPath,
+  canvasKinds,
 }) {
   const dirs = Object.keys(node)
     .filter((k) => k !== '_files')
@@ -1816,6 +1848,7 @@ function Tree({
             showHidden={showHidden}
             forceOpen={forceOpen}
             dirtyByPath={dirtyByPath}
+            experimentalKind={canvasKinds?.[entry.primary.path]}
           />
         );
       })}
@@ -1848,6 +1881,7 @@ function Tree({
             onOpenSystem={onOpenSystem}
             onDelete={onDelete}
             dirtyByPath={dirtyByPath}
+            canvasKinds={canvasKinds}
           />
         );
         if (dsMatch && onOpenSystem) {
@@ -1922,6 +1956,7 @@ function Sidebar({
   gitBranch,
   remoteSync,
   onGetLatest,
+  canvasKinds,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
@@ -2152,6 +2187,7 @@ function Sidebar({
                     onOpenSystem={isDs ? onOpenSystem : undefined}
                     onDelete={isDs ? undefined : onDeleteBoard}
                     dirtyByPath={dirtyByPath}
+                    canvasKinds={canvasKinds}
                   />
                 ) : (
                   <div className="st-tree-empty">{search ? 'No matches.' : 'Empty.'}</div>
@@ -8777,7 +8813,14 @@ function App() {
       // fetch (either may land first). `?? {}` keeps older servers (no map) on
       // the ds0 fallback. Re-runs on every tree reload, so adding/retargeting a
       // canvas refreshes the map.
-      setCfg((prev) => ({ ...prev, canvasDesignSystems: data.canvasDesignSystems ?? {} }));
+      setCfg((prev) => ({
+        ...prev,
+        canvasDesignSystems: data.canvasDesignSystems ?? {},
+        // DDR-174 (T15) — per-canvas notable `.meta.json` `kind` values (today:
+        // only `reconstructed-experimental`), folded in the same way + for the
+        // same reason as canvasDesignSystems above.
+        canvasKinds: data.canvasKinds ?? {},
+      }));
     } catch (e) {
       console.error('failed to load tree', e);
     }
@@ -11540,6 +11583,7 @@ function App() {
           gitBranch={gitStatus?.branch}
           remoteSync={remoteSync}
           onGetLatest={gitGetLatest}
+          canvasKinds={cfg?.canvasKinds}
         />
       );
     if (id === 'changes')

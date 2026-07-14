@@ -3379,6 +3379,14 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     // instead of unconditionally designSystems[0]. Populated from the canvas
     // groups below; returned on the payload and folded into the client cfg.
     const canvasDesignSystems: Record<string, string> = {};
+    // DDR-174 (T15) — surface a canvas's `.meta.json` `kind` in the file tree
+    // when it's a value the user should notice at a glance (today: only
+    // `reconstructed-experimental`, so this map stays empty on every project
+    // that hasn't run `/design:import --reconstruct`). Piggybacks on the same
+    // `loadCanvasMeta` call the DDR-093 DS-map loop below already makes for
+    // non-path-owned (`ui/`) canvases — no extra I/O for the common case.
+    const canvasKinds: Record<string, string> = {};
+    const NOTABLE_KINDS = new Set(['reconstructed-experimental']);
     const defaultDs = cfg.defaultDesignSystem || cfg.designSystems?.[0]?.name || 'project';
     // A file under `system/<folder>/` belongs to the DS that owns that folder —
     // path-authoritative, because specimens/ui_kits rarely carry a sidecar
@@ -3452,6 +3460,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
           const meta = await loadCanvasMeta(fp);
           const declared = meta?.designSystem;
           dsName = typeof declared === 'string' && declared.trim() ? declared : defaultDs;
+          const kind = meta?.kind;
+          if (typeof kind === 'string' && NOTABLE_KINDS.has(kind)) canvasKinds[fp] = kind;
         }
         canvasDesignSystems[fp] = dsName;
       }
@@ -3516,6 +3526,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       designRoot: paths.designRel,
       groups,
       canvasDesignSystems,
+      canvasKinds,
     };
   }
 

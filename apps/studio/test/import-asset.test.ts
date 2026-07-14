@@ -15,8 +15,11 @@ import {
   assetName,
   containedAssetPath,
   getPdfPageCountIsolated,
+  importRaster,
   readPdfCapped,
+  readRasterCapped,
   sanitizeSvgAllowlist,
+  sniffRasterKind,
   svgPreParseReject,
   writeContainedAsset,
 } from '../bin/_import-asset.mjs';
@@ -287,5 +290,110 @@ describe('assertPdfPageCap', () => {
   });
   test('allows exactly the cap', () => {
     expect(() => assertPdfPageCap(20)).not.toThrow();
+  });
+});
+
+// DDR-174 (T15) — local raster (PNG/JPEG) ingestion, the vision-reconstruction
+// source-image intake path. No sanitize step (raster carries no markup
+// surface) — containment + magic-byte re-sniff is the whole control.
+describe('sniffRasterKind', () => {
+  const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
+  const JPEG_SIG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0]);
+
+  test('recognizes a real PNG signature', () => {
+    expect(sniffRasterKind(PNG_SIG)).toBe('png');
+  });
+  test('recognizes a real JPEG signature', () => {
+    expect(sniffRasterKind(JPEG_SIG)).toBe('jpg');
+  });
+  test('rejects non-raster bytes regardless of extension', () => {
+    expect(sniffRasterKind(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'))).toBe(null);
+  });
+  test('rejects a PDF signature (not a raster format)', () => {
+    expect(sniffRasterKind(Buffer.from('%PDF-1.4'))).toBe(null);
+  });
+});
+
+describe('readRasterCapped (DDR-174 Decision 4)', () => {
+  test('reads a real file within the cap', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'maude-import-raster-fixture-'));
+    const p = join(dir, 'x.png');
+    writeFileSync(p, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]));
+    const buf = readRasterCapped(p);
+    expect(buf.length).toBeGreaterThan(0);
+  });
+
+  test('rejects a file over the byte cap', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'maude-import-raster-fixture-'));
+    const p = join(dir, 'big.png');
+    writeFileSync(p, Buffer.alloc(1024));
+    expect(() => readRasterCapped(p, 100)).toThrow(/cap/);
+  });
+
+  test('rejects a nonexistent path', () => {
+    expect(() => readRasterCapped('/no/such/file.png')).toThrow();
+  });
+
+  test('rejects an empty file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'maude-import-raster-fixture-'));
+    const p = join(dir, 'empty.png');
+    writeFileSync(p, Buffer.alloc(0));
+    expect(() => readRasterCapped(p)).toThrow(/empty/);
+  });
+});
+
+describe('importRaster (full pipeline)', () => {
+  test('content-addresses a real PNG and writes it into assets/', () => {
+    const root = tmpDesignRoot();
+    const dir = mkdtempSync(join(tmpdir(), 'maude-import-raster-fixture-'));
+    const p = join(dir, 'frame.png');
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    writeFileSync(p, bytes);
+    const result = importRaster(p, { root, designRootRel: '.design' });
+    expect(result.ext).toBe('png');
+    expect(result.ref).toMatch(/^\/assets\/[a-f0-9]{8}\.png$/);
+    expect(existsSync(join(root, '.design', 'assets', result.name))).toBe(true);
+  });
+
+  test('sniffs the REAL format even when the filename claims otherwise', () => {
+    const root = tmpDesignRoot();
+    const dir = mkdtempSync(join(tmpdir(), 'maude-import-raster-fixture-'));
+    // A file named .png that is actually a JPEG — the write path must trust
+    // the magic bytes, never the extension (mirrors the PDF-page re-sniff
+    // discipline already used in importPdf above).
+    const p = join(dir, 'lying.png');
+    writeFileSync(p, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]));
+    const result = importRaster(p, { root, designRootRel: '.design' });
+    expect(result.ext).toBe('jpg');
+  });
+
+  test('rejects a file with no recognized raster signature', () => {
+    const root = tmpDesignRoot();
+    const dir = mkdtempSync(join(tmpdir(), 'maude-import-raster-fixture-'));
+    const p = join(dir, 'not-an-image.png');
+    writeFileSync(p, Buffer.from('this is plain text, not an image'));
+    expect(() => importRaster(p, { root, designRootRel: '.design' })).toThrow(
+      /recognized raster image/
+    );
+  });
+
+  test('dedupes identical raster content across two imports', () => {
+    const root = tmpDesignRoot();
+    const dir = mkdtempSync(join(tmpdir(), 'maude-import-raster-fixture-'));
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9, 9]);
+    const p1 = join(dir, 'a.png');
+    const p2 = join(dir, 'b.png');
+    writeFileSync(p1, bytes);
+    writeFileSync(p2, bytes);
+    const r1 = importRaster(p1, { root, designRootRel: '.design' });
+    const r2 = importRaster(p2, { root, designRootRel: '.design' });
+    expect(r1.name).toBe(r2.name);
+  });
+});
+
+describe('assetName accepts jpg alongside svg/png (DDR-174)', () => {
+  test('a jpg-extension name passes the charset contract', () => {
+    const name = assetName(Buffer.from('x'), 'jpg');
+    expect(name).toMatch(/^[a-z0-9]{8}\.jpg$/);
   });
 });
