@@ -198,7 +198,8 @@ export async function probeReadiness(): Promise<ReadinessReport> {
   // the same precedence fix in probe.ts's resolveClaudePath(). Without this,
   // the acp-cold-start scenario could never observe its OWN install actually
   // taking effect after starting from a forced-missing state.
-  const hasVerifiedOverride = !!process.env.MAUDE_CLAUDE_BIN && claude === process.env.MAUDE_CLAUDE_BIN;
+  const hasVerifiedOverride =
+    !!process.env.MAUDE_CLAUDE_BIN && claude === process.env.MAUDE_CLAUDE_BIN;
   if (e2eForce === 'missing' && !hasVerifiedOverride) claude = null;
   else if (e2eForce === 'signed-out' && !hasVerifiedOverride) claude = claude || '/usr/bin/claude'; // present, but auth probe below is also stubbed
 
@@ -213,7 +214,8 @@ export async function probeReadiness(): Promise<ReadinessReport> {
   const authStatus =
     e2eForce === 'signed-out' ? { loggedIn: false } : claude ? await getClaudeAuthStatus() : null;
   const signedIn = !!authStatus?.loggedIn;
-  const offSubscription = signedIn && authStatus?.apiProvider && authStatus.apiProvider !== 'firstParty';
+  const offSubscription =
+    signedIn && authStatus?.apiProvider && authStatus.apiProvider !== 'firstParty';
   // DDR-166 Decision 5 — the settings-UI opt-out (prefs.rs `claude_auto_setup`,
   // DEFAULT ON) reaches the dev-server as an env var set fresh at each sidecar
   // spawn. Disabled → fall back to guide-only: no automated action offered,
@@ -243,10 +245,14 @@ export async function probeReadiness(): Promise<ReadinessReport> {
     resolvedViaMaude: !!claude && claude === process.env.MAUDE_CLAUDE_BIN,
   });
 
-  // DDR-166 T0b — `maude` is bundled into the packaged app (compiled via
-  // apps/desktop/scripts/build-cli-binary.mjs, shipped as `externalBin`
+  // DDR-166 T0b / DDR-168 — `maude` is bundled into the packaged app (compiled
+  // via apps/desktop/scripts/build-cli-binary.mjs, shipped as `externalBin`
   // `binaries/maude`; sidecar.rs stages it into its own narrow, single-binary
-  // PATH directory and sets MAUDE_BUNDLED_CLI_PATH to that exact path). This
+  // PATH directory, PREPENDS that directory ahead of the rest of PATH, and sets
+  // MAUDE_BUNDLED_CLI_PATH to that exact path). Prepending makes this
+  // deterministic, not a best-effort fallback: inside the sidecar's own spawned
+  // children the bundled copy always wins PATH resolution, so `maude === bundledCliPath`
+  // is the normal case on the desktop path, not merely one possible outcome. This
   // row disappears entirely for the end user rather than surfacing an
   // `npm i -g` instruction for something already shipped — it's an internal
   // plumbing detail, not a recognizable capability like the agent-browser/
@@ -278,8 +284,18 @@ export async function probeReadiness(): Promise<ReadinessReport> {
   // `design` alone — demanding a plugin the chat doesn't use would be a false red.
   // The web `maude design serve` path ships no bundle (native=false, dir null) →
   // the manual marketplace remediation still shows there.
+  //
+  // DDR-168 — `designAutoloaded` no longer requires `!scan.design`: the bundled
+  // copy is injected unconditionally now (plugin-bootstrap.ts), regardless of
+  // whether a marketplace copy is ALSO installed at the user level (the
+  // double-registration risk that used to gate this is closed structurally in
+  // bridge.ts's `options.settings.enabledPlugins` override instead). So this row
+  // reads "auto-loaded" even on a machine that separately has design@maude
+  // installed — that's the whole point: the bundled, release-matched copy is
+  // what actually runs in the chat, so the UI should say so rather than imply
+  // "ready because you already had it."
   const native = isNativePluginContext();
-  const designAutoloaded = native && DESIGN_PLUGIN_DIR !== null && !scan.design;
+  const designAutoloaded = native && DESIGN_PLUGIN_DIR !== null;
   const designReady = scan.design || designAutoloaded;
   const pluginStatus: ReadinessStatus = designReady
     ? 'present'
@@ -293,7 +309,7 @@ export async function probeReadiness(): Promise<ReadinessReport> {
     status: pluginStatus,
     detail: designReady
       ? designAutoloaded
-        ? 'Auto-loaded in the Maude chat session — nothing to install.'
+        ? 'Bundled with this app — always active in the chat session.'
         : 'design@maude is installed.'
       : scan.status === 'unknown'
         ? "Couldn't read Claude Code's plugin registry — check it manually."

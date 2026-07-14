@@ -107,33 +107,35 @@ describe('readiness — plugin registry scan (web / manual path)', () => {
   });
 });
 
-// DDR-143 — on the native/desktop path the ACP session auto-loads the bundled
-// plugins, so the row is satisfied even against a pristine registry. This suite
-// runs in the dev tree, so the bundled plugin dirs resolve → native context is
-// on by default (no opt-out).
-describe('readiness — plugin auto-bootstrap (native, DDR-143)', () => {
-  test('pristine registry → present + "Auto-loaded" detail, no manual remediation', async () => {
+// DDR-143 / DDR-168 — on the native/desktop path the ACP session ALWAYS loads
+// the bundled plugins, so the row is satisfied even against a pristine
+// registry, AND even when a marketplace copy is also installed at the user
+// level (DDR-168 removed the old scan-gated no-op — the bundled copy wins
+// regardless of disk state). This suite runs in the dev tree, so the bundled
+// plugin dirs resolve → native context is on by default (no opt-out).
+describe('readiness — plugin auto-bootstrap (native, DDR-143/DDR-168)', () => {
+  test('pristine registry → present + "Bundled with this app" detail, no manual remediation', async () => {
     const item = await pluginsItem(fixtureClaudeDir({}));
     expect(item.status).toBe('present');
-    expect(item.detail).toContain('Auto-loaded');
+    expect(item.detail).toContain('Bundled with this app');
     expect(item.remediation).toBeUndefined();
   });
 
-  test('design NOT installed (flow-only registry) → still present (design is auto-loaded, no red wall)', async () => {
+  test('design NOT installed (flow-only registry) → still present (design is bundled, no red wall)', async () => {
     const item = await pluginsItem(
       fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_FLOW_ONLY })
     );
     expect(item.status).toBe('present');
-    expect(item.detail).toContain('Auto-loaded');
+    expect(item.detail).toContain('Bundled with this app');
     expect(item.remediation).toBeUndefined();
   });
 
-  test('design already installed → present, keeps the "is installed" detail (no auto-load framing)', async () => {
+  test('design ALSO installed on disk → present, STILL reads as bundled (DDR-168 — no more "is installed" framing)', async () => {
     const item = await pluginsItem(
       fixtureClaudeDir({ markets: MARKET_OK, installed: INSTALLED_DESIGN_ONLY })
     );
     expect(item.status).toBe('present');
-    expect(item.detail).toContain('installed');
+    expect(item.detail).toContain('Bundled with this app');
   });
 });
 

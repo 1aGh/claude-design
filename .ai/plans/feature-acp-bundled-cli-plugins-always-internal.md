@@ -80,42 +80,42 @@ Existing `SessionPluginDeps`/`computeSessionPlugins()` shape (plugin-bootstrap.t
 
 Execute in order. Each task is atomic and testable.
 
-### Task 1: CREATE `.ai/decisions/DDR-167-acp-bundled-cli-and-plugins-always-win.md`
+### Task 1: CREATE `.ai/decisions/DDR-167-acp-bundled-cli-and-plugins-always-win.md` — ✅ completed (as DDR-168; DDR-167 was claimed by a concurrent session)
 
 - **Do**: Record the decision: Maude Desktop's ACP session always uses the bundled `maude` CLI + `design`/`flow` plugins, ignoring disk state. Structure per this repo's DDR convention (Status/Relates/Context/Decision/Consequences). Cover: (a) rationale — release-locked consistency between plugin markdown and CLI behavior beats "respect what's on disk"; (b) the two mechanism changes (PATH prepend, unconditional injection); (c) the `options.settings.enabledPlugins:false` structural double-registration guard, with the exact `acp-agent.js`/`sdk.d.ts` line citations from this plan's Solution section as verified evidence (not a speculative claim); (d) the accepted residual — prepending the bin-link dir means it now outranks even a locked-down/enterprise-pinned `maude` on PATH within the sidecar's own child-process env (narrow: affects only Maude's own CLI dispatch inside its own sidecar, not the user's system-wide PATH); (e) the `MAUDE_NO_PLUGIN_BOOTSTRAP=1` pointer for the local-plugin-dev-via-ACP-panel case (Task 8).
 - **Pattern**: Mirror DDR-166's own "Supersedes in part" framing for DDR-123/DDR-128.
 - **Gotcha**: Verify the DDR number is still free (check both `.ai/decisions/` dir AND any uncommitted README index diff) immediately before writing AND again before the closing commit — this tree has concurrent sessions active (memory `project_ddr_numbering_races_on_shared_main`).
 - **Validate**: File exists, cross-links resolve, `.ai/decisions/README.md` gets an index entry.
 
-### Task 2: UPDATE `apps/desktop/src-tauri/src/sidecar.rs` — prepend instead of append the bundled CLI PATH entry
+### Task 2: UPDATE `apps/desktop/src-tauri/src/sidecar.rs` — prepend instead of append the bundled CLI PATH entry — ✅ completed
 
 - **Do**: In `spawn_server()`, change the PATH-construction line from `path = format!("{path}:{}", link.parent()...)` to prepend form: `path = format!("{}:{path}", link.parent()...)`. Update the adjacent doc comment (currently asserts "a user's own newer global `maude` ... still wins on precedence — this is a floor, not a forced ceiling") to state the new intent (bundled is now authoritative — a ceiling, not a floor) and cross-reference DDR-167.
 - **Pattern**: `stage_bundled_cli_link()` itself (the narrow single-binary directory) is untouched — the debate confirmed the security boundary DDR-166 closed (shadow-directory risk) is about directory *breadth*, not PATH *position*; prepending a directory containing only the `maude` symlink adds no new shadow surface.
 - **Gotcha**: This file has **uncommitted, mid-flight changes from a concurrent session** (DDR-166 T0b) per `.ai/state/STATE.md`. Diff narrowly — touch only this one `format!` line + its comment, re-`git diff` before editing to confirm the concurrent session hasn't since changed this exact block, and do not blanket-revert or restage unrelated hunks in this file.
 - **Validate**: `cargo check` in `apps/desktop/src-tauri`; manual `pnpm dev:desktop` boot confirms `MAUDE_BUNDLED_CLI_PATH` is set and a shell inside the sidecar's own spawned children resolves `maude` to the bundled symlink even when a different `maude` is earlier in the login-shell PATH.
 
-### Task 3: UPDATE `apps/studio/acp/plugin-bootstrap.ts` — remove the scan-gated skip
+### Task 3: UPDATE `apps/studio/acp/plugin-bootstrap.ts` — remove the scan-gated skip — ✅ completed
 
 - **Do**: In `computeSessionPlugins()`, delete the `alreadyPresent` check inside `add()` — inject whenever `dir` resolves and `deps.native` is true, full stop. Drop the now-dead `scan: Pick<PluginScan, 'design' | 'flow'>` field from `SessionPluginDeps`. In `resolveSessionPlugins()`, stop calling `scanPlugins()` for injection purposes (readiness.ts keeps its own independent call for its own row, per Task 5 — unaffected).
 - **Pattern**: Keep the `add()` closure shape and the `skipMcpDiscovery: true` field; keep the flow-disabled comment/dead-but-wired `flowDir`/scan-for-flow structure exactly as-is (still "OFF for now", unrelated to this change).
 - **Gotcha**: This directly reverses DDR-143 Decision 3's stated intent ("no-op for power users, hard"). That reversal is deliberate and is what DDR-167 (Task 1) documents — don't treat the old comments as a signal to keep the gate.
 - **Validate**: `apps/studio/test/acp-plugin-bootstrap.test.ts` updated in Task 6 passes.
 
-### Task 4: UPDATE `apps/studio/acp/bridge.ts` — structural double-registration guard
+### Task 4: UPDATE `apps/studio/acp/bridge.ts` — structural double-registration guard — ✅ completed
 
 - **Do**: In `newSessionParams()`, when `plugins` is non-empty, also set `options.settings = { enabledPlugins: { 'design@maude': false } }` (keyed to whichever plugin ids are actually being injected — currently only `design@maude`; write it so re-enabling `flow@maude` injection later is a one-line addition, matching this file's existing "one-line change" style for the flow toggle). This forces off any natively-loaded user-level copy of the same plugin id via the SDK's documented `flag > user` settings precedence, so the bundled copy injected via `options.plugins` is the *only* one that loads — closing the double-registration/duplicate-MCP-spawn/duplicate-hook risk BREAKER flagged.
 - **Pattern**: `settingSources: ['user']` (line 138) stays exactly as-is — this is additive, not a replacement of the DDR-144 guard.
 - **Gotcha**: Do NOT set this unconditionally regardless of `plugins` — only when Maude is actually injecting a bundled copy of that id (keeps the override meaningless/absent on the npm/web path where `plugins` is always empty, avoiding any behavior change there).
 - **Validate**: New assertion in `acp-session-plugins.test.ts` (Task 6) confirms the emitted `_meta.claudeCode.options.settings.enabledPlugins['design@maude'] === false` whenever `plugins` is non-empty, and is entirely absent when `plugins` is empty (web/npm path unaffected).
 
-### Task 5: UPDATE `apps/studio/readiness.ts` — plugins row no longer gates on disk state
+### Task 5: UPDATE `apps/studio/readiness.ts` — plugins row no longer gates on disk state — ✅ completed
 
 - **Do**: In the `plugins` row construction, remove `&& !scan.design` from the `designAutoloaded` computation (line 282) so native context always reports `designAutoloaded = native && DESIGN_PLUGIN_DIR !== null`, regardless of `scan.design`. Update the `detail` copy so the "Auto-loaded" message no longer implicitly implies "...because you didn't already have it" — reword to something like "Bundled with this app — always active in the chat session" so it reads correctly even when `scan.design` is also true. Refresh the doc comment above the `maude` row (lines 246-255) to say PATH prepend makes this deterministic now, not a "falls through" fallback.
 - **Pattern**: Keep `scan.status === 'unknown'` handling and the web-path (`native === false`) branch exactly as they are — those are unaffected (`scanPlugins()` is still called and still used for the non-native/manual-marketplace messaging path).
 - **Gotcha**: Don't remove the `scanPlugins()` call from `readiness.ts` entirely — it's still needed for `scan.status`/the web-path branch and for `marketplace` detection; only the `designAutoloaded` gate condition changes.
 - **Validate**: `apps/studio/test/readiness.test.ts` updated in Task 6 passes; manual `/_api/preflight` response inspection shows `status: 'present'`/"Auto-loaded" framing regardless of a pristine vs. already-marketplace-installed `~/.claude`.
 
-### Task 6: UPDATE tests
+### Task 6: UPDATE tests — ✅ completed
 
 - **Do**:
   - `apps/studio/test/acp-plugin-bootstrap.test.ts` — rewrite the "already-installed → no-op" case(s) to assert injection happens regardless of prior install state; remove `scan` from all `SessionPluginDeps` fixture objects.
@@ -125,13 +125,13 @@ Execute in order. Each task is atomic and testable.
 - **Gotcha**: The adapter/SDK versions currently installed (`@agentclientprotocol/claude-agent-acp@0.57.0`, `@anthropic-ai/claude-agent-sdk@0.3.202`) have moved on from the versions DDR-143's own text cites (`0.49.0`/`0.3.185`) — this is expected version drift, not a regression; just make sure the new guard checks against whatever is actually installed, not the DDR's stale citation.
 - **Validate**: `bun test apps/studio/test/acp-plugin-bootstrap.test.ts apps/studio/test/acp-session-plugins.test.ts apps/studio/test/readiness.test.ts` — all green.
 
-### Task 7: UPDATE `.ai/decisions/DDR-143-...md` and `.ai/decisions/DDR-166-...md` — supersession pointers
+### Task 7: UPDATE `.ai/decisions/DDR-143-...md` and `.ai/decisions/DDR-166-...md` — supersession pointers — ✅ completed
 
 - **Do**: Add a one-line "Superseded in part by DDR-167 (Decision 3 — the no-op-for-power-users gate is removed; bundled always injects)" pointer near the top of DDR-143, and a similar one-line pointer to DDR-166 ("Superseded in part by DDR-167 (Decision 1 — PATH order flips from append to prepend)"), matching the "superseded in part, not silently reinterpreted" convention DDR-166 itself used for DDR-123/DDR-128.
 - **Pattern**: Exact phrasing precedent — DDR-166's own "Supersedes in part" line at the top of its file.
 - **Validate**: Cross-links resolve both directions.
 
-### Task 8: UPDATE `CLAUDE.md` (or `apps/desktop/README.md`, whichever currently documents the local-dev plugin-testing recipe) — document the `MAUDE_NO_PLUGIN_BOOTSTRAP` interaction
+### Task 8: UPDATE `CLAUDE.md` (or `apps/desktop/README.md`, whichever currently documents the local-dev plugin-testing recipe) — document the `MAUDE_NO_PLUGIN_BOOTSTRAP` interaction — ✅ completed
 
 - **Do**: Add a short note to the "Working on plugin internals locally" section (or desktop-specific equivalent): testing your own in-flight `plugins/design`/`plugins/flow` edits through Maude Desktop's **ACP chat panel** specifically (as opposed to a separate terminal `claude` session) now requires `MAUDE_NO_PLUGIN_BOOTSTRAP=1` set when running `pnpm dev:desktop`, since the bundled copy always wins by default post-DDR-167.
 - **Gotcha**: Keep it to 2-3 sentences — this is a footnote to an existing section, not a new subsection.
@@ -160,11 +160,11 @@ Not applicable as a new cross-platform UI scenario — this is a backend/session
 
 ## Acceptance Criteria
 
-- [ ] All 8 tasks completed
-- [ ] `/flow:utils-verify` passes after each task (Edit-Verify Loop, max 3 iterations)
-- [ ] `/validate` passes overall: static (types/lint/format), tests (full suite), build
-- [ ] `security-auditor` + `ethical-hacker` fan-out: 0 unresolved blockers on the PATH-precedence flip and the `enabledPlugins` override
-- [ ] Bundled `.app` dogfood confirms: bundled `maude`/plugins win regardless of disk state, no duplicate `/design:*` commands when a marketplace copy also exists, `MAUDE_NO_PLUGIN_BOOTSTRAP=1` escape hatch still works
-- [ ] DDR-167 written and indexed; DDR-143 + DDR-166 carry "superseded in part" pointers
-- [ ] No DDR-worthy decision left unrecorded
-- [ ] Code follows project conventions, no regressions
+- [x] All 8 tasks completed
+- [x] `/flow:utils-verify` passes after each task (Edit-Verify Loop, max 3 iterations)
+- [~] Static + tests + build all verified individually (cargo check, full `bun test`, biome/tsc on touched files); the formal `/validate` pipeline itself was NOT run — `/flow:execute` defers that to `/done` by design.
+- [x] `security-auditor` + `ethical-hacker` fan-out: 0 unresolved blockers on the PATH-precedence flip and the `enabledPlugins` override (2 rounds; both real findings fixed + independently re-verified)
+- [x] Bundled `.app` dogfood confirms: bundled `maude` wins PATH regardless of disk state (real built `.app`, real shell PATH resolution against a decoy) + bundled plugin content wins with no duplicate commands/hooks (real installed `claude` CLI, sandboxed fixture, raw protocol-level check) + `MAUDE_NO_PLUGIN_BOOTSTRAP=1` escape hatch confirmed live
+- [x] DDR-168 written and indexed (renumbered from the plan's placeholder DDR-167, claimed by a concurrent session); DDR-143 + DDR-166 carry "superseded in part" pointers
+- [x] No DDR-worthy decision left unrecorded
+- [x] Code follows project conventions, no regressions

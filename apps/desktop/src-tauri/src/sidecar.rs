@@ -98,18 +98,28 @@ fn stage_bundled_cli_link(app: &AppHandle) -> Option<PathBuf> {
     let dir = app.path().app_cache_dir().ok()?.join("bin-link");
     std::fs::create_dir_all(&dir).ok()?;
     let link = dir.join(exe);
-    // Idempotent: always refresh, so a stale symlink from a prior version
-    // (or a same-user-writable location, per the F4 rationale this mirrors)
-    // never lingers pointed at the wrong — or a tampered — target.
-    let _ = std::fs::remove_file(&link);
+    // Idempotent + ATOMIC refresh (DDR-168 hardening): a stale symlink from a
+    // prior version (or a same-user-writable location, per the F4 rationale
+    // this mirrors) never lingers pointed at the wrong — or a tampered —
+    // target. Symlink to a per-process-unique temp name first, then
+    // `rename()` over the real target — POSIX/Windows both guarantee rename()
+    // never exposes a missing-file window, unlike the previous
+    // remove_file()+symlink() sequence, which had a transient gap where an
+    // in-flight `maude` PATH lookup from a longer-lived child (e.g. the
+    // ACP-spawned `claude`'s own Bash-tool shell, which outlives the
+    // dev-server sidecar across a respawn) could resolve to whatever's next
+    // on PATH for that one lookup.
+    let tmp = dir.join(format!("{exe}.tmp.{}", std::process::id()));
+    let _ = std::fs::remove_file(&tmp);
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink(&bundled, &link).ok()?;
+        std::os::unix::fs::symlink(&bundled, &tmp).ok()?;
     }
     #[cfg(windows)]
     {
-        std::os::windows::fs::symlink_file(&bundled, &link).ok()?;
+        std::os::windows::fs::symlink_file(&bundled, &tmp).ok()?;
     }
+    std::fs::rename(&tmp, &link).ok()?;
     Some(link)
 }
 
@@ -142,21 +152,26 @@ pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
     let base_path = resolve_login_path().unwrap_or_else(|| std::env::var("PATH").unwrap_or_default());
     eprintln!("[maude] sidecar PATH ← login shell ({} entries)", base_path.split(':').count());
 
-    // DDR-166 T0b — expose the bundled `maude` CLI on the sidecar's PATH so the
-    // ACP-spawned `claude`'s Bash-tool shell-outs (`maude design <verb>`, per
-    // DDR-062's "never a raw bin path" convention) resolve it even with no
-    // global install. NOT via `current_exe().parent()` prepended wholesale —
-    // that directory also holds `maude-server`/`agent-browser`, and per the
-    // Attacker-F4 rationale a few lines above, exposing an entire multi-binary
-    // directory for unqualified PATH lookup lets a same-user attacker who can
-    // write there shadow every name in it for every dev-server child. Instead:
-    // stage `maude` alone as the ONLY entry in a narrow, single-purpose
-    // directory, and APPEND (not prepend) that directory — a user's own newer
-    // global `maude` (e.g. `npm i -g @1agh/maude`) still wins on precedence;
-    // this is a floor, not a forced ceiling.
+    // DDR-166 T0b / DDR-168 — expose the bundled `maude` CLI on the sidecar's
+    // PATH so the ACP-spawned `claude`'s Bash-tool shell-outs (`maude design
+    // <verb>`, per DDR-062's "never a raw bin path" convention) resolve it
+    // even with no global install. NOT via `current_exe().parent()` prepended
+    // wholesale — that directory also holds `maude-server`/`agent-browser`,
+    // and per the Attacker-F4 rationale a few lines above, exposing an entire
+    // multi-binary directory for unqualified PATH lookup lets a same-user
+    // attacker who can write there shadow every name in it for every
+    // dev-server child. Instead: stage `maude` alone as the ONLY entry in a
+    // narrow, single-purpose directory, and PREPEND (not append) that
+    // directory — every release ships an internally-consistent, release-
+    // matched `maude` CLI + plugin set (DDR-168), so the bundled copy is now
+    // authoritative: a ceiling, not a floor. A user's own newer/older global
+    // `maude` (e.g. `npm i -g @1agh/maude`) no longer wins on precedence for
+    // dispatch inside the sidecar's own spawned children — this is narrow in
+    // scope (it does not touch the user's system-wide PATH or shell).
     let mut path = base_path;
     if let Some(link) = stage_bundled_cli_link(app) {
-        path = format!("{path}:{}", link.parent().unwrap_or(&link).display());
+        let dir = link.parent().unwrap_or(&link).display().to_string();
+        path = format!("{dir}:{path}");
         command = command.env("MAUDE_BUNDLED_CLI_PATH", link.to_string_lossy().to_string());
     }
     command = command.env("PATH", path);

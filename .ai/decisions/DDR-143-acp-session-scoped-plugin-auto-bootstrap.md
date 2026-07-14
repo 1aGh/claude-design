@@ -1,5 +1,7 @@
 # DDR-143 — ACP session-scoped plugin auto-bootstrap: `_meta.claudeCode.options.plugins`, native-only, no-op for power users
 
+**Superseded in part by [DDR-168](DDR-168-acp-bundled-cli-and-plugins-always-win.md)** — Decision 3 ("no-op for power users, hard") is removed: the bundled `design` plugin is now injected unconditionally regardless of disk state; the double-registration risk that gate existed to prevent is closed structurally instead (`bridge.ts`'s `options.settings.enabledPlugins` override). Decisions 1, 2, 4 and Guards 1–2, 4–8 below are unchanged.
+
 **Status:** accepted
 **Date:** 2026-07-03
 **Relates:** DDR-128 (**supersedes** its "plugin install is structurally out of reach / detect-and-guide only" ceiling — for the session-scoped injection path *only*; the rejected `~/.claude`-mutation + `npm i -g` mechanisms stay rejected), DDR-123 (ACP drives the user's OWN `claude` on their subscription — env untouched), DDR-125 (auto-approve accepted-risk envelope — not widened), DDR-126 (no package managers / no network in the app), DDR-044 (minimal npm surface — the web path ships no plugin manifest), DDR-062 (`/design:*` reach executables via `maude design <verb>` from the maude package root, not `CLAUDE_PLUGIN_ROOT`), DDR-119 (native owns the workspace; web users have a terminal), DDR-129 (desktop-staging fail-loud assertions), DDR-045 (real-disk path resolution — never a local `import.meta.url`), DDR-142 (the `_meta` injection seam + `role:'bootstrap'` transcript audit this reuses)

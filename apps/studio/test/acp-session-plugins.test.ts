@@ -22,7 +22,13 @@ const PLUGINS: SdkPluginConfig[] = [
 
 type Meta = {
   systemPrompt?: { append?: string };
-  claudeCode?: { options?: { plugins?: SdkPluginConfig[]; settingSources?: string[] } };
+  claudeCode?: {
+    options?: {
+      plugins?: SdkPluginConfig[];
+      settingSources?: string[];
+      settings?: { enabledPlugins?: Record<string, boolean> };
+    };
+  };
 };
 
 describe('newSessionParams — plugin carrier shape', () => {
@@ -79,6 +85,27 @@ describe('newSessionParams — plugin carrier shape', () => {
       expect((p._meta as Meta).claudeCode?.options?.settingSources).toEqual(['user']);
     }
   });
+
+  // DDR-168 — the structural double-registration guard: a non-empty `plugins`
+  // must also force off any natively-loaded user-level copy of the same id via
+  // the SDK's "flag" settings layer, so the bundled copy is the ONLY one that
+  // ever loads.
+  test('with plugins: forces design@maude off via options.settings.enabledPlugins (double-registration guard)', () => {
+    const p = newSessionParams('/repo', undefined, PLUGINS);
+    expect((p._meta as Meta).claudeCode?.options?.settings?.enabledPlugins).toEqual({
+      'design@maude': false,
+    });
+  });
+
+  test('empty plugins: options.settings is entirely absent (web/npm path unaffected)', () => {
+    const p = newSessionParams('/repo', 'BRIEF', []);
+    expect((p._meta as Meta).claudeCode?.options?.settings).toBeUndefined();
+  });
+
+  test('undefined plugins: options.settings is entirely absent', () => {
+    const p = newSessionParams('/repo', 'BRIEF');
+    expect((p._meta as Meta).claudeCode?.options?.settings).toBeUndefined();
+  });
 });
 
 describe('upgrade guard — installed adapter + SDK still honor the plugins contract', () => {
@@ -128,5 +155,49 @@ describe('upgrade guard — installed adapter + SDK still honor the plugins cont
     expect(src).toMatch(/plugins\?\s*:\s*SdkPluginConfig\[\]/);
     expect(src).toMatch(/SdkPluginConfig\s*=\s*\{/);
     expect(src).toMatch(/type:\s*'local'/);
+  });
+
+  // DDR-168 — the same style of guard, for the `options.settings` mechanism the
+  // double-registration fix depends on: `settings` must NOT be among the fields
+  // the adapter overrides after the `...userProvidedOptions` spread (else our
+  // `enabledPlugins: false` override would be silently discarded), and the SDK
+  // must still declare `Settings.enabledPlugins` as an accepted field.
+  test('adapter forwards `settings` from userProvidedOptions and only ever overrides it conditionally when the caller left it unset', () => {
+    expect(existsSync(adapterEntry)).toBe(true);
+    const src = readFileSync(adapterEntry, 'utf8');
+    // Locate the `...userProvidedOptions` spread and inspect what follows it up
+    // to the `query({ options })` call. Verified live at claude-agent-acp@0.57.0:
+    // the object DOES contain a later `settings:` assignment (a
+    // CLAUDE_MODEL_CONFIG env-var fallback) — but it's gated behind
+    // `!userProvidedOptions?.settings && …`, i.e. it only fires when the caller
+    // did NOT already provide a settings object. A caller-provided `settings`
+    // (ours, carrying `enabledPlugins`) always wins. A bump that drops that
+    // guard — making the fallback unconditional — must fail here, since it
+    // would silently clobber DDR-168's double-registration override.
+    const spreadIdx = src.indexOf('...userProvidedOptions');
+    expect(spreadIdx).toBeGreaterThan(-1);
+    const queryIdx = src.indexOf('query(', spreadIdx);
+    expect(queryIdx).toBeGreaterThan(spreadIdx);
+    const window = src.slice(spreadIdx, queryIdx);
+    expect(window).toMatch(/!userProvidedOptions\?\.settings\s*&&/);
+  });
+
+  test("SDK Options declares settings (Settings.enabledPlugins is the field DDR-168's guard relies on)", () => {
+    let sdkPkg: string | null = null;
+    try {
+      const realAdapterDir = dirname(realpathSync(adapterEntry));
+      sdkPkg = Bun.resolveSync('@anthropic-ai/claude-agent-sdk/package.json', realAdapterDir);
+    } catch {
+      sdkPkg = null;
+    }
+    expect(sdkPkg).not.toBeNull();
+    const dts = join(dirname(sdkPkg as string), 'sdk.d.ts');
+    expect(existsSync(dts)).toBe(true);
+    const src = readFileSync(dts, 'utf8');
+    // sdk.d.ts:1831 `settings?: Settings;` (or similarly named field on Options) +
+    // :5193 `Settings.enabledPlugins` — a bump that renames/drops either must
+    // fail here, then adapt, rather than silently reopening double-registration.
+    expect(src).toMatch(/settings\?\s*:/);
+    expect(src).toMatch(/enabledPlugins\??\s*:/);
   });
 });

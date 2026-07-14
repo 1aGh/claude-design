@@ -95,22 +95,29 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT
 }
 
 /**
- * Build the `session/new` params, carrying TWO adapter-internal `_meta` payloads
- * (both spread by the installed `claude-agent-acp@0.49.x` `newSession`):
+ * Build the `session/new` params, carrying THREE adapter-internal `_meta`
+ * payloads (all spread by the installed `claude-agent-acp` `newSession`):
  *
  *   • `_meta.systemPrompt.append` — the studio brief (feature-acp-context-
  *     hardening); the adapter spreads its object form over the `claude_code`
  *     preset (acp-agent.js:2282).
- *   • `_meta.claudeCode.options.plugins` — session-scoped local plugins (DDR-143);
- *     the adapter reads `_meta.claudeCode.options` (acp-agent.js:2302) and spreads
- *     the whole object into the SDK `query()` options (`...userProvidedOptions`,
+ *   • `_meta.claudeCode.options.plugins` — session-scoped local plugins (DDR-143,
+ *     unconditional injection DDR-168); the adapter reads
+ *     `_meta.claudeCode.options` (acp-agent.js:2302) and spreads the whole
+ *     object into the SDK `query()` options (`...userProvidedOptions`,
  *     :2333 → :2455), so `plugins` reaches the SDK's `plugins?: SdkPluginConfig[]`
  *     (sdk.d.ts:1683) untouched — verified live (Task-1 spike).
+ *   • `_meta.claudeCode.options.settings.enabledPlugins` — DDR-168's structural
+ *     double-registration guard: present ONLY alongside a non-empty `plugins`,
+ *     forcing off any natively-loaded user-level copy of the same plugin id
+ *     via the same `...userProvidedOptions` spread (`settings` rides untouched
+ *     exactly like `plugins` does) into the SDK's documented "flag" settings
+ *     layer (sdk.d.ts:1831, highest priority among user-controlled settings).
  *
- * Both siblings coexist under one `_meta`. The SDK's `zNewSessionRequest` declares
- * `_meta` (zod.gen), so it rides the wire validated. These contracts are
- * adapter/SDK-INTERNAL and undocumented — an adapter/SDK bump that drops either
- * must fail the presence tests LOUDLY (acp-bootstrap-brief.test.ts +
+ * All three siblings coexist under one `_meta`. The SDK's `zNewSessionRequest`
+ * declares `_meta` (zod.gen), so it rides the wire validated. These contracts are
+ * adapter/SDK-INTERNAL and undocumented — an adapter/SDK bump that drops any of
+ * them must fail the presence tests LOUDLY (acp-bootstrap-brief.test.ts +
  * acp-session-plugins.test.ts), not silently un-brief / un-plugin every session.
  * Exported for those tests.
  *
@@ -136,7 +143,34 @@ export function newSessionParams(
   // via a separate path and is unaffected. Always injected — every Maude bridge
   // session is auto-approving. `...plugins` (DDR-143) rides the same options object.
   const options: Record<string, unknown> = { settingSources: ['user'] };
-  if (plugins && plugins.length > 0) options.plugins = plugins;
+  if (plugins && plugins.length > 0) {
+    options.plugins = plugins;
+    // DDR-168 — the bundled `design` plugin is now injected UNCONDITIONALLY
+    // (plugin-bootstrap.ts no longer skips when it's also installed/enabled at
+    // the user level), so a power user with `design@maude` enabled in their OWN
+    // ~/.claude would otherwise get it loaded from TWO sources at once: this
+    // `options.plugins` entry, AND natively via `settingSources: ['user']`
+    // above (double-registration / duplicate MCP spawns / duplicate hooks).
+    // Force the natively-loaded copy off via the SDK's documented "flag"
+    // settings layer (sdk.d.ts:1831 — highest priority among user-controlled
+    // settings, precedence user < project < local < flag < policy; :5193's
+    // `Settings.enabledPlugins` doc comment gives this exact worked example).
+    // Keyed to whichever plugin ids are actually being injected — currently
+    // only `design@maude`. Absent (not merely false) whenever `plugins` is
+    // empty, so the npm/web path (where `plugins` is always empty) is
+    // completely unaffected.
+    //
+    // SECURITY LANDMINE (ethical-hacker finding, DDR-168 review round 2) — this
+    // literal is NOT derived from `plugins`/`plugin-bootstrap.ts`'s injection
+    // set; it's hand-maintained. `plugin-bootstrap.ts`'s own comment calls
+    // re-enabling `flow@maude` injection "a one-line addition" — that one line
+    // does NOT touch this object. If you flip that on, you MUST also add
+    // `'flow@maude': false` here, or a user with `flow@maude` natively enabled
+    // gets it double-loaded with zero suppression (the exact double-
+    // registration risk this override exists to close). No test currently
+    // catches this drift.
+    options.settings = { enabledPlugins: { 'design@maude': false } };
+  }
   meta.claudeCode = { options };
   return {
     cwd: repoRoot,

@@ -1,4 +1,4 @@
-// ACP session-scoped plugin auto-bootstrap (DDR-143).
+// ACP session-scoped plugin auto-bootstrap (DDR-143; unconditional injection DDR-168).
 //
 // A Maude Desktop user with only Claude Code installed should get `/design:*`
 // working in the chat panel with ZERO manual install — no `npm i`, no `/plugin
@@ -15,7 +15,7 @@
 // no package manager runs, no network is touched (DDR-126/128) — it's reversible
 // and per-session by construction.
 //
-// Three gates, ALL must hold for a plugin to be injected:
+// Two gates must hold for a plugin to be injected:
 //   1. NATIVE / BUNDLE context (guard #4, DDR-119/123). The web `maude design
 //      serve` (npm) path ships no plugin manifest (DDR-044) and its users have a
 //      terminal — never inject there. The signal is the manifest's presence on
@@ -24,15 +24,21 @@
 //      MAUDE_DEV_SERVER_ROOT as an explicit stricter marker.
 //   2. BUNDLED FILES present — the per-plugin dir resolved (Task 2). Null on the
 //      npm/web layout ⇒ skip that plugin.
-//   3. NO-OP for power users (guard #3, hard). If the plugin is already installed
-//      via the marketplace OR enabled in the user's settings.json, it loads
-//      NATIVELY under the adapter's `settingSources:user` — injecting the bundled
-//      copy on top would double-register commands + risk version skew. So a
-//      `scanPlugins()` hit ⇒ skip that plugin. A pristine ~/.claude (the target
-//      non-power-user) reads as not-installed ⇒ inject.
+//
+// DDR-168 — the bundled copy is now injected UNCONDITIONALLY on every native
+// session, regardless of whether the plugin is ALSO installed/enabled on disk
+// (`~/.claude`). Every release ships an internally-consistent, release-matched
+// CLI + plugin set — that's the copy this session should run, not whatever a
+// power user happens to have lying around. This reverses this file's original
+// DDR-143 Decision 3 ("no-op for power users, hard") on purpose. The double-
+// registration risk that gate existed to prevent is now closed structurally,
+// one level up: `bridge.ts`'s `newSessionParams()` sets `options.settings
+// .enabledPlugins['design@maude'] = false` whenever it's carrying a non-empty
+// `plugins` array, forcing off any natively-loaded user-level copy of the same
+// id via the SDK's documented `flag > user` settings precedence — so the
+// bundled copy injected here is the ONLY one that ever loads.
 
 import { DESIGN_PLUGIN_DIR, FLOW_PLUGIN_DIR } from '../paths.ts';
-import { type PluginScan, scanPlugins } from '../readiness.ts';
 
 /**
  * SDK plugin-load config (`@anthropic-ai/claude-agent-sdk` `SdkPluginConfig`).
@@ -55,8 +61,6 @@ export interface SessionPluginDeps {
   designDir: string | null;
   /** Bundled `flow` plugin dir, or null (npm/web layout). */
   flowDir: string | null;
-  /** ~/.claude registry+settings scan — a present plugin loads natively (no-op). */
-  scan: Pick<PluginScan, 'design' | 'flow'>;
 }
 
 /**
@@ -66,15 +70,17 @@ export interface SessionPluginDeps {
 export function computeSessionPlugins(deps: SessionPluginDeps): SdkPluginConfig[] {
   if (!deps.native) return [];
   const out: SdkPluginConfig[] = [];
-  const add = (dir: string | null, alreadyPresent: boolean): void => {
-    // dir === null → not bundled in this layout (web/npm) → skip.
-    // alreadyPresent → loads natively → skip (no double-registration / skew).
-    if (dir && !alreadyPresent) out.push({ type: 'local', path: dir, skipMcpDiscovery: true });
+  const add = (dir: string | null): void => {
+    // dir === null → not bundled in this layout (web/npm) → skip. Otherwise
+    // inject unconditionally (DDR-168) — the double-registration risk of also
+    // having a disk-installed copy is closed structurally in bridge.ts, not
+    // by skipping injection here.
+    if (dir) out.push({ type: 'local', path: dir, skipMcpDiscovery: true });
   };
-  add(deps.designDir, deps.scan.design);
+  add(deps.designDir);
   // `/flow` auto-load is intentionally OFF for now (2026-07-03) — the chat ships
-  // design-only. `deps.flowDir` / `deps.scan.flow` stay resolved (harmless) so
-  // restoring it is a one-liner: re-add `add(deps.flowDir, deps.scan.flow)`.
+  // design-only. `deps.flowDir` stays resolved (harmless) so restoring it is a
+  // one-liner: re-add `add(deps.flowDir)`.
   return out;
 }
 
@@ -98,18 +104,18 @@ export function isNativePluginContext(): boolean {
 }
 
 /**
- * Resolve the session-scoped plugins to inject for a fresh ACP session. Wires the
- * real deps (native context, bundled dirs, live ~/.claude scan) into
- * {@link computeSessionPlugins}. Empty array ⇒ inject nothing (the power-user /
- * web no-op). Recomputed per bridge construction; stable across an adapter
- * re-spawn because it's carried on the bridge's readonly options.
+ * Resolve the session-scoped plugins to inject for a fresh ACP session. Wires
+ * the real deps (native context, bundled dirs) into {@link computeSessionPlugins}.
+ * Empty array ⇒ inject nothing (the web no-op). Recomputed per bridge
+ * construction; stable across an adapter re-spawn because it's carried on the
+ * bridge's readonly options. Does NOT consult `~/.claude`'s registry (DDR-168 —
+ * the bundled copy always wins regardless of disk state); `readiness.ts` still
+ * calls `scanPlugins()` independently for its own UI row.
  */
 export function resolveSessionPlugins(): SdkPluginConfig[] {
-  const scan = scanPlugins();
   return computeSessionPlugins({
     native: isNativePluginContext(),
     designDir: DESIGN_PLUGIN_DIR,
     flowDir: FLOW_PLUGIN_DIR,
-    scan: { design: scan.design, flow: scan.flow },
   });
 }
