@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-172: Token-file import — mapping contract and ingestion security posture — value-grammar allowlist against CSS injection, theme-block-scoped patching, whole-value-only alias resolution](DDR-172-token-file-import-mapping-contract.md) — 2026-07-14, design-system/import-tokens/tokens/css-injection/ingestion/security
 - [DDR-170: `TokenPopover` anchoring — re-anchor on scroll/resize + a measure-and-cancel rect-diff pass, not transformed-ancestor hunting](DDR-170-tokenpopover-rect-diff-anchor-compensation.md) — 2026-07-14, studio/inspector/css-panel/popover/positioning/ux
 - [DDR-169: Box-model cells (margin/padding/inset/corner) keep whole-cell scrub, not a separate drag-handle](DDR-169-box-model-cells-whole-cell-scrub.md) — 2026-07-14, studio/inspector/css-panel/inspector-controls/scrub/interaction-model/ux
 - [DDR-167: Local-file / SVG / PDF ingestion — security posture — allowlist DOM-sanitize + real-browser execution canary, hardened sandboxed-render for PDF, ACP-scoped confused-deputy gate](DDR-167-local-file-svg-pdf-ingestion-security-posture.md) — 2026-07-14, studio/ingestion/svg/pdf/happy-dom/sandboxed-render/asset-write/confused-deputy/mxss/security
