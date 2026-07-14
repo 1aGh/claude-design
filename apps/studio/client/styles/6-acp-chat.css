@@ -1237,3 +1237,37 @@
   .setup-cl-modal { max-width: 520px; }
   .setup-cl-note { margin: 0 0 var(--space-3); color: var(--fg-2); font-size: var(--type-sm); line-height: var(--lh-md); }
 }
+
+/* T12 (DDR-173) — the in-app Brand-upload panel (BrandUploadPanel.jsx).
+   Reuses .help-modal-* chrome; new rules cover the pick/result content only. */
+@layer components {
+  .brand-up-modal { max-width: 480px; }
+  .brand-up-note { margin: 0 0 var(--space-4); color: var(--fg-2); font-size: var(--type-sm); line-height: var(--lh-md); }
+  .brand-up-pick { display: flex; justify-content: center; padding: var(--space-5) 0; }
+  .brand-up-error { margin: var(--space-2) 0 0; color: var(--status-error); font-size: var(--type-sm); }
+  .brand-up-empty { margin: 0; color: var(--fg-3); font-size: var(--type-xs); line-height: var(--lh-sm); }
+  .brand-up-preview {
+    display: block; max-width: 100%; max-height: 120px; margin: 0 auto var(--space-4);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-3);
+    padding: var(--space-3);
+  }
+  .brand-up-sechd {
+    margin: var(--space-4) 0 var(--space-2); font-size: var(--type-xs); font-weight: 600;
+    text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--fg-2);
+  }
+  .brand-up-swatches { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .brand-up-swatch { display: flex; align-items: center; gap: var(--space-2); }
+  .brand-up-swatch-chip {
+    display: inline-block; width: 20px; height: 20px; border-radius: var(--radius-xs);
+    border: 1px solid var(--border-default);
+  }
+  .brand-up-swatch-value { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+  .brand-up-fonts { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .brand-up-font-chip {
+    padding: 2px var(--space-2); border-radius: var(--radius-pill); border: 1px solid var(--border-default);
+    background: var(--bg-2); font-size: var(--type-xs); color: var(--fg-1);
+  }
+  .brand-up-nextstep { margin: var(--space-4) 0 0; font-size: var(--type-sm); color: var(--fg-1); line-height: var(--lh-md); }
+  .brand-up-nextstep code { font-family: var(--font-mono); background: var(--bg-3); padding: 1px 4px; border-radius: var(--radius-xs); }
+  .brand-up-actions { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
+}

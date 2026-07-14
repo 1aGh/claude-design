@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-14T10:30:58.124Z",
+  "generated": "2026-07-14T12:06:52.280Z",
   "currentPhase": null,
   "phases": [
     {
@@ -98,6 +98,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan touches the export pipeline that was just hardened (graceful Playwright-miss...",
       "planPath": ".ai/plans/archive/export-pipeline-fixes.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-acp-bundled-cli-plugins-always-internal",
+      "title": "Feature: ACP session always uses Maude's bundled `maude` CLI + `design`/`flow` plugins — never disk-installed versions",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-acp-bundled-cli-plugins-always-internal.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1277,17 +1288,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "feature-acp-bundled-cli-plugins-always-internal",
-      "title": "Feature: ACP session always uses Maude's bundled `maude` CLI + `design`/`flow` plugins — never disk-installed versions",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-acp-bundled-cli-plugins-always-internal.md",
-      "archived": false,
-      "phaseKey": null
     },
     {
       "id": "feature-grid-track-editor",

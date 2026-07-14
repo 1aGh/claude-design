@@ -208,6 +208,10 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // rather than canvas-reachable — the untrusted canvas iframe must
         // never drive an import.
         '/_api/import-asset',
+        // DDR-173 (Phase 3 / T12) — brand-file typed-cue extraction is a
+        // file-write surface (writes assets/logos/*), same privileged
+        // posture as /_api/import-asset above; MAIN-ORIGIN ONLY.
+        '/_api/import-brand',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);

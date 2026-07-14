@@ -21,6 +21,7 @@ import IdentityBar from './panels/IdentityBar.jsx';
 import OnboardingWizard from './panels/OnboardingWizard.jsx';
 import { ReadinessDialog } from './panels/ReadinessList.jsx';
 import IntroVideoDialog from './panels/IntroVideoDialog.jsx';
+import BrandUploadPanel from './panels/BrandUploadPanel.jsx';
 import SetupChecklistDialog, { useSetupReadiness } from './panels/SetupChecklist.jsx';
 import TimelinePanel from './panels/TimelinePanel.jsx';
 import { parseCompTimeline } from './panels/timeline-parse.js';
@@ -7828,6 +7829,7 @@ function App() {
   const [readinessOpen, setReadinessOpen] = useState(false);
   const [introOpen, setIntroOpen] = useState(false);
   const [quickSetupOpen, setQuickSetupOpen] = useState(false);
+  const [brandUploadOpen, setBrandUploadOpen] = useState(false);
   // DDR-166 plan, Phase 2 (T7) — the persistent "Setup" affordance in the empty
   // canvas state (below) only renders while the project's own setup (design
   // system / first canvas / brand assets) is incomplete; native-only concern.
@@ -12339,7 +12341,9 @@ function App() {
         open={quickSetupOpen}
         onClose={() => setQuickSetupOpen(false)}
         onStartTour={() => startTour(QUICK_SETUP_TOUR)}
+        onBringBrand={() => setBrandUploadOpen(true)}
       />
+      <BrandUploadPanel open={brandUploadOpen} onClose={() => setBrandUploadOpen(false)} />
       {usageNudge && !tourSteps && !collabNudge && (
         <div className="mdcc-tour-nudge" role="status" aria-live="polite">
           <div className="mdcc-tour-nudge__body">

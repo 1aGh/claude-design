@@ -20,6 +20,7 @@ import { probeAcpAvailabilityAuthed } from './acp/probe.ts';
 import { deleteChat, listChats, readChatMessages } from './acp/transcript.ts';
 import { type Api, ASSET_MAX_BYTES, ASSET_MAX_VIDEO_BYTES } from './api.ts';
 import { ImportAssetError, importSvg, SVG_MAX_BYTES } from './bin/_import-asset.mjs';
+import { ImportBrandError, importBrand } from './bin/_import-brand.mjs';
 import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
@@ -2519,6 +2520,71 @@ export function createHttp(
       }
     },
 
+    // DDR-173 (Phase 3 / T12) — brand-file typed-cue extraction for the
+    // in-app Brand-upload panel. Privileged + main-origin-only, same posture
+    // as /_api/import-asset: absent from CANVAS_SAFE_API + startCanvasServer's
+    // routes map. Takes a SERVER-GENERATED asset path from a prior
+    // /_api/import-asset response — never a client-supplied filesystem path
+    // (DDR-173 Decision 2: extraction operates only on DDR-167's already-
+    // gated, already-sanitized output, no parallel ungated read). The path is
+    // still realpath-contained + charset-asserted here, never trusted blindly
+    // just because it LOOKS server-shaped.
+    '/_api/import-brand': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      let body: { assetPath?: unknown };
+      try {
+        body = (await req.json()) as { assetPath?: unknown };
+      } catch {
+        return new Response('invalid JSON body', { status: 400 });
+      }
+      const assetPath = body.assetPath;
+      if (typeof assetPath !== 'string' || !/^assets\/[a-z0-9]{8}\.svg$/.test(assetPath)) {
+        return Response.json(
+          { ok: false, error: 'assetPath must be a server-generated assets/<sha8>.svg path' },
+          { status: 400, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      const designAbs = resolve(ctx.paths.repoRoot, ctx.paths.designRel);
+      const resolvedAsset = resolve(designAbs, assetPath);
+      if (!resolvedAsset.startsWith(resolve(designAbs, 'assets') + sep)) {
+        return Response.json(
+          { ok: false, error: 'assetPath escapes the assets directory' },
+          { status: 400, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      try {
+        const result = await importBrand({
+          sanitizedSvgPath: resolvedAsset,
+          root: ctx.paths.repoRoot,
+          designRootRel: ctx.paths.designRel,
+        });
+        return Response.json(
+          { ok: true, ...result },
+          { status: 201, headers: { 'Cache-Control': 'no-store' } }
+        );
+      } catch (err) {
+        const status =
+          err instanceof ImportBrandError
+            ? err.code === 3
+              ? 400
+              : err.code === 4
+                ? 404
+                : err.code === 6
+                  ? 500
+                  : 400
+            : 500;
+        const message = err instanceof Error ? err.message : String(err);
+        return Response.json(
+          { ok: false, error: message },
+          { status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+    },
+
     '/_api/export-history': async (req: Request) => {
       // Phase 6.5 T10 — read-only recent-exports feed for the dialog's
       // Recent tab. Writes happen as a side-effect of job completion
@@ -3208,14 +3274,21 @@ export function createHttp(
         } catch {
           return new Response('Bad request', { status: 400 });
         }
-        if (
+        // DDR-173 (Phase 3 / T12) — brand-logo assets live one level down at
+        // `assets/logos/<sha8>.<ext>` (DDR-141's own convention). This is the
+        // ONE legitimate subdirectory allowed here, matched by its own exact,
+        // closed-charset shape — not a general "any subdirectory" opt-in,
+        // which would widen this route's containment beyond what DDR-141
+        // actually calls for.
+        const isFlat =
           name &&
           !name.includes('/') &&
           !name.includes('\\') &&
           !name.includes('..') &&
           !name.startsWith('_') &&
-          CANVAS_ASSET_EXTS.has(ext(name))
-        ) {
+          CANVAS_ASSET_EXTS.has(ext(name));
+        const isLogoSubdir = /^logos\/[a-z0-9]{8}\.(svg|png)$/.test(name);
+        if (isFlat || isLogoSubdir) {
           const abs = join(ctx.paths.designRoot, 'assets', name);
           // Range-aware for video/audio (scrubbing + WKWebView compat).
           if (RANGE_MEDIA_EXTS.has(ext(name))) {

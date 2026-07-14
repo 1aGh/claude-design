@@ -2,6 +2,22 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "bring-your-brand",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Bring your existing brand into Maude",
+      "summary": "Have a logo already? Upload it from the Quick setup checklist and Maude pulls out its color palette (and any recognizable font names) to seed a new design system — nothing is applied automatically, you confirm every choice during setup. Works with SVG logos; safety-checked before anything touches your project.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-testid=\"onboarding-bring-brand\"]",
+          "title": "Bring my existing brand",
+          "body": "Upload a logo SVG to seed a new design system's colors and fonts from it."
+        }
+      ]
+    },
+    {
       "id": "inspector-designer-mode",
       "version": null,
       "date": null,

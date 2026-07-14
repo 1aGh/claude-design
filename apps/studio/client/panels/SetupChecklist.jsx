@@ -3,9 +3,10 @@
 // ReadinessList.jsx's shape but backed by GET /_api/setup-readiness instead of
 // /_api/preflight. Pure detect-and-guide: never installs or mutates anything.
 //
-// "Bring my existing brand" (T8) is a stub until P3 ships the in-app ingestion
-// panel — it links to the public docs, same `https://maude.sh/...` pattern the
-// What's New feed's `learnMore` already uses.
+// "Bring my existing brand" (T8) now opens the real in-app ingestion panel
+// (T12, DDR-173) — `onBringBrand` is threaded down the same way `onStartTour`
+// already is; when absent (an older mount site not yet updated), falls back
+// to the public docs link this used to be a stub for.
 
 import { useCallback, useEffect, useState } from 'react';
 
@@ -79,7 +80,7 @@ function StatusIcon({ present }) {
   );
 }
 
-export function SetupChecklist({ report, loading, refresh, onStartTour }) {
+export function SetupChecklist({ report, loading, refresh, onStartTour, onBringBrand }) {
   return (
     <div className="setup-cl">
       <ul className="setup-cl-list">
@@ -110,15 +111,26 @@ export function SetupChecklist({ report, loading, refresh, onStartTour }) {
             Start guided setup
           </button>
         )}
-        <a
-          href="https://maude.sh/docs/getting-started"
-          target="_blank"
-          rel="noreferrer noopener"
-          data-testid="onboarding-bring-brand"
-          className="btn btn--ghost btn--sm setup-cl-brand"
-        >
-          Bring my existing brand
-        </a>
+        {onBringBrand ? (
+          <button
+            type="button"
+            data-testid="onboarding-bring-brand"
+            className="btn btn--ghost btn--sm setup-cl-brand"
+            onClick={onBringBrand}
+          >
+            Bring my existing brand
+          </button>
+        ) : (
+          <a
+            href="https://maude.sh/docs/getting-started"
+            target="_blank"
+            rel="noreferrer noopener"
+            data-testid="onboarding-bring-brand"
+            className="btn btn--ghost btn--sm setup-cl-brand"
+          >
+            Bring my existing brand
+          </a>
+        )}
         {refresh && (
           <button
             type="button"
@@ -136,7 +148,7 @@ export function SetupChecklist({ report, loading, refresh, onStartTour }) {
 
 // Standalone modal, reachable from Help ▸ Quick setup… — reuses the shared
 // help-modal chrome (backdrop + header + body), same shape as ReadinessDialog.
-export default function SetupChecklistDialog({ open, onClose, onStartTour }) {
+export default function SetupChecklistDialog({ open, onClose, onStartTour, onBringBrand }) {
   const { report, loading, refresh } = useSetupReadiness(open);
   useEffect(() => {
     if (!open) return undefined;
@@ -187,6 +199,14 @@ export default function SetupChecklistDialog({ open, onClose, onStartTour }) {
                   ? () => {
                       onClose();
                       onStartTour();
+                    }
+                  : undefined
+              }
+              onBringBrand={
+                onBringBrand
+                  ? () => {
+                      onClose();
+                      onBringBrand();
                     }
                   : undefined
               }
