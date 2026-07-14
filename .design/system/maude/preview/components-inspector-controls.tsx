@@ -33,9 +33,9 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   ALargeSmall, AlignCenter, AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd,
   AlignHorizontalJustifyStart, AlignHorizontalSpaceBetween, AlignJustify, AlignLeft,
-  AlignRight, Baseline, Bold, Check, ChevronDown, Columns3, Diamond, Eye, EyeOff,
+  AlignRight, Baseline, Bold, Braces, Check, ChevronDown, Columns3, Diamond, Eye, EyeOff,
   Italic, Link, MoveHorizontal, Pipette, RotateCcw, RotateCw, Rows3, Scissors,
-  ScrollText, Search, Spline, Square, SquareDashed, Underline, Unlink, WrapText, X,
+  ScrollText, Search, Spline, Square, SquareDashed, Underline, Unlink, Wand2, WrapText, X,
 } from "lucide-react";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -638,6 +638,12 @@ export default function ComponentsInspectorControls() {
   const [snapOn, setSnapOn] = useState(true);
   const [clip, setClip] = useState(false);
   const [overflow, setOverflow] = useState("hidden");
+  // DDR-171 — Designer-mode vocabulary toggle demo. Deliberately reuses `dir` /
+  // `gap` / `sizingMode` / `padAlign` / `padding` from the galleries above (same
+  // convention this file already uses for `corners` / `radiusVal` / `fill`
+  // across sections) so flipping the toggle visibly proves "two doors, one
+  // state" — the value set in one vocabulary reads back correctly in the other.
+  const [demoMode, setDemoMode] = useState<"advanced" | "designer">("designer");
 
   const resetRadius = () => setCorners({ tl: 0, tr: 0, bl: 0, br: 0 });
   const setW = (w: number) => setSize((s) => (aspectLock ? { w, h: Math.round((w * s.h) / s.w) || s.h } : { ...s, w }));
@@ -887,6 +893,67 @@ export default function ComponentsInspectorControls() {
             </PanelSection>
           </div>
         </div>
+
+        <h2 data-no>Designer mode <span className="h2-aside">DDR-171 — a second vocabulary, same state, same write path</span></h2>
+        <p>
+          Advanced keeps the honest CSS property names DDR-104 chose; Designer regroups
+          the same controls into Figma-familiar clusters (Auto layout pulls from Layout
+          + Size) and relabels the rows — same <code>row()</code> / <code>commit()</code>{" "}
+          closures underneath, so a value set in one mode reads back correctly in the
+          other. The toggle lives in the panel&apos;s own corner (not a full-width row —
+          that read as too heavy) — try it, the state doesn&apos;t reset.
+        </p>
+        <div className={"panel icp-panel" + (demoMode === "designer" ? " is-designer" : "")}>
+          <div className="panel-hd">
+            Frame
+            <span className="hd-meta">{demoMode === "advanced" ? "CSS property names" : "Figma vocabulary"}</span>
+            <span className="icp-idmode">
+              <IconButtonGroup
+                value={demoMode}
+                ariaLabel="panel vocabulary mode"
+                onChange={(v) => setDemoMode(v as "advanced" | "designer")}
+                options={[
+                  { value: "advanced", node: <Ic as={Braces} size={12} />, label: "Advanced — raw CSS" },
+                  { value: "designer", node: <Ic as={Wand2} size={12} />, label: "Designer — Figma vocabulary" },
+                ]}
+              />
+            </span>
+          </div>
+          <div className="panel-bd" style={{ padding: 0 }}>
+            {/* Same underlying state + the SAME provenance per row across both
+                vocabularies — only `gap` is a real override here (the rest
+                inherit). Advanced shows every dot (the "punch-card" rail);
+                Designer hides the inherited ones (`.icp-prov--inherit` →
+                visibility:hidden under `.is-designer`), so only the genuinely-
+                customized row keeps a marker — Figma-clean, but still honest. */}
+            <PanelSection title={demoMode === "advanced" ? "Layout" : "Auto layout"} onReset={() => { setDir("row"); setGap(0); setPadAlign("cc"); }}>
+              {demoMode === "advanced" ? (
+                <>
+                  <InRow prov="inherit" label="display"><Select value="flex" options={["block", "flex", "grid"]} ariaLabel="display" minWidth={0} onChange={() => {}} /></InRow>
+                  <InRow prov="inherit" label="flex-direction"><IconButtonGroup value={dir} ariaLabel="flex-direction" onChange={setDir} options={DIR_OPTS.slice(0, 2)} /></InRow>
+                  <InRow prov="inherit" label="align-items / justify-content"><AlignPad value={padAlign} onChange={setPadAlign} /></InRow>
+                  <InRow prov="raw" label="gap" onReset={() => setGap(0)}><NumberField value={gap} min={0} max={200} ariaLabel="gap" lead={<Ic as={AlignHorizontalSpaceBetween} />} unitSlot={<span className="icp-num-suffix" aria-hidden="true">px</span>} onChange={setGap} /></InRow>
+                </>
+              ) : (
+                <>
+                  <InRow prov="inherit" label="Direction"><IconButtonGroup value={dir} ariaLabel="Direction" onChange={setDir} options={DIR_OPTS.slice(0, 2)} /></InRow>
+                  <InRow prov="inherit" label="Alignment"><AlignPad value={padAlign} onChange={setPadAlign} /></InRow>
+                  <InRow prov="raw" label="Gap" onReset={() => setGap(0)}><NumberField value={gap} min={0} max={200} ariaLabel="Gap" lead={<Ic as={AlignHorizontalSpaceBetween} />} unitSlot={<span className="icp-num-suffix" aria-hidden="true">px</span>} onChange={setGap} /></InRow>
+                  <InRow prov="inherit" label="Sizing mode"><div className="seg" role="radiogroup" aria-label="width sizing mode">{["fixed", "hug", "fill"].map((m) => <button key={m} type="button" role="radio" aria-checked={sizingMode === m} onClick={() => setSizingMode(m)}>{m}</button>)}</div></InRow>
+                  <InRow prov="inherit" label="Padding"><NumberField value={padding.t} min={0} max={200} ariaLabel="Padding" lead="P" steppers={false} unitSlot={<span className="icp-num-suffix" aria-hidden="true">px</span>} onChange={(n) => setPadding((s) => ({ ...s, t: n, r: n, b: n, l: n }))} /></InRow>
+                </>
+              )}
+            </PanelSection>
+          </div>
+        </div>
+        <p className="icp-note">
+          Same underlying <code>dir</code> / <code>padAlign</code> / <code>gap</code> state, same
+          per-row provenance — only <code>gap</code> is a real override. <strong>Advanced</strong>{" "}
+          shows a status dot on every row (the developer surface — provenance is the point);{" "}
+          <strong>Designer</strong> hides the inherited dots and keeps only the customized one, drops
+          the mono uppercase headers for quiet title-case, and softens the labels — the same
+          Figma-clean regroup the real panel applies under <code>.st-cp--designer</code>.
+        </p>
 
         <h2 data-no>Why the handle, not the body <span className="h2-aside">the interaction-model rule</span></h2>
         <p>

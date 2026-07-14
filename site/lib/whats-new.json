@@ -1,7 +1,43 @@
 {
-  "generated": "2026-07-11T14:29:47.768Z",
+  "generated": "2026-07-14T10:25:42.903Z",
   "version": "0.43.0",
   "entries": [
+    {
+      "id": "inspector-designer-mode",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "A Figma-friendly view of the CSS panel",
+      "summary": "The Inspector now speaks two languages. Advanced keeps the real CSS property names; Designer regroups the exact same controls into Figma-familiar sections — Fill, Stroke, Corner radius, Auto layout, Effects, Opacity, Text — and relabels the rows, so you can style without thinking in CSS. Flip between them from the small toggle in the panel's top-right corner, or set a default in Settings → Appearance. Same live edits underneath, and a value set in one view reads back correctly in the other. New in both views: Blur and Blend controls, plus a single 9-point pad for auto-layout alignment.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour=\"cp-mode\"]",
+          "title": "Advanced or Designer",
+          "body": "Toggle the CSS panel between raw property names and Figma-style vocabulary. Your choice is remembered — you can also set it in Settings → Appearance.",
+          "placement": "left",
+          "inspector": true,
+          "tab": "css",
+          "requireSelection": true
+        }
+      ]
+    },
+    {
+      "id": "watch-the-intro",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Watch the intro, right inside Maude",
+      "summary": "There's now a short product showreel (about a minute and a half) you can watch without leaving the app — Help → Watch the intro, or the same button on the welcome screen the first time you open Maude. It walks through the whole loop: a design system built from a conversation, the infinite canvas, pointing and commenting to direct an AI edit, live multiplayer, and shipping the result. Also lands as its own canvas (Maude Explainer) if you want to open it in the canvas browser like anything else.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour=\"help\"]",
+          "title": "Watch the intro",
+          "body": "Help → Watch the intro plays the full showreel without leaving Maude."
+        }
+      ]
+    },
     {
       "id": "bulk-media-insert",
       "version": null,

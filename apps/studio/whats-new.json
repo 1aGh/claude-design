@@ -2,6 +2,26 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "inspector-designer-mode",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "A Figma-friendly view of the CSS panel",
+      "summary": "The Inspector now speaks two languages. Advanced keeps the real CSS property names; Designer regroups the exact same controls into Figma-familiar sections — Fill, Stroke, Corner radius, Auto layout, Effects, Opacity, Text — and relabels the rows, so you can style without thinking in CSS. Flip between them from the small toggle in the panel's top-right corner, or set a default in Settings → Appearance. Same live edits underneath, and a value set in one view reads back correctly in the other. New in both views: Blur and Blend controls, plus a single 9-point pad for auto-layout alignment.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour=\"cp-mode\"]",
+          "title": "Advanced or Designer",
+          "body": "Toggle the CSS panel between raw property names and Figma-style vocabulary. Your choice is remembered — you can also set it in Settings → Appearance.",
+          "placement": "left",
+          "inspector": true,
+          "tab": "css",
+          "requireSelection": true
+        }
+      ]
+    },
+    {
       "id": "watch-the-intro",
       "version": null,
       "date": null,

@@ -40,7 +40,7 @@ body.icp-scrubbing.icp-scrubbing--dial, body.icp-scrubbing.icp-scrubbing--dial *
 .icp-prov.is-resettable:hover { box-shadow: 0 0 0 3px var(--accent-tint); }
 
 /* ─── Inspector row (prov · label · control) — the real .st-cp-row anatomy ──── */
-.icp-inrow { display: grid; grid-template-columns: 12px 82px 1fr; align-items: center; gap: var(--space-3); min-height: 30px; padding: 2px 0; }
+.icp-inrow { display: grid; grid-template-columns: 16px 82px 1fr; align-items: center; gap: var(--space-3); min-height: 30px; padding: 2px 0; }
 .icp-inrow.is-unset { opacity: 0.5; transition: opacity var(--dur-soft) var(--ease-out); }
 .icp-inrow.is-unset:hover, .icp-inrow.is-unset:focus-within { opacity: 1; }
 .icp-inrow-label { font-size: var(--type-xs); color: var(--fg-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -92,6 +92,17 @@ body.icp-scrubbing.icp-scrubbing--dial, body.icp-scrubbing.icp-scrubbing--dial *
 .icp-iconseg button:hover:not(.is-active) { color: var(--fg-0); background: var(--bg-3); }
 .icp-iconseg button.is-active { background: var(--bg-4); color: var(--fg-0); }
 .icp-iconseg button[aria-pressed="true"] { background: var(--accent-tint); color: var(--accent); }
+/* DDR-171 — mirrors the shipped `.st-cp-idmode` accent-active override: a mode
+ * switch needs to read at a glance, unlike a value picker's neutral active fill. */
+.icp-idmode .icp-iconseg button.is-active { background: var(--accent-tint); color: var(--accent); }
+/* DDR-171 Designer-mode layout refinement — mirrors the shipped
+ * `.st-cp--designer` rules so this specimen documents the Figma-clean look:
+ * inherited-row dots hidden (only customized values keep a marker), section
+ * headers title-case in the body font (not mono UPPERCASE), labels softened. */
+.icp-panel.is-designer .icp-prov--inherit { visibility: hidden; }
+.icp-panel.is-designer .icp-sechd { font-family: var(--font-body); font-size: var(--type-sm); font-weight: 600; text-transform: none; letter-spacing: normal; color: var(--fg-1); }
+.icp-panel.is-designer .icp-sechd:hover { color: var(--fg-0); }
+.icp-panel.is-designer .icp-inrow-label { font-family: var(--font-body); font-size: var(--type-sm); }
 
 /* ─── 9-point alignment pad ────────────────────────────────────────────────── */
 .icp-alignpad { width: 72px; height: 72px; display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); flex: none; }

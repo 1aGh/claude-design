@@ -522,34 +522,71 @@ const THEME_OPTIONS = [
   { id: 'light', label: 'Light', note: 'Bright shell chrome' },
   { id: 'dark', label: 'Dark', note: 'Dim shell chrome' },
 ];
-function AppearanceTab({ theme, onSetTheme }) {
+// DDR-171 — the CSS-panel (Inspector) vocabulary. Advanced = raw CSS property
+// names (the default, unchanged); Designer = Figma-familiar clusters (Fill,
+// Stroke, Auto layout…). Same underlying controls + write path, just relabeled
+// and regrouped. Persisted via the App-owned `maude-cp-mode` state, so this
+// radio and the in-panel corner toggle stay in lockstep.
+const CP_MODE_OPTIONS = [
+  { id: 'advanced', label: 'Advanced', note: 'Raw CSS property names — border-radius, flex-direction…' },
+  { id: 'designer', label: 'Designer', note: 'Figma vocabulary — Fill, Stroke, Corner radius, Auto layout…' },
+];
+function AppearanceTab({ theme, onSetTheme, cpMode, onSetCpMode }) {
   return (
-    <div className="st-provider-card">
-      <div className="st-provider-hd">
-        <span className="st-provider-name">Theme</span>
+    <>
+      <div className="st-provider-card">
+        <div className="st-provider-hd">
+          <span className="st-provider-name">Theme</span>
+        </div>
+        <div className="st-provider-notes">
+          Controls Maude’s own chrome — menubar, sidebar, canvas plane, minimap, zoom HUD. Artboards
+          keep their own design-system theme.
+        </div>
+        <div className="st-engine-radios" role="radiogroup" aria-label="Theme">
+          {THEME_OPTIONS.map((o) => (
+            <label key={o.id} className={'st-engine-radio' + (theme === o.id ? ' is-selected' : '')}>
+              <input
+                type="radio"
+                name="maude-theme"
+                value={o.id}
+                checked={theme === o.id}
+                onChange={() => onSetTheme?.(o.id)}
+              />
+              <span className="st-engine-radio-body">
+                <span className="st-engine-radio-label">{o.label}</span>
+                <span className="st-engine-radio-note">{o.note}</span>
+              </span>
+            </label>
+          ))}
+        </div>
       </div>
-      <div className="st-provider-notes">
-        Controls Maude’s own chrome — menubar, sidebar, canvas plane, minimap, zoom HUD. Artboards
-        keep their own design-system theme.
+      <div className="st-provider-card">
+        <div className="st-provider-hd">
+          <span className="st-provider-name">Inspector vocabulary</span>
+        </div>
+        <div className="st-provider-notes">
+          How the CSS panel labels controls. You can also flip this from the small toggle in the
+          panel’s own corner — this choice is remembered.
+        </div>
+        <div className="st-engine-radios" role="radiogroup" aria-label="Inspector vocabulary">
+          {CP_MODE_OPTIONS.map((o) => (
+            <label key={o.id} className={'st-engine-radio' + (cpMode === o.id ? ' is-selected' : '')}>
+              <input
+                type="radio"
+                name="maude-cp-mode"
+                value={o.id}
+                checked={cpMode === o.id}
+                onChange={() => onSetCpMode?.(o.id)}
+              />
+              <span className="st-engine-radio-body">
+                <span className="st-engine-radio-label">{o.label}</span>
+                <span className="st-engine-radio-note">{o.note}</span>
+              </span>
+            </label>
+          ))}
+        </div>
       </div>
-      <div className="st-engine-radios" role="radiogroup" aria-label="Theme">
-        {THEME_OPTIONS.map((o) => (
-          <label key={o.id} className={'st-engine-radio' + (theme === o.id ? ' is-selected' : '')}>
-            <input
-              type="radio"
-              name="maude-theme"
-              value={o.id}
-              checked={theme === o.id}
-              onChange={() => onSetTheme?.(o.id)}
-            />
-            <span className="st-engine-radio-body">
-              <span className="st-engine-radio-label">{o.label}</span>
-              <span className="st-engine-radio-note">{o.note}</span>
-            </span>
-          </label>
-        ))}
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -558,6 +595,8 @@ export default function SettingsPanel({
   initialTab,
   theme,
   onSetTheme,
+  cpMode,
+  onSetCpMode,
   minimapVisible,
   onToggleMinimap,
   zoomCtlVisible,
@@ -684,7 +723,7 @@ export default function SettingsPanel({
               hidden={tab !== 'appearance'}
             >
               <div className="st-rp-hd">Appearance</div>
-              <AppearanceTab theme={theme} onSetTheme={onSetTheme} />
+              <AppearanceTab theme={theme} onSetTheme={onSetTheme} cpMode={cpMode} onSetCpMode={onSetCpMode} />
             </section>
 
             {/* Canvas & View — the persistent View-menu prefs, one canonical home. */}

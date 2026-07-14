@@ -707,11 +707,68 @@
  * rail; 24px+ targets (bind / seg / box-model inputs); legible box-model. */
 .st-cp { display: flex; flex-direction: column; gap: var(--space-4); }
 
-/* element identity — Phase 12.3 (W2.3) hairline under the header for structure (Figma-ish) */
-.st-cp-id { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border-subtle); }
+/* element identity — Phase 12.3 (W2.3) hairline under the header for structure
+ * (Figma-ish). DDR-171 critic pass — this is the panel's own top-level
+ * boundary (vs. a section's internal divider below), so it gets the stronger
+ * of the two border tokens; otherwise the id-row rule and the first section's
+ * `.st-cp-sechd` rule read as identical weight stacked ~40px apart. */
+.st-cp-id { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border-strong); }
 .st-cp-idtag { font-family: var(--font-mono); font-size: var(--type-sm); color: var(--fg-0); }
 .st-cp-idcls { color: var(--accent); }
-.st-cp-idmeta { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+/* DDR-171 — the Advanced/Designer vocabulary toggle lives in the `.st-cp-id`
+ * row's corner slot as a plain `IconButtonGroup` (`.st-cp-iconseg`, styled
+ * below) — no extra wrapper class needed, `.st-cp-id`'s own flex/space-between
+ * places it. Deliberately NOT a full-width `Segmented` row (too heavy for a
+ * mode switch this minor — every other toggle in this panel is icon-sized).
+ * The active glyph gets the stronger accent-tint treatment (normally reserved
+ * for `aria-pressed` toggles) rather than the neutral `.is-active` fill every
+ * OTHER icon-seg in this panel uses — this one is a mode switch, not a value
+ * picker, so "which mode am I in" needs to read at a glance, not just on
+ * close inspection. Scoped to `.st-cp-idmode` so it doesn't touch direction /
+ * align / overflow etc. */
+.st-cp-idmode .st-cp-iconseg button.is-active { background: var(--accent-tint); color: var(--accent); }
+
+/* ── DDR-171 Designer-mode layout refinement ─────────────────────────────────
+ * Why Figma's panel reads cleaner than our raw-CSS panel, and what we borrow
+ * for Designer mode ONLY (Advanced mode stays byte-identical — it's the
+ * DDR-104-critic-gated developer surface where mono labels + provenance dots
+ * ARE the point). Three root causes, three scoped fixes:
+ *
+ *  1. Figma has NO per-row status dot — our provenance dot on every row builds
+ *     a "punch-card" rail down the left edge. In Designer mode we hide the dot
+ *     for INHERITED/unset rows (the common case) and keep it only where a value
+ *     is genuinely token-bound or overridden — that's a useful "this is
+ *     customized" marker even for a designer, and rare enough not to form a
+ *     rail. The 14px grid column stays reserved so labels never shift.
+ *  2. Figma section headers are quiet title-case ("Auto layout"), not code
+ *     labels ("AUTO LAYOUT"). We drop the mono/uppercase/tracking for the body
+ *     font, sentence case, one step brighter — reads as a group heading, not a
+ *     token name.
+ *  3. Figma row labels are soft sans, not monospace — we switch the label font
+ *     to the body face so the column reads as prose, not a code editor. */
+.st-cp--designer .st-cp-prov--inherit { visibility: hidden; }
+.st-cp--designer .st-cp-sechd {
+  font-family: var(--font-body);
+  font-size: var(--type-sm);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--fg-1);
+  padding-bottom: var(--space-2);
+}
+.st-cp--designer .st-cp-sechd:hover, .st-cp--designer .st-cp-sechd:hover svg { color: var(--fg-0); }
+.st-cp--designer .st-cp-label { font-family: var(--font-body); font-size: var(--type-sm); color: var(--fg-1); }
+.st-cp--designer .st-cp-modelabel { font-family: var(--font-body); font-size: var(--type-sm); }
+/* a touch more air between clusters — Figma's sections breathe. */
+.st-cp--designer .st-cp-sec { gap: var(--space-3); }
+
+/* a Designer cluster's "···" overflow disclosure — same visual weight as the
+ * section reset glyph (`.st-cp-secreset`), right-aligned under the cluster's
+ * common rows. */
+.st-cp-clustermore-row { display: flex; justify-content: flex-end; }
+.st-cp-clustermore { appearance: none; cursor: pointer; background: transparent; border: 0; color: var(--fg-3); font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); padding: var(--space-1) var(--space-2); border-radius: var(--radius-xs); }
+.st-cp-clustermore:hover { color: var(--accent); background: var(--accent-tint); }
+.st-cp-clustermore:focus-visible { outline: none; color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
 
 /* sections */
 .st-cp-sec { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -737,8 +794,12 @@
 .st-cp-fin--ro { flex: 0 0 38%; background: var(--bg-2); color: var(--fg-2); cursor: default; }
 .st-cp-fin--ro:focus { outline: none; border-color: var(--border-strong); box-shadow: none; }
 
-/* a labelled row: [provenance] [css property] [control] */
-.st-cp-row { display: grid; grid-template-columns: 10px 92px 1fr; align-items: center; column-gap: var(--space-3); min-height: 32px; padding: 3px 0; }
+/* a labelled row: [provenance] [css property] [control]. DDR-171 critic pass —
+ * the dot column widened 10px→14px (was) so the provenance dot reads as a
+ * detached status signal instead of looking glued to the label when several
+ * rows stack (dot's own size is unchanged — this only adds breathing room,
+ * doesn't shrink an already-small interactive/focusable target). */
+.st-cp-row { display: grid; grid-template-columns: 14px 92px 1fr; align-items: center; column-gap: var(--space-3); min-height: 32px; padding: 3px 0; }
 /* #1 bigger-bet — unset rows recede so the overridden ones pop; full opacity on
  * hover/focus so they're still editable. The panel reads as a diff of overrides. */
 .st-cp-row.is-unset { opacity: 0.5; transition: opacity var(--dur-soft) var(--ease-out); }
@@ -1046,7 +1107,7 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 /* handoff — Size mode row: grid-aligned with the other rows (label column +
  * control column), the compact Segmented right-aligned to match the number
  * inputs below, at the same 26px input height. Neutral active, mono lowercase. */
-.st-cp-moderow { display: grid; grid-template-columns: 10px 92px 1fr; align-items: center; column-gap: var(--space-3); min-height: 32px; padding: 3px 0; }
+.st-cp-moderow { display: grid; grid-template-columns: 14px 92px 1fr; align-items: center; column-gap: var(--space-3); min-height: 32px; padding: 3px 0; }
 .st-cp-modelabel { grid-column: 2; font-size: var(--type-xs); color: var(--fg-1); }
 .st-cp-modeseg { grid-column: 3; display: flex; justify-content: flex-end; }
 .st-cp-modeseg .st-cp-seg { flex: none; display: inline-flex; height: 26px; background: var(--bg-2); border-radius: var(--radius-sm); }
