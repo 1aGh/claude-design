@@ -354,7 +354,8 @@ const OKLCH_RE = /^oklch\([\d.]+%? [\d.]+ [\d.]+( ?\/ ?[\d.]+%?)?\)$/;
 const RGB_RE = /^rgba?\( ?[\d.]+[ ,]+[\d.]+[ ,]+[\d.]+( ?[,/] ?[\d.]+%?)? ?\)$/;
 const HSL_RE = /^hsla?\( ?[\d.]+ [\d.]+% [\d.]+%( ?\/ ?[\d.]+%?)?\)$/;
 
-function isValidColorValue(v) {
+/** DDR-172 Decision 4's color-function grammar. Exported for reuse by DDR-173 Decision 1/6 (T12's brand extraction). */
+export function isValidColorValue(v) {
   return HEX_RES.some((re) => re.test(v)) || OKLCH_RE.test(v) || RGB_RE.test(v) || HSL_RE.test(v);
 }
 

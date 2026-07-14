@@ -59,6 +59,11 @@ const BIN_VERBS = new Set([
   // contract, and patches (theme-block-scoped) or scaffolds the target
   // design system. CLI-only — no HTTP route, no in-app panel.
   'import-tokens',
+  // DDR-173 (Phase 3 / T12). `import-brand` extracts typed palette/font
+  // cues + a hardened logo asset from an already-DDR-167-sanitized SVG for
+  // `/design:setup-ds --from-brand` — never re-reads or re-sanitizes the
+  // original brand file (Decision 2: no parallel, ungated read path).
+  'import-brand',
   // feature-photo-editor (Stage G). `photo-adjust` is the thin non-browser
   // parametric verb (curl → /_api/photo-edit). `photo-bg-remove` is the
   // client-side @imgly ML harness (throwaway proof canvas + agent-browser

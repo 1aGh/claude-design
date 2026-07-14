@@ -470,8 +470,10 @@ function runAgentBrowser(sessionName, args, { timeoutMs = 20_000 } = {}) {
  * Launch an isolated, network-denied agent-browser session, run `fn(session)`,
  * and unconditionally close the session afterward. `fn` receives a small
  * helper object, not the raw CLI, to keep every caller's hardening identical.
+ * Exported for reuse by DDR-173 Decision 6 (T12's logo-wordmark raster
+ * fallback) — same hardened session, no new browser automation surface.
  */
-async function withSandboxedRender(fn, { timeoutMs = 20_000, initScriptPath = null } = {}) {
+export async function withSandboxedRender(fn, { timeoutMs = 20_000, initScriptPath = null } = {}) {
   const sessionName = `maude-import-${createHash('sha256')
     .update(String(Math.random()) + Date.now())
     .digest('hex')

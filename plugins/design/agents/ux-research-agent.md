@@ -23,6 +23,14 @@ You are the **ux-research-agent** for the local design-iteration loop. You're sp
 brief:           <one-liner from $ARGUMENTS, Q1 answer, or PRD>
 caller:          "setup-ds" | "new-canvas"
 mode:            "discovery" | "ux-patterns"
+from_brand:      <true, only present when the caller ran with --from-brand — DDR-173>
+brand_prior:     <{palette: string[], fonts: string[], logo_ref: string, logo_raster_ref?: string}
+                  — only present when --from-brand was used. TYPED VALUES ONLY: already
+                  grammar-validated colors and curated-allowlist font names — this is NOT
+                  free text and needs no special data-posture handling; treat it as a strong,
+                  pre-computed anchor for palette_options[]/typography_pairing_options[]
+                  (still going through the normal confidence/recommendation process — Stage 3/4
+                  still confirm, this is a strong prior, not a final answer). See DDR-173.>
 context_paths:                 # all optional — when missing, you research from brief alone
   existing_ds_tokens:          <abs path to colors_and_type.css if DS already exists>
   existing_ds_readme:          <abs path to system/<ds>/README.md if DS already exists>
@@ -65,12 +73,13 @@ DOMAIN_HIT=$(maude cache get research/domain  "$DOMAIN_KEY"  --ttl-ms 604800000)
 
 ```sh
 maude cache put research/project "$PROJECT_KEY" "$output_path" --meta '{"mode":"<mode>"}'
-# On a genuine WebSearch run (domain miss), also write the domain-generic subset:
+# On a genuine WebSearch run (domain miss) AND NOT a --from-brand-seeded run, also write the domain-generic subset:
 maude cache put research/domain "$DOMAIN_KEY" domain-subset.json --meta '{"mode":"<mode>"}'
 ```
 
-- Always write the **full payload** to `research/project` under `$PROJECT_KEY`.
+- Always write the **full payload** to `research/project` under `$PROJECT_KEY` — this is unaffected by `from_brand`.
 - On a genuine WebSearch run (domain miss), also write the **domain-generic subset** (strip anti-references + per-brief confidence — keep only the reusable mood/color/type/signature/iconography/density anchors) to `research/domain` under `$DOMAIN_KEY`.
+- **`from_brand: true` in the input SUPPRESSES the `research/domain` write entirely, unconditionally (DDR-173 Decision 3) — even on a domain miss.** A `--from-brand` run is seeded by a specific uploaded file, which the Stage 3/4 human-confirm gate reviews for THIS brief only; without this suppression, an unreviewed brand-seeded run's anchors would silently become the shared, committed, cross-peer 7-day default for every OTHER brief in the same domain slug — before any human ever sees the result. This is a hard `if from_brand: skip the research/domain cache put` rule, not a judgment call.
 - **Correctness > hit-rate.** Never reuse a domain payload for a brief whose domain slug differs. A wrong domain payload silently biases every downstream DS in that domain (Phase C risk note). When in doubt, miss and re-research.
 
 ---
@@ -335,12 +344,13 @@ If a researched option does not fit any catalogued family, either map it to the 
     },
 
     "palette": {
+      "_doc": "When `brand_prior.palette` is present (DDR-173, --from-brand), treat those already-grammar-validated color values as a STRONG anchor: build the primary color_oklch_options/palette_options entry FROM them (converting to OKLCH as needed) rather than researching a fresh palette from scratch, and set confidence high (typically ≥0.85) — but this is still a `recommendation`, not a bypass: Stage 3/4 still confirm, and `alternatives[]` still gets populated normally so the user isn't locked into the extracted palette if it doesn't fit.",
       "recommendation":  { "id": "<links to color_oklch_options[].id — OR palette_options[].id when aesthetic_ambition ≥ expressive (a coordinated multi-colour set, not one swatch)>" },
       "alternatives":    [ { "id": "<alt-1>" }, { "id": "<alt-2>" } ],
       "confidence":      0.85,
-      "rationale":       "<one sentence — vision-brief field(s) + research evidence + why this pick>"
+      "rationale":       "<one sentence — vision-brief field(s) + research evidence + why this pick; when seeded by brand_prior, say so explicitly: 'Sourced from the uploaded logo's own palette (DDR-173 --from-brand), refined against the brief.'>"
     },
-    "typography":          { "recommendation": { "id": "<…>" }, "alternatives": [], "confidence": 0.0, "rationale": "<…>" },
+    "typography":          { "_doc": "When `brand_prior.fonts` is present and non-empty, treat those curated-allowlist-matched names as a strong anchor for typography_pairing_options — same confidence/rationale discipline as palette above. `brand_prior.fonts` is very often EMPTY even on a successful extraction (DDR-173's font grammar is deliberately conservative — most SVG font-family values sit on `<text>` elements, which are stripped for security before extraction ever sees them); an empty list is not a failure signal, just research from the brief as usual.", "recommendation": { "id": "<…>" }, "alternatives": [], "confidence": 0.0, "rationale": "<…>" },
     "signature_treatment": { "recommendation": { "id": "<…>" }, "alternatives": [], "confidence": 0.0, "rationale": "<…>" },
     "voice":               { "recommendation": { "id": "<…>" }, "alternatives": [], "confidence": 0.0, "rationale": "<…>" },
     "density":             { "recommendation": { "id": "<…>" }, "alternatives": [], "confidence": 0.0, "rationale": "<…>" },

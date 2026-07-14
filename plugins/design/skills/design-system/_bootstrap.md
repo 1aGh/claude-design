@@ -260,12 +260,29 @@ Reply in one message. Write `skip` for any question you want to skip.
 
 #### Stage 2 — Research (no user input, ~30–90s wall-clock)
 
+**`--from-brand <file(s)>` ingestion (DDR-173), runs FIRST when the flag was passed, before the agent invocation below.** For each file:
+
+1. `maude design import-asset <file> --root <repo>` (DDR-167 — sanitizes SVG or errors clean naming why for PDF, currently unavailable per the DDR-167 addendum). This is the ONLY read of the original brand file — nothing downstream re-opens it (DDR-173 Decision 2).
+2. If the result is a logo-shaped SVG asset, `maude design import-brand <sanitized-asset-path> --root <repo>` (DDR-173) — extracts the typed `{palette, fonts, logoRef, logoRasterRef, hadWordmarkText}` payload from the ALREADY-sanitized asset. Multiple files' palettes/fonts are unioned (deduped); if more than one file yields a logo, use the first and note the rest in the bypass log as skipped.
+3. Collect the results into a `brand_prior` object — **typed values only, per DDR-173 Decision 1, never any free text extracted from the file**:
+   ```jsonc
+   {
+     "palette": ["#6b6bf0", "#0d0d0f"],   // from import-brand, already grammar-validated
+     "fonts": ["Inter", "sans-serif"],     // curated-allowlist matches only, never the raw string
+     "logo_ref": "assets/logos/454bf8bf.svg",
+     "logo_raster_ref": "assets/logos/ff044775.png"  // present only if hadWordmarkText was true
+   }
+   ```
+4. If extraction produced an empty `palette`/`fonts` (a real, expected outcome — DDR-173's own font-allowlist and color grammar are conservative by design), do not fabricate anchors — pass `brand_prior` through with whatever was actually extracted, even if partially empty, and let Stage 2's research fill the rest from the brief as usual.
+
 The `design:ux-research-agent` is spawned via the `Agent` tool with `subagent_type: "design:ux-research-agent"` and **receives the full `vision-brief.json` as input** (the v1 flow only passed a one-liner — DDR-033 + DF-9 prove the rich brief is the single biggest aesthetic-quality lift). Inputs:
 
 ```
 brief:           <vision-brief.json contents — entire object, not just elevator_pitch>
 caller:          "setup-ds"
 mode:            "discovery"
+from_brand:      <true, only when --from-brand was passed — otherwise omit the field entirely>
+brand_prior:     <the typed {palette, fonts, logo_ref, logo_raster_ref} object above — only when --from-brand was passed>
 context_paths:
   vision_brief:        <abs path to <ds>-vision-brief.json>
   existing_ds_tokens:  <abs path or empty>
@@ -276,6 +293,8 @@ researched_at:   <current ISO date>
 ```
 
 `BRIEF_SHA8 = printf '%s' "$(cat <vision-brief.json>)" | shasum -a 256 | cut -c1-8`. Exact hash match for cache reuse; `--force` always re-researches.
+
+**`from_brand: true` disables this run's write to the committed, cross-peer `research/domain` cache layer (DDR-173 Decision 3)** — see `ux-research-agent.md`'s own Step 0.5 for the enforcement. This is why the field is passed explicitly here rather than left for the agent to infer from `brand_prior`'s presence alone — the cache-suppression behavior must be unambiguous, not inferred.
 
 The agent's prompt has been extended with **5 Pastier probe templates** (`A. Ulice / B. Zrcadlo + Charakter / C. OST / D. Kmen / E. Confidence evaluation`) — see `_pastier-probe-templates.md` in this folder. The probes structure the WebSearch queries against the vision-brief fields. The agent's response payload extends the existing `discovery` schema with a new `recommendations` block.
 
@@ -732,6 +751,11 @@ files:
   - { path: "preview/components-callout.tsx",      batch: C, deps: [tokens, chrome, template], status: pending }
   - { path: "preview/empty-state.tsx",             batch: C, deps: [tokens, chrome, template], status: pending, signature: true }
   - { path: "preview/logo.tsx",                    batch: C, deps: [tokens, chrome, assets], status: pending, signature: true }
+  # DDR-173: when brand_prior.logo_ref is present (--from-brand ran in Stage 2), the Batch-C
+  # sub-agent authoring preview/logo.tsx MUST reference that hardened asset as the canonical
+  # mark (DDR-141 Tier-0 — lifted, not redrawn), inlining/referencing brand_prior.logo_raster_ref
+  # instead when wordmark fidelity matters (the vector had its live <text> stripped for safety —
+  # DDR-173 Decision 6). Never draw a fresh logo when a real uploaded one was provided.
   # … gated entries appended based on Q2/Q3 (audience-pro/*, audience-developer/*, status/*, presence, etc.)
   # … always ends with the highest-leverage compositions:
   # one showcase+index PER in-scope platform (Q3) — desktop-only here is a template stub, expand at emit time
