@@ -309,7 +309,7 @@ export async function probeReadiness(): Promise<ReadinessReport> {
     status: pluginStatus,
     detail: designReady
       ? designAutoloaded
-        ? 'Bundled with this app — always active in the chat session.'
+        ? 'Bundled with this app — loads automatically in the chat session.'
         : 'design@maude is installed.'
       : scan.status === 'unknown'
         ? "Couldn't read Claude Code's plugin registry — check it manually."

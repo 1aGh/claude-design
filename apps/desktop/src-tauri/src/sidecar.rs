@@ -170,8 +170,7 @@ pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
     // scope (it does not touch the user's system-wide PATH or shell).
     let mut path = base_path;
     if let Some(link) = stage_bundled_cli_link(app) {
-        let dir = link.parent().unwrap_or(&link).display().to_string();
-        path = format!("{dir}:{path}");
+        path = format!("{}:{path}", link.parent().unwrap_or(&link).display());
         command = command.env("MAUDE_BUNDLED_CLI_PATH", link.to_string_lossy().to_string());
     }
     command = command.env("PATH", path);
