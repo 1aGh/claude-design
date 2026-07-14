@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-173: Brand-file extracted-content hand-off — trust boundary for T12 — no free text crosses into ux-research-agent's context, only grammar-typed colors/fonts/logo-ref](DDR-173-brand-file-content-handoff-trust-boundary.md) — 2026-07-14, design-system/prompt-injection/brand-import/ux-research-agent/ingestion/security
 - [DDR-172: Token-file import — mapping contract and ingestion security posture — value-grammar allowlist against CSS injection, theme-block-scoped patching, whole-value-only alias resolution](DDR-172-token-file-import-mapping-contract.md) — 2026-07-14, design-system/import-tokens/tokens/css-injection/ingestion/security
 - [DDR-170: `TokenPopover` anchoring — re-anchor on scroll/resize + a measure-and-cancel rect-diff pass, not transformed-ancestor hunting](DDR-170-tokenpopover-rect-diff-anchor-compensation.md) — 2026-07-14, studio/inspector/css-panel/popover/positioning/ux
 - [DDR-169: Box-model cells (margin/padding/inset/corner) keep whole-cell scrub, not a separate drag-handle](DDR-169-box-model-cells-whole-cell-scrub.md) — 2026-07-14, studio/inspector/css-panel/inspector-controls/scrub/interaction-model/ux
