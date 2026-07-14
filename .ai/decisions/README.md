@@ -9,6 +9,8 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-170: `TokenPopover` anchoring — re-anchor on scroll/resize + a measure-and-cancel rect-diff pass, not transformed-ancestor hunting](DDR-170-tokenpopover-rect-diff-anchor-compensation.md) — 2026-07-14, studio/inspector/css-panel/popover/positioning/ux
+- [DDR-169: Box-model cells (margin/padding/inset/corner) keep whole-cell scrub, not a separate drag-handle](DDR-169-box-model-cells-whole-cell-scrub.md) — 2026-07-14, studio/inspector/css-panel/inspector-controls/scrub/interaction-model/ux
 - [DDR-167: Local-file / SVG / PDF ingestion — security posture — allowlist DOM-sanitize + real-browser execution canary, hardened sandboxed-render for PDF, ACP-scoped confused-deputy gate](DDR-167-local-file-svg-pdf-ingestion-security-posture.md) — 2026-07-14, studio/ingestion/svg/pdf/happy-dom/sandboxed-render/asset-write/confused-deputy/mxss/security
 - [DDR-166: Zero-terminal ACP cold start — drive the user's own `claude auth login`/`status`, bundle `maude`, fetch-not-package-manager provisioning](DDR-166-zero-terminal-acp-cold-start.md) — 2026-07-13, studio/acp/onboarding/desktop/tauri/claude-cli/oauth/keychain/plugin-bootstrap/security
 - [DDR-165: Annotation-state concurrency fixes — chain-owned accumulator + baseline-aware reconciliation, never presence-only](DDR-165-annotation-commit-reconciliation-baseline-not-presence.md) — 2026-07-11, studio/annotations-layer/concurrency/reconciliation/collab/echo-suppression/media-intake/bulk-insert/regression-prevention/security
