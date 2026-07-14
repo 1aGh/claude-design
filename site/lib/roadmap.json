@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-13T13:56:35.473Z",
+  "generated": "2026-07-14T08:23:15.646Z",
   "currentPhase": null,
   "phases": [
     {
@@ -318,6 +318,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — mirror ai-banner.tsx, build-roadmap.mjs, and the HelpModal in client/app.jsx rather t...",
       "planPath": ".ai/plans/archive/feature-in-app-whats-new-tour.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-inspector-controls-redesign",
+      "title": "Feature: Inspector Controls Redesign — CSS + Photo panels",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan is grounded in three research passes (CSS-panel map, Photo-panel map, pro-to...",
+      "planPath": ".ai/plans/archive/feature-inspector-controls-redesign.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1257,6 +1268,17 @@
       "phaseKey": "19"
     },
     {
+      "id": "feature-acp-bundled-cli-plugins-always-internal",
+      "title": "Feature: ACP session always uses Maude's bundled `maude` CLI + `design`/`flow` plugins — never disk-installed versions",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-acp-bundled-cli-plugins-always-internal.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
       "id": "feature-grid-track-editor",
       "title": "Feature: CSS-Grid track editor (on-canvas columns/rows + track drag-resize)",
       "status": "planned",
@@ -1264,6 +1286,17 @@
       "date": null,
       "summary": "Give a display: grid container a first-class on-canvas track editor, matching what Figma auto-layout-grids and Webflow's Grid 2.0 give designers: define the column and row tracks, drag the track gu...",
       "planPath": ".ai/plans/feature-grid-track-editor.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-inspector-controls-designer-mode",
+      "title": "Feature: CSS Panel Designer Mode (Phase 2 of feature-inspector-controls-redesign)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan is grounded in a divergent debate (BUILDER/SHIPPER/BREAKER, reduce-tier) run...",
+      "planPath": ".ai/plans/feature-inspector-controls-designer-mode.md",
       "archived": false,
       "phaseKey": null
     },
