@@ -1,0 +1,32 @@
+---
+title: /design:import
+description: "Bring an existing design into Maude. `--reconstruct <image>` (T15, experimental) turns a Figma-frame PNG export into a real, token-styled canvas via a Bash-free vision-authoring + reality-check loop (DDR-174). Token files and brand material have their own dedicated entry points — see Notes below."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:import` |
+| **Category** | `daily` (daily) |
+| **Argument hint** | `--reconstruct <image-path> [--name \"<title>\"] [--into <canvas-path>] [--rounds N]` |
+| **Source** | [`plugins/design/commands/import.md`](https://github.com/1aGh/maude/blob/main/plugins/design/commands/import.md) |
+
+## Description
+
+Bring an existing design into Maude. `--reconstruct &lt;image>` (T15, experimental) turns a Figma-frame PNG export into a real, token-styled canvas via a Bash-free vision-authoring + reality-check loop (DDR-174). Token files and brand material have their own dedicated entry points — see Notes below.
+
+## Invocation
+
+```text
+/design:import --reconstruct <image-path> [--name \"<title>\"] [--into <canvas-path>] [--rounds N]
+```
+
+## Summary
+
+`/design:import` is the umbrella entry point for migration-ingestion work (plan `feature-onboarding-and-design-system-migration`, Phase 3–4). Today it implements exactly one mode:
+## Source of truth
+
+<Callout type="note" title="Generated from frontmatter">
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file: [**`plugins/design/commands/import.md`**](https://github.com/1aGh/maude/blob/main/plugins/design/commands/import.md).
+
+</Callout>
