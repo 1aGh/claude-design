@@ -177,7 +177,7 @@ function ArtStartVideoComp() {
     <Board>
       <ArtHeader n={1} total={7} eyebrow="Video" title="Start a video comp" />
       <Body>
-        <Lede>A video comp is a canvas artboard whose body is a real Remotion composition — you author it in TSX like any other canvas, but every animated value is a function of a frame number, so it plays back, scrubs, and exports frame-perfect.</Lede>
+        <Lede>A video comp is a canvas artboard whose body is a real Remotion composition. You author it in TSX like any other canvas, but every animated value is a function of a frame number, so it plays back, scrubs, and exports frame-perfect.</Lede>
         <div style={{ display: "flex", gap: "var(--space-5)" }}>
           <Panel style={{ width: 260, height: 150, flexShrink: 0, display: "flex", flexDirection: "column" }}>
             <MiniPanelHd label="VIDEO COMP" right={<span style={{ display: "flex", alignItems: "center", gap: 4 }}><Icon name="film" size={12} /> 0:04</span>} />
@@ -186,12 +186,12 @@ function ArtStartVideoComp() {
             </div>
           </Panel>
           <CardRow>
-            <FeatureCard icon="film" title="Ask for it in words" body="&ldquo;Cut these three clips together with a crossfade and a title card&rdquo; — the Assistant writes the comp." />
-            <FeatureCard icon="play" title="Free scrub & preview" body="A real embedded player, right in the canvas — no separate render just to check a frame." />
-            <FeatureCard icon="download" title="Export MP4 or GIF" body="⌘⇧E, or /design:export mp4 — through Maude's own capture spine. No renderer install, no native binaries." />
+            <FeatureCard icon="film" title="Ask for it in words" body="&ldquo;Cut these three clips together with a crossfade and a title card&rdquo;: the Assistant writes the comp." />
+            <FeatureCard icon="play" title="Free scrub & preview" body="A real embedded player, right in the canvas. No separate render just to check a frame." />
+            <FeatureCard icon="download" title="Export MP4 or GIF" body="⌘⇧E, or /design:export mp4, through Maude's own capture spine. No renderer install, no native binaries." />
           </CardRow>
         </div>
-        <TryIt>Ask the Assistant (<Kbd>⌘⇧A</Kbd>) to add a video comp to this canvas — a 2-second title card is a good first try.</TryIt>
+        <TryIt>Ask the Assistant (<Kbd>⌘⇧A</Kbd>) to add a video comp to this canvas. A 2-second title card is a good first try.</TryIt>
       </Body>
     </Board>
   );
@@ -237,20 +237,20 @@ function ArtTimeline({ children }: { children: React.ReactNode }) {
       {/* Points at the REAL video-artboard badge canvas-lib.tsx renders top-right
           (top:4px, right:6px) the instant any real <VideoComp> is in this
           artboard's subtree — not drawn by this canvas, just aimed at. */}
-      <svg width={140} height={60} viewBox="0 0 140 60" style={{ position: "absolute", right: 26, top: 46, overflow: "visible", pointerEvents: "none" }} aria-hidden>
-        <path d="M110 54 C 60 54, 20 30, 8 6" stroke="var(--presence-agent, #c34fd8)" strokeWidth="2" fill="none" strokeLinecap="round" markerEnd="url(#pointAtBadge)" />
+      <svg width={140} height={60} viewBox="0 0 140 60" style={{ position: "absolute", right: 26, top: "75px", overflow: "visible", pointerEvents: "none" }} aria-hidden>
+        <path d="M108 56 C 135 20, 150 -15, 151 -60" stroke="var(--presence-agent, #c34fd8)" strokeWidth="2" fill="none" strokeLinecap="round" markerEnd="url(#pointAtBadge)" />
         <defs>
           <marker id="pointAtBadge" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
             <path d="M0 0 L8 4 L0 8 Z" fill="var(--presence-agent, #c34fd8)" />
           </marker>
         </defs>
       </svg>
-      <div style={{ position: "absolute", right: 30, top: 50, width: 130, fontSize: "var(--type-xs)", fontWeight: 700, color: "var(--presence-agent, #c34fd8)", textAlign: "right" }}>
-        ① that real icon — or ⌘⇧T
+      <div style={{ position: "absolute", right: 75, top: "98px", width: 130, fontSize: "var(--type-xs)", fontWeight: 700, color: "var(--presence-agent, #c34fd8)", textAlign: "right" }}>
+        ① that real icon, or ⌘⇧T
       </div>
       <ArtHeader n={2} total={7} eyebrow="Video" title="Edit on the Timeline" />
       <Body>
-        <Lede>The clip on the left is a real, playing Remotion comp — not a screenshot. Click the small video icon in this artboard's own top-right corner (real chrome, not drawn by this canvas), or press <Kbd>⌘⇧T</Kbd>, to open the real Timeline and scrub it.</Lede>
+        <Lede>The clip on the left is a real, playing Remotion comp, not a screenshot. Click the small video icon in this artboard's own top-right corner (real chrome, not drawn by this canvas), or press <Kbd>⌘⇧T</Kbd>, to open the real Timeline and scrub it.</Lede>
         <div style={{ display: "flex", gap: "var(--space-5)" }}>
           <Panel style={{ width: 220, flexShrink: 0, overflow: "hidden" }}>
             {children}
@@ -267,14 +267,14 @@ function ArtTimeline({ children }: { children: React.ReactNode }) {
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: "var(--space-2)", fontSize: "var(--type-xs)", color: "var(--fg-3)" }}>(a 4-clip cut, for scale — the real player on the left is the actual demo)</div>
+            <div style={{ marginTop: "var(--space-2)", fontSize: "var(--type-xs)", color: "var(--fg-3)" }}>(a 4-clip cut, for scale: the real player on the left is the actual demo)</div>
           </Panel>
         </div>
-        <TryIt>Click the small video-camera icon in this artboard's own top-right corner right now (or press <Kbd>⌘⇧T</Kbd>) — the real Timeline opens, and you can scrub the clip on the left frame by frame.</TryIt>
+        <TryIt>Click the small video-camera icon in this artboard's own top-right corner right now (or press <Kbd>⌘⇧T</Kbd>). The real Timeline opens, and you can scrub the clip on the left frame by frame.</TryIt>
         <CardRow>
-          <FeatureCard icon="drag" title="Drag to retime" body="Move, trim, or resize a clip directly on the track — the underlying frame math updates with it." />
-          <FeatureCard icon="scissors" title="Split, reorder, replace" body="Right-click for the full clip menu — the same vocabulary as a real NLE, scoped to what a comp needs." />
-          <FeatureCard icon="eye" title="Inspect any clip" body="Select a clip to see its layer decomposition — video track, caption track, effects — each independently editable." />
+          <FeatureCard icon="drag" title="Drag to retime" body="Move, trim, or resize a clip directly on the track. The underlying frame math updates with it." />
+          <FeatureCard icon="scissors" title="Split, reorder, replace" body="Right-click for the full clip menu: the same vocabulary as a real NLE, scoped to what a comp needs." />
+          <FeatureCard icon="eye" title="Inspect any clip" body="Select a clip to see its layer decomposition: video track, caption track, effects, each independently editable." />
         </CardRow>
       </Body>
     </Board>
@@ -287,7 +287,7 @@ function ArtAiAssistantVideo() {
     <Board>
       <ArtHeader n={3} total={7} eyebrow="Video" title="AI Assistant for video" />
       <Body>
-        <Lede>Ask for beats, transitions, and motion graphics in plain language — the Assistant writes real Remotion, frame-driven and deterministic, never a CSS animation that would tear on export.</Lede>
+        <Lede>Ask for beats, transitions, and motion graphics in plain language. The Assistant writes real Remotion, frame-driven and deterministic, never a CSS animation that would tear on export.</Lede>
         <div style={{ display: "flex", gap: "var(--space-5)" }}>
           <Panel style={{ width: 320, flexShrink: 0 }}>
             <MiniPanelHd label="ASSISTANT" />
@@ -298,7 +298,7 @@ function ArtAiAssistantVideo() {
           </Panel>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
             <div style={{ fontSize: "var(--type-xs)", fontFamily: "var(--font-mono)", letterSpacing: "var(--tracking-wide)", textTransform: "uppercase", color: "var(--fg-3)" }}>Prompt ideas</div>
-            {["Crossfade these three clips with a music bed", "Add a lower-third caption to every clip", "Cinematic grade — teal/orange, subtle grain", "Ken-Burns push on the hero shot", "Kinetic-type title, per-letter spring-in"].map((p) => (
+            {["Crossfade these three clips with a music bed", "Add a lower-third caption to every clip", "Cinematic grade, teal/orange, subtle grain", "Ken-Burns push on the hero shot", "Kinetic-type title, per-letter spring-in"].map((p) => (
               <div key={p} style={{ padding: "var(--space-3)", borderRadius: "var(--radius-md)", background: "var(--bg-1)", border: "1px solid var(--border-subtle)", fontSize: "var(--type-sm)", color: "var(--fg-1)" }}>"{p}"</div>
             ))}
           </div>
@@ -315,7 +315,7 @@ function ArtFootageToCut() {
     <Board>
       <ArtHeader n={4} total={7} eyebrow="Video" title="Turn a folder of clips into a cut" />
       <Body>
-        <Lede>Drop a folder of raw footage on the canvas and ask for a reel. An analyst watches every clip first — good moments, subject, motion, quality — then a director assembles an edit decision list before a single frame of comp code is written.</Lede>
+        <Lede>Drop a folder of raw footage on the canvas and ask for a reel. An analyst watches every clip first (good moments, subject, motion, quality), then a director assembles an edit decision list before a single frame of comp code is written.</Lede>
         <div style={{ display: "flex", gap: "var(--space-4)", alignItems: "center" }}>
           {[["folder", "Raw clips"], ["eye", "Analyst watches"], ["wand", "Director cuts"], ["film", "Comp generated"]].map(([icon, label], i, arr) => (
             <div key={label as string} style={{ display: "flex", alignItems: "center", gap: "var(--space-4)" }}>
@@ -328,9 +328,9 @@ function ArtFootageToCut() {
           ))}
         </div>
         <CardRow>
-          <FeatureCard icon="eye" title="It watches before it cuts" body="Every clip gets characterized — good-moment ranges, mood, quality score — before any editing decision is made." />
-          <FeatureCard icon="wand" title="A real edit decision list" body="Beats, transitions, and an optional music bed — a story, not just clips concatenated in folder order." />
-          <FeatureCard icon="film" title="Then it becomes a comp" body="The EDL turns into real, hand-editable TSX on the Timeline — pull a different shot, retime a beat, it's all still yours." />
+          <FeatureCard icon="eye" title="It watches before it cuts" body="Every clip gets characterized (good-moment ranges, mood, quality score) before any editing decision is made." />
+          <FeatureCard icon="wand" title="A real edit decision list" body="Beats, transitions, and an optional music bed: a story, not just clips concatenated in folder order." />
+          <FeatureCard icon="film" title="Then it becomes a comp" body="The EDL turns into real, hand-editable TSX on the Timeline. Pull a different shot, retime a beat, it's all still yours." />
         </CardRow>
         <TryIt>Drag a folder of real clips from Finder onto this canvas, then ask the Assistant (<Kbd>⌘⇧A</Kbd>) for "a reel from these clips."</TryIt>
       </Body>
@@ -344,13 +344,13 @@ function ArtGenerateVideoAudio() {
     <Board>
       <ArtHeader n={5} total={7} eyebrow="AI media" title="Generate video & audio with your own key" />
       <Body>
-        <Lede>Bring your own key and fill a gap without hand-sourcing it — a generated clip drops into your assets like real footage, and Maude checks what you've already made before spending a new generation.</Lede>
+        <Lede>Bring your own key and fill a gap without hand-sourcing it. A generated clip drops into your assets like real footage, and Maude checks what you've already made before spending a new generation.</Lede>
         <CardRow>
-          <FeatureCard icon="film" title="Video — text or seeded" body="A prompt, or seed a clip from a still you already generated so it matches your hero's look. Runs in the background." />
-          <FeatureCard icon="waveform" title="Music, SFX & voiceover" body="One key covers music beds, sound effects, and text-to-speech — the track lands ready to drop under a reel." />
+          <FeatureCard icon="film" title="Video: text or seeded" body="A prompt, or seed a clip from a still you already generated so it matches your hero's look. Runs in the background." />
+          <FeatureCard icon="waveform" title="Music, SFX & voiceover" body="One key covers music beds, sound effects, and text-to-speech. The track lands ready to drop under a reel." />
           <FeatureCard icon="check" title="Reuse before you pay" body="Before spending credits, Maude searches audio you've already generated (and your provider history) for a match." />
         </CardRow>
-        <TryIt>Add your key under File → Settings — AI generation, then ask the Assistant for "a 4-second clip of ocean waves at sunset."</TryIt>
+        <TryIt>Add your key under File → Settings → AI generation, then ask the Assistant for "a 4-second clip of ocean waves at sunset."</TryIt>
       </Body>
     </Board>
   );
@@ -362,7 +362,7 @@ function ArtCaptions() {
     <Board>
       <ArtHeader n={6} total={7} eyebrow="Video" title="Automatic captions" />
       <Body>
-        <Lede>Subtitles are free and need no key — whisper.cpp runs locally (one-click model download) and writes word-timed captions on any clip. Prefer a cloud engine? Pick ElevenLabs Scribe or Groq in Settings — Maude never silently switches you to a paid engine.</Lede>
+        <Lede>Subtitles are free and need no key. whisper.cpp runs locally (one-click model download) and writes word-timed captions on any clip. Prefer a cloud engine? Pick ElevenLabs Scribe or Groq in Settings. Maude never silently switches you to a paid engine.</Lede>
         <div style={{ display: "flex", gap: "var(--space-5)" }}>
           <Panel style={{ width: 300, flexShrink: 0 }}>
             <div style={{ height: 90, background: "#000", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "var(--space-3)" }}>
@@ -374,9 +374,9 @@ function ArtCaptions() {
             </div>
           </Panel>
           <CardRow>
-            <FeatureCard icon="captions" title="Word-timed & editable" body="Captions land as an editable JSON sidecar — whisper mishears jargon sometimes, so patch it by hand and re-render, no re-transcribing." />
-            <FeatureCard icon="check" title="Auto-converts your file" body="Any video container works — Maude handles the audio extraction, no ffmpeg wrangling." />
-            <FeatureCard icon="sparkle" title="You choose the engine" body="Local, Scribe, or Groq — an explicit setting, never a silent default to a paid cloud engine." />
+            <FeatureCard icon="captions" title="Word-timed & editable" body="Captions land as an editable JSON sidecar. whisper mishears jargon sometimes, so patch it by hand and re-render, no re-transcribing." />
+            <FeatureCard icon="check" title="Auto-converts your file" body="Any video container works. Maude handles the audio extraction, no ffmpeg wrangling." />
+            <FeatureCard icon="sparkle" title="You choose the engine" body="Local, Scribe, or Groq: an explicit setting, never a silent default to a paid cloud engine." />
           </CardRow>
         </div>
         <TryIt>Select a clip on this canvas, then ask the Assistant (<Kbd>⌘⇧A</Kbd>) to "add captions to this clip."</TryIt>
@@ -391,7 +391,7 @@ function ArtExport() {
     <Board>
       <ArtHeader n={7} total={7} eyebrow="Ship it" title="Export" />
       <Body>
-        <Lede><Kbd>⌘⇧E</Kbd> opens the export dialog — MP4 (H.264) or palette-quantized GIF, resolved from the comp's own frame rate and duration. Everything renders through Maude's own capture spine: no renderer binaries, no install step for whoever opens the project next.</Lede>
+        <Lede><Kbd>⌘⇧E</Kbd> opens the export dialog: MP4 (H.264) or palette-quantized GIF, resolved from the comp's own frame rate and duration. Everything renders through Maude's own capture spine: no renderer binaries, no install step for whoever opens the project next.</Lede>
         <div style={{ display: "flex", gap: "var(--space-5)" }}>
           <Panel style={{ width: 260, padding: "var(--space-5)", display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
             <div style={{ display: "flex", gap: "var(--space-2)" }}>
@@ -401,12 +401,12 @@ function ArtExport() {
             <PrimaryButton style={{ alignSelf: "flex-start" }}><Icon name="download" size={13} /> Export ⌘⇧E</PrimaryButton>
           </Panel>
           <CardRow>
-            <FeatureCard icon="download" title="No install, ever" body="Rendering happens through the same headless capture Maude already uses for screenshots — nothing new to set up." />
-            <FeatureCard icon="film" title="Frame-accurate" body="fps and duration come straight from the comp's own meta — what you scrub in the Player is exactly what exports." />
-            <FeatureCard icon="check" title="Same command, from the CLI" body="/design:export mp4 --scope artboard works headlessly too — useful once a cut is part of a repeatable pipeline." />
+            <FeatureCard icon="download" title="No install, ever" body="Rendering happens through the same headless capture Maude already uses for screenshots. Nothing new to set up." />
+            <FeatureCard icon="film" title="Frame-accurate" body="fps and duration come straight from the comp's own meta. What you scrub in the Player is exactly what exports." />
+            <FeatureCard icon="check" title="Same command, from the CLI" body="/design:export mp4 --scope artboard works headlessly too, useful once a cut is part of a repeatable pipeline." />
           </CardRow>
         </div>
-        <TryIt>Press <Kbd>⌘⇧E</Kbd> right now — the real export dialog opens for whatever's active.</TryIt>
+        <TryIt>Press <Kbd>⌘⇧E</Kbd> right now. The real export dialog opens for whatever's active.</TryIt>
       </Body>
     </Board>
   );

@@ -152,7 +152,9 @@ function TryIt({ children }: { children: React.ReactNode }) {
 // interactive target elsewhere in the artboard (the same "point at it"
 // vocabulary the product itself uses for annotations).
 function PointAt({ x, y, w = 150, h = 70, flip = false, children }: { x: number; y: number; w?: number; h?: number; flip?: boolean; children: React.ReactNode }) {
-  const path = flip ? `M${w - 6} 6 C ${w * 0.35} 4, ${w * 0.1} ${h * 0.5}, 6 ${h - 6}` : `M6 6 C ${w * 0.65} 4, ${w * 0.9} ${h * 0.5}, ${w - 6} ${h - 6}`;
+  // Starts below the label (clears the text instead of striking through it)
+  // and ends short of the box's bottom edge (clears whatever sits just below).
+  const path = flip ? `M${w - 10} 20 C ${w * 0.4} 18, ${w * 0.15} ${h * 0.45}, 6 ${h - 28}` : `M6 20 C ${w * 0.6} 18, ${w * 0.85} ${h * 0.45}, ${w - 6} ${h - 28}`;
   return (
     <div style={{ position: "absolute", left: x, top: y, width: w, height: h, pointerEvents: "none" }}>
       <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ position: "absolute", inset: 0, overflow: "visible" }} aria-hidden>
@@ -196,7 +198,7 @@ function ArtStartHere() {
     <Board>
       <ArtHeader n={1} total={10} eyebrow="Orientation" title="Start here" />
       <Body>
-        <Lede>Everything you design lives on a canvas. Canvases are grouped in the file tree on the left — a fresh project starts with two groups: <b>Design system</b> (your tokens and components) and <b>UI kit</b> (the screens you build).</Lede>
+        <Lede>Everything you design lives on a canvas. Canvases are grouped in the file tree on the left. A fresh project starts with two groups: <b>Design system</b> (your tokens and components) and <b>UI kit</b> (the screens you build).</Lede>
         <div style={{ display: "flex", gap: "var(--space-5)" }}>
           <Panel style={{ width: 230, flexShrink: 0 }}>
             <MiniPanelHd label="FILES" right={<Icon name="grid" size={13} />} />
@@ -210,12 +212,12 @@ function ArtStartHere() {
             </div>
           </Panel>
           <CardRow>
-            <FeatureCard icon="cursor" title="Click to open" body="Opening a file replaces the active canvas. Nothing is destructive — your work saves on its own as you go." />
-            <FeatureCard icon="grid" title="One infinite canvas" body="Every artboard on a canvas lives on the same pannable, zoomable surface — pan and zoom like a whiteboard." />
-            <FeatureCard icon="terminal" title="No terminal needed" body="Everything here — browsing, editing, saving, sharing — works from the app. The Assistant is the only thing that pairs with a Claude Code you install once." />
+            <FeatureCard icon="cursor" title="Click to open" body="Opening a file replaces the active canvas. Nothing is destructive: your work saves on its own as you go." />
+            <FeatureCard icon="grid" title="One infinite canvas" body="Every artboard on a canvas lives on the same pannable, zoomable surface. Pan and zoom like a whiteboard." />
+            <FeatureCard icon="terminal" title="No terminal needed" body="Everything here (browsing, editing, saving, sharing) works from the app. The Assistant is the only thing that pairs with a Claude Code you install once." />
           </CardRow>
         </div>
-        <TryIt>Click "How to make video.tsx" in the file list on the left, right now — that's the real file tree, not a picture of it.</TryIt>
+        <TryIt>Click "How to make video.tsx" in the file list on the left, right now. That's the real file tree, not a picture of it.</TryIt>
       </Body>
     </Board>
   );
@@ -228,7 +230,7 @@ function ArtDesignSystem() {
     <Board>
       <ArtHeader n={2} total={10} eyebrow="Foundations" title="Build a design system" />
       <Body>
-        <Lede>Ask the Assistant to run <b>/design:setup-ds</b> and it interviews you — a handful of sharp questions about your product, mood, and brand — then generates a real, tokenized system: color, type, space, motion, and components. No blank Figma file, no picking a font at random.</Lede>
+        <Lede>Ask the Assistant to run <b>/design:setup-ds</b> and it interviews you: a handful of sharp questions about your product, mood, and brand. Then it generates a real, tokenized system: color, type, space, motion, and components. No blank Figma file, no picking a font at random.</Lede>
         <div style={{ display: "flex", gap: "var(--space-5)" }}>
           <Panel style={{ flex: 1, padding: "var(--space-5)" }}>
             <div style={{ fontSize: "var(--type-xs)", fontFamily: "var(--font-mono)", letterSpacing: "var(--tracking-wide)", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: "var(--space-3)" }}>Colors</div>
@@ -240,12 +242,12 @@ function ArtDesignSystem() {
             <div style={{ fontSize: "var(--type-sm)", color: "var(--fg-2)" }}>Body copy at a readable measure.</div>
           </Panel>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-            <StepRow n={1} title="A dozen sharp questions" body="Product, audience, mood references, a hard-NO list — real research grounds every option, not vibes." />
-            <StepRow n={2} title="Pick a direction" body="A small set of moodboard variants, seeded from your answers — pick one and refine it." />
-            <StepRow n={3} title="A complete, tokenized system" body="Colors, type ladder, spacing, motion, and a component library — every value a token, nothing hardcoded." />
+            <StepRow n={1} title="A dozen sharp questions" body="Product, audience, mood references, a hard-NO list: real research grounds every option, not vibes." />
+            <StepRow n={2} title="Pick a direction" body="A small set of moodboard variants, seeded from your answers. Pick one and refine it." />
+            <StepRow n={3} title="A complete, tokenized system" body="Colors, type ladder, spacing, motion, and a component library: every value a token, nothing hardcoded." />
           </div>
         </div>
-        <TryIt>Open the Assistant (<Kbd>⌘⇧A</Kbd>) and type <code>/design:setup-ds</code> — it starts the real interview.</TryIt>
+        <TryIt>Open the Assistant (<Kbd>⌘⇧A</Kbd>) and type <code>/design:setup-ds</code>. It starts the real interview.</TryIt>
       </Body>
     </Board>
   );
@@ -257,7 +259,7 @@ function ArtEditCanvas() {
     <Board>
       <ArtHeader n={3} total={10} eyebrow="Editing" title="Edit a canvas" />
       <Body>
-        <Lede>This isn't a mockup — the button below is a real element on this real artboard. Try the two moves that cover most editing:</Lede>
+        <Lede>This isn't a mockup. The button below is a real element on this real artboard. Try the two moves that cover most editing:</Lede>
         <div style={{ position: "relative", display: "flex", alignItems: "center", gap: "var(--space-7)", padding: "var(--space-4) 0" }}>
           <div
             data-dc-element="try-it-button"
@@ -266,14 +268,14 @@ function ArtEditCanvas() {
             Get started
           </div>
           <div style={{ position: "relative", width: 260, height: 90 }}>
-            <PointAt x={0} y={0} w={130} h={60}>① ⌘-click this button</PointAt>
-            <div style={{ position: "absolute", left: 0, bottom: 0, maxWidth: 250, fontSize: "var(--type-sm)", color: "var(--fg-2)" }}>The Inspector opens (or press <Kbd>⌘⇧I</Kbd>) — try changing its Fill or Radius, or double-click "Get started" to retype it.</div>
+            <PointAt x={0} y={0} w={130} h={60} flip>① ⌘-click this button</PointAt>
+            <div style={{ position: "absolute", left: 0, bottom: 0, maxWidth: 250, fontSize: "var(--type-sm)", color: "var(--fg-2)" }}>The Inspector opens (or press <Kbd>⌘⇧I</Kbd>). Try changing its Fill or Radius, or double-click "Get started" to retype it.</div>
           </div>
         </div>
-        <TryIt><Kbd>⌘</Kbd>-click the button above right now. Then in the Inspector's CSS tab, change its background — this artboard updates live, the same way any canvas does.</TryIt>
+        <TryIt><Kbd>⌘</Kbd>-click the button above right now. Then in the Inspector's CSS tab, change its background. This artboard updates live, the same way any canvas does.</TryIt>
         <CardRow>
-          <FeatureCard icon="pen" title="Inline text edit" body="Double-click any text on the canvas and type — no dialog, no round-trip." />
-          <FeatureCard icon="sliders" title="Bind to a token" body="Drag a color or spacing value onto a design token to bind it — change the token, every use updates." />
+          <FeatureCard icon="pen" title="Inline text edit" body="Double-click any text on the canvas and type. No dialog, no round-trip." />
+          <FeatureCard icon="sliders" title="Bind to a token" body="Drag a color or spacing value onto a design token to bind it. Change the token, every use updates." />
           <FeatureCard icon="layers" title="Drag to reorder" body="Reorder elements right on the canvas, or open Layers (⌘⇧I) to drag them there instead." />
         </CardRow>
       </Body>
@@ -287,7 +289,7 @@ function ArtAiAssistant() {
     <Board>
       <ArtHeader n={4} total={10} eyebrow="Assistant" title="The AI Assistant" />
       <Body>
-        <Lede>The chat panel runs on your own Claude subscription — never a separate key, never metered billing. It sees whatever's open and selected, so short requests work: "make this bigger," not a paragraph of context.</Lede>
+        <Lede>The chat panel runs on your own Claude subscription: never a separate key, never metered billing. It sees whatever's open and selected, so short requests work: "make this bigger," not a paragraph of context.</Lede>
         <div style={{ display: "flex", gap: "var(--space-5)" }}>
           <Panel style={{ width: 320, flexShrink: 0 }}>
             <MiniPanelHd label="ASSISTANT" right={<span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--status-success)" }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--status-success)" }} />Ready</span>} />
@@ -297,12 +299,12 @@ function ArtAiAssistant() {
             </div>
           </Panel>
           <CardRow>
-            <FeatureCard icon="terminal" title="Slash commands" body="Type / for autocomplete — /design:new, /design:edit, /design:critic and more, right in the composer." />
-            <FeatureCard icon="message" title="It remembers" body="Conversations survive a restart — close the laptop, come back tomorrow, keep going mid-thought." />
-            <FeatureCard icon="sparkle" title="Runs on your subscription" body="Install Claude Code once, sign in, and the Assistant just works — no separate API key, ever." />
+            <FeatureCard icon="terminal" title="Slash commands" body="Type / for autocomplete: /design:new, /design:edit, /design:critic and more, right in the composer." />
+            <FeatureCard icon="message" title="It remembers" body="Conversations survive a restart. Close the laptop, come back tomorrow, keep going mid-thought." />
+            <FeatureCard icon="sparkle" title="Runs on your subscription" body="Install Claude Code once, sign in, and the Assistant just works. No separate API key, ever." />
           </CardRow>
         </div>
-        <TryIt>Press <Kbd>⌘⇧A</Kbd> right now to open the Assistant — it's the sparkle icon, top-right of the window.</TryIt>
+        <TryIt>Press <Kbd>⌘⇧A</Kbd> right now to open the Assistant. It's the sparkle icon, top-right of the window.</TryIt>
       </Body>
     </Board>
   );
@@ -314,19 +316,19 @@ function ArtPointCommentDraw() {
     <Board>
       <ArtHeader n={5} total={10} eyebrow="✦ The signature move" title="Point, comment, draw → it acts" />
       <Body>
-        <Lede>You don't have to describe a change in words. The box below is real — try it:</Lede>
+        <Lede>You don't have to describe a change in words. The box below is real. Try it:</Lede>
         <div style={{ position: "relative", display: "flex", alignItems: "center", gap: "var(--space-7)" }}>
           <div data-dc-element="try-it-annotate-target" style={{ width: 160, height: 90, borderRadius: "var(--radius-md)", background: "var(--bg-2)", border: "1px solid var(--accent)" }} />
           <div style={{ position: "relative", width: 260, height: 90 }}>
-            <PointAt x={0} y={0} w={130} h={60}>① ⌘-click this box</PointAt>
+            <PointAt x={0} y={0} w={130} h={60} flip>① ⌘-click this box</PointAt>
             <div style={{ position: "absolute", left: 0, bottom: 0, maxWidth: 250, fontSize: "var(--type-sm)", color: "var(--fg-2)" }}>② right-click it for the annotation menu, or press <Kbd>⌘⇧M</Kbd> to open Comments and drop a pin on it.</div>
           </div>
         </div>
-        <TryIt>Right-click the box above right now — the context menu has highlighter, sticky notes, and freehand drawing. Anything you mark stays attached to that exact spot as context for the Assistant.</TryIt>
+        <TryIt>Right-click the box above right now. The context menu has highlighter, sticky notes, and freehand drawing. Anything you mark stays attached to that exact spot as context for the Assistant.</TryIt>
         <CardRow>
-          <FeatureCard icon="cursor" title="⌘-click to select" body="Hover for a preview, click to select — ⌘⇧+click adds more than one to the selection." />
-          <FeatureCard icon="pin" title="Comment on a pixel" body="Pin a note to an exact spot, not a vague description — the Assistant reads it as scoped context." />
-          <FeatureCard icon="highlighter" title="Draw & annotate" body="Highlighter, sticky notes, shapes and freehand marks — a real whiteboard layer over the canvas." />
+          <FeatureCard icon="cursor" title="⌘-click to select" body="Hover for a preview, click to select. ⌘⇧+click adds more than one to the selection." />
+          <FeatureCard icon="pin" title="Comment on a pixel" body="Pin a note to an exact spot, not a vague description. The Assistant reads it as scoped context." />
+          <FeatureCard icon="highlighter" title="Draw & annotate" body="Highlighter, sticky notes, shapes and freehand marks: a real whiteboard layer over the canvas." />
         </CardRow>
       </Body>
     </Board>
@@ -339,7 +341,7 @@ function ArtGenerateImages() {
     <Board>
       <ArtHeader n={6} total={10} eyebrow="AI media" title="Generate images with your own AI key" />
       <Body>
-        <Lede>Bring your own Google (Nano Banana) key and generate an image right onto the canvas — via <b>⌘K → "Generate with AI"</b>, or just ask in the chat ("generate a hero image of a mountain lake"). The result lands as a normal asset you can place, edit, and re-generate.</Lede>
+        <Lede>Bring your own Google (Nano Banana) key and generate an image right onto the canvas, via <b>⌘K → "Generate with AI"</b>, or just ask in the chat ("generate a hero image of a mountain lake"). The result lands as a normal asset you can place, edit, and re-generate.</Lede>
         <div style={{ display: "flex", gap: "var(--space-5)" }}>
           <Panel style={{ width: 260, height: 150, flexShrink: 0, display: "flex", flexDirection: "column" }}>
             <MiniPanelHd label="GENERATE" right={<Icon name="sparkle" size={13} style={{ color: "var(--accent)" }} />} />
@@ -349,8 +351,8 @@ function ArtGenerateImages() {
           </Panel>
           <CardRow>
             <FeatureCard icon="wand" title="Prompt, or seed from a still" body="A plain-text prompt, or start from an image you already generated so a new shot matches its look." />
-            <FeatureCard icon="pen" title="Ask to edit it again" body="&ldquo;Make the sky purple&rdquo; produces a fresh AI-edited version — iterate the same way you'd iterate on any canvas element." />
-            <FeatureCard icon="sliders" title="Stays on your machine" body="Add your key under File → Settings — AI generation. It's sent straight to the provider, never touches git history." />
+            <FeatureCard icon="pen" title="Ask to edit it again" body="&ldquo;Make the sky purple&rdquo; produces a fresh AI-edited version. Iterate the same way you'd iterate on any canvas element." />
+            <FeatureCard icon="sliders" title="Stays on your machine" body="Add your key under File → Settings → AI generation. It's sent straight to the provider, never touches git history." />
           </CardRow>
         </div>
         <TryIt>Press <Kbd>⌘K</Kbd> right now and pick "Generate with AI…" from the list.</TryIt>
@@ -365,7 +367,7 @@ function ArtPhotoEditing() {
     <Board>
       <ArtHeader n={7} total={10} eyebrow="AI media" title="Photo editing, right on the canvas" />
       <Body>
-        <Lede>Select any photo and open the <b>Photo</b> tab in the Inspector — adjustments, duotone, grain, masking, and one-click background removal. Every edit is non-destructive: the original stays untouched.</Lede>
+        <Lede>Select any photo and open the <b>Photo</b> tab in the Inspector: adjustments, duotone, grain, masking, and one-click background removal. Every edit is non-destructive, the original stays untouched.</Lede>
         <div style={{ display: "flex", gap: "var(--space-5)" }}>
           <Panel style={{ width: 280, flexShrink: 0 }}>
             <MiniPanelHd label="PHOTO" />
@@ -382,9 +384,9 @@ function ArtPhotoEditing() {
             </div>
           </Panel>
           <CardRow>
-            <FeatureCard icon="scissors" title="One-click background removal" body="Runs locally — no upload, no per-image cost." />
-            <FeatureCard icon="drop" title="Duotone, grain, masking" body="Real photo-editing tools, not a filter preset list — every value is a canvas-native property." />
-            <FeatureCard icon="check" title="Non-destructive" body="Adjustments live as metadata next to the asset — revert anytime, the source file never changes." />
+            <FeatureCard icon="scissors" title="One-click background removal" body="Runs locally: no upload, no per-image cost." />
+            <FeatureCard icon="drop" title="Duotone, grain, masking" body="Real photo-editing tools, not a filter preset list. Every value is a canvas-native property." />
+            <FeatureCard icon="check" title="Non-destructive" body="Adjustments live as metadata next to the asset. Revert anytime, the source file never changes." />
           </CardRow>
         </div>
         <TryIt>Drop any photo from Finder onto this canvas, ⌘-click it, then open the Photo tab (<Kbd>⌘⇧I</Kbd>) to try Remove background.</TryIt>
@@ -399,13 +401,13 @@ function ArtMediaTemplates() {
     <Board>
       <ArtHeader n={8} total={10} eyebrow="Assets" title="Drop in media & templates" />
       <Body>
-        <Lede>Drag images, video, or audio straight from Finder onto the canvas — one file or a whole batch. Paste a link to unfurl it. Create or delete a canvas from the file tree without ever touching the filesystem yourself.</Lede>
+        <Lede>Drag images, video, or audio straight from Finder onto the canvas: one file or a whole batch. Paste a link to unfurl it. Create or delete a canvas from the file tree without ever touching the filesystem yourself.</Lede>
         <CardRow>
-          <FeatureCard icon="image" title="Drag & drop, one or many" body="Drop a single photo or select a batch — every file lands, even in a large drop. Video and audio go on the canvas as annotations; photos can drop straight into an artboard." />
-          <FeatureCard icon="arrow-right" title="Paste a link" body="Paste a URL onto the canvas and it unfurls — no manual screenshotting." />
-          <FeatureCard icon="grid" title="Create & delete canvases" body="Right-click the file tree — new canvas, new folder, rename, delete — all without a terminal." />
+          <FeatureCard icon="image" title="Drag & drop, one or many" body="Drop a single photo or select a batch. Every file lands, even in a large drop. Video and audio go on the canvas as annotations; photos can drop straight into an artboard." />
+          <FeatureCard icon="arrow-right" title="Paste a link" body="Paste a URL onto the canvas and it unfurls. No manual screenshotting." />
+          <FeatureCard icon="grid" title="Create & delete canvases" body="Right-click the file tree: new canvas, new folder, rename, delete, all without a terminal." />
         </CardRow>
-        <TryIt>Drag any image file from Finder and drop it right on this artboard, now — it lands as a real asset.</TryIt>
+        <TryIt>Drag any image file from Finder and drop it right on this artboard, now. It lands as a real asset.</TryIt>
       </Body>
     </Board>
   );
@@ -420,12 +422,12 @@ function ArtSaveShareCollab() {
         <Lede>Version control lives in plain words: <b>Save version</b> keeps a checkpoint just for you, <b>Publish</b> shares it with your team, <b>Get latest</b> pulls in everyone else's work. No terminal, no git vocabulary required.</Lede>
         <div style={{ display: "flex", gap: "var(--space-5)" }}>
           <CardRow>
-            <FeatureCard icon="git" title="No-terminal git layer" body="Save version · Publish · Get latest — the same underlying git history, described in plain words." />
-            <FeatureCard icon="users" title="Live multiplayer" body="See your team's cursors moving in real time, on the same branch — changes sync as they happen." />
+            <FeatureCard icon="git" title="No-terminal git layer" body="Save version · Publish · Get latest: the same underlying git history, described in plain words." />
+            <FeatureCard icon="users" title="Live multiplayer" body="See your team's cursors moving in real time, on the same branch. Changes sync as they happen." />
             <FeatureCard icon="play" title="Present Mode" body="Strip the chrome down to just your artboards for a clean walkthrough or a client call." />
           </CardRow>
         </div>
-        <TryIt>Press <Kbd>⌘⇧G</Kbd> right now to open Changes — it tracks everything since your last save, live.</TryIt>
+        <TryIt>Press <Kbd>⌘⇧G</Kbd> right now to open Changes. It tracks everything since your last save, live.</TryIt>
       </Body>
     </Board>
   );
@@ -437,7 +439,7 @@ function ArtDrawAsCode() {
     <Board>
       <ArtHeader n={10} total={10} eyebrow="Vector & motion" title="Draw as code" />
       <Body>
-        <Lede>Ask for a logo, icon, or diagram and it's built by a deterministic geometry engine — real computed vectors, never a guessed path. Animate the result once and ship one file that plays identically on web and native.</Lede>
+        <Lede>Ask for a logo, icon, or diagram and it's built by a deterministic geometry engine: real computed vectors, never a guessed path. Animate the result once and ship one file that plays identically on web and native.</Lede>
         <div style={{ display: "flex", gap: "var(--space-5)" }}>
           <Panel style={{ width: 180, height: 150, flexShrink: 0, display: "grid", placeItems: "center" }}>
             <svg width={72} height={72} viewBox="0 0 32 32" style={{ color: "var(--accent)" }} aria-hidden>
@@ -446,12 +448,12 @@ function ArtDrawAsCode() {
             </svg>
           </Panel>
           <CardRow>
-            <FeatureCard icon="code" title="Computed, not guessed" body="Splines, connectors, and layout math produce the SVG — deterministic and consistent, every time." />
-            <FeatureCard icon="play" title="Animate once" body="Turn a mark into motion and export a single .lottie — frame for frame, web and native in sync." />
+            <FeatureCard icon="code" title="Computed, not guessed" body="Splines, connectors, and layout math produce the SVG. Deterministic and consistent, every time." />
+            <FeatureCard icon="play" title="Animate once" body="Turn a mark into motion and export a single .lottie. Frame for frame, web and native in sync." />
             <FeatureCard icon="check" title="WCAG + grid-checked" body="Every mark clears a legibility, contrast, and grid-alignment gate before it's considered done." />
           </CardRow>
         </div>
-        <TryIt>Open the Assistant (<Kbd>⌘⇧A</Kbd>) and ask it to draw a simple compass icon — watch it build from geometry, not guess a path.</TryIt>
+        <TryIt>Open the Assistant (<Kbd>⌘⇧A</Kbd>) and ask it to draw a simple compass icon. Watch it build from geometry, not guess a path.</TryIt>
       </Body>
     </Board>
   );
