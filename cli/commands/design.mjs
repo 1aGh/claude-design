@@ -47,6 +47,12 @@ const BIN_VERBS = new Set([
   'chat-open',
   'ensure-browser',
   'fetch-asset',
+  // DDR-167 (Phase 3 / T10). `import-asset` is the LOCAL-file sibling of the
+  // URL-only `fetch-asset`: hardened SVG ingestion (allowlist DOM-sanitize +
+  // a real-browser execution canary). PDF import is wired but not yet
+  // available — see the DDR's addendum on why the planned rasterization
+  // mechanism doesn't work under browser automation.
+  'import-asset',
   // feature-photo-editor (Stage G). `photo-adjust` is the thin non-browser
   // parametric verb (curl → /_api/photo-edit). `photo-bg-remove` is the
   // client-side @imgly ML harness (throwaway proof canvas + agent-browser

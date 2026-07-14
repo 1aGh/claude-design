@@ -19,6 +19,7 @@ import {
 import { probeAcpAvailabilityAuthed } from './acp/probe.ts';
 import { deleteChat, listChats, readChatMessages } from './acp/transcript.ts';
 import { type Api, ASSET_MAX_BYTES, ASSET_MAX_VIDEO_BYTES } from './api.ts';
+import { ImportAssetError, importSvg, SVG_MAX_BYTES } from './bin/_import-asset.mjs';
 import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
@@ -2447,6 +2448,75 @@ export function createHttp(
         { path: result.path },
         { status: 201, headers: { 'Cache-Control': 'no-store' } }
       );
+    },
+
+    // DDR-167 (Phase 3 / T10) — hardened LOCAL-file SVG ingestion for the
+    // in-app Brand-upload panel (T12). Privileged + main-origin-only (Decision
+    // 4): absent from CANVAS_SAFE_API + startCanvasServer's routes map — the
+    // untrusted canvas iframe must never reach it. Raw-bytes body only, never
+    // multipart (this dev server has no multipart parsing anywhere). The
+    // `X-Import-Kind` header is a dispatch HINT ONLY — never trusted for the
+    // security-relevant decision; the sanitize pipeline's own pre-parse
+    // structural sniff decides. PDF import is wired but not yet available —
+    // see the DDR's addendum on why the planned rasterization mechanism
+    // (headless-Chromium navigating a file:// PDF) doesn't render content
+    // under browser automation; a `kind: pdf` request 501s naming that.
+    '/_api/import-asset': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const kind = (req.headers.get('x-import-kind') || 'svg').toLowerCase();
+      if (kind !== 'svg') {
+        return Response.json(
+          {
+            ok: false,
+            error: 'PDF import is not yet available (DDR-167 addendum) — only SVG import is wired.',
+          },
+          { status: 501, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      const declared = Number(req.headers.get('content-length') || '0');
+      if (Number.isFinite(declared) && declared > SVG_MAX_BYTES) {
+        return Response.json(
+          { ok: false, error: `SVG exceeds the ${SVG_MAX_BYTES / (1024 * 1024)} MB cap` },
+          { status: 413, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      if (!req.body) return new Response('empty body', { status: 400 });
+      let svgText: string;
+      try {
+        svgText = await new Response(req.body).text();
+      } catch {
+        return new Response('could not read body', { status: 400 });
+      }
+      try {
+        const result = await importSvg(svgText, {
+          root: ctx.paths.repoRoot,
+          designRootRel: ctx.paths.designRel,
+        });
+        return Response.json(
+          { ok: true, path: result.path },
+          { status: 201, headers: { 'Cache-Control': 'no-store' } }
+        );
+      } catch (err) {
+        const status =
+          err instanceof ImportAssetError
+            ? err.code === 3
+              ? 400
+              : err.code === 5
+                ? 415
+                : err.code === 6
+                  ? 500
+                  : 400
+            : 500;
+        const message = err instanceof Error ? err.message : String(err);
+        return Response.json(
+          { ok: false, error: message },
+          { status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
     },
 
     '/_api/export-history': async (req: Request) => {

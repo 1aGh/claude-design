@@ -202,6 +202,12 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // design-system/first-canvas/brand-assets progress) is a shell/onboarding
         // concern, same posture as /_api/preflight above; MAIN-ORIGIN ONLY.
         '/_api/setup-readiness',
+        // DDR-167 (Phase 3 / T10) — local-file SVG/PDF ingestion is a
+        // file-write + local-file-adjacent surface (Decision 4); MAIN-ORIGIN
+        // ONLY, same posture as /_api/asset's containment but privileged
+        // rather than canvas-reachable — the untrusted canvas iframe must
+        // never drive an import.
+        '/_api/import-asset',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);
