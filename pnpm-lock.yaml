@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  css-tree@2.2.1: d7ade280e46ef98d2a7c67c34f95a422637548d5a256b8aa821eb8a87da3bcc8
+  css-tree@3.2.1: b0910edadd5e6c5e6be4a9d0abcd4f602a6c475891634c062bd1763be0734cae
+  csso@5.0.5: d391293732e32b2a379f64e0daca19f87b4f888f29783e7f7794735138b0001c
+
 importers:
 
   .:
@@ -9703,12 +9708,12 @@ snapshots:
 
   css-shorthand-properties@1.1.2: {}
 
-  css-tree@2.2.1:
+  css-tree@2.2.1(patch_hash=d7ade280e46ef98d2a7c67c34f95a422637548d5a256b8aa821eb8a87da3bcc8):
     dependencies:
       mdn-data: 2.0.28
       source-map-js: 1.2.1
 
-  css-tree@3.2.1:
+  css-tree@3.2.1(patch_hash=b0910edadd5e6c5e6be4a9d0abcd4f602a6c475891634c062bd1763be0734cae):
     dependencies:
       mdn-data: 2.27.1
       source-map-js: 1.2.1
@@ -9717,9 +9722,9 @@ snapshots:
 
   css-what@6.2.2: {}
 
-  csso@5.0.5:
+  csso@5.0.5(patch_hash=d391293732e32b2a379f64e0daca19f87b4f888f29783e7f7794735138b0001c):
     dependencies:
-      css-tree: 2.2.1
+      css-tree: 2.2.1(patch_hash=d7ade280e46ef98d2a7c67c34f95a422637548d5a256b8aa821eb8a87da3bcc8)
 
   csstype@3.2.3: {}
 
@@ -12666,9 +12671,9 @@ snapshots:
     dependencies:
       commander: 11.1.0
       css-select: 5.2.2
-      css-tree: 3.2.1
+      css-tree: 3.2.1(patch_hash=b0910edadd5e6c5e6be4a9d0abcd4f602a6c475891634c062bd1763be0734cae)
       css-what: 6.2.2
-      csso: 5.0.5
+      csso: 5.0.5(patch_hash=d391293732e32b2a379f64e0daca19f87b4f888f29783e7f7794735138b0001c)
       picocolors: 1.1.1
       sax: 1.6.0
 

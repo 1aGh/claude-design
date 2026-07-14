@@ -1,0 +1,53 @@
+diff --git a/lib/data-patch.js b/lib/data-patch.js
+index cd49cbec3e7de20dea750e95e007dbdb1488ac96..9d776a635b3b09d439857719c465a114e5736cf1 100644
+--- a/lib/data-patch.js
++++ b/lib/data-patch.js
+@@ -1,6 +1,9 @@
+-import { createRequire } from 'module';
+-
+-const require = createRequire(import.meta.url);
+-const patch = require('../data/patch.json');
++// Patched (bun --compile compat): the original createRequire(import.meta.url)
++// + require('../data/patch.json') pattern isn't statically analyzable by
++// bun's bundler, so it isn't embedded — the compiled standalone binary then
++// tries to resolve the relative path against its virtual /$bunfs/root at
++// runtime and fails ("Cannot find module '../data/patch.json'"). A static
++// JSON import assertion is bundler-inlinable and has no runtime file lookup.
++import patch from '../data/patch.json' with { type: 'json' };
+ 
+ export default patch;
+diff --git a/lib/data.js b/lib/data.js
+index 2d7eb5aa7ec8c707172962746b885f0b2365c7a5..c195714463c375a897a1f67423e4e72084379d30 100755
+--- a/lib/data.js
++++ b/lib/data.js
+@@ -1,10 +1,10 @@
+-import { createRequire } from 'module';
++// Patched (bun --compile compat): see data-patch.js for why createRequire +
++// require('*.json') breaks inside a compiled standalone binary. Static JSON
++// import assertions are bundler-inlinable and need no runtime file lookup.
+ import patch from './data-patch.js';
+-
+-const require = createRequire(import.meta.url);
+-const mdnAtrules = require('mdn-data/css/at-rules.json');
+-const mdnProperties = require('mdn-data/css/properties.json');
+-const mdnSyntaxes = require('mdn-data/css/syntaxes.json');
++import mdnAtrules from 'mdn-data/css/at-rules.json' with { type: 'json' };
++import mdnProperties from 'mdn-data/css/properties.json' with { type: 'json' };
++import mdnSyntaxes from 'mdn-data/css/syntaxes.json' with { type: 'json' };
+ 
+ const extendSyntax = /^\s*\|\s*/;
+ 
+diff --git a/lib/version.js b/lib/version.js
+index dde3a83f43883ecbad6ca0a23afb58c12235148a..865ecd73606a581661eb6ca8c6eca7ea0705c1e0 100644
+--- a/lib/version.js
++++ b/lib/version.js
+@@ -1,5 +1,5 @@
+-import { createRequire } from 'module';
++// Patched (bun --compile compat): see data-patch.js for why createRequire +
++// require('*.json') breaks inside a compiled standalone binary.
++import { version } from '../package.json' with { type: 'json' };
+ 
+-const require = createRequire(import.meta.url);
+-
+-export const { version } = require('../package.json');
++export { version };

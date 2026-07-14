@@ -42,3 +42,7 @@ allowBuilds:
   # run only on demonstrated need, e.g. better-sqlite3's real native compile).
   protobufjs: false
   sharp: true
+patchedDependencies:
+  css-tree@2.2.1: patches/css-tree@2.2.1.patch
+  css-tree@3.2.1: patches/css-tree@3.2.1.patch
+  csso@5.0.5: patches/csso@5.0.5.patch

@@ -1188,6 +1188,14 @@ async function main() {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// import.meta.main is the reliable "am I the entry module?" flag under bun
+// --compile — the argv/url compare below falsely matches inside a standalone
+// binary (every bundled module's import.meta.url collapses to the binary's
+// own path), which would hijack the process before Bun.serve ever runs (the
+// v0.38.0 "Starting…" hang class of bug). Fall back to the argv compare only
+// for the plain-`node` CLI path (Node <24 leaves import.meta.main undefined).
+const runDirectly =
+  import.meta.main ?? (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href);
+if (runDirectly) {
   main();
 }

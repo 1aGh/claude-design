@@ -1,0 +1,17 @@
+diff --git a/lib/version.js b/lib/version.js
+index dde3a83f43883ecbad6ca0a23afb58c12235148a..99b41d95885404fb50449f50e9271c7dda439e89 100644
+--- a/lib/version.js
++++ b/lib/version.js
+@@ -1,5 +1,8 @@
+-import { createRequire } from 'module';
++// Patched (bun --compile compat): the original createRequire(import.meta.url)
++// + require('*.json') pattern isn't statically analyzable by bun's bundler,
++// so it isn't embedded — the compiled standalone binary then tries to
++// resolve the relative path against its virtual /$bunfs/root at runtime and
++// fails. A static JSON import assertion is bundler-inlinable instead.
++import { version } from '../package.json' with { type: 'json' };
+ 
+-const require = createRequire(import.meta.url);
+-
+-export const { version } = require('../package.json');
++export { version };
