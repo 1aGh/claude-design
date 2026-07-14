@@ -27,6 +27,38 @@ import GenerateDialog from './generate-dialog.jsx';
 import RepoBranchSwitcher from './panels/RepoBranchSwitcher.jsx';
 import SettingsPanel from './panels/SettingsPanel.jsx';
 import StickerPicker from './panels/StickerPicker.jsx';
+import { AngleDial, ColorField, IconButtonGroup, IconToggleGroup, makeScrubHandler, NumberField, RadiusControl, Segmented, SliderField, Toggle, UnitSelect, ValueTokenField } from './inspector-controls.jsx';
+import {
+  ALargeSmall as LuALargeSmall,
+  AlignCenter as LuAlignCenter,
+  AlignHorizontalJustifyCenter as LuJustifyCenter,
+  AlignHorizontalJustifyEnd as LuJustifyEnd,
+  AlignHorizontalJustifyStart as LuJustifyStart,
+  AlignHorizontalSpaceBetween as LuSpaceBetween,
+  AlignJustify as LuAlignJustify,
+  AlignLeft as LuAlignLeft,
+  AlignRight as LuAlignRight,
+  AlignVerticalJustifyCenter as LuVJustifyCenter,
+  AlignVerticalJustifyEnd as LuVJustifyEnd,
+  AlignVerticalJustifyStart as LuVJustifyStart,
+  Baseline as LuBaseline,
+  Bold as LuBold,
+  Columns3 as LuColumns3,
+  Eye as LuEye,
+  Italic as LuItalic,
+  Minus as LuMinus,
+  MoveHorizontal as LuMoveH,
+  RotateCw as LuRotateCw,
+  Rows3 as LuRows3,
+  Scissors as LuScissors,
+  ScrollText as LuScrollText,
+  Spline as LuSpline,
+  StretchHorizontal as LuStretch,
+  Underline as LuUnderline,
+} from 'lucide-react';
+
+// lucide wrapper — hairline stroke to match the shell's icon weight (handoff).
+const Lu = ({ as: C, size = 14 }) => <C size={size} strokeWidth={1.75} style={{ display: 'block' }} />;
 import { PhotoKnobs } from './photo-knobs.jsx';
 import {
   appIsFirstRun,
@@ -4076,16 +4108,15 @@ const CSS_UNITLESS = new Set(['line-height', 'opacity', 'font-weight', 'z-index'
 // #2 — Figma-style property prefix inside numeric fields: a small glyph (icon) or
 // a mono letter (t). Only where it reads cleanly; selects/colours keep their own.
 const PROP_LEAD = {
-  'font-size': { icon: 'p-size' },
-  'line-height': { icon: 'p-lineheight' },
-  'letter-spacing': { icon: 'p-letterspacing' },
-  gap: { icon: 'p-gap' },
+  'font-size': { node: <Lu as={LuALargeSmall} size={12} /> },
+  'line-height': { node: <Lu as={LuBaseline} size={12} /> },
+  'letter-spacing': { node: <Lu as={LuMoveH} size={12} /> },
+  gap: { node: <Lu as={LuSpaceBetween} size={12} /> },
   width: { t: 'W' },
   height: { t: 'H' },
   'max-width': { t: 'W' },
-  'border-radius': { icon: 'p-corner' },
-  'border-width': { icon: 'p-border' },
-  opacity: { icon: 'p-opacity' },
+  'border-radius': { node: <Lu as={LuSpline} size={12} /> },
+  'border-width': { node: <Lu as={LuMinus} size={12} /> },
 };
 const CSS_ALIGN_OPTS = ['left', 'center', 'right', 'justify'];
 // feature-element-editing-robustness Stage B — enum option lists for the promoted
@@ -4415,8 +4446,35 @@ function ColorPicker({ seed, label, onApply }) {
     }
   };
 
+  // handoff — RGB numeric fields (design parity). Editing one re-derives hsv.
+  const rgb = hsvToRgb(hsv);
+  const setRgb = (patch) => {
+    const next = { ...rgb, ...patch };
+    const h = rgbToHsv({ r: clamp01(next.r / 255) * 255, g: clamp01(next.g / 255) * 255, b: clamp01(next.b / 255) * 255 });
+    setHsv(h);
+    onApply(rgbToHex(hsvToRgb(h)));
+  };
   return (
     <div className="st-cp-cpick">
+      {/* hex + swatch on top (design), then the SV pad, controls, RGB */}
+      <div className="st-cp-cpick-hexrow">
+        <span className="st-cp-cpick-hexsw" style={{ background: hex }} />
+        <input
+          className="st-cp-cpick-hex"
+          type="text"
+          value={hex}
+          aria-label={label ? `${label} hex value` : 'hex value'}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (/^#?[0-9a-f]{6}$/i.test(v)) setHsv(rgbToHsv(hexToRgb(v)));
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onApply(e.currentTarget.value);
+          }}
+          onBlur={(e) => onApply(e.currentTarget.value)}
+          onFocus={(e) => e.currentTarget.select()}
+        />
+      </div>
       <button
         type="button"
         ref={svRef}
@@ -4445,6 +4503,7 @@ function ColorPicker({ seed, label, onApply }) {
             <StIcon name="eyedropper" size={14} />
           </button>
         ) : null}
+        <span className="st-cp-cpick-preview" style={{ background: hex }} aria-hidden="true" />
         <button
           type="button"
           ref={hueRef}
@@ -4456,20 +4515,19 @@ function ColorPicker({ seed, label, onApply }) {
           <span className="st-cp-cpick-huethumb" style={{ left: `${(hsv.h / 360) * 100}%` }} />
         </button>
       </div>
-      <input
-        className="st-cp-fin"
-        type="text"
-        value={hex}
-        aria-label={label ? `${label} hex value` : 'hex value'}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (/^#?[0-9a-f]{6}$/i.test(v)) setHsv(rgbToHsv(hexToRgb(v)));
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') onApply(e.currentTarget.value);
-        }}
-        onBlur={(e) => onApply(e.currentTarget.value)}
-      />
+      <div className="st-cp-cpick-rgb">
+        {['r', 'g', 'b'].map((k) => (
+          <label key={k} className="st-cp-cpick-rgbf">
+            <input
+              aria-label={k.toUpperCase()}
+              value={Math.round(rgb[k])}
+              onChange={(e) => setRgb({ [k]: clamp01((Number.parseFloat(e.target.value) || 0) / 255) * 255 })}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <span>{k.toUpperCase()}</span>
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
@@ -4479,7 +4537,7 @@ function ColorPicker({ seed, label, onApply }) {
 // `kind='value'` a variable list (pretty name + resolved value, à la Figma's
 // variable picker). Picking commits `var(--token)`. Portals to <body> +
 // fixed-positions from the trigger rect so the panel's overflow never clips it.
-function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex, activeDs }) {
+function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex, activeDs, swatchClassName }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   // Phase 12.3 (#4) — colour popover gets two tabs: a normal colour input
@@ -4535,25 +4593,47 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex,
     const onKey = (e) => {
       if (e.key === 'Escape') setOpen(false);
     };
-    const dismiss = () => setOpen(false);
-    // The popover is fixed-positioned from the trigger rect, so a scroll of the
-    // PANEL detaches it → dismiss. But scrolling INSIDE the popover (its own
-    // overflow list) must NOT close it (the user couldn't scroll the variables).
+    // Task 6 (feature-inspector-controls-redesign) — RE-ANCHOR on scroll/resize
+    // instead of dismissing. `place()` computes viewport-relative coordinates
+    // from `getBoundingClientRect()`, but this fixed-positioned popover's actual
+    // containing block is whichever ANCESTOR (if any) has a transform/filter/
+    // will-change — e.g. the right panel's mount-in `st-panel-in` transform —
+    // not necessarily the viewport. Re-running place() keeps it glued to the
+    // trigger through any layout change instead of vanishing on the first
+    // scroll (the old dismiss-on-scroll workaround for the same root cause).
     const onScroll = (e) => {
       if (popRef.current?.contains(e.target)) return;
-      setOpen(false);
+      place();
     };
     document.addEventListener('pointerdown', onDoc, true);
     document.addEventListener('keydown', onKey);
-    window.addEventListener('resize', dismiss);
+    window.addEventListener('resize', place);
     document.addEventListener('scroll', onScroll, true);
     return () => {
       document.removeEventListener('pointerdown', onDoc, true);
       document.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', dismiss);
+      window.removeEventListener('resize', place);
       document.removeEventListener('scroll', onScroll, true);
     };
   }, [open]);
+
+  // Transform-ancestor compensation — regardless of WHICH ancestor ends up
+  // establishing this fixed popover's containing block, measure where it
+  // actually landed vs where `place()` intended (viewport-relative) and cancel
+  // out the delta. This is correct independent of the cause, so it doesn't
+  // require hunting down every transform/filter/will-change that could ever
+  // apply between `document.body` (the portal target) and this element.
+  // Converges in at most one correction: once the delta is compensated, the
+  // measured rect matches the intended position and the effect is a no-op.
+  useEffect(() => {
+    if (!open || !pos || !popRef.current) return;
+    const r = popRef.current.getBoundingClientRect();
+    const dx = pos.left - r.left;
+    const dy = pos.top - r.top;
+    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+      setPos((p) => (p ? { ...p, left: p.left + dx, top: p.top + dy } : p));
+    }
+  }, [open, pos]);
 
   // Pick a token. #3 — apply CORRECTLY across design systems: a token from the
   // canvas's OWN active DS commits `var(--token)` (round-trips + resolves right);
@@ -4652,7 +4732,7 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex,
         <button
           type="button"
           ref={btnRef}
-          className={`st-cp-swatch st-cp-swatch--mini st-cp-swatch--trigger${bound ? ' is-bound' : ''}`}
+          className={`${swatchClassName || 'st-cp-swatch st-cp-swatch--mini st-cp-swatch--trigger'}${bound && !swatchClassName ? ' is-bound' : ''}`}
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-label={label || 'pick a colour'}
@@ -4798,7 +4878,6 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
     Appearance: true,
     Advanced: false,
   });
-  const [split, setSplit] = useState(false);
 
   // Phase 12.3 — auto-expand Advanced when the selected element carries custom
   // CSS props / HTML attrs, so a just-added (or pre-existing) custom value is
@@ -4926,27 +5005,19 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
   const sizeModeSeg = (axis) => {
     const cur = sizingModeOf(axis, authored, computed, parentLayout);
     return (
-      <div className="st-cp-modeseg" role="group" aria-label={`${axis} sizing mode`}>
-        <span className="st-cp-modeax" aria-hidden="true">
-          {axis === 'width' ? 'W' : 'H'}
-        </span>
-        {[
-          ['fixed', 'Fixed'],
-          ['hug', 'Hug'],
-          ['fill', 'Fill'],
-        ].map(([m, label]) => (
-          <button
-            key={m}
-            type="button"
-            className={`st-cp-modebtn${cur === m ? ' is-active' : ''}`}
-            aria-pressed={cur === m}
-            disabled={!editable}
-            onClick={() => applySizing(axis, m)}
-            title={`${label} ${axis}`}
-          >
-            {label}
-          </button>
-        ))}
+      // handoff — a proper inspector row: "Width sizing" / "Height sizing" label
+      // in the label column, the shared Segmented right-aligned in the control
+      // column (aligned with the number inputs below), input-matching height.
+      <div className="st-cp-moderow" key={`mode-${axis}`}>
+        <span className="st-cp-modelabel">{axis === 'width' ? 'Width sizing' : 'Height sizing'}</span>
+        <div className="st-cp-modeseg" role="group" aria-label={`${axis} sizing mode`}>
+          <Segmented
+            value={cur}
+            ariaLabel={`${axis} sizing`}
+            options={[{ value: 'fixed', label: 'fixed' }, { value: 'hug', label: 'hug' }, { value: 'fill', label: 'fill' }]}
+            onChange={(m) => applySizing(axis, m)}
+          />
+        </div>
       </div>
     );
   };
@@ -4964,69 +5035,6 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
       e.preventDefault();
       onUndoRedo?.('redo');
     }
-  };
-  // Phase 12.3 (W2.2) — Figma/Webflow scrub: drag a number field horizontally to
-  // change its value. Live preview via optimistic apply on every move (no source
-  // write); commits ONCE on release. A pointer that doesn't pass a 3px threshold
-  // is a normal click (focus to type). `opts.step` modifiers: shift = ×10, alt =
-  // ×0.1. `opts.sides` enables Webflow box-model modifiers: alt = symmetric pair,
-  // alt+shift = all four (else just this side). `opts.min` clamps (default 0).
-  const makeScrub = (prop, opts = {}) => (e) => {
-    if (e.button !== 0) return;
-    const input = e.currentTarget;
-    const startX = e.clientX;
-    const baseN =
-      Number.parseFloat(
-        cssSplitUnit(authored[prop] ?? cssHint(computed[prop]) ?? '0').n || '0'
-      ) || 0;
-    const unit = opts.unitless
-      ? ''
-      : opts.unit || cssSplitUnit(authored[prop] ?? '').unit || 'px';
-    const min = opts.min ?? 0;
-    const fmt = (n) => (opts.unitless ? `${n}` : `${n}${unit}`);
-    const sidesFor = (ev) => {
-      if (!opts.sides) return [prop];
-      if (ev.altKey && ev.shiftKey) return opts.sides.all;
-      if (ev.altKey) return opts.sides.pair;
-      return [prop];
-    };
-    let scrubbing = false;
-    let last = baseN;
-    const move = (ev) => {
-      const dx = ev.clientX - startX;
-      if (!scrubbing && Math.abs(dx) < 3) return;
-      if (!scrubbing) {
-        scrubbing = true;
-        document.body.classList.add('st-scrubbing');
-      }
-      ev.preventDefault();
-      const granular = opts.sides ? 1 : ev.shiftKey ? 10 : ev.altKey ? 0.1 : 1;
-      last = Math.round((baseN + dx * granular) * 100) / 100;
-      if (last < min) last = min;
-      const sides = sidesFor(ev);
-      // Live-update the dragged field AND, for a box-model multi-side scrub, the
-      // sibling box inputs so the whole pair / four-up move shows in the panel —
-      // not just the one being dragged (W2.2 feedback).
-      if (input) input.value = String(last);
-      if (opts.sides && sides.length > 1) {
-        const box = input?.closest('.st-cp-box');
-        for (const p of sides) {
-          if (p === prop) continue;
-          const sib = box?.querySelector(`.st-cp-boxv[aria-label="${p}"]`);
-          if (sib) sib.value = String(last);
-        }
-      }
-      for (const p of sides) optimistic(p, fmt(last));
-    };
-    const up = (ev) => {
-      document.removeEventListener('pointermove', move);
-      document.removeEventListener('pointerup', up);
-      if (!scrubbing) return;
-      document.body.classList.remove('st-scrubbing');
-      for (const p of sidesFor(ev)) commit(p, fmt(last));
-    };
-    document.addEventListener('pointermove', move);
-    document.addEventListener('pointerup', up);
   };
   const provOf = (prop) => {
     const v = authored[prop];
@@ -5188,19 +5196,23 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
             </span>
             {name}
           </button>
-          {dirty ? (
-            <button
-              type="button"
-              className="st-cp-secreset"
-              aria-label={`reset ${name} section to original`}
-              title={`reset ${name}`}
-              onClick={() => resetSection(name)}
-            >
-              ⟲
-            </button>
-          ) : null}
+          {/* handoff — reset always present (design), dimmed when nothing to reset. */}
+          <button
+            type="button"
+            className={`st-cp-secreset${dirty ? '' : ' is-quiet'}`}
+            aria-label={`reset ${name} section to original`}
+            title={`reset ${name}`}
+            disabled={!dirty}
+            onClick={() => resetSection(name)}
+          >
+            <Lu as={LuRotateCw} size={12} />
+          </button>
         </div>
-        {open[name] ? body : null}
+        {/* animated collapse — grid-rows 0fr→1fr keeps the DOM + interpolates
+            height (feature-inspector-controls-redesign handoff). */}
+        <div className={`st-cp-sec-anim${open[name] ? ' is-open' : ''}`}>
+          <div className="st-cp-sec-inner">{body}</div>
+        </div>
       </section>
     );
   };
@@ -5224,6 +5236,95 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
     </select>
   );
 
+  // ── feature-inspector-controls-redesign handoff — the design's control set,
+  // wired to CssKnobs' CSS-string commit lane. ────────────────────────────────
+  const flatTokens = (familyKey) => tokenGroups(familyKey).flatMap((g) => (g.names || []).map((n) => ({ name: n, value: g.vals?.[n] || '' })));
+  // enum → lucide icon button group (commits the raw CSS keyword)
+  const iconseg = (prop, options) => (
+    <IconButtonGroup value={authored[prop] || cssHint(computed[prop]) || options[0].value} ariaLabel={prop} options={options} onChange={(v) => commit(prop, v)} />
+  );
+  // number + unit + ◇ design-token binding (space / radius / type families)
+  const vtok = (prop, familyKey, opts = {}) => {
+    const cur = cssSplitUnit(authored[prop] ?? '');
+    const unitless = CSS_UNITLESS.has(prop);
+    const av = authored[prop] ?? '';
+    const bound = typeof av === 'string' && /var\(\s*--/.test(av);
+    const unit = unitless ? '' : cur.unit && cur.unit !== 'auto' ? cur.unit : 'px';
+    const hintN = Number.parseFloat(cssSplitUnit(cssHint(computed[prop]) ?? '').n) || 0;
+    const numVal = cur.n !== '' && cur.n != null ? Number.parseFloat(cur.n) || 0 : hintN;
+    const lead = PROP_LEAD[prop];
+    return (
+      <ValueTokenField
+        value={bound ? av : numVal}
+        tokens={flatTokens(familyKey)}
+        ariaLabel={prop}
+        min={opts.min ?? 0}
+        lead={lead ? (lead.node ?? lead.t) : undefined}
+        unitSlot={unitless ? null : <UnitSelect units={CSS_UNITS} value={cur.unit || 'px'} ariaLabel={`${prop} unit`} onChange={(u) => commit(prop, u === 'auto' ? 'auto' : `${cur.n || '0'}${u}`)} />}
+        onChange={(v) => commit(prop, typeof v === 'string' ? v : unitless ? `${v}` : `${v}${unit}`)}
+      />
+    );
+  };
+  // border-radius → uniform field + ▢ detach → 2×2 corner quad
+  const radiusControl = () => {
+    const parse = (p) => Number.parseFloat(cssSplitUnit(authored[p] ?? authored['border-radius'] ?? cssHint(computed[p]) ?? cssHint(computed['border-radius']) ?? '0').n) || 0;
+    const corners = { tl: parse('border-top-left-radius'), tr: parse('border-top-right-radius'), bl: parse('border-bottom-left-radius'), br: parse('border-bottom-right-radius') };
+    const onCorners = (c) => {
+      const uniform = c.tl === c.tr && c.tr === c.bl && c.bl === c.br;
+      if (uniform) {
+        ['border-top-left-radius', 'border-top-right-radius', 'border-bottom-left-radius', 'border-bottom-right-radius'].forEach((p) => { if (authored[p]) reset(p); });
+        commit('border-radius', `${c.tl}px`);
+      } else {
+        commit('border-top-left-radius', `${c.tl}px`);
+        commit('border-top-right-radius', `${c.tr}px`);
+        commit('border-bottom-left-radius', `${c.bl}px`);
+        commit('border-bottom-right-radius', `${c.br}px`);
+      }
+    };
+    const lead = PROP_LEAD['border-radius'];
+    return <RadiusControl corners={corners} lead={lead ? (lead.node ?? lead.t) : undefined} onCorners={onCorners} />;
+  };
+  // rotation dial, reading/writing the rotate() term of `transform`
+  const rotationControl = () => {
+    const t = authored.transform || cssHint(computed.transform) || '';
+    const m = /rotate\(\s*(-?\d+(?:\.\d+)?)deg\s*\)/.exec(t);
+    const deg = (((m ? Number.parseFloat(m[1]) : 0) % 360) + 360) % 360;
+    const setDeg = (d) => {
+      const norm = ((d % 360) + 360) % 360;
+      const base = (authored.transform || '').replace(/\s*rotate\([^)]*\)\s*/g, ' ').trim();
+      commit('transform', `${base ? `${base} ` : ''}rotate(${norm}deg)`.trim());
+    };
+    return (
+      <div className="st-cp-num" style={{ border: 0, background: 'transparent', gap: 'var(--space-2)' }}>
+        <AngleDial value={deg} onChange={setDeg} />
+        <NumberField value={deg} min={0} max={360} ariaLabel="rotation" lead={<Lu as={LuRotateCw} />} steppers={false} unitSlot={<span className="st-cp-numsuffix" aria-hidden="true">°</span>} onCommit={setDeg} />
+      </div>
+    );
+  };
+  // B / I / U quick-style toggle group → font-weight / font-style / text-decoration
+  const textStyleToggle = () => {
+    const isBold = Number.parseInt(authored['font-weight'] || cssHint(computed['font-weight']) || '400', 10) >= 600;
+    const isItalic = (authored['font-style'] || cssHint(computed['font-style'])) === 'italic';
+    const isUnder = /underline/.test(authored['text-decoration'] || cssHint(computed['text-decoration']) || '');
+    return (
+      <IconToggleGroup
+        value={{ b: isBold, i: isItalic, u: isUnder }}
+        ariaLabel="text style"
+        options={[{ value: 'b', node: <Lu as={LuBold} />, label: 'Bold' }, { value: 'i', node: <Lu as={LuItalic} />, label: 'Italic' }, { value: 'u', node: <Lu as={LuUnderline} />, label: 'Underline' }]}
+        onToggle={(k) => {
+          if (k === 'b') commit('font-weight', isBold ? '400' : '700');
+          else if (k === 'i') commit('font-style', isItalic ? 'normal' : 'italic');
+          else commit('text-decoration', isUnder ? 'none' : 'underline');
+        }}
+      />
+    );
+  };
+  const DIR_OPTS = [{ value: 'row', node: <Lu as={LuColumns3} />, label: 'Row' }, { value: 'column', node: <Lu as={LuRows3} />, label: 'Column' }];
+  const JUSTIFY_OPTS = [{ value: 'flex-start', node: <Lu as={LuJustifyStart} />, label: 'Start' }, { value: 'center', node: <Lu as={LuJustifyCenter} />, label: 'Center' }, { value: 'flex-end', node: <Lu as={LuJustifyEnd} />, label: 'End' }, { value: 'space-between', node: <Lu as={LuSpaceBetween} />, label: 'Space between' }];
+  const ALIGNITEMS_OPTS = [{ value: 'flex-start', node: <Lu as={LuVJustifyStart} />, label: 'Start' }, { value: 'center', node: <Lu as={LuVJustifyCenter} />, label: 'Center' }, { value: 'flex-end', node: <Lu as={LuVJustifyEnd} />, label: 'End' }, { value: 'stretch', node: <Lu as={LuStretch} />, label: 'Stretch' }];
+  const TEXTALIGN_OPTS = [{ value: 'left', node: <Lu as={LuAlignLeft} />, label: 'Left' }, { value: 'center', node: <Lu as={LuAlignCenter} />, label: 'Center' }, { value: 'right', node: <Lu as={LuAlignRight} />, label: 'Right' }, { value: 'justify', node: <Lu as={LuAlignJustify} />, label: 'Justify' }];
+  const OVERFLOW_OPTS = [{ value: 'visible', node: <Lu as={LuEye} />, label: 'Visible' }, { value: 'hidden', node: <Lu as={LuScissors} />, label: 'Hidden' }, { value: 'scroll', node: <Lu as={LuScrollText} />, label: 'Scroll' }];
+
   // token quick-pick — Figma-style POPOVER (W2.1) listing the DS variables for
   // this property (name + resolved value), grouped per design system (W3);
   // picking writes var(--token). `familyKey` selects the token family.
@@ -5241,6 +5342,31 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
     ) : null;
   };
 
+  // Select-all-on-focus (deferred past the browser's own click-caret placement
+  // so a SECOND click, already focused, places the caret instead) — the
+  // interaction-model rule applied to the CssKnobs fields that stay bespoke
+  // <input>s (free text, box-model cells) rather than the shared NumberField.
+  const selectAllOnFocus = (e) => {
+    const el = e.currentTarget;
+    requestAnimationFrame(() => {
+      if (document.activeElement === el) el.select();
+    });
+  };
+  // Arrow-key stepping (±1, Shift ×10) for the bespoke box-model cells — same
+  // keyboard model NumberField gives the main fields, hand-rolled here because
+  // these stay compact <input>s (no room for NumberField's handle+stepper
+  // chrome in a 36×24 box-model cell). Returns true if it handled the key.
+  const stepBoxInput = (e, commitFn) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return false;
+    e.preventDefault();
+    const mult = e.shiftKey ? 10 : 1;
+    const dir = e.key === 'ArrowUp' ? 1 : -1;
+    const n = (Number.parseFloat(e.currentTarget.value) || 0) + dir * mult;
+    e.currentTarget.value = String(n);
+    commitFn(n);
+    return true;
+  };
+
   // free text input — raw value or var(--token), commits on blur/Enter
   const text = (prop) => (
     <input
@@ -5249,6 +5375,7 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
       aria-label={prop}
       defaultValue={authored[prop] ?? ''}
       placeholder={cssHint(computed[prop]) || '—'}
+      onFocus={selectAllOnFocus}
       onKeyDown={(e) => {
         if (e.key === 'Enter') e.currentTarget.blur();
       }}
@@ -5256,79 +5383,46 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
     />
   );
 
-  // number + steppers + unit-select (+ optional token quick-pick after)
+  // number + steppers + unit-select (+ optional token quick-pick after) — built
+  // on the shared NumberField (feature-inspector-controls-redesign): the drag
+  // handle moves to the leading icon/grip (never the input body, so click-to-
+  // type + select-all-on-focus work), and arrow-key stepping comes for free.
   const num = (prop, tokenList, opts = {}) => {
     const cur = cssSplitUnit(authored[prop] ?? '');
     // Unitless CSS properties — a bare number must commit WITHOUT a unit suffix
     // (line-height: 1.5px ≠ 1.5 — knob-smoke finding, 2026-06-12).
     const unitless = CSS_UNITLESS.has(prop);
-    const unit = unitless ? '' : cur.unit && cur.unit !== 'auto' ? cur.unit : 'px';
-    const bump = (d) => {
-      const base = Number.parseFloat(cur.n || cssHint(computed[prop]) || '0') || 0;
-      commit(prop, `${Math.round((base + d) * 100) / 100}${unit}`);
-    };
+    // `opts.fixedUnit` — a px-only field (border-width) skips the unit <select>
+    // entirely so the compact border-cluster row (width + style + swatch) has
+    // room to fit at the panel's 260-304px widths (Task 5 overflow fix).
+    const unit = unitless ? '' : opts.fixedUnit || (cur.unit && cur.unit !== 'auto' ? cur.unit : 'px');
     const lead = PROP_LEAD[prop];
+    // Unset (no authored value) shows the computed/inherited value as the
+    // starting number — same value the old placeholder hinted at; the row's own
+    // dimming (`row()`'s `is-unset`) is what signals "inherited", not this field.
+    const hintN = Number.parseFloat(cssSplitUnit(cssHint(computed[prop]) ?? '').n) || 0;
+    const shownN = cur.n !== '' && cur.n != null ? Number.parseFloat(cur.n) || 0 : hintN;
     return (
       <>
-        <div className="st-cp-num">
-          {lead ? (
-            <span className="st-cp-numlead" aria-hidden="true">
-              {lead.t ? lead.t : <StIcon name={lead.icon} size={12} />}
-            </span>
-          ) : null}
-          <input
-            className="st-cp-numin st-cp-scrub"
-            key={`${prop}:${authored[prop] ?? ''}`}
-            aria-label={prop}
-            defaultValue={cur.unit && cur.unit !== '' ? cur.n : (authored[prop] ?? '')}
-            placeholder={cssHint(computed[prop]) || '—'}
-            onPointerDown={makeScrub(prop, { unitless, unit, min: opts.min })}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur();
-            }}
-            onBlur={(e) => {
-              const raw = e.currentTarget.value.trim();
-              if (!raw) return;
-              commit(prop, /[a-z%(]/i.test(raw) ? raw : `${raw}${unit}`);
-            }}
-          />
-          <span className="st-cp-step">
-            <button
-              type="button"
-              className="st-cp-stepb"
-              tabIndex={-1}
-              aria-label={`increase ${prop}`}
-              onClick={() => bump(1)}
-            >
-              ▲
-            </button>
-            <button
-              type="button"
-              className="st-cp-stepb"
-              tabIndex={-1}
-              aria-label={`decrease ${prop}`}
-              onClick={() => bump(-1)}
-            >
-              ▼
-            </button>
-          </span>
-          {unitless ? null : (
-          <select
-            className="st-cp-unitsel"
-            aria-label={`${prop} unit`}
-            value={cur.unit || 'px'}
-            onChange={(e) =>
-              commit(prop, e.target.value === 'auto' ? 'auto' : `${cur.n || '0'}${e.target.value}`)
-            }
-          >
-            {CSS_UNITS.map((u) => (
-              <option key={u} value={u}>
-                {u}
-              </option>
-            ))}
-          </select>
-          )}
-        </div>
+        <NumberField
+          key={`${prop}:${authored[prop] ?? ''}`}
+          value={shownN}
+          min={opts.min ?? 0}
+          step={1}
+          ariaLabel={prop}
+          lead={lead ? (lead.node ?? lead.t) : undefined}
+          onCommit={(n) => commit(prop, unitless ? `${n}` : `${n}${unit}`)}
+          unitSlot={
+            unitless || opts.fixedUnit ? null : (
+              <UnitSelect
+                units={CSS_UNITS}
+                value={cur.unit || 'px'}
+                ariaLabel={`${prop} unit`}
+                onChange={(u) => commit(prop, u === 'auto' ? 'auto' : `${cur.n || '0'}${u}`)}
+              />
+            )
+          }
+        />
         {tok(prop, tokenList)}
       </>
     );
@@ -5336,24 +5430,34 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
 
   // color swatch (native picker → hex) + raw text + token quick-pick
   const color = (prop) => {
-    // ONE colour control: the swatch is the trigger for a single popover with a
-    // full HSV picker (Custom) + the DS swatches (Variables). No separate native
-    // OS picker (#6 — was two popovers doing the same thing).
+    // ONE compact colour field (feature-inspector-controls-redesign handoff): the
+    // TokenPopover swatch is the FLUSH prefix (divider, no gap) inside ColorField,
+    // then the value input — swatch + value read as one field. The popover keeps
+    // its full HSV picker (Custom) + DS swatches (Variables) + cross-DS/security.
     const resolved = computed[prop] || authored[prop] || '';
+    const av = authored[prop] ?? '';
+    const bound = typeof av === 'string' && /var\(\s*--/.test(av);
+    const display = bound ? av.replace(/^var\(\s*|\s*\)$/g, '').replace(/^--/, '').replace(/-/g, ' ') : av;
     return (
-      <>
-        <TokenPopover
-          kind="color"
-          groups={tokenGroups('color')}
-          current={authored[prop]}
-          activeDs={_activeDs}
-          swatchBg={resolved}
-          seedHex={cssColorToHex(computed[prop] || authored[prop]) || '#000000'}
-          onPick={(v) => commit(prop, v)}
-          label={`${prop} colour`}
-        />
-        {text(prop)}
-      </>
+      <ColorField
+        swatch={
+          <TokenPopover
+            kind="color"
+            swatchClassName="st-cp-cf-sw"
+            groups={tokenGroups('color')}
+            current={authored[prop]}
+            activeDs={_activeDs}
+            swatchBg={resolved}
+            seedHex={cssColorToHex(computed[prop] || authored[prop]) || '#000000'}
+            onPick={(v) => commit(prop, v)}
+            label={`${prop} colour`}
+          />
+        }
+        displayValue={display}
+        bound={bound}
+        ariaLabel={prop}
+        onValue={(v) => commit(prop, v)}
+      />
     );
   };
 
@@ -5361,6 +5465,49 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
   // always shows the RESOLVED value (0 instead of blank) and a faint `is-zero`
   // styling for an unset/zero side. Edits the single side (the old "link all
   // sides" toggle was removed — DDR-104 Phase 12.3 W1.5).
+  // Built on the shared `makeScrubHandler` engine (feature-inspector-controls-
+  // redesign) — a plain (non-hook) factory, since `side`/`inset` are helper
+  // closures invoked during render, not components (can't call a hook there).
+  // These stay compact <input>s with whole-cell scrub (no separate drag handle
+  // — the Figma/Webflow convention for tiny box-model cells with no room for
+  // one; the 3px dead-zone already lets a plain click through to focus). A
+  // multi-side drag (alt = pair, alt+shift = all four) live-updates the sibling
+  // box inputs too, so the whole move shows in the panel, not just the dragged
+  // cell — `node` closes over the actual input DOM element via onPointerDown.
+  const boxScrub = (prop, opts) => {
+    let node = null;
+    const unit = opts.unitless ? '' : 'px';
+    const fmt = (n) => (opts.unitless ? `${n}` : `${n}${unit}`);
+    const applyToSides = (n, activeSides, fn) => {
+      for (const p of activeSides ?? [prop]) fn(p, fmt(n));
+    };
+    const scrub = makeScrubHandler({
+      getBase: () => node?.value ?? '0',
+      min: opts.min ?? 0,
+      step: 1,
+      sides: opts.sides,
+      onInput: (n, activeSides) => {
+        if (node) node.value = String(n);
+        if (activeSides) {
+          const box = node?.closest('.st-cp-box');
+          for (const p of activeSides) {
+            if (p === prop) continue;
+            const sib = box?.querySelector(`.st-cp-boxv[aria-label="${p}"]`);
+            if (sib) sib.value = String(n);
+          }
+        }
+        applyToSides(n, activeSides, optimistic);
+      },
+      onCommit: (n, activeSides) => applyToSides(n, activeSides, commit),
+    });
+    return {
+      onPointerDown: (e) => {
+        node = e.currentTarget;
+        scrub(e);
+      },
+    };
+  };
+
   const side = (prop, group) => {
     const a = authored[prop];
     const shown =
@@ -5385,8 +5532,10 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
         aria-label={prop}
         defaultValue={shown}
         title="drag to scrub · alt = symmetric · alt+shift = all sides"
-        onPointerDown={makeScrub(prop, { sides: { pair, all } })}
+        {...boxScrub(prop, { sides: { pair, all } })}
+        onFocus={selectAllOnFocus}
         onKeyDown={(e) => {
+          if (stepBoxInput(e, (n) => commit(prop, `${n}px`))) return;
           if (e.key === 'Enter') e.currentTarget.blur();
         }}
         onBlur={(e) => {
@@ -5420,8 +5569,10 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
         defaultValue={shown}
         placeholder="auto"
         title="drag to scrub · alt = axis pair · alt+shift = all sides · type auto"
-        onPointerDown={makeScrub(prop, { sides: { pair, all }, min: -Infinity })}
+        {...boxScrub(prop, { sides: { pair, all }, min: -Infinity })}
+        onFocus={selectAllOnFocus}
         onKeyDown={(e) => {
+          if (stepBoxInput(e, (n) => commit(prop, `${n}px`))) return;
           if (e.key === 'Enter') e.currentTarget.blur();
         }}
         onBlur={(e) => {
@@ -5433,25 +5584,6 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
       />
     );
   };
-
-  const corner = (label, prop) => (
-    <label className="st-cp-cornerf">
-      <span>{label}</span>
-      <input
-        key={`${prop}:${authored[prop] ?? ''}`}
-        aria-label={prop}
-        defaultValue={cssSplitUnit(authored[prop] ?? '').n || ''}
-        placeholder={cssHint(computed[prop]) || '0'}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') e.currentTarget.blur();
-        }}
-        onBlur={(e) => {
-          const raw = e.currentTarget.value.trim();
-          if (raw) commit(prop, /[a-z%]/i.test(raw) ? raw : `${raw}px`);
-        }}
-      />
-    </label>
-  );
 
   // Phase 12.3 — authored inline props with no curated row + custom HTML attrs,
   // surfaced in Advanced so the user can see/edit/remove what they added.
@@ -5485,15 +5617,15 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
               {row('display', csel('display', CSS_DISPLAYS))}
               {isFlex ? (
                 <>
-                  {row('flex-direction', csel('flex-direction', CSS_FLEX_DIR))}
-                  {row('flex-wrap', csel('flex-wrap', CSS_FLEX_WRAP))}
+                  {row('flex-direction', iconseg('flex-direction', DIR_OPTS))}
+                  {row('flex-wrap', <Toggle checked={/^wrap/.test(authored['flex-wrap'] || cssHint(computed['flex-wrap']) || '')} label="wrap items" ariaLabel="flex-wrap" onChange={(w) => commit('flex-wrap', w ? 'wrap' : 'nowrap')} />, provOf('flex-wrap'))}
                 </>
               ) : null}
               {isFlex || isGrid ? (
                 <>
-                  {row('align-items', csel('align-items', CSS_ALIGN))}
-                  {row('justify-content', csel('justify-content', CSS_JUSTIFY))}
-                  {row('gap', num('gap', 'space'))}
+                  {row('align-items', iconseg('align-items', ALIGNITEMS_OPTS))}
+                  {row('justify-content', iconseg('justify-content', JUSTIFY_OPTS))}
+                  {row('gap', vtok('gap', 'space'))}
                 </>
               ) : (
                 <button
@@ -5538,35 +5670,16 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
         <>
           {row('font-family', csel('font-family', CSS_FONTS))}
           {row('color', color('color'))}
-          {row('font-size', num('font-size', 'type'))}
+          {row('font-size', vtok('font-size', 'type'))}
           {row('font-weight', csel('font-weight', CSS_WEIGHTS))}
           {row('line-height', num('line-height', 'lh'))}
           {row('letter-spacing', num('letter-spacing', null, { min: -Infinity }))}
-          {row(
-            'text-align',
-            <div className="st-cp-seg" role="group" aria-label="text-align">
-              {CSS_ALIGN_OPTS.map((a) => (
-                <button
-                  key={a}
-                  type="button"
-                  className={`st-cp-segbtn${(authored['text-align'] || computed['text-align']) === a ? ' is-active' : ''}`}
-                  aria-label={`align ${a}`}
-                  aria-pressed={(authored['text-align'] || computed['text-align']) === a}
-                  onClick={() => commit('text-align', a)}
-                >
-                  <span className={`st-cp-bars st-cp-bars--${a === 'justify' ? 'just' : a}`} aria-hidden="true">
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
+          {/* handoff — text-align as a lucide icon button group; B/I/U as a toggle
+              group mapped to font-weight / font-style / text-decoration. */}
+          {row('text-align', iconseg('text-align', TEXTALIGN_OPTS))}
+          {row('font-style', textStyleToggle(), provOf('font-style'))}
           {/* Stage B (Task B4) — promoted typography knobs (was DDR-104 OUT-list). */}
-          {row('font-style', csel('font-style', CSS_FONT_STYLE))}
           {row('text-transform', csel('text-transform', CSS_TEXT_TRANSFORM))}
-          {row('text-decoration', csel('text-decoration', CSS_TEXT_DECORATION))}
           {row('white-space', csel('white-space', CSS_WHITE_SPACE))}
         </>
       )}
@@ -5591,7 +5704,9 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
               {side('padding-bottom', 'padding')}
               {side('padding-left', 'padding')}
               <div className="st-cp-boxcore">
-                {Math.round(el.bounds?.w || 0)} × {Math.round(el.bounds?.h || 0)}
+                {/* handoff — prefer the AUTHORED size (updates live as you edit
+                    width/height); el.bounds is stale until the canvas re-measures. */}
+                {Math.round(Number.parseFloat(authored.width) || el.bounds?.w || 0)} × {Math.round(Number.parseFloat(authored.height) || el.bounds?.h || 0)}
               </div>
             </div>
           </div>
@@ -5613,7 +5728,7 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
           {row('max-width', num('max-width'))}
           {row('min-height', num('min-height'))}
           {row('max-height', num('max-height'))}
-          {row('overflow', csel('overflow', CSS_OVERFLOW))}
+          {row('overflow', iconseg('overflow', OVERFLOW_OPTS))}
           {/* Stage M1 — flex-CHILD controls, only meaningful when the parent is a
               flex container. align-self is the cross-axis override; flex-grow/shrink/
               basis are the main-axis behavior the Fill mode writes for you. */}
@@ -5702,35 +5817,11 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
         'Appearance',
         <>
           {row('background-color', color('background-color'))}
-          <div className="st-cp-row">
-            {prov(provOf('border-radius'))}
-            <label className="st-cp-label" title="border-radius">
-              border-radius
-            </label>
-            <div className="st-cp-ctl">
-              {num('border-radius', 'radius')}
-              <button
-                type="button"
-                className={`st-cp-split${split ? ' is-on' : ''}`}
-                aria-pressed={split}
-                aria-label="set each corner separately"
-                title="set each corner separately"
-                onClick={() => setSplit((v) => !v)}
-              />
-            </div>
-          </div>
-          {split ? (
-            <div className="st-cp-corners" aria-label="per-corner radius">
-              {corner('TL', 'border-top-left-radius')}
-              {corner('TR', 'border-top-right-radius')}
-              {corner('BL', 'border-bottom-left-radius')}
-              {corner('BR', 'border-bottom-right-radius')}
-            </div>
-          ) : null}
+          {row('border-radius', radiusControl(), provOf('border-radius'))}
           {row(
             'border',
             <div className="st-cp-border">
-              {num('border-width')}
+              {num('border-width', null, { fixedUnit: 'px' })}
               <select
                 className="st-cp-nsel st-cp-nsel--mini"
                 aria-label="border-style"
@@ -5764,24 +5855,28 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
           {row('box-shadow', tok('box-shadow', 'shadow') || text('box-shadow'))}
           {row(
             'opacity',
-            <div className="st-cp-num">
-              <span className="st-cp-numlead" aria-hidden="true">
-                <StIcon name="p-opacity" size={12} />
-              </span>
-              <input
-                className="st-cp-numin"
-                key={`opacity:${authored.opacity ?? ''}`}
-                aria-label="opacity"
-                defaultValue={authored.opacity ?? ''}
-                placeholder={cssHint(computed.opacity) || '1'}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') e.currentTarget.blur();
-                }}
-                onBlur={(e) => commit('opacity', e.currentTarget.value)}
-              />
-            </div>
+            (() => {
+              // handoff — shown as 0–100 % (design), stored as the CSS 0–1 value.
+              const a = authored.opacity;
+              const raw = a != null && a !== '' ? Number.parseFloat(a) : Number.parseFloat(cssHint(computed.opacity)) || 1;
+              const pct = Math.round((Number.isNaN(raw) ? 1 : raw) * 100);
+              return (
+                <SliderField
+                  key={`opacity:${a ?? ''}`}
+                  value={pct}
+                  min={0}
+                  max={100}
+                  step={1}
+                  unit="%"
+                  ariaLabel="opacity"
+                  onInput={(n) => optimistic('opacity', String(n / 100))}
+                  onCommit={(n) => commit('opacity', String(n / 100))}
+                />
+              );
+            })()
           )}
           {/* Stage B (Task B4) — transform as a free-value row (mirrors box-shadow). */}
+          {row('rotation', rotationControl(), provOf('transform'))}
           {row('transform', text('transform'))}
           {row('transform-origin', text('transform-origin'))}
         </>

@@ -726,13 +726,15 @@
 .st-cp-reset { width: 16px; height: 16px; }
 .st-cp-reset:hover, .st-cp-secreset:hover { color: var(--accent); background: var(--accent-tint); }
 .st-cp-reset:focus-visible, .st-cp-secreset:focus-visible { outline: none; color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
-.st-cp-secreset { align-self: center; }
+.st-cp-secreset { align-self: center; display: inline-grid; place-items: center; }
+.st-cp-secreset.is-quiet { color: var(--fg-3); opacity: 0.4; cursor: default; }
+.st-cp-secreset.is-quiet:hover { color: var(--fg-3); background: transparent; }
 /* read-only name field for an existing custom CSS prop / HTML attr row */
 .st-cp-fin--ro { flex: 0 0 38%; background: var(--bg-2); color: var(--fg-2); cursor: default; }
 .st-cp-fin--ro:focus { outline: none; border-color: var(--border-strong); box-shadow: none; }
 
 /* a labelled row: [provenance] [css property] [control] */
-.st-cp-row { display: grid; grid-template-columns: 10px 92px 1fr; align-items: center; gap: var(--space-2); min-height: 28px; }
+.st-cp-row { display: grid; grid-template-columns: 10px 92px 1fr; align-items: center; column-gap: var(--space-3); min-height: 32px; padding: 3px 0; }
 /* #1 bigger-bet — unset rows recede so the overridden ones pop; full opacity on
  * hover/focus so they're still editable. The panel reads as a diff of overrides. */
 .st-cp-row.is-unset { opacity: 0.5; transition: opacity var(--dur-soft) var(--ease-out); }
@@ -745,7 +747,7 @@
 /* provenance — SHAPE-coded so token/override/inherited survive small size +
  * colour-blindness: token = filled accent circle · override = filled neutral
  * square · inherited = hollow ring. Each carries role=img + aria-label. */
-.st-cp-prov { width: 8px; height: 8px; display: inline-block; flex: none; padding: 0; }
+.st-cp-prov { width: 9px; height: 9px; display: inline-block; flex: none; padding: 0; }
 /* Phase 12.3 (#4) — the row's leading dot is a button: provenance + save status
  * (glow) + double-click reset. No appearance chrome; the variant fills it. */
 /* reset native button chrome; the variants own the FILL (a transparent bg here
@@ -758,13 +760,12 @@ button.st-cp-prov { appearance: none; border: 0; cursor: default; }
 .st-cp-prov.is-saved { box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-success) 45%, transparent); }
 .st-cp-prov.is-saving { box-shadow: 0 0 0 3px color-mix(in oklab, var(--fg-2) 35%, transparent); }
 .st-cp-prov.is-err { background: var(--status-error); border-color: var(--status-error); box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-error) 40%, transparent); }
-/* Phase 12.3 — provenance is SHAPE-coded (token=circle · override=square ·
- * inherited=ring) on NEUTRAL fills. Indigo is reserved for its one job on this
- * surface (the bound-token ◇ button + the focus ring), so the token dot must NOT
- * reuse the accent (design-critic 1.4/1.5). */
-.st-cp-prov--bound { background: var(--fg-0); border-radius: 50%; }
-.st-cp-prov--raw { background: var(--fg-2); border-radius: 1px; }
-.st-cp-prov--inherit { background: transparent; box-shadow: inset 0 0 0 1.5px var(--fg-3); border-radius: 50%; }
+/* handoff — provenance dots match the design specimen (supersedes the older
+ * shape-coded/neutral scheme): token-bound = accent · raw override = fg-1 ·
+ * inherited = hollow ring. All circles. */
+.st-cp-prov--bound { background: var(--accent); border-radius: 50%; }
+.st-cp-prov--raw { background: var(--fg-1); border-radius: 50%; }
+.st-cp-prov--inherit { background: transparent; box-shadow: inset 0 0 0 1.5px var(--border-strong); border-radius: 50%; }
 
 /* colour swatch — standalone (border cluster) + inline (inside the token field) */
 .st-cp-swatch { flex: none; width: 22px; height: 22px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); }
@@ -805,6 +806,127 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-bind:hover::before { border-color: var(--accent); }
 .st-cp-numin--mini { flex: none; width: 38px; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); }
 
+/* feature-inspector-controls-redesign — shared control library (inspector-controls.jsx).
+ * The drag-to-scrub affordance now lives on the LEADING handle, not the input,
+ * so click-to-type + select-all work; the input keeps a plain text caret. */
+.st-cp-handle { cursor: ew-resize; touch-action: none; }
+.st-cp-handle:hover { color: var(--fg-1); background: var(--bg-3); }
+.st-cp-grip { display: inline-block; width: 7px; height: 12px; color: var(--fg-2); background-image: radial-gradient(currentColor 0.8px, transparent 0.8px); background-size: 3px 4px; background-position: center; opacity: 0.7; }
+.st-cp-handle:hover .st-cp-grip { opacity: 1; }
+/* static unit suffix inside a number field (e.g. a SliderField's compact numeric) */
+.st-cp-numsuffix { flex: none; display: inline-flex; align-items: center; padding: 0 6px; color: var(--fg-2); font-family: var(--font-mono); font-size: 10px; border-left: 1px solid var(--border-subtle); background: var(--bg-2); }
+/* compact numeric — the exact-value box paired with a Slider */
+.st-cp-num--compact { flex: 0 0 auto; width: 64px; }
+.st-cp-num--compact .st-cp-numin { text-align: right; }
+/* SliderField row: real slider (flex) + compact numeric (fixed) */
+.st-cp-sfield { flex: 1 1 auto; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+/* Toggle (immediate-effect boolean) */
+.st-cp-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; color: var(--fg-1); }
+.st-cp-toggle-lbl { color: var(--fg-1); }
+/* handoff — Toggle is a real switch (not a checkbox), matching the DS .switch. */
+.st-cp-switch { appearance: none; -webkit-appearance: none; position: relative; flex: none; width: 34px; height: 18px; border-radius: var(--radius-pill); background: var(--bg-4); border: 1px solid var(--border-default); cursor: pointer; transition: background var(--dur-flip) var(--ease-out), border-color var(--dur-flip) var(--ease-out); }
+.st-cp-switch::after { content: ""; position: absolute; top: 1px; left: 1px; width: 14px; height: 14px; border-radius: var(--radius-pill); background: var(--fg-1); transition: transform var(--dur-flip) var(--ease-out), background var(--dur-flip) var(--ease-out); }
+.st-cp-switch:checked { background: var(--accent); border-color: var(--accent); }
+.st-cp-switch:checked::after { transform: translateX(16px); background: var(--accent-fg); }
+.st-cp-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* inline help text under a Field control; wrapping a wide row keeps 3 controls fitting */
+.st-cp-help { flex-basis: 100%; font-size: 10px; color: var(--fg-2); margin-top: 2px; }
+.st-cp-row--wide { flex-wrap: wrap; }
+
+/* ════ feature-inspector-controls-redesign — ported design controls ══════════
+ * The design-specimen control set promoted into the shared library
+ * (inspector-controls.jsx). lucide icons; `.st-cp-*` to match the shell. */
+
+/* bipolar slider zero-tick */
+.st-cp-zero { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--border-strong); }
+.st-cp-dial--scrub, body.st-scrubbing--dial, body.st-scrubbing--dial * { cursor: grabbing !important; }
+
+/* icon button group (flex-direction / justify / align / text-align / overflow) */
+.st-cp-iconseg { display: inline-flex; border: 1px solid var(--border-default); border-radius: var(--radius-sm); overflow: hidden; background: var(--bg-2); }
+.st-cp-iconseg button { appearance: none; border: 0; background: transparent; color: var(--fg-2); min-width: 30px; height: 26px; display: grid; place-items: center; cursor: pointer; transition: background var(--dur-soft) var(--ease-out), color var(--dur-soft) var(--ease-out); }
+.st-cp-iconseg button + button { border-left: 1px solid var(--border-subtle); }
+.st-cp-iconseg button:hover:not(.is-active) { color: var(--fg-0); background: var(--bg-3); }
+.st-cp-iconseg button.is-active { background: var(--bg-4); color: var(--fg-0); }
+.st-cp-iconseg button[aria-pressed="true"] { background: var(--accent-tint); color: var(--accent); }
+
+/* DS checkbox */
+.st-cp-check { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 11px; color: var(--fg-1); cursor: pointer; }
+.st-cp-check input { position: absolute; opacity: 0; width: 0; height: 0; }
+.st-cp-check-box { flex: none; width: 15px; height: 15px; border-radius: var(--radius-xs); border: 1px solid var(--border-strong); background: var(--bg-3); display: grid; place-items: center; color: transparent; transition: background var(--dur-soft) var(--ease-out), border-color var(--dur-soft) var(--ease-out); }
+.st-cp-check input:checked + .st-cp-check-box { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.st-cp-check input:focus-visible + .st-cp-check-box { box-shadow: 0 0 0 3px var(--accent-tint); }
+
+/* 9-point alignment pad */
+.st-cp-alignpad { width: 68px; height: 68px; display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); flex: none; }
+.st-cp-alignpad button { appearance: none; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; }
+.st-cp-alignpad button::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--fg-3); transition: background var(--dur-soft) var(--ease-out); }
+.st-cp-alignpad button:hover::before { background: var(--fg-1); }
+.st-cp-alignpad button.is-active::before { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+
+/* angle dial */
+.st-cp-dial { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-default); background: var(--bg-3); position: relative; cursor: grab; touch-action: none; padding: 0; }
+.st-cp-dial:active { cursor: grabbing; }
+.st-cp-dial:hover { border-color: var(--border-strong); }
+.st-cp-dial-needle { position: absolute; top: 50%; left: 50%; width: 11px; height: 1.5px; background: var(--accent); border-radius: 1px; transform-origin: left center; transform: rotate(var(--angle, 0deg)); }
+.st-cp-dial::after { content: ""; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; border-radius: 50%; background: var(--fg-1); transform: translate(-50%, -50%); }
+
+/* collapsable section — height animation + caret rotation (on top of .st-cp-sec) */
+.st-cp-sechd[aria-expanded="false"] .st-cp-caret { transform: rotate(-90deg); }
+.st-cp-caret { transition: transform var(--dur-flip) var(--ease-out); display: inline-grid; place-items: center; }
+.st-cp-sec-anim { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-panel) var(--ease-in-out); }
+.st-cp-sec-anim.is-open { grid-template-rows: 1fr; }
+.st-cp-sec-inner { overflow: hidden; min-height: 0; }
+.st-cp-sec-anim.is-open .st-cp-sec-inner { padding-top: var(--space-1); }
+
+/* compact composite colour field — swatch flush prefix + divider, value [+alpha+eye] */
+.st-cp-cf { display: flex; align-items: stretch; min-height: 26px; min-width: 0; flex: 1 1 auto; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); transition: border-color var(--dur-soft) var(--ease-out), box-shadow var(--dur-soft) var(--ease-out); }
+.st-cp-cf:hover { border-color: var(--border-strong); }
+/* handoff — accent frame ONLY when editing the value input, not when the swatch
+ * (popover trigger) has focus — clicking the swatch left a persistent blue frame. */
+.st-cp-cf:has(.st-cp-cf-in:focus) { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.st-cp-cf .st-cp-tokwrap { display: flex; align-items: stretch; }
+.st-cp-cf > *:last-child { border-top-right-radius: 2px; border-bottom-right-radius: 2px; }
+.st-cp-cf-sw { flex: none; width: 26px; border: 0; border-right: 1px solid var(--border-default); border-radius: 2px 0 0 2px; padding: 0; cursor: pointer; position: relative; overflow: hidden; }
+.st-cp-cf-in { flex: 1 1 auto; min-width: 0; width: 100%; border: 0; background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); text-transform: uppercase; padding: 0 var(--space-2); }
+.st-cp-cf-in.is-bound { color: var(--accent); text-transform: none; }
+.st-cp-cf-in:focus { outline: none; }
+.st-cp-cf-alpha { flex: none; width: 42px; border: 0; border-left: 1px solid var(--border-default); background: transparent; color: var(--fg-1); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); text-align: right; padding: 0 6px; }
+.st-cp-cf-alpha:focus { outline: none; }
+.st-cp-cf-eye { flex: none; width: 26px; border: 0; border-left: 1px solid var(--border-default); background: transparent; color: var(--fg-2); cursor: pointer; display: grid; place-items: center; }
+.st-cp-cf-eye:hover { color: var(--fg-0); background: var(--bg-2); }
+.st-cp-cf-eye.is-off { color: var(--fg-3); }
+
+/* value-token binding (◇ + bound chip) */
+.st-cp-tokfield { display: flex; align-items: center; gap: var(--space-2); flex: 1 1 auto; min-width: 0; }
+.st-cp-tokfield > .st-cp-num, .st-cp-tokfield > .st-cp-boundchip { flex: 1 1 auto; min-width: 0; }
+.st-cp-tokbtn { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-2); color: var(--fg-2); cursor: pointer; position: relative; }
+.st-cp-tokbtn:hover { border-color: var(--border-strong); color: var(--fg-0); }
+.st-cp-tokbtn.is-bound { border-color: var(--accent); color: var(--accent); background: var(--accent-tint); }
+.st-cp-boundchip { display: flex; align-items: center; gap: var(--space-2); min-height: 26px; border: 1px solid var(--accent-muted); border-radius: var(--radius-xs); background: var(--accent-tint); padding: 0 var(--space-2); }
+.st-cp-boundchip-lead { display: inline-grid; place-items: center; color: var(--accent); }
+.st-cp-boundchip-name { flex: 1 1 auto; min-width: 0; font-family: var(--font-mono); font-size: var(--type-xs); color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-cp-boundchip-x { flex: none; appearance: none; border: 0; background: transparent; color: var(--accent); cursor: pointer; display: grid; place-items: center; padding: 0 2px; }
+.st-cp-boundchip-x:hover { color: var(--fg-0); }
+
+/* corner-radius control — uniform field + detach quad with per-corner glyphs */
+.st-cp-radius { display: grid; gap: var(--space-2); flex: 1 1 auto; min-width: 0; }
+.st-cp-radius-main { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.st-cp-radius-main > .st-cp-num { flex: 1 1 auto; min-width: 0; }
+.st-cp-splitbtn { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--fg-2); cursor: pointer; }
+.st-cp-splitbtn:hover { color: var(--fg-0); background: var(--bg-3); }
+.st-cp-splitbtn.is-on { color: var(--accent); border-color: var(--accent-muted); background: var(--accent-tint); }
+.st-cp-corners { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.st-cp-corner { display: flex; align-items: center; gap: 6px; min-height: 26px; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: 0 8px; }
+.st-cp-corner:hover { border-color: var(--border-strong); }
+.st-cp-corner:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.st-cp-corner input { flex: 1; min-width: 0; width: 100%; appearance: none; border: 0; background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; padding: 0; }
+.st-cp-corner input:focus { outline: none; }
+.st-cp-cnr { flex: none; width: 11px; height: 11px; border: 1.5px solid var(--fg-2); box-sizing: border-box; }
+.st-cp-cnr--tl { border-right: 0; border-bottom: 0; border-top-left-radius: 4px; }
+.st-cp-cnr--tr { border-left: 0; border-bottom: 0; border-top-right-radius: 4px; }
+.st-cp-cnr--bl { border-right: 0; border-top: 0; border-bottom-left-radius: 4px; }
+.st-cp-cnr--br { border-left: 0; border-top: 0; border-bottom-right-radius: 4px; }
+
 /* select (font-weight, border-style) */
 .st-cp-select { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; justify-content: space-between; gap: var(--space-2); appearance: none; cursor: pointer; font-family: var(--font-body); font-size: var(--type-xs); color: var(--fg-0); background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: 4px var(--space-2); min-height: 26px; }
 .st-cp-select span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -834,9 +956,12 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-bars--just i { width: 100%; }
 
 /* nested box-model widget (Webflow-style): margin outer · padding inner */
-.st-cp-box { position: relative; margin-top: var(--space-1); padding: 26px; border: 1px dashed var(--border-default); border-radius: var(--radius-sm); background: var(--bg-2); display: grid; place-items: center; }
-.st-cp-boxpad { position: relative; width: 100%; padding: 26px; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); display: grid; place-items: center; }
-.st-cp-boxcore { min-width: 72px; padding: 7px 12px; border-radius: var(--radius-xs); background: var(--bg-4); border: 1px solid var(--accent); color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; text-align: center; }
+.st-cp-box { position: relative; margin-top: var(--space-2); padding: 34px 30px; border: 1px dashed var(--border-default); border-radius: var(--radius-sm); background: var(--bg-2); display: grid; place-items: center; }
+.st-cp-boxpad { position: relative; width: 100%; padding: 30px 26px; border: 1px dashed var(--border-subtle); border-radius: var(--radius-xs); background: var(--bg-1); display: grid; place-items: center; }
+/* handoff — spacing size core is PLAIN mono text (no box/border), 1:1 with the
+ * design's .icp-box-core. Only the position core (--pos, below) is an accent bar. */
+.st-cp-boxcore { min-width: 72px; padding: 10px 16px; background: transparent; border: 0; color: var(--fg-2); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 10px; text-align: center; }
+.st-cp-boxcore--pos { padding: 7px 12px; border-radius: var(--radius-xs); font-size: 11px; }
 .st-cp-boxtag { position: absolute; top: 4px; left: 6px; display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); pointer-events: none; }
 .st-cp-boxtag .st-cp-prov { width: 6px; height: 6px; }
 .st-cp-boxv { position: absolute; width: 36px; height: 24px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; text-align: center; padding: 0; }
@@ -854,7 +979,8 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-boxv--il { left: 0; top: 50%; transform: translateY(-50%); }
 .st-cp-boxv--ir { right: 0; top: 50%; transform: translateY(-50%); }
 .st-cp-boxtag--i { color: var(--accent); }
-.st-cp-boxcore--pos { text-transform: none; letter-spacing: 0; }
+/* handoff — position core IS an accent bar (design); spacing core is plain text */
+.st-cp-boxcore--pos { text-transform: none; letter-spacing: 0; background: var(--accent-tint); border: 1px solid var(--accent); color: var(--accent); }
 .st-cp-boxhint { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .st-cp-boxhint + .st-cp-row { margin-top: var(--space-1); }
 .st-cp-chip { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: 1px 6px; }
@@ -868,13 +994,18 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-slval { flex: none; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); color: var(--fg-1); width: 34px; text-align: right; }
 
 /* border cluster — fills to the right control rail */
-.st-cp-border { flex: 1 1 auto; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.st-cp-border { flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
 .st-cp-border .st-cp-swatch--mini { margin-left: 0; }
 /* design-critic 1.1 — the border row was cramming width+style+swatch; the
  * width field was eating the flex and clipping the style select to "styl▾".
- * Fix the width field, let the style select take the rest. */
+ * Fix the width field, let the style select take the rest. Task 5 (feature-
+ * inspector-controls-redesign) — border-width now skips its unit-select
+ * (px-only, opts.fixedUnit) so the cluster is narrower to start with;
+ * flex-wrap is the fallback so [width][style][swatch] never clips at the
+ * panel's 260px minimum — the style select wraps to its own line rather than
+ * shrinking to an illegible sliver. */
 .st-cp-border .st-cp-num { flex: 0 0 58px; }
-.st-cp-border .st-cp-nsel { flex: 1 1 auto; max-width: none; }
+.st-cp-border .st-cp-nsel { flex: 1 1 96px; max-width: none; min-width: 64px; }
 
 /* per-field save state */
 /* #5 — error-only now (idle/saved status moved into each row's leading dot). */
@@ -903,11 +1034,26 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 
 /* Stage M — Fixed / Hug / Fill sizing-mode segmented control (per axis). */
 .st-cp-modes { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-1); }
-.st-cp-modeseg { display: flex; align-items: stretch; gap: var(--space-1); }
-.st-cp-modeax { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); }
-.st-cp-modebtn { flex: 1; appearance: none; cursor: pointer; border: 1px solid var(--border-default); background: var(--bg-3); color: var(--fg-1); font-family: var(--font-mono); font-size: 10px; min-height: 22px; border-radius: var(--radius-xs); padding: 0 var(--space-1); }
-.st-cp-modebtn:hover:not(.is-active):not(:disabled) { background: var(--bg-4); color: var(--fg-0); }
-.st-cp-modebtn.is-active { background: var(--accent-tint); border-color: var(--accent); color: var(--accent); }
+/* handoff — Fixed/Hug/Fill uses the shared Segmented (.st-cp-seg) component,
+ * stretched full-width, with a leading W/H axis label. */
+.st-cp-modeseg { display: flex; align-items: center; gap: var(--space-2); }
+.st-cp-modeax { display: inline-flex; align-items: center; justify-content: center; min-width: 14px; font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); }
+/* handoff — Size mode row: grid-aligned with the other rows (label column +
+ * control column), the compact Segmented right-aligned to match the number
+ * inputs below, at the same 26px input height. Neutral active, mono lowercase. */
+.st-cp-moderow { display: grid; grid-template-columns: 10px 92px 1fr; align-items: center; column-gap: var(--space-3); min-height: 32px; padding: 3px 0; }
+.st-cp-modelabel { grid-column: 2; font-size: var(--type-xs); color: var(--fg-1); }
+.st-cp-modeseg { grid-column: 3; display: flex; justify-content: flex-end; }
+.st-cp-modeseg .st-cp-seg { flex: none; display: inline-flex; height: 26px; background: var(--bg-2); border-radius: var(--radius-sm); }
+.st-cp-modeseg .st-cp-segbtn { flex: none; display: inline-flex; align-items: center; font-family: var(--font-mono); font-size: var(--type-xs); text-transform: lowercase; color: var(--fg-2); min-width: 0; min-height: 0; padding: 0 var(--space-4); }
+.st-cp-modeseg .st-cp-segbtn.is-active { background: var(--bg-4); color: var(--fg-0); }
+.st-cp-modeseg .st-cp-segbtn:hover:not(.is-active) { background: var(--bg-3); color: var(--fg-0); }
+/* .st-cp-modebtn — still used by the artboard height-sizing control (not CssKnobs). */
+.st-cp-modebtn { flex: 1; appearance: none; cursor: pointer; border: 1px solid var(--border-default); border-left-width: 0; background: var(--bg-2); color: var(--fg-2); font-family: var(--font-mono); font-size: 10px; text-transform: lowercase; min-height: 24px; padding: 0 var(--space-2); }
+.st-cp-modebtn:first-of-type { border-left-width: 1px; border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.st-cp-modebtn:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.st-cp-modebtn:hover:not(.is-active):not(:disabled) { background: var(--bg-3); color: var(--fg-0); }
+.st-cp-modebtn.is-active { background: var(--bg-4); color: var(--fg-0); }
 .st-cp-modebtn:disabled { opacity: 0.5; cursor: default; }
 /* Stage M — sub-header for the flex-child row group + the make-flex CTA. */
 .st-cp-subhd { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); text-transform: uppercase; letter-spacing: 0.04em; margin-top: var(--space-2); }
@@ -985,6 +1131,17 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
  * hue slider + eyedropper + hex field. The swatch on the colour row is the only
  * trigger (no separate native picker). */
 .st-cp-cpick { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-1); }
+/* handoff — hex row on top + preview circle + RGB fields (design parity) */
+.st-cp-cpick-hexrow { display: flex; align-items: center; gap: var(--space-2); }
+.st-cp-cpick-hexsw { flex: none; width: 34px; height: 26px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); }
+.st-cp-cpick-hex { flex: 1 1 auto; min-width: 0; appearance: none; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); color: var(--fg-0); font-family: var(--font-mono); font-size: var(--type-xs); padding: 4px var(--space-2); }
+.st-cp-cpick-hex:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.st-cp-cpick-preview { flex: none; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border-default); }
+.st-cp-cpick-rgb { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
+.st-cp-cpick-rgbf { display: grid; gap: 2px; justify-items: center; }
+.st-cp-cpick-rgbf input { width: 100%; text-align: center; appearance: none; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); padding: 3px 2px; }
+.st-cp-cpick-rgbf input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.st-cp-cpick-rgbf span { font-family: var(--font-mono); font-size: 9px; color: var(--fg-3); }
 .st-cp-swatch--trigger { position: relative; overflow: hidden; cursor: pointer; appearance: none; padding: 0; }
 .st-cp-swatch--trigger.is-bound { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
 .st-cp-cpick-sv { position: relative; display: block; width: 100%; height: 120px; border-radius: var(--radius-sm); border: 1px solid var(--border-default); overflow: hidden; cursor: crosshair; padding: 0; touch-action: none; }
