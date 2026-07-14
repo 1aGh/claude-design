@@ -1,5 +1,72 @@
 # @1agh/maude
 
+## 0.44.0
+
+### Minor Changes
+
+- AI media generation, bring-your-own-key — images, video, audio, and subtitles, right inside Maude.
+
+  - Generate images (Google Nano Banana) that drop straight onto the active artboard, or edit an existing image with a prompt (maskless edit) — no round-trip through separate photo software.
+  - Generate video clips (Veo 3.1) that flow into `/design:reel` like any other footage — analyzed and placed into the edit automatically.
+  - Generate music, sound effects, and voiceover (ElevenLabs) that land as audio tracks in the reel, with voiceover automatically ducking music underneath it.
+  - Free, local, no-key subtitles via a managed whisper.cpp model — download it from Settings and transcribe any clip in one click, or choose ElevenLabs Scribe / Groq Whisper explicitly instead. Non-WAV clips are auto-converted when ffmpeg is available.
+  - Reuse-first for audio: before generating (and paying) again, Maude searches your own previously-generated tracks for a match.
+  - Proactive generation: while you're editing a reel or canvas, Maude can notice a missing beat or hero image and offer to fill it — always one explicit confirmation, nothing generated (or spent) without your yes.
+  - Reachable everywhere — the new Settings panel, the `maude design generate` CLI, `/design:generate`, a `WANTS_GENERATE` phrasing inside `/design:edit` / `/design:new`, and the native Assistant chat panel.
+  - Your API keys are stored locally (OS keychain, or a locked-down local file) and are only ever used server-side — the untrusted canvas surface never sees them.
+
+- Artboards now hug their content by default, plus new background/padding/layout/gap settings.
+
+  - Fixed: adding an element past an artboard's visible bottom edge used to append it invisibly, silently clipped by `overflow: hidden` with no visual cue that it was even there.
+  - Artboards now hug their content height by default — the authored height becomes a minimum, not a hard limit — so this can no longer happen. A Hug/Fixed toggle in the artboard's CSS panel lets you pin an exact height when you actually want one.
+  - New artboard-level settings — background, padding, layout, and gap — editable from the same panel.
+
+- d0a9906: Bulk media insert + fixed data loss on multi-file drag-drop.
+
+  - The media picker now supports multi-select — pick several photos (or a mix of photos, videos, and audio) in one go instead of one at a time, with a destination toggle (add to the artboard, or add as free-floating annotations on the canvas). The picker defaults sensibly: video and audio always go on the canvas, since only images can drop into an artboard.
+  - The tool-palette "Insert Image" tool no longer does nothing on a canvas with no artboard yet — it now opens the picker in annotation-only mode.
+  - Fixed a data-loss bug where dragging several files from Finder onto the canvas at once would sometimes silently drop some of them (1 shown, sometimes 2, sometimes N) — every file in a batch now lands reliably.
+  - Fixed a follow-up bug where deleting an annotation (Backspace) appeared to do nothing until the canvas was reloaded — the delete was reaching the server correctly but getting silently reverted in the live view.
+  - Fixed a related edge case where deleting an image annotation while its upload was still in progress could cause it to reappear once the upload finished.
+
+- 61c2850: Inspector controls redesign — one shared control library for the CSS and Photo panels.
+
+  - The CSS and Photo panels now share one control library (`NumberField`, `Slider`/`SliderField`, `Segmented`, `Swatch`, and more) instead of six-plus separately hand-rolled field factories, fixing a set of long-standing inspector papercuts: dragging to scrub now grabs the field's icon/label handle instead of fighting a click-to-edit; clicking a number field selects the whole value (click again to place the caret); arrow keys step values (Shift for ×10); bounded photo adjustments (brightness, contrast, saturation, grain, pattern, mask) are now real linked slider + numeric pairs instead of plain numeric fields; the CSS border row and the Photo duotone/pattern rows no longer overflow the panel at its default width; and the design-tokens/variables popover now stays anchored to its trigger at any scroll position or canvas zoom.
+  - Every primitive is documented in a new design-system specimen (`components-inspector-controls`) alongside the shipped panels, so the two stay in lockstep.
+  - Accessibility hardening: the rotation dial is now keyboard-operable (arrow keys, Home/End) and exposes a proper slider role; number fields expose spinbutton semantics; fixed a couple of invalid ARIA attributes and low-contrast labels in the new specimen.
+
+- 637610f: Inspector "Designer mode" — a Figma-vocabulary view of the CSS panel, for designers who don't think in raw CSS.
+
+  - The CSS inspector panel now has two modes, switchable from a small toggle in the panel's own corner (and remembered in Settings → Appearance → "Inspector vocabulary"): **Advanced** keeps the honest CSS property names (`border-radius`, `flex-direction`, `box-shadow`…), and **Designer** regroups the exact same controls into Figma-familiar clusters — Fill, Stroke, Corner radius, Auto layout, Effects, Opacity, Text — and relabels the rows (Direction / Alignment / Gap / Sizing…). Same controls, same live-edit behavior underneath; only the labels and grouping change, and a value set in one mode reads back correctly in the other.
+  - Designer mode is tuned for a cleaner, calmer read: it drops the per-row status dots for inherited values (keeping them only where a value is actually customized), and uses quiet title-case section headers instead of the developer-facing monospace labels.
+  - Two new style controls are available in both modes: **Blur** (`filter: blur()`) and **Blend** (`mix-blend-mode`).
+  - The auto-layout alignment is now a single 9-point pad (one click sets both axes), the first use of the shared inspector `AlignPad`.
+
+- 9c464b0: Onboarding and design-system migration: get to your first AI edit and your first real design system faster, whether you're starting fresh or bringing in an existing brand.
+
+  - **Zero-terminal AI editing setup.** The native app's Assistant panel can now install `claude` for you, sign you into your own Claude subscription via a browser, and reconnect automatically — no terminal, no restart. The `maude` CLI and the design/flow plugins are bundled with the app, so `/design:*` commands work out of the box.
+  - **Guided quick setup.** A new "Quick setup" tour and checklist walk a new project from empty → design system → first AI edit, with a persistent "Bring my existing brand" entry point.
+  - **Bring your existing brand in.** Upload a logo (SVG) from the Quick setup checklist and Maude pulls out its color palette and recognizable font names to seed a new design system — nothing is applied automatically, every choice is confirmed during setup.
+  - **Import design tokens.** `maude design import-tokens` reads a `tokens.json` (W3C design-tokens / Style-Dictionary) or a raw CSS custom-properties file and patches or scaffolds a design system's tokens from it.
+  - **Reconstruct a canvas from an image (experimental).** `/design:import --reconstruct <image>` turns a Figma-frame export into a real, editable, token-styled canvas via an AI vision pass plus a reality-check loop against the source. Labeled experimental — review it like a first draft, not a finished import.
+  - Every new project is seeded with two "how to use Maude" reference canvases covering the app's own capabilities, so there's something real to look at from the very first launch.
+
+- One Settings modal for everything, plus configurable panel docking.
+
+  - Settings is now one modal with vertical tabs — Appearance, Canvas & View, AI generation, Subtitles — instead of a single unbounded AI-generation-only dialog that could overflow the screen. Each tab scrolls independently, so no category can push the dialog off-screen again.
+  - View options that used to live only in the View menu — minimap, zoom controls, annotations default, auto-open Inspector on select — now also live in the new Canvas & View tab, reading and writing the exact same state as the menu (no divergence, no need to remember which surface has which toggle).
+  - Panels can now be docked to either the left or right side independently, configurable from a new Layout tab (Layers is now its own dockable panel); the arrangement persists to disk and survives a restart.
+  - `⌘,` and File → "Settings…" now open the modal to a chosen tab, and remember the last tab you had open.
+  - Fixed a bug where the minimap and zoom controls could still render even while toggled off.
+
+### Patch Changes
+
+- beb779e: Maude Desktop's Assistant chat panel now always runs the exact `maude` CLI and `design`/`flow` plugin versions that shipped with your installed app — never a separately installed copy.
+
+  Previously, if you had an older `maude` on your PATH (e.g. from `npm i -g @1agh/maude`) or `design@maude` already installed via the Claude Code plugin marketplace, the chat panel would silently defer to that older copy instead of the one bundled with the app you just updated. It now always uses the bundled, release-matched copy inside the chat panel specifically — your own terminal `claude` sessions are unaffected and still use whatever you have installed yourself.
+
+- ae906c1: The macOS `.dmg` installer now shows a custom background with an arrow pointing from the Maude icon to the Applications folder, so first-time users know to drag the app there to install it (previously a bare Finder window with no visual cue).
+
 ## 0.43.0
 
 ### Minor Changes

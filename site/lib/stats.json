@@ -1,7 +1,7 @@
 {
-  "version": "v0.43.0",
+  "version": "v0.44.0",
   "nodeRange": ">=20",
-  "publishedDate": "2026-07-10",
+  "publishedDate": "2026-07-14",
   "contributors": 1,
   "plugins": {
     "design": {
@@ -30,6 +30,7 @@
     "commands-design/generate.mdx": "2026-07-14",
     "commands-design/handoff.mdx": "2026-07-03",
     "commands-design/help.mdx": "2026-06-11",
+    "commands-design/import.mdx": "2026-07-14",
     "commands-design/init.mdx": "2026-06-11",
     "commands-design/new.mdx": "2026-07-03",
     "commands-design/photo.mdx": "2026-07-10",

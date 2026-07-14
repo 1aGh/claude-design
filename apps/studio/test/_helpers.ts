@@ -37,7 +37,12 @@ export function makeSandbox(): Sandbox {
   return { root, designRoot };
 }
 
-let portCounter = 4500;
+// Base is spread by pid, not a fixed literal — bun test runs different test
+// files as separate processes, each importing a fresh copy of this module, so
+// a fixed base (e.g. 4500 for everyone) reliably collides across files. The
+// pid spread doesn't guarantee uniqueness on its own — bootServer's pid check
+// below is the actual safety net — but it makes collisions rare in practice.
+let portCounter = 4500 + (process.pid % 4000);
 export function nextPort(): number {
   // Bump on every call so parallel tests don't collide. Bun.serve will throw
   // EADDRINUSE if the host happened to bind one — caller retries with nextPort().
@@ -65,7 +70,15 @@ export async function bootServer(
       const r = await fetch(`http://localhost:${port}/_health`, {
         signal: AbortSignal.timeout(200),
       });
-      if (r.ok) return proc;
+      if (r.ok) {
+        const json = (await r.json()) as { pid?: number };
+        // A same-port collision with a concurrently-running test file's server
+        // (see the portCounter comment above) would otherwise look "ready" —
+        // /_health answers fine, just from someone else's sandbox — and every
+        // later request 404s against a designRoot that doesn't have our
+        // fixtures. Only trust the health check if it's actually our process.
+        if (json.pid === proc.pid) return proc;
+      }
     } catch {
       /* not up yet */
     }

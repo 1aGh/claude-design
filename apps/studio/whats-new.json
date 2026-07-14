@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "bring-your-brand",
-      "version": null,
-      "date": null,
+      "version": "0.44.0",
+      "date": "2026-07-14",
       "kind": "feature",
       "title": "Bring your existing brand into Maude",
       "summary": "Have a logo already? Upload it from the Quick setup checklist and Maude pulls out its color palette (and any recognizable font names) to seed a new design system — nothing is applied automatically, you confirm every choice during setup. Works with SVG logos; safety-checked before anything touches your project.",
@@ -19,8 +19,8 @@
     },
     {
       "id": "inspector-designer-mode",
-      "version": null,
-      "date": null,
+      "version": "0.44.0",
+      "date": "2026-07-14",
       "kind": "feature",
       "title": "A Figma-friendly view of the CSS panel",
       "summary": "The Inspector now speaks two languages. Advanced keeps the real CSS property names; Designer regroups the exact same controls into Figma-familiar sections — Fill, Stroke, Corner radius, Auto layout, Effects, Opacity, Text — and relabels the rows, so you can style without thinking in CSS. Flip between them from the small toggle in the panel's top-right corner, or set a default in Settings → Appearance. Same live edits underneath, and a value set in one view reads back correctly in the other. New in both views: Blur and Blend controls, plus a single 9-point pad for auto-layout alignment.",
@@ -39,8 +39,8 @@
     },
     {
       "id": "watch-the-intro",
-      "version": null,
-      "date": null,
+      "version": "0.44.0",
+      "date": "2026-07-14",
       "kind": "feature",
       "title": "Watch the intro, right inside Maude",
       "summary": "There's now a short product showreel (about a minute and a half) you can watch without leaving the app — Help → Watch the intro, or the same button on the welcome screen the first time you open Maude. It walks through the whole loop: a design system built from a conversation, the infinite canvas, pointing and commenting to direct an AI edit, live multiplayer, and shipping the result. Also lands as its own canvas (Maude Explainer) if you want to open it in the canvas browser like anything else.",
@@ -55,8 +55,8 @@
     },
     {
       "id": "bulk-media-insert",
-      "version": null,
-      "date": null,
+      "version": "0.44.0",
+      "date": "2026-07-14",
       "kind": "feature",
       "title": "Insert several photos at once",
       "summary": "The media picker now supports multi-select — pick several photos (or a mix of photos, videos, and audio) in one go instead of one at a time. Choose whether they land inside your artboard or float on the canvas as annotations; the picker figures out the sensible default (video and audio always go on the canvas, since only images can drop into an artboard) and lets you switch. Dragging several files from Finder onto the canvas at once is also more reliable now — every dropped file lands, even in a large batch.",
@@ -64,8 +64,8 @@
     },
     {
       "id": "ai-video-generation",
-      "version": null,
-      "date": null,
+      "version": "0.44.0",
+      "date": "2026-07-14",
       "kind": "feature",
       "title": "Generate video clips for your reels",
       "summary": "The BYOK generator now makes video. Bring your own Google key and generate a clip with Veo — a text prompt (\"slow drone push over an alpine lake at dawn\"), or seed it from a still you already generated so the clip matches your hero's look. The clip lands in your assets like any other footage, and Maude treats it as first-class: when you build a reel it watches the generated clip alongside your real footage and places it as a beat, so you can fill a missing shot without hand-sourcing one. Video takes a few minutes and runs in the background — you'll get the finished clip when it's ready. Add your key under File → Settings — AI generation (⌘,); it stays on your machine.",
@@ -73,8 +73,8 @@
     },
     {
       "id": "ai-audio-generation",
-      "version": null,
-      "date": null,
+      "version": "0.44.0",
+      "date": "2026-07-14",
       "kind": "feature",
       "title": "Generate music, voiceover & subtitles",
       "summary": "The BYOK generator now does audio. Bring your own ElevenLabs key and generate a music bed, sound effects, or a text-to-speech voiceover — one key covers the whole stack — and the track lands in your assets ready to drop under a reel. Before you spend credits on a music or SFX track, Maude searches audio you've already made (and your own ElevenLabs history — re-downloading it costs nothing) and offers a match to reuse. Subtitles are free and need no key at all: `maude design transcribe` runs whisper.cpp locally on any clip and writes word-timed SRT/VTT captions. Local setup is one click — Settings → Subtitles → Download model — and Maude auto-converts video containers (no ffmpeg wrangling) and picks the model for you. You pick the subtitle engine — local whisper, ElevenLabs Scribe, or Groq — in Settings; it's an explicit choice, so Maude never silently switches to a paid cloud engine behind your back. In a reel, generated music/voiceover become layered audio tracks (the music ducks under the voice) and the subtitles become a caption track that renders right on the video. Add your keys under File → Settings — AI generation (⌘,); they're stored only on your machine.",
@@ -82,8 +82,8 @@
     },
     {
       "id": "ai-media-generation",
-      "version": null,
-      "date": null,
+      "version": "0.44.0",
+      "date": "2026-07-14",
       "kind": "feature",
       "title": "Generate images with your own AI key",
       "summary": "Bring your own Google (Nano Banana) API key and generate images right inside Maude — and the image lands straight on your canvas, not in a dead-end dialog. Use the Generate action (⌘K → \"Generate with AI\"), the command line, or just ask in the chat panel (\"generate a hero image of a mountain lake\"); the finished picture drops onto the artboard you're looking at. Add your key under File → Settings — AI generation (⌘,); it's stored only on your machine, sent straight to the provider, and never touches a canvas or your git history. Want to change a generated image? Ask to edit it (\"make the sky purple\") for a fresh AI-edited version, or fine-tune it in the Photo tab — every result is a normal asset you can place, edit, and export. Audio and video generation are on the way.",
