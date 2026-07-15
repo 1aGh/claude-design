@@ -92,7 +92,11 @@ const SIGNIN_POLL_MAX_MS = 120000;
 // The installer itself is fire-and-forget server-side (avoids Bun's default
 // 10s idle timeout on a slow network) — poll for its result the same way.
 const INSTALL_POLL_MS = 1500;
-const INSTALL_POLL_MAX_MS = 90000;
+// The window we allow with NO `running` signal from the server before giving up.
+// The deadline is pushed forward on every `running` poll (see pollForInstall), so
+// a genuinely-progressing install is never cut off — this only bounds a hung/lost
+// installer. Generous vs the old fixed 90 s that cut off fresh-machine downloads.
+const INSTALL_POLL_MAX_MS = 180000;
 
 // DDR-166 T0c/T0d — one component drives both the "install then sign in"
 // chain (mode='install') and the "sign in only" case (mode='signin'), since
@@ -144,13 +148,23 @@ function SetupAction({ mode, refresh }) {
       if (Date.now() > timerRef.current.deadline) {
         stopPoll();
         setPhase('error');
-        setError('Install timed out — you can also run the command below yourself.');
+        setError('Install is taking longer than expected — it may still finish in the background; you can also run the command below yourself, then Re-check.');
         return;
       }
       const state = await fetch('/_api/claude/install-status')
         .then((r) => r.json())
         .catch(() => null);
-      if (!state || state.phase !== 'done') return; // still running
+      // The installer downloads a ~200 MB binary; on a fresh/slow machine that
+      // routinely exceeds a fixed 90 s wall clock (RCA G6 — the "Install timed
+      // out" the user hit while the fire-and-forget install was still running).
+      // While the server reports it's actively installing, push the deadline
+      // forward so a slow-but-progressing download is never declared a failure;
+      // the cap only bites if the server stops reporting `running` (hung/lost).
+      if (state && state.phase === 'running') {
+        timerRef.current.deadline = Date.now() + INSTALL_POLL_MAX_MS;
+        return;
+      }
+      if (!state || state.phase !== 'done') return; // transient — keep polling to the deadline
       stopPoll();
       if (!state.ok) {
         setPhase('error');

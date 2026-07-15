@@ -42,16 +42,33 @@ describe('svgPreParseReject', () => {
     expect(() => svgPreParseReject(huge)).toThrow(/cap/);
   });
 
-  test('rejects DOCTYPE (XXE class)', () => {
+  test('rejects a DOCTYPE with an internal subset carrying an ENTITY (XXE class)', () => {
     const xxe =
       '<?xml version="1.0"?><!DOCTYPE svg [<!ENTITY x "y">]><svg xmlns="http://www.w3.org/2000/svg"/>';
-    expect(() => svgPreParseReject(xxe)).toThrow(/DOCTYPE/);
+    expect(() => svgPreParseReject(xxe)).toThrow(/entity-expansion/i);
   });
 
   test('rejects a bare ENTITY declaration even without DOCTYPE wrapping', () => {
     expect(() =>
       svgPreParseReject('<!ENTITY x "y"><svg xmlns="http://www.w3.org/2000/svg"/>')
-    ).toThrow(/DOCTYPE\/ENTITY/);
+    ).toThrow(/ENTITY/);
+  });
+
+  test('rejects an internal DTD subset even with no ENTITY declared', () => {
+    expect(() =>
+      svgPreParseReject('<!DOCTYPE svg [ <!-- x --> ]><svg xmlns="http://www.w3.org/2000/svg"/>')
+    ).toThrow(/internal subset/i);
+  });
+
+  // RCA G8 — a plain external-identifier DOCTYPE (no internal subset, no ENTITY)
+  // is what Illustrator/Serif/Inkscape emit; rejecting the whole class turned away
+  // real clean logos. It must be accepted (the sanitizer drops it from the output).
+  test('accepts a plain external-identifier DOCTYPE (Illustrator/Serif export)', () => {
+    const illustrator =
+      '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n' +
+      '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="#3B5BDB"/></svg>';
+    expect(() => svgPreParseReject(illustrator)).not.toThrow();
   });
 
   test('rejects a non-declaration processing instruction (xml-stylesheet)', () => {

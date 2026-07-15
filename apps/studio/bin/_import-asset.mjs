@@ -248,10 +248,23 @@ export function svgPreParseReject(text) {
   if (encMatch && !/^(utf-8|us-ascii|ascii)$/i.test(encMatch[1])) {
     throw new ImportAssetError(3, `unsupported declared encoding: ${encMatch[1]}`);
   }
-  if (/<!DOCTYPE/i.test(text) || /<!ENTITY/i.test(text)) {
+  // XXE / entity-expansion hardening. The attack surface is an ENTITY
+  // declaration or an internal DTD subset (`<!DOCTYPE svg [ … ]>`, where entities
+  // are declared) — NOT a plain external-identifier DOCTYPE. Adobe Illustrator,
+  // Affinity/Serif, and Inkscape all emit a benign `<!DOCTYPE svg PUBLIC "-//W3C//
+  // DTD SVG 1.1//EN" "…svg11.dtd">` with no internal subset; rejecting that whole
+  // class turned away real, clean brand logos (RCA G8). Reject the actual vector,
+  // allow the benign declaration (the allowlist sanitizer drops the DOCTYPE from
+  // the stored output regardless, and browser-grade parsers don't fetch external
+  // DTDs). See DDR-167.
+  if (/<!ENTITY/i.test(text)) {
+    throw new ImportAssetError(3, 'ENTITY declarations are rejected (XXE/entity-expansion class)');
+  }
+  const doctype = /<!DOCTYPE\b([\s\S]*?)>/i.exec(text);
+  if (doctype && doctype[1].includes('[')) {
     throw new ImportAssetError(
       3,
-      'DOCTYPE/ENTITY declarations are rejected (XXE/entity-expansion class)'
+      'DOCTYPE with an internal subset is rejected (XXE/entity-expansion class)'
     );
   }
   // Any processing instruction other than the single leading XML declaration.
