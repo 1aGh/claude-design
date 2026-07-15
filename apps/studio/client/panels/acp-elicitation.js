@@ -138,10 +138,25 @@ export function parseElicitationSchema(requestedSchema) {
  * single/text, string[] for multi) AND by `customFieldId` (string) where the
  * user typed a free-text override.
  *
- * A non-empty, trimmed custom answer wins over a selection — mirrors
- * `applyAskElicitationResponse`'s documented read order exactly (it checks the
- * `_custom` field first and only falls back to the base field when empty), so
- * an AskUserQuestion form folds identically however the adapter reads it back.
+ * Single/text: a non-empty, trimmed custom answer WINS over a selection —
+ * mirrors `applyAskElicitationResponse`'s documented read order exactly (it
+ * checks the `_custom` field first and only falls back to the base field when
+ * empty), so a single-select AskUserQuestion field folds identically however
+ * the adapter reads it back. This is a real protocol constraint, not a UI
+ * choice — a single-select question only has room for one answer.
+ *
+ * Multi: a non-empty custom answer is APPENDED to the checked options instead
+ * (routed through the BASE field, `content[q.id]`, never `content[customFieldId]`)
+ * — dogfooding expected "type something extra" to ADD to a multi-select pick,
+ * not silently discard it the way single-select's override does. This is safe
+ * specifically because `applyAskElicitationResponse` only reads the custom key
+ * to decide whether to override; when it's absent, it falls through to
+ * `Array.isArray(value) ? value.join(", ") : ...` on the base field, which
+ * doesn't validate array entries against the declared enum — appending an
+ * arbitrary string is exactly what a real multi-select "and also…" answer
+ * should read as once joined. `content[customFieldId]` is deliberately never
+ * populated for a multi-select question, so the override path never fires.
+ *
  * An unanswered, non-required question is simply omitted from `content`
  * (Skip/leave-blank must never fabricate a value).
  */
@@ -157,14 +172,21 @@ export function buildElicitationContent(questions, answers) {
   const src = answers && typeof answers === 'object' ? answers : {};
   for (const q of questions ?? []) {
     const custom = q.customFieldId ? src[q.customFieldId] : undefined;
-    if (typeof custom === 'string' && custom.trim() !== '') {
-      content[q.customFieldId] = custom.trim();
+    const trimmedCustom = typeof custom === 'string' ? custom.trim() : '';
+
+    if (q.kind === 'multi') {
+      const selected = Array.isArray(src[q.id]) ? src[q.id] : [];
+      const combined = trimmedCustom ? [...selected, trimmedCustom] : selected;
+      if (combined.length) content[q.id] = combined;
+      continue;
+    }
+
+    if (trimmedCustom) {
+      content[q.customFieldId] = trimmedCustom;
       continue;
     }
     const value = src[q.id];
-    if (q.kind === 'multi') {
-      if (Array.isArray(value) && value.length) content[q.id] = value;
-    } else if (typeof value === 'string' && value !== '') {
+    if (typeof value === 'string' && value !== '') {
       content[q.id] = value;
     }
   }

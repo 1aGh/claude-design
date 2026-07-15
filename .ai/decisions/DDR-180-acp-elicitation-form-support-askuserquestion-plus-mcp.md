@@ -77,6 +77,17 @@ A second `security-auditor`/`ethical-hacker` pass ran over the full diff (both t
 
 Note corrected in this addendum, not the original text above: this session's own testing confirmed the property-count-plus-byte-size check runs on the FULL schema object (not per-property), so a single property with an oversized `description` trips the byte cap even under the property-count limit — both caps are independent gates, not layered fallbacks.
 
+## Addendum — a UX correctness bug found by dogfooding, not security review
+
+A user picked a single-select option, then also typed into that question's free-text override — the radio stayed visually checked, so it looked like both would be sent. Only the typed text was: `applyAskElicitationResponse` (the installed adapter's own answer-folding, confirmed on disk) checks the custom field first and, if non-empty, uses it ALONE — the picked option is silently discarded. The user's own test transcript showed exactly this: a literal `"Custom"` sent as the answer, the actual radio pick nowhere in it. For a multi-select question the same override happened, but the user's expectation was the opposite — "typing something extra should ADD to what I already checked," not replace it.
+
+Two different fixes for two genuinely different cases, not one bug:
+
+- **Single-select stays override (a real protocol constraint, not a UI choice — one field, one answer) but the UI now says so.** `ElicitationPrompt.jsx` dims the radio group to 45% opacity the moment the custom field has real text (`.chat-elicit-options--overridden`), and the "replaces the option picked above" note is now a PERSISTENT caption next to the input, not placeholder text — a placeholder disappears the instant the user starts typing, which is exactly when the warning matters most.
+- **Multi-select genuinely combines, because the protocol allows it.** `buildElicitationContent` never populates `content[customFieldId]` for a multi-select question — it appends the trimmed custom text into `content[q.id]` (the base field) alongside the checked options instead. `applyAskElicitationResponse` only overrides when the custom KEY is present and non-empty; when it's absent, it falls through to `Array.isArray(value) ? value.join(", ") : …` on the base field, which doesn't validate array entries against the declared enum — so the adapter joins the picks and the custom text together into one answer, exactly as a real "and also…" should read. No adapter change needed; this exploits a gap between what the override-detection checks (one specific key) and what the base-field reader accepts (any string array). Checkboxes are never dimmed, since they genuinely still count.
+
+Covered by new `buildElicitationContent` tests (multi-select + custom combines via the base field, never touches `customFieldId`; a custom-only multi answer still sends as a one-entry array).
+
 ## Revisit when
 
 - The adapter/SDK version bumps in a way that changes `unstable_createElicitation`'s request/response shape, the `question_<n>`/`question_<n>_custom` field-pairing convention, or `applyAskElicitationResponse`'s decline-vs-cancel folding rule.

@@ -43,6 +43,25 @@ function Question({ q, answers, setAnswer, customOpen, onToggleCustom, groupName
   // the same pause a real password field gives a user, instead of rendering
   // identically to "which color do you like?".
   const secretShaped = cardSecretShaped || q.secretShaped;
+  // A non-empty custom answer REPLACES a single-select pick (`applyAskElicitation
+  // Response` only has room for one answer per question — reads the custom
+  // field first and, if non-empty, uses it ALONE) but ADDS to a multi-select
+  // pick (`buildElicitationContent` routes it into the base field's own array
+  // instead of the custom-field key, so the adapter's join() sees both).
+  // Dogfooding found the single-select case genuinely confusing when the
+  // picked radio stayed visually selected while the user typed — it looked
+  // like both would be sent, but only the custom text was (the same mismatch
+  // a "Custom" answer literally showed up as, discarding the radio pick).
+  // Dim ONLY for single-select, where that mismatch is real; multi-select's
+  // checkboxes stay at full opacity since they genuinely do still count.
+  const customText = q.customFieldId ? answers[q.customFieldId] : undefined;
+  const hasCustomText = typeof customText === 'string' && customText.trim() !== '';
+  const customOverriding = q.kind === 'single' && hasCustomText;
+  const optionsClass = `chat-elicit-options${customOverriding ? ' chat-elicit-options--overridden' : ''}`;
+  const customNote =
+    q.kind === 'multi'
+      ? 'Added to your selections above.'
+      : 'Replaces the selection above — only this answer is sent.';
   // `title` (AskUserQuestion's `header` — a short ≤12-char chip like "Barva")
   // and `description` (the full question text, only carried per-field once a
   // call has more than one question — a single-question call puts the full
@@ -60,7 +79,7 @@ function Question({ q, answers, setAnswer, customOpen, onToggleCustom, groupName
         </legend>
       ) : null}
       {q.kind === 'single' ? (
-        <div className="chat-elicit-options">
+        <div className={optionsClass}>
           {q.options.map((o, i) => (
             <label
               key={o.value}
@@ -87,7 +106,7 @@ function Question({ q, answers, setAnswer, customOpen, onToggleCustom, groupName
         </div>
       ) : null}
       {q.kind === 'multi' ? (
-        <div className="chat-elicit-options">
+        <div className={optionsClass}>
           {q.options.map((o, i) => {
             const selected = Array.isArray(answers[q.id]) ? answers[q.id] : [];
             return (
@@ -133,17 +152,26 @@ function Question({ q, answers, setAnswer, customOpen, onToggleCustom, groupName
       ) : null}
       {q.customFieldId ? (
         customOpen ? (
-          <input
-            type={secretShaped ? 'password' : 'text'}
-            className="chat-elicit-text chat-elicit-custom"
-            placeholder="Your own answer or note — replaces the option picked above…"
-            autoFocus
-            value={answers[q.customFieldId] || ''}
-            onChange={(e) => setAnswer(q.customFieldId, e.target.value)}
-          />
+          <div className="chat-elicit-custom-wrap">
+            <input
+              type={secretShaped ? 'password' : 'text'}
+              className="chat-elicit-text chat-elicit-custom"
+              placeholder="Type your own answer…"
+              autoFocus
+              value={answers[q.customFieldId] || ''}
+              onChange={(e) => setAnswer(q.customFieldId, e.target.value)}
+            />
+            {/* Persistent, not a placeholder — a placeholder vanishes the
+                moment the user starts typing, which is exactly when this
+                matters most (dogfooding finding: the warning disappeared
+                right as the picked option silently stopped counting). */}
+            <p className="chat-elicit-custom-note">{customNote}</p>
+          </div>
         ) : (
           <button type="button" className="chat-elicit-custom-toggle" onClick={onToggleCustom}>
-            Prefer to write your own answer or add a note?
+            {q.kind === 'multi'
+              ? 'Add your own answer to your selections?'
+              : 'Prefer to answer in your own words instead?'}
           </button>
         )
       ) : null}

@@ -183,6 +183,26 @@ describe('buildElicitationContent', () => {
     expect(content).toEqual({ question_1: ['X', 'Y'] });
   });
 
+  test('multi-select: a custom answer is ADDED to the picks (via the base field), not routed through customFieldId', () => {
+    const qs = parseElicitationSchema(MULTI_QUESTION_SCHEMA);
+    const content = buildElicitationContent(qs, {
+      question_1: ['X', 'Y'],
+      question_1_custom: '  Z  ',
+    });
+    // Combined into the BASE field's array — applyAskElicitationResponse only
+    // overrides when content[customFieldId] itself is non-empty, so leaving
+    // that key absent and appending to content[question_1] instead means the
+    // adapter's own join() sees the pick AND the custom text.
+    expect(content).toEqual({ question_1: ['X', 'Y', 'Z'] });
+    expect(content.question_1_custom).toBeUndefined();
+  });
+
+  test('multi-select: a custom answer with NO picks still sends as a single-entry array', () => {
+    const qs = parseElicitationSchema(MULTI_QUESTION_SCHEMA);
+    const content = buildElicitationContent(qs, { question_1_custom: 'Just this' });
+    expect(content).toEqual({ question_1: ['Just this'] });
+  });
+
   test('an unanswered, non-required question is omitted entirely — never fabricates a value', () => {
     const qs = parseElicitationSchema(SINGLE_SELECT_SCHEMA);
     expect(buildElicitationContent(qs, {})).toEqual({});
