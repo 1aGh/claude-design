@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-177: The packaged app is self-contained — every runtime-spawned surface ships its runtime + dep closure, enforced by a build-time gate](DDR-177-desktop-self-contained-runtime-and-bundle-completeness-gate.md) — 2026-07-15, desktop/tauri/bundle/bun-compile/acp/cli/dependencies/self-contained/incident/gate
 - [DDR-176: Patch registration is per package-manager root — a pnpm-workspace patch does not reach apps/studio's own bun install](DDR-176-per-workspace-patch-registration-for-bun-compiled-sidecars.md) — 2026-07-15, dev-server/bun-compile/pnpm/patches/css-tree/svgo/sidecar/incident
 - [DDR-175: Generic skill + repo-owned knowledge file — the pattern for letting a project override flow-plugin protocol without a wrapper skill](DDR-175-generic-skill-plus-repo-owned-knowledge-file-pattern.md) — 2026-07-15, flow-plugin/scenario/release/config-schema/extensibility/project-agnostic
 - [DDR-174: Vision-reconstruction trust boundary + experimental posture — no agent that reads the untrusted source image (authoring or reality-check comparator) ever holds Bash; orchestrator handles only paths + a typed verdict, never content, for any purpose](DDR-174-vision-reconstruction-trust-boundary-and-experimental-posture.md) — 2026-07-14, design-system/prompt-injection/vision/image-import/reconstruction/ingestion/security

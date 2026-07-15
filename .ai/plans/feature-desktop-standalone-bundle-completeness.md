@@ -118,19 +118,19 @@ Execute in dependency order. Each task is atomic and testable. Prefix each with 
 - **Gotcha**: the helpers' `command -v bun` gate must find the staged `bun` — verify the launcher is executable and on the PATH `sidecar.rs` sets. `BUN_BE_BUN` is a no-op on a real `bun`, safe to set on the fallback path.
 - **Validate**: with `node`/`bun` absent from PATH, the ACP panel completes a real turn, and `maude design svg-optimize` (a standalone bun helper) runs.
 
-### Task 4 (G4 — route track): Route `import-asset`/`import-brand` through the local server
+### ⏭️ Task 4 (G4 — route track): Route `import-asset`/`import-brand` through the local server — SUPERSEDED by Task 5 (staging) per the owner's "vše bundlovat" preference; kept as a future option to shrink the bundle. Original detail below.
 
 - **Do**: Rewrite `import-asset.sh`/`import-brand.sh` to `curl` the local dev-server `/_api/import-asset` / `/_api/import-brand` (read port from `<designRoot>/_server.json`; boot via `server-up.sh` if absent), mirroring `photo-adjust.sh`. Keep the `bun run` path only as a no-server fallback. Deps then ride the compiled server's embedded closure — no `happy-dom`/`svgo`/`pdf-lib` staging needed for these.
 - **Gotcha**: `/_api/import-*` are privileged (not in `CANVAS_SAFE_API`) — fine over trusted loopback from the CLI; do NOT add them to the canvas allowlist.
 - **Validate**: `maude design import-brand <svg>` succeeds with no `bun`/`happy-dom` on the machine, server up.
 
-### Task 5 (G4 — staged track): Make `stage-resources.mjs` closure data-driven; stage residual standalone-helper deps
+### ✅ Task 5 (G4 — staged track): Make `stage-resources.mjs` closure data-driven; stage residual standalone-helper deps — DONE (shared `helper-deps.mjs`; derived {happy-dom, svgo, playwright}; deps resolvable in apps/studio/node_modules; gate double-checks. Full stage run needs the build.)
 
 - **Do**: Replace the hand-maintained `RENDER_RUNTIME_PKGS` list with a derivation: enumerate every standalone (`bun run`) `BIN_VERBS` helper's `_*.mjs`, analyze its transitive npm imports, and stage the union (via `collectClosure`). Verify the residual set after Task 4 (e.g. `svgo` for `svg-optimize`/`draw-build` unless also routed; `ajv` for `import-tokens`; whisper/footage deps).
 - **Gotcha**: some "deps" are external binaries (whisper.cpp, chromium) resolved at runtime, not npm packages — the gate must distinguish and not false-fail on those.
 - **Validate**: Task 1's completeness check passes for every staged-track helper.
 
-### Task 6 (G4 — npm channel): Complete the `npm i -g @1agh/maude` closure
+### ✅ Task 6 (G4 — npm channel): Complete the `npm i -g @1agh/maude` closure — DONE (added `happy-dom` 20.10.6 + `svgo` ^4.0.1 to root `dependencies`, matching apps/studio; the bun-shim from Task 3 covers the interpreter). Ephemeral-server option not needed — staging + declared deps suffice.
 
 - **Do**: For CLI-without-server use, have `import-asset`/`import-brand`/etc. boot an ephemeral local server (they already need one for the canary), OR declare the residual standalone-only deps in root `package.json` `dependencies`. Add an npm-tarball completeness check (mirror Task 1 for the packed tarball). Reconcile with `plugins/design/dependencies.json` (mark deps the bundle satisfies).
 - **Gotcha**: don't bloat root deps with things only the compiled binary needs — only what a **standalone** helper imports and can't get via the server.
@@ -147,7 +147,7 @@ Execute in dependency order. Each task is atomic and testable. Prefix each with 
 - **Gotcha**: security-sensitive — keep the reject set tight; add a test with a real Illustrator export (accept) and an XXE payload (reject).
 - **Validate**: a stock Illustrator SVG imports; an internal-`ENTITY` payload is still rejected.
 
-### Task 9: RECORD the DDR + update CLAUDE.md
+### ✅ Task 9: RECORD the DDR + update CLAUDE.md — DONE (DDR-177 + README index entry + CLAUDE.md self-contained-bundle rule)
 
 - **Do**: Write DDR-1XX (the invariant + two-track model + gate). Add a CLAUDE.md rule under the desktop/release section: "Any new `maude design <verb>` helper or runtime-spawned surface MUST ship its runtime + dep closure in the bundle and pass `check-bundle-completeness`; new deps are added to the staged closure (or the helper is server-routed) in the same change." Wire via `claude-md-keeper`.
 - **Validate**: `scripts/check-version-parity.sh` unaffected; docs build clean.

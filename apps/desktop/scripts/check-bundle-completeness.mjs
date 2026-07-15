@@ -24,8 +24,10 @@
 // not found (so CI can distinguish "bundle incomplete" from "ran wrong").
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+
+import { classifyHelpers, collectImports } from './helper-deps.mjs';
 
 const RED = '\x1b[31m';
 const GRN = '\x1b[32m';
@@ -81,90 +83,9 @@ function resolveTarget(argPath) {
   return null;
 }
 
-// --- The design helpers we must be able to run --------------------------------
-// Derived from cli/commands/design.mjs BIN_VERBS. A helper is either:
-//   • server-routed — its `.sh` curls the local dev-server `/_api/<verb>` (deps
-//     ride the compiled server's embedded closure — nothing to stage); OR
-//   • standalone — its `.sh` `exec bun run _<verb>.mjs`, so it needs a bundled
-//     `bun` AND every npm package its module graph imports staged on disk.
-// We classify each by reading its `.sh`, so this stays correct as helpers move
-// between the two tracks (the whole point of the two-track design).
-function classifyHelpers(binDir) {
-  if (!existsSync(binDir)) return [];
-  const out = [];
-  for (const f of readdirSync(binDir)) {
-    if (!f.endsWith('.sh') || f.startsWith('_')) continue;
-    const verb = f.slice(0, -3);
-    const src = readFileSync(join(binDir, f), 'utf8');
-    const routed = /_api\//.test(src) && !/\bexec\s+bun\s+run\b/.test(src);
-    const bunEntry = src.match(/bun\s+run\s+"?\$SCRIPT_DIR\/(_[\w-]+\.mjs)/);
-    out.push({
-      verb,
-      sh: f,
-      track: routed ? 'routed' : bunEntry ? 'standalone' : 'other',
-      entry: bunEntry ? bunEntry[1] : null,
-      needsBun: /command -v bun/.test(src) || /\bexec\s+bun\s+run\b/.test(src),
-    });
-  }
-  return out;
-}
-
-// --- Module-graph walk: collect the npm packages a standalone helper imports ---
-// Follows relative (`./` `../`) imports through the staged source (.ts/.mjs/.js),
-// collecting every BARE specifier (an npm package, not `node:` and not relative).
-// This is the authoritative dep closure the helper needs on disk.
-const SPEC_RE =
-  /(?:import|export)[\s\S]*?from\s*['"]([^'"]+)['"]|import\s*['"]([^'"]+)['"]|(?:import|require)\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
-
-function resolveLocal(fromFile, spec) {
-  const base = resolve(dirname(fromFile), spec);
-  const cands = [
-    base,
-    `${base}.ts`,
-    `${base}.mjs`,
-    `${base}.js`,
-    `${base}.tsx`,
-    join(base, 'index.ts'),
-    join(base, 'index.mjs'),
-    join(base, 'index.js'),
-  ];
-  return cands.find((c) => existsSync(c) && statSync(c).isFile()) ?? null;
-}
-
-function pkgName(spec) {
-  if (spec.startsWith('@')) return spec.split('/').slice(0, 2).join('/');
-  return spec.split('/')[0];
-}
-
-function collectImports(entryFile) {
-  const bare = new Set();
-  const seen = new Set();
-  const stack = [entryFile];
-  while (stack.length) {
-    const file = stack.pop();
-    if (seen.has(file) || !existsSync(file)) continue;
-    seen.add(file);
-    let text;
-    try {
-      text = readFileSync(file, 'utf8');
-    } catch {
-      continue;
-    }
-    for (const m of text.matchAll(SPEC_RE)) {
-      const spec = (m[1] || m[2] || m[3] || '').trim();
-      // A real module specifier has no whitespace/comma/newline — the greedy
-      // `from` alternative can otherwise span across statements and capture junk.
-      if (!spec || /[\s,]/.test(spec) || spec.startsWith('node:') || spec.startsWith('bun:')) continue;
-      if (spec.startsWith('.') || spec.startsWith('/')) {
-        const local = resolveLocal(file, spec);
-        if (local) stack.push(local);
-        continue;
-      }
-      bare.add(pkgName(spec));
-    }
-  }
-  return [...bare].sort();
-}
+// Helper classification + the module-graph dep walk live in the shared
+// `helper-deps.mjs` — the SAME source `stage-resources.mjs` uses to decide what
+// to stage, so "what the gate checks" can never drift from "what staging ships".
 
 // -----------------------------------------------------------------------------
 const arg = process.argv.find((a) => !a.startsWith('-') && a !== process.argv[0] && a !== process.argv[1]);

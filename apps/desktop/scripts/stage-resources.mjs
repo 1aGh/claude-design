@@ -45,6 +45,8 @@ import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } fro
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { standaloneHelperNpmDeps } from './helper-deps.mjs';
+
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '..', '..', '..'); // apps/desktop/scripts → repo root
 const STUDIO = join(REPO_ROOT, 'apps', 'studio');
@@ -306,6 +308,35 @@ for (const pkg of RENDER_RUNTIME_PKGS) {
 }
 console.log(
   `[stage-resources] staged render-export runtime (${renderPkgCount} pkgs) → ${RENDER_RUNTIME_PKGS.join(', ')}`
+);
+
+// --- Design-helper runtime: stage every STANDALONE `maude design <verb>` helper's
+// npm closure (RCA G4). The `bun run _<verb>.mjs` helpers resolve their imports
+// from DISK — the compiled server embeds them, but a standalone helper subprocess
+// can't reach embedded modules, and the blanket node_modules exclusion above drops
+// them (that's why `import-brand`/`import-asset`/`svg-optimize` failed on
+// `happy-dom`/`svgo` on a fresh machine). DATA-DRIVEN from the helpers' real import
+// graph (helper-deps.mjs) so a NEW helper's deps stage automatically — no
+// hand-list to forget; check-bundle-completeness.mjs asserts it stayed complete.
+const HELPER_DEP_PKGS = standaloneHelperNpmDeps(join(STUDIO, 'bin'));
+let helperPkgCount = 0;
+for (const pkg of HELPER_DEP_PKGS) {
+  // Already staged by an earlier closure (e.g. playwright via render-export) →
+  // skip the redundant walk; the gate below still asserts presence.
+  if (existsSync(join(OUT_STUDIO, 'node_modules', pkg))) continue;
+  const c = collectClosure(pkg, `${pkg} (design helper)`, IS_RENDER_SKIP_DEP);
+  stageClosure(c);
+  helperPkgCount += c.size;
+}
+for (const pkg of HELPER_DEP_PKGS) {
+  const pj = join(OUT_STUDIO, 'node_modules', pkg, 'package.json');
+  if (!existsSync(pj)) {
+    console.error(`[stage-resources] design-helper dep not staged (RCA G4): ${pj}`);
+    process.exit(1);
+  }
+}
+console.log(
+  `[stage-resources] staged design-helper deps (${helperPkgCount} new pkgs) → ${HELPER_DEP_PKGS.join(', ')}`
 );
 
 // Build-time gate: a missing adapter must FAIL the desktop build loud, not ship a

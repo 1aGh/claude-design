@@ -19,6 +19,12 @@ importers:
       ajv-formats:
         specifier: ^3.0.1
         version: 3.0.1(ajv@8.20.0)
+      happy-dom:
+        specifier: 20.10.6
+        version: 20.10.6
+      svgo:
+        specifier: ^4.0.1
+        version: 4.0.1
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.5.3
@@ -32,6 +38,28 @@ importers:
       lucide-react:
         specifier: ^1.24.0
         version: 1.24.0(react@19.2.7)
+    optionalDependencies:
+      '@1agh/maude-darwin-arm64':
+        specifier: 0.45.1
+        version: 0.45.1
+      '@1agh/maude-darwin-x64':
+        specifier: 0.45.1
+        version: 0.45.1
+      '@1agh/maude-linux-arm64':
+        specifier: 0.45.1
+        version: 0.45.1
+      '@1agh/maude-linux-arm64-musl':
+        specifier: 0.45.1
+        version: 0.45.1
+      '@1agh/maude-linux-x64':
+        specifier: 0.45.1
+        version: 0.45.1
+      '@1agh/maude-linux-x64-musl':
+        specifier: 0.45.1
+        version: 0.45.1
+      '@1agh/maude-win32-x64':
+        specifier: 0.45.1
+        version: 0.45.1
 
   apps/desktop:
     devDependencies:
@@ -298,6 +326,45 @@ importers:
         version: 6.0.3
 
 packages:
+
+  '@1agh/maude-darwin-arm64@0.45.1':
+    resolution: {integrity: sha512-O1V9xHZuQdkfpNiu1pfh1JD999Fm8ifkBxtKQu66xoi76qbsLdkuTPRMXcNXraC50sdexRWn67aSWuMYHUsqqA==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@1agh/maude-darwin-x64@0.45.1':
+    resolution: {integrity: sha512-c6ova8KoMNfvT0kzO5sOkAIlcYUrAqLqpoDOCGJUrHyrlDpDrW6zJvGMpiEj03PmImF1lc4xVN6aGaGTEV4XZg==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@1agh/maude-linux-arm64-musl@0.45.1':
+    resolution: {integrity: sha512-EH0bvZzjzih1AlYrN6W5v2NP/eHZ51NOxMv6jlYvgrEKk93LxsVa5XRZHgNWooc17bW+ZlTUxwzR54psvH/bTg==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@1agh/maude-linux-arm64@0.45.1':
+    resolution: {integrity: sha512-TwXVWshUfKHWT4ojmqP73QxdlS1auBD3yK5rMztj55jr8DkMRftkDjLy6Ov/JeLVilSn1ib55cB4KLfwrqgXFQ==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@1agh/maude-linux-x64-musl@0.45.1':
+    resolution: {integrity: sha512-EOV0CZc6US9c8ZBunkPqjbP7JKODW4KX5WCZMvrjobYl1n7We2BTne3bXWEt1i0g24y3CrMG70N8aDVwWIwlFQ==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@1agh/maude-linux-x64@0.45.1':
+    resolution: {integrity: sha512-heyhFTv10d85TIqcmMf2pPP+3pKTRstdRbkLx3sMfS+WjNOBtApRlo06dqozpblYZ5SUjBiUR7M2vXizL1Y3Cw==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@1agh/maude-win32-x64@0.45.1':
+    resolution: {integrity: sha512-wPBzbCk31nxYM8EoDt182o3foR3+2kiKQCi3xUNPyh/UFFhuPte9/P0jvpZHbp8i8rTo1hp6bTPsxuSaNc9/Aw==}
+    cpu: [x64]
+    os: [win32]
 
   '@agentclientprotocol/claude-agent-acp@0.57.0':
     resolution: {integrity: sha512-CvfPwCFmMeOw3elh1UWKL09sU0z8z+qsmmiFND33jHvMo9hSI5gKC4tlXkp9oU+o6ZIMABXmRjHFicVYOu2RkQ==}
@@ -6385,6 +6452,27 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  '@1agh/maude-darwin-arm64@0.45.1':
+    optional: true
+
+  '@1agh/maude-darwin-x64@0.45.1':
+    optional: true
+
+  '@1agh/maude-linux-arm64-musl@0.45.1':
+    optional: true
+
+  '@1agh/maude-linux-arm64@0.45.1':
+    optional: true
+
+  '@1agh/maude-linux-x64-musl@0.45.1':
+    optional: true
+
+  '@1agh/maude-linux-x64@0.45.1':
+    optional: true
+
+  '@1agh/maude-win32-x64@0.45.1':
+    optional: true
 
   '@agentclientprotocol/claude-agent-acp@0.57.0(@anthropic-ai/sdk@0.105.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.26.0(zod@4.4.3))':
     dependencies:
