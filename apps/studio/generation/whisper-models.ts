@@ -90,7 +90,9 @@ const MODEL_REPO_PATH = '/ggerganov/whisper.cpp/resolve/main';
 const ALLOWED_REDIRECT_APEXES = ['huggingface.co', 'xethub.hf.co'] as const;
 
 function isAllowedRedirectHost(hostname: string): boolean {
-  return ALLOWED_REDIRECT_APEXES.some((apex) => new RegExp(`(^|\\.)${apex.replace(/\./g, '\\.')}$`).test(hostname));
+  return ALLOWED_REDIRECT_APEXES.some((apex) =>
+    new RegExp(`(^|\\.)${apex.replace(/\./g, '\\.')}$`).test(hostname)
+  );
 }
 
 /** The fixed, non-interpolated download URL for a model (SSRF-safe — the file

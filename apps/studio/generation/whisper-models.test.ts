@@ -141,7 +141,7 @@ describe('downloadWhisperModel', () => {
     expect(existsSync(path)).toBe(true);
   });
 
-  test('accepts a redirect that lands on HF\'s Xet CDN (xethub.hf.co)', async () => {
+  test("accepts a redirect that lands on HF's Xet CDN (xethub.hf.co)", async () => {
     const bytes = new Uint8Array(512);
     globalThis.fetch = (async () => ({
       url: 'https://cas-bridge.xethub.hf.co/repos/x/ggml-tiny.bin',
