@@ -454,13 +454,18 @@ describe('AcpBridge — elicitation flood cap', () => {
     });
     try {
       const promptPromise = bridge.prompt('hi', 'c1');
-      // Give every concurrently-fired request a chance to arrive before we
-      // start answering — this is the moment the cap must already have
-      // rejected the overflow (declining is synchronous inside
-      // unstable_createElicitation, so there's nothing further to await).
-      await new Promise((r) => setTimeout(r, 300));
-      expect(requests.length).toBeLessThanOrEqual(MAX_PENDING_ELICITATIONS);
-      expect(requests.length).toBeGreaterThan(0);
+      // Poll instead of a fixed sleep — a fixed 300ms window flaked under
+      // concurrent machine load (subprocess spawn + ACP handshake alone can
+      // exceed it well before the flood itself even starts; confirmed via a
+      // throwaway diagnostic run: 0 requests at 300ms, exactly
+      // MAX_PENDING_ELICITATIONS at 3s). The 8 flood requests fire
+      // essentially synchronously from the fixture's own `Promise.all`, and
+      // declining an overflow request is synchronous inside
+      // `unstable_createElicitation`, so once the FIRST request arrives the
+      // rest of the accepted batch is already settled — polling for the cap
+      // to be reached is both faster on a fast machine and correct on a slow one.
+      await until(() => (requests.length >= MAX_PENDING_ELICITATIONS ? true : undefined));
+      expect(requests.length).toBe(MAX_PENDING_ELICITATIONS);
       for (const req of requests) bridge.resolveElicitation(req.id, { action: 'decline' });
       await promptPromise;
     } finally {
