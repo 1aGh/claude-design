@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-15T20:48:23.884Z",
+  "generated": "2026-07-15T21:07:50.153Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1374,6 +1374,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-4-canvas-editing-figma-parity.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-acp-ask-user-question",
+      "title": "Feature: ACP panel — AskUserQuestion / elicitation form support",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This mirrors feature-acp-panel-dynamic-claude-code-capabilities' Milestone B (permissi...",
+      "planPath": ".ai/plans/feature-acp-ask-user-question.md",
       "archived": false,
       "phaseKey": null
     },
