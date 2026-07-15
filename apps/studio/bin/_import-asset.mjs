@@ -255,17 +255,34 @@ export function svgPreParseReject(text) {
   // DTD SVG 1.1//EN" "…svg11.dtd">` with no internal subset; rejecting that whole
   // class turned away real, clean brand logos (RCA G8). Reject the actual vector,
   // allow the benign declaration (the allowlist sanitizer drops the DOCTYPE from
-  // the stored output regardless, and browser-grade parsers don't fetch external
-  // DTDs). See DDR-167.
+  // the stored output regardless, and happy-dom treats the DOCTYPE as an inert
+  // node — it never fetches an external DTD). See DDR-167 + DDR-177.
   if (/<!ENTITY/i.test(text)) {
     throw new ImportAssetError(3, 'ENTITY declarations are rejected (XXE/entity-expansion class)');
   }
-  const doctype = /<!DOCTYPE\b([\s\S]*?)>/i.exec(text);
-  if (doctype?.[1].includes('[')) {
-    throw new ImportAssetError(
-      3,
-      'DOCTYPE with an internal subset is rejected (XXE/entity-expansion class)'
-    );
+  // Internal-subset detection, quote-aware. A naive `/<!DOCTYPE\b(.*?)>/` is
+  // evadable: a `>` inside a quoted external-id literal (`SYSTEM "http://x/>y"
+  // [ … ]`) truncates the capture before the `[` (ethical-hacker review). Scan
+  // from `<!DOCTYPE` respecting quotes, and reject on a `[` (internal subset)
+  // reached before the closing `>`.
+  const dtStart = text.search(/<!DOCTYPE\b/i);
+  if (dtStart >= 0) {
+    let quote = null;
+    for (let i = dtStart + 9; i < text.length; i++) {
+      const c = text[i];
+      if (quote) {
+        if (c === quote) quote = null;
+      } else if (c === '"' || c === "'") {
+        quote = c;
+      } else if (c === '[') {
+        throw new ImportAssetError(
+          3,
+          'DOCTYPE with an internal subset is rejected (XXE/entity-expansion class)'
+        );
+      } else if (c === '>') {
+        break; // end of DOCTYPE, no internal subset seen
+      }
+    }
   }
   // Any processing instruction other than the single leading XML declaration.
   const piRe = /<\?([^?]*)\?>/g;

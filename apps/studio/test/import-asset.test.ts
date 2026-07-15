@@ -60,6 +60,17 @@ describe('svgPreParseReject', () => {
     ).toThrow(/internal subset/i);
   });
 
+  // ethical-hacker review: a `>` inside a quoted external-id literal must NOT let
+  // an internal subset slip past the detector (a naive non-greedy regex truncated
+  // there and missed the `[`).
+  test('rejects an internal subset hidden behind a `>` in a quoted SYSTEM literal', () => {
+    expect(() =>
+      svgPreParseReject(
+        '<!DOCTYPE svg SYSTEM "http://attacker/x>y" [ <!ELEMENT foo ANY> ]><svg xmlns="http://www.w3.org/2000/svg"/>'
+      )
+    ).toThrow(/internal subset/i);
+  });
+
   // RCA G8 — a plain external-identifier DOCTYPE (no internal subset, no ENTITY)
   // is what Illustrator/Serif/Inkscape emit; rejecting the whole class turned away
   // real clean logos. It must be accepted (the sanitizer drops it from the output).

@@ -64,6 +64,15 @@ function pkgName(spec) {
  * Walk the module graph from an entry `_*.mjs`, following relative (`./`/`../`)
  * imports through the source (.ts/.mjs/.js/.tsx), and return every BARE npm
  * package specifier it (transitively, through local files) imports. Cycle-guarded.
+ *
+ * NOTE (ethical-hacker review, DDR-177 §Security addendum): this is a REGEX scrape
+ * over raw source, not an AST walk — so an `import 'pkg'` inside a `//` comment or
+ * a string literal is also collected, which would stage `pkg` into the bundle as
+ * dead weight (it is never executed — a real, uncommented `import` is needed to run
+ * it). Accepted below the medium severity floor: the input is first-party helper
+ * source (a reviewable edit), and `check-bundle-completeness` only asserts presence.
+ * Follow-up if the helper surface grows: switch to an AST/`oxc-parser` walk and
+ * cross-check the derived set against a reviewed allowlist.
  */
 export function collectImports(entryFile) {
   const bare = new Set();
