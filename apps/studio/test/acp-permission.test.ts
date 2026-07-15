@@ -15,16 +15,17 @@ import { join } from 'node:path';
 
 import type { ServerWebSocket } from 'bun';
 
-import { AcpBridge } from '../acp/bridge.ts';
+import { AcpBridge, MAX_PENDING_PERMISSIONS } from '../acp/bridge.ts';
 import { createAcp } from '../acp/index.ts';
 import type { Context } from '../context.ts';
 import type { WsData } from '../ws.ts';
 
 const FIXTURE = join(import.meta.dir, 'fixtures', 'mock-acp-agent-permission.mjs');
+const FIXTURE_FLOOD = join(import.meta.dir, 'fixtures', 'mock-acp-agent-permission-flood.mjs');
 const TEST_ENV_KEYS = ['MAUDE_ACP_ADAPTER_ENTRY', 'MAUDE_ACP_RUNTIME', 'MAUDE_CLAUDE_BIN'];
 
-function useMockAgent() {
-  process.env.MAUDE_ACP_ADAPTER_ENTRY = FIXTURE;
+function useMockAgent(fixture = FIXTURE) {
+  process.env.MAUDE_ACP_ADAPTER_ENTRY = fixture;
   process.env.MAUDE_ACP_RUNTIME = process.execPath;
   process.env.MAUDE_CLAUDE_BIN = process.execPath;
 }
@@ -228,4 +229,34 @@ describe('Acp manager — permission-request/-response frames (Task B2)', () => 
       await new Promise((r) => setTimeout(r, 50));
     }
   }, 20000);
+});
+
+// SECURITY (ethical-hacker finding, retroactive review) — a single agent turn
+// can legitimately issue several tool calls back to back, so "one per tool
+// call" was never a real ceiling on `pendingPermissions`. Prove the cap: a
+// flood of concurrent requests only ever keeps MAX_PENDING_PERMISSIONS of
+// them live at once — the rest are denied immediately rather than queued.
+describe('AcpBridge — permission flood cap', () => {
+  test(`a burst of concurrent permission requests only forwards ${MAX_PENDING_PERMISSIONS} to the client — the rest deny immediately`, async () => {
+    useMockAgent(FIXTURE_FLOOD);
+    const requests: Array<{ id: string }> = [];
+    const bridge = new AcpBridge({
+      repoRoot: process.cwd(),
+      onUpdate: () => {},
+      onPermissionRequest: (id) => requests.push({ id }),
+    });
+    try {
+      const promptPromise = bridge.prompt('hi', 'c1');
+      // Denying is synchronous inside requestPermission once the cap trips,
+      // so there's nothing further to await once every request has had a
+      // chance to arrive.
+      await new Promise((r) => setTimeout(r, 300));
+      expect(requests.length).toBeLessThanOrEqual(MAX_PENDING_PERMISSIONS);
+      expect(requests.length).toBeGreaterThan(0);
+      for (const req of requests) bridge.resolvePermission(req.id, 'cancelled');
+      await promptPromise;
+    } finally {
+      await bridge.stop();
+    }
+  }, 15000);
 });

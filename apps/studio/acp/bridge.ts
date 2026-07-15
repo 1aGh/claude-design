@@ -264,6 +264,20 @@ export function newSessionParams(
 // the security control, so failing open would defeat the point.
 const PERMISSION_TIMEOUT_MS = 120_000;
 
+// SECURITY (ethical-hacker finding, retroactive review) — a single agent turn
+// can legitimately issue several tool calls back to back (a burst is normal
+// agent behavior, not a bug — e.g. prompt-injected content directing several
+// actions in one turn), so "one per tool call" is NOT the natural ceiling the
+// original comment above assumed. Mirrors the elicitation channel's
+// MAX_PENDING_ELICITATIONS cap for the same reason: an unbounded queue lets a
+// backlog build silently (no depth indicator existed either — see
+// ChatPanel.jsx's queue-count render) and manufactures the exact "reflexive
+// Enter-mashing" precondition that made the wrong-default bug below
+// exploitable in practice. Denying beyond the cap is always the safe
+// direction — it degrades to "the user will have to re-trigger that action,"
+// never to a silent allow.
+export const MAX_PENDING_PERMISSIONS = 10;
+
 // feature-acp-ask-user-question, SECURITY (ethical-hacker finding) — unlike a
 // permission request (one per tool call, rate-limited by how fast a model can
 // call tools), an elicitation can be issued directly by any connected MCP
@@ -767,6 +781,13 @@ export class AcpBridge {
         // transparency callback (every request, however it resolves);
         // `onPermissionRequest` is the actual UI hook the client answers.
         this.opts.onPermission?.(params);
+        // SECURITY (ethical-hacker finding) — bound queue depth before
+        // registering a pending entry, mirroring the elicitation channel's
+        // MAX_PENDING_ELICITATIONS cap. Deny immediately past the cap — safe
+        // by construction, since deny is this gate's own fail-closed default.
+        if (this.pendingPermissions.size >= MAX_PENDING_PERMISSIONS) {
+          return Promise.resolve({ outcome: { outcome: 'cancelled' } });
+        }
         const id = crypto.randomUUID();
         const optionIds = new Set((params.options ?? []).map((o) => o.optionId));
         return new Promise<RequestPermissionResponse>((resolve) => {

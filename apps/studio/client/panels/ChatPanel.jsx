@@ -1640,7 +1640,11 @@ function ChatThread({
             <ActivityBar tools={activeTools} />
           </ThreadPrimitive.Viewport>
           {activePermission ? (
-            <PermissionPrompt request={activePermission} onRespond={respondPermission} />
+            <PermissionPrompt
+              request={activePermission}
+              onRespond={respondPermission}
+              queueLength={pendingPermissions.length}
+            />
           ) : activeElicitation ? (
             <ElicitationPrompt request={activeElicitation} onRespond={respondElicitation} />
           ) : (

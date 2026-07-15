@@ -848,9 +848,26 @@
     font-size: var(--type-xs);
     color: var(--fg-1);
   }
+  /* SECURITY (ethical-hacker finding) — the title is adapter/model-controlled
+     (for Bash, it's the raw shell command) with no length bound; without a
+     clamp a crafted/long command could push its dangerous tail off-screen in
+     a card whose entire point is "you can see what you're approving". Clamps
+     to one legible line; the full string is still reachable via the native
+     title-attribute tooltip (see PermissionPrompt.jsx). */
   .chat-perm-hd b {
+    display: block;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--accent);
     font-weight: 600;
+  }
+  .chat-perm-queue {
+    flex-shrink: 0;
+    color: var(--fg-3);
+    font-weight: 400;
   }
   .chat-perm-body {
     margin: 0;
