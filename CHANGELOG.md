@@ -1,5 +1,11 @@
 # @1agh/maude
 
+## 0.45.1
+
+### Patch Changes
+
+- Fix the dev-server sidecar (`maude-server`) crash-looping on boot with `Cannot find module '../data/patch.json'` — the css-tree/csso bun-compile patch was only registered in the root pnpm workspace, not in `apps/studio`'s own bun-managed install, so the compiled binary shipped in v0.44.0/v0.45.0 never picked it up. Affects both the desktop app and the npm CLI's `maude design serve`.
+
 ## 0.45.0
 
 ### Minor Changes
