@@ -183,3 +183,22 @@ Run after each task (Edit-Verify Loop) and at the end:
 - **Bundle size**: staging full closures for standalone helpers could be large (onnxruntime, pdf-lib, playwright already staged). Route-through-server (Task 4) is the lever that keeps it down — prefer it wherever a pure module + route exist.
 - **DDR-168 interaction**: the prepend-bundled-maude rule is only safe once G2 is fixed; sequence Task 2 before relying on it.
 - **Windows/Linux legs**: `BUN_BE_BUN`, the `bun` launcher, and pkgRoot staging must be verified per-platform (the sidecar slug matrix), not just darwin-arm64.
+
+---
+
+## Retro (2026-07-15)
+
+**What worked**
+- **Gate-first (Task 1) was the right call.** Building `check-bundle-completeness.mjs` before any fix gave a red baseline that enumerated every gap and became the green target — and it caught a real one I'd have missed (the module-graph walk found `svgo` transitively via `../draw/optimize.ts`; the naive direct-import grep didn't).
+- **The runtime fix needed zero Rust.** Realizing the ACP bridge runs *inside* the `maude-server` process (so `process.execPath` is already the compiled Bun) collapsed G1 to a 2-line `probe.ts`/`bridge.ts` change + `BUN_BE_BUN`. The design.mjs `bun` shim did the same for the helpers in one chokepoint.
+- **Verified for real, not just claimed.** Rebuilt the CLI binary + staged resources + assembled a bundle + ran the gate `--smoke` GREEN, then ran the user's *exact* failing command (`maude design import-brand`) on `env -i` with no node/bun/claude → correct output. Plus `cargo check` for the Rust. That end-to-end run is what turned "should work" into "does work."
+- **Data-driven staging + a single `helper-deps.mjs`** means a future helper's deps stage automatically AND the gate can't drift from what ships — the durable "always bundle build+deps" the user asked for.
+
+**What didn't / friction**
+- **The plan's "route-through-server" (Task 4) was the wrong default.** The owner wanted "bundle everything"; staging (Task 5) was simpler, directly gate-verifiable, and more aligned. Superseded Task 4 mid-execution. Lesson: confirm the size-vs-simplicity preference *before* picking the mechanism.
+- **Verification ceiling is real and had to be named repeatedly.** The full signed `tauri build` + a live ACP session (Node-authored SDK under Bun) genuinely can't run headless; I kept flagging it rather than pretending. The Bun-vs-Node-adapter risk remains the one unproven assumption (DDR-177).
+- **Shared-`main` entanglement.** A concurrent session's large uncommitted feature (ACP capability picker) landed in the tree mid-close; had to stage only my own files every commit and scope the security review to my committed diff, not `git diff`.
+
+**Change for next time**
+- For any desktop/packaging change, **write the bundled-`.app` gate first** and treat "green in `tauri dev`" as meaningless — it's the recurring bug class (cf. DDR-045, DDR-176, and this one).
+- When a plan hinges on a size-vs-complexity trade (route-through-server vs. stage-the-deps), surface it as an explicit `AskUserQuestion`-worthy fork in `/plan`, not a buried "Architecture Decision" the executor has to reverse.
