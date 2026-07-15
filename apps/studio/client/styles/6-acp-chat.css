@@ -136,6 +136,7 @@
     padding: var(--space-1);
   }
   .chat-menu-row {
+    position: relative;
     display: flex;
     align-items: center;
     border-radius: var(--radius-xs);
@@ -167,18 +168,78 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .chat-menu-del {
+  /* Inline rename input (Task C5) — same box model as .chat-menu-open so the
+     row doesn't jump when switching between the button and the input. */
+  .chat-menu-rename-input {
+    flex: 1;
+    min-width: 0;
+    appearance: none;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-xs);
+    background: var(--bg-1);
+    color: var(--fg-0);
+    font-family: var(--font-body);
+    font-size: var(--type-xs);
+    padding: var(--space-2);
+    margin: 2px;
+    outline: none;
+  }
+
+  /* Per-chat overflow (⋯ → Rename / Archive / Copy transcript / Delete). */
+  .chat-menu-overflow-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+  .chat-menu-more {
     appearance: none;
     border: 0;
     background: transparent;
     cursor: pointer;
     color: var(--fg-3);
     display: inline-flex;
-    padding: var(--space-2);
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
     border-radius: var(--radius-xs);
     flex-shrink: 0;
+    font-size: var(--type-sm);
   }
-  .chat-menu-del:hover {
+  .chat-menu-more:hover {
+    background: var(--bg-4, var(--bg-3));
+    color: var(--fg-0);
+  }
+  .chat-menu-overflow {
+    position: absolute;
+    top: calc(100% + 2px);
+    right: 0;
+    z-index: 52;
+    display: flex;
+    flex-direction: column;
+    min-width: 150px;
+    padding: var(--space-1);
+    background: var(--bg-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+  }
+  .chat-menu-overflow button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    color: var(--fg-1);
+    font-family: var(--font-body);
+    font-size: var(--type-xs);
+    padding: var(--space-2);
+    border-radius: var(--radius-xs);
+  }
+  .chat-menu-overflow button:hover {
+    background: var(--bg-3);
+  }
+  .chat-menu-overflow-danger {
     color: var(--status-error);
   }
   .chat-dot {
@@ -196,6 +257,20 @@
   }
   .chat-dot--off {
     background: var(--border-strong);
+  }
+  /* Transcript view label (Task C4/C5) — a bare unlabeled select read as
+     unexplained UI in dogfooding; this small caption fixes that. */
+  .chat-view-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .chat-view-label-tx {
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    color: var(--fg-3);
+    white-space: nowrap;
   }
   .chat-newbtn {
     appearance: none;
@@ -238,6 +313,9 @@
   }
   .chat-statusrow-cc {
     color: var(--fg-1);
+  }
+  .chat-statusrow-spacer {
+    flex: 1;
   }
   .chat-status-dot {
     width: 7px;
@@ -398,6 +476,7 @@
 
   /* Messages */
   .chat-msg {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
@@ -455,6 +534,58 @@
   .chat-msg--continued {
     border-top: 1px dashed var(--border-subtle);
     padding-top: var(--space-3);
+  }
+
+  /* Per-message hover actions (Task C2 — Copy / Retry). Absolutely positioned
+     so it never reflows the bubble; hover- AND focus-revealed (keyboard users
+     tab to the buttons, which triggers :focus-within even without a pointer). */
+  .chat-msg-actions {
+    position: absolute;
+    top: calc(-1 * var(--space-2));
+    right: 0;
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--bg-2);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-fast, 120ms) ease;
+  }
+  .chat-msg:hover .chat-msg-actions,
+  .chat-msg:focus-within .chat-msg-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .chat-msg-action {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--fg-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+  }
+  .chat-msg-action:hover {
+    background: var(--bg-3);
+    color: var(--fg-0);
+  }
+  .chat-msg-action:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .chat-msg-action[data-copied='true'] {
+    color: var(--status-success);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .chat-msg-actions {
+      transition: none;
+    }
   }
 
   /* Rendered markdown inside the assistant bubble (chat-markdown.jsx) */
@@ -553,6 +684,48 @@
     white-space: pre-wrap;
   }
 
+  /* Collapsed consecutive-tool-call group (Task C1) — mirrors .chat-think's
+     <details>/<summary> disclosure pattern exactly. */
+  .chat-toolgroup {
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    background: var(--bg-2);
+    overflow: hidden;
+  }
+  .chat-toolgroup-sum {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    color: var(--fg-1);
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+  }
+  .chat-toolgroup-sum::-webkit-details-marker {
+    display: none;
+  }
+  .chat-toolgroup-sum::after {
+    content: '▸';
+    margin-left: auto;
+    color: var(--fg-3);
+    transition: transform var(--dur-soft) var(--ease-out);
+  }
+  .chat-toolgroup[open] .chat-toolgroup-sum::after {
+    transform: rotate(90deg);
+  }
+  .chat-toolgroup[open] .chat-toolgroup-sum {
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .chat-toolgroup-body {
+    padding: var(--space-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
   /* Tool-call card */
   .chat-tool {
     border: 1px solid var(--border-default);
@@ -607,6 +780,140 @@
   }
   .chat-tool-line.del {
     color: var(--status-error);
+  }
+  /* Raw args/result preview — Verbose transcript view only (Task C4). */
+  .chat-tool-detail {
+    margin: 0;
+    padding: var(--space-2);
+    background: var(--bg-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xs);
+    color: var(--fg-2);
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* Permission approve/deny card (Milestone B — retires DDR-125 F2's blanket
+     auto-approve). Sits between the feed and the composer, one at a time. */
+  .chat-perm {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0 var(--space-4);
+    padding: var(--space-3);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: var(--bg-2);
+  }
+  .chat-perm:focus-visible {
+    outline: none;
+  }
+  .chat-perm-hd {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    color: var(--fg-1);
+  }
+  .chat-perm-hd b {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .chat-perm-body {
+    margin: 0;
+    font-size: var(--type-xs);
+    color: var(--fg-2);
+  }
+  .chat-perm-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  /* Connection-problem error card (Task C3) — transient bridge/socket failure,
+     recoverable with a retry. Same slot as .chat-perm (mutually exclusive). */
+  .chat-error-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0 var(--space-4);
+    padding: var(--space-3);
+    border: 1px solid var(--status-error);
+    border-radius: var(--radius-sm);
+    background: var(--bg-2);
+  }
+  .chat-error-hd {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    color: var(--status-error);
+  }
+  .chat-error-detail {
+    margin: 0;
+    font-size: var(--type-xs);
+    color: var(--fg-2);
+  }
+  .chat-error-detail--muted {
+    color: var(--fg-3);
+  }
+  .chat-error-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  /* Usage (Milestone D) — context-window bar, rendered inside .chat-foot-popover. */
+  .chat-usage-bar {
+    display: inline-block;
+    width: 32px;
+    height: 4px;
+    border-radius: var(--radius-pill);
+    background: var(--bg-4, var(--bg-3));
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .chat-usage-bar-fill {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    border-radius: var(--radius-pill);
+  }
+
+  /* Event-driven single-window rate-limit banner — rendered INSIDE
+     .chat-composer's own padding (unlike .chat-perm/.chat-error-card, which
+     are siblings of the composer at the thread-root level), so no extra
+     horizontal margin here. */
+  .chat-usage-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    background: var(--bg-2);
+    color: var(--fg-1);
+    font-size: var(--type-xs);
+  }
+  .chat-usage-banner-x {
+    margin-left: auto;
+    flex-shrink: 0;
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--fg-3);
+    cursor: pointer;
+    font-size: var(--type-sm);
+    line-height: 1;
+    padding: 0 var(--space-1);
+  }
+  .chat-usage-banner-x:hover {
+    color: var(--fg-0);
   }
 
   /* Quick-action row */
@@ -712,6 +1019,20 @@
   .chat-toolbar-spacer {
     flex: 1;
   }
+  /* Model/effort/mode picker row (feature-acp-panel-dynamic-claude-code-
+     capabilities) — a flex row of .chat-select dropdowns inside .chat-toolbar. */
+  .chat-caps {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-wrap: wrap;
+  }
+  .chat-caps--connecting {
+    font-family: var(--font-body);
+    font-size: var(--type-xs);
+    color: var(--fg-3);
+    padding: 2px var(--space-2);
+  }
   /* Compact toolbar dropdowns — borderless, hover-revealed (Zed-style). */
   .chat-select {
     appearance: none;
@@ -805,6 +1126,59 @@
   }
   .chat-foot-spacer {
     flex: 1;
+  }
+  /* Composer footer info (Milestone D, revised) — the keyboard hint + context
+     gauge + mode footnote + subscription note collapse behind one icon so
+     they never wrap into an unreadable mess; the popover holds the detail. */
+  .chat-foot-info {
+    position: relative;
+  }
+  .chat-foot-info-btn {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    color: var(--fg-3);
+    font-size: var(--type-sm);
+    line-height: 1;
+    padding: 2px var(--space-1);
+    border-radius: var(--radius-xs);
+  }
+  .chat-foot-info-btn:hover,
+  .chat-foot-info-btn[aria-expanded='true'] {
+    color: var(--fg-1);
+    background: var(--bg-3);
+  }
+  .chat-foot-info-btn:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
+  }
+  .chat-foot-popover {
+    position: absolute;
+    bottom: calc(100% + var(--space-2));
+    left: 0;
+    z-index: 52;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 220px;
+    padding: var(--space-3);
+    background: var(--bg-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    color: var(--fg-2);
+  }
+  .chat-foot-popover-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .chat-foot-popover-row--muted {
+    color: var(--fg-3);
   }
 
   /* ── Slash-command autocomplete + inline highlight ────────────────────────

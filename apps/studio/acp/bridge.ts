@@ -20,6 +20,8 @@ import {
   type PromptResponse,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
+  type SessionConfigOption,
+  type SessionModeState,
   type SessionNotification,
   type SessionUpdate,
 } from '@agentclientprotocol/sdk';
@@ -46,30 +48,76 @@ export interface AcpBridgeOptions {
   plugins?: SdkPluginConfig[];
   /** Streamed `session/update` notifications relayed to the browser. */
   onUpdate: (update: SessionUpdate) => void;
-  /** Informational: a tool permission was auto-approved (transparency for the UI). */
+  /**
+   * Informational transparency callback: fires whenever the agent asks for a
+   * tool permission, REGARDLESS of how it's ultimately resolved. Kept
+   * alongside `onPermissionRequest` below (Milestone B, DDR-125 F2 retirement)
+   * so any existing audit/logging consumer keeps seeing every request.
+   */
   onPermission?: (req: RequestPermissionRequest) => void;
+  /**
+   * The actual approve/deny UI hook (retires DDR-125 F2's blanket auto-
+   * approve) — fires once per request with a fresh nonce `id`; the caller
+   * (index.ts) forwards it to the browser as a `permission-request` frame.
+   * The bridge awaits `resolvePermission(id, …)` before returning to the
+   * adapter — nothing is pre-decided here.
+   */
+  onPermissionRequest?: (id: string, req: RequestPermissionRequest) => void;
   /**
    * The agent's slash-command catalogue (`available_commands_update`) — drives
    * the composer autocomplete + inline command pill. Fires whenever the agent
    * (re)publishes the list; the manager caches the latest and pushes it to the UI.
    */
   onCommands?: (commands: AvailableCommand[]) => void;
+  /**
+   * The session's permission-mode roster + generic config-option set (models,
+   * effort, fast-mode, agent persona, …) — sourced live from the ACP session,
+   * never hardcoded (feature-acp-panel-dynamic-claude-code-capabilities).
+   * Fires once right after a session is established (create OR resume, AFTER
+   * any resume-replay window closes) and again on every `current_mode_update`
+   * / `config_option_update` notification.
+   */
+  onCaps?: (modes: SessionModeState | null, configOptions: SessionConfigOption[]) => void;
+  /** The agent-generated chat title (`session_info_update`) — fires at turn-end. */
+  onSessionInfo?: (info: { title?: string | null; updatedAt?: string | null }) => void;
+  /**
+   * Context-window usage + cost (`usage_update`, Milestone D) — fires after
+   * each result and, less often, on a `rate_limit_event` (carried in `_meta`).
+   * Chrome, not turn content — the client renders it as an ambient meter, not
+   * a message part.
+   */
+  onUsage?: (usage: BridgeUsage) => void;
+  /** Override for `PERMISSION_TIMEOUT_MS` (tests only — production always gets the real default). */
+  permissionTimeoutMs?: number;
+}
+
+/** The bridge's normalized shape of a `usage_update` notification. `rateLimit`
+ *  is the RAW `_meta["_claude/rateLimit"]` payload (an `SDKRateLimitInfo`) —
+ *  passed through opaque; `client/panels/acp-usage.js`'s `parseUsage` is
+ *  where it gets mapped to a friendly label, not here. */
+export interface BridgeUsage {
+  used: number;
+  size: number;
+  cost?: { amount: number; currency: string } | null;
+  rateLimit?: unknown;
+}
+
+/** Flatten a `SessionConfigSelect.options` — a flat option array OR grouped
+ *  (`SessionConfigSelectGroup[]`) — into one list of `{value,name}` leaves. */
+function flattenSelectOptions(options: unknown): Array<{ value: string; name?: string | null }> {
+  const list = Array.isArray(options) ? options : [];
+  const out: Array<{ value: string; name?: string | null }> = [];
+  for (const o of list) {
+    if (o && typeof o === 'object' && Array.isArray((o as { options?: unknown }).options)) {
+      out.push(...(o as { options: Array<{ value: string; name?: string | null }> }).options);
+    } else if (o && typeof o === 'object' && 'value' in o) {
+      out.push(o as { value: string; name?: string | null });
+    }
+  }
+  return out;
 }
 
 type Spawned = ReturnType<typeof Bun.spawn>;
-
-/**
- * Effort → extended-thinking budget, fed to the adapter as `MAX_THINKING_TOKENS`
- * (it maps 0 → thinking disabled, a positive int → an enabled budget). `balanced`
- * leaves it unset so the agent uses Claude Code's own default.
- */
-const EFFORT_THINKING_TOKENS: Record<string, number | null> = {
-  fast: 0,
-  balanced: null,
-  thorough: 31999,
-};
-
-export type AcpEffort = keyof typeof EFFORT_THINKING_TOKENS;
 
 // Real sessionIds are adapter-generated `randomUUID()`s. A persisted value that
 // doesn't look like one (corrupt sidecar, or a tracked file a cloned repo
@@ -183,16 +231,13 @@ export function newSessionParams(
   };
 }
 
-/** Pick the most-permissive allow option, or null if the agent offered none. */
-function pickAllowOption(params: RequestPermissionRequest) {
-  const options = params.options ?? [];
-  return (
-    options.find((o) => o.kind === 'allow_always') ??
-    options.find((o) => o.kind === 'allow_once') ??
-    options.find((o) => typeof o.kind === 'string' && o.kind.startsWith('allow')) ??
-    null
-  );
-}
+// Milestone B (DDR-125 F2 retirement) — how long a permission request waits
+// for a human decision before the bridge settles it itself. Generous (a
+// person reading a tool-call card and clicking a button, not a network hop)
+// but bounded so a request can never hang the turn forever. The default on
+// timeout — like on turn-cancel — is DENY (`cancelled`), never allow: this is
+// the security control, so failing open would defeat the point.
+const PERMISSION_TIMEOUT_MS = 120_000;
 
 export class AcpBridge {
   private proc: Spawned | null = null;
@@ -216,15 +261,53 @@ export class AcpBridge {
   /** True while `conn.loadSession()` is replaying a resumed session's history
    *  back through the `sessionUpdate` client callback — see the guard in `start()`. */
   private replaying = false;
-  // Model + effort are env-at-spawn (ANTHROPIC_MODEL / MAX_THINKING_TOKENS), so a
-  // change re-spawns the adapter. `desired*` is what the UI asked for; `active*`
-  // is what the running session was spawned with.
+  // The last-advertised capability set for the live session — the dynamic
+  // replacement for the old hardcoded MODELS/EFFORTS arrays (feature-acp-panel-
+  // dynamic-claude-code-capabilities). Also doubles as the server-side
+  // allowlist a `set-mode`/`set-config` WS frame is validated against
+  // (DDR-125 F1 — a loopback frame still can't pin an arbitrary value).
+  private lastModes: SessionModeState | null = null;
+  private lastConfigOptions: SessionConfigOption[] = [];
+  // The user's current model/effort/mode picks — no longer env-at-spawn
+  // (Task A3); applied ONCE, live, right after a session is established
+  // (create OR resume), never forcing a respawn. `null` = "leave the
+  // session's own default alone."
   private desiredModel: string | null = null;
-  private desiredEffort: AcpEffort = 'balanced';
-  private activeModel: string | null = null;
-  private activeEffort: AcpEffort = 'balanced';
+  private desiredEffort: string | null = null;
+  private desiredModeId: string | null = null;
+  // Milestone B — permission requests awaiting a human decision, keyed by the
+  // nonce handed to the client in the `permission-request` frame.
+  private pendingPermissions = new Map<
+    string,
+    {
+      resolve: (r: RequestPermissionResponse) => void;
+      timer: ReturnType<typeof setTimeout>;
+      /** The optionIds actually offered for THIS request — resolvePermission
+       *  fails closed (denies) on anything else, so a decision can't pin an
+       *  option that was never on the table (DDR-125 F1 posture). */
+      optionIds: Set<string>;
+    }
+  >();
+  // Milestone D — the last-seen usage snapshot, cached the same way lastModes/
+  // lastConfigOptions are (mirrors the manager's latestCommands replay pattern).
+  private lastUsage: BridgeUsage | null = null;
 
   constructor(private readonly opts: AcpBridgeOptions) {}
+
+  /** The last-advertised mode roster + current mode (read-only snapshot). */
+  get modes(): SessionModeState | null {
+    return this.lastModes;
+  }
+
+  /** The last-advertised generic config-option set (read-only snapshot). */
+  get configOptions(): SessionConfigOption[] {
+    return this.lastConfigOptions;
+  }
+
+  /** The last-seen usage snapshot (read-only), or null before the first `usage_update`. */
+  get usage(): BridgeUsage | null {
+    return this.lastUsage;
+  }
 
   /** The session id of the most recent prompt (for the `connected` frame). */
   get sessionId(): string | null {
@@ -243,15 +326,94 @@ export class AcpBridge {
     this.sessionStorePath = path;
   }
 
-  /** Desired model (alias/id, or null for the user's default) + effort. Applied
-   *  on the next prompt — re-spawning the adapter only if it actually changed. */
-  setConfig(model: string | null, effort: AcpEffort): void {
-    this.desiredModel = model;
-    this.desiredEffort = effort in EFFORT_THINKING_TOKENS ? effort : 'balanced';
+  /**
+   * The user's current model/effort/mode picks (dynamic option ids/values —
+   * sourced from a PRIOR session's advertised `configOptions`/`modes`, never
+   * a hardcoded list). Stored, not applied immediately: `establishSession`
+   * live-applies them once, best-effort, right after the next session comes
+   * up (create OR resume) — see `applyDesiredConfigOnce`. Does NOT touch a
+   * session that's already established; use `setMode`/`setConfigOption` for
+   * a live mid-chat change.
+   */
+  setConfig(model: string | null, effort: string | null, modeId: string | null = null): void {
+    this.desiredModel = model || null;
+    this.desiredEffort = effort || null;
+    this.desiredModeId = modeId || null;
   }
 
-  private configChanged(): boolean {
-    return this.desiredModel !== this.activeModel || this.desiredEffort !== this.activeEffort;
+  /**
+   * Live-set the session mode for `chatId` (Task A2/A4 — driven by a
+   * `set-mode` WS frame). Establishes the session first if none exists yet,
+   * so the picker works before the first prompt. The caller (index.ts)
+   * validates `modeId` against `this.modes` before invoking this.
+   */
+  async setMode(chatId: string, modeId: string): Promise<void> {
+    await this.ensureStarted();
+    const sessionId = await this.sessionFor(chatId);
+    if (!this.conn) throw new Error('ACP adapter not ready');
+    await this.conn.setSessionMode({ sessionId, modeId });
+  }
+
+  /**
+   * Live-set one config option (model/effort/fast/…) for `chatId`. The
+   * response echoes the FULL refreshed option set (a model switch can add/
+   * remove the effort option, for instance) — fed back through `onCaps` so
+   * every listener sees the side effects, not just the option that changed.
+   */
+  async setConfigOption(chatId: string, configId: string, value: string): Promise<void> {
+    await this.ensureStarted();
+    const sessionId = await this.sessionFor(chatId);
+    if (!this.conn) throw new Error('ACP adapter not ready');
+    const response = await this.conn.setSessionConfigOption({ sessionId, configId, value });
+    this.lastConfigOptions = response.configOptions;
+    this.opts.onCaps?.(this.lastModes, this.lastConfigOptions);
+  }
+
+  /** True when `value` is currently offered for the select-type option `configId`. */
+  private optionOffers(configId: string, value: string): boolean {
+    const opt = this.lastConfigOptions.find((o) => o.id === configId);
+    if (opt?.type !== 'select') return false;
+    return flattenSelectOptions(opt.options).some((o) => o.value === value);
+  }
+
+  /**
+   * Reflect the user's persisted model/effort/mode picks onto a FRESHLY
+   * established session (Task A3) — replaces the old env-at-spawn + respawn
+   * dance with live `setSessionConfigOption`/`setSessionMode` calls, none of
+   * which tear down the running `claude` subprocess. Best-effort and ordered:
+   * model first (switching it can change which OTHER options — e.g. effort —
+   * are even offered), then effort, then mode. A pick that isn't advertised
+   * (e.g. an effort level unsupported by the model claude resolved to) is
+   * silently skipped, leaving the session's own default in place.
+   */
+  private async applyDesiredConfigOnce(sessionId: string): Promise<void> {
+    if (!this.conn) return;
+    try {
+      if (this.desiredModel && this.optionOffers('model', this.desiredModel)) {
+        const res = await this.conn.setSessionConfigOption({
+          sessionId,
+          configId: 'model',
+          value: this.desiredModel,
+        });
+        this.lastConfigOptions = res.configOptions;
+      }
+      if (this.desiredEffort && this.optionOffers('effort', this.desiredEffort)) {
+        const res = await this.conn.setSessionConfigOption({
+          sessionId,
+          configId: 'effort',
+          value: this.desiredEffort,
+        });
+        this.lastConfigOptions = res.configOptions;
+      }
+      if (
+        this.desiredModeId &&
+        this.lastModes?.availableModes.some((m) => m.id === this.desiredModeId)
+      ) {
+        await this.conn.setSessionMode({ sessionId, modeId: this.desiredModeId });
+      }
+    } catch {
+      /* best-effort — a stale/unsupported persisted pick just leaves the session default */
+    }
   }
 
   /** Spawn + handshake exactly once; concurrent callers share the same promise. */
@@ -301,6 +463,9 @@ export class AcpBridge {
 
     const params = newSessionParams(this.opts.repoRoot, this.opts.studioBrief, this.opts.plugins);
     const persistedId = await this.readPersistedSessionId();
+    let sessionId: string | undefined;
+    let modes: SessionModeState | null | undefined;
+    let configOptions: SessionConfigOption[] | null | undefined;
     if (persistedId) {
       try {
         this.replaying = true;
@@ -312,7 +477,9 @@ export class AcpBridge {
           throw new Error(`loadSession timed out after ${LOAD_SESSION_TIMEOUT_MS}ms`);
         }
         this.sessions.set(chatId, persistedId);
-        return persistedId;
+        sessionId = persistedId;
+        modes = result.modes;
+        configOptions = result.configOptions;
       } catch (err) {
         await this.appendTranscript({
           role: 'bootstrap',
@@ -324,10 +491,25 @@ export class AcpBridge {
       }
     }
 
-    const created = await this.conn.newSession(params);
-    this.sessions.set(chatId, created.sessionId);
-    await this.writePersistedSessionId(created.sessionId);
-    return created.sessionId;
+    if (sessionId === undefined) {
+      const created = await this.conn.newSession(params);
+      this.sessions.set(chatId, created.sessionId);
+      await this.writePersistedSessionId(created.sessionId);
+      sessionId = created.sessionId;
+      modes = created.modes;
+      configOptions = created.configOptions;
+    }
+
+    // Capture + apply + broadcast caps AFTER the resume-replay window closes
+    // (`this.replaying` back to false) — the initial state here is the real,
+    // current session state (the RPC response), never replayed history, but
+    // we still sequence it after the try/finally so nothing fires while a
+    // resume is nominally in flight.
+    this.lastModes = modes ?? null;
+    this.lastConfigOptions = configOptions ?? [];
+    await this.applyDesiredConfigOnce(sessionId);
+    this.opts.onCaps?.(this.lastModes, this.lastConfigOptions);
+    return sessionId;
   }
 
   /** Read the sessionId persisted for this chat by a prior bridge lifetime.
@@ -394,12 +576,10 @@ export class AcpBridge {
     delete env.MAUDE_TOKEN_ENDPOINT;
     // biome-ignore lint/performance/noDelete: security env-scrub — see above; `delete` is the intentional primitive here.
     delete env.MAUDE_TOKEN_KEY;
-    // Model + effort selection — config, NOT credentials, so they're added back.
-    this.activeModel = this.desiredModel;
-    this.activeEffort = this.desiredEffort;
-    if (this.activeModel) env.ANTHROPIC_MODEL = this.activeModel;
-    const thinking = EFFORT_THINKING_TOKENS[this.activeEffort];
-    if (thinking !== null && thinking !== undefined) env.MAX_THINKING_TOKENS = String(thinking);
+    // Model + effort are no longer env-at-spawn (Task A3) — the adapter starts
+    // on its own default and `establishSession`/`applyDesiredConfigOnce` live-
+    // applies the user's persisted picks via `setSessionConfigOption` once the
+    // session (and its advertised options) exist. No respawn on a config change.
 
     // RCA-G1 — resolve a runnable JS runtime. On a node/bun-less machine this
     // falls back to our own compiled self, which must be spawned with
@@ -444,10 +624,57 @@ export class AcpBridge {
 
     const client: Client = {
       sessionUpdate: (params: SessionNotification) => {
+        const u = params.update;
         // The command catalogue is chrome, not chat — surface it to the UI but
         // keep it out of the rendered turn + the persisted transcript.
-        if (params.update.sessionUpdate === 'available_commands_update') {
-          this.opts.onCommands?.(params.update.availableCommands ?? []);
+        if (u.sessionUpdate === 'available_commands_update') {
+          this.opts.onCommands?.(u.availableCommands ?? []);
+          return;
+        }
+        // Capability-channel notifications (feature-acp-panel-dynamic-claude-code-
+        // capabilities) are chrome too — same treatment as the command catalogue
+        // above, deliberately NOT gated by `this.replaying` (mirrors
+        // available_commands_update): a resumed session's `loadSession` replay
+        // walks prior MESSAGE content only (claude-agent-acp's
+        // replaySessionHistory), never re-emits these side-channel notifications,
+        // so there is nothing stale to guard against here.
+        if (u.sessionUpdate === 'current_mode_update') {
+          // Carries only the new currentModeId — merge into the cached roster,
+          // never replace it (availableModes doesn't change on a mode switch).
+          this.lastModes = this.lastModes
+            ? { ...this.lastModes, currentModeId: u.currentModeId }
+            : { currentModeId: u.currentModeId, availableModes: [] };
+          this.opts.onCaps?.(this.lastModes, this.lastConfigOptions);
+          return;
+        }
+        if (u.sessionUpdate === 'config_option_update') {
+          this.lastConfigOptions = u.configOptions ?? [];
+          // The adapter mirrors the current mode as a "mode"-id select option
+          // inside configOptions (claude-agent-acp's MODE_CONFIG_ID) but doesn't
+          // always pair that with a current_mode_update — e.g. `setSessionMode`
+          // itself only emits config_option_update. Cross-derive so the
+          // dedicated mode picker (driven off `lastModes`) stays correct either way.
+          const modeOpt = this.lastConfigOptions.find((o) => o.id === 'mode');
+          if (modeOpt && typeof modeOpt.currentValue === 'string') {
+            this.lastModes = this.lastModes
+              ? { ...this.lastModes, currentModeId: modeOpt.currentValue }
+              : { currentModeId: modeOpt.currentValue, availableModes: [] };
+          }
+          this.opts.onCaps?.(this.lastModes, this.lastConfigOptions);
+          return;
+        }
+        if (u.sessionUpdate === 'session_info_update') {
+          this.opts.onSessionInfo?.({ title: u.title, updatedAt: u.updatedAt });
+          return;
+        }
+        if (u.sessionUpdate === 'usage_update') {
+          this.lastUsage = {
+            used: u.used,
+            size: u.size,
+            cost: u.cost ?? null,
+            rateLimit: u._meta?.['_claude/rateLimit'],
+          };
+          this.opts.onUsage?.(this.lastUsage);
           return;
         }
         // `loadSession` replays the resumed session's entire prior history back
@@ -456,18 +683,28 @@ export class AcpBridge {
         // transcript and already rendered client-side, so forwarding/re-appending
         // it here would duplicate every message in the panel and the jsonl file.
         if (this.replaying) return;
-        this.opts.onUpdate(params.update);
-        void this.appendTranscript({ role: 'agent', update: params.update });
+        this.opts.onUpdate(u);
+        void this.appendTranscript({ role: 'agent', update: u });
       },
-      requestPermission: (params: RequestPermissionRequest): RequestPermissionResponse => {
-        // Auto-approve: the agent is the user's OWN local Claude editing their
-        // OWN project over loopback — granting it is the feature, mirroring
-        // Claude Code's trusted-session default. A manual approve/deny UI is a
-        // Task-3 follow-up; we surface the request so the panel can show it.
+      requestPermission: (params: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
+        // Milestone B (retires DDR-125 F2's blanket auto-approve) — the
+        // permission POLICY is now the selected session mode (sourced from
+        // Claude Code itself): `bypassPermissions`/`dontAsk` short-circuit
+        // adapter-side and never reach here at all; every OTHER mode routes
+        // through this real approve/deny gate. `onPermission` stays as a
+        // transparency callback (every request, however it resolves);
+        // `onPermissionRequest` is the actual UI hook the client answers.
         this.opts.onPermission?.(params);
-        const option = pickAllowOption(params);
-        if (!option) return { outcome: { outcome: 'cancelled' } };
-        return { outcome: { outcome: 'selected', optionId: option.optionId } };
+        const id = crypto.randomUUID();
+        const optionIds = new Set((params.options ?? []).map((o) => o.optionId));
+        return new Promise<RequestPermissionResponse>((resolve) => {
+          const timer = setTimeout(
+            () => this.resolvePermission(id, 'cancelled'),
+            this.opts.permissionTimeoutMs ?? PERMISSION_TIMEOUT_MS
+          );
+          this.pendingPermissions.set(id, { resolve, timer, optionIds });
+          this.opts.onPermissionRequest?.(id, params);
+        });
       },
     };
 
@@ -513,11 +750,6 @@ export class AcpBridge {
     text: string,
     chatId: string
   ): Promise<{ stopReason: PromptResponse['stopReason'] }> {
-    // Model/effort are env-at-spawn — if the user changed them, tear the adapter
-    // down so ensureStarted re-spawns with the new env (sessions re-create lazily).
-    if (this.conn && this.configChanged()) {
-      await this.stop();
-    }
     await this.ensureStarted();
     const conn = this.conn;
     if (!conn) throw new Error('ACP adapter not ready');
@@ -562,13 +794,44 @@ export class AcpBridge {
    * Best-effort: callers swallow errors (autocomplete degrades to the static list).
    */
   async warmUp(chatId: string): Promise<void> {
-    if (this.conn && this.configChanged()) await this.stop();
     await this.ensureStarted();
     await this.sessionFor(chatId);
   }
 
+  /**
+   * Settle a pending permission request (Milestone B). `decision` is either a
+   * `PermissionOption.optionId` the agent offered, or the literal `'cancelled'`
+   * (reject/deny — the timeout default and what a turn-cancel forces). A
+   * request that's already been settled or whose id is unknown (stale client,
+   * already timed out) is a silent no-op — never throws on a race. A
+   * `decision` that ISN'T `'cancelled'` and wasn't actually among the options
+   * offered for THIS request fails closed to `'cancelled'` too (DDR-125 F1 —
+   * a frame can't pin an option that was never on the table, e.g. a stale
+   * optionId replayed from a different, already-settled request).
+   */
+  resolvePermission(id: string, decision: string): void {
+    const pending = this.pendingPermissions.get(id);
+    if (!pending) return;
+    this.pendingPermissions.delete(id);
+    clearTimeout(pending.timer);
+    const optionId = decision !== 'cancelled' && pending.optionIds.has(decision) ? decision : null;
+    pending.resolve(
+      optionId
+        ? { outcome: { outcome: 'selected', optionId } }
+        : { outcome: { outcome: 'cancelled' } }
+    );
+  }
+
+  /** Deny every currently-pending permission request — turn-cancel and full
+   *  teardown must never leave one hanging on a decision that will now never
+   *  arrive (Milestone B: the default on ANY abandonment is deny, not allow). */
+  private denyAllPendingPermissions(): void {
+    for (const id of [...this.pendingPermissions.keys()]) this.resolvePermission(id, 'cancelled');
+  }
+
   /** Cancel the in-flight turn (no-op if nothing is running). */
   async cancel(): Promise<void> {
+    this.denyAllPendingPermissions();
     if (this.conn && this.currentSession) {
       try {
         await this.conn.cancel({ sessionId: this.currentSession });
@@ -581,6 +844,7 @@ export class AcpBridge {
   /** Tear down: cancel, kill the subprocess, drop all handles + sessions. */
   async stop(): Promise<void> {
     await this.cancel();
+    this.denyAllPendingPermissions(); // belt-and-suspenders — cancel() already does this
     try {
       this.proc?.kill();
     } catch {

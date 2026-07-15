@@ -1,11 +1,11 @@
 // acp/transcript — repo-level chat list + raw-transcript → clean-messages.
 
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { deleteChat, listChats, readChatMessages } from '../acp/transcript.ts';
+import { deleteChat, listChats, readChatMessages, readChatMeta, writeChatMeta } from '../acp/transcript.ts';
 
 let root: string;
 afterEach(() => {
@@ -108,6 +108,70 @@ describe('deleteChat', () => {
     expect(deleteChat(designRoot, 'gone')).toBe(true);
     expect(listChats(designRoot).length).toBe(0);
     expect(deleteChat(designRoot, 'gone')).toBe(false);
+  });
+
+  test('also removes the .meta.json and .session.json sidecars (Task C5)', () => {
+    const designRoot = seed('withmeta', [{ ts: 1, role: 'user', text: 'hi' }]);
+    writeChatMeta(designRoot, 'withmeta', { title: 'Renamed' });
+    writeFileSync(join(designRoot, '_chat', 'withmeta.session.json'), JSON.stringify({ sessionId: 'x' }));
+    expect(deleteChat(designRoot, 'withmeta')).toBe(true);
+    expect(readChatMeta(designRoot, 'withmeta')).toEqual({});
+    expect(existsSync(join(designRoot, '_chat', 'withmeta.session.json'))).toBe(false);
+  });
+});
+
+describe('readChatMeta / writeChatMeta (Task C5 — rename + archive)', () => {
+  test('missing sidecar → {} (no override), never throws', () => {
+    const designRoot = seed('nometa', [{ ts: 1, role: 'user', text: 'hi' }]);
+    expect(readChatMeta(designRoot, 'nometa')).toEqual({});
+  });
+
+  test('a corrupt sidecar degrades to {} rather than throwing', () => {
+    const designRoot = seed('badmeta', [{ ts: 1, role: 'user', text: 'hi' }]);
+    writeFileSync(join(designRoot, '_chat', 'badmeta.meta.json'), '{not valid json');
+    expect(readChatMeta(designRoot, 'badmeta')).toEqual({});
+  });
+
+  test('writeChatMeta sets a title and it wins over the auto-derived one in listChats', () => {
+    const designRoot = seed('rn1', [
+      { ts: 1, role: 'user', text: 'the auto-derived first-line title' },
+    ]);
+    expect(listChats(designRoot)[0]?.title).toBe('the auto-derived first-line title');
+    expect(listChats(designRoot)[0]?.renamed).toBeFalsy();
+    writeChatMeta(designRoot, 'rn1', { title: 'My Renamed Chat' });
+    expect(listChats(designRoot)[0]?.title).toBe('My Renamed Chat');
+    expect(listChats(designRoot)[0]?.renamed).toBe(true);
+    expect(readChatMeta(designRoot, 'rn1')).toEqual({ title: 'My Renamed Chat' });
+  });
+
+  test('writeChatMeta merges — setting archived does not clobber an existing title', () => {
+    const designRoot = seed('rn2', [{ ts: 1, role: 'user', text: 'hi' }]);
+    writeChatMeta(designRoot, 'rn2', { title: 'Kept Title' });
+    writeChatMeta(designRoot, 'rn2', { archived: true });
+    expect(readChatMeta(designRoot, 'rn2')).toEqual({ title: 'Kept Title', archived: true });
+  });
+
+  test('archived chats are excluded from listChats but the transcript survives', () => {
+    const designRoot = seed('arch1', [{ ts: 1, role: 'user', text: 'archive me' }]);
+    writeChatMeta(designRoot, 'arch1', { archived: true });
+    expect(listChats(designRoot)).toEqual([]);
+    expect(readChatMessages(designRoot, 'arch1').length).toBe(1); // still readable directly
+  });
+
+  test('unarchiving (archived: false) brings the chat back into listChats', () => {
+    const designRoot = seed('arch2', [{ ts: 1, role: 'user', text: 'x' }]);
+    writeChatMeta(designRoot, 'arch2', { archived: true });
+    expect(listChats(designRoot)).toEqual([]);
+    writeChatMeta(designRoot, 'arch2', { archived: false });
+    expect(listChats(designRoot).length).toBe(1);
+  });
+
+  test('clearing a title (title: null) falls back to the auto-derived one again', () => {
+    const designRoot = seed('rn3', [{ ts: 1, role: 'user', text: 'original first line' }]);
+    writeChatMeta(designRoot, 'rn3', { title: 'Overridden' });
+    expect(listChats(designRoot)[0]?.title).toBe('Overridden');
+    writeChatMeta(designRoot, 'rn3', { title: null });
+    expect(listChats(designRoot)[0]?.title).toBe('original first line');
   });
 });
 

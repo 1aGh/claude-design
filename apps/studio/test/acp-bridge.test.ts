@@ -52,7 +52,7 @@ describe('AcpBridge — round-trip + subscription guardrail', () => {
     }
   }, 15000);
 
-  test('setConfig passes model + effort to the child env (ANTHROPIC_MODEL / MAX_THINKING_TOKENS)', async () => {
+  test('model/effort are no longer env-at-spawn — a config change never respawns the running adapter', async () => {
     process.env.MAUDE_ACP_ADAPTER_ENTRY = FIXTURE;
     process.env.MAUDE_ACP_RUNTIME = process.execPath;
     process.env.MAUDE_CLAUDE_BIN = process.execPath;
@@ -60,19 +60,24 @@ describe('AcpBridge — round-trip + subscription guardrail', () => {
     const updates: unknown[] = [];
     const bridge = new AcpBridge({ repoRoot: process.cwd(), onUpdate: (u) => updates.push(u) });
     try {
+      // A persisted pick this mock doesn't advertise (it has no configOptions at
+      // all) is skipped best-effort, never forwarded to ANTHROPIC_MODEL/env.
       bridge.setConfig('opus', 'thorough');
       await bridge.prompt('hi', 'c1');
+      const sid = bridge.sessionId;
       const first = JSON.stringify(updates);
-      expect(first).toContain('model=opus');
-      expect(first).toContain('thinking=31999');
+      expect(first).toContain('model=<unset>');
+      expect(first).toContain('thinking=<unset>');
 
-      // Changing the config re-spawns with the new env on the next prompt.
+      // Changing the config again must NOT tear down / respawn the live process
+      // (Task A3 — the old configChanged()-triggered stop() is gone).
       updates.length = 0;
       bridge.setConfig(null, 'fast');
       await bridge.prompt('again', 'c1');
+      expect(bridge.sessionId).toBe(sid); // same session — no respawn happened
       const second = JSON.stringify(updates);
-      expect(second).toContain('model=<unset>'); // null model → ANTHROPIC_MODEL not set
-      expect(second).toContain('thinking=0'); // fast → thinking disabled
+      expect(second).toContain('model=<unset>');
+      expect(second).toContain('thinking=<unset>');
     } finally {
       await bridge.stop();
     }

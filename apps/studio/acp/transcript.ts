@@ -2,13 +2,39 @@
 // appends raw per-update lines; these readers turn them into the chat list (for
 // the switcher) and clean per-turn messages (for hydrating the thread on open).
 
-import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 export interface ChatSummary {
   id: string;
   title: string;
   updated: number; // mtime ms
+  /** True when `title` came from a user rename (meta.json), not the
+   *  auto-derived first line. The client uses this to stop a later live
+   *  `session_info_update` (agent auto-title) from clobbering an explicit
+   *  rename — see ChatPanel.jsx's `renamedChatIdsRef`. */
+  renamed?: boolean;
+}
+
+/**
+ * User-set overrides (Task C5 — per-chat overflow menu), `<designRoot>/_chat/
+ * <chatId>.meta.json`. `title` wins over BOTH the auto-derived first-line
+ * title and any live `session_info_update` the agent later emits — an
+ * explicit rename must not be silently clobbered by an auto-generated
+ * summary landing afterward. `archived` hides the chat from the switcher's
+ * recents list (`listChats`) without deleting its transcript.
+ */
+export interface ChatMeta {
+  title?: string;
+  archived?: boolean;
 }
 
 export interface ChatMessagePart {
@@ -24,6 +50,52 @@ export interface ChatMessage {
 
 function chatDir(designRoot: string): string {
   return join(designRoot, '_chat');
+}
+
+function metaPath(designRoot: string, chatId: string): string {
+  return join(chatDir(designRoot), `${chatId}.meta.json`);
+}
+
+/** Read a chat's meta sidecar. Missing/corrupt/malformed → `{}` (no override),
+ *  never throws — a bad sidecar must degrade to "no rename/archive", not break
+ *  the switcher. */
+export function readChatMeta(designRoot: string, chatId: string): ChatMeta {
+  try {
+    const raw = JSON.parse(readFileSync(metaPath(designRoot, chatId), 'utf8')) as unknown;
+    if (!raw || typeof raw !== 'object') return {};
+    const r = raw as Record<string, unknown>;
+    const meta: ChatMeta = {};
+    if (typeof r.title === 'string' && r.title.trim()) meta.title = r.title.trim().slice(0, 200);
+    if (typeof r.archived === 'boolean') meta.archived = r.archived;
+    return meta;
+  } catch {
+    return {};
+  }
+}
+
+/** Merge `patch` into the chat's meta sidecar (creates `_chat/` if needed).
+ *  `title: null` / `archived: false` clear that field rather than deleting
+ *  the file — callers pass only the field(s) they're changing. */
+export function writeChatMeta(
+  designRoot: string,
+  chatId: string,
+  patch: { title?: string | null; archived?: boolean }
+): ChatMeta {
+  const dir = chatDir(designRoot);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const current = readChatMeta(designRoot, chatId);
+  const next: ChatMeta = { ...current };
+  if ('title' in patch) {
+    const t = patch.title?.trim();
+    if (t) next.title = t.slice(0, 200);
+    else next.title = undefined;
+  }
+  if ('archived' in patch) {
+    if (patch.archived) next.archived = true;
+    else next.archived = undefined;
+  }
+  writeFileSync(metaPath(designRoot, chatId), JSON.stringify(next));
+  return next;
 }
 
 function readLines(file: string): Array<Record<string, unknown>> {
@@ -54,13 +126,18 @@ function deriveTitle(lines: Array<Record<string, unknown>>): string {
   return trimmed ? trimmed.slice(0, 60) : 'New chat';
 }
 
-/** List chats newest-first. */
+/** List chats newest-first. Archived chats (Task C5) are excluded — the
+ *  transcript stays on disk, it just doesn't show up in the switcher. A
+ *  user-set title (readChatMeta) wins over the auto-derived first-line one. */
 export function listChats(designRoot: string): ChatSummary[] {
   const dir = chatDir(designRoot);
   if (!existsSync(dir)) return [];
   const out: ChatSummary[] = [];
   for (const name of readdirSync(dir)) {
     if (!name.endsWith('.jsonl')) continue;
+    const id = name.replace(/\.jsonl$/, '');
+    const meta = readChatMeta(designRoot, id);
+    if (meta.archived) continue;
     const file = join(dir, name);
     let updated = 0;
     try {
@@ -70,14 +147,23 @@ export function listChats(designRoot: string): ChatSummary[] {
     }
     const lines = readLines(file);
     if (lines.length === 0) continue;
-    out.push({ id: name.replace(/\.jsonl$/, ''), title: deriveTitle(lines), updated });
+    out.push({ id, title: meta.title || deriveTitle(lines), updated, renamed: !!meta.title });
   }
   return out.sort((a, b) => b.updated - a.updated);
 }
 
-/** Delete a chat's transcript. Returns true if a file was removed. */
+/** Delete a chat's transcript + its meta/session sidecars. Returns true if
+ *  the transcript file was removed (the sidecars are best-effort cleanup). */
 export function deleteChat(designRoot: string, chatId: string): boolean {
-  const file = join(chatDir(designRoot), `${chatId}.jsonl`);
+  const dir = chatDir(designRoot);
+  for (const suffix of ['.meta.json', '.session.json']) {
+    try {
+      rmSync(join(dir, `${chatId}${suffix}`));
+    } catch {
+      /* absent or unreadable — non-fatal, best-effort cleanup */
+    }
+  }
+  const file = join(dir, `${chatId}.jsonl`);
   if (!existsSync(file)) return false;
   try {
     rmSync(file);

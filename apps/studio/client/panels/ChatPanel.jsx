@@ -13,6 +13,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  ActionBarPrimitive,
   AssistantRuntimeProvider,
   ComposerPrimitive,
   MessagePrimitive,
@@ -20,18 +21,24 @@ import {
   useComposer,
   useComposerRuntime,
   useLocalRuntime,
+  useMessage,
   useThread,
 } from '@assistant-ui/react';
 
+import { flattenSelectOptions, parseConfigOptions, resolvePersistedPick } from './acp-capabilities.js';
+import { parseUsage } from './acp-usage.js';
 import {
   activityLabel,
   attachmentName,
   createAcpConnection,
   designImageRefs,
   extractAttachmentRefs,
+  lastUserText,
   makeAcpAdapter,
 } from './acp-runtime.js';
 import { buildChatContext } from './chat-context.js';
+import CapabilityBar from './CapabilityBar.jsx';
+import PermissionPrompt from './PermissionPrompt.jsx';
 import { Markdown } from './chat-markdown.jsx';
 import ReadinessList, { useReadiness } from './ReadinessList.jsx';
 import {
@@ -41,6 +48,13 @@ import {
   normalizeName,
   STATIC_COMMANDS,
 } from './slash-commands.js';
+import ToolGroup, { groupToolCalls } from './ToolGroup.jsx';
+import {
+  DEFAULT_TRANSCRIPT_VIEW,
+  filterTranscriptParts,
+  transcriptForcesExpand,
+  TRANSCRIPT_VIEWS,
+} from './transcript-view.js';
 
 // ── inline icons (separate panel files carry their own, like GitPanel) ──
 const Spark = ({ size = 16 }) => (
@@ -83,6 +97,30 @@ const SendArrow = ({ size = 16 }) => (
     />
   </svg>
 );
+// Per-message action icons (Task C2).
+const Copy = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <rect x="5.5" y="5.5" width="8" height="8" rx="1.3" stroke="currentColor" strokeWidth="1.4" />
+    <path
+      d="M10.5 5.5V3.8A1.3 1.3 0 0 0 9.2 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v5.4a1.3 1.3 0 0 0 1.3 1.3h1.7"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+const Retry = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path
+      d="M13 8A5 5 0 1 1 11.3 4.3M13 2.5v3.2h-3.2"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
 // Token swatches — reads as "design system"; used on the empty-state DS CTA.
 const Swatches = ({ size = 15 }) => (
   <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -108,20 +146,6 @@ const SUGGESTIONS = [
   '/design:new Pricing "a 3-tier pricing page"',
 ];
 
-// Model — '' = the user's own `claude` default; the rest are CLI aliases passed
-// as ANTHROPIC_MODEL. Effort → extended-thinking budget (server maps the label).
-const MODELS = [
-  { value: '', label: 'Default model' },
-  { value: 'opus', label: 'Opus' },
-  { value: 'sonnet', label: 'Sonnet' },
-  { value: 'haiku', label: 'Haiku' },
-];
-const EFFORTS = [
-  { value: 'fast', label: 'Fast' },
-  { value: 'balanced', label: 'Balanced' },
-  { value: 'thorough', label: 'Thorough' },
-];
-
 function safeStorageGet(key, fallback) {
   try {
     return localStorage.getItem(key) ?? fallback;
@@ -137,10 +161,50 @@ function safeStorageSet(key, value) {
   }
 }
 
+// Model/effort/mode picks (feature-acp-panel-dynamic-claude-code-capabilities)
+// — persisted generically by config id in ONE blob, since the set of options
+// is agent-defined and NOT a fixed list (a hardcoded per-field key would miss
+// a future option like "agent" persona). One-time migration reads the OLD
+// fixed keys this panel used before the dynamic capability channel shipped.
+const PICKS_KEY = 'maude-acp-picks';
+function loadPersistedPicks() {
+  const raw = safeStorageGet(PICKS_KEY, null);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch {
+      /* corrupt blob — fall through to a clean slate */
+    }
+  }
+  const picks = {};
+  const legacyModel = safeStorageGet('maude-acp-model', '');
+  const legacyEffort = safeStorageGet('maude-acp-effort', '');
+  if (legacyModel) picks.model = legacyModel;
+  if (legacyEffort && legacyEffort !== 'balanced') picks.effort = legacyEffort;
+  return picks;
+}
+function savePersistedPicks(picks) {
+  safeStorageSet(PICKS_KEY, JSON.stringify(picks));
+}
+
 function prettyCanvas(path) {
   if (!path) return null;
   const file = path.split('/').pop() || path;
   return file.replace(/\.(tsx|html)$/i, '');
+}
+
+// Composer footer note (Task B3) — tells the user whether the CURRENT mode
+// will interrupt them for a permission decision. `bypassPermissions`/
+// `dontAsk` never call requestPermission at all (adapter short-circuits); every
+// other mode does. Sourced from the mode's own id — never a hardcoded label
+// beyond this yes/no framing, since the mode SET itself is fully dynamic.
+const NO_PROMPT_MODE_IDS = new Set(['bypassPermissions', 'dontAsk']);
+function modeFootnote(modes) {
+  if (!modes?.currentModeId || !modes.availableModes?.length) return null;
+  const current = modes.availableModes.find((m) => m.id === modes.currentModeId);
+  const name = current?.name || modes.currentModeId;
+  return NO_PROMPT_MODE_IDS.has(modes.currentModeId) ? `${name} — no prompts` : `${name} — you'll be asked`;
 }
 
 // ── pasted-path / URL → inline chip (Claude-Code-style attachment badge) ──
@@ -287,10 +351,28 @@ function ChatReasoning({ text }) {
   );
 }
 
-function ChatToolCard({ toolName, args, result, isError }) {
+// Bounded JSON preview for the verbose transcript view (Task C4) — a raw tool
+// arg/result can be arbitrarily large (a big file's content, a long stdout);
+// cap it so one tool call can't blow up the feed's layout or paint cost.
+function jsonPreview(value, cap = 800) {
+  let s;
+  try {
+    s = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  } catch {
+    return null;
+  }
+  if (!s) return null;
+  return s.length > cap ? `${s.slice(0, cap)}…` : s;
+}
+
+function ChatToolCard({ toolName, args, result, isError, verbose }) {
   const running = result === undefined;
   const path =
     args && typeof args === 'object' ? args.path || args.file || args.filePath : undefined;
+  const argsPreview = verbose && args && typeof args === 'object' && Object.keys(args).length
+    ? jsonPreview(args)
+    : null;
+  const resultPreview = verbose && !running && result != null ? jsonPreview(result) : null;
   return (
     <div className="chat-tool">
       <div className="chat-tool-hd">
@@ -305,6 +387,8 @@ function ChatToolCard({ toolName, args, result, isError }) {
           <div className={`chat-tool-line${isError ? ' del' : ''}`}>
             {isError ? 'failed' : 'done'}
           </div>
+          {argsPreview ? <pre className="chat-tool-detail">{argsPreview}</pre> : null}
+          {resultPreview ? <pre className="chat-tool-detail">{resultPreview}</pre> : null}
         </div>
       ) : null}
     </div>
@@ -468,11 +552,26 @@ function UserMessage() {
   return (
     <div className="chat-msg chat-msg--user">
       <MessagePrimitive.Parts components={{ Text: UserBubble }} />
+      <div className="chat-msg-actions" data-testid="chat-msg-actions">
+        <ActionBarPrimitive.Copy className="chat-msg-action" aria-label="Copy message" title="Copy message">
+          <Copy size={12} />
+        </ActionBarPrimitive.Copy>
+      </div>
     </div>
   );
 }
 
+// Reads the message's raw parts directly (rather than MessagePrimitive.Parts'
+// per-part renderer) so consecutive tool-call parts can fold into one
+// ToolGroup (Task C1) — grouping needs to see NEIGHBORING parts, which a
+// per-part component registry can't.
 function AssistantMessage() {
+  const rawParts = useMessage((m) => m.content) || [];
+  const { transcriptView } = useContext(ChatMediaContext) || {};
+  const view = transcriptView || DEFAULT_TRANSCRIPT_VIEW;
+  const parts = useMemo(() => filterTranscriptParts(rawParts, view), [rawParts, view]);
+  const grouped = useMemo(() => groupToolCalls(parts), [parts]);
+  const forceExpand = transcriptForcesExpand(view);
   return (
     <div className="chat-msg chat-msg--assistant">
       <div className="chat-msg-role">
@@ -481,9 +580,38 @@ function AssistantMessage() {
         </span>
         Claude
       </div>
-      <MessagePrimitive.Parts
-        components={{ Text: ChatText, ToolCall: ChatToolCard, Reasoning: ChatReasoning }}
-      />
+      {grouped.map((g, i) =>
+        g.type === 'tool-group' ? (
+          <ToolGroup
+            key={`g-${i}`}
+            parts={g.parts}
+            ToolCard={ChatToolCard}
+            forceOpen={forceExpand}
+            verbose={forceExpand}
+          />
+        ) : g.part?.type === 'text' ? (
+          <ChatText key={`t-${i}`} text={g.part.text} />
+        ) : g.part?.type === 'reasoning' ? (
+          <ChatReasoning key={`r-${i}`} text={g.part.text} />
+        ) : g.part?.type === 'tool-call' ? (
+          <ChatToolCard
+            key={g.part.toolCallId || `tc-${i}`}
+            toolName={g.part.toolName}
+            args={g.part.args}
+            result={g.part.result}
+            isError={g.part.isError}
+            verbose={forceExpand}
+          />
+        ) : null
+      )}
+      <div className="chat-msg-actions" data-testid="chat-msg-actions">
+        <ActionBarPrimitive.Copy className="chat-msg-action" aria-label="Copy message" title="Copy message">
+          <Copy size={12} />
+        </ActionBarPrimitive.Copy>
+        <ActionBarPrimitive.Reload className="chat-msg-action" aria-label="Retry" title="Retry — re-send the last message">
+          <Retry size={12} />
+        </ActionBarPrimitive.Reload>
+      </div>
     </div>
   );
 }
@@ -493,7 +621,7 @@ function AssistantMessage() {
 // running — so background subagents that outlive the main turn (the ACP adapter
 // settles at the main agent's `result` while they drain, claude-agent-acp #773)
 // keep the panel from looking idle. See RCA issue-acp-subagent-activity-invisible.
-function StatusRow({ tools = [] }) {
+function StatusRow({ tools = [], transcriptView, onSetTranscriptView }) {
   const running = useThread((t) => t.isRunning);
   const working = running || tools.length > 0;
   return (
@@ -504,6 +632,25 @@ function StatusRow({ tools = [] }) {
       {working ? 'Working…' : 'Ready'}
       <span className="chat-statusrow-sep">·</span>
       <span className="chat-statusrow-cc">Claude Code</span>
+      <span className="chat-statusrow-spacer" />
+      {/* Transcript view (Task C4/C5) — moved here (user feedback) instead of
+          crowding the chat switcher row; panel-wide, not per-chat. */}
+      <label className="chat-view-label" title="Transcript view — how much detail replies show">
+        <span className="chat-view-label-tx">View</span>
+        <select
+          className="chat-select"
+          value={transcriptView}
+          aria-label="Transcript view"
+          data-testid="chat-transcript-menu"
+          onChange={(e) => onSetTranscriptView(e.target.value)}
+        >
+          {TRANSCRIPT_VIEWS.map((v) => (
+            <option key={v} value={v}>
+              {v[0].toUpperCase() + v.slice(1)}
+            </option>
+          ))}
+        </select>
+      </label>
     </div>
   );
 }
@@ -555,8 +702,12 @@ function ActivityBar({ tools }) {
 // dropping them (the answer used to only appear on reload). See RCA
 // issue-acp-subagent-activity-invisible (facet F2). Cleared when the next turn
 // starts; the durable copy lives in the transcript.
-function ContinuationBubble({ parts }) {
+function ContinuationBubble({ parts: rawParts, viewMode }) {
+  const view = viewMode || DEFAULT_TRANSCRIPT_VIEW;
+  const parts = useMemo(() => filterTranscriptParts(rawParts, view), [rawParts, view]);
   if (!parts.length) return null;
+  const grouped = groupToolCalls(parts);
+  const forceExpand = transcriptForcesExpand(view);
   return (
     <div className="chat-msg chat-msg--assistant chat-msg--continued">
       <div className="chat-msg-role">
@@ -565,21 +716,176 @@ function ContinuationBubble({ parts }) {
         </span>
         Claude
       </div>
-      {parts.map((p, i) =>
-        p.type === 'text' ? (
-          <ChatText key={i} text={p.text} />
-        ) : p.type === 'reasoning' ? (
-          <ChatReasoning key={i} text={p.text} />
-        ) : p.type === 'tool-call' ? (
+      {grouped.map((g, i) =>
+        g.type === 'tool-group' ? (
+          <ToolGroup
+            key={`g-${i}`}
+            parts={g.parts}
+            ToolCard={ChatToolCard}
+            forceOpen={forceExpand}
+            verbose={forceExpand}
+          />
+        ) : g.part?.type === 'text' ? (
+          <ChatText key={`t-${i}`} text={g.part.text} />
+        ) : g.part?.type === 'reasoning' ? (
+          <ChatReasoning key={`r-${i}`} text={g.part.text} />
+        ) : g.part?.type === 'tool-call' ? (
           <ChatToolCard
-            key={i}
-            toolName={p.toolName}
-            args={p.args}
-            result={p.result}
-            isError={p.isError}
+            key={g.part.toolCallId || `tc-${i}`}
+            toolName={g.part.toolName}
+            args={g.part.args}
+            result={g.part.result}
+            isError={g.part.isError}
+            verbose={forceExpand}
           />
         ) : null
       )}
+    </div>
+  );
+}
+
+// Epoch `resetsAt` from SDKRateLimitInfo isn't documented as seconds vs ms —
+// disambiguate by magnitude (a seconds-epoch never reaches 10^11 until the
+// year 2286) rather than guessing wrong silently.
+function formatResetTime(resetsAt) {
+  if (!resetsAt) return null;
+  const ms = resetsAt > 1e11 ? resetsAt : resetsAt * 1000;
+  try {
+    return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return null;
+  }
+}
+
+// Composer footer info (Task D3, revised after dogfooding feedback — the
+// keyboard hint + context gauge + mode footnote + subscription note used to
+// all sit inline in `.chat-foot` and wrapped into an unreadable mess at
+// normal panel widths). Collapsed behind one info icon; click opens a
+// popover with the same detail. Context is PER-CHAT (this session's own
+// window); cost is cumulative for this session only — labeled accordingly
+// so it doesn't read as an account-wide total.
+function ChatFootInfo({ usage, modes }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  const context = usage.context;
+  const footnote = modeFootnote(modes);
+  // `asOf` is our OWN Date.now() ms timestamp (acp-usage.js) — unambiguous,
+  // unlike SDKRateLimitInfo's resetsAt (see formatResetTime's doc comment).
+  const timeLabel = usage.asOf
+    ? new Date(usage.asOf).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : null;
+
+  return (
+    <div className="chat-foot-info" ref={rootRef}>
+      <button
+        type="button"
+        className="chat-foot-info-btn"
+        aria-label="Chat info"
+        aria-expanded={open}
+        title="Chat info"
+        data-testid="chat-foot-info-btn"
+        onClick={() => setOpen((v) => !v)}
+      >
+        ⓘ
+      </button>
+      {open ? (
+        <div className="chat-foot-popover" role="dialog" aria-label="Chat info" data-testid="chat-foot-popover">
+          <div className="chat-foot-popover-row">↵ to send · ⇧↵ newline</div>
+          {context ? (
+            <div className="chat-foot-popover-row">
+              <span className="chat-usage-bar" aria-hidden="true">
+                <span className="chat-usage-bar-fill" style={{ width: `${context.pct}%` }} />
+              </span>
+              context {context.pct}% · {context.used.toLocaleString()} / {context.size.toLocaleString()} tokens
+            </div>
+          ) : null}
+          {usage.cost ? (
+            <div className="chat-foot-popover-row">${usage.cost.amount.toFixed(2)} this session</div>
+          ) : null}
+          {footnote ? <div className="chat-foot-popover-row">{footnote}</div> : null}
+          <div className="chat-foot-popover-row chat-foot-popover-row--muted">
+            Uses your Claude subscription{timeLabel ? ` · updated ${timeLabel}` : ''}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// Event-driven single-window rate-limit banner (Task D3) — only the ONE
+// active window `SDKRateLimitInfo` carries; NOT the full multi-window "Plan
+// usage limits" panel (out of scope — see the plan's Milestone D research).
+// Dismissible per reset window (re-appears once a NEW window starts warning).
+function RateLimitBanner({ rateLimit, onDismiss }) {
+  if (!rateLimit) return null;
+  const resetLabel = formatResetTime(rateLimit.resetsAt);
+  return (
+    <div className="chat-usage-banner" role="status" data-testid="chat-usage-banner">
+      <span>
+        You're at {rateLimit.pct != null ? `${rateLimit.pct}%` : 'high usage'} of your {rateLimit.label}
+        {resetLabel ? ` · resets ${resetLabel}` : ''}
+      </span>
+      <button
+        type="button"
+        className="chat-usage-banner-x"
+        aria-label="Dismiss"
+        title="Dismiss"
+        onClick={onDismiss}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+// Connection-problem error card (Task C3) — a transient bridge/socket failure
+// mid-turn, distinct from the hard NotConnected state (claude not installed/
+// signed in): that one gates the WHOLE panel before any chat exists; this one
+// is per-chat and recoverable with a retry. Rendered below the feed, like
+// ActivityBar/ContinuationBubble — chrome, not a per-message assistant-ui error.
+function ErrorCard({ error, onRetry }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!error) return null;
+  return (
+    <div className="chat-error-card" role="alert" data-testid="chat-error-card">
+      <div className="chat-error-hd">
+        <span className="chat-error-ic" aria-hidden="true">
+          ⚠
+        </span>
+        <b>Connection problem</b>
+      </div>
+      {expanded ? (
+        <p className="chat-error-detail">{error.message}</p>
+      ) : (
+        <p className="chat-error-detail chat-error-detail--muted">
+          Something interrupted the connection to Claude.
+        </p>
+      )}
+      <div className="chat-error-actions">
+        <button type="button" className="btn btn--sm" onClick={() => setExpanded((v) => !v)}>
+          {expanded ? 'Hide details' : 'View details'}
+        </button>
+        <button type="button" className="btn btn--primary btn--sm" onClick={onRetry}>
+          Try again
+        </button>
+      </div>
     </div>
   );
 }
@@ -774,13 +1080,16 @@ function Composer({
   activeCanvas,
   chatCtx,
   onCtxDismiss,
-  model,
-  setModel,
-  effort,
-  setEffort,
+  picksRef,
+  caps,
+  onSetMode,
+  onSetConfig,
   conn,
   chatId,
   attachmentsRef,
+  usage,
+  showRateLimitBanner,
+  onDismissRateLimitBanner,
 }) {
   const canvasName = prettyCanvas(activeCanvas);
   const { all, existsSet } = useSlashCommands(conn);
@@ -826,13 +1135,17 @@ function Composer({
 
   // Warm the adapter the first time the user starts a slash command, so the live
   // catalogue arrives without a full prompt. Guarded to fire once per mount.
+  // model/effort/mode are the user's PERSISTED picks (read live off the ref so
+  // this effect doesn't need to re-run when they change) — applied once, live,
+  // by the bridge right after the session establishes.
   const warmedRef = useRef(false);
   useEffect(() => {
     if (menuOpen && !warmedRef.current) {
       warmedRef.current = true;
-      conn.warm(chatId, model, effort);
+      const p = picksRef.current;
+      conn.warm(chatId, p.model, p.effort, p.mode);
     }
-  }, [menuOpen, conn, chatId, model, effort]);
+  }, [menuOpen, conn, chatId, picksRef]);
 
   const pick = useCallback(
     (cmd) => {
@@ -872,6 +1185,9 @@ function Composer({
   return (
     <div className="chat-composer" data-testid="chat-composer">
       <ThreadPrimitive.If running={false}>
+        {showRateLimitBanner ? (
+          <RateLimitBanner rateLimit={usage.rateLimit} onDismiss={onDismissRateLimitBanner} />
+        ) : null}
         {/* Context attachment chip (feature-acp-context-hardening) — the visible
             reveal of the fenced <maude-context> block the send will prepend
             (built from the SAME buildChatContext result, so chip ≡ payload).
@@ -918,35 +1234,17 @@ function Composer({
               onAttachChange={bumpAttach}
             />
             <div className="chat-toolbar">
-            <select
-              className="chat-select"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              aria-label="Model"
-            >
-              {MODELS.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-            <select
-              className="chat-select"
-              value={effort}
-              onChange={(e) => setEffort(e.target.value)}
-              aria-label="Effort"
-            >
-              {EFFORTS.map((x) => (
-                <option key={x.value} value={x.value}>
-                  {x.label}
-                </option>
-              ))}
-            </select>
-            <span className="chat-toolbar-spacer" />
-            <ComposerPrimitive.Send className="chat-send" aria-label="Send message">
-              <SendArrow />
-            </ComposerPrimitive.Send>
-          </div>
+              <CapabilityBar
+                modes={caps.modes}
+                configOptions={caps.parsedOptions}
+                onSetMode={onSetMode}
+                onSetConfig={onSetConfig}
+              />
+              <span className="chat-toolbar-spacer" />
+              <ComposerPrimitive.Send className="chat-send" aria-label="Send message">
+                <SendArrow />
+              </ComposerPrimitive.Send>
+            </div>
           </ComposerPrimitive.Root>
         </div>
         {chipList.length ? (
@@ -965,9 +1263,7 @@ function Composer({
           </div>
         ) : null}
         <div className="chat-foot">
-          <span>↵ to send · ⇧↵ newline</span>
-          <span className="chat-foot-spacer" />
-          <span>your Claude subscription</span>
+          <ChatFootInfo usage={usage} modes={caps.modes} />
         </div>
       </ThreadPrimitive.If>
       <ThreadPrimitive.If running>
@@ -1062,16 +1358,86 @@ function ChatThread({
   chatId,
   initialMessages,
   hidden,
-  modelRef,
-  effortRef,
+  picksRef,
+  setPick,
   activeCanvas,
   selected,
   designRel,
-  model,
-  setModel,
-  effort,
-  setEffort,
+  transcriptView,
+  onSetTranscriptView,
 }) {
+  // Live session capabilities (feature-acp-panel-dynamic-claude-code-
+  // capabilities) — `caps` is THIS chat's own connection's mode roster +
+  // config-option set, sourced entirely from the ACP session. Never a
+  // hardcoded list; re-renders on every `caps` frame (a model switch can
+  // change which OTHER options — effort, fast — are even offered).
+  const [caps, setCaps] = useState({ modes: null, configOptions: [] });
+  useEffect(() => conn.onCaps(setCaps), [conn]);
+  const parsedOptions = useMemo(() => parseConfigOptions(caps.configOptions), [caps.configOptions]);
+
+  // Warm up as soon as this chat becomes the VISIBLE one — the capability bar
+  // has nothing to show until a live session exists, and deferring the spawn
+  // to "the user typed a slash command" (the original Composer-only trigger,
+  // still below) left the model/effort/mode row completely EMPTY until then —
+  // read as "I lost the picker" in dogfooding, a real regression. Fires once
+  // per chat; a chat that's opened but never viewed still doesn't spawn
+  // `claude`, so a background/hidden chat keeps some of DDR-123's "opening
+  // the panel costs nothing" intent — only the chat actually on screen warms.
+  const warmedOnVisibleRef = useRef(false);
+  useEffect(() => {
+    if (hidden || warmedOnVisibleRef.current) return;
+    warmedOnVisibleRef.current = true;
+    const p = picksRef.current;
+    conn.warm(chatId, p.model, p.effort, p.mode);
+  }, [hidden, conn, chatId, picksRef]);
+
+  // One-time reconciliation: if the user's persisted pick (from a DIFFERENT
+  // chat, or an earlier session) isn't what THIS freshly-established session
+  // actually landed on but IS now offered, nudge it live once. The bridge
+  // already tries this itself on establish (Task A3) — this is a client-side
+  // safety net for the rare race where the persisted value changed after the
+  // `warm`/`prompt` frame was already in flight. Bounded to once per mount so
+  // it can never loop.
+  const reconciledRef = useRef(false);
+  useEffect(() => {
+    if (reconciledRef.current) return;
+    const hasModes = (caps.modes?.availableModes?.length ?? 0) > 0;
+    const hasOptions = caps.configOptions.length > 0;
+    if (!hasModes && !hasOptions) return; // nothing to reconcile against yet
+    reconciledRef.current = true;
+    const picks = picksRef.current;
+    if (parsedOptions.model && picks.model) {
+      const values = flattenSelectOptions(parsedOptions.model.options).map((o) => o.value);
+      const resolved = resolvePersistedPick(values, picks.model, parsedOptions.model.currentValue);
+      if (resolved !== parsedOptions.model.currentValue) conn.setConfig(chatId, 'model', resolved);
+    }
+    if (parsedOptions.effort && picks.effort) {
+      const values = flattenSelectOptions(parsedOptions.effort.options).map((o) => o.value);
+      const resolved = resolvePersistedPick(values, picks.effort, parsedOptions.effort.currentValue);
+      if (resolved !== parsedOptions.effort.currentValue) conn.setConfig(chatId, 'effort', resolved);
+    }
+    if (hasModes && picks.mode) {
+      const ids = caps.modes.availableModes.map((m) => m.id);
+      const resolved = resolvePersistedPick(ids, picks.mode, caps.modes.currentModeId);
+      if (resolved !== caps.modes.currentModeId) conn.setMode(chatId, resolved);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caps, parsedOptions]);
+
+  const onSetMode = useCallback(
+    (modeId) => {
+      conn.setMode(chatId, modeId);
+      setPick('mode', modeId);
+    },
+    [conn, chatId, setPick]
+  );
+  const onSetConfig = useCallback(
+    (configId, value) => {
+      conn.setConfig(chatId, configId, value);
+      setPick(configId, value);
+    },
+    [conn, chatId, setPick]
+  );
   // Paste attachments: `map` = chip token ([image-1]…) → real path/URL (null while
   // an image upload is in flight); `pending` = the in-flight upload promises. The
   // adapter awaits `pending` then expands `map` before sending; the composer writes
@@ -1103,36 +1469,75 @@ function ChatThread({
       makeAcpAdapter(
         conn,
         () => chatId,
-        () => modelRef.current || null,
-        () => effortRef.current,
+        () => picksRef.current.model || null,
+        () => picksRef.current.effort || null,
         () => attachmentsRef.current,
-        () => (ctxDismissedRef.current ? null : contextRef.current)
+        () => (ctxDismissedRef.current ? null : contextRef.current),
+        () => picksRef.current.mode || null
       ),
-    [conn, chatId, modelRef, effortRef]
+    [conn, chatId, picksRef]
   );
   const runtime = useLocalRuntime(adapter, { initialMessages });
   // Image thumbnails + lightbox — one overlay per thread; bubbles reach it (and
-  // the chip → attachment-name resolution) through ChatMediaContext.
+  // the chip → attachment-name resolution) through ChatMediaContext. Also
+  // carries `transcriptView` (Task C4) — AssistantMessage is rendered via
+  // ThreadPrimitive.Messages' component registry, which doesn't pass custom
+  // props through, so this context is the only way it reaches the filter.
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const media = useMemo(
     () => ({
       chipName: (token) => attachmentName(attachmentsRef.current.map.get(token) || ''),
       openLightbox: setLightboxSrc,
       designRel,
+      transcriptView,
     }),
-    [designRel]
+    [designRel, transcriptView]
   );
   const [activeTools, setActiveTools] = useState([]);
   useEffect(() => conn.onActivity(setActiveTools), [conn]);
   // Post-turn-end continuation (the tail the client used to drop — RCA F2).
   const [bgParts, setBgParts] = useState([]);
   useEffect(() => conn.onBackground(setBgParts), [conn]);
+  // Pending permission requests (Milestone B) — one card at a time, oldest first.
+  const [pendingPermissions, setPendingPermissions] = useState([]);
+  useEffect(() => conn.onPermission(setPendingPermissions), [conn]);
+  const activePermission = pendingPermissions[0] || null;
+  const respondPermission = useCallback(
+    (decision) => activePermission && conn.respondPermission(activePermission.id, decision),
+    [conn, activePermission]
+  );
+  // Connection-problem error card (Task C3) — see conn.onError's doc comment.
+  const [turnError, setTurnError] = useState(null);
+  useEffect(() => conn.onError(setTurnError), [conn]);
+  const retryLastTurn = useCallback(() => {
+    const text = lastUserText(runtime.thread.getState().messages);
+    if (text) runtime.thread.append(text);
+  }, [runtime]);
+
+  // Usage (Milestone D) — context-window gauge + session cost + an event-
+  // driven single-window rate-limit banner. Per-chat: each ChatThread has its
+  // own connection, so this is naturally scoped to the right session.
+  const [rawUsage, setRawUsage] = useState(null);
+  useEffect(() => conn.onUsage(setRawUsage), [conn]);
+  const usage = useMemo(() => parseUsage({ usage: rawUsage }), [rawUsage]);
+  const [bannerDismissedFor, setBannerDismissedFor] = useState(null);
+  const showRateLimitBanner =
+    usage.rateLimit &&
+    (usage.rateLimit.status === 'allowed_warning' || usage.rateLimit.status === 'rejected') &&
+    bannerDismissedFor !== `${usage.rateLimit.type}:${usage.rateLimit.resetsAt}`;
+  const dismissRateLimitBanner = useCallback(() => {
+    if (usage.rateLimit) setBannerDismissedFor(`${usage.rateLimit.type}:${usage.rateLimit.resetsAt}`);
+  }, [usage.rateLimit]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ChatMediaContext.Provider value={media}>
       <div className="chat-panel" style={hidden ? { display: 'none' } : undefined}>
-        <StatusRow tools={activeTools} />
+        <StatusRow
+          tools={activeTools}
+          transcriptView={transcriptView}
+          onSetTranscriptView={onSetTranscriptView}
+        />
         <ThreadPrimitive.Root className="chat-thread">
           <ThreadPrimitive.Viewport className="chat-feed" autoScroll>
             <ThreadPrimitive.Empty>
@@ -1141,22 +1546,30 @@ function ChatThread({
             <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
             {/* Background work that outlived the turn — streamed here so it's not
                 dropped (RCA F2). */}
-            <ContinuationBubble parts={bgParts} />
+            <ContinuationBubble parts={bgParts} viewMode={transcriptView} />
             {/* "still working" indicator under the latest message */}
             <ActivityBar tools={activeTools} />
           </ThreadPrimitive.Viewport>
+          {activePermission ? (
+            <PermissionPrompt request={activePermission} onRespond={respondPermission} />
+          ) : (
+            <ErrorCard error={turnError} onRetry={retryLastTurn} />
+          )}
           <QuickActions />
           <Composer
             activeCanvas={activeCanvas}
             chatCtx={ctxDismissed ? null : chatCtx}
             onCtxDismiss={dismissCtx}
-            model={model}
-            setModel={setModel}
-            effort={effort}
-            setEffort={setEffort}
+            picksRef={picksRef}
+            caps={{ modes: caps.modes, parsedOptions }}
+            onSetMode={onSetMode}
+            onSetConfig={onSetConfig}
             conn={conn}
             chatId={chatId}
             attachmentsRef={attachmentsRef}
+            usage={usage}
+            showRateLimitBanner={showRateLimitBanner}
+            onDismissRateLimitBanner={dismissRateLimitBanner}
           />
         </ThreadPrimitive.Root>
         {lightboxSrc ? (
@@ -1180,19 +1593,29 @@ export default function ChatPanel({
   onBusyChange,
   onFinished,
 }) {
-  // Model + effort — persisted across sessions; read live by each chat's adapter.
-  const [model, setModel] = useState(() => safeStorageGet('maude-acp-model', ''));
-  const [effort, setEffort] = useState(() => safeStorageGet('maude-acp-effort', 'balanced'));
-  const modelRef = useRef(model);
-  const effortRef = useRef(effort);
+  // Model/effort/mode picks — persisted across sessions per config id (never a
+  // fixed model/effort pair; see loadPersistedPicks). Read live by each open
+  // chat's adapter (for a FRESH session's one-time apply) and by the picker's
+  // one-time reconciliation effect.
+  const [picks, setPicks] = useState(loadPersistedPicks);
+  const picksRef = useRef(picks);
   useEffect(() => {
-    modelRef.current = model;
-    safeStorageSet('maude-acp-model', model);
-  }, [model]);
+    picksRef.current = picks;
+    savePersistedPicks(picks);
+  }, [picks]);
+  const setPick = useCallback((id, value) => {
+    setPicks((prev) => (prev[id] === value ? prev : { ...prev, [id]: value }));
+  }, []);
+
+  // Transcript view mode (Task C4) — panel-wide (applies to every open chat),
+  // persisted, changed via the per-chat overflow menu (Task C5).
+  const [transcriptView, setTranscriptView] = useState(() => {
+    const saved = safeStorageGet('maude-acp-transcript-view', DEFAULT_TRANSCRIPT_VIEW);
+    return TRANSCRIPT_VIEWS.includes(saved) ? saved : DEFAULT_TRANSCRIPT_VIEW;
+  });
   useEffect(() => {
-    effortRef.current = effort;
-    safeStorageSet('maude-acp-effort', effort);
-  }, [effort]);
+    safeStorageSet('maude-acp-transcript-view', transcriptView);
+  }, [transcriptView]);
 
   // Availability is global (is claude installed) — a single probe, no connection.
   const [status, setStatus] = useState({ available: null, reason: undefined });
@@ -1225,10 +1648,19 @@ export default function ChatPanel({
 
   // Recents (for the switcher).
   const [chats, setChats] = useState([]);
+  // Chat ids the server confirms have a user-set title (ChatSummary.renamed)
+  // — session_info_update must never clobber those (Task C5 gotcha: "an
+  // explicit rename must not be silently clobbered by an auto-generated
+  // summary landing afterward"). Seeded/kept in sync from every refreshChats().
+  const renamedChatIdsRef = useRef(new Set());
   const refreshChats = useCallback(() => {
     fetch('/_api/acp/chats')
       .then((r) => r.json())
-      .then((d) => Array.isArray(d) && setChats(d))
+      .then((d) => {
+        if (!Array.isArray(d)) return;
+        setChats(d);
+        renamedChatIdsRef.current = new Set(d.filter((c) => c.renamed).map((c) => c.id));
+      })
       .catch(() => {});
   }, []);
   useEffect(() => {
@@ -1244,6 +1676,9 @@ export default function ChatPanel({
   const [openChatIds, setOpenChatIds] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [busyChats, setBusyChats] = useState({}); // reactive: chatId → busy (for the dot)
+  // Agent-generated chat titles (`session_info_update`) — wins over the
+  // client's "New chat" heuristic once the agent names the first turn.
+  const [sessionTitles, setSessionTitles] = useState({});
   const [menuOpen, setMenuOpen] = useState(false);
   const cbRef = useRef({ onBusyChange, onFinished });
   useEffect(() => {
@@ -1256,6 +1691,14 @@ export default function ChatPanel({
       if (existing) return existing;
       const conn = createAcpConnection();
       connsRef.current.set(chatId, conn);
+      // Agent-generated title (session_info_update — fires at turn-end, so a
+      // fresh chat shows the client's "New chat" heuristic until the first
+      // turn completes; expected). Read live by chatOptions below.
+      conn.onSessionInfo((info) => {
+        if (info.title && !renamedChatIdsRef.current.has(chatId)) {
+          setSessionTitles((prev) => ({ ...prev, [chatId]: info.title }));
+        }
+      });
       // Background work (subagents) can outlive the main turn — the ACP adapter
       // settles the prompt at the main agent's `result` while they drain
       // (claude-agent-acp #773). Track live tool activity so the menubar
@@ -1345,6 +1788,12 @@ export default function ChatPanel({
         delete next[id];
         return next;
       });
+      setSessionTitles((prev) => {
+        if (!(id in prev)) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
       fetch(`/_api/acp/chat?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
         .catch(() => {})
         .finally(refreshChats);
@@ -1366,6 +1815,78 @@ export default function ChatPanel({
     [activeChatId, ensureConn, refreshChats]
   );
 
+  // Rename / Archive / Copy transcript (Task C5 — per-chat overflow menu).
+  // Rename/Archive PATCH the `_chat/<id>.meta.json` sidecar (acp/transcript.ts)
+  // — chosen over injecting a synthetic `/rename` prompt (Task B/C research):
+  // deterministic, doesn't pollute the transcript with a synthetic turn, and
+  // needs no unverified assumption about how the CLI's own /rename behaves
+  // over ACP. `renamedChatIdsRef` (set above) keeps a later live auto-title
+  // from clobbering it.
+  const patchChatMeta = useCallback((id, patch) => {
+    return fetch(`/_api/acp/chat?id=${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+  }, []);
+
+  const [overflowChatId, setOverflowChatId] = useState(null);
+  const [renamingChatId, setRenamingChatId] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  const startRename = useCallback((c) => {
+    setRenamingChatId(c.id);
+    setRenameValue(c.title === 'New chat' ? '' : c.title);
+    setOverflowChatId(null);
+  }, []);
+
+  const commitRename = useCallback(
+    (id) => {
+      const value = renameValue.trim();
+      setRenamingChatId(null);
+      if (!value) return;
+      renamedChatIdsRef.current.add(id);
+      setSessionTitles((prev) => ({ ...prev, [id]: value })); // optimistic — see gotcha above
+      patchChatMeta(id, { title: value }).then(refreshChats);
+    },
+    [renameValue, patchChatMeta, refreshChats]
+  );
+
+  const archiveChat = useCallback(
+    (id) => {
+      setOverflowChatId(null);
+      patchChatMeta(id, { archived: true }).then(() => {
+        refreshChats();
+        // An archived chat can still be OPEN (mounted, running) — archiving
+        // only hides it from recents, per the task spec; it does not close
+        // the connection or force-switch away.
+      });
+    },
+    [patchChatMeta, refreshChats]
+  );
+
+  const copyTranscript = useCallback((id) => {
+    setOverflowChatId(null);
+    fetch(`/_api/acp/chat?id=${encodeURIComponent(id)}`)
+      .then((r) => r.json())
+      .then((msgs) => {
+        const text = (Array.isArray(msgs) ? msgs : [])
+          .map((m) => {
+            const body = (m.parts || [])
+              .map((p) =>
+                p.type === 'text' ? p.text || '' : p.type === 'tool' ? `[${p.toolName || 'tool'}]` : ''
+              )
+              .join('');
+            return `${m.role === 'user' ? 'User' : 'Claude'}: ${body}`;
+          })
+          .join('\n\n');
+        return navigator.clipboard?.writeText(text);
+      })
+      .catch(() => {});
+  }, []);
+
   // Open a fresh chat on mount; close every connection on unmount.
   useEffect(() => {
     newChat();
@@ -1377,21 +1898,24 @@ export default function ChatPanel({
   }, []);
 
   // Switcher options — open chats first (parallel), then the rest of the recents.
+  // Title precedence: the agent's own session_info_update title (live, this
+  // process lifetime) > the persisted transcript's title > "New chat".
   const chatOptions = useMemo(() => {
     const seen = new Set();
     const list = [];
     for (const id of openChatIds) {
       if (seen.has(id)) continue;
       seen.add(id);
-      list.push({ id, title: chats.find((c) => c.id === id)?.title || 'New chat', open: true });
+      const title = sessionTitles[id] || chats.find((c) => c.id === id)?.title || 'New chat';
+      list.push({ id, title, open: true });
     }
     for (const c of chats) {
       if (seen.has(c.id)) continue;
       seen.add(c.id);
-      list.push(c);
+      list.push(sessionTitles[c.id] ? { ...c, title: sessionTitles[c.id] } : c);
     }
     return list;
-  }, [chats, openChatIds]);
+  }, [chats, openChatIds, sessionTitles]);
 
   const connected = status.available !== false;
 
@@ -1439,36 +1963,88 @@ export default function ChatPanel({
             </button>
             {menuOpen ? (
               <>
-                <div className="chat-menu-backdrop" onClick={() => setMenuOpen(false)} />
+                <div
+                  className="chat-menu-backdrop"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setOverflowChatId(null);
+                    setRenamingChatId(null);
+                  }}
+                />
                 <div className="chat-menu" role="listbox">
                   {chatOptions.map((c) => (
                     <div
                       key={c.id}
                       className={`chat-menu-row${c.id === activeChatId ? ' is-active' : ''}`}
                     >
-                      <button
-                        type="button"
-                        className="chat-menu-open"
-                        onClick={() => {
-                          switchTo(c.id);
-                          setMenuOpen(false);
-                        }}
-                      >
-                        <span
-                          className={`chat-dot ${busyChats[c.id] ? 'chat-dot--busy' : c.open ? 'chat-dot--idle' : 'chat-dot--off'}`}
-                          title={busyChats[c.id] ? 'Running' : c.open ? 'Open' : 'Saved'}
+                      {renamingChatId === c.id ? (
+                        <input
+                          type="text"
+                          className="chat-menu-rename-input"
+                          value={renameValue}
+                          autoFocus
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onBlur={() => commitRename(c.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') commitRename(c.id);
+                            else if (e.key === 'Escape') setRenamingChatId(null);
+                          }}
                         />
-                        <span className="chat-menu-title">{c.title}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="chat-menu-del"
-                        onClick={() => deleteChat(c.id)}
-                        aria-label="Delete chat"
-                        title="Delete chat"
-                      >
-                        <Close size={11} />
-                      </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="chat-menu-open"
+                          onClick={() => {
+                            switchTo(c.id);
+                            setMenuOpen(false);
+                          }}
+                        >
+                          <span
+                            className={`chat-dot ${busyChats[c.id] ? 'chat-dot--busy' : c.open ? 'chat-dot--idle' : 'chat-dot--off'}`}
+                            title={busyChats[c.id] ? 'Running' : c.open ? 'Open' : 'Saved'}
+                          />
+                          <span className="chat-menu-title">{c.title}</span>
+                        </button>
+                      )}
+                      <div className="chat-menu-overflow-wrap">
+                        <button
+                          type="button"
+                          className="chat-menu-more"
+                          aria-label="More options"
+                          title="More options"
+                          aria-haspopup="menu"
+                          aria-expanded={overflowChatId === c.id}
+                          onClick={() =>
+                            setOverflowChatId((prev) => (prev === c.id ? null : c.id))
+                          }
+                        >
+                          ⋯
+                        </button>
+                        {overflowChatId === c.id ? (
+                          <div className="chat-menu-overflow" role="menu" data-testid="chat-overflow-menu">
+                            <button type="button" role="menuitem" onClick={() => startRename(c)}>
+                              Rename
+                            </button>
+                            <button type="button" role="menuitem" onClick={() => archiveChat(c.id)}>
+                              Archive
+                            </button>
+                            <button type="button" role="menuitem" onClick={() => copyTranscript(c.id)}>
+                              Copy transcript
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="chat-menu-overflow-danger"
+                              onClick={() => {
+                                setOverflowChatId(null);
+                                deleteChat(c.id);
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1507,15 +2083,13 @@ export default function ChatPanel({
                 chatId={id}
                 initialMessages={hydratedRef.current.get(id) || []}
                 hidden={id !== activeChatId}
-                modelRef={modelRef}
-                effortRef={effortRef}
+                picksRef={picksRef}
+                setPick={setPick}
                 activeCanvas={activeCanvas}
                 selected={selected}
                 designRel={designRel}
-                model={model}
-                setModel={setModel}
-                effort={effort}
-                setEffort={setEffort}
+                transcriptView={transcriptView}
+                onSetTranscriptView={setTranscriptView}
               />
             );
           })

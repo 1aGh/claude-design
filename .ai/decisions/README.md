@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-179: ACP permission gate — mode-driven policy + manual approve/deny UI retires DDR-125 F2](DDR-179-acp-permission-gate-retires-ddr125-f2.md) — 2026-07-15, acp/chat/security/permission-gate/ddr-125-followup
 - [DDR-178: Local whisper model downloads have no content-integrity check — accepted gap, tracked as a follow-up](DDR-178-whisper-model-download-lacks-content-integrity-check.md) — 2026-07-15, dev-server/whisper/transcription/ssrf/supply-chain/security/follow-up
 - [DDR-177: The packaged app is self-contained — every runtime-spawned surface ships its runtime + dep closure, enforced by a build-time gate](DDR-177-desktop-self-contained-runtime-and-bundle-completeness-gate.md) — 2026-07-15, desktop/tauri/bundle/bun-compile/acp/cli/dependencies/self-contained/incident/gate
 - [DDR-176: Patch registration is per package-manager root — a pnpm-workspace patch does not reach apps/studio's own bun install](DDR-176-per-workspace-patch-registration-for-bun-compiled-sidecars.md) — 2026-07-15, dev-server/bun-compile/pnpm/patches/css-tree/svgo/sidecar/incident

@@ -17,7 +17,7 @@ import {
   startSignin,
 } from './acp/login-state.ts';
 import { probeAcpAvailabilityAuthed } from './acp/probe.ts';
-import { deleteChat, listChats, readChatMessages } from './acp/transcript.ts';
+import { deleteChat, listChats, readChatMessages, writeChatMeta } from './acp/transcript.ts';
 import { type Api, ASSET_MAX_BYTES, ASSET_MAX_VIDEO_BYTES } from './api.ts';
 import { ImportAssetError, importSvg, SVG_MAX_BYTES } from './bin/_import-asset.mjs';
 import { ImportBrandError, importBrand } from './bin/_import-brand.mjs';
@@ -1017,13 +1017,44 @@ export function createHttp(
       Response.json(listChats(ctx.paths.designRoot), {
         headers: { 'Cache-Control': 'no-store' },
       }),
-    '/_api/acp/chat': (req: Request) => {
+    '/_api/acp/chat': async (req: Request) => {
       const id = (new URL(req.url).searchParams.get('id') ?? '')
         .replace(/[^a-z0-9_-]/gi, '')
         .slice(0, 64);
       if (req.method === 'DELETE') {
         const removed = id ? deleteChat(ctx.paths.designRoot, id) : false;
         return Response.json({ ok: removed }, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      // Task C5 — Rename / Archive from the chat switcher's overflow menu.
+      // Same CSRF + loopback gate as every other privileged write route
+      // (DDR-088); id is already sanitized/contained above.
+      if (req.method === 'PATCH') {
+        if (!sameOriginWrite(req))
+          return new Response('cross-origin write rejected', { status: 403 });
+        if (!isLoopbackHost(req.headers.get('host')))
+          return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+        if (!id) return new Response('missing id', { status: 400 });
+        let body: unknown;
+        try {
+          body = await req.json();
+        } catch {
+          return new Response('invalid JSON body', { status: 400 });
+        }
+        if (!body || typeof body !== 'object') return new Response('invalid body', { status: 400 });
+        const b = body as { title?: unknown; archived?: unknown };
+        const patch: { title?: string | null; archived?: boolean } = {};
+        if ('title' in b) {
+          if (b.title === null) patch.title = null;
+          else if (typeof b.title === 'string') patch.title = b.title;
+          else return new Response('title must be a string or null', { status: 400 });
+        }
+        if ('archived' in b) {
+          if (typeof b.archived !== 'boolean')
+            return new Response('archived must be a boolean', { status: 400 });
+          patch.archived = b.archived;
+        }
+        const meta = writeChatMeta(ctx.paths.designRoot, id, patch);
+        return Response.json(meta, { headers: { 'Cache-Control': 'no-store' } });
       }
       if (!id) return Response.json([], { headers: { 'Cache-Control': 'no-store' } });
       return Response.json(readChatMessages(ctx.paths.designRoot, id), {

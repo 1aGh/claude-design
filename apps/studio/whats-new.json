@@ -2,6 +2,23 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "acp-live-capabilities",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Model, mode & permission controls in chat",
+      "summary": "Switch models, effort, and permission mode right from the chat panel — pulled live from your own Claude Code install, never a fixed list. Pick Manual to approve each tool action yourself, or Bypass for hands-off editing; plus grouped tool calls, message Copy/Retry, and a context-usage meter.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-testid=\"chat-mode-picker\"]",
+          "title": "Live from your Claude Code",
+          "body": "Model, effort, and permission mode are pulled straight from your own Claude Code install — pick Manual to approve each action, or Bypass for hands-off editing.",
+          "placement": "top"
+        }
+      ]
+    },
+    {
       "id": "bring-your-brand",
       "version": "0.44.0",
       "date": "2026-07-14",

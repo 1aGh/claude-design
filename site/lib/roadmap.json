@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-15T18:22:28.361Z",
+  "generated": "2026-07-15T20:48:23.884Z",
   "currentPhase": null,
   "phases": [
     {
@@ -230,6 +230,17 @@
       "date": null,
       "summary": "Validate the local test build (Task 5) BEFORE touching CI — the exact Tauri universal-binary bundle path is asserted, not 100% confirmed against this repo's Tauri version.",
       "planPath": ".ai/plans/archive/feature-desktop-intel-mac-support.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-desktop-standalone-bundle-completeness",
+      "title": "Feature: Maude Desktop — truly standalone bundle (zero manual installs) + a durable \"bundle build & deps\" gate",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a build/packaging/distribution plan — no UI, no design-system surface.",
+      "planPath": ".ai/plans/archive/feature-desktop-standalone-bundle-completeness.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1378,13 +1389,13 @@
       "phaseKey": null
     },
     {
-      "id": "feature-desktop-standalone-bundle-completeness",
-      "title": "Feature: Maude Desktop — truly standalone bundle (zero manual installs) + a durable \"bundle build & deps\" gate",
+      "id": "feature-goal-unattended-pipelines",
+      "title": "Feature: /goal-aware unattended pipelines for flow + design commands",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a build/packaging/distribution plan — no UI, no design-system surface.",
-      "planPath": ".ai/plans/feature-desktop-standalone-bundle-completeness.md",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, frontmatter, and closing-prompt conventions.",
+      "planPath": ".ai/plans/feature-goal-unattended-pipelines.md",
       "archived": false,
       "phaseKey": null
     },

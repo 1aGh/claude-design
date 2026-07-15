@@ -144,6 +144,33 @@ export function createAcpConnection() {
   const commandListeners = new Set();
   let commands = [];
 
+  // Session capabilities (feature-acp-panel-dynamic-claude-code-capabilities)
+  // — the live, dynamic replacement for the old hardcoded MODELS/EFFORTS
+  // arrays. `caps` = `{modes, configOptions}`, sourced entirely from the ACP
+  // session (never a static list); `sessionInfo` = the agent-generated title.
+  const capsListeners = new Set();
+  let caps = { modes: null, configOptions: [] };
+  const sessionInfoListeners = new Set();
+  let sessionInfo = { title: null, updatedAt: null };
+
+  // Usage (Milestone D) — the raw `usage` frame's payload, replayed on
+  // subscribe like caps/commands/sessionInfo above. Parsed into render-ready
+  // shape by acp-usage.js's parseUsage, not here (keep this file transport-only).
+  const usageListeners = new Set();
+  let usage = null;
+
+  // Pending permission requests (Milestone B — retires DDR-125 F2's blanket
+  // auto-approve). Surfaced OUTSIDE the assistant-ui message stream (like
+  // commands/caps above) via a panel-level subscription, since a request can
+  // arrive mid-turn and the run() loop only understands text/tool-call/
+  // reasoning parts — not "pause here for a human decision."
+  const permissionListeners = new Set();
+  let pendingPermissions = [];
+  function emitPermissions() {
+    const snap = pendingPermissions.slice();
+    for (const fn of permissionListeners) fn(snap);
+  }
+
   function emitStatus() {
     for (const fn of statusListeners) fn({ ...status });
   }
@@ -184,6 +211,22 @@ export function createAcpConnection() {
     emitBackground();
   }
 
+  // Connection-problem error card (Task C3) — the bridge `error` frame (a
+  // socket/adapter failure mid-turn) is ALSO thrown from prompt()'s generator
+  // (so assistant-ui's own turn-failed bookkeeping still runs), but a thrown
+  // generator error renders as a bare, unstyled assistant-ui fallback. Expose
+  // it as its own channel too so the panel can render a proper retry card
+  // instead — same "chrome, not turn content" treatment as commands/caps.
+  const errorListeners = new Set();
+  let lastError = null; // { message } | null
+  function emitError() {
+    for (const fn of errorListeners) fn(lastError);
+  }
+  function setError(message) {
+    lastError = message ? { message } : null;
+    emitError();
+  }
+
   function onFrame(frame) {
     if (frame.t === 'ready') {
       status.ready = true;
@@ -197,6 +240,31 @@ export function createAcpConnection() {
     if (frame.t === 'commands') {
       commands = Array.isArray(frame.commands) ? frame.commands : [];
       for (const fn of commandListeners) fn(commands);
+      return;
+    }
+    // Same treatment for the capability channel — chrome, not turn content,
+    // arrives on establish + on every live mode/config-option change.
+    if (frame.t === 'caps') {
+      caps = { modes: frame.modes ?? null, configOptions: frame.configOptions ?? [] };
+      for (const fn of capsListeners) fn(caps);
+      return;
+    }
+    if (frame.t === 'session-info') {
+      sessionInfo = { title: frame.title ?? null, updatedAt: frame.updatedAt ?? null };
+      for (const fn of sessionInfoListeners) fn(sessionInfo);
+      return;
+    }
+    if (frame.t === 'usage') {
+      usage = frame.usage ?? null;
+      for (const fn of usageListeners) fn(usage);
+      return;
+    }
+    if (frame.t === 'permission-request') {
+      pendingPermissions = [
+        ...pendingPermissions,
+        { id: frame.id, toolCall: frame.toolCall, options: frame.options ?? [] },
+      ];
+      emitPermissions();
       return;
     }
     // Everything else belongs to the active prompt turn.
@@ -256,6 +324,13 @@ export function createAcpConnection() {
       return () => backgroundListeners.delete(fn);
     },
 
+    /** Subscribe to the connection-problem error card's source (Task C3); replays the current one, if any. */
+    onError(fn) {
+      errorListeners.add(fn);
+      fn(lastError);
+      return () => errorListeners.delete(fn);
+    },
+
     /** Subscribe to the slash-command catalogue; replays the current list. */
     onCommands(fn) {
       commandListeners.add(fn);
@@ -263,12 +338,87 @@ export function createAcpConnection() {
       return () => commandListeners.delete(fn);
     },
 
+    /** Subscribe to the live capability set (`{modes, configOptions}`); replays the current snapshot. */
+    onCaps(fn) {
+      capsListeners.add(fn);
+      fn(caps);
+      return () => capsListeners.delete(fn);
+    },
+
+    /** Subscribe to the agent-generated chat title; replays the current snapshot. */
+    onSessionInfo(fn) {
+      sessionInfoListeners.add(fn);
+      fn(sessionInfo);
+      return () => sessionInfoListeners.delete(fn);
+    },
+
+    /** Subscribe to the raw usage frame (Milestone D); replays the current snapshot (may be null). */
+    onUsage(fn) {
+      usageListeners.add(fn);
+      fn(usage);
+      return () => usageListeners.delete(fn);
+    },
+
+    /** Subscribe to the list of currently-pending permission requests; replays the current snapshot. */
+    onPermission(fn) {
+      permissionListeners.add(fn);
+      fn(pendingPermissions);
+      return () => permissionListeners.delete(fn);
+    },
+
+    /**
+     * Answer a pending permission request — `decision` is one of the
+     * request's own `options[].optionId`, or `'cancelled'` to reject. Removes
+     * it from the pending list optimistically (the server has no separate
+     * "resolved" frame; the turn just continues). A response for an id that's
+     * no longer pending (already timed out, or a duplicate click) is a no-op.
+     */
+    async respondPermission(id, decision) {
+      if (!pendingPermissions.some((p) => p.id === id)) return;
+      pendingPermissions = pendingPermissions.filter((p) => p.id !== id);
+      emitPermissions();
+      try {
+        await ensureOpen();
+        ws?.send(JSON.stringify({ t: 'permission-response', id, decision }));
+      } catch {
+        /* socket unavailable — the bridge's own timeout will deny this request */
+      }
+    },
+
+    /**
+     * Live-set the session mode (Manual/Plan/…) for `chatId` on an
+     * ALREADY-established session — no respawn. Fire-and-forget like `warm`;
+     * the server validates against its own last-advertised roster and
+     * silently ignores an unadvertised id, so a stale/racy pick never corrupts
+     * state — the next `caps` frame is the source of truth either way.
+     */
+    async setMode(chatId, modeId) {
+      try {
+        await ensureOpen();
+        ws?.send(JSON.stringify({ t: 'set-mode', chat: chatId || undefined, modeId }));
+      } catch {
+        /* socket unavailable — non-fatal */
+      }
+    },
+
+    /** Live-set one config option (model/effort/fast/…) for `chatId`. See `setMode`. */
+    async setConfig(chatId, configId, value) {
+      try {
+        await ensureOpen();
+        ws?.send(JSON.stringify({ t: 'set-config', chat: chatId || undefined, configId, value }));
+      } catch {
+        /* socket unavailable — non-fatal */
+      }
+    },
+
     /**
      * Warm the adapter WITHOUT prompting so the agent publishes its command
      * catalogue. Fired when the user starts typing a slash command. Best-effort;
-     * a dead socket just leaves autocomplete on the static list.
+     * a dead socket just leaves autocomplete on the static list. `model`/
+     * `effort`/`mode` are the user's PERSISTED picks — applied once, live, by
+     * the bridge right after the session establishes (never onto an existing one).
      */
-    async warm(chatId, model, effort) {
+    async warm(chatId, model, effort, mode) {
       try {
         await ensureOpen();
         ws?.send(
@@ -277,6 +427,7 @@ export function createAcpConnection() {
             chat: chatId || undefined,
             model: model || undefined,
             effort: effort || undefined,
+            mode: mode || undefined,
           })
         );
       } catch {
@@ -287,17 +438,25 @@ export function createAcpConnection() {
     /**
      * Drive one prompt turn. Async-generates the bridge's `update` frames until
      * `turn-end`; throws on `error`; sends `cancel` when `abortSignal` aborts.
+     * `model`/`effort`/`mode` — see `warm`.
      */
-    async *prompt(text, chatId, abortSignal, model, effort) {
-      await ensureOpen();
+    async *prompt(text, chatId, abortSignal, model, effort, mode) {
+      try {
+        await ensureOpen();
+      } catch (err) {
+        setError(err?.message || 'Could not reach the Claude bridge.');
+        throw err;
+      }
       const queue = [];
       let wake = null;
       let ended = false;
       let failure = null;
       turnHandler = (frame) => {
         if (frame.t === 'turn-end') ended = true;
-        else if (frame.t === 'error') failure = frame.message || 'The Claude bridge errored.';
-        else queue.push(frame); // update / connected / permission
+        else if (frame.t === 'error') {
+          failure = frame.message || 'The Claude bridge errored.';
+          setError(failure); // Task C3 — the styled retry card's source
+        } else queue.push(frame); // update / connected / permission
         if (wake) {
           const w = wake;
           wake = null;
@@ -319,6 +478,7 @@ export function createAcpConnection() {
       // setBusy(true) fires FIRST so the finished-ping deferral (ChatPanel) sees
       // busy before these empty emits.
       resetBackground();
+      setError(null); // a fresh turn clears any stale card from a prior failure
       if (activeTools.size) {
         activeTools.clear();
         emitActivity();
@@ -331,6 +491,7 @@ export function createAcpConnection() {
             chat: chatId || undefined,
             model: model || undefined,
             effort: effort || undefined,
+            mode: mode || undefined,
           })
         );
         for (;;) {
@@ -369,7 +530,9 @@ export function createAcpConnection() {
   };
 }
 
-function lastUserText(messages) {
+/** The last user message's plain text — shared by the adapter's run() AND the
+ *  connection-problem card's "Try again" (Task C3), which re-sends it verbatim. */
+export function lastUserText(messages) {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (m.role !== 'user') continue;
@@ -512,7 +675,15 @@ function expandPasteChips(text, map) {
  * parts, preserving the order in which the agent emits them. `available_commands_update`
  * and `usage_update` are intentionally dropped (chrome noise, not chat content).
  */
-export function makeAcpAdapter(conn, getChatId, getModel, getEffort, getAttachments, getContext) {
+export function makeAcpAdapter(
+  conn,
+  getChatId,
+  getModel,
+  getEffort,
+  getAttachments,
+  getContext,
+  getMode
+) {
   return {
     async *run({ messages, abortSignal }) {
       // Let any in-flight clipboard-image upload finish so its chip expands to a
@@ -540,7 +711,8 @@ export function makeAcpAdapter(conn, getChatId, getModel, getEffort, getAttachme
         getChatId(),
         abortSignal,
         getModel?.(),
-        getEffort?.()
+        getEffort?.(),
+        getMode?.()
       )) {
         if (frame.t !== 'update') continue;
         applyUpdate(parts, toolIndex, frame.update);
