@@ -136,12 +136,12 @@ Execute in dependency order. Each task is atomic and testable. Prefix each with 
 - **Gotcha**: don't bloat root deps with things only the compiled binary needs — only what a **standalone** helper imports and can't get via the server.
 - **Validate**: in a clean container, `npm i -g @1agh/maude` then `maude design import-brand <svg>` works (with the server-boot path).
 
-### 🟡 Task 7 (G5, G1, G6): Robustness — PATH order, handshake timeout, preflight row, install cap — PARTIAL: (a) handshake timeout DONE (bridge.ts, verified tests 15/15). Remaining: (b) preflight runtime row, (c) install cap, (d) G5 note.
+### ✅ Task 7 (G5, G1, G6): Robustness — DONE: (a) handshake timeout (bridge.ts, tests 15/15). (c) install cap — deadline now pushed forward on every `running` poll so a slow-but-progressing install is never cut off; cap 90s→180s of no-signal; client bundle rebuilt. (b) preflight runtime row — SKIPPED: the G1/G3 fix makes the runtime always resolvable (compiled self via BUN_BE_BUN), so the row would always be green; a real failure now surfaces via the handshake timeout (7a) instead. (d/G5) resolved by G2 (bundled maude is now functional, so the DDR-168 prepend is safe).
 
 - **Do**: (a) G1 — wrap `conn.initialize()` in `start()` with `withTimeout`, surface a clear error instead of infinite "Working…"; (b) add a `runtime` preflight item in `readiness.ts` + a row in `ReadinessList.jsx` so a missing runnable runtime is visible, not silent; (c) G6 — raise `INSTALL_POLL_MAX_MS` and/or key the deadline off `getInstallState().phase === 'running'`; (d) G5 — once G2 lands the prepend is safe; add a comment/assertion that the bundled `maude` must be functional before it's allowed to shadow.
 - **Validate**: killing the adapter mid-handshake yields an error toast, not a spinner; readiness shows the runtime row.
 
-### Task 8 (minor): RELAX the SVG DOCTYPE guard for benign declarations
+### ✅ Task 8: RELAX the SVG DOCTYPE guard for benign declarations — DONE (`_import-asset.mjs` `svgPreParseReject`: reject `<!ENTITY>` + internal DTD subset, accept plain external-id DOCTYPE; tests 52/52 incl. Illustrator-accept + XXE-reject). Also wired the completeness gate into CI (`build-desktop.yml`, macOS `--smoke` post-build — G7 enforcement).
 
 - **Do**: In the import-asset/brand SVG sanitizer, allow a plain `<!DOCTYPE svg …>` with **no internal subset and no `ENTITY`** (the Illustrator/Serif case); keep rejecting internal-subset/`ENTITY`/`<script>`/`foreignObject`/external refs (the real XXE surface).
 - **Gotcha**: security-sensitive — keep the reject set tight; add a test with a real Illustrator export (accept) and an XXE payload (reject).

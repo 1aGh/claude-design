@@ -222,6 +222,22 @@ jobs:
             xcrun stapler validate "$DMG"
           fi
 
+      # ── Bundle self-containment gate (DDR-177) ──────────────────────────────
+      # Assert the packaged .app runs every `maude design <verb>` on a machine
+      # with NO node/bun/claude (--smoke uses a stripped PATH) — the exact class
+      # that shipped broken through v0.44–v0.45 (ACP "Working…" hang + every
+      # helper "helper not found"/"bun required"/missing happy-dom/svgo). macOS
+      # only: --smoke runs the real bundled binaries. Blocks the release on a gap.
+      - name: Verify bundle self-containment (macOS)
+        if: matrix.os == 'macos-14'
+        shell: bash
+        run: |
+          set -eu
+          APP=$(ls -d apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app 2>/dev/null | head -1 || true)
+          if [ -z "$APP" ]; then echo "::error::no .app found for the bundle-completeness gate"; exit 1; fi
+          echo "Gate target: $APP"
+          node apps/desktop/scripts/check-bundle-completeness.mjs "$APP" --smoke
+
       # ── Windows: build + Authenticode sign (when WINDOWS_CERTIFICATE present) ────
       - name: Build Tauri app (.msi)
         if: matrix.os == 'windows-2022'
