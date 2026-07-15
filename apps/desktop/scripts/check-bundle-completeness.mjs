@@ -124,19 +124,25 @@ if (hasScreenshot && hasCliDesign) {
 
 // === Check 2 — a bundled JS runtime for the helpers/adapter (G1, G3) ==========
 console.log('\n[2] bundled JS runtime (G1 adapter, G3 bun helpers)');
-// A bundled runtime = a `bun`/`node` launcher shipped next to the binary (the fix
-// stages a `bun`-named shim to the compiled sidecar via BUN_BE_BUN), OR an
-// externalBin `bun`/`node`. We can't observe sidecar.rs env from here, so we
-// check for a staged launcher.
+// A bundled runtime is either a real `bun`/`node` shipped next to the binary,
+// OR — the actual fix (RCA G1/G3) — the compiled `maude-server`/`maude`
+// executables, which ARE `bun --compile` binaries and behave as the `bun` CLI
+// when run with BUN_BE_BUN=1 (the adapter spawn sets it; design.mjs's shim wraps
+// it for the helpers). So a bundle with any of these HAS a usable JS runtime with
+// zero extra bytes.
 let runtimeFound = null;
 if (target.macosDir) {
-  for (const name of ['bun', 'node']) {
+  for (const name of ['bun', 'node', 'maude-server', 'maude']) {
     const cand = join(target.macosDir, name);
     if (existsSync(cand)) { runtimeFound = cand; break; }
   }
 }
 if (runtimeFound) {
-  ok('bundled JS runtime present', runtimeFound);
+  const viaBunBeBun = /maude(-server)?$/.test(runtimeFound);
+  ok(
+    'bundled JS runtime present',
+    viaBunBeBun ? `${runtimeFound} (compiled Bun; used via BUN_BE_BUN=1)` : runtimeFound
+  );
 } else if (target.kind === 'resources') {
   warn(
     'runtime not observable from a resources-only dir',
