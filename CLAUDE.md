@@ -47,6 +47,8 @@ The server is zero-dep (`node:http` + `node:crypto` for WS handshake) and resolv
 
 **Path resolution rule ([DDR-045](.ai/decisions/DDR-045-real-disk-path-resolution-for-compiled-dev-server.md)):** every dev-server module that needs a filesystem-relative path MUST import from `apps/studio/paths.ts` (`DEV_SERVER_ROOT`, `DIST_DIR`, `CLIENT_DIR`, `RUNTIME_BUNDLES_DIR`). NEVER compute `dirname(fileURLToPath(import.meta.url))` locally — inside `bun --compile` standalone binaries that resolves to the virtual `/$bunfs/root` and every `existsSync` against it silently returns false. Two production releases (v0.18.0 and v0.18.1) shipped broken because of this bug; the lesson is in DDR-045.
 
+**Patch registration is per package-manager root ([DDR-176](.ai/decisions/DDR-176-per-workspace-patch-registration-for-bun-compiled-sidecars.md)):** `apps/studio` installs via its OWN `bun install`/`bun.lock` (DDR-009), fully independent of the root `pnpm-workspace.yaml`. A `patchedDependencies` entry added at the root (e.g. the `css-tree`/`csso` bun-compile-compat patches under `patches/`) does NOT reach a dependency that also resolves inside `apps/studio`'s tree — it needs its OWN matching `patchedDependencies` entry in `apps/studio/package.json`. Skipping this shipped two broken releases (v0.44.0, v0.45.0: every compiled `maude-server` sidecar crash-looped on boot with `Cannot find module '../data/patch.json'`) before the lesson landed in DDR-176. When adding a root-level pnpm patch, check whether the patched package is also reachable from `apps/studio` and mirror the entry there.
+
 It writes three runtime files into `<designRoot>/` that the orchestrator (`/design` slash command) relies on:
 
 | File | Role |
