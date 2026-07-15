@@ -260,6 +260,26 @@ pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
         if let Some(studio) = candidates.into_iter().find(|p| p.join("dist").exists()) {
             command = command.env("MAUDE_DEV_SERVER_ROOT", studio.to_string_lossy().to_string());
             eprintln!("[maude] bundled runtime: {}", studio.display());
+
+            // RCA G2 — point the bundled `maude` CLI at its staged pkgRoot. The
+            // compiled `maude` lives in Contents/MacOS/ but resolves its
+            // `apps/studio/bin/<verb>.sh` helpers relative to a pkgRoot, which
+            // `cli/lib/pkg-root.mjs` `isPkgRoot` defines as a dir with BOTH
+            // `apps/studio/bin/screenshot.sh` AND `cli/commands/design.mjs`.
+            // pkgRoot = the parent of `apps/studio` (== `<res>`), which
+            // stage-resources also stages `cli/` + `package.json` into.
+            // `resolvePkgRoot` has an .app sibling probe that covers macOS
+            // without this, but MAUDE_PKG_ROOT is the portable belt for the
+            // Linux .deb layout (binary in /usr/bin, resources in /usr/lib) where
+            // the resource tree is NOT a sibling of the binary. Gated on the cli
+            // anchor so we never point at a non-pkgRoot.
+            if let Some(pkg_root) = studio.parent().and_then(|p| p.parent()) {
+                if pkg_root.join("cli").join("commands").join("design.mjs").exists() {
+                    command =
+                        command.env("MAUDE_PKG_ROOT", pkg_root.to_string_lossy().to_string());
+                    eprintln!("[maude] bundled pkgRoot: {}", pkg_root.display());
+                }
+            }
         }
     }
 

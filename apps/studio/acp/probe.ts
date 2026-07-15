@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { DEV_SERVER_ROOT } from '../paths.ts';
+import { DEV_SERVER_ROOT, IS_COMPILED_BINARY } from '../paths.ts';
 import { scrubAgentEnv } from './env.ts';
 
 /** Adapter npm package — the renamed continuation of `@zed-industries/claude-code-acp`. */
@@ -155,13 +155,37 @@ export function resolveClaudePath(): string | null {
 }
 
 /**
- * The JS runtime used to launch the adapter. The dev-server already runs under
- * Bun, so `process.execPath` is always available; prefer a real `node` when
- * present (the adapter + `@anthropic-ai/claude-agent-sdk` are authored for Node)
- * and fall back to our own Bun. Overridable via `MAUDE_ACP_RUNTIME`.
+ * The JS runtime used to launch the adapter, plus whether it must be spawned
+ * with `BUN_BE_BUN=1`. Ladder: explicit `MAUDE_ACP_RUNTIME` override → a real
+ * `node` (the adapter + `@anthropic-ai/claude-agent-sdk` are authored for Node)
+ * → a real `bun` → our OWN `process.execPath`.
+ *
+ * The last rung is the RCA-G1 fix. On a machine with NO node/bun (the target
+ * user — installs the `.app`, never opens a terminal), `process.execPath` inside
+ * the `bun --compile` dev-server sidecar is the sidecar BINARY, not a JS
+ * interpreter: a compiled Bun executable only runs a passed script when
+ * `BUN_BE_BUN=1` is set — otherwise it re-runs its own embedded server and the
+ * ACP handshake never happens, so the panel hangs at "Working…" forever (the
+ * exact reported bug; the user's own `brew install node` masked it by making the
+ * `node` rung resolve). So when we fall back to our own COMPILED self we flag
+ * `bunBeBun=true`; `bridge.ts` sets it on the child env. In dev, `execPath` is a
+ * real `bun` and `IS_COMPILED_BINARY` is false, so `bunBeBun` stays false (no-op).
+ *
+ * The bundled compiled sidecar IS Bun 1.3.x, so this needs ZERO extra bytes and
+ * makes AI editing work with no user-installed runtime. NOTE the adapter + SDK
+ * are Node-authored — running them under Bun via this rung MUST be verified on a
+ * real compiled, node-less build (the dev path prefers `node`, so Bun is not
+ * exercised there); if a Bun/Node incompatibility surfaces, bundle a real `node`
+ * as an externalBin and point `MAUDE_ACP_RUNTIME` at it (the override rung above).
  */
-export function resolveAgentRuntime(): string {
-  return process.env.MAUDE_ACP_RUNTIME || Bun.which('node') || process.execPath;
+export function resolveAgentRuntime(): { bin: string; bunBeBun: boolean } {
+  const override = process.env.MAUDE_ACP_RUNTIME;
+  if (override) return { bin: override, bunBeBun: false };
+  const node = Bun.which('node');
+  if (node) return { bin: node, bunBeBun: false };
+  const bun = Bun.which('bun');
+  if (bun) return { bin: bun, bunBeBun: false };
+  return { bin: process.execPath, bunBeBun: IS_COMPILED_BINARY };
 }
 
 /**

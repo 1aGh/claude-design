@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { isPkgRoot, resolvePkgRoot } from './pkg-root.mjs';
+import { isPkgRoot, resolvePkgRoot, resolveTauriResourcePkgRoot } from './pkg-root.mjs';
 
 function makeRealRoot(base) {
   mkdirSync(join(base, 'apps', 'studio', 'bin'), { recursive: true });
@@ -49,6 +49,38 @@ test('isPkgRoot requires BOTH anchors — the staged-resources false-positive is
     assert.equal(isPkgRoot(tmp), true);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('resolveTauriResourcePkgRoot finds the .app sibling Resources tree (RCA G2)', () => {
+  // Mirror the packaged macOS layout: binary in Contents/MacOS, staged tree in
+  // the SIBLING Contents/Resources — NOT an ancestor of the binary, which is why
+  // the plain walk-up misses it and every `maude design <verb>` broke.
+  const app = mkdtempSync(join(tmpdir(), 'maude-app-'));
+  try {
+    const macosDir = join(app, 'Contents', 'MacOS');
+    const resources = join(app, 'Contents', 'Resources');
+    mkdirSync(macosDir, { recursive: true });
+    makeRealRoot(resources); // stages apps/studio/bin/screenshot.sh + cli/commands/design.mjs
+
+    // From the binary's own dir, the sibling probe must find Resources.
+    assert.equal(resolveTauriResourcePkgRoot(macosDir), resources);
+
+    // Regression guard: Resources WITHOUT cli/ (the shipped-broken v0.45.1 shape)
+    // must NOT resolve — that's exactly the false-positive isPkgRoot rejects.
+    const broken = mkdtempSync(join(tmpdir(), 'maude-app-broken-'));
+    try {
+      const bMacos = join(broken, 'Contents', 'MacOS');
+      const bRes = join(broken, 'Contents', 'Resources', 'apps', 'studio', 'bin');
+      mkdirSync(bMacos, { recursive: true });
+      mkdirSync(bRes, { recursive: true });
+      writeFileSync(join(bRes, 'screenshot.sh'), '#!/bin/sh\n'); // no cli/ staged
+      assert.equal(resolveTauriResourcePkgRoot(bMacos), null);
+    } finally {
+      rmSync(broken, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(app, { recursive: true, force: true });
   }
 });
 

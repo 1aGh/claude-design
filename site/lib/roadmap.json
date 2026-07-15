@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-15T18:04:47.161Z",
+  "generated": "2026-07-15T18:12:31.422Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1374,6 +1374,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. Every model/mode/effort list this feature renders MUST be pulled live from the ACP ses...",
       "planPath": ".ai/plans/feature-acp-panel-dynamic-claude-code-capabilities.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-desktop-standalone-bundle-completeness",
+      "title": "Feature: Maude Desktop — truly standalone bundle (zero manual installs) + a durable \"bundle build & deps\" gate",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a build/packaging/distribution plan — no UI, no design-system surface.",
+      "planPath": ".ai/plans/feature-desktop-standalone-bundle-completeness.md",
       "archived": false,
       "phaseKey": null
     },

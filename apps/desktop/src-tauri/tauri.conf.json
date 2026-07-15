@@ -56,6 +56,8 @@
     },
     "resources": {
       "resources/apps/studio": "apps/studio",
+      "resources/cli": "cli",
+      "resources/package.json": "package.json",
       "resources/plugins/design": "plugins/design",
       "resources/plugins/flow": "plugins/flow"
     },

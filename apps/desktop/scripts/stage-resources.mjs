@@ -25,9 +25,21 @@
 //
 // Layout (preserves the apps/studio ↔ plugins/design/templates `../../`
 // relationship http.ts's TEMPLATES_DIR depends on):
+//   src-tauri/resources/package.json        (pkgRoot anchor #1 — see below)
+//   src-tauri/resources/cli/                 (pkgRoot anchor #2; `maude design <verb>` dispatch)
 //   src-tauri/resources/apps/studio/        (full source + dist + client, minus the below)
 //   src-tauri/resources/plugins/design/     (whole plugin tree; templates/ = TEMPLATES_DIR)
 //   src-tauri/resources/plugins/flow/       (whole plugin tree — DDR-143 auto-load)
+//
+// The `cli/` + top-level `package.json` are load-bearing (RCA G2): the compiled
+// `maude` binary lives in `Contents/MacOS/` but resolves its `apps/studio/bin/
+// <verb>.sh` helpers relative to its pkgRoot, which `cli/lib/pkg-root.mjs`
+// `isPkgRoot` defines as a dir holding BOTH `apps/studio/bin/screenshot.sh` AND
+// `cli/commands/design.mjs`. Staging `cli/` here makes `Contents/Resources` a
+// valid pkgRoot; `resolvePkgRoot`'s `.app` sibling probe (and sidecar.rs's
+// `MAUDE_PKG_ROOT`) then point the binary at it. Without this, EVERY `maude
+// design <verb>` fails "helper not found" in the packaged app (shipped broken
+// through v0.45.1).
 
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -73,6 +85,36 @@ cpSync(STUDIO, OUT_STUDIO, {
     return true;
   },
 });
+
+// --- pkgRoot anchors: cli/ + package.json (RCA G2) ---------------------------
+// Stage the CLI dispatch tree and the top-level manifest so `Contents/Resources`
+// satisfies `isPkgRoot` (cli/lib/pkg-root.mjs) — the compiled `maude` binary
+// resolves its bundled `.sh` helpers relative to this. `cli/` has no
+// node_modules of its own; filter defensively like the studio copy.
+{
+  const cliSrc = join(REPO_ROOT, 'cli');
+  need(join(cliSrc, 'commands', 'design.mjs'), 'cli/commands/design.mjs');
+  cpSync(cliSrc, join(OUT, 'cli'), {
+    recursive: true,
+    filter: (p) => !/[\\/]node_modules([\\/]|$)/.test(p.replace(/\\/g, '/')),
+  });
+  const pkgJson = join(REPO_ROOT, 'package.json');
+  need(pkgJson, 'package.json');
+  cpSync(pkgJson, join(OUT, 'package.json'));
+}
+// Build-time gate: the staged resources root MUST be a valid pkgRoot, or the
+// compiled `maude` falls back to `Contents/MacOS/` and every `maude design
+// <verb>` breaks (RCA G2). Assert both `isPkgRoot` anchors are present.
+for (const anchor of [
+  join(OUT, 'apps', 'studio', 'bin', 'screenshot.sh'),
+  join(OUT, 'cli', 'commands', 'design.mjs'),
+]) {
+  if (!existsSync(anchor)) {
+    console.error(`[stage-resources] pkgRoot anchor not staged (RCA G2): ${anchor}`);
+    process.exit(1);
+  }
+}
+console.log('[stage-resources] staged pkgRoot anchors → cli/ + package.json');
 
 // --- Plugin trees: design + flow loadable surfaces (DDR-143) -----------------
 // The ACP chat session auto-loads these as session-scoped LOCAL plugins so

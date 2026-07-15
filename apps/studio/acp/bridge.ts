@@ -84,6 +84,10 @@ const VALID_SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/;
 // bridge silent forever. Mirrors the `withTimeout`/`TIMED_OUT` pattern already
 // used for network calls in `apps/studio/git/service.ts`.
 const LOAD_SESSION_TIMEOUT_MS = 15_000;
+// RCA-G1 — cap the ACP handshake so a mis-launched runtime that never speaks ACP
+// surfaces an error instead of an infinite "Working…". Generous: covers a cold
+// first-spawn of the compiled adapter runtime, but well short of "forever".
+const INITIALIZE_TIMEOUT_MS = 30_000;
 const TIMED_OUT = Symbol('maude-acp-load-session-timeout');
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
   p.catch(() => {});
@@ -397,7 +401,14 @@ export class AcpBridge {
     const thinking = EFFORT_THINKING_TOKENS[this.activeEffort];
     if (thinking !== null && thinking !== undefined) env.MAX_THINKING_TOKENS = String(thinking);
 
-    const proc = Bun.spawn([resolveAgentRuntime(), adapterEntry], {
+    // RCA-G1 — resolve a runnable JS runtime. On a node/bun-less machine this
+    // falls back to our own compiled self, which must be spawned with
+    // BUN_BE_BUN=1 to behave as `bun` (else it re-runs the embedded server and
+    // the handshake below never completes → "Working…" forever). Set on `env`
+    // AFTER scrubAgentEnv (which doesn't touch BUN_BE_BUN).
+    const runtime = resolveAgentRuntime();
+    if (runtime.bunBeBun) env.BUN_BE_BUN = '1';
+    const proc = Bun.spawn([runtime.bin, adapterEntry], {
       cwd: this.opts.repoRoot,
       env,
       stdin: 'pipe',
@@ -463,13 +474,37 @@ export class AcpBridge {
     const conn = new ClientSideConnection(() => client, stream);
     this.conn = conn;
 
-    await conn.initialize({
-      protocolVersion: PROTOCOL_VERSION,
-      // We don't expose the project filesystem to the agent over ACP — the
-      // spawned `claude` already has direct disk access to `cwd`, so advertising
-      // fs capabilities here would only duplicate (and widen) that surface.
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
-    });
+    // RCA-G1 — bound the handshake. If the spawned "adapter" is actually a
+    // mis-launched runtime that never speaks ACP (the exact node-less bug: a
+    // compiled sidecar re-run as a server instead of `bun`, before the
+    // BUN_BE_BUN fix, or any future runtime regression), `initialize()` never
+    // resolves and the panel hangs at "Working…" forever with no error. Time it
+    // out, tear down the dead child, and surface a real error the UI can show
+    // instead of an infinite spinner. Mirrors the `withTimeout` guard already
+    // used for `loadSession`.
+    const initResult = await withTimeout(
+      conn.initialize({
+        protocolVersion: PROTOCOL_VERSION,
+        // We don't expose the project filesystem to the agent over ACP — the
+        // spawned `claude` already has direct disk access to `cwd`, so advertising
+        // fs capabilities here would only duplicate (and widen) that surface.
+        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
+      }),
+      INITIALIZE_TIMEOUT_MS
+    );
+    if (initResult === TIMED_OUT) {
+      this.conn = null;
+      try {
+        proc.kill();
+      } catch {
+        /* already gone */
+      }
+      this.proc = null;
+      throw new Error(
+        `AI editing couldn't start: the agent runtime didn't respond within ${INITIALIZE_TIMEOUT_MS / 1000}s. ` +
+          `Check that Claude Code is installed and signed in (Help ▸ Check AI editing readiness).`
+      );
+    }
     // Sessions are created lazily per chat (sessionFor) — not here.
   }
 
