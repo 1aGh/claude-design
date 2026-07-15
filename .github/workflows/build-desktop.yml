@@ -35,9 +35,11 @@ name: Build desktop app (macOS .dmg + Windows .msi + Linux .deb)
 # auto-lipo `externalBin` sidecars (tauri-apps/tauri#3355) — it looks for a
 # pre-built binary literally named `<name>-universal-apple-darwin` and fails
 # to bundle otherwise. So the macOS leg builds both dev-server sidecar arches,
-# stages both dev-server + agent-browser sidecars for each arch, then runs
-# `lipo -create` itself to produce `maude-server-universal-apple-darwin` +
-# `agent-browser-universal-apple-darwin` before `tauri build` runs.
+# stages the dev-server + agent-browser + maude-CLI sidecars for each arch,
+# then runs `lipo -create` itself to produce `maude-server-universal-apple-darwin`
+# + `agent-browser-universal-apple-darwin` + `maude-universal-apple-darwin`
+# before `tauri build` runs. (All three are `externalBin` entries in
+# tauri.conf.json — DDR-166 added the third, `binaries/maude`, the CLI itself.)
 #
 # Two signing keys are in play (Phase 32):
 #   • TAURI_SIGNING_PRIVATE_KEY (+ _PASSWORD) — ed25519 key that signs the UPDATER
@@ -171,14 +173,18 @@ jobs:
           # (see tauri-apps/tauri#3355). So we build the fat binary ourselves.
           cd apps/desktop
           MAUDE_SIDECAR_SLUG=darwin-arm64 node scripts/sync-sidecar.mjs
+          MAUDE_SIDECAR_SLUG=darwin-arm64 bun scripts/build-cli-binary.mjs
           MAUDE_SIDECAR_SLUG=darwin-arm64 node scripts/sync-agent-browser.mjs
           MAUDE_SIDECAR_SLUG=darwin-x64 node scripts/sync-sidecar.mjs
+          MAUDE_SIDECAR_SLUG=darwin-x64 bun scripts/build-cli-binary.mjs
           MAUDE_SIDECAR_SLUG=darwin-x64 node scripts/sync-agent-browser.mjs
           cd src-tauri/binaries
           lipo -create -output maude-server-universal-apple-darwin \
             maude-server-aarch64-apple-darwin maude-server-x86_64-apple-darwin
           lipo -create -output agent-browser-universal-apple-darwin \
             agent-browser-aarch64-apple-darwin agent-browser-x86_64-apple-darwin
+          lipo -create -output maude-universal-apple-darwin \
+            maude-aarch64-apple-darwin maude-x86_64-apple-darwin
           cd ../../../..
 
           # Graceful-degradation: with no Apple cert secret configured the env
