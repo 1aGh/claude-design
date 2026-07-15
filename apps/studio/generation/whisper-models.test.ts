@@ -140,6 +140,29 @@ describe('downloadWhisperModel', () => {
     const path = await downloadWhisperModel('tiny', () => {});
     expect(existsSync(path)).toBe(true);
   });
+
+  test('accepts a redirect that lands on HF\'s Xet CDN (xethub.hf.co)', async () => {
+    const bytes = new Uint8Array(512);
+    globalThis.fetch = (async () => ({
+      url: 'https://cas-bridge.xethub.hf.co/repos/x/ggml-tiny.bin',
+      ok: true,
+      headers: new Headers({ 'content-length': String(bytes.byteLength) }),
+      body: new Response(bytes).body,
+    })) as unknown as typeof fetch;
+    const path = await downloadWhisperModel('tiny', () => {});
+    expect(existsSync(path)).toBe(true);
+  });
+
+  test('rejects a lookalike host that merely contains an allowed apex', async () => {
+    globalThis.fetch = (async () => ({
+      url: 'https://xethub.hf.co.evil.example/ggml-tiny.bin',
+      ok: true,
+      headers: new Headers(),
+      body: new Response(new Uint8Array(1)).body,
+    })) as unknown as typeof fetch;
+    await expect(downloadWhisperModel('tiny', () => {})).rejects.toThrow(/off huggingface\.co/);
+    expect(existsSync(join(whisperModelsDir(), 'ggml-tiny.bin'))).toBe(false);
+  });
 });
 
 describe('registry integrity', () => {

@@ -81,6 +81,18 @@ export const WHISPER_MODELS: readonly WhisperModelDescriptor[] = [
 const MODEL_HOST = 'https://huggingface.co';
 const MODEL_REPO_PATH = '/ggerganov/whisper.cpp/resolve/main';
 
+// Apex domains a model-download redirect is allowed to land on. `huggingface.co`
+// is the classic Git-LFS CDN; `xethub.hf.co` is HF's newer Xet storage backend,
+// which several repos (incl. ggerganov/whisper.cpp) have been migrated to — its
+// edge nodes (e.g. `cas-bridge.xethub.hf.co`) are a different apex entirely, not
+// a subdomain of huggingface.co. Anchored subdomain match only (never
+// `includes()`), so `xethub.hf.co.evil.com` / `evilxethub.hf.co` still reject.
+const ALLOWED_REDIRECT_APEXES = ['huggingface.co', 'xethub.hf.co'] as const;
+
+function isAllowedRedirectHost(hostname: string): boolean {
+  return ALLOWED_REDIRECT_APEXES.some((apex) => new RegExp(`(^|\\.)${apex.replace(/\./g, '\\.')}$`).test(hostname));
+}
+
 /** The fixed, non-interpolated download URL for a model (SSRF-safe — the file
  *  comes from the frozen registry above, never from a request). */
 export function whisperModelUrl(m: WhisperModelDescriptor): string {
@@ -163,7 +175,9 @@ export function resolveWhisperModel(preferId?: string): string | null {
  * (Task 2.7). Egress discipline: the URL is derived from the FROZEN registry
  * (initial host is always huggingface.co, asserted https + fixed host); the
  * redirect the HF blob store issues is followed but the FINAL hop is re-asserted
- * https + a `*.huggingface.co` host (ethical-hacker Finding 2); the body is
+ * https + a host on `ALLOWED_REDIRECT_APEXES` (`*.huggingface.co` for the
+ * classic LFS CDN, `*.xethub.hf.co` for HF's newer Xet storage backend —
+ * ethical-hacker Finding 2 plus the Xet-migration follow-up); the body is
  * size-capped per-chunk to the model's expected size (+20% margin) before it can
  * fill the disk; written to a `.part` temp and atomically renamed so a
  * partial/aborted download never looks complete. Pass an AbortSignal (a timeout)
@@ -197,7 +211,7 @@ export async function downloadWhisperModel(
   const res = await fetch(url, { signal, redirect: 'follow' });
   try {
     const finalUrl = new URL(res.url || url);
-    if (finalUrl.protocol !== 'https:' || !/(^|\.)huggingface\.co$/.test(finalUrl.hostname))
+    if (finalUrl.protocol !== 'https:' || !isAllowedRedirectHost(finalUrl.hostname))
       throw new Error(`model download redirected off huggingface.co (${finalUrl.hostname})`);
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('model download redirected')) throw err;
