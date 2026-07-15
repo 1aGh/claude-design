@@ -29,6 +29,7 @@ Three milestones, sequenced. **A** is the dynamic backbone and is a prerequisite
 - **A — Dynamic capability channel.** Bridge harvests `modes` + `configOptions` (+ `session_info` title) from `newSession`/`loadSession` and from the `current_mode_update` / `config_option_update` / `session_info_update` notifications; relays them as new WS frames. Client renders model/effort/mode pickers from those live lists and drives changes via new `set-config` / `set-mode` frames → `conn.setSessionConfigOption` / `conn.setSessionMode`. Delete the hardcoded arrays + the env-at-spawn respawn.
 - **B — Permission approve/deny UI (retires DDR-125 F2).** `requestPermission` becomes async: the bridge forwards the request and awaits the user's decision (with mode-driven defaults + a timeout fallback). Client renders an inline Allow-once / Allow-always / Reject card. The permission **policy is now the selected mode**, sourced from Claude Code — pick Bypass/Don't-Ask to get today's behavior.
 - **C — Transcript polish.** Collapsed tool-call groups, per-message Copy/Retry actions, a connection-problem error card with "Try again", transcript view modes, and a per-chat overflow menu.
+- **D — Usage.** A live context-window meter + session cost (from the `usage_update` notification) and an event-driven rate-limit banner. The full multi-window "Plan usage limits" panel from screenshot #9 is **out of v1 scope** — the ACP adapter doesn't expose it (only a thin single-window signal reaches the wire; see Milestone D).
 
 ## Metadata
 
@@ -61,6 +62,8 @@ Three milestones, sequenced. **A** is the dynamic backbone and is a prerequisite
 - `apps/studio/client/panels/CapabilityBar.jsx` (or inline in ChatPanel) — the model / effort / mode picker row (replaces the two hardcoded `<select>`s).
 - `apps/studio/client/panels/PermissionPrompt.jsx` — the inline Allow-once / Allow-always / Reject card (Milestone B).
 - `apps/studio/client/panels/ToolGroup.jsx` — collapsed consecutive-tool-call summary row ("Ran N commands, browsed the web").
+- `apps/studio/client/panels/acp-usage.js` — pure `parseUsage(frame)` → context gauge + cost + single-window rate-limit (Milestone D).
+- `apps/studio/test/acp-usage.test.ts` — `parseUsage` pure fn (Milestone D).
 - `apps/studio/test/acp-capabilities.test.ts` — caps parsing + persisted re-apply resolver (pure).
 - `apps/studio/test/acp-caps-bridge.test.ts` — bridge harvests `.modes`/`.configOptions`, forwards `config_option_update`/`current_mode_update`/`session_info_update`, validates `set-mode`/`set-config` against **advertised** options (not a hardcoded allowlist).
 - `apps/studio/test/acp-permission.test.ts` — requestPermission round-trip: forwarded → awaits client response → applies chosen optionId; timeout/cancel fallback; mode-driven default.
@@ -107,6 +110,9 @@ Confirmed by reading the installed `@agentclientprotocol/sdk@0.28.1` + `@agentcl
 | **Fast mode** | `SessionConfigOption` `category:"model_config"`, id `"fast"` (model-dependent) | same | `setSessionConfigOption(configId:'fast', value)` | `config_option_update` |
 | **Chat title** | `SessionInfoUpdate` (`title`, `updatedAt`) | `session_info_update` notification | — (agent-generated) | `session_info_update` |
 | **Slash commands** | `available_commands_update` | already consumed | — | already consumed |
+| **Context window + cost** | `usage_update` `{ used, size, cost }` (from SDK `getContextUsage()`) | `usage_update` notification | — | on/after each turn (not at rest) |
+| **Rate limit (single window)** | thin `SDKRateLimitInfo` on `usage_update._meta["_claude/rateLimit"]` — ONE window/event, event-driven | `usage_update` notification | — | only on a rate-limit event during a turn |
+| **Full plan-limits (5h+weekly+Fable)** | `SDKControlGetUsageResponse.rate_limits` — **NOT plumbed through adapter 0.57.0** | ✗ not over ACP (unstable `usage_EXPERIMENTAL_…()` only) | — | — |
 
 Hard boundaries to design around:
 1. **No typed model API.** Models are opaque `{value, name, description}` select options tagged `category:"model"` (a UX hint that MAY be absent). Key off the category; treat ids as opaque strings. There is no `SessionModelState`/`availableModels`/`select_model` in either SDK version.
@@ -232,6 +238,42 @@ Execute in dependency order. **Milestone A first (backbone), then B (security), 
 - **Gotcha**: Rename/Archive touch `_chat/` — stay within the `[a-z0-9_-]/64` chatId containment (index.ts:184) and main-origin+loopback gating.
 - **Validate**: `cd apps/studio && bun test`; live-verify.
 
+### Milestone D — Usage view (context window + cost, live; rate-limit banner, partial)
+
+> Screenshot #9 shows Claude Desktop's usage popover: a **Context window** gauge + a **Plan usage limits** list (5-hour / weekly-all / weekly-Fable, each % + reset). **Reality check (confirmed on disk): the ACP adapter exposes the gauge + cost fully, but NOT the full multi-window plan-limits panel.** Ship what's genuinely dynamic; scope the rich panel honestly as a gated follow-up — do NOT render fabricated bars.
+
+**Research (confirmed against the installed SDKs — this is the hard boundary):**
+- **Context window + cost — FULLY DYNAMIC today.** ACP `usage_update` (`UsageUpdate`, sdk types.gen.d.ts:3894) = `{ used, size, cost? }`; `used` from the SDK's authoritative `getContextUsage().totalTokens` (system prompt + tool schemas + MCP + memory, not just messages; `acp-agent.js:4235`), `size` from the model window (handles 1M). `Cost` (:3871) = `{ amount, currency }`. Emitted after each result (`acp-agent.js:965,1317`). **Caveat: it only ticks during/after a prompt turn** — present as "context: X / Y · updated HH:MM", not live-at-rest.
+- **Rate limits — only a THIN, single-window signal reaches ACP.** The adapter forwards the SDK `rate_limit_event` as a `usage_update` with `_meta["_claude/rateLimit"] = SDKRateLimitInfo` (`acp-agent.js:1768-1776`). `SDKRateLimitInfo` (claude-agent-sdk@0.3.202 `sdk.d.ts:3984`) carries **ONE window per event**: `status`, a single `rateLimitType` (`five_hour|seven_day|seven_day_opus|seven_day_sonnet|seven_day_overage_included|overage`), one `resetsAt`, one `utilization`, plus an overage sidecar. **It cannot express the 3-window panel, and per-model buckets (Fable) aren't representable.** It's event-driven + turn-bound (only fires when `lastAssistantTotalUsage != null`, reset each turn at `acp-agent.js:687`) — never at rest.
+- **The RICH panel data EXISTS but is NOT plumbed through the adapter.** `SDKControlGetUsageResponse.rate_limits` (`sdk.d.ts:3059`) has exactly the Desktop panel — `five_hour`, `seven_day`, `seven_day_opus/sonnet`, `model_scoped[]` (incl. `display_name:"Fable"`), `extra_usage`, each `{ utilization 0-100, resets_at ISO }`, queryable **at rest**. But it's reachable only via the control method `query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()` — which **claude-agent-acp 0.57.0 never calls and never forwards** (no ACP method, no `_meta` channel carries it). The method name is a literal "do not rely on this yet"; `rate_limits_available` is `false` for API-key/Bedrock/Vertex sessions.
+- **`/usage` over ACP is TEXT, not structured** — its stdout is stripped of markers and forwarded as a plain `agent_message_chunk` (`acp-agent.js:1622`). Not a parseable source.
+
+**Scope decision (see Open decisions #4):** v1 ships the **context-window gauge + session cost** (fully dynamic) and an **event-driven single-window rate-limit banner** (from the thin `SDKRateLimitInfo`). The **full multi-window plan-limits panel is a separate gated follow-up** requiring either an adapter patch or an out-of-band source — NOT promised here.
+
+#### Task D1: HARVEST `usage_update` in the bridge
+- **Do**: In `bridge.ts` `client.sessionUpdate` (434), special-case `usage_update` like `available_commands_update` (438): extract `{ used, size, cost }` + `_meta?.['_claude/rateLimit']`, fire a new `onUsage?(usage)` sink; keep it OUT of `onUpdate`/the rendered turn (chrome). Cache last-seen usage on the bridge, replay to a freshly-opened socket (mirror `latestCommands`, `index.ts:132,253`).
+- **Do**: `index.ts` — wire `onUsage` → `send(ws, { t:'usage', usage })`; cache `latestUsage` + replay on `onOpen`.
+- **Gotcha**: `usage_update` already arrives as a plain `{t:'update'}` frame and is dropped by `applyUpdate`'s default (`acp-runtime.js:117`) — promote it to the dedicated frame; ensure no double-handling.
+- **Validate**: `cd apps/studio && bun test acp-usage-bridge`
+
+#### Task D2: ADD the client usage channel + parser
+- **Do**: `acp-runtime.js` — add `onUsage` listener + handle the `usage` frame in `onFrame` (187), like `commands`/`caps`.
+- **Do**: New `acp-usage.js` (pure) — `parseUsage(frame)` → `{ context: { used, size, pct }, cost, rateLimit: { type, label, pct, resetsAt, status } | null, asOf }`. `rateLimit` is the single active window from `SDKRateLimitInfo` (null when absent). Map `rateLimitType` → a friendly label ("5-hour limit", "Weekly limit", "Weekly · Opus", …). Tolerate a malformed/missing `_meta`.
+- **Validate**: `cd apps/studio && bun test acp-usage`
+
+#### Task D3: ADD the usage UI (gauge + cost + single-window banner)
+- **Do**: A **context-window meter** — slim, ambient, in the composer footer (join/replace the "your Claude subscription" line, `ChatPanel.jsx:967-971`): "context X% · updated HH:MM", expandable to `used / size` + session cost. Live-updates on `usage` frames.
+- **Do**: An **event-driven rate-limit banner** — when `rateLimit` arrives with `status:'allowed_warning'|'rejected'` (or high `utilization`), show a compact notice ("You're at N% of your 5-hour limit · resets HH:MM"). Dismissible; not a persistent panel (the data isn't fresh at rest).
+- **Do**: CSS — `chat-usage`, `chat-usage-meter`, `chat-usage-bar`, `chat-usage-banner` in `6-acp-chat.css` (DS tokens, no hardcoded colors).
+- **Gotcha**: context window is per-chat/session; cost is per-session. Label accordingly.
+- **Validate**: live-verify in the native app.
+
+#### Task D4: TEST the usage parser
+- **Do**: `apps/studio/test/acp-usage.test.ts` — `parseUsage`: context pct math, `rateLimit` mapped from an `SDKRateLimitInfo` fixture (each `rateLimitType`), null/missing rate-limit → gauge-only, malformed `_meta` tolerated.
+- **Validate**: `cd apps/studio && bun test acp-usage`
+
+> **Follow-up (out of v1 scope) — the full multi-window "Plan usage limits" panel.** Requires surfacing `SDKControlGetUsageResponse.rate_limits` (the 5h + weekly + `model_scoped[]`/Fable + extra_usage data, fresh at rest). Two paths, both gated: **(a)** patch/fork `claude-agent-acp` to call `query.usage_EXPERIMENTAL_…()` and forward it over a `_meta` channel — but DDR-125 B4 pins the adapter exact-version + the SDK API is explicitly unstable; **(b)** source out-of-band (spawn the user's `claude`), if/when a stable `claude usage --json` exists — today the data lives only behind the unstable Agent-SDK control method, and hitting the claude.ai endpoint directly is the OAuth-token ToS trap (memory `reference_claude_subscription_via_users_cli_not_sdk`). Record as its own DDR + plan when picked up; `rate_limits_available:false` for API-key/Bedrock/Vertex must degrade gracefully.
+
 ### Cross-cutting close-out
 
 #### Task X1: REBUILD the committed client bundle (release-minified)
@@ -271,6 +313,7 @@ Execute in dependency order. **Milestone A first (backbone), then B (security), 
 - [ ] Collapsed tool groups, per-message Copy/Retry, connection-problem retry card, transcript view modes, and the per-chat overflow menu all function (native live-verified).
 - [ ] `bun test` green (new + existing); `biome check` clean; `acp-origin-gate` green; committed `dist/*` rebuilt `--release`.
 - [ ] Desktop E2E scenario green.
+- [ ] Usage: context-window meter + session cost render live from `usage_update`; the single-window rate-limit banner appears on a warning/rejected event. The full multi-window panel is explicitly deferred (not faked).
 - [ ] `security-auditor` + `ethical-hacker`: 0 blockers on the permission-gate diff.
 - [ ] DDR-123 guardrails intact (`scrubAgentEnv`, `CLAUDE_CODE_EXECUTABLE` pin, native-only). No ACP route on the canvas origin.
 - [ ] What's New entry added; DDR-125 note updated.
@@ -282,3 +325,4 @@ Execute in dependency order. **Milestone A first (backbone), then B (security), 
 1. **Scope / sequencing.** This is three milestones. Recommended: **A + B together** (an honest mode picker requires the permission UI — a "Manual" mode that silently auto-approves is misleading), then **C** as a fast-follow. Alternative de-scope: ship **A** with the mode picker limited to `plan` + `bypassPermissions` (the two honest-without-a-prompt modes), defer Manual/Accept-edits + the approve/deny UI (B) to a second cycle. Not recommended — it half-delivers the headline control.
 2. **SDK bump 0.28.1 → 1.2.0?** Only needed for the native boolean Fast-mode toggle; everything else works on 0.28.1. Default: **stay on 0.28.1** (Fast mode degrades to a 2-value select), treat the bump as a separate reviewed follow-up per DDR-125 B4.
 3. **Keep `ANTHROPIC_MODEL` at spawn as the initial default, or fully live-set?** (Task A3) — minor; decide in execution. Fully-live is cleaner; env-default avoids one config call per new session.
+4. **Full "Plan usage limits" panel (screenshot #9) — in or out?** Out for v1 (Milestone D ships gauge + cost + single-window banner, which is all the adapter exposes). The rich 5h/weekly/Fable panel needs either an adapter patch to surface the unstable `usage_EXPERIMENTAL_…()` control method or an out-of-band source — both gated (DDR-125 B4 pin; unstable SDK API; OAuth-token ToS trap). Recommend treating it as its own DDR + follow-up plan, not bundling it here. Confirm you're OK deferring the multi-window panel.
