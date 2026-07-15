@@ -5,8 +5,8 @@ import { describe, expect, test } from 'bun:test';
 import {
   DEFAULT_TRANSCRIPT_VIEW,
   filterTranscriptParts,
-  transcriptForcesExpand,
   TRANSCRIPT_VIEWS,
+  transcriptForcesExpand,
 } from '../client/panels/transcript-view.js';
 
 const PARTS = [
@@ -41,7 +41,9 @@ describe('filterTranscriptParts', () => {
   });
 
   test('an unrecognized mode fails toward normal (less noise), not everything', () => {
-    expect(filterTranscriptParts(PARTS, 'nonsense')).toEqual(filterTranscriptParts(PARTS, 'normal'));
+    expect(filterTranscriptParts(PARTS, 'nonsense')).toEqual(
+      filterTranscriptParts(PARTS, 'normal')
+    );
   });
 
   test('tolerates missing/empty input', () => {

@@ -68,12 +68,13 @@ describe('AcpBridge — capability channel (Tasks A1/A2/A3)', () => {
     });
     try {
       await bridge.warmUp('c1');
-      const [modes, configOptions] = await until(() => (caps.length ? caps[caps.length - 1] : undefined));
+      const [modes, configOptions] = await until(() =>
+        caps.length ? caps[caps.length - 1] : undefined
+      );
       expect((modes as { currentModeId: string }).currentModeId).toBe('default');
-      expect((modes as { availableModes: Array<{ id: string }> }).availableModes.map((m) => m.id)).toEqual([
-        'default',
-        'plan',
-      ]);
+      expect(
+        (modes as { availableModes: Array<{ id: string }> }).availableModes.map((m) => m.id)
+      ).toEqual(['default', 'plan']);
       const ids = (configOptions as Array<{ id: string }>).map((o) => o.id);
       expect(ids).toEqual(['model', 'effort', 'mode']);
       expect(bridge.modes?.currentModeId).toBe('default');
@@ -226,30 +227,42 @@ describe('Acp manager — set-mode/set-config frames validate against last-adver
       acp.onMessage(a.ws, JSON.stringify({ t: 'set-mode', chat: 'c1', modeId: 'plan' }));
       await until(() =>
         a.frames.find(
-          (f) => f.t === 'caps' && (f.modes as { currentModeId?: string } | null)?.currentModeId === 'plan'
+          (f) =>
+            f.t === 'caps' &&
+            (f.modes as { currentModeId?: string } | null)?.currentModeId === 'plan'
         )
       );
 
       // An unadvertised modeId must be rejected BEFORE ever reaching the bridge
       // — no new caps frame, no error frame, no crash.
       const framesBefore = a.frames.length;
-      acp.onMessage(a.ws, JSON.stringify({ t: 'set-mode', chat: 'c1', modeId: 'bypassPermissions' }));
+      acp.onMessage(
+        a.ws,
+        JSON.stringify({ t: 'set-mode', chat: 'c1', modeId: 'bypassPermissions' })
+      );
       await new Promise((r) => setTimeout(r, 150));
       expect(a.frames.length).toBe(framesBefore); // nothing new sent
 
       // An unadvertised config value is likewise rejected pre-call.
-      acp.onMessage(a.ws, JSON.stringify({ t: 'set-config', chat: 'c1', configId: 'model', value: 'gpt-5' }));
+      acp.onMessage(
+        a.ws,
+        JSON.stringify({ t: 'set-config', chat: 'c1', configId: 'model', value: 'gpt-5' })
+      );
       await new Promise((r) => setTimeout(r, 150));
       expect(a.frames.length).toBe(framesBefore);
 
       // A valid config change still works after the rejected attempts.
-      acp.onMessage(a.ws, JSON.stringify({ t: 'set-config', chat: 'c1', configId: 'model', value: 'opus' }));
+      acp.onMessage(
+        a.ws,
+        JSON.stringify({ t: 'set-config', chat: 'c1', configId: 'model', value: 'opus' })
+      );
       await until(() =>
         a.frames.find(
           (f) =>
             f.t === 'caps' &&
-            (f.configOptions as Array<{ id: string; currentValue?: unknown }>).find((o) => o.id === 'model')
-              ?.currentValue === 'opus'
+            (f.configOptions as Array<{ id: string; currentValue?: unknown }>).find(
+              (o) => o.id === 'model'
+            )?.currentValue === 'opus'
         )
       );
     } finally {

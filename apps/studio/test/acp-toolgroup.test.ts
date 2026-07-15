@@ -54,11 +54,7 @@ describe('groupToolCalls', () => {
 
 describe('summarizeGroup', () => {
   test('all entries sharing one title collapse to "Ran N × <title>"', () => {
-    const parts = [
-      { toolName: 'Read file' },
-      { toolName: 'Read file' },
-      { toolName: 'Read file' },
-    ];
+    const parts = [{ toolName: 'Read file' }, { toolName: 'Read file' }, { toolName: 'Read file' }];
     expect(summarizeGroup(parts)).toBe('Ran 3 × Read file');
   });
 

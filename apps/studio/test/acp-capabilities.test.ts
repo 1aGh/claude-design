@@ -30,7 +30,12 @@ describe('parseConfigOptions', () => {
   });
 
   test('tolerates missing/empty/malformed input', () => {
-    expect(parseConfigOptions(undefined)).toEqual({ model: null, effort: null, fast: null, others: [] });
+    expect(parseConfigOptions(undefined)).toEqual({
+      model: null,
+      effort: null,
+      fast: null,
+      others: [],
+    });
     expect(parseConfigOptions(null)).toEqual({ model: null, effort: null, fast: null, others: [] });
     expect(parseConfigOptions([])).toEqual({ model: null, effort: null, fast: null, others: [] });
     // A non-object entry must not throw.
@@ -79,7 +84,14 @@ describe('flattenSelectOptions', () => {
   test('flattens grouped SessionConfigSelectGroup[] into one leaf list', () => {
     const options = [
       { group: 'g1', name: 'Group 1', options: [{ value: 'a', name: 'A' }] },
-      { group: 'g2', name: 'Group 2', options: [{ value: 'b', name: 'B' }, { value: 'c', name: 'C' }] },
+      {
+        group: 'g2',
+        name: 'Group 2',
+        options: [
+          { value: 'b', name: 'B' },
+          { value: 'c', name: 'C' },
+        ],
+      },
     ];
     expect(flattenSelectOptions(options).map((o) => o.value)).toEqual(['a', 'b', 'c']);
   });

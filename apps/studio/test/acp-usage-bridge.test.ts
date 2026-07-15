@@ -67,9 +67,9 @@ describe('AcpBridge — usage harvest (Task D1)', () => {
       expect(usage.cost).toEqual({ amount: 0.0123, currency: 'USD' });
       expect(bridge.usage).toEqual(usage);
       // chrome, not turn content — no usage_update leaked into onUpdate
-      expect(updates.some((u) => (u as { sessionUpdate?: string }).sessionUpdate === 'usage_update')).toBe(
-        false
-      );
+      expect(
+        updates.some((u) => (u as { sessionUpdate?: string }).sessionUpdate === 'usage_update')
+      ).toBe(false);
     } finally {
       await bridge.stop();
     }
@@ -110,7 +110,9 @@ describe('AcpBridge — usage harvest (Task D1)', () => {
 describe('Acp manager — usage frame is cached + replayed on a fresh socket (Task D1)', () => {
   test('a usage frame is broadcast during a turn, then replayed to a newly-opened socket', async () => {
     useMockAgent();
-    const ctx = { paths: { repoRoot: process.cwd(), designRoot: '/tmp/does-not-matter-usage' } } as unknown as Context;
+    const ctx = {
+      paths: { repoRoot: process.cwd(), designRoot: '/tmp/does-not-matter-usage' },
+    } as unknown as Context;
     const acp = createAcp(ctx);
 
     const a = fakeWs('usage-ws-a');
@@ -123,8 +125,8 @@ describe('Acp manager — usage frame is cached + replayed on a fresh socket (Ta
       const b = fakeWs('usage-ws-b');
       acp.onOpen(b.ws);
       const replay = b.frames.find((f) => f.t === 'usage');
-      expect(replay).toBeDefined();
-      expect((replay?.usage as BridgeUsage).used).toBe(4200);
+      if (!replay) throw new Error('expected a replayed usage frame');
+      expect((replay.usage as BridgeUsage).used).toBe(4200);
       acp.onClose(b.ws);
     } finally {
       acp.onClose(a.ws);

@@ -26,7 +26,12 @@ acp
     // method via `acp.methods.client.session.requestPermission`.
     const outcome = await ctx.client.request(acp.methods.client.session.requestPermission, {
       sessionId: ctx.params.sessionId,
-      toolCall: { toolCallId: 'tc1', title: 'Write file', kind: 'edit', rawInput: { path: '/tmp/x' } },
+      toolCall: {
+        toolCallId: 'tc1',
+        title: 'Write file',
+        kind: 'edit',
+        rawInput: { path: '/tmp/x' },
+      },
       options: [
         { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' },
         { optionId: 'allow-always', name: 'Allow always', kind: 'allow_always' },

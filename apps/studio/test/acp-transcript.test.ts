@@ -5,7 +5,13 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { deleteChat, listChats, readChatMessages, readChatMeta, writeChatMeta } from '../acp/transcript.ts';
+import {
+  deleteChat,
+  listChats,
+  readChatMessages,
+  readChatMeta,
+  writeChatMeta,
+} from '../acp/transcript.ts';
 
 let root: string;
 afterEach(() => {
@@ -113,7 +119,10 @@ describe('deleteChat', () => {
   test('also removes the .meta.json and .session.json sidecars (Task C5)', () => {
     const designRoot = seed('withmeta', [{ ts: 1, role: 'user', text: 'hi' }]);
     writeChatMeta(designRoot, 'withmeta', { title: 'Renamed' });
-    writeFileSync(join(designRoot, '_chat', 'withmeta.session.json'), JSON.stringify({ sessionId: 'x' }));
+    writeFileSync(
+      join(designRoot, '_chat', 'withmeta.session.json'),
+      JSON.stringify({ sessionId: 'x' })
+    );
     expect(deleteChat(designRoot, 'withmeta')).toBe(true);
     expect(readChatMeta(designRoot, 'withmeta')).toEqual({});
     expect(existsSync(join(designRoot, '_chat', 'withmeta.session.json'))).toBe(false);

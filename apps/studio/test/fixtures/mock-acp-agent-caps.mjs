@@ -33,7 +33,11 @@ const MODE_OPTIONS = [
   { value: 'plan', name: 'Plan Mode' },
 ];
 const AVAILABLE_MODES = [
-  { id: 'default', name: 'Manual', description: 'Standard behavior, prompts for dangerous operations' },
+  {
+    id: 'default',
+    name: 'Manual',
+    description: 'Standard behavior, prompts for dangerous operations',
+  },
   { id: 'plan', name: 'Plan Mode', description: 'Planning mode, no actual tool execution' },
 ];
 
@@ -138,7 +142,8 @@ acp
       if (!MODEL_OPTIONS.some((o) => o.value === value)) throw new Error(`unknown model: ${value}`);
       session.model = value;
     } else if (configId === 'effort') {
-      if (!EFFORT_OPTIONS.some((o) => o.value === value)) throw new Error(`unknown effort: ${value}`);
+      if (!EFFORT_OPTIONS.some((o) => o.value === value))
+        throw new Error(`unknown effort: ${value}`);
       session.effort = value;
     } else if (configId === 'mode') {
       if (!AVAILABLE_MODES.some((m) => m.id === value)) throw new Error(`unknown mode: ${value}`);

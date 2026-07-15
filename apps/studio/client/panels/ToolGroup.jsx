@@ -70,6 +70,7 @@ export default function ToolGroup({ parts, ToolCard, forceOpen = false, verbose 
             result={p.result}
             isError={p.isError}
             verbose={verbose}
+            flat
           />
         ))}
       </div>

@@ -64,7 +64,11 @@ describe('AcpBridge — permission approve/deny (Task B1)', () => {
       onUpdate: () => {},
       onPermission: (req) => transparency.push(req),
       onPermissionRequest: (id, req) =>
-        requests.push({ id, toolCallTitle: req.toolCall?.title, optionIds: req.options.map((o) => o.optionId) }),
+        requests.push({
+          id,
+          toolCallTitle: req.toolCall?.title,
+          optionIds: req.options.map((o) => o.optionId),
+        }),
     });
     try {
       const promptPromise = bridge.prompt('hi', 'c1');
@@ -174,7 +178,9 @@ describe('AcpBridge — permission approve/deny (Task B1)', () => {
 describe('Acp manager — permission-request/-response frames (Task B2)', () => {
   test('a permission-request frame is relayed to the client and a valid permission-response resolves it', async () => {
     useMockAgent();
-    const ctx = { paths: { repoRoot: process.cwd(), designRoot: '/tmp/does-not-matter' } } as unknown as Context;
+    const ctx = {
+      paths: { repoRoot: process.cwd(), designRoot: '/tmp/does-not-matter' },
+    } as unknown as Context;
     const acp = createAcp(ctx);
 
     const a = fakeWs('perm-ws-a');
@@ -199,7 +205,9 @@ describe('Acp manager — permission-request/-response frames (Task B2)', () => 
 
   test('a permission-response with an unknown id is a harmless no-op — the turn still settles via timeout', async () => {
     useMockAgent();
-    const ctx = { paths: { repoRoot: process.cwd(), designRoot: '/tmp/does-not-matter-2' } } as unknown as Context;
+    const ctx = {
+      paths: { repoRoot: process.cwd(), designRoot: '/tmp/does-not-matter-2' },
+    } as unknown as Context;
     const acp = createAcp(ctx);
 
     const a = fakeWs('perm-ws-b');
@@ -210,7 +218,10 @@ describe('Acp manager — permission-request/-response frames (Task B2)', () => 
 
       // Bogus id — must not throw / crash the manager.
       expect(() =>
-        acp.onMessage(a.ws, JSON.stringify({ t: 'permission-response', id: 'not-a-real-id', decision: 'allow-once' }))
+        acp.onMessage(
+          a.ws,
+          JSON.stringify({ t: 'permission-response', id: 'not-a-real-id', decision: 'allow-once' })
+        )
       ).not.toThrow();
     } finally {
       acp.onClose(a.ws);

@@ -24,7 +24,10 @@ describe('parseUsage — context + cost', () => {
   });
 
   test('carries cost through, defaulting currency to USD when absent', () => {
-    const result = parseUsage({ usage: { used: 1, size: 2, cost: { amount: 0.5, currency: 'EUR' } } }, NOW);
+    const result = parseUsage(
+      { usage: { used: 1, size: 2, cost: { amount: 0.5, currency: 'EUR' } } },
+      NOW
+    );
     expect(result.cost).toEqual({ amount: 0.5, currency: 'EUR' });
   });
 
@@ -50,18 +53,35 @@ describe('parseUsage — rate limit (SDKRateLimitInfo fixtures)', () => {
           usage: {
             used: 1,
             size: 2,
-            rateLimit: { status: 'allowed_warning', rateLimitType: type, utilization: 61, resetsAt: 123 },
+            rateLimit: {
+              status: 'allowed_warning',
+              rateLimitType: type,
+              utilization: 61,
+              resetsAt: 123,
+            },
           },
         },
         NOW
       );
-      expect(result.rateLimit).toEqual({ type, label, pct: 61, resetsAt: 123, status: 'allowed_warning' });
+      expect(result.rateLimit).toEqual({
+        type,
+        label,
+        pct: 61,
+        resetsAt: 123,
+        status: 'allowed_warning',
+      });
     });
   }
 
   test('an unrecognized rateLimitType falls back to a generic label, not undefined', () => {
     const result = parseUsage(
-      { usage: { used: 1, size: 2, rateLimit: { status: 'rejected', rateLimitType: 'something_new' } } },
+      {
+        usage: {
+          used: 1,
+          size: 2,
+          rateLimit: { status: 'rejected', rateLimitType: 'something_new' },
+        },
+      },
       NOW
     );
     expect(result.rateLimit?.label).toBe('Usage limit');
@@ -77,20 +97,40 @@ describe('parseUsage — rate limit (SDKRateLimitInfo fixtures)', () => {
       { usage: { used: 1, size: 2, rateLimit: { status: 'allowed', utilization: 250 } } },
       NOW
     );
-    expect(result.rateLimit).toEqual({ type: null, label: 'Usage limit', pct: 100, resetsAt: null, status: 'allowed' });
+    expect(result.rateLimit).toEqual({
+      type: null,
+      label: 'Usage limit',
+      pct: 100,
+      resetsAt: null,
+      status: 'allowed',
+    });
   });
 });
 
 describe('parseUsage — malformed input tolerance', () => {
   test('missing usage entirely → all-null shape, never throws', () => {
     expect(parseUsage({}, NOW)).toEqual({ context: null, cost: null, rateLimit: null, asOf: NOW });
-    expect(parseUsage(undefined, NOW)).toEqual({ context: null, cost: null, rateLimit: null, asOf: NOW });
-    expect(parseUsage(null, NOW)).toEqual({ context: null, cost: null, rateLimit: null, asOf: NOW });
+    expect(parseUsage(undefined, NOW)).toEqual({
+      context: null,
+      cost: null,
+      rateLimit: null,
+      asOf: NOW,
+    });
+    expect(parseUsage(null, NOW)).toEqual({
+      context: null,
+      cost: null,
+      rateLimit: null,
+      asOf: NOW,
+    });
   });
 
   test('a malformed _meta-derived rateLimit (not an object) is tolerated', () => {
-    expect(() => parseUsage({ usage: { used: 1, size: 2, rateLimit: 'not-an-object' } }, NOW)).not.toThrow();
-    expect(parseUsage({ usage: { used: 1, size: 2, rateLimit: 'not-an-object' } }, NOW).rateLimit).toBeNull();
+    expect(() =>
+      parseUsage({ usage: { used: 1, size: 2, rateLimit: 'not-an-object' } }, NOW)
+    ).not.toThrow();
+    expect(
+      parseUsage({ usage: { used: 1, size: 2, rateLimit: 'not-an-object' } }, NOW).rateLimit
+    ).toBeNull();
   });
 
   test('defaults `now` to Date.now() when not injected', () => {
