@@ -252,6 +252,18 @@ function stageClosure(closure) {
       filter: (src) => {
         const rel = src.slice(realDir.length);
         if (/[\\/]node_modules([\\/]|$)/.test(rel)) return false;
+        // Drop runtime-useless weight (RCA G4 addendum): TypeScript declarations
+        // (compile-time only), source maps (debug only), and markdown docs — the
+        // packaged runtime never loads them (~18 MB across the staged closure,
+        // ~half the design-helper dep footprint). Keep license/legal files.
+        // Never touches .js/.cjs/.mjs/.json/.wasm — only the dead weight.
+        const base = src.split(/[\\/]/).pop() || '';
+        if (
+          !/^(license|copying|notice|authors)/i.test(base) &&
+          (/\.d\.[cm]?ts$/i.test(base) || /\.map$/i.test(base) || /\.md$/i.test(base))
+        ) {
+          return false;
+        }
         // Containment: with dereference:true, never follow a symlink whose target
         // escapes the package's own real dir — a malicious dep could otherwise
         // symlink to e.g. ~/.ssh and have its contents copied into the signed
