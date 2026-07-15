@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-15T21:07:50.153Z",
+  "generated": "2026-07-15T22:55:34.112Z",
   "currentPhase": null,
   "phases": [
     {
@@ -102,6 +102,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-acp-ask-user-question",
+      "title": "Feature: ACP panel — AskUserQuestion / elicitation form support",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This mirrors feature-acp-panel-dynamic-claude-code-capabilities' Milestone B (permissi...",
+      "planPath": ".ai/plans/archive/feature-acp-ask-user-question.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-acp-bundled-cli-plugins-always-internal",
       "title": "Feature: ACP session always uses Maude's bundled `maude` CLI + `design`/`flow` plugins — never disk-installed versions",
       "status": "done",
@@ -131,6 +142,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-acp-context-hardening.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-acp-panel-dynamic-claude-code-capabilities",
+      "title": "Feature: ACP panel — dynamic Claude Code capabilities (models · modes · permission gate · transcript polish)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. Every model/mode/effort list this feature renders MUST be pulled live from the ACP ses...",
+      "planPath": ".ai/plans/archive/feature-acp-panel-dynamic-claude-code-capabilities.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1374,28 +1396,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-4-canvas-editing-figma-parity.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-acp-ask-user-question",
-      "title": "Feature: ACP panel — AskUserQuestion / elicitation form support",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This mirrors feature-acp-panel-dynamic-claude-code-capabilities' Milestone B (permissi...",
-      "planPath": ".ai/plans/feature-acp-ask-user-question.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-acp-panel-dynamic-claude-code-capabilities",
-      "title": "Feature: ACP panel — dynamic Claude Code capabilities (models · modes · permission gate · transcript polish)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. Every model/mode/effort list this feature renders MUST be pulled live from the ACP ses...",
-      "planPath": ".ai/plans/feature-acp-panel-dynamic-claude-code-capabilities.md",
       "archived": false,
       "phaseKey": null
     },

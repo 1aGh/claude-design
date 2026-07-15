@@ -32,7 +32,17 @@ function isAnswered(q, answers) {
   return typeof answers[q.id] === 'string' && answers[q.id] !== '';
 }
 
-function Question({ q, answers, setAnswer, customOpen, onToggleCustom, groupName, cardSecretShaped }) {
+function Question({
+  q,
+  answers,
+  setAnswer,
+  customOpen,
+  onChooseOption,
+  onChooseOther,
+  onToggleCustom,
+  groupName,
+  cardSecretShaped,
+}) {
   // SECURITY (ethical-hacker finding) — Maude only ever declares the `form`
   // elicitation capability, never `url` (DDR-180's Open decisions), which
   // makes this free-text box the ONLY channel any connected MCP server can
@@ -43,25 +53,6 @@ function Question({ q, answers, setAnswer, customOpen, onToggleCustom, groupName
   // the same pause a real password field gives a user, instead of rendering
   // identically to "which color do you like?".
   const secretShaped = cardSecretShaped || q.secretShaped;
-  // A non-empty custom answer REPLACES a single-select pick (`applyAskElicitation
-  // Response` only has room for one answer per question — reads the custom
-  // field first and, if non-empty, uses it ALONE) but ADDS to a multi-select
-  // pick (`buildElicitationContent` routes it into the base field's own array
-  // instead of the custom-field key, so the adapter's join() sees both).
-  // Dogfooding found the single-select case genuinely confusing when the
-  // picked radio stayed visually selected while the user typed — it looked
-  // like both would be sent, but only the custom text was (the same mismatch
-  // a "Custom" answer literally showed up as, discarding the radio pick).
-  // Dim ONLY for single-select, where that mismatch is real; multi-select's
-  // checkboxes stay at full opacity since they genuinely do still count.
-  const customText = q.customFieldId ? answers[q.customFieldId] : undefined;
-  const hasCustomText = typeof customText === 'string' && customText.trim() !== '';
-  const customOverriding = q.kind === 'single' && hasCustomText;
-  const optionsClass = `chat-elicit-options${customOverriding ? ' chat-elicit-options--overridden' : ''}`;
-  const customNote =
-    q.kind === 'multi'
-      ? 'Added to your selections above.'
-      : 'Replaces the selection above — only this answer is sent.';
   // `title` (AskUserQuestion's `header` — a short ≤12-char chip like "Barva")
   // and `description` (the full question text, only carried per-field once a
   // call has more than one question — a single-question call puts the full
@@ -79,7 +70,7 @@ function Question({ q, answers, setAnswer, customOpen, onToggleCustom, groupName
         </legend>
       ) : null}
       {q.kind === 'single' ? (
-        <div className={optionsClass}>
+        <div className="chat-elicit-options">
           {q.options.map((o, i) => (
             <label
               key={o.value}
@@ -89,8 +80,8 @@ function Question({ q, answers, setAnswer, customOpen, onToggleCustom, groupName
               <input
                 type="radio"
                 name={groupName}
-                checked={answers[q.id] === o.value}
-                onChange={() => setAnswer(q.id, o.value)}
+                checked={!customOpen && answers[q.id] === o.value}
+                onChange={() => onChooseOption(o.value)}
               />
               <span className="chat-elicit-option-body">
                 <span>
@@ -103,10 +94,42 @@ function Question({ q, answers, setAnswer, customOpen, onToggleCustom, groupName
               </span>
             </label>
           ))}
+          {/* "Other" rides IN the radio group, not a separate hidden toggle
+              link below it — dogfooding found the link easy to miss entirely
+              (image: a muted collapsed box read as inert, not clickable) AND
+              found the OLD design (link + still-checked radio) actively
+              confusing: the picked radio stayed visually selected while
+              typing, implying both would be sent when only the custom text
+              was. A real radio, in the SAME mutually-exclusive group, makes
+              the actual either/or truth (one field, one answer — a real
+              adapter constraint, not a UI choice) visible for free: picking
+              a real option or "Other" naturally un-picks the other. */}
+          {q.customFieldId ? (
+            <label
+              className="chat-elicit-option chat-elicit-option--other"
+              data-testid={`chat-elicit-option-${q.id}-other`}
+            >
+              <input type="radio" name={groupName} checked={customOpen} onChange={onChooseOther} />
+              <span className="chat-elicit-option-body">
+                <span>Other — type your own answer</span>
+              </span>
+            </label>
+          ) : null}
+          {q.customFieldId && customOpen ? (
+            <input
+              type={secretShaped ? 'password' : 'text'}
+              className="chat-elicit-text chat-elicit-custom chat-elicit-custom--inline"
+              placeholder="Type your own answer…"
+              autoFocus
+              value={answers[q.customFieldId] || ''}
+              onChange={(e) => setAnswer(q.customFieldId, e.target.value)}
+              data-testid={`chat-elicit-custom-${q.id}`}
+            />
+          ) : null}
         </div>
       ) : null}
       {q.kind === 'multi' ? (
-        <div className={optionsClass}>
+        <div className="chat-elicit-options">
           {q.options.map((o, i) => {
             const selected = Array.isArray(answers[q.id]) ? answers[q.id] : [];
             return (
@@ -150,7 +173,12 @@ function Question({ q, answers, setAnswer, customOpen, onToggleCustom, groupName
           data-testid={`chat-elicit-text-${q.id}`}
         />
       ) : null}
-      {q.customFieldId ? (
+      {/* Multi-select keeps the collapsed-toggle shape (checkboxes aren't
+          mutually exclusive, so there's no natural "Other" radio to fold
+          into) — but it genuinely COMBINES rather than overrides (see
+          buildElicitationContent), so the note explains that instead of
+          warning about a replacement that isn't happening here. */}
+      {q.kind === 'multi' && q.customFieldId ? (
         customOpen ? (
           <div className="chat-elicit-custom-wrap">
             <input
@@ -161,17 +189,11 @@ function Question({ q, answers, setAnswer, customOpen, onToggleCustom, groupName
               value={answers[q.customFieldId] || ''}
               onChange={(e) => setAnswer(q.customFieldId, e.target.value)}
             />
-            {/* Persistent, not a placeholder — a placeholder vanishes the
-                moment the user starts typing, which is exactly when this
-                matters most (dogfooding finding: the warning disappeared
-                right as the picked option silently stopped counting). */}
-            <p className="chat-elicit-custom-note">{customNote}</p>
+            <p className="chat-elicit-custom-note">Added to your selections above.</p>
           </div>
         ) : (
           <button type="button" className="chat-elicit-custom-toggle" onClick={onToggleCustom}>
-            {q.kind === 'multi'
-              ? 'Add your own answer to your selections?'
-              : 'Prefer to answer in your own words instead?'}
+            Add your own answer to your selections?
           </button>
         )
       ) : null}
@@ -212,13 +234,47 @@ export default function ElicitationPrompt({ request, onRespond }) {
   }, [request.id]);
 
   const setAnswer = (id, value) => setAnswers((prev) => ({ ...prev, [id]: value }));
-  const toggleCustom = (id) =>
+  const openCustom = (id) => setCustomOpenIds((prev) => new Set(prev).add(id));
+  const closeCustom = (id) =>
     setCustomOpenIds((prev) => {
+      if (!prev.has(id)) return prev;
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      next.delete(id);
       return next;
     });
+  // Multi-select's collapsed toggle: closing it must also clear whatever was
+  // typed — otherwise the text stays in `answers` invisibly and still gets
+  // folded into the submitted content even though the field is hidden again
+  // (the same class of stale-state bug `onChooseOption` below exists to close
+  // for single-select).
+  const toggleCustom = (id) => {
+    if (customOpenIds.has(id)) {
+      setAnswer(id, '');
+      closeCustom(id);
+    } else {
+      openCustom(id);
+    }
+  };
+  // Single-select's "Other" now rides in the radio group (see Question) —
+  // picking a real option must clear any stale custom text so it can never
+  // silently win at submit time (buildElicitationContent only checks
+  // "is there non-empty custom text", not "is Other currently selected").
+  // Picking "Other" clears the real pick the same way, for the same reason —
+  // harmless since buildElicitationContent ignores `answers[q.id]` once
+  // custom is non-empty, but keeps the two paths symmetric and correct even
+  // before the user has typed anything into Other yet.
+  const chooseOption = (q, value) => {
+    setAnswers((prev) => ({
+      ...prev,
+      [q.id]: value,
+      ...(q.customFieldId ? { [q.customFieldId]: '' } : {}),
+    }));
+    if (q.customFieldId) closeCustom(q.customFieldId);
+  };
+  const chooseOther = (q) => {
+    setAnswer(q.id, '');
+    openCustom(q.customFieldId);
+  };
 
   const canSubmit = questions.filter((q) => q.required).every((q) => isAnswered(q, answers));
   const currentQuestion = isWizard ? questions[step] : null;
@@ -314,6 +370,8 @@ export default function ElicitationPrompt({ request, onRespond }) {
           answers={answers}
           setAnswer={setAnswer}
           customOpen={customOpenIds.has(q.customFieldId)}
+          onChooseOption={(value) => chooseOption(q, value)}
+          onChooseOther={() => chooseOther(q)}
           onToggleCustom={() => toggleCustom(q.customFieldId)}
           groupName={`elicit-${request.id}-${q.id}`}
           cardSecretShaped={cardSecretShaped}
