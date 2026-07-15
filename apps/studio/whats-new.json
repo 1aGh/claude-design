@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "acp-ask-user-question",
-      "version": null,
-      "date": null,
+      "version": "0.45.2",
+      "date": "2026-07-15",
       "kind": "feature",
       "title": "Claude can ask you real questions in chat",
       "summary": "When Claude needs a decision from you mid-task, it can now ask directly — a multi-choice or free-text form appears right in the chat panel, the same AskUserQuestion picker you'd see in the Claude Code CLI, instead of falling back to plain text.",
@@ -20,8 +20,8 @@
     },
     {
       "id": "acp-live-capabilities",
-      "version": null,
-      "date": null,
+      "version": "0.45.2",
+      "date": "2026-07-15",
       "kind": "feature",
       "title": "Model, mode & permission controls in chat",
       "summary": "Switch models, effort, and permission mode right from the chat panel — pulled live from your own Claude Code install, never a fixed list. Pick Manual to approve each tool action yourself, or Bypass for hands-off editing; plus grouped tool calls, message Copy/Retry, and a context-usage meter.",

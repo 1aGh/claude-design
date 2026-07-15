@@ -1,5 +1,12 @@
 # @1agh/maude
 
+## 0.45.2
+
+### Patch Changes
+
+- e166474: Made Maude Desktop self-contained on a fresh machine. Previously, installing the app on a computer with no `node`/`bun`/`claude` left the AI chat panel stuck on "Working…" forever and every `maude design <verb>` the agent ran failed with "helper not found" / "bun is required" / missing `happy-dom`/`svgo`. Now the ACP adapter and all design helpers run on the bundled Bun runtime (via `BUN_BE_BUN`, no user-installed runtime needed), the compiled `maude` CLI resolves its bundled helpers correctly (staged `cli/` + `MAUDE_PKG_ROOT` + `.app` resource-dir probe), and every standalone helper's npm dependencies are bundled (data-driven, ~13 MB of `.d.ts`/`.map`/`.md` trimmed from the closure). Also: the Claude Code install poll no longer times out while a slow download is still progressing, and clean SVG logos from Illustrator/Serif (a plain `<!DOCTYPE svg …>`) are no longer rejected on import. A release-blocking CI gate (`check-bundle-completeness`) now runs every design verb against the built `.app` in a stripped PATH so this class of regression can't ship again (DDR-177).
+- 5aeaa30: Fixed local whisper subtitle model downloads (Settings → Local subtitle models) failing with "model download redirected off huggingface.co (cas-bridge.xethub.hf.co)" — Hugging Face now serves some model blobs through its newer Xet CDN, which the download's host allowlist didn't recognize.
+
 ## 0.45.1
 
 ### Patch Changes
