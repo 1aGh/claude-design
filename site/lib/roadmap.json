@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-14T17:37:33.821Z",
+  "generated": "2026-07-15T10:39:51.661Z",
   "currentPhase": null,
   "phases": [
     {
@@ -285,6 +285,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan is grounded in a four-agent read of the studio editing subsystems (selection...",
       "planPath": ".ai/plans/archive/feature-element-editing-robustness.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-flow-scenario-knowledge-file",
+      "title": "Feature: flow:scenario repo-owned knowledge file (retire per-repo wrapper skills)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — mirror release.md / release-guide.md exactly where the mechanism transfers, and don't...",
+      "planPath": ".ai/plans/archive/feature-flow-scenario-knowledge-file.md",
       "archived": true,
       "phaseKey": null
     },
