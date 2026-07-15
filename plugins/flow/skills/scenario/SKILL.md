@@ -13,6 +13,20 @@ For full background on tooling: `.claude/skills/agent-browser/SKILL.md`, `.claud
 
 ---
 
+## Repo-owned scenario guide (optional overrides)
+
+Before running or authoring anything below, resolve the repo's scenario guide:
+
+```bash
+GUIDE=$(jq -r '.paths.scenarioGuide // ".ai/scenario-guide.md"' .ai/workflows.config.json 2>/dev/null || echo ".ai/scenario-guide.md")
+```
+
+If `$GUIDE` exists, read it and apply its sections as deltas over the defaults documented below — device/platform lifecycle, test-account/reset strategy, selector overrides, infra-error classification, platform gotchas, authoring notes. **If it doesn't exist, proceed unmodified** — every default below is sufficient on its own; the guide is optional enrichment, not a hard prerequisite (unlike `/flow:release`'s `release-guide.md`, which refuses to run without one).
+
+**Do not create a project-local `.claude/skills/scenario/` wrapper skill to hold these deltas.** Write them into the guide file instead (scaffolded at `.ai/scenario-guide.md` by `maude init`) — this skill reads it directly, no extra skill package needed.
+
+---
+
 ## Platform matrix
 
 | Platform      | Tool          | Bootstrap                                                             | Status       |
@@ -84,7 +98,19 @@ echo "pass" > $DIR/result.txt
 
 ---
 
+## Infra-error vs product-fail classification
+
+A step can fail for two very different reasons: the product regressed, or the environment flaked (device boot timeout, network blip, stale simulator/emulator state, daemon left over from a previous run). Only the first should ever block `/flow:validate`/`/flow:done`.
+
+Extend the `result.txt` contract above with a third state: `infra-error: <reason>` (alongside `pass` and `fail: <reason>`). A runner writes `infra-error` instead of `fail` when it's confident the failure is environmental — not the app under test. `scenario-runner` treats `infra-error` platforms like `skipped`: reported, but never counted toward blockers.
+
+If a project wants this bound to a concrete signal (e.g. a specific reserved exit code the runner scripts use), declare it in the scenario guide's "Infra-error classification overrides" section — the default here is the `result.txt` string convention above, which needs no exit-code plumbing.
+
+---
+
 ## Selectors — the right reach order (proven)
+
+**Prefer a stable locator over everything else.** When a target has no testID/`data-testid`, that's worth flagging in the run's "Recommended follow-ups" (see Report shape) rather than quietly working around it forever — see "Codebase blockers" below for the recurring asks (tab-bar, list-item, action-button testIDs).
 
 For each tap/click target, try these in order until one works:
 
@@ -92,6 +118,7 @@ For each tap/click target, try these in order until one works:
 2. Fresh snapshot grep + `@ref` — re-snapshot before EACH press (refs renumber)
 3. JSON snapshot rect center (`agent-device snapshot -i --json | jq …`) → `press <x> <y>` in points
 4. Web only: `agent-browser eval 'document.querySelectorAll("<stable-class>")[i].click()'`
+5. **Vision-based check — advisory only.** If a vision backend is available, use it as a last-resort locator or a sanity check on an ambiguous screen — but a vision result NEVER gates a pass/fail on its own. Treat it as a note in the report, not a step outcome. A project can wire a specific vision backend/config via its scenario guide.
 
 Selector OR chains for resilience: `'id="x" || label="Y" || text="Z"'` (single argument).
 
@@ -284,12 +311,12 @@ The wide path-listing (per-step file paths per platform) goes in a collapsed `<d
 
 **For a one-shot pilot** (most cases): inline the bash directly in a Bash tool call. Don't create files just to delete them later.
 
-**For a stable, repeatable scenario**:
+**For a stable, repeatable scenario**, work one step at a time with the user rather than generating the whole thing unattended — announce the step you're about to take, act, screenshot, then co-design the assertion for that step with the user before moving on. Stop after each step for confirmation; don't run ahead and present a finished multi-step scenario as a fait accompli.
 
 1. `mkdir -p .ai/scenarios/<name>/runners`
 2. Write `README.md` with the user-flow description, fixtures (subject/chapter/account), expected end state.
 3. Adapt existing runners if any — replace selectors per scenario.
-4. First run: pilot interactively, screenshot per step, debug. Use `agent-device --save-script` to record native flows automatically:
+4. First run: pilot interactively, one step at a time (announce → act → screenshot → confirm the assertion with the user → next step). Use `agent-device --save-script` to record native flows automatically:
 
    ```bash
    agent-device open <bundle-id> --platform ios --udid $UDID --session pilot \

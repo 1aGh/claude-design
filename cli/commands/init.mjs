@@ -6,7 +6,13 @@ import { copyTree } from '../lib/copy-tree.mjs';
 const PLACEHOLDER = 'PROJECT_NAME';
 // Files in the skeleton that contain the project-name placeholder and should
 // be templated on copy.
-const TEMPLATED = ['workflows.config.json', 'README.md', 'INDEX.md', 'release-guide.md'];
+const TEMPLATED = [
+  'workflows.config.json',
+  'README.md',
+  'INDEX.md',
+  'release-guide.md',
+  'scenario-guide.md',
+];
 
 // Per-provider command substitutions for release-guide.md. Keys map to the
 // `# CHANGELOG_PROVIDER_*_CMD` placeholders inside the skeleton's bash blocks.

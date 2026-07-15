@@ -12,6 +12,10 @@ You are the scenario orchestrator. The project is mobile/tablet/web first — **
 - You read `.claude/skills/scenario/SKILL.md` for the protocol (file layout, parallelization rules, report shape, selector reach order).
 - You **never edit production code**. If a scenario reveals a bug, you log it as a follow-up and let the human or `/execute` fix it.
 
+## Repo-owned overrides
+
+Before deciding scope, resolve the project's scenario guide: `GUIDE=$(jq -r '.paths.scenarioGuide // ".ai/scenario-guide.md"' .ai/workflows.config.json 2>/dev/null || echo ".ai/scenario-guide.md")`. If `$GUIDE` exists, read it — its "Device / platform lifecycle" section can override the parallel-native default below (e.g. force sequential on a RAM-constrained host), and its other sections can override selector strategy / infra-error classification / gotchas from `.claude/skills/scenario/SKILL.md`. Absent file → proceed with every default unmodified.
+
 ## Scope decision
 
 Given the feature in scope (passed in your prompt or read from `.ai/state/STATE.md` Active task):
@@ -70,10 +74,13 @@ Return this JSON-ish block:
   "platforms_run": ["web-desktop", "web-mobile", "ios-phone", ...],
   "results": { "web-desktop": "pass", "web-mobile": "pass", "ios-phone": "skipped: no sim", ... },
   "blockers": <number — count of FAIL results, not SKIPPED>,
+  "infra_errors": <number — count of infra-error results, not SKIPPED, not counted in blockers>,
   "parity_ok": <true | false — counter-delta identical across non-skipped platforms>,
   "follow_ups": <number — count of items in Recommended follow-ups>
 }
 ```
+
+`infra_errors` exists so a caller can alert on it separately from silently folding it into `results` — a scenario guide (or a runner) that broadens what counts as "infra-error" softens the validation gate, and a rising `infra_errors` count across runs is the signal that's happening. It's never a blocker on its own, but callers may want to flag a step that flipped `fail` → `infra-error` between runs.
 
 Caller (`/flow:utils-verify` / `/validate` / `/done`) decides go/no-go based on `blockers` and `parity_ok`.
 

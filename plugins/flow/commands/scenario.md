@@ -11,7 +11,7 @@ argument-hint: "<scenario-name> | new <scenario-name>"
 
 **This is the validation backbone.** For every UI feature there must be at least one scenario that verifies it across 5 platforms. Web-only or native-only features use a subset.
 
-Wrapper around the `agent-browser` + `agent-device` skills. Full protocol in `.claude/skills/scenario/SKILL.md`.
+Wrapper around the `agent-browser` + `agent-device` skills. Full protocol in `.claude/skills/scenario/SKILL.md`. Repo-specific overrides (device lifecycle, selector conventions, infra-error classification, platform gotchas) live in the project's own scenario guide (`paths.scenarioGuide`, default `.ai/scenario-guide.md`) — the skill resolves and applies it automatically, no project-local wrapper skill needed. See the skill's "Repo-owned scenario guide" section.
 
 ## Input
 

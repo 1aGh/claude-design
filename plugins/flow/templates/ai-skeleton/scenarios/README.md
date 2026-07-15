@@ -2,6 +2,8 @@
 
 Cross-platform UI scenarios. One folder per scenario; per-run reports inside.
 
+> This file documents the **directory layout** convention for individual scenarios. For *behavioral* deltas from `flow:scenario`'s generic protocol (device lifecycle, selector conventions, infra-error classification, platform gotchas), see `../scenario-guide.md` instead — the two files have distinct scopes and shouldn't be merged.
+
 ## Layout
 
 ```
