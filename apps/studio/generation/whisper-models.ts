@@ -90,9 +90,7 @@ const MODEL_REPO_PATH = '/ggerganov/whisper.cpp/resolve/main';
 const ALLOWED_REDIRECT_APEXES = ['huggingface.co', 'xethub.hf.co'] as const;
 
 function isAllowedRedirectHost(hostname: string): boolean {
-  return ALLOWED_REDIRECT_APEXES.some((apex) =>
-    new RegExp(`(^|\\.)${apex.replace(/\./g, '\\.')}$`).test(hostname)
-  );
+  return ALLOWED_REDIRECT_APEXES.some((apex) => hostname === apex || hostname.endsWith(`.${apex}`));
 }
 
 /** The fixed, non-interpolated download URL for a model (SSRF-safe — the file
@@ -206,15 +204,16 @@ export async function downloadWhisperModel(
   const tmpPath = `${finalPath}.part`;
 
   const cap = Math.ceil(m.sizeMB * 1.2) * 1024 * 1024; // expected size + 20% margin
-  // huggingface.co 302-redirects model blobs to its own LFS CDN, so we must
-  // follow — but re-assert the FINAL hop is still https + a huggingface.co host
-  // (ethical-hacker Finding 2): an open-redirect/on-path must not land the fetch
-  // on an arbitrary host. A wall-clock timeout is layered by the caller's signal.
+  // huggingface.co 302-redirects model blobs to its own LFS/Xet CDN, so we must
+  // follow — but re-assert the FINAL hop is still https + a host on
+  // ALLOWED_REDIRECT_APEXES (ethical-hacker Finding 2): an open-redirect/on-path
+  // must not land the fetch on an arbitrary host. A wall-clock timeout is
+  // layered by the caller's signal.
   const res = await fetch(url, { signal, redirect: 'follow' });
   try {
     const finalUrl = new URL(res.url || url);
     if (finalUrl.protocol !== 'https:' || !isAllowedRedirectHost(finalUrl.hostname))
-      throw new Error(`model download redirected off huggingface.co (${finalUrl.hostname})`);
+      throw new Error(`model download redirected off the allowed HF hosts (${finalUrl.hostname})`);
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('model download redirected')) throw err;
     throw new Error('model download resolved to an invalid URL');

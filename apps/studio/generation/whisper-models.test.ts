@@ -125,7 +125,9 @@ describe('downloadWhisperModel', () => {
       headers: new Headers(),
       body: new Response(new Uint8Array(1)).body,
     })) as unknown as typeof fetch;
-    await expect(downloadWhisperModel('tiny', () => {})).rejects.toThrow(/off huggingface\.co/);
+    await expect(downloadWhisperModel('tiny', () => {})).rejects.toThrow(
+      /off the allowed HF hosts/
+    );
     expect(existsSync(join(whisperModelsDir(), 'ggml-tiny.bin'))).toBe(false);
   });
 
@@ -160,7 +162,9 @@ describe('downloadWhisperModel', () => {
       headers: new Headers(),
       body: new Response(new Uint8Array(1)).body,
     })) as unknown as typeof fetch;
-    await expect(downloadWhisperModel('tiny', () => {})).rejects.toThrow(/off huggingface\.co/);
+    await expect(downloadWhisperModel('tiny', () => {})).rejects.toThrow(
+      /off the allowed HF hosts/
+    );
     expect(existsSync(join(whisperModelsDir(), 'ggml-tiny.bin'))).toBe(false);
   });
 });
