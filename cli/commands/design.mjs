@@ -5,9 +5,9 @@ import { createRequire } from 'node:module';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from '../lib/argv.mjs';
-import { isCompiledBinary } from '../lib/pkg-root.mjs';
 import { runAdopt, runLink, runStatus, runUnlink } from '../lib/design-link.mjs';
 import { writeGitignoreBlock } from '../lib/gitignore-block.mjs';
+import { isCompiledBinary } from '../lib/pkg-root.mjs';
 
 const SUBCOMMANDS = new Set([
   'serve',

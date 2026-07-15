@@ -6,7 +6,7 @@
 // staged automatically AND verified, closing the "vždy dělat build i
 // dependencies" gap without a hand-maintained list to forget (RCA G4/G7).
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 /**
@@ -83,7 +83,8 @@ export function collectImports(entryFile) {
       const spec = (m[1] || m[2] || m[3] || '').trim();
       // A real module specifier has no whitespace/comma — the greedy `from`
       // alternative can otherwise span statements and capture junk.
-      if (!spec || /[\s,]/.test(spec) || spec.startsWith('node:') || spec.startsWith('bun:')) continue;
+      if (!spec || /[\s,]/.test(spec) || spec.startsWith('node:') || spec.startsWith('bun:'))
+        continue;
       if (spec.startsWith('.') || spec.startsWith('/')) {
         const local = resolveLocal(file, spec);
         if (local) stack.push(local);

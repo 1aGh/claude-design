@@ -261,7 +261,7 @@ export function svgPreParseReject(text) {
     throw new ImportAssetError(3, 'ENTITY declarations are rejected (XXE/entity-expansion class)');
   }
   const doctype = /<!DOCTYPE\b([\s\S]*?)>/i.exec(text);
-  if (doctype && doctype[1].includes('[')) {
+  if (doctype?.[1].includes('[')) {
     throw new ImportAssetError(
       3,
       'DOCTYPE with an internal subset is rejected (XXE/entity-expansion class)'

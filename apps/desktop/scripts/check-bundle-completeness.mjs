@@ -88,17 +88,23 @@ function resolveTarget(argPath) {
 // to stage, so "what the gate checks" can never drift from "what staging ships".
 
 // -----------------------------------------------------------------------------
-const arg = process.argv.find((a) => !a.startsWith('-') && a !== process.argv[0] && a !== process.argv[1]);
+const arg = process.argv.find(
+  (a) => !a.startsWith('-') && a !== process.argv[0] && a !== process.argv[1]
+);
 const doSmoke = process.argv.includes('--smoke');
 const target = resolveTarget(arg || '/Applications/Maude.app');
 
 if (!target) {
-  console.error(`${RED}check-bundle-completeness: target not found or unrecognized:${RST} ${arg || '/Applications/Maude.app'}`);
+  console.error(
+    `${RED}check-bundle-completeness: target not found or unrecognized:${RST} ${arg || '/Applications/Maude.app'}`
+  );
   console.error('Pass a path to a built Maude.app, a Tauri resources/ dir, or a package root.');
   process.exit(2);
 }
 
-console.log(`\n${'='.repeat(70)}\nMaude bundle self-containment check — ${target.kind}: ${arg || '/Applications/Maude.app'}\n${'='.repeat(70)}`);
+console.log(
+  `\n${'='.repeat(70)}\nMaude bundle self-containment check — ${target.kind}: ${arg || '/Applications/Maude.app'}\n${'='.repeat(70)}`
+);
 
 const studio = join(target.resources, 'apps', 'studio');
 const binDir = join(studio, 'bin');
@@ -134,7 +140,10 @@ let runtimeFound = null;
 if (target.macosDir) {
   for (const name of ['bun', 'node', 'maude-server', 'maude']) {
     const cand = join(target.macosDir, name);
-    if (existsSync(cand)) { runtimeFound = cand; break; }
+    if (existsSync(cand)) {
+      runtimeFound = cand;
+      break;
+    }
   }
 }
 if (runtimeFound) {
@@ -163,7 +172,11 @@ if (!helpers.length) {
   fail('no design helpers found', `expected apps/studio/bin/*.sh under ${binDir}`);
 } else {
   const routed = helpers.filter((h) => h.track === 'routed').map((h) => h.verb);
-  if (routed.length) notes.push({ check: 'server-routed helpers (deps ride the compiled server)', detail: routed.join(', ') });
+  if (routed.length)
+    notes.push({
+      check: 'server-routed helpers (deps ride the compiled server)',
+      detail: routed.join(', '),
+    });
   const standalone = helpers.filter((h) => h.track === 'standalone' && h.entry);
   let anyDepGap = false;
   for (const h of standalone) {
@@ -176,13 +189,17 @@ if (!helpers.length) {
     const deps = collectImports(entryFile);
     const missing = deps.filter((d) => !existsSync(join(stagedNodeModules, d)));
     if (missing.length) {
-      fail(`${h.verb} → ${h.entry}: missing staged deps`, `${missing.join(', ')}  (imports: ${deps.join(', ') || 'none'})`);
+      fail(
+        `${h.verb} → ${h.entry}: missing staged deps`,
+        `${missing.join(', ')}  (imports: ${deps.join(', ') || 'none'})`
+      );
       anyDepGap = true;
     } else {
       ok(`${h.verb} → ${h.entry}`, deps.length ? `deps ok: ${deps.join(', ')}` : 'no npm deps');
     }
   }
-  if (!anyDepGap && standalone.length) ok(`all ${standalone.length} standalone helpers have complete dep closures`);
+  if (!anyDepGap && standalone.length)
+    ok(`all ${standalone.length} standalone helpers have complete dep closures`);
 }
 
 // === Check 4 — optional stripped-PATH smoke against the real binary (G1–G4) ===
@@ -219,7 +236,10 @@ if (doSmoke) {
       }
       const hit = BAD.find((re) => re.test(output));
       if (hit) {
-        fail(`smoke ${h.verb}`, `matched failure signature ${hit} — ${output.split('\n')[0]?.slice(0, 160)}`);
+        fail(
+          `smoke ${h.verb}`,
+          `matched failure signature ${hit} — ${output.split('\n')[0]?.slice(0, 160)}`
+        );
       } else {
         ok(`smoke ${h.verb}`, 'reached helper (no missing runtime/dep/helper)');
       }
@@ -236,7 +256,9 @@ if (notes.length) {
 if (failures.length) {
   console.error(`\n${RED}BUNDLE INCOMPLETE — ${failures.length} gap(s):${RST}`);
   for (const f of failures) console.error(`  ${RED}✗${RST} ${f.check}`);
-  console.error(`\nSee .ai/logs/rca/issue-acp-panel-hangs-on-nodeless-machine.md and .ai/plans/feature-desktop-standalone-bundle-completeness.md.`);
+  console.error(
+    `\nSee .ai/logs/rca/issue-acp-panel-hangs-on-nodeless-machine.md and .ai/plans/feature-desktop-standalone-bundle-completeness.md.`
+  );
   process.exit(1);
 }
 console.log(`${GRN}Bundle is self-contained — all checks passed.${RST}`);
