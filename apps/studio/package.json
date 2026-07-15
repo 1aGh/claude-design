@@ -64,5 +64,10 @@
     "svgo": "^4.0.1",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.31"
+  },
+  "patchedDependencies": {
+    "css-tree@2.2.1": "../../patches/css-tree@2.2.1.patch",
+    "css-tree@3.2.1": "../../patches/css-tree@3.2.1.patch",
+    "csso@5.0.5": "../../patches/csso@5.0.5.patch"
   }
 }
