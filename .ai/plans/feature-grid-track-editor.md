@@ -20,4 +20,6 @@ Give a `display: grid` container a first-class on-canvas track editor, matching 
 
 ## Status
 
+> **ABSORBED (2026-07-15) into [`feature-3-web-artboards.md`](./feature-3-web-artboards.md) (task T5)** as the web-kind inspector stage — per the /flow:plan artboard-kinds debate (grid authoring IS the web-kind editor; coordinate with `feature-4-canvas-editing-figma-parity.md`'s convert-to-absolute on precedence). This file stays as the interaction spec of record until the web plan executes, then moves to `archive/`.
+
 Not started — planned follow-up. Grounded in the same deep-research pass that produced `feature-element-editing-robustness.md` Stage M; picked up after the flex/auto-layout editor lands and gets dogfooded.
