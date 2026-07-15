@@ -151,6 +151,15 @@ jobs:
         if: matrix.os == 'macos-14'
         env:
           MAUDE_SIDECAR_SLUG: ${{ matrix.sidecar_slug }}
+          # tauri-bundler auto-appends --skip-jenkins to bundle_dmg.sh whenever
+          # CI=true (tauri-apps/tauri issue #592) — GitHub Actions sets CI=true
+          # on every runner, so every CI-built .dmg silently skipped the whole
+          # Finder-prettifying AppleScript step (background image, icon
+          # positioning, hiding .background/.VolumeIcon.icns) since the
+          # drag-to-Applications background shipped in v0.44.0. This override
+          # opts back into running it — GitHub's hosted macOS runners support
+          # the Finder-automation osascript call without a TCC prompt.
+          TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
           # Updater signing (ed25519) — produces the .app.tar.gz.sig the feed serves.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
