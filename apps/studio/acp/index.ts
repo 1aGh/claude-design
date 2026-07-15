@@ -6,7 +6,11 @@
 
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-import type { AvailableCommand, SessionUpdate } from '@agentclientprotocol/sdk';
+import type {
+  AvailableCommand,
+  CreateElicitationRequest,
+  SessionUpdate,
+} from '@agentclientprotocol/sdk';
 import type { ServerWebSocket } from 'bun';
 
 import { isCanvasFile } from '../activity.ts';
@@ -25,14 +29,21 @@ import { probeAcpAvailability } from './probe.ts';
  * prompt sent), `{ t: 'set-mode', chat?, modeId }`, `{ t: 'set-config', chat?,
  * configId, value }` (live change on an already-established session —
  * feature-acp-panel-dynamic-claude-code-capabilities), `{ t: 'permission-response',
- * id, decision }` (Milestone B).
+ * id, decision }` (Milestone B), `{ t: 'elicitation-response', id, action,
+ * content? }` (feature-acp-ask-user-question — `action` is `accept`/`decline`/
+ * `cancel`; `content` only meaningful alongside `accept`).
  * Server → browser frames: `ready` (availability on open), `connected` (session
  * live), `update` (each streamed session/update), `commands` (the agent's
  * `available_commands_update` catalogue — cached + replayed on open), `caps`
  * (the session's mode roster + config-option set — dynamic, never hardcoded),
  * `session-info` (agent-generated chat title), `permission-request` (Milestone B
- * approve/deny gate), `usage` (context-window + cost + rate-limit, Milestone D
- * — cached + replayed on open), `turn-end`, `permission`, `error`.
+ * approve/deny gate), `elicitation-request` (feature-acp-ask-user-question —
+ * `AskUserQuestion` + any MCP-server-originated form), `elicitation-resolved`
+ * (a pending elicitation settled via ANY path, including one the client never
+ * initiated — timeout/cancel/stop — so the client can drop a now-dead pending
+ * card instead of leaving it stuck), `usage` (context-window + cost +
+ * rate-limit, Milestone D — cached + replayed on open), `turn-end`,
+ * `permission`, `error`.
  */
 export interface Acp {
   onOpen(ws: ServerWebSocket<WsData>): void;
@@ -177,6 +188,33 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
         onPermission: (req) => send(ws, { t: 'permission', toolCall: req.toolCall }),
         onPermissionRequest: (id, req) =>
           send(ws, { t: 'permission-request', id, toolCall: req.toolCall, options: req.options }),
+        onElicitationRequest: (id, req: CreateElicitationRequest) =>
+          send(ws, {
+            t: 'elicitation-request',
+            id,
+            message: req.message,
+            mode: req.mode,
+            // `req.mode === 'form'` is guaranteed by the bridge (it declines
+            // any other mode before ever calling onElicitationRequest — see
+            // the SECURITY comment in bridge.ts) — this ternary exists for
+            // TYPE narrowing (requestedSchema only exists on the form variant
+            // of the CreateElicitationRequest union), not as a runtime guard.
+            requestedSchema: req.mode === 'form' ? req.requestedSchema : undefined,
+            // Forwarded so the client can attribute the request to the actual
+            // tool call it's scoped to (when present) instead of a blanket
+            // "from Claude" label — ethical-hacker finding: `toolCallId` is
+            // present on `ElicitationSessionScope` and was being silently
+            // dropped, even though ElicitationPrompt.jsx had nothing else to
+            // disambiguate a built-in AskUserQuestion form from an arbitrary
+            // connected MCP server's form.
+            toolCallId: 'toolCallId' in req ? req.toolCallId : undefined,
+          }),
+        // A pending elicitation settled via ANY path, including one the
+        // client never initiated (a bridge-side timeout, cancel(), stop()) —
+        // tells the client to drop it from its own pending list even though
+        // it didn't send the `elicitation-response` itself. See the doc
+        // comment on `onElicitationSettled` in bridge.ts.
+        onElicitationSettled: (id) => send(ws, { t: 'elicitation-resolved', id }),
         onCommands: (commands) => {
           latestCommands = commands;
           send(ws, { t: 'commands', commands });
@@ -343,6 +381,8 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
         value?: unknown;
         id?: unknown;
         decision?: unknown;
+        action?: unknown;
+        content?: unknown;
       };
 
       const chatId = typeof frame.chat === 'string' && frame.chat ? frame.chat : 'default';
@@ -385,6 +425,15 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
         const decision =
           typeof frame.decision === 'string' && frame.decision ? frame.decision : 'cancelled';
         bridges.get(ws.data.id)?.resolvePermission(frame.id, decision);
+      } else if (frame.t === 'elicitation-response' && typeof frame.id === 'string' && frame.id) {
+        // feature-acp-ask-user-question — the human's answer/skip/cancel for a
+        // pending `elicitation-request`. `action`/`content` are forwarded
+        // shallowly; `AcpBridge.resolveElicitation` is the actual fail-closed
+        // gate (anything other than a well-formed accept collapses to decline).
+        const action = typeof frame.action === 'string' ? frame.action : 'decline';
+        const content =
+          frame.content && typeof frame.content === 'object' ? frame.content : undefined;
+        bridges.get(ws.data.id)?.resolveElicitation(frame.id, { action, content });
       }
     },
 

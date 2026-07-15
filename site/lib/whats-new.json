@@ -1,7 +1,24 @@
 {
-  "generated": "2026-07-15T20:01:52.144Z",
+  "generated": "2026-07-15T22:06:40.186Z",
   "version": "0.45.1",
   "entries": [
+    {
+      "id": "acp-ask-user-question",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Claude can ask you real questions in chat",
+      "summary": "When Claude needs a decision from you mid-task, it can now ask directly — a multi-choice or free-text form appears right in the chat panel, the same AskUserQuestion picker you'd see in the Claude Code CLI, instead of falling back to plain text.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-testid=\"chat-elicit-prompt\"]",
+          "title": "Claude asking you something",
+          "body": "Pick an option, type your own answer, or Skip — Cancel aborts whatever Claude was about to do with your answer.",
+          "placement": "top"
+        }
+      ]
+    },
     {
       "id": "acp-live-capabilities",
       "version": null,

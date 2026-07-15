@@ -171,6 +171,18 @@ export function createAcpConnection() {
     for (const fn of permissionListeners) fn(snap);
   }
 
+  // Pending elicitation requests (feature-acp-ask-user-question — AskUserQuestion
+  // + generic MCP form input). Same "outside the assistant-ui message stream"
+  // treatment as pendingPermissions above, for the same reason: a request can
+  // arrive mid-turn and the run() loop only understands text/tool-call/reasoning
+  // parts, not "pause here for a human form."
+  const elicitationListeners = new Set();
+  let pendingElicitations = [];
+  function emitElicitations() {
+    const snap = pendingElicitations.slice();
+    for (const fn of elicitationListeners) fn(snap);
+  }
+
   function emitStatus() {
     for (const fn of statusListeners) fn({ ...status });
   }
@@ -265,6 +277,37 @@ export function createAcpConnection() {
         { id: frame.id, toolCall: frame.toolCall, options: frame.options ?? [] },
       ];
       emitPermissions();
+      return;
+    }
+    if (frame.t === 'elicitation-request') {
+      pendingElicitations = [
+        ...pendingElicitations,
+        {
+          id: frame.id,
+          message: frame.message,
+          mode: frame.mode,
+          requestedSchema: frame.requestedSchema,
+          // Present only when this elicitation is scoped to a specific tool
+          // call (e.g. the built-in AskUserQuestion) — absent for a raw
+          // session-scoped MCP-server elicitation. ElicitationPrompt.jsx uses
+          // this to avoid a blanket "from Claude" attribution it can't back up.
+          toolCallId: frame.toolCallId,
+        },
+      ];
+      emitElicitations();
+      return;
+    }
+    // The bridge settled a pending elicitation itself (timeout/cancel/stop) —
+    // drop it from the pending list even though the client never responded,
+    // so the card doesn't sit open with a Submit button that's already dead.
+    // A client-driven response already removed its own entry optimistically
+    // (respondElicitation below), so this is a no-op for that path — it only
+    // does real work for a settlement the client didn't initiate.
+    if (frame.t === 'elicitation-resolved') {
+      if (pendingElicitations.some((p) => p.id === frame.id)) {
+        pendingElicitations = pendingElicitations.filter((p) => p.id !== frame.id);
+        emitElicitations();
+      }
       return;
     }
     // Everything else belongs to the active prompt turn.
@@ -366,6 +409,13 @@ export function createAcpConnection() {
       return () => permissionListeners.delete(fn);
     },
 
+    /** Subscribe to the list of currently-pending elicitation requests; replays the current snapshot. */
+    onElicitation(fn) {
+      elicitationListeners.add(fn);
+      fn(pendingElicitations);
+      return () => elicitationListeners.delete(fn);
+    },
+
     /**
      * Answer a pending permission request — `decision` is one of the
      * request's own `options[].optionId`, or `'cancelled'` to reject. Removes
@@ -382,6 +432,23 @@ export function createAcpConnection() {
         ws?.send(JSON.stringify({ t: 'permission-response', id, decision }));
       } catch {
         /* socket unavailable — the bridge's own timeout will deny this request */
+      }
+    },
+
+    /**
+     * Answer a pending elicitation request — `response` is `{ action, content? }`,
+     * `action` one of `'accept'`/`'decline'`/`'cancel'`. Mirrors `respondPermission`
+     * exactly, including the optimistic removal + no-op-on-stale-id behavior.
+     */
+    async respondElicitation(id, response) {
+      if (!pendingElicitations.some((p) => p.id === id)) return;
+      pendingElicitations = pendingElicitations.filter((p) => p.id !== id);
+      emitElicitations();
+      try {
+        await ensureOpen();
+        ws?.send(JSON.stringify({ t: 'elicitation-response', id, ...response }));
+      } catch {
+        /* socket unavailable — the bridge's own timeout will decline this request */
       }
     },
 

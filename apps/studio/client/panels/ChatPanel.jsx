@@ -38,6 +38,7 @@ import {
 } from './acp-runtime.js';
 import { buildChatContext } from './chat-context.js';
 import CapabilityBar from './CapabilityBar.jsx';
+import ElicitationPrompt from './ElicitationPrompt.jsx';
 import PermissionPrompt from './PermissionPrompt.jsx';
 import { Markdown } from './chat-markdown.jsx';
 import ReadinessList, { useReadiness } from './ReadinessList.jsx';
@@ -361,11 +362,18 @@ function jsonPreview(value, cap = 800) {
   } catch {
     return null;
   }
-  if (!s) return null;
+  // An empty object/array/string preview ("{}", "[]", '""') is noise, not
+  // information — a tool that legitimately took no args or returned nothing
+  // shouldn't render a boxed detail block just to say so.
+  if (!s || s === '{}' || s === '[]' || s === '""' || s === 'null') return null;
   return s.length > cap ? `${s.slice(0, cap)}…` : s;
 }
 
-function ChatToolCard({ toolName, args, result, isError, verbose }) {
+// `flat` (Task C1 revision, after dogfooding showed grouped tool calls
+// rendering as nested bordered cards inside a bordered card — "divné") skips
+// the standalone `.chat-tool` card chrome for a lighter row, used only when
+// ChatToolCard renders inside ToolGroup's already-bordered accordion body.
+function ChatToolCard({ toolName, args, result, isError, verbose, flat = false }) {
   const running = result === undefined;
   const path =
     args && typeof args === 'object' ? args.path || args.file || args.filePath : undefined;
@@ -373,6 +381,25 @@ function ChatToolCard({ toolName, args, result, isError, verbose }) {
     ? jsonPreview(args)
     : null;
   const resultPreview = verbose && !running && result != null ? jsonPreview(result) : null;
+  const statusLabel = running ? 'running…' : isError ? 'failed' : 'done';
+
+  if (flat) {
+    return (
+      <div className="chat-tool-row" data-testid="chat-tool-row">
+        <div className="chat-tool-row-main">
+          <span
+            className={`chat-tool-dot ${running ? 'chat-tool-dot--run' : 'chat-tool-dot--done'}`}
+          />
+          <b>{toolName}</b>
+          {path ? <span className="chat-tool-path">{String(path).split('/').pop()}</span> : null}
+          <span className={`chat-tool-row-status${isError ? ' del' : ''}`}>{statusLabel}</span>
+        </div>
+        {argsPreview ? <pre className="chat-tool-detail">{argsPreview}</pre> : null}
+        {resultPreview ? <pre className="chat-tool-detail">{resultPreview}</pre> : null}
+      </div>
+    );
+  }
+
   return (
     <div className="chat-tool">
       <div className="chat-tool-hd">
@@ -757,19 +784,34 @@ function formatResetTime(resetsAt) {
   }
 }
 
-// Composer footer info (Task D3, revised after dogfooding feedback — the
-// keyboard hint + context gauge + mode footnote + subscription note used to
-// all sit inline in `.chat-foot` and wrapped into an unreadable mess at
-// normal panel widths). Collapsed behind one info icon; click opens a
-// popover with the same detail. Context is PER-CHAT (this session's own
-// window); cost is cumulative for this session only — labeled accordingly
-// so it doesn't read as an account-wide total.
+// Composer footer info (Task D3, revised repeatedly after dogfooding — the
+// keyboard hint + context gauge + mode footnote + subscription note first
+// sat inline in `.chat-foot` and wrapped into an unreadable mess, then moved
+// behind this info icon. The icon itself later moved INTO `.chat-toolbar`
+// (inside `.chat-box`, which clips its content with `overflow: hidden` for
+// the rounded-corner focus ring) — a plain `position: absolute` popover
+// anchored to the icon got clipped by that box, rendering squashed inside
+// the textarea instead of floating above the whole composer. Fixed
+// positioning computed from the button's own rect escapes that clip (fixed
+// is relative to the viewport, not an ancestor's overflow, unless an
+// ancestor establishes its own containing block via transform/filter —
+// none of `.chat-box`/`.chat-composer`/`.chat-thread` do). Context is
+// PER-CHAT (this session's own window); cost is cumulative for this
+// session only — labeled accordingly so it doesn't read as an
+// account-wide total.
 function ChatFootInfo({ usage, modes }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
   const rootRef = useRef(null);
+  const btnRef = useRef(null);
 
   useEffect(() => {
     if (!open) return undefined;
+    const place = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (r) setPos({ bottom: window.innerHeight - r.top + 8, right: window.innerWidth - r.right });
+    };
+    place();
     const onPointerDown = (e) => {
       if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
     };
@@ -778,9 +820,11 @@ function ChatFootInfo({ usage, modes }) {
     };
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', place);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', place);
     };
   }, [open]);
 
@@ -791,10 +835,19 @@ function ChatFootInfo({ usage, modes }) {
   const timeLabel = usage.asOf
     ? new Date(usage.asOf).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : null;
+  // Genuine Pro/Max subscription-plan context — the adapter forwards a THIN,
+  // event-driven single-window signal (SDKRateLimitInfo, only fires near a
+  // real limit event); the rich Claude-Desktop-style multi-window panel
+  // (5h + weekly + per-model, live at rest) isn't reachable — its SDK method
+  // is explicitly marked experimental and the pinned adapter never calls it
+  // (see the Milestone D research in the ACP capabilities plan). Show what's
+  // real; don't fabricate the rest.
+  const rateLimitResetLabel = usage.rateLimit ? formatResetTime(usage.rateLimit.resetsAt) : null;
 
   return (
     <div className="chat-foot-info" ref={rootRef}>
       <button
+        ref={btnRef}
         type="button"
         className="chat-foot-info-btn"
         aria-label="Chat info"
@@ -805,23 +858,52 @@ function ChatFootInfo({ usage, modes }) {
       >
         ⓘ
       </button>
-      {open ? (
-        <div className="chat-foot-popover" role="dialog" aria-label="Chat info" data-testid="chat-foot-popover">
-          <div className="chat-foot-popover-row">↵ to send · ⇧↵ newline</div>
+      {open && pos ? (
+        <div
+          className="chat-foot-popover"
+          role="dialog"
+          aria-label="Chat info"
+          data-testid="chat-foot-popover"
+          style={{ bottom: pos.bottom, right: pos.right }}
+        >
           {context ? (
-            <div className="chat-foot-popover-row">
-              <span className="chat-usage-bar" aria-hidden="true">
+            <div className="chat-foot-popover-section">
+              <div className="chat-foot-popover-label-row">
+                <span>Context</span>
+                <span>{context.pct}%</span>
+              </div>
+              <span className="chat-usage-bar chat-usage-bar--wide" aria-hidden="true">
                 <span className="chat-usage-bar-fill" style={{ width: `${context.pct}%` }} />
               </span>
-              context {context.pct}% · {context.used.toLocaleString()} / {context.size.toLocaleString()} tokens
+              <div className="chat-foot-popover-row--muted">
+                {context.used.toLocaleString()} / {context.size.toLocaleString()} tokens
+              </div>
             </div>
           ) : null}
-          {usage.cost ? (
-            <div className="chat-foot-popover-row">${usage.cost.amount.toFixed(2)} this session</div>
+          {usage.rateLimit ? (
+            <>
+              <div className="chat-foot-popover-sep" />
+              <div className="chat-foot-popover-label-row">
+                <span>{usage.rateLimit.label}</span>
+                <span>{usage.rateLimit.pct != null ? `${usage.rateLimit.pct}%` : '—'}</span>
+              </div>
+              {rateLimitResetLabel ? (
+                <div className="chat-foot-popover-row--muted">resets {rateLimitResetLabel}</div>
+              ) : null}
+            </>
           ) : null}
-          {footnote ? <div className="chat-foot-popover-row">{footnote}</div> : null}
-          <div className="chat-foot-popover-row chat-foot-popover-row--muted">
-            Uses your Claude subscription{timeLabel ? ` · updated ${timeLabel}` : ''}
+          {footnote ? (
+            <>
+              <div className="chat-foot-popover-sep" />
+              <div className="chat-foot-popover-row">{footnote}</div>
+            </>
+          ) : null}
+          <div className="chat-foot-popover-sep" />
+          <div className="chat-foot-popover-foot">
+            <div className="chat-foot-popover-row--muted">↵ to send · ⇧↵ newline</div>
+            <div className="chat-foot-popover-row--muted">
+              Uses your Claude subscription{timeLabel ? ` · updated ${timeLabel}` : ''}
+            </div>
           </div>
         </div>
       ) : null}
@@ -1241,6 +1323,7 @@ function Composer({
                 onSetConfig={onSetConfig}
               />
               <span className="chat-toolbar-spacer" />
+              <ChatFootInfo usage={usage} modes={caps.modes} />
               <ComposerPrimitive.Send className="chat-send" aria-label="Send message">
                 <SendArrow />
               </ComposerPrimitive.Send>
@@ -1262,9 +1345,6 @@ function Composer({
             ))}
           </div>
         ) : null}
-        <div className="chat-foot">
-          <ChatFootInfo usage={usage} modes={caps.modes} />
-        </div>
       </ThreadPrimitive.If>
       <ThreadPrimitive.If running>
         <div className="chat-stopbar">
@@ -1506,6 +1586,15 @@ function ChatThread({
     (decision) => activePermission && conn.respondPermission(activePermission.id, decision),
     [conn, activePermission]
   );
+  // Pending elicitation requests (feature-acp-ask-user-question) — same
+  // one-at-a-time, oldest-first treatment as pendingPermissions above.
+  const [pendingElicitations, setPendingElicitations] = useState([]);
+  useEffect(() => conn.onElicitation(setPendingElicitations), [conn]);
+  const activeElicitation = pendingElicitations[0] || null;
+  const respondElicitation = useCallback(
+    (response) => activeElicitation && conn.respondElicitation(activeElicitation.id, response),
+    [conn, activeElicitation]
+  );
   // Connection-problem error card (Task C3) — see conn.onError's doc comment.
   const [turnError, setTurnError] = useState(null);
   useEffect(() => conn.onError(setTurnError), [conn]);
@@ -1552,6 +1641,8 @@ function ChatThread({
           </ThreadPrimitive.Viewport>
           {activePermission ? (
             <PermissionPrompt request={activePermission} onRespond={respondPermission} />
+          ) : activeElicitation ? (
+            <ElicitationPrompt request={activeElicitation} onRespond={respondElicitation} />
           ) : (
             <ErrorCard error={turnError} onRetry={retryLastTurn} />
           )}

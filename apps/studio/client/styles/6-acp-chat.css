@@ -720,13 +720,43 @@
     border-bottom: 1px solid var(--border-subtle);
   }
   .chat-toolgroup-body {
-    padding: var(--space-2);
     display: flex;
     flex-direction: column;
+  }
+  /* Flat accordion row (Task C1 revision) — a bordered card-in-a-card per
+     tool read as "divné" (weird) in dogfooding; a group's individual tool
+     calls are now plain rows separated by a hairline, not their own
+     `.chat-tool` card, so the whole group stays one lightweight shape. */
+  .chat-tool-row {
+    padding: var(--space-2) var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .chat-tool-row + .chat-tool-row {
+    border-top: 1px solid var(--border-subtle);
+  }
+  .chat-tool-row-main {
+    display: flex;
+    align-items: center;
     gap: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    color: var(--fg-1);
+  }
+  .chat-tool-row-main b {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .chat-tool-row-status {
+    margin-left: auto;
+    color: var(--fg-3);
+  }
+  .chat-tool-row-status.del {
+    color: var(--status-error);
   }
 
-  /* Tool-call card */
+  /* Tool-call card (standalone — a lone tool call outside a group). */
   .chat-tool {
     border: 1px solid var(--border-default);
     border-radius: var(--radius-sm);
@@ -833,6 +863,160 @@
     gap: var(--space-2);
   }
 
+  /* Form-elicitation card (feature-acp-ask-user-question — AskUserQuestion +
+     generic MCP form input). Same slot + shape as .chat-perm, mutually
+     exclusive with it — see the mount site in ChatPanel.jsx. */
+  .chat-elicit {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin: 0 var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-default);
+    border-left: 2px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: var(--bg-2);
+  }
+  .chat-elicit:focus-visible {
+    outline: none;
+  }
+  .chat-elicit-hd {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .chat-elicit-hd b {
+    color: var(--fg-0);
+    font-size: var(--type-sm);
+    font-weight: 600;
+    line-height: var(--lh-sm);
+  }
+  .chat-elicit-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    color: var(--fg-3);
+  }
+  .chat-elicit-meta > span + span::before {
+    content: '·';
+    margin-right: var(--space-2);
+  }
+  .chat-elicit-question {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    border: none;
+  }
+  .chat-elicit-question-hd {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: 0;
+    font-size: var(--type-sm);
+    color: var(--fg-0);
+    line-height: var(--lh-sm);
+  }
+  .chat-elicit-question-chip {
+    align-self: flex-start;
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--bg-3);
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .chat-elicit-options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .chat-elicit-option {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    font-size: var(--type-xs);
+    color: var(--fg-1);
+    cursor: pointer;
+    accent-color: var(--accent);
+  }
+  .chat-elicit-option-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .chat-elicit-option-desc {
+    color: var(--fg-2);
+  }
+  .chat-elicit-option-preview {
+    margin: 0;
+    padding: var(--space-1) var(--space-2);
+    background: var(--bg-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xs);
+    color: var(--fg-2);
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .chat-elicit-text {
+    width: 100%;
+    padding: var(--space-1) var(--space-2);
+    background: var(--bg-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xs);
+    color: var(--fg-0);
+    font-size: var(--type-xs);
+    font-family: inherit;
+  }
+  .chat-elicit-custom-toggle {
+    align-self: flex-start;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: var(--type-xs);
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  /* Credential-shaped question warning (ethical-hacker finding — see
+     acp-elicitation.js's looksLikeSecretRequest). Border/left-accent carries
+     the warning color; TEXT stays on --fg-1 rather than --status-warn
+     directly — that token fails AA contrast at this size (bit the a11y
+     review once already, per DDR-097's file-tree badge fix). */
+  .chat-elicit-secret-warning {
+    margin: 0;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--status-warn);
+    border-radius: var(--radius-xs);
+    background: color-mix(in oklab, var(--status-warn) 12%, transparent);
+    color: var(--fg-1);
+    font-size: var(--type-xs);
+  }
+  /* SECURITY (ethical-hacker finding) — shown when a question reads as a
+     credential ask; pairs with the masked input in ElicitationPrompt.jsx. */
+  .chat-elicit-secret-warning {
+    margin: 0;
+    color: var(--warn, hsl(38 92% 50%));
+    font-size: var(--type-xs);
+  }
+  .chat-elicit-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .chat-elicit-actions-spacer {
+    flex: 1 1 auto;
+  }
+
   /* Connection-problem error card (Task C3) — transient bridge/socket failure,
      recoverable with a retry. Same slot as .chat-perm (mutually exclusive). */
   .chat-error-card {
@@ -882,6 +1066,14 @@
     height: 100%;
     background: var(--accent);
     border-radius: var(--radius-pill);
+  }
+  /* Full-width variant for the .chat-foot-popover context section (the
+     32px pill above is sized for an inline ambient indicator, not a form
+     bar). */
+  .chat-usage-bar--wide {
+    display: block;
+    width: 100%;
+    height: 5px;
   }
 
   /* Event-driven single-window rate-limit banner — rendered INSIDE
@@ -1033,7 +1225,16 @@
     color: var(--fg-3);
     padding: 2px var(--space-2);
   }
-  /* Compact toolbar dropdowns — borderless, hover-revealed (Zed-style). */
+  /* Compact toolbar dropdowns — borderless, hover-revealed (Zed-style).
+     Without `field-sizing`, a closed <select> sizes itself to its WIDEST
+     option (not the one it's currently showing) — Model ends up as wide as
+     its longest model name even while displaying "Sonnet". That's what made
+     2-3 short picks unable to share a row in a narrow panel — each one was
+     wider than it looked and forced onto its own wrapped line. `field-sizing:
+     content` sizes it to what's actually shown instead; it degrades
+     harmlessly where unsupported (the max-width + ellipsis below is that
+     fallback net), and `flex-shrink: 0` keeps the (now much smaller) content
+     width from being squeezed further by the toolbar row. */
   .chat-select {
     appearance: none;
     font-family: var(--font-body);
@@ -1044,6 +1245,13 @@
     border-radius: var(--radius-xs);
     padding: 2px var(--space-2);
     cursor: pointer;
+    flex-shrink: 0;
+    field-sizing: content;
+    min-width: 44px;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     transition:
       border-color var(--dur-soft) var(--ease-out),
       background var(--dur-soft) var(--ease-out),
@@ -1116,22 +1324,18 @@
     color: var(--fg-2);
     font-family: var(--font-mono);
   }
-  .chat-foot {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-top: var(--space-2);
-    font-size: var(--type-xs);
-    color: var(--fg-2);
-  }
   .chat-foot-spacer {
     flex: 1;
   }
-  /* Composer footer info (Milestone D, revised) — the keyboard hint + context
-     gauge + mode footnote + subscription note collapse behind one icon so
-     they never wrap into an unreadable mess; the popover holds the detail. */
+  /* Composer footer info (Milestone D, revised twice after dogfooding — the
+     keyboard hint + context gauge + mode footnote + subscription note first
+     collapsed behind an icon on its own row, then that icon moved INTO
+     .chat-toolbar next to Send so it costs no extra vertical space). The
+     popover is grouped into labeled sections (context / cost / mode /
+     meta) with dividers, rather than a flat stack of unrelated lines. */
   .chat-foot-info {
     position: relative;
+    display: inline-flex;
   }
   .chat-foot-info-btn {
     appearance: none;
@@ -1154,15 +1358,18 @@
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-tint);
   }
+  /* `position: fixed` (not absolute) — `.chat-foot-info` sits inside
+     `.chat-box`, which clips its content with `overflow: hidden` for the
+     composer's rounded-corner focus ring. An absolutely-positioned popover
+     anchored there got clipped to that box instead of floating above the
+     whole composer. `bottom`/`right` are computed from the button's own
+     rect and set inline (see ChatFootInfo in ChatPanel.jsx). */
   .chat-foot-popover {
-    position: absolute;
-    bottom: calc(100% + var(--space-2));
-    left: 0;
+    position: fixed;
     z-index: 52;
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
-    min-width: 220px;
+    min-width: 240px;
     padding: var(--space-3);
     background: var(--bg-2);
     border: 1px solid var(--border-default);
@@ -1172,13 +1379,31 @@
     font-size: var(--type-xs);
     color: var(--fg-2);
   }
-  .chat-foot-popover-row {
+  .chat-foot-popover-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .chat-foot-popover-sep {
+    height: 1px;
+    background: var(--border-subtle);
+    margin: var(--space-2) calc(var(--space-3) * -1);
+  }
+  .chat-foot-popover-label-row {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: var(--space-2);
+    color: var(--fg-0);
+    font-weight: 600;
   }
   .chat-foot-popover-row--muted {
     color: var(--fg-3);
+  }
+  .chat-foot-popover-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 
   /* ── Slash-command autocomplete + inline highlight ────────────────────────

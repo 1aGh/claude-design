@@ -15,6 +15,8 @@ import {
   type AvailableCommand,
   type Client,
   ClientSideConnection,
+  type CreateElicitationRequest,
+  type CreateElicitationResponse,
   ndJsonStream,
   PROTOCOL_VERSION,
   type PromptResponse,
@@ -63,6 +65,29 @@ export interface AcpBridgeOptions {
    * adapter — nothing is pre-decided here.
    */
   onPermissionRequest?: (id: string, req: RequestPermissionRequest) => void;
+  /**
+   * The elicitation-form UI hook (feature-acp-ask-user-question) — fires once
+   * per `unstable_createElicitation` call with a fresh nonce `id`, mirroring
+   * `onPermissionRequest` exactly. Carries BOTH `AskUserQuestion`-sourced forms
+   * AND any MCP-server-originated elicitation (same wire mechanism — see the
+   * plan's Research section); the bridge does not and cannot distinguish them.
+   * The bridge awaits `resolveElicitation(id, …)` before returning to the
+   * adapter.
+   */
+  onElicitationRequest?: (id: string, req: CreateElicitationRequest) => void;
+  /**
+   * Fires whenever a pending elicitation is settled, REGARDLESS of which path
+   * settled it (a client `elicitation-response`, a bridge-side timeout,
+   * `cancel()`, or `stop()`). A client-driven response already removes its own
+   * pending entry optimistically (see `respondElicitation` in acp-runtime.js),
+   * so for that path this is a harmless no-op notification; it exists for the
+   * paths the client can't otherwise learn about — a server-side timeout in
+   * particular used to leave the card showing a Submit button that was already
+   * dead (the bridge had moved on), with no visible feedback and no way for a
+   * click to do anything (dogfooding finding — "submit does nothing" after the
+   * card sat open long enough to time out).
+   */
+  onElicitationSettled?: (id: string) => void;
   /**
    * The agent's slash-command catalogue (`available_commands_update`) — drives
    * the composer autocomplete + inline command pill. Fires whenever the agent
@@ -239,6 +264,38 @@ export function newSessionParams(
 // the security control, so failing open would defeat the point.
 const PERMISSION_TIMEOUT_MS = 120_000;
 
+// feature-acp-ask-user-question, SECURITY (ethical-hacker finding) — unlike a
+// permission request (one per tool call, rate-limited by how fast a model can
+// call tools), an elicitation can be issued directly by any connected MCP
+// server with no such natural ceiling. Without a cap, a compromised/hostile
+// MCP server can flood `pendingElicitations` (unbounded memory growth) or
+// send an oversized `requestedSchema` (e.g. thousands of `oneOf` options) that
+// the client renders with no clamp — either can freeze the panel or force the
+// user into an endless Submit/Skip/Cancel loop just to get their composer
+// back. Both are enforced BEFORE a request is ever registered or forwarded to
+// the client — a request that trips either cap is declined immediately, the
+// same fail-closed outcome as a timeout.
+export const MAX_PENDING_ELICITATIONS = 5;
+export const MAX_ELICITATION_SCHEMA_PROPERTIES = 20;
+export const MAX_ELICITATION_SCHEMA_BYTES = 16_384;
+
+/** Exported for direct unit-testing of the bound math without needing a live
+ *  bridge/subprocess — see `test/acp-elicitation-bridge.test.ts`. */
+export function elicitationSchemaWithinBounds(schema: unknown): boolean {
+  if (!schema || typeof schema !== 'object') return true; // nothing to bound
+  const properties = (schema as { properties?: unknown }).properties;
+  if (properties && typeof properties === 'object') {
+    if (Object.keys(properties).length > MAX_ELICITATION_SCHEMA_PROPERTIES) return false;
+  }
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(schema);
+  } catch {
+    return false; // unserializable (e.g. a cycle) — never trust it
+  }
+  return serialized.length <= MAX_ELICITATION_SCHEMA_BYTES;
+}
+
 export class AcpBridge {
   private proc: Spawned | null = null;
   private conn: ClientSideConnection | null = null;
@@ -286,6 +343,21 @@ export class AcpBridge {
        *  fails closed (denies) on anything else, so a decision can't pin an
        *  option that was never on the table (DDR-125 F1 posture). */
       optionIds: Set<string>;
+    }
+  >();
+  // feature-acp-ask-user-question — elicitation-form requests awaiting a human
+  // decision, keyed by the nonce handed to the client in the
+  // `elicitation-request` frame. Parallel to `pendingPermissions` rather than
+  // sharing its Map: the two response shapes (`RequestPermissionResponse`'s
+  // `{outcome:{outcome,optionId?}}` vs `CreateElicitationResponse`'s
+  // `{action,content?}`) don't unify cleanly under one generic "pending
+  // client answer" type without a discriminated wrapper that would make BOTH
+  // call sites harder to read for no real gain (open decision #2 in the plan).
+  private pendingElicitations = new Map<
+    string,
+    {
+      resolve: (r: CreateElicitationResponse) => void;
+      timer: ReturnType<typeof setTimeout>;
     }
   >();
   // Milestone D — the last-seen usage snapshot, cached the same way lastModes/
@@ -706,6 +778,48 @@ export class AcpBridge {
           this.opts.onPermissionRequest?.(id, params);
         });
       },
+      unstable_createElicitation: (
+        params: CreateElicitationRequest
+      ): Promise<CreateElicitationResponse> => {
+        // feature-acp-ask-user-question — mirrors requestPermission's shape
+        // exactly. Fires for BOTH `AskUserQuestion` and any MCP-server
+        // elicitation (see the plan's Research section) — the toolCallId/
+        // session scope is not special-cased to assume it's always the
+        // built-in tool.
+        //
+        // SECURITY (ethical-hacker finding, post-implementation review) — only
+        // `form` mode was ever declared in `clientCapabilities` (never `url`),
+        // but capability negotiation is advisory, not enforced: a non-compliant
+        // adapter or a malicious/buggy MCP server could send `mode:'url'`
+        // anyway. Reject it HERE, structurally, rather than trusting the other
+        // side to honor what we advertised — `url`-mode has never had client
+        // rendering (no code anywhere reads/shows `params.url`), so forwarding
+        // it would have produced a bare "message + Submit" card the user could
+        // click through with no idea an out-of-band URL flow was actually being
+        // confirmed (a confused-consent primitive — see DDR-180).
+        if (params.mode !== 'form') {
+          return Promise.resolve({ action: 'decline' });
+        }
+        // SECURITY (ethical-hacker finding) — bound queue depth + schema size
+        // BEFORE registering a pending entry or forwarding anything to the
+        // client, so a flood or an oversized schema never reaches the
+        // renderer at all rather than being handled gracefully once there.
+        if (this.pendingElicitations.size >= MAX_PENDING_ELICITATIONS) {
+          return Promise.resolve({ action: 'decline' });
+        }
+        if (!elicitationSchemaWithinBounds(params.requestedSchema)) {
+          return Promise.resolve({ action: 'decline' });
+        }
+        const id = crypto.randomUUID();
+        return new Promise<CreateElicitationResponse>((resolve) => {
+          const timer = setTimeout(
+            () => this.resolveElicitation(id, { action: 'decline' }),
+            this.opts.permissionTimeoutMs ?? PERMISSION_TIMEOUT_MS
+          );
+          this.pendingElicitations.set(id, { resolve, timer });
+          this.opts.onElicitationRequest?.(id, params);
+        });
+      },
     };
 
     const conn = new ClientSideConnection(() => client, stream);
@@ -725,7 +839,18 @@ export class AcpBridge {
         // We don't expose the project filesystem to the agent over ACP — the
         // spawned `claude` already has direct disk access to `cwd`, so advertising
         // fs capabilities here would only duplicate (and widen) that surface.
-        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
+        // feature-acp-ask-user-question — declares `form` only, never `url`
+        // (an agent-chosen URL the user is directed to open is a materially
+        // bigger trust surface than a schema-driven form rendered entirely
+        // client-side — see the plan's Open decisions). This is also the
+        // single client-capability gate that unblocks the built-in
+        // `AskUserQuestion` tool AND any connected MCP server's elicitation
+        // requests (same wire mechanism, no sub-flag to separate them —
+        // acp-agent.js's `disallowedTools` check).
+        clientCapabilities: {
+          fs: { readTextFile: false, writeTextFile: false },
+          elicitation: { form: {} },
+        },
       }),
       INITIALIZE_TIMEOUT_MS
     );
@@ -829,9 +954,75 @@ export class AcpBridge {
     for (const id of [...this.pendingPermissions.keys()]) this.resolvePermission(id, 'cancelled');
   }
 
+  /**
+   * Settle a pending elicitation request (feature-acp-ask-user-question).
+   * `response` is the client's WS-frame payload — already validated shallowly
+   * by index.ts (a well-formed `{action, content?}`); this is still the last
+   * line of defense, so anything that isn't literally `accept` with a real
+   * `content` object, or literally `cancel`, collapses to `decline`. A
+   * request that's already settled or whose id is unknown (stale client,
+   * already timed out) is a silent no-op — never throws on a race. `decline`
+   * is deliberately NOT the same failure mode as a permission `cancelled`:
+   * per `applyAskElicitationResponse`'s documented contract, decline tells
+   * the model the user skipped (the turn continues), while `cancel` aborts
+   * the tool call — so a bridge-initiated fail-safe (timeout, turn-cancel,
+   * teardown) always declines, never cancels, unless the human explicitly
+   * clicked Cancel client-side.
+   */
+  resolveElicitation(id: string, response: { action?: unknown; content?: unknown }): void {
+    const pending = this.pendingElicitations.get(id);
+    if (!pending) return;
+    this.pendingElicitations.delete(id);
+    clearTimeout(pending.timer);
+    this.opts.onElicitationSettled?.(id);
+    if (
+      response.action === 'accept' &&
+      response.content &&
+      typeof response.content === 'object' &&
+      !Array.isArray(response.content)
+    ) {
+      // Validate each value against the wire-allowed ElicitationContentValue
+      // shape (string | number | boolean | string[]) — mirrors
+      // claude-agent-acp's own `acceptedElicitationContent` validation
+      // (confirmed on disk) exactly, so a value the adapter would itself
+      // reject never gets forwarded as though it were a real answer.
+      // `Object.create(null)` — not `{}` — for defense-in-depth parity with
+      // `acp-elicitation.js`'s `buildElicitationContent` (client-side sibling
+      // building the same shape): a hand-crafted `elicitation-response` frame
+      // reaches THIS function directly (index.ts only shallow-validates), so
+      // it's the actual last line of defense against a `__proto__`-keyed
+      // `content`, not the client-side builder the real UI happens to use.
+      const content: Record<string, string | number | boolean | string[]> = Object.create(null);
+      for (const [key, value] of Object.entries(response.content)) {
+        if (
+          typeof value === 'string' ||
+          typeof value === 'number' ||
+          typeof value === 'boolean' ||
+          (Array.isArray(value) && value.every((item) => typeof item === 'string'))
+        ) {
+          content[key] = value;
+        }
+      }
+      pending.resolve({ action: 'accept', content });
+    } else if (response.action === 'cancel') {
+      pending.resolve({ action: 'cancel' });
+    } else {
+      pending.resolve({ action: 'decline' });
+    }
+  }
+
+  /** Decline every currently-pending elicitation request — same fail-closed
+   *  discipline as `denyAllPendingPermissions`, called from the same places. */
+  private declineAllPendingElicitations(): void {
+    for (const id of [...this.pendingElicitations.keys()]) {
+      this.resolveElicitation(id, { action: 'decline' });
+    }
+  }
+
   /** Cancel the in-flight turn (no-op if nothing is running). */
   async cancel(): Promise<void> {
     this.denyAllPendingPermissions();
+    this.declineAllPendingElicitations();
     if (this.conn && this.currentSession) {
       try {
         await this.conn.cancel({ sessionId: this.currentSession });
@@ -845,6 +1036,7 @@ export class AcpBridge {
   async stop(): Promise<void> {
     await this.cancel();
     this.denyAllPendingPermissions(); // belt-and-suspenders — cancel() already does this
+    this.declineAllPendingElicitations(); // ditto
     try {
       this.proc?.kill();
     } catch {
