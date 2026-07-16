@@ -69,3 +69,14 @@ export function resolvePersistedPick(availableValues, savedValue, defaultValue) 
   if (savedValue != null && set.has(savedValue)) return savedValue;
   return defaultValue ?? null;
 }
+
+// Modes where the agent CANNOT apply an edit and there's no interactive approve
+// path to unblock it (DDR-184 #3). `plan` = "no actual tool execution"; `dontAsk`
+// denies anything without a standing pre-approval (and Maude's default allow-list
+// only covers edits + `maude`, so an off-list step is silently denied). The
+// ChatPanel ModeBanner reads this to decide whether to show the loud alert. Keyed
+// off the mode id, never a label, so it stays truthful as the roster evolves.
+export const NO_EDIT_MODE_IDS = new Set(['plan', 'dontAsk']);
+export function modeBlocksEdits(modes) {
+  return !!modes?.currentModeId && NO_EDIT_MODE_IDS.has(modes.currentModeId);
+}

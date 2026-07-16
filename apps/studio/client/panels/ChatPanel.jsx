@@ -25,7 +25,12 @@ import {
   useThread,
 } from '@assistant-ui/react';
 
-import { flattenSelectOptions, parseConfigOptions, resolvePersistedPick } from './acp-capabilities.js';
+import {
+  flattenSelectOptions,
+  modeBlocksEdits,
+  parseConfigOptions,
+  resolvePersistedPick,
+} from './acp-capabilities.js';
 import { parseUsage } from './acp-usage.js';
 import {
   activityLabel,
@@ -206,6 +211,42 @@ function modeFootnote(modes) {
   const current = modes.availableModes.find((m) => m.id === modes.currentModeId);
   const name = current?.name || modes.currentModeId;
   return NO_PROMPT_MODE_IDS.has(modes.currentModeId) ? `${name} — no prompts` : `${name} — you'll be asked`;
+}
+
+// The loud, top-of-thread alert shown ONLY while the current mode blocks edits
+// (`modeBlocksEdits`, DDR-184 #3 — the quiet composer footnote above isn't enough
+// when a user typing "change X" silently gets nothing back).
+// Offers a one-click hop to the least-privilege mode that CAN edit (Accept Edits
+// if advertised, else Manual) so the fix is right there, not buried in the picker.
+function ModeBanner({ modes, onSetMode }) {
+  if (!modeBlocksEdits(modes)) return null;
+  const current = modes.availableModes.find((m) => m.id === modes.currentModeId);
+  const name = current?.name || modes.currentModeId;
+  const isPlan = modes.currentModeId === 'plan';
+  const ids = new Set(modes.availableModes.map((m) => m.id));
+  const target = ids.has('acceptEdits') ? 'acceptEdits' : ids.has('default') ? 'default' : null;
+  const targetName = target && (modes.availableModes.find((m) => m.id === target)?.name || target);
+  return (
+    <div className="chat-mode-banner" role="alert" data-testid="chat-mode-banner">
+      <span className="chat-mode-banner-icon" aria-hidden="true">⏸</span>
+      <span className="chat-mode-banner-text">
+        <b>{name}</b>{' — '}
+        {isPlan
+          ? "Claude is planning and won't edit files or run tools."
+          : 'edits and tools without a standing approval are denied — nothing will change.'}
+      </span>
+      {target ? (
+        <button
+          type="button"
+          className="chat-mode-banner-cta"
+          onClick={() => onSetMode(target)}
+          data-testid="chat-mode-banner-switch"
+        >
+          Switch to {targetName}
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 // ── pasted-path / URL → inline chip (Claude-Code-style attachment badge) ──
@@ -1627,6 +1668,9 @@ function ChatThread({
           transcriptView={transcriptView}
           onSetTranscriptView={onSetTranscriptView}
         />
+        {/* DDR-184 #3 — loud alert when the current mode can't edit (plan / dontAsk),
+            so a user typing "change X" isn't silently ignored. Above the feed. */}
+        <ModeBanner modes={caps.modes} onSetMode={onSetMode} />
         <ThreadPrimitive.Root className="chat-thread">
           <ThreadPrimitive.Viewport className="chat-feed" autoScroll>
             <ThreadPrimitive.Empty>

@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-184: ACP default tool allow-list (first-party tooling) + no-edit-mode banner](DDR-184-acp-default-tool-allowlist-and-no-edit-mode-banner.md) — 2026-07-16, acp/chat/permission/allowedtools/ddr-179-complement/ddr-062
 - [DDR-183: Scene-aware keyframe extraction — three-tier engine (Gemma → ffmpeg → blind), Settings-pref vs terminal self-detect](DDR-183-scene-aware-keyframes-tiered-engine.md) — 2026-07-16, footage/video-analysis/smart-frames/mlx-vlm/ffmpeg/settings/deps
 - [DDR-182: Print artboards — bleed-inside model, RGB-only scope, pdf-lib post-pass, single-source units](DDR-182-print-artboards-bleed-model-and-pdf-post-pass.md) — 2026-07-16, print/pdf/export/canvas-lib/units
 - [DDR-181: Artboard kind model (JSX-prop-authoritative) + overlay-layer contract](DDR-181-artboard-kind-model-and-overlay-layer-contract.md) — 2026-07-16, canvas-lib/artboard/print/web/video/snapping/ux

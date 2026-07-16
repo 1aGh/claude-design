@@ -1907,4 +1907,45 @@
   .brand-up-nextstep { margin: var(--space-4) 0 0; font-size: var(--type-sm); color: var(--fg-1); line-height: var(--lh-md); }
   .brand-up-nextstep code { font-family: var(--font-mono); background: var(--bg-3); padding: 1px 4px; border-radius: var(--radius-xs); }
   .brand-up-actions { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
+
+  /* DDR-184 #3 — loud top-of-thread alert while the current mode can't edit
+     (Plan / Don't-Ask). Warn-toned so it reads as "you're blocked", distinct
+     from the neutral usage banner. One-click hop back to an editing mode. */
+  .chat-mode-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0 var(--space-4) var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--warn, hsl(38 92% 50%));
+    border-radius: var(--radius-sm);
+    background: var(--bg-2);
+    color: var(--fg-1);
+    font-size: var(--type-xs);
+    line-height: var(--lh-md);
+  }
+  .chat-mode-banner-icon {
+    flex-shrink: 0;
+    color: var(--warn, hsl(38 92% 50%));
+  }
+  .chat-mode-banner-text {
+    flex: 1 1 auto;
+  }
+  .chat-mode-banner-text b {
+    color: var(--fg-0);
+  }
+  .chat-mode-banner-cta {
+    flex-shrink: 0;
+    appearance: none;
+    cursor: pointer;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-xs);
+    background: var(--bg-3);
+    color: var(--fg-0);
+    font-size: var(--type-xs);
+    padding: 2px var(--space-2);
+  }
+  .chat-mode-banner-cta:hover {
+    background: var(--bg-4);
+  }
 }

@@ -202,6 +202,40 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT
  * `LoadSessionRequest` (schema/types.gen.d.ts) — `sessionFor`'s resume path
  * spreads this same object and adds `sessionId` rather than duplicating it.
  */
+// The curated tool allow-list every Maude bridge session auto-approves, so the
+// design workflow (edit a canvas, then shell out to the `maude` CLI + its design
+// helpers) runs without a permission prompt on EVERY step — the out-of-box
+// "Manual mode blocks every edit" complaint this closes (DDR-184). Deliberately
+// NARROW, and a complement to (not a reversal of) DDR-179's "mode picker stays
+// honest": the session mode is left untouched at its default, so anything NOT on
+// this list still routes through the real approve/deny gate (requestPermission →
+// PermissionPrompt) — arbitrary `Bash(curl …)`/`rm`, WebFetch, unknown MCP tools.
+//
+//  • File tools (Read/Edit/Write/Glob/Grep/NotebookEdit) — the canvas-editing
+//    surface. Auto-approving Edit/Write is the accepted residual: edits land in
+//    the served project (already the edit target) and are reversible via the
+//    `_history/` snapshot stack.
+//  • `Bash(maude:*)` — the SINGLE rule that covers the entire design-helper
+//    surface, because DDR-062 routes every helper through `maude design <verb>`
+//    (screenshot / draw-* / canvas-rects / probe-footage / …) and their own deps
+//    (agent-browser, playwright, svgo) run as CHILDREN of that one bash call, so
+//    they need no separate entry. Bash NOT starting with `maude` still prompts.
+//
+// SOURCE-OF-TRUTH GUARD: this list is asserted against the `maude design` verb
+// dispatch (`cli/commands/design.mjs`) + `plugins/design/dependencies.json` by
+// acp-session-allowed-tools.test.ts — a future helper that is NOT reached via
+// `maude design` (a brand-new top-level tool, not a new verb) fails that test
+// loudly instead of silently prompting the user mid-workflow.
+export const MAUDE_DEFAULT_ALLOWED_TOOLS: readonly string[] = [
+  'Read',
+  'Edit',
+  'Write',
+  'Glob',
+  'Grep',
+  'NotebookEdit',
+  'Bash(maude:*)',
+];
+
 export function newSessionParams(
   repoRoot: string,
   studioBrief?: string,
@@ -219,7 +253,15 @@ export function newSessionParams(
   // deputy chain (the DDR-143 guard #6 follow-up). The project's CLAUDE.md is read
   // via a separate path and is unaffected. Always injected — every Maude bridge
   // session is auto-approving. `...plugins` (DDR-143) rides the same options object.
-  const options: Record<string, unknown> = { settingSources: ['user'] };
+  const options: Record<string, unknown> = {
+    settingSources: ['user'],
+    // DDR-184 — auto-approve Maude's own first-party tool surface so the design
+    // workflow never stalls on a per-edit / per-`maude` permission prompt. Rides
+    // the same `_meta.claudeCode.options` spread as `plugins`/`settings` below
+    // (`...userProvidedOptions`, acp-agent.js:2333→2455) into the SDK's
+    // `allowedTools` (sdk.d.ts:1331). Everything off this list still prompts.
+    allowedTools: [...MAUDE_DEFAULT_ALLOWED_TOOLS],
+  };
   if (plugins && plugins.length > 0) {
     options.plugins = plugins;
     // DDR-168 — the bundled `design` plugin is now injected UNCONDITIONALLY
