@@ -20,6 +20,16 @@ export function isTranscriptionProvider(v: unknown): v is TranscriptionProvider 
   return typeof v === 'string' && (TRANSCRIPTION_PROVIDERS as readonly string[]).includes(v);
 }
 
+/** Scene-aware keyframe engines (feature-scene-aware-keyframes) — the tier the
+ *  `gemma` scout → `ffmpeg` scene-detect → `blind` Chromium fallback ladder runs
+ *  in. `auto` self-detects installed deps. */
+export const KEYFRAME_ENGINES = ['auto', 'gemma', 'ffmpeg', 'blind'] as const;
+export type KeyframeEngine = (typeof KEYFRAME_ENGINES)[number];
+
+export function isKeyframeEngine(v: unknown): v is KeyframeEngine {
+  return typeof v === 'string' && (KEYFRAME_ENGINES as readonly string[]).includes(v);
+}
+
 function configPath(repoRoot: string): string {
   return join(repoRoot, '.design', 'config.json');
 }
@@ -77,6 +87,39 @@ export async function writeTranscriptionProvider(
     ...cfg,
     generation: { ...gen, transcription: { ...transcription, provider } },
   };
+  await Bun.write(configPath(repoRoot), `${JSON.stringify(next, null, 2)}\n`);
+  return true;
+}
+
+/** The current scene-aware keyframe engine preference, or 'auto' (the default). */
+export function readKeyframeEngine(repoRoot: string): KeyframeEngine {
+  const cfg = readConfig(repoRoot);
+  const gen = cfg.generation as Record<string, unknown> | undefined;
+  const kf = gen?.keyframes as Record<string, unknown> | undefined;
+  return isKeyframeEngine(kf?.engine) ? (kf?.engine as KeyframeEngine) : 'auto';
+}
+
+/**
+ * Persist the keyframe-engine choice into `.design/config.json`, preserving every
+ * other field (same additive-merge + fail-closed-on-corrupt discipline as the
+ * transcription writer).
+ */
+export async function writeKeyframeEngine(repoRoot: string, engine: string): Promise<boolean> {
+  if (!isKeyframeEngine(engine)) throw new Error(`invalid keyframe engine: ${engine}`);
+  const p = configPath(repoRoot);
+  if (existsSync(p)) {
+    try {
+      JSON.parse(readFileSync(p, 'utf8'));
+    } catch {
+      throw new Error(
+        '.design/config.json is present but not valid JSON — fix it before changing generation prefs (refusing to overwrite it)'
+      );
+    }
+  }
+  const cfg = readConfig(repoRoot);
+  const gen = (cfg.generation as Record<string, unknown>) ?? {};
+  const keyframes = (gen.keyframes as Record<string, unknown>) ?? {};
+  const next = { ...cfg, generation: { ...gen, keyframes: { ...keyframes, engine } } };
   await Bun.write(configPath(repoRoot), `${JSON.stringify(next, null, 2)}\n`);
   return true;
 }

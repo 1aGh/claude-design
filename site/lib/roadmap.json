@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-16T11:03:39.367Z",
+  "generated": "2026-07-16T19:28:33.917Z",
   "currentPhase": null,
   "phases": [
     {
@@ -505,6 +505,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, the binary-resolution path (DDR-009/045/084), the maude design <verb> dispatcher (DDR-062), npm files ship...",
       "planPath": ".ai/plans/archive/feature-runtime-restructure-apps-packages.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-scene-aware-keyframes",
+      "title": "Feature: Scene-aware keyframe extraction (`footage-keyframes` skill + `smart-frames` helper)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — mirror probe-footage / transcribe for the helper, and footage-director for the skill.",
+      "planPath": ".ai/plans/archive/feature-scene-aware-keyframes.md",
       "archived": true,
       "phaseKey": null
     },

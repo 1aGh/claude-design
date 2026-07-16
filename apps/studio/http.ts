@@ -49,10 +49,19 @@ import {
   setProviderKey,
 } from './generation/keys.ts';
 import {
+  isKeyframeEngine,
   isTranscriptionProvider,
+  readKeyframeEngine,
   readTranscriptionProvider,
+  writeKeyframeEngine,
   writeTranscriptionProvider,
 } from './generation/prefs.ts';
+import {
+  downloadGemmaModel,
+  ffmpegAvailable,
+  listGemmaModels,
+  mlxVlmAvailable,
+} from './generation/gemma-models.ts';
 import {
   createAdapter,
   getProviderDescriptor,
@@ -690,6 +699,11 @@ export function createHttp(
     total: number;
     error?: string;
   } | null = null;
+
+  // feature-scene-aware-keyframes — in-flight Gemma-model download state, polled by
+  // the Settings "Scene-aware keyframes" card via GET /_api/generate/keyframe-model.
+  // Closure-scoped: one server, one download.
+  let keyframeDownload: { id: string; received: number; total: number; error?: string } | null = null;
 
   // Cache invalidation — when canvas-lib changes, every cached canvas bundle
   // is stale because canvas-lib is inlined into each one via the resolver
@@ -3034,20 +3048,35 @@ export function createHttp(
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       if (req.method === 'GET') {
         return Response.json(
-          { transcriptionProvider: readTranscriptionProvider(ctx.paths.repoRoot) },
+          {
+            transcriptionProvider: readTranscriptionProvider(ctx.paths.repoRoot),
+            keyframeEngine: readKeyframeEngine(ctx.paths.repoRoot),
+          },
           { headers: { 'Cache-Control': 'no-store' } }
         );
       }
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      const body = await readJson<{ transcriptionProvider?: unknown }>(req, 4 * 1024);
-      const provider = body?.transcriptionProvider;
-      if (!isTranscriptionProvider(provider))
-        return new Response('transcriptionProvider must be whisper|elevenlabs|groq', {
-          status: 400,
-        });
+      const body = await readJson<{ transcriptionProvider?: unknown; keyframeEngine?: unknown }>(
+        req,
+        4 * 1024
+      );
+      // The panel POSTs ONE pref at a time (transcription engine OR keyframe engine).
       try {
+        if ('keyframeEngine' in (body ?? {})) {
+          const engine = body?.keyframeEngine;
+          if (!isKeyframeEngine(engine))
+            return new Response('keyframeEngine must be auto|gemma|ffmpeg|blind', { status: 400 });
+          await writeKeyframeEngine(ctx.paths.repoRoot, engine);
+          reloadConfig(ctx);
+          return Response.json({ keyframeEngine: engine }, { headers: { 'Cache-Control': 'no-store' } });
+        }
+        const provider = body?.transcriptionProvider;
+        if (!isTranscriptionProvider(provider))
+          return new Response('transcriptionProvider must be whisper|elevenlabs|groq', {
+            status: 400,
+          });
         await writeTranscriptionProvider(ctx.paths.repoRoot, provider);
         reloadConfig(ctx);
         return Response.json(
@@ -3267,6 +3296,79 @@ export function createHttp(
         { started: id },
         { status: 202, headers: { 'Cache-Control': 'no-store' } }
       );
+    },
+
+    // feature-scene-aware-keyframes — managed local Gemma-4 MLX scout models: GET
+    // lists the registry + which are downloaded + any in-flight download + the two
+    // availability signals (mlx-vlm runtime, ffmpeg) the Settings card needs to say
+    // which tier will run; POST {id} downloads one via huggingface_hub (gated on
+    // mlx-vlm being installed — the model is useless without it). MAIN-ORIGIN ONLY.
+    '/_api/generate/keyframe-model': async (req: Request) => {
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method === 'GET') {
+        // The GET builds availability by spawning subprocesses (import mlx_vlm is
+        // heavy). Gate it same-origin so a cross-origin no-cors flood can't drive a
+        // spawn-storm against the loopback server (DDR-183 security finding — the
+        // sibling audio-search GET added this guard for the same reason). The probes
+        // are also TTL-cached in gemma-models.ts as defence-in-depth.
+        if (!sameOriginRead(req)) return new Response('cross-origin read rejected', { status: 403 });
+        return Response.json(
+          {
+            models: listGemmaModels(),
+            downloading: keyframeDownload,
+            mlxVlmAvailable: mlxVlmAvailable(),
+            ffmpegAvailable: ffmpegAvailable(),
+          },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      if (req.method === 'DELETE') {
+        // Free a wedged download slot (a stalled HF connection) without waiting out
+        // the 60-min abort timeout (DDR-183 F4). Same-origin write-gated.
+        if (!sameOriginWrite(req)) return new Response('cross-origin write rejected', { status: 403 });
+        keyframeDownload = null;
+        return Response.json({ cancelled: true }, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!mlxVlmAvailable())
+        return new Response('mlx-vlm not installed — the Gemma scout needs an Apple-Silicon Mac + `pip install mlx-vlm`.', {
+          status: 400,
+        });
+      const body = await readJson<{ id?: unknown }>(req, 4 * 1024);
+      const id = typeof body?.id === 'string' ? body.id : '';
+      if (!listGemmaModels().some((m) => m.id === id))
+        return new Response('unknown model id', { status: 400 });
+      if (keyframeDownload && !keyframeDownload.error)
+        return new Response(`a download is already in progress (${keyframeDownload.id})`, {
+          status: 409,
+        });
+      keyframeDownload = { id, received: 0, total: 0 };
+      void downloadGemmaModel(
+        id,
+        (received, total) => {
+          if (keyframeDownload && keyframeDownload.id === id) {
+            keyframeDownload.received = received;
+            keyframeDownload.total = total;
+          }
+        },
+        AbortSignal.timeout(60 * 60_000) // multi-GB snapshots on a slow link
+      )
+        .then(() => {
+          if (keyframeDownload?.id === id) keyframeDownload = null;
+        })
+        .catch((err) => {
+          if (keyframeDownload?.id === id)
+            keyframeDownload = {
+              id,
+              received: keyframeDownload.received,
+              total: keyframeDownload.total,
+              error: err instanceof Error ? err.message : 'download failed',
+            };
+        });
+      return Response.json({ started: id }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
     },
 
     '/_canvas-state': async (req: Request) => {

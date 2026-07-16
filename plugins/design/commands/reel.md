@@ -1,7 +1,7 @@
 ---
 name: design:reel
 category: daily
-description: From a folder of raw clips (or the clips on the active canvas) to a directed, graphics-laden video cut — in one prompt. Ingests + content-addresses the footage, fans out the footage-analyst to WATCH each clip (vision keyframes), has the footage-director assemble an Edit Decision List, generates a Timeline-parseable `<TransitionSeries>` video-comp, and runs the motion + design critics. Vision-only (no audio analysis). Wraps `maude design ingest-footage`/`probe-footage` + the footage-analyst/footage-director agents + skill footage-director.
+description: From a folder of raw clips (or the clips on the active canvas) to a directed, graphics-laden video cut — in one prompt. Ingests + content-addresses the footage, runs the SHARED analysis step (same as `/design:video-analyze`: scene-aware keyframes via skill footage-keyframes → optional transcribe → the Read-only footage-analyst watches + returns JSON → orchestrator persists it), has the footage-director assemble an Edit Decision List, generates a Timeline-parseable `<TransitionSeries>` video-comp, and runs the motion + design critics. Wraps `maude design ingest-footage`/`smart-frames`/`transcribe` + the footage-analyst/footage-director agents + skills footage-keyframes/footage-director.
 argument-hint: "<Name> [<folder-path>] \"<brief>\" [--from-canvas] [--target-seconds N] [--fps N] [--aspect 16:9|9:16|1:1] [--frames N] [--music assets/<sha8>.mp3] [--generate-gaps] [--no-propose] [--no-critic]"
 ---
 
@@ -104,23 +104,39 @@ REF=$(maude design generate --modality video --provider gemini \
   > want me to generate?" path is **Step 3.5** below — same enforced consent gate,
   > but Maude initiates the proposal instead of the user.
 
-## Step 2 — Analyze each clip (fan out the footage-analyst)
+## Step 2 — Analyze each clip (the SHARED analysis step — same as `/design:video-analyze`)
 
-For each video clip, spawn `design:footage-analyst` (Task tool), **capped at 3–4
-concurrent** (the setup-ds fan-out ceiling). **Cache:** skip a clip only when its
-`assets/<sha8>.footage.json` already holds a **usable shot** (GET
-`/_api/footage?asset=<sha8>` returns an analysis with a `shots[]` entry whose
-`usable !== false`) — footage analysis is deterministic per clip hash, so
-re-running `/design:reel` on the same folder re-probes nothing. A bare
-**provenance stub** from a generated clip (Step 1.5 — tags include `ai-generated`,
-empty `shots`) is NOT a cache hit: analyze it so it gets real shots.
+> **One analysis workflow, no duplication.** Per-clip analysis here is the **exact
+> same three sub-steps** `/design:video-analyze` Step 3 owns: extract scene-aware
+> keyframes (skill `footage-keyframes` / `maude design smart-frames`) → optionally
+> transcribe → spawn the **Read-only, egress-free** `footage-analyst` to watch the
+> frames and RETURN JSON → the ORCHESTRATOR persists it via `PUT /_api/footage`. The
+> analyst never runs a command or writes a file (DDR-183 F2 — untrusted footage never
+> reaches an agent that could act on it). See `/design:video-analyze` for the canonical
+> description; do not re-derive it.
+
+For each video clip (fan out, **capped 3–4 concurrent**): (1) run
+`maude design smart-frames "assets/<sha8>.<ext>" --root "$REPO" --frames <N> --out-dir …`,
+(2) **optionally** `maude design transcribe` (reel is usually visual-first — transcribe
+only when spoken content should inform the cut; pass the transcript through for a
+`speech` note), (3) spawn the watch-only analyst with the manifest's `frames[]` +
+`SCOUT` (+ `TRANSCRIPT` if you transcribed) + `BRIEF`, (4) `PUT /_api/footage` with the
+JSON it returns.
+
+**Cache:** skip a clip whose `assets/<sha8>.footage.json` already holds a **usable
+shot** (GET `/_api/footage?asset=<sha8>` → a `shots[]` entry with `usable !== false`) —
+analysis is deterministic per clip hash, so re-running on the same folder re-analyzes
+nothing. A bare **provenance stub** from a generated clip (Step 1.5 — `ai-generated`
+tag, empty `shots`) is NOT a cache hit: analyze it so it gets real shots (keep the tag).
 
 ```
 Task tool → subagent_type: "design:footage-analyst"
-prompt: "ASSET=assets/<sha8>.mp4  ROOT=<repo>  PORT=<port>  BRIEF=\"<brief verbatim>\"  FRAMES=<--frames>.
-         Probe the clip, watch the keyframes, write its FootageAnalysis sidecar via PUT /_api/footage.
-         Return your JSON verdict."
+prompt: "ASSET=assets/<sha8>.mp4  DURATION=<durationSec>
+         FRAMES=<manifest frames[] {t,png} in order>  SCOUT=<sceneCuts+scoutBeats>
+         BRIEF=\"<brief verbatim>\"  [TRANSCRIPT=<text> if you transcribed].
+         Read the frames in t-order and RETURN the full FootageAnalysis JSON. Do not write anything."
 ```
+Then PUT the returned JSON to `/_api/footage?asset=<sha8>` yourself.
 
 Collect the verdicts. Drop clips that returned `{ error: "no video track" }`
 (surface them). If **no** clip yielded a usable shot, stop and report.

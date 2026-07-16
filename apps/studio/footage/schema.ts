@@ -150,6 +150,10 @@ export interface FootageAnalysis {
   summary?: string;
   /** Cross-cutting tags ("rebrand", "exterior", "people"). */
   tags?: string[];
+  /** Optional audio/speech note — gist + language of what is said, filled ONLY when
+   *  an orchestrator (e.g. /design:video-analyze) hands the analyst a transcript.
+   *  Absent for the default vision-only path (e.g. /design:reel). */
+  speech?: string;
 }
 
 /** An optional graphic overlay laid over a beat (title card / lower-third / logo). */
@@ -437,7 +441,7 @@ export function validateFootageAnalysis(input: unknown): ValidationResult {
   assertKeys(
     errors,
     input,
-    ['version', 'asset', 'durationSec', 'width', 'height', 'keyframes', 'shots', 'summary', 'tags'],
+    ['version', 'asset', 'durationSec', 'width', 'height', 'keyframes', 'shots', 'summary', 'tags', 'speech'],
     'root'
   );
   if ('version' in input && input.version != null && typeof input.version !== 'number')
@@ -449,6 +453,7 @@ export function validateFootageAnalysis(input: unknown): ValidationResult {
   intGe(errors, input, 'keyframes', 0, 'root');
   str(errors, input, 'summary', 4000, 'root');
   strArray(errors, input, 'tags', 64, 'root');
+  str(errors, input, 'speech', 4000, 'root');
 
   const dur = typeof input.durationSec === 'number' ? input.durationSec : Infinity;
   if ('shots' in input && input.shots != null) {

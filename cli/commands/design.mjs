@@ -87,6 +87,14 @@ const BIN_VERBS = new Set([
   // reads the clip as a file:// resource).
   'ingest-footage',
   'probe-footage',
+  // feature-scene-aware-keyframes. `smart-frames` is the scene-AWARE sibling of
+  // `probe-footage`: it selects keyframes at scene cuts + semantic action beats +
+  // endpoints (three tiers, auto-detected — gemma scout / ffmpeg scene-detect /
+  // blind Chromium floor) instead of a blind frame rate, and emits a SUPERSET of
+  // probe-footage's manifest (drop-in for the footage-analyst). No dev server.
+  // Owned by skill `footage-keyframes`; --engine auto self-detects deps so it
+  // works standalone as a terminal video analyzer.
+  'smart-frames',
   // feature-ai-media-generation (Phase 0, DDR-16x). `generate` is the thin
   // non-browser BYOK verb (curl → /_api/generate-jobs → poll → print the
   // produced /assets/<sha8>.<ext>). The provider call happens server-side (the
@@ -290,7 +298,7 @@ Dev-tooling (dispatch to the dev-server bash helpers — DDR-062):
   screenshot · server-up · prep · slug · bootstrap-check · runtime-health
   smoke · canvas-edit · handoff · asset-sweep · visual-sanity · fetch-asset
   draw-build · draw-proof · svg-optimize · to-lottie · read-annotations · annotate
-  canvas-rects · ingest-footage · probe-footage
+  canvas-rects · ingest-footage · probe-footage · smart-frames
   generate · transcribe · audio-search
         Invoke the bundled helper of the same name. maude resolves it from its
         own package root and sets CLAUDE_PLUGIN_ROOT for the child; stdout,

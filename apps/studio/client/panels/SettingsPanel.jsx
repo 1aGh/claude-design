@@ -385,6 +385,203 @@ function WhisperModelCard() {
   );
 }
 
+// feature-scene-aware-keyframes — the video-analysis frame-selection engine, the
+// sibling of the Subtitles section. Persists `keyframeEngine` to /_api/generate/prefs.
+const KEYFRAME_ENGINES = [
+  { id: 'auto', label: 'Auto', note: 'Use the best available: Gemma scout → ffmpeg → blind.' },
+  { id: 'gemma', label: 'Gemma scout', note: 'Semantic action beats. Needs Apple Silicon + mlx-vlm + a model.' },
+  { id: 'ffmpeg', label: 'ffmpeg scene-detect', note: 'Scene cuts + endpoints. Needs ffmpeg. No model download.' },
+  { id: 'blind', label: 'Blind (even-spaced)', note: 'Chromium fallback — works with neither ffmpeg nor Gemma.' },
+];
+
+function KeyframeEngineCard() {
+  const [engine, setEngine] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState(null);
+
+  useEffect(() => {
+    fetch('/_api/generate/prefs')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d) => setEngine(d?.keyframeEngine || 'auto'))
+      .catch(() => setEngine('auto'));
+  }, []);
+
+  async function choose(id) {
+    if (id === engine) return;
+    const prev = engine;
+    setEngine(id);
+    setBusy(true);
+    setStatus(null);
+    try {
+      const res = await fetch('/_api/generate/prefs', {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain' },
+        body: JSON.stringify({ keyframeEngine: id }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setStatus({ ok: true, msg: 'Saved.' });
+    } catch (err) {
+      setEngine(prev);
+      setStatus({ ok: false, msg: err && err.message ? err.message : 'save failed' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="st-provider-card">
+      <div className="st-provider-hd">
+        <span className="st-provider-name">Scene-aware keyframes — analysis engine</span>
+      </div>
+      <div className="st-provider-notes">
+        How Maude picks frames when it analyzes a video (`/design:video-analyze`, `/design:reel`).
+        Scene-aware beats a blind frame rate. This is an explicit choice — a chosen-but-unavailable
+        engine tells you how to fix it; <strong>Auto</strong> just uses the best you have installed.
+      </div>
+      <div className="st-engine-radios" role="radiogroup" aria-label="Keyframe engine">
+        {KEYFRAME_ENGINES.map((e) => (
+          <label key={e.id} className={'st-engine-radio' + (engine === e.id ? ' is-selected' : '')}>
+            <input
+              type="radio"
+              name="keyframe-engine"
+              value={e.id}
+              checked={engine === e.id}
+              disabled={busy || engine === null}
+              onChange={() => choose(e.id)}
+            />
+            <span className="st-engine-radio-body">
+              <span className="st-engine-radio-label">{e.label}</span>
+              <span className="st-engine-radio-note">{e.note}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      {status && (
+        <div
+          className="st-provider-status"
+          style={{ color: status.ok ? 'var(--accent)' : 'var(--danger, #e5484d)' }}
+        >
+          {status.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The MODEL half of the Gemma scout — one click, mirroring WhisperModelCard. The
+// RUNTIME (mlx-vlm) is a manual `pip install` the app can't do, so the download is
+// gated on mlxVlmAvailable and the card says which tier will actually run.
+function GemmaModelCard() {
+  const [state, setState] = useState(null); // { models, downloading, mlxVlmAvailable, ffmpegAvailable }
+  const [err, setErr] = useState(null);
+
+  const load = useCallback(() => {
+    fetch('/_api/generate/keyframe-model')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then(setState)
+      .catch((e) => setErr(e && e.message ? e.message : 'failed to load models'));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!state?.downloading) return undefined;
+    const t = setInterval(load, 1500);
+    return () => clearInterval(t);
+  }, [state?.downloading, load]);
+
+  async function download(id) {
+    setErr(null);
+    try {
+      const res = await fetch('/_api/generate/keyframe-model', {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain' },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      load();
+    } catch (e) {
+      setErr(e && e.message ? e.message : 'download failed');
+    }
+  }
+
+  const dl = state?.downloading;
+  const mlx = state?.mlxVlmAvailable;
+  const ff = state?.ffmpegAvailable;
+  const pctOf = (r, t) => (t > 0 ? Math.min(100, Math.round((r / t) * 100)) : 0);
+  const activeTier = mlx ? 'Gemma scout' : ff ? 'ffmpeg scene-detect' : 'blind (even-spaced)';
+
+  return (
+    <div className="st-provider-card">
+      <div className="st-provider-hd">
+        <span className="st-provider-name">Gemma scout model (optional)</span>
+      </div>
+      <div className="st-provider-notes">
+        The <strong>Gemma</strong> tier adds semantic action-beat detection on top of scene cuts. It
+        needs an <strong>Apple-Silicon Mac</strong> and the <code>mlx-vlm</code> runtime
+        (<code>pip install mlx-vlm</code> — a manual step Maude can’t do for you). Downloading a model
+        below is the one-click half. Models live in your HuggingFace cache, never committed.
+      </div>
+      {state && (
+        <div className="st-provider-notes">
+          On this machine the active tier is <strong>{activeTier}</strong>
+          {!mlx && ff && ' — install mlx-vlm + download a model to unlock the Gemma scout.'}
+          {!mlx && !ff && ' — install ffmpeg for scene-aware frames, or mlx-vlm for the Gemma scout.'}
+        </div>
+      )}
+      {err && (
+        <div className="st-provider-status" style={{ color: 'var(--danger, #e5484d)' }}>
+          {err}
+        </div>
+      )}
+      {dl?.error && (
+        <div className="st-provider-status" style={{ color: 'var(--danger, #e5484d)' }}>
+          Download of {dl.id} failed: {dl.error}
+        </div>
+      )}
+      {state === null && !err && <div className="st-settings-intro">Loading…</div>}
+      <div className="st-model-list">
+        {(state?.models || []).map((m) => {
+          const busy = dl && !dl.error && dl.id === m.id;
+          return (
+            <div key={m.id} className="st-model-row">
+              <div className="st-model-info">
+                <span className="st-model-label">
+                  {m.label}
+                  <span className="st-model-size">~{Math.round(m.sizeMB / 100) / 10} GB</span>
+                </span>
+                <span className="st-engine-radio-note">{m.note}</span>
+                {busy && (
+                  <span className="st-model-progress">Downloading… {pctOf(dl.received, dl.total)}%</span>
+                )}
+              </div>
+              <div className="st-model-actions">
+                {m.downloaded ? (
+                  <span className="st-provider-configured">
+                    <Icon name="check" size={12} /> ready
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="st-btn"
+                    disabled={!mlx || !!(dl && !dl.error)}
+                    title={mlx ? '' : 'Install mlx-vlm first (pip install mlx-vlm)'}
+                    onClick={() => download(m.id)}
+                  >
+                    {busy ? 'Downloading…' : mlx ? 'Download' : 'Needs mlx-vlm'}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // feature-unified-settings-modal — one modal for every Maude preference, laid
 // out as a left vertical tab rail + an internally-scrolling pane. Categories:
 const TABS = [
@@ -393,6 +590,7 @@ const TABS = [
   { id: 'layout', label: 'Layout' },
   { id: 'ai-generation', label: 'AI generation' },
   { id: 'subtitles', label: 'Subtitles' },
+  { id: 'video', label: 'Video' },
 ];
 const SETTINGS_TAB_STORE = 'mdcc-settings-tab';
 
@@ -819,6 +1017,19 @@ export default function SettingsPanel({
               <div className="st-rp-hd">Subtitles</div>
               <TranscriptionEngineCard />
               <WhisperModelCard />
+            </section>
+
+            {/* Video — scene-aware keyframe engine. Kept mounted so GemmaModelCard's
+                download poll survives a tab switch (like Subtitles above). */}
+            <section
+              role="tabpanel"
+              id="st-spanel-video"
+              aria-labelledby="st-stab-video"
+              hidden={tab !== 'video'}
+            >
+              <div className="st-rp-hd">Video</div>
+              <KeyframeEngineCard />
+              <GemmaModelCard />
             </section>
           </div>
         </div>

@@ -213,6 +213,41 @@
       "fallbackBehavior": "feature-ai-media-generation Phase 2 (DDR-164) — `maude design transcribe` uses whisper.cpp for local, no-key, word-timestamped subtitles (the DEFAULT subtitle path). Without it, transcription falls back to cloud STT (ElevenLabs Scribe / Groq Whisper) via a provider key. whisper.cpp also needs a ggml model file (--model / $MAUDE_WHISPER_MODEL); it ships no default and does not auto-download — see https://huggingface.co/ggerganov/whisper.cpp (e.g. ggml-large-v3-turbo.bin).",
       "usedBy": ["dev-server/bin/transcribe.sh", "dev-server/bin/_transcribe.mjs"],
       "docsUrl": "https://github.com/ggml-org/whisper.cpp"
+    },
+    {
+      "id": "ffmpeg",
+      "type": "cli",
+      "hardness": "soft",
+      "check": {
+        "command": "ffmpeg -version",
+        "expectExit": 0
+      },
+      "install": {
+        "darwin": "brew install ffmpeg",
+        "linux": "apt-get install -y ffmpeg || dnf install -y ffmpeg",
+        "preferred": "https://ffmpeg.org/download.html"
+      },
+      "autoInstall": false,
+      "fallbackBehavior": "feature-scene-aware-keyframes — the `ffmpeg` tier of `maude design smart-frames` (skill footage-keyframes) uses ffmpeg scene-detection to pick keyframes at real shot cuts. Without it, the extractor falls back to the blind Chromium tier (probe-footage, even-spaced) — still works, just not scene-aware.",
+      "usedBy": ["dev-server/bin/smart-frames.sh", "dev-server/bin/_smart-frames.mjs"],
+      "docsUrl": "https://ffmpeg.org"
+    },
+    {
+      "id": "mlx-vlm",
+      "type": "cli",
+      "hardness": "soft",
+      "check": {
+        "command": "python3 -c \"import mlx_vlm\"",
+        "expectExit": 0
+      },
+      "install": {
+        "darwin": "pip install mlx-vlm",
+        "preferred": "https://github.com/Blaizzy/mlx-vlm"
+      },
+      "autoInstall": false,
+      "fallbackBehavior": "feature-scene-aware-keyframes — OPT-IN. The `gemma` tier of `maude design smart-frames` runs a local Gemma-4 MLX scout (Apple Silicon only) to flag semantic action beats. Without it, smart-frames uses the ffmpeg or blind tier — no model download required. The scout also needs a Gemma-4 MLX model (--engine gemma / $MAUDE_GEMMA_MODEL, one-click in Studio Settings → Scene-aware keyframes).",
+      "usedBy": ["dev-server/bin/_smart-frames.mjs"],
+      "docsUrl": "https://github.com/Blaizzy/mlx-vlm"
     }
   ]
 }
