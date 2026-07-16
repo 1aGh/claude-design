@@ -2094,29 +2094,39 @@ function CanvasRouter({
       // request-layers re-walks + posts the tree for an artboard.
       if (m.dgn === 'select-by-id') {
         const mm = m as { id?: string; artboardId?: string | null; index?: number };
-        if (mm.id) {
-          const target = resolveSelectionEl(document, {
-            id: mm.id,
-            artboardId: mm.artboardId,
-            index: mm.index,
-          });
-          if (target) {
-            selSet.replace(
-              hoverTargetToSelection({
-                el: target,
-                cdId: mm.id,
-                artboardId: mm.artboardId ?? null,
-              } as HoverTarget)
-            );
-            // Task A1 — reveal THROUGH the camera, not host scroll. The old
-            // `scrollIntoView` scrolled the overflow:hidden `.dc-canvas` /
-            // `.dc-artboard-body` clip layers, desyncing the `.dc-world`
-            // transform (Bugs A + B). `revealElementViaCamera` pans the world
-            // the minimal amount only when the element is off-screen.
-            const host = hostRef.current;
-            if (host && zoomController) {
-              revealElementViaCamera(host, target as HTMLElement, zoomController);
-            }
+        // Dogfood follow-up — a bare ARTBOARD selection (no data-cd-id, the
+        // ArtboardKnobs panel's own case) has no `mm.id` to resolve by, so
+        // the element branch below never ran for it: after a structural
+        // artboard write (kind/print/style/hug/resize) the Inspector kept
+        // showing the PRE-edit attrs snapshot (e.g. "Digital" right after
+        // switching to "Print") until the user manually re-clicked the
+        // artboard. Resolve by the SAME `[data-dc-screen="<id>"]` selector
+        // ArtboardKnobs itself reads its selection from (dom-selection.ts
+        // `hoverTargetToSelection` "2. data-dc-screen" resolution order) when
+        // there's no cdId to anchor on.
+        const target = mm.id
+          ? resolveSelectionEl(document, { id: mm.id, artboardId: mm.artboardId, index: mm.index })
+          : mm.artboardId
+            ? resolveSelectionEl(document, {
+                selector: `[data-dc-screen="${CSS.escape(mm.artboardId)}"]`,
+              })
+            : null;
+        if (target) {
+          selSet.replace(
+            hoverTargetToSelection({
+              el: target,
+              cdId: mm.id,
+              artboardId: mm.artboardId ?? null,
+            } as HoverTarget)
+          );
+          // Task A1 — reveal THROUGH the camera, not host scroll. The old
+          // `scrollIntoView` scrolled the overflow:hidden `.dc-canvas` /
+          // `.dc-artboard-body` clip layers, desyncing the `.dc-world`
+          // transform (Bugs A + B). `revealElementViaCamera` pans the world
+          // the minimal amount only when the element is off-screen.
+          const host = hostRef.current;
+          if (host && zoomController) {
+            revealElementViaCamera(host, target as HTMLElement, zoomController);
           }
         }
         return;
@@ -2271,6 +2281,31 @@ function CanvasRouter({
         // feature-2-print-artboards T3 — "Show print guides" (bleed/trim/
         // margin overlay). Same per-canvas-persisted shape as `guides`.
         if (typeof mm.print === 'boolean') patch.print = mm.print;
+        // Dogfood follow-up — mirror `guides`/`print` into the in-iframe
+        // `window.__canvas_meta__.overlays` snapshot, exactly like the
+        // existing viewport/layout mirror in canvas-lib.tsx's onSettle (DDR-
+        // 138 comment: "populated ONCE at page load — so after a settle, a
+        // soft HMR remount (any module edit: text, reorder, agent edit)
+        // would re-read the STALE page-load [value]"). Without this, a
+        // structural edit AFTER toggling guides on (e.g. a kind switch,
+        // which is exactly such an edit) remounts DesignCanvasInner, its
+        // `guidesSeededRef` self-seed effect re-fires, and reads the stale
+        // page-load overlays snapshot — silently reverting a live-toggled
+        // guide back to hidden even though the View-menu checkbox still
+        // shows it checked. Same class of bug DDR-138 fixed for the camera;
+        // this is its `overlays` counterpart.
+        if (patch.guides !== undefined || patch.print !== undefined) {
+          const w = window as unknown as {
+            __canvas_meta__?: { overlays?: Record<string, boolean> };
+          };
+          if (w.__canvas_meta__) {
+            w.__canvas_meta__.overlays = {
+              ...w.__canvas_meta__.overlays,
+              ...(patch.guides !== undefined ? { guides: patch.guides } : {}),
+              ...(patch.print !== undefined ? { print: patch.print } : {}),
+            };
+          }
+        }
         chromeCtx.setChrome(patch);
         return;
       }

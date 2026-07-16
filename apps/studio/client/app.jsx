@@ -8026,6 +8026,32 @@ function App() {
       }, delay)
     );
   }, []);
+  // Dogfood follow-up — the ArtboardKnobs panel (Kind/Print/Style/Hug/W-H)
+  // writes via structuralWrite, which never refreshed the Inspector's OWN
+  // `attrs` snapshot afterward: the artboard itself re-rendered correctly
+  // (new kind, new size) but the Inspector kept showing the PRE-edit values
+  // (e.g. "Digital" right after picking "Print") until the user manually
+  // re-clicked the artboard. Mirrors scheduleHaloRestore's retry ladder
+  // (the HMR reload lands async, so a single immediate post races it) but
+  // for a bare ARTBOARD selection (no data-cd-id to key off of — compares
+  // by artboardId instead of id).
+  const artboardResyncTimersRef = useRef([]);
+  const scheduleArtboardResync = useCallback((artboardId, file) => {
+    if (!artboardId || !file) return;
+    for (const t of artboardResyncTimersRef.current) clearTimeout(t);
+    artboardResyncTimersRef.current = [50, 450, 1200, 2500, 5000].map((delay) =>
+      setTimeout(() => {
+        const cur = selectedRef.current;
+        const c1 = Array.isArray(cur) ? cur[0] : cur;
+        if (!c1 || c1.artboardId !== artboardId || c1.file !== file) return; // superseded
+        const frame = iframesRef.current.get(file);
+        if (!frame?.contentWindow) return;
+        try {
+          frame.contentWindow.postMessage({ dgn: 'select-by-id', artboardId }, '*');
+        } catch {}
+      }, delay)
+    );
+  }, []);
   // Phase 12.1 (DDR-138) — after a reorder writes source, the HMR reload remounts
   // the canvas and the positional data-cd-id of the moved element (and everything
   // after it) renumbers. Stash the re-settle target { file, movedId, artboardId }
@@ -11190,10 +11216,14 @@ function App() {
           // during the drag (no HMR yet); on a rejected/failed write, tell it to
           // restore the pre-drag box so a phantom resize doesn't linger.
           onFail: () => postToActiveCanvas({ dgn: 'resize-artboard-failed' }),
+          // Dogfood follow-up — resync the Inspector's own W/H (and any other
+          // attrs) once the HMR reload lands, so a paper-preset pick doesn't
+          // leave the fields showing the pre-resize size.
+          onOk: () => scheduleArtboardResync(artboardId, activePath),
         }
       );
     },
-    [structuralWrite, postToActiveCanvas]
+    [structuralWrite, postToActiveCanvas, scheduleArtboardResync, activePath]
   );
 
   const deleteArtboardShell = useCallback(
@@ -11211,27 +11241,45 @@ function App() {
       structuralWrite(
         '/_api/set-artboard-hug',
         { artboardId, fixed, freezeHeight },
-        { label: fixed ? 'pin artboard height' : 'hug artboard height' }
+        {
+          label: fixed ? 'pin artboard height' : 'hug artboard height',
+          onOk: () => scheduleArtboardResync(artboardId, activePath),
+        }
       );
     },
-    [structuralWrite]
+    [structuralWrite, scheduleArtboardResync, activePath]
   );
 
   // Artboard "more settings" (background/padding/layout/gap) from ArtboardKnobs.
   const setArtboardStyleShell = useCallback(
     (artboardId, patch) => {
-      structuralWrite('/_api/set-artboard-style', { artboardId, ...patch }, { label: 'artboard style' });
+      structuralWrite('/_api/set-artboard-style', { artboardId, ...patch }, {
+        label: 'artboard style',
+        onOk: () => scheduleArtboardResync(artboardId, activePath),
+      });
     },
-    [structuralWrite]
+    [structuralWrite, scheduleArtboardResync, activePath]
   );
   // feature-1-artboard-kinds-foundation, T8 — kind-switch surfaces. Direct
   // callable from ArtboardKnobs (Inspector); the context-menu submenu (inside
   // the iframe) reaches the SAME endpoint via the postMessage ref below.
+  //
+  // Dogfood follow-up — every one of these ArtboardKnobs writers now resyncs
+  // the Inspector's OWN selection snapshot once the HMR reload lands
+  // (scheduleArtboardResync's retry ladder). Before this fix the ARTBOARD
+  // re-rendered correctly (new kind, new paper size) but the Inspector kept
+  // showing PRE-edit attrs (e.g. "Digital" right after picking "Print",
+  // "Preset size…" still listing screen presets) until the user manually
+  // re-clicked the artboard — structuralWrite's onOk never refreshed
+  // `selected`, only recorded undo history.
   const setArtboardKindShell = useCallback(
     (artboardId, kind) => {
-      structuralWrite('/_api/set-artboard-kind', { artboardId, kind }, { label: 'artboard kind' });
+      structuralWrite('/_api/set-artboard-kind', { artboardId, kind }, {
+        label: 'artboard kind',
+        onOk: () => scheduleArtboardResync(artboardId, activePath),
+      });
     },
-    [structuralWrite]
+    [structuralWrite, scheduleArtboardResync, activePath]
   );
   // feature-2-print-artboards T2 — paper/orientation/bleed/margins. Direct
   // Inspector-only callable (no canvas-origin postMessage path — same shape
@@ -11239,9 +11287,12 @@ function App() {
   // context-menu caller inside the iframe).
   const setArtboardPrintShell = useCallback(
     (artboardId, print) => {
-      structuralWrite('/_api/set-artboard-print', { artboardId, print }, { label: 'artboard print' });
+      structuralWrite('/_api/set-artboard-print', { artboardId, print }, {
+        label: 'artboard print',
+        onOk: () => scheduleArtboardResync(artboardId, activePath),
+      });
     },
-    [structuralWrite]
+    [structuralWrite, scheduleArtboardResync, activePath]
   );
 
   // Stage I4 — "New artboard: <preset>" from the Edit menu. Generates a unique
