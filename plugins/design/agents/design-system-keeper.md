@@ -102,6 +102,8 @@ done
 
 then it's a `pattern-reinvention` warning. Otherwise downgrade to an `info` line in the report's notes (don't promote to a finding).
 
+**Kind-aware exception (feature-1-artboard-kinds-foundation).** Before promoting a Step-4 match to a finding, check the `kind` prop on the candidate's and the prior's enclosing `<DCArtboard>` (`grep -oE '<DCArtboard\b[^>]*\bkind="[a-z]+"' <file>` — absent `kind` resolves to `digital`, matching canvas-lib.tsx's own default). A structural divergence between artboards of **different** kinds (e.g. a `kind="print"` artboard's bleed/margin chrome vs a `kind="digital"` prior's card shape) is expected, not reinvention — downgrade to an `info` line instead of a `pattern-reinvention` warning. Same-kind artboards still get the full Step-4 treatment (kind doesn't excuse a real digital-vs-digital reinvention). Also recognize `kind` and `guides` (the generic layout-guides prop — `guides={{ columns: {...}, rows: {...}, grid: {...} }}`) as first-class `<DCArtboard>` props, not custom/ad-hoc attributes — neither should ever be flagged by any other pass as an unrecognized or reinvented attribute.
+
 **Step 5 — Surface findings.** Each finding format:
 
 ```

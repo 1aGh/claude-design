@@ -30,6 +30,20 @@ export interface SnapResult {
   guides: SnapGuide[];
 }
 
+/**
+ * T7 (feature-1-artboard-kinds-foundation) — a generic-layout-guide line
+ * (T5), in WORLD coordinates, offered to `computeSnap` the same way a
+ * stroke/artboard bbox candidate is. `at`/`from`/`to` mirror `SnapGuide`'s own
+ * shape (this IS the line, not a box to derive one from) — the caller
+ * (annotations-layer.tsx) resolves an artboard's `guides` prop into these.
+ */
+export interface GuideLineCandidate {
+  axis: 'x' | 'y';
+  at: number;
+  from: number;
+  to: number;
+}
+
 /** Snap threshold in world px at zoom 1 (callers scale by 1/zoom). */
 export const SNAP_THRESHOLD_PX = 6;
 
@@ -61,17 +75,26 @@ function gridDelta(pos: number, pitch: number, threshold: number): number | null
  * leading edge falls back to the canvas dot grid — weaker than smart guides
  * (geometry alignment wins over the lattice) and silent (no guide line, the
  * dots themselves are the visual). ⌘ suppresses both via the caller.
+ *
+ * T7 — `opts.guideLines` (generic layout guides, T5) feed the SAME candidate
+ * pool as stroke/artboard bboxes: each line is tested against all three
+ * moving lines (leading edge, center, trailing edge), exactly like a
+ * sibling/artboard edge, and competes on equal footing (nearest within
+ * threshold wins — a closer stroke edge still beats a farther guide line).
  */
 export function computeSnap(
   moving: SnapBox,
   candidates: readonly SnapBox[],
   threshold: number,
-  opts?: { grid?: number }
+  opts?: { grid?: number; guideLines?: readonly GuideLineCandidate[] }
 ): SnapResult {
   const grid = opts?.grid ?? 0;
-  if (threshold <= 0 || (candidates.length === 0 && grid <= 0)) return NO_SNAP;
-  let bestX: { d: number; at: number; cand: SnapBox } | null = null;
-  let bestY: { d: number; at: number; cand: SnapBox } | null = null;
+  const guideLines = opts?.guideLines ?? [];
+  if (threshold <= 0 || (candidates.length === 0 && guideLines.length === 0 && grid <= 0)) {
+    return NO_SNAP;
+  }
+  let bestX: { d: number; at: number; from: number; to: number } | null = null;
+  let bestY: { d: number; at: number; from: number; to: number } | null = null;
   const mx = lines(moving, 'x');
   const my = lines(moving, 'y');
   for (const c of candidates) {
@@ -81,7 +104,7 @@ export function computeSnap(
       for (const v of cx) {
         const d = v - m;
         if (Math.abs(d) <= threshold && (!bestX || Math.abs(d) < Math.abs(bestX.d))) {
-          bestX = { d, at: v, cand: c };
+          bestX = { d, at: v, from: c.y, to: c.y + c.h };
         }
       }
     }
@@ -89,7 +112,24 @@ export function computeSnap(
       for (const v of cy) {
         const d = v - m;
         if (Math.abs(d) <= threshold && (!bestY || Math.abs(d) < Math.abs(bestY.d))) {
-          bestY = { d, at: v, cand: c };
+          bestY = { d, at: v, from: c.x, to: c.x + c.w };
+        }
+      }
+    }
+  }
+  for (const g of guideLines) {
+    if (g.axis === 'x') {
+      for (const m of mx) {
+        const d = g.at - m;
+        if (Math.abs(d) <= threshold && (!bestX || Math.abs(d) < Math.abs(bestX.d))) {
+          bestX = { d, at: g.at, from: g.from, to: g.to };
+        }
+      }
+    } else {
+      for (const m of my) {
+        const d = g.at - m;
+        if (Math.abs(d) <= threshold && (!bestY || Math.abs(d) < Math.abs(bestY.d))) {
+          bestY = { d, at: g.at, from: g.from, to: g.to };
         }
       }
     }
@@ -109,16 +149,16 @@ export function computeSnap(
     guides.push({
       axis: 'x',
       at: bestX.at,
-      from: Math.min(moving.y + dy, bestX.cand.y),
-      to: Math.max(moving.y + moving.h + dy, bestX.cand.y + bestX.cand.h),
+      from: Math.min(moving.y + dy, bestX.from),
+      to: Math.max(moving.y + moving.h + dy, bestX.to),
     });
   }
   if (bestY) {
     guides.push({
       axis: 'y',
       at: bestY.at,
-      from: Math.min(moving.x + dx, bestY.cand.x),
-      to: Math.max(moving.x + moving.w + dx, bestY.cand.x + bestY.cand.w),
+      from: Math.min(moving.x + dx, bestY.from),
+      to: Math.max(moving.x + moving.w + dx, bestY.to),
     });
   }
   return { dx, dy, guides };

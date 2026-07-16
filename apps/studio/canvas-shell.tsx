@@ -570,10 +570,17 @@ function getLastLayersArtboardId(): string | null {
 // DDR-148 — an artboard hosting a <VideoComp> stamps a `[data-comp-id]`
 // element inside it (see video-comp.tsx). Gates the artboard-chrome context
 // menu's "Open Timeline" entry to artboards that actually have a sequence.
+// T2 (feature-1-artboard-kinds-foundation) — merged with the resolved `kind`:
+// an explicit `kind="video"` (DCArtboard's `data-dc-kind` readback) also
+// qualifies, even before any `<VideoComp>` content exists yet; the structural
+// `[data-comp-id]` check stays as the fallback for unmigrated canvases.
 function artboardHasVideo(artboardId: string | null | undefined): boolean {
   if (typeof document === 'undefined' || !artboardId) return false;
   try {
-    return !!document.querySelector(`[data-dc-screen="${CSS.escape(artboardId)}"] [data-comp-id]`);
+    const root = document.querySelector(`[data-dc-screen="${CSS.escape(artboardId)}"]`);
+    if (!root) return false;
+    if (root.getAttribute('data-dc-kind') === 'video') return true;
+    return !!root.querySelector('[data-comp-id]');
   } catch {
     return false;
   }
@@ -1421,6 +1428,56 @@ function buildRegistry(deps: {
     ],
   };
 
+  // feature-1-artboard-kinds-foundation, T8 — kind-switch submenu, same
+  // shape as themeItem above (a parent-only MenuItem whose onSelect never
+  // fires). The write is main-origin-only (DDR-054): post to the parent
+  // shell (dgn:'set-artboard-kind-request'), which calls
+  // api.setArtboardKindOp and records undo — mirrors delete-artboard-request.
+  const postArtboardKindRequest = (artboardId: string, kind: string | null): void => {
+    try {
+      window.parent.postMessage({ dgn: 'set-artboard-kind-request', artboardId, kind }, '*');
+    } catch {
+      /* detached / cross-origin */
+    }
+  };
+  const kindItem: MenuItem = {
+    id: 'kind',
+    label: 'Artboard kind',
+    onSelect: () => {
+      /* parent of a submenu — never invoked directly */
+    },
+    submenu: [
+      {
+        id: 'kind-digital',
+        label: 'Digital (default)',
+        onSelect: (target) => {
+          if (target.artboardId) postArtboardKindRequest(target.artboardId, null);
+        },
+      },
+      {
+        id: 'kind-print',
+        label: 'Print',
+        onSelect: (target) => {
+          if (target.artboardId) postArtboardKindRequest(target.artboardId, 'print');
+        },
+      },
+      {
+        id: 'kind-web',
+        label: 'Web',
+        onSelect: (target) => {
+          if (target.artboardId) postArtboardKindRequest(target.artboardId, 'web');
+        },
+      },
+      {
+        id: 'kind-video',
+        label: 'Video',
+        onSelect: (target) => {
+          if (target.artboardId) postArtboardKindRequest(target.artboardId, 'video');
+        },
+      },
+    ],
+  };
+
   return {
     element: [
       [
@@ -1771,7 +1828,7 @@ function buildRegistry(deps: {
           onSelect: () => distributeArtboards('y'),
         },
       ],
-      [themeItem],
+      [themeItem, kindItem],
       [
         {
           id: 'delete-artboard',
@@ -2188,13 +2245,18 @@ function CanvasRouter({
       }
       // Shell View-menu chrome toggles + Presentation Mode. Only the fields the
       // shell sends are merged, so a `{ present: true }` enter keeps the user's
-      // individual minimap/zoom toggles for the eventual exit.
+      // individual minimap/zoom toggles for the eventual exit. `guides` (T6) is
+      // the odd one out — per-CANVAS persisted state, not a global pref — but
+      // rides the same live-broadcast channel; the shell PATCHes view.json
+      // separately (see setGuidesVisible in app.jsx).
       if (m.dgn === 'view-chrome' && chromeCtx) {
-        const mm = m as { minimap?: boolean; zoom?: boolean; present?: boolean };
-        const patch: { minimap?: boolean; zoom?: boolean; present?: boolean } = {};
+        const mm = m as { minimap?: boolean; zoom?: boolean; present?: boolean; guides?: boolean };
+        const patch: { minimap?: boolean; zoom?: boolean; present?: boolean; guides?: boolean } =
+          {};
         if (typeof mm.minimap === 'boolean') patch.minimap = mm.minimap;
         if (typeof mm.zoom === 'boolean') patch.zoom = mm.zoom;
         if (typeof mm.present === 'boolean') patch.present = mm.present;
+        if (typeof mm.guides === 'boolean') patch.guides = mm.guides;
         chromeCtx.setChrome(patch);
         return;
       }

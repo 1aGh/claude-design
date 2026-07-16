@@ -101,6 +101,11 @@ import {
 } from 'react';
 
 import { ArtboardActivityOverlay } from './artboard-activity-overlay.tsx';
+import {
+  ArtboardGuidesOverlay,
+  type GuideDefinitions,
+  type OverlayVisibility,
+} from './artboard-guides-overlay.tsx';
 import { CanvasShell } from './canvas-shell.tsx';
 import {
   buildMoveArtboardsRecord,
@@ -299,6 +304,21 @@ const ENGINE_CSS = `
   color: var(--fg-1, #4a3f30);
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 }
+/* T3 — per-kind chrome. Subtle tint on the header + a small glyph before the
+   label text, for any non-digital kind. digital (the default, and every
+   unmigrated canvas) renders no chip and no tint — byte-identical chrome. */
+.dc-canvas .dc-artboard[data-dc-kind]:not([data-dc-kind='digital']) .dc-artboard-label {
+  background: color-mix(in oklab, var(--accent, var(--fg-2, #4a3f30)) 10%, var(--bg-2, #e8e3d8));
+}
+.dc-canvas .dc-artboard-kind-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 6px;
+  color: var(--accent, var(--fg-1, #4a3f30));
+  opacity: 0.85;
+  vertical-align: -1px;
+}
 .dc-canvas .dc-artboard-body {
   flex: 1;
   position: relative;
@@ -379,12 +399,25 @@ function ensureEngineStyles(): void {
 // world-coord positioning) and by DCSection (which collapses inside the
 // canvas) and by future T3 components (MiniMap, ZoomToolbar).
 
+/**
+ * What an artboard IS — digital screen / print page / web flow / video comp.
+ * Absent JSX prop resolves to `digital` (DDR-027-consistent: JSX is truth,
+ * no meta PATCH lane). Drives chrome (T3), the guides overlay content
+ * registry (T4), and generation/editing rules downstream (feature-2-print,
+ * feature-3-web).
+ */
+export type ArtboardKind = 'digital' | 'print' | 'web' | 'video';
+
 export interface ArtboardRect {
   id: string;
   x: number;
   y: number;
   w: number;
   h: number;
+  /** Resolved kind (explicit `kind` prop, or `video` fallback via
+   *  `subtreeHasVideoComp`, or `digital`) — JSX-authoritative, recomputed
+   *  from `harvestArtboards` every render; never persisted to meta. */
+  kind: ArtboardKind;
 }
 
 export interface ViewportState {
@@ -445,7 +478,10 @@ interface ArtboardSeed {
   id: string;
   w: number;
   h: number;
+  kind: ArtboardKind;
 }
+
+const ARTBOARD_KINDS: ReadonlySet<string> = new Set(['digital', 'print', 'web', 'video']);
 
 /**
  * Walk a children subtree harvesting DCArtboard descriptors in render order.
@@ -469,11 +505,22 @@ function harvestArtboards(children: ReactNode): ArtboardSeed[] {
       (typeof type === 'function' &&
         (type as { displayName?: string }).displayName === 'DCArtboard');
     if (isArtboard) {
-      const props = node.props as { id?: string; width?: number; height?: number };
+      const props = node.props as {
+        id?: string;
+        width?: number;
+        height?: number;
+        kind?: string;
+        children?: ReactNode;
+      };
+      const explicitKind =
+        typeof props.kind === 'string' && ARTBOARD_KINDS.has(props.kind)
+          ? (props.kind as ArtboardKind)
+          : undefined;
       out.push({
         id: typeof props.id === 'string' && props.id.length > 0 ? props.id : `__ab_${auto}`,
         w: typeof props.width === 'number' ? props.width : VP_GRID.w,
         h: typeof props.height === 'number' ? props.height : VP_GRID.h,
+        kind: explicitKind ?? (subtreeHasVideoComp(props.children) ? 'video' : 'digital'),
       });
       auto++;
       return;
@@ -529,6 +576,7 @@ function synthDefaultGrid(seeds: ArtboardSeed[]): ArtboardRect[] {
       y: row * (cellH + VP_GRID.gutter),
       w: seed.w,
       h: seed.h,
+      kind: seed.kind,
     };
   });
 }
@@ -565,6 +613,9 @@ function readCanvasMeta():
   | {
       layout?: { artboards?: ArtboardRect[] };
       viewport?: ViewportState;
+      /** T6 — per-user overlay-visibility bag, GET-merged in from view.json
+       *  server-side (never present in the versioned `.meta.json` itself). */
+      overlays?: OverlayVisibility;
     }
   | undefined {
   if (typeof window === 'undefined') return undefined;
@@ -572,6 +623,7 @@ function readCanvasMeta():
     __canvas_meta__?: {
       layout?: { artboards?: ArtboardRect[] };
       viewport?: ViewportState;
+      overlays?: OverlayVisibility;
     };
   };
   return w.__canvas_meta__;
@@ -1487,6 +1539,24 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const worldRef = useRef<HTMLDivElement | null>(null);
 
+  // T6 — self-seed the (per-canvas, persisted) guides visibility into the
+  // shared ChromeVisibilityContext once at mount, from the SAME
+  // window.__canvas_meta__ snapshot the viewport/layout reads above use.
+  // Unlike minimap/zoom/present (global shell prefs pushed in via postMessage
+  // shortly after load), `guides` has no global default to race — it's
+  // read directly out of this canvas's own meta, so there's nothing to wait
+  // for. The shell's View-menu toggle then live-updates it through the same
+  // `dgn:'view-chrome'` channel as the other three flags.
+  const chrome = useChromeVisibility();
+  const guidesSeededRef = useRef(false);
+  useEffect(() => {
+    if (guidesSeededRef.current || !chrome) return;
+    guidesSeededRef.current = true;
+    if (readCanvasMeta()?.overlays?.guides === true) {
+      chrome.setChrome({ guides: true });
+    }
+  }, [chrome]);
+
   const seeds = useMemo(() => harvestArtboards(children), [children]);
 
   // Merge JSX-derived defaults with meta-persisted positions. Per DDR-027,
@@ -1511,6 +1581,10 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
         y: Number.isFinite(m.y) ? m.y : d.y,
         w: typeof m.w === 'number' && m.w > 0 ? m.w : d.w,
         h: typeof m.h === 'number' && m.h > 0 ? m.h : d.h,
+        // kind is JSX-authoritative like w/h (DDR-027) but, unlike w/h, was
+        // never part of the legacy persisted layout shape — always the fresh
+        // seed value, no meta fallback to tolerate.
+        kind: d.kind,
       };
     });
   }, [seeds]);
@@ -1804,6 +1878,57 @@ export function DCSection({
 DCSection.displayName = 'DCSection';
 
 /**
+ * Small monochrome glyph shown in the SKU-strip header for a non-`digital`
+ * artboard (T3). Mirrors the corner video-badge's stroke style (viewBox 16,
+ * `currentColor`, ~1.2px stroke) for chrome consistency. `video` reuses that
+ * exact badge glyph.
+ */
+function ArtboardKindIcon({ kind }: { kind: ArtboardKind }) {
+  if (kind === 'print') {
+    return (
+      <svg viewBox="0 0 16 16" width="10" height="10" fill="none" aria-hidden="true">
+        <rect
+          x="3"
+          y="1.5"
+          width="10"
+          height="5"
+          rx="0.5"
+          stroke="currentColor"
+          strokeWidth="1.2"
+        />
+        <rect x="1.5" y="6" width="13" height="6" rx="1" stroke="currentColor" strokeWidth="1.2" />
+        <rect x="4.5" y="10.5" width="7" height="4" stroke="currentColor" strokeWidth="1.1" />
+      </svg>
+    );
+  }
+  if (kind === 'web') {
+    return (
+      <svg viewBox="0 0 16 16" width="10" height="10" fill="none" aria-hidden="true">
+        <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.2" />
+        <path
+          d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"
+          stroke="currentColor"
+          strokeWidth="1.1"
+        />
+      </svg>
+    );
+  }
+  // video — same glyph as the corner Timeline badge.
+  return (
+    <svg viewBox="0 0 16 16" width="10" height="10" fill="none" aria-hidden="true">
+      <rect x="1.5" y="4.5" width="8" height="7" rx="1.2" stroke="currentColor" strokeWidth="1.3" />
+      <path
+        d="M9.5 7l4-2.3v6.6l-4-2.3"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+ArtboardKindIcon.displayName = 'ArtboardKindIcon';
+
+/**
  * Bordered artboard with a SKU-strip header. Inside DesignCanvas its world
  * position comes from meta.layout (or the synthesized default grid); the
  * given `width` + `height` props are honored only as a fallback when the
@@ -1820,6 +1945,8 @@ export function DCArtboard({
   padding,
   layout,
   gap,
+  kind,
+  guides,
   children,
 }: {
   id: string;
@@ -1839,11 +1966,21 @@ export function DCArtboard({
   layout?: 'block' | 'flex-col' | 'flex-row' | 'grid';
   /** `.dc-artboard-body` gap, px — only visible under flex-col/flex-row/grid. */
   gap?: number;
+  /** What this artboard IS — digital screen / print page / web flow / video
+   *  comp. Absent ⇒ `digital` (or `video` when the subtree contains a
+   *  `<VideoComp>`, for unmigrated canvases — see `subtreeHasVideoComp`).
+   *  An explicit prop always supersedes that structural fallback. */
+  kind?: ArtboardKind;
+  /** Generic layout guides (T5) — Figma-vocabulary columns/rows/grid,
+   *  versioned design intent. Kind-agnostic: any artboard can carry these
+   *  regardless of `kind`. Visibility is per-user (T6), not this prop. */
+  guides?: GuideDefinitions;
   children: ReactNode;
 }) {
   const ctx = useWorldContext();
   const _controller = useViewportControllerContext();
   const toolMode = useToolModeOptional();
+  const chrome = useChromeVisibility();
   const selSet = useSelectionSetOptional();
   const dragBus = useDragStateContext();
   // Phase 13 / DDR-029 — live "agent works here" overlay. Inert (present=false)
@@ -1853,10 +1990,15 @@ export function DCArtboard({
   // its presence color + show its funny name instead of the generic file label.
   const agent = useAgentPresence();
   const rect = ctx ? ctx.rectFor(id) : null;
+  // T1/T2 — explicit `kind` wins; `subtreeHasVideoComp` is the fallback that
+  // keeps existing unmigrated video canvases badged identically without
+  // requiring a JSX edit (Design Decision 1).
+  const hasVideoContent = useMemo(() => subtreeHasVideoComp(children), [children]);
+  const resolvedKind: ArtboardKind = kind ?? (hasVideoContent ? 'video' : 'digital');
   // DDR-148 — badge video artboards in the header; clicking the badge opens
   // the timeline panel via the same postMessage the context-menu "Open
   // Timeline" entry already sends (canvas-shell.tsx artboardHasVideo/handler).
-  const hasVideo = useMemo(() => subtreeHasVideoComp(children), [children]);
+  const hasVideo = resolvedKind === 'video';
   const openTimeline = useCallback(
     (e: ReactMouseEvent<HTMLButtonElement>) => {
       e.stopPropagation();
@@ -1946,6 +2088,11 @@ export function DCArtboard({
     'data-dc-padding': typeof padding === 'number' ? String(padding) : undefined,
     'data-dc-layout': layout,
     'data-dc-gap': typeof gap === 'number' ? String(gap) : undefined,
+    // Always present (unlike the optional-override props above) — this is a
+    // resolved classification, not a "no override" style knob. Chrome, the
+    // Inspector kind picker (T8), and canvas-shell's artboardHasVideo gate
+    // (T2) all key off this attribute.
+    'data-dc-kind': resolvedKind,
   };
 
   if (!ctx || !rect) {
@@ -2038,6 +2185,11 @@ export function DCArtboard({
         {...handleProps}
       >
         <button type="button" className="dc-artboard-label sku" aria-label={`Artboard ${label}`}>
+          {resolvedKind !== 'digital' ? (
+            <span className="dc-artboard-kind-chip" aria-hidden="true">
+              <ArtboardKindIcon kind={resolvedKind} />
+            </span>
+          ) : null}
           {label}
         </button>
         {hasVideo ? (
@@ -2079,6 +2231,16 @@ export function DCArtboard({
           color={agent?.color}
         />
       ) : null}
+      {/* T4 — world-coord sibling, same reasoning as ArtboardActivityOverlay
+          above: must stay OUTSIDE `.dc-artboard`'s contain:paint/
+          content-visibility subtree so guides are never culled/frozen with
+          exported content (they're never exported at all). */}
+      <ArtboardGuidesOverlay
+        rect={{ x: liveX, y: liveY, w: rect.w, h: rect.h }}
+        kind={resolvedKind}
+        guides={guides}
+        visibility={{ guides: chrome?.guides ?? false }}
+      />
     </>
   );
 }

@@ -44,8 +44,10 @@ export type SnapAxis = 'x' | 'y';
  *  different visual treatments (grid = lighter gray fallback; sibling = full
  *  magenta confidence). `delta` is the signed correction the snap applied;
  *  the overlay renders a `Δ{Math.round(delta)}` pill mid-span when |delta| > 0
- *  and the guide span > 60 px. */
-export type SnapKind = 'grid' | 'sibling';
+ *  and the guide span > 60 px. `guide` (feature-1-artboard-kinds-foundation
+ *  T7) is a third source — an artboard's own generic layout guide lines
+ *  (T5), offered the same confidence treatment as `sibling`. */
+export type SnapKind = 'grid' | 'sibling' | 'guide';
 
 export interface SnapGuide {
   /** `"x"` → vertical line (snapping X coord). Line sits at `pos` on X,
@@ -72,6 +74,29 @@ export interface SnapResult {
   guides: SnapGuide[];
 }
 
+/**
+ * T7 — a single generic-layout-guide line (T5) in WORLD coordinates, ready to
+ * snap against. The caller (canvas-lib/canvas-shell) resolves an artboard's
+ * `guides` prop (columns/rows/grid, artboard-LOCAL coordinates) into these
+ * world-space lines — `computeSnap` itself stays artboard-agnostic, same as
+ * it already is for sibling rects.
+ */
+export interface GuideLineCandidate {
+  axis: SnapAxis;
+  pos: number;
+  from: number;
+  to: number;
+}
+
+/**
+ * T7 — the two snap-source presets: `layout` (default) offers sibling edges/
+ * centers AND guide lines, falling back to the grid; `pixel` offers ONLY the
+ * grid — for pixel-precise placement work where guide/sibling magnetism would
+ * get in the way. Affinity's "2 intent presets, not 15 toggles" call (see the
+ * plan's Design Decision 4).
+ */
+export type SnapIntent = 'layout' | 'pixel';
+
 export interface SnapOptions {
   /** World-units between grid lines. Default 40. */
   gridSize: number;
@@ -79,6 +104,11 @@ export interface SnapOptions {
   tolerance: number;
   /** Skip all snap math + return proposed unchanged (Alt-held bypass). */
   disabled: boolean;
+  /** Generic layout guide lines to snap against, in world coordinates. */
+  guideLines?: GuideLineCandidate[];
+  /** Which candidate sources are active. Default `'layout'` when omitted, so
+   *  every existing call site (pre-T7) keeps today's sibling+grid behavior. */
+  intent?: SnapIntent;
 }
 
 interface AxisCandidate {
@@ -141,6 +171,7 @@ export function computeSnap(proposed: Rect, others: Rect[], opts: SnapOptions): 
     return { x: proposed.x, y: proposed.y, guides: [] };
   }
   const { gridSize, tolerance } = opts;
+  const intent = opts.intent ?? 'layout';
   const propLeft = proposed.x;
   const propRight = proposed.x + proposed.w;
   const propCenterX = proposed.x + proposed.w / 2;
@@ -152,7 +183,8 @@ export function computeSnap(proposed: Rect, others: Rect[], opts: SnapOptions): 
   const yCands: AxisCandidate[] = [];
 
   // Grid candidates — left edge for X, top edge for Y. Perpendicular extent
-  // is just the proposed rect's own range (no sibling involved).
+  // is just the proposed rect's own range (no sibling involved). Grid is the
+  // one source active under BOTH intent presets (T7 Design Decision 4).
   const gridX = nearestGridDelta(propLeft, gridSize, tolerance);
   if (gridX !== null) {
     xCands.push({
@@ -174,8 +206,44 @@ export function computeSnap(proposed: Rect, others: Rect[], opts: SnapOptions): 
     });
   }
 
-  // Sibling candidates.
-  for (const other of others) {
+  // T7 — generic-layout-guide-line candidates ("Layout" intent only). Each
+  // world-space line is tested the same three ways a sibling edge/center is
+  // (leading edge, trailing edge, center) — Figma's own layout-guide snap
+  // behavior — so a guide line snaps whichever part of the proposed rect
+  // lands closest, not just its leading edge (unlike the grid pass above).
+  if (intent === 'layout') {
+    for (const g of opts.guideLines ?? []) {
+      if (g.axis === 'x') {
+        for (const propCoord of [propLeft, propRight, propCenterX]) {
+          const delta = g.pos - propCoord;
+          if (Math.abs(delta) > tolerance) continue;
+          xCands.push({
+            delta,
+            pos: g.pos,
+            from: Math.min(propTop, g.from),
+            to: Math.max(propBottom, g.to),
+            kind: 'guide',
+          });
+        }
+      } else {
+        for (const propCoord of [propTop, propBottom, propCenterY]) {
+          const delta = g.pos - propCoord;
+          if (Math.abs(delta) > tolerance) continue;
+          yCands.push({
+            delta,
+            pos: g.pos,
+            from: Math.min(propLeft, g.from),
+            to: Math.max(propRight, g.to),
+            kind: 'guide',
+          });
+        }
+      }
+    }
+  }
+
+  // Sibling candidates ("Layout" intent only — "Pixel" is grid-only per T7
+  // Design Decision 4).
+  for (const other of intent === 'layout' ? others : []) {
     const oLeft = other.x;
     const oRight = other.x + other.w;
     const oCenterX = other.x + other.w / 2;

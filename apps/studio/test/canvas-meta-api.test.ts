@@ -357,3 +357,170 @@ describe('/_api/canvas-meta — GET/PATCH (DDR-115 camera split)', () => {
     }
   });
 });
+
+// feature-1-artboard-kinds-foundation, T6 — per-user overlay-visibility lane.
+// Same camera-split contract as `viewport` above: `overlays` lives ONLY in the
+// gitignored per-machine view file, never the versioned `.meta.json`.
+describe('/_api/canvas-meta — overlays lane (T6)', () => {
+  test('PATCH overlays leaves meta byte-unchanged + writes the view file', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const tsxAbs = join(designRoot, 'ui', 'Overlays.tsx');
+      writeFileSync(tsxAbs, 'export default function O(){return <main/>}\n');
+      const metaAbs = tsxAbs.replace(/\.tsx$/, '.meta.json');
+      writeFileSync(metaAbs, JSON.stringify({ title: 'Overlays', sections: [] }));
+      const before = readFileSync(metaAbs, 'utf8');
+      const file = repoRel(designRoot, tsxAbs);
+
+      const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { overlays: { guides: true } } }),
+      });
+      expect(r.status).toBe(200);
+      const merged = (await r.json()) as MetaShape;
+      expect(merged.overlays).toEqual({ guides: true });
+
+      // KEYSTONE — versioned meta is byte-identical; no last_modified bump.
+      expect(readFileSync(metaAbs, 'utf8')).toBe(before);
+
+      const vAbs = viewPath(designRoot, 'ui-overlays');
+      expect(existsSync(vAbs)).toBe(true);
+      const view = JSON.parse(readFileSync(vAbs, 'utf8'));
+      expect(view.overlays).toEqual({ guides: true });
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('absent overlays key resolves to hidden (T6 Gotcha — old view files default off)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const tsxAbs = join(designRoot, 'ui', 'NoOverlays.tsx');
+      writeFileSync(tsxAbs, 'export default function N(){return <main/>}\n');
+      writeFileSync(tsxAbs.replace(/\.tsx$/, '.meta.json'), JSON.stringify({ title: 'N' }));
+      const file = repoRel(designRoot, tsxAbs);
+
+      const r = await fetch(
+        `http://localhost:${port}/_api/canvas-meta?file=${encodeURIComponent(file)}`
+      );
+      const m = (await r.json()) as MetaShape;
+      expect(m.overlays).toBeUndefined();
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('PATCH overlays merges with an existing viewport in the SAME view file', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const tsxAbs = join(designRoot, 'ui', 'Both.tsx');
+      writeFileSync(tsxAbs, 'export default function B(){return <main/>}\n');
+      writeFileSync(tsxAbs.replace(/\.tsx$/, '.meta.json'), JSON.stringify({ title: 'B' }));
+      const file = repoRel(designRoot, tsxAbs);
+
+      await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { viewport: { x: 3, y: 4, zoom: 1 } } }),
+      });
+      const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { overlays: { guides: true } } }),
+      });
+      const merged = (await r.json()) as MetaShape;
+      // Both lanes present — writing overlays didn't clobber the viewport.
+      expect(merged.viewport).toEqual({ x: 3, y: 4, zoom: 1 });
+      expect(merged.overlays).toEqual({ guides: true });
+
+      const view = JSON.parse(readFileSync(viewPath(designRoot, 'ui-both'), 'utf8'));
+      expect(view.viewport).toEqual({ x: 3, y: 4, zoom: 1 });
+      expect(view.overlays).toEqual({ guides: true });
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('PATCH overlays shallow-merges keys — a later patch keeps an earlier key', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const tsxAbs = join(designRoot, 'ui', 'Merge2.tsx');
+      writeFileSync(tsxAbs, 'export default function M(){return <main/>}\n');
+      writeFileSync(tsxAbs.replace(/\.tsx$/, '.meta.json'), JSON.stringify({ title: 'M' }));
+      const file = repoRel(designRoot, tsxAbs);
+
+      await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { overlays: { guides: true } } }),
+      });
+      const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        // A downstream plan (print) toggling ITS OWN key shouldn't erase `guides`.
+        body: JSON.stringify({ file, patch: { overlays: { bleed: true } } }),
+      });
+      const merged = (await r.json()) as MetaShape;
+      expect(merged.overlays).toEqual({ guides: true, bleed: true });
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('PATCH ignores a malformed overlays bag (non-boolean value) — silent no-op', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const tsxAbs = join(designRoot, 'ui', 'Malformed.tsx');
+      writeFileSync(tsxAbs, 'export default function X(){return <main/>}\n');
+      writeFileSync(tsxAbs.replace(/\.tsx$/, '.meta.json'), JSON.stringify({ title: 'X' }));
+      const file = repoRel(designRoot, tsxAbs);
+
+      const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { overlays: { guides: 'yes' } } }),
+      });
+      expect(r.status).toBe(200);
+      const merged = (await r.json()) as MetaShape;
+      expect(merged.overlays).toBeUndefined();
+      expect(existsSync(viewPath(designRoot, 'ui-malformed'))).toBe(false);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('PATCH overlays on a non-existent canvas is refused (404), mints no file', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const file = '.design/ui/GhostOverlays.tsx';
+      const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { overlays: { guides: true } } }),
+      });
+      expect(r.status).toBe(404);
+      expect(existsSync(viewPath(designRoot, 'ui-ghostoverlays'))).toBe(false);
+    } finally {
+      await killProc(proc);
+    }
+  });
+});

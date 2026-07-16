@@ -3689,6 +3689,175 @@ export async function setArtboardStyle(
   });
 }
 
+const ARTBOARD_KIND_VALUES = new Set(['digital', 'print', 'web', 'video']);
+
+/**
+ * Write/clear the DCArtboard `kind` prop (feature-1-artboard-kinds-foundation
+ * T5/T8) — kind-switch surfaces (context menu, Inspector) route here. Plain
+ * string prop, so this reuses the same `editStringAttr`/`removeStringAttr`
+ * toolkit + id-prop addressing as `applySetArtboardStyle`. `kind: null` clears
+ * back to the implicit default (`digital`, or the `subtreeHasVideoComp`
+ * fallback). Pure; reparse-gated.
+ */
+export function applySetArtboardKind(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string,
+  kind: string | null
+): { source: string } {
+  if (kind !== null && !ARTBOARD_KIND_VALUES.has(kind)) {
+    throw new CanvasEditError(`invalid artboard kind "${kind}"`, {
+      canvas: canvasAbsPath,
+      id: artboardId,
+    });
+  }
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  const artboards = collectJsxByTag(parsed.program, 'DCArtboard');
+  const target = artboards.find((a) => getStringAttr(a.openingElement, 'id') === artboardId);
+  if (!target) {
+    throw new CanvasEditError(`<DCArtboard id="${artboardId}"> not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id: artboardId,
+    });
+  }
+  const s = new MagicString(source);
+  const opening = target.openingElement;
+  if (kind === null) removeStringAttr(s, opening, 'kind', source);
+  else editStringAttr(s, opening, 'kind', kind, canvasAbsPath, artboardId);
+  const out = s.toString();
+  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (check.errors && check.errors.length > 0) {
+    throw new CanvasEditError(
+      `artboard kind edit produced invalid source (${check.errors[0]?.message ?? 'parse error'})`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  return { source: out };
+}
+
+/** Set an artboard's `kind` on disk (atomic write + cross-process lock). */
+export async function setArtboardKind(
+  canvasAbsPath: string,
+  artboardId: string,
+  kind: string | null
+): Promise<{ source: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: artboardId,
+      });
+    }
+    const source = await file.text();
+    const next = applySetArtboardKind(canvasAbsPath, source, artboardId, kind);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
+/**
+ * Write/clear the DCArtboard `guides` prop — an object-VALUED prop
+ * (`guides={{ columns: {...} }}`), unlike every other artboard writer above.
+ * Per the plan's own gotcha, object-prop editing via AST is the hard part;
+ * this scopes to REPLACE-WHOLE-PROP (stringify the given object and overwrite
+ * the entire `{{...}}` span), not a deep merge — a caller that wants to keep
+ * `columns` while adding `grid` must read the current value back (Inspector
+ * pre-fill reads `data-dc-*`-style attrs same as every other artboard knob)
+ * and send the full merged object. `guides: null` removes the prop entirely.
+ * `JSON.stringify` output is valid as a JS object-literal expression (quoted
+ * keys are legal JS, not just JSON), so no separate JS-literal serializer is
+ * needed. Pure; reparse-gated.
+ */
+export function applySetArtboardGuides(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string,
+  guides: Record<string, unknown> | null
+): { source: string } {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  const artboards = collectJsxByTag(parsed.program, 'DCArtboard');
+  const target = artboards.find((a) => getStringAttr(a.openingElement, 'id') === artboardId);
+  if (!target) {
+    throw new CanvasEditError(`<DCArtboard id="${artboardId}"> not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id: artboardId,
+    });
+  }
+  const s = new MagicString(source);
+  const opening = target.openingElement;
+  if (guides === null) {
+    removeStringAttr(s, opening, 'guides', source);
+  } else {
+    const literal = JSON.stringify(guides);
+    const attr = findAttribute(opening, 'guides');
+    if (!attr) {
+      const insertAt: number | undefined = opening?.name?.end;
+      if (typeof insertAt !== 'number') {
+        throw new Error('Opening element has no resolvable name range');
+      }
+      s.appendLeft(insertAt, ` guides={${literal}}`);
+    } else if (attr.value?.type === 'JSXExpressionContainer') {
+      s.overwrite(attr.value.start, attr.value.end, `{${literal}}`);
+    } else {
+      throw new CanvasEditError('guides attribute is not a {{...}} expression — refusing to edit', {
+        canvas: canvasAbsPath,
+        id: artboardId,
+      });
+    }
+  }
+  const out = s.toString();
+  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (check.errors && check.errors.length > 0) {
+    throw new CanvasEditError(
+      `artboard guides edit produced invalid source (${check.errors[0]?.message ?? 'parse error'})`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  return { source: out };
+}
+
+/** Set an artboard's `guides` on disk (atomic write + cross-process lock). */
+export async function setArtboardGuides(
+  canvasAbsPath: string,
+  artboardId: string,
+  guides: Record<string, unknown> | null
+): Promise<{ source: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: artboardId,
+      });
+    }
+    const source = await file.text();
+    const next = applySetArtboardGuides(canvasAbsPath, source, artboardId, guides);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
 /**
  * Delete the `<DCArtboard id="…">` whose `id` prop equals `artboardId` — the
  * artboard counterpart of applyDeleteElement (an artboard is addressed by its id

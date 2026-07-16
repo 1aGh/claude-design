@@ -12,7 +12,9 @@ import {
   applyInsertElement,
   applyInsertElementIntoArtboard,
   applyResizeArtboard,
+  applySetArtboardGuides,
   applySetArtboardHug,
+  applySetArtboardKind,
   applySetArtboardStyle,
   CanvasEditError,
 } from '../canvas-edit.ts';
@@ -334,6 +336,97 @@ describe('canvas-edit / applySetArtboardStyle (background/padding/layout/gap)', 
 
   test('unknown artboard id throws', () => {
     expect(() => applySetArtboardStyle(CANVAS, canvas, 'nope', { padding: 4 })).toThrow(
+      CanvasEditError
+    );
+  });
+});
+
+// feature-1-artboard-kinds-foundation, T5/T8 — kind-switch write lane.
+describe('canvas-edit / applySetArtboardKind', () => {
+  const canvas = [
+    'export default function Demo() {',
+    '  return (',
+    '    <DesignCanvas>',
+    '      <DCArtboard id="home" label="Home" width={1440} height={1024}>',
+    '        <div>content</div>',
+    '      </DCArtboard>',
+    '    </DesignCanvas>',
+    '  );',
+    '}',
+  ].join('\n');
+
+  test('writes kind as a plain string-literal prop', () => {
+    const out = applySetArtboardKind(CANVAS, canvas, 'home', 'print');
+    expect(out.source).toContain('kind="print"');
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('switching kind replaces the previous value, no duplicate attr', () => {
+    const printed = applySetArtboardKind(CANVAS, canvas, 'home', 'print');
+    const out = applySetArtboardKind(CANVAS, printed.source, 'home', 'web');
+    expect(out.source).toContain('kind="web"');
+    expect(out.source).not.toContain('kind="print"');
+    expect(out.source.match(/\bkind=/g)?.length).toBe(1);
+  });
+
+  test('kind=null clears back to the implicit default', () => {
+    const printed = applySetArtboardKind(CANVAS, canvas, 'home', 'print');
+    const out = applySetArtboardKind(CANVAS, printed.source, 'home', null);
+    expect(out.source).not.toContain('kind=');
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('an invalid kind value throws rather than writing garbage', () => {
+    expect(() => applySetArtboardKind(CANVAS, canvas, 'home', 'poster')).toThrow(CanvasEditError);
+  });
+
+  test('unknown artboard id throws', () => {
+    expect(() => applySetArtboardKind(CANVAS, canvas, 'nope', 'print')).toThrow(CanvasEditError);
+  });
+});
+
+// feature-1-artboard-kinds-foundation, T5 — generic layout guides write lane.
+describe('canvas-edit / applySetArtboardGuides (replace-whole-prop)', () => {
+  const canvas = [
+    'export default function Demo() {',
+    '  return (',
+    '    <DesignCanvas>',
+    '      <DCArtboard id="home" label="Home" width={1440} height={1024}>',
+    '        <div>content</div>',
+    '      </DCArtboard>',
+    '    </DesignCanvas>',
+    '  );',
+    '}',
+  ].join('\n');
+
+  test('inserts guides as a {{...}} object-expression prop', () => {
+    const out = applySetArtboardGuides(CANVAS, canvas, 'home', {
+      columns: { count: 12, gutter: 24, margin: 80 },
+    });
+    expect(out.source).toContain('guides={{"columns":{"count":12,"gutter":24,"margin":80}}}');
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('a second write REPLACES the whole prop rather than merging', () => {
+    const first = applySetArtboardGuides(CANVAS, canvas, 'home', {
+      columns: { count: 12, gutter: 24, margin: 80 },
+    });
+    const out = applySetArtboardGuides(CANVAS, first.source, 'home', { grid: { size: 8 } });
+    expect(out.source).toContain('guides={{"grid":{"size":8}}}');
+    expect(out.source).not.toContain('columns');
+    expect(out.source.match(/\bguides=/g)?.length).toBe(1);
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('guides=null removes the prop', () => {
+    const written = applySetArtboardGuides(CANVAS, canvas, 'home', { grid: { size: 8 } });
+    const out = applySetArtboardGuides(CANVAS, written.source, 'home', null);
+    expect(out.source).not.toContain('guides=');
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('unknown artboard id throws', () => {
+    expect(() => applySetArtboardGuides(CANVAS, canvas, 'nope', { grid: { size: 8 } })).toThrow(
       CanvasEditError
     );
   });

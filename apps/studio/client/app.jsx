@@ -6760,7 +6760,23 @@ const ARTBOARD_LAYOUT_OPTIONS = [
   ['grid', 'Grid'],
 ];
 
-function ArtboardKnobs({ el, onResizeArtboard, onSetArtboardHug, onSetArtboardStyle }) {
+// feature-1-artboard-kinds-foundation, T8 — kind picker options. Order
+// mirrors the DCArtboard `kind` union; 'digital' is the implicit default
+// (writes `kind: null`, clearing the explicit prop, per applySetArtboardKind).
+const ARTBOARD_KIND_OPTIONS = [
+  ['digital', 'Digital'],
+  ['print', 'Print'],
+  ['web', 'Web'],
+  ['video', 'Video'],
+];
+
+function ArtboardKnobs({
+  el,
+  onResizeArtboard,
+  onSetArtboardHug,
+  onSetArtboardStyle,
+  onSetArtboardKind,
+}) {
   const artboardId = resolveArtboardIdFromSelection(el);
   // Dogfood 2026-07-07 (round 2) — `worldW`/`worldH` (zoom-independent) are
   // undefined for a selection that reached here via a code path predating
@@ -6798,6 +6814,17 @@ function ArtboardKnobs({ el, onResizeArtboard, onSetArtboardHug, onSetArtboardSt
   const padding = el.attrs?.['data-dc-padding'] ?? '';
   const layoutMode = el.attrs?.['data-dc-layout'] ?? '';
   const gap = el.attrs?.['data-dc-gap'] ?? '';
+  // T8 — `data-dc-kind` is DCArtboard's RESOLVED kind (readBackAttrs always
+  // emits it, unlike the optional-override attrs above — see T1's comment on
+  // why), so this reads 'digital' even for an implicit/unmigrated artboard.
+  const kind = el.attrs?.['data-dc-kind'] || 'digital';
+  const setKind = (nextKind) => {
+    if (!artboardId) return;
+    // Picking "Digital" clears the explicit prop back to the implicit
+    // default (applySetArtboardKind's `kind: null` path) rather than writing
+    // a redundant `kind="digital"`.
+    onSetArtboardKind?.(artboardId, nextKind === 'digital' ? null : nextKind);
+  };
   const setHug = (nextFixed) => {
     if (!artboardId) return;
     const freezeHeight = nextFixed && Number.isFinite(h) ? Math.round(h) : undefined;
@@ -6894,6 +6921,23 @@ function ArtboardKnobs({ el, onResizeArtboard, onSetArtboardHug, onSetArtboardSt
             </button>
           ))}
         </div>
+      </div>
+      <div className="st-cp-sechd-row">
+        <span className="st-cp-sechd">Kind</span>
+      </div>
+      <div style={{ padding: '0 12px 8px' }}>
+        <select
+          className="st-cp-nsel"
+          aria-label="artboard kind"
+          value={kind}
+          onChange={(e) => setKind(e.currentTarget.value)}
+        >
+          {ARTBOARD_KIND_OPTIONS.map(([key, label]) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="st-cp-sechd-row">
         <span className="st-cp-sechd">Style</span>
@@ -7016,6 +7060,7 @@ function InspectorPanel({
   onResizeArtboard,
   onSetArtboardHug,
   onSetArtboardStyle,
+  onSetArtboardKind,
   onUndoRedo,
   editScope,
   tab: tabProp,
@@ -7587,6 +7632,7 @@ function InspectorPanel({
             onResizeArtboard={onResizeArtboard}
             onSetArtboardHug={onSetArtboardHug}
             onSetArtboardStyle={onSetArtboardStyle}
+            onSetArtboardKind={onSetArtboardKind}
           />
         ) : (
           <CssKnobs
@@ -9945,6 +9991,15 @@ function App() {
         if (e.source === activeWin && typeof m.artboardId === 'string') {
           deleteArtboardShellRef.current?.(m.artboardId);
         }
+      } else if (m.dgn === 'set-artboard-kind-request') {
+        // feature-1-artboard-kinds-foundation, T8 — context-menu "Artboard
+        // kind" submenu (inside the untrusted iframe). `kind: null` clears
+        // back to the implicit default.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        const okKind = m.kind === null || typeof m.kind === 'string';
+        if (e.source === activeWin && typeof m.artboardId === 'string' && okKind) {
+          setArtboardKindShellRef.current?.(m.artboardId, m.kind);
+        }
       } else if (m.dgn === 'open-inspector') {
         // Phase 12 — context-menu "Inspect" / tool-palette Inspect opens the right panel.
         // feature-photo-editor (Task 16) — an optional `tab` lands the panel on a
@@ -10852,12 +10907,22 @@ function App() {
     },
     [structuralWrite]
   );
+  // feature-1-artboard-kinds-foundation, T8 — kind-switch surfaces. Direct
+  // callable from ArtboardKnobs (Inspector); the context-menu submenu (inside
+  // the iframe) reaches the SAME endpoint via the postMessage ref below.
+  const setArtboardKindShell = useCallback(
+    (artboardId, kind) => {
+      structuralWrite('/_api/set-artboard-kind', { artboardId, kind }, { label: 'artboard kind' });
+    },
+    [structuralWrite]
+  );
   // Refs the (stale-closure) onMessage handlers below read.
   const deleteElementShellRef = useRef(null);
   const insertElementShellRef = useRef(null);
   const insertArtboardShellRef = useRef(null);
   const resizeArtboardShellRef = useRef(null);
   const deleteArtboardShellRef = useRef(null);
+  const setArtboardKindShellRef = useRef(null);
   const duplicateElementShellRef = useRef(null);
   const copyStyleRef = useRef(null);
   const pasteStyleRef = useRef(null);
@@ -10867,6 +10932,7 @@ function App() {
     insertArtboardShellRef.current = insertArtboardShell;
     resizeArtboardShellRef.current = resizeArtboardShell;
     deleteArtboardShellRef.current = deleteArtboardShell;
+    setArtboardKindShellRef.current = setArtboardKindShell;
     duplicateElementShellRef.current = duplicateElementShell;
     copyStyleRef.current = copyStyle;
     pasteStyleRef.current = pasteStyle;
@@ -10876,6 +10942,7 @@ function App() {
     insertArtboardShell,
     resizeArtboardShell,
     deleteArtboardShell,
+    setArtboardKindShell,
     duplicateElementShell,
     copyStyle,
     pasteStyle,
@@ -11624,6 +11691,7 @@ function App() {
           onResizeArtboard={resizeArtboardShell}
           onSetArtboardHug={setArtboardHugShell}
           onSetArtboardStyle={setArtboardStyleShell}
+          onSetArtboardKind={setArtboardKindShell}
           editScope={editScope}
           onUndoRedo={(dir) => postToActiveCanvas({ dgn: dir })}
           photoSel={photoSel}

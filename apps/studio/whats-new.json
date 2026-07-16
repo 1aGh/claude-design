@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "artboard-kinds-foundation",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Artboards now know what they are",
+      "summary": "Give any artboard a kind — Digital, Print, Web, or Video — from the Inspector or the right-click menu, and it gets its own chrome. New generic layout guides (columns, rows, grid) can be toggled on from the View menu for any artboard. Print- and web-specific tools land in follow-up releases.",
+      "surface": "design-ui"
+    },
+    {
       "id": "acp-ask-user-question",
       "version": "0.45.2",
       "date": "2026-07-15",

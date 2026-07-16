@@ -26,6 +26,15 @@ export interface ChromeVisibilityState {
   zoom: boolean;
   /** Presentation Mode — hides ALL chrome regardless of the two above. */
   present: boolean;
+  /**
+   * Generic layout guides (feature-1-artboard-kinds-foundation T4–T6) — UNLIKE
+   * minimap/zoom/present, this is per-CANVAS persisted state (view.json
+   * `overlays.guides`), not a global shell preference. DesignCanvasInner
+   * self-seeds it from the canvas's own meta right after mount (see
+   * canvas-lib.tsx); the shell's View-menu toggle then live-updates it through
+   * the SAME `dgn:'view-chrome'` bridge as the other three flags.
+   */
+  guides: boolean;
 }
 
 export interface ChromeVisibilityValue extends ChromeVisibilityState {
@@ -52,6 +61,7 @@ export function ChromeVisibilityProvider({
     minimap: initial?.minimap ?? false,
     zoom: initial?.zoom ?? false,
     present: initial?.present ?? false,
+    guides: initial?.guides ?? false,
   });
   const setChrome = useCallback((patch: Partial<ChromeVisibilityState>) => {
     setState((prev) => ({ ...prev, ...patch }));

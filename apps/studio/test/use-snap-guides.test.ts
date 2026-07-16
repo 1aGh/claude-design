@@ -188,3 +188,84 @@ describe('computeSnap / no candidates', () => {
     expect(r.guides).toEqual([]);
   });
 });
+
+// feature-1-artboard-kinds-foundation, T7 — generic-layout-guide-line candidates.
+describe('computeSnap / guide lines (T5 guides fed in as snap candidates)', () => {
+  test('left edge snaps to a guide line within tolerance, kind "guide"', () => {
+    const r = computeSnap(rect(503, 200), [], {
+      ...DEFAULTS,
+      guideLines: [{ axis: 'x', pos: 500, from: 0, to: 1000 }],
+    });
+    expect(r.x).toBe(500);
+    expect(r.guides.find((g) => g.axis === 'x')).toMatchObject({ pos: 500, kind: 'guide' });
+  });
+
+  test('right edge and center also test against the same guide line', () => {
+    // proposed right edge (137+100=237) is within tolerance of the guide at 240.
+    const r = computeSnap(rect(137, 200), [], {
+      ...DEFAULTS,
+      guideLines: [{ axis: 'x', pos: 240, from: 0, to: 1000 }],
+    });
+    expect(r.x).toBe(140); // shifted so right edge lands exactly on 240
+    expect(r.guides.find((g) => g.axis === 'x')).toMatchObject({ pos: 240, kind: 'guide' });
+  });
+
+  test('a closer sibling wins over a farther guide line on the same axis', () => {
+    const r = computeSnap(rect(503, 200), [rect(500, 500)], {
+      ...DEFAULTS,
+      guideLines: [{ axis: 'x', pos: 507, from: 0, to: 1000 }],
+    });
+    // sibling delta = -3 (|3|), guide delta = +4 (|4|) — sibling is closer.
+    expect(r.guides.find((g) => g.axis === 'x')).toMatchObject({ kind: 'sibling', pos: 500 });
+  });
+
+  test('outside tolerance, a guide line is ignored', () => {
+    const r = computeSnap(rect(100, 200), [], {
+      ...DEFAULTS,
+      guideLines: [{ axis: 'x', pos: 500, from: 0, to: 1000 }],
+    });
+    expect(r.x).toBe(100);
+  });
+
+  test('y-axis guide lines snap independently of x-axis', () => {
+    const r = computeSnap(rect(200, 303), [], {
+      ...DEFAULTS,
+      guideLines: [{ axis: 'y', pos: 300, from: 0, to: 1000 }],
+    });
+    expect(r.y).toBe(300);
+    expect(r.x).toBe(200);
+  });
+});
+
+describe('computeSnap / intent presets (T7 Design Decision 4)', () => {
+  test('"pixel" intent ignores siblings AND guide lines — grid only', () => {
+    const r = computeSnap(rect(503, 201), [rect(500, 500)], {
+      ...DEFAULTS,
+      intent: 'pixel',
+      guideLines: [{ axis: 'x', pos: 502, from: 0, to: 1000 }],
+    });
+    // Neither the sibling (delta -3) nor the guide (delta -1) fire under
+    // "pixel" — only the grid pass, out of tolerance from both 503 and 201.
+    expect(r.x).toBe(503);
+    expect(r.guides.some((g) => g.kind === 'sibling' || g.kind === 'guide')).toBe(false);
+  });
+
+  test('"pixel" intent still snaps to the grid', () => {
+    const r = computeSnap(rect(37, 200), [], { ...DEFAULTS, intent: 'pixel' });
+    expect(r.x).toBe(40);
+  });
+
+  test('omitting `intent` defaults to "layout" (back-compat with every pre-T7 call site)', () => {
+    const r = computeSnap(rect(503, 200), [rect(500, 500)], DEFAULTS);
+    expect(r.x).toBe(500);
+  });
+
+  test('"layout" intent (explicit) still snaps to siblings + guides', () => {
+    const r = computeSnap(rect(503, 200), [], {
+      ...DEFAULTS,
+      intent: 'layout',
+      guideLines: [{ axis: 'x', pos: 500, from: 0, to: 1000 }],
+    });
+    expect(r.x).toBe(500);
+  });
+});

@@ -2421,6 +2421,67 @@ export function createHttp(
       );
     },
 
+    '/_api/set-artboard-kind': async (req: Request) => {
+      // feature-1-artboard-kinds-foundation, T8. POST { canvas, artboardId,
+      // kind: 'digital'|'print'|'web'|'video'|null } → api.setArtboardKindOp.
+      // `null` clears the explicit prop back to the implicit default. Whole-
+      // file undo seq. MAIN-ORIGIN ONLY; same gate pair as set-artboard-style
+      // (the kind-switch surfaces — context menu, Inspector — are shell UI,
+      // never reachable from the untrusted canvas origin).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        artboardId?: unknown;
+        kind?: unknown;
+      }>(req, 2 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.setArtboardKindOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    '/_api/set-artboard-guides': async (req: Request) => {
+      // feature-1-artboard-kinds-foundation, T5. POST { canvas, artboardId,
+      // guides: {...}|null } → api.setArtboardGuidesOp. REPLACE-whole-prop
+      // (see applySetArtboardGuides doc comment) — the caller sends the full
+      // merged object, not a delta. MAIN-ORIGIN ONLY; same gate pair as
+      // set-artboard-style.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        artboardId?: unknown;
+        guides?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.setArtboardGuidesOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/delete-artboard': async (req: Request) => {
       // Delete an artboard by its `id` prop (Backspace / context-menu on a frame).
       // POST { canvas, artboardId } → api.deleteArtboardOp (removes the

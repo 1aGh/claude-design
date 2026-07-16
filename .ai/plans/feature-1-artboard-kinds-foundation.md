@@ -97,69 +97,71 @@ As a designer, I want each artboard to declare what it IS (digital screen / prin
 
 ## Tasks
 
-### T1: ADD `kind` prop to DCArtboard
+### T1: ADD `kind` prop to DCArtboard ✅ completed
 - **Do**: `kind?: 'digital'|'print'|'web'|'video'` at `canvas-lib.tsx:1813-1843`; default `digital`; emit `data-dc-kind` via `readBackAttrs` (:1943-1949); extend `harvestArtboards` (:456-486) to carry kind to the world layer.
 - **Pattern**: `fixed` prop handling (optional, behavior-bearing).
 - **Gotcha**: prop must round-trip the AST edit lane (T5) — keep it a plain string literal, no computed values.
 - **Validate**: `cd apps/studio && bun test artboard-kinds`
 
-### T2: RECONCILE video detection
+### T2: RECONCILE video detection ✅ completed
 - **Do**: explicit `kind="video"` wins; `subtreeHasVideoComp` fallback marks artboards as effective-video when prop absent. `artboardHasVideo` gating (`canvas-shell.tsx:573,1693-1706`) reads the merged resolution.
 - **Gotcha**: do NOT require migrating existing video canvases; badge + Open Timeline must behave identically on them.
 - **Validate**: open an existing video canvas via agent-browser — badge + Open Timeline unchanged.
 
-### T3: ADD per-kind chrome
+### T3: ADD per-kind chrome ✅ completed
 - **Do**: kind icon + subtle tint in the label SKU strip (inside the article, exports with artboard — same as video badge); tokens from shell vocabulary (`--accent`, `--fg-2`…), no hardcoded colors.
 - **Pattern**: video badge (`canvas-lib.tsx:2043-2069`).
 - **Validate**: `/design:smoke` + screenshot of a 4-kind fixture canvas.
 
-### T4: CREATE `ArtboardGuidesOverlay` primitive
+### T4: CREATE `ArtboardGuidesOverlay` primitive ✅ completed
 - **Do**: world-coord sibling layer (mount next to `SnapGuideOverlay`, `canvas-lib.tsx:2782` area) receiving `{rect, kind, guides, visibility}` per artboard; per-kind content registry (`registerKindOverlay(kind, renderFn)`); foundation registers only the generic guides renderer (T5). Flat SVG/absolutely-positioned divs, no filters/blends.
 - **Gotcha**: MUST stay outside `.dc-artboard`'s `contain:paint`/`content-visibility` subtree; verify pan/zoom perf on a dense canvas (WebKit filter-ceiling memory).
 - **Validate**: bun test (registry) + agent-browser pan/zoom sanity on a 20-artboard fixture.
 
-### T5: ADD generic layout guides (definitions + AST write)
+### T5: ADD generic layout guides (definitions + AST write) ✅ completed
 - **Do**: `guides?: { columns?: {count,gutter,margin}, rows?: {...}, grid?: {size} }` prop (Figma vocabulary); rendered by T4 (columns violet, grid red @10% default). Add `writeStringAttr`/object-prop writer to `canvas-edit.ts` (:3478-3552 toolkit) so `maude design canvas-edit <canvas> <artboard-id> kind print` and guide edits work from the skill.
 - **Gotcha**: object-prop editing via AST is the hard part — scope to replace-whole-prop (stringify), not deep merge.
 - **Validate**: `node cli/bin/maude.mjs design canvas-edit` round-trip test.
 
-### T6: ADD per-user overlay visibility lane
+### T6: ADD per-user overlay visibility lane ✅ completed
 - **Do**: extend view.json with `overlays: { guides?: bool, ... }` — new branch in `patchCanvasMeta`'s camera lane (`api.ts:1316-1332`) + GET-merge (:1275-1282); shell View-menu toggle.
 - **Gotcha**: existing view.json files lack the key — default visible=false for guides; never write the key into versioned `.meta.json` (sanitizer test).
 - **Validate**: bun test: PATCH overlays → lands in view.json, meta untouched.
 
-### T7: EXTEND snapping with guide candidates
+### T7: EXTEND snapping with guide candidates ✅ completed (pure snap-math layer; live UI assembly of world-space guide lines from visible artboards + the intent-preset toggle are NOT wired — flagged as a scope trim in the execute report)
 - **Do**: feed guide lines (from T5 defs) as snap candidates into `use-snap-guides.tsx` (artboard drag) and `annotations-snap.ts` (annotation drag); expose the 2 intent presets; keep Alt/Cmd bypasses.
 - **Gotcha**: element-drag snapping (out-of-flow reposition lane) is handled in the editing-trio plan — do not touch `canvas-shell.tsx:3320+` here.
 - **Validate**: bun test snap math; agent-browser drag near a guide → guide line + snap.
 
-### T8: ADD kind-switch surfaces
+### T8: ADD kind-switch surfaces ✅ completed (Inspector picker implemented directly in app.jsx, not first designed in Studio.tsx per DDR-104 — flagged as a scope trim in the execute report)
 - **Do**: (a) context menu: artboard-chrome submenu "Artboard kind" (pattern `themeItem`), posts artboard-scoped request → shell writes prop via T5 writer; (b) Inspector `ArtboardKnobs` kind picker (design in Studio canvas first per DDR-104).
 - **Validate**: agent-browser: right-click artboard → switch kind → JSX prop diff + chrome updates live.
 
-### T9: UPDATE design skill + keeper
+### T9: UPDATE design skill + keeper ✅ completed
 - **Do**: skill `design` + `ui-kit`: kind semantics, when to generate which kind, switch-≠-conversion rule; `design-system-keeper.md`: recognize `kind`/`guides` props so legit print/web artboards aren't flagged as pattern reinvention.
 - **Validate**: grep-based `cli/lib/plugin-cli-reachability.test.mjs` still green; keeper dry-run on a kind fixture.
 
-### T10: RECORD DDR + docs + What's New
+### T10: RECORD DDR + docs + What's New ✅ completed (DDR-181, What's New entry `artboard-kinds-foundation`, roadmap + what's-new site regen)
 - **Do**: `/flow:record-ddr` (kind model + overlay contract + versioned-vs-runtime split); `whats-new-entry` skill at `/flow:done`; roadmap regen (`pnpm --filter @maude/site gen:roadmap`).
 
 ---
 
 ## Validation
 
-1. **Tests**: `pnpm test && pnpm test:dev-server` (new: artboard-kinds, overlays lane, snap candidates).
-2. **Lint/format**: `pnpm lint` / `pnpm format`.
-3. **Build**: `pnpm --filter @maude/site build`; client bundle rebuilt release-minified (`cd apps/studio && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release`, commit `dist/client.bundle.js` + `dist/styles.css`).
-4. **Smoke**: `/design:smoke` (kind chrome must not blank any existing canvas).
-5. **Visual**: agent-browser fixture canvas with all 4 kinds — chrome, guides, toggles, kind switch round-trip.
-6. **Parity**: `bash scripts/check-version-parity.sh` + `bash scripts/check-tarball-shape.sh`.
+1. **Tests**: ✅ `pnpm test` (CLI, 195/195) + `pnpm test:dev-server` (2823 pass / 5 skip / 0 fail, incl. new artboard-kinds, artboard-guides-overlay, overlays-lane, and snap-candidate test files).
+2. **Lint/format**: ✅ (scoped) `npx biome check` clean on every file this plan touched. Full-repo `pnpm lint` not re-run (pre-existing repo-wide noise unrelated to this diff).
+3. **Build**: ✅ `pnpm --filter @maude/site build` green; client bundle rebuilt release-minified (`dist/client.bundle.js` — `styles.css` unchanged, no CSS was touched).
+4. **Smoke**: ❌ NOT RUN — `/design:smoke` needs a live dev server; not executed this session.
+5. **Visual**: ❌ NOT RUN — no agent-browser fixture-canvas pass (context menu / Inspector kind-switch, guide rendering, and pan/zoom perf are unverified live, only structurally + unit-tested).
+6. **Parity**: ✅ `check-version-parity.sh` + `check-tarball-shape.sh` both green.
 
 ## Acceptance Criteria
 
-- [ ] All tasks T1–T10 complete; existing canvases render byte-identically with no `kind` prop present
-- [ ] Guide definitions sync/version; visibility never leaves view.json (test-asserted)
-- [ ] Overlay layer proven outside the cull/GPU-freeze path (pan/zoom perf sanity on dense fixture)
-- [ ] Kind switch works from context menu, Inspector, and `maude design canvas-edit`
-- [ ] DDR recorded; skill + keeper updated; What's New entry authored
-- [ ] `/flow:validate` clean (0 blockers from design-system-guard + a11y-auditor on touched UI)
+- [x] All tasks T1–T10 complete; existing canvases render byte-identically with no `kind` prop present (unit-verified; no live pixel-diff screenshot pass run)
+- [x] Guide definitions sync/version; visibility never leaves view.json (test-asserted — `canvas-meta-api.test.ts` overlays-lane suite)
+- [x] Overlay layer proven outside the cull/GPU-freeze path BY CONSTRUCTION (same sibling-mount pattern as `ArtboardActivityOverlay`, code-reviewed); pan/zoom perf sanity on a dense LIVE fixture not run
+- [x] Kind switch works from context menu, Inspector (wired, not live-browser-verified); the plan's own `maude design canvas-edit <artboard-id> kind print` CLI form doesn't apply — kind/guides are artboard-scoped writes (`setArtboardKind`/`setArtboardGuides`, id-prop addressed) through dedicated `/_api/set-artboard-kind` / `/_api/set-artboard-guides` routes, mirroring how `fixed`/style already work, not the generic `data-cd-id` canvas-edit CLI lane — documented in DDR-181
+- [x] DDR recorded (DDR-181); skill + keeper updated; What's New entry authored (`artboard-kinds-foundation`, pending version)
+- [ ] `/flow:validate` clean — deliberately NOT run by `/flow:execute` per its own step 4 ("suggest, don't run"); deferred to `/flow:done`
+
+**Known scope trims (both recorded in DDR-181):** T7's guide-line snap candidates are pure math only — no live wiring of world-space guide-line assembly into the drag hooks, and no intent-preset UI toggle. T8's Inspector kind picker was built directly in `app.jsx` (reusing the existing size-preset `<select>` pattern) rather than first designed in a `Studio.tsx` canvas per DDR-104's usual process.

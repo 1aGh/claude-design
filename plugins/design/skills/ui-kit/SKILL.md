@@ -33,6 +33,21 @@ Every project canvas under `<designRoot>/ui/project/` follows the same shape:
 
 Standalone single-page HTML wrappers (one screen, no canvas) are an anti-pattern and should be migrated when found. New screens always go into an existing canvas as a new `DCArtboard`, or a new canvas project file via `/design:new`.
 
+## Artboard kinds (feature-1-artboard-kinds-foundation)
+
+Every `DCArtboard` declares what it IS via an optional `kind` prop: `digital` (the implicit default — screens, apps, dashboards) | `print` | `web` | `video`. Absent `kind` resolves to `digital`, or to `video` when the artboard's subtree contains a `<VideoComp>` (the pre-existing structural detection, kept as a fallback for canvases authored before this prop existed).
+
+**Which kind to generate:**
+
+- **`digital`** (default, omit the prop) — app screens, dashboards, mobile UI, anything meant to render in a browser/app chrome at a fixed or hug-driven box size. This is almost every canvas; don't add `kind="digital"` explicitly, it's a no-op that just adds noise.
+- **`print`** — a page meant to be physically printed or exported as a print-ready PDF (business cards, posters, brochures, packaging). Paper presets, bleed/trim/margin guides, and DPI-aware export are `feature-2-print-artboards`'s scope, not this skill's — if the user is doing serious print work, check whether that plan has landed before improvising bleed marks by hand.
+- **`web`** — a responsive web flow where breakpoint/reflow behavior matters more than a fixed screen size. `feature-3-web-artboards` owns the flex-first layout + breakpoint band; until it lands, `digital` is still the right default for most web mockups (kind mainly changes chrome + editing rules, not what you're allowed to build).
+- **`video`** — an artboard hosting a `<VideoComp>` composition (see the `video-comp` skill). Usually inferred automatically from the `<VideoComp>` child; only set `kind="video"` explicitly if you want the badge/Timeline affordance before any video content exists yet.
+
+**Kind switching ≠ layout conversion.** Changing `kind` (via the artboard-chrome context menu, the Inspector's Kind picker, or a direct JSX edit) only changes chrome, editing rules, and available guide/preset content — it never touches the artboard's existing content or layout. Converting a `digital` artboard's actual layout (e.g. flow → absolute positioning) is a *different* operation, owned by `feature-4-canvas-editing-figma-parity`'s convert action or a normal agent edit. Don't conflate the two when a user asks to "make this a print artboard" — switch the prop, then separately ask whether they also want the content restructured.
+
+**Generic layout guides.** Any artboard, regardless of kind, can carry a `guides` prop (`guides={{ columns: {count, gutter, margin}, rows: {...}, grid: {size} }}`, Figma vocabulary) — columns/rows render as violet bands, grid as red hairlines. Visibility is per-user (View menu → Layout guides), never part of the versioned canvas — don't expect a `guides` prop change alone to show anything until the viewer has guides toggled on.
+
 ## How the orchestrator uses this skill
 
 When `design` is asked to start work on a known surface:

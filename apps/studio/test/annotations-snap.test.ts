@@ -5,6 +5,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   computeSnap,
   GRID_PITCH_PX,
+  type GuideLineCandidate,
   SNAP_THRESHOLD_PX,
   type SnapBox,
 } from '../annotations-snap.ts';
@@ -75,5 +76,60 @@ describe('computeSnap', () => {
     const res = computeSnap(box(84, 84), [], SNAP_THRESHOLD_PX, { grid: GRID_PITCH_PX });
     expect(res.dx).toBe(0);
     expect(res.dy).toBe(0);
+  });
+});
+
+// feature-1-artboard-kinds-foundation, T7 — generic-layout-guide lines feed
+// the same candidate pool as stroke/artboard bboxes.
+describe('computeSnap / guide lines (T7)', () => {
+  test('leading edge snaps to a guide line within threshold', () => {
+    const guideLines: GuideLineCandidate[] = [{ axis: 'x', at: 100, from: 0, to: 1000 }];
+    const res = computeSnap(box(104, 300), [], SNAP_THRESHOLD_PX, { guideLines });
+    expect(res.dx).toBe(-4);
+    expect(res.guides).toHaveLength(1);
+    expect(res.guides[0]).toMatchObject({ axis: 'x', at: 100, from: 0, to: 1000 });
+  });
+
+  test('center also tests against a guide line', () => {
+    // moving center x = 153, guide at 150 → dx -3.
+    const guideLines: GuideLineCandidate[] = [{ axis: 'y', at: 350, from: 0, to: 1000 }];
+    const res = computeSnap(box(103, 300), [], SNAP_THRESHOLD_PX, { guideLines });
+    // center y = 350, guide at 350 → dy 0 (exact), still emits a guide.
+    expect(res.dy).toBe(0);
+    expect(res.guides.find((g) => g.axis === 'y')).toMatchObject({ at: 350 });
+  });
+
+  test('nearest-wins applies across BOTH sources — a closer guide beats a farther candidate', () => {
+    const guideLines: GuideLineCandidate[] = [{ axis: 'x', at: 105, from: 0, to: 1000 }];
+    const res = computeSnap(box(104, 300), [box(100, 0)], SNAP_THRESHOLD_PX, { guideLines });
+    // candidate edge (100) is 4 away; guide (105) is 1 away — guide wins.
+    expect(res.dx).toBe(1);
+  });
+
+  test('a closer stroke/artboard candidate beats a farther guide line', () => {
+    // candidate edge (100) is 4 away from x=104; guide (110) is 6 away — the
+    // candidate is strictly closer, so it wins even though the guide is
+    // still within the 6px threshold.
+    const guideLines: GuideLineCandidate[] = [{ axis: 'x', at: 110, from: 0, to: 1000 }];
+    const res = computeSnap(box(104, 300), [box(100, 0)], SNAP_THRESHOLD_PX, { guideLines });
+    expect(res.dx).toBe(-4);
+  });
+
+  test('outside threshold, a guide line is ignored', () => {
+    const guideLines: GuideLineCandidate[] = [{ axis: 'x', at: 500, from: 0, to: 1000 }];
+    const res = computeSnap(box(104, 300), [], SNAP_THRESHOLD_PX, { guideLines });
+    expect(res.dx).toBe(0);
+    expect(res.guides).toHaveLength(0);
+  });
+
+  test('guide-line snap composes with the grid fallback on the OTHER axis', () => {
+    // x snaps to the guide line; y has no candidate → grid fallback fires.
+    const guideLines: GuideLineCandidate[] = [{ axis: 'x', at: 100, from: 0, to: 1000 }];
+    const res = computeSnap(box(104, 50), [], SNAP_THRESHOLD_PX, {
+      guideLines,
+      grid: GRID_PITCH_PX,
+    });
+    expect(res.dx).toBe(-4);
+    expect(res.dy).toBe(-2);
   });
 });

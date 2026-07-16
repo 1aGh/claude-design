@@ -34,7 +34,9 @@ import {
   retimeSequence,
   retimeSequenceByClip,
   editText as runEditText,
+  setArtboardGuides,
   setArtboardHug,
+  setArtboardKind,
   setArtboardStyle,
   toggleClipHidden,
 } from './canvas-edit.ts';
@@ -487,6 +489,18 @@ export interface Api {
     padding?: unknown;
     layout?: unknown;
     gap?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
+  /** Kind-switch surfaces (T8) — context menu + Inspector picker. */
+  setArtboardKindOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    kind?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
+  /** Generic layout guides (T5) — replace-whole-prop write. */
+  setArtboardGuidesOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    guides?: unknown;
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
   /** Duplicate an element (Cmd+D) — a copy as the next sibling, whole-file undo. */
   duplicateElementOp(input: {
@@ -1214,16 +1228,66 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     return path.join(paths.canvasStateDir, `${fileSlug(file)}.view.json`);
   }
 
-  async function loadCanvasView(
-    file: string
-  ): Promise<{ viewport?: { x: number; y: number; zoom: number } } | null> {
+  const MAX_OVERLAY_KEYS = 32;
+  const MAX_OVERLAY_KEY_LEN = 64;
+
+  /**
+   * Validate a candidate overlay-visibility bag — feature-1-artboard-kinds-
+   * foundation T6. A flat string→boolean map (`{ guides: true }`); downstream
+   * plans (print bleed, web breakpoints) add their own keys without a schema
+   * change here. Reachable from the untrusted canvas origin (DDR-054) via the
+   * same `/_api/canvas-meta` PATCH the viewport lane already uses, so it's
+   * capped the same way `set-artboard-style` caps its patch shape — bounded
+   * key COUNT and key LENGTH, not just type. Empty object is valid (an
+   * explicit "nothing on" state); malformed input is null (silent no-op).
+   */
+  function normalizeOverlays(v: unknown): Record<string, boolean> | null {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+    const entries = Object.entries(v as Record<string, unknown>);
+    if (entries.length > MAX_OVERLAY_KEYS) return null;
+    const out: Record<string, boolean> = {};
+    for (const [k, val] of entries) {
+      if (k.length === 0 || k.length > MAX_OVERLAY_KEY_LEN) return null;
+      if (typeof val !== 'boolean') return null;
+      out[k] = val;
+    }
+    return out;
+  }
+
+  /** Raw view-file contents, tolerant of a missing/corrupt file (→ `{}`) — the
+   *  read half of the read-modify-write both `saveCanvasView` and
+   *  `saveCanvasOverlays` need so writing one lane never clobbers the other. */
+  async function readCanvasViewRaw(file: string): Promise<Record<string, unknown>> {
+    const viewAbs = canvasViewPath(file);
+    if (!viewAbs) return {};
+    try {
+      const obj = JSON.parse(await Bun.file(viewAbs).text());
+      return obj && typeof obj === 'object' && !Array.isArray(obj)
+        ? (obj as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
+  async function loadCanvasView(file: string): Promise<{
+    viewport?: { x: number; y: number; zoom: number };
+    overlays?: Record<string, boolean>;
+  } | null> {
     const viewAbs = canvasViewPath(file);
     if (!viewAbs) return null;
     try {
       const obj = JSON.parse(await Bun.file(viewAbs).text());
       if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
         const vp = normalizeViewport((obj as { viewport?: unknown }).viewport);
-        return vp ? { viewport: vp } : {};
+        const ov = normalizeOverlays((obj as { overlays?: unknown }).overlays);
+        const result: {
+          viewport?: { x: number; y: number; zoom: number };
+          overlays?: Record<string, boolean>;
+        } = {};
+        if (vp) result.viewport = vp;
+        if (ov && Object.keys(ov).length > 0) result.overlays = ov;
+        return result;
       }
       return null;
     } catch {
@@ -1233,7 +1297,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
 
   /** Persist the per-user camera. Validates + clamps; best-effort (mkdir the
    *  bucket if absent). Returns the normalized viewport on write, null when the
-   *  path is rejected or the viewport is invalid (no write). */
+   *  path is rejected or the viewport is invalid (no write). Read-modify-write
+   *  so an existing `overlays` key in the same view file survives. */
   async function saveCanvasView(
     file: string,
     viewport: unknown
@@ -1244,8 +1309,39 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     if (!vp) return null;
     try {
       await mkdir(paths.canvasStateDir, { recursive: true });
-      await Bun.write(viewAbs, `${JSON.stringify({ viewport: vp }, null, 2)}\n`);
+      const current = await readCanvasViewRaw(file);
+      await Bun.write(viewAbs, `${JSON.stringify({ ...current, viewport: vp }, null, 2)}\n`);
       return vp;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Persist the per-user overlay-visibility bag (T6). Shallow-merges into
+   * whatever `overlays` the view file already has — a `{ guides: true }` patch
+   * doesn't erase a `bleed` key a downstream print-plan toggle already set.
+   * Never touches the versioned `.meta.json`. Read-modify-write so an existing
+   * `viewport` key survives.
+   */
+  async function saveCanvasOverlays(
+    file: string,
+    overlays: unknown
+  ): Promise<Record<string, boolean> | null> {
+    const viewAbs = canvasViewPath(file);
+    if (!viewAbs) return null;
+    const ov = normalizeOverlays(overlays);
+    if (ov === null) return null;
+    try {
+      await mkdir(paths.canvasStateDir, { recursive: true });
+      const current = await readCanvasViewRaw(file);
+      const prevOverlays =
+        current.overlays && typeof current.overlays === 'object' && !Array.isArray(current.overlays)
+          ? (current.overlays as Record<string, unknown>)
+          : {};
+      const merged = normalizeOverlays({ ...prevOverlays, ...ov }) ?? ov;
+      await Bun.write(viewAbs, `${JSON.stringify({ ...current, overlays: merged }, null, 2)}\n`);
+      return merged;
     } catch {
       return null;
     }
@@ -1274,11 +1370,17 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     // codebase convention + biome's noDelete.)
     obj.viewport = undefined;
     obj.last_modified = undefined;
+    // T6 — `overlays` (per-user guide/mark visibility) is runtime state same as
+    // `viewport`; a versioned `.meta.json` should never carry one (sanitizer),
+    // but strip defensively before overlaying the real per-user value below.
+    obj.overlays = undefined;
     const view = await loadCanvasView(file);
     if (view?.viewport) obj.viewport = view.viewport;
-    // Preserve the historic contract: no meta AND no camera → null (GET → {},
-    // PATCH-on-rejected-path → 404). A view-only canvas still returns its camera.
-    if (!hadMeta && !view?.viewport) return null;
+    if (view?.overlays) obj.overlays = view.overlays;
+    // Preserve the historic contract: no meta AND no camera/overlays → null
+    // (GET → {}, PATCH-on-rejected-path → 404). A view-only canvas still
+    // returns its camera/overlays.
+    if (!hadMeta && !view?.viewport && !view?.overlays) return null;
     return obj;
   }
 
@@ -1328,6 +1430,27 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       } else {
         // saveCanvasView validates + clamps; an invalid viewport is a silent no-op.
         await saveCanvasView(file, patch.viewport);
+      }
+    }
+
+    // --- Per-user overlay-visibility lane (T6): overlays → view file, never
+    // the versioned meta. Same shape as the viewport lane above — `null`
+    // clears, an invalid bag is a silent no-op (normalizeOverlays → null).
+    if (patch.overlays !== undefined) {
+      if (patch.overlays === null) {
+        const viewAbs = canvasViewPath(file);
+        if (viewAbs) {
+          try {
+            const current = await readCanvasViewRaw(file);
+            const { overlays: _drop, ...rest } = current;
+            await mkdir(paths.canvasStateDir, { recursive: true });
+            await Bun.write(viewAbs, `${JSON.stringify(rest, null, 2)}\n`);
+          } catch {
+            /* best-effort clear */
+          }
+        }
+      } else {
+        await saveCanvasOverlays(file, patch.overlays);
       }
     }
 
@@ -2952,6 +3075,110 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  const ARTBOARD_KIND_VALUES = new Set(['digital', 'print', 'web', 'video']);
+
+  /** Kind-switch surfaces (T8): context menu + Inspector picker. */
+  async function setArtboardKindOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    kind?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    if (!takeStructuralToken()) return RATE_LIMITED;
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId.trim() : '';
+    if (!/^[A-Za-z][\w-]{0,63}$/.test(artboardId)) {
+      return { ok: false, status: 400, error: 'invalid artboard id' };
+    }
+    let kind: string | null;
+    if (input.kind === null) {
+      kind = null;
+    } else if (typeof input.kind === 'string' && ARTBOARD_KIND_VALUES.has(input.kind)) {
+      kind = input.kind;
+    } else {
+      return { ok: false, status: 400, error: 'invalid kind' };
+    }
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      await setArtboardKind(r.abs, artboardId, kind);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-set-artboard-kind');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'set-artboard-kind failed',
+      };
+    }
+  }
+
+  const MAX_GUIDES_JSON_BYTES = 4096;
+
+  /** Generic layout guides (T5) — Inspector/skill writer. Replace-whole-prop,
+   *  never a deep merge (see applySetArtboardGuides's own doc comment). */
+  async function setArtboardGuidesOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    guides?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    if (!takeStructuralToken()) return RATE_LIMITED;
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId.trim() : '';
+    if (!/^[A-Za-z][\w-]{0,63}$/.test(artboardId)) {
+      return { ok: false, status: 400, error: 'invalid artboard id' };
+    }
+    let guides: Record<string, unknown> | null;
+    if (input.guides === null) {
+      guides = null;
+    } else if (
+      input.guides &&
+      typeof input.guides === 'object' &&
+      !Array.isArray(input.guides) &&
+      JSON.stringify(input.guides).length <= MAX_GUIDES_JSON_BYTES
+    ) {
+      guides = input.guides as Record<string, unknown>;
+    } else {
+      return { ok: false, status: 400, error: 'invalid guides' };
+    }
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      await setArtboardGuides(r.abs, artboardId, guides);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-set-artboard-guides');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'set-artboard-guides failed',
+      };
+    }
+  }
+
   const ARTBOARD_LAYOUT_VALUES = new Set(['block', 'flex-col', 'flex-row', 'grid']);
 
   /** Set artboard "more settings" — background / padding / layout / gap. */
@@ -3772,6 +3999,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     resizeArtboardOp,
     setArtboardHugOp,
     setArtboardStyleOp,
+    setArtboardKindOp,
+    setArtboardGuidesOp,
     deleteArtboardOp,
     duplicateElementOp,
     editScopeOp,
