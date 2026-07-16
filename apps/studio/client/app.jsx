@@ -4508,6 +4508,35 @@ function cssSplitUnit(v) {
 // click re-derives it live — the "tab is there, then it's gone" flicker.
 function mergeSelClientFields(incoming, prev) {
   if (!incoming || Array.isArray(incoming) || Array.isArray(prev) || !prev) return incoming;
+  // Dogfood follow-up (print artboards) — a whole-ARTBOARD selection has NO
+  // data-cd-id (the frame chrome carries only data-dc-screen), so the id
+  // identity check below never matched it and every server echo returned
+  // `incoming` bare — wiping `attrs` (which carries data-dc-kind/-print for
+  // the ArtboardKnobs panel) seconds after each fresh click. The panel then
+  // silently fell back to kind='digital' + screen presets even though the
+  // artboard was print. Match an id-less pair by artboardId + file + the
+  // artboard-selector shape instead.
+  if (!incoming.id && !prev.id) {
+    const isArtboardSel = (s) =>
+      s.artboardId && typeof s.selector === 'string' && s.selector.startsWith('[data-dc-screen=');
+    if (
+      isArtboardSel(incoming) &&
+      isArtboardSel(prev) &&
+      incoming.artboardId === prev.artboardId &&
+      incoming.file === prev.file
+    ) {
+      return {
+        ...incoming,
+        authored: incoming.authored ?? prev.authored,
+        computed: incoming.computed ?? prev.computed,
+        customStyles: incoming.customStyles ?? prev.customStyles,
+        attrs: incoming.attrs ?? prev.attrs,
+        worldW: incoming.worldW ?? prev.worldW,
+        worldH: incoming.worldH ?? prev.worldH,
+      };
+    }
+    return incoming;
+  }
   if (!incoming.id || incoming.id !== prev.id) return incoming;
   return {
     ...incoming,
@@ -7112,24 +7141,48 @@ function ArtboardKnobs({
         </div>
       </div>
       <div style={{ padding: '0 12px 8px' }}>
-        <select
-          className="st-cp-nsel"
-          aria-label="artboard size preset"
-          value={activePreset ?? ''}
-          onChange={(e) => {
-            const p = SCREEN_PRESETS[e.currentTarget.value];
-            if (p) commitSize(p.width, p.height);
-          }}
-        >
-          <option value="" disabled>
-            {activePreset ? SCREEN_PRESETS[activePreset].label : 'Preset size…'}
-          </option>
-          {Object.entries(SCREEN_PRESETS).map(([key, p]) => (
-            <option key={key} value={key}>
-              {p.label} — {p.width}×{p.height}
+        {kind === 'print' ? (
+          // Dogfood follow-up — a PRINT artboard's "Preset size…" dropdown
+          // showed only the screen presets (Desktop/Laptop/Tablet/Mobile),
+          // which are meaningless for paper. Show the paper ladder here
+          // instead, writing through the SAME setPrint lane as the Print
+          // section below (resolved px + print prop together).
+          <select
+            className="st-cp-nsel"
+            aria-label="artboard paper preset"
+            value={print?.paper ?? ''}
+            onChange={(e) => setPrint({ paper: e.currentTarget.value })}
+          >
+            <option value="" disabled>
+              Paper size…
             </option>
-          ))}
-        </select>
+            {PAPER_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label} — {p.width}×{p.height}
+                {p.unit}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <select
+            className="st-cp-nsel"
+            aria-label="artboard size preset"
+            value={activePreset ?? ''}
+            onChange={(e) => {
+              const p = SCREEN_PRESETS[e.currentTarget.value];
+              if (p) commitSize(p.width, p.height);
+            }}
+          >
+            <option value="" disabled>
+              {activePreset ? SCREEN_PRESETS[activePreset].label : 'Preset size…'}
+            </option>
+            {Object.entries(SCREEN_PRESETS).map(([key, p]) => (
+              <option key={key} value={key}>
+                {p.label} — {p.width}×{p.height}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       <div style={{ padding: '0 12px 8px' }}>
         <div className="st-cp-modeseg" role="group" aria-label="artboard height sizing mode">
@@ -7175,21 +7228,9 @@ function ArtboardKnobs({
           <div className="st-cp-sechd-row">
             <span className="st-cp-sechd">Print</span>
           </div>
-          <div style={{ padding: '0 12px 8px' }}>
-            <select
-              className="st-cp-nsel"
-              aria-label="paper preset"
-              value={print?.paper ?? 'a4'}
-              onChange={(e) => setPrint({ paper: e.currentTarget.value })}
-            >
-              {PAPER_PRESETS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label} — {p.width}×{p.height}
-                  {p.unit}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Paper picker lives in the Artboard section's own preset dropdown
+              above (it REPLACES the screen presets for kind="print") — this
+              section carries the print-specific residue: orientation + bleed. */}
           <div style={{ padding: '0 12px 8px' }}>
             <div className="st-cp-modeseg" role="group" aria-label="paper orientation">
               {[
