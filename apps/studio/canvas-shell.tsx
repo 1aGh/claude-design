@@ -1995,6 +1995,34 @@ function CanvasRouter({
   // consumes.
   const chromeCtx = useChromeVisibility();
 
+  // Dogfood follow-up (print artboards) — self-seed the per-canvas persisted
+  // overlay visibility (view.json `overlays.guides`/`overlays.print`, GET-
+  // merged into `window.__canvas_meta__` by _shell.html before mount) into
+  // the chrome store, once per mount. This seed originally lived in
+  // DesignCanvasInner (canvas-lib.tsx) — but that component renders
+  // CanvasShell as its CHILD, and ChromeVisibilityProvider mounts INSIDE
+  // CanvasShell, so DesignCanvasInner's own useChromeVisibility() was always
+  // null and the seed silently never ran (dead since the foundation feature;
+  // the generic `guides` toggle had no UI yet, so nothing surfaced it —
+  // "Show print guides" is its first real consumer). CanvasRouter sits
+  // inside the provider (it's the view-chrome bridge), so the seed works
+  // here. Absent keys stay HIDDEN (the T6 gotcha — an old view.json must
+  // not suddenly paint guides nobody asked for).
+  const overlaysSeededRef = useRef(false);
+  useEffect(() => {
+    if (overlaysSeededRef.current || !chromeCtx) return;
+    overlaysSeededRef.current = true;
+    const w = window as unknown as {
+      __canvas_meta__?: { overlays?: Record<string, boolean> };
+    };
+    const overlays = w.__canvas_meta__?.overlays;
+    if (!overlays) return;
+    const patch: { guides?: boolean; print?: boolean } = {};
+    if (overlays.guides === true) patch.guides = true;
+    if (overlays.print === true) patch.print = true;
+    if (Object.keys(patch).length > 0) chromeCtx.setChrome(patch);
+  }, [chromeCtx]);
+
   // Task A2 (feature-element-editing-robustness) — host-scroll-0 invariant.
   // `.dc-canvas` (overflow:hidden) and each `.dc-artboard-body` are the engine's
   // clip layers; the camera lives entirely in the `.dc-world` transform, and

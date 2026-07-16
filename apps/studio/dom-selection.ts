@@ -393,6 +393,26 @@ function styleMapsFor(el: Element | null): {
       if (ATTR_SKIP.test(a.name)) continue;
       attrs[a.name] = a.value;
     }
+    // Dogfood follow-up (print artboards) — ATTR_SKIP deliberately hides the
+    // engine's own `data-dc-*` plumbing from the generic "custom HTML
+    // attributes" panel, but for a whole-ARTBOARD selection those attributes
+    // ARE the payload: DCArtboard's readBackAttrs (canvas-lib.tsx) stamps
+    // data-dc-kind / data-dc-print / data-dc-fixed / data-dc-bg / … on the
+    // <article> precisely so the Inspector's ArtboardKnobs can pre-fill its
+    // Kind picker, paper preset, Hug/Fixed toggle, and Style fields. With
+    // the blanket skip, every one of those readbacks silently fell back to
+    // its default ('digital', screen presets, Hug, empty Bg) no matter what
+    // the artboard actually was — the root cause of the "Kind shows Digital
+    // on a print artboard" family of bugs. Allow data-dc-* through for the
+    // artboard element itself; ordinary elements keep the filter (their
+    // panel is CssKnobs, which never reads these).
+    if ((el as HTMLElement).hasAttribute('data-dc-screen')) {
+      for (const a of Array.from((el as HTMLElement).attributes)) {
+        if (a.name.startsWith('data-dc-') && a.name !== 'data-dcid') {
+          attrs[a.name] = a.value;
+        }
+      }
+    }
     // Stage M — parent's layout context (for the Fixed/Hug/Fill sizing control +
     // flex-child row gating). Read here because the shell can't reach the
     // cross-origin iframe to compute it after selection.

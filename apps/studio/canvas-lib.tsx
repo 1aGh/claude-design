@@ -1555,21 +1555,12 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   // read directly out of this canvas's own meta, so there's nothing to wait
   // for. The shell's View-menu toggle then live-updates it through the same
   // `dgn:'view-chrome'` channel as the other three flags.
-  const chrome = useChromeVisibility();
-  const guidesSeededRef = useRef(false);
-  useEffect(() => {
-    if (guidesSeededRef.current || !chrome) return;
-    guidesSeededRef.current = true;
-    const meta = readCanvasMeta();
-    if (meta?.overlays?.guides === true) {
-      chrome.setChrome({ guides: true });
-    }
-    // feature-2-print-artboards T3 — "Show print guides", same self-seed
-    // shape as `guides` above.
-    if (meta?.overlays?.print === true) {
-      chrome.setChrome({ print: true });
-    }
-  }, [chrome]);
+  // T6 — the per-canvas overlay-visibility self-seed used to live here, but
+  // this component renders CanvasShell as its CHILD and the
+  // ChromeVisibilityProvider mounts INSIDE CanvasShell — so this component's
+  // own useChromeVisibility() was always null and the seed silently never
+  // ran (dead code since the foundation feature). The working seed now lives
+  // in canvas-shell.tsx's CanvasRouter, which sits inside the provider.
 
   const seeds = useMemo(() => harvestArtboards(children), [children]);
 
