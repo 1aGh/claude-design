@@ -52,13 +52,17 @@ extend to the artboard's own edge, not just the trim-inset area.
 
 # Print-ready PDF — bleed included, crop + registration marks
 /design:export pdf --scope artboard --option includeBleed=true --option marks=crop,registration
+
+# Large-format PDF (e.g. a billboard authored at 1:10 scale) — 300 dpi
+# capture for any dropped photo/art on the artboard; the page stays vector
+/design:export pdf --scope artboard --option dpi=300
 ```
 
 The same options are available from the `⌘E` export dialog — the PDF card
-has an **Include bleed** checkbox and a **Marks** disclosure (crop /
-registration); a `canvas-as-separate` scope exports one PDF page per
-artboard, each resolving its own bleed independently from its own `print`
-prop.
+has an **Image quality** (DPI) picker, an **Include bleed** checkbox, and a
+**Marks** disclosure (crop / registration); a `canvas-as-separate` scope
+exports one PDF page per artboard, each resolving its own bleed
+independently from its own `print` prop.
 
 ## Scope — what this is (and isn't)
 
@@ -66,8 +70,13 @@ prop.
   vector marks — it is **not** CMYK-converted and does not claim PDF/X
   compliance. Your print shop's own preflight/RIP handles color conversion;
   this gets you a correctly-boxed, correctly-bled starting point.
-- **DPI is raster-only.** The PDF path is always vector — there's no "PDF
-  DPI" setting, only the PNG export's DPI.
+- **The PDF page is always vector — text and shapes never rasterize** — but
+  any raster CONTENT you put on the artboard (a dropped photo, a
+  large-format piece authored at a fraction of its real physical size, like
+  a billboard laid out at 1:10 scale) still embeds as a bitmap. The PDF
+  card's DPI picker sets that bitmap's capture density; it does not turn the
+  page itself into a raster image, and it defaults to unchanged 1× so a
+  plain "just export a PDF" doesn't silently bloat file size.
 - **Prefer TTF over OTF** for any custom font on a print artboard — Chromium's
   print pipeline outlines OTF glyphs to paths, which looks correct but loses
   text selectability in the exported PDF.

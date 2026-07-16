@@ -980,6 +980,21 @@ const PNG_RESOLUTIONS = [
 ];
 const PNG_RESOLUTION_DEFAULT = '2x';
 
+// feature-2-print-artboards T5/T6 (dogfood follow-up) — the PDF page itself
+// is always vector (text/shapes never rasterize), but any RASTER content ON
+// the artboard — a dropped photo, a large-format piece authored at a
+// fraction of its real physical size (e.g. a billboard at 1:10 scale) —
+// still embeds as a bitmap whose density this controls. Default "Auto (1×)"
+// is today's unchanged behavior; PDF has no legacy scale concept, so unlike
+// PNG_RESOLUTIONS this is DPI-only.
+const PDF_DPI_OPTIONS = [
+  { id: 'auto', label: 'Auto (1×)', value: undefined },
+  { id: 'dpi150', label: '150 dpi', value: 150 },
+  { id: 'dpi300', label: '300 dpi (print)', value: 300 },
+  { id: 'dpi600', label: '600 dpi (high-res print)', value: 600 },
+];
+const PDF_DPI_DEFAULT = 'auto';
+
 // feature-bulk-media-insert — best-effort MIME guess from a filename extension.
 // Only used to classify a natively-picked file (Rust returns `{name, bytes}`,
 // no type) for the destination-toggle's image/video/audio split; the actual
@@ -1319,6 +1334,7 @@ function ExportDialog({
   const [pdfMarksOpen, setPdfMarksOpen] = useState(false);
   const [pdfMarksCrop, setPdfMarksCrop] = useState(false);
   const [pdfMarksRegistration, setPdfMarksRegistration] = useState(false);
+  const [pdfDpiId, setPdfDpiId] = useState(PDF_DPI_DEFAULT);
   // DDR-148 addendum — mp4/webm of a registered video-comp render through
   // renderMediaOnWeb, which produces real audio (Remotion owns the
   // TransitionSeries/volume-closure timeline). gif has no audio track at all
@@ -1388,6 +1404,11 @@ function ExportDialog({
         includeBleed: pdfIncludeBleed,
         marks: { crop: pdfMarksCrop, registration: pdfMarksRegistration },
       };
+      // Dogfood follow-up — raster CONTENT on the artboard (a dropped photo,
+      // large-format art) still needs a real capture density; the page
+      // itself stays vector regardless of this.
+      const pdfDpi = PDF_DPI_OPTIONS.find((d) => d.id === pdfDpiId)?.value;
+      if (pdfDpi !== undefined) options.dpi = pdfDpi;
     }
     // Scope targeting hints (resolveScope reads these): `artboardId` makes
     // "Active artboard" export the right screen instead of `:first-of-type`;
@@ -1527,6 +1548,27 @@ function ExportDialog({
           )}
           {!card.handoff && card.format === 'pdf' && (
             <>
+              <div className="st-dialog-row">
+                <label className="st-dialog-lbl" htmlFor="st-export-pdf-dpi">
+                  Image quality
+                </label>
+                <select
+                  id="st-export-pdf-dpi"
+                  className="st-select"
+                  value={pdfDpiId}
+                  onChange={(e) => setPdfDpiId(e.target.value)}
+                >
+                  {PDF_DPI_OPTIONS.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="st-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+                The page stays vector; this only sets the capture density for raster content on it
+                (dropped photos, large-format art).
+              </div>
               <div className="st-dialog-row">
                 <label
                   className="st-dialog-lbl"
@@ -6961,13 +7003,6 @@ function ArtboardKnobs({
   // emits it, unlike the optional-override attrs above — see T1's comment on
   // why), so this reads 'digital' even for an implicit/unmigrated artboard.
   const kind = el.attrs?.['data-dc-kind'] || 'digital';
-  const setKind = (nextKind) => {
-    if (!artboardId) return;
-    // Picking "Digital" clears the explicit prop back to the implicit
-    // default (applySetArtboardKind's `kind: null` path) rather than writing
-    // a redundant `kind="digital"`.
-    onSetArtboardKind?.(artboardId, nextKind === 'digital' ? null : nextKind);
-  };
   // feature-2-print-artboards T2 — paper/orientation/bleed. Read-back mirrors
   // `data-dc-kind` above: a small JSON attr DCArtboard stamps for exactly this
   // panel (canvas-lib.tsx readBackAttrs), since `print` (unlike bg/padding/…)
@@ -6978,6 +7013,34 @@ function ArtboardKnobs({
   } catch {
     /* malformed attr — treat as absent */
   }
+  const setKind = (nextKind) => {
+    if (!artboardId) return;
+    // Picking "Digital" clears the explicit prop back to the implicit
+    // default (applySetArtboardKind's `kind: null` path) rather than writing
+    // a redundant `kind="digital"`.
+    onSetArtboardKind?.(artboardId, nextKind === 'digital' ? null : nextKind);
+    // Dogfood fix — switching TO "print" with no print prop yet left the
+    // artboard in a half-configured state: the guides overlay renders
+    // nothing (print-overlay-content.tsx requires the prop) and the PDF
+    // exporter has no bleed to read, even though the Kind chip already
+    // shows "print". Seed a default A4 print prop + its resolved px size in
+    // the SAME gesture, mirroring the "+ Artboard: print preset" flow —
+    // switching a DIGITAL artboard to print should never require a second,
+    // easy-to-miss step in the (still-collapsed) Print section below.
+    if (nextKind === 'print' && !print) {
+      const defaults = { paper: 'a4' };
+      let resolved;
+      try {
+        resolved = resolvePrintArtboard(defaults);
+      } catch {
+        resolved = null;
+      }
+      if (resolved) {
+        onResizeArtboard?.(artboardId, resolved.widthPx, resolved.heightPx);
+        onSetArtboardPrint?.(artboardId, defaults);
+      }
+    }
+  };
   const setPrint = (patch) => {
     if (!artboardId) return;
     const next = { paper: 'a4', ...print, ...patch };

@@ -23,8 +23,9 @@ Sends a request to the running dev-server (`POST /_api/export`) with the same pa
 **Print options (feature-2-print-artboards).**
 
 - **PNG `dpi`** — `96` / `150` / `300` / `600` (snaps to the nearest preset). Wins over the legacy `scale` option when both are given (`exporters/png.ts` `resolveDeviceScale`). `deviceScaleFactor = dpi / 96`; output larger than 16,000 px on a side or ~600 MB is rejected with a message naming the max supported DPI for that artboard size.
+- **PDF `dpi`** — same `96`/`150`/`300`/`600` ladder, but a DIFFERENT meaning than for PNG: the PDF page itself is always vector (text/shapes never rasterize regardless of this option), but any RASTER content on the artboard — a dropped photo, a large-format piece authored at a fraction of its real physical size (e.g. a billboard laid out at 1:10 scale) — still embeds as a bitmap, and `dpi` sets that bitmap's capture density (`exporters/pdf.ts` `resolvePdfDeviceScale`). Default (omitted) is unchanged 1× — deliberately NOT the PNG adapter's 2× default, since a plain "just export a PDF" call shouldn't silently double every embedded image's weight.
 - **PDF `includeBleed`** — `true` (default when the artboard's own `print` prop has `bleedMm > 0`) / `false`. Only meaningful for a `kind="print"` artboard — a no-op on any other artboard.
-- **PDF `marks`** — comma-separated: `crop`, `registration` (MVP scope; `colorBars` / `pageInfo` are accepted but not yet drawn). Building the request body: `--option marks=crop,registration` becomes `options.pdfPrint.marks = { crop: true, registration: true }` — the flat `--option` flags collapse into ONE nested `pdfPrint` object in the JSON POST body (`{ includeBleed, marks: {crop, registration, colorBars, pageInfo} }`), not four separate top-level keys. `pageFit` stays a top-level option (unrelated to `pdfPrint` — it's the non-print-artboard scale-to-paper path).
+- **PDF `marks`** — comma-separated: `crop`, `registration` (MVP scope; `colorBars` / `pageInfo` are accepted but not yet drawn). Building the request body: `--option marks=crop,registration` becomes `options.pdfPrint.marks = { crop: true, registration: true }` — the flat `--option` flags collapse into ONE nested `pdfPrint` object in the JSON POST body (`{ includeBleed, marks: {crop, registration, colorBars, pageInfo} }`), not four separate top-level keys. `dpi`/`pageFit` stay TOP-LEVEL options (unrelated to `pdfPrint` — `dpi` is raster-content density regardless of kind, `pageFit` is the non-print-artboard scale-to-paper path).
 - Bleed/trim geometry always comes from the artboard's own `print` JSX prop (paper/orientation/bleedMm) — never re-specify bleed via `--option`; there isn't one. RGB PDF only — CMYK/PDF-X is out of scope (print shops convert on their end).
 
 **Temporal formats (`mp4` / `gif` / `webm`) — DDR-148.** Scope is `artboard`: a **video-comp** artboard (its comp meta drives fps + frame count) or an ordinary **animated** mock (`--option fps=…` + `--option durationMs=…`; add `--option mode=ordinary` for WAAPI/CSS-driven motion). Rendered through Maude's own capture spine (Playwright frame-step → mediabunny H.264 MP4 / gifenc GIF, in-page) — no native binaries, deterministic. Default cap 30 s / 900 frames. MP4 falls back to WebM when the capture browser has no H.264 encoder.
@@ -61,6 +62,10 @@ Sends a request to the running dev-server (`POST /_api/export`) with the same pa
 
 # Print-ready PDF — bleed included, crop + registration marks
 /design:export pdf --scope artboard --option includeBleed=true --option marks=crop,registration
+
+# Large-format PDF (e.g. a billboard authored at a fraction of its real size) —
+# 300 dpi capture for any dropped photo/art on the artboard; the page stays vector
+/design:export pdf --scope artboard --option dpi=300
 ```
 
 ## What the command does

@@ -119,6 +119,21 @@ const PNG_RESOLUTIONS: readonly PngResolution[] = [
 ];
 const PNG_RESOLUTION_DEFAULT = '2x';
 
+// feature-2-print-artboards T5/T6 (dogfood follow-up) — mirrors app.jsx's
+// PDF_DPI_OPTIONS. The PDF page itself is always vector; this only sets the
+// capture density for RASTER content ON the artboard (a dropped photo, a
+// large-format piece authored at a fraction of its real physical size).
+// Default "Auto (1×)" is today's unchanged behavior — unlike PNG_RESOLUTIONS,
+// PDF has no legacy scale concept, so this is DPI-only.
+type PdfDpiOption = { id: string; label: string; value: number | undefined };
+const PDF_DPI_OPTIONS: readonly PdfDpiOption[] = [
+  { id: 'auto', label: 'Auto (1×)', value: undefined },
+  { id: 'dpi150', label: '150 dpi', value: 150 },
+  { id: 'dpi300', label: '300 dpi (print)', value: 300 },
+  { id: 'dpi600', label: '600 dpi (high-res print)', value: 600 },
+];
+const PDF_DPI_DEFAULT = 'auto';
+
 /**
  * The artboard under the viewport centre — the export dialog's notion of "the
  * active artboard" when nothing is selected. getBoundingClientRect is in
@@ -473,6 +488,7 @@ const DialogShell = (() => {
     const [pdfMarksOpen, setPdfMarksOpen] = useState(false);
     const [pdfMarksCrop, setPdfMarksCrop] = useState(false);
     const [pdfMarksRegistration, setPdfMarksRegistration] = useState(false);
+    const [pdfDpiId, setPdfDpiId] = useState<string>(PDF_DPI_DEFAULT);
     // Optional — the dialog can be mounted in tests without a provider.
     const selSet = useSelectionSetOptional();
 
@@ -494,6 +510,8 @@ const DialogShell = (() => {
           includeBleed: pdfIncludeBleed,
           marks: { crop: pdfMarksCrop, registration: pdfMarksRegistration },
         };
+        const pdfDpi = PDF_DPI_OPTIONS.find((d) => d.id === pdfDpiId)?.value;
+        if (pdfDpi !== undefined) options.dpi = pdfDpi;
       }
       onSubmit(format, scope, options);
     }, [
@@ -504,6 +522,7 @@ const DialogShell = (() => {
       pdfIncludeBleed,
       pdfMarksCrop,
       pdfMarksRegistration,
+      pdfDpiId,
       onSubmit,
     ]);
 
@@ -586,6 +605,22 @@ const DialogShell = (() => {
           )}
           {format === 'pdf' && (
             <div>
+              <label htmlFor="dc-ed-pdf-dpi">Image quality</label>
+              <select
+                id="dc-ed-pdf-dpi"
+                value={pdfDpiId}
+                onChange={(e) => setPdfDpiId(e.target.value)}
+              >
+                {PDF_DPI_OPTIONS.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+              <p className="dc-ed-desc">
+                The page stays vector; this only sets the capture density for raster content on it
+                (dropped photos, large-format art).
+              </p>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                 <input
                   type="checkbox"

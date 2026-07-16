@@ -484,12 +484,12 @@ describe('canvas-edit / applySetArtboardPrint (replace-whole-prop)', () => {
 // feature-2-print-artboards T5 — the AST-only (no-eval) reader the PDF
 // exporter uses to resolve an artboard's print geometry.
 describe('canvas-edit / readArtboardPrintProp (no-eval AST read)', () => {
-  test("reads a JSON-shaped print prop (the picker's own write shape)", () => {
+  test('reads a JSON-shaped print prop on a kind="print" artboard (the picker\'s own write shape)', () => {
     const canvas = [
       'export default function Demo() {',
       '  return (',
       '    <DesignCanvas>',
-      '      <DCArtboard id="home" label="Home" width={816} height={1146} print={{"paper":"a4","bleedMm":3}}>',
+      '      <DCArtboard id="home" label="Home" kind="print" width={816} height={1146} print={{"paper":"a4","bleedMm":3}}>',
       '        <div>content</div>',
       '      </DCArtboard>',
       '    </DesignCanvas>',
@@ -504,7 +504,7 @@ describe('canvas-edit / readArtboardPrintProp (no-eval AST read)', () => {
       'export default function Demo() {',
       '  return (',
       '    <DesignCanvas>',
-      '      <DCArtboard id="home" label="Home" width={816} height={1146} print={{ paper: \'a4\', orientation: \'landscape\', marginsMm: { top: 10, left: 5 } }}>',
+      '      <DCArtboard id="home" label="Home" kind="print" width={816} height={1146} print={{ paper: \'a4\', orientation: \'landscape\', marginsMm: { top: 10, left: 5 } }}>',
       '        <div>content</div>',
       '      </DCArtboard>',
       '    </DesignCanvas>',
@@ -523,7 +523,7 @@ describe('canvas-edit / readArtboardPrintProp (no-eval AST read)', () => {
       'export default function Demo() {',
       '  return (',
       '    <DesignCanvas>',
-      '      <DCArtboard id="home" label="Home" width={1440} height={1024}>',
+      '      <DCArtboard id="home" label="Home" kind="print" width={1440} height={1024}>',
       '        <div>content</div>',
       '      </DCArtboard>',
       '    </DesignCanvas>',
@@ -538,7 +538,7 @@ describe('canvas-edit / readArtboardPrintProp (no-eval AST read)', () => {
       'export default function Demo() {',
       '  return (',
       '    <DesignCanvas>',
-      '      <DCArtboard id="home" label="Home" width={1440} height={1024}>',
+      '      <DCArtboard id="home" label="Home" kind="print" width={1440} height={1024}>',
       '        <div>content</div>',
       '      </DCArtboard>',
       '    </DesignCanvas>',
@@ -546,6 +546,21 @@ describe('canvas-edit / readArtboardPrintProp (no-eval AST read)', () => {
       '}',
     ].join('\n');
     expect(readArtboardPrintProp(CANVAS, canvas, 'nope')).toBeNull();
+  });
+
+  test('dogfood regression — a print prop present but kind NOT "print" → null (a stale prop from a prior kind switch must never leak into export)', () => {
+    const canvas = [
+      'export default function Demo() {',
+      '  return (',
+      '    <DesignCanvas>',
+      '      <DCArtboard id="home" label="Home" width={1440} height={1024} print={{"paper":"a4","bleedMm":3}}>',
+      '        <div>content</div>',
+      '      </DCArtboard>',
+      '    </DesignCanvas>',
+      '  );',
+      '}',
+    ].join('\n');
+    expect(readArtboardPrintProp(CANVAS, canvas, 'home')).toBeNull();
   });
 });
 

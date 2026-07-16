@@ -23,7 +23,15 @@
 //     `--option pageFit=a4` documented in export.md.
 // RGB PDF + correct boxes + vector marks + metadata — CMYK/PDF-X is
 // explicitly out of scope (Design Decision 4); this never claims PDF/X
-// compliance. DPI is raster-only (T4) — irrelevant to this vector path.
+// compliance.
+//
+// `options.dpi` (dogfood follow-up to T4/T5) — the page itself is always
+// vector (text/shapes are never rasterized), but any raster content ON the
+// artboard (a dropped photo, a large-format piece authored at a fraction of
+// its real physical size — e.g. a billboard at 1:10 scale) embeds as a
+// bitmap whose pixel density is set by the CAPTURING context's
+// deviceScaleFactor. `resolveDeviceScale` (exporters/png.ts) is reused here
+// unchanged so `dpi` means the same physical resolution in both exporters.
 
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -32,7 +40,7 @@ import path from 'node:path';
 import { PDFDocument, type PDFPage, rgb } from 'pdf-lib';
 import { readArtboardPrintProp } from '../canvas-edit.ts';
 import { computeMarksGeometry, MARK_STROKE_PT, requiredSlugPt } from '../print/marks.ts';
-import { getPaperPreset, mmToPt, resolveBleedMm, trimSizeMm } from '../print/units.ts';
+import { CSS_DPI, getPaperPreset, mmToPt, resolveBleedMm, trimSizeMm } from '../print/units.ts';
 import { exportShimPath, runShim } from './_runtime.ts';
 import {
   canvasShellUrl,
@@ -41,6 +49,7 @@ import {
   type ExportOptions,
   type ExportResult,
 } from './index.ts';
+import { clampDpi } from './png.ts';
 import type { Target } from './scope.ts';
 
 // DDR-045: resolve via DEV_SERVER_ROOT, never `import.meta.dir`. See _runtime.ts.
@@ -61,6 +70,7 @@ async function capturePdf(
   ctx: ExportContext,
   outDir: string,
   timeoutSec: number,
+  deviceScale: number,
   hooks?: ExportHooks
 ): Promise<string[]> {
   const args = [
@@ -71,6 +81,8 @@ async function capturePdf(
     target.cssPath,
     '--timeout',
     String(timeoutSec),
+    '--scale',
+    String(deviceScale),
   ];
   if (target.multi) args.push('--multi', '1', '--out-dir', outDir);
   else {
@@ -130,6 +142,20 @@ export function parsePdfPrintOptions(raw: unknown): PdfPrintOptions | null {
 export function parsePageFit(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   return getPaperPreset(raw) ? raw : null;
+}
+
+/**
+ * PDF's own device-scale resolver — deliberately NOT `png.ts`'s
+ * `resolveDeviceScale`, which defaults an absent `dpi` to `clampScale(undefined)`
+ * = 2× (PNG's own "a 1× export was uselessly small" UX default). A vector PDF's
+ * text/shapes are already crisp at 1×; only embedded raster content benefits
+ * from a higher capture density, and only when the caller actually asks for
+ * it via `dpi` — defaulting every PDF export to 2× would silently double
+ * embedded-image weight/render time for the common "just export a PDF" case.
+ */
+export function resolvePdfDeviceScale(options: ExportOptions): number {
+  const dpi = clampDpi(options.dpi);
+  return dpi !== undefined ? dpi / CSS_DPI : 1;
 }
 
 /**
@@ -274,6 +300,12 @@ export async function run(
   const timeoutSec = (options.timeoutSec as number | undefined) ?? 12;
   const printOpts = parsePdfPrintOptions(options.pdfPrint);
   const pageFit = parsePageFit(options.pageFit);
+  // Dogfood follow-up — raster CONTENT on the artboard (a dropped photo, a
+  // large-format piece authored at a fraction of its physical size) needs a
+  // real deviceScaleFactor to embed at print density; the page itself stays
+  // vector regardless (see the file header comment). Default 1× (today's
+  // behavior) when `dpi` is absent.
+  const deviceScale = resolvePdfDeviceScale(options);
   const tmp = mkdtempSync(path.join(tmpdir(), 'maude-pdf-'));
   try {
     // written[i] = { path, sourceFile (repo-relative canvas), artboardId }.
@@ -282,7 +314,7 @@ export async function run(
     const written: Array<{ path: string; sourceFile: string; artboardId: string | null }> = [];
     for (let i = 0; i < elementTargets.length; i += 1) {
       const target = elementTargets[i] as Extract<Target, { kind: 'element' }>;
-      const paths = await capturePdf(target, ctx, tmp, timeoutSec, hooks);
+      const paths = await capturePdf(target, ctx, tmp, timeoutSec, deviceScale, hooks);
       if (target.multi) {
         // _pdf-playwright.mjs names multi output `${data-dc-screen}.pdf`.
         for (const p of paths) {

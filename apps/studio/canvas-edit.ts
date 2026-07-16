@@ -3992,7 +3992,12 @@ function objectExpressionToPlain(node: AnyNode, depth = 0): Record<string, unkno
  * Read an artboard's `print` JSX prop as a plain object — used by the PDF
  * exporter (T5) to resolve bleed/paper geometry for the artboard being
  * exported. Read-only (no lock, no write). Returns null when the canvas/
- * artboard/prop doesn't exist or `print` isn't a `{{...}}` object-expression.
+ * artboard/prop doesn't exist, `print` isn't a `{{...}}` object-expression,
+ * or `kind` isn't the literal string `"print"` — a `print` prop left over
+ * from a prior kind switch (or hand-authored on a non-print artboard) must
+ * NOT leak bleed/marks into an export; `kind="print"` is the sole gate
+ * (unlike `video`, print has no implicit structural-fallback resolution, so
+ * checking the explicit attr is sufficient — see DDR-181/canvas-lib.tsx).
  */
 export function readArtboardPrintProp(
   canvasAbsPath: string,
@@ -4004,6 +4009,7 @@ export function readArtboardPrintProp(
   const artboards = collectJsxByTag(parsed.program, 'DCArtboard');
   const target = artboards.find((a) => getStringAttr(a.openingElement, 'id') === artboardId);
   if (!target) return null;
+  if (getStringAttr(target.openingElement, 'kind') !== 'print') return null;
   const attr = findAttribute(target.openingElement, 'print');
   if (attr?.value?.type !== 'JSXExpressionContainer') return null;
   const expr = attr.value.expression as AnyNode | undefined;

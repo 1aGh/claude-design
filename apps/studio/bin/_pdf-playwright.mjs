@@ -5,9 +5,22 @@
 // Per DDR-041 (PDF via page.pdf()): print-media emulation, font readiness
 // wait, explicit page size matching the artboard rect.
 //
+// feature-2-print-artboards T5 (dogfood follow-up) — a "vector PDF" is only
+// vector for TEXT and drawn shapes; any raster <img>/<canvas> content on the
+// artboard (a photo dropped onto a flyer, a large-format billboard authored
+// at a small on-screen scale) still embeds as a bitmap, and that bitmap's
+// pixel density is set by the CAPTURING context's deviceScaleFactor — 1× by
+// default, which looks fine on screen but is visibly soft once printed large
+// (e.g. a design authored at 1:10 scale for a billboard). `--scale` sets the
+// context's deviceScaleFactor before `page.pdf()` runs, exactly like
+// _png-playwright.mjs, so embedded raster content captures at print density
+// while vector text/shapes stay crisp regardless (they're never rasterized).
+// Page SIZE (in pt) is unaffected — it always comes from the artboard's own
+// rect, not from this scale.
+//
 // Invocation (Bun.spawn from exporters/pdf.ts — not invoked directly):
 //   node _pdf-playwright.mjs --url <url> --selector <css> --out <path>
-//     [--multi] [--out-dir <dir>] [--timeout 12]
+//     [--multi] [--out-dir <dir>] [--timeout 12] [--scale 3.125]
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -28,6 +41,7 @@ const {
   'widen-to-artboard': widenFlag,
   multi: multiFlag,
   timeout = '12',
+  scale = '1',
 } = args;
 
 if (!url) {
@@ -38,10 +52,17 @@ if (!url) {
 const widen = widenFlag !== undefined;
 const multi = multiFlag !== undefined;
 const timeoutMs = Number(timeout) * 1000;
+// Same ceiling as _png-playwright.mjs's raised T4 ceiling (600dpi = 6.25×);
+// page SIZE never multiplies by this (unlike PNG), so the 16,000px/600MB
+// output-size guard doesn't apply here — only raster-content density does.
+const deviceScaleFactor = Math.max(1, Math.min(8, Number(scale) || 1));
 
 const browser = await launchChromium();
 try {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const ctx = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor,
+  });
   const page = await ctx.newPage();
   await page.goto(url, { waitUntil: 'load', timeout: timeoutMs });
   // Wait for web fonts so `@font-face` glyphs land in the PDF instead of

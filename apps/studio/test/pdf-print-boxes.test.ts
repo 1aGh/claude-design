@@ -15,6 +15,7 @@ import {
   type PdfPrintOptions,
   parsePageFit,
   parsePdfPrintOptions,
+  resolvePdfDeviceScale,
 } from '../exporters/pdf.ts';
 import { requiredSlugPt } from '../print/marks.ts';
 import {
@@ -83,6 +84,27 @@ describe('pdf.ts — parsePageFit', () => {
     expect(parsePageFit('not-a-paper')).toBeNull();
     expect(parsePageFit(42)).toBeNull();
     expect(parsePageFit(undefined)).toBeNull();
+  });
+});
+
+// Dogfood follow-up (2026-07-16) — a "vector PDF" still embeds raster
+// content (dropped photos, large-format art) as a bitmap whose density is
+// set by the capturing context's deviceScaleFactor; `dpi` controls that.
+describe('pdf.ts — resolvePdfDeviceScale (raster-content density, dogfood follow-up)', () => {
+  test("no dpi → 1× (today's unchanged default — NOT png.ts's 2× default)", () => {
+    expect(resolvePdfDeviceScale({})).toBe(1);
+  });
+
+  test('dpi=300 → 3.125× (300/96)', () => {
+    expect(resolvePdfDeviceScale({ dpi: 300 })).toBeCloseTo(300 / 96, 10);
+  });
+
+  test('dpi=600 → 6.25×', () => {
+    expect(resolvePdfDeviceScale({ dpi: 600 })).toBeCloseTo(600 / 96, 10);
+  });
+
+  test("a bare `scale` option (PNG's legacy field) is ignored — PDF has no scale concept", () => {
+    expect(resolvePdfDeviceScale({ scale: 3 })).toBe(1);
   });
 });
 
