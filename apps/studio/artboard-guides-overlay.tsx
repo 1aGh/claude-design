@@ -108,14 +108,30 @@ const GRID_LINE = 'color-mix(in oklab, oklch(55% 0.22 25) 10%, transparent)';
  *  `grid.size` (e.g. 1) turning into thousands of divs on a large artboard. */
 const MAX_GRID_LINES_PER_AXIS = 400;
 
+/**
+ * Safety bound, not a coverage cap — same reasoning as MAX_GRID_LINES_PER_AXIS,
+ * for the columns/rows `count`. `guides` is an artboard-authored JSX prop, so
+ * it's part of the DDR-054 untrusted-canvas surface — a malicious/poisoned
+ * canvas (peer-pushed under phase-30 branch-scoped multiplayer, or a
+ * prompt-injected agent edit) can set `columns.count` to an arbitrary number
+ * with no server-side validation in between (the value never round-trips
+ * through `setArtboardGuidesOp`'s bounds — it's read directly from React
+ * props at render time). An uncapped loop here mounts one `<div>` per band,
+ * so a huge count is a real client-side DoS (viewer tab freeze/OOM), found
+ * independently by both the security-auditor and ethical-hacker passes on
+ * this feature. 64 comfortably exceeds any real layout-guide use.
+ */
+const MAX_BANDS_PER_AXIS = 64;
+
 function computeBands(def: BandGuideDef, extent: number): Array<{ start: number; size: number }> {
-  if (def.count <= 0 || extent <= 0) return [];
+  const count = Math.min(Math.max(0, Math.floor(def.count)), MAX_BANDS_PER_AXIS);
+  if (count <= 0 || extent <= 0) return [];
   const usable = extent - def.margin * 2;
   if (usable <= 0) return [];
-  const bandSize = (usable - def.gutter * Math.max(0, def.count - 1)) / def.count;
+  const bandSize = (usable - def.gutter * Math.max(0, count - 1)) / count;
   if (bandSize <= 0) return [];
   const bands: Array<{ start: number; size: number }> = [];
-  for (let i = 0; i < def.count; i++) {
+  for (let i = 0; i < count; i++) {
     bands.push({ start: def.margin + i * (bandSize + def.gutter), size: bandSize });
   }
   return bands;

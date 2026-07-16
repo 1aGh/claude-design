@@ -70,6 +70,40 @@ describe('ArtboardGuidesOverlay — generic guides', () => {
     expect(bandCount).toBe(4);
   });
 
+  // Security review (defender + adversarial pass, /flow:done on 0e001da7) —
+  // columns/rows `count` had no cap, unlike the grid path: a malicious/
+  // poisoned canvas (guides is an authored JSX prop, part of the DDR-054
+  // untrusted-canvas surface) could set `columns.count` to a huge number and
+  // mount one <div> per band, freezing the viewer's tab. Regression-tests the
+  // MAX_BANDS_PER_AXIS clamp both independent reviews confirmed as the fix.
+  test('a pathologically large column count is clamped, never a runaway render', () => {
+    const html = renderToStaticMarkup(
+      <ArtboardGuidesOverlay
+        rect={RECT}
+        kind="web"
+        guides={{ columns: { count: 1_000_000_000, gutter: 0, margin: 0 } }}
+        visibility={{ guides: true }}
+      />
+    );
+    const bandCount = (html.match(/position:absolute/g) || []).length - 1; // minus the wrapper div
+    expect(bandCount).toBeLessThanOrEqual(64);
+    expect(bandCount).toBeGreaterThan(0);
+  });
+
+  test('a pathologically large row count is clamped the same way', () => {
+    const html = renderToStaticMarkup(
+      <ArtboardGuidesOverlay
+        rect={RECT}
+        kind="web"
+        guides={{ rows: { count: 999_999_999, gutter: 0, margin: 0 } }}
+        visibility={{ guides: true }}
+      />
+    );
+    const bandCount = (html.match(/position:absolute/g) || []).length - 1;
+    expect(bandCount).toBeLessThanOrEqual(64);
+    expect(bandCount).toBeGreaterThan(0);
+  });
+
   test('grid lines are capped, never runaway for a degenerate small size', () => {
     const html = renderToStaticMarkup(
       <ArtboardGuidesOverlay

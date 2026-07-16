@@ -2184,7 +2184,17 @@ export function DCArtboard({
         }}
         {...handleProps}
       >
-        <button type="button" className="dc-artboard-label sku" aria-label={`Artboard ${label}`}>
+        <button
+          type="button"
+          className="dc-artboard-label sku"
+          // a11y-auditor (T3 review) — the kind chip is aria-hidden (decorative,
+          // redundant with the Inspector's Kind picker), so a non-digital kind
+          // must still reach the artboard's own accessible name or it's
+          // invisible to AT users entirely.
+          aria-label={
+            resolvedKind !== 'digital' ? `Artboard ${label}, ${resolvedKind}` : `Artboard ${label}`
+          }
+        >
           {resolvedKind !== 'digital' ? (
             <span className="dc-artboard-kind-chip" aria-hidden="true">
               <ArtboardKindIcon kind={resolvedKind} />
