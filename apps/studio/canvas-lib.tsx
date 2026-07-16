@@ -107,6 +107,14 @@ import {
   type OverlayVisibility,
 } from './artboard-guides-overlay.tsx';
 import { CanvasShell } from './canvas-shell.tsx';
+import type { ArtboardPrintProp } from './print/units.ts';
+// feature-2-print-artboards T3 — side-effect import: registers the print
+// kind's overlay content (bleed/trim/margin) into artboard-guides-overlay's
+// registry at module load, per that file's own "call registerKindOverlay at
+// module load" contract. Must live in the same module graph every canvas
+// bundle already pulls in (canvas-lib IS that shared graph — DDR-025), so a
+// canvas never renders without the registration having run first.
+import './print-overlay-content.tsx';
 import {
   buildMoveArtboardsRecord,
   diffLayoutPositions,
@@ -1552,8 +1560,14 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   useEffect(() => {
     if (guidesSeededRef.current || !chrome) return;
     guidesSeededRef.current = true;
-    if (readCanvasMeta()?.overlays?.guides === true) {
+    const meta = readCanvasMeta();
+    if (meta?.overlays?.guides === true) {
       chrome.setChrome({ guides: true });
+    }
+    // feature-2-print-artboards T3 — "Show print guides", same self-seed
+    // shape as `guides` above.
+    if (meta?.overlays?.print === true) {
+      chrome.setChrome({ print: true });
     }
   }, [chrome]);
 
@@ -1947,6 +1961,7 @@ export function DCArtboard({
   gap,
   kind,
   guides,
+  print,
   children,
 }: {
   id: string;
@@ -1975,6 +1990,10 @@ export function DCArtboard({
    *  versioned design intent. Kind-agnostic: any artboard can carry these
    *  regardless of `kind`. Visibility is per-user (T6), not this prop. */
   guides?: GuideDefinitions;
+  /** feature-2-print-artboards T2 — paper/orientation/bleed/margins intent.
+   *  Only meaningful when `kind="print"`; the overlay (T3) reads it to draw
+   *  bleed/trim/margin guides against THIS artboard's own resolved px size. */
+  print?: ArtboardPrintProp;
   children: ReactNode;
 }) {
   const ctx = useWorldContext();
@@ -2093,6 +2112,12 @@ export function DCArtboard({
     // Inspector kind picker (T8), and canvas-shell's artboardHasVideo gate
     // (T2) all key off this attribute.
     'data-dc-kind': resolvedKind,
+    // feature-2-print-artboards T2 — read-back for the Inspector's print
+    // picker (paper/orientation/bleed pre-fill), same "stamp the resolved
+    // prop as JSON, parse it back" shape `guides` would need if it grew an
+    // Inspector editor. Small object (≤ ~150 bytes), so a plain JSON attr is
+    // simpler than adding parallel data-dc-print-* scalar attrs per field.
+    'data-dc-print': print ? JSON.stringify(print) : undefined,
   };
 
   if (!ctx || !rect) {
@@ -2249,7 +2274,8 @@ export function DCArtboard({
         rect={{ x: liveX, y: liveY, w: rect.w, h: rect.h }}
         kind={resolvedKind}
         guides={guides}
-        visibility={{ guides: chrome?.guides ?? false }}
+        print={print}
+        visibility={{ guides: chrome?.guides ?? false, print: chrome?.print ?? false }}
       />
     </>
   );

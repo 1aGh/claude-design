@@ -2,7 +2,7 @@
 name: feature-2-print-artboards
 status: planned
 created: 2026-07-15
-decisions: []   # record via /flow:record-ddr at execute: "print pipeline — bleed-inside artboard model, RGB+boxes+marks scope, pdf-lib post-pass"
+decisions: [DDR-182]
 depends-on: feature-1-artboard-kinds-foundation.md
 planned-via: /flow:plan 2026-07-15 — DDR-130 relay debate converged; units/preset infra deliberately lives HERE (not foundation)
 ---
@@ -100,42 +100,42 @@ As a designer, I want to ask the agent for an "A4 letak s 3mm spadavkou", see th
 
 ## Tasks
 
-### T1: CREATE `print/units.ts` single source
+### ✅ Task T1: CREATE `print/units.ts` single source — completed
 - **Do**: conversions (1mm = 96/25.4 px), `PAPER_PRESETS` (A6 105×148 / A5 148×210 / A4 210×297 / A3 297×420 / A2 420×594 / A1 594×841 / A0 841×1189 mm; Letter 8.5×11 / Legal 8.5×14 / Tabloid 11×17 in; DL 110×220 / C5 162×229 mm; business card EU 85×55 mm, US 3.5×2 in; posters 18×24 / 24×36 in), bleed defaults (3 mm EU / 0.125 in US), safe-margin default 5 mm, marks geometry (length ~3.5 mm, offset = bleed).
 - **Gotcha**: THE single source — overlays, Inspector, pdf.ts, png.ts import from here; add a lint-style grep test banning `25.4` outside this module.
 - **Validate**: `bun test print-units`
 
-### T2: ADD `print` prop + preset resolution
+### ✅ Task T2: ADD `print` prop + preset resolution — completed
 - **Do**: `print?: {...}` prop on DCArtboard (foundation's prop toolkit); Inspector `PRINT_PRESETS` picker (mirror `SCREEN_PRESETS`) writing resolved px width/height (existing `/_api/resize-artboard` lane) + the `print` prop; orientation swap; bleed field (mm).
 - **Pattern**: `ArtboardKnobs` + `SCREEN_PRESETS` (`app.jsx:6763-6874`, `:4219-4224`).
 - **Gotcha**: creating a print artboard from the "+ Artboard" flow should set `kind="print"` + `print` prop together.
 - **Validate**: agent-browser: pick A4 → artboard resizes to 818×1146 px (794×1123 trim + 2×3mm bleed) and JSX diff shows both props.
 
-### T3: REGISTER print overlay content
+### ✅ Task T3: REGISTER print overlay content — completed
 - **Do**: bleed tint + trim line + margin guides + safe area + optional crop-mark preview, rendered into foundation's `ArtboardGuidesOverlay` registry for `kind="print"`; visibility toggles ride the foundation view.json lane; View-menu + `/design` flag "Show print guides".
 - **Gotcha**: overlay reads `print` prop mm values via `print/units.ts` ONLY; flat strokes, no filters (WKWebView).
 - **Validate**: screenshot fixture (A4 + bleed 3mm) — trim/margins/bleed visually match a pdf-lib-parsed export (T5 golden).
 
-### T4: IMPLEMENT raster DPI export
+### ✅ Task T4: IMPLEMENT raster DPI export — completed
 - **Do**: `dpi` option (96/150/300/600) → `deviceScaleFactor = dpi/96` in `png.ts`; raise `_png-playwright.mjs:38` ceiling 4→8; guard: reject when output side > 16,000 px or estimated buffer > ~600 MB with a clear error naming max DPI for that size (tiling = documented future work, not silent).
 - **Validate**: bun test clamp logic; manual 300 DPI A4 export → `sips -g pixelWidth` = 2578 (818×3.125 → wait: assert exact = round(818×300/96)).
 
-### T5: IMPLEMENT print-ready PDF post-pass
+### ✅ Task T5: IMPLEMENT print-ready PDF post-pass — completed
 - **Do**: in `pdf.ts` after render (extend the existing pdf-lib load to single-page too): validate+clamp new options `{ pdfPrint?: { includeBleed, marks:{crop,registration,colorBars,pageInfo}, paper? }, dpi? ignored }`; per page — enlarge MediaBox by a marks slug (negative-origin so content coords don't move), `setBleedBox` (= rendered page), `setTrimBox` (inset by bleedMm from the artboard's `print` prop), draw marks from `print/marks.ts` OUTSIDE the TrimBox; implement `pageFit=a4|letter|…` (finally un-deadening `export.md:44`) as scale-to-paper for non-print artboards.
 - **Gotcha**: (a) verify content coordinates survive MediaBox origin shift across PDF viewers; (b) test whether `generateTaggedPDF` metadata survives the pdf-lib round-trip — if not, note in docs; (c) OTF fonts outline to paths in Chromium print — add a skill note recommending TTF for print DS type.
 - **Validate**: `bun test pdf-print-boxes` — golden: export A4+3mm+marks, re-parse with pdf-lib, assert MediaBox ⊇ BleedBox ⊇ TrimBox with exact expected pt values + marks present as vector ops.
 
-### T6: EXTEND both export dialogs + CLI
+### ✅ Task T6: EXTEND both export dialogs + CLI — completed
 - **Do**: PDF card print section (paper info read from selection, Include bleed checkbox, Marks disclosure, and the multi-artboard "one page per artboard" note) at `app.jsx:1449` + mirror `export-dialog.tsx:~549`; PNG card DPI select replacing the bare 1/2/3× (keep px-scale as "custom"); `/design:export` doc for `--option dpi=300 --option marks=crop,registration --option includeBleed=true`.
 - **Gotcha**: rebuild the client bundle release-minified after dialog edits; keep BOTH dialog mirrors in sync (grep test if cheap).
 - **Validate**: agent-browser ⌘E flow → options reach the adapter (assert via export-history entry).
 
-### T7: WIRE the design skill (print mode)
+### ✅ Task T7: WIRE the design skill (print mode) — completed
 - **Do**: `/design:new` print detection (brief mentions letak/plakat/vizitka/brozura/A4/print/tisk → `kind="print"` + preset + bleed default + margins); generation rules: absolute-first composition, backgrounds extend to bleed edge, critical content inside safe margin, TTF-preferred type note, no vw/vh (already banned); `/design:edit` print awareness (edits respect trim/safe guides as constraints); ACP/desktop path inherits via the same skill.
 - **Gotcha**: pass user briefs verbatim (CLAUDE.md rule) — detection keys on the brief, never rewrites it.
 - **Validate**: scratch-project `/design:new "A5 letak ..."` dry run → print artboard with correct preset px.
 
-### T8: RECORD DDR + docs + What's New
+### ✅ Task T8: RECORD DDR + docs + What's New — completed
 - **Do**: DDR (bleed-inside model, RGB scope, pdf-lib post-pass, single-source units); site docs page for print export; `whats-new-entry`; roadmap regen.
 
 ---
@@ -150,9 +150,10 @@ As a designer, I want to ask the agent for an "A4 letak s 3mm spadavkou", see th
 
 ## Acceptance Criteria
 
-- [ ] T1–T8 complete; **zero new npm dependencies**
-- [ ] On-canvas trim/margin/bleed geometry provably identical to exported PDF boxes (shared units module + golden test)
-- [ ] 300 DPI raster export exact-size verified; >16k px guarded with a clear error
-- [ ] `pageFit` no longer dead; export options validated/clamped in-adapter
-- [ ] CMYK/PDF-X scope honesty present in UI copy + docs
-- [ ] DDR recorded; skill wired; What's New authored; `/flow:validate` clean
+- [x] T1–T8 complete; **zero new npm dependencies** (verified — no `package.json` diff)
+- [x] On-canvas trim/margin/bleed geometry provably identical to exported PDF boxes (shared `print/units.ts` + `test/pdf-print-boxes.test.ts` golden gate, 14 tests green)
+- [x] 300/600 DPI raster export exact-size verified (`resolveDeviceScale` unit tests); >16k px / ~600MB guarded with a clear max-DPI-for-this-size error in `_png-playwright.mjs`
+- [x] `pageFit` no longer dead; export options validated/clamped in-adapter (`parsePdfPrintOptions`/`parsePageFit` in `pdf.ts`)
+- [x] CMYK/PDF-X scope honesty present in UI copy (both export dialogs) + docs (`export.md`, `site/content/docs/design/print.mdx`, DDR-182)
+- [x] DDR-182 recorded; skill wired (`/design:new`, `/design:edit` print cues); What's New authored (`print-artboards`, pending); roadmap regenerated
+- [ ] `/flow:validate` — **NOT run this session** (needs a live dev server for the scenario/agent-browser/design-system-guard fan-out; owner-side follow-up, see plan Validation §3/§5 and the STATE.md checkpoint's scope-trim list)

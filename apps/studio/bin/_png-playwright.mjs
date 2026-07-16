@@ -35,7 +35,38 @@ if (!url) {
 const widen = widenFlag !== undefined;
 const multi = multiFlag !== undefined;
 const timeoutMs = Number(timeout) * 1000;
-const deviceScaleFactor = Math.max(1, Math.min(4, Number(scale) || 1));
+// feature-2-print-artboards T4 — ceiling raised 4→8 so a 300dpi export
+// (3.125×) AND 600dpi (6.25×) both fit; exporters/png.ts resolveDeviceScale
+// is the only caller that can reach beyond 3, via the `dpi` option.
+const deviceScaleFactor = Math.max(1, Math.min(8, Number(scale) || 1));
+// feature-2-print-artboards T4 — a raster export's actual pixel dimensions
+// are only known once the target element's DOM rect is measured below (the
+// adapter can't pre-compute them — see png.ts's own comment), so the "too
+// big to render" guard lives here rather than in the Node-side adapter.
+// 16,000px matches common canvas/texture limits across browser engines;
+// ~600MB is a generous RGBA-buffer ceiling (width × height × 4 bytes) well
+// under typical CI/desktop RAM, chosen so a legitimate 600dpi A0 poster still
+// fits (9933×14043px × 4B ≈ 558MB) while a runaway value fails loud instead
+// of OOM-killing the render process.
+const MAX_OUTPUT_SIDE_PX = 16000;
+const MAX_OUTPUT_BYTES = 600 * 1024 * 1024;
+function assertOutputSizeOk(widthCss, heightCss) {
+  const outW = Math.ceil(widthCss * deviceScaleFactor);
+  const outH = Math.ceil(heightCss * deviceScaleFactor);
+  const estBytes = outW * outH * 4;
+  if (outW > MAX_OUTPUT_SIDE_PX || outH > MAX_OUTPUT_SIDE_PX || estBytes > MAX_OUTPUT_BYTES) {
+    const maxScaleForSide = MAX_OUTPUT_SIDE_PX / Math.max(widthCss, heightCss);
+    const maxScaleForBytes = Math.sqrt(MAX_OUTPUT_BYTES / 4 / (widthCss * heightCss));
+    const maxScale = Math.min(maxScaleForSide, maxScaleForBytes);
+    const maxDpi = Math.floor(maxScale * 96);
+    console.error(
+      `_png-playwright: requested output ${outW}×${outH}px at ${deviceScaleFactor}× exceeds the ` +
+        `render guard (max side ${MAX_OUTPUT_SIDE_PX}px / max ~${Math.round(MAX_OUTPUT_BYTES / 1024 / 1024)}MB). ` +
+        `For this artboard size (${Math.round(widthCss)}×${Math.round(heightCss)}px), the max supported DPI is ~${maxDpi}.`
+    );
+    process.exit(1);
+  }
+}
 
 const browser = await launchChromium();
 try {
@@ -97,6 +128,9 @@ try {
       const r = el.getBoundingClientRect();
       return { x: r.left, y: r.top, width: r.width, height: r.height };
     });
+    // feature-2-print-artboards T4 — fail loud BEFORE resizing the viewport
+    // to a pathological size, not after.
+    assertOutputSizeOk(rect.width, rect.height);
     // Resize the viewport to fit the artboard so the screenshot doesn't
     // include the world plane's pan/zoom margin. The artboard then sits at
     // (0,0) with its native dimensions.

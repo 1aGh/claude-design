@@ -7,12 +7,32 @@
 //
 // Multi-target rendering: one PDF per target via the playwright shim, then
 // pdf-lib concatenates pages into a single document.
+//
+// feature-2-print-artboards T5 — print-ready post-pass. When the caller asks
+// for it (`options.pdfPrint` and/or `options.pageFit`), every page gets
+// loaded into pdf-lib (single-page path now goes through pdf-lib too, not
+// just multi) and, per page:
+//   - a `kind="print"` artboard's rendered page gets its MediaBox enlarged
+//     (negative origin — content coordinates never move), BleedBox set to
+//     the full rendered page, TrimBox inset by the artboard's own bleed (read
+//     off its `print` JSX prop — never re-passed via options, so the
+//     exported boxes can never drift from what the artboard's OWN prop says),
+//     and vector crop/registration marks drawn outside TrimBox.
+//   - a non-print artboard honors `pageFit` (scale-to-paper via
+//     embedPage/drawPage) — finally implementing the long-dead
+//     `--option pageFit=a4` documented in export.md.
+// RGB PDF + correct boxes + vector marks + metadata — CMYK/PDF-X is
+// explicitly out of scope (Design Decision 4); this never claims PDF/X
+// compliance. DPI is raster-only (T4) — irrelevant to this vector path.
 
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, type PDFPage, rgb } from 'pdf-lib';
+import { readArtboardPrintProp } from '../canvas-edit.ts';
+import { computeMarksGeometry, MARK_STROKE_PT, requiredSlugPt } from '../print/marks.ts';
+import { getPaperPreset, mmToPt, resolveBleedMm, trimSizeMm } from '../print/units.ts';
 import { exportShimPath, runShim } from './_runtime.ts';
 import {
   canvasShellUrl,
@@ -25,6 +45,16 @@ import type { Target } from './scope.ts';
 
 // DDR-045: resolve via DEV_SERVER_ROOT, never `import.meta.dir`. See _runtime.ts.
 const PDF_PLAYWRIGHT = exportShimPath('_pdf-playwright.mjs');
+
+/** `[data-dc-screen="<id>"]` → `<id>` — the exact cssPath shape scope.ts's
+ *  'artboard' resolver produces when it knows the artboard id (the common
+ *  case — see scope.ts hints.artboardId). Any other selector shape (a
+ *  descendant-widen fallback, `:first-of-type`) yields null — the post-pass
+ *  then simply skips print geometry for that page rather than guessing. */
+export function artboardIdFromCssPath(cssPath: string): string | null {
+  const m = /^\[data-dc-screen="([^"]+)"\]$/.exec(cssPath);
+  return m ? (m[1] as string) : null;
+}
 
 async function capturePdf(
   target: Extract<Target, { kind: 'element' }>,
@@ -58,6 +88,174 @@ async function capturePdf(
   });
 }
 
+export interface MarksOptions {
+  crop: boolean;
+  registration: boolean;
+  colorBars: boolean;
+  pageInfo: boolean;
+}
+
+export interface PdfPrintOptions {
+  /** Default true when the artboard's own bleedMm > 0 (Design Decision 5). */
+  includeBleed?: boolean;
+  marks: MarksOptions;
+}
+
+/**
+ * Validate + clamp `options.pdfPrint` — per exporters/index.ts's own
+ * contract, new print params enter through the free-form options bag and
+ * MUST be clamped/validated in-adapter (no schema gate exists upstream).
+ * Unknown/malformed shapes degrade to "print post-pass off" rather than
+ * throwing — a bad options bag should never break a plain export.
+ */
+export function parsePdfPrintOptions(raw: unknown): PdfPrintOptions | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const marksRaw =
+    o.marks && typeof o.marks === 'object' && !Array.isArray(o.marks)
+      ? (o.marks as Record<string, unknown>)
+      : {};
+  return {
+    includeBleed: typeof o.includeBleed === 'boolean' ? o.includeBleed : undefined,
+    marks: {
+      crop: marksRaw.crop === true,
+      registration: marksRaw.registration === true,
+      colorBars: marksRaw.colorBars === true,
+      pageInfo: marksRaw.pageInfo === true,
+    },
+  };
+}
+
+/** `options.pageFit` — a paper preset id for non-print artboards, or null. */
+export function parsePageFit(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  return getPaperPreset(raw) ? raw : null;
+}
+
+/**
+ * Apply the print-ready post-pass to one page: enlarge MediaBox (negative
+ * origin, content untouched), set BleedBox/TrimBox, draw marks. `bleedMm`
+ * comes from the artboard's OWN `print` prop (read by the caller) — never a
+ * value re-derived here, so on-canvas guides (T3) and this export can never
+ * disagree about where the trim line is.
+ */
+export function applyPrintBoxesAndMarks(
+  page: PDFPage,
+  bleedMm: number,
+  printOpts: PdfPrintOptions
+): void {
+  const { width: pageWidthPt, height: pageHeightPt } = page.getSize();
+  const bleedPt = mmToPt(bleedMm);
+  const includeBleed = printOpts.includeBleed ?? bleedMm > 0;
+
+  // Bleed box IS the full rendered page (Design Decision 1 — the artboard
+  // authored its own width/height as trim + 2×bleed). Trim box insets by
+  // bleedPt on every side. When the caller opts OUT of bleed, both boxes
+  // collapse onto the trim rect (still a valid MediaBox ⊇ BleedBox ⊇ TrimBox
+  // nesting — degenerate but not violated) and the MediaBox itself starts
+  // there too, effectively cropping the bleed strip out of the visible area
+  // (PDF viewers/printers clip to MediaBox) without moving any content.
+  const trimX = bleedPt;
+  const trimY = bleedPt;
+  const trimW = Math.max(0, pageWidthPt - 2 * bleedPt);
+  const trimH = Math.max(0, pageHeightPt - 2 * bleedPt);
+  const baseBox = includeBleed
+    ? { x: 0, y: 0, w: pageWidthPt, h: pageHeightPt }
+    : { x: trimX, y: trimY, w: trimW, h: trimH };
+
+  const wantsMarks = printOpts.marks.crop || printOpts.marks.registration;
+  const slugPt = wantsMarks
+    ? requiredSlugPt({ crop: printOpts.marks.crop, registration: printOpts.marks.registration })
+    : 0;
+
+  page.setMediaBox(
+    baseBox.x - slugPt,
+    baseBox.y - slugPt,
+    baseBox.w + 2 * slugPt,
+    baseBox.h + 2 * slugPt
+  );
+  page.setBleedBox(
+    includeBleed ? 0 : trimX,
+    includeBleed ? 0 : trimY,
+    includeBleed ? pageWidthPt : trimW,
+    includeBleed ? pageHeightPt : trimH
+  );
+  page.setTrimBox(trimX, trimY, trimW, trimH);
+
+  if (wantsMarks) {
+    // Marks always reference the FULL render (bleed-box) coordinate frame —
+    // they show where the trim line is regardless of whether bleed itself is
+    // included in the visible MediaBox.
+    const geo = computeMarksGeometry({
+      pageWidthPt,
+      pageHeightPt,
+      bleedPt,
+      crop: printOpts.marks.crop,
+      registration: printOpts.marks.registration,
+    });
+    const black = rgb(0, 0, 0);
+    for (const seg of geo.cropMarks) {
+      page.drawLine({
+        start: { x: seg.x1, y: seg.y1 },
+        end: { x: seg.x2, y: seg.y2 },
+        thickness: MARK_STROKE_PT,
+        color: black,
+      });
+    }
+    for (const mark of geo.registrationMarks) {
+      page.drawCircle({
+        x: mark.circle.cx,
+        y: mark.circle.cy,
+        size: mark.circle.r,
+        borderColor: black,
+        borderWidth: MARK_STROKE_PT,
+      });
+      for (const seg of mark.crosshair) {
+        page.drawLine({
+          start: { x: seg.x1, y: seg.y1 },
+          end: { x: seg.x2, y: seg.y2 },
+          thickness: MARK_STROKE_PT,
+          color: black,
+        });
+      }
+    }
+  }
+}
+
+/**
+ * `pageFit` — scale-to-paper for a NON-print artboard (Design Decision 6's
+ * counterpart for the export.md `--option pageFit=a4` surface: PDF is
+ * always vector, so "DPI" never applies here). Embeds the rendered page as
+ * an XObject on a fresh page sized to the target paper, uniformly scaled +
+ * centered, and swaps it in at the same index.
+ */
+export async function applyPageFit(
+  doc: PDFDocument,
+  pageIndex: number,
+  paperId: string
+): Promise<void> {
+  const preset = getPaperPreset(paperId);
+  if (!preset) return;
+  const { widthMm, heightMm } = trimSizeMm(preset, 'portrait');
+  const widthPt = mmToPt(widthMm);
+  const heightPt = mmToPt(heightMm);
+  const original = doc.getPage(pageIndex);
+  const { width: origW, height: origH } = original.getSize();
+  if (origW <= 0 || origH <= 0) return;
+  const embedded = await doc.embedPage(original);
+  const scale = Math.min(widthPt / origW, heightPt / origH);
+  const drawW = origW * scale;
+  const drawH = origH * scale;
+  const newPage = doc.insertPage(pageIndex, [widthPt, heightPt]);
+  newPage.drawPage(embedded, {
+    x: (widthPt - drawW) / 2,
+    y: (heightPt - drawH) / 2,
+    width: drawW,
+    height: drawH,
+  });
+  doc.removePage(pageIndex + 1); // the original, now shifted one slot later
+}
+
 export async function run(
   targets: Target[],
   options: ExportOptions,
@@ -74,37 +272,105 @@ export async function run(
     throw new Error('pdf adapter requires element targets (got file-tree)');
   }
   const timeoutSec = (options.timeoutSec as number | undefined) ?? 12;
+  const printOpts = parsePdfPrintOptions(options.pdfPrint);
+  const pageFit = parsePageFit(options.pageFit);
   const tmp = mkdtempSync(path.join(tmpdir(), 'maude-pdf-'));
   try {
-    const written: string[] = [];
+    // written[i] = { path, sourceFile (repo-relative canvas), artboardId }.
+    // artboardId is per-PAGE — a `--multi` capture writes one file per
+    // artboard, so this is populated per file, not per top-level Target.
+    const written: Array<{ path: string; sourceFile: string; artboardId: string | null }> = [];
     for (let i = 0; i < elementTargets.length; i += 1) {
-      const paths = await capturePdf(elementTargets[i], ctx, tmp, timeoutSec, hooks);
-      written.push(...paths);
-      // Outer-loop tick (N separate top-level Targets — rare). The granular
-      // "K of M artboards" signal for canvas-as-separate comes from the
-      // shim's own MAUDE_PROGRESS lines via spawnShim's onProgress inside
-      // capturePdf, above — both funnel into the same hooks.onProgress.
+      const target = elementTargets[i] as Extract<Target, { kind: 'element' }>;
+      const paths = await capturePdf(target, ctx, tmp, timeoutSec, hooks);
+      if (target.multi) {
+        // _pdf-playwright.mjs names multi output `${data-dc-screen}.pdf`.
+        for (const p of paths) {
+          written.push({
+            path: p,
+            sourceFile: target.file,
+            artboardId: path.basename(p, '.pdf'),
+          });
+        }
+      } else {
+        for (const p of paths) {
+          written.push({
+            path: p,
+            sourceFile: target.file,
+            artboardId: artboardIdFromCssPath(target.cssPath),
+          });
+        }
+      }
       hooks?.onProgress?.({ current: i + 1, total: elementTargets.length });
     }
     if (!written.length) {
       return { filename: 'export.pdf', contentType: 'application/pdf', body: new Uint8Array(0) };
     }
-    if (written.length === 1) {
-      const bytes = new Uint8Array(readFileSync(written[0]));
-      const baseSlug = elementTargets[0]?.canvasSlug ?? 'export';
+
+    const baseSlug = elementTargets[0]?.canvasSlug ?? 'export';
+    const needsPostPass = !!printOpts || !!pageFit;
+
+    // Fast path — no print/pageFit options given: pass Chromium's vector PDF
+    // straight through, exactly as before this feature (zero pdf-lib
+    // round-trip overhead for the common "just export a PDF" case).
+    if (!needsPostPass) {
+      const [only] = written;
+      if (written.length === 1 && only) {
+        const bytes = new Uint8Array(readFileSync(only.path));
+        return { filename: `${baseSlug}.pdf`, contentType: 'application/pdf', body: bytes };
+      }
+      const out = await PDFDocument.create();
+      for (const w of written) {
+        const src = await PDFDocument.load(new Uint8Array(readFileSync(w.path)));
+        const pages = await out.copyPages(src, src.getPageIndices());
+        for (const page of pages) out.addPage(page);
+      }
+      const bytes = await out.save();
       return { filename: `${baseSlug}.pdf`, contentType: 'application/pdf', body: bytes };
     }
-    // Multi-target → concatenate via pdf-lib `copyPages`. The vector
-    // primitives produced by Chromium copy through losslessly — we never
-    // re-render or rasterize.
+
+    // Post-pass path — every page goes through pdf-lib (single-page case now
+    // included, per T5's "extend the existing pdf-lib load to single-page
+    // too"), so boxes/marks/pageFit apply uniformly regardless of scope.
     const out = await PDFDocument.create();
-    for (const p of written) {
-      const src = await PDFDocument.load(new Uint8Array(readFileSync(p)));
+    // Cache canvas source text per file — a canvas-as-separate export reads
+    // the SAME source repeatedly (once per artboard) otherwise.
+    const sourceCache = new Map<string, string>();
+    for (const w of written) {
+      const src = await PDFDocument.load(new Uint8Array(readFileSync(w.path)));
       const pages = await out.copyPages(src, src.getPageIndices());
-      for (const page of pages) out.addPage(page);
+      for (const page of pages) {
+        const pageIndex = out.getPageCount();
+        out.addPage(page);
+        let printProp: Record<string, unknown> | null = null;
+        if (w.artboardId) {
+          const abs = path.join(ctx.repoRoot, w.sourceFile);
+          let text = sourceCache.get(abs);
+          if (text === undefined) {
+            try {
+              text = readFileSync(abs, 'utf8');
+            } catch {
+              text = '';
+            }
+            sourceCache.set(abs, text);
+          }
+          if (text) printProp = readArtboardPrintProp(abs, text, w.artboardId);
+        }
+        if (printProp && printOpts) {
+          const paper = typeof printProp.paper === 'string' ? printProp.paper : 'a4';
+          const bleedMmRaw = printProp.bleedMm;
+          const bleedMm = resolveBleedMm({
+            paper,
+            bleedMm: typeof bleedMmRaw === 'number' ? bleedMmRaw : undefined,
+          });
+          applyPrintBoxesAndMarks(page, bleedMm, printOpts);
+        } else if (!printProp && pageFit) {
+          // Non-print artboard + pageFit requested — scale-to-paper.
+          await applyPageFit(out, pageIndex, pageFit);
+        }
+      }
     }
     const bytes = await out.save();
-    const baseSlug = elementTargets[0]?.canvasSlug ?? 'export';
     return { filename: `${baseSlug}.pdf`, contentType: 'application/pdf', body: bytes };
   } finally {
     rmSync(tmp, { recursive: true, force: true });

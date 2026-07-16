@@ -62,6 +62,20 @@ grep -q '<VideoComp' "$ACTIVE_CANVAS_ABS" 2>/dev/null && VIDEO_EDIT=1
 [ -n "$VIDEO_EDIT" ] && echo "→ loading skill design:video-comp (Remotion composition rules)"
 ```
 
+#### 0.7 Print-artboard awareness (feature-2-print-artboards)
+
+When the active artboard has `kind="print"` (or the feedback names a print cue — `letak`/`plakat`/`vizitka`/`brozura`/`leták`/`plakát`/`brožura`, `flyer`/`poster`/`business card`/`brochure`/`bleed`/`trim`/`print`/`tisk`), edits must respect the trim/safe-margin geometry as HARD layout constraints, not just visual guides:
+
+```bash
+grep -q 'kind="print"' "$ACTIVE_CANVAS_ABS" 2>/dev/null && PRINT_EDIT=1
+grep -qiE 'letak|plakat|vizitka|brozura|leták|plakát|brožura|flyer|poster|business card|brochure|bleed|trim margin|print|tisk' <<< "$ARGUMENTS" && PRINT_EDIT=1
+```
+
+- Never move/resize a `kind="print"` artboard's `width`/`height` by hand — a paper/orientation/bleed change goes through the Inspector's print picker (T2: `/_api/set-artboard-print` + `/_api/resize-artboard` together) or `resolvePrintArtboard()`, so the resolved px size never drifts from the `print` prop.
+- Any new full-bleed background/photo/fill must still cover the WHOLE artboard box (0 to `width`/`height`) — the bleed edge, not just the trim-inset area (same rule as `/design:new`'s print cue).
+- Any new critical content (headline, logo, CTA) must land inside the safe margin — toggle "Show print guides" (View menu, T3) before/after the edit to visually confirm nothing landed in the bleed/trim band.
+- Don't touch the `print` prop's `paper`/`bleedMm`/`marginsMm` fields unless the user explicitly asked for a paper/bleed/margin change — a copy/layout edit on a print artboard should leave its print geometry alone.
+
 ### 1. Resolve config
 
 Invoke skill `design` with input `$ARGUMENTS`.

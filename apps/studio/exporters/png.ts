@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import JSZip from 'jszip';
+import { CSS_DPI } from '../print/units.ts';
 import { exportShimPath, runShim } from './_runtime.ts';
 import {
   canvasShellUrl,
@@ -27,7 +28,8 @@ import type { Target } from './scope.ts';
 const PNG_PLAYWRIGHT = exportShimPath('_png-playwright.mjs');
 
 interface CaptureOptions {
-  scale?: 1 | 2 | 3;
+  /** Fully-resolved Playwright deviceScaleFactor — see resolveDeviceScale. */
+  scale?: number;
   timeoutSec?: number;
 }
 
@@ -40,6 +42,44 @@ export function clampScale(raw: unknown): 1 | 2 | 3 {
   if (n === 1) return 1;
   if (n === 3) return 3;
   return 2;
+}
+
+/** feature-2-print-artboards T4 — supported DPI presets (Adobe-conventional
+ *  print ladder). Exported for unit coverage. */
+export const DPI_PRESETS = [96, 150, 300, 600] as const;
+export type DpiPreset = (typeof DPI_PRESETS)[number];
+
+/** Coerce an arbitrary `options.dpi` to the nearest supported preset, or
+ *  `undefined` when absent/invalid (caller then falls back to `scale`). */
+export function clampDpi(raw: unknown): DpiPreset | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return undefined;
+  let best: DpiPreset = DPI_PRESETS[0];
+  let bestDelta = Math.abs(n - best);
+  for (const preset of DPI_PRESETS) {
+    const delta = Math.abs(n - preset);
+    if (delta < bestDelta) {
+      best = preset;
+      bestDelta = delta;
+    }
+  }
+  return best;
+}
+
+/**
+ * The Playwright `deviceScaleFactor` for a capture — `dpi` (physical print
+ * resolution) wins when present, else the legacy 1×/2×/3× UI preset.
+ * `dpi/96` because authoring is at CSS px @96dpi (print/units.ts CSS_DPI) —
+ * this is the ONE place outside that module allowed to divide by 96 (a
+ * device-scale-factor derivation, not an mm→px conversion, so it's exempt
+ * from the T1 single-source `25.4` lint guard, but stays in lockstep with
+ * CSS_DPI by importing it rather than hardcoding 96 again).
+ */
+export function resolveDeviceScale(options: ExportOptions): number {
+  const dpi = clampDpi(options.dpi);
+  if (dpi !== undefined) return dpi / CSS_DPI;
+  return clampScale(options.scale);
 }
 
 async function captureElement(
@@ -112,8 +152,10 @@ export async function run(
   const captureOpts: CaptureOptions = {
     // Default 2× — a single-scale PNG was uselessly small (item 1). The dialog
     // sends an explicit scale; this default covers direct API / curl callers.
-    // Clamped to the 1–3 preset range; the shim re-clamps deviceScaleFactor ≤ 4.
-    scale: clampScale(options.scale),
+    // feature-2-print-artboards T4 — `options.dpi` (96/150/300/600) wins over
+    // the legacy 1–3 preset when present; the shim re-clamps deviceScaleFactor
+    // ≤ 8 and guards oversized output (see _png-playwright.mjs).
+    scale: resolveDeviceScale(options),
     timeoutSec: (options.timeoutSec as number | undefined) ?? 8,
   };
 

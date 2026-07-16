@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-182: Print artboards — bleed-inside model, RGB-only scope, pdf-lib post-pass, single-source units](DDR-182-print-artboards-bleed-model-and-pdf-post-pass.md) — 2026-07-16, print/pdf/export/canvas-lib/units
 - [DDR-181: Artboard kind model (JSX-prop-authoritative) + overlay-layer contract](DDR-181-artboard-kind-model-and-overlay-layer-contract.md) — 2026-07-16, canvas-lib/artboard/print/web/video/snapping/ux
 - [DDR-180: ACP elicitation-form support — AskUserQuestion + generic MCP form input, fail-closed](DDR-180-acp-elicitation-form-support-askuserquestion-plus-mcp.md) — 2026-07-15, acp/chat/security/elicitation/askuserquestion/mcp
 - [DDR-179: ACP permission gate — mode-driven policy + manual approve/deny UI retires DDR-125 F2](DDR-179-acp-permission-gate-retires-ddr125-f2.md) — 2026-07-15, acp/chat/security/permission-gate/ddr-125-followup

@@ -2250,13 +2250,27 @@ function CanvasRouter({
       // rides the same live-broadcast channel; the shell PATCHes view.json
       // separately (see setGuidesVisible in app.jsx).
       if (m.dgn === 'view-chrome' && chromeCtx) {
-        const mm = m as { minimap?: boolean; zoom?: boolean; present?: boolean; guides?: boolean };
-        const patch: { minimap?: boolean; zoom?: boolean; present?: boolean; guides?: boolean } =
-          {};
+        const mm = m as {
+          minimap?: boolean;
+          zoom?: boolean;
+          present?: boolean;
+          guides?: boolean;
+          print?: boolean;
+        };
+        const patch: {
+          minimap?: boolean;
+          zoom?: boolean;
+          present?: boolean;
+          guides?: boolean;
+          print?: boolean;
+        } = {};
         if (typeof mm.minimap === 'boolean') patch.minimap = mm.minimap;
         if (typeof mm.zoom === 'boolean') patch.zoom = mm.zoom;
         if (typeof mm.present === 'boolean') patch.present = mm.present;
         if (typeof mm.guides === 'boolean') patch.guides = mm.guides;
+        // feature-2-print-artboards T3 — "Show print guides" (bleed/trim/
+        // margin overlay). Same per-canvas-persisted shape as `guides`.
+        if (typeof mm.print === 'boolean') patch.print = mm.print;
         chromeCtx.setChrome(patch);
         return;
       }

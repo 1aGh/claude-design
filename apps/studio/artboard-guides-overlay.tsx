@@ -22,6 +22,7 @@
 import type { ReactNode } from 'react';
 
 import type { ArtboardKind } from './canvas-lib.tsx';
+import type { ArtboardPrintProp } from './print/units.ts';
 
 export interface OverlayRect {
   x: number;
@@ -68,6 +69,9 @@ export interface KindOverlayProps {
   rect: OverlayRect;
   kind: ArtboardKind;
   guides?: GuideDefinitions;
+  /** feature-2-print-artboards T2/T3 — the artboard's `print` JSX prop, when
+   *  present. Only meaningful to the 'print' kind's registered renderer. */
+  print?: ArtboardPrintProp;
   visibility: OverlayVisibility;
 }
 
@@ -225,7 +229,7 @@ GenericGuides.displayName = 'GenericGuides';
  * (no `guides` prop, no downstream plan loaded yet) costs one map lookup and
  * no extra DOM.
  */
-export function ArtboardGuidesOverlay({ rect, kind, guides, visibility }: KindOverlayProps) {
+export function ArtboardGuidesOverlay({ rect, kind, guides, print, visibility }: KindOverlayProps) {
   const KindContent = kindOverlayRegistry.get(kind);
   // T6 Gotcha — a view.json predating the `overlays` lane has no `guides`
   // key at all; that absence must resolve to HIDDEN, not shown, so opening
@@ -252,7 +256,13 @@ export function ArtboardGuidesOverlay({ rect, kind, guides, visibility }: KindOv
           decide their own show/hide (e.g. print's bleed toggle is a
           different key than `guides`). */}
       {KindContent ? (
-        <KindContent rect={rect} kind={kind} guides={guides} visibility={visibility} />
+        <KindContent
+          rect={rect}
+          kind={kind}
+          guides={guides}
+          print={print}
+          visibility={visibility}
+        />
       ) : null}
     </div>
   );

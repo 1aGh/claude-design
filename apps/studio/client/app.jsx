@@ -12,6 +12,10 @@ import { createRoot } from 'react-dom/client';
 // import that Bun erases), so this pulls only string constants into the client
 // bundle — no React, no input-router. See the tool-cursor handler below.
 import { resolveToolCursor } from '../canvas-cursors.ts';
+// feature-2-print-artboards T2 — the single source (print/units.ts) for the
+// Inspector's paper-preset picker, same "pull only pure math/data" shape as
+// canvas-cursors.ts above.
+import { PAPER_PRESETS, resolvePrintArtboard } from '../print/units.ts';
 import { sizingModeOf, sizingModePatch } from '../sizing-mode.ts';
 import { canvasUrl } from './canvas-url.js';
 import ChatPanel from './panels/ChatPanel.jsx';
@@ -960,6 +964,22 @@ const PNG_SCALES = [
   { value: 3, label: '3× (max)' },
 ];
 
+// feature-2-print-artboards T6 — the PNG card's resolution picker folds the
+// legacy 1×/2×/3× multiplier and the new physical-DPI ladder (T4) into ONE
+// select: `kind:'scale'` entries send `options.scale`, `kind:'dpi'` entries
+// send `options.dpi` (exporters/png.ts resolveDeviceScale — dpi wins over
+// scale when both could apply). Default stays 2× (unchanged UX for anyone
+// not exporting for print).
+const PNG_RESOLUTIONS = [
+  { id: '1x', label: '1× (native)', kind: 'scale', value: 1 },
+  { id: '2x', label: '2× (retina)', kind: 'scale', value: 2 },
+  { id: '3x', label: '3× (max)', kind: 'scale', value: 3 },
+  { id: 'dpi150', label: '150 dpi', kind: 'dpi', value: 150 },
+  { id: 'dpi300', label: '300 dpi (print)', kind: 'dpi', value: 300 },
+  { id: 'dpi600', label: '600 dpi (high-res print)', kind: 'dpi', value: 600 },
+];
+const PNG_RESOLUTION_DEFAULT = '2x';
+
 // feature-bulk-media-insert — best-effort MIME guess from a filename extension.
 // Only used to classify a natively-picked file (Rust returns `{name, bytes}`,
 // no type) for the destination-toggle's image/video/audio split; the actual
@@ -1288,6 +1308,17 @@ function ExportDialog({
     initialScope && EXPORT_SCOPE_LABELS[initialScope] ? initialScope : 'artboard'
   );
   const [scale, setScale] = useState(2);
+  // feature-2-print-artboards T4/T6 — PNG resolution (folds scale + dpi, see
+  // PNG_RESOLUTIONS above).
+  const [pngResId, setPngResId] = useState(PNG_RESOLUTION_DEFAULT);
+  // feature-2-print-artboards T5/T6 — PDF print options. Sent unconditionally
+  // on every PDF export; the server no-ops them for a non-print artboard (no
+  // `print` JSX prop → applyPrintBoxesAndMarks never runs), so there's no
+  // need to detect the artboard's kind client-side before showing these.
+  const [pdfIncludeBleed, setPdfIncludeBleed] = useState(true);
+  const [pdfMarksOpen, setPdfMarksOpen] = useState(false);
+  const [pdfMarksCrop, setPdfMarksCrop] = useState(false);
+  const [pdfMarksRegistration, setPdfMarksRegistration] = useState(false);
   // DDR-148 addendum — mp4/webm of a registered video-comp render through
   // renderMediaOnWeb, which produces real audio (Remotion owns the
   // TransitionSeries/volume-closure timeline). gif has no audio track at all
@@ -1338,12 +1369,26 @@ function ExportDialog({
     }
     setBusy(true);
     setStatus(null);
-    // `scale` drives PNG size AND video resolution (deviceScaleFactor → encoder
-    // dims); temporal formats were previously fixed at the tiny native size.
-    const options = card.format === 'png' || card.temporal ? { scale } : {};
+    // `scale` drives video resolution (deviceScaleFactor → encoder dims);
+    // temporal formats were previously fixed at the tiny native size. PNG's
+    // resolution now comes from pngResId (T4/T6 — scale OR dpi).
+    const options = card.temporal ? { scale } : {};
+    if (card.format === 'png') {
+      const res = PNG_RESOLUTIONS.find((r) => r.id === pngResId) || PNG_RESOLUTIONS[1];
+      if (res.kind === 'dpi') options.dpi = res.value;
+      else options.scale = res.value;
+    }
     // Export-with-audio (DDR-148 addendum) — mp4/webm only; gif is silent by
     // format, so the checkbox never renders for it (see hasAudioToggle below).
     if (card.format === 'mp4' || card.format === 'webm') options.audio = audio;
+    // feature-2-print-artboards T5/T6 — always sent on a PDF export; the
+    // adapter no-ops includeBleed/marks for a non-print artboard (T5).
+    if (card.format === 'pdf') {
+      options.pdfPrint = {
+        includeBleed: pdfIncludeBleed,
+        marks: { crop: pdfMarksCrop, registration: pdfMarksRegistration },
+      };
+    }
     // Scope targeting hints (resolveScope reads these): `artboardId` makes
     // "Active artboard" export the right screen instead of `:first-of-type`;
     // `selection` makes "Current selection" export the selected element. Mirrors
@@ -1428,13 +1473,41 @@ function ExportDialog({
               </select>
             </div>
           )}
-          {!card.handoff && (card.format === 'png' || card.temporal) && (
+          {!card.handoff && card.format === 'png' && (
             <div className="st-dialog-row">
               <label className="st-dialog-lbl" htmlFor="st-export-size">
-                {card.temporal ? 'Resolution' : 'Size'}
+                Resolution
               </label>
               <select
                 id="st-export-size"
+                className="st-select"
+                value={pngResId}
+                onChange={(e) => setPngResId(e.target.value)}
+              >
+                {PNG_RESOLUTIONS.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {!card.handoff && card.format === 'png' && (
+            <div className="st-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+              {(() => {
+                const res = PNG_RESOLUTIONS.find((r) => r.id === pngResId) || PNG_RESOLUTIONS[1];
+                const factor = res.kind === 'dpi' ? res.value / 96 : res.value;
+                return `${res.label} ≈ ${Math.round(1440 * factor)}×${Math.round(900 * factor)} for a 1440×900 artboard.`;
+              })()}
+            </div>
+          )}
+          {!card.handoff && card.temporal && (
+            <div className="st-dialog-row">
+              <label className="st-dialog-lbl" htmlFor="st-export-temporal-size">
+                Resolution
+              </label>
+              <select
+                id="st-export-temporal-size"
                 className="st-select"
                 value={scale}
                 onChange={(e) => setScale(Number(e.target.value))}
@@ -1447,15 +1520,64 @@ function ExportDialog({
               </select>
             </div>
           )}
-          {!card.handoff && card.format === 'png' && (
-            <div className="st-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
-              Resolution multiplier — {scale}× ≈ {1440 * scale}×{900 * scale} for a 1440×900 artboard.
-            </div>
-          )}
           {!card.handoff && card.temporal && (
             <div className="st-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
               {scale}× the artboard's native resolution (e.g. 960×540 → {960 * scale}×{540 * scale}).
             </div>
+          )}
+          {!card.handoff && card.format === 'pdf' && (
+            <>
+              <div className="st-dialog-row">
+                <label
+                  className="st-dialog-lbl"
+                  htmlFor="st-export-pdf-bleed"
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+                >
+                  <input
+                    id="st-export-pdf-bleed"
+                    type="checkbox"
+                    checked={pdfIncludeBleed}
+                    onChange={(e) => setPdfIncludeBleed(e.target.checked)}
+                  />
+                  Include bleed
+                </label>
+              </div>
+              <div className="st-dialog-row">
+                <button
+                  type="button"
+                  className="st-dialog-lbl"
+                  style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
+                  onClick={() => setPdfMarksOpen((v) => !v)}
+                  aria-expanded={pdfMarksOpen}
+                >
+                  {pdfMarksOpen ? '▾' : '▸'} Marks
+                </button>
+              </div>
+              {pdfMarksOpen && (
+                <div style={{ padding: '0 12px 4px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={pdfMarksCrop}
+                      onChange={(e) => setPdfMarksCrop(e.target.checked)}
+                    />
+                    Crop marks
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={pdfMarksRegistration}
+                      onChange={(e) => setPdfMarksRegistration(e.target.checked)}
+                    />
+                    Registration marks
+                  </label>
+                </div>
+              )}
+              <div className="st-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+                Bleed and marks apply to print (<code>kind="print"</code>) artboards only.
+                {scope === 'canvas-as-separate' ? ' One PDF page per artboard.' : ''}
+              </div>
+            </>
           )}
           {!card.handoff && (card.format === 'mp4' || card.format === 'webm') && (
             <div className="st-dialog-row">
@@ -2933,6 +3055,11 @@ function EditDropdown({ onAction, onClose, hasCanvas }) {
               { id: 'new-artboard:laptop', label: 'New artboard: Laptop' },
               { id: 'new-artboard:tablet', label: 'New artboard: Tablet' },
               { id: 'new-artboard:mobile', label: 'New artboard: Mobile' },
+              // feature-2-print-artboards T2 — "+ Artboard" quick-insert must
+              // set kind="print" + the print prop together (the plan's own
+              // gotcha for this task), not just a plain digital-sized board.
+              { id: 'new-artboard:print-a4', label: 'New artboard: A4 (print)' },
+              { id: 'new-artboard:print-letter', label: 'New artboard: Letter (print)' },
             ]
           : []),
       ]}
@@ -2968,6 +3095,8 @@ function Menubar({
   onToggleZoomCtl,
   presentMode,
   onTogglePresent,
+  printGuidesVisible,
+  onTogglePrintGuides,
   postToActiveCanvas,
   onOpenWhatsNew,
   onOpenReadiness,
@@ -3103,6 +3232,18 @@ function Menubar({
       label: 'Presentation Mode',
       shortcut: '',
       checked: presentMode,
+      disabled: !activePath || isSystem,
+    },
+    // feature-2-print-artboards T3 — per-canvas persisted (overlays.print in
+    // view.json), same lane as the foundation's `guides` key; NOT gated on the
+    // active artboard actually being kind="print" (mirrors minimap/zoomctl,
+    // which aren't content-gated either — the overlay itself renders nothing
+    // for a non-print artboard regardless of this flag).
+    {
+      id: 'print-guides',
+      label: 'Show print guides',
+      shortcut: '',
+      checked: printGuidesVisible,
       disabled: !activePath || isSystem,
     },
   ];
@@ -3242,6 +3383,7 @@ function Menubar({
             else if (id === 'minimap') onToggleMinimap?.();
             else if (id === 'zoomctl') onToggleZoomCtl?.();
             else if (id === 'present') onTogglePresent?.();
+            else if (id === 'print-guides') onTogglePrintGuides?.();
           }}
           onZoom={(op) => postToActiveCanvas({ dgn: 'zoom', op })}
           hasCanvas={!!activePath && !isSystem}
@@ -6776,6 +6918,7 @@ function ArtboardKnobs({
   onSetArtboardHug,
   onSetArtboardStyle,
   onSetArtboardKind,
+  onSetArtboardPrint,
 }) {
   const artboardId = resolveArtboardIdFromSelection(el);
   // Dogfood 2026-07-07 (round 2) — `worldW`/`worldH` (zoom-independent) are
@@ -6824,6 +6967,31 @@ function ArtboardKnobs({
     // default (applySetArtboardKind's `kind: null` path) rather than writing
     // a redundant `kind="digital"`.
     onSetArtboardKind?.(artboardId, nextKind === 'digital' ? null : nextKind);
+  };
+  // feature-2-print-artboards T2 — paper/orientation/bleed. Read-back mirrors
+  // `data-dc-kind` above: a small JSON attr DCArtboard stamps for exactly this
+  // panel (canvas-lib.tsx readBackAttrs), since `print` (unlike bg/padding/…)
+  // is object-valued, not a scalar.
+  let print = null;
+  try {
+    print = el.attrs?.['data-dc-print'] ? JSON.parse(el.attrs['data-dc-print']) : null;
+  } catch {
+    /* malformed attr — treat as absent */
+  }
+  const setPrint = (patch) => {
+    if (!artboardId) return;
+    const next = { paper: 'a4', ...print, ...patch };
+    let resolved;
+    try {
+      resolved = resolvePrintArtboard(next);
+    } catch {
+      return; // unknown paper id — ignore rather than write garbage
+    }
+    // Design Decision 2 — the picker writes BOTH the resolved px size (via
+    // the existing resize lane, DDR-027) and the `print` intent prop, in the
+    // same gesture, so geometry and intent never drift apart.
+    onResizeArtboard?.(artboardId, resolved.widthPx, resolved.heightPx);
+    onSetArtboardPrint?.(artboardId, next);
   };
   const setHug = (nextFixed) => {
     if (!artboardId) return;
@@ -6939,6 +7107,73 @@ function ArtboardKnobs({
           ))}
         </select>
       </div>
+      {kind === 'print' ? (
+        <>
+          <div className="st-cp-sechd-row">
+            <span className="st-cp-sechd">Print</span>
+          </div>
+          <div style={{ padding: '0 12px 8px' }}>
+            <select
+              className="st-cp-nsel"
+              aria-label="paper preset"
+              value={print?.paper ?? 'a4'}
+              onChange={(e) => setPrint({ paper: e.currentTarget.value })}
+            >
+              {PAPER_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label} — {p.width}×{p.height}
+                  {p.unit}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={{ padding: '0 12px 8px' }}>
+            <div className="st-cp-modeseg" role="group" aria-label="paper orientation">
+              {[
+                ['portrait', 'Portrait'],
+                ['landscape', 'Landscape'],
+              ].map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  className={`st-cp-modebtn${(print?.orientation ?? 'portrait') === val ? ' is-active' : ''}`}
+                  aria-pressed={(print?.orientation ?? 'portrait') === val}
+                  onClick={() => setPrint({ orientation: val })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ padding: '0 12px 8px' }}>
+            <div className="st-cp-num" style={{ width: '100%' }}>
+              <span className="st-cp-numlead" aria-hidden="true">
+                Bleed
+              </span>
+              <input
+                className="st-cp-numin"
+                type="number"
+                min="0"
+                step="0.5"
+                aria-label="bleed, millimeters"
+                placeholder="3"
+                key={`bleed:${print?.bleedMm ?? ''}`}
+                defaultValue={print?.bleedMm ?? ''}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                }}
+                onBlur={(e) => {
+                  const v = Number.parseFloat(e.currentTarget.value);
+                  setPrint({ bleedMm: Number.isFinite(v) && v >= 0 ? v : undefined });
+                }}
+              />
+              <span className="st-cp-numlead" aria-hidden="true" style={{ paddingLeft: 4 }}>
+                mm
+              </span>
+            </div>
+          </div>
+        </>
+      ) : null}
       <div className="st-cp-sechd-row">
         <span className="st-cp-sechd">Style</span>
       </div>
@@ -7061,6 +7296,7 @@ function InspectorPanel({
   onSetArtboardHug,
   onSetArtboardStyle,
   onSetArtboardKind,
+  onSetArtboardPrint,
   onUndoRedo,
   editScope,
   tab: tabProp,
@@ -7633,6 +7869,7 @@ function InspectorPanel({
             onSetArtboardHug={onSetArtboardHug}
             onSetArtboardStyle={onSetArtboardStyle}
             onSetArtboardKind={onSetArtboardKind}
+            onSetArtboardPrint={onSetArtboardPrint}
           />
         ) : (
           <CssKnobs
@@ -8241,6 +8478,12 @@ function App() {
   const [minimapVisible, setMinimapVisible] = useState(() => readBoolStore(MINIMAP_STORE, false));
   const [zoomCtlVisible, setZoomCtlVisible] = useState(() => readBoolStore(ZOOMCTL_STORE, false));
   const [presentMode, setPresentMode] = useState(false);
+  // feature-2-print-artboards T3 — "Show print guides". Per-CANVAS persisted
+  // (view.json `overlays.print`, via /_api/canvas-meta), not a global
+  // localStorage pref like minimap/zoomctl — mirrors the foundation's
+  // `overlays.guides` lane. Re-read whenever the active canvas changes (see
+  // the activeArtboards effect below); sent only to the active iframe.
+  const [printGuidesVisible, setPrintGuidesVisible] = useState(false);
   // P2/P3 (Plan C) — top-bar live state. (Zoom lives in the canvas toolbar pill,
   // so the top bar no longer mirrors it.)
   //   activeArtboards — real artboard count of the open canvas, read from its
@@ -8671,6 +8914,24 @@ function App() {
     setPresentMode(false);
     broadcastChrome({ present: false });
   }, [broadcastChrome]);
+  // feature-2-print-artboards T3 — per-canvas persisted, so (unlike
+  // broadcastChrome above) this targets ONLY the active iframe and PATCHes
+  // view.json's `overlays.print` through the same GET-merge/PATCH-split lane
+  // the foundation built for `overlays.guides` (api.ts normalizeOverlays is a
+  // flat Record<string, boolean> — no server change needed for a new key).
+  const togglePrintGuides = useCallback(() => {
+    if (!activePath || activePath === SYSTEM_TAB) return;
+    setPrintGuidesVisible((v) => {
+      const next = !v;
+      postToActiveCanvas({ dgn: 'view-chrome', print: next });
+      fetch('/_api/canvas-meta', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: activePath, patch: { overlays: { print: next } } }),
+      }).catch(() => {});
+      return next;
+    });
+  }, [activePath, postToActiveCanvas]);
 
   // P3 (Plan C) — local git user for the menubar presence avatar. One-shot.
   useEffect(() => {
@@ -8693,6 +8954,7 @@ function App() {
   useEffect(() => {
     if (!activePath || activePath === SYSTEM_TAB) {
       setActiveArtboards(0);
+      setPrintGuidesVisible(false);
       return;
     }
     let cancelled = false;
@@ -8702,9 +8964,15 @@ function App() {
         if (cancelled) return;
         const n = Array.isArray(meta?.artboards) ? meta.artboards.length : 0;
         setActiveArtboards(n);
+        // feature-2-print-artboards T3 — reflect THIS canvas's own persisted
+        // print-guides flag in the menu checkbox when switching tabs.
+        setPrintGuidesVisible(meta?.overlays?.print === true);
       })
       .catch(() => {
-        if (!cancelled) setActiveArtboards(0);
+        if (!cancelled) {
+          setActiveArtboards(0);
+          setPrintGuidesVisible(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -10848,20 +11116,6 @@ function App() {
     [structuralWrite]
   );
 
-  // Stage I4 — "New artboard: <preset>" from the Edit menu. Generates a unique
-  // id (server 422s a dup, negligible with a random suffix) + a preset label/dims
-  // and inserts an empty <DCArtboard> after the last one (runtime default-grid
-  // places it; DDR-027). The new frame is then selectable + resizable.
-  const onInsertArtboard = useCallback(
-    (presetKey) => {
-      const p = SCREEN_PRESETS[presetKey];
-      if (!p) return;
-      const id = `s${Math.random().toString(36).slice(2, 8)}`;
-      insertArtboardShell({ id, label: p.label, width: p.width, height: p.height });
-    },
-    [insertArtboardShell]
-  );
-
   const resizeArtboardShell = useCallback(
     (artboardId, width, height) => {
       structuralWrite(
@@ -10915,6 +11169,54 @@ function App() {
       structuralWrite('/_api/set-artboard-kind', { artboardId, kind }, { label: 'artboard kind' });
     },
     [structuralWrite]
+  );
+  // feature-2-print-artboards T2 — paper/orientation/bleed/margins. Direct
+  // Inspector-only callable (no canvas-origin postMessage path — same shape
+  // as setArtboardStyleShell, unlike setArtboardKindShell which also has a
+  // context-menu caller inside the iframe).
+  const setArtboardPrintShell = useCallback(
+    (artboardId, print) => {
+      structuralWrite('/_api/set-artboard-print', { artboardId, print }, { label: 'artboard print' });
+    },
+    [structuralWrite]
+  );
+
+  // Stage I4 — "New artboard: <preset>" from the Edit menu. Generates a unique
+  // id (server 422s a dup, negligible with a random suffix) + a preset label/dims
+  // and inserts an empty <DCArtboard> after the last one (runtime default-grid
+  // places it; DDR-027). The new frame is then selectable + resizable.
+  const onInsertArtboard = useCallback(
+    (presetKey) => {
+      const id = `s${Math.random().toString(36).slice(2, 8)}`;
+      // feature-2-print-artboards T2 — kind="print" + the print prop must
+      // land together, so the created artboard is never a plain digital
+      // board sized to paper by coincidence. structuralWrite serializes
+      // calls in submission order (editApplyChainRef), so these three
+      // sequential POSTs land as insert → kind → print, in order.
+      if (presetKey.startsWith('print-')) {
+        const paper = presetKey.slice('print-'.length);
+        let resolved;
+        try {
+          resolved = resolvePrintArtboard({ paper });
+        } catch {
+          return;
+        }
+        const preset = PAPER_PRESETS.find((p) => p.id === paper);
+        insertArtboardShell({
+          id,
+          label: preset ? preset.label : paper.toUpperCase(),
+          width: resolved.widthPx,
+          height: resolved.heightPx,
+        });
+        setArtboardKindShell(id, 'print');
+        setArtboardPrintShell(id, { paper });
+        return;
+      }
+      const p = SCREEN_PRESETS[presetKey];
+      if (!p) return;
+      insertArtboardShell({ id, label: p.label, width: p.width, height: p.height });
+    },
+    [insertArtboardShell, setArtboardKindShell, setArtboardPrintShell]
   );
   // Refs the (stale-closure) onMessage handlers below read.
   const deleteElementShellRef = useRef(null);
@@ -11692,6 +11994,7 @@ function App() {
           onSetArtboardHug={setArtboardHugShell}
           onSetArtboardStyle={setArtboardStyleShell}
           onSetArtboardKind={setArtboardKindShell}
+          onSetArtboardPrint={setArtboardPrintShell}
           editScope={editScope}
           onUndoRedo={(dir) => postToActiveCanvas({ dgn: dir })}
           photoSel={photoSel}
@@ -11801,6 +12104,8 @@ function App() {
           onToggleZoomCtl={toggleZoomCtl}
           presentMode={presentMode}
           onTogglePresent={togglePresent}
+          printGuidesVisible={printGuidesVisible}
+          onTogglePrintGuides={togglePrintGuides}
           postToActiveCanvas={postToActiveCanvas}
           onOpenReadiness={() => setReadinessOpen(true)}
           onOpenQuickSetup={() => setQuickSetupOpen(true)}

@@ -3859,6 +3859,159 @@ export async function setArtboardGuides(
 }
 
 /**
+ * Write/clear the DCArtboard `print` prop (feature-2-print-artboards T2) —
+ * object-valued, same REPLACE-WHOLE-PROP shape as `applySetArtboardGuides`
+ * (see that function's doc comment — shape validation lives at the api.ts
+ * layer, this is pure AST surgery). `print: null` removes the prop entirely
+ * (e.g. reverting an artboard to a non-print kind). Pure; reparse-gated.
+ */
+export function applySetArtboardPrint(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string,
+  print: Record<string, unknown> | null
+): { source: string } {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  const artboards = collectJsxByTag(parsed.program, 'DCArtboard');
+  const target = artboards.find((a) => getStringAttr(a.openingElement, 'id') === artboardId);
+  if (!target) {
+    throw new CanvasEditError(`<DCArtboard id="${artboardId}"> not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id: artboardId,
+    });
+  }
+  const s = new MagicString(source);
+  const opening = target.openingElement;
+  if (print === null) {
+    removeStringAttr(s, opening, 'print', source);
+  } else {
+    const literal = JSON.stringify(print);
+    const attr = findAttribute(opening, 'print');
+    if (!attr) {
+      const insertAt: number | undefined = opening?.name?.end;
+      if (typeof insertAt !== 'number') {
+        throw new Error('Opening element has no resolvable name range');
+      }
+      s.appendLeft(insertAt, ` print={${literal}}`);
+    } else if (attr.value?.type === 'JSXExpressionContainer') {
+      s.overwrite(attr.value.start, attr.value.end, `{${literal}}`);
+    } else {
+      throw new CanvasEditError('print attribute is not a {{...}} expression — refusing to edit', {
+        canvas: canvasAbsPath,
+        id: artboardId,
+      });
+    }
+  }
+  const out = s.toString();
+  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (check.errors && check.errors.length > 0) {
+    throw new CanvasEditError(
+      `artboard print edit produced invalid source (${check.errors[0]?.message ?? 'parse error'})`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  return { source: out };
+}
+
+/** Set an artboard's `print` on disk (atomic write + cross-process lock). */
+export async function setArtboardPrint(
+  canvasAbsPath: string,
+  artboardId: string,
+  print: Record<string, unknown> | null
+): Promise<{ source: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: artboardId,
+      });
+    }
+    const source = await file.text();
+    const next = applySetArtboardPrint(canvasAbsPath, source, artboardId, print);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
+/**
+ * Read a JS object-literal AST node into a plain object WITHOUT eval —
+ * `print` (like every other canvas-authored JSX prop) is part of the
+ * DDR-054 untrusted-canvas surface, so evaluating its source text
+ * (`Function('return ' + src)()`) would be a code-injection hole. Handles
+ * string/numeric/boolean/null literals and nested object literals; any other
+ * value shape (identifiers, calls, template strings, arrays) is silently
+ * skipped — conservative by design, since a print-geometry reader should
+ * degrade to "field absent" rather than guess. Depth-capped defensively,
+ * though `print`'s own shape never nests past marginsMm (depth 2).
+ */
+function objectExpressionToPlain(node: AnyNode, depth = 0): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (depth > 6 || node?.type !== 'ObjectExpression') return out;
+  for (const p of node.properties ?? []) {
+    if ((p?.type !== 'Property' && p?.type !== 'ObjectProperty') || p.computed) continue;
+    const key =
+      p.key?.type === 'Identifier'
+        ? (p.key.name as string)
+        : isStringLit(p.key)
+          ? String(p.key.value)
+          : null;
+    if (key === null) continue;
+    const v = p.value;
+    if (!v) continue;
+    if (v.type === 'ObjectExpression') {
+      out[key] = objectExpressionToPlain(v, depth + 1);
+    } else if (
+      (v.type === 'Literal' ||
+        v.type === 'StringLiteral' ||
+        v.type === 'NumericLiteral' ||
+        v.type === 'BooleanLiteral') &&
+      (typeof v.value === 'string' ||
+        typeof v.value === 'number' ||
+        typeof v.value === 'boolean' ||
+        v.value === null)
+    ) {
+      out[key] = v.value;
+    }
+    // else: unsupported value shape — key silently omitted.
+  }
+  return out;
+}
+
+/**
+ * Read an artboard's `print` JSX prop as a plain object — used by the PDF
+ * exporter (T5) to resolve bleed/paper geometry for the artboard being
+ * exported. Read-only (no lock, no write). Returns null when the canvas/
+ * artboard/prop doesn't exist or `print` isn't a `{{...}}` object-expression.
+ */
+export function readArtboardPrintProp(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string
+): Record<string, unknown> | null {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) return null;
+  const artboards = collectJsxByTag(parsed.program, 'DCArtboard');
+  const target = artboards.find((a) => getStringAttr(a.openingElement, 'id') === artboardId);
+  if (!target) return null;
+  const attr = findAttribute(target.openingElement, 'print');
+  if (attr?.value?.type !== 'JSXExpressionContainer') return null;
+  const expr = attr.value.expression as AnyNode | undefined;
+  if (expr?.type !== 'ObjectExpression') return null;
+  return objectExpressionToPlain(expr);
+}
+
+/**
  * Delete the `<DCArtboard id="…">` whose `id` prop equals `artboardId` — the
  * artboard counterpart of applyDeleteElement (an artboard is addressed by its id
  * PROP, since the rendered `<article data-dc-screen>` has no data-cd-id; same

@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-16T07:16:24.078Z",
+  "generated": "2026-07-16T11:03:39.367Z",
   "currentPhase": null,
   "phases": [
     {
@@ -98,6 +98,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan touches the export pipeline that was just hardened (graceful Playwright-miss...",
       "planPath": ".ai/plans/archive/export-pipeline-fixes.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-1-artboard-kinds-foundation",
+      "title": "Feature: Artboard kinds — foundation (kind model + overlay primitive + generic guides/snapping)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-1-artboard-kinds-foundation.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1356,17 +1367,6 @@
       "phaseKey": "19"
     },
     {
-      "id": "feature-1-artboard-kinds-foundation",
-      "title": "Feature: Artboard kinds — foundation (kind model + overlay primitive + generic guides/snapping)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-1-artboard-kinds-foundation.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
       "id": "feature-2-print-artboards",
       "title": "Feature: Print artboards — paper presets, bleed/margin/marks overlays, DPI + print-ready PDF export",
       "status": "planned",
@@ -1418,6 +1418,17 @@
       "date": null,
       "summary": "Give a display: grid container a first-class on-canvas track editor, matching what Figma auto-layout-grids and Webflow's Grid 2.0 give designers: define the column and row tracks, drag the track gu...",
       "planPath": ".ai/plans/feature-grid-track-editor.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-kgai-ecosystem-integration",
+      "title": "Feature: kgai as the Maude ecosystem memory layer (cross-repo, opt-out)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan spans flow + design plugins + cli + config schema + templates + docs — it is...",
+      "planPath": ".ai/plans/feature-kgai-ecosystem-integration.md",
       "archived": false,
       "phaseKey": null
     },

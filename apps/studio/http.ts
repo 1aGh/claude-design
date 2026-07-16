@@ -2482,6 +2482,37 @@ export function createHttp(
       );
     },
 
+    '/_api/set-artboard-print': async (req: Request) => {
+      // feature-2-print-artboards T2. POST { canvas, artboardId, print:
+      // {paper, orientation?, bleedMm?, marginsMm?}|null } → api.setArtboardPrintOp.
+      // REPLACE-whole-prop (see applySetArtboardPrint's own doc comment) — the
+      // caller sends the full merged object, not a delta. MAIN-ORIGIN ONLY;
+      // same gate pair as set-artboard-guides (Inspector picker is shell UI,
+      // never reachable from the untrusted canvas origin).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        artboardId?: unknown;
+        print?: unknown;
+      }>(req, 2 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.setArtboardPrintOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/delete-artboard': async (req: Request) => {
       // Delete an artboard by its `id` prop (Backspace / context-menu on a frame).
       // POST { canvas, artboardId } → api.deleteArtboardOp (removes the

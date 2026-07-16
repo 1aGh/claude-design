@@ -102,13 +102,22 @@ export type Scope = 'selection' | 'artboard' | 'canvas-as-separate' | 'project-r
 // Resolution multiplier applied as Chromium `deviceScaleFactor`. The native
 // artboard is 1440×900; 2× → 2880×1800. Default 2× because a single-scale PNG
 // was uselessly small. The shim clamps deviceScaleFactor ≤ 4.
-type PngScale = 1 | 2 | 3;
-const PNG_SCALES: ReadonlyArray<{ value: PngScale; label: string }> = [
-  { value: 1, label: '1× (native)' },
-  { value: 2, label: '2× (retina)' },
-  { value: 3, label: '3× (max)' },
+// feature-2-print-artboards T4/T6 — mirrors app.jsx's PNG_RESOLUTIONS (the
+// two dialogs must stay in sync — see this file's own header comment + the
+// plan's T6 gotcha). `kind:'scale'` sends `options.scale`, `kind:'dpi'`
+// sends `options.dpi` (exporters/png.ts resolveDeviceScale). Replaces the
+// old bare 1×/2×/3× PngScale picker — those three values are still
+// reachable, folded into this one richer list.
+type PngResolution = { id: string; label: string; kind: 'scale' | 'dpi'; value: number };
+const PNG_RESOLUTIONS: readonly PngResolution[] = [
+  { id: '1x', label: '1× (native)', kind: 'scale', value: 1 },
+  { id: '2x', label: '2× (retina)', kind: 'scale', value: 2 },
+  { id: '3x', label: '3× (max)', kind: 'scale', value: 3 },
+  { id: 'dpi150', label: '150 dpi', kind: 'dpi', value: 150 },
+  { id: 'dpi300', label: '300 dpi (print)', kind: 'dpi', value: 300 },
+  { id: 'dpi600', label: '600 dpi (high-res print)', kind: 'dpi', value: 600 },
 ];
-const DEFAULT_PNG_SCALE: PngScale = 2;
+const PNG_RESOLUTION_DEFAULT = '2x';
 
 /**
  * The artboard under the viewport centre — the export dialog's notion of "the
@@ -456,20 +465,47 @@ const DialogShell = (() => {
     const { ref, openState, onClose, onSubmit, history, submitting, status } = props;
     const [format, setFormat] = useState<Format>('png');
     const [scope, setScope] = useState<Scope>('artboard');
-    const [pngScale, setPngScale] = useState<PngScale>(DEFAULT_PNG_SCALE);
+    const [pngResId, setPngResId] = useState<string>(PNG_RESOLUTION_DEFAULT);
+    // feature-2-print-artboards T5/T6 — PDF print options. Sent unconditionally
+    // on every PDF export; the server no-ops them for a non-print artboard
+    // (mirrors app.jsx's own ExportDialog — see that file's T6 comment).
+    const [pdfIncludeBleed, setPdfIncludeBleed] = useState(true);
+    const [pdfMarksOpen, setPdfMarksOpen] = useState(false);
+    const [pdfMarksCrop, setPdfMarksCrop] = useState(false);
+    const [pdfMarksRegistration, setPdfMarksRegistration] = useState(false);
     // Optional — the dialog can be mounted in tests without a provider.
     const selSet = useSelectionSetOptional();
 
     // Build the options bag at submit time: snapshot the live selection /
-    // active artboard (items 3 & 5) plus the PNG size (item 1).
+    // active artboard (items 3 & 5) plus the PNG size (item 1) / PDF print
+    // options (feature-2-print-artboards T5/T6).
     const handleSubmit = useCallback(() => {
       const options: Record<string, unknown> = {};
       const hints = captureScopeHints(selSet);
       if (hints.selection) options.selection = hints.selection;
       if (hints.artboardId) options.artboardId = hints.artboardId;
-      if (format === 'png') options.scale = pngScale;
+      if (format === 'png') {
+        const res = PNG_RESOLUTIONS.find((r) => r.id === pngResId) ?? PNG_RESOLUTIONS[1];
+        if (res.kind === 'dpi') options.dpi = res.value;
+        else options.scale = res.value;
+      }
+      if (format === 'pdf') {
+        options.pdfPrint = {
+          includeBleed: pdfIncludeBleed,
+          marks: { crop: pdfMarksCrop, registration: pdfMarksRegistration },
+        };
+      }
       onSubmit(format, scope, options);
-    }, [selSet, format, scope, pngScale, onSubmit]);
+    }, [
+      selSet,
+      format,
+      scope,
+      pngResId,
+      pdfIncludeBleed,
+      pdfMarksCrop,
+      pdfMarksRegistration,
+      onSubmit,
+    ]);
 
     useEffect(() => {
       if (!openState) return;
@@ -530,20 +566,69 @@ const DialogShell = (() => {
           </div>
           {format === 'png' && (
             <div>
-              <label htmlFor="dc-ed-png-scale">Size</label>
+              <label htmlFor="dc-ed-png-scale">Resolution</label>
               <select
                 id="dc-ed-png-scale"
-                value={pngScale}
-                onChange={(e) => setPngScale(Number(e.target.value) as PngScale)}
+                value={pngResId}
+                onChange={(e) => setPngResId(e.target.value)}
               >
-                {PNG_SCALES.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
+                {PNG_RESOLUTIONS.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
                   </option>
                 ))}
               </select>
               <p className="dc-ed-desc">
-                Resolution multiplier. 2× ≈ 2880×1800 for a 1440×900 artboard.
+                Resolution multiplier or physical DPI for a print export. 2× ≈ 2880×1800 for a
+                1440×900 artboard.
+              </p>
+            </div>
+          )}
+          {format === 'pdf' && (
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={pdfIncludeBleed}
+                  onChange={(e) => setPdfIncludeBleed(e.target.checked)}
+                />
+                Include bleed
+              </label>
+              <button
+                type="button"
+                style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
+                onClick={() => setPdfMarksOpen((v) => !v)}
+                aria-expanded={pdfMarksOpen}
+              >
+                {pdfMarksOpen ? '▾' : '▸'} Marks
+              </button>
+              {pdfMarksOpen && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={pdfMarksCrop}
+                      onChange={(e) => setPdfMarksCrop(e.target.checked)}
+                    />
+                    Crop marks
+                  </label>
+                  <label
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={pdfMarksRegistration}
+                      onChange={(e) => setPdfMarksRegistration(e.target.checked)}
+                    />
+                    Registration marks
+                  </label>
+                </div>
+              )}
+              <p className="dc-ed-desc">
+                Bleed and marks apply to print (<code>kind=&quot;print&quot;</code>) artboards only.
+                {scope === 'canvas-as-separate' ? ' One PDF page per artboard.' : ''}
               </p>
             </div>
           )}

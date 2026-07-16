@@ -102,9 +102,14 @@ try {
       const r = el.getBoundingClientRect();
       return { w: r.width, h: r.height, x: r.left, y: r.top };
     });
+    // feature-2-print-artboards T5 — name multi output by the artboard's
+    // OWN id (mirrors _png-playwright.mjs's multi-write scheme) rather than
+    // a positional index, so the PDF post-pass can correlate each written
+    // file back to its artboard's `print` prop via the filename alone.
+    const screenId = multi ? await screens[i].getAttribute('data-dc-screen') : null;
     // Set the page size to the artboard's pixel dimensions so the resulting
     // PDF is exactly one artboard per page with no margin.
-    const targetPath = multi ? join(outDir, `artboard-${i + 1}.pdf`) : out;
+    const targetPath = multi ? join(outDir, `${screenId || `artboard-${i + 1}`}.pdf`) : out;
     // Crop trick: set the viewport to the artboard rect, scroll it into the
     // top-left corner, then page.pdf() with matching width/height.
     await page.setViewportSize({

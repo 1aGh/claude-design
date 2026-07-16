@@ -15,8 +15,10 @@ import {
   applySetArtboardGuides,
   applySetArtboardHug,
   applySetArtboardKind,
+  applySetArtboardPrint,
   applySetArtboardStyle,
   CanvasEditError,
+  readArtboardPrintProp,
 } from '../canvas-edit.ts';
 import { transpileCanvasSource } from '../canvas-pipeline.ts';
 
@@ -429,6 +431,121 @@ describe('canvas-edit / applySetArtboardGuides (replace-whole-prop)', () => {
     expect(() => applySetArtboardGuides(CANVAS, canvas, 'nope', { grid: { size: 8 } })).toThrow(
       CanvasEditError
     );
+  });
+});
+
+// feature-2-print-artboards T2 — print prop write lane (same replace-whole-
+// prop shape as applySetArtboardGuides).
+describe('canvas-edit / applySetArtboardPrint (replace-whole-prop)', () => {
+  const canvas = [
+    'export default function Demo() {',
+    '  return (',
+    '    <DesignCanvas>',
+    '      <DCArtboard id="home" label="Home" width={1440} height={1024}>',
+    '        <div>content</div>',
+    '      </DCArtboard>',
+    '    </DesignCanvas>',
+    '  );',
+    '}',
+  ].join('\n');
+
+  test('inserts print as a {{...}} object-expression prop', () => {
+    const out = applySetArtboardPrint(CANVAS, canvas, 'home', { paper: 'a4', bleedMm: 3 });
+    expect(out.source).toContain('print={{"paper":"a4","bleedMm":3}}');
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('a second write REPLACES the whole prop rather than merging', () => {
+    const first = applySetArtboardPrint(CANVAS, canvas, 'home', { paper: 'a4', bleedMm: 3 });
+    const out = applySetArtboardPrint(CANVAS, first.source, 'home', {
+      paper: 'letter',
+      orientation: 'landscape',
+    });
+    expect(out.source).toContain('print={{"paper":"letter","orientation":"landscape"}}');
+    expect(out.source).not.toContain('a4');
+    expect(out.source.match(/\bprint=/g)?.length).toBe(1);
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('print=null removes the prop', () => {
+    const written = applySetArtboardPrint(CANVAS, canvas, 'home', { paper: 'a4' });
+    const out = applySetArtboardPrint(CANVAS, written.source, 'home', null);
+    expect(out.source).not.toContain('print=');
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('unknown artboard id throws', () => {
+    expect(() => applySetArtboardPrint(CANVAS, canvas, 'nope', { paper: 'a4' })).toThrow(
+      CanvasEditError
+    );
+  });
+});
+
+// feature-2-print-artboards T5 — the AST-only (no-eval) reader the PDF
+// exporter uses to resolve an artboard's print geometry.
+describe('canvas-edit / readArtboardPrintProp (no-eval AST read)', () => {
+  test("reads a JSON-shaped print prop (the picker's own write shape)", () => {
+    const canvas = [
+      'export default function Demo() {',
+      '  return (',
+      '    <DesignCanvas>',
+      '      <DCArtboard id="home" label="Home" width={816} height={1146} print={{"paper":"a4","bleedMm":3}}>',
+      '        <div>content</div>',
+      '      </DCArtboard>',
+      '    </DesignCanvas>',
+      '  );',
+      '}',
+    ].join('\n');
+    expect(readArtboardPrintProp(CANVAS, canvas, 'home')).toEqual({ paper: 'a4', bleedMm: 3 });
+  });
+
+  test('reads a hand-authored JS-literal print prop (unquoted keys, nested object)', () => {
+    const canvas = [
+      'export default function Demo() {',
+      '  return (',
+      '    <DesignCanvas>',
+      '      <DCArtboard id="home" label="Home" width={816} height={1146} print={{ paper: \'a4\', orientation: \'landscape\', marginsMm: { top: 10, left: 5 } }}>',
+      '        <div>content</div>',
+      '      </DCArtboard>',
+      '    </DesignCanvas>',
+      '  );',
+      '}',
+    ].join('\n');
+    expect(readArtboardPrintProp(CANVAS, canvas, 'home')).toEqual({
+      paper: 'a4',
+      orientation: 'landscape',
+      marginsMm: { top: 10, left: 5 },
+    });
+  });
+
+  test('no print prop → null', () => {
+    const canvas = [
+      'export default function Demo() {',
+      '  return (',
+      '    <DesignCanvas>',
+      '      <DCArtboard id="home" label="Home" width={1440} height={1024}>',
+      '        <div>content</div>',
+      '      </DCArtboard>',
+      '    </DesignCanvas>',
+      '  );',
+      '}',
+    ].join('\n');
+    expect(readArtboardPrintProp(CANVAS, canvas, 'home')).toBeNull();
+  });
+
+  test('unknown artboard id → null (not a throw — read-only, best-effort)', () => {
+    const canvas = [
+      'export default function Demo() {',
+      '  return (',
+      '    <DesignCanvas>',
+      '      <DCArtboard id="home" label="Home" width={1440} height={1024}>',
+      '        <div>content</div>',
+      '      </DCArtboard>',
+      '    </DesignCanvas>',
+      '  );',
+      '}',
+    ].join('\n');
+    expect(readArtboardPrintProp(CANVAS, canvas, 'nope')).toBeNull();
   });
 });
 

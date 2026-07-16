@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { clampScale, run } from '../../exporters/png.ts';
+import { clampDpi, clampScale, resolveDeviceScale, run } from '../../exporters/png.ts';
 
 const CTX = {
   designRoot: '/tmp/.design',
@@ -51,5 +51,53 @@ describe('png clampScale — size presets (item 1)', () => {
     expect(clampScale(4)).toBe(2); // above max → safe default
     expect(clampScale(2.6)).toBe(3); // rounds to nearest preset
     expect(clampScale(1.2)).toBe(1);
+  });
+});
+
+describe('png clampDpi — feature-2-print-artboards T4', () => {
+  test('undefined/null → undefined (falls back to scale)', () => {
+    expect(clampDpi(undefined)).toBeUndefined();
+    expect(clampDpi(null)).toBeUndefined();
+  });
+
+  test('non-numeric → undefined', () => {
+    expect(clampDpi('nonsense')).toBeUndefined();
+  });
+
+  test('exact presets pass through', () => {
+    expect(clampDpi(96)).toBe(96);
+    expect(clampDpi(150)).toBe(150);
+    expect(clampDpi(300)).toBe(300);
+    expect(clampDpi(600)).toBe(600);
+  });
+
+  test('snaps to the nearest preset', () => {
+    expect(clampDpi(200)).toBe(150);
+    expect(clampDpi(250)).toBe(300);
+    expect(clampDpi(1000)).toBe(600);
+    expect(clampDpi(0)).toBe(96);
+  });
+});
+
+describe('png resolveDeviceScale — dpi wins over scale', () => {
+  test('dpi=300 → 3.125× (300/96)', () => {
+    expect(resolveDeviceScale({ dpi: 300 })).toBeCloseTo(300 / 96, 10);
+  });
+
+  test('dpi=600 → 6.25× (300dpi ceiling raise, item T4)', () => {
+    expect(resolveDeviceScale({ dpi: 600 })).toBeCloseTo(600 / 96, 10);
+  });
+
+  test('dpi=96 → 1× (no-op)', () => {
+    expect(resolveDeviceScale({ dpi: 96 })).toBeCloseTo(1, 10);
+  });
+
+  test('no dpi → falls back to the legacy scale preset', () => {
+    expect(resolveDeviceScale({ scale: 3 })).toBe(3);
+    expect(resolveDeviceScale({})).toBe(2); // clampScale default
+  });
+
+  test('dpi present but not a number → falls back to scale', () => {
+    expect(resolveDeviceScale({ dpi: 'nope', scale: 1 })).toBe(1);
   });
 });

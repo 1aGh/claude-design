@@ -35,6 +35,14 @@ export interface ChromeVisibilityState {
    * the SAME `dgn:'view-chrome'` bridge as the other three flags.
    */
   guides: boolean;
+  /**
+   * feature-2-print-artboards T3 — "Show print guides" (bleed/trim/margin
+   * overlay for `kind="print"` artboards). Same shape as `guides` above:
+   * per-CANVAS persisted state (view.json `overlays.print`), self-seeded by
+   * DesignCanvasInner, live-updated through the same `dgn:'view-chrome'`
+   * bridge.
+   */
+  print: boolean;
 }
 
 export interface ChromeVisibilityValue extends ChromeVisibilityState {
@@ -62,6 +70,7 @@ export function ChromeVisibilityProvider({
     zoom: initial?.zoom ?? false,
     present: initial?.present ?? false,
     guides: initial?.guides ?? false,
+    print: initial?.print ?? false,
   });
   const setChrome = useCallback((patch: Partial<ChromeVisibilityState>) => {
     setState((prev) => ({ ...prev, ...patch }));

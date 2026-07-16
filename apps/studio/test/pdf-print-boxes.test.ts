@@ -1,0 +1,250 @@
+// feature-2-print-artboards T5 — the load-bearing golden gate: MediaBox ⊇
+// BleedBox ⊇ TrimBox with exact expected pt values, plus marks presence.
+// Exercises pdf-lib directly (no Playwright/Chromium needed — box-setting
+// and mark-drawing are pure pdf-lib API calls); the page size mirrors what
+// Chromium's page.pdf() would actually produce for an artboard authored via
+// resolvePrintArtboard (96dpi CSS px → pt, same ratio as mm → pt).
+
+import { describe, expect, test } from 'bun:test';
+import { PDFDocument } from 'pdf-lib';
+
+import {
+  applyPageFit,
+  applyPrintBoxesAndMarks,
+  artboardIdFromCssPath,
+  type PdfPrintOptions,
+  parsePageFit,
+  parsePdfPrintOptions,
+} from '../exporters/pdf.ts';
+import { requiredSlugPt } from '../print/marks.ts';
+import {
+  getPaperPreset,
+  mmToPt,
+  pxToPt,
+  resolvePrintArtboard,
+  trimSizeMm,
+} from '../print/units.ts';
+
+const NO_MARKS: PdfPrintOptions = {
+  marks: { crop: false, registration: false, colorBars: false, pageInfo: false },
+};
+
+describe('pdf.ts — artboardIdFromCssPath', () => {
+  test('extracts the id from the artboard-by-id selector shape', () => {
+    expect(artboardIdFromCssPath('[data-dc-screen="home"]')).toBe('home');
+  });
+
+  test('a descendant / :first-of-type selector yields null', () => {
+    expect(artboardIdFromCssPath('.some .descendant')).toBeNull();
+    expect(artboardIdFromCssPath('[data-dc-screen]:first-of-type')).toBeNull();
+    expect(artboardIdFromCssPath('[data-dc-screen]')).toBeNull();
+  });
+});
+
+describe('pdf.ts — parsePdfPrintOptions', () => {
+  test('absent/malformed → null (print post-pass off)', () => {
+    expect(parsePdfPrintOptions(undefined)).toBeNull();
+    expect(parsePdfPrintOptions(null)).toBeNull();
+    expect(parsePdfPrintOptions('nope')).toBeNull();
+    expect(parsePdfPrintOptions([1, 2])).toBeNull();
+  });
+
+  test('valid shape passes through with marks defaulting false', () => {
+    expect(parsePdfPrintOptions({})).toEqual({
+      includeBleed: undefined,
+      marks: { crop: false, registration: false, colorBars: false, pageInfo: false },
+    });
+  });
+
+  test('marks flags coerce to strict booleans (non-true → false)', () => {
+    expect(parsePdfPrintOptions({ marks: { crop: 'yes', registration: 1 } })).toEqual({
+      includeBleed: undefined,
+      marks: { crop: false, registration: false, colorBars: false, pageInfo: false },
+    });
+    expect(parsePdfPrintOptions({ marks: { crop: true, registration: true } })).toEqual({
+      includeBleed: undefined,
+      marks: { crop: true, registration: true, colorBars: false, pageInfo: false },
+    });
+  });
+
+  test('includeBleed passes through only when a strict boolean', () => {
+    expect(parsePdfPrintOptions({ includeBleed: false })?.includeBleed).toBe(false);
+    expect(parsePdfPrintOptions({ includeBleed: 'false' })?.includeBleed).toBeUndefined();
+  });
+});
+
+describe('pdf.ts — parsePageFit', () => {
+  test('a known paper id passes through', () => {
+    expect(parsePageFit('a4')).toBe('a4');
+    expect(parsePageFit('letter')).toBe('letter');
+  });
+
+  test('unknown id / non-string → null', () => {
+    expect(parsePageFit('not-a-paper')).toBeNull();
+    expect(parsePageFit(42)).toBeNull();
+    expect(parsePageFit(undefined)).toBeNull();
+  });
+});
+
+describe('pdf-print-boxes — GOLDEN: A4 + 3mm bleed, no marks', () => {
+  test('MediaBox === BleedBox (full page); TrimBox insets by bleedPt exactly', async () => {
+    const resolved = resolvePrintArtboard({ paper: 'a4', bleedMm: 3 });
+    const pageWidthPt = pxToPt(resolved.widthPx);
+    const pageHeightPt = pxToPt(resolved.heightPx);
+
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([pageWidthPt, pageHeightPt]);
+    applyPrintBoxesAndMarks(page, 3, NO_MARKS);
+
+    const bleedPt = mmToPt(3);
+    const media = page.getMediaBox();
+    const bleed = page.getBleedBox();
+    const trim = page.getTrimBox();
+
+    // No marks requested → no slug → MediaBox is exactly the bleed box.
+    expect(media.x).toBeCloseTo(0, 6);
+    expect(media.y).toBeCloseTo(0, 6);
+    expect(media.width).toBeCloseTo(pageWidthPt, 6);
+    expect(media.height).toBeCloseTo(pageHeightPt, 6);
+
+    expect(bleed.x).toBeCloseTo(0, 6);
+    expect(bleed.y).toBeCloseTo(0, 6);
+    expect(bleed.width).toBeCloseTo(pageWidthPt, 6);
+    expect(bleed.height).toBeCloseTo(pageHeightPt, 6);
+
+    expect(trim.x).toBeCloseTo(bleedPt, 6);
+    expect(trim.y).toBeCloseTo(bleedPt, 6);
+    expect(trim.width).toBeCloseTo(pageWidthPt - 2 * bleedPt, 6);
+    expect(trim.height).toBeCloseTo(pageHeightPt - 2 * bleedPt, 6);
+
+    // The load-bearing nesting invariant, independent of the exact numbers above.
+    expect(media.x).toBeLessThanOrEqual(bleed.x);
+    expect(media.y).toBeLessThanOrEqual(bleed.y);
+    expect(media.x + media.width).toBeGreaterThanOrEqual(bleed.x + bleed.width);
+    expect(bleed.x).toBeLessThanOrEqual(trim.x);
+    expect(bleed.y).toBeLessThanOrEqual(trim.y);
+    expect(bleed.x + bleed.width).toBeGreaterThanOrEqual(trim.x + trim.width);
+  });
+});
+
+describe('pdf-print-boxes — GOLDEN: A4 + 3mm bleed + crop + registration marks', () => {
+  test('MediaBox enlarges by the exact required slug, negative origin, content-box unmoved', async () => {
+    const resolved = resolvePrintArtboard({ paper: 'a4', bleedMm: 3 });
+    const pageWidthPt = pxToPt(resolved.widthPx);
+    const pageHeightPt = pxToPt(resolved.heightPx);
+
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([pageWidthPt, pageHeightPt]);
+    const printOpts: PdfPrintOptions = {
+      marks: { crop: true, registration: true, colorBars: false, pageInfo: false },
+    };
+    applyPrintBoxesAndMarks(page, 3, printOpts);
+
+    const bleedPt = mmToPt(3);
+    const slugPt = requiredSlugPt({ crop: true, registration: true });
+    const media = page.getMediaBox();
+    const bleed = page.getBleedBox();
+    const trim = page.getTrimBox();
+
+    // Exact expected pt values — the golden assertion.
+    expect(media.x).toBeCloseTo(-slugPt, 6);
+    expect(media.y).toBeCloseTo(-slugPt, 6);
+    expect(media.width).toBeCloseTo(pageWidthPt + 2 * slugPt, 6);
+    expect(media.height).toBeCloseTo(pageHeightPt + 2 * slugPt, 6);
+    // MediaBox's negative origin is the marks slug ONLY — bleed box content
+    // coordinates are untouched (still start at the page's own (0,0)).
+    expect(bleed.x).toBeCloseTo(0, 6);
+    expect(bleed.y).toBeCloseTo(0, 6);
+    expect(bleed.width).toBeCloseTo(pageWidthPt, 6);
+    expect(bleed.height).toBeCloseTo(pageHeightPt, 6);
+    expect(trim.x).toBeCloseTo(bleedPt, 6);
+    expect(trim.y).toBeCloseTo(bleedPt, 6);
+    expect(trim.width).toBeCloseTo(pageWidthPt - 2 * bleedPt, 6);
+    expect(trim.height).toBeCloseTo(pageHeightPt - 2 * bleedPt, 6);
+
+    // MediaBox ⊇ BleedBox ⊇ TrimBox, strictly (marks slug > 0 here).
+    expect(media.x).toBeLessThan(bleed.x);
+    expect(media.width + media.x).toBeGreaterThan(bleed.width + bleed.x);
+    expect(bleed.x).toBeLessThan(trim.x);
+    expect(bleed.width + bleed.x).toBeGreaterThan(trim.width + trim.x);
+  });
+
+  test('marks present as vector ops — saved PDF is measurably larger with marks than without', async () => {
+    const resolved = resolvePrintArtboard({ paper: 'a4', bleedMm: 3 });
+    const pageWidthPt = pxToPt(resolved.widthPx);
+    const pageHeightPt = pxToPt(resolved.heightPx);
+
+    const withoutMarks = await PDFDocument.create();
+    applyPrintBoxesAndMarks(withoutMarks.addPage([pageWidthPt, pageHeightPt]), 3, NO_MARKS);
+    const withoutBytes = await withoutMarks.save();
+
+    const withMarks = await PDFDocument.create();
+    applyPrintBoxesAndMarks(withMarks.addPage([pageWidthPt, pageHeightPt]), 3, {
+      marks: { crop: true, registration: true, colorBars: false, pageInfo: false },
+    });
+    const withBytes = await withMarks.save();
+
+    // 8 crop-mark line segments + 4 registration circles (each an approximated
+    // bezier ellipse) + 8 crosshair segments is a non-trivial amount of vector
+    // content — the byte-size delta is a reliable proxy without depending on
+    // pdf-lib's internal (and version-specific) content-stream compression
+    // format for a literal operator-string grep.
+    expect(withBytes.byteLength).toBeGreaterThan(withoutBytes.byteLength);
+  });
+});
+
+describe('pdf-print-boxes — includeBleed:false crops the bleed strip out', () => {
+  test('MediaBox/BleedBox collapse onto TrimBox (degenerate but valid nesting)', async () => {
+    const resolved = resolvePrintArtboard({ paper: 'a4', bleedMm: 3 });
+    const pageWidthPt = pxToPt(resolved.widthPx);
+    const pageHeightPt = pxToPt(resolved.heightPx);
+    const bleedPt = mmToPt(3);
+
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([pageWidthPt, pageHeightPt]);
+    applyPrintBoxesAndMarks(page, 3, { ...NO_MARKS, includeBleed: false });
+
+    const media = page.getMediaBox();
+    const bleed = page.getBleedBox();
+    const trim = page.getTrimBox();
+
+    expect(media.x).toBeCloseTo(bleedPt, 6);
+    expect(media.y).toBeCloseTo(bleedPt, 6);
+    expect(media.width).toBeCloseTo(pageWidthPt - 2 * bleedPt, 6);
+    expect(bleed.x).toBeCloseTo(trim.x, 6);
+    expect(bleed.width).toBeCloseTo(trim.width, 6);
+  });
+});
+
+describe('pdf-print-boxes — applyPageFit (non-print artboard scale-to-paper)', () => {
+  test('the resulting page is sized to the target paper, content preserved', async () => {
+    const doc = await PDFDocument.create();
+    // A wide, non-print-sized artboard (e.g. a 1440×1024 digital screen at 96dpi).
+    const origWidthPt = pxToPt(1440);
+    const origHeightPt = pxToPt(1024);
+    doc.addPage([origWidthPt, origHeightPt]);
+    expect(doc.getPageCount()).toBe(1);
+
+    await applyPageFit(doc, 0, 'a4');
+
+    expect(doc.getPageCount()).toBe(1); // swapped in place, not appended
+    const page = doc.getPage(0);
+    // Expected size mirrors applyPageFit's OWN derivation (mmToPt of the
+    // preset's raw mm dims via trimSizeMm) — NOT a px-rounded roundtrip via
+    // resolvePrintArtboard, which would introduce a spurious sub-pt mismatch.
+    const preset = getPaperPreset('a4');
+    if (!preset) throw new Error('a4 preset missing');
+    const { widthMm, heightMm } = trimSizeMm(preset, 'portrait');
+    const { width, height } = page.getSize();
+    expect(width).toBeCloseTo(mmToPt(widthMm), 6);
+    expect(height).toBeCloseTo(mmToPt(heightMm), 6);
+  });
+
+  test('unknown paper id is a no-op (never throws, never mutates)', async () => {
+    const doc = await PDFDocument.create();
+    doc.addPage([100, 100]);
+    await applyPageFit(doc, 0, 'not-a-paper');
+    expect(doc.getPageCount()).toBe(1);
+    expect(doc.getPage(0).getSize()).toEqual({ width: 100, height: 100 });
+  });
+});

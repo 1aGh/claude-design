@@ -2,6 +2,16 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "print-artboards",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Design flyers, posters, and business cards — print-ready",
+      "summary": "Give a print artboard a real paper size (A4, Letter, business card, and more) and it resolves to the correct bleed-inclusive dimensions automatically. Toggle bleed/trim/margin guides from the View menu while you work, then export a 300–600 DPI PNG or a print-ready PDF with correct page boxes and crop/registration marks.",
+      "surface": "design-ui",
+      "learnMore": "https://maude.sh/docs/design/print"
+    },
+    {
       "id": "artboard-kinds-foundation",
       "version": null,
       "date": null,

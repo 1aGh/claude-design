@@ -18,7 +18,14 @@ Sends a request to the running dev-server (`POST /_api/export`) with the same pa
 | `<format>` (required) | `png` / `pdf` / `svg` / `html` / `pptx` / `mp4` / `gif` / `webm` / `canva` / `zip` |
 | `--scope <s>` | `selection` / `artboard` / `canvas-as-separate` / `project-raw`. Default = `canvas-as-separate` for element-shape formats, `artboard` for the temporal formats (`mp4`/`gif`/`webm`), `project-raw` for `zip`. |
 | `--out <path>` | Where to write. Default = cwd + the filename the server returns in `Content-Disposition`. |
-| `--option key=value` | Per-format option. Can be repeated. Examples: `--option pageFit=a4` (PDF), `--option mode=raster` (Canva → legacy raster bundle), `--option include=system` (ZIP filter), `--option fps=30` / `--option durationMs=4000` / `--option gifColors=128` (MP4/GIF/WebM). |
+| `--option key=value` | Per-format option. Can be repeated. Examples: `--option pageFit=a4` (PDF), `--option mode=raster` (Canva → legacy raster bundle), `--option include=system` (ZIP filter), `--option fps=30` / `--option durationMs=4000` / `--option gifColors=128` (MP4/GIF/WebM), `--option dpi=300` (PNG — feature-2-print-artboards T4), `--option marks=crop,registration` / `--option includeBleed=true` (PDF — T5). |
+
+**Print options (feature-2-print-artboards).**
+
+- **PNG `dpi`** — `96` / `150` / `300` / `600` (snaps to the nearest preset). Wins over the legacy `scale` option when both are given (`exporters/png.ts` `resolveDeviceScale`). `deviceScaleFactor = dpi / 96`; output larger than 16,000 px on a side or ~600 MB is rejected with a message naming the max supported DPI for that artboard size.
+- **PDF `includeBleed`** — `true` (default when the artboard's own `print` prop has `bleedMm > 0`) / `false`. Only meaningful for a `kind="print"` artboard — a no-op on any other artboard.
+- **PDF `marks`** — comma-separated: `crop`, `registration` (MVP scope; `colorBars` / `pageInfo` are accepted but not yet drawn). Building the request body: `--option marks=crop,registration` becomes `options.pdfPrint.marks = { crop: true, registration: true }` — the flat `--option` flags collapse into ONE nested `pdfPrint` object in the JSON POST body (`{ includeBleed, marks: {crop, registration, colorBars, pageInfo} }`), not four separate top-level keys. `pageFit` stays a top-level option (unrelated to `pdfPrint` — it's the non-print-artboard scale-to-paper path).
+- Bleed/trim geometry always comes from the artboard's own `print` JSX prop (paper/orientation/bleedMm) — never re-specify bleed via `--option`; there isn't one. RGB PDF only — CMYK/PDF-X is out of scope (print shops convert on their end).
 
 **Temporal formats (`mp4` / `gif` / `webm`) — DDR-148.** Scope is `artboard`: a **video-comp** artboard (its comp meta drives fps + frame count) or an ordinary **animated** mock (`--option fps=…` + `--option durationMs=…`; add `--option mode=ordinary` for WAAPI/CSS-driven motion). Rendered through Maude's own capture spine (Playwright frame-step → mediabunny H.264 MP4 / gifenc GIF, in-page) — no native binaries, deterministic. Default cap 30 s / 900 frames. MP4 falls back to WebM when the capture browser has no H.264 encoder.
 
@@ -48,6 +55,12 @@ Sends a request to the running dev-server (`POST /_api/export`) with the same pa
 
 # Animated mock → looping GIF, 15 fps · 3 s · 128-color palette
 /design:export gif --scope artboard --option fps=15 --option durationMs=3000 --option gifColors=128
+
+# 300 DPI PNG (print-ready raster) of the active artboard
+/design:export png --scope artboard --option dpi=300
+
+# Print-ready PDF — bleed included, crop + registration marks
+/design:export pdf --scope artboard --option includeBleed=true --option marks=crop,registration
 ```
 
 ## What the command does

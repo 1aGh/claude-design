@@ -37,6 +37,7 @@ import {
   setArtboardGuides,
   setArtboardHug,
   setArtboardKind,
+  setArtboardPrint,
   setArtboardStyle,
   toggleClipHidden,
 } from './canvas-edit.ts';
@@ -49,6 +50,7 @@ import {
 } from './generation/audio-library.ts';
 import { createHistory } from './history.ts';
 import { STICKERS_DIR } from './paths.ts';
+import { getPaperPreset } from './print/units.ts';
 
 // Directories that never hold user-facing canvases. Exported so the
 // external-canvas watcher (`canvas-list-watch.ts`) shares one source instead of
@@ -501,6 +503,12 @@ export interface Api {
     canvas?: unknown;
     artboardId?: unknown;
     guides?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
+  /** feature-2-print-artboards T2 — paper/orientation/bleed/margins, replace-whole-prop write. */
+  setArtboardPrintOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    print?: unknown;
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
   /** Duplicate an element (Cmd+D) — a copy as the next sibling, whole-file undo. */
   duplicateElementOp(input: {
@@ -3179,6 +3187,92 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  const PRINT_ORIENTATION_VALUES = new Set(['portrait', 'landscape']);
+  /** Generous but finite bound — guards a malicious/broken value from producing
+   *  a negative trim box (rect.w - 2×bleedPx) in the overlay or exporter. */
+  const MAX_PRINT_MM = 200;
+
+  function isFiniteMmOrUndefined(v: unknown): v is number | undefined {
+    return (
+      v === undefined ||
+      (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= MAX_PRINT_MM)
+    );
+  }
+
+  /**
+   * feature-2-print-artboards T2 — paper/orientation/bleed/margins. Replace-
+   * whole-prop (see applySetArtboardPrint's own doc comment) — the caller
+   * sends the full merged object, not a delta. `print: null` clears the
+   * prop. Shape validation lives HERE (canvas-edit.ts stays generic
+   * Record<string, unknown> AST surgery, same split as setArtboardGuidesOp).
+   */
+  async function setArtboardPrintOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    print?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    if (!takeStructuralToken()) return RATE_LIMITED;
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId.trim() : '';
+    if (!/^[A-Za-z][\w-]{0,63}$/.test(artboardId)) {
+      return { ok: false, status: 400, error: 'invalid artboard id' };
+    }
+    let print: Record<string, unknown> | null;
+    if (input.print === null) {
+      print = null;
+    } else if (input.print && typeof input.print === 'object' && !Array.isArray(input.print)) {
+      const p = input.print as Record<string, unknown>;
+      if (typeof p.paper !== 'string' || !getPaperPreset(p.paper)) {
+        return { ok: false, status: 400, error: 'invalid or unknown paper preset' };
+      }
+      if (p.orientation !== undefined && !PRINT_ORIENTATION_VALUES.has(p.orientation as string)) {
+        return { ok: false, status: 400, error: 'invalid orientation' };
+      }
+      if (!isFiniteMmOrUndefined(p.bleedMm)) {
+        return { ok: false, status: 400, error: 'invalid bleedMm' };
+      }
+      if (p.marginsMm !== undefined) {
+        if (typeof p.marginsMm !== 'object' || p.marginsMm === null || Array.isArray(p.marginsMm)) {
+          return { ok: false, status: 400, error: 'invalid marginsMm' };
+        }
+        const m = p.marginsMm as Record<string, unknown>;
+        for (const side of ['top', 'right', 'bottom', 'left']) {
+          if (!isFiniteMmOrUndefined(m[side])) {
+            return { ok: false, status: 400, error: `invalid marginsMm.${side}` };
+          }
+        }
+      }
+      print = p;
+    } else {
+      return { ok: false, status: 400, error: 'invalid print' };
+    }
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      await setArtboardPrint(r.abs, artboardId, print);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-set-artboard-print');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'set-artboard-print failed',
+      };
+    }
+  }
+
   const ARTBOARD_LAYOUT_VALUES = new Set(['block', 'flex-col', 'flex-row', 'grid']);
 
   /** Set artboard "more settings" — background / padding / layout / gap. */
@@ -4001,6 +4095,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     setArtboardStyleOp,
     setArtboardKindOp,
     setArtboardGuidesOp,
+    setArtboardPrintOp,
     deleteArtboardOp,
     duplicateElementOp,
     editScopeOp,
