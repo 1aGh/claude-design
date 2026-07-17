@@ -1966,12 +1966,14 @@ export function DCArtboard({
   fixed?: boolean;
   /** `.dc-artboard-body` background (CSS color/token, e.g. "var(--bg-1)"). */
   background?: string;
-  /** `.dc-artboard-body` padding, px, all sides. */
-  padding?: number;
+  /** `.dc-artboard-body` padding — px number, or a `var(--token)` string
+   *  (space-token binding from the Inspector's artboard panel). */
+  padding?: number | string;
   /** `.dc-artboard-body` layout mode. Default = the engine's plain block flow. */
   layout?: 'block' | 'flex-col' | 'flex-row' | 'grid';
-  /** `.dc-artboard-body` gap, px — only visible under flex-col/flex-row/grid. */
-  gap?: number;
+  /** `.dc-artboard-body` gap — px number or `var(--token)` string; only
+   *  visible under flex-col/flex-row/grid. */
+  gap?: number | string;
   /** What this artboard IS — digital screen / print page / web flow / video
    *  comp. Absent ⇒ `digital` (or `video` when the subtree contains a
    *  `<VideoComp>`, for unmigrated canvases — see `subtreeHasVideoComp`).
@@ -2073,8 +2075,9 @@ export function DCArtboard({
   const bodyStyle = useMemo<CSSProperties>(() => {
     const st: CSSProperties = {};
     if (background) st.background = background;
-    if (typeof padding === 'number') st.padding = padding;
-    if (typeof gap === 'number') st.gap = gap;
+    // number → px; string → a var(--token) binding (validated server-side).
+    if (typeof padding === 'number' || typeof padding === 'string') st.padding = padding;
+    if (typeof gap === 'number' || typeof gap === 'string') st.gap = gap;
     if (layout === 'flex-col') {
       st.display = 'flex';
       st.flexDirection = 'column';
@@ -2095,9 +2098,9 @@ export function DCArtboard({
   const readBackAttrs = {
     'data-dc-fixed': fixed ? 'true' : undefined,
     'data-dc-bg': background,
-    'data-dc-padding': typeof padding === 'number' ? String(padding) : undefined,
+    'data-dc-padding': padding != null ? String(padding) : undefined,
     'data-dc-layout': layout,
-    'data-dc-gap': typeof gap === 'number' ? String(gap) : undefined,
+    'data-dc-gap': gap != null ? String(gap) : undefined,
     // Always present (unlike the optional-override props above) — this is a
     // resolved classification, not a "no override" style knob. Chrome, the
     // Inspector kind picker (T8), and canvas-shell's artboardHasVideo gate

@@ -341,6 +341,31 @@ describe('canvas-edit / applySetArtboardStyle (background/padding/layout/gap)', 
       CanvasEditError
     );
   });
+
+  // Dogfood (artboard panel ↔ shared inspector controls) — padding/gap accept
+  // a var(--token) STRING binding alongside raw px numbers.
+  test('padding/gap accept a var(--token) string (space-token binding)', () => {
+    const out = applySetArtboardStyle(CANVAS, canvas, 'home', {
+      padding: 'var(--space-4)',
+      gap: 'var(--space-2)',
+    });
+    expect(out.source).toContain('padding="var(--space-4)"');
+    expect(out.source).toContain('gap="var(--space-2)"');
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('a token binding round-trips back to a raw number (detach) and vice versa', () => {
+    const bound = applySetArtboardStyle(CANVAS, canvas, 'home', { padding: 'var(--space-4)' });
+    const detached = applySetArtboardStyle(CANVAS, bound.source, 'home', { padding: 24 });
+    expect(detached.source).toContain('padding={24}');
+    expect(detached.source).not.toContain('var(--space-4)');
+    const rebound = applySetArtboardStyle(CANVAS, detached.source, 'home', {
+      padding: 'var(--space-6)',
+    });
+    expect(rebound.source).toContain('padding="var(--space-6)"');
+    expect(rebound.source).not.toContain('padding={24}');
+    expect(parses(rebound.source)).toBe(true);
+  });
 });
 
 // feature-1-artboard-kinds-foundation, T5/T8 — kind-switch write lane.

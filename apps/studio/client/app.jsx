@@ -33,7 +33,7 @@ import GenerateDialog from './generate-dialog.jsx';
 import RepoBranchSwitcher from './panels/RepoBranchSwitcher.jsx';
 import SettingsPanel from './panels/SettingsPanel.jsx';
 import StickerPicker from './panels/StickerPicker.jsx';
-import { AlignPad, AngleDial, ColorField, IconButtonGroup, IconToggleGroup, makeScrubHandler, NumberField, RadiusControl, Segmented, SliderField, Toggle, UnitSelect, ValueTokenField } from './inspector-controls.jsx';
+import { AlignPad, AngleDial, ColorField, IconButtonGroup, IconToggleGroup, makeScrubHandler, NumberField, RadiusControl, Segmented, Select, SliderField, Toggle, UnitSelect, ValueTokenField } from './inspector-controls.jsx';
 import {
   ALargeSmall as LuALargeSmall,
   AlignCenter as LuAlignCenter,
@@ -6993,6 +6993,7 @@ const ARTBOARD_KIND_OPTIONS = [
 
 function ArtboardKnobs({
   el,
+  cfg,
   onResizeArtboard,
   onSetArtboardHug,
   onSetArtboardStyle,
@@ -7000,6 +7001,32 @@ function ArtboardKnobs({
   onSetArtboardPrint,
 }) {
   const artboardId = resolveArtboardIdFromSelection(el);
+  // Dogfood (artboard panel ↔ shared inspector controls) — the panel now uses
+  // the SAME control library + design-token plumbing as CssKnobs (NumberField
+  // / Segmented / Select / ColorField+TokenPopover / ValueTokenField), so Bg
+  // binds color variables and Pad/Gap bind space variables exactly like any
+  // CSS-panel row. Token resolution mirrors CssKnobs' own tokenGroups/
+  // flatTokens closures over useAllDsTokens.
+  const _designRel = (cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '');
+  const _activeDs = activeDsNameFor(el.file, cfg);
+  const allDs = useAllDsTokens(cfg, _designRel, _activeDs);
+  const tokenGroups = (familyKey) =>
+    allDs
+      .map((d) => ({ ds: d.name, names: d[familyKey] || [], vals: d.vals }))
+      .filter((g) => g.names.length);
+  const flatTokens = (familyKey) =>
+    tokenGroups(familyKey).flatMap((g) => (g.names || []).map((n) => ({ name: n, value: g.vals?.[n] || '' })));
+  // Resolve a `var(--x)` binding to its concrete value across every DS (for
+  // the Bg swatch color); a raw value passes through.
+  const resolveTokenValue = (v) => {
+    const m = /^var\(\s*(--[\w-]+)\s*\)$/.exec(v || '');
+    if (!m) return v || '';
+    for (const d of allDs) {
+      const val = d.vals?.[m[1]];
+      if (val) return val;
+    }
+    return '';
+  };
   // Dogfood 2026-07-07 (round 2) — `worldW`/`worldH` (zoom-independent) are
   // undefined for a selection that reached here via a code path predating
   // that field (a canvas iframe that hasn't remounted since); fall back to
@@ -7108,45 +7135,27 @@ function ArtboardKnobs({
         <span className="st-cp-sechd">Artboard</span>
       </div>
       <div style={{ display: 'flex', gap: 8, padding: '4px 12px' }}>
-        <div className="st-cp-num">
-          <span className="st-cp-numlead" aria-hidden="true">
-            W
-          </span>
-          <input
-            className="st-cp-numin"
-            type="number"
-            min="1"
-            aria-label="artboard width"
-            key={`w:${w ?? ''}`}
-            defaultValue={w ?? ''}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur();
-            }}
-            onBlur={(e) => commitSize(Number.parseFloat(e.currentTarget.value), null)}
-          />
-        </div>
-        <div className="st-cp-num">
-          <span className="st-cp-numlead" aria-hidden="true">
-            H
-          </span>
-          <input
-            className="st-cp-numin"
-            type="number"
-            min="1"
-            aria-label="artboard height"
-            readOnly={!fixed}
-            title={fixed ? undefined : 'Hug — grows to fit content. Switch to Fixed to set an exact height.'}
-            key={`h:${h ?? ''}:${fixed}`}
-            defaultValue={h ?? ''}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur();
-            }}
-            onBlur={(e) => {
-              if (!fixed) return;
-              commitSize(null, Number.parseFloat(e.currentTarget.value));
-            }}
-          />
-        </div>
+        <NumberField
+          value={w ?? 0}
+          min={1}
+          ariaLabel="artboard width"
+          lead="W"
+          steppers={false}
+          onCommit={(n) => commitSize(n, null)}
+        />
+        <NumberField
+          value={h ?? 0}
+          min={1}
+          ariaLabel="artboard height"
+          lead="H"
+          steppers={false}
+          scrub={fixed}
+          onCommit={(n) => {
+            // Hug — height is content-driven; ignore a typed value rather
+            // than silently switching modes.
+            if (fixed) commitSize(null, n);
+          }}
+        />
       </div>
       <div style={{ padding: '0 12px 8px' }}>
         {kind === 'print' ? (
@@ -7193,43 +7202,26 @@ function ArtboardKnobs({
         )}
       </div>
       <div style={{ padding: '0 12px 8px' }}>
-        <div className="st-cp-modeseg" role="group" aria-label="artboard height sizing mode">
-          <span className="st-cp-modeax" aria-hidden="true">
-            H
-          </span>
-          {[
-            [false, 'Hug'],
-            [true, 'Fixed'],
-          ].map(([val, label]) => (
-            <button
-              key={label}
-              type="button"
-              className={`st-cp-modebtn${fixed === val ? ' is-active' : ''}`}
-              aria-pressed={fixed === val}
-              onClick={() => setHug(val)}
-              title={`${label} height`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          value={fixed ? 'fixed' : 'hug'}
+          ariaLabel="artboard height sizing mode"
+          options={[
+            { value: 'hug', label: 'Hug' },
+            { value: 'fixed', label: 'Fixed' },
+          ]}
+          onChange={(v) => setHug(v === 'fixed')}
+        />
       </div>
       <div className="st-cp-sechd-row">
         <span className="st-cp-sechd">Kind</span>
       </div>
       <div style={{ padding: '0 12px 8px' }}>
-        <select
-          className="st-cp-nsel"
-          aria-label="artboard kind"
+        <Select
           value={kind}
-          onChange={(e) => setKind(e.currentTarget.value)}
-        >
-          {ARTBOARD_KIND_OPTIONS.map(([key, label]) => (
-            <option key={key} value={key}>
-              {label}
-            </option>
-          ))}
-        </select>
+          ariaLabel="artboard kind"
+          options={ARTBOARD_KIND_OPTIONS.map(([value, label]) => ({ value, label }))}
+          onChange={setKind}
+        />
       </div>
       {kind === 'print' ? (
         <>
@@ -7240,49 +7232,34 @@ function ArtboardKnobs({
               above (it REPLACES the screen presets for kind="print") — this
               section carries the print-specific residue: orientation + bleed. */}
           <div style={{ padding: '0 12px 8px' }}>
-            <div className="st-cp-modeseg" role="group" aria-label="paper orientation">
-              {[
-                ['portrait', 'Portrait'],
-                ['landscape', 'Landscape'],
-              ].map(([val, label]) => (
-                <button
-                  key={val}
-                  type="button"
-                  className={`st-cp-modebtn${(print?.orientation ?? 'portrait') === val ? ' is-active' : ''}`}
-                  aria-pressed={(print?.orientation ?? 'portrait') === val}
-                  onClick={() => setPrint({ orientation: val })}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <Segmented
+              value={print?.orientation ?? 'portrait'}
+              ariaLabel="paper orientation"
+              options={[
+                { value: 'portrait', label: 'Portrait' },
+                { value: 'landscape', label: 'Landscape' },
+              ]}
+              onChange={(v) => setPrint({ orientation: v })}
+            />
           </div>
           <div style={{ padding: '0 12px 8px' }}>
-            <div className="st-cp-num" style={{ width: '100%' }}>
-              <span className="st-cp-numlead" aria-hidden="true">
-                Bleed
-              </span>
-              <input
-                className="st-cp-numin"
-                type="number"
-                min="0"
-                step="0.5"
-                aria-label="bleed, millimeters"
-                placeholder="3"
-                key={`bleed:${print?.bleedMm ?? ''}`}
-                defaultValue={print?.bleedMm ?? ''}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') e.currentTarget.blur();
-                }}
-                onBlur={(e) => {
-                  const v = Number.parseFloat(e.currentTarget.value);
-                  setPrint({ bleedMm: Number.isFinite(v) && v >= 0 ? v : undefined });
-                }}
-              />
-              <span className="st-cp-numlead" aria-hidden="true" style={{ paddingLeft: 4 }}>
-                mm
-              </span>
-            </div>
+            <NumberField
+              value={Number.isFinite(print?.bleedMm) ? print.bleedMm : 3}
+              min={0}
+              step={0.5}
+              ariaLabel="bleed, millimeters"
+              // Single-glyph lead — the drag-handle slot is sized for 1–2
+              // chars ("W"/"Pad"); a full word clips. mm suffix + aria carry
+              // the meaning.
+              lead="B"
+              steppers={false}
+              unitSlot={
+                <span className="st-cp-numsuffix" aria-hidden="true">
+                  mm
+                </span>
+              }
+              onCommit={(n) => setPrint({ bleedMm: n })}
+            />
           </div>
         </>
       ) : null}
@@ -7290,76 +7267,64 @@ function ArtboardKnobs({
         <span className="st-cp-sechd">Style</span>
       </div>
       <div style={{ padding: '4px 12px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div className="st-cp-num" style={{ width: '100%' }}>
-          <span className="st-cp-numlead" aria-hidden="true">
-            Bg
-          </span>
-          <input
-            className="st-cp-numin"
-            type="text"
-            aria-label="artboard background"
-            placeholder="var(--bg-1)"
-            key={`bg:${bg}`}
-            defaultValue={bg}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur();
-            }}
-            onBlur={(e) => commitStyle({ background: e.currentTarget.value.trim() || null })}
-          />
-        </div>
-        <select
-          className="st-cp-nsel"
-          aria-label="artboard body layout"
+        {(() => {
+          // Bg — the CssKnobs `color()` recipe: TokenPopover swatch as the
+          // flush prefix inside ColorField (HSV picker + per-DS variables).
+          const bgResolved = resolveTokenValue(bg);
+          const bgBound = /var\(\s*--/.test(bg);
+          const bgDisplay = bgBound
+            ? bg.replace(/^var\(\s*|\s*\)$/g, '').replace(/^--/, '').replace(/-/g, ' ')
+            : bg;
+          return (
+            <ColorField
+              swatch={
+                <TokenPopover
+                  kind="color"
+                  swatchClassName="st-cp-cf-sw"
+                  groups={tokenGroups('color')}
+                  current={bg}
+                  activeDs={_activeDs}
+                  swatchBg={bgResolved}
+                  seedHex={cssColorToHex(bgResolved) || '#000000'}
+                  onPick={(v) => commitStyle({ background: v || null })}
+                  label="artboard background colour"
+                />
+              }
+              displayValue={bgDisplay}
+              bound={bgBound}
+              ariaLabel="artboard background"
+              onValue={(v) => commitStyle({ background: (v || '').trim() || null })}
+            />
+          );
+        })()}
+        <Select
           value={layoutMode}
-          onChange={(e) => commitStyle({ layout: e.currentTarget.value || null })}
-        >
-          {ARTBOARD_LAYOUT_OPTIONS.map(([val, label]) => (
-            <option key={val} value={val}>
-              {label}
-            </option>
-          ))}
-        </select>
+          ariaLabel="artboard body layout"
+          options={ARTBOARD_LAYOUT_OPTIONS.map(([value, label]) => ({
+            value,
+            label,
+          }))}
+          onChange={(v) => commitStyle({ layout: v || null })}
+        />
         <div style={{ display: 'flex', gap: 8 }}>
-          <div className="st-cp-num">
-            <span className="st-cp-numlead" aria-hidden="true">
-              Pad
-            </span>
-            <input
-              className="st-cp-numin"
-              type="number"
-              min="0"
-              aria-label="artboard padding"
-              key={`pad:${padding}`}
-              defaultValue={padding}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur();
-              }}
-              onBlur={(e) => {
-                const v = e.currentTarget.value;
-                commitStyle({ padding: v === '' ? null : Number.parseFloat(v) });
-              }}
-            />
-          </div>
-          <div className="st-cp-num">
-            <span className="st-cp-numlead" aria-hidden="true">
-              Gap
-            </span>
-            <input
-              className="st-cp-numin"
-              type="number"
-              min="0"
-              aria-label="artboard gap"
-              key={`gap:${gap}`}
-              defaultValue={gap}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur();
-              }}
-              onBlur={(e) => {
-                const v = e.currentTarget.value;
-                commitStyle({ gap: v === '' ? null : Number.parseFloat(v) });
-              }}
-            />
-          </div>
+          <ValueTokenField
+            value={/^var\(/.test(padding) ? padding : Number.parseFloat(padding) || 0}
+            tokens={flatTokens('space')}
+            ariaLabel="artboard padding"
+            lead="Pad"
+            min={0}
+            onChange={(v) =>
+              commitStyle({ padding: typeof v === 'string' ? v : v > 0 ? v : null })
+            }
+          />
+          <ValueTokenField
+            value={/^var\(/.test(gap) ? gap : Number.parseFloat(gap) || 0}
+            tokens={flatTokens('space')}
+            ariaLabel="artboard gap"
+            lead="Gap"
+            min={0}
+            onChange={(v) => commitStyle({ gap: typeof v === 'string' ? v : v > 0 ? v : null })}
+          />
         </div>
       </div>
     </section>
@@ -7977,6 +7942,7 @@ function InspectorPanel({
         ) : !el.id && resolveArtboardIdFromSelection(el) ? (
           <ArtboardKnobs
             el={el}
+            cfg={cfg}
             onResizeArtboard={onResizeArtboard}
             onSetArtboardHug={onSetArtboardHug}
             onSetArtboardStyle={onSetArtboardStyle}

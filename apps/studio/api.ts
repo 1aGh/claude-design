@@ -3293,9 +3293,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
     const patch: {
       background?: string | null;
-      padding?: number | null;
+      padding?: number | string | null;
       layout?: string | null;
-      gap?: number | null;
+      gap?: number | string | null;
     } = {};
     if ('background' in input) {
       if (input.background === null) patch.background = null;
@@ -3313,19 +3313,28 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         return { ok: false, status: 400, error: 'invalid layout' };
       }
     }
-    const clampBoxDim = (v: unknown): number | null | undefined => {
+    // Dogfood (artboard panel ↔ shared inspector controls) — padding/gap
+    // accept a design-token binding alongside raw px. STRICT single-var shape
+    // (not a free-form CSS string like `background`): the value lands in a
+    // JSX prop AND in `.dc-artboard-body`'s inline style, so anything beyond
+    // one `var(--…)` reference is rejected rather than round-tripped.
+    const BOX_TOKEN_RE = /^var\(--[a-zA-Z0-9_-]{1,64}\)$/;
+    const clampBoxDim = (v: unknown): number | string | null | undefined => {
       if (v === null) return null;
       if (v === undefined) return undefined;
+      if (typeof v === 'string' && BOX_TOKEN_RE.test(v)) return v;
       return Number.isFinite(Number(v)) ? Math.max(0, Math.min(512, Math.round(Number(v)))) : NaN;
     };
     if ('padding' in input) {
       const p = clampBoxDim(input.padding);
-      if (Number.isNaN(p)) return { ok: false, status: 400, error: 'invalid padding' };
+      if (typeof p === 'number' && Number.isNaN(p))
+        return { ok: false, status: 400, error: 'invalid padding' };
       patch.padding = p;
     }
     if ('gap' in input) {
       const g = clampBoxDim(input.gap);
-      if (Number.isNaN(g)) return { ok: false, status: 400, error: 'invalid gap' };
+      if (typeof g === 'number' && Number.isNaN(g))
+        return { ok: false, status: 400, error: 'invalid gap' };
       patch.gap = g;
     }
     if (Object.keys(patch).length === 0) {

@@ -3598,12 +3598,16 @@ export async function setArtboardHug(
 }
 
 /** Patch shape for {@link applySetArtboardStyle} — `null` resets/removes that
- *  prop back to the engine default; `undefined`/absent leaves it untouched. */
+ *  prop back to the engine default; `undefined`/absent leaves it untouched.
+ *  padding/gap accept a `var(--token)` STRING alongside raw px numbers
+ *  (dogfood: the Inspector's artboard panel binds space tokens the same way
+ *  the CSS panel's ValueTokenField does) — validation of the string shape
+ *  lives at the api.ts layer, same split as every other artboard writer. */
 export interface ArtboardStylePatch {
   background?: string | null;
-  padding?: number | null;
+  padding?: number | string | null;
   layout?: string | null;
-  gap?: number | null;
+  gap?: number | string | null;
 }
 
 /**
@@ -3647,10 +3651,14 @@ export function applySetArtboardStyle(
   }
   if ('padding' in patch) {
     if (patch.padding == null) removeStringAttr(s, opening, 'padding', source);
+    else if (typeof patch.padding === 'string')
+      editStringAttr(s, opening, 'padding', patch.padding, canvasAbsPath, artboardId);
     else writeNumericAttr(s, opening, 'padding', patch.padding, 0);
   }
   if ('gap' in patch) {
     if (patch.gap == null) removeStringAttr(s, opening, 'gap', source);
+    else if (typeof patch.gap === 'string')
+      editStringAttr(s, opening, 'gap', patch.gap, canvasAbsPath, artboardId);
     else writeNumericAttr(s, opening, 'gap', patch.gap, 0);
   }
   const out = s.toString();
