@@ -240,6 +240,26 @@ export function scaleFromMatrix(transform: string | null | undefined): number {
   return s > 0 ? s : 1;
 }
 
+/**
+ * The `.dc-world` camera's effective render zoom for an element. Dogfood fix
+ * (print-artboards round): the camera writes DIFFERENT properties per engine
+ * (writeTransform's IS_WEBKIT split in canvas-lib) — WebKit gets
+ * `transform: scale(z)`, Chromium gets the CSS `zoom` PROPERTY (whose
+ * computed `transform` is a bare translate). Reading only the matrix
+ * therefore returned 1 in every non-WebKit browser and the handle/spacing
+ * overlays drew at world size instead of screen size, visibly scaling with
+ * the camera (the desktop app is WKWebView, which is why dogfooding never
+ * caught it). Multiplying both reads is exact on each engine: the unused
+ * property computes to identity.
+ */
+export function worldZoomFor(el: Element): number {
+  const world = el.closest('.dc-world') as HTMLElement | null;
+  if (!world) return 1;
+  const cs = getComputedStyle(world);
+  const zoomProp = Number.parseFloat((cs as { zoom?: string }).zoom || '1') || 1;
+  return scaleFromMatrix(cs.transform) * zoomProp;
+}
+
 /** Rotate a local offset (dx,dy) by `deg` — screen y is down, positive = CW. */
 export function rotatePointDeg(dx: number, dy: number, deg: number): [number, number] {
   const r = (deg * Math.PI) / 180;
@@ -458,8 +478,7 @@ export function ElementResizeOverlay(): ReactNode {
       const cx = r.left + r.width / 2;
       const cy = r.top + r.height / 2;
       const deg = rotationDegFromMatrix(getComputedStyle(el).transform);
-      const world = el.closest('.dc-world') as HTMLElement | null;
-      const zoom = world ? scaleFromMatrix(getComputedStyle(world).transform) : 1;
+      const zoom = worldZoomFor(el);
       const hw = (el.offsetWidth * zoom) / 2;
       const hh = (el.offsetHeight * zoom) / 2;
       // Rotate zones sit ON each corner (same offset), 20×20, z-index below the

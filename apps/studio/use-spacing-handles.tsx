@@ -28,7 +28,7 @@ import {
   type PaddingSide,
   paddingSideSet,
 } from './spacing-handles.ts';
-import { scaleFromMatrix } from './use-element-resize.tsx';
+import { worldZoomFor } from './use-element-resize.tsx';
 import { useSelectionSet } from './use-selection-set.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
 
@@ -174,8 +174,10 @@ export function SpacingHandlesOverlay(): ReactNode {
         return;
       }
       const cs = getComputedStyle(el);
-      const world = el.closest('.dc-world') as HTMLElement | null;
-      const zoom = world ? scaleFromMatrix(getComputedStyle(world).transform) : 1;
+      // Dogfood fix — engine-split-aware zoom read (see worldZoomFor's own
+      // doc comment in use-element-resize: the Chromium camera writes the CSS
+      // `zoom` property, not a transform matrix).
+      const zoom = worldZoomFor(el);
       const padding = {
         top: computedPx(cs, 'padding-top'),
         right: computedPx(cs, 'padding-right'),
@@ -274,8 +276,10 @@ export function SpacingHandlesOverlay(): ReactNode {
       const prop = t.dataset.prop || '';
       const isGap = prop === 'gap';
       const cs = getComputedStyle(el);
-      const world = el.closest('.dc-world') as HTMLElement | null;
-      const zoom = world ? scaleFromMatrix(getComputedStyle(world).transform) : 1;
+      // Dogfood fix — engine-split-aware zoom read (see worldZoomFor's own
+      // doc comment in use-element-resize: the Chromium camera writes the CSS
+      // `zoom` property, not a transform matrix).
+      const zoom = worldZoomFor(el);
       const drag: SpacingDrag = {
         pointerId: e.pointerId,
         kind: isGap ? 'gap' : 'padding',
