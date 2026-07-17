@@ -126,6 +126,21 @@ export function defaultBleedMm(preset: PaperPreset): number {
 
 export const DEFAULT_SAFE_MARGIN_MM = 5;
 
+/** Generous but finite bound on bleed/margin mm values — guards a
+ *  malicious/broken value (a hand-edited or hub-synced `print` prop is
+ *  DDR-054 untrusted canvas content) from producing a negative trim box
+ *  (rect.w - 2×bleedPx) or a degenerate PDF geometry. Enforced at WRITE
+ *  time by `setArtboardPrintOp` (api.ts) AND at READ time by
+ *  `resolveBleedMm`/`resolveMarginsMm` below — a `print` prop can also
+ *  reach the exporter via disk/hub-sync without ever passing through the
+ *  write-time validator, so the read side needs its own clamp. */
+export const MAX_PRINT_MM = 200;
+
+function clampMm(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.min(Math.max(v, 0), MAX_PRINT_MM);
+}
+
 /** Crop/registration mark geometry — length ~3.5mm, stroke offset from trim = bleed. */
 export const MARK_LENGTH_MM = 3.5;
 export const MARK_STROKE_MM = 0.25;
@@ -184,10 +199,10 @@ export interface ResolvedPrintArtboard {
 export function resolveMarginsMm(marginsMm?: Partial<PrintMargins>): PrintMargins {
   const m = marginsMm ?? {};
   return {
-    top: m.top ?? DEFAULT_SAFE_MARGIN_MM,
-    right: m.right ?? DEFAULT_SAFE_MARGIN_MM,
-    bottom: m.bottom ?? DEFAULT_SAFE_MARGIN_MM,
-    left: m.left ?? DEFAULT_SAFE_MARGIN_MM,
+    top: typeof m.top === 'number' ? clampMm(m.top) : DEFAULT_SAFE_MARGIN_MM,
+    right: typeof m.right === 'number' ? clampMm(m.right) : DEFAULT_SAFE_MARGIN_MM,
+    bottom: typeof m.bottom === 'number' ? clampMm(m.bottom) : DEFAULT_SAFE_MARGIN_MM,
+    left: typeof m.left === 'number' ? clampMm(m.left) : DEFAULT_SAFE_MARGIN_MM,
   };
 }
 
@@ -200,7 +215,7 @@ export function resolveMarginsMm(marginsMm?: Partial<PrintMargins>): PrintMargin
  * point used at WRITE time; this one is the lenient, read-time counterpart).
  */
 export function resolveBleedMm(print: { paper: string; bleedMm?: number }): number {
-  if (typeof print.bleedMm === 'number') return print.bleedMm;
+  if (typeof print.bleedMm === 'number') return clampMm(print.bleedMm);
   const preset = getPaperPreset(print.paper);
   return preset ? defaultBleedMm(preset) : 3;
 }

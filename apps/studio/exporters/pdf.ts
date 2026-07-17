@@ -65,6 +65,20 @@ export function artboardIdFromCssPath(cssPath: string): string | null {
   return m ? (m[1] as string) : null;
 }
 
+/** Resolve a client-supplied `sourceFile` (from `options.selection.file`, a
+ *  main-origin but caller-controlled string — see scope.ts's `readHints`)
+ *  against `repoRoot`, rejecting anything that escapes it — mirrors
+ *  `resolveCanvasAbs`'s containment check (api.ts) so this new read-path
+ *  doesn't skip the same-origin path-traversal guard the rest of the
+ *  codebase applies to disk reads. Returns null (skip print geometry for
+ *  that page) rather than throwing — a bad path here must not fail the export. */
+function resolveSourceFileUnderRoot(repoRoot: string, sourceFile: string): string | null {
+  const abs = path.resolve(repoRoot, sourceFile);
+  const resolvedRoot = path.resolve(repoRoot);
+  if (abs !== resolvedRoot && !abs.startsWith(`${resolvedRoot}${path.sep}`)) return null;
+  return abs;
+}
+
 async function capturePdf(
   target: Extract<Target, { kind: 'element' }>,
   ctx: ExportContext,
@@ -376,17 +390,19 @@ export async function run(
         out.addPage(page);
         let printProp: Record<string, unknown> | null = null;
         if (w.artboardId) {
-          const abs = path.join(ctx.repoRoot, w.sourceFile);
-          let text = sourceCache.get(abs);
-          if (text === undefined) {
-            try {
-              text = readFileSync(abs, 'utf8');
-            } catch {
-              text = '';
+          const abs = resolveSourceFileUnderRoot(ctx.repoRoot, w.sourceFile);
+          if (abs) {
+            let text = sourceCache.get(abs);
+            if (text === undefined) {
+              try {
+                text = readFileSync(abs, 'utf8');
+              } catch {
+                text = '';
+              }
+              sourceCache.set(abs, text);
             }
-            sourceCache.set(abs, text);
+            if (text) printProp = readArtboardPrintProp(abs, text, w.artboardId);
           }
-          if (text) printProp = readArtboardPrintProp(abs, text, w.artboardId);
         }
         if (printProp && printOpts) {
           const paper = typeof printProp.paper === 'string' ? printProp.paper : 'a4';

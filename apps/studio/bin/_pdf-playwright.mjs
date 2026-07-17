@@ -24,7 +24,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { launchChromium } from './_pw-launch.mjs';
+import { assertRenderOutputSizeOk, launchChromium, safeArtboardFilename } from './_pw-launch.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, cur, i, all) => {
@@ -52,9 +52,13 @@ if (!url) {
 const widen = widenFlag !== undefined;
 const multi = multiFlag !== undefined;
 const timeoutMs = Number(timeout) * 1000;
-// Same ceiling as _png-playwright.mjs's raised T4 ceiling (600dpi = 6.25×);
-// page SIZE never multiplies by this (unlike PNG), so the 16,000px/600MB
-// output-size guard doesn't apply here — only raster-content density does.
+// Same ceiling as _png-playwright.mjs's raised T4 ceiling (600dpi = 6.25×).
+// The PDF *page* stays vector-sized regardless of this factor (only raster
+// CONTENT density scales with it — see the file header) — but Chromium's
+// rendering/rasterization surface for `page.pdf()` scales with
+// deviceScaleFactor exactly like a screenshot buffer does, so the same
+// output-size guard as PNG's DOES apply here (see assertRenderOutputSizeOk
+// call below); a huge artboard + high DPI is just as costly to render.
 const deviceScaleFactor = Math.max(1, Math.min(8, Number(scale) || 1));
 
 const browser = await launchChromium();
@@ -123,6 +127,7 @@ try {
       const r = el.getBoundingClientRect();
       return { w: r.width, h: r.height, x: r.left, y: r.top };
     });
+    assertRenderOutputSizeOk(rect.w, rect.h, deviceScaleFactor, '_pdf-playwright');
     // feature-2-print-artboards T5 — name multi output by the artboard's
     // OWN id (mirrors _png-playwright.mjs's multi-write scheme) rather than
     // a positional index, so the PDF post-pass can correlate each written
@@ -130,7 +135,7 @@ try {
     const screenId = multi ? await screens[i].getAttribute('data-dc-screen') : null;
     // Set the page size to the artboard's pixel dimensions so the resulting
     // PDF is exactly one artboard per page with no margin.
-    const targetPath = multi ? join(outDir, `${screenId || `artboard-${i + 1}`}.pdf`) : out;
+    const targetPath = multi ? join(outDir, safeArtboardFilename(screenId, i, 'pdf')) : out;
     // Crop trick: set the viewport to the artboard rect, scroll it into the
     // top-left corner, then page.pdf() with matching width/height.
     await page.setViewportSize({

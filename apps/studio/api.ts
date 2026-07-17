@@ -50,7 +50,7 @@ import {
 } from './generation/audio-library.ts';
 import { createHistory } from './history.ts';
 import { STICKERS_DIR } from './paths.ts';
-import { getPaperPreset } from './print/units.ts';
+import { getPaperPreset, MAX_PRINT_MM } from './print/units.ts';
 
 // Directories that never hold user-facing canvases. Exported so the
 // external-canvas watcher (`canvas-list-watch.ts`) shares one source instead of
@@ -3188,9 +3188,6 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   }
 
   const PRINT_ORIENTATION_VALUES = new Set(['portrait', 'landscape']);
-  /** Generous but finite bound — guards a malicious/broken value from producing
-   *  a negative trim box (rect.w - 2×bleedPx) in the overlay or exporter. */
-  const MAX_PRINT_MM = 200;
 
   function isFiniteMmOrUndefined(v: unknown): v is number | undefined {
     return (

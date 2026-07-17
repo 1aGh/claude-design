@@ -101,7 +101,7 @@ export type Scope = 'selection' | 'artboard' | 'canvas-as-separate' | 'project-r
 // ─── PNG size presets (item 1) ───────────────────────────────────────────────
 // Resolution multiplier applied as Chromium `deviceScaleFactor`. The native
 // artboard is 1440×900; 2× → 2880×1800. Default 2× because a single-scale PNG
-// was uselessly small. The shim clamps deviceScaleFactor ≤ 4.
+// was uselessly small. The shim clamps deviceScaleFactor ≤ 8.
 // feature-2-print-artboards T4/T6 — mirrors app.jsx's PNG_RESOLUTIONS (the
 // two dialogs must stay in sync — see this file's own header comment + the
 // plan's T6 gotcha). `kind:'scale'` sends `options.scale`, `kind:'dpi'`

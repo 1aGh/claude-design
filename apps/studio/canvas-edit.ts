@@ -3775,23 +3775,26 @@ export async function setArtboardKind(
 }
 
 /**
- * Write/clear the DCArtboard `guides` prop — an object-VALUED prop
- * (`guides={{ columns: {...} }}`), unlike every other artboard writer above.
+ * Write/clear an object-VALUED DCArtboard prop (`guides={{ columns: {...} }}`,
+ * `print={{ paper: 'a4' }}`), unlike every other artboard writer above.
  * Per the plan's own gotcha, object-prop editing via AST is the hard part;
  * this scopes to REPLACE-WHOLE-PROP (stringify the given object and overwrite
  * the entire `{{...}}` span), not a deep merge — a caller that wants to keep
- * `columns` while adding `grid` must read the current value back (Inspector
+ * one key while adding another must read the current value back (Inspector
  * pre-fill reads `data-dc-*`-style attrs same as every other artboard knob)
- * and send the full merged object. `guides: null` removes the prop entirely.
+ * and send the full merged object. `value: null` removes the prop entirely.
  * `JSON.stringify` output is valid as a JS object-literal expression (quoted
  * keys are legal JS, not just JSON), so no separate JS-literal serializer is
- * needed. Pure; reparse-gated.
+ * needed. Shape validation lives at the api.ts layer; this is pure AST
+ * surgery. Pure; reparse-gated. Shared by `applySetArtboardGuides` and
+ * `applySetArtboardPrint` (feature-2-print-artboards T2) below.
  */
-export function applySetArtboardGuides(
+function applySetArtboardObjectProp(
   canvasAbsPath: string,
   source: string,
   artboardId: string,
-  guides: Record<string, unknown> | null
+  propName: string,
+  value: Record<string, unknown> | null
 ): { source: string } {
   const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
   if (parsed.errors && parsed.errors.length > 0) {
@@ -3810,42 +3813,46 @@ export function applySetArtboardGuides(
   }
   const s = new MagicString(source);
   const opening = target.openingElement;
-  if (guides === null) {
-    removeStringAttr(s, opening, 'guides', source);
+  if (value === null) {
+    removeStringAttr(s, opening, propName, source);
   } else {
-    const literal = JSON.stringify(guides);
-    const attr = findAttribute(opening, 'guides');
+    const literal = JSON.stringify(value);
+    const attr = findAttribute(opening, propName);
     if (!attr) {
       const insertAt: number | undefined = opening?.name?.end;
       if (typeof insertAt !== 'number') {
         throw new Error('Opening element has no resolvable name range');
       }
-      s.appendLeft(insertAt, ` guides={${literal}}`);
+      s.appendLeft(insertAt, ` ${propName}={${literal}}`);
     } else if (attr.value?.type === 'JSXExpressionContainer') {
       s.overwrite(attr.value.start, attr.value.end, `{${literal}}`);
     } else {
-      throw new CanvasEditError('guides attribute is not a {{...}} expression — refusing to edit', {
-        canvas: canvasAbsPath,
-        id: artboardId,
-      });
+      throw new CanvasEditError(
+        `${propName} attribute is not a {{...}} expression — refusing to edit`,
+        {
+          canvas: canvasAbsPath,
+          id: artboardId,
+        }
+      );
     }
   }
   const out = s.toString();
   const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
   if (check.errors && check.errors.length > 0) {
     throw new CanvasEditError(
-      `artboard guides edit produced invalid source (${check.errors[0]?.message ?? 'parse error'})`,
+      `artboard ${propName} edit produced invalid source (${check.errors[0]?.message ?? 'parse error'})`,
       { canvas: canvasAbsPath, id: artboardId }
     );
   }
   return { source: out };
 }
 
-/** Set an artboard's `guides` on disk (atomic write + cross-process lock). */
-export async function setArtboardGuides(
+/** Set an artboard's object-valued prop on disk (atomic write + cross-process lock). */
+async function setArtboardObjectProp(
   canvasAbsPath: string,
   artboardId: string,
-  guides: Record<string, unknown> | null
+  propName: string,
+  value: Record<string, unknown> | null
 ): Promise<{ source: string }> {
   return withLock(canvasAbsPath, async () => {
     const file = Bun.file(canvasAbsPath);
@@ -3856,7 +3863,7 @@ export async function setArtboardGuides(
       });
     }
     const source = await file.text();
-    const next = applySetArtboardGuides(canvasAbsPath, source, artboardId, guides);
+    const next = applySetArtboardObjectProp(canvasAbsPath, source, artboardId, propName, value);
     if (next.source === source) return next;
     const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
     await Bun.write(tmp, next.source);
@@ -3866,12 +3873,29 @@ export async function setArtboardGuides(
   });
 }
 
+export function applySetArtboardGuides(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string,
+  guides: Record<string, unknown> | null
+): { source: string } {
+  return applySetArtboardObjectProp(canvasAbsPath, source, artboardId, 'guides', guides);
+}
+
+/** Set an artboard's `guides` on disk (atomic write + cross-process lock). */
+export function setArtboardGuides(
+  canvasAbsPath: string,
+  artboardId: string,
+  guides: Record<string, unknown> | null
+): Promise<{ source: string }> {
+  return setArtboardObjectProp(canvasAbsPath, artboardId, 'guides', guides);
+}
+
 /**
  * Write/clear the DCArtboard `print` prop (feature-2-print-artboards T2) —
- * object-valued, same REPLACE-WHOLE-PROP shape as `applySetArtboardGuides`
- * (see that function's doc comment — shape validation lives at the api.ts
- * layer, this is pure AST surgery). `print: null` removes the prop entirely
- * (e.g. reverting an artboard to a non-print kind). Pure; reparse-gated.
+ * see `applySetArtboardObjectProp`'s doc comment for the shared shape.
+ * `print: null` removes the prop entirely (e.g. reverting an artboard to a
+ * non-print kind).
  */
 export function applySetArtboardPrint(
   canvasAbsPath: string,
@@ -3879,77 +3903,16 @@ export function applySetArtboardPrint(
   artboardId: string,
   print: Record<string, unknown> | null
 ): { source: string } {
-  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
-  if (parsed.errors && parsed.errors.length > 0) {
-    throw new CanvasEditError(
-      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
-      { canvas: canvasAbsPath, id: artboardId }
-    );
-  }
-  const artboards = collectJsxByTag(parsed.program, 'DCArtboard');
-  const target = artboards.find((a) => getStringAttr(a.openingElement, 'id') === artboardId);
-  if (!target) {
-    throw new CanvasEditError(`<DCArtboard id="${artboardId}"> not found in ${canvasAbsPath}`, {
-      canvas: canvasAbsPath,
-      id: artboardId,
-    });
-  }
-  const s = new MagicString(source);
-  const opening = target.openingElement;
-  if (print === null) {
-    removeStringAttr(s, opening, 'print', source);
-  } else {
-    const literal = JSON.stringify(print);
-    const attr = findAttribute(opening, 'print');
-    if (!attr) {
-      const insertAt: number | undefined = opening?.name?.end;
-      if (typeof insertAt !== 'number') {
-        throw new Error('Opening element has no resolvable name range');
-      }
-      s.appendLeft(insertAt, ` print={${literal}}`);
-    } else if (attr.value?.type === 'JSXExpressionContainer') {
-      s.overwrite(attr.value.start, attr.value.end, `{${literal}}`);
-    } else {
-      throw new CanvasEditError('print attribute is not a {{...}} expression — refusing to edit', {
-        canvas: canvasAbsPath,
-        id: artboardId,
-      });
-    }
-  }
-  const out = s.toString();
-  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
-  if (check.errors && check.errors.length > 0) {
-    throw new CanvasEditError(
-      `artboard print edit produced invalid source (${check.errors[0]?.message ?? 'parse error'})`,
-      { canvas: canvasAbsPath, id: artboardId }
-    );
-  }
-  return { source: out };
+  return applySetArtboardObjectProp(canvasAbsPath, source, artboardId, 'print', print);
 }
 
 /** Set an artboard's `print` on disk (atomic write + cross-process lock). */
-export async function setArtboardPrint(
+export function setArtboardPrint(
   canvasAbsPath: string,
   artboardId: string,
   print: Record<string, unknown> | null
 ): Promise<{ source: string }> {
-  return withLock(canvasAbsPath, async () => {
-    const file = Bun.file(canvasAbsPath);
-    if (!(await file.exists())) {
-      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
-        canvas: canvasAbsPath,
-        id: artboardId,
-      });
-    }
-    const source = await file.text();
-    const next = applySetArtboardPrint(canvasAbsPath, source, artboardId, print);
-    if (next.source === source) return next;
-    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
-    await Bun.write(tmp, next.source);
-    const { rename } = await import('node:fs/promises');
-    await rename(tmp, canvasAbsPath);
-    return next;
-  });
+  return setArtboardObjectProp(canvasAbsPath, artboardId, 'print', print);
 }
 
 /**

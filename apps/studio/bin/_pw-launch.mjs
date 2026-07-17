@@ -113,3 +113,55 @@ export async function launchChromium(opts) {
     throw err;
   }
 }
+
+// Shared by every multi-artboard export shim (_png/_pdf-playwright.mjs) that
+// names its output file after an artboard's `data-dc-screen` id for T5's
+// filename-correlation convenience. That id comes straight off a live DOM
+// attribute — i.e. from canvas-authored JSX, DDR-054 untrusted content — and
+// feeds directly into `path.join(outDir, ...)`, which does NOT sandbox `..`
+// segments. Re-validates against the SAME shape api.ts's write-side artboard-id
+// ops already enforce (`/^[A-Za-z][\w-]{0,63}$/`) before it's ever used as a
+// path segment; anything else (or a `false`y id) falls back to the safe
+// positional name so a malformed/malicious id can never escape `outDir`.
+const SAFE_ARTBOARD_ID_RE = /^[A-Za-z][\w-]{0,63}$/;
+export function safeArtboardFilename(id, index, ext) {
+  const safe =
+    typeof id === 'string' && SAFE_ARTBOARD_ID_RE.test(id) ? id : `artboard-${index + 1}`;
+  return `${safe}.${ext}`;
+}
+
+// Shared by every raster-capture export shim (_png/_pdf-playwright.mjs) that
+// scales its render surface by `deviceScaleFactor` (feature-2-print-artboards
+// T4's DPI support). The requested pixel output is only knowable once the
+// target element's DOM rect is measured (the Node-side adapter can't
+// pre-compute it), so this guard lives here rather than in exporters/*.ts.
+// Applies EQUALLY to the PDF shim: `deviceScaleFactor` scales Chromium's
+// whole rendering/rasterization surface for `page.pdf()` too, not just PNG's
+// screenshot buffer — the PDF *page* stays vector-sized regardless, but the
+// backing store Chromium allocates to paint it does not, so a huge
+// artboard + high DPI is exactly as costly to render as it is for PNG, even
+// though the resulting PDF bytes are typically far smaller than a raw PNG
+// buffer. 16,000px matches common canvas/texture limits across browser
+// engines; ~600MB is a generous RGBA-buffer ceiling (width × height × 4
+// bytes) chosen so a legitimate 600dpi A0 poster still fits (9933×14043px ×
+// 4B ≈ 558MB) while a runaway value fails loud instead of OOM-killing the
+// render process.
+const MAX_OUTPUT_SIDE_PX = 16000;
+const MAX_OUTPUT_BYTES = 600 * 1024 * 1024;
+export function assertRenderOutputSizeOk(widthCss, heightCss, deviceScaleFactor, label) {
+  const outW = Math.ceil(widthCss * deviceScaleFactor);
+  const outH = Math.ceil(heightCss * deviceScaleFactor);
+  const estBytes = outW * outH * 4;
+  if (outW > MAX_OUTPUT_SIDE_PX || outH > MAX_OUTPUT_SIDE_PX || estBytes > MAX_OUTPUT_BYTES) {
+    const maxScaleForSide = MAX_OUTPUT_SIDE_PX / Math.max(widthCss, heightCss);
+    const maxScaleForBytes = Math.sqrt(MAX_OUTPUT_BYTES / 4 / (widthCss * heightCss));
+    const maxScale = Math.min(maxScaleForSide, maxScaleForBytes);
+    const maxDpi = Math.floor(maxScale * 96);
+    console.error(
+      `${label}: requested output ${outW}×${outH}px at ${deviceScaleFactor}× exceeds the ` +
+        `render guard (max side ${MAX_OUTPUT_SIDE_PX}px / max ~${Math.round(MAX_OUTPUT_BYTES / 1024 / 1024)}MB). ` +
+        `For this artboard size (${Math.round(widthCss)}×${Math.round(heightCss)}px), the max supported DPI is ~${maxDpi}.`
+    );
+    process.exit(1);
+  }
+}

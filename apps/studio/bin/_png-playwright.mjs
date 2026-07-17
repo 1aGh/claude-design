@@ -7,7 +7,7 @@
 
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { launchChromium } from './_pw-launch.mjs';
+import { launchChromium, safeArtboardFilename } from './_pw-launch.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, cur, i, all) => {
@@ -175,8 +175,8 @@ try {
     const screens = await page.locator(selector ?? '[data-dc-screen]').all();
     for (let i = 0; i < screens.length; i += 1) {
       const handle = screens[i];
-      const id = (await handle.getAttribute('data-dc-screen')) ?? `artboard-${i + 1}`;
-      await captureHandle(handle, join(outDir, `${id}.png`));
+      const id = await handle.getAttribute('data-dc-screen');
+      await captureHandle(handle, join(outDir, safeArtboardFilename(id, i, 'png')));
       console.log(`MAUDE_PROGRESS {"current":${i + 1},"total":${screens.length}}`);
     }
   } else {
