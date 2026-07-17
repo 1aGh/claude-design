@@ -4514,15 +4514,19 @@ function mergeSelClientFields(incoming, prev) {
   // `incoming` bare — wiping `attrs` (which carries data-dc-kind/-print for
   // the ArtboardKnobs panel) seconds after each fresh click. The panel then
   // silently fell back to kind='digital' + screen presets even though the
-  // artboard was print. Match an id-less pair by artboardId + file + the
-  // artboard-selector shape instead.
+  // artboard was print. Match an id-less pair by the artboard-shaped
+  // SELECTOR + file — NOT by artboardId: the server projection
+  // (inspect.ts `enrich()`) doesn't round-trip `artboardId` at all, so an
+  // artboardId comparison always sees undefined on the echo side and never
+  // matches (the second-round bug on this exact spot). The selector IS the
+  // identity here — `[data-dc-screen="<id>"]` — and enrich() preserves it.
   if (!incoming.id && !prev.id) {
     const isArtboardSel = (s) =>
-      s.artboardId && typeof s.selector === 'string' && s.selector.startsWith('[data-dc-screen=');
+      typeof s.selector === 'string' && s.selector.startsWith('[data-dc-screen=');
     if (
       isArtboardSel(incoming) &&
       isArtboardSel(prev) &&
-      incoming.artboardId === prev.artboardId &&
+      incoming.selector === prev.selector &&
       incoming.file === prev.file
     ) {
       return {
@@ -4531,6 +4535,10 @@ function mergeSelClientFields(incoming, prev) {
         computed: incoming.computed ?? prev.computed,
         customStyles: incoming.customStyles ?? prev.customStyles,
         attrs: incoming.attrs ?? prev.attrs,
+        // enrich() drops artboardId/worldW/worldH from the echo entirely —
+        // restore them from the local snapshot so ArtboardKnobs keeps its
+        // exact W/H and the resize/kind writers keep their target id.
+        artboardId: incoming.artboardId ?? prev.artboardId,
         worldW: incoming.worldW ?? prev.worldW,
         worldH: incoming.worldH ?? prev.worldH,
       };
