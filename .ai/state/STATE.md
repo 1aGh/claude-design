@@ -25,8 +25,9 @@ Figma-parity manual editing: browse/move tool split + Figma select ladder + incr
 **STILL DEFERRED (scoped follow-ups):**
 - **T7 remainder** — purple component-instances / locked state / inline rename (each needs new plumbing; the missing-layers fix landed).
 - **T8 "affects N instances" confirm** for genuine component instances (currently a clean abort — Stage-H is a passive badge, no modal primitive).
-- **T6 — desktop e2e** — posture audit + V-select native scenario (needs a desktop build).
 - **Live verification** — agent-browser boot→click-fires / V→select / convert zero-delta + `/design:smoke` NOT run (dev-server boot clobbers `dist/`; modifier-click gestures aren't agent-browser-automatable). DOM-integration + AST unit tests cover the contracts; a live 2-min dogfood + smoke is the recommended pre-merge close-out.
+
+- **T6 (desktop e2e) ✅ audited + fixed (3rd commit; live run deferred)** — swept every `apps/desktop/e2e/scenarios/*.e2e.ts`; only `canvas-text-editing.e2e.ts` touches canvas content (dblclick→edit, which boot=browse breaks). Fixed: presses **V** once after boot (Escape returns draw/text tools → move between phases) — doubles as V-select posture coverage. All other scenarios click the sidebar, not canvas content — unaffected. Live `/desktop-e2e` needs a cargo desktop build (not headless-feasible — native-app-verification-ceiling); owner close-out.
 
 ## Execution Progress — feature-acp-safe-defaults-and-attention-notifications — **✅ CLOSED via `/flow:plan`→`/flow:execute`→`/flow:done --quick` (2026-07-18, branch `main`).** Commits `e91e7f30`+`97b5bbbc`+`740c75d7`+`50396919`+`d2521d68`+`9308c2b9`+`02f3f984`. Plan archived: `.ai/plans/archive/feature-acp-safe-defaults-and-attention-notifications.md`. DDR-185 recorded (3 addenda). Not pushed.
 

@@ -364,6 +364,15 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     await postToCanvas({ dgn: 'zoom', op: 'fit' });
     await waitForStableRect(H1);
     await capture('canvas-rendered-with-seeded-annotations');
+    // feature-4 (browse/move split, DDR-187) — the canvas now BOOTS in the
+    // `browse` tool (the mock is alive; double-click passes through to the
+    // content). Every edit gesture below (dblclick → text edit, annotation
+    // editing) needs the `move` (select) tool, so press V once here. The
+    // annotation/text-tool phases below switch away and back via Escape
+    // (onEscape flips any non-move tool → move), so this single press holds.
+    // This is also the harness's V-select posture coverage (T6).
+    await synthKeyOnDoc('v');
+    await browser.pause(150);
   });
 
   it('artboard: synthetic dblclick enters edit mode, caret collapsed at click point, accent caret-color', async () => {
