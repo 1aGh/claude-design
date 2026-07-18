@@ -10,8 +10,8 @@
 import { describe, expect, test } from 'bun:test';
 import {
   assertLoopbackHost,
-  classifyRecords,
   CurlLocalError,
+  classifyRecords,
   findTargetUrls,
   isLoopbackAddress,
 } from './_curl-local.mjs';
@@ -28,7 +28,7 @@ describe('isLoopbackAddress', () => {
     expect(isLoopbackAddress('::ffff:127.0.0.1')).toBe(true);
   });
 
-  test('rejects ordinary private-LAN addresses — this is STRICTER than fetch-asset\'s classifier', () => {
+  test("rejects ordinary private-LAN addresses — this is STRICTER than fetch-asset's classifier", () => {
     // fetch-asset's classifyAddress blocks these too (as "not a safe egress
     // target"), but for a different reason (SSRF from an external URL). Here
     // the bar is "is this literally my own machine" — a private-LAN IP is a
@@ -111,9 +111,7 @@ describe('assertLoopbackHost', () => {
       err.code = 'ENOTFOUND';
       throw err;
     };
-    await expect(assertLoopbackHost('nope.invalid', { lookupFn })).rejects.toThrow(
-      CurlLocalError
-    );
+    await expect(assertLoopbackHost('nope.invalid', { lookupFn })).rejects.toThrow(CurlLocalError);
   });
 });
 
