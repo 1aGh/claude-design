@@ -16,13 +16,17 @@ Figma-parity manual editing: browse/move tool split + Figma select ladder + incr
 
 **Verified:** `bun tsc --noEmit` 8 baseline errors, 0 new. **Full `bun test` (apps/studio) 3054 pass / 5 skip / 0 fail** across 257 files (1 pre-existing `comment-mount` default-tool assertion updated for browse). `biome check` 0 errors on every touched TS/TSX file (17 tolerated `!`-assertion warnings in new tests; app.jsx is biome-excluded, validated via clean release bundle build). Client bundle rebuilt release-minified after the full-suite run clobbered it dev-style (restored + re-verified 1.88MB).
 
-**DEFERRED (scoped follow-ups, NOT done — reasons: AST-write risk + exhaustive-verify discipline + session budget; none blocks the shipped core):**
-- **T8 — convert-to-absolute + DDR-188** — NOT started. Self-contained new capability (batch AST writer + `/_api/convert-to-absolute` route + client box-snapshot + shared-component confirm + regression sweep + zero-visual-delta gate). Non-goal comments left intact.
-- **T7 remainder** — purple instances / locked state / inline rename.
-- **T6 — desktop e2e** — posture audit + a V-select native scenario (needs a desktop build).
-- **Live verification** — agent-browser boot→click-fires / V→select + `/design:smoke` NOT run (dev-server boot clobbers `dist/`; Cmd+click modifier gestures aren't agent-browser-automatable per prior sessions). The DOM-integration posture test (`browse-posture.test.tsx`) covers the exact contract; a live 2-min dogfood + smoke is the recommended pre-merge close-out.
+- **T8 (convert-to-absolute) ✅** (2nd commit) — explicit context-menu "Convert children to absolute position" (Figma "Remove auto layout"). `applyConvertToAbsolute`/`convertToAbsolute` (canvas-edit.ts, ONE MagicString pass) + `setMultipleStyleProps` (no duplicate-`style` bug) + `convertChildrenToAbsoluteOp` (api.ts) + `/_api/convert-to-absolute` route (http.ts, main-origin/loopback/CSRF/rate-limited) + canvas-side box measurement in WORLD units (canvas-shell.tsx `postConvertToAbsolute`, padding-relative border-box, `worldZoomFor`) + shell `convert-to-absolute-request` handler (app.jsx, rides `structuralWrite` → ONE undo seq). Plain-globally-unique children only (unstamped/repeated/component abort with toast; server `resolveUsageId` backstop). Non-goal comments (contextual-toolbar/use-element-resize) updated → DDR-188. `convert-to-absolute.test.ts` (6 cases). DDR-188 recorded.
 
-**Not committed** — awaiting user confirmation per `/flow:execute`'s commit gate. On shared `main`; stage only feature-4 files (never `git add -A`).
+**First commit `e2e1bb0a`** (T2/T3/T4/T5/T7/T1/T9 — smart select + layers). **Second commit** pending for T8 (convert-to-absolute).
+
+**Verified (both rounds):** `bun tsc --noEmit` 8 baseline, 0 new. Full `bun test` (apps/studio) **3061 pass / 5 skip / 0 fail** (257+ files). `biome check` 0 errors on every touched file. Client bundle rebuilt release-minified twice (verified not dev-clobbered).
+
+**STILL DEFERRED (scoped follow-ups):**
+- **T7 remainder** — purple component-instances / locked state / inline rename (each needs new plumbing; the missing-layers fix landed).
+- **T8 "affects N instances" confirm** for genuine component instances (currently a clean abort — Stage-H is a passive badge, no modal primitive).
+- **T6 — desktop e2e** — posture audit + V-select native scenario (needs a desktop build).
+- **Live verification** — agent-browser boot→click-fires / V→select / convert zero-delta + `/design:smoke` NOT run (dev-server boot clobbers `dist/`; modifier-click gestures aren't agent-browser-automatable). DOM-integration + AST unit tests cover the contracts; a live 2-min dogfood + smoke is the recommended pre-merge close-out.
 
 ## Execution Progress — feature-acp-safe-defaults-and-attention-notifications — **✅ CLOSED via `/flow:plan`→`/flow:execute`→`/flow:done --quick` (2026-07-18, branch `main`).** Commits `e91e7f30`+`97b5bbbc`+`740c75d7`+`50396919`+`d2521d68`+`9308c2b9`+`02f3f984`. Plan archived: `.ai/plans/archive/feature-acp-safe-defaults-and-attention-notifications.md`. DDR-185 recorded (3 addenda). Not pushed.
 

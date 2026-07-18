@@ -4558,6 +4558,178 @@ function editStyleProp(
 }
 
 /**
+ * feature-4 T8 (convert-to-absolute, DDR-188) — set SEVERAL inline-style props on
+ * ONE opening element in ONE MagicString pass. `editStyleProp` can't be called
+ * N× per element on a fresh (style-less) element: it re-reads the ORIGINAL AST
+ * each call (which still shows no `style` attr) and would emit N duplicate
+ * `style={{…}}` attributes. So the no-style case is handled here with a single
+ * combined insert; the existing-style case safely delegates per-prop to
+ * `editStyleProp` (distinct keys → non-overlapping overwrites; new-key appends
+ * stack correctly before the closing brace). `entries` values are ALREADY
+ * source-ready (e.g. `'"absolute"'`, `JSON.stringify("12px")`).
+ */
+function setMultipleStyleProps(
+  s: MagicString,
+  opening: AnyNode,
+  entries: Array<[string, string]>,
+  canvasAbsPath: string,
+  id: string
+): void {
+  if (entries.length === 0) return;
+  const attr = findAttribute(opening, 'style');
+  if (!attr) {
+    const insertAt: number | undefined = opening?.name?.end;
+    if (typeof insertAt !== 'number') {
+      throw new Error('Opening element has no resolvable name range');
+    }
+    const body = entries.map(([k, v]) => `${jsKey(k)}: ${v}`).join(', ');
+    s.appendLeft(insertAt, ` style={{ ${body} }}`);
+    return;
+  }
+  for (const [k, v] of entries) {
+    editStyleProp(s, opening, k, v, canvasAbsPath, id);
+  }
+}
+
+/**
+ * feature-4 T8 (convert-to-absolute, DDR-188) — the "Remove auto layout" analogue.
+ * Pure AST batch write: rewrite each stamped CHILD to `position:absolute` with the
+ * frozen `left/top/width/height` the client measured (border-box, world units),
+ * and set the CONTAINER to `position:relative` when it's currently static — all in
+ * ONE MagicString pass so a single whole-file snapshot reverts the whole operation.
+ *
+ * Guards (all-or-nothing, throws `CanvasEditError` — the shell surfaces the reason
+ * and writes nothing):
+ *   - Every child id must be a plain, UNIQUE, in-source element. If any child's
+ *     `idIndex` resolves to a different `<Component/>` usage (a shared instance),
+ *     we refuse — converting one usage's props doesn't generalize, and doing it
+ *     silently would move every instance (the DDR-188 shared-instance abort; the
+ *     "affects N instances" confirm path is a deferred follow-up).
+ *   - The caller (canvas iframe) already refuses unstamped or duplicate-cd-id
+ *     (`.map`ed) direct children before it ever posts — this is the server-side
+ *     backstop for the component-usage case it can't see.
+ */
+export function applyConvertToAbsolute(
+  canvasAbsPath: string,
+  source: string,
+  spec: {
+    containerId: string;
+    containerIdIndex?: number;
+    containerSetRelative: boolean;
+    children: Array<{
+      id: string;
+      idIndex?: number;
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+    }>;
+  }
+): EditResult {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    const first = parsed.errors[0];
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${first?.message ?? 'unknown'}`,
+      {
+        canvas: canvasAbsPath,
+        id: spec.containerId,
+      }
+    );
+  }
+  if (spec.children.length === 0) {
+    throw new CanvasEditError('convert-to-absolute: no children to convert', {
+      canvas: canvasAbsPath,
+      id: spec.containerId,
+    });
+  }
+  const s = new MagicString(source);
+
+  // Container → position:relative (only when the client says it's currently
+  // static; a container that's already positioned is left as-is).
+  if (spec.containerSetRelative) {
+    const cid =
+      typeof spec.containerIdIndex === 'number' && Number.isFinite(spec.containerIdIndex)
+        ? resolveUsageId(parsed.program, spec.containerId, spec.containerIdIndex)
+        : spec.containerId;
+    const chit = findOpening(parsed.program, cid);
+    if (!chit) {
+      throw new CanvasEditError(`container "${spec.containerId}" not found in ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: spec.containerId,
+      });
+    }
+    setMultipleStyleProps(s, chit.opening, [['position', '"relative"']], canvasAbsPath, cid);
+  }
+
+  // Each child → absolute + frozen box. Refuse a shared-component usage (see the
+  // guard note above).
+  for (const child of spec.children) {
+    let cid = child.id;
+    if (typeof child.idIndex === 'number' && Number.isFinite(child.idIndex)) {
+      cid = resolveUsageId(parsed.program, child.id, child.idIndex);
+      if (cid !== child.id) {
+        throw new CanvasEditError(
+          `convert-to-absolute: "${child.id}" is a shared component instance — not supported yet`,
+          { canvas: canvasAbsPath, id: child.id }
+        );
+      }
+    }
+    const hit = findOpening(parsed.program, cid);
+    if (!hit) {
+      throw new CanvasEditError(`child "${child.id}" not found in ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: child.id,
+      });
+    }
+    setMultipleStyleProps(
+      s,
+      hit.opening,
+      [
+        ['position', '"absolute"'],
+        ['left', JSON.stringify(`${child.left}px`)],
+        ['top', JSON.stringify(`${child.top}px`)],
+        ['width', JSON.stringify(`${child.width}px`)],
+        ['height', JSON.stringify(`${child.height}px`)],
+        ['box-sizing', '"border-box"'],
+      ],
+      canvasAbsPath,
+      cid
+    );
+  }
+
+  const out = s.toString();
+  return { source: out, delta: out.length - source.length };
+}
+
+/**
+ * Async wrapper for {@link applyConvertToAbsolute} — read, apply, atomic write,
+ * per-file lock (same shape as `editAttribute`). Returns the changed source.
+ */
+export async function convertToAbsolute(
+  canvasAbsPath: string,
+  spec: Parameters<typeof applyConvertToAbsolute>[2]
+): Promise<EditResult> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: spec.containerId,
+      });
+    }
+    const source = await file.text();
+    const next = applyConvertToAbsolute(canvasAbsPath, source, spec);
+    if (next.source === source) return { source, delta: 0, changed: false };
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return { ...next, changed: true };
+  });
+}
+
+/**
  * Remove a single inline-style property (the "reset to original" path — DDR-104
  * Phase 12.3). No-op when the style attribute or the key is absent. When the key
  * was the object's ONLY property, the whole `style={{…}}` attribute is removed so

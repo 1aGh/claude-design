@@ -7,7 +7,7 @@
       "date": null,
       "kind": "feature",
       "title": "Click to select, like Figma",
-      "summary": "Your mock now opens live — click a button or link to actually try it. When you want to edit, press V: a plain click selects the object under your cursor, ⌘-click reaches the deepest element, double-click drills in one level, and Enter / Shift+Enter / Tab walk the layer tree. The toolbar's first two tools are Browse (live) and Select (V). The Layers panel also stopped hiding wrapper groups (nested elements now show at their real depth) and auto-reveals the layer you pick on the canvas.",
+      "summary": "Your mock now opens live — click a button or link to actually try it. When you want to edit, press V: a plain click selects the object under your cursor, ⌘-click reaches the deepest element, double-click drills in one level, and Enter / Shift+Enter / Tab walk the layer tree. The toolbar's first two tools are Browse (live) and Select (V). The Layers panel also stopped hiding wrapper groups (nested elements now show at their real depth) and auto-reveals the layer you pick on the canvas. And when a flex layout fights your manual tweaks, right-click the container → \"Convert children to absolute position\" freezes every child where it sits so you can drag them freely (one undo reverts it).",
       "surface": "design-ui"
     },
     {

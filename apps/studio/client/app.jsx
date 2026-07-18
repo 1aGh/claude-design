@@ -10694,6 +10694,31 @@ function App() {
             before: typeof m.before === 'string' ? m.before : null,
           });
         }
+      } else if (m.dgn === 'convert-to-absolute-request') {
+        // feature-4 T8 (convert-to-absolute, DDR-188) — the canvas measured the
+        // frozen child boxes; perform the main-origin batch write (ONE undo
+        // seq via structuralWrite). The server re-validates every field; here we
+        // just confused-deputy-guard the source (DDR-054) + a light shape check.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (
+          e.source === activeWin &&
+          typeof m.containerId === 'string' &&
+          Array.isArray(m.children) &&
+          m.children.length > 0
+        ) {
+          structuralWriteRef.current?.(
+            '/_api/convert-to-absolute',
+            {
+              containerId: m.containerId,
+              containerSetRelative: m.containerSetRelative === true,
+              children: m.children,
+            },
+            {
+              label: 'convert to absolute',
+              onOk: () => postToActiveCanvas({ dgn: 'selection-clear' }),
+            }
+          );
+        }
       } else if (m.dgn === 'replace-annotation-media-request') {
         // Stage F3 — "Replace…" on an annotation ImageStroke/MediaRefStroke.
         // Opens the SAME AssetPicker; unlike F2 the pick is posted BACK DOWN to

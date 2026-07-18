@@ -170,9 +170,11 @@ interface AlignTarget {
 /**
  * Resolve every selection to its current world-space box, gated on
  * absolute/fixed positioning — align/distribute/tidy-up write `left`/`top`,
- * which is only meaningful for out-of-flow elements (this codebase
- * deliberately never does an implicit convert-to-absolute-on-drag; see the
- * Stage-D dogfood notes). Returns `null` (all-or-nothing) if any selection
+ * which is only meaningful for out-of-flow elements. This lane still never does
+ * an IMPLICIT convert-to-absolute-on-drag (see the Stage-D dogfood notes); the
+ * EXPLICIT context-menu "Convert children to absolute position" (feature-4 T8,
+ * DDR-188) is the opt-in path to flatten a flow layout first. Returns `null`
+ * (all-or-nothing) if any selection
  * doesn't resolve, or isn't out-of-flow, or has a non-numeric `left`/`top`
  * (e.g. positioned via `right`/`bottom` instead — a known v1 limit).
  */

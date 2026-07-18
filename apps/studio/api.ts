@@ -12,6 +12,7 @@ import {
   assembleCompSource,
   CanvasEditError,
   type ClipInfo,
+  convertToAbsolute,
   deleteArtboard,
   deleteElement,
   duplicateArtboard,
@@ -443,6 +444,18 @@ export interface Api {
   }): Promise<
     { ok: true; deletedId: string; seq?: number } | { ok: false; status: number; error: string }
   >;
+  /**
+   * feature-4 T8 (convert-to-absolute, DDR-188) — rewrite a container's stamped
+   * children to `position:absolute` with frozen boxes (+ container relative), in
+   * ONE whole-file write with ONE undo `seq`.
+   */
+  convertChildrenToAbsoluteOp(input: {
+    canvas?: unknown;
+    containerId?: unknown;
+    containerIdIndex?: unknown;
+    containerSetRelative?: unknown;
+    children?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
   /**
    * Insert a synthesized div/text/image relative to a reference element, OR —
    * when the artboard has no element to anchor on yet — as a direct child of
@@ -2943,6 +2956,99 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  /**
+   * feature-4 T8 (convert-to-absolute, DDR-188) — the "Remove auto layout"
+   * analogue. Rewrite every stamped child of a container to `position:absolute`
+   * with the frozen box the canvas measured, and set the container
+   * `position:relative` when static — ONE whole-file write, ONE undo `seq`. The
+   * canvas iframe pre-filters to plain, globally-unique children (no unstamped /
+   * repeated / component instances); the AST writer's `resolveUsageId` guard is
+   * the server-side backstop for a shared-component usage.
+   */
+  async function convertChildrenToAbsoluteOp(input: {
+    canvas?: unknown;
+    containerId?: unknown;
+    containerIdIndex?: unknown;
+    containerSetRelative?: unknown;
+    children?: unknown;
+  }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    if (!takeStructuralToken()) return RATE_LIMITED;
+    const containerId = typeof input.containerId === 'string' ? input.containerId.trim() : '';
+    if (!CD_ID_RE.test(containerId)) {
+      return { ok: false, status: 400, error: 'invalid container data-cd-id' };
+    }
+    const containerIdIndex = Number.isInteger(input.containerIdIndex)
+      ? (input.containerIdIndex as number)
+      : undefined;
+    const containerSetRelative = input.containerSetRelative === true;
+    if (!Array.isArray(input.children) || input.children.length === 0) {
+      return { ok: false, status: 400, error: 'children required' };
+    }
+    if (input.children.length > 500) {
+      return { ok: false, status: 400, error: 'too many children' };
+    }
+    const num = (v: unknown): number | null =>
+      typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1_000_000
+        ? Math.round(v)
+        : null;
+    const children: Array<{
+      id: string;
+      idIndex?: number;
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+    }> = [];
+    for (const c of input.children as Array<Record<string, unknown>>) {
+      const id = typeof c?.id === 'string' ? c.id.trim() : '';
+      if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid child data-cd-id' };
+      const left = num(c.left);
+      const top = num(c.top);
+      const width = num(c.width);
+      const height = num(c.height);
+      if (left === null || top === null || width === null || height === null) {
+        return { ok: false, status: 400, error: 'invalid child box (left/top/width/height)' };
+      }
+      const idIndex = Number.isInteger(c.idIndex) ? (c.idIndex as number) : undefined;
+      children.push({ id, idIndex, left, top, width, height });
+    }
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      if (before.length > MAX_CANVAS_SOURCE) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: false, status: 413, error: 'canvas source too large' };
+      }
+      const res = await convertToAbsolute(r.abs, {
+        containerId,
+        containerIdIndex,
+        containerSetRelative,
+        children,
+      });
+      const after = res.source;
+      if (!res.changed || after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-convert-absolute');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'convert-to-absolute failed',
+      };
+    }
+  }
+
   /** Insert a new empty artboard (id/label/width/height) after the last one. */
   async function insertArtboardOp(input: {
     canvas?: unknown;
@@ -4155,6 +4261,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     compClips,
     reorder,
     retimeSequenceOp,
+    convertChildrenToAbsoluteOp,
     deleteElementOp,
     insertElementOp,
     insertArtboardOp,

@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-188: Convert children to absolute position — reversing a documented non-goal, one batch write, plain-children-only](DDR-188-convert-children-to-absolute-position.md) — 2026-07-18, canvas-edit/convert-to-absolute/ast-write/layout/undo/figma-parity/ddr-054
 - [DDR-187: Figma smart-select — browse/move tool split, boot=alive, and the promoted pass-through invariant](DDR-187-figma-select-browse-move-split-and-boot-posture.md) — 2026-07-18, input-router/tool-mode/canvas/selection/figma-parity/ux/posture
 - [DDR-186: Web artboards — flex-first contract, breakpoint duplicate (copy not variant), grid track editor on the existing edit-css lane](DDR-186-web-artboards-breakpoint-duplicate-and-grid-track-editor.md) — 2026-07-18, canvas-lib/artboard/web/grid/breakpoints/ux
 - [DDR-185: ACP default-allow — agent-browser + curl-local verb + read-only fs + WebSearch/WebFetch](DDR-185-acp-agent-browser-curl-local-websearch-and-readonly-fs-allowlist.md) — 2026-07-18, acp/chat/permission/allowedtools/ddr-184-complement/ddr-062/curl-local/agent-browser/websearch

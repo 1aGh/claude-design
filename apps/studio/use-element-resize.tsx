@@ -19,7 +19,9 @@
  *             resizes.
  *
  *             In-flow elements resize by writing explicit `width`/`height` only
- *             (NEVER convert-to-absolute — out of scope); an out-of-flow
+ *             (a resize NEVER implicitly converts to absolute; the explicit
+ *             context-menu "Convert children to absolute" — feature-4 T8,
+ *             DDR-188 — is the opt-in flatten path); an out-of-flow
  *             (absolute/fixed) element additionally moves `left`/`top` when the
  *             top/left edge is dragged, so the resize feels origin-correct.
  */

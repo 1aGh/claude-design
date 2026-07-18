@@ -102,7 +102,7 @@ import { showCanvasToast } from './use-canvas-media-drop.tsx';
 import { ChromeVisibilityProvider, useChromeVisibility } from './use-chrome-visibility.tsx';
 import { useCollab } from './use-collab.tsx';
 import { useCursorModifiers } from './use-cursor-modifiers.tsx';
-import { ElementResizeOverlay } from './use-element-resize.tsx';
+import { ElementResizeOverlay, worldZoomFor } from './use-element-resize.tsx';
 import { GridTrackHandlesOverlay } from './use-grid-track-handles.tsx';
 import { useKeyboardDiscipline } from './use-keyboard-discipline.tsx';
 import {
@@ -1552,6 +1552,106 @@ function buildRegistry(deps: {
     ),
   };
 
+  // feature-4 T8 (convert-to-absolute, DDR-188) — the DIRECT stamped children of
+  // a container that are eligible for the "Remove auto layout" convert: skips
+  // dev-server chrome, requires a data-cd-id. Returns null when the element
+  // isn't a convertible container (no stamped direct children).
+  const convertibleChildrenOf = (el: Element | null): HTMLElement[] | null => {
+    if (!el) return null;
+    const kids = Array.from(el.children).filter(
+      (c) => !c.closest('.dgn-pin, .dc-cv-halo, .dc-cv-group-bbox')
+    ) as HTMLElement[];
+    const stamped = kids.filter((c) => c.hasAttribute('data-cd-id'));
+    return stamped.length > 0 ? stamped : null;
+  };
+  // Count how many elements in the artboard body carry `cdId` — >1 means a
+  // repeated (`.map`) or shared-component instance, which convert-to-absolute
+  // refuses (one source element can't hold N distinct absolute positions).
+  const cdIdCountInArtboard = (el: Element, cdId: string): number => {
+    const body = el.closest('.dc-artboard-body') ?? el.ownerDocument;
+    try {
+      return body.querySelectorAll(`[data-cd-id="${CSS.escape(cdId)}"]`).length;
+    } catch {
+      return 99;
+    }
+  };
+  const postConvertToAbsolute = (containerEl: HTMLElement): void => {
+    const containerId = containerEl.getAttribute('data-cd-id');
+    if (!containerId) {
+      showCanvasToast('That container has no id yet — edit it via chat first, then convert.');
+      return;
+    }
+    const children = convertibleChildrenOf(containerEl);
+    if (!children) {
+      showCanvasToast('Nothing to convert — this element has no selectable children.');
+      return;
+    }
+    // Abort (all-or-nothing) on any child that isn't a plain, globally-unique
+    // element: unstamped, or a repeated/component instance. Honest refusal
+    // rather than a partial or ambiguous conversion (DDR-188).
+    for (const c of Array.from(containerEl.children) as HTMLElement[]) {
+      if (c.closest('.dgn-pin, .dc-cv-halo, .dc-cv-group-bbox')) continue;
+      const cid = c.getAttribute('data-cd-id');
+      if (!cid) {
+        showCanvasToast('Some children have no id — edit them via chat first, then convert.');
+        return;
+      }
+      if (cdIdCountInArtboard(containerEl, cid) > 1) {
+        showCanvasToast(
+          'This container has repeated (list) or component children — convert to absolute isn’t supported for those yet.'
+        );
+        return;
+      }
+    }
+    if (cdIdCountInArtboard(containerEl, containerId) > 1) {
+      showCanvasToast(
+        'This container is a repeated/component instance — convert isn’t supported for it yet.'
+      );
+      return;
+    }
+    // Measure each child's border-box relative to the container's PADDING box,
+    // in WORLD units (getBoundingClientRect is post-zoom screen px; computed
+    // border widths are unscaled world px). left/top for an absolutely-
+    // positioned child are measured from the padding edge; width/height are
+    // border-box (we also write box-sizing:border-box so the rectangle is
+    // preserved regardless of the child's own box-sizing).
+    const zoom = worldZoomFor(containerEl) || 1;
+    const cRect = containerEl.getBoundingClientRect();
+    const cs = getComputedStyle(containerEl);
+    const borderL = Number.parseFloat(cs.borderLeftWidth) || 0;
+    const borderT = Number.parseFloat(cs.borderTopWidth) || 0;
+    const isGrid = cs.display.includes('grid');
+    const payloadChildren = children.map((c) => {
+      const r = c.getBoundingClientRect();
+      return {
+        id: c.getAttribute('data-cd-id') as string,
+        left: Math.round((r.left - cRect.left) / zoom - borderL),
+        top: Math.round((r.top - cRect.top) / zoom - borderT),
+        width: Math.round(r.width / zoom),
+        height: Math.round(r.height / zoom),
+      };
+    });
+    const containerSetRelative = cs.position === 'static';
+    try {
+      window.parent.postMessage(
+        {
+          dgn: 'convert-to-absolute-request',
+          containerId,
+          containerSetRelative,
+          children: payloadChildren,
+        },
+        '*'
+      );
+      if (isGrid) {
+        showCanvasToast(
+          'Converted — note: grid track editing no longer applies to absolute children.'
+        );
+      }
+    } catch {
+      /* detached / cross-origin */
+    }
+  };
+
   return {
     element: [
       [
@@ -1729,6 +1829,18 @@ function buildRegistry(deps: {
             } catch {
               /* detached */
             }
+          },
+        },
+        {
+          // feature-4 T8 (convert-to-absolute, DDR-188) — the Figma "Remove auto
+          // layout" analogue. Only shown on a container with stamped children;
+          // freezes each child's computed box and rewrites them to
+          // position:absolute so they can be dragged freely.
+          id: 'convert-to-absolute',
+          label: 'Convert children to absolute position',
+          hidden: (target) => !convertibleChildrenOf(target.el),
+          onSelect: (target) => {
+            if (target.el) postConvertToAbsolute(target.el as HTMLElement);
           },
         },
       ],
