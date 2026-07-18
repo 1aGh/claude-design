@@ -47,8 +47,11 @@ The skill treats `$ARGUMENTS` (the feedback the user passed to `/design:edit`) a
 When the feedback is a motion complaint — it mentions `motion`, `animace`, `animation`, `nehýbe se`, `animace nefunguje`, `not animating`, `nereaguje`, "stuck / frozen / dead" — the **FIRST diagnostic is `prefers-reduced-motion`, before reading any CSS or component code**:
 
 ```bash
-# Via the hardened wrapper (DDR-185 security addendum) — never raw agent-browser.
-maude design agent-browser-safe eval "matchMedia('(prefers-reduced-motion: reduce)').matches"
+# eval is NOT available through the hardened agent-browser-safe wrapper
+# (DDR-185 round-3 security addendum — arbitrary JS execution can't be
+# argv-constrained), so this stays a raw agent-browser call and will prompt
+# for confirmation like any other un-listed command.
+agent-browser eval "matchMedia('(prefers-reduced-motion: reduce)').matches"
 ```
 
 Headless Chrome (and many real user browsers / OS accessibility settings) default `prefers-reduced-motion: reduce` to **true**, and the design tokens *correctly* collapse `--dur-*` to `1ms` in that branch — so "nothing animates" is the system working as designed, not a CSS bug. If the probe returns `true`, that is almost certainly the whole story: surface it to the user ("motion is suppressed by `prefers-reduced-motion: reduce` in this browser/OS — toggle it via the specimen's `<ReducedMotionToggle>` or your OS settings to see it play") instead of chasing the CSS. Only if the probe returns `false` does a real motion bug warrant reading the keyframes/`motion/react` code. The probe is ~1 agent-browser call and belongs before any code reading — studyfi burned ~2 user round-trips chasing CSS that was working.

@@ -149,18 +149,39 @@ describe('MAUDE_DEFAULT_ALLOWED_TOOLS — source-of-truth guard (DDR-184 / DDR-0
     expect(src).toMatch(/'agent-browser-safe'/);
   });
 
-  test('plugin markdown no longer documents a RAW agent-browser invocation (DDR-185 security addendum)', () => {
+  test('plugin markdown no longer documents a RAW agent-browser SCREENSHOT/OPEN/NAVIGATE call (DDR-185 security addendum)', () => {
     // motion-critic.md and edit.md are the two files that originally justified
     // `Bash(agent-browser:*)` (raw calls not reached via `maude design <verb>`).
-    // Both must now call the hardened wrapper — a regression here means either
-    // those workflows silently went back to prompting every time, or (worse)
-    // someone re-introduced a raw call the allow-list no longer covers.
+    // screenshot/open/navigate now go through the hardened wrapper — a
+    // regression here means either those calls silently went back to
+    // prompting every time, or (worse) someone re-introduced a raw call the
+    // allow-list no longer covers. `eval` is the deliberate exception (round
+    // 3: removed from the wrapper's own allow-list entirely — arbitrary JS
+    // execution can't be argv-constrained — so it's EXPECTED to stay a raw,
+    // prompting `agent-browser eval` call; see both files' own comments).
     const here = dirname(realpathSync(import.meta.url.replace('file://', '')));
     const pluginsDir = join(here, '..', '..', '..', 'plugins', 'design');
     for (const rel of ['agents/motion-critic.md', 'commands/edit.md']) {
       const src = readFileSync(join(pluginsDir, rel), 'utf8');
-      expect(src).not.toMatch(/(?<!maude design )agent-browser (eval|screenshot|open|navigate)\b/);
-      expect(src).toContain('maude design agent-browser-safe');
+      expect(src).not.toMatch(/(?<!maude design )agent-browser (screenshot|open|navigate)\b/);
+      expect(src).toContain('agent-browser eval'); // deliberately raw — see comment above
     }
+    // Only motion-critic.md actually calls the wrapper (for `screenshot`) —
+    // edit.md's sole agent-browser use was `eval`, which reverted fully to
+    // raw, so it has no `agent-browser-safe` invocation left at all.
+    const motionCritic = readFileSync(join(pluginsDir, 'agents/motion-critic.md'), 'utf8');
+    expect(motionCritic).toContain('maude design agent-browser-safe');
+  });
+
+  test('agent-browser-safe does NOT support eval (DDR-185 round-3 security addendum)', () => {
+    // A future accidental re-add of eval to the wrapper's own allow-list
+    // would silently reopen the zero-click session-hijack chain (ethical-
+    // hacker Finding 1: eval's fetch()/window.location defeat
+    // --allowed-domains entirely, and no argv check can constrain arbitrary
+    // JS execution). Source-of-truth guard against bridge.ts's own wrapper.
+    const here = dirname(realpathSync(import.meta.url.replace('file://', '')));
+    const wrapperPath = join(here, '..', 'bin', '_agent-browser-safe.mjs');
+    const src = readFileSync(wrapperPath, 'utf8');
+    expect(src).not.toMatch(/^\s*eval:\s*\[/m);
   });
 });

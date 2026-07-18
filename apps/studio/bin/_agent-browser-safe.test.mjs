@@ -1,15 +1,15 @@
-// DDR-185 security addendum, round 2 — the hardened agent-browser wrapper
+// DDR-185 security addendum, round 3 — the hardened agent-browser wrapper
 // behind `maude design agent-browser-safe`
 // (apps/studio/bin/_agent-browser-safe.mjs). This suite locks the SECURITY
 // CORE: the closed subcommand allow-list (no cookies/clipboard/storage/
-// connect/chat reachable) and — replacing round 1's flag reject-list, which
-// a live verification pass found still missed `-p`/`--provider` (routes the
-// session through a remote cloud browser) and several env-var equivalents
-// of already-rejected flags — a fixed positional-argument ARITY per
-// subcommand with NO flag vocabulary of any kind. See the file's own header
-// comment for the round-2 rationale.
+// connect/chat/eval reachable — `eval` was REMOVED in round 3, see below),
+// the fixed positional-argument ARITY per subcommand with NO flag
+// vocabulary at all, and the `--config`-pin + full env-clearing that closes
+// the project-level `agent-browser.json` auto-discovery bypass a live
+// adversarial pass found round 2 never considered.
 
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import {
   ALLOWED_SUBCOMMANDS,
   CLEARED_ENV_KEYS,
@@ -25,6 +25,17 @@ describe('validateArgv — subcommand allow-list', () => {
       expect(validateArgv([sub, ...args])).toBeNull();
     });
   }
+
+  test('round 3: "eval" is REMOVED — arbitrary JS execution can\'t be argv-constrained (ethical-hacker Finding 1)', () => {
+    // Round 2 kept eval on the allow-list; a live adversarial pass proved
+    // eval defeats --allowed-domains entirely (window.location.href escapes
+    // the navigation gate; a no-cors fetch() exfiltrates without even
+    // needing a domain match) — no argv check can close that, so the
+    // capability itself is cut, mirroring this DDR's own `find` precedent.
+    expect(ALLOWED_SUBCOMMANDS).not.toContain('eval');
+    const reason = validateArgv(['eval', '1+1']);
+    expect(reason).toContain('eval');
+  });
 
   for (const sub of [
     'cookies',
@@ -47,9 +58,9 @@ describe('validateArgv — subcommand allow-list', () => {
   });
 });
 
-describe('validateArgv — fixed arity, NO flag vocabulary at all (round-2 redesign)', () => {
+describe('validateArgv — fixed arity, NO flag vocabulary at all', () => {
   test('rejects an extra argument beyond the expected arity, whatever it looks like', () => {
-    const reason = validateArgv(['eval', '1+1', 'extra']);
+    const reason = validateArgv(['open', 'http://localhost:1', 'extra']);
     expect(reason).toContain('exactly 1');
   });
 
@@ -60,20 +71,21 @@ describe('validateArgv — fixed arity, NO flag vocabulary at all (round-2 redes
     expect(validateArgv(['open', '-p', 'browserbase', 'http://localhost:1'])).not.toBeNull();
   });
 
-  test('rejects the persistent-profile PoC verbatim (still closed under the new model)', () => {
+  test('rejects the persistent-profile PoC verbatim (still closed under the arity model)', () => {
     expect(
       validateArgv(['open', '--profile', 'Default', 'https://github.com/settings/tokens'])
     ).not.toBeNull();
   });
 
-  test('rejects the CDP-attach PoC verbatim (still closed under the new model)', () => {
+  test('rejects the CDP-attach PoC verbatim (still closed under the arity model)', () => {
     expect(validateArgv(['snapshot', '--cdp', '9222'])).not.toBeNull();
   });
 
   test('a positional value that itself starts with "-" is NOT mistaken for a flag (arity-based, not prefix-based)', () => {
-    // agent-browser-safe eval "-1 + 2" must work — the arity model looks at
-    // COUNT, not at whether a token happens to start with a dash.
-    expect(validateArgv(['eval', '-1 + 2'])).toBeNull();
+    // agent-browser-safe get "-weird-thing" must still work — the arity
+    // model looks at COUNT, not at whether a token happens to start with a
+    // dash.
+    expect(validateArgv(['get', '-weird-thing'])).toBeNull();
   });
 
   test('screenshot accepts 0 or 1 positional args (optional path)', () => {
@@ -96,15 +108,17 @@ describe('validateArgv — fixed arity, NO flag vocabulary at all (round-2 redes
   });
 
   test('an ordinary allowed invocation with no extra args passes', () => {
-    expect(
-      validateArgv(['eval', "matchMedia('(prefers-reduced-motion: reduce)').matches"])
-    ).toBeNull();
+    expect(validateArgv(['open', 'http://localhost:3000/'])).toBeNull();
     expect(validateArgv(['screenshot', '/tmp/out.png'])).toBeNull();
   });
 });
 
-describe('CLEARED_ENV_KEYS — round-2: env-var equivalents of already-rejected flags', () => {
-  test('covers the three vars a live verification pass found missing from round 1', () => {
+describe('CLEARED_ENV_KEYS', () => {
+  test('round 3: covers AGENT_BROWSER_CONFIG (defense in depth alongside the --config pin)', () => {
+    expect(CLEARED_ENV_KEYS).toContain('AGENT_BROWSER_CONFIG');
+  });
+
+  test('round 2: covers the three vars a live verification pass found missing from round 1', () => {
     for (const key of [
       'AGENT_BROWSER_AUTO_CONNECT',
       'AGENT_BROWSER_PROXY',
@@ -137,5 +151,15 @@ describe('CLEARED_ENV_KEYS — round-2: env-var equivalents of already-rejected 
     ]) {
       expect(CLEARED_ENV_KEYS).toContain(key);
     }
+  });
+});
+
+describe('the forced --config target (round 3: closes ./agent-browser.json auto-discovery)', () => {
+  test('_agent-browser-safe-config.json exists and is valid, empty JSON', () => {
+    // Must stay valid JSON — agent-browser exits with an error if --config
+    // points to a missing/invalid file, which would break every allowed
+    // subcommand, not just fail safe.
+    const raw = readFileSync(new URL('./_agent-browser-safe-config.json', import.meta.url), 'utf8');
+    expect(JSON.parse(raw)).toEqual({});
   });
 });

