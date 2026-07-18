@@ -108,7 +108,22 @@ async fn check_and_apply(handle: &AppHandle, interactive: bool) {
                         eprintln!("[maude] could not emit update-ready: {e}");
                     }
                 }
-                Err(e) => eprintln!("[maude] update download/install failed: {e}"),
+                Err(e) => {
+                    eprintln!("[maude] update download/install failed: {e}");
+                    // Unlike the sibling Ok(None)/Err(check) branches below, this used to
+                    // swallow the failure — a manual click that finds an update but can't
+                    // install it looked identical to a click that did nothing at all.
+                    if interactive {
+                        handle
+                            .dialog()
+                            .message(format!(
+                                "Found Maude {version}, but couldn’t install it.\n\n{e}"
+                            ))
+                            .title("Update failed")
+                            .kind(MessageDialogKind::Error)
+                            .show(|_| {});
+                    }
+                }
             }
         }
         Ok(None) => {
