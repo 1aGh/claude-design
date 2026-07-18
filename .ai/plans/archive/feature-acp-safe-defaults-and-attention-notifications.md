@@ -274,13 +274,22 @@ Not applicable — no new UI surface (the permission/elicitation cards are uncha
 
 ## Acceptance Criteria
 
-- [ ] All 12 tasks completed
-- [ ] `/flow:utils-verify` passes after each task (Edit-Verify Loop, max 3 iterations)
-- [ ] `bun test` green in `apps/studio`
-- [ ] `security-auditor` + `ethical-hacker` fan-out: 0 blockers (mandatory per repo convention for this surface)
-- [ ] DDR-185 recorded (number re-confirmed free immediately before commit) and `.ai/decisions/README.md` index updated
-- [ ] `apps/studio/dist/client.bundle.js` + `styles.css` rebuilt `--release` and committed alongside the JSX/TS source changes
-- [ ] `apps/desktop/scripts/check-bundle-completeness.mjs --smoke` green with `curl-local` covered
-- [ ] Manual native-app verification (Validation §4) performed and confirmed by the user — this repo's own convention is that native/desktop interactive surfaces get user dogfooding, not just automated coverage
-- [ ] No DDR-worthy decision left unrecorded beyond DDR-185 itself
-- [ ] Code follows project conventions (comment discipline on the allowlist, `.sh`-shim-over-`.mjs` verb pattern), no regressions
+- [x] All 12 tasks completed
+- [x] `/flow:utils-verify`-equivalent checks passed after each task (bundling + targeted test runs; not the literal subagent, but the same static+test coverage)
+- [x] `bun test` green in `apps/studio` (3034 pass / 5 skip / 0 fail, full suite, final run)
+- [x] `security-auditor` + `ethical-hacker` fan-out: 0 blockers — took **three rounds** to actually reach 0 (see Retro below); final round found nothing further
+- [x] DDR-185 recorded (number re-confirmed free immediately before commit) and `.ai/decisions/README.md` index updated
+- [x] `apps/studio/dist/client.bundle.js` + `styles.css` rebuilt `--release` and committed (picked up automatically by a concurrent session's own rebuild once the source was already committed; verified the committed bundle reflects every source change before relying on that)
+- [x] `apps/desktop/scripts/check-bundle-completeness.mjs --smoke` green with `curl-local` + `agent-browser-safe` both covered, 0 new npm deps
+- [ ] Manual native-app verification (Validation §4) — **NOT performed**. This requires the user to dogfood the real packaged `.app`; flagging explicitly rather than claiming it, per this repo's own "native-app verification ceiling" convention.
+- [x] No DDR-worthy decision left unrecorded beyond DDR-185 itself (three rounds of addenda, all in the same DDR)
+- [x] Code follows project conventions (comment discipline on the allowlist, `.sh`-shim-over-`.mjs` verb pattern), no regressions — biome clean, full suite green
+
+## Retro
+
+- **What worked**: treating "mandatory security fan-out" as genuinely mandatory, not a formality — running it, reading the findings carefully, and re-running it AGAIN after each fix (rather than fixing once and declaring victory) is what actually caught rounds 2 and 3. Each round's findings were real, live-reproducible exploits, not theoretical nitpicks — the fan-out earned its cost every time.
+- **What didn't work / should change next time**: my own initial designs (round 1's `Bash(agent-browser:*)` grant, round 1's curl-local blocklist, round 2's agent-browser-safe flag-blocklist) all shared one mistake — I validated a wrapper's SAFETY at the layer I personally wrote code for (argv parsing) and never independently verified the WRAPPED BINARY's own behavior against my claims. `agent-browser --help` had `--allowed-domains` explicitly documented as restricting "navigation," not "network egress" — that distinction was sitting in the tool's own docs the whole time and I didn't read it closely enough on the first two passes.
+- **The recurring root cause across all three rounds**: enumerating "known-dangerous" surface (flags, subcommands) against a THIRD-PARTY tool's own evolving grammar is fundamentally a losing game — you find bypasses one at a time, forever. The fix that actually held (round 2's redesign to a Maude-owned semantic vocabulary for curl-local, and round 3's arity-only model + `eval` removal for agent-browser-safe) was the one that ELIMINATED the bypass CLASS by construction rather than patching instances. Next time: reach for "own the interface, don't parse the wrapped tool's interface" as the DEFAULT design for any new `maude design <verb>` wrapper around a third-party CLI, not as a fallback after two rounds of bypasses.
+- **Process note for `/flow:plan` next time**: this plan's own divergent debate (BUILDER/SHIPPER/BREAKER) discussed the `PreToolUse` hook vs. allowlist tradeoff at length but never surfaced "what does the wrapped binary's OWN `--help` say" as a required research step before locking a design. Worth adding to the debate-protocol's retrieval-grounding step for any future wrapper-around-a-CLI decision.
+- **Mid-flight scope change handled well**: the user's clarification ("hlavně agent-browser volání ve setup-ds/edit/new") after the plan was already written led to a real, well-justified pivot (from generic curl/fs-only to agent-browser as the primary target) rather than a rigid "the plan says X" adherence — worth continuing to treat plans as living documents mid-execute when the user sharpens the actual ask.
+- **Shared-tree discipline held up**: staging only owned files, using `git restore --staged` (reversible) instead of touching concurrent sessions' staged work, and re-syncing `dist/` after every `bun test` clobber — all worked as intended across a genuinely busy shared `main` with at least one other active session throughout.
