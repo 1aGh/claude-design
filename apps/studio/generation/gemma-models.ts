@@ -17,8 +17,8 @@
 // Python's huggingface_hub); the http route wraps it with progress state, next to
 // the other provider egress.
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -105,7 +105,9 @@ export function listGemmaModels(): GemmaModelStatus[] {
 
 /** Resolve a Python that can `import mlx_vlm` (honors $MAUDE_MLX_PYTHON), or null. */
 export function resolveMlxPython(): string | null {
-  const candidates = [process.env.MAUDE_MLX_PYTHON, 'python3', 'python'].filter(Boolean) as string[];
+  const candidates = [process.env.MAUDE_MLX_PYTHON, 'python3', 'python'].filter(
+    Boolean
+  ) as string[];
   for (const py of candidates) {
     const r = spawnSync(py, ['-c', 'import mlx_vlm'], { stdio: 'ignore' });
     if (r.status === 0) return py;
@@ -166,7 +168,9 @@ export function downloadGemmaModel(
   const py = resolveMlxPython();
   if (!py)
     return Promise.reject(
-      new Error('mlx-vlm not installed — the Gemma scout needs an Apple-Silicon Mac + `pip install mlx-vlm`.')
+      new Error(
+        'mlx-vlm not installed — the Gemma scout needs an Apple-Silicon Mac + `pip install mlx-vlm`.'
+      )
     );
 
   // Refuse a steered HF endpoint (mirror/redirect) — the whisper path pins the host;
@@ -188,7 +192,10 @@ export function downloadGemmaModel(
         m.repo,
         m.revision,
       ],
-      { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, HF_HUB_DISABLE_TELEMETRY: '1' } }
+      {
+        stdio: ['ignore', 'ignore', 'pipe'],
+        env: { ...process.env, HF_HUB_DISABLE_TELEMETRY: '1' },
+      }
     );
     let received = 0;
     const onAbort = () => child.kill('SIGTERM');

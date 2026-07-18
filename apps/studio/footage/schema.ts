@@ -441,7 +441,18 @@ export function validateFootageAnalysis(input: unknown): ValidationResult {
   assertKeys(
     errors,
     input,
-    ['version', 'asset', 'durationSec', 'width', 'height', 'keyframes', 'shots', 'summary', 'tags', 'speech'],
+    [
+      'version',
+      'asset',
+      'durationSec',
+      'width',
+      'height',
+      'keyframes',
+      'shots',
+      'summary',
+      'tags',
+      'speech',
+    ],
     'root'
   );
   if ('version' in input && input.version != null && typeof input.version !== 'number')

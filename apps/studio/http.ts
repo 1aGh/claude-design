@@ -40,6 +40,12 @@ import {
   sanitizeReuseText,
 } from './generation/audio-library.ts';
 import { localizeGenAsset } from './generation/download.ts';
+import {
+  downloadGemmaModel,
+  ffmpegAvailable,
+  listGemmaModels,
+  mlxVlmAvailable,
+} from './generation/gemma-models.ts';
 import { type GenerationJobQueue, GenerationQueueFullError } from './generation/jobs.ts';
 import {
   configuredProviders,
@@ -56,12 +62,6 @@ import {
   writeKeyframeEngine,
   writeTranscriptionProvider,
 } from './generation/prefs.ts';
-import {
-  downloadGemmaModel,
-  ffmpegAvailable,
-  listGemmaModels,
-  mlxVlmAvailable,
-} from './generation/gemma-models.ts';
 import {
   createAdapter,
   getProviderDescriptor,
@@ -703,7 +703,8 @@ export function createHttp(
   // feature-scene-aware-keyframes — in-flight Gemma-model download state, polled by
   // the Settings "Scene-aware keyframes" card via GET /_api/generate/keyframe-model.
   // Closure-scoped: one server, one download.
-  let keyframeDownload: { id: string; received: number; total: number; error?: string } | null = null;
+  let keyframeDownload: { id: string; received: number; total: number; error?: string } | null =
+    null;
 
   // Cache invalidation — when canvas-lib changes, every cached canvas bundle
   // is stale because canvas-lib is inlined into each one via the resolver
@@ -3070,7 +3071,10 @@ export function createHttp(
             return new Response('keyframeEngine must be auto|gemma|ffmpeg|blind', { status: 400 });
           await writeKeyframeEngine(ctx.paths.repoRoot, engine);
           reloadConfig(ctx);
-          return Response.json({ keyframeEngine: engine }, { headers: { 'Cache-Control': 'no-store' } });
+          return Response.json(
+            { keyframeEngine: engine },
+            { headers: { 'Cache-Control': 'no-store' } }
+          );
         }
         const provider = body?.transcriptionProvider;
         if (!isTranscriptionProvider(provider))
@@ -3312,7 +3316,8 @@ export function createHttp(
         // spawn-storm against the loopback server (DDR-183 security finding — the
         // sibling audio-search GET added this guard for the same reason). The probes
         // are also TTL-cached in gemma-models.ts as defence-in-depth.
-        if (!sameOriginRead(req)) return new Response('cross-origin read rejected', { status: 403 });
+        if (!sameOriginRead(req))
+          return new Response('cross-origin read rejected', { status: 403 });
         return Response.json(
           {
             models: listGemmaModels(),
@@ -3326,7 +3331,8 @@ export function createHttp(
       if (req.method === 'DELETE') {
         // Free a wedged download slot (a stalled HF connection) without waiting out
         // the 60-min abort timeout (DDR-183 F4). Same-origin write-gated.
-        if (!sameOriginWrite(req)) return new Response('cross-origin write rejected', { status: 403 });
+        if (!sameOriginWrite(req))
+          return new Response('cross-origin write rejected', { status: 403 });
         keyframeDownload = null;
         return Response.json({ cancelled: true }, { headers: { 'Cache-Control': 'no-store' } });
       }
@@ -3334,9 +3340,12 @@ export function createHttp(
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
       if (!mlxVlmAvailable())
-        return new Response('mlx-vlm not installed — the Gemma scout needs an Apple-Silicon Mac + `pip install mlx-vlm`.', {
-          status: 400,
-        });
+        return new Response(
+          'mlx-vlm not installed — the Gemma scout needs an Apple-Silicon Mac + `pip install mlx-vlm`.',
+          {
+            status: 400,
+          }
+        );
       const body = await readJson<{ id?: unknown }>(req, 4 * 1024);
       const id = typeof body?.id === 'string' ? body.id : '';
       if (!listGemmaModels().some((m) => m.id === id))
@@ -3368,7 +3377,10 @@ export function createHttp(
               error: err instanceof Error ? err.message : 'download failed',
             };
         });
-      return Response.json({ started: id }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
+      return Response.json(
+        { started: id },
+        { status: 202, headers: { 'Cache-Control': 'no-store' } }
+      );
     },
 
     '/_canvas-state': async (req: Request) => {

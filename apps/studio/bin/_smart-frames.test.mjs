@@ -63,7 +63,15 @@ describe('mergeTimestamps', () => {
     expect(ts.length).toBeGreaterThanOrEqual(4);
   });
   test('dedups within 0.4s', () => {
-    const ts = mergeTimestamps({ durationSec: 8, cuts: [], beats: [{ t: 0.1, what: '' }, { t: 0.2, what: '' }], maxFrames: 20 });
+    const ts = mergeTimestamps({
+      durationSec: 8,
+      cuts: [],
+      beats: [
+        { t: 0.1, what: '' },
+        { t: 0.2, what: '' },
+      ],
+      maxFrames: 20,
+    });
     // 0, 0.05(inside), 0.1, 0.2 all within 0.4 → collapse toward the earliest kept
     const near0 = ts.filter((t) => t < 0.4);
     expect(near0.length).toBe(1);

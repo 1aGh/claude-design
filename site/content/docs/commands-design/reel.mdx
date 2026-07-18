@@ -1,6 +1,6 @@
 ---
 title: /design:reel
-description: "From a folder of raw clips (or the clips on the active canvas) to a directed, graphics-laden video cut — in one prompt. Ingests + content-addresses the footage, fans out the footage-analyst to WATCH each clip (vision keyframes), has the footage-director assemble an Edit Decision List, generates a Timeline-parseable `<TransitionSeries>` video-comp, and runs the motion + design critics. Vision-only (no audio analysis). Wraps `maude design ingest-footage`/`probe-footage` + the footage-analyst/footage-director agents + skill footage-director."
+description: "From a folder of raw clips (or the clips on the active canvas) to a directed, graphics-laden video cut — in one prompt. Ingests + content-addresses the footage, runs the SHARED analysis step (same as `/design:video-analyze`: scene-aware keyframes via skill footage-keyframes → optional transcribe → the Read-only footage-analyst watches + returns JSON → orchestrator persists it), has the footage-director assemble an Edit Decision List, generates a Timeline-parseable `<TransitionSeries>` video-comp, and runs the motion + design critics. Wraps `maude design ingest-footage`/`smart-frames`/`transcribe` + the footage-analyst/footage-director agents + skills footage-keyframes/footage-director."
 ---
 
 | Property | Value |
@@ -12,7 +12,7 @@ description: "From a folder of raw clips (or the clips on the active canvas) to 
 
 ## Description
 
-From a folder of raw clips (or the clips on the active canvas) to a directed, graphics-laden video cut — in one prompt. Ingests + content-addresses the footage, fans out the footage-analyst to WATCH each clip (vision keyframes), has the footage-director assemble an Edit Decision List, generates a Timeline-parseable `&lt;TransitionSeries>` video-comp, and runs the motion + design critics. Vision-only (no audio analysis). Wraps `maude design ingest-footage`/`probe-footage` + the footage-analyst/footage-director agents + skill footage-director.
+From a folder of raw clips (or the clips on the active canvas) to a directed, graphics-laden video cut — in one prompt. Ingests + content-addresses the footage, runs the SHARED analysis step (same as `/design:video-analyze`: scene-aware keyframes via skill footage-keyframes → optional transcribe → the Read-only footage-analyst watches + returns JSON → orchestrator persists it), has the footage-director assemble an Edit Decision List, generates a Timeline-parseable `&lt;TransitionSeries>` video-comp, and runs the motion + design critics. Wraps `maude design ingest-footage`/`smart-frames`/`transcribe` + the footage-analyst/footage-director agents + skills footage-keyframes/footage-director.
 
 ## Invocation
 

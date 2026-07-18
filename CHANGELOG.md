@@ -1,5 +1,13 @@
 # @1agh/maude
 
+## 0.46.0
+
+### Minor Changes
+
+- 5dd5bd1: Artboards can now declare what they are — Digital, Print, Web, or Video — from the Inspector's Kind picker or the right-click context menu, and get their own chrome (a small icon + tint in the label strip). Video kind is inferred automatically for existing canvases with a `<VideoComp>`, so nothing needs to be migrated. Also adds a generic layout-guides primitive (columns/rows/grid, Figma-style) with a new `ArtboardGuidesOverlay` render layer and a per-user, per-canvas visibility lane — the guides toolbar and snap-to-guide UI land in a follow-up release. This is the foundation layer for upcoming print- and web-specific artboard tooling.
+- 7f310a7: Print artboards (`kind="print"`) are now genuinely print-ready. Pick a paper size (A6–A0, US Letter/Legal/Tabloid, DL/C5 envelopes, business cards) from the Inspector and it resolves to the correct bleed-inclusive pixel size automatically. Toggleable on-canvas bleed/trim/margin guides follow the pro-tool color convention (red bleed, solid trim, magenta margins). Export a 300–600 DPI PNG, or a print-ready PDF with correct MediaBox/BleedBox/TrimBox nesting and optional vector crop/registration marks — PDF export also gained an independent "Image quality" DPI control for embedded raster content (e.g. a photo on a large-format piece authored at a fraction of its physical size). RGB only — CMYK/PDF-X conversion stays your print shop's job. No new dependencies. The Artboard Inspector panel also now shares the same token-bindable controls as the CSS panel, so Bg/Pad/Gap accept `var(--color-*)`/`var(--space-*)` bindings.
+- 67e4361: Video analysis now understands a clip's dynamics instead of screenshotting at a blind frame rate. A new `maude design smart-frames` extractor (skill `footage-keyframes`) picks keyframes at real scene cuts, semantic action beats, and the true first/last frame — three auto-detected tiers that degrade gracefully: a local Gemma-4 MLX scout (opt-in, Apple Silicon) → ffmpeg scene-detection (the default) → the existing Chromium extractor (zero-dep floor), so nobody is forced to download a model. The footage-analyst and `/design:reel` now use it, and a new one-shot `/design:video-analyze` command analyzes a clip end to end — picture AND sound — folding a whisper transcript into the result. Studio Settings gains a "Video" section to choose the engine and one-click-download the optional Gemma model (gated on the mlx-vlm runtime being installed). `ffmpeg` and `mlx-vlm` are new soft dependencies; without them the extractor falls back automatically.
+
 ## 0.45.2
 
 ### Patch Changes

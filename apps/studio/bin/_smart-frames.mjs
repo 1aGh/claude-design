@@ -22,7 +22,7 @@
 // are unit-tested in _smart-frames.test.mjs.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -61,9 +61,13 @@ export function selectTier(engine, avail) {
   const gemmaOk = Boolean(avail.ffmpeg && avail.mlxPython);
   if (engine && engine !== 'auto') {
     if (engine === 'gemma' && !gemmaOk)
-      throw new Error('engine "gemma" needs ffmpeg + mlx-vlm (Apple Silicon). Install both or use --engine ffmpeg|blind|auto.');
+      throw new Error(
+        'engine "gemma" needs ffmpeg + mlx-vlm (Apple Silicon). Install both or use --engine ffmpeg|blind|auto.'
+      );
     if (engine === 'ffmpeg' && !avail.ffmpeg)
-      throw new Error('engine "ffmpeg" needs ffmpeg. Install it (brew install ffmpeg) or use --engine blind|auto.');
+      throw new Error(
+        'engine "ffmpeg" needs ffmpeg. Install it (brew install ffmpeg) or use --engine blind|auto.'
+      );
     return engine; // blind always allowed
   }
   if (gemmaOk) return 'gemma';
@@ -78,6 +82,7 @@ export function parseSceneCuts(stderr) {
   const out = [];
   const re = /pts_time:([0-9.]+)/g;
   let m;
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop.
   while ((m = re.exec(stderr))) out.push(Number(m[1]));
   return out.filter((t) => Number.isFinite(t));
 }
@@ -88,8 +93,10 @@ export function parseBeats(text, durationSec) {
   const beats = [];
   const reT = /TIME=([0-9.]+)/g;
   let m;
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop.
   while ((m = reT.exec(text))) beats.push({ t: Number(m[1]), what: '' });
   const reMS = /(?:^|\n)\s*(\d+):(\d{2}(?:\.\d+)?)\s*\|\s*([^\n]*)/g;
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop.
   while ((m = reMS.exec(text)))
     beats.push({ t: Number(m[1]) * 60 + Number(m[2]), what: (m[3] || '').trim() });
   return beats.filter((b) => Number.isFinite(b.t) && b.t >= 0 && b.t <= durationSec);
@@ -97,7 +104,13 @@ export function parseBeats(text, durationSec) {
 
 /** Merge scene cuts + scout beats into a final, deduped, capped timestamp set —
  *  always incl. the true first & last frame; long shots sampled more. */
-export function mergeTimestamps({ durationSec, cuts = [], beats = [], maxFrames = 12, dedupSec = 0.4 }) {
+export function mergeTimestamps({
+  durationSec,
+  cuts = [],
+  beats = [],
+  maxFrames = 12,
+  dedupSec = 0.4,
+}) {
   const dur = durationSec;
   const pts = new Set([0, Math.max(0, +(dur - 0.05).toFixed(3))]);
   const bounds = Array.from(new Set([0, ...cuts, dur])).sort((a, b) => a - b);
@@ -115,7 +128,8 @@ export function mergeTimestamps({ durationSec, cuts = [], beats = [], maxFrames 
 
   const xs = Array.from(pts).sort((a, b) => a - b);
   const deduped = [];
-  for (const t of xs) if (!deduped.length || t - deduped[deduped.length - 1] >= dedupSec) deduped.push(t);
+  for (const t of xs)
+    if (!deduped.length || t - deduped[deduped.length - 1] >= dedupSec) deduped.push(t);
 
   if (deduped.length <= maxFrames) return deduped;
   // too many → keep an even spread across the ordered set
@@ -130,8 +144,17 @@ export function mergeTimestamps({ durationSec, cuts = [], beats = [], maxFrames 
 function ffprobeMeta(clip) {
   const r = spawnSync(
     'ffprobe',
-    ['-v', 'error', '-select_streams', 'v:0', '-show_entries',
-      'stream=width,height:format=duration', '-of', 'default=noprint_wrappers=1', clip],
+    [
+      '-v',
+      'error',
+      '-select_streams',
+      'v:0',
+      '-show_entries',
+      'stream=width,height:format=duration',
+      '-of',
+      'default=noprint_wrappers=1',
+      clip,
+    ],
     { encoding: 'utf8' }
   );
   const txt = r.stdout || '';
@@ -139,7 +162,11 @@ function ffprobeMeta(clip) {
     const m = txt.match(re);
     return m ? Number(m[1]) : 0;
   };
-  return { width: num(/width=(\d+)/), height: num(/height=(\d+)/), durationSec: num(/duration=([0-9.]+)/) };
+  return {
+    width: num(/width=(\d+)/),
+    height: num(/height=(\d+)/),
+    durationSec: num(/duration=([0-9.]+)/),
+  };
 }
 
 function ffmpegSceneCuts(clip, thresh) {
@@ -152,9 +179,13 @@ function ffmpegSceneCuts(clip, thresh) {
 }
 
 function extractFrame(clip, t, outPath) {
-  const r = spawnSync('ffmpeg', ['-y', '-v', 'error', '-ss', String(t), '-i', clip, '-frames:v', '1', outPath], {
-    encoding: 'utf8',
-  });
+  const r = spawnSync(
+    'ffmpeg',
+    ['-y', '-v', 'error', '-ss', String(t), '-i', clip, '-frames:v', '1', outPath],
+    {
+      encoding: 'utf8',
+    }
+  );
   return r.status === 0 && existsSync(outPath);
 }
 
@@ -166,8 +197,20 @@ const SCOUT_PROMPT = (dur) =>
 function gemmaScout(clip, durationSec, { python, model, fps }) {
   const r = spawnSync(
     python,
-    ['-m', 'mlx_vlm.generate', '--model', model, '--max-tokens', '300', '--video', clip, '--fps', String(fps),
-      '--prompt', SCOUT_PROMPT(durationSec)],
+    [
+      '-m',
+      'mlx_vlm.generate',
+      '--model',
+      model,
+      '--max-tokens',
+      '300',
+      '--video',
+      clip,
+      '--fps',
+      String(fps),
+      '--prompt',
+      SCOUT_PROMPT(durationSec),
+    ],
     { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }
   );
   const text = `${r.stdout || ''}\n${r.stderr || ''}`;
@@ -232,12 +275,20 @@ export function readEnginePref(root) {
 
 function parseArgs(argv) {
   const envEngine = process.env.MAUDE_SMARTFRAMES_ENGINE || '';
-  const o = { engine: envEngine || 'auto', engineExplicit: Boolean(envEngine), frames: 12, sceneThresh: 0.3, scoutFps: 4 };
+  const o = {
+    engine: envEngine || 'auto',
+    engineExplicit: Boolean(envEngine),
+    frames: 12,
+    sceneThresh: 0.3,
+    scoutFps: 4,
+  };
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--engine') { o.engine = argv[++i]; o.engineExplicit = true; }
-    else if (a === '--frames' || a === '--max-frames') o.frames = Number(argv[++i]);
+    if (a === '--engine') {
+      o.engine = argv[++i];
+      o.engineExplicit = true;
+    } else if (a === '--frames' || a === '--max-frames') o.frames = Number(argv[++i]);
     else if (a === '--out-dir') o.outDir = argv[++i];
     else if (a === '--root') o.root = argv[++i];
     else if (a === '--design-root') o.designRoot = argv[++i];
@@ -282,8 +333,10 @@ function main() {
     const passthru = process.argv.slice(2).filter((a, i, arr) => {
       // drop --engine and its value, and --scene-thresh/--scout-fps (probe doesn't know them)
       const prev = arr[i - 1];
-      return !['--engine', '--scene-thresh', '--scout-fps'].includes(a) &&
-        !['--engine', '--scene-thresh', '--scout-fps'].includes(prev);
+      return (
+        !['--engine', '--scene-thresh', '--scout-fps'].includes(a) &&
+        !['--engine', '--scene-thresh', '--scout-fps'].includes(prev)
+      );
     });
     const manifest = blindProbe(passthru);
     process.stdout.write(`${JSON.stringify(manifest)}\n`);
@@ -311,16 +364,27 @@ function main() {
   let method = 'ffmpeg';
   if (tier === 'gemma') {
     const model = process.env.MAUDE_GEMMA_MODEL || 'mlx-community/gemma-4-e4b-it-4bit';
-    const scout = gemmaScout(clip, meta.durationSec, { python: avail.mlxPython, model, fps: o.scoutFps });
+    const scout = gemmaScout(clip, meta.durationSec, {
+      python: avail.mlxPython,
+      model,
+      fps: o.scoutFps,
+    });
     if (scout.ok && scout.beats.length) {
       beats = scout.beats;
       method = 'gemma';
     } else {
-      process.stderr.write('smart-frames: gemma scout produced no beats — falling back to ffmpeg tier\n');
+      process.stderr.write(
+        'smart-frames: gemma scout produced no beats — falling back to ffmpeg tier\n'
+      );
     }
   }
 
-  const times = mergeTimestamps({ durationSec: meta.durationSec, cuts, beats, maxFrames: o.frames });
+  const times = mergeTimestamps({
+    durationSec: meta.durationSec,
+    cuts,
+    beats,
+    maxFrames: o.frames,
+  });
 
   const outDir = o.outDir || join(process.env.TMPDIR || '/tmp', `smart-frames-${Date.now()}`);
   mkdirSync(outDir, { recursive: true });
@@ -346,7 +410,9 @@ function main() {
     frames,
   };
   process.stdout.write(`${JSON.stringify(manifest)}\n`);
-  process.stderr.write(`smart-frames: engine=${method} · ${frames.length} frames · ${cuts.length} scene cuts · ${beats.length} scout beats\n`);
+  process.stderr.write(
+    `smart-frames: engine=${method} · ${frames.length} frames · ${cuts.length} scene cuts · ${beats.length} scout beats\n`
+  );
 }
 
 // run only as a CLI, not when imported by the test

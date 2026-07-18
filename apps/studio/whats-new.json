@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "scene-aware-video-analyze",
-      "version": null,
-      "date": null,
+      "version": "0.46.0",
+      "date": "2026-07-18",
       "kind": "feature",
       "title": "Analyze a video — picture and sound — in one command",
       "summary": "Run /design:video-analyze on a clip and Maude reads it end to end: it picks keyframes at real scene changes and action beats (not a blind frame rate), transcribes the audio, and writes a summary with shots, on-screen text, mood, and the best moment to use. A new Settings → Video section lets you choose the analysis engine and, on Apple Silicon, download an optional local Gemma model for smarter shot detection.",
@@ -12,8 +12,8 @@
     },
     {
       "id": "print-artboards",
-      "version": null,
-      "date": null,
+      "version": "0.46.0",
+      "date": "2026-07-18",
       "kind": "feature",
       "title": "Design flyers, posters, and business cards — print-ready",
       "summary": "Give a print artboard a real paper size (A4, Letter, business card, and more) and it resolves to the correct bleed-inclusive dimensions automatically. Toggle bleed/trim/margin guides from the View menu while you work, then export a 300–600 DPI PNG or a print-ready PDF with correct page boxes and crop/registration marks.",
@@ -22,8 +22,8 @@
     },
     {
       "id": "artboard-kinds-foundation",
-      "version": null,
-      "date": null,
+      "version": "0.46.0",
+      "date": "2026-07-18",
       "kind": "feature",
       "title": "Artboards now know what they are",
       "summary": "Give any artboard a kind — Digital, Print, Web, or Video — from the Inspector or the right-click menu, and it gets its own chrome. New generic layout guides (columns, rows, grid) can be toggled on from the View menu for any artboard. Print- and web-specific tools land in follow-up releases.",
