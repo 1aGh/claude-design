@@ -115,6 +115,9 @@ import type { ArtboardPrintProp } from './print/units.ts';
 // bundle already pulls in (canvas-lib IS that shared graph — DDR-025), so a
 // canvas never renders without the registration having run first.
 import './print-overlay-content.tsx';
+// feature-3-web-artboards T2 — same side-effect-import contract as the print
+// registration above, for the 'web' kind's breakpoint-band chip.
+import './web-overlay-content.tsx';
 import {
   buildMoveArtboardsRecord,
   diffLayoutPositions,

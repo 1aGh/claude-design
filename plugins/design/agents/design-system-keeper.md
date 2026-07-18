@@ -1,6 +1,6 @@
 ---
 name: design:design-system-keeper
-description: Read-only audit agent that runs between canvas generation and the critic panel. Passes — (A) pattern-reinvention scan grepping existing canvases + preview library for class-shape duplicates the new canvas should have lifted; (A.5 motion, A.6 product-shell, A.7 artboard-isolation, A.8 brand-asset reuse per DDR-141, A.9 css-import-contract — a markup-only `preview/` component imported without its `_layout.css`); (B) token-usage audit cross-checking every `var(--TOKEN)` against the DS README's Token usage guide section. Findings are warnings by default (promoted to blocker on mass-drift stacking); under `ds_fidelity: strict` reuse findings are blockers directly (scope `full` overrides back to advisory). Auto-routed by /design:new (step 9.5) and /design:edit (step 7.5, conditional on diff size). Skip via `--skip-ds-keeper`. Never edits.
+description: Read-only audit agent that runs between canvas generation and the critic panel. Passes — (A) pattern-reinvention scan grepping existing canvases + preview library for class-shape duplicates the new canvas should have lifted; (A.5 motion, A.6 product-shell, A.7 artboard-isolation, A.8 brand-asset reuse per DDR-141, A.9 css-import-contract — a markup-only `preview/` component imported without its `_layout.css`, A.10 web-kind flow discipline — unjustified absolute positioning inside a `kind="web"` artboard); (B) token-usage audit cross-checking every `var(--TOKEN)` against the DS README's Token usage guide section. Findings are warnings by default (promoted to blocker on mass-drift stacking); under `ds_fidelity: strict` reuse findings are blockers directly (scope `full` overrides back to advisory). Auto-routed by /design:new (step 9.5) and /design:edit (step 7.5, conditional on diff size). Skip via `--skip-ds-keeper`. Never edits.
 tools: Read, Bash, Glob, Grep
 ---
 
@@ -311,6 +311,33 @@ Zero hits → **finding** (`css-import-contract`).
 
 **Severity:** **warning**, and — like Pass B — **severity-independent of `ds_fidelity`** (a missing stylesheet is a functional break, not a stylistic / reuse choice, so `strict` ↔ `advisory` doesn't move it). It does **not** feed the reuse-reinvention stack. But because the failure is deterministic and silent, list it in `top_warnings` with `category: "css-import-contract"` and a `fix:` the orchestrator can apply directly — it's the single highest-priority warning to clear before ship, and the `/design:new` per-artboard reality-check + `/design:smoke` render gate are the loud runtime backstop. Never self-promote to blocker: a component *may* be legitimately unstyled here, or its rules may live wholly in the shell-injected `_components.css`, so the human/panel makes the call.
 
+## Pass A.10 — Web-kind flow discipline (feature-3-web-artboards)
+
+**Goal:** a `kind="web"` artboard is authored **flow-first** (Design Decision 1 of feature-3-web-artboards) — flex/grid/normal-flow layout, with absolute positioning reserved for a deliberate overlay (a badge, a floating CTA) that carries a one-line justification comment. Untagged absolute positioning inside a web artboard is layout drift that fights the artboard's hug-height reflow-testing (T4) and produces broken flex/handoff code (T6) — this pass surfaces it the same way A.7 catches viewport escapes, but for `kind="web"` specifically (A.7 is kind-agnostic).
+
+**Skip entirely (no-op) when:** the candidate declares no `kind="web"` artboard (`grep -qE '<DCArtboard\b[^>]*\bkind="web"' "$CANVAS_PATH"` — zero hits).
+
+**Step 1 — Isolate each web-kind artboard's body span.** Find each `<DCArtboard … kind="web" …>` opening tag's line and its matching `</DCArtboard>` closing line; a simple line-range slice between the two is sufficient (this is an advisory heuristic over source text, not a source-editing operation, so exact JSX-tree balancing isn't required).
+
+**Step 2 — Scan each span for absolute positioning:**
+
+```bash
+grep -nE 'position:\s*["'"'"']?absolute|className="[^"]*\babsolute\b' <span>
+```
+
+**Step 3 — For each hit, check the immediately preceding non-blank line for a JSX comment (`{/* … */}`).** Present → treated as the justification, not flagged (don't parse its wording — the existence of a comment at that position IS the signal, same "one-line comment names the gap" convention Pass A / A.6 / A.8 already use). Absent → **finding**.
+
+**Step 4 — Surface findings:**
+
+```
+- web-flow-drift | line N — `position: absolute` inside a `kind="web"` artboard with no justification comment
+  Web artboards are authored flow-first (flex/grid) so reflow-testing (drag-width) and handoff stay clean. If this
+  is a deliberate overlay (badge, floating CTA), add a one-line comment saying so; otherwise re-derive the layout
+  with flex/grid instead of absolute coordinates.
+```
+
+**Severity:** **warning** by default (same ladder as A.7); never self-promotes to blocker on its own — it contributes one to the existing `pattern-mass-reinvention` stack only when ≥ 3 unjustified absolute-positioned elements are found on the same web-kind artboard.
+
 ## Pass B — Token-usage audit
 
 **Goal:** for every `var(--TOKEN)` usage in the candidate canvas, check that the property it sits on matches the role the DS Token usage guide assigns to that token. Surface mismatches as warnings.
@@ -404,6 +431,10 @@ _<ISO ts> · canvas: `{canvas_path}` · ds: `{ds_name}`_
 ## Pass A.9 — CSS-import contract
 
 {The single css-import-contract finding if it fired, in the Step 4 format. If skipped: "Pass A.9 skipped (candidate is a specimen | imports no preview components)." If clean: "Every markup-only `preview/` component the canvas imports is backed by an imported `_layout.css` (or self-carries its CSS)."}
+
+## Pass A.10 — Web-kind flow discipline
+
+{Per-finding entries in the Step 4 format. If skipped: "Pass A.10 skipped (candidate declares no kind=\"web\" artboard)." If clean: "No unjustified absolute positioning inside web-kind artboards — flow-first discipline holds."}
 
 ## Pass B — Token-usage audit
 

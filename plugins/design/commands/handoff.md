@@ -17,6 +17,11 @@ What the sidecar contains:
 4. **`cssVars.theme`** — the same tokens in shadcn format, so the CLI grafts them into `app/globals.css`.
 5. **`dependencies`** — the npm spec resolved from `Bun.Transpiler.scanImports()` (`react`, `react-dom` + whatever else). React + ReactDOM are the floor (DDR-012).
 6. **`registryDependencies`** — `@/components/ui/*` imports map to shadcn primitive names (`button`, `card`, ...).
+7. **`meta.kind`** (feature-3-web-artboards T6) — the resolved artboard `kind` (`digital` | `print` | `web` | `video`, or `mixed` when the canvas mixes kinds across artboards), read straight off the source `<DCArtboard kind="…">` attributes — shadcn's generic item-metadata extension point, not a maude-invented schema field.
+
+**Web-kind handoff notes.** A `kind="web"` canvas hands off as ordinary flex/grid React + CSS — there is no web-specific transform in the emitted drop, which is the point: the artboard's own authoring contract (flow-first layout, `@container`/`cqw`/`cqh` for in-artboard responsiveness, no `vw`/`vh`) already IS production-grade responsive code, so it survives the strip-and-bundle pass unchanged. Two things worth knowing before consuming the drop:
+- `@container` queries need a `container-type` ancestor in the CONSUMER'S page too — the canvas relies on canvas-lib's `.dc-artboard-body { container-type: inline-size }`, which does not ship with the drop (canvas-lib is dev-time only, DDR-025). Wrap the dropped component in an element with `container-type: inline-size` (or add that rule to whatever wrapper the consumer already uses) so the container queries keep working outside the canvas.
+- The artboard's own `width` was a **breakpoint marker** (T2's "≤ Npx" chrome), not a hard constraint — the dropped component has no outer width lock, so it reflows to whatever the consumer's layout gives it. That's usually the desired outcome (production web code should reflow); if multiple breakpoint duplicates (T3) were hand off separately, dedupe them into one responsive component in the consumer project rather than shipping N near-identical drops.
 
 **Input `$ARGUMENTS`:** `[--canvas <path>] [--force]`
 

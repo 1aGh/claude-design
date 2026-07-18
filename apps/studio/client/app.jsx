@@ -12,6 +12,10 @@ import { createRoot } from 'react-dom/client';
 // import that Bun erases), so this pulls only string constants into the client
 // bundle — no React, no input-router. See the tool-cursor handler below.
 import { resolveToolCursor } from '../canvas-cursors.ts';
+// feature-3-web-artboards T5 — the single source (grid-track-handles.ts) for
+// the Inspector's Grid-section track parser/serializer, shared with the
+// on-canvas gutter-drag overlay so both edit the SAME track-list shape.
+import { GRID_KEYWORD_UNITS, parseTrackList, serializeTrackList } from '../grid-track-handles.ts';
 // feature-2-print-artboards T2 — the single source (print/units.ts) for the
 // Inspector's paper-preset picker, same "pull only pure math/data" shape as
 // canvas-cursors.ts above.
@@ -4323,6 +4327,9 @@ function SyncBanner({ status }) {
 // critic-approved + user-iterated `.design/ui/Studio.tsx` spec.
 
 const CSS_DISPLAYS = ['block', 'inline-block', 'flex', 'inline-flex', 'grid', 'inline', 'none'];
+// feature-3-web-artboards T5 — per-track unit ladder for the Grid section's
+// UnitSelect (the stub's own list: px/%/fr/em/auto/min-content/max-content).
+const GRID_TRACK_UNITS = ['px', '%', 'fr', 'em', 'auto', 'min-content', 'max-content'];
 const CSS_FLEX_DIR = ['row', 'row-reverse', 'column', 'column-reverse'];
 const CSS_FLEX_WRAP = ['nowrap', 'wrap', 'wrap-reverse'];
 const CSS_ALIGN = ['stretch', 'flex-start', 'center', 'flex-end', 'baseline'];
@@ -5129,6 +5136,98 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex,
   );
 }
 
+// feature-3-web-artboards T5 (absorbed feature-grid-track-editor stub) — the
+// CssKnobs "Grid" section's track-list editor: one row per track (a
+// NumberField + UnitSelect for a numeric px/%/fr/em track, a bare Select for
+// a keyword auto/min-content/max-content track since it carries no numeric
+// value), + add/remove. `tracks`/`onChange` are the parsed/serialized shape
+// from `grid-track-handles.ts` — the SAME module the on-canvas gutter-drag
+// overlay uses, so the Inspector and the drag handles never disagree.
+function GridTracksEditor({ label, tracks, editable, onChange }) {
+  const setUnit = (idx, unit) => {
+    const cur = tracks[idx];
+    onChange(
+      tracks.map((t, i) =>
+        i === idx
+          ? GRID_KEYWORD_UNITS.has(unit)
+            ? { value: 0, unit }
+            : { value: cur.value || 1, unit }
+          : t
+      )
+    );
+  };
+  const setValue = (idx, value) => {
+    onChange(tracks.map((t, i) => (i === idx ? { ...t, value } : t)));
+  };
+  const addTrack = () => onChange([...tracks, { value: 1, unit: 'fr' }]);
+  const removeTrack = (idx) => onChange(tracks.filter((_, i) => i !== idx));
+  return (
+    <div className="st-cp-gridtracks">
+      <div className="st-cp-gridtracks-hd">
+        <span className="st-cp-gridtracks-label">{label}</span>
+        <button
+          type="button"
+          className="st-btn st-cp-gridtracks-add"
+          disabled={!editable}
+          onClick={addTrack}
+        >
+          + Track
+        </button>
+      </div>
+      {tracks.length === 0 ? (
+        <div className="st-cp-note">
+          No explicit tracks — add one to start defining {label.toLowerCase()}.
+        </div>
+      ) : (
+        tracks.map((t, idx) => {
+          const isKeyword = GRID_KEYWORD_UNITS.has(t.unit);
+          return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: tracks have no stable id;
+            // add/remove/reorder all rebuild the array positionally, same as every
+            // other index-keyed list in this file (e.g. the Layers tree rows).
+            <div className="st-cp-gridtrack-row" key={idx}>
+              {isKeyword ? (
+                <Select
+                  value={t.unit}
+                  ariaLabel={`${label} track ${idx + 1}`}
+                  options={GRID_TRACK_UNITS.map((u) => ({ value: u, label: u }))}
+                  onChange={(u) => setUnit(idx, u)}
+                />
+              ) : (
+                <NumberField
+                  value={t.value}
+                  min={t.unit === 'fr' ? 0.1 : 0}
+                  step={t.unit === 'fr' ? 0.1 : 1}
+                  ariaLabel={`${label} track ${idx + 1} value`}
+                  lead={String(idx + 1)}
+                  unitSlot={
+                    <UnitSelect
+                      value={t.unit}
+                      units={GRID_TRACK_UNITS}
+                      ariaLabel={`${label} track ${idx + 1} unit`}
+                      onChange={(u) => setUnit(idx, u)}
+                    />
+                  }
+                  onCommit={(n) => setValue(idx, n)}
+                />
+              )}
+              <button
+                type="button"
+                className="st-btn st-cp-gridtrack-remove"
+                aria-label={`remove ${label} track ${idx + 1}`}
+                disabled={!editable || tracks.length <= 1}
+                onClick={() => removeTrack(idx)}
+              >
+                ×
+              </button>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoRedo, mode, onSetMode }) {
   const editable = !!el.id;
   const computed = el.computed || {};
@@ -5475,6 +5574,10 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
   // Props each section owns — drives the per-section "reset section" affordance.
   const SECTION_PROPS = {
     Layout: ['display', 'flex-direction', 'flex-wrap', 'align-items', 'justify-content', 'gap'],
+    // feature-3-web-artboards T5 — Grid track editor + cell placement, so the
+    // section-reset affordance clears them like every other section.
+    Grid: ['grid-template-columns', 'grid-template-rows'],
+    'Grid item': ['grid-column', 'grid-row'],
     // feature-element-editing-robustness Stage B — promoted DDR-104 OUT-list.
     Position: ['position', 'top', 'right', 'bottom', 'left', 'z-index'],
     Typography: [
@@ -6372,6 +6475,54 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
         })()
       )}
 
+      {(() => {
+        // feature-3-web-artboards T5 (absorbed feature-grid-track-editor
+        // stub) — Grid section, only when the element IS a grid container.
+        // Track parse/serialize is the SAME grid-track-handles.ts module the
+        // on-canvas gutter-drag overlay uses, so the Inspector and the drag
+        // handles never disagree about track shape.
+        const disp = (authored.display || cssHint(computed.display) || '').trim();
+        const isGrid = disp === 'grid' || disp === 'inline-grid';
+        if (!isGrid) return null;
+        const colsRaw = authored['grid-template-columns'] || '';
+        const rowsRaw = authored['grid-template-rows'] || '';
+        const cols = parseTrackList(colsRaw);
+        const rows = parseTrackList(rowsRaw);
+        const colsEditable = cols.length > 0 || !colsRaw.trim();
+        const rowsEditable = rows.length > 0 || !rowsRaw.trim();
+        return sec(
+          'Grid',
+          <>
+            {colsEditable ? (
+              <GridTracksEditor
+                label="Columns"
+                tracks={cols}
+                editable={editable}
+                onChange={(next) => commit('grid-template-columns', serializeTrackList(next))}
+              />
+            ) : (
+              <div className="st-cp-note">
+                Columns use <code>{colsRaw}</code> — not editable as tracks here (repeat()/
+                minmax()/subgrid); use /design:edit for these.
+              </div>
+            )}
+            {rowsEditable ? (
+              <GridTracksEditor
+                label="Rows"
+                tracks={rows}
+                editable={editable}
+                onChange={(next) => commit('grid-template-rows', serializeTrackList(next))}
+              />
+            ) : (
+              <div className="st-cp-note">
+                Rows use <code>{rowsRaw}</code> — not editable as tracks here (repeat()/minmax()/
+                subgrid); use /design:edit for these.
+              </div>
+            )}
+          </>
+        );
+      })()}
+
       {sec(
         'Position',
         <>
@@ -6394,6 +6545,18 @@ function CssKnobs({ el, cfg, onOptimistic, onRecordEdit, onReplaceMedia, onUndoR
           {row('z-index', num('z-index'))}
         </>
       )}
+
+      {(el.parentDisplay === 'grid' || el.parentDisplay === 'inline-grid') &&
+        sec(
+          'Grid item',
+          <>
+            <div className="st-cp-note">
+              Manual cell placement — <code>start / end</code> or <code>start / span N</code>.
+            </div>
+            {row('grid-column', text('grid-column'))}
+            {row('grid-row', text('grid-row'))}
+          </>
+        )}
 
       {sec(
         'Typography',
@@ -6999,6 +7162,7 @@ function ArtboardKnobs({
   onSetArtboardStyle,
   onSetArtboardKind,
   onSetArtboardPrint,
+  onDuplicateArtboard,
 }) {
   const artboardId = resolveArtboardIdFromSelection(el);
   // Dogfood (artboard panel ↔ shared inspector controls) — the panel now uses
@@ -7053,6 +7217,12 @@ function ArtboardKnobs({
   const activePreset = Object.entries(SCREEN_PRESETS).find(
     ([, p]) => p.width === w && p.height === h
   )?.[0];
+  // feature-3-web-artboards T2 — a web artboard hugs height (Design Decision
+  // 1), so its `h` rarely equals a preset's device height even when the
+  // artboard genuinely represents that breakpoint. Match by WIDTH alone so
+  // the picker still shows "Desktop" selected after the hugged height
+  // settles to the content's real size.
+  const activeWidthPreset = Object.entries(SCREEN_PRESETS).find(([, p]) => p.width === w)?.[0];
   // Hug default (artboard "hug height") — current mode + the "more settings"
   // (background/padding/layout/gap) read off the SAME generic `attrs` escape
   // hatch dom-selection.ts already scrapes for every selection (the `data-dc-*`
@@ -7103,6 +7273,15 @@ function ArtboardKnobs({
         onResizeArtboard?.(artboardId, resolved.widthPx, resolved.heightPx);
         onSetArtboardPrint?.(artboardId, defaults);
       }
+    }
+    // feature-3-web-artboards Design Decision 1 — a web artboard's height
+    // hugs content (`fixed` omitted); switching TO "web" flips hug mode in
+    // the same gesture so the artboard doesn't stay pinned to whatever exact
+    // height a prior digital/print size left it at. Mirrors the print
+    // auto-seed above — switching kind should never require a second,
+    // easy-to-miss step in the Hug/Fixed segmented control above.
+    if (nextKind === 'web' && fixed) {
+      onSetArtboardHug?.(artboardId, false, undefined);
     }
   };
   const setPrint = (patch) => {
@@ -7180,6 +7359,32 @@ function ArtboardKnobs({
               </option>
             ))}
           </select>
+        ) : kind === 'web' ? (
+          // feature-3-web-artboards T2 — a web artboard's "Preset size…"
+          // dropdown reads as BREAKPOINT selection, not exact-box selection:
+          // same SCREEN_PRESETS widths (Design Decision 2 — no separate
+          // preset table needed), but commits width-only (height stays
+          // hug-driven) and labels each option as the breakpoint it is.
+          <select
+            className="st-cp-nsel"
+            aria-label="artboard breakpoint preset"
+            value={activeWidthPreset ?? ''}
+            onChange={(e) => {
+              const p = SCREEN_PRESETS[e.currentTarget.value];
+              if (p) commitSize(p.width, null);
+            }}
+          >
+            <option value="" disabled>
+              {activeWidthPreset
+                ? `${SCREEN_PRESETS[activeWidthPreset].label} — ≤ ${SCREEN_PRESETS[activeWidthPreset].width}px`
+                : 'Breakpoint…'}
+            </option>
+            {Object.entries(SCREEN_PRESETS).map(([key, p]) => (
+              <option key={key} value={key}>
+                {p.label} — ≤ {p.width}px breakpoint
+              </option>
+            ))}
+          </select>
         ) : (
           <select
             className="st-cp-nsel"
@@ -7223,6 +7428,35 @@ function ArtboardKnobs({
           onChange={setKind}
         />
       </div>
+      {kind !== 'print' && artboardId && onDuplicateArtboard ? (
+        // feature-3-web-artboards T3 — "Duplicate at width…". A stateless
+        // action trigger (not a size preset reflecting current state, unlike
+        // the Preset-size select above), so the control resets to its
+        // placeholder after firing rather than showing the last pick as
+        // though it were now selected. Gated off kind="print" — paper size
+        // is picked via the Artboard preset dropdown above, not a px width.
+        <div style={{ padding: '0 12px 8px' }}>
+          <select
+            className="st-cp-nsel"
+            aria-label="duplicate artboard at breakpoint width"
+            value=""
+            onChange={(e) => {
+              const p = SCREEN_PRESETS[e.currentTarget.value];
+              if (p) onDuplicateArtboard(artboardId, p.width);
+              e.currentTarget.value = '';
+            }}
+          >
+            <option value="" disabled>
+              Duplicate at width…
+            </option>
+            {Object.entries(SCREEN_PRESETS).map(([key, p]) => (
+              <option key={key} value={key}>
+                {p.label} — {p.width}px
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
       {kind === 'print' ? (
         <>
           <div className="st-cp-sechd-row">
@@ -7374,6 +7608,7 @@ function InspectorPanel({
   onSetArtboardStyle,
   onSetArtboardKind,
   onSetArtboardPrint,
+  onDuplicateArtboard,
   onUndoRedo,
   editScope,
   tab: tabProp,
@@ -7948,6 +8183,7 @@ function InspectorPanel({
             onSetArtboardStyle={onSetArtboardStyle}
             onSetArtboardKind={onSetArtboardKind}
             onSetArtboardPrint={onSetArtboardPrint}
+            onDuplicateArtboard={onDuplicateArtboard}
           />
         ) : (
           <CssKnobs
@@ -8363,6 +8599,25 @@ function App() {
       try {
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           new Notification('Claude finished', { body: 'Your assistant turn is ready in Maude.' });
+        }
+      } catch {
+        /* best-effort — the in-app badge is the reliable signal */
+      }
+    }
+  }, []);
+  // DDR-185 — same "you weren't looking" gate as handleAssistantFinished
+  // above, fired instead when a chat is PAUSED waiting on the user (a
+  // permission prompt or an AskUserQuestion/elicitation form), not just when
+  // a turn completes. A stalled turn otherwise gives no signal at all if the
+  // window isn't focused. Distinct copy so it doesn't read as "done".
+  const handleAssistantAttention = useCallback(() => {
+    if (!assistantOpenRef.current || document.hidden) {
+      setAssistantUnseen(true);
+      try {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          new Notification('Maude needs your input', {
+            body: 'Claude is waiting on an approval or a question in Maude.',
+          });
         }
       } catch {
         /* best-effort — the in-app badge is the reliable signal */
@@ -10372,6 +10627,13 @@ function App() {
         if (e.source === activeWin && typeof m.artboardId === 'string' && okKind) {
           setArtboardKindShellRef.current?.(m.artboardId, m.kind);
         }
+      } else if (m.dgn === 'duplicate-artboard-request') {
+        // feature-3-web-artboards T3 — context-menu "Duplicate at width…"
+        // submenu (inside the untrusted iframe).
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin && typeof m.artboardId === 'string' && Number.isFinite(m.width)) {
+          duplicateArtboardShellRef.current?.(m.artboardId, m.width);
+        }
       } else if (m.dgn === 'open-inspector') {
         // Phase 12 — context-menu "Inspect" / tool-palette Inspect opens the right panel.
         // feature-photo-editor (Task 16) — an optional `tab` lands the panel on a
@@ -10929,8 +11191,10 @@ function App() {
       // usage (local), not the shared inner definition. undefined for a plain element.
       const occ = Number.isInteger(idIndex) ? idIndex : undefined;
       // `transform` rides the same lane for the rotate handle (Task L8);
-      // `padding-*`/`gap` ride it for the on-canvas spacing drag (Stage J) — same
-      // single-prop /_api/edit-css write + per-prop undo record, no new lane.
+      // `padding-*`/`gap` ride it for the on-canvas spacing drag (Stage J);
+      // `grid-template-columns`/`grid-template-rows` ride it for the on-canvas
+      // grid gutter drag (feature-3-web-artboards T5) — same single-prop
+      // /_api/edit-css write + per-prop undo record, no new lane.
       const props = [
         'width',
         'height',
@@ -10942,6 +11206,8 @@ function App() {
         'padding-bottom',
         'padding-left',
         'gap',
+        'grid-template-columns',
+        'grid-template-rows',
       ].filter((p) => typeof patch[p] === 'string' && patch[p]);
       if (!props.length) return;
       // Dogfood 2026-07-07 — "resize paddingu nebo gap" was still deselecting on
@@ -11248,6 +11514,20 @@ function App() {
     [structuralWrite]
   );
 
+  // feature-3-web-artboards T3 — "Duplicate at width…". No onOk auto-select
+  // (matches insertArtboardShell's own precedent above — the new frame lands
+  // selectable, not auto-selected).
+  const duplicateArtboardShell = useCallback(
+    (artboardId, width) => {
+      structuralWrite(
+        '/_api/duplicate-artboard',
+        { artboardId, width },
+        { label: 'duplicate artboard at width' }
+      );
+    },
+    [structuralWrite]
+  );
+
   // Artboard "hug height" default — Hug ⇄ Fixed toggle from ArtboardKnobs
   // (CSS panel). Direct shell-side action (no canvas postMessage round trip,
   // unlike resizeArtboardShell's drag-overlay caller), so no *ShellRef needed.
@@ -11355,6 +11635,7 @@ function App() {
   const deleteArtboardShellRef = useRef(null);
   const setArtboardKindShellRef = useRef(null);
   const duplicateElementShellRef = useRef(null);
+  const duplicateArtboardShellRef = useRef(null);
   const copyStyleRef = useRef(null);
   const pasteStyleRef = useRef(null);
   useEffect(() => {
@@ -11365,6 +11646,7 @@ function App() {
     deleteArtboardShellRef.current = deleteArtboardShell;
     setArtboardKindShellRef.current = setArtboardKindShell;
     duplicateElementShellRef.current = duplicateElementShell;
+    duplicateArtboardShellRef.current = duplicateArtboardShell;
     copyStyleRef.current = copyStyle;
     pasteStyleRef.current = pasteStyle;
   }, [
@@ -11375,6 +11657,7 @@ function App() {
     deleteArtboardShell,
     setArtboardKindShell,
     duplicateElementShell,
+    duplicateArtboardShell,
     copyStyle,
     pasteStyle,
   ]);
@@ -12124,6 +12407,7 @@ function App() {
           onSetArtboardStyle={setArtboardStyleShell}
           onSetArtboardKind={setArtboardKindShell}
           onSetArtboardPrint={setArtboardPrintShell}
+          onDuplicateArtboard={duplicateArtboardShell}
           editScope={editScope}
           onUndoRedo={(dir) => postToActiveCanvas({ dgn: dir })}
           photoSel={photoSel}
@@ -12331,6 +12615,8 @@ function App() {
                   onClose={() => setAssistantOpen(false)}
                   onBusyChange={setAssistantBusy}
                   onFinished={handleAssistantFinished}
+                  onPermissionRequest={handleAssistantAttention}
+                  onElicitationRequest={handleAssistantAttention}
                 />
               )}
               {leftActive && leftActive !== 'assistant' && renderPanelBody(leftActive)}
@@ -12399,6 +12685,8 @@ function App() {
                   onClose={() => setAssistantOpen(false)}
                   onBusyChange={setAssistantBusy}
                   onFinished={handleAssistantFinished}
+                  onPermissionRequest={handleAssistantAttention}
+                  onElicitationRequest={handleAssistantAttention}
                 />
               )}
               {rightActive && rightActive !== 'assistant' && renderPanelBody(rightActive)}

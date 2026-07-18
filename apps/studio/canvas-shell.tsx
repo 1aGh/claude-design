@@ -103,6 +103,7 @@ import { ChromeVisibilityProvider, useChromeVisibility } from './use-chrome-visi
 import { useCollab } from './use-collab.tsx';
 import { useCursorModifiers } from './use-cursor-modifiers.tsx';
 import { ElementResizeOverlay } from './use-element-resize.tsx';
+import { GridTrackHandlesOverlay } from './use-grid-track-handles.tsx';
 import { useKeyboardDiscipline } from './use-keyboard-discipline.tsx';
 import {
   MaybeSelectionSetProvider,
@@ -1478,6 +1479,58 @@ function buildRegistry(deps: {
     ],
   };
 
+  // feature-3-web-artboards T3 — "Duplicate at width…" submenu, same
+  // parent-only-MenuItem shape as themeItem/kindItem above. Breakpoint
+  // widths are the same 4 values as the studio shell's own SCREEN_PRESETS
+  // (mobile/tablet/laptop/desktop) — hardcoded here rather than imported
+  // since this module bundles into the canvas iframe, a separate bundle
+  // graph from the studio shell's app.jsx (same reasoning as kindItem
+  // duplicating the ArtboardKind union above).
+  const postDuplicateArtboardRequest = (artboardId: string, width: number): void => {
+    try {
+      window.parent.postMessage({ dgn: 'duplicate-artboard-request', artboardId, width }, '*');
+    } catch {
+      /* detached / cross-origin */
+    }
+  };
+  const duplicateAtBreakpointItem: MenuItem = {
+    id: 'duplicate-at-breakpoint',
+    label: 'Duplicate at width…',
+    onSelect: () => {
+      /* parent of a submenu — never invoked directly */
+    },
+    submenu: [
+      {
+        id: 'dup-bp-mobile',
+        label: 'Mobile — 390px',
+        onSelect: (target) => {
+          if (target.artboardId) postDuplicateArtboardRequest(target.artboardId, 390);
+        },
+      },
+      {
+        id: 'dup-bp-tablet',
+        label: 'Tablet — 834px',
+        onSelect: (target) => {
+          if (target.artboardId) postDuplicateArtboardRequest(target.artboardId, 834);
+        },
+      },
+      {
+        id: 'dup-bp-laptop',
+        label: 'Laptop — 1280px',
+        onSelect: (target) => {
+          if (target.artboardId) postDuplicateArtboardRequest(target.artboardId, 1280);
+        },
+      },
+      {
+        id: 'dup-bp-desktop',
+        label: 'Desktop — 1440px',
+        onSelect: (target) => {
+          if (target.artboardId) postDuplicateArtboardRequest(target.artboardId, 1440);
+        },
+      },
+    ],
+  };
+
   return {
     element: [
       [
@@ -1828,7 +1881,7 @@ function buildRegistry(deps: {
           onSelect: () => distributeArtboards('y'),
         },
       ],
-      [themeItem, kindItem],
+      [themeItem, kindItem, duplicateAtBreakpointItem],
       [
         {
           id: 'delete-artboard',
@@ -2645,6 +2698,7 @@ function CanvasRouter({
       <SelectionHalos />
       <ElementResizeOverlay />
       <SpacingHandlesOverlay />
+      <GridTrackHandlesOverlay />
       <ReorderDrag />
       <LayersLiveSync />
       <GroupBbox />

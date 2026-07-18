@@ -1141,6 +1141,17 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-makeflex:hover:not(:disabled) { border-color: var(--accent); color: var(--fg-0); }
 .st-cp-makeflex:disabled { opacity: 0.5; cursor: default; }
 
+/* feature-3-web-artboards T5 — Grid section's track-list editor. */
+.st-cp-gridtracks { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1) 0; }
+.st-cp-gridtracks + .st-cp-gridtracks { margin-top: var(--space-2); border-top: 1px solid var(--border-subtle); padding-top: var(--space-2); }
+.st-cp-gridtracks-hd { display: flex; align-items: center; justify-content: space-between; }
+.st-cp-gridtracks-label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--fg-2); }
+.st-cp-gridtracks-add { min-height: 22px; padding: 0 var(--space-2); font-size: 10px; }
+.st-cp-gridtrack-row { display: flex; align-items: center; gap: var(--space-1); }
+.st-cp-gridtrack-row .st-cp-nsel { flex: 1 1 auto; }
+.st-cp-gridtrack-remove { flex: 0 0 auto; min-height: 22px; min-width: 22px; padding: 0; justify-content: center; color: var(--fg-2); }
+.st-cp-gridtrack-remove:hover:not(:disabled) { color: var(--status-danger, var(--fg-0)); }
+
 /* provenance legend */
 .st-cp-legend { display: flex; flex-wrap: wrap; gap: var(--space-3); padding-top: var(--space-1); border-top: 1px solid var(--border-subtle); }
 .st-cp-legend span { display: inline-flex; align-items: center; gap: var(--space-1); font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); }

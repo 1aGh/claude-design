@@ -76,6 +76,19 @@ grep -qiE 'letak|plakat|vizitka|brozura|leták|plakát|brožura|flyer|poster|bus
 - Any new critical content (headline, logo, CTA) must land inside the safe margin — toggle "Show print guides" (View menu, T3) before/after the edit to visually confirm nothing landed in the bleed/trim band.
 - Don't touch the `print` prop's `paper`/`bleedMm`/`marginsMm` fields unless the user explicitly asked for a paper/bleed/margin change — a copy/layout edit on a print artboard should leave its print geometry alone.
 
+#### 0.8 Web-artboard awareness (feature-3-web-artboards)
+
+When the active artboard has `kind="web"` (or the feedback names a web/responsive cue — `web`, `landing`, `responsive`, `breakpoint`, `reflow`, `stranka`/`stránka`, `webovka`):
+
+```bash
+grep -q 'kind="web"' "$ACTIVE_CANVAS_ABS" 2>/dev/null && WEB_EDIT=1
+grep -qiE 'web|landing|responsive|breakpoint|reflow|stranka|stránka|webovka' <<< "$ARGUMENTS" && WEB_EDIT=1
+```
+
+- Preserve flow discipline — new content goes in via flex/grid/normal flow, not a hand-added `position: absolute`. If the feedback genuinely asks for an overlay (a badge, a floating CTA), absolute positioning is fine but add a one-line JSX comment naming it as a deliberate overlay so `design-system-keeper`'s web-flow-discipline pass (Pass A.10) doesn't flag it as drift on the next run.
+- Never introduce `vw`/`vh`/`@media` width queries to make one edit "responsive" — use `@container`/`cqw`/`cqh` (the artboard body is already a container) or, for a genuinely different breakpoint, point the user at the "Duplicate at width…" action (T3) instead of hand-copying the artboard.
+- A width/height resize on a `kind="web"` artboard is a legitimate breakpoint test (drag the resize handle, T4) — it's not the same operation as `kind="print"`'s locked paper geometry, so no extra confirmation is needed here.
+
 ### 1. Resolve config
 
 Invoke skill `design` with input `$ARGUMENTS`.

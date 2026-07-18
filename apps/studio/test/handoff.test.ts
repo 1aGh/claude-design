@@ -15,6 +15,7 @@ import {
   filterComponentsCss,
   filterTokensCss,
   type RegistryItem,
+  resolveCanvasKind,
   stripDataCdId,
   writeRegistryItem,
 } from '../handoff.ts';
@@ -186,6 +187,34 @@ describe('handoff / filterTokensCss', () => {
   });
 });
 
+describe('handoff / resolveCanvasKind', () => {
+  test('no explicit kind resolves to digital', () => {
+    const src = `<DesignCanvas><DCArtboard id="a" label="A" width={1440} height={900}>x</DCArtboard></DesignCanvas>`;
+    expect(resolveCanvasKind(src)).toBe('digital');
+  });
+
+  test('single explicit kind resolves to that kind', () => {
+    const src = `<DCArtboard id="a" label="A" width={1280} height={800} kind="web">x</DCArtboard>`;
+    expect(resolveCanvasKind(src)).toBe('web');
+  });
+
+  test('multiple distinct kinds resolve to mixed', () => {
+    const src = `
+      <DCArtboard id="a" label="A" width={1280} height={800} kind="web">x</DCArtboard>
+      <DCArtboard id="b" label="B" width={2480} height={3508} kind="print">y</DCArtboard>
+    `;
+    expect(resolveCanvasKind(src)).toBe('mixed');
+  });
+
+  test('repeated identical kind across artboards is not mixed', () => {
+    const src = `
+      <DCArtboard id="a" label="A" width={1440} height={900} kind="web">x</DCArtboard>
+      <DCArtboard id="b" label="B" width={390} height={844} kind="web">y</DCArtboard>
+    `;
+    expect(resolveCanvasKind(src)).toBe('web');
+  });
+});
+
 describe('handoff / emitRegistryItem end-to-end', () => {
   let tmpDir = '';
   beforeAll(() => {
@@ -277,5 +306,24 @@ describe('handoff / emitRegistryItem end-to-end', () => {
     expect(item.files.length).toBe(1);
     expect(item.files[0]?.type).toBe('registry:component');
     expect(item.cssVars).toBeUndefined();
+  });
+
+  test('emit resolves meta.kind from the canvas source (feature-3-web-artboards T6)', async () => {
+    const canvasAbs = path.join(tmpDir, 'WebCanvas.tsx');
+    await Bun.write(
+      canvasAbs,
+      `export default function WebCanvas() {
+         return <DCArtboard id="a" label="A" width={1280} height={800} kind="web"><div>x</div></DCArtboard>;
+       }`
+    );
+    const item = await emitRegistryItem({ canvasAbsPath: canvasAbs });
+    expect(item.meta?.kind).toBe('web');
+  });
+
+  test('emit defaults meta.kind to digital when no artboard declares one', async () => {
+    const canvasAbs = path.join(tmpDir, 'DigitalCanvas.tsx');
+    await Bun.write(canvasAbs, 'export default function DigitalCanvas() { return <div>x</div>; }');
+    const item = await emitRegistryItem({ canvasAbsPath: canvasAbs });
+    expect(item.meta?.kind).toBe('digital');
   });
 });

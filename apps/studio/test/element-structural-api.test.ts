@@ -300,6 +300,65 @@ describe('POST /_api/delete-artboard', () => {
   });
 });
 
+describe('POST /_api/duplicate-artboard', () => {
+  test('clones an artboard at a new width, returns a suffixed id, undo removes the clone', async () => {
+    const { designRoot, main, proc } = await boot();
+    const canvasPath = join(designRoot, 'ui', 'List.tsx');
+    try {
+      await divIdsByLine(main, designRoot); // warm pipeline
+
+      const dup = await fetch(`${main}/_api/duplicate-artboard`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', artboardId: 'home', width: 390 }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(dup.status).toBe(200);
+      const dupJson = (await dup.json()) as { ok: boolean; artboardId: string; seq: number };
+      expect(dupJson.ok).toBe(true);
+      expect(dupJson.artboardId).toBe('home-390');
+      const src = readFileSync(canvasPath, 'utf8');
+      expect(src).toContain('id="home-390"');
+      expect(src).toContain('width={390}');
+      // Original artboard is untouched.
+      expect(src).toContain('width={1440} height={1024}');
+
+      // Undo removes the clone, leaving only the original.
+      await fetch(`${main}/_api/reorder-revert`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', seq: dupJson.seq, dir: 'undo' }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(readFileSync(canvasPath, 'utf8')).not.toContain('id="home-390"');
+
+      // Cross-origin duplicate is CSRF-rejected.
+      const forged = await fetch(`${main}/_api/duplicate-artboard`, {
+        method: 'POST',
+        headers: { origin: 'http://evil.example' },
+        body: JSON.stringify({ canvas: 'ui/List', artboardId: 'home', width: 390 }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(forged.status).toBe(403);
+    } finally {
+      await killProc(proc as never);
+    }
+  });
+
+  test('unknown artboard id is a 422 refusal', async () => {
+    const { designRoot, main, proc } = await boot();
+    try {
+      await divIdsByLine(main, designRoot); // warm pipeline
+      const res = await fetch(`${main}/_api/duplicate-artboard`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', artboardId: 'nope', width: 390 }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(res.status).toBe(422);
+    } finally {
+      await killProc(proc as never);
+    }
+  });
+});
+
 // G3 security (DDR-152) — the structural-write disk-fill / silent-shred defenses
 // the adversarial review required: a per-api token bucket rate-caps the verbs,
 // and a source-size ceiling refuses a GROWTH op past MAX_CANVAS_SOURCE (a delete

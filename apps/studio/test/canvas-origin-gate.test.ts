@@ -111,6 +111,10 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/insert-artboard',
         '/_api/resize-artboard',
         '/_api/delete-artboard',
+        // feature-3-web-artboards T3 — "Duplicate at width…" is a source-write,
+        // same MAIN-ORIGIN-ONLY posture as the other artboard structural ops
+        // right above.
+        '/_api/duplicate-artboard',
         // Stage F1 — the AssetPicker's asset-listing GET is a shell (main-origin)
         // concern; the untrusted canvas iframe must not enumerate project media.
         '/_api/assets',

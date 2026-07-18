@@ -14,6 +14,7 @@ import {
   type ClipInfo,
   deleteArtboard,
   deleteElement,
+  duplicateArtboard,
   duplicateElement,
   type EditScope,
   editArrayElementString,
@@ -466,6 +467,14 @@ export interface Api {
     label?: unknown;
     width?: unknown;
     height?: unknown;
+  }): Promise<
+    { ok: true; artboardId: string; seq?: number } | { ok: false; status: number; error: string }
+  >;
+  /** Duplicate an artboard at a new width (feature-3-web-artboards T3). */
+  duplicateArtboardOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    width?: unknown;
   }): Promise<
     { ok: true; artboardId: string; seq?: number } | { ok: false; status: number; error: string }
   >;
@@ -2989,6 +2998,57 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  /**
+   * Duplicate an artboard at a new width (feature-3-web-artboards T3,
+   * "Duplicate at width…") — clones id/label/width, everything else
+   * (kind/guides/print/style/children) carries over verbatim.
+   */
+  async function duplicateArtboardOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    width?: unknown;
+  }): Promise<
+    { ok: true; artboardId: string; seq?: number } | { ok: false; status: number; error: string }
+  > {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    if (!takeStructuralToken()) return RATE_LIMITED;
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId.trim() : '';
+    if (!artboardId) return { ok: false, status: 400, error: 'artboardId required' };
+    const width = Number.isFinite(Number(input.width))
+      ? Math.max(64, Math.min(8192, Math.round(Number(input.width))))
+      : 0;
+    if (!width) return { ok: false, status: 400, error: 'width required' };
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      if (before.length > MAX_CANVAS_SOURCE) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: false, status: 413, error: 'canvas source too large to grow' };
+      }
+      const res = await duplicateArtboard(r.abs, artboardId, width);
+      const after = await Bun.file(r.abs).text();
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true, artboardId: res.artboardId };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-duplicate-artboard');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true, artboardId: res.artboardId, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'duplicate-artboard failed',
+      };
+    }
+  }
+
   /** Free-hand artboard resize (D4) — write width/height NUMERIC props (DDR-027). */
   async function resizeArtboardOp(input: {
     canvas?: unknown;
@@ -4103,6 +4163,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     setArtboardGuidesOp,
     setArtboardPrintOp,
     deleteArtboardOp,
+    duplicateArtboardOp,
     duplicateElementOp,
     editScopeOp,
     reorderRevert,

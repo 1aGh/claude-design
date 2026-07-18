@@ -80,6 +80,15 @@ export interface RegistryItem {
     light?: Record<string, string>;
     dark?: Record<string, string>;
   };
+  /**
+   * shadcn's generic item-specific-metadata extension point. feature-3-web-
+   * artboards T6 — carries the resolved artboard `kind` (`digital` | `print`
+   * | `web` | `video` | `mixed`) so a consumer (or a future re-import) knows
+   * what authoring contract produced this drop without re-parsing the TSX.
+   */
+  meta?: {
+    kind: string;
+  };
 }
 
 export interface EmitOptions {
@@ -101,6 +110,34 @@ export interface EmitOptions {
    * back-compat with the CLI shape — handoff inlining no longer reads it.
    */
   designRoot?: string;
+}
+
+// ---------------------------------------------------------------------------
+// feature-3-web-artboards T6 — thread the artboard kind into the emitted
+// registry-item's `meta` (a first-class shadcn registry-item.json extension
+// point for item-specific metadata, not a maude-invented field). A regex scan
+// is deliberate here (not an AST walk like stripDataCdId) — this only needs
+// the `kind="…"` string values, never a node reference to edit.
+
+/**
+ * Resolve a single `kind` value for the whole canvas file, from its
+ * `<DCArtboard kind="…">` occurrences. A canvas with zero explicit `kind`
+ * attributes resolves to `'digital'` (DCArtboard's own implicit default). A
+ * canvas whose artboards carry more than one distinct explicit kind (e.g. a
+ * multi-breakpoint web canvas assembled via "Duplicate at width…" next to an
+ * unrelated screen) resolves to `'mixed'` rather than picking one arbitrarily.
+ */
+export function resolveCanvasKind(rawSource: string): string {
+  const kinds = new Set<string>();
+  const re = /<DCArtboard\b[^>]*\bkind="([a-z]+)"/g;
+  let m: RegExpExecArray | null = re.exec(rawSource);
+  while (m) {
+    if (m[1]) kinds.add(m[1]);
+    m = re.exec(rawSource);
+  }
+  if (kinds.size === 0) return 'digital';
+  if (kinds.size === 1) return [...kinds][0] as string;
+  return 'mixed';
 }
 
 // ---------------------------------------------------------------------------
@@ -668,6 +705,7 @@ export async function emitRegistryItem(opts: EmitOptions): Promise<RegistryItem>
     registryDependencies,
     files,
     ...(cssVars ? { cssVars } : {}),
+    meta: { kind: resolveCanvasKind(rawTsx) },
   };
 
   // Drop undefined keys for a clean JSON.

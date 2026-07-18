@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "web-artboards",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Web artboards — breakpoints, duplicate, and a grid editor",
+      "summary": "Set an artboard's kind to Web and it becomes a responsive viewport: a small chip shows its current breakpoint, and \"Duplicate at width…\" (right-click or the Inspector) clones it at Mobile/Tablet/Laptop/Desktop widths for reflow testing. Grid containers also get a new Grid section in the Inspector — define columns and rows with px/%/fr/em/auto units, drag the gutters directly on the canvas, and place children into specific cells.",
+      "surface": "design-ui"
+    },
+    {
       "id": "scene-aware-video-analyze",
       "version": "0.46.0",
       "date": "2026-07-18",

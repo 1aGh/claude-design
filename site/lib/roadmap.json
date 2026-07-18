@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-18T07:35:56.416Z",
+  "generated": "2026-07-18T12:34:41.884Z",
   "currentPhase": null,
   "phases": [
     {
@@ -384,6 +384,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-git-switcher-fast-and-trustworthy.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-grid-track-editor",
+      "title": "Feature: CSS-Grid track editor (on-canvas columns/rows + track drag-resize)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Give a display: grid container a first-class on-canvas track editor, matching what Figma auto-layout-grids and Webflow's Grid 2.0 give designers: define the column and row tracks, drag the track gu...",
+      "planPath": ".ai/plans/archive/feature-grid-track-editor.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1411,6 +1422,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-acp-safe-defaults-and-attention-notifications",
+      "title": "Feature: ACP safe default-allow (localhost curl + read-only fs) + attention push notifications",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-acp-safe-defaults-and-attention-notifications.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
       "id": "feature-goal-unattended-pipelines",
       "title": "Feature: /goal-aware unattended pipelines for flow + design commands",
       "status": "planned",
@@ -1418,17 +1440,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, frontmatter, and closing-prompt conventions.",
       "planPath": ".ai/plans/feature-goal-unattended-pipelines.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-grid-track-editor",
-      "title": "Feature: CSS-Grid track editor (on-canvas columns/rows + track drag-resize)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Give a display: grid container a first-class on-canvas track editor, matching what Figma auto-layout-grids and Webflow's Grid 2.0 give designers: define the column and row tracks, drag the track gu...",
-      "planPath": ".ai/plans/feature-grid-track-editor.md",
       "archived": false,
       "phaseKey": null
     },

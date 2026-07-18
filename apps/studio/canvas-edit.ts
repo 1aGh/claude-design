@@ -4148,6 +4148,148 @@ export async function insertArtboard(
   });
 }
 
+/**
+ * Duplicate the `<DCArtboard id="…">` whose `id` prop equals `artboardId` at
+ * a NEW width — feature-3-web-artboards T3 "Duplicate at width…". Clones the
+ * artboard's full source span (opening tag through children through closing
+ * tag) as the NEXT sibling in source order, then patches the clone's `id`
+ * (suffixed with the new width, de-duped against every existing artboard id),
+ * `label` (suffixed `" (WIDTHpx)"`), and `width` attributes. Every other prop
+ * (`kind`, `guides`, `print`, `background`, `layout`, `gap`, `fixed`, and the
+ * children themselves) carries over verbatim — this is a structural copy, not
+ * a linked variant (Design Decision 3): the agent or the clone's own
+ * `@container` rules adapt the content afterward.
+ *
+ * Unlike `applyDuplicateElement` (whose target has no explicit source `id` —
+ * data-cd-id is transpile-time positional, so a byte-verbatim clone never
+ * collides), an artboard's `id`/`label`/`width` ARE explicit JSX attributes
+ * that WOULD collide verbatim — they're rewritten in the clone text via a
+ * small isolated MagicString pass keyed off the original attribute nodes'
+ * offsets translated into clone-relative coordinates (offset - elStart),
+ * rather than re-parsing the extracted substring.
+ *
+ * Splicing the clone right after the SOURCE (not appended at the end of the
+ * file, unlike applyInsertArtboard) is what gives it a "beside the source"
+ * position for free: an artboard with no explicit `layout.artboards[]` entry
+ * places via the runtime's index-ordered default-grid (DDR-027,
+ * canvas-lib.tsx VP_GRID) — the very next index after the source is the next
+ * default-grid cell, so the clone lands beside the original with no extra
+ * position-writing plumbing. An artboard that DOES carry an explicit
+ * `layout.artboards[]` entry is unaffected by its index (position is keyed by
+ * id, not order).
+ *
+ * Reparse-gated. Whole-file-snapshot undo, like the other structural ops.
+ */
+export function applyDuplicateArtboard(
+  canvasAbsPath: string,
+  source: string,
+  artboardId: string,
+  newWidth: number
+): { source: string; artboardId: string } {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${parsed.errors[0]?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  const artboards = collectJsxByTag(parsed.program, 'DCArtboard');
+  const target = artboards.find((a) => getStringAttr(a.openingElement, 'id') === artboardId);
+  if (!target) {
+    throw new CanvasEditError(`<DCArtboard id="${artboardId}"> not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id: artboardId,
+    });
+  }
+  const width = Math.max(1, Math.round(newWidth));
+
+  const existingIds = new Set(
+    artboards
+      .map((a) => getStringAttr(a.openingElement, 'id'))
+      .filter((x): x is string => typeof x === 'string')
+  );
+  let newId = `${artboardId}-${width}`;
+  let suffix = 2;
+  while (existingIds.has(newId)) {
+    newId = `${artboardId}-${width}-${suffix}`;
+    suffix += 1;
+  }
+
+  const sourceLabel = getStringAttr(target.openingElement, 'label') ?? artboardId;
+  const newLabel = `${sourceLabel} (${width}px)`;
+
+  const elStart = target.start as number;
+  const elEnd = target.end as number;
+  const cloneText = source.slice(elStart, elEnd);
+
+  const idAttr = findAttribute(target.openingElement, 'id');
+  if (!idAttr || typeof idAttr.start !== 'number' || typeof idAttr.end !== 'number') {
+    throw new CanvasEditError(`<DCArtboard id="${artboardId}"> has no readable id attribute`, {
+      canvas: canvasAbsPath,
+      id: artboardId,
+    });
+  }
+  const labelAttr = findAttribute(target.openingElement, 'label');
+  const widthAttr = findAttribute(target.openingElement, 'width');
+
+  const cs = new MagicString(cloneText);
+  cs.overwrite(idAttr.start - elStart, idAttr.end - elStart, `id="${escapeAttr(newId)}"`);
+  if (labelAttr && typeof labelAttr.start === 'number' && typeof labelAttr.end === 'number') {
+    cs.overwrite(
+      labelAttr.start - elStart,
+      labelAttr.end - elStart,
+      `label="${escapeAttr(newLabel)}"`
+    );
+  } else {
+    cs.appendLeft(idAttr.end - elStart, ` label="${escapeAttr(newLabel)}"`);
+  }
+  if (widthAttr && typeof widthAttr.start === 'number' && typeof widthAttr.end === 'number') {
+    cs.overwrite(widthAttr.start - elStart, widthAttr.end - elStart, `width={${width}}`);
+  } else {
+    cs.appendLeft(idAttr.end - elStart, ` width={${width}}`);
+  }
+  const patchedClone = cs.toString();
+
+  const targetIndent = lineStartInfo(source, elStart).indent;
+  const insertText = `\n${targetIndent}${patchedClone}`;
+  const s = new MagicString(source);
+  s.appendLeft(elEnd, insertText);
+  const out = s.toString();
+  const check = parseSync(canvasAbsPath, out, { sourceType: 'module' });
+  if (check.errors && check.errors.length > 0) {
+    throw new CanvasEditError(
+      `duplicate-artboard produced invalid source (${check.errors[0]?.message ?? 'parse error'})`,
+      { canvas: canvasAbsPath, id: artboardId }
+    );
+  }
+  return { source: out, artboardId: newId };
+}
+
+/** Duplicate an artboard on disk (atomic write + cross-process lock). */
+export async function duplicateArtboard(
+  canvasAbsPath: string,
+  artboardId: string,
+  newWidth: number
+): Promise<{ source: string; artboardId: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id: artboardId,
+      });
+    }
+    const source = await file.text();
+    const next = applyDuplicateArtboard(canvasAbsPath, source, artboardId, newWidth);
+    if (next.source === source) return next;
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
 /** A clip in an assemble request — a dropped reference chip's src + kind. */
 export interface AssembleClip {
   src: string;

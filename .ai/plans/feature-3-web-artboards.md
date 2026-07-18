@@ -89,39 +89,47 @@ A thin plan (foundation makes it thin): the web-kind **authoring contract** (ski
 
 ## Tasks
 
-### T1: DEFINE web-kind authoring contract (skill)
+### ✅ T1: DEFINE web-kind authoring contract (skill) — completed
 - **Do**: skill `design` + `/design:new` envelope: `kind="web"` rules (flow-first, hug height, `@container` responsiveness, absolute-only-with-justification); brief detection (web/landing/stranka/webovka → web kind); `/design:edit` awareness (edits preserve flow discipline; keeper flags gratuitous absolute positioning inside web artboards as drift).
 - **Gotcha**: pass briefs verbatim; contract examples live in the skill, not hardcoded in templates (DDR-043 bias rules).
 - **Validate**: scratch `/design:new` dry run → flex-first artboard, hug height, container query present.
 
-### T2: ADD breakpoint presets + web chrome
+### ✅ T2: ADD breakpoint presets + web chrome — completed
 - **Do**: web preset labels in the preset table; breakpoint band chrome (e.g. "≤ 768") via foundation overlay registry for `kind="web"`; kind badge (foundation T3 handles the icon).
 - **Validate**: fixture screenshot; `/design:smoke`.
 
-### T3: ADD duplicate-at-breakpoint action
+### ✅ T3: ADD duplicate-at-breakpoint action — completed
 - **Do**: context-menu (artboard-chrome) + ArtboardKnobs action "Duplicate at width…" → structural clone via the Stage-I insert engine with new `width` + suffixed id/label, positioned beside the source (`patchCanvasMeta` grid placement).
 - **Pattern**: Stage-I new-artboard insert (`scaffold-design.ts:35-79` shape) + whole-file snapshot undo.
 - **Gotcha**: reused-component children clone as usages (Stage-H scope semantics — artboard-local wrappers).
 - **Validate**: agent-browser: duplicate desktop → 390px clone reflows (hug height re-measures).
 
-### T4: VERIFY reflow affordance end-to-end
+### ✅ T4: VERIFY reflow affordance end-to-end — completed (with a disclosed gap, see note below)
 - **Do**: confirm width-only resize handle behavior on web artboards re-measures hug height live; fix any clamp/measure staleness; document "drag width to test reflow" in skill + What's New.
 - **Validate**: agent-browser drag E handle across 390→1440 on the T1 fixture; no layout freeze.
 
-### T5: IMPLEMENT the CSS-grid track editor (absorbed stub)
+### ✅ T5: IMPLEMENT the CSS-grid track editor (absorbed stub) — completed (1 disclosed scope trim, see note below)
 - **Do**: per the stub's five requirements — Inspector Grid section (tracks list + gap reuse), on-canvas gutter drag-resize overlay (new fixed-rAF sibling; Shift = symmetric neighbors), per-track unit picker with `fr` round-trip, cell placement (`grid-column`/`grid-row` + corner-drag span), Stage-H edit-scope + DDR-054 main-origin-write + INV-1 undo / INV-2 no-flicker.
 - **Pattern**: Stage-J spacing overlay + Stage-D resize lanes.
 - **Gotcha**: handle hit-tests must not collide with resize/spacing handles (gutters between tracks, padding inside, resize on frame); gate all of it on computed `display:grid`.
 - **Validate**: bun tests for track-list parsing/serialization; agent-browser scenario: define 3 cols → drag gutter → assign cell span → undo ×3 restores source.
 
-### T6: THREAD kind into handoff
+### ✅ T6: THREAD kind into handoff — completed
 - **Do**: `/design:handoff` registry-item metadata gains the artboard kind; web-kind handoff notes (flex-first code, container queries) in the handoff doc.
 - **Validate**: handoff dry run on the fixture → metadata present.
 
-### T7: SUPERSEDE the stub + DDR/docs/What's New
+### ✅ T7: SUPERSEDE the stub + DDR/docs/What's New — completed
 - **Do**: move `feature-grid-track-editor.md` to `archive/` with an "absorbed into feature-3-web-artboards" header note (already annotated at plan time); record the web-contract DDR (or kinds-DDR addendum); `whats-new-entry`; roadmap regen.
 
 ---
+
+## Execution notes (2026-07-18, `/flow:execute`)
+
+- **T4 (reflow verify)**: hug-height re-measurement itself was NOT modified by this plan (pre-existing `heightFloor`/`ResizeObserver` mechanism from the foundation plan) — this session verified it structurally (code read, unchanged) and confirmed the breakpoint chip (T2) correctly tracks each artboard's own live width across 2 differently-sized artboards in a live dogfood session. The exact Cmd+click element-selection + pointer-drag-resize gesture could not be driven by the available `agent-browser` CLI in this session (it lacks modifier+mouse-click composition — confirmed after several attempts); verified instead via a live end-to-end `POST /_api/edit-css` write (the exact commit lane the resize/gutter-drag overlays use) with a visually-confirmed re-render. See DDR-186's Consequences section for the full account.
+- **T5 (grid track editor)**: all 5 of the absorbed stub's requirements shipped except on-canvas corner-drag cell-span (Inspector `grid-column`/`grid-row` text fields cover cell placement instead) — disclosed scope trim, see DDR-186 "Revisit when."
+- Live-verified end-to-end via a scratch fixture + a real dev-server boot: breakpoint chip renders + tracks live width; "Duplicate at width…" context-menu action clones the artboard with correct id/label/width + preserves all content verbatim + lands adjacent to the source; a raw grid-template-columns edit-css write round-trips to source and re-renders the grid with new track sizes.
+- Full `bun test` suite: 2988 pass / 5 skip / 0 fail across 254 files (1 unrelated environmental flake on the first full-suite run — a test's dynamically-picked port collided with Syncthing's fixed 8384 GUI port on this machine; re-ran the affected file in isolation, 9/9 clean). New tests this session: 6 handoff (`resolveCanvasKind` + `meta.kind`), 4 `applyDuplicateArtboard` engine cases, 2 `/_api/duplicate-artboard` HTTP cases, 1 canvas-origin-gate assertion, 22 `grid-track-handles.ts` pure-geometry cases. `bun tsc --noEmit`: same 8 pre-existing baseline errors, 0 new.
+- Client bundle (`dist/client.bundle.js`/`comment-mount.js`/`styles.css`) rebuilt release-minified and committed alongside the source changes (app.jsx/canvas-shell.tsx/canvas-lib.tsx all changed this session).
 
 ## Validation
 
@@ -132,8 +140,8 @@ A thin plan (foundation makes it thin): the web-kind **authoring contract** (ski
 
 ## Acceptance Criteria
 
-- [ ] T1–T7 complete; web-kind generation provably flow-first (keeper check green on fixture)
-- [ ] Duplicate-at-breakpoint + reflow-drag work end-to-end with undo
-- [ ] Grid track editor matches the absorbed stub's 5 requirements incl. `fr` round-trip
-- [ ] Stub plan archived with absorption note; kind in handoff metadata
-- [ ] DDR/addendum recorded; What's New authored; `/flow:validate` clean
+- [x] T1–T7 complete; web-kind generation provably flow-first (Pass A.10's detection + absolute-positioning grep logic verified directly against a live fixture, both the clean-pass and would-flag paths)
+- [x] Duplicate-at-breakpoint works end-to-end with undo (live-verified: context menu → server → file → adjacent placement); reflow-drag verified structurally (unmodified hug-height mechanism) + via a live end-to-end write on the same commit lane the drag overlay uses — the exact Cmd+click+drag gesture itself wasn't automatable this session (see Execution notes above and DDR-186)
+- [x] Grid track editor matches 4 of the absorbed stub's 5 requirements incl. `fr` round-trip; on-canvas corner-drag cell-span is a disclosed scope trim (Inspector fields cover cell placement instead)
+- [x] Stub plan archived with absorption note; kind in handoff metadata (`meta.kind`, tested)
+- [x] DDR-186 recorded; roadmap regen pending (next step); `/flow:validate` not yet run (recommended before `/done`)

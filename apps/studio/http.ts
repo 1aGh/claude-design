@@ -2280,6 +2280,38 @@ export function createHttp(
       );
     },
 
+    '/_api/duplicate-artboard': async (req: Request) => {
+      // feature-3-web-artboards T3 — "Duplicate at width…". POST
+      // { canvas, artboardId, width } → api.duplicateArtboardOp (clones the
+      // artboard as the next sibling with a suffixed id/label + the new
+      // width; every other prop, incl. kind/guides/print, carries over
+      // verbatim). Whole-file undo seq. MAIN-ORIGIN ONLY (absent from both
+      // allowlists); sameOriginWrite + loopback-Host gated, same posture as
+      // /_api/insert-artboard above.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        artboardId?: unknown;
+        width?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.duplicateArtboardOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, artboardId: result.artboardId, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/assets': async (req: Request) => {
       // Stage F1 (feature-element-editing-robustness) — list content-addressed
       // image/video assets under <designRoot>/assets/ for the AssetPicker (Replace

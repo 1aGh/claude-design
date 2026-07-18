@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   applyDeleteElement,
+  applyDuplicateArtboard,
   applyInsertArtboard,
   applyInsertElement,
   applyInsertElementIntoArtboard,
@@ -633,5 +634,60 @@ describe('canvas-edit / applyInsertArtboard (I4)', () => {
         height: 844,
       })
     ).toThrow(CanvasEditError);
+  });
+});
+
+describe('canvas-edit / applyDuplicateArtboard (feature-3-web-artboards T3)', () => {
+  const canvas = [
+    'export default function Demo() {',
+    '  return (',
+    '    <DesignCanvas>',
+    '      <DCArtboard id="home" label="Home" width={1440} height={1024} kind="web">',
+    '        <div>content</div>',
+    '      </DCArtboard>',
+    '      <DCArtboard id="other" label="Other" width={800} height={600}>',
+    '        <div>other</div>',
+    '      </DCArtboard>',
+    '    </DesignCanvas>',
+    '  );',
+    '}',
+  ].join('\n');
+
+  test('clones the artboard with a suffixed id/label + new width, right after the source', () => {
+    const out = applyDuplicateArtboard(CANVAS, canvas, 'home', 390);
+    expect(out.artboardId).toBe('home-390');
+    expect(out.source).toContain('id="home-390"');
+    expect(out.source).toContain('label="Home (390px)"');
+    expect(out.source).toContain('width={390}');
+    // Preserves kind + children verbatim.
+    expect(out.source).toContain('kind="web"');
+    const homeIdx = out.source.indexOf('id="home"');
+    const cloneIdx = out.source.indexOf('id="home-390"');
+    const otherIdx = out.source.indexOf('id="other"');
+    expect(cloneIdx).toBeGreaterThan(homeIdx);
+    // Lands right after the source — BEFORE the sibling that followed it — so
+    // it inherits the "beside the source" default-grid slot (DDR-027).
+    expect(cloneIdx).toBeLessThan(otherIdx);
+    expect((out.source.match(/<div>content<\/div>/g) ?? []).length).toBe(2);
+    expect(parses(out.source)).toBe(true);
+  });
+
+  test('de-dupes the new id when the same breakpoint is duplicated twice', () => {
+    const once = applyDuplicateArtboard(CANVAS, canvas, 'home', 390);
+    const twice = applyDuplicateArtboard(CANVAS, once.source, 'home', 390);
+    expect(twice.artboardId).toBe('home-390-2');
+    expect(twice.source).toContain('id="home-390-2"');
+    expect(parses(twice.source)).toBe(true);
+  });
+
+  test('height/other props are untouched — only id/label/width change', () => {
+    const out = applyDuplicateArtboard(CANVAS, canvas, 'home', 390);
+    // The clone keeps the SOURCE's height (390px is a width-only breakpoint
+    // change — height stays hug-driven per Design Decision 1).
+    expect(out.source).toContain('id="home-390" label="Home (390px)" width={390} height={1024}');
+  });
+
+  test('throws on an unknown artboard id', () => {
+    expect(() => applyDuplicateArtboard(CANVAS, canvas, 'nope', 390)).toThrow(CanvasEditError);
   });
 });
