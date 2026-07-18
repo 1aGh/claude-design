@@ -39,7 +39,8 @@ describe('comment-mount / MaybeToolProvider dedup', () => {
     const html = renderToStaticMarkup(
       createElement(MaybeToolProvider, null, createElement(ToolReader))
     );
-    expect(html).toContain('data-tool="move"');
+    // feature-4 (browse/move split) — the default boot tool is `browse`.
+    expect(html).toContain('data-tool="browse"');
   });
 });
 

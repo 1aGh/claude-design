@@ -29,6 +29,7 @@ import { useArtboardsContext, useDragStateContext } from './canvas-lib.tsx';
 import { resolveSelectionEl, scopedCdSelector, selectorIndex } from './dom-selection.ts';
 import { isEditableTarget } from './input-router.tsx';
 import { type Selection, useSelectionSet } from './use-selection-set.tsx';
+import { useToolModeOptional } from './use-tool-mode.tsx';
 
 const STEP_SMALL = 1;
 const STEP_LARGE = 10;
@@ -62,6 +63,18 @@ export function useKeyboardDiscipline(): void {
   const selSet = useSelectionSet();
   const artboardsCtx = useArtboardsContext();
   const dragBus = useDragStateContext();
+  // feature-4 (browse/move split) — every keyboard EDITING op here (Cmd+A,
+  // Cmd+D, copy/paste-style, Enter/Tab tree traversal, Delete, arrow-nudge) is
+  // scoped OUT of the `browse` tool: in the alive mode the mock owns the
+  // keyboard (a real form submits on Enter, an input takes Delete). A live ref
+  // keeps the document capture listener from re-attaching on every tool change.
+  // Default to 'move' (NOT 'browse') when no ToolProvider is above us — a
+  // context without a tool store (a bare specimen) must keep its keyboard
+  // editing ops, exactly as before this feature. Only an ACTIVE `browse` tool
+  // suppresses them.
+  const toolCtx = useToolModeOptional();
+  const toolRef = useRef(toolCtx?.tool ?? 'move');
+  toolRef.current = toolCtx?.tool ?? 'move';
   // Element arrow-nudge burst (Task L1): accumulate left/top, preview inline, and
   // commit once after a short pause (one undo per settle, not per keypress).
   const nudgeRef = useRef<{
@@ -78,6 +91,8 @@ export function useKeyboardDiscipline(): void {
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (isEditableTarget(e.target)) return;
+      // feature-4 — browse is a pure pass-through; the mock owns the keyboard.
+      if (toolRef.current === 'browse') return;
 
       // Cmd+A → select all stamped elements in the active artboard.
       const isMeta = e.metaKey || e.ctrlKey;

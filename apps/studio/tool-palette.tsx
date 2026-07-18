@@ -256,7 +256,9 @@ function ensurePaletteStyles(): void {
   document.head.appendChild(s);
 }
 
-const NAV_TOOLS = ['move', 'hand', 'comment'] as const;
+// feature-4 (browse/move split) — Browse leads the nav group (it's the boot
+// default), then Move (the select tool, V), Hand, Comment.
+const NAV_TOOLS = ['browse', 'move', 'hand', 'comment'] as const;
 // Phase 24 — the two rect/ellipse buttons collapse into one Shape tool (with a
 // kind popover); sticky/arrow/text/eraser keep their order. Wave H — section
 // joins the row (it was ⇧S-only before; users couldn't discover it).

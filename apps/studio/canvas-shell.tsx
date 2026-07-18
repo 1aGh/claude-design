@@ -410,6 +410,13 @@ interface LayerNode {
    *  route CssKnobs uses), so this must reflect the SOURCE value, not a
    *  client-only preview flag (see app.jsx `toggleVisibility`). */
   hidden: boolean;
+  /** feature-4 T7 — a SYNTHETIC group row for an unstamped wrapper that holds
+   *  stamped descendants. It's a structural stand-in so the tree mirrors real
+   *  nesting instead of hoisting descendants up a level (the "some elements
+   *  don't show up / tree is flat" bug). Non-selectable + non-draggable (it
+   *  has no `data-cd-id` to address in source); its `id` is a stable
+   *  `__grp:<sig>#<n>` synthetic key, never a real cd-id. */
+  synthetic?: boolean;
   children: LayerNode[];
 }
 
@@ -518,8 +525,18 @@ function buildSelectLayerSubmenu(
   });
 }
 
-function serializeArtboardTree(root: Element): LayerNode[] {
+// feature-4 T7 — does this subtree contain ANY stamped element? Gates whether an
+// unstamped wrapper is worth a synthetic group row (an empty/decorative wrapper
+// with no addressable descendants stays omitted — no noise).
+function hasStampedDescendant(el: Element): boolean {
+  return !!el.querySelector('[data-cd-id]');
+}
+
+export function serializeArtboardTree(root: Element): LayerNode[] {
   const seen = new Map<string, number>();
+  // Occurrence counter for synthetic group signatures so their keys are stable
+  // + unique across re-serializations (collapse state persists through HMR).
+  const groupSeen = new Map<string, number>();
   function walk(el: Element): LayerNode[] {
     const out: LayerNode[] = [];
     for (const child of Array.from(el.children)) {
@@ -538,10 +555,29 @@ function serializeArtboardTree(root: Element): LayerNode[] {
           hidden: (child as HTMLElement).style.display === 'none',
           children: walk(child),
         });
-      } else {
-        // Unstamped wrapper — descend so its stamped descendants still surface.
-        out.push(...walk(child));
+      } else if (hasStampedDescendant(child)) {
+        // feature-4 T7 — unstamped wrapper WITH stamped descendants: emit a
+        // synthetic, non-selectable GROUP row so the tree mirrors real nesting
+        // instead of hoisting its descendants up a level. (Pre-feature-4 this
+        // branch did `out.push(...walk(child))`, flattening the hierarchy — the
+        // "layers are flat / an element is at the wrong depth" report.)
+        const tag = child.tagName.toLowerCase();
+        const cls = realClasses(child).split(/\s+/).filter(Boolean)[0];
+        const sig = cls ? `${tag}.${cls}` : tag;
+        const n = groupSeen.get(sig) ?? 0;
+        groupSeen.set(sig, n + 1);
+        out.push({
+          id: `__grp:${sig}#${n}`,
+          tag,
+          label: layerLabel(child),
+          type: 'group',
+          index: 0,
+          hidden: false,
+          synthetic: true,
+          children: walk(child),
+        });
       }
+      // Unstamped wrapper with NO stamped descendants → omitted (decorative).
     }
     return out;
   }
@@ -2102,6 +2138,15 @@ function CanvasRouter({
 
   const getActiveTool = useCallback(() => tool, [tool]);
 
+  // feature-4 (browse/move split) — a live ref to the active tool for the
+  // long-lived capture listeners (dblclick) whose effects don't re-attach on a
+  // tool change. In the `browse` tool every canvas gesture is a pure native
+  // pass-through, so drill-select + inline text-edit must NOT fire — a
+  // double-click there belongs to the mock (selecting text in a real input,
+  // etc.). Press V for the Move (select) tool to edit.
+  const dblToolRef = useRef(tool);
+  dblToolRef.current = tool;
+
   const applyHover = useCallback(() => {
     hoverRafRef.current = null;
     const pending = pendingHoverRef.current;
@@ -2496,6 +2541,9 @@ function CanvasRouter({
     }
     const onDbl = (e: MouseEvent): void => {
       if (editing) return;
+      // feature-4 — browse is a pure pass-through: no drill-select, no inline
+      // text-edit. The mock owns its own double-clicks. Press V to edit.
+      if (dblToolRef.current === 'browse') return;
       const t = e.target as HTMLElement | null;
       const stamped = (t?.closest?.('[data-cd-id]') as HTMLElement | null) ?? null;
       if (!stamped) return;

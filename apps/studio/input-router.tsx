@@ -64,6 +64,12 @@ export function crossedDragThreshold(
  * can grab them natively.
  */
 export type Tool =
+  // feature-4 (browse/move split) — `browse` is the BOOT default: a pure
+  // native pass-through so a freshly-opened mock stays ALIVE (buttons click,
+  // links follow, inputs focus). It carries ZERO select machinery — the router
+  // returns `no-op` for every browse-tool pointer event so descendants see them
+  // untouched. Pressing V flips to `move` (the select tool). See DDR-187.
+  | 'browse'
   | 'move'
   | 'hand'
   | 'comment'
@@ -113,9 +119,12 @@ export type RouterAction =
       /**
        * `true` resolves to the deepest descendant under the cursor (Cmd-held
        * mode). `false` resolves to the topmost interesting ancestor (top mode).
-       * Phase 4.1 Move-tool selection always uses deep=true — bare clicks
-       * are passthrough (no select), and the only entry points are Cmd
-       * (replace deep) and Cmd+Shift (add deep).
+       * feature-4 (browse/move split, DDR-187) — the Move (select) tool now
+       * fires the FULL Figma ladder: a BARE click selects the TOP-level object
+       * (`deep:false`), Cmd selects the DEEPEST element (`deep:true`), Shift
+       * adds, Cmd+Shift adds-deep. (Pre-feature-4 Move-tool select was
+       * Cmd-only and always deep; bare clicks were passthrough — that role now
+       * belongs to the `browse` tool, which never selects at all.)
        */
       deep: boolean;
       clientX: number;
@@ -210,6 +219,9 @@ export function classify(input: ClassifyInput): RouterAction {
     if (isAnnotationTool(input.activeTool)) return { kind: 'no-op' };
     // Hand tool: drag pan is owned by useViewportController; no hover paint.
     if (input.activeTool === 'hand') return { kind: 'no-op' };
+    // Browse tool (feature-4 boot default): pure pass-through — no hover halo,
+    // native interactions flow. Press V to select.
+    if (input.activeTool === 'browse') return { kind: 'no-op' };
     // Comment tool: always paint a preview halo on the deepest element under
     // cursor — that's the element the user is about to comment on. Comment
     // pin attachment is to the same element they were hovering.
@@ -221,12 +233,12 @@ export function classify(input: ClassifyInput): RouterAction {
         clientY: input.clientY ?? 0,
       };
     }
-    // Move tool: bare hover does nothing (native interactions pass through);
-    // Cmd-held hover paints a halo on the deepest element (preview).
-    if (!metaOrCtrl(input)) return { kind: 'no-op' };
+    // Move (select) tool: paint a preview halo of exactly what a click would
+    // select — the TOP-level object on a bare hover (Figma's hover outline),
+    // the DEEPEST element while Cmd is held (deep-select preview).
     return {
       kind: 'hover',
-      deep: true,
+      deep: metaOrCtrl(input),
       clientX: input.clientX ?? 0,
       clientY: input.clientY ?? 0,
     };
@@ -267,17 +279,27 @@ export function classify(input: ClassifyInput): RouterAction {
     // the controller's pointerdown listener on the same host claims the drag.
     if (input.activeTool === 'hand') return { kind: 'no-op' };
 
-    // Move tool. Selection ONLY fires with Cmd / Cmd+Shift. Bare clicks and
-    // Shift-without-Cmd pass through so native canvas interactions (button
-    // presses, link clicks, input focus) still work — exactly the same as
-    // pre-Phase-4.1 behavior for everything except Cmd-modified gestures.
+    // Browse tool (feature-4 boot default): every bare/modified left-click
+    // passes through so the mock stays alive (a button press fires, a link
+    // follows, an input focuses). No select — press V for the Move tool.
+    if (input.activeTool === 'browse') return { kind: 'no-op' };
+
+    // Move (select) tool. feature-4 (DDR-187) — the full Figma ladder:
+    //   bare click       → select TOP-level object   (deep:false, replace)
+    //   Shift+click      → add TOP-level object        (deep:false, add)
+    //   Cmd/Ctrl+click   → select DEEPEST element      (deep:true, replace)
+    //   Cmd+Shift+click  → add DEEPEST element          (deep:true, add)
+    // Bare clicks are claimed (preventDefault) so native canvas interactions do
+    // NOT fire in select mode — that's the browse tool's job. The click-vs-drag
+    // threshold (canvas-shell.tsx ReorderDrag / marquee overlays, all still
+    // gated on `tool === 'move'`) means a press that turns into a drag reorders
+    // / marquees instead; a release-in-place is the select.
     const cmd = metaOrCtrl(input);
-    if (!cmd) return { kind: 'no-op' };
     const shift = !!input.shiftKey;
     return {
       kind: 'select',
       mode: shift ? 'add' : 'replace',
-      deep: true,
+      deep: cmd,
       clientX: input.clientX ?? 0,
       clientY: input.clientY ?? 0,
     };
@@ -513,14 +535,20 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
       // Map the click to the action kind the matching pointerdown would have
       // produced, then honor the claim allowlist so a scoped router (the
       // comment mount layer) doesn't suppress clicks it never claimed.
+      // feature-4 — in the Move (select) tool EVERY bare left click is a select
+      // (not just Cmd), so its synthetic click must be swallowed too or the
+      // native handler under the just-selected element would still fire. Draw
+      // tools keep the Cmd-only escape-hatch select. Browse claims nothing.
       const wouldRouteKind: RouterAction['kind'] | null =
         tool === 'comment'
           ? 'drop-comment'
-          : tool === 'move' && mod && e.button === 0
+          : tool === 'move' && e.button === 0
             ? 'select'
-            : e.button === 2
-              ? 'context-menu'
-              : null;
+            : isAnnotationTool(tool) && mod && e.button === 0
+              ? 'select'
+              : e.button === 2
+                ? 'context-menu'
+                : null;
       if (wouldRouteKind && (!claimableActions || claimableActions.has(wouldRouteKind))) {
         e.preventDefault();
         e.stopImmediatePropagation();

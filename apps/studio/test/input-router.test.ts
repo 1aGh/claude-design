@@ -17,10 +17,13 @@ const base = (over: Partial<ClassifyInput>): ClassifyInput => ({
   ...over,
 });
 
-describe('input-router / pointermove — move tool', () => {
-  test('bare hover → no-op (native interactions pass through)', () => {
+describe('input-router / pointermove — move (select) tool', () => {
+  // feature-4 (browse/move split, DDR-187) — the Move tool is now a SELECT
+  // tool: a bare hover paints a TOP-level preview halo (Figma's hover outline),
+  // Cmd-hover previews the deepest element.
+  test('bare hover → hover preview with deep=false (top-level outline)', () => {
     const action = classify(base({ type: 'pointermove', clientX: 10, clientY: 20 }));
-    expect(action.kind).toBe('no-op');
+    expect(action).toMatchObject({ kind: 'hover', deep: false });
   });
 
   test('cmd-hover → hover preview with deep=true', () => {
@@ -46,15 +49,22 @@ describe('input-router / pointermove — move tool', () => {
   });
 });
 
-describe('input-router / pointerdown — move tool select', () => {
-  test('bare left-click → no-op (native interactions pass through)', () => {
+describe('input-router / pointerdown — move (select) tool ladder', () => {
+  // feature-4 (browse/move split, DDR-187) — the full Figma select ladder.
+  test('bare left-click → select replace, deep=false (TOP-level object)', () => {
     const action = classify(base({ type: 'pointerdown', button: 0, clientX: 100, clientY: 200 }));
-    expect(action.kind).toBe('no-op');
+    expect(action).toEqual({
+      kind: 'select',
+      mode: 'replace',
+      deep: false,
+      clientX: 100,
+      clientY: 200,
+    });
   });
 
-  test('shift+left-click (no cmd) → no-op (no select without Cmd)', () => {
+  test('shift+left-click (no cmd) → select add, deep=false (add TOP-level)', () => {
     const action = classify(base({ type: 'pointerdown', button: 0, shiftKey: true }));
-    expect(action.kind).toBe('no-op');
+    expect(action).toMatchObject({ kind: 'select', mode: 'add', deep: false });
   });
 
   test('cmd+left-click → select replace, deep=true (nested single)', () => {
@@ -126,6 +136,62 @@ describe('input-router / pointerdown — tool-aware', () => {
     );
     expect(action.kind).toBe('no-op');
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// feature-4 (browse/move split, DDR-187) — POSTURE INVARIANTS. The browse tool
+// is the boot default and must be a PURE native pass-through: it claims NOTHING,
+// so a freshly-opened mock stays alive (buttons click, links follow). This
+// promotes the old `input-router.tsx` comment-invariant ("bare clicks pass
+// through") into an enforced gate. If any of these flip to a claim, an existing
+// canvas silently loses its native interactivity on boot.
+describe('input-router / browse tool — pure pass-through (boot default)', () => {
+  const browse = (over: Partial<ClassifyInput>): ClassifyInput =>
+    base({ activeTool: 'browse', ...over });
+
+  test('bare left-click → no-op (native button/link/input fires)', () => {
+    expect(classify(browse({ type: 'pointerdown', button: 0, clientX: 5, clientY: 6 })).kind).toBe(
+      'no-op'
+    );
+  });
+
+  test('cmd+left-click → no-op (NO deep-select escape hatch in browse — press V)', () => {
+    expect(classify(browse({ type: 'pointerdown', button: 0, metaKey: true })).kind).toBe('no-op');
+  });
+
+  test('shift+left-click → no-op', () => {
+    expect(classify(browse({ type: 'pointerdown', button: 0, shiftKey: true })).kind).toBe('no-op');
+  });
+
+  test('bare hover → no-op (no halo; native cursors win)', () => {
+    expect(classify(browse({ type: 'pointermove', clientX: 1, clientY: 2 })).kind).toBe('no-op');
+    expect(classify(browse({ type: 'pointermove', metaKey: true })).kind).toBe('no-op');
+  });
+
+  test('right-click → still context-menu (chrome, not canvas content)', () => {
+    expect(classify(browse({ type: 'pointerdown', button: 2, clientX: 3, clientY: 4 })).kind).toBe(
+      'context-menu'
+    );
+  });
+
+  test('V keydown → tool move (the router stays live in browse so V switches)', () => {
+    expect(classify(browse({ type: 'keydown', key: 'v' }))).toEqual({
+      kind: 'tool',
+      tool: 'move',
+    });
+  });
+});
+
+// The select action must NEVER be produced from a non-select tool on a bare
+// gesture. Guards the "select leaked into comment/draw/hand/browse" regression.
+describe('input-router / select never leaks into non-select tools', () => {
+  const nonSelectBare: Tool[] = ['browse', 'hand', 'comment', 'pen', 'shape', 'sticky', 'eraser'];
+  for (const activeTool of nonSelectBare) {
+    test(`bare left-click in ${activeTool} → not a select`, () => {
+      const action = classify(base({ type: 'pointerdown', button: 0, activeTool }));
+      expect(action.kind).not.toBe('select');
+    });
+  }
 });
 
 describe('input-router / contextmenu event', () => {

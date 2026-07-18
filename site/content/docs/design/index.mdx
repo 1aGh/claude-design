@@ -5,9 +5,9 @@ description: The /design:* slash commands. Canvas-first iteration on TSX canvase
 
 The canvas is the working surface. A `.tsx` file (React 19, transpiled by Bun), under `.design/<project-or-feature>/`. Commands iterate **in place** on the active canvas (the one open in your browser tab), so feedback like "move the CTA up" lands on the file you're looking at, not a new mock somewhere else.
 
-A Bun dev server mounts every canvas in a shared shell. **Cmd+Click any element** (Move tool) to scope the next `/design:edit "<feedback>"` to that selection. The server tracks the active tab and your selection over WebSocket and writes `<designRoot>/_active.json` for the slash commands to read.
+A Bun dev server mounts every canvas in a shared shell. A canvas opens **live** (the Browse tool) — click buttons and links to try the mock. Press **V** for the Select tool, then **click any element** to select it (⌘/Ctrl-click reaches the deepest element, double-click drills in one level) and scope the next `/design:edit "<feedback>"` to that selection. The server tracks the active tab and your selection over WebSocket and writes `<designRoot>/_active.json` for the slash commands to read.
 
-<InspectorDiagram caption="Cmd+Click an element → it persists to _active.json → the next /design:edit reads it" />
+<InspectorDiagram caption="Press V, click an element → it persists to _active.json → the next /design:edit reads it" />
 
 ## Thirteen commands
 
@@ -47,12 +47,12 @@ Three setup verbs run once per project. Nine daily verbs drive the canvas loop. 
 
 Not every change needs a command. The canvas browser carries a built-in editor for small, precise tweaks — and it writes straight back to the source `.tsx`, so there's no AI round-trip and nothing to reconcile.
 
-**Cmd+Click any element** to select it, then open the right-hand Inspector (press `I`). Three tabs:
+Press **V** for the Select tool, then **click any element** to select it (plain click = the top-level object, ⌘/Ctrl-click = the deepest element, double-click drills in, `Enter`/`Shift+Enter`/`Tab` walk the tree, `Esc` deselects). Open the right-hand Inspector (press `I`). Three tabs:
 
 | Tab | What it does |
 | --- | ------------ |
 | **Inspect** | Position, size, ancestry and markup of the selected element, read-only — using the maude coordinate-field + swatch anatomy. |
-| **Layers** | A browsable tree of the artboard's elements with type icons. Click to select, hover to highlight, and toggle any layer's visibility from its row. |
+| **Layers** | A browsable tree of the artboard's elements with type icons — including group rows for wrapper `<div>`s, so nothing nests at the wrong depth. Click to select, hover to highlight, toggle any layer's visibility from its row, and the tree auto-reveals whatever you select on the canvas. |
 | **CSS** | A Figma-style design-token editor (see below). |
 
 ### The CSS token editor

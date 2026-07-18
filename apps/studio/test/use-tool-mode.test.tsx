@@ -12,8 +12,10 @@ import {
 } from '../use-tool-mode.tsx';
 
 describe('use-tool-mode / static', () => {
-  test('DEFAULT_TOOLS exposes V/H/C + draw set B/I/R/N/⇧S/A/T/E (single Shape tool + highlighter + section)', () => {
+  test('DEFAULT_TOOLS exposes browse (boot default, no letter) + V/H/C + draw set B/I/R/N/⇧S/A/T/E', () => {
     expect(DEFAULT_TOOLS.map((t) => t.id)).toEqual([
+      // feature-4 (browse/move split) — browse leads, Move (V) is the select tool.
+      'browse',
       'move',
       'hand',
       'comment',
@@ -27,6 +29,7 @@ describe('use-tool-mode / static', () => {
       'eraser',
     ]);
     expect(DEFAULT_TOOLS.map((t) => t.shortcut)).toEqual([
+      '', // browse — no letter shortcut (palette / Esc-from-draw only)
       'V',
       'H',
       'C',
@@ -72,6 +75,10 @@ describe('use-tool-mode / static', () => {
     expect(byId.eraser).toMatch(/, cell$/);
     expect(byId.pen).toMatch(/, crosshair$/);
     expect(byId.shape).toMatch(/, crosshair$/);
+    // feature-4 — browse is the ONE tool with NO custom glyph: it's a pure
+    // native pass-through, so it shows the system `default` cursor over chrome
+    // and (special-cased in the provider) native element cursors over the mock.
+    expect(byId.browse).toBe('default');
   });
 });
 
@@ -97,7 +104,8 @@ describe('use-tool-mode / SSR render', () => {
         <Consumer />
       </ToolProvider>
     );
-    expect(html).toContain('data-tool="move"');
+    // feature-4 — boot default is browse (the mock is alive until V is pressed).
+    expect(html).toContain('data-tool="browse"');
   });
 
   test('ToolProvider honors initial tool', () => {

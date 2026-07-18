@@ -664,6 +664,13 @@
 .st-layer--row:hover .st-layer-eye, .st-layer--row:focus-within .st-layer-eye { opacity: 1; }
 .st-layer-eye:hover { color: var(--fg-0); background: var(--bg-3); }
 .st-layer-eye:focus-visible { outline: none; color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+/* feature-4 T7 — synthetic group row (unstamped wrapper): a muted, italic
+   structural stand-in. Not selectable, not draggable, no eye — it exists only
+   to restore real nesting in the tree. The folder icon reads as "container". */
+.st-layer.is-group { cursor: default; color: var(--fg-3); }
+.st-layer.is-group .st-layer-label { font-style: italic; }
+.st-layer.is-group .st-layer-type { opacity: 0.7; }
+.st-layer.is-group:hover { background: var(--bg-2); }
 /* a hidden layer stays dim + keeps its eye visible (so it can be re-shown) */
 .st-layer.is-hidden { opacity: 0.45; }
 .st-layer.is-hidden .st-layer-eye { opacity: 1; color: var(--fg-2); }

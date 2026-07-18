@@ -1,6 +1,6 @@
 ---
 name: feature-4-canvas-editing-figma-parity
-status: planned
+status: in-progress
 created: 2026-07-15
 decisions: []   # record via /flow:record-ddr at execute: (1) selection model — browse/move tool split + boot posture; (2) convert-to-absolute — reversal of the documented non-goal
 depends-on: none   # deliberately kind-independent; runs PARALLEL to the artboard-kinds family
@@ -12,6 +12,26 @@ planned-via: /flow:plan 2026-07-15 — DDR-130 relay debate; boot-posture fork s
 Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.
 
 > **Parallel track.** This plan is deliberately decoupled from the artboard-kinds family (foundation/print/web): it touches the input router, the transpile/layers pipeline, and a documented interaction non-goal — a categorically different blast radius. A regression here must never gate the print/web ship line. Selection behavior is TOOL-based, never keyed on artboard kind (debate-rejected: kinds coexist on one canvas ⇒ invisible positional mode + hot-path kind lookup).
+
+## Execution status (2026-07-18, `/flow:execute`, branch `main`)
+
+**Shipped + tested (the smart-select interaction model — the user's #1 pain — in full):**
+- **T1/DDR** — [DDR-187](../decisions/DDR-187-figma-select-browse-move-split-and-boot-posture.md) recorded (selection model + boot posture + the A-vs-B fork + the promoted pass-through invariant).
+- **T2** — browse/move split. New `browse` tool (boot default, pure native pass-through, zero select machinery); `move` → full Figma ladder (bare=top / Shift=add-top / Cmd=deepest / Cmd+Shift=add-deep + bare-hover halo). Files: `input-router.tsx`, `use-tool-mode.tsx`, `canvas-cursors.ts`, `canvas-icons.tsx` (IconBrowse), `tool-palette.tsx`, shell menubar + `tool-set` (app.jsx). Every `tool === 'move'` gate untouched → inert in browse.
+- **T3** — dblclick drill (L6) + Enter/Shift+Enter/Tab ladder (L2) already Figma-shaped; hardened both to be browse-passthrough (`onDbl` + `use-keyboard-discipline` bail in browse). Esc=deselect (unchanged).
+- **T4** — discoverability: palette leads Browse + Select; one-time first-run "press V" hint (localStorage `maude-browse-hint-seen`); shell browse cursor special-case.
+- **T5** — posture tests: `input-router.test.ts` rewritten + browse/leak guards; new `browse-posture.test.tsx` (happy-dom + createRoot, native-fires-in-browse vs claimed-in-move); `use-tool-mode.test.tsx` updated.
+- **T7 (partial)** — layers: **synthetic group rows for unstamped wrappers** (the "some elements don't show up / tree is flat" fix) + `layers-synthetic-groups.test.ts` (6 cases); **auto-reveal** of the selected row (expand ancestors + scroll-into-view). Type icons + dimmed-hidden already existed.
+- **T9 (partial)** — What's New entry `figma-smart-select` (pending); design docs interaction model updated.
+
+**Deferred as scoped follow-ups (reasons: blast-radius/risk + session budget; each is genuinely independent and none blocks the shipped core):**
+- **T7 remainder** — component-instance colouring (purple ◇; needs the `collectElementsFull` component-map delivered to the shell over a new channel), locked state (needs a `locked` view.json field + canvas-side drag/select enforcement), inline rename (needs a `data-dc-element` attr-write channel). The plan always scoped these as incremental; the missing-layers fix (the concrete bug) landed.
+- **T8 — convert-to-absolute + DDR-188** — NOT started. This is a self-contained new capability (a batch AST writer across children + container in one whole-file-snapshot undo, a new main-origin `/_api/convert-to-absolute` route, the client computed-box snapshot, the shared-component "affects N instances" confirm, the unstamped-abort, and a regression sweep over every `position`-branching consumer with a zero-visual-delta gate). Given the AST-write risk on the DDR-054-adjacent surface + the exhaustive-verify discipline it needs, it was left for its own focused session rather than rushed. **The non-goal comments it would reverse (`contextual-toolbar.tsx`, `use-element-resize.tsx`) are therefore left intact.**
+- **T6 — desktop e2e posture audit/migration** — pending (needs a desktop build; the shipped core is browser-verifiable via agent-browser).
+
+**Verified this session:** `bun tsc --noEmit` 8 baseline errors, 0 new. Focused `bun test` across every touched suite green (input-router / use-tool-mode / tool-palette / marquee / use-selection-set / dom-selection / canvas-origin-gate / browse-posture / layers-synthetic-groups). Live agent-browser / `/design:smoke` + full-suite + client-bundle rebuild are the close-out steps.
+
+---
 
 ## Description
 

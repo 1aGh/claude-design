@@ -1,6 +1,11 @@
 {
-  "generated": "2026-07-18T12:55:09.270Z",
-  "currentPhase": null,
+  "generated": "2026-07-18T14:42:14.913Z",
+  "currentPhase": {
+    "id": "feature-4-canvas-editing-figma-parity",
+    "title": "Feature: Figma-parity manual editing — smart select (browse/move split), layers panel upgrade, convert-to-absolute",
+    "branch": null,
+    "status": "done (2026-07-10) — **feature-unified-text-editing CLOSED via /flow:done.** Unified WYSIWYG text editing across all five canvas surfaces + inline editing of variable-driven text (`.map()` items, component props, consts) via a source-tracing AST resolver, with reload-durable undo/redo. DDR-158/159/160. Six commits on `main`, not pushed. Two user-visual gates remain open (see history). _Prior in-progress:_ feature-moodboard-first-discovery."
+  },
   "phases": [
     {
       "id": "canvas-chrome-theme-inheritance",
@@ -124,6 +129,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-3-web-artboards",
+      "title": "Feature: Web artboards — flex-first authoring, breakpoints, reflow, grid track editor",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-3-web-artboards.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-acp-ask-user-question",
       "title": "Feature: ACP panel — AskUserQuestion / elicitation form support",
       "status": "done",
@@ -186,6 +202,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-acp-plugin-auto-bootstrap.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-acp-safe-defaults-and-attention-notifications",
+      "title": "Feature: ACP safe default-allow (localhost curl + read-only fs) + attention push notifications",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-acp-safe-defaults-and-attention-notifications.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1400,35 +1427,13 @@
       "phaseKey": "19"
     },
     {
-      "id": "feature-3-web-artboards",
-      "title": "Feature: Web artboards — flex-first authoring, breakpoints, reflow, grid track editor",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-3-web-artboards.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
       "id": "feature-4-canvas-editing-figma-parity",
       "title": "Feature: Figma-parity manual editing — smart select (browse/move split), layers panel upgrade, convert-to-absolute",
-      "status": "planned",
+      "status": "in-progress",
       "shipTarget": null,
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-4-canvas-editing-figma-parity.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-acp-safe-defaults-and-attention-notifications",
-      "title": "Feature: ACP safe default-allow (localhost curl + read-only fs) + attention push notifications",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-acp-safe-defaults-and-attention-notifications.md",
       "archived": false,
       "phaseKey": null
     },

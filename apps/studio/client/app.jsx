@@ -275,6 +275,58 @@ function shellToast(message, ok = false) {
   }, 3200);
 }
 
+// feature-4 (browse/move split, DDR-187) — one-time first-run teaching hint.
+// The boot default is `browse` (the mock is ALIVE — buttons click), so the
+// Figma muscle-memory gesture (plain click = select) does nothing until V is
+// pressed. Surface that ONCE, gated by a localStorage marker (same family as
+// `mdcc-whatsnew-seen`). Auto-dismisses; a V press (learned) clears it early.
+const BROWSE_HINT_SEEN = 'maude-browse-hint-seen';
+function browseFirstRunHint() {
+  if (typeof document === 'undefined' || typeof localStorage === 'undefined') return;
+  try {
+    if (localStorage.getItem(BROWSE_HINT_SEEN) === '1') return;
+  } catch {
+    return;
+  }
+  if (document.getElementById('st-browse-hint')) return;
+  const el = document.createElement('div');
+  el.id = 'st-browse-hint';
+  el.setAttribute('role', 'status');
+  el.style.cssText =
+    'position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:81;' +
+    'display:flex;align-items:center;gap:10px;max-width:520px;padding:10px 14px;border-radius:10px;' +
+    'font:12px/1.5 var(--font-ui,system-ui,sans-serif);background:var(--surface-2,#1b1e24);' +
+    'color:var(--text-1,#e7eaf0);border:1px solid var(--border-1,#333a45);' +
+    'box-shadow:0 10px 34px rgba(0,0,0,.42);opacity:0;transition:opacity 160ms ease;';
+  el.innerHTML =
+    '<span>Your mock is <strong>live</strong> — click things to try it. ' +
+    'Press <kbd style="padding:1px 6px;border-radius:5px;border:1px solid var(--border-1,#333a45);' +
+    'background:var(--surface-3,#262b33);font-family:var(--font-mono,monospace)">V</kbd> ' +
+    'to select &amp; edit like Figma.</span>' +
+    '<button type="button" aria-label="Dismiss" style="background:none;border:none;color:inherit;' +
+    'cursor:pointer;font-size:15px;line-height:1;opacity:.65;padding:2px">×</button>';
+  const dismiss = () => {
+    try {
+      localStorage.setItem(BROWSE_HINT_SEEN, '1');
+    } catch {
+      /* private mode */
+    }
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 200);
+    document.removeEventListener('keydown', onV, true);
+  };
+  const onV = (e) => {
+    if ((e.key === 'v' || e.key === 'V') && !e.metaKey && !e.ctrlKey && !e.altKey) dismiss();
+  };
+  el.querySelector('button')?.addEventListener('click', dismiss);
+  document.addEventListener('keydown', onV, true);
+  document.body.appendChild(el);
+  requestAnimationFrame(() => {
+    el.style.opacity = '1';
+  });
+  setTimeout(dismiss, 9000);
+}
+
 // Strip canvas extensions for display. `Canvas Viewport.tsx` → `Canvas Viewport`.
 // Sidecars (`.meta.json`, `.css`, `.registry.json`) keep their extensions so
 // the file type stays unambiguous.
@@ -3054,7 +3106,10 @@ function ToolsDropdown({ onAction, onClose }) {
       onAction={onAction}
       onClose={onClose}
       items={[
-        { id: 'move', label: 'Move', shortcut: 'V' },
+        // feature-4 (browse/move split) — Browse is the boot default (mock is
+        // alive); Move (V) is the select tool.
+        { id: 'browse', label: 'Browse (interact)', shortcut: '' },
+        { id: 'move', label: 'Select', shortcut: 'V' },
         { id: 'hand', label: 'Hand', shortcut: 'H' },
         { id: 'comment', label: 'Comment', shortcut: 'C' },
         { id: 'pen', label: 'Pen', shortcut: 'B' },
@@ -6889,6 +6944,8 @@ const LAYER_TYPE_ICON = {
   list: 'list',
   nav: 'layers',
   box: 'box',
+  // feature-4 T7 — synthetic group row (unstamped wrapper with stamped kids).
+  group: 'folder',
 };
 
 
@@ -6959,17 +7016,23 @@ function LayerRow({
   const key = `${node.id}:${node.index}`;
   const hasKids = node.children && node.children.length > 0;
   const isCollapsed = collapsed.has(key);
+  // feature-4 T7 — a synthetic group row (unstamped wrapper) is a pure
+  // structural stand-in: NOT selectable (no data-cd-id to address in source),
+  // NOT draggable, NO eye toggle. Clicking it just expands/collapses.
+  const isSynthetic = !!node.synthetic;
   // Match the specific INSTANCE (id + occurrence index), not every element that
   // shares this source id — otherwise a `.map`ed element highlights all its
   // clones at once. Fall back to id-only when the selection carries no index.
   const isSel =
-    node.id === selectedId && (selectedIndex == null || node.index === selectedIndex);
+    !isSynthetic &&
+    node.id === selectedId &&
+    (selectedIndex == null || node.index === selectedIndex);
   const isHidden = hiddenOverride?.has(key) ? hiddenOverride.get(key) : !!node.hidden;
   // A shared data-cd-id (reused component instance) IS reorderable now — the
   // server maps the occurrence index to the parent <Component> usage — so these
   // are no longer greyed/blocked. A `.map()`ed single-usage element still can't
   // split; that move is refused server-side and reverts.
-  const canDrag = !!onReorder;
+  const canDrag = !!onReorder && !isSynthetic;
   // Phase 12.1 — the row being dragged FLOATS with the cursor (same model as the
   // in-canvas drag): a transform follows the pointer, its layout box stays
   // reserved (empty slot at the origin), and pointer-events:none lets the row
@@ -6991,26 +7054,31 @@ function LayerRow({
     <>
       <div
         className={
-          'st-layer st-layer--row' + (isSel ? ' is-sel' : '') + (isHidden ? ' is-hidden' : '')
+          'st-layer st-layer--row' +
+          (isSel ? ' is-sel' : '') +
+          (isHidden ? ' is-hidden' : '') +
+          (isSynthetic ? ' is-group' : '')
         }
         style={{ paddingLeft: 6 + depth * 14, ...dragStyle }}
         role="treeitem"
-        aria-selected={isSel}
+        aria-selected={isSynthetic ? undefined : isSel}
         aria-expanded={hasKids ? !isCollapsed : undefined}
         aria-grabbed={canDrag ? isDragging : undefined}
         tabIndex={0}
-        title={`${node.tag} · ${node.type}`}
+        title={isSynthetic ? `${node.tag} · group (unstamped wrapper)` : `${node.tag} · ${node.type}`}
         data-layer-key={key}
-        onClick={() => onSelect(node)}
-        onMouseEnter={() => onHover(node)}
+        onClick={() => (isSynthetic ? hasKids && onToggle(key) : onSelect(node))}
+        onMouseEnter={() => !isSynthetic && onHover(node)}
         onMouseLeave={() => onHover(null)}
         onPointerDown={canDrag ? (e) => onRowPointerDown(e, node, key) : undefined}
         onKeyDown={(e) => {
-          // Enter/Space select; ↑/↓ (+ modifiers) are handled at the tree
-          // container (selection-driven — survives the HMR re-render).
+          // Enter/Space select (or, for a synthetic group, toggle); ↑/↓ (+
+          // modifiers) are handled at the tree container (selection-driven —
+          // survives the HMR re-render).
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            onSelect(node);
+            if (isSynthetic) hasKids && onToggle(key);
+            else onSelect(node);
           }
         }}
       >
@@ -7032,7 +7100,7 @@ function LayerRow({
         <StIcon name={LAYER_TYPE_ICON[node.type] || 'box'} size={12} className="st-layer-ticon" />
         <span className="st-layer-label">{node.label}</span>
         <span className="st-layer-type">{node.type}</span>
-        {onToggleVisibility ? (
+        {onToggleVisibility && !isSynthetic ? (
           <button
             type="button"
             className="st-layer-eye"
@@ -7674,6 +7742,48 @@ function InspectorPanel({
   // `node.hidden` (the authoritative source value) so a first render of an
   // already-hidden element shows the correct eye-icon state without a click.
   const [hiddenOverride, setHiddenOverride] = useState(() => new Map());
+  // feature-4 T7 — auto-reveal the selected row: expand any collapsed ancestor
+  // group + scroll it into view, so a canvas selection is never hidden behind a
+  // collapsed wrapper (a Figma layers-panel expectation). Runs whenever the
+  // selection or the (HMR-refreshed) tree changes.
+  useEffect(() => {
+    const sel = Array.isArray(selected) ? selected[0] : selected;
+    const selId = sel?.id;
+    if (!selId || !layersTree?.nodes) return;
+    const selIdx = sel.index;
+    let matchedKey = null;
+    const ancestorKeys = [];
+    (function find(nodes, trail) {
+      for (const n of nodes || []) {
+        const k = `${n.id}:${n.index}`;
+        if (!n.synthetic && n.id === selId && (selIdx == null || n.index === selIdx)) {
+          matchedKey = k;
+          ancestorKeys.push(...trail);
+          return true;
+        }
+        if (n.children && n.children.length && find(n.children, [...trail, k])) return true;
+      }
+      return false;
+    })(layersTree.nodes, []);
+    if (!matchedKey) return;
+    if (ancestorKeys.length) {
+      setCollapsed((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        for (const k of ancestorKeys) if (next.delete(k)) changed = true;
+        return changed ? next : prev;
+      });
+    }
+    requestAnimationFrame(() => {
+      try {
+        document
+          .querySelector(`.st-layer--row[data-layer-key="${matchedKey}"]`)
+          ?.scrollIntoView({ block: 'nearest' });
+      } catch {
+        /* selector edge case — non-fatal */
+      }
+    });
+  }, [selected, layersTree]);
   const isNodeHidden = (node) => {
     const key = `${node.id}:${node.index}`;
     return hiddenOverride.has(key) ? hiddenOverride.get(key) : !!node.hidden;
@@ -7687,6 +7797,11 @@ function InspectorPanel({
         // Gate keyboard + drop moves while a prior reorder is still landing — the
         // write churns positional ids, so acting on the stale tree would misfire.
         if (layersBusyRef?.current) return;
+        // feature-4 T7 — a synthetic group row (unstamped wrapper) has no
+        // data-cd-id to address in source, so it can be neither dragged nor a
+        // drop target. Abort silently rather than post an unresolvable refId
+        // that would optimistically move then revert (a visible flicker).
+        if (dragged?.synthetic || ref?.synthetic) return;
         const verb =
           position === 'before'
             ? `before ${ref.label}`
@@ -10173,6 +10288,17 @@ function App() {
         // only pick a known, always-visible glyph; it cannot inject an
         // invisible/displaced SVG cursor as a clickjacking aid over the un-CSP'd
         // shell (phase-24 ethical-hacker Finding 2; DDR-067).
+        // feature-4 — the browse tool is a pure pass-through: don't force a
+        // global shell cursor, so the shell chrome keeps its own affordance
+        // cursors (pointer over buttons). Also fire the one-time "press V" hint
+        // — a live canvas booting in browse is exactly when it's teachable.
+        if (m.tool === 'browse') {
+          document.body.style.cursor = '';
+          const el = document.getElementById('dc-app-cursor');
+          if (el) el.textContent = '';
+          browseFirstRunHint();
+          return;
+        }
         const cursor = resolveToolCursor(m.tool);
         if (cursor) {
           document.body.style.cursor = cursor;

@@ -2,6 +2,28 @@
 
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
+## Execution Progress — feature-4-canvas-editing-figma-parity — **IN PROGRESS** (branch `main`, started 2026-07-18)
+
+Figma-parity manual editing: browse/move tool split + Figma select ladder + incremental Figma-grade layers + convert-to-absolute. DDR-187 (selection model) + DDR-188 (convert) to record.
+
+- **T2 (browse/move split) ✅** — new `browse` tool (boot default, pure native pass-through) in `input-router.tsx` Tool union + classify (browse→no-op for all pointer events; router never claims → mock stays alive). `move` flipped to the full Figma SELECT ladder: bare=TOP-level (`deep:false`), Shift=add-top, Cmd=DEEPEST (`deep:true`), Cmd+Shift=add-deep; bare hover paints a top-level halo. onClick suppression widened (all move left-clicks swallowed, browse none). `use-tool-mode.tsx` `initial='browse'` + DEFAULT_TOOLS gains browse (no letter) + move relabeled "Select" (V); cursor effect special-cases browse (native element cursors win). `canvas-cursors.ts` `TOOL_CURSORS.browse='default'`. `canvas-icons.tsx` `IconBrowse` (pointing-hand). `tool-palette.tsx` NAV_TOOLS leads with browse. Shell menubar ToolsDropdown + `tool-set` support browse. All move-gated machinery (marquees, ReorderDrag, resize/spacing/grid/artboard-drag) UNCHANGED → inert in browse.
+- **T3 (selection ladder) ✅** — dblclick drill (L6) + Enter/Shift+Enter/Tab ladder (L2) already existed + Figma-shaped; hardened both to be browse-passthrough (`onDbl` + `use-keyboard-discipline` bail in browse). Esc=deselect (router, unchanged).
+- **T5 (posture tests) ✅** — `input-router.test.ts` rewritten for the new contract + "browse pure pass-through" + "select never leaks into non-select tools". New `browse-posture.test.tsx` (happy-dom+createRoot): DOM-level proof browse bare-click fires native handler + no onSelect; move claims + suppresses native. `use-tool-mode.test.tsx` updated.
+
+- **T4 (discoverability) ✅** — palette leads Browse + Select (V); one-time first-run "press V to select & edit" hint (shell, localStorage `maude-browse-hint-seen`, dismiss on ×/V/9s); shell tool-cursor handler special-cases browse (no forced `!important` cursor → shell buttons keep native cursors).
+- **T7 (partial) ✅** — (a) synthetic group rows for unstamped wrappers (`serializeArtboardTree` + `hasStampedDescendant`, exported for test) → the missing-layers/flat-tree fix; LayerRow renders them non-selectable/non-draggable/no-eye (folder icon, muted `.is-group` CSS); reorder guarded against synthetic ref/dragged. (d) auto-reveal: InspectorPanel effect expands collapsed ancestors + scrolls the selected row into view. Type icons + dimmed-hidden already existed. New `layers-synthetic-groups.test.ts` (6 cases). **Deferred (incremental):** purple component-instances (needs server component-map channel), locked state (view.json field + canvas enforcement), inline rename (data-dc-element attr-write) — see plan Retro.
+- **T1/T9 ✅** — DDR-187 recorded + README index; What's New `figma-smart-select` (pending); design docs interaction model updated (browse/select, ladder, layers groups); roadmap + whats-new regenerated; **client bundle rebuilt release-minified** (`dist/client.bundle.js` 1.88MB + `styles.css` + `comment-mount.js`, verified not dev-clobbered).
+
+**Verified:** `bun tsc --noEmit` 8 baseline errors, 0 new. **Full `bun test` (apps/studio) 3054 pass / 5 skip / 0 fail** across 257 files (1 pre-existing `comment-mount` default-tool assertion updated for browse). `biome check` 0 errors on every touched TS/TSX file (17 tolerated `!`-assertion warnings in new tests; app.jsx is biome-excluded, validated via clean release bundle build). Client bundle rebuilt release-minified after the full-suite run clobbered it dev-style (restored + re-verified 1.88MB).
+
+**DEFERRED (scoped follow-ups, NOT done — reasons: AST-write risk + exhaustive-verify discipline + session budget; none blocks the shipped core):**
+- **T8 — convert-to-absolute + DDR-188** — NOT started. Self-contained new capability (batch AST writer + `/_api/convert-to-absolute` route + client box-snapshot + shared-component confirm + regression sweep + zero-visual-delta gate). Non-goal comments left intact.
+- **T7 remainder** — purple instances / locked state / inline rename.
+- **T6 — desktop e2e** — posture audit + a V-select native scenario (needs a desktop build).
+- **Live verification** — agent-browser boot→click-fires / V→select + `/design:smoke` NOT run (dev-server boot clobbers `dist/`; Cmd+click modifier gestures aren't agent-browser-automatable per prior sessions). The DOM-integration posture test (`browse-posture.test.tsx`) covers the exact contract; a live 2-min dogfood + smoke is the recommended pre-merge close-out.
+
+**Not committed** — awaiting user confirmation per `/flow:execute`'s commit gate. On shared `main`; stage only feature-4 files (never `git add -A`).
+
 ## Execution Progress — feature-acp-safe-defaults-and-attention-notifications — **✅ CLOSED via `/flow:plan`→`/flow:execute`→`/flow:done --quick` (2026-07-18, branch `main`).** Commits `e91e7f30`+`97b5bbbc`+`740c75d7`+`50396919`+`d2521d68`+`9308c2b9`+`02f3f984`. Plan archived: `.ai/plans/archive/feature-acp-safe-defaults-and-attention-notifications.md`. DDR-185 recorded (3 addenda). Not pushed.
 
 ACP chat panel now auto-approves the actions that dominated real design-workflow friction (`/design:setup-ds`/`edit`/`new`): `agent-browser` calls via a new hardened `agent-browser-safe` wrapper, localhost curl via a new `curl-local` verb, read-only fs inspection, `WebSearch`/`WebFetch`. Also fires an OS notification when a chat is waiting on approval/an answer (rate-limited to 1/30s), not just when a turn finishes.

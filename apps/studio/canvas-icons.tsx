@@ -39,6 +39,18 @@ export function IconMove(props: IconProps) {
     </Svg>
   );
 }
+// feature-4 (browse/move split) — Browse tool. A pointing-hand ("tap") cursor:
+// the universal "the mock is alive, click it" glyph, deliberately distinct from
+// Move's solid selection arrow.
+export function IconBrowse(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M10 9V5a1.4 1.4 0 012.8 0v6" />
+      <path d="M12.8 10.4V9.6a1.3 1.3 0 012.6 0V12" />
+      <path d="M15.4 12.2v-1a1.3 1.3 0 012.6 0V15c0 2.6-1.7 5-5 5-2 0-3.3-.8-4.4-2.2L6 13.4a1.4 1.4 0 012.2-1.7L10 13.6V9" />
+    </Svg>
+  );
+}
 
 export function IconHand(props: IconProps) {
   return (
@@ -463,6 +475,7 @@ export function IconHighlighter(props: IconProps) {
 }
 
 export const TOOL_ICONS: Record<string, (p: IconProps) => JSX.Element> = {
+  browse: IconBrowse,
   move: IconMove,
   hand: IconHand,
   comment: IconComment,

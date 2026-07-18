@@ -48,7 +48,11 @@ export type ShapeKind = 'square' | 'rounded' | 'circle' | 'diamond' | 'triangle'
 // crosshair/text/cell were thin + tiny ("pen almost invisible"); these mirror
 // the tool-palette icons. `move` keeps the system arrow on purpose.
 export const DEFAULT_TOOLS: readonly ToolDescriptor[] = Object.freeze([
-  { id: 'move', label: 'Move', shortcut: 'V', cursor: TOOL_CURSORS.move },
+  // feature-4 — Browse is the BOOT default: the mock is alive (buttons click).
+  // Press V for the Move (select) tool. No letter shortcut — it's a deliberate
+  // "I'm done editing" choice via the palette / Esc-from-a-draw-tool.
+  { id: 'browse', label: 'Browse', shortcut: '', cursor: TOOL_CURSORS.browse },
+  { id: 'move', label: 'Select', shortcut: 'V', cursor: TOOL_CURSORS.move },
   { id: 'hand', label: 'Hand', shortcut: 'H', cursor: TOOL_CURSORS.hand },
   { id: 'comment', label: 'Comment', shortcut: 'C', cursor: TOOL_CURSORS.comment },
   { id: 'pen', label: 'Pen', shortcut: 'B', cursor: TOOL_CURSORS.pen },
@@ -89,7 +93,11 @@ const ToolContext = createContext<ToolContextValue | null>(null);
 export function ToolProvider({
   children,
   tools = DEFAULT_TOOLS,
-  initial = 'move',
+  // feature-4 (browse/move split, DDR-187) — boot into `browse` so a freshly
+  // opened mock is ALIVE (native pass-through). V flips to the Move (select)
+  // tool. This is the user-decided boot posture (2026-07-15), zero regression
+  // for existing canvases + every native-input surface.
+  initial = 'browse',
 }: {
   children: ReactNode;
   tools?: readonly ToolDescriptor[];
@@ -134,13 +142,32 @@ export function ToolProvider({
     const desc = tools.find((t) => t.id === tool);
     if (!desc) return;
     const prev = document.body.style.cursor;
-    document.body.style.cursor = desc.cursor;
     let styleEl = document.getElementById('dc-tool-cursor') as HTMLStyleElement | null;
     if (!styleEl) {
       styleEl = document.createElement('style');
       styleEl.id = 'dc-tool-cursor';
       document.head.appendChild(styleEl);
     }
+    // feature-4 — the browse tool is a pure pass-through: it must NOT force a
+    // global cursor, or the `* { cursor: … !important }` rule below would beat
+    // the mock's own affordance cursors (pointer over a button, text over an
+    // input) and the canvas would stop reading as alive. Clear the forced rule
+    // and let the body/native cursors win.
+    if (tool === 'browse') {
+      document.body.style.cursor = '';
+      styleEl.textContent = '';
+      if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+        try {
+          window.parent.postMessage({ dgn: 'tool-cursor', tool }, '*');
+        } catch {
+          /* cross-origin parent rejected */
+        }
+      }
+      return () => {
+        document.body.style.cursor = prev;
+      };
+    }
+    document.body.style.cursor = desc.cursor;
     // Truly GLOBAL inside the canvas document — `*` so it covers the empty grid
     // host, `.dc-world`, every artboard + its content, AND the floating chrome
     // (minimap, toolbar). The earlier `.dc-world`-scoped rule left the empty

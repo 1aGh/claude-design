@@ -167,6 +167,12 @@ const STICKY = svgCursor(
 // shell-side code ever mutating an entry out from under the lookup (the canvas
 // runs cross-origin and can't reach it regardless — this is belt-and-braces).
 export const TOOL_CURSORS: Record<Tool, string> = Object.freeze({
+  // feature-4 (browse/move split) — the browse tool is a pure native
+  // pass-through, so it shows the SYSTEM cursor: `default` over the shell
+  // chrome, and (special-cased in use-tool-mode.tsx) native element cursors
+  // — pointer over buttons, text over inputs — over the live mock, so the
+  // canvas reads as ALIVE. Never a forced custom glyph.
+  browse: 'default',
   move: MOVE,
   hand: HAND,
   comment: COMMENT,
