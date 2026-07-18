@@ -110,6 +110,14 @@ const BIN_VERBS = new Set([
   // user's ElevenLabs history before spending credits on a new music/SFX/VO
   // track. Runs server-side (key resolved by the sidecar); needs a dev server.
   'audio-search',
+  // DDR-185. `curl-local` is a loopback-only curl: resolves the request's
+  // target host and refuses to invoke real curl at all unless every resolved
+  // address is strictly loopback (127.0.0.0/8 or ::1). Exists so an ACP chat
+  // session can auto-approve "check my local dev server" without widening the
+  // session's Bash allow-list to unscoped curl (`Bash(curl:*)` would reach any
+  // host — see DDR-185's rejected alternatives). No dev server dependency —
+  // pure Node, no `<designRoot>` involvement.
+  'curl-local',
 ]);
 
 // Bin verbs that boot the dev-server (directly, or by shelling into server-up.sh).

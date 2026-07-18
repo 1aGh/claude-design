@@ -221,11 +221,64 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT
 //    (agent-browser, playwright, svgo) run as CHILDREN of that one bash call, so
 //    they need no separate entry. Bash NOT starting with `maude` still prompts.
 //
-// SOURCE-OF-TRUTH GUARD: this list is asserted against the `maude design` verb
-// dispatch (`cli/commands/design.mjs`) + `plugins/design/dependencies.json` by
-// acp-session-allowed-tools.test.ts — a future helper that is NOT reached via
-// `maude design` (a brand-new top-level tool, not a new verb) fails that test
-// loudly instead of silently prompting the user mid-workflow.
+// DDR-185 widens this list with THREE further, independently-justified groups
+// (never collapsed into "widen Bash generally" — see the DDR for the full
+// record, including why a `PreToolUse` hook was investigated and ruled out:
+// the ACP adapter is a genuinely separate spawned process, and a hook callback
+// is a live JS function that cannot survive the JSON-RPC boundary):
+//
+//  • `Bash(agent-browser:*)` — a SECOND named, first-party-adjacent tool, same
+//    trust tier as `Bash(maude:*)` above (not "any command"). `agent-browser`
+//    is a declared dependency of the design plugin
+//    (`plugins/design/dependencies.json` — "soft"/auto-install for the
+//    general CLI/web path, but BUNDLED unconditionally in the Maude desktop
+//    app, which is the ONLY place this allow-list applies since `design:chat`
+//    is native-only — so it's always present where this rule fires); every
+//    call site in this plugin's own docs (`motion-critic.md`, `edit.md`,
+//    `critic.md`, …) is browser automation
+//    against the local dev-server canvas — screenshots, `eval` probes,
+//    axe-core scans — not a generic shell escape hatch, and several of those
+//    call sites invoke it RAW (not through a `maude design <verb>` wrapper),
+//    so `Bash(maude:*)` alone doesn't cover them. Residual, accepted
+//    explicitly: nothing stops `agent-browser navigate https://not-localhost`
+//    from working — the tool has no built-in host restriction, and
+//    prefix-matching can't add one. This doesn't open a new risk category; it
+//    extends the one DDR-184 already accepted for `Bash(maude:*)` to a second
+//    tool. `npx playwright` (the documented FALLBACK when `agent-browser`
+//    itself is missing) is deliberately EXCLUDED — `npx` can execute
+//    arbitrary, non-pinned npm packages, a categorically bigger escape hatch
+//    than a fixed installed binary; that fallback path still prompts.
+//  • Read-only filesystem inspection (ls/cat/pwd/find/head/tail/wc/tree/
+//    file/stat) — adds ~NO incremental read capability: Read/Grep/Glob above
+//    are ALREADY auto-approved with no path scoping at all (a pre-existing
+//    fact, not something this list changes), so these commands are a more
+//    convenient interface to power already granted, not a new grant — the
+//    argument DDR-184 already rejected for a generic "common commands"
+//    allow-list does not apply here. Mutating verbs (mkdir/touch/rm/mv/cp/
+//    chmod) are deliberately excluded — mutation stays behind Write/Edit
+//    (rollback via `_history/`) or the prompt. Accepted residual: `find`'s own
+//    flags can mutate (`-delete`/`-exec`) and prefix-matching can't tell
+//    `find . -name '*.tmp'` from `find . -delete` — named here, not hidden;
+//    drop `find` from this list first if that residual is ever judged
+//    unacceptable.
+//  • `WebSearch`, `WebFetch` — bare native tool names (no `Bash(...)` prefix
+//    matching involved; the adapter's default `claude_code` tool preset
+//    already includes them, so this is purely a permission change, not a
+//    capability/tool-availability change the way DDR-180's `AskUserQuestion`
+//    gate was). Removes friction from `/design:setup-ds` Stage-2 research
+//    (`ux-research-agent` runs 6-8 WebSearch queries) and `draw-agent`/
+//    `reconstruct-agent` reference lookups. Residual, accepted explicitly:
+//    fetched web content is exactly the kind of untrusted external data a
+//    prompt-injection attack rides in on — but that risk is orthogonal to the
+//    approve/deny decision itself (a user manually approving a WebFetch
+//    doesn't vet the fetched content either) and exists in every Claude Code
+//    session regardless of Maude.
+//
+// SOURCE-OF-TRUTH GUARD: the `maude`/`agent-browser` Bash rules + the
+// WebSearch/WebFetch presence are asserted by acp-session-allowed-tools.test.ts
+// — a future helper that is NOT reached via `maude design <verb>` or one of
+// these two named tools (a brand-new top-level tool) fails that test loudly
+// instead of silently prompting the user mid-workflow.
 export const MAUDE_DEFAULT_ALLOWED_TOOLS: readonly string[] = [
   'Read',
   'Edit',
@@ -234,6 +287,19 @@ export const MAUDE_DEFAULT_ALLOWED_TOOLS: readonly string[] = [
   'Grep',
   'NotebookEdit',
   'Bash(maude:*)',
+  'Bash(agent-browser:*)',
+  'Bash(ls:*)',
+  'Bash(cat:*)',
+  'Bash(pwd:*)',
+  'Bash(find:*)',
+  'Bash(head:*)',
+  'Bash(tail:*)',
+  'Bash(wc:*)',
+  'Bash(tree:*)',
+  'Bash(file:*)',
+  'Bash(stat:*)',
+  'WebSearch',
+  'WebFetch',
 ];
 
 export function newSessionParams(

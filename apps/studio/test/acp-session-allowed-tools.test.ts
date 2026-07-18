@@ -1,16 +1,24 @@
-// DDR-184 — the curated tool allow-list the bridge auto-approves so the design
-// workflow never stalls on a per-edit / per-`maude` permission prompt (the
-// "Manual mode blocks every edit" complaint). Two things under test:
+// DDR-184 (+ DDR-185) — the curated tool allow-list the bridge auto-approves so
+// the design workflow never stalls on a per-edit / per-`maude` permission
+// prompt (the "Manual mode blocks every edit" complaint). Three things under
+// test:
 //
 //   (1) WIRE contract — the list lands on `_meta.claudeCode.options.allowedTools`
 //       (SDK `allowedTools`, sdk.d.ts:1331), coexisting with the DDR-144
 //       `settingSources` narrowing and the DDR-143 `plugins` carrier. Same
 //       adapter/SDK-INTERNAL `_meta` path as acp-session-plugins.test.ts — a
 //       bump that stops forwarding it must fail HERE, not silently re-prompt.
-//   (2) SOURCE-OF-TRUTH guard — the single `Bash(maude:*)` rule only covers the
-//       whole design-helper surface because DDR-062 routes every helper through
-//       `maude design <verb>`. If that stops being true, or someone widens the
-//       Bash scope, this test fails loudly.
+//   (2) SOURCE-OF-TRUTH guard — the Bash rules are EXACTLY `Bash(maude:*)`,
+//       `Bash(agent-browser:*)`, and a closed read-only fs verb set (DDR-185)
+//       — nothing else. `Bash(maude:*)` covers the whole design-helper surface
+//       because DDR-062 routes every helper through `maude design <verb>`;
+//       `Bash(agent-browser:*)` covers the RAW agent-browser calls documented
+//       in `motion-critic.md`/`edit.md` that DDR-062 doesn't reach. If either
+//       assumption stops being true, or someone widens the Bash scope beyond
+//       this fixed set, this test fails loudly.
+//   (3) `WebSearch`/`WebFetch` (DDR-185) are present as bare native tool names
+//       — no prefix-matching involved, so no source-of-truth guard needed the
+//       way the Bash rules need one.
 
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
@@ -68,14 +76,37 @@ describe('MAUDE_DEFAULT_ALLOWED_TOOLS — source-of-truth guard (DDR-184 / DDR-0
     }
   });
 
-  test('the ONLY Bash rule is prefix-scoped to `maude` — never a bare/un-scoped Bash', () => {
-    // A bare `Bash` (or `Bash(*)`) would auto-approve arbitrary command execution
-    // — exactly the blanket surface DDR-179 kept behind the prompt. Guard against
-    // anyone widening it: the list may auto-approve `maude` and nothing else.
-    expect(bashRules).toEqual(['Bash(maude:*)']);
+  test('WebSearch and WebFetch are present (DDR-185)', () => {
+    for (const t of ['WebSearch', 'WebFetch']) {
+      expect(MAUDE_DEFAULT_ALLOWED_TOOLS).toContain(t);
+    }
   });
 
-  test('the single Bash rule is load-bearing on DDR-062: every design helper is a `maude design <verb>`', () => {
+  test('the Bash rules are EXACTLY this closed set — never a bare/un-scoped Bash', () => {
+    // A bare `Bash` (or `Bash(*)`) would auto-approve arbitrary command execution
+    // — exactly the blanket surface DDR-179 kept behind the prompt. Guard against
+    // anyone widening it: the list may auto-approve `maude`, `agent-browser`, and
+    // the closed read-only fs verb set (DDR-185) — nothing else. In particular,
+    // `Bash(curl:*)` must NEVER appear here — DDR-185 deliberately routes
+    // localhost curl through the `curl-local` verb (covered by `Bash(maude:*)`)
+    // instead, specifically so raw curl to an arbitrary host keeps prompting.
+    expect(bashRules).toEqual([
+      'Bash(maude:*)',
+      'Bash(agent-browser:*)',
+      'Bash(ls:*)',
+      'Bash(cat:*)',
+      'Bash(pwd:*)',
+      'Bash(find:*)',
+      'Bash(head:*)',
+      'Bash(tail:*)',
+      'Bash(wc:*)',
+      'Bash(tree:*)',
+      'Bash(file:*)',
+      'Bash(stat:*)',
+    ]);
+  });
+
+  test('the `maude` Bash rule is load-bearing on DDR-062: every design helper is a `maude design <verb>`', () => {
     // Resolve cli/commands/design.mjs relative to this test file's real path
     // (mirrors acp-session-plugins.test.ts's realpath dance for compiled roots).
     const here = dirname(realpathSync(import.meta.url.replace('file://', '')));
@@ -87,5 +118,30 @@ describe('MAUDE_DEFAULT_ALLOWED_TOOLS — source-of-truth guard (DDR-184 / DDR-0
     // disappears, the one-rule assumption needs re-checking.
     expect(src).toContain('BIN_VERBS');
     expect(src).toMatch(/maude design <verb>/);
+  });
+
+  test('the `curl-local` verb exists and is reached via `maude design <verb>` (DDR-185)', () => {
+    // The mechanism the `Bash(agent-browser:*)`/fs-list comment in bridge.ts
+    // promises for curl: real host enforcement via a first-party verb, not a
+    // Bash prefix rule. If this verb disappears from BIN_VERBS, the DDR-185
+    // curl story (and the bootstrap-brief nudge pointing at it) goes stale.
+    const here = dirname(realpathSync(import.meta.url.replace('file://', '')));
+    const designCli = join(here, '..', '..', '..', 'cli', 'commands', 'design.mjs');
+    const src = readFileSync(designCli, 'utf8');
+    expect(src).toMatch(/'curl-local'/);
+  });
+
+  test('the `agent-browser` Bash rule is load-bearing: it is a declared design-plugin dependency', () => {
+    // `plugins/design/dependencies.json` is the source of truth for "this is a
+    // named, vetted, first-party-adjacent tool" — not an arbitrary shell escape
+    // hatch. If the dependency entry disappears, the trust argument in
+    // bridge.ts's comment needs re-checking.
+    const here = dirname(realpathSync(import.meta.url.replace('file://', '')));
+    const depsPath = join(here, '..', '..', '..', 'plugins', 'design', 'dependencies.json');
+    expect(existsSync(depsPath)).toBe(true);
+    const deps = JSON.parse(readFileSync(depsPath, 'utf8')) as {
+      dependencies?: Array<{ id?: string }>;
+    };
+    expect(deps.dependencies?.some((d) => d.id === 'agent-browser')).toBe(true);
   });
 });

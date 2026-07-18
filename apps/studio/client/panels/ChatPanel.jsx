@@ -1486,6 +1486,8 @@ function ChatThread({
   designRel,
   transcriptView,
   onSetTranscriptView,
+  onPermissionRequest,
+  onElicitationRequest,
 }) {
   // Live session capabilities (feature-acp-panel-dynamic-claude-code-
   // capabilities) — `caps` is THIS chat's own connection's mode roster +
@@ -1619,9 +1621,31 @@ function ChatThread({
   // Post-turn-end continuation (the tail the client used to drop — RCA F2).
   const [bgParts, setBgParts] = useState([]);
   useEffect(() => conn.onBackground(setBgParts), [conn]);
+  // DDR-185 — surface a "Maude needs your input" attention ping to the parent
+  // (app.jsx) whenever a GENUINELY NEW permission/elicitation request arrives,
+  // not on every list churn (a request resolving/timing out also updates the
+  // list — that must NOT re-fire the notification). Read via a ref, not the
+  // effect's own dependency array, so a parent re-render that produces a new
+  // callback identity doesn't force conn.onPermission/onElicitation to
+  // re-subscribe.
+  const attentionCbRef = useRef({ onPermissionRequest, onElicitationRequest });
+  useEffect(() => {
+    attentionCbRef.current = { onPermissionRequest, onElicitationRequest };
+  }, [onPermissionRequest, onElicitationRequest]);
+
   // Pending permission requests (Milestone B) — one card at a time, oldest first.
   const [pendingPermissions, setPendingPermissions] = useState([]);
-  useEffect(() => conn.onPermission(setPendingPermissions), [conn]);
+  const prevPermissionIdsRef = useRef(new Set());
+  useEffect(
+    () =>
+      conn.onPermission((list) => {
+        const hasNew = list.some((p) => !prevPermissionIdsRef.current.has(p.id));
+        prevPermissionIdsRef.current = new Set(list.map((p) => p.id));
+        if (hasNew) attentionCbRef.current.onPermissionRequest?.();
+        setPendingPermissions(list);
+      }),
+    [conn]
+  );
   const activePermission = pendingPermissions[0] || null;
   const respondPermission = useCallback(
     (decision) => activePermission && conn.respondPermission(activePermission.id, decision),
@@ -1630,7 +1654,17 @@ function ChatThread({
   // Pending elicitation requests (feature-acp-ask-user-question) — same
   // one-at-a-time, oldest-first treatment as pendingPermissions above.
   const [pendingElicitations, setPendingElicitations] = useState([]);
-  useEffect(() => conn.onElicitation(setPendingElicitations), [conn]);
+  const prevElicitationIdsRef = useRef(new Set());
+  useEffect(
+    () =>
+      conn.onElicitation((list) => {
+        const hasNew = list.some((e) => !prevElicitationIdsRef.current.has(e.id));
+        prevElicitationIdsRef.current = new Set(list.map((e) => e.id));
+        if (hasNew) attentionCbRef.current.onElicitationRequest?.();
+        setPendingElicitations(list);
+      }),
+    [conn]
+  );
   const activeElicitation = pendingElicitations[0] || null;
   const respondElicitation = useCallback(
     (response) => activeElicitation && conn.respondElicitation(activeElicitation.id, response),
@@ -1731,6 +1765,8 @@ export default function ChatPanel({
   hidden = false,
   onBusyChange,
   onFinished,
+  onPermissionRequest,
+  onElicitationRequest,
 }) {
   // Model/effort/mode picks — persisted across sessions per config id (never a
   // fixed model/effort pair; see loadPersistedPicks). Read live by each open
@@ -2229,6 +2265,8 @@ export default function ChatPanel({
                 designRel={designRel}
                 transcriptView={transcriptView}
                 onSetTranscriptView={setTranscriptView}
+                onPermissionRequest={onPermissionRequest}
+                onElicitationRequest={onElicitationRequest}
               />
             );
           })
