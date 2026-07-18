@@ -152,6 +152,17 @@ const SUGGESTIONS = [
   '/design:new Pricing "a 3-tier pricing page"',
 ];
 
+// DDR-185 — shared "did a genuinely new item arrive" check for the
+// permission/elicitation effects below: both need the identical shape (diff
+// the incoming list's ids against the previous snapshot, fire onNew only for
+// a real arrival, never for a resolution/removal), just against a different
+// ref and a different onNew callback.
+function fireOnNewArrival(prevIdsRef, list, onNew) {
+  const hasNew = list.some((item) => !prevIdsRef.current.has(item.id));
+  prevIdsRef.current = new Set(list.map((item) => item.id));
+  if (hasNew) onNew?.();
+}
+
 function safeStorageGet(key, fallback) {
   try {
     return localStorage.getItem(key) ?? fallback;
@@ -1639,9 +1650,7 @@ function ChatThread({
   useEffect(
     () =>
       conn.onPermission((list) => {
-        const hasNew = list.some((p) => !prevPermissionIdsRef.current.has(p.id));
-        prevPermissionIdsRef.current = new Set(list.map((p) => p.id));
-        if (hasNew) attentionCbRef.current.onPermissionRequest?.();
+        fireOnNewArrival(prevPermissionIdsRef, list, attentionCbRef.current.onPermissionRequest);
         setPendingPermissions(list);
       }),
     [conn]
@@ -1658,9 +1667,7 @@ function ChatThread({
   useEffect(
     () =>
       conn.onElicitation((list) => {
-        const hasNew = list.some((e) => !prevElicitationIdsRef.current.has(e.id));
-        prevElicitationIdsRef.current = new Set(list.map((e) => e.id));
-        if (hasNew) attentionCbRef.current.onElicitationRequest?.();
+        fireOnNewArrival(prevElicitationIdsRef, list, attentionCbRef.current.onElicitationRequest);
         setPendingElicitations(list);
       }),
     [conn]

@@ -1,56 +1,57 @@
 #!/usr/bin/env node
-// _curl-local.mjs — loopback-only curl, reached via `maude design curl-local`
-// (DDR-062 dispatch; DDR-185, hardened per its security addendum).
+// _curl-local.mjs — loopback-only HTTP request, reached via
+// `maude design curl-local` (DDR-062 dispatch; DDR-185, hardened per its
+// security addendum's second round).
 //
 // WHY THIS EXISTS: an ACP chat session auto-approves `Bash(maude:*)` (DDR-184)
 // but NOT a bare `curl` — every raw `curl` call still prompts, even one aimed
 // at the user's own localhost dev server (a common ask mid design-workflow:
 // "is my backend up on :3000?"). Claude Code's `Bash(prefix:*)` allowlist is a
-// plain string-prefix match with no host awareness (`Bash(curl http://localhost:*)`
-// doesn't match `curl -s http://localhost:3000` — the flag breaks the prefix),
-// so a prefix-list can't express "curl, but only to localhost" reliably. This
-// verb does the real check instead: resolve the request's target host and
-// refuse to invoke curl at all unless every resolved address is loopback.
-// Covered for free by the EXISTING `Bash(maude:*)` allow-list rule — no
-// widening of the session's Bash surface.
+// plain string-prefix match with no host awareness, so a prefix-list can't
+// express "curl, but only to localhost" reliably. This verb does the real
+// check instead. Covered for free by the EXISTING `Bash(maude:*)` allow-list
+// rule — no widening of the session's Bash surface.
 //
-// SECURITY ADDENDUM — the first cut of this file (validate-the-hostname, then
-// forward argv verbatim to real curl) had TWO independently-found, real
-// bypasses, both confirmed live by a security-auditor + ethical-hacker
-// fan-out before this addendum:
-//   1. `-K`/`--config <file>` — curl reads ADDITIONAL directives (including a
-//      wholly different `url = "..."` target) from a config file; the argv
-//      scanner only ever looked at tokens that parse as URLs, so a validated
-//      loopback target plus `-K some.conf` (the config file itself doesn't
-//      parse as a URL) let curl ALSO fetch whatever `some.conf` said — a
-//      second, unvalidated request smuggled through an approved invocation.
-//   2. `--resolve`/`--connect-to` — these force curl's ACTUAL TCP destination
-//      independent of what the hostname resolves to, so a validated
-//      "localhost" target with `--resolve localhost:80:203.0.113.5` tacked on
-//      connects curl to 203.0.113.5, not loopback. Related: Node validates the
-//      hostname in THIS process, then a SEPARATE `curl` process does its own,
-//      independent DNS resolution when it connects — with no pinning, a
-//      short-TTL DNS record can legitimately answer differently between the
-//      two lookups (the exact bug class as CVE-2026-27826, an MCP-server SSRF
-//      guard bypassed the same way).
-// The fix for both: this file no longer forwards argv verbatim. It ALLOWLISTS
-// a closed set of curl flags (rejecting anything else, including `-K`/
-// `--resolve`/`--connect-to`/`--next`/redirect-following/proxy flags), and
-// PINS the connection itself via curl's OWN `--resolve host:port:IP` (set by
-// this file, not the caller) to the exact address it already validated —
-// mirroring `_fetch-asset.mjs`'s `curlDownload` pinning, just in the opposite
-// trust direction (requiring loopback instead of rejecting it).
+// SECURITY ADDENDUM, ROUND 2 — this file's FIRST hardening pass (an argv
+// allowlist over raw curl flags: reject -K/--resolve/--connect-to/etc.,
+// forward everything else to a real `curl` child) was itself bypassed, live,
+// by the SAME class of gap it was written to close: curl supports
+// CONCATENATED short-flag syntax (`-K<path>`, no space or `=`), which
+// `validateArgv`'s `a.split('=')[0]` check never recognized — so `-K<path>`,
+// `-x<url>`, `-T<path>` all sailed through unrejected, reproducing the
+// EXACT original `-K`-config-smuggling bypass verbatim. A SEPARATE gap in
+// the same pass: `--noproxy` (the flag this file forces to `*`) was never
+// itself added to the reject list, so a caller-supplied `--noproxy ""`
+// placed after the forced one silently re-enabled an ambient proxy
+// (curl is last-flag-wins for repeated options).
 //
-// SCOPE, named explicitly (not left implicit) per the same security addendum:
-// this verb allows "any loopback address," not "only Maude's own dev-server
-// port" — the user's explicit ask was checking THEIR OWN arbitrary local dev
-// servers, not just Maude's, so narrowing to one port would defeat the
-// feature. This means a call CAN reach another unauthenticated-by-convention
-// loopback service (Docker's API proxy, `kubectl proxy`, Node's inspector
-// protocol) if the ACP session is steered there — accepted, because
-// enumerating every "trusted because it's local" service on every user's
-// machine isn't tractable; not accepted implicitly, recorded here and in
-// DDR-185's addendum.
+// The lesson, stated plainly rather than patched around again: hand-parsing
+// an EXTERNAL binary's own CLI grammar (short flags, concatenation,
+// bundling, `=`-forms, config files, env-var equivalents) to decide what's
+// "safe" is an unbounded surface — every fix closes the specific bypass
+// found and leaves the next one for the next binary quirk nobody thought to
+// test. So this file no longer accepts raw curl arguments AT ALL. It defines
+// its OWN small, Maude-owned flag vocabulary (below) that this file fully
+// parses itself (plain, unambiguous `--flag value` pairs — no short forms,
+// no concatenation, no bundling, nothing to mis-parse), and constructs the
+// real curl invocation from FIXED, hardcoded flag names with the caller's
+// values riding as separate argv array elements (never string-interpolated,
+// so a value containing e.g. "-K" or "; rm -rf" is inert data to curl, not a
+// new flag token — spawnSync with an argv array bypasses the shell
+// entirely). The caller can no longer name a curl flag, so there is nothing
+// left to allowlist/rejectlist AGAINST — the bypass class this addendum is
+// closing cannot recur here by construction, not by enumeration.
+//
+// SCOPE, named explicitly (not left implicit): this verb allows "any
+// loopback address," not "only Maude's own dev-server port" — the user's
+// explicit ask was checking THEIR OWN arbitrary local dev servers, not just
+// Maude's, so narrowing to one port would defeat the feature. This means a
+// call CAN reach another unauthenticated-by-convention loopback service
+// (Docker's API proxy, `kubectl proxy`, Node's inspector protocol) if the
+// ACP session is steered there — accepted, because enumerating every
+// "trusted because it's local" service on every user's machine isn't
+// tractable; recorded here and in DDR-185's addendum, not accepted
+// implicitly.
 //
 // Reuses `_fetch-asset.mjs`'s battle-tested IPv4/IPv6 literal parsers
 // (`parseIPv4`/`parseIPv6`) rather than reinventing address parsing, but with
@@ -60,11 +61,6 @@
 // loopback and rejects everything else, including ordinary private-LAN
 // addresses (192.168.x.x etc.) — this verb is for "my own machine", not
 // "anything reachable on my network".
-//
-// Every http(s)-looking argument (curl accepts the target URL in any argv
-// position) must resolve to loopback — not just the first one found — so
-// `curl-local http://localhost:1/a http://evil.example/b` (multiple targets)
-// can't slip a non-local target past a first-match-only scan.
 //
 // Exit: curl's own exit code on success · 2 usage/rejected argv · 3
 //       non-loopback target (or DNS resolution failure) rejected · 1 other.
@@ -134,9 +130,10 @@ export function classifyRecords(host, records) {
  * and return the address to PIN the connection to (the first record) — the
  * caller must pass this to curl's own `--resolve` so the later, independent
  * connection can't re-resolve to something different (closes the
- * validate-then-reconnect DNS-rebinding TOCTOU). `lookupFn` is injectable
- * (defaults to the real `node:dns/promises` `lookup`) purely so tests can
- * supply a deterministic multi-record response without mocking `node:dns`.
+ * validate-then-reconnect DNS-rebinding TOCTOU, the same bug class as
+ * CVE-2026-27826). `lookupFn` is injectable (defaults to the real
+ * `node:dns/promises` `lookup`) purely so tests can supply a deterministic
+ * multi-record response without mocking `node:dns`.
  */
 export async function resolveLoopbackIp(host, { lookupFn = lookup } = {}) {
   if (isIP(host)) {
@@ -156,76 +153,155 @@ export async function resolveLoopbackIp(host, { lookupFn = lookup } = {}) {
   return records[0].address;
 }
 
-/**
- * Every http(s) URL among argv's non-flag-looking tokens — curl accepts its
- * target URL in any position, and a request may name more than one target.
- * A token that fails to parse as a URL, or parses with a non-http(s) scheme
- * (file://, gopher://, …), is simply not a target this scan recognizes.
- */
-export function findTargetUrls(argv) {
-  const urls = [];
-  for (const a of argv) {
-    if (!a || a.startsWith('-')) continue;
-    try {
-      const u = new URL(a);
-      if (u.protocol === 'http:' || u.protocol === 'https:') urls.push(u);
-    } catch {
-      // not a URL — a flag value (e.g. `-d '{"a":1}'`) or similar; keep scanning.
-    }
-  }
-  return urls;
-}
-
-// Closed set — anything that could let the caller override this file's own
-// safety constraints (which flags fetch-asset/curl-local pin, which
-// redirects are followed, which proxy is used) is rejected outright. A
-// blocklist approach is exactly how the first cut of this file missed
-// `-K`/`--resolve` — reject-on-anything-recognized-as-dangerous, not
-// allow-everything-not-yet-known-to-be-dangerous.
-export const REJECTED_FLAGS = Object.freeze([
-  '-K',
-  '--config',
-  '--resolve',
-  '--connect-to',
-  '--next',
-  '-L',
-  '--location',
-  '--location-trusted',
-  '--max-redirs',
-  '-x',
-  '--proxy',
-  '--proxy-user',
-  '--socks4',
-  '--socks4a',
-  '--socks5',
-  '--socks5-hostname',
-  '-T',
-  '--upload-file',
+// ── Maude-owned request vocabulary ──────────────────────────────────────────
+// A small, fully-Maude-parsed flag set — deliberately NOT curl's own syntax.
+// Every flag here takes its value from the NEXT argv element (no `=`-form, no
+// short/concatenated form, nothing to mis-parse); `--insecure`/`--include`/
+// `--verbose` are boolean. Anything not in this set is rejected outright —
+// an allowlist of RECOGNIZED tokens, not a rejectlist of known-bad ones, so
+// an unanticipated curl-style flag simply never has a matching case instead
+// of silently riding through unexamined.
+const METHODS = Object.freeze(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
+const VALUE_FLAGS = Object.freeze([
+  '--method',
+  '--header',
+  '--data',
+  '--user-agent',
+  '--max-time',
+  '--output',
 ]);
+const BOOLEAN_FLAGS = Object.freeze(['--insecure', '--include', '--verbose']);
 
-/** Returns a block-reason string if this argv should be refused, else null. */
-export function validateArgv(argv) {
-  for (const a of argv) {
-    const bare = a.split('=')[0];
-    if (REJECTED_FLAGS.includes(bare)) {
-      return `flag "${a}" is not allowed — it can override this wrapper's safety constraints`;
+export class CurlLocalArgvError extends Error {}
+
+/**
+ * Parse this file's OWN small flag vocabulary (never curl's). Returns
+ * `{url, method, headers, data, userAgent, maxTime, output, insecure,
+ * include, verbose}` or throws CurlLocalArgvError with a human-readable
+ * reason. `--header` may repeat. Exactly one positional (non-flag) argument
+ * is accepted: the target URL.
+ */
+export function parseRequestArgv(argv) {
+  const out = {
+    url: null,
+    method: 'GET',
+    headers: [],
+    data: null,
+    userAgent: null,
+    maxTime: null,
+    output: null,
+    insecure: false,
+    include: false,
+    verbose: false,
+  };
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (BOOLEAN_FLAGS.includes(a)) {
+      out[a.slice(2)] = true;
+      continue;
     }
+    if (VALUE_FLAGS.includes(a)) {
+      const value = argv[i + 1];
+      if (value === undefined) throw new CurlLocalArgvError(`${a} requires a value`);
+      i += 1;
+      if (a === '--method') {
+        const m = value.toUpperCase();
+        if (!METHODS.includes(m)) {
+          throw new CurlLocalArgvError(
+            `--method must be one of ${METHODS.join(', ')} (got "${value}")`
+          );
+        }
+        out.method = m;
+      } else if (a === '--header') {
+        if (!/^[\w-]+:.*/.test(value)) {
+          throw new CurlLocalArgvError(`--header must look like "Name: value" (got "${value}")`);
+        }
+        out.headers.push(value);
+      } else if (a === '--data') {
+        out.data = value;
+      } else if (a === '--user-agent') {
+        out.userAgent = value;
+      } else if (a === '--max-time') {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n <= 0)
+          throw new CurlLocalArgvError(`--max-time must be a positive number (got "${value}")`);
+        out.maxTime = n;
+      } else if (a === '--output') {
+        out.output = value;
+      }
+      continue;
+    }
+    if (a.startsWith('-')) {
+      throw new CurlLocalArgvError(
+        `unrecognized flag "${a}" — curl-local has its OWN small flag set, not curl's; run with --help`
+      );
+    }
+    if (out.url !== null)
+      throw new CurlLocalArgvError(`unexpected extra argument "${a}" (URL already given)`);
+    out.url = a;
   }
-  return null;
+  if (!out.url) throw new CurlLocalArgvError('a target URL is required');
+  let parsed;
+  try {
+    parsed = new URL(out.url);
+  } catch {
+    throw new CurlLocalArgvError(`"${out.url}" is not a valid URL`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new CurlLocalArgvError(
+      `only http:// and https:// are supported (got ${parsed.protocol}//)`
+    );
+  }
+  out.parsedUrl = parsed;
+  return out;
 }
 
-const HELP = `curl-local — loopback-only curl (reached via \`maude design curl-local\`)
+/** Build the fixed-shape curl argv for a parsed request. Every user-supplied
+ * value rides as its OWN argv array element (never concatenated into a
+ * flag), and every flag NAME is one of this file's own hardcoded literals —
+ * the caller never gets to name a curl flag. */
+export function buildCurlArgs(req, pinIp, port) {
+  const args = [
+    '-q', // MUST be first — disables ~/.curlrc auto-load (config-file persistence)
+    '-sS',
+    '--proto',
+    '=http,https',
+    '--proto-redir',
+    '=http,https',
+    '--max-redirs',
+    '0', // no redirects — the validated target's response can't hand off elsewhere
+    '--noproxy',
+    '*', // ignore *_PROXY env — no egress via a poisoned proxy; this file OWNS every flag, so nothing can override it back
+    '--resolve',
+    `${req.parsedUrl.hostname}:${port}:${pinIp}`, // pin — defeats the validate-then-reconnect DNS-rebinding TOCTOU
+    '-X',
+    req.method,
+  ];
+  for (const h of req.headers) args.push('-H', h);
+  if (req.data !== null) args.push('--data-raw', req.data); // --data-raw (not -d/--data): never treats a leading "@" as a file path
+  if (req.userAgent) args.push('-A', req.userAgent);
+  if (req.maxTime) args.push('-m', String(req.maxTime));
+  if (req.output) args.push('-o', req.output);
+  if (req.insecure) args.push('-k');
+  if (req.include) args.push('-i');
+  if (req.verbose) args.push('-v');
+  args.push('--', req.url);
+  return args;
+}
+
+const HELP = `curl-local — loopback-only HTTP request (reached via \`maude design curl-local\`)
 
 Usage:
-  maude design curl-local <curl-args...>
+  maude design curl-local <url> [--method GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS]
+                          [--header "Name: value"]... [--data <body>]
+                          [--user-agent <ua>] [--max-time <seconds>]
+                          [--output <path>] [--insecure] [--include] [--verbose]
 
-Resolves every http(s) target in the given curl arguments and refuses to run
-curl at all unless EVERY resolved address is loopback (127.0.0.0/8 or ::1).
-Pins the connection to the validated address (curl's own --resolve) and
-forces --max-redirs 0 / --noproxy '*' / no .curlrc — the caller cannot
-override any of this (-K/--resolve/--connect-to/--next/-L/--proxy and
-friends are rejected outright). On success, forwards to a real \`curl\` and
-its exit code.
+This is curl-local's OWN small flag vocabulary, not curl's — it does not
+accept raw curl arguments (see the file's own header comment for why).
+Resolves the URL's host and refuses to run at all unless EVERY resolved
+address is loopback (127.0.0.0/8 or ::1); pins the connection to the
+validated address.
 
 Exit: curl's own exit code · 2 usage/rejected argv · 3 non-loopback target
       rejected · 1 other.`;
@@ -236,40 +312,27 @@ async function main() {
     process.stdout.write(`${HELP}\n`);
     process.exit(argv.length === 0 ? 2 : 0);
   }
-  const blockReason = validateArgv(argv);
-  if (blockReason) {
-    process.stderr.write(`curl-local: ${blockReason}\n`);
-    process.exit(2);
-  }
-  const targets = findTargetUrls(argv);
-  if (targets.length === 0) {
-    process.stderr.write('curl-local: no http(s) URL found in arguments\n');
-    process.exit(2);
-  }
-  const pins = [];
+  let req;
   try {
-    for (const u of targets) {
-      const pinIp = await resolveLoopbackIp(u.hostname);
-      const port = u.port ? Number(u.port) : u.protocol === 'https:' ? 443 : 80;
-      pins.push(`${u.hostname}:${port}:${pinIp}`);
-    }
+    req = parseRequestArgv(argv);
+  } catch (err) {
+    process.stderr.write(`curl-local: ${err.message}\n`);
+    process.exit(2);
+  }
+  let pinIp;
+  try {
+    pinIp = await resolveLoopbackIp(req.parsedUrl.hostname);
   } catch (err) {
     process.stderr.write(`curl-local: ${err.message}\n`);
     process.exit(err instanceof CurlLocalError ? err.code : 1);
   }
-  const forcedArgs = [
-    '-q', // MUST be first — disables ~/.curlrc auto-load (config-file persistence)
-    '--proto',
-    '=http,https',
-    '--proto-redir',
-    '=http,https',
-    '--max-redirs',
-    '0', // no redirects — a validated target's response can't hand off to a non-loopback host
-    '--noproxy',
-    '*', // ignore *_PROXY env — no egress via a poisoned proxy
-    ...pins.flatMap((pin) => ['--resolve', pin]), // pin — defeats the validate-then-reconnect TOCTOU
-  ];
-  const result = spawnSync('curl', [...forcedArgs, ...argv], { stdio: 'inherit' });
+  const port = req.parsedUrl.port
+    ? Number(req.parsedUrl.port)
+    : req.parsedUrl.protocol === 'https:'
+      ? 443
+      : 80;
+  const curlArgs = buildCurlArgs(req, pinIp, port);
+  const result = spawnSync('curl', curlArgs, { stdio: 'inherit' });
   if (result.error) {
     process.stderr.write(`curl-local: failed to run curl: ${result.error.message}\n`);
     process.exit(1);

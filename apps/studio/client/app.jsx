@@ -182,6 +182,20 @@ const CANVAS_EXT_RE = /\.(tsx|html?)$/i;
 // the bundle is consumed in a context that hasn't run the build.
 const MDCC_VERSION = typeof __MDCC_VERSION__ !== 'undefined' ? __MDCC_VERSION__ : 'dev';
 
+// Best-effort OS notification — shared by handleAssistantFinished and
+// handleAssistantAttention below (identical support/permission check +
+// try/catch, only the title/body differ). The in-app badge stays the
+// reliable signal if this silently fails for any reason.
+function notifyDesktop(title, body) {
+  try {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      new Notification(title, { body });
+    }
+  } catch {
+    /* best-effort — the in-app badge is the reliable signal */
+  }
+}
+
 function readInitialTheme() {
   if (typeof window === 'undefined') return 'dark';
   try {
@@ -8601,13 +8615,7 @@ function App() {
   const handleAssistantFinished = useCallback(() => {
     if (!assistantOpenRef.current || document.hidden) {
       setAssistantUnseen(true);
-      try {
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          new Notification('Claude finished', { body: 'Your assistant turn is ready in Maude.' });
-        }
-      } catch {
-        /* best-effort — the in-app badge is the reliable signal */
-      }
+      notifyDesktop('Claude finished', 'Your assistant turn is ready in Maude.');
     }
   }, []);
   // DDR-185 — same "you weren't looking" gate as handleAssistantFinished
@@ -8632,15 +8640,7 @@ function App() {
       const now = Date.now();
       if (now - lastAttentionNotifyRef.current < ATTENTION_NOTIFY_COOLDOWN_MS) return;
       lastAttentionNotifyRef.current = now;
-      try {
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          new Notification('Maude needs your input', {
-            body: 'Claude is waiting on an approval or a question in Maude.',
-          });
-        }
-      } catch {
-        /* best-effort — the in-app badge is the reliable signal */
-      }
+      notifyDesktop('Maude needs your input', 'Claude is waiting on an approval or a question in Maude.');
     }
   }, []);
   // Inspector tab is lifted so View ▸ Layers can open the panel ON the Layers

