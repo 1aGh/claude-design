@@ -118,6 +118,14 @@ const BIN_VERBS = new Set([
   // host — see DDR-185's rejected alternatives). No dev server dependency —
   // pure Node, no `<designRoot>` involvement.
   'curl-local',
+  // DDR-185 security addendum. `agent-browser-safe` replaces the bare
+  // `Bash(agent-browser:*)` allow-list entry a security review found was a
+  // zero-confirmation session-hijack primitive (agent-browser's own bundled
+  // skill recommends a PERSISTENT authenticated Chrome profile). Closed
+  // subcommand allow-list + forced domain scope + forced ephemeral profile —
+  // see `_agent-browser-safe.mjs` for the full rationale. No dev server
+  // dependency — pure Node.
+  'agent-browser-safe',
 ]);
 
 // Bin verbs that boot the dev-server (directly, or by shelling into server-up.sh).

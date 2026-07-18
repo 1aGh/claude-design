@@ -4,16 +4,23 @@
 // IPv4-mapped form — unlike `_fetch-asset.mjs`'s `classifyAddress`, an
 // ordinary private-LAN address like 192.168.1.1 is REJECTED here, not
 // allowed), the every-record DNS check (closes the multi-A-record rebinding
-// gap), and the argv URL scan (curl accepts its target in any position, and
-// more than one).
+// gap), the argv URL scan (curl accepts its target in any position, and more
+// than one), and — added by the security addendum — the argv ALLOWLIST that
+// rejects `-K`/`--resolve`/`--connect-to`/`-L`/`--proxy` and friends outright
+// (a live security fan-out found the first cut's blocklist-free forwarding
+// let those flags smuggle an unvalidated second target past the loopback
+// check entirely; see the file's own header comment for the two confirmed
+// exploits).
 
 import { describe, expect, test } from 'bun:test';
 import {
-  assertLoopbackHost,
   CurlLocalError,
+  REJECTED_FLAGS,
   classifyRecords,
   findTargetUrls,
   isLoopbackAddress,
+  resolveLoopbackIp,
+  validateArgv,
 } from './_curl-local.mjs';
 
 describe('isLoopbackAddress', () => {
@@ -72,27 +79,27 @@ describe('classifyRecords — the every-record check (multi-A-record DNS rebindi
   });
 });
 
-describe('assertLoopbackHost', () => {
-  test('an IP-literal host skips DNS entirely — loopback passes', async () => {
-    await expect(assertLoopbackHost('127.0.0.1')).resolves.toBeUndefined();
+describe('resolveLoopbackIp', () => {
+  test('an IP-literal host skips DNS entirely — loopback passes, returns itself', async () => {
+    await expect(resolveLoopbackIp('127.0.0.1')).resolves.toBe('127.0.0.1');
   });
 
   test('an IP-literal host that is not loopback throws CurlLocalError(3)', async () => {
-    await expect(assertLoopbackHost('8.8.8.8')).rejects.toThrow(CurlLocalError);
+    await expect(resolveLoopbackIp('8.8.8.8')).rejects.toThrow(CurlLocalError);
     try {
-      await assertLoopbackHost('8.8.8.8');
+      await resolveLoopbackIp('8.8.8.8');
       throw new Error('should have thrown');
     } catch (err) {
       expect(err.code).toBe(3);
     }
   });
 
-  test('a hostname resolving to all-loopback records (injected lookup) passes', async () => {
+  test('a hostname resolving to all-loopback records (injected lookup) passes, returns the pin IP', async () => {
     const lookupFn = async () => [
       { address: '127.0.0.1', family: 4 },
       { address: '::1', family: 6 },
     ];
-    await expect(assertLoopbackHost('localhost', { lookupFn })).resolves.toBeUndefined();
+    await expect(resolveLoopbackIp('localhost', { lookupFn })).resolves.toBe('127.0.0.1');
   });
 
   test('a hostname with ONE non-loopback record among several is rejected (DNS-rebinding defense)', async () => {
@@ -100,7 +107,7 @@ describe('assertLoopbackHost', () => {
       { address: '127.0.0.1', family: 4 },
       { address: '203.0.113.5', family: 4 }, // TEST-NET-3 — a real "other" address
     ];
-    await expect(assertLoopbackHost('rebind.example', { lookupFn })).rejects.toThrow(
+    await expect(resolveLoopbackIp('rebind.example', { lookupFn })).rejects.toThrow(
       CurlLocalError
     );
   });
@@ -111,7 +118,38 @@ describe('assertLoopbackHost', () => {
       err.code = 'ENOTFOUND';
       throw err;
     };
-    await expect(assertLoopbackHost('nope.invalid', { lookupFn })).rejects.toThrow(CurlLocalError);
+    await expect(resolveLoopbackIp('nope.invalid', { lookupFn })).rejects.toThrow(CurlLocalError);
+  });
+});
+
+describe('validateArgv — the allowlist that closes the -K/--resolve/--connect-to bypasses', () => {
+  test('accepts an ordinary loopback invocation', () => {
+    expect(validateArgv(['-s', '-X', 'GET', 'http://localhost:3000/api'])).toBeNull();
+  });
+
+  for (const flag of REJECTED_FLAGS) {
+    test(`rejects ${flag} anywhere in argv`, () => {
+      const reason = validateArgv(['http://127.0.0.1:1/', flag, 'x']);
+      expect(reason).toContain(flag);
+    });
+  }
+
+  test('rejects the config-file-injection PoC verbatim (security-auditor finding 1)', () => {
+    const reason = validateArgv(['http://127.0.0.1:1/decoy', '-K', 'evil.conf']);
+    expect(reason).not.toBeNull();
+  });
+
+  test('rejects the --resolve target-override PoC verbatim (ethical-hacker finding B)', () => {
+    const reason = validateArgv([
+      '--resolve',
+      'localhost:80:203.0.113.5',
+      'http://localhost/',
+    ]);
+    expect(reason).not.toBeNull();
+  });
+
+  test('rejects a `--flag=value` form of a rejected flag, not just the bare form', () => {
+    expect(validateArgv(['http://127.0.0.1:1/', '--proxy=http://evil.example:8080'])).not.toBeNull();
   });
 });
 

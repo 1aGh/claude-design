@@ -103,8 +103,9 @@ A single screenshot can PASS while nothing actually animates (a frozen `d:path()
 
 - **Video-comp**: seek to two frames and confirm the render differs.
   ```bash
-  agent-browser eval "window.__maude_seek__ && window.__maude_seek__(0)"; agent-browser screenshot /tmp/mc-f0.png
-  agent-browser eval "window.__maude_seek__(Math.floor((window.__maude_comps__()[0]?.durationInFrames||30)/2))"; agent-browser screenshot /tmp/mc-fN.png
+  # Via the hardened wrapper (DDR-185 security addendum) — never raw agent-browser.
+  maude design agent-browser-safe eval "window.__maude_seek__ && window.__maude_seek__(0)"; maude design agent-browser-safe screenshot /tmp/mc-f0.png
+  maude design agent-browser-safe eval "window.__maude_seek__(Math.floor((window.__maude_comps__()[0]?.durationInFrames||30)/2))"; maude design agent-browser-safe screenshot /tmp/mc-fN.png
   # identical bytes at two distinct frames = the comp is NOT animating → HARD fail
   ```
 - **Ordinary artboard**: sample a computed style over real wall-clock (t0 vs t1 ~600ms apart via `getComputedStyle`/`getBBox`) and assert it moves.

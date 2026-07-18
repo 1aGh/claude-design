@@ -103,6 +103,11 @@ const MINIMAP_STORE = 'mdcc-minimap-visible';
 const ZOOMCTL_STORE = 'mdcc-zoomctl-visible';
 const ANNOT_STORE = 'mdcc-annotations-visible';
 const AUTOOPEN_STORE = 'maude-auto-open-inspector';
+// DDR-185 security addendum — floor between OS notifications for a NEW
+// permission/elicitation request, so a burst of distinct pending approvals
+// (capped at 15 total server-side, DDR-179/180) reads as one attention-
+// getting ping instead of a rapid-fire flood. The in-app badge is unaffected.
+const ATTENTION_NOTIFY_COOLDOWN_MS = 30_000;
 
 // feature-unified-settings-modal — the Settings modal's view prefs are ALSO
 // persisted to disk (~/.config/maude/prefs.json via /_api/ui-prefs), so they
@@ -8610,9 +8615,23 @@ function App() {
   // permission prompt or an AskUserQuestion/elicitation form), not just when
   // a turn completes. A stalled turn otherwise gives no signal at all if the
   // window isn't focused. Distinct copy so it doesn't read as "done".
+  //
+  // Security-review addendum (Finding G): DDR-179/180 already cap concurrent
+  // pending requests at 10 permissions + 5 elicitations, so a single
+  // adversarial turn can legitimately queue up to 15 DISTINCT approval
+  // decisions — each one now fires a real OS Notification, which is exactly
+  // the burst that manufactures the "rapid Enter-mashing" precondition
+  // DDR-179's own addendum already treats as a security-relevant habituation
+  // risk. The in-app badge (setAssistantUnseen) still reflects EVERY new
+  // request instantly — only the OS notification itself is rate-limited, so
+  // a burst reads as one attention-getting ping, not fifteen.
+  const lastAttentionNotifyRef = useRef(0);
   const handleAssistantAttention = useCallback(() => {
     if (!assistantOpenRef.current || document.hidden) {
       setAssistantUnseen(true);
+      const now = Date.now();
+      if (now - lastAttentionNotifyRef.current < ATTENTION_NOTIFY_COOLDOWN_MS) return;
+      lastAttentionNotifyRef.current = now;
       try {
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           new Notification('Maude needs your input', {

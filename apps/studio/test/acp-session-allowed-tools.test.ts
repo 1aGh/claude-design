@@ -1,21 +1,24 @@
-// DDR-184 (+ DDR-185) — the curated tool allow-list the bridge auto-approves so
-// the design workflow never stalls on a per-edit / per-`maude` permission
-// prompt (the "Manual mode blocks every edit" complaint). Three things under
-// test:
+// DDR-184 (+ DDR-185, hardened per its security addendum) — the curated tool
+// allow-list the bridge auto-approves so the design workflow never stalls on
+// a per-edit / per-`maude` permission prompt (the "Manual mode blocks every
+// edit" complaint). Three things under test:
 //
 //   (1) WIRE contract — the list lands on `_meta.claudeCode.options.allowedTools`
 //       (SDK `allowedTools`, sdk.d.ts:1331), coexisting with the DDR-144
 //       `settingSources` narrowing and the DDR-143 `plugins` carrier. Same
 //       adapter/SDK-INTERNAL `_meta` path as acp-session-plugins.test.ts — a
 //       bump that stops forwarding it must fail HERE, not silently re-prompt.
-//   (2) SOURCE-OF-TRUTH guard — the Bash rules are EXACTLY `Bash(maude:*)`,
-//       `Bash(agent-browser:*)`, and a closed read-only fs verb set (DDR-185)
-//       — nothing else. `Bash(maude:*)` covers the whole design-helper surface
-//       because DDR-062 routes every helper through `maude design <verb>`;
-//       `Bash(agent-browser:*)` covers the RAW agent-browser calls documented
-//       in `motion-critic.md`/`edit.md` that DDR-062 doesn't reach. If either
-//       assumption stops being true, or someone widens the Bash scope beyond
-//       this fixed set, this test fails loudly.
+//   (2) SOURCE-OF-TRUTH guard — the Bash rules are EXACTLY `Bash(maude:*)`
+//       plus a closed read-only fs verb set (DDR-185) — nothing else. A
+//       security fan-out found the ORIGINAL DDR-185 cut's `Bash(agent-browser:*)`
+//       entry was a zero-confirmation session-hijack primitive (agent-browser's
+//       own bundled skill recommends a persistent, real-login Chrome profile)
+//       and `Bash(find:*)` was unrestricted command execution via `-exec`, not
+//       "mutation" as first characterized — both are cut, not patched, because
+//       neither residual is fixable via prefix-matching. `agent-browser` is
+//       now reached ONLY through the hardened `agent-browser-safe` verb
+//       (`Bash(maude:*)` covers it — no separate allow-list entry). If any of
+//       this drifts, this test fails loudly.
 //   (3) `WebSearch`/`WebFetch` (DDR-185) are present as bare native tool names
 //       — no prefix-matching involved, so no source-of-truth guard needed the
 //       way the Bash rules need one.
@@ -85,18 +88,21 @@ describe('MAUDE_DEFAULT_ALLOWED_TOOLS — source-of-truth guard (DDR-184 / DDR-0
   test('the Bash rules are EXACTLY this closed set — never a bare/un-scoped Bash', () => {
     // A bare `Bash` (or `Bash(*)`) would auto-approve arbitrary command execution
     // — exactly the blanket surface DDR-179 kept behind the prompt. Guard against
-    // anyone widening it: the list may auto-approve `maude`, `agent-browser`, and
-    // the closed read-only fs verb set (DDR-185) — nothing else. In particular,
-    // `Bash(curl:*)` must NEVER appear here — DDR-185 deliberately routes
-    // localhost curl through the `curl-local` verb (covered by `Bash(maude:*)`)
-    // instead, specifically so raw curl to an arbitrary host keeps prompting.
+    // anyone widening it: the list may auto-approve `maude` and the closed
+    // read-only fs verb set (DDR-185) — nothing else. In particular:
+    //   - `Bash(curl:*)` must NEVER appear — curl is routed through the
+    //     `curl-local` verb (covered by `Bash(maude:*)`) instead.
+    //   - `Bash(agent-browser:*)` must NEVER appear — a security fan-out found
+    //     it was a zero-confirmation session-hijack primitive; agent-browser is
+    //     routed through the `agent-browser-safe` verb instead.
+    //   - `Bash(find:*)` must NEVER appear — `find -exec` is unrestricted
+    //     command execution, not "mutation"; there is no verb substitute, it
+    //     is simply cut.
     expect(bashRules).toEqual([
       'Bash(maude:*)',
-      'Bash(agent-browser:*)',
       'Bash(ls:*)',
       'Bash(cat:*)',
       'Bash(pwd:*)',
-      'Bash(find:*)',
       'Bash(head:*)',
       'Bash(tail:*)',
       'Bash(wc:*)',
@@ -131,17 +137,30 @@ describe('MAUDE_DEFAULT_ALLOWED_TOOLS — source-of-truth guard (DDR-184 / DDR-0
     expect(src).toMatch(/'curl-local'/);
   });
 
-  test('the `agent-browser` Bash rule is load-bearing: it is a declared design-plugin dependency', () => {
-    // `plugins/design/dependencies.json` is the source of truth for "this is a
-    // named, vetted, first-party-adjacent tool" — not an arbitrary shell escape
-    // hatch. If the dependency entry disappears, the trust argument in
-    // bridge.ts's comment needs re-checking.
+  test('the `agent-browser-safe` verb exists and is reached via `maude design <verb>` (DDR-185 security addendum)', () => {
+    // The replacement for the reverted `Bash(agent-browser:*)` entry — real
+    // subcommand/flag enforcement via a first-party verb, not a Bash prefix
+    // rule. If this verb disappears from BIN_VERBS, motion-critic.md/edit.md's
+    // documented raw agent-browser calls go back to prompting (not silently
+    // insecure — but the friction-reduction this DDR promises goes stale).
     const here = dirname(realpathSync(import.meta.url.replace('file://', '')));
-    const depsPath = join(here, '..', '..', '..', 'plugins', 'design', 'dependencies.json');
-    expect(existsSync(depsPath)).toBe(true);
-    const deps = JSON.parse(readFileSync(depsPath, 'utf8')) as {
-      dependencies?: Array<{ id?: string }>;
-    };
-    expect(deps.dependencies?.some((d) => d.id === 'agent-browser')).toBe(true);
+    const designCli = join(here, '..', '..', '..', 'cli', 'commands', 'design.mjs');
+    const src = readFileSync(designCli, 'utf8');
+    expect(src).toMatch(/'agent-browser-safe'/);
+  });
+
+  test('plugin markdown no longer documents a RAW agent-browser invocation (DDR-185 security addendum)', () => {
+    // motion-critic.md and edit.md are the two files that originally justified
+    // `Bash(agent-browser:*)` (raw calls not reached via `maude design <verb>`).
+    // Both must now call the hardened wrapper — a regression here means either
+    // those workflows silently went back to prompting every time, or (worse)
+    // someone re-introduced a raw call the allow-list no longer covers.
+    const here = dirname(realpathSync(import.meta.url.replace('file://', '')));
+    const pluginsDir = join(here, '..', '..', '..', 'plugins', 'design');
+    for (const rel of ['agents/motion-critic.md', 'commands/edit.md']) {
+      const src = readFileSync(join(pluginsDir, rel), 'utf8');
+      expect(src).not.toMatch(/(?<!maude design )agent-browser (eval|screenshot|open|navigate)\b/);
+      expect(src).toContain('maude design agent-browser-safe');
+    }
   });
 });
