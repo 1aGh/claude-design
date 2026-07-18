@@ -8,11 +8,7 @@
 // ethical-hacker Finding D rationale this file exists to close.
 
 import { describe, expect, test } from 'bun:test';
-import {
-  ALLOWED_SUBCOMMANDS,
-  REJECTED_FLAGS,
-  validateArgv,
-} from './_agent-browser-safe.mjs';
+import { ALLOWED_SUBCOMMANDS, REJECTED_FLAGS, validateArgv } from './_agent-browser-safe.mjs';
 
 describe('validateArgv — subcommand allow-list', () => {
   for (const sub of ALLOWED_SUBCOMMANDS) {
@@ -21,7 +17,16 @@ describe('validateArgv — subcommand allow-list', () => {
     });
   }
 
-  for (const sub of ['cookies', 'clipboard', 'storage', 'connect', 'chat', 'upload', 'auth', 'profiles']) {
+  for (const sub of [
+    'cookies',
+    'clipboard',
+    'storage',
+    'connect',
+    'chat',
+    'upload',
+    'auth',
+    'profiles',
+  ]) {
     test(`rejects the credential/session-hijack-capable subcommand "${sub}" (ethical-hacker Finding D)`, () => {
       const reason = validateArgv([sub, 'get']);
       expect(reason).toContain(sub);
@@ -52,7 +57,12 @@ describe('validateArgv — rejected flags after the subcommand', () => {
   }
 
   test('rejects the persistent-profile PoC verbatim (ethical-hacker Finding D)', () => {
-    const reason = validateArgv(['open', '--profile', 'Default', 'https://github.com/settings/tokens']);
+    const reason = validateArgv([
+      'open',
+      '--profile',
+      'Default',
+      'https://github.com/settings/tokens',
+    ]);
     expect(reason).not.toBeNull();
   });
 
@@ -66,7 +76,9 @@ describe('validateArgv — rejected flags after the subcommand', () => {
   });
 
   test('an ordinary allowed invocation with no rejected flags passes', () => {
-    expect(validateArgv(['eval', "matchMedia('(prefers-reduced-motion: reduce)').matches"])).toBeNull();
+    expect(
+      validateArgv(['eval', "matchMedia('(prefers-reduced-motion: reduce)').matches"])
+    ).toBeNull();
     expect(validateArgv(['screenshot', '/tmp/out.png'])).toBeNull();
   });
 });

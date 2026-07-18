@@ -15,10 +15,10 @@
 import { describe, expect, test } from 'bun:test';
 import {
   CurlLocalError,
-  REJECTED_FLAGS,
   classifyRecords,
   findTargetUrls,
   isLoopbackAddress,
+  REJECTED_FLAGS,
   resolveLoopbackIp,
   validateArgv,
 } from './_curl-local.mjs';
@@ -107,9 +107,7 @@ describe('resolveLoopbackIp', () => {
       { address: '127.0.0.1', family: 4 },
       { address: '203.0.113.5', family: 4 }, // TEST-NET-3 — a real "other" address
     ];
-    await expect(resolveLoopbackIp('rebind.example', { lookupFn })).rejects.toThrow(
-      CurlLocalError
-    );
+    await expect(resolveLoopbackIp('rebind.example', { lookupFn })).rejects.toThrow(CurlLocalError);
   });
 
   test('DNS resolution failure is a rejection, not a silent pass', async () => {
@@ -140,16 +138,14 @@ describe('validateArgv — the allowlist that closes the -K/--resolve/--connect-
   });
 
   test('rejects the --resolve target-override PoC verbatim (ethical-hacker finding B)', () => {
-    const reason = validateArgv([
-      '--resolve',
-      'localhost:80:203.0.113.5',
-      'http://localhost/',
-    ]);
+    const reason = validateArgv(['--resolve', 'localhost:80:203.0.113.5', 'http://localhost/']);
     expect(reason).not.toBeNull();
   });
 
   test('rejects a `--flag=value` form of a rejected flag, not just the bare form', () => {
-    expect(validateArgv(['http://127.0.0.1:1/', '--proxy=http://evil.example:8080'])).not.toBeNull();
+    expect(
+      validateArgv(['http://127.0.0.1:1/', '--proxy=http://evil.example:8080'])
+    ).not.toBeNull();
   });
 });
 

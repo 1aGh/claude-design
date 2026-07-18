@@ -120,7 +120,7 @@ export class CurlLocalError extends Error {
  * so it's testable with a plain array literal, no DNS/module mocking needed.
  */
 export function classifyRecords(host, records) {
-  if (!records || !records.length) return `no DNS records for ${host}`;
+  if (!records?.length) return `no DNS records for ${host}`;
   for (const { address } of records) {
     if (!isLoopbackAddress(address)) {
       return `${host} resolves to non-loopback ${address} — refusing`;

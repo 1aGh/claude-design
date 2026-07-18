@@ -138,7 +138,9 @@ function main() {
     { stdio: 'inherit', env }
   );
   if (result.error) {
-    process.stderr.write(`agent-browser-safe: failed to run agent-browser: ${result.error.message}\n`);
+    process.stderr.write(
+      `agent-browser-safe: failed to run agent-browser: ${result.error.message}\n`
+    );
     process.exit(1);
   }
   process.exit(result.status ?? 1);
