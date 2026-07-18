@@ -36,7 +36,7 @@ export interface GridTrack {
   unit: GridTrackUnit;
 }
 
-const NUMERIC_TRACK_RE = /^(-?[\d.]+)(px|%|fr|em)$/;
+const NUMERIC_TRACK_RE = /^(-?\d+(?:\.\d+)?)(px|%|fr|em)$/;
 
 /**
  * Parse a `grid-template-columns`/`grid-template-rows` value into a track

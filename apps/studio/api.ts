@@ -3014,7 +3014,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     if (!r.ok) return r;
     if (!takeStructuralToken()) return RATE_LIMITED;
     const artboardId = typeof input.artboardId === 'string' ? input.artboardId.trim() : '';
-    if (!artboardId) return { ok: false, status: 400, error: 'artboardId required' };
+    if (!/^[A-Za-z][\w-]{0,63}$/.test(artboardId)) {
+      return { ok: false, status: 400, error: 'invalid artboardId' };
+    }
     const width = Number.isFinite(Number(input.width))
       ? Math.max(64, Math.min(8192, Math.round(Number(input.width))))
       : 0;

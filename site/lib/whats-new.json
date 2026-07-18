@@ -1,11 +1,20 @@
 {
-  "generated": "2026-07-18T07:30:04.529Z",
-  "version": "0.45.2",
+  "generated": "2026-07-18T12:55:09.293Z",
+  "version": "0.46.0",
   "entries": [
     {
-      "id": "scene-aware-video-analyze",
+      "id": "web-artboards",
       "version": null,
       "date": null,
+      "kind": "feature",
+      "title": "Web artboards — breakpoints, duplicate, and a grid editor",
+      "summary": "Set an artboard's kind to Web and it becomes a responsive viewport: a small chip shows its current breakpoint, and \"Duplicate at width…\" (right-click or the Inspector) clones it at Mobile/Tablet/Laptop/Desktop widths for reflow testing. Grid containers also get a new Grid section in the Inspector — define columns and rows with px/%/fr/em/auto units, drag the gutters directly on the canvas, and place children into specific cells.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "scene-aware-video-analyze",
+      "version": "0.46.0",
+      "date": "2026-07-18",
       "kind": "feature",
       "title": "Analyze a video — picture and sound — in one command",
       "summary": "Run /design:video-analyze on a clip and Maude reads it end to end: it picks keyframes at real scene changes and action beats (not a blind frame rate), transcribes the audio, and writes a summary with shots, on-screen text, mood, and the best moment to use. A new Settings → Video section lets you choose the analysis engine and, on Apple Silicon, download an optional local Gemma model for smarter shot detection.",
@@ -13,8 +22,8 @@
     },
     {
       "id": "print-artboards",
-      "version": null,
-      "date": null,
+      "version": "0.46.0",
+      "date": "2026-07-18",
       "kind": "feature",
       "title": "Design flyers, posters, and business cards — print-ready",
       "summary": "Give a print artboard a real paper size (A4, Letter, business card, and more) and it resolves to the correct bleed-inclusive dimensions automatically. Toggle bleed/trim/margin guides from the View menu while you work, then export a 300–600 DPI PNG or a print-ready PDF with correct page boxes and crop/registration marks.",
@@ -23,8 +32,8 @@
     },
     {
       "id": "artboard-kinds-foundation",
-      "version": null,
-      "date": null,
+      "version": "0.46.0",
+      "date": "2026-07-18",
       "kind": "feature",
       "title": "Artboards now know what they are",
       "summary": "Give any artboard a kind — Digital, Print, Web, or Video — from the Inspector or the right-click menu, and it gets its own chrome. New generic layout guides (columns, rows, grid) can be toggled on from the View menu for any artboard. Print- and web-specific tools land in follow-up releases.",

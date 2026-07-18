@@ -50,6 +50,11 @@ describe('grid-track-handles / parseTrackList', () => {
     expect(parseTrackList('repeat(3, 1fr)')).toEqual([]);
     expect(parseTrackList('minmax(100px, 1fr) 1fr')).toEqual([]);
   });
+
+  test('a malformed multi-dot number (security-auditor correctness finding) bails to [] rather than NaN', () => {
+    expect(parseTrackList('1.2.3px')).toEqual([]);
+    expect(parseTrackList('200px 1.2.3fr')).toEqual([]);
+  });
 });
 
 describe('grid-track-handles / serializeTrackList', () => {

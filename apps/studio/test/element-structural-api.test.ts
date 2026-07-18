@@ -357,6 +357,21 @@ describe('POST /_api/duplicate-artboard', () => {
       await killProc(proc as never);
     }
   });
+
+  test('malformed artboard id shape is a 400 refusal (security-auditor consistency finding)', async () => {
+    const { designRoot, main, proc } = await boot();
+    try {
+      await divIdsByLine(main, designRoot); // warm pipeline
+      const res = await fetch(`${main}/_api/duplicate-artboard`, {
+        method: 'POST',
+        body: JSON.stringify({ canvas: 'ui/List', artboardId: 'a" onload="x', width: 390 }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(res.status).toBe(400);
+    } finally {
+      await killProc(proc as never);
+    }
+  });
 });
 
 // G3 security (DDR-152) — the structural-write disk-fill / silent-shred defenses

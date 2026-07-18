@@ -1150,7 +1150,7 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-gridtrack-row { display: flex; align-items: center; gap: var(--space-1); }
 .st-cp-gridtrack-row .st-cp-nsel { flex: 1 1 auto; }
 .st-cp-gridtrack-remove { flex: 0 0 auto; min-height: 22px; min-width: 22px; padding: 0; justify-content: center; color: var(--fg-2); }
-.st-cp-gridtrack-remove:hover:not(:disabled) { color: var(--status-danger, var(--fg-0)); }
+.st-cp-gridtrack-remove:hover:not(:disabled) { color: var(--status-error); }
 
 /* provenance legend */
 .st-cp-legend { display: flex; flex-wrap: wrap; gap: var(--space-3); padding-top: var(--space-1); border-top: 1px solid var(--border-subtle); }

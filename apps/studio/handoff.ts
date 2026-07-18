@@ -129,11 +129,8 @@ export interface EmitOptions {
  */
 export function resolveCanvasKind(rawSource: string): string {
   const kinds = new Set<string>();
-  const re = /<DCArtboard\b[^>]*\bkind="([a-z]+)"/g;
-  let m: RegExpExecArray | null = re.exec(rawSource);
-  while (m) {
+  for (const m of rawSource.matchAll(/<DCArtboard\b[^>]*\bkind="([a-z]+)"/g)) {
     if (m[1]) kinds.add(m[1]);
-    m = re.exec(rawSource);
   }
   if (kinds.size === 0) return 'digital';
   if (kinds.size === 1) return [...kinds][0] as string;

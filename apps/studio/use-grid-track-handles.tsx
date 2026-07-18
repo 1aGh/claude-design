@@ -149,28 +149,31 @@ export function GridTrackHandlesOverlay(): ReactNode {
     }
     const tick = () => {
       rafRef.current = null;
-      if (isElementDragActive()) {
-        hideAll();
+      const reschedule = () => {
         rafRef.current = requestAnimationFrame(tick);
+      };
+      const bail = () => {
+        hideAll();
+        reschedule();
+      };
+      if (isElementDragActive()) {
+        bail();
         return;
       }
       const el = resolveSelectionEl(document, one) as HTMLElement | null;
       if (!el) {
-        hideAll();
-        rafRef.current = requestAnimationFrame(tick);
+        bail();
         return;
       }
       const cs = getComputedStyle(el);
       const isGrid = cs.display === 'grid' || cs.display === 'inline-grid';
       if (!isGrid) {
-        hideAll();
-        rafRef.current = requestAnimationFrame(tick);
+        bail();
         return;
       }
       const r = el.getBoundingClientRect();
       if (r.width <= 0 && r.height <= 0) {
-        hideAll();
-        rafRef.current = requestAnimationFrame(tick);
+        bail();
         return;
       }
       const zoom = worldZoomFor(el);
@@ -180,15 +183,12 @@ export function GridTrackHandlesOverlay(): ReactNode {
 
       const buildAxis = (
         container: 'col' | 'row',
-        authoredProp: string,
-        resolvedProp: string,
+        prop: string,
         gapPx: number
       ): AxisState | null => {
-        const authored = parseTrackList(el.style.getPropertyValue(authoredProp));
+        const authored = parseTrackList(el.style.getPropertyValue(prop));
         if (authored.length < 2) return null;
-        const resolvedPx = resolvedTrackSizes(cs.getPropertyValue(resolvedProp)).map(
-          (px) => px * zoom
-        );
+        const resolvedPx = resolvedTrackSizes(cs.getPropertyValue(prop)).map((px) => px * zoom);
         if (resolvedPx.length !== authored.length) return null; // repeat()/mismatch guard
         const gutters = computeGutterLines(rect, resolvedPx, gapPx, container).filter((_, i) => {
           const before = authored[i] as GridTrack;
@@ -199,8 +199,8 @@ export function GridTrackHandlesOverlay(): ReactNode {
         return { container, authored, resolvedPx, gutters };
       };
 
-      const col = buildAxis('col', 'grid-template-columns', 'grid-template-columns', colGap);
-      const row = buildAxis('row', 'grid-template-rows', 'grid-template-rows', rowGap);
+      const col = buildAxis('col', 'grid-template-columns', colGap);
+      const row = buildAxis('row', 'grid-template-rows', rowGap);
       axesRef.current = { col, row };
 
       const allGutters = [...(col?.gutters ?? []), ...(row?.gutters ?? [])];
@@ -208,29 +208,23 @@ export function GridTrackHandlesOverlay(): ReactNode {
       while (c.children.length < TOTAL) c.appendChild(document.createElement('div'));
       while (c.children.length > TOTAL) c.lastChild && c.removeChild(c.lastChild);
       let i = 0;
-      for (const g of col?.gutters ?? []) {
-        const h = c.children[i] as HTMLElement;
-        h.className = 'dc-grid-gutter-handle';
-        h.dataset.container = 'col';
-        h.dataset.gutterIndex = String(g.index);
-        h.dataset.axis = g.axis;
-        h.title = 'grid column gutter · drag to resize · shift = resize both neighbors';
-        h.style.display = 'block';
-        h.style.left = `${Math.round(g.x)}px`;
-        h.style.top = `${Math.round(g.y)}px`;
-        i++;
-      }
-      for (const g of row?.gutters ?? []) {
-        const h = c.children[i] as HTMLElement;
-        h.className = 'dc-grid-gutter-handle';
-        h.dataset.container = 'row';
-        h.dataset.gutterIndex = String(g.index);
-        h.dataset.axis = g.axis;
-        h.title = 'grid row gutter · drag to resize · shift = resize both neighbors';
-        h.style.display = 'block';
-        h.style.left = `${Math.round(g.x)}px`;
-        h.style.top = `${Math.round(g.y)}px`;
-        i++;
+      for (const [container, axisState] of [
+        ['col', col],
+        ['row', row],
+      ] as const) {
+        const kind = container === 'col' ? 'column' : 'row';
+        for (const g of axisState?.gutters ?? []) {
+          const h = c.children[i] as HTMLElement;
+          h.className = 'dc-grid-gutter-handle';
+          h.dataset.container = container;
+          h.dataset.gutterIndex = String(g.index);
+          h.dataset.axis = g.axis;
+          h.title = `grid ${kind} gutter · drag to resize · shift = resize both neighbors`;
+          h.style.display = 'block';
+          h.style.left = `${Math.round(g.x)}px`;
+          h.style.top = `${Math.round(g.y)}px`;
+          i++;
+        }
       }
       rafRef.current = requestAnimationFrame(tick);
     };

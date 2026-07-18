@@ -1493,42 +1493,27 @@ function buildRegistry(deps: {
       /* detached / cross-origin */
     }
   };
+  const DUP_BREAKPOINTS: Array<{ id: string; label: string; width: number }> = [
+    { id: 'dup-bp-mobile', label: 'Mobile — 390px', width: 390 },
+    { id: 'dup-bp-tablet', label: 'Tablet — 834px', width: 834 },
+    { id: 'dup-bp-laptop', label: 'Laptop — 1280px', width: 1280 },
+    { id: 'dup-bp-desktop', label: 'Desktop — 1440px', width: 1440 },
+  ];
   const duplicateAtBreakpointItem: MenuItem = {
     id: 'duplicate-at-breakpoint',
     label: 'Duplicate at width…',
     onSelect: () => {
       /* parent of a submenu — never invoked directly */
     },
-    submenu: [
-      {
-        id: 'dup-bp-mobile',
-        label: 'Mobile — 390px',
+    submenu: DUP_BREAKPOINTS.map(
+      ({ id, label, width }): MenuItem => ({
+        id,
+        label,
         onSelect: (target) => {
-          if (target.artboardId) postDuplicateArtboardRequest(target.artboardId, 390);
+          if (target.artboardId) postDuplicateArtboardRequest(target.artboardId, width);
         },
-      },
-      {
-        id: 'dup-bp-tablet',
-        label: 'Tablet — 834px',
-        onSelect: (target) => {
-          if (target.artboardId) postDuplicateArtboardRequest(target.artboardId, 834);
-        },
-      },
-      {
-        id: 'dup-bp-laptop',
-        label: 'Laptop — 1280px',
-        onSelect: (target) => {
-          if (target.artboardId) postDuplicateArtboardRequest(target.artboardId, 1280);
-        },
-      },
-      {
-        id: 'dup-bp-desktop',
-        label: 'Desktop — 1440px',
-        onSelect: (target) => {
-          if (target.artboardId) postDuplicateArtboardRequest(target.artboardId, 1440);
-        },
-      },
-    ],
+      })
+    ),
   };
 
   return {
