@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "acp-safe-defaults-and-attention-notifications",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "title": "Fewer prompts in chat, and a nudge when you're needed",
+      "summary": "The assistant chat now runs common design-workflow actions — browser checks, your own local dev-server requests, reading files, and web search — without asking every time. And when a chat is waiting on your approval or an answer, Maude now sends a system notification so you don't miss it.",
+      "surface": "design-ui"
+    },
+    {
       "id": "web-artboards",
       "version": null,
       "date": null,
