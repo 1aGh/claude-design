@@ -671,6 +671,23 @@
 .st-layer.is-group .st-layer-label { font-style: italic; }
 .st-layer.is-group .st-layer-type { opacity: 0.7; }
 .st-layer.is-group:hover { background: var(--bg-2); }
+/* feature-4 T7a — component-instance rows (Figma purple). ◆ = the component's
+   own frame root, ◇ = an inner member. The purple is deliberately Figma-adjacent
+   so the vocabulary transfers. */
+.st-layer.is-instance { color: var(--layer-instance, #a78bfa); }
+.st-layer.is-instance .st-layer-label { color: var(--layer-instance, #a78bfa); }
+.st-layer.is-instance .st-layer-type { color: var(--layer-instance, #a78bfa); opacity: 0.75; }
+.st-layer-inst-glyph { flex: none; width: 14px; text-align: center; font-size: 10px; color: var(--layer-instance, #a78bfa); }
+.st-layer.is-sel.is-instance { box-shadow: inset 2px 0 0 var(--layer-instance, #a78bfa); }
+/* feature-4 T7b — locked rows: padlock stays visible when locked; dimmed label. */
+.st-layer-lock { flex: none; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 0; color: var(--fg-3); cursor: pointer; padding: 0; border-radius: var(--radius-xs); opacity: 0; }
+.st-layer--row:hover .st-layer-lock, .st-layer--row:focus-within .st-layer-lock { opacity: 1; }
+.st-layer-lock:hover { color: var(--fg-0); background: var(--bg-3); }
+.st-layer-lock:focus-visible { outline: none; color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+.st-layer.is-locked .st-layer-lock { opacity: 1; color: var(--fg-1); }
+.st-layer.is-locked .st-layer-label { opacity: 0.6; }
+/* feature-4 T7c — inline rename input matches the row's mono type. */
+.st-layer-rename { flex: 1 1 auto; min-width: 40px; font: inherit; color: var(--fg-0); background: var(--bg-1); border: 1px solid var(--accent); border-radius: var(--radius-xs); padding: 0 4px; outline: none; }
 /* a hidden layer stays dim + keeps its eye visible (so it can be re-shown) */
 .st-layer.is-hidden { opacity: 0.45; }
 .st-layer.is-hidden .st-layer-eye { opacity: 1; color: var(--fg-2); }

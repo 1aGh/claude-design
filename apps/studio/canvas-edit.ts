@@ -1055,6 +1055,44 @@ function collectElementsFull(
 }
 
 /**
+ * feature-4 T7a (layers purple instances, DDR-187 scope note) — the component
+ * map the shell's Layers panel renders instance rows from. For every element id
+ * whose ENCLOSING component is actually instantiated as a JSX element in this
+ * file (`<Card/>` — i.e. a reusable component, not the top-level canvas
+ * component, which is exported/mounted but never referenced as JSX here),
+ * report `{ component, root, usages }`. `root` marks the component's own frame
+ * root (the "instance" row in Figma terms — ◆-adjacent); inner members get the
+ * same purple treatment at lower prominence. Elements of never-instantiated
+ * components (the canvas root) are omitted — keeps the payload proportional to
+ * actual instances.
+ */
+export function componentMapForCanvas(
+  canvasAbsPath: string,
+  source: string
+): Record<string, { component: string; root: boolean; usages: number }> {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) return {};
+  const all = collectElementsFull(parsed.program);
+  // Usage count per component name = JSX elements whose TAG is that name.
+  const usages = new Map<string, number>();
+  for (const e of all) {
+    if (e.tag && /^[A-Z]/.test(e.tag)) {
+      usages.set(e.tag, (usages.get(e.tag) ?? 0) + 1);
+    }
+  }
+  const out: Record<string, { component: string; root: boolean; usages: number }> = {};
+  for (const e of all) {
+    if (!e.componentName) continue;
+    const n = usages.get(e.componentName) ?? 0;
+    if (n < 1) continue; // top-level canvas component — not an instance
+    // First writer wins — repeated ids (a `.map`) share one source element; the
+    // map is keyed by source id, which is exactly what the Layers rows carry.
+    if (!out[e.id]) out[e.id] = { component: e.componentName, root: e.isFrameRoot, usages: n };
+  }
+  return out;
+}
+
+/**
  * Resolve a reused-component INSTANCE id to the parent's `<Component>` USAGE id.
  *
  * A component used N times (`<Column/>` … `<Column/>`) renders N DOM nodes that
@@ -4616,6 +4654,13 @@ export function applyConvertToAbsolute(
     containerId: string;
     containerIdIndex?: number;
     containerSetRelative: boolean;
+    /** feature-4 T8b — user CONFIRMED converting component-instance children:
+     *  each child's `idIndex` routes the write to that occurrence's own
+     *  `<Component/>` USAGE (the Stage-H3 local-instance model — the usage
+     *  element carries the frozen box; the component must forward `style` for
+     *  it to paint, same assumption as instance drag-reposition). Without the
+     *  flag a shared child still throws (the pre-confirm abort). */
+    allowShared?: boolean;
     children: Array<{
       id: string;
       idIndex?: number;
@@ -4662,19 +4707,30 @@ export function applyConvertToAbsolute(
     setMultipleStyleProps(s, chit.opening, [['position', '"relative"']], canvasAbsPath, cid);
   }
 
-  // Each child → absolute + frozen box. Refuse a shared-component usage (see the
-  // guard note above).
+  // Each child → absolute + frozen box. A shared-component usage either routes
+  // to its own `<Component/>` usage (allowShared — the user confirmed) or
+  // throws (the pre-confirm abort). A `.map()`ed child can never convert: N
+  // rendered copies of ONE source element can't hold N absolute positions —
+  // detected as two children resolving to the SAME target element.
+  const writtenTargets = new Set<string>();
   for (const child of spec.children) {
     let cid = child.id;
     if (typeof child.idIndex === 'number' && Number.isFinite(child.idIndex)) {
       cid = resolveUsageId(parsed.program, child.id, child.idIndex);
-      if (cid !== child.id) {
+      if (cid !== child.id && !spec.allowShared) {
         throw new CanvasEditError(
-          `convert-to-absolute: "${child.id}" is a shared component instance — not supported yet`,
+          `convert-to-absolute: "${child.id}" is a shared component instance — confirm required`,
           { canvas: canvasAbsPath, id: child.id }
         );
       }
     }
+    if (writtenTargets.has(cid)) {
+      throw new CanvasEditError(
+        `convert-to-absolute: "${child.id}" renders from a repeated (.map) source element — cannot convert`,
+        { canvas: canvasAbsPath, id: child.id }
+      );
+    }
+    writtenTargets.add(cid);
     const hit = findOpening(parsed.program, cid);
     if (!hit) {
       throw new CanvasEditError(`child "${child.id}" not found in ${canvasAbsPath}`, {

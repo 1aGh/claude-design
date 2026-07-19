@@ -97,10 +97,10 @@ describe('canvas-edit / applyConvertToAbsolute', () => {
     ).toThrow(CanvasEditError);
   });
 
-  test('a child that resolves to a shared component instance is refused', () => {
+  test('a child that resolves to a shared component instance is refused WITHOUT allowShared', () => {
     // Two <Card/> usages → the inner element's cd-id maps to a component; passing
     // an idIndex makes resolveUsageId route to a <Card/> usage (id changes) →
-    // the shared-instance abort fires.
+    // the pre-confirm abort fires.
     const src = `
       function Card() { return <article className="card"><h2>Hi</h2></article>; }
       function Demo() { return <div><Card /><Card /></div>; }
@@ -115,5 +115,51 @@ describe('canvas-edit / applyConvertToAbsolute', () => {
         children: [{ id: ids.h2 as string, idIndex: 0, left: 0, top: 0, width: 1, height: 1 }],
       })
     ).toThrow(CanvasEditError);
+  });
+
+  // feature-4 T8b — the "affects N instances" confirm path: with allowShared
+  // each instance-child's write routes to its OWN <Component/> usage (the
+  // Stage-H3 local-instance model), so both usages get distinct frozen boxes.
+  test('allowShared: component-instance children write per-usage boxes (both <Card/> tags styled)', () => {
+    const src = `
+      function Card() { return <article className="card"><h2>Hi</h2></article>; }
+      function Demo() { return <div><Card /><Card /></div>; }
+    `;
+    const ids = idsOf(src);
+    const out = applyConvertToAbsolute(CANVAS, src, {
+      containerId: ids.div as string,
+      containerSetRelative: true,
+      allowShared: true,
+      children: [
+        { id: ids.article as string, idIndex: 0, left: 0, top: 0, width: 100, height: 50 },
+        { id: ids.article as string, idIndex: 1, left: 0, top: 60, width: 100, height: 50 },
+      ],
+    });
+    // Each usage tag carries its own frozen box; the shared definition's
+    // <article> is untouched (still exactly one un-styled inner article).
+    const styledUsages = out.source.match(/<Card style=\{\{ position: "absolute"/g) || [];
+    expect(styledUsages.length).toBe(2);
+    expect(out.source).toContain('top: "0px"');
+    expect(out.source).toContain('top: "60px"');
+    expect(out.source).toContain('<article className="card">');
+  });
+
+  test('allowShared: `.map`ed children still refuse (two children → same source element)', () => {
+    const src = `
+      const ITEMS = ['a', 'b'];
+      function Demo() { return <div>{ITEMS.map((t) => <p key={t}>{t}</p>)}</div>; }
+    `;
+    const ids = idsOf(src);
+    expect(() =>
+      applyConvertToAbsolute(CANVAS, src, {
+        containerId: ids.div as string,
+        containerSetRelative: false,
+        allowShared: true,
+        children: [
+          { id: ids.p as string, idIndex: 0, left: 0, top: 0, width: 1, height: 1 },
+          { id: ids.p as string, idIndex: 1, left: 0, top: 10, width: 1, height: 1 },
+        ],
+      })
+    ).toThrow(/repeated/);
   });
 });

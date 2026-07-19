@@ -12,6 +12,7 @@ import {
   assembleCompSource,
   CanvasEditError,
   type ClipInfo,
+  componentMapForCanvas,
   convertToAbsolute,
   deleteArtboard,
   deleteElement,
@@ -454,6 +455,7 @@ export interface Api {
     containerId?: unknown;
     containerIdIndex?: unknown;
     containerSetRelative?: unknown;
+    allowShared?: unknown;
     children?: unknown;
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
   /**
@@ -551,6 +553,13 @@ export interface Api {
     id?: unknown;
     rendered?: unknown;
   }): Promise<({ ok: true } & EditScope) | { ok: false; status: number; error: string }>;
+  /** feature-4 T7a — Layers-panel component map (purple instance rows). */
+  componentMapOp(input: {
+    canvas?: unknown;
+  }): Promise<
+    | { ok: true; map: Record<string, { component: string; root: boolean; usages: number }> }
+    | { ok: false; status: number; error: string }
+  >;
   // Undo/redo a prior reorder by seq (Cmd+Z from the canvas undo stack). Whole-
   // file content swap from the in-memory revert log — immune to the positional
   // data-cd-id churn a reorder causes (inverse-descriptor undo would go stale).
@@ -1284,6 +1293,23 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     return out;
   }
 
+  // feature-4 T7b — per-user LOCKED layer keys (`"<cdId>:<occurrenceIndex>"`).
+  // Runtime state per DDR-115 (like the camera + overlays): view.json, never the
+  // versioned `.meta.json`. Reachable from the untrusted canvas origin via the
+  // same PATCH lane, so shape + count are bounded.
+  const MAX_LOCKED_KEYS = 500;
+  const LOCKED_KEY_RE = /^[0-9a-f]{8}:\d{1,4}$/;
+
+  function normalizeLocked(v: unknown): string[] | null {
+    if (!Array.isArray(v) || v.length > MAX_LOCKED_KEYS) return null;
+    const out: string[] = [];
+    for (const k of v) {
+      if (typeof k !== 'string' || !LOCKED_KEY_RE.test(k)) return null;
+      out.push(k);
+    }
+    return [...new Set(out)];
+  }
+
   /** Raw view-file contents, tolerant of a missing/corrupt file (→ `{}`) — the
    *  read half of the read-modify-write both `saveCanvasView` and
    *  `saveCanvasOverlays` need so writing one lane never clobbers the other. */
@@ -1303,6 +1329,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   async function loadCanvasView(file: string): Promise<{
     viewport?: { x: number; y: number; zoom: number };
     overlays?: Record<string, boolean>;
+    locked?: string[];
   } | null> {
     const viewAbs = canvasViewPath(file);
     if (!viewAbs) return null;
@@ -1311,12 +1338,15 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
         const vp = normalizeViewport((obj as { viewport?: unknown }).viewport);
         const ov = normalizeOverlays((obj as { overlays?: unknown }).overlays);
+        const lk = normalizeLocked((obj as { locked?: unknown }).locked);
         const result: {
           viewport?: { x: number; y: number; zoom: number };
           overlays?: Record<string, boolean>;
+          locked?: string[];
         } = {};
         if (vp) result.viewport = vp;
         if (ov && Object.keys(ov).length > 0) result.overlays = ov;
+        if (lk && lk.length > 0) result.locked = lk;
         return result;
       }
       return null;
@@ -1404,13 +1434,16 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     // `viewport`; a versioned `.meta.json` should never carry one (sanitizer),
     // but strip defensively before overlaying the real per-user value below.
     obj.overlays = undefined;
+    // feature-4 T7b — `locked` (per-user locked layer keys) is the same class.
+    obj.locked = undefined;
     const view = await loadCanvasView(file);
     if (view?.viewport) obj.viewport = view.viewport;
     if (view?.overlays) obj.overlays = view.overlays;
+    if (view?.locked) obj.locked = view.locked;
     // Preserve the historic contract: no meta AND no camera/overlays → null
     // (GET → {}, PATCH-on-rejected-path → 404). A view-only canvas still
     // returns its camera/overlays.
-    if (!hadMeta && !view?.viewport && !view?.overlays) return null;
+    if (!hadMeta && !view?.viewport && !view?.overlays && !view?.locked) return null;
     return obj;
   }
 
@@ -1481,6 +1514,32 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         }
       } else {
         await saveCanvasOverlays(file, patch.overlays);
+      }
+    }
+
+    // --- Per-user locked-layers lane (feature-4 T7b): locked → view file,
+    // never the versioned meta. REPLACE semantics (the client sends the full
+    // set — merge semantics would make unlocking impossible); `null` clears; an
+    // invalid array is a silent no-op (normalizeLocked → null).
+    if (patch.locked !== undefined) {
+      const viewAbs = canvasViewPath(file);
+      if (viewAbs) {
+        try {
+          const current = await readCanvasViewRaw(file);
+          if (patch.locked === null) {
+            const { locked: _drop, ...rest } = current;
+            await mkdir(paths.canvasStateDir, { recursive: true });
+            await Bun.write(viewAbs, `${JSON.stringify(rest, null, 2)}\n`);
+          } else {
+            const lk = normalizeLocked(patch.locked);
+            if (lk !== null) {
+              await mkdir(paths.canvasStateDir, { recursive: true });
+              await Bun.write(viewAbs, `${JSON.stringify({ ...current, locked: lk }, null, 2)}\n`);
+            }
+          }
+        } catch {
+          /* best-effort */
+        }
       }
     }
 
@@ -2970,6 +3029,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     containerId?: unknown;
     containerIdIndex?: unknown;
     containerSetRelative?: unknown;
+    allowShared?: unknown;
     children?: unknown;
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
     const r = resolveCanvasAbs(input.canvas);
@@ -3026,6 +3086,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         containerId,
         containerIdIndex,
         containerSetRelative,
+        allowShared: input.allowShared === true,
         children,
       });
       const after = res.source;
@@ -3638,6 +3699,32 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       return { ok: true, ...scope };
     } catch (err) {
       return { ok: false, status: 500, error: err instanceof Error ? err.message : 'scope failed' };
+    }
+  }
+
+  /**
+   * feature-4 T7a (layers purple instances) — the component map for the shell's
+   * Layers panel: `{ [cdId]: { component, root, usages } }` for every element
+   * that renders through an instantiated component. READ-only parse (same
+   * posture as editScopeOp).
+   */
+  async function componentMapOp(input: {
+    canvas?: unknown;
+  }): Promise<
+    | { ok: true; map: Record<string, { component: string; root: boolean; usages: number }> }
+    | { ok: false; status: number; error: string }
+  > {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    try {
+      const source = await Bun.file(r.abs).text();
+      return { ok: true, map: componentMapForCanvas(r.abs, source) };
+    } catch (err) {
+      return {
+        ok: false,
+        status: 500,
+        error: err instanceof Error ? err.message : 'component map failed',
+      };
     }
   }
 
@@ -4275,6 +4362,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     duplicateArtboardOp,
     duplicateElementOp,
     editScopeOp,
+    componentMapOp,
     reorderRevert,
     buildIndexData,
     buildSystemData,

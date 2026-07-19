@@ -506,6 +506,19 @@ const STICONS = {
     </>
   ),
   folder: <path d="M2 4.5h4l1.3 1.5H14V13H2z" />,
+  // feature-4 T7b — Layers padlock (closed / open).
+  lock: (
+    <>
+      <rect x="3.5" y="7" width="9" height="6.5" rx="1" />
+      <path d="M5.5 7V5a2.5 2.5 0 015 0v2" />
+    </>
+  ),
+  unlock: (
+    <>
+      <rect x="3.5" y="7" width="9" height="6.5" rx="1" />
+      <path d="M5.5 7V5a2.5 2.5 0 015-.7" />
+    </>
+  ),
   search: (
     <>
       <circle cx="7" cy="7" r="4" />
@@ -7012,6 +7025,12 @@ function LayerRow({
   onReorder,
   onRowPointerDown,
   dragState,
+  // feature-4 T7a/b/c — component map (purple ◇/◆), locked keys + toggle,
+  // dblclick rename (writes data-dc-element via edit-attr).
+  componentMap,
+  lockedKeys,
+  onToggleLock,
+  onRename,
 }) {
   const key = `${node.id}:${node.index}`;
   const hasKids = node.children && node.children.length > 0;
@@ -7020,6 +7039,14 @@ function LayerRow({
   // structural stand-in: NOT selectable (no data-cd-id to address in source),
   // NOT draggable, NO eye toggle. Clicking it just expands/collapses.
   const isSynthetic = !!node.synthetic;
+  // feature-4 T7a — purple instance rows: this element renders through an
+  // instantiated component. `root` = the component's own frame root (◆).
+  const inst = !isSynthetic && componentMap ? componentMap[node.id] : null;
+  // feature-4 T7b — locked layers can't be selected/dragged on the canvas.
+  const isLocked = !isSynthetic && !!lockedKeys?.has(key);
+  // feature-4 T7c — inline rename (dblclick the label).
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState('');
   // Match the specific INSTANCE (id + occurrence index), not every element that
   // shares this source id — otherwise a `.map`ed element highlights all its
   // clones at once. Fall back to id-only when the selection carries no index.
@@ -7031,8 +7058,19 @@ function LayerRow({
   // A shared data-cd-id (reused component instance) IS reorderable now — the
   // server maps the occurrence index to the parent <Component> usage — so these
   // are no longer greyed/blocked. A `.map()`ed single-usage element still can't
-  // split; that move is refused server-side and reverts.
-  const canDrag = !!onReorder && !isSynthetic;
+  // split; that move is refused server-side and reverts. A LOCKED row never
+  // drags (feature-4 T7b).
+  const canDrag = !!onReorder && !isSynthetic && !isLocked;
+  const commitRename = () => {
+    setRenaming(false);
+    const v = renameDraft
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '');
+    if (!v || v === (node.dcElement ?? '')) return;
+    onRename?.(node, v);
+  };
   // Phase 12.1 — the row being dragged FLOATS with the cursor (same model as the
   // in-canvas drag): a transform follows the pointer, its layout box stays
   // reserved (empty slot at the origin), and pointer-events:none lets the row
@@ -7057,7 +7095,9 @@ function LayerRow({
           'st-layer st-layer--row' +
           (isSel ? ' is-sel' : '') +
           (isHidden ? ' is-hidden' : '') +
-          (isSynthetic ? ' is-group' : '')
+          (isSynthetic ? ' is-group' : '') +
+          (inst ? ' is-instance' : '') +
+          (isLocked ? ' is-locked' : '')
         }
         style={{ paddingLeft: 6 + depth * 14, ...dragStyle }}
         role="treeitem"
@@ -7097,9 +7137,66 @@ function LayerRow({
         ) : (
           <span className="st-layer-caret" aria-hidden="true" />
         )}
-        <StIcon name={LAYER_TYPE_ICON[node.type] || 'box'} size={12} className="st-layer-ticon" />
-        <span className="st-layer-label">{node.label}</span>
-        <span className="st-layer-type">{node.type}</span>
+        {inst ? (
+          // feature-4 T7a — Figma vocabulary: ◆ the component's own frame root,
+          // ◇ an inner member of an instance. Purple via .is-instance CSS.
+          <span className="st-layer-inst-glyph" aria-hidden="true">
+            {inst.root ? '◆' : '◇'}
+          </span>
+        ) : (
+          <StIcon name={LAYER_TYPE_ICON[node.type] || 'box'} size={12} className="st-layer-ticon" />
+        )}
+        {renaming ? (
+          <input
+            className="st-layer-rename"
+            value={renameDraft}
+            autoFocus
+            aria-label={`Rename ${node.label}`}
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => setRenameDraft(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') commitRename();
+              else if (e.key === 'Escape') setRenaming(false);
+            }}
+          />
+        ) : (
+          <span
+            className="st-layer-label"
+            onDoubleClick={
+              onRename && !isSynthetic
+                ? (e) => {
+                    // feature-4 T7c — dblclick rename. Pre-fill from the raw
+                    // data-dc-element (kebab) when set, else the display label.
+                    e.stopPropagation();
+                    setRenameDraft(node.dcElement || node.label || '');
+                    setRenaming(true);
+                  }
+                : undefined
+            }
+          >
+            {node.label}
+          </span>
+        )}
+        <span className="st-layer-type">{inst ? inst.component : node.type}</span>
+        {onToggleLock && !isSynthetic ? (
+          <button
+            type="button"
+            className="st-layer-lock"
+            aria-label={isLocked ? `Unlock ${node.label}` : `Lock ${node.label}`}
+            aria-pressed={isLocked}
+            title={isLocked ? 'Unlock' : 'Lock'}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleLock(key);
+            }}
+          >
+            <StIcon name={isLocked ? 'lock' : 'unlock'} size={12} />
+          </button>
+        ) : null}
         {onToggleVisibility && !isSynthetic ? (
           <button
             type="button"
@@ -7133,6 +7230,10 @@ function LayerRow({
               onReorder={onReorder}
               onRowPointerDown={onRowPointerDown}
               dragState={dragState}
+              componentMap={componentMap}
+              lockedKeys={lockedKeys}
+              onToggleLock={onToggleLock}
+              onRename={onRename}
             />
           ))
         : null}
@@ -7681,6 +7782,11 @@ function InspectorPanel({
   selected,
   onClose,
   layersTree,
+  // feature-4 T7a — { [cdId]: { component, root, usages } } for purple rows.
+  componentMap,
+  // feature-4 T7b — locked layer keys (`"<id>:<index>"`) + toggle.
+  lockedKeys,
+  onToggleLock,
   canvasFile,
   onSelectLayer,
   onHoverLayer,
@@ -7792,6 +7898,31 @@ function InspectorPanel({
   // same drop target) + an aria-live announcement for keyboard moves.
   const [dragState, setDragState] = useState(null);
   const [reorderMsg, setReorderMsg] = useState('');
+  // feature-4 T7c — Layers-panel rename: writes `data-dc-element` (the label's
+  // top-priority source in `layerLabel`) via the existing /_api/edit-attr lane
+  // + records undo through the same source-edit channel CssKnobs uses. The
+  // HMR reload re-posts the tree with the new label.
+  const renameLayer = (node, value) => {
+    if (!canvasFile || !node?.id) return;
+    fetch('/_api/edit-attr', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ canvas: canvasFile, id: node.id, attr: 'data-dc-element', value }),
+    })
+      .then((r) => r.json().catch(() => ({})))
+      .then((j) => {
+        if (!j.ok) return;
+        onRecordEdit?.({
+          op: 'attr',
+          canvas: canvasFile,
+          id: node.id,
+          key: 'data-dc-element',
+          before: node.dcElement ?? null,
+          after: value,
+        });
+      })
+      .catch(() => {});
+  };
   const handleReorder = onReorderLayer
     ? (dragged, ref, position) => {
         // Gate keyboard + drop moves while a prior reorder is still landing — the
@@ -8273,6 +8404,10 @@ function InspectorPanel({
                       onReorder={handleReorder}
                       onRowPointerDown={startLayerDrag}
                       dragState={dragState}
+                      componentMap={componentMap}
+                      lockedKeys={lockedKeys}
+                      onToggleLock={onToggleLock}
+                      onRename={renameLayer}
                     />
                   ))}
                 </div>
@@ -8463,6 +8598,27 @@ function App() {
   const layersBusyTimerRef = useRef(null);
   // Phase 12 Task 4 — Layers tree for the active artboard (posted by canvas-shell).
   const [layersTree, setLayersTree] = useState(null);
+  // feature-4 T7a — Layers-panel component map ({ [cdId]: { component, root,
+  // usages } }) for purple instance rows. Fetched from the read-only main-origin
+  // /_api/component-map on canvas/tree changes, throttled: the map only changes
+  // when SOURCE changes, but the tree re-posts on any DOM churn (drag reflows) —
+  // don't re-parse the canvas for those.
+  const [componentMap, setComponentMap] = useState(null);
+  const componentMapAtRef = useRef({ canvas: null, at: 0 });
+  useEffect(() => {
+    if (!activePath || !layersTree) return;
+    const now = Date.now();
+    const last = componentMapAtRef.current;
+    if (last.canvas === activePath && now - last.at < 1500) return;
+    componentMapAtRef.current = { canvas: activePath, at: now };
+    fetch(`/_api/component-map?canvas=${encodeURIComponent(activePath)}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j?.ok && j.map && typeof j.map === 'object') setComponentMap(j.map);
+        else setComponentMap(null);
+      })
+      .catch(() => setComponentMap(null));
+  }, [activePath, layersTree]);
   const [wsConnected, setWsConnected] = useState(false);
   // Phase 8 Task 7 — git lifecycle reload prompt. Server has already flushed
   // every dirty Y.Doc to disk by the time this state populates, so accepting
@@ -9460,17 +9616,53 @@ function App() {
         // feature-2-print-artboards T3 — reflect THIS canvas's own persisted
         // print-guides flag in the menu checkbox when switching tabs.
         setPrintGuidesVisible(meta?.overlays?.print === true);
+        // feature-4 T7b — seed this canvas's persisted locked-layer keys
+        // (view.json `locked`, per-user) into the Layers panel state.
+        setLockedKeys(new Set(Array.isArray(meta?.locked) ? meta.locked : []));
       })
       .catch(() => {
         if (!cancelled) {
           setActiveArtboards(0);
           setPrintGuidesVisible(false);
+          setLockedKeys(new Set());
         }
       });
     return () => {
       cancelled = true;
     };
   }, [activePath]);
+
+  // feature-4 T7b — locked layer keys (`"<cdId>:<index>"`, per-user, per-canvas
+  // via view.json). Toggling PATCHes the FULL set (replace semantics) + pushes
+  // the live set down to the canvas iframe so select/drag enforcement matches
+  // the padlock instantly.
+  const [lockedKeys, setLockedKeys] = useState(() => new Set());
+  const toggleLockedKey = useCallback(
+    (key) => {
+      if (!activePath || activePath === SYSTEM_TAB) return;
+      setLockedKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        const arr = [...next];
+        fetch('/_api/canvas-meta', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file: activePath, patch: { locked: arr } }),
+        }).catch(() => {});
+        postToActiveCanvas({ dgn: 'locked-set', locked: arr });
+        return next;
+      });
+    },
+    [activePath, postToActiveCanvas]
+  );
+  // Push the seed to a (re)loaded canvas too — the iframe reads
+  // `__canvas_meta__.locked` at boot, but a shell-side toggle after a reload
+  // must still reach it; re-broadcast whenever the set or canvas changes.
+  useEffect(() => {
+    if (!activePath || activePath === SYSTEM_TAB) return;
+    postToActiveCanvas({ dgn: 'locked-set', locked: [...lockedKeys] });
+  }, [lockedKeys, activePath, postToActiveCanvas]);
 
   // Sync theme to <html data-theme> + localStorage on every change.
   useEffect(() => {
@@ -10711,6 +10903,9 @@ function App() {
             {
               containerId: m.containerId,
               containerSetRelative: m.containerSetRelative === true,
+              // feature-4 T8b — the canvas asked the user's confirm already;
+              // the server still refuses `.map` children regardless.
+              allowShared: m.allowShared === true,
               children: m.children,
             },
             {
@@ -12587,6 +12782,9 @@ function App() {
           onPhotoRecordEdit={onPhotoRecordEdit}
           onPhotoUndoRedo={(dir) => performPhotoUndo(dir === 'redo')}
           layersTree={layersTree}
+          componentMap={componentMap}
+          lockedKeys={lockedKeys}
+          onToggleLock={toggleLockedKey}
           canvasFile={activePath}
           onSelectLayer={(n) =>
             postToActiveCanvas({

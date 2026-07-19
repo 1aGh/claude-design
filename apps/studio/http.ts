@@ -2238,6 +2238,7 @@ export function createHttp(
         containerId?: unknown;
         containerIdIndex?: unknown;
         containerSetRelative?: unknown;
+        allowShared?: unknown;
         children?: unknown;
       }>(req, 64 * 1024);
       if (!body) return new Response('body required', { status: 400 });
@@ -2395,6 +2396,28 @@ export function createHttp(
         canvas: url.searchParams.get('canvas') ?? undefined,
         id: url.searchParams.get('id') ?? undefined,
         rendered: url.searchParams.get('rendered') ?? undefined,
+      });
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
+    },
+
+    '/_api/component-map': async (req: Request) => {
+      // feature-4 T7a — Layers-panel purple instance rows. GET ?canvas →
+      // { ok, map: { [cdId]: { component, root, usages } } }. READ-only parse
+      // (same posture as /_api/edit-scope). MAIN-ORIGIN ONLY: absent from
+      // CANVAS_SAFE_API + startCanvasServer routes (DDR-054); loopback-Host
+      // gated; no sameOriginWrite (GET).
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const url = new URL(req.url);
+      const result = await api.componentMapOp({
+        canvas: url.searchParams.get('canvas') ?? undefined,
       });
       if (!result.ok) {
         return Response.json(

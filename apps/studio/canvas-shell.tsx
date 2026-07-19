@@ -417,6 +417,9 @@ interface LayerNode {
    *  has no `data-cd-id` to address in source); its `id` is a stable
    *  `__grp:<sig>#<n>` synthetic key, never a real cd-id. */
   synthetic?: boolean;
+  /** feature-4 T7c — the raw authored `data-dc-element` attr (null when unset).
+   *  The rename input's before-value; `layerLabel` renders its Title-Case form. */
+  dcElement?: string | null;
   children: LayerNode[];
 }
 
@@ -553,9 +556,19 @@ export function serializeArtboardTree(root: Element): LayerNode[] {
           type: layerType(child),
           index: idx,
           hidden: (child as HTMLElement).style.display === 'none',
+          dcElement: child.getAttribute('data-dc-element'),
           children: walk(child),
         });
       } else if (hasStampedDescendant(child)) {
+        // ENGINE chrome wrappers (`.dc-artboard-body`, any `dc-*` layer) are
+        // not user structure — hoist THROUGH them (pre-feature-4 behavior) so
+        // the tree doesn't grow a phantom "dc-artboard-body GROUP" root row
+        // (live-dogfood finding, 2026-07-19).
+        const classes = Array.from(child.classList);
+        if (classes.some((c) => c.startsWith('dc-') || c.startsWith('dgn-'))) {
+          out.push(...walk(child));
+          continue;
+        }
         // feature-4 T7 — unstamped wrapper WITH stamped descendants: emit a
         // synthetic, non-selectable GROUP row so the tree mirrors real nesting
         // instead of hoisting its descendants up a level. (Pre-feature-4 this
@@ -1586,9 +1599,12 @@ function buildRegistry(deps: {
       showCanvasToast('Nothing to convert — this element has no selectable children.');
       return;
     }
-    // Abort (all-or-nothing) on any child that isn't a plain, globally-unique
-    // element: unstamped, or a repeated/component instance. Honest refusal
-    // rather than a partial or ambiguous conversion (DDR-188).
+    // Unstamped children abort (all-or-nothing — DDR-188). Repeated-id children
+    // are EITHER component instances (convertible after a confirm — feature-4
+    // T8b, each usage gets its own frozen box via the Stage-H3 local-instance
+    // model) OR `.map()`ed list items (never convertible; the server
+    // distinguishes the two and refuses `.map` with a clear error).
+    let repeatedCount = 0;
     for (const c of Array.from(containerEl.children) as HTMLElement[]) {
       if (c.closest('.dgn-pin, .dc-cv-halo, .dc-cv-group-bbox')) continue;
       const cid = c.getAttribute('data-cd-id');
@@ -1596,12 +1612,7 @@ function buildRegistry(deps: {
         showCanvasToast('Some children have no id — edit them via chat first, then convert.');
         return;
       }
-      if (cdIdCountInArtboard(containerEl, cid) > 1) {
-        showCanvasToast(
-          'This container has repeated (list) or component children — convert to absolute isn’t supported for those yet.'
-        );
-        return;
-      }
+      if (cdIdCountInArtboard(containerEl, cid) > 1) repeatedCount += 1;
     }
     if (cdIdCountInArtboard(containerEl, containerId) > 1) {
       showCanvasToast(
@@ -1609,6 +1620,20 @@ function buildRegistry(deps: {
       );
       return;
     }
+    // feature-4 T8b — the "affects N instances" confirm. Converting writes the
+    // frozen box on each instance's own <Component/> usage (position stays
+    // LOCAL to this instance; the shared component definition is untouched).
+    // The component must forward `style` for it to paint — the same assumption
+    // whole-instance drag-reposition already makes. `.map()` children still
+    // refuse server-side (all-or-nothing).
+    const allowShared =
+      repeatedCount > 0 &&
+      window.confirm(
+        `${repeatedCount} of these children render from a shared source (component instances or a list). ` +
+          'Component instances convert with their OWN frozen position (other instances are unaffected); ' +
+          'repeated list items can’t convert — the whole action aborts if any child is one. Continue?'
+      );
+    if (repeatedCount > 0 && !allowShared) return;
     // Measure each child's border-box relative to the container's PADDING box,
     // in WORLD units (getBoundingClientRect is post-zoom screen px; computed
     // border widths are unscaled world px). left/top for an absolutely-
@@ -1621,10 +1646,24 @@ function buildRegistry(deps: {
     const borderL = Number.parseFloat(cs.borderLeftWidth) || 0;
     const borderT = Number.parseFloat(cs.borderTopWidth) || 0;
     const isGrid = cs.display.includes('grid');
+    const body = containerEl.closest('.dc-artboard-body') ?? containerEl.ownerDocument;
     const payloadChildren = children.map((c) => {
       const r = c.getBoundingClientRect();
+      const cid = c.getAttribute('data-cd-id') as string;
+      // feature-4 T8b — DOM occurrence index among same-cd-id elements (the
+      // Stage-H3 idIndex): routes a component-instance child's write to ITS
+      // OWN <Component/> usage server-side. Harmless for unique children
+      // (resolveUsageId is a no-op there).
+      let idIndex: number | undefined;
+      try {
+        const same = Array.from(body.querySelectorAll(`[data-cd-id="${CSS.escape(cid)}"]`));
+        idIndex = same.length > 1 ? Math.max(0, same.indexOf(c)) : undefined;
+      } catch {
+        idIndex = undefined;
+      }
       return {
-        id: c.getAttribute('data-cd-id') as string,
+        id: cid,
+        ...(idIndex !== undefined ? { idIndex } : {}),
         left: Math.round((r.left - cRect.left) / zoom - borderL),
         top: Math.round((r.top - cRect.top) / zoom - borderT),
         width: Math.round(r.width / zoom),
@@ -1638,6 +1677,7 @@ function buildRegistry(deps: {
           dgn: 'convert-to-absolute-request',
           containerId,
           containerSetRelative,
+          allowShared,
           children: payloadChildren,
         },
         '*'
@@ -2118,6 +2158,43 @@ export function revealElementViaCamera(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// feature-4 T7b — locked-layer enforcement. The shell owns the padlock UI +
+// view.json persistence; the canvas only needs the LIVE set to refuse
+// select/drag on locked elements. Window-level (not module `let`) so it
+// survives soft HMR re-evaluation, same reasoning as __maudeLastLayersArt.
+function lockedKeySet(): Set<string> {
+  const w = window as unknown as { __maudeLockedKeys?: Set<string> };
+  if (!w.__maudeLockedKeys) {
+    w.__maudeLockedKeys = new Set(
+      Array.isArray(
+        (window as unknown as { __canvas_meta__?: { locked?: unknown } }).__canvas_meta__?.locked
+      )
+        ? ((window as unknown as { __canvas_meta__?: { locked?: string[] } }).__canvas_meta__
+            ?.locked as string[])
+        : []
+    );
+  }
+  return w.__maudeLockedKeys;
+}
+
+/** Is the element a locked layer? Matches by `cdId:occurrenceIndex` within the
+ *  artboard body (same occurrence math the Layers rows use). */
+function isLockedElement(el: Element | null, cdId: string | null): boolean {
+  if (!el || !cdId) return false;
+  const locked = lockedKeySet();
+  if (locked.size === 0) return false;
+  const body = el.closest('.dc-artboard-body');
+  if (!body) return false;
+  try {
+    const same = Array.from(body.querySelectorAll(`[data-cd-id="${CSS.escape(cdId)}"]`));
+    const idx = same.indexOf(el);
+    return locked.has(`${cdId}:${idx < 0 ? 0 : idx}`);
+  } catch {
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Router wire-up
 
 function CanvasRouter({
@@ -2300,6 +2377,16 @@ function CanvasRouter({
       if (m.dgn === 'tool-set') {
         const t = (m as { tool?: string }).tool;
         if (typeof t === 'string') setTool(t as never);
+        return;
+      }
+      // feature-4 T7b — live locked-layer set from the shell's Layers panel.
+      if (m.dgn === 'locked-set') {
+        const arr = (m as { locked?: unknown }).locked;
+        if (Array.isArray(arr)) {
+          const s = lockedKeySet();
+          s.clear();
+          for (const k of arr) if (typeof k === 'string') s.add(k);
+        }
         return;
       }
       // Plan C — Edit menu (shell) bridges to the in-canvas undo stack.
@@ -2779,6 +2866,9 @@ function CanvasRouter({
           // it actually captured something.
           return;
         }
+        // feature-4 T7b — a locked layer can't be selected from the canvas
+        // (the Layers panel row still can, so it stays reachable to unlock).
+        if (isLockedElement(target.el, target.cdId)) return;
         const sel = hoverTargetToSelection(target);
         if (mode === 'replace') selSet.replace(sel);
         else selSet.add(sel);
@@ -3664,6 +3754,9 @@ function ReorderDrag() {
       if (!cdId || !one) return;
       const el = resolveSelectionEl(document, one) as HTMLElement | null;
       if (!el) return;
+      // feature-4 T7b — a locked layer never drags (it can be selected from
+      // the Layers panel, but the canvas won't move it).
+      if (isLockedElement(el, cdId)) return;
       const t = e.target;
       if (!(t instanceof Node) || !el.contains(t)) return;
       // Candidate — do NOT claim yet (a plain click must still work). We only

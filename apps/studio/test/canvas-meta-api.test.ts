@@ -524,3 +524,73 @@ describe('/_api/canvas-meta — overlays lane (T6)', () => {
     }
   });
 });
+
+// feature-4 T7b — `locked` (per-user locked layer keys) is the third view-file
+// lane: same split contract as viewport/overlays (never the versioned meta),
+// REPLACE semantics (the client sends the full set), bounded shape.
+describe('/_api/canvas-meta — locked lane (feature-4 T7b)', () => {
+  test('PATCH locked leaves meta byte-unchanged + writes the view file; GET merges it back', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const tsxAbs = join(designRoot, 'ui', 'Locked.tsx');
+      writeFileSync(tsxAbs, 'export default function L(){return <main/>}\n');
+      const metaAbs = tsxAbs.replace(/\.tsx$/, '.meta.json');
+      writeFileSync(metaAbs, JSON.stringify({ title: 'Locked', sections: [] }));
+      const before = readFileSync(metaAbs, 'utf8');
+      const file = repoRel(designRoot, tsxAbs);
+
+      const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { locked: ['aabbccdd:0', 'deadbeef:2'] } }),
+      });
+      expect(r.status).toBe(200);
+      const merged = (await r.json()) as MetaShape;
+      expect(merged.locked).toEqual(['aabbccdd:0', 'deadbeef:2']);
+      // Versioned meta byte-identical (runtime state never lands there).
+      expect(readFileSync(metaAbs, 'utf8')).toBe(before);
+      const view = JSON.parse(readFileSync(viewPath(designRoot, 'ui-locked'), 'utf8'));
+      expect(view.locked).toEqual(['aabbccdd:0', 'deadbeef:2']);
+
+      // REPLACE semantics — a smaller set unlocks the dropped key.
+      await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { locked: ['aabbccdd:0'] } }),
+      });
+      const g = await fetch(
+        `http://localhost:${port}/_api/canvas-meta?file=${encodeURIComponent(file)}`
+      );
+      expect(((await g.json()) as MetaShape).locked).toEqual(['aabbccdd:0']);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('malformed locked keys are a silent no-op (shape-gated)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const tsxAbs = join(designRoot, 'ui', 'BadLock.tsx');
+      writeFileSync(tsxAbs, 'export default function B(){return <main/>}\n');
+      writeFileSync(tsxAbs.replace(/\.tsx$/, '.meta.json'), JSON.stringify({ title: 'B' }));
+      const file = repoRel(designRoot, tsxAbs);
+      await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { locked: ['../../etc/passwd', 'not-a-key'] } }),
+      });
+      const g = await fetch(
+        `http://localhost:${port}/_api/canvas-meta?file=${encodeURIComponent(file)}`
+      );
+      expect(((await g.json()) as MetaShape).locked).toBeUndefined();
+    } finally {
+      await killProc(proc);
+    }
+  });
+});
