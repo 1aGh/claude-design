@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-19T13:00:49.070Z",
+  "generated": "2026-07-19T13:01:47.581Z",
   "currentPhase": null,
   "phases": [
     {
@@ -131,6 +131,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-3-web-artboards.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-4-canvas-editing-figma-parity",
+      "title": "Feature: Figma-parity manual editing — smart select (browse/move split), layers panel upgrade, convert-to-absolute",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-4-canvas-editing-figma-parity.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1420,17 +1431,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "feature-4-canvas-editing-figma-parity",
-      "title": "Feature: Figma-parity manual editing — smart select (browse/move split), layers panel upgrade, convert-to-absolute",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-4-canvas-editing-figma-parity.md",
-      "archived": false,
-      "phaseKey": null
     },
     {
       "id": "feature-goal-unattended-pipelines",

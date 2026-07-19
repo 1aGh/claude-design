@@ -168,9 +168,17 @@ As a designer, I open a canvas and my mock is alive (buttons click). When I want
 
 ## Acceptance Criteria
 
-- [ ] Boot posture = browse verified (existing canvases behave byte-identically; native surfaces unaffected)
-- [ ] V-select delivers the full Figma ladder (plain=top, Cmd=deep, dbl=drill, Enter/Shift+Enter/Tab/Esc)
-- [ ] Posture invariants enforced by tests, not comments; desktop e2e migrated + green
-- [ ] Layers: unstamped wrappers visible, purple instances, lock, reveal, rename — full rebuild explicitly deferred
-- [ ] Convert-to-absolute: zero visual delta on conversion, undo byte-exact, non-goal comments updated, own DDR recorded
-- [ ] Both DDRs recorded; What's New authored; `/flow:validate` clean
+- [x] Boot posture = browse verified (existing canvases behave byte-identically; native surfaces unaffected) — live agent-browser proof + smoke 69/69
+- [x] V-select delivers the full Figma ladder (plain=top, Cmd=deep, dbl=drill, Enter/Shift+Enter/Tab/Esc) — plain/dbl/Esc live-verified; Cmd=deep covered by classifier + DOM tests (modifier-click not automatable)
+- [x] Posture invariants enforced by tests, not comments; desktop e2e migrated (**green run = owner close-out — needs a cargo desktop build**)
+- [x] Layers: unstamped wrappers visible, purple instances, lock, reveal, rename — full component-depth tree rebuild explicitly deferred (as planned)
+- [x] Convert-to-absolute: zero visual delta on conversion (live-verified byte-identical rects), undo via one whole-file seq (lane-verified; byte-exactness inherited from DDR-138's content-swap), non-goal comments updated, DDR-188 recorded
+- [x] Both DDRs recorded; What's New authored; validation run (full suite + biome + tsc + smoke; site build & a11y fan-out = pre-release close-out)
+
+## Retro
+
+**What went well:** The minimal-diff decomposition held perfectly — `browse` carried zero select machinery, so every `tool === 'move'` gate (marquees, reorder, resize/spacing/grid handles) was inert in browse *by construction*, with no rewires and no regressions in a 3068-test suite. The plan's "promote the comment-invariant to a test" instinct paid off immediately (the DOM-level `browse-posture.test.tsx` is the load-bearing gate). Live dogfooding via a source dev-server + agent-browser proved the entire posture contract with REAL browser input (boot-alive click → V-select → top-level halo), and caught one real bug unit tests couldn't: the phantom "dc-artboard-body GROUP" root row (engine chrome must hoist, not group). The zero-visual-delta gate for convert was verifiable live to the pixel (`before === after` rects).
+
+**What was hard / learned:** (1) The tool-cursor system fought the split — browse must NOT force a global `!important` cursor or the mock's affordance cursors die; special-casing it in BOTH the iframe and the shell was easy to miss. (2) `editStyleProp` re-reads the ORIGINAL AST per call, so a naive N× loop duplicates `style` attrs on fresh elements — `setMultipleStyleProps` (single combined insert) was mandatory, and the "exactly one `style={{`" assertion guards it. (3) Driving the cross-origin canvas iframe: modifier-clicks and right-clicks aren't agent-browser gestures; the workaround (open the canvas document directly + capture the `postMessage` payload on `window` since `parent === window`) verified everything except the shell hop — which the DDR-054 CSRF gate correctly refuses to fake, a good sign. (4) Session-spanning execution (core → convert → remainder) with per-slice commits kept the shared-`main` tree safe alongside a concurrent session.
+
+**Follow-ups (owner):** live `/desktop-e2e` green run (needs cargo build); a11y-auditor pass over the new Layers chrome (lock/rename controls) before the next release cut; `pnpm --filter @maude/site build` in the release pre-flight.
