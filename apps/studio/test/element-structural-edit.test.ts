@@ -588,6 +588,63 @@ describe('canvas-edit / readArtboardPrintProp (no-eval AST read)', () => {
     ].join('\n');
     expect(readArtboardPrintProp(CANVAS, canvas, 'home')).toBeNull();
   });
+
+  test('resolves a print prop shared via a top-level const reference (RCA issue-pdf-print-export-marks-missing)', () => {
+    const canvas = [
+      'const A1_PRINT = { paper: "a1", orientation: "portrait", bleedMm: 3 } as const;',
+      'export default function Demo() {',
+      '  return (',
+      '    <DesignCanvas>',
+      '      <DCArtboard id="acko-front" label="A" kind="print" width={816} height={1146} print={A1_PRINT}>',
+      '        <div>content</div>',
+      '      </DCArtboard>',
+      '      <DCArtboard id="acko-back" label="B" kind="print" width={816} height={1146} print={A1_PRINT as any}>',
+      '        <div>content</div>',
+      '      </DCArtboard>',
+      '    </DesignCanvas>',
+      '  );',
+      '}',
+    ].join('\n');
+    const expected = { paper: 'a1', orientation: 'portrait', bleedMm: 3 };
+    // Both the bare reference and the `as any`-cast reference (the shape
+    // AlligatorsAcko.tsx actually shipped, since a plain `print={A1_PRINT}`
+    // would fail TSX's own type check against the JSX prop's declared type)
+    // must resolve to the same object as an equivalent inline literal.
+    expect(readArtboardPrintProp(CANVAS, canvas, 'acko-front')).toEqual(expected);
+    expect(readArtboardPrintProp(CANVAS, canvas, 'acko-back')).toEqual(expected);
+  });
+
+  test('an unresolvable print reference (imported, not declared in this file) → null', () => {
+    const canvas = [
+      'import { A1_PRINT } from "./print-specs.ts";',
+      'export default function Demo() {',
+      '  return (',
+      '    <DesignCanvas>',
+      '      <DCArtboard id="home" label="Home" kind="print" width={816} height={1146} print={A1_PRINT}>',
+      '        <div>content</div>',
+      '      </DCArtboard>',
+      '    </DesignCanvas>',
+      '  );',
+      '}',
+    ].join('\n');
+    expect(readArtboardPrintProp(CANVAS, canvas, 'home')).toBeNull();
+  });
+
+  test('a genuinely computed print prop (function call) → null, never guessed', () => {
+    const canvas = [
+      'function computePrint() { return { paper: "a4" }; }',
+      'export default function Demo() {',
+      '  return (',
+      '    <DesignCanvas>',
+      '      <DCArtboard id="home" label="Home" kind="print" width={816} height={1146} print={computePrint()}>',
+      '        <div>content</div>',
+      '      </DCArtboard>',
+      '    </DesignCanvas>',
+      '  );',
+      '}',
+    ].join('\n');
+    expect(readArtboardPrintProp(CANVAS, canvas, 'home')).toBeNull();
+  });
 });
 
 describe('canvas-edit / applyInsertArtboard (I4)', () => {

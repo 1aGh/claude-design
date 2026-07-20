@@ -8,6 +8,7 @@
 import { describe, expect, test } from 'bun:test';
 import { PDFDocument } from 'pdf-lib';
 
+import { readArtboardPrintProp } from '../canvas-edit.ts';
 import {
   applyPageFit,
   applyPrintBoxesAndMarks,
@@ -235,6 +236,59 @@ describe('pdf-print-boxes — includeBleed:false crops the bleed strip out', () 
     expect(media.width).toBeCloseTo(pageWidthPt - 2 * bleedPt, 6);
     expect(bleed.x).toBeCloseTo(trim.x, 6);
     expect(bleed.width).toBeCloseTo(trim.width, 6);
+  });
+});
+
+// RCA issue-pdf-print-export-marks-missing — the shape that shipped broken:
+// two `kind="print"` artboards sharing one `print` spec via a top-level const
+// (AlligatorsAcko.tsx's actual authoring pattern), not a repeated inline
+// literal per artboard. The multi-page loop in exporters/pdf.ts `run()`
+// re-resolves readArtboardPrintProp independently per written page (keyed by
+// the artboard's own data-dc-screen id — see safeArtboardFilename), so
+// asserting it resolves per-artboard-id here is the load-bearing regression
+// guard: both pages must get the SAME resolved geometry, not just page 1.
+describe('readArtboardPrintProp — shared const print spec resolves for every page (multi-page correlation)', () => {
+  const canvas = [
+    'const A1_PRINT = { paper: "a1", orientation: "portrait", bleedMm: 3 } as const;',
+    'export default function Demo() {',
+    '  return (',
+    '    <DesignCanvas>',
+    '      <DCArtboard id="acko-front" label="A" kind="print" width={816} height={1146} print={A1_PRINT as any}>',
+    '        <div>front</div>',
+    '      </DCArtboard>',
+    '      <DCArtboard id="acko-back" label="B" kind="print" width={816} height={1146} print={A1_PRINT as any}>',
+    '        <div>back</div>',
+    '      </DCArtboard>',
+    '    </DesignCanvas>',
+    '  );',
+    '}',
+  ].join('\n');
+
+  test('both artboard ids resolve to the same non-null print geometry, driving non-degenerate boxes+marks on each page', async () => {
+    const front = readArtboardPrintProp('/abs/AlligatorsAcko.tsx', canvas, 'acko-front');
+    const back = readArtboardPrintProp('/abs/AlligatorsAcko.tsx', canvas, 'acko-back');
+    expect(front).toEqual({ paper: 'a1', orientation: 'portrait', bleedMm: 3 });
+    expect(back).toEqual(front);
+
+    const printOpts: PdfPrintOptions = {
+      marks: { crop: true, registration: true, colorBars: false, pageInfo: false },
+    };
+    for (const printProp of [front, back]) {
+      if (!printProp) throw new Error('expected a resolved print prop');
+      const bleedMm = typeof printProp.bleedMm === 'number' ? printProp.bleedMm : 0;
+      const resolved = resolvePrintArtboard({ paper: printProp.paper as string, bleedMm });
+      const pageWidthPt = pxToPt(resolved.widthPx);
+      const pageHeightPt = pxToPt(resolved.heightPx);
+      const doc = await PDFDocument.create();
+      const page = doc.addPage([pageWidthPt, pageHeightPt]);
+      applyPrintBoxesAndMarks(page, bleedMm, printOpts);
+      const media = page.getMediaBox();
+      const trim = page.getTrimBox();
+      // Non-degenerate: TrimBox strictly inside MediaBox on every side — the
+      // exact thing that silently failed to happen when printProp was null.
+      expect(media.width).toBeGreaterThan(trim.width);
+      expect(media.height).toBeGreaterThan(trim.height);
+    }
   });
 });
 

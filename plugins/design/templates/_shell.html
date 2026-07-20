@@ -116,6 +116,10 @@
       .dc-hmr-holding,
       /* Artboard title/label button (editor affordance, not design content) */
       .dc-artboard-label,
+      /* Print/bleed/trim/margin guide overlay (feature-2-print-artboards) —
+         in-app-only chrome; never part of a PDF/PNG/SVG export (RCA
+         issue-pdf-print-export-marks-missing). */
+      .dc-artboard-guides,
       /* Generic opt-in hooks for any future floating overlay */
       [data-dc-overlay],
       [data-mdcc-annotations] { display: none !important; }

@@ -706,6 +706,14 @@ function objPropValue(objExpr: AnyNode, propName: string): AnyNode | null {
  */
 function resolveValueNode(program: AnyNode, expr: AnyNode, depth = 0): AnyNode | null {
   if (!expr || depth > 8) return null;
+  // Unwrap `x as T` / `x satisfies T` type-cast wrappers (e.g. a shared
+  // `print={A1_PRINT as any}` prop, or a `const X = {...} as const`
+  // declaration) — the cast carries no runtime value, so the wrapped
+  // expression is what every branch below actually needs to match against.
+  while (expr && (expr.type === 'TSAsExpression' || expr.type === 'TSSatisfiesExpression')) {
+    expr = expr.expression;
+  }
+  if (!expr) return null;
   if (isStringLit(expr)) return expr;
   if (expr.type === 'ObjectExpression' || expr.type === 'ArrayExpression') return expr;
   if (expr.type === 'Identifier') {
@@ -4021,12 +4029,21 @@ function objectExpressionToPlain(node: AnyNode, depth = 0): Record<string, unkno
  * Read an artboard's `print` JSX prop as a plain object — used by the PDF
  * exporter (T5) to resolve bleed/paper geometry for the artboard being
  * exported. Read-only (no lock, no write). Returns null when the canvas/
- * artboard/prop doesn't exist, `print` isn't a `{{...}}` object-expression,
- * or `kind` isn't the literal string `"print"` — a `print` prop left over
- * from a prior kind switch (or hand-authored on a non-print artboard) must
- * NOT leak bleed/marks into an export; `kind="print"` is the sole gate
- * (unlike `video`, print has no implicit structural-fallback resolution, so
- * checking the explicit attr is sufficient — see DDR-181/canvas-lib.tsx).
+ * artboard/prop doesn't exist, `kind` isn't the literal string `"print"` — a
+ * `print` prop left over from a prior kind switch (or hand-authored on a
+ * non-print artboard) must NOT leak bleed/marks into an export; `kind="print"`
+ * is the sole gate (unlike `video`, print has no implicit structural-fallback
+ * resolution, so checking the explicit attr is sufficient — see
+ * DDR-181/canvas-lib.tsx) — or `print` doesn't resolve to a `{{...}}`
+ * object-expression.
+ *
+ * The prop is accepted either as an inline literal (`print={{ paper: 'a4' }}`)
+ * or as a reference to a top-level `const` sharing one spec across several
+ * artboards (`print={A1_PRINT}` / `print={A1_PRINT as any}`) — resolved via
+ * `resolveValueNode`'s same no-eval identifier lookup used elsewhere in this
+ * file. Anything else genuinely computed (an import, a function call, a
+ * spread) still returns null rather than guessing (RCA
+ * issue-pdf-print-export-marks-missing).
  */
 export function readArtboardPrintProp(
   canvasAbsPath: string,
@@ -4042,8 +4059,10 @@ export function readArtboardPrintProp(
   const attr = findAttribute(target.openingElement, 'print');
   if (attr?.value?.type !== 'JSXExpressionContainer') return null;
   const expr = attr.value.expression as AnyNode | undefined;
-  if (expr?.type !== 'ObjectExpression') return null;
-  return objectExpressionToPlain(expr);
+  if (!expr) return null;
+  const resolved = resolveValueNode(parsed.program, expr);
+  if (resolved?.type !== 'ObjectExpression') return null;
+  return objectExpressionToPlain(resolved);
 }
 
 /**
