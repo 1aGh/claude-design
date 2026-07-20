@@ -3248,6 +3248,48 @@ export function AnnotationsLayer() {
     return () => document.removeEventListener('paste', onPaste, true);
   }, [annotSel, pasteStrokesText]);
 
+  // feature-4 text-gestures (user steer 2026-07-20) — Text tool hover shows
+  // WHICH artboard text it would edit: hit-test the editable leaf under the
+  // cursor (the same resolver the click-through uses) and outline it. rAF-
+  // coalesced; class removed on tool change/unmount.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    let marked: HTMLElement | null = null;
+    const clear = () => {
+      if (marked) {
+        marked.classList.remove('dc-text-editable-hover');
+        marked = null;
+      }
+    };
+    if (tool !== 'text') return clear;
+    let raf: number | null = null;
+    let last: { x: number; y: number } | null = null;
+    const apply = () => {
+      raf = null;
+      if (!last) return;
+      const el = findEditableElementAt(last.x, last.y);
+      const target = el?.hasAttribute('data-cd-editable') ? el : null;
+      if (target === marked) return;
+      clear();
+      if (target) {
+        target.classList.add('dc-text-editable-hover');
+        marked = target;
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      last = { x: e.clientX, y: e.clientY };
+      if (raf == null && typeof requestAnimationFrame !== 'undefined') {
+        raf = requestAnimationFrame(apply);
+      }
+    };
+    document.addEventListener('pointermove', onMove, { passive: true });
+    return () => {
+      document.removeEventListener('pointermove', onMove);
+      if (raf != null && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(raf);
+      clear();
+    };
+  }, [tool]);
+
   // FigJam v3 — hover "Add text" affordance: an empty rect/ellipse hovered in
   // move mode shows a ghost label; double-click (existing) or Enter edits.
   const [addTextHintId, setAddTextHintId] = useState<string | null>(null);

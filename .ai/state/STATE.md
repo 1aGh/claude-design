@@ -2,6 +2,15 @@
 
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
+## Execution Progress — feature-4 dogfood round 3 (2026-07-20) — authored ids + component wrap + TRUE flatten + text gestures
+
+- **"invalid container data-cd-id" ROOT CAUSE:** hand-authored `data-cd-id` (e.g. `wal-hero-nav`) is pipeline-preserved but was unreachable by the WHOLE edit engine (walkers matched only positional hashes; `CD_ID_RE` 8-hex-only). Fixed globally: `authoredCdId()` preferred in `findOpening`/`collectElements`/`collectElementsFull`; `CD_ID_RE`/`LOCKED_KEY_RE` → `[\w-]{1,64}`. One test updated (`zzz` is now a VALID shape; 400-case uses `../etc/passwd`). Verified live on the user's exact failing header (converted + undo-reverted byte-exact).
+- **Component instances broke visually on convert** (piled top-left) — style on a `<Component/>` usage needs forwarding; now instance children get a positioned WRAPPER div (works for any component). MagicString adjacent-usage gotcha: open=appendRight, close=appendLeft. Verified live: card rects byte-identical pre/post flatten.
+- **TRUE FLATTEN** — artboard convert dissolves unstyled layout wrappers (`dissolve[]` — tags removed, children hoist to nearest SURVIVING ancestor); styled containers survive as frozen groups; repeated instances freeze as wrapped units. Verified live end-to-end on the fixture: source shows elements hoisted directly under DCArtboard, wrappers gone, render pixel-identical (screenshot + rect diff).
+- **Kind-switch freeze from BOTH paths** — canvas context menu (canvasConfirm) + Inspector picker (shell confirm → `dgn:'freeze-and-set-kind'` → canvas orchestrates convert-then-kind in ORDER).
+- **Text-edit gestures (user spec)** — dblclick ladder entry now SELECT-ALL; in-edit gestures native (router bails on editable targets → click=caret, dblclick=word, triple=all); Text tool shows a dashed hover outline on the editable leaf it would edit (rAF hit-test — :hover can't reach through the tool overlay).
+- DDR-188 addendum 3. Verified: tsc 8 baseline/0 new; full suite 3076 pass + 2 isolated-pass flakes (collab-stress under load; edit-scope updated by design); 13/13 convert + 5/5 detach unit; bundle rebuilt release-minified.
+
 ## Execution Progress — feature-4-canvas-editing-figma-parity — **✅ CLOSED (2026-07-19) + dogfood round 2 (2026-07-19/20, branch `main`).**
 
 **Dogfood round 2 (user's first hands-on):** 5 bugs fixed + 3 new capabilities, all live-relevant:

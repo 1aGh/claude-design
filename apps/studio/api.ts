@@ -459,6 +459,7 @@ export interface Api {
     allowShared?: unknown;
     children?: unknown;
     containers?: unknown;
+    dissolve?: unknown;
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
   /**
    * Insert a synthesized div/text/image relative to a reference element, OR —
@@ -1308,7 +1309,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   // versioned `.meta.json`. Reachable from the untrusted canvas origin via the
   // same PATCH lane, so shape + count are bounded.
   const MAX_LOCKED_KEYS = 500;
-  const LOCKED_KEY_RE = /^[0-9a-f]{8}:\d{1,4}$/;
+  const LOCKED_KEY_RE = /^[\w-]{1,64}:\d{1,4}$/;
 
   function normalizeLocked(v: unknown): string[] | null {
     if (!Array.isArray(v) || v.length > MAX_LOCKED_KEYS) return null;
@@ -2485,7 +2486,12 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   }
 
   // 8-hex lowercase, the shape `computeId` (canvas-edit.ts) stamps on data-cd-id.
-  const CD_ID_RE = /^[0-9a-f]{8}$/;
+  // Pipeline-injected ids are 8-hex, but hand-AUTHORED `data-cd-id` attrs are
+  // preserved verbatim by the transpile (canvas-pipeline.ts) and are equally
+  // valid targets (dogfood 2026-07-20: `data-cd-id="wal-hero-nav"`). Accept
+  // both — word chars + dashes, bounded; the AST walkers do exact matching, so
+  // this is only a shape gate.
+  const CD_ID_RE = /^[\w-]{1,64}$/;
 
   // RC1 (rca/issue-canvas-hmr-optimistic-update-consistency) — every inline
   // edit is USER-originated (inspector CSS knobs, inline text, attr panel, and
@@ -3042,6 +3048,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     allowShared?: unknown;
     children?: unknown;
     containers?: unknown;
+    dissolve?: unknown;
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
@@ -3103,7 +3110,11 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         if (c?.containerId !== undefined && c.containerId !== null) {
           const cid = typeof c.containerId === 'string' ? c.containerId.trim() : '';
           if (!CD_ID_RE.test(cid)) {
-            return { ok: false, status: 400, error: 'invalid container data-cd-id' };
+            return {
+              ok: false,
+              status: 400,
+              error: `invalid container data-cd-id (${String(c.containerId).slice(0, 64)})`,
+            };
           }
           containerId = cid;
         }
@@ -3151,10 +3162,25 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         ctx.bus.emit('activity:unsuppress', rel);
         return { ok: false, status: 413, error: 'canvas source too large' };
       }
+      // feature-4 TRUE FLATTEN — validated dissolve list (batch shape only).
+      let dissolve: string[] | undefined;
+      if (input.dissolve !== undefined) {
+        if (!Array.isArray(input.dissolve) || input.dissolve.length > 200) {
+          return { ok: false, status: 400, error: 'invalid dissolve list' };
+        }
+        dissolve = [];
+        for (const d of input.dissolve) {
+          const id = typeof d === 'string' ? d.trim() : '';
+          if (!CD_ID_RE.test(id)) {
+            return { ok: false, status: 400, error: 'invalid dissolve data-cd-id' };
+          }
+          dissolve.push(id);
+        }
+      }
       const res = await convertToAbsolute(
         r.abs,
         containersSpec
-          ? { allowShared: input.allowShared === true, containers: containersSpec }
+          ? { allowShared: input.allowShared === true, containers: containersSpec, dissolve }
           : {
               containerId,
               containerIdIndex,

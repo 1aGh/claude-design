@@ -103,10 +103,14 @@ describe('GET /_api/edit-scope', () => {
       expect(mapped.body.reason).toBe('mapped');
       expect(mapped.body.affects).toBe(4);
 
-      // A bogus id is a 400 (invalid data-cd-id shape).
-      const bad = await fetch(`${main}/_api/edit-scope?canvas=ui/Gallery&id=zzz`, {
-        signal: AbortSignal.timeout(2000),
-      });
+      // A bogus id is a 400 (invalid data-cd-id shape). Note: since the
+      // authored-id widening (feature-4, 2026-07-20) short word-ids like "zzz"
+      // are VALID shapes (hand-authored data-cd-id attrs are preserved by the
+      // pipeline) — only genuinely malformed values (spaces, slashes) fail.
+      const bad = await fetch(
+        `${main}/_api/edit-scope?canvas=ui/Gallery&id=${encodeURIComponent('../etc/passwd')}`,
+        { signal: AbortSignal.timeout(2000) }
+      );
       expect(bad.status).toBe(400);
     } finally {
       await killProc(proc as never);

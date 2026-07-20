@@ -10956,7 +10956,14 @@ function App() {
           structuralWriteRef.current?.(
             '/_api/convert-to-absolute',
             isBatch
-              ? { allowShared: m.allowShared === true, containers: m.containers }
+              ? {
+                  allowShared: m.allowShared === true,
+                  containers: m.containers,
+                  // feature-4 TRUE FLATTEN — unstyled layout wrappers to remove.
+                  ...(Array.isArray(m.dissolve) && m.dissolve.length > 0
+                    ? { dissolve: m.dissolve }
+                    : {}),
+                }
               : {
                   containerId: m.containerId,
                   containerSetRelative: m.containerSetRelative === true,
@@ -12034,12 +12041,34 @@ function App() {
   // `selected`, only recorded undo history.
   const setArtboardKindShell = useCallback(
     (artboardId, kind) => {
+      // feature-4 (user steer 2026-07-20) — Digital & Print are the freely-
+      // composed marketing kinds: switching TO them from the Inspector offers
+      // the freeze-and-flatten convert too (the context-menu path already
+      // asks in-canvas). window.confirm is fine HERE — the shell is the top
+      // window, not the sandboxed iframe. The canvas orchestrates the order
+      // (freeze first, then the kind write) so a print resize can't move
+      // anything before it's frozen.
+      if (kind === 'print' || kind == null || kind === 'digital') {
+        const freeze = window.confirm(
+          `${kind === 'print' ? 'Print' : 'Digital'} artboards work best with freely movable elements.\n\nAlso freeze the current layout (convert everything to position: absolute, removing invisible layout wrappers)? This is a one-way change — ⌘Z right after still reverts it.\n\nOK = switch + freeze · Cancel = just switch`
+        );
+        postToActiveCanvas({
+          dgn: 'freeze-and-set-kind',
+          artboardId,
+          kind: kind === 'digital' ? null : kind,
+          freeze,
+        });
+        // The kind write itself round-trips via the canvas's ordered
+        // set-artboard-kind-request; still schedule the Inspector resync.
+        scheduleArtboardResync(artboardId, activePath);
+        return;
+      }
       structuralWrite('/_api/set-artboard-kind', { artboardId, kind }, {
         label: 'artboard kind',
         onOk: () => scheduleArtboardResync(artboardId, activePath),
       });
     },
-    [structuralWrite, scheduleArtboardResync, activePath]
+    [structuralWrite, scheduleArtboardResync, activePath, postToActiveCanvas]
   );
   // feature-2-print-artboards T2 — paper/orientation/bleed/margins. Direct
   // Inspector-only callable (no canvas-origin postMessage path — same shape

@@ -2241,6 +2241,7 @@ export function createHttp(
         allowShared?: unknown;
         children?: unknown;
         containers?: unknown;
+        dissolve?: unknown;
       }>(req, 256 * 1024);
       if (!body) return new Response('body required', { status: 400 });
       const result = await api.convertChildrenToAbsoluteOp(body);

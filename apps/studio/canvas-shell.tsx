@@ -347,6 +347,15 @@ const HALO_CSS = `
 [data-cd-id]:not(:empty):not(:has(> *)):hover {
   cursor: text;
 }
+/* feature-4 text-gestures — the Text tool's hover affordance: the editable
+   leaf the click-through would edit gets a dashed accent outline (applied by
+   annotations-layer's hit-test; a plain :hover can't reach through the
+   tool's input-capture overlay). */
+.dc-text-editable-hover {
+  outline: 1.5px dashed var(--maude-hud-accent, #4a63e7);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
 /* Phase 12.1 (DDR-138) — in-canvas drag-to-reorder (Figma-style). Dragging a
    SELECTED element floats it with the cursor (via transform, applied inline —
    its box stays reserved so the origin shows empty space, and it stays in the
@@ -1733,6 +1742,34 @@ function buildRegistry(deps: {
   // (the marketing-graphics flow). One batch → one undo seq. Confirmed via the
   // sandbox-safe canvasConfirm (irreversible-by-design messaging; ⌘Z still
   // reverts the single write).
+  // feature-4 artboard-level convert + TRUE FLATTEN (user steer 2026-07-19/20)
+  // — "convert vše na absolute a zploštit tree": walk the artboard top-down;
+  // UNSTYLED layout wrappers (no background/border/shadow/radius/clip, unique
+  // id) are DISSOLVED — their tags are removed from the JSX and their children
+  // hoist to the nearest SURVIVING ancestor, measured against it. Styled
+  // containers survive as frozen groups (children absolute inside them). One
+  // batch → one undo seq.
+  const isUnstyledWrapper = (el: HTMLElement): boolean => {
+    const cs = getComputedStyle(el);
+    const bg = cs.backgroundColor;
+    const transparentBg = bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)';
+    return (
+      transparentBg &&
+      cs.backgroundImage === 'none' &&
+      (Number.parseFloat(cs.borderTopWidth) || 0) === 0 &&
+      (Number.parseFloat(cs.borderRightWidth) || 0) === 0 &&
+      (Number.parseFloat(cs.borderBottomWidth) || 0) === 0 &&
+      (Number.parseFloat(cs.borderLeftWidth) || 0) === 0 &&
+      cs.boxShadow === 'none' &&
+      (cs.borderRadius === '0px' || cs.borderRadius === '0') &&
+      cs.overflow !== 'hidden' &&
+      cs.overflowX !== 'hidden' &&
+      cs.overflowY !== 'hidden' &&
+      cs.opacity === '1' &&
+      cs.filter === 'none' &&
+      cs.transform === 'none'
+    );
+  };
   const postConvertArtboardToAbsolute = async (
     artboardId: string,
     opts?: { skipConfirm?: boolean }
@@ -1742,63 +1779,95 @@ function buildRegistry(deps: {
     ) as HTMLElement | null;
     if (!body) return;
     const zoom = worldZoomFor(body) || 1;
-    type Entry = {
-      containerId?: string;
-      containerSetRelative: boolean;
-      children: Array<{
-        id: string;
-        idIndex?: number;
-        left: number;
-        top: number;
-        width: number;
-        height: number;
-      }>;
+    type ChildBox = {
+      id: string;
+      idIndex?: number;
+      left: number;
+      top: number;
+      width: number;
+      height: number;
     };
+    type Entry = { containerId?: string; containerSetRelative: boolean; children: ChildBox[] };
     const containers: Entry[] = [];
+    const dissolve: string[] = [];
     let unstamped = 0;
     let repeated = 0;
-    const occIndex = (el: Element, cid: string): number | undefined => {
+    const countIn = (cid: string): number => {
       try {
-        const same = Array.from(body.querySelectorAll(`[data-cd-id="${CSS.escape(cid)}"]`));
-        if (same.length > 1) repeated += 1;
-        return same.length > 1 ? Math.max(0, same.indexOf(el)) : undefined;
+        return body.querySelectorAll(`[data-cd-id="${CSS.escape(cid)}"]`).length;
       } catch {
-        return undefined;
+        return 99;
       }
     };
-    const walk = (containerEl: HTMLElement, containerId: string | undefined): void => {
-      const kids = convertibleChildrenOf(containerEl);
-      if (!kids) return;
+    const measure = (el: HTMLElement, vs: HTMLElement): Omit<ChildBox, 'id'> => {
+      const r = el.getBoundingClientRect();
+      const sRect = vs.getBoundingClientRect();
+      const scs = getComputedStyle(vs);
+      const borderL = Number.parseFloat(scs.borderLeftWidth) || 0;
+      const borderT = Number.parseFloat(scs.borderTopWidth) || 0;
+      return {
+        left: Math.round((r.left - sRect.left) / zoom - borderL),
+        top: Math.round((r.top - sRect.top) / zoom - borderT),
+        width: Math.round(r.width / zoom),
+        height: Math.round(r.height / zoom),
+      };
+    };
+    // Walk: `survivingEl`/`survivingEntry` = the nearest ancestor that stays in
+    // the tree (styled container or the artboard body). Dissolved wrappers add
+    // no entry — their children lift into the surviving entry, measured
+    // against the surviving element.
+    const walk = (
+      containerEl: HTMLElement,
+      survivingEl: HTMLElement,
+      survivingEntry: Entry
+    ): void => {
       for (const c of Array.from(containerEl.children) as HTMLElement[]) {
         if (c.closest('.dgn-pin, .dc-cv-halo, .dc-cv-group-bbox')) continue;
-        if (!c.getAttribute('data-cd-id')) unstamped += 1;
-      }
-      const cs = getComputedStyle(containerEl);
-      const cRect = containerEl.getBoundingClientRect();
-      const borderL = Number.parseFloat(cs.borderLeftWidth) || 0;
-      const borderT = Number.parseFloat(cs.borderTopWidth) || 0;
-      containers.push({
-        containerId,
-        containerSetRelative: containerId !== undefined && cs.position === 'static',
-        children: kids.map((k) => {
-          const r = k.getBoundingClientRect();
-          const cid = k.getAttribute('data-cd-id') as string;
-          const idIndex = occIndex(k, cid);
-          return {
-            id: cid,
-            ...(idIndex !== undefined ? { idIndex } : {}),
-            left: Math.round((r.left - cRect.left) / zoom - borderL),
-            top: Math.round((r.top - cRect.top) / zoom - borderT),
-            width: Math.round(r.width / zoom),
-            height: Math.round(r.height / zoom),
+        const cid = c.getAttribute('data-cd-id');
+        if (!cid) {
+          unstamped += 1;
+          continue;
+        }
+        const count = countIn(cid);
+        if (count > 1) repeated += 1;
+        const hasStampedKids = !!c.querySelector('[data-cd-id]');
+        const dissolvable = hasStampedKids && count === 1 && isUnstyledWrapper(c);
+        if (dissolvable) {
+          dissolve.push(cid);
+          walk(c, survivingEl, survivingEntry);
+          continue;
+        }
+        const idIndex =
+          count > 1
+            ? Math.max(
+                0,
+                Array.from(body.querySelectorAll(`[data-cd-id="${CSS.escape(cid)}"]`)).indexOf(c)
+              )
+            : undefined;
+        survivingEntry.children.push({
+          id: cid,
+          ...(idIndex !== undefined ? { idIndex } : {}),
+          ...measure(c, survivingEl),
+        });
+        if (hasStampedKids && count === 1) {
+          const entry: Entry = {
+            containerId: cid,
+            containerSetRelative: getComputedStyle(c).position === 'static',
+            children: [],
           };
-        }),
-      });
-      // Recurse into each stamped child that is itself a container.
-      for (const k of kids) walk(k, k.getAttribute('data-cd-id') ?? undefined);
+          containers.push(entry);
+          walk(c, c, entry);
+        }
+        // A repeated (component-instance) container freezes as a UNIT — we
+        // don't descend into shared internals (per-instance inner writes need
+        // detach; the whole instance is draggable via its usage box).
+      }
     };
-    walk(body, undefined);
-    const total = containers.reduce((n, c) => n + c.children.length, 0);
+    const rootEntry: Entry = { containerSetRelative: false, children: [] };
+    containers.push(rootEntry);
+    walk(body, body, rootEntry);
+    const nonEmpty = containers.filter((c) => c.children.length > 0 || c.containerSetRelative);
+    const total = nonEmpty.reduce((n, c) => n + c.children.length, 0);
     if (total === 0) {
       showCanvasToast('Nothing to convert — this artboard has no selectable elements.');
       return;
@@ -1811,7 +1880,9 @@ function buildRegistry(deps: {
     }
     const parts = [
       `Freeze all ${total} elements at their current positions (position: absolute)?`,
-      'Every element becomes freely draggable — the flow layout will no longer reflow.',
+      dissolve.length > 0
+        ? `${dissolve.length} invisible layout wrapper(s) will be removed — the tree flattens.`
+        : 'Every element becomes freely draggable — the flow layout will no longer reflow.',
       'This is a one-way change (⌘Z right after still reverts it).',
     ];
     if (repeated > 0) {
@@ -1832,7 +1903,8 @@ function buildRegistry(deps: {
           dgn: 'convert-to-absolute-request',
           artboardId,
           allowShared: repeated > 0,
-          containers,
+          containers: nonEmpty,
+          ...(dissolve.length > 0 ? { dissolve } : {}),
         },
         '*'
       );
@@ -1840,6 +1912,12 @@ function buildRegistry(deps: {
       /* detached / cross-origin */
     }
   };
+
+  // Publish for the CanvasRouter's `freeze-and-set-kind` handler (different
+  // scope; window-level so it survives soft HMR, same as __maudeLastLayersArt).
+  (
+    window as unknown as { __maudeConvertArtboard?: typeof postConvertArtboardToAbsolute }
+  ).__maudeConvertArtboard = postConvertArtboardToAbsolute;
 
   return {
     element: [
@@ -2540,6 +2618,40 @@ function CanvasRouter({
         if (typeof t === 'string') setTool(t as never);
         return;
       }
+      // feature-4 (2026-07-20) — the Inspector's kind picker (shell-side) asks
+      // the CANVAS to freeze-then-switch, because only the canvas can measure
+      // boxes. Both outbound messages (convert request, kind request) leave in
+      // order, so the shell's structuralWrite chain serializes them correctly
+      // (freeze lands before a print-kind resize could move anything).
+      if (m.dgn === 'freeze-and-set-kind') {
+        const mm = m as { artboardId?: string; kind?: string | null; freeze?: boolean };
+        if (typeof mm.artboardId === 'string' && mm.artboardId) {
+          const artboardId = mm.artboardId;
+          const kind = typeof mm.kind === 'string' ? mm.kind : null;
+          void (async () => {
+            if (mm.freeze !== false) {
+              const convert = (
+                window as unknown as {
+                  __maudeConvertArtboard?: (
+                    id: string,
+                    o?: { skipConfirm?: boolean }
+                  ) => Promise<void>;
+                }
+              ).__maudeConvertArtboard;
+              await convert?.(artboardId, { skipConfirm: true });
+            }
+            try {
+              window.parent.postMessage(
+                { dgn: 'set-artboard-kind-request', artboardId, kind },
+                '*'
+              );
+            } catch {
+              /* detached */
+            }
+          })();
+        }
+        return;
+      }
       // feature-4 (2026-07-19) — generic shell→canvas result toast (convert /
       // detach success + failure feedback; the zero-visual-delta convert
       // otherwise LOOKS like nothing happened).
@@ -2906,7 +3018,12 @@ function CanvasRouter({
     // AND the annotation Text-tool's click-through (maude:enter-text-edit,
     // dispatched from annotations-layer.tsx when its own click lands on an
     // existing editable element) share one entry point.
-    function enterEditModeAt(stamped: HTMLElement, clientX: number, clientY: number): void {
+    function enterEditModeAt(
+      stamped: HTMLElement,
+      clientX: number,
+      clientY: number,
+      opts?: { selectAll?: boolean }
+    ): void {
       if (editing) return;
       editing = stamped;
       original = stamped.textContent ?? '';
@@ -2915,9 +3032,26 @@ function CanvasRouter({
       stamped.addEventListener('blur', onBlur, true);
       stamped.addEventListener('keydown', onKey, true);
       stamped.focus();
-      // Unified placement chain (text-caret.ts) — the annotation editors use
-      // the exact same helper, so caret-at-click can never diverge per surface.
-      placeCaretAt(stamped, window, { x: clientX, y: clientY });
+      if (opts?.selectAll) {
+        // feature-4 text-gestures (user steer 2026-07-20) — the DBLCLICK entry
+        // selects ALL text (Figma: reaching the leaf via the drill ladder puts
+        // the whole string under your fingers, ready to overwrite). Subsequent
+        // clicks/dblclicks inside the editor are native (the router bails on
+        // editable targets): click = caret, dblclick = word, triple = all.
+        try {
+          const sel = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(stamped);
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+        } catch {
+          placeCaretAt(stamped, window, { x: clientX, y: clientY });
+        }
+      } else {
+        // Unified placement chain (text-caret.ts) — the annotation editors use
+        // the exact same helper, so caret-at-click can never diverge per surface.
+        placeCaretAt(stamped, window, { x: clientX, y: clientY });
+      }
       caretDispose = mountCaret(stamped, window);
     }
     const onDbl = (e: MouseEvent): void => {
@@ -2978,7 +3112,7 @@ function CanvasRouter({
         );
         return;
       }
-      enterEditModeAt(stamped, e.clientX, e.clientY);
+      enterEditModeAt(stamped, e.clientX, e.clientY, { selectAll: true });
     };
     // Dogfood fix — the annotation Text tool's click-through: clicking an
     // existing editable element with the Text (T) tool active should edit

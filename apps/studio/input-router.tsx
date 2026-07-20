@@ -477,6 +477,11 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
       // their own clicks. The router is in capture phase, so we have to
       // bail HERE before classify can claim the event.
       if (isOverlayTarget(e.target)) return;
+      // feature-4 text-gestures (2026-07-20) — an ACTIVE inline text editor
+      // (contenteditable) owns its clicks natively: single click places the
+      // caret, dblclick selects a word, triple-click selects all. Claiming
+      // these as `select` killed every in-edit gesture.
+      if (isEditableTarget(e.target)) return;
       const action = claim(
         classify({
           type: 'pointerdown',
@@ -511,6 +516,7 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
      */
     const onMouseDown = (e: MouseEvent): void => {
       if (isOverlayTarget(e.target)) return;
+      if (isEditableTarget(e.target)) return;
       const action = claim(
         classify({
           type: 'pointerdown',
@@ -551,6 +557,7 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
      */
     const onClick = (e: MouseEvent): void => {
       if (isOverlayTarget(e.target)) return;
+      if (isEditableTarget(e.target)) return;
       const tool = getActiveTool();
       const mod = e.metaKey || e.ctrlKey;
       // Map the click to the action kind the matching pointerdown would have

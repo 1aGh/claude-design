@@ -82,6 +82,23 @@ interface OpeningHit {
  * pipeline uses, so the ID arithmetic stays in lockstep. Returns null if no
  * match.
  */
+/**
+ * Hand-authored `data-cd-id` literal on an opening element, when present. The
+ * pipeline PRESERVES an authored id (it skips injection — canvas-pipeline.ts
+ * `hasJsxAttr` gate), so the DOM carries the AUTHORED value while the
+ * positional `computeId` for that element never exists anywhere. Every walker
+ * that maps ids therefore has to prefer the authored literal — without this,
+ * authored-id elements were unreachable by the whole edit engine (dogfood
+ * 2026-07-20: "Convert failed: invalid container data-cd-id" on
+ * `data-cd-id="wal-hero-nav"`).
+ */
+function authoredCdId(opening: AnyNode): string | null {
+  const attr = findAttribute(opening, 'data-cd-id');
+  const v = attr?.value;
+  if (v?.type === 'Literal' && typeof v.value === 'string' && v.value) return v.value;
+  return null;
+}
+
 function findOpening(program: AnyNode, targetId: string): OpeningHit | null {
   interface Frame {
     componentName: string;
@@ -112,7 +129,7 @@ function findOpening(program: AnyNode, targetId: string): OpeningHit | null {
       const frame = stack[stack.length - 1] as Frame;
       const idx = frame.jsxIndex;
       frame.jsxIndex += 1;
-      const id = computeId(frame.componentName, idx);
+      const id = authoredCdId(node.openingElement) ?? computeId(frame.componentName, idx);
       if (id === targetId) {
         hit = { opening: node.openingElement, element: node };
       }
@@ -974,7 +991,10 @@ function collectElements(program: AnyNode): Array<{ id: string; node: AnyNode }>
       const frame = stack[stack.length - 1] as Frame;
       const idx = frame.jsxIndex;
       frame.jsxIndex += 1;
-      out.push({ id: computeId(frame.componentName, idx), node });
+      out.push({
+        id: authoredCdId(node.openingElement) ?? computeId(frame.componentName, idx),
+        node,
+      });
       if (node.openingElement) visit(node.openingElement.attributes);
       visit(node.children);
       if (pushed) stack.pop();
@@ -1034,7 +1054,7 @@ function collectElementsFull(
       const idx = frame.jsxIndex;
       frame.jsxIndex += 1;
       out.push({
-        id: computeId(frame.componentName, idx),
+        id: authoredCdId(node.openingElement) ?? computeId(frame.componentName, idx),
         componentName: frame.componentName,
         isFrameRoot: idx === 0,
         tag: tagOf(node),
@@ -4686,6 +4706,14 @@ export function applyConvertToAbsolute(
      *  undo seq. When present, the legacy single-container fields above are
      *  ignored. */
     containers?: ConvertContainerSpec[];
+    /** feature-4 TRUE FLATTEN (user steer 2026-07-20) — ids of UNSTYLED layout
+     *  wrappers to DISSOLVE: their opening+closing tags are removed from the
+     *  JSX (children hoist textually into the parent), so the tree genuinely
+     *  flattens. The client only nominates visually-inert wrappers (no
+     *  background/border/shadow/radius/clip) whose id is unique in the
+     *  artboard; their children's boxes are measured against the nearest
+     *  SURVIVING ancestor. */
+    dissolve?: string[];
   }
 ): EditResult {
   const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
@@ -4776,6 +4804,26 @@ export function applyConvertToAbsolute(
           id: child.id,
         });
       }
+      // A COMPONENT-INSTANCE child (cid routed to a `<Component/>` usage):
+      // writing `style` on the usage tag only works when the component
+      // forwards it — most don't (live-dogfood 2026-07-20: the frozen Cards
+      // piled at the artboard's top-left). WRAP the usage in a positioned div
+      // instead — correct for ANY component, no forwarding assumption. The
+      // wrapper gets its own data-cd-id on the next transpile.
+      if (cid !== child.id) {
+        const elStart = hit.element?.start as number;
+        const elEnd = hit.element?.end as number;
+        // appendRight for the OPEN + appendLeft for the CLOSE: at a shared
+        // boundary between two ADJACENT usages (`<Card /><Card />`), MagicString
+        // renders the appendLeft bucket before the appendRight bucket, so the
+        // previous usage's close always lands before the next usage's open.
+        s.appendRight(
+          elStart,
+          `<div style={{ position: "absolute", left: ${JSON.stringify(`${child.left}px`)}, top: ${JSON.stringify(`${child.top}px`)}, width: ${JSON.stringify(`${child.width}px`)}, height: ${JSON.stringify(`${child.height}px`)} }}>`
+        );
+        s.appendLeft(elEnd, '</div>');
+        continue;
+      }
       const entries: Array<[string, string]> = [
         ['position', '"absolute"'],
         ['left', JSON.stringify(`${child.left}px`)],
@@ -4791,6 +4839,39 @@ export function applyConvertToAbsolute(
       // absolute IS a positioning context — but never write both.)
       if (relativeWritten.has(cid)) entries.shift();
       setMultipleStyleProps(s, hit.opening, entries, canvasAbsPath, cid);
+    }
+  }
+
+  // feature-4 TRUE FLATTEN — dissolve nominated layout wrappers: strip the
+  // opening + closing tags, leaving the children's JSX in place (they hoist
+  // into the wrapper's parent). Style writes above never target a dissolved
+  // id (the client keeps the sets disjoint; enforced here as a hard error so
+  // a drifted client can't half-write a removed element).
+  if (Array.isArray(spec.dissolve) && spec.dissolve.length > 0) {
+    for (const did of spec.dissolve) {
+      if (writtenTargets.has(did) || relativeWritten.has(did)) {
+        throw new CanvasEditError(
+          `convert-to-absolute: "${did}" is both a style target and a dissolve target`,
+          { canvas: canvasAbsPath, id: did }
+        );
+      }
+      const hit = findOpening(parsed.program, did);
+      if (!hit) {
+        throw new CanvasEditError(`dissolve target "${did}" not found in ${canvasAbsPath}`, {
+          canvas: canvasAbsPath,
+          id: did,
+        });
+      }
+      const opening = hit.opening;
+      const closing = hit.element?.closingElement;
+      if (!closing || typeof closing.start !== 'number' || typeof closing.end !== 'number') {
+        throw new CanvasEditError(`dissolve target "${did}" is self-closing — nothing to hoist`, {
+          canvas: canvasAbsPath,
+          id: did,
+        });
+      }
+      s.remove(opening.start as number, opening.end as number);
+      s.remove(closing.start as number, closing.end as number);
     }
   }
 
