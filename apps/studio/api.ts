@@ -16,6 +16,7 @@ import {
   convertToAbsolute,
   deleteArtboard,
   deleteElement,
+  detachComponent,
   duplicateArtboard,
   duplicateElement,
   type EditScope,
@@ -457,6 +458,7 @@ export interface Api {
     containerSetRelative?: unknown;
     allowShared?: unknown;
     children?: unknown;
+    containers?: unknown;
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
   /**
    * Insert a synthesized div/text/image relative to a reference element, OR —
@@ -559,6 +561,14 @@ export interface Api {
   }): Promise<
     | { ok: true; map: Record<string, { component: string; root: boolean; usages: number }> }
     | { ok: false; status: number; error: string }
+  >;
+  /** feature-4 detach-component — clone the definition + repoint ONE usage. */
+  detachComponentOp(input: {
+    canvas?: unknown;
+    id?: unknown;
+    idIndex?: unknown;
+  }): Promise<
+    { ok: true; detachedName: string; seq?: number } | { ok: false; status: number; error: string }
   >;
   // Undo/redo a prior reorder by seq (Cmd+Z from the canvas undo stack). Whole-
   // file content swap from the in-memory revert log — immune to the positional
@@ -3031,48 +3041,107 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     containerSetRelative?: unknown;
     allowShared?: unknown;
     children?: unknown;
+    containers?: unknown;
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }> {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
     if (!takeStructuralToken()) return RATE_LIMITED;
-    const containerId = typeof input.containerId === 'string' ? input.containerId.trim() : '';
-    if (!CD_ID_RE.test(containerId)) {
-      return { ok: false, status: 400, error: 'invalid container data-cd-id' };
-    }
-    const containerIdIndex = Number.isInteger(input.containerIdIndex)
-      ? (input.containerIdIndex as number)
-      : undefined;
-    const containerSetRelative = input.containerSetRelative === true;
-    if (!Array.isArray(input.children) || input.children.length === 0) {
-      return { ok: false, status: 400, error: 'children required' };
-    }
-    if (input.children.length > 500) {
-      return { ok: false, status: 400, error: 'too many children' };
-    }
     const num = (v: unknown): number | null =>
       typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1_000_000
         ? Math.round(v)
         : null;
-    const children: Array<{
+    type ChildBox = {
       id: string;
       idIndex?: number;
       left: number;
       top: number;
       width: number;
       height: number;
-    }> = [];
-    for (const c of input.children as Array<Record<string, unknown>>) {
-      const id = typeof c?.id === 'string' ? c.id.trim() : '';
-      if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid child data-cd-id' };
-      const left = num(c.left);
-      const top = num(c.top);
-      const width = num(c.width);
-      const height = num(c.height);
-      if (left === null || top === null || width === null || height === null) {
-        return { ok: false, status: 400, error: 'invalid child box (left/top/width/height)' };
+    };
+    const parseChildren = (raw: unknown): ChildBox[] | string => {
+      if (!Array.isArray(raw) || raw.length === 0) return 'children required';
+      const out: ChildBox[] = [];
+      for (const c of raw as Array<Record<string, unknown>>) {
+        const id = typeof c?.id === 'string' ? c.id.trim() : '';
+        if (!CD_ID_RE.test(id)) return 'invalid child data-cd-id';
+        const left = num(c.left);
+        const top = num(c.top);
+        const width = num(c.width);
+        const height = num(c.height);
+        if (left === null || top === null || width === null || height === null) {
+          return 'invalid child box (left/top/width/height)';
+        }
+        const idIndex = Number.isInteger(c.idIndex) ? (c.idIndex as number) : undefined;
+        out.push({ id, idIndex, left, top, width, height });
       }
-      const idIndex = Number.isInteger(c.idIndex) ? (c.idIndex as number) : undefined;
-      children.push({ id, idIndex, left, top, width, height });
+      return out;
+    };
+
+    // feature-4 artboard-level convert (2026-07-19) — MULTI-container batch.
+    // Each container: optional containerId (absent = the artboard-body root
+    // level), a setRelative flag, and its children boxes. Total child count is
+    // capped across the batch.
+    let containersSpec:
+      | Array<{
+          containerId?: string;
+          containerIdIndex?: number;
+          containerSetRelative: boolean;
+          children: ChildBox[];
+        }>
+      | undefined;
+    if (input.containers !== undefined) {
+      if (!Array.isArray(input.containers) || input.containers.length === 0) {
+        return { ok: false, status: 400, error: 'invalid containers' };
+      }
+      if (input.containers.length > 200) {
+        return { ok: false, status: 400, error: 'too many containers' };
+      }
+      containersSpec = [];
+      let total = 0;
+      for (const c of input.containers as Array<Record<string, unknown>>) {
+        let containerId: string | undefined;
+        if (c?.containerId !== undefined && c.containerId !== null) {
+          const cid = typeof c.containerId === 'string' ? c.containerId.trim() : '';
+          if (!CD_ID_RE.test(cid)) {
+            return { ok: false, status: 400, error: 'invalid container data-cd-id' };
+          }
+          containerId = cid;
+        }
+        const kids = parseChildren(c?.children);
+        if (typeof kids === 'string') return { ok: false, status: 400, error: kids };
+        total += kids.length;
+        if (total > 500) return { ok: false, status: 400, error: 'too many children' };
+        containersSpec.push({
+          containerId,
+          containerIdIndex: Number.isInteger(c?.containerIdIndex)
+            ? (c.containerIdIndex as number)
+            : undefined,
+          containerSetRelative: c?.containerSetRelative === true,
+          children: kids,
+        });
+      }
+    }
+
+    // Legacy single-container shape (the element context-menu action).
+    let containerId = '';
+    let containerIdIndex: number | undefined;
+    let containerSetRelative = false;
+    let children: ChildBox[] = [];
+    if (!containersSpec) {
+      containerId = typeof input.containerId === 'string' ? input.containerId.trim() : '';
+      if (!CD_ID_RE.test(containerId)) {
+        return { ok: false, status: 400, error: 'invalid container data-cd-id' };
+      }
+      containerIdIndex = Number.isInteger(input.containerIdIndex)
+        ? (input.containerIdIndex as number)
+        : undefined;
+      containerSetRelative = input.containerSetRelative === true;
+      if (Array.isArray(input.children) && input.children.length > 500) {
+        return { ok: false, status: 400, error: 'too many children' };
+      }
+      const kids = parseChildren(input.children);
+      if (typeof kids === 'string') return { ok: false, status: 400, error: kids };
+      children = kids;
     }
     const rel = path.relative(paths.designRoot, r.abs);
     ctx.bus.emit('activity:suppress', rel);
@@ -3082,13 +3151,18 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         ctx.bus.emit('activity:unsuppress', rel);
         return { ok: false, status: 413, error: 'canvas source too large' };
       }
-      const res = await convertToAbsolute(r.abs, {
-        containerId,
-        containerIdIndex,
-        containerSetRelative,
-        allowShared: input.allowShared === true,
-        children,
-      });
+      const res = await convertToAbsolute(
+        r.abs,
+        containersSpec
+          ? { allowShared: input.allowShared === true, containers: containersSpec }
+          : {
+              containerId,
+              containerIdIndex,
+              containerSetRelative,
+              allowShared: input.allowShared === true,
+              children,
+            }
+      );
       const after = res.source;
       if (!res.changed || after === before) {
         ctx.bus.emit('activity:unsuppress', rel);
@@ -3106,6 +3180,54 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         ok: false,
         status: err instanceof CanvasEditError ? 422 : 500,
         error: err instanceof Error ? err.message : 'convert-to-absolute failed',
+      };
+    }
+  }
+
+  /**
+   * feature-4 detach-component (2026-07-19) — clone the component definition
+   * under a fresh name + repoint THIS usage at the clone, so subsequent edits
+   * stay local to this instance. Whole-file undo seq (Stage-I lane).
+   */
+  async function detachComponentOp(input: {
+    canvas?: unknown;
+    id?: unknown;
+    idIndex?: unknown;
+  }): Promise<
+    { ok: true; detachedName: string; seq?: number } | { ok: false; status: number; error: string }
+  > {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    if (!takeStructuralToken()) return RATE_LIMITED;
+    const id = typeof input.id === 'string' ? input.id.trim() : '';
+    if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid data-cd-id' };
+    const idIndex = Number.isInteger(input.idIndex) ? (input.idIndex as number) : undefined;
+    const rel = path.relative(paths.designRoot, r.abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(r.abs).text();
+      if (before.length > MAX_CANVAS_SOURCE) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: false, status: 413, error: 'canvas source too large to grow' };
+      }
+      const res = await detachComponent(r.abs, id, idIndex);
+      const after = res.source;
+      if (!res.changed || after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+        return { ok: true, detachedName: res.detachedName };
+      }
+      try {
+        await history.writeSnapshot(rel, before, 'pre-detach-component');
+      } catch {
+        /* snapshot best-effort */
+      }
+      return { ok: true, detachedName: res.detachedName, seq: logUndo(r.abs, before, after) };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : 'detach failed',
       };
     }
   }
@@ -4349,6 +4471,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     reorder,
     retimeSequenceOp,
     convertChildrenToAbsoluteOp,
+    detachComponentOp,
     deleteElementOp,
     insertElementOp,
     insertArtboardOp,

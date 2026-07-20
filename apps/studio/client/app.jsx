@@ -7787,6 +7787,8 @@ function InspectorPanel({
   // feature-4 T7b — locked layer keys (`"<id>:<index>"`) + toggle.
   lockedKeys,
   onToggleLock,
+  // feature-4 detach-component — clone-definition detach for a shared instance.
+  onDetachInstance,
   canvasFile,
   onSelectLayer,
   onHoverLayer,
@@ -8294,6 +8296,19 @@ function InspectorPanel({
                 editScope.affects
               } place${editScope.affects === 1 ? '' : 's'}`
             : 'Local · this element only'}
+          {/* feature-4 detach-component (2026-07-19) — make THIS instance its
+              own single-usage component so edits (incl. absolute positions)
+              stay local per artboard. */}
+          {editScope.scope === 'shared' && onDetachInstance ? (
+            <button
+              type="button"
+              className="st-scope-detach"
+              title="Clone this component for this instance only — edits stop affecting the other places"
+              onClick={() => onDetachInstance(el.id, el.index)}
+            >
+              Detach
+            </button>
+          ) : null}
         </div>
       ) : null}
       <div className="st-rp-body">
@@ -8309,15 +8324,16 @@ function InspectorPanel({
               onRecordEdit={(before, after) => onPhotoRecordEdit?.(photoTarget.asset, before, after)}
             />
           </div>
-        ) : !el ? (
+        ) : !el && !(effTab === 'layers' && layersTree?.nodes?.length) ? (
           <div className="st-rp-empty">
             {/* <p> wrapper — st-rp-empty is a flex column, bare text nodes +
                 kbd would stack as stretched flex items. */}
             <p>
-              Hold <Kbd>⌘</Kbd> inside the canvas and click an element to inspect it.
+              Press <Kbd>V</Kbd>, then click an element to select it — or <Kbd>⌘</Kbd>-click
+              straight from Browse.
             </p>
           </div>
-        ) : effTab === 'inspect' ? (
+        ) : el && effTab === 'inspect' ? (
           <>
             <div className="st-rp-hd">{el.selector || el.tag || 'element'}</div>
             <div className="st-insp-row">
@@ -8390,8 +8406,8 @@ function InspectorPanel({
                       key={`${n.id}:${n.index}`}
                       node={n}
                       depth={0}
-                      selectedId={el.id}
-                      selectedIndex={el.index}
+                      selectedId={el?.id}
+                      selectedIndex={el?.index}
                       collapsed={collapsed}
                       hiddenOverride={hiddenOverride}
                       onToggle={toggleCollapse}
@@ -8426,7 +8442,7 @@ function InspectorPanel({
                   {reorderMsg}
                 </div>
               </>
-            ) : Array.isArray(el.dom_path) && el.dom_path.length ? (
+            ) : el && Array.isArray(el.dom_path) && el.dom_path.length ? (
               el.dom_path.map((node, i) => (
                 <div
                   key={i}
@@ -8521,6 +8537,11 @@ function App() {
   // user meanwhile selected something else. select-by-id is idempotent
   // (replace-same → select-set echo → ws guard sees same id → no re-schedule),
   // so the ladder can't loop.
+  // feature-4 dogfood fix — timestamp of the last LOCAL selection change sent
+  // over WS. The ws 'selected' broadcast is both (a) our own echo and (b) a
+  // genuine cross-canvas restore; within this window it's always (a) and must
+  // not overwrite fresher local state (multi-select / drill races).
+  const lastLocalSelectAtRef = useRef(0);
   const haloRestoreTimersRef = useRef([]);
   const scheduleHaloRestore = useCallback((one) => {
     if (!one?.id || !one.file) return;
@@ -9632,6 +9653,19 @@ function App() {
     };
   }, [activePath]);
 
+  // feature-4 dogfood fix (2026-07-19) — the Layers panel used to stay EMPTY
+  // until something was selected (the tree only posted on selection). Request
+  // the tree for the viewport-active artboard whenever it (or the canvas)
+  // changes, so Layers work in browse mode with no selection at all. Small
+  // debounce — the active-artboard signal can flicker during a fast pan.
+  useEffect(() => {
+    if (!activePath || activePath === SYSTEM_TAB || !canvasActiveArtboard) return;
+    const t = setTimeout(() => {
+      postToActiveCanvas({ dgn: 'request-layers', artboardId: canvasActiveArtboard });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [activePath, canvasActiveArtboard, postToActiveCanvas]);
+
   // feature-4 T7b — locked layer keys (`"<cdId>:<index>"`, per-user, per-canvas
   // via view.json). Toggling PATCHes the FULL set (replace semantics) + pushes
   // the live set down to the canvas iframe so select/drag enforcement matches
@@ -9899,6 +9933,18 @@ function App() {
             // mount it lands after, so re-apply the halo from THIS edge too.
             // Guarded to restore-transitions (prev missing / different id or
             // file) so the select-set echo of our own re-select can't loop.
+            //
+            // feature-4 dogfood fix (2026-07-19) — the frame is ALSO the echo
+            // of our OWN wsSend('select'): it round-trips the server and lands
+            // hundreds of ms later, by which time the user may have drilled
+            // deeper (dblclick) or multi-selected — the echo then OVERWROTE the
+            // fresh state with the stale head and the halo-restore ladder
+            // re-imposed it on the canvas ("multiselect snaps back to one",
+            // "drill snaps back to the parent"). Suppress the restore path
+            // entirely within a short window of any LOCAL selection send — a
+            // genuine cross-canvas restore never follows a local select that
+            // closely (it follows a canvas switch).
+            if (Date.now() - lastLocalSelectAtRef.current < 2000) return;
             const incoming = m.selected;
             const one = Array.isArray(incoming) ? incoming[0] : incoming;
             const prevSel = selectedRef.current;
@@ -10539,11 +10585,13 @@ function App() {
       }
       if (m.dgn === 'select' && m.selection) {
         setPhotoSel(null); // a DOM selection supersedes an annotation-image Photo target
+        lastLocalSelectAtRef.current = Date.now();
         wsSend({ type: 'select', selection: m.selection });
         setSelected(m.selection);
         maybeAutoOpenInspectorOnSelect(m.selection); // Stage C
       } else if (m.dgn === 'select-set') {
         setPhotoSel(null);
+        lastLocalSelectAtRef.current = Date.now();
         // Canvas multi-select. Payload shape:
         //   null              → empty selection
         //   Selection         → length-1 (back-compat with legacy single-element shape)
@@ -10568,6 +10616,7 @@ function App() {
         }
       } else if (m.dgn === 'clear-select') {
         setPhotoSel(null);
+        lastLocalSelectAtRef.current = Date.now();
         wsSend({ type: 'clear-select' });
         setSelected(null);
       } else if (m.dgn === 'edit-text' && m.id) {
@@ -10891,26 +10940,49 @@ function App() {
         // frozen child boxes; perform the main-origin batch write (ONE undo
         // seq via structuralWrite). The server re-validates every field; here we
         // just confused-deputy-guard the source (DDR-054) + a light shape check.
+        // Two shapes: single-container (element context menu) or `containers`
+        // batch (the artboard-level "Convert layout to absolute").
         const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
-        if (
-          e.source === activeWin &&
-          typeof m.containerId === 'string' &&
-          Array.isArray(m.children) &&
-          m.children.length > 0
-        ) {
+        const isBatch = Array.isArray(m.containers) && m.containers.length > 0;
+        const isSingle =
+          typeof m.containerId === 'string' && Array.isArray(m.children) && m.children.length > 0;
+        if (e.source === activeWin && (isBatch || isSingle)) {
+          const count = isBatch
+            ? m.containers.reduce(
+                (n, c) => n + (Array.isArray(c?.children) ? c.children.length : 0),
+                0
+              )
+            : m.children.length;
           structuralWriteRef.current?.(
             '/_api/convert-to-absolute',
-            {
-              containerId: m.containerId,
-              containerSetRelative: m.containerSetRelative === true,
-              // feature-4 T8b — the canvas asked the user's confirm already;
-              // the server still refuses `.map` children regardless.
-              allowShared: m.allowShared === true,
-              children: m.children,
-            },
+            isBatch
+              ? { allowShared: m.allowShared === true, containers: m.containers }
+              : {
+                  containerId: m.containerId,
+                  containerSetRelative: m.containerSetRelative === true,
+                  // feature-4 T8b — the canvas asked the user's confirm already;
+                  // the server still refuses `.map` children regardless.
+                  allowShared: m.allowShared === true,
+                  children: m.children,
+                },
             {
               label: 'convert to absolute',
-              onOk: () => postToActiveCanvas({ dgn: 'selection-clear' }),
+              // Dogfood 2026-07-19 — the conversion is zero-visual-delta by
+              // design, which LOOKED like "nic nedělá". Say what happened, and
+              // surface server refusals (.map children etc.) as a toast
+              // instead of a console.warn nobody sees.
+              onOk: () => {
+                postToActiveCanvas({ dgn: 'selection-clear' });
+                postToActiveCanvas({
+                  dgn: 'op-toast',
+                  message: `Converted ${count} element${count === 1 ? '' : 's'} to absolute — press V and drag them freely (⌘Z to undo).`,
+                });
+              },
+              onFail: (j) =>
+                postToActiveCanvas({
+                  dgn: 'op-toast',
+                  message: `Convert failed: ${j?.error || 'unknown error'}`,
+                }),
             }
           );
         }
@@ -11749,6 +11821,34 @@ function App() {
       return true;
     },
     [activePath, canvasActiveArtboard, insertElementShell]
+  );
+
+  // feature-4 detach-component (2026-07-19) — clone the definition + repoint
+  // this usage so edits stay local to this instance. Rides structuralWrite
+  // (one undo seq); the id churn after HMR invalidates the selection → clear.
+  const detachInstanceShell = useCallback(
+    (id, idIndex) => {
+      structuralWrite(
+        '/_api/detach-component',
+        { id, idIndex: Number.isInteger(idIndex) ? idIndex : undefined },
+        {
+          label: 'detach instance',
+          onOk: (j) => {
+            postToActiveCanvas({ dgn: 'selection-clear' });
+            postToActiveCanvas({
+              dgn: 'op-toast',
+              message: `Detached — this instance is now ${j.detachedName || 'its own component'}; edits stay local (⌘Z to undo).`,
+            });
+          },
+          onFail: (j) =>
+            postToActiveCanvas({
+              dgn: 'op-toast',
+              message: `Detach failed: ${j?.error || 'unknown error'}`,
+            }),
+        }
+      );
+    },
+    [structuralWrite, postToActiveCanvas]
   );
 
   const duplicateElementShell = useCallback(
@@ -12785,6 +12885,7 @@ function App() {
           componentMap={componentMap}
           lockedKeys={lockedKeys}
           onToggleLock={toggleLockedKey}
+          onDetachInstance={detachInstanceShell}
           canvasFile={activePath}
           onSelectLayer={(n) =>
             postToActiveCanvas({

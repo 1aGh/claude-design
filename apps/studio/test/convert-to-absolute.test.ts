@@ -163,3 +163,53 @@ describe('canvas-edit / applyConvertToAbsolute', () => {
     ).toThrow(/repeated/);
   });
 });
+
+// feature-4 artboard-level convert (2026-07-19) — the `containers` batch shape:
+// whole-artboard flatten in ONE pass / ONE undo seq. Root level (artboard body)
+// has no containerId; nested containers get relative-or-absolute exactly once.
+describe('canvas-edit / applyConvertToAbsolute — containers batch (artboard level)', () => {
+  test('multi-level batch: root children absolute, nested container relative+absolute once', () => {
+    const src = `function Demo() { return <div className="hero"><h1>T</h1><section className="row"><p>a</p><em>b</em></section></div>; }`;
+    const ids = idsOf(src);
+    const out = applyConvertToAbsolute(CANVAS, src, {
+      containers: [
+        // Root level — the artboard body (no containerId): the hero div itself.
+        {
+          containerSetRelative: false,
+          children: [{ id: ids.div as string, left: 0, top: 0, width: 520, height: 400 }],
+        },
+        // The hero div's own children.
+        {
+          containerId: ids.div as string,
+          containerSetRelative: true,
+          children: [
+            { id: ids.h1 as string, left: 24, top: 24, width: 200, height: 30 },
+            { id: ids.section as string, left: 24, top: 70, width: 400, height: 60 },
+          ],
+        },
+        // The nested section's children.
+        {
+          containerId: ids.section as string,
+          containerSetRelative: true,
+          children: [
+            { id: ids.p as string, left: 0, top: 0, width: 100, height: 20 },
+            { id: ids.em as string, left: 110, top: 0, width: 80, height: 20 },
+          ],
+        },
+      ],
+    });
+    // EVERY element position:absolute exactly once; the hero div (root child +
+    // container) carries absolute (child role) and NOT a second position key.
+    const positions = out.source.match(/position: "(absolute|relative)"/g) || [];
+    // 5 elements absolute (div, h1, section, p, em) + 0 extra relative — the
+    // div/section container-relative writes are skipped because both already
+    // received an absolute child-role write first.
+    expect(positions.filter((p) => p.includes('absolute')).length).toBe(5);
+    expect(positions.filter((p) => p.includes('relative')).length).toBe(0);
+    // No element carries two position keys.
+    expect(out.source).not.toMatch(/position:[^}]*position:/);
+    // Boxes landed.
+    expect(out.source).toContain('left: "110px"');
+    expect(out.source).toContain('width: "520px"');
+  });
+});

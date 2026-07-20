@@ -4647,13 +4647,32 @@ function setMultipleStyleProps(
  *     (`.map`ed) direct children before it ever posts — this is the server-side
  *     backstop for the component-usage case it can't see.
  */
+interface ConvertChildBox {
+  id: string;
+  idIndex?: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+interface ConvertContainerSpec {
+  /** Absent for the artboard-body ROOT level — `.dc-artboard-body` is already
+   *  `position:relative` engine chrome with no `data-cd-id`, so its children
+   *  get absolute boxes with no container write. */
+  containerId?: string;
+  containerIdIndex?: number;
+  containerSetRelative: boolean;
+  children: ConvertChildBox[];
+}
+
 export function applyConvertToAbsolute(
   canvasAbsPath: string,
   source: string,
   spec: {
-    containerId: string;
+    containerId?: string;
     containerIdIndex?: number;
-    containerSetRelative: boolean;
+    containerSetRelative?: boolean;
     /** feature-4 T8b — user CONFIRMED converting component-instance children:
      *  each child's `idIndex` routes the write to that occurrence's own
      *  `<Component/>` USAGE (the Stage-H3 local-instance model — the usage
@@ -4661,14 +4680,12 @@ export function applyConvertToAbsolute(
      *  it to paint, same assumption as instance drag-reposition). Without the
      *  flag a shared child still throws (the pre-confirm abort). */
     allowShared?: boolean;
-    children: Array<{
-      id: string;
-      idIndex?: number;
-      left: number;
-      top: number;
-      width: number;
-      height: number;
-    }>;
+    children?: ConvertChildBox[];
+    /** feature-4 artboard-level convert (2026-07-19) — MULTI-container batch:
+     *  the whole artboard's layout flattened to absolute in ONE pass / ONE
+     *  undo seq. When present, the legacy single-container fields above are
+     *  ignored. */
+    containers?: ConvertContainerSpec[];
   }
 ): EditResult {
   const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
@@ -4678,80 +4695,103 @@ export function applyConvertToAbsolute(
       `oxc-parser failed on ${canvasAbsPath}: ${first?.message ?? 'unknown'}`,
       {
         canvas: canvasAbsPath,
-        id: spec.containerId,
+        id: spec.containerId ?? 'artboard',
       }
     );
   }
-  if (spec.children.length === 0) {
+  const containers: ConvertContainerSpec[] = Array.isArray(spec.containers)
+    ? spec.containers
+    : [
+        {
+          containerId: spec.containerId,
+          containerIdIndex: spec.containerIdIndex,
+          containerSetRelative: spec.containerSetRelative === true,
+          children: spec.children ?? [],
+        },
+      ];
+  const totalChildren = containers.reduce((n, c) => n + c.children.length, 0);
+  if (totalChildren === 0) {
     throw new CanvasEditError('convert-to-absolute: no children to convert', {
       canvas: canvasAbsPath,
-      id: spec.containerId,
+      id: spec.containerId ?? 'artboard',
     });
   }
   const s = new MagicString(source);
-
-  // Container → position:relative (only when the client says it's currently
-  // static; a container that's already positioned is left as-is).
-  if (spec.containerSetRelative) {
-    const cid =
-      typeof spec.containerIdIndex === 'number' && Number.isFinite(spec.containerIdIndex)
-        ? resolveUsageId(parsed.program, spec.containerId, spec.containerIdIndex)
-        : spec.containerId;
-    const chit = findOpening(parsed.program, cid);
-    if (!chit) {
-      throw new CanvasEditError(`container "${spec.containerId}" not found in ${canvasAbsPath}`, {
-        canvas: canvasAbsPath,
-        id: spec.containerId,
-      });
-    }
-    setMultipleStyleProps(s, chit.opening, [['position', '"relative"']], canvasAbsPath, cid);
-  }
-
-  // Each child → absolute + frozen box. A shared-component usage either routes
-  // to its own `<Component/>` usage (allowShared — the user confirmed) or
-  // throws (the pre-confirm abort). A `.map()`ed child can never convert: N
-  // rendered copies of ONE source element can't hold N absolute positions —
-  // detected as two children resolving to the SAME target element.
+  // Shared across ALL containers — a `.map()`ed child (two DOM children
+  // resolving to the SAME source element) can never convert: N rendered copies
+  // of ONE source element can't hold N absolute positions.
   const writtenTargets = new Set<string>();
-  for (const child of spec.children) {
-    let cid = child.id;
-    if (typeof child.idIndex === 'number' && Number.isFinite(child.idIndex)) {
-      cid = resolveUsageId(parsed.program, child.id, child.idIndex);
-      if (cid !== child.id && !spec.allowShared) {
+  // A container may legitimately receive BOTH a `position:relative` write and
+  // (as a child of ITS parent container) an absolute box — track containers we
+  // already touched so the batch never double-writes `position` on one element.
+  const relativeWritten = new Set<string>();
+
+  for (const c of containers) {
+    // Container → position:relative (only when the client says it's currently
+    // static; already-positioned containers are left as-is; the artboard-body
+    // root level has no container to write).
+    if (c.containerId && c.containerSetRelative) {
+      const cid =
+        typeof c.containerIdIndex === 'number' && Number.isFinite(c.containerIdIndex)
+          ? resolveUsageId(parsed.program, c.containerId, c.containerIdIndex)
+          : c.containerId;
+      if (!relativeWritten.has(cid) && !writtenTargets.has(cid)) {
+        relativeWritten.add(cid);
+        const chit = findOpening(parsed.program, cid);
+        if (!chit) {
+          throw new CanvasEditError(`container "${c.containerId}" not found in ${canvasAbsPath}`, {
+            canvas: canvasAbsPath,
+            id: c.containerId,
+          });
+        }
+        setMultipleStyleProps(s, chit.opening, [['position', '"relative"']], canvasAbsPath, cid);
+      }
+    }
+
+    // Each child → absolute + frozen box. A shared-component usage either
+    // routes to its own `<Component/>` usage (allowShared — the user
+    // confirmed) or throws (the pre-confirm abort).
+    for (const child of c.children) {
+      let cid = child.id;
+      if (typeof child.idIndex === 'number' && Number.isFinite(child.idIndex)) {
+        cid = resolveUsageId(parsed.program, child.id, child.idIndex);
+        if (cid !== child.id && !spec.allowShared) {
+          throw new CanvasEditError(
+            `convert-to-absolute: "${child.id}" is a shared component instance — confirm required`,
+            { canvas: canvasAbsPath, id: child.id }
+          );
+        }
+      }
+      if (writtenTargets.has(cid)) {
         throw new CanvasEditError(
-          `convert-to-absolute: "${child.id}" is a shared component instance — confirm required`,
+          `convert-to-absolute: "${child.id}" renders from a repeated (.map) source element — cannot convert`,
           { canvas: canvasAbsPath, id: child.id }
         );
       }
-    }
-    if (writtenTargets.has(cid)) {
-      throw new CanvasEditError(
-        `convert-to-absolute: "${child.id}" renders from a repeated (.map) source element — cannot convert`,
-        { canvas: canvasAbsPath, id: child.id }
-      );
-    }
-    writtenTargets.add(cid);
-    const hit = findOpening(parsed.program, cid);
-    if (!hit) {
-      throw new CanvasEditError(`child "${child.id}" not found in ${canvasAbsPath}`, {
-        canvas: canvasAbsPath,
-        id: child.id,
-      });
-    }
-    setMultipleStyleProps(
-      s,
-      hit.opening,
-      [
+      writtenTargets.add(cid);
+      const hit = findOpening(parsed.program, cid);
+      if (!hit) {
+        throw new CanvasEditError(`child "${child.id}" not found in ${canvasAbsPath}`, {
+          canvas: canvasAbsPath,
+          id: child.id,
+        });
+      }
+      const entries: Array<[string, string]> = [
         ['position', '"absolute"'],
         ['left', JSON.stringify(`${child.left}px`)],
         ['top', JSON.stringify(`${child.top}px`)],
         ['width', JSON.stringify(`${child.width}px`)],
         ['height', JSON.stringify(`${child.height}px`)],
         ['box-sizing', '"border-box"'],
-      ],
-      canvasAbsPath,
-      cid
-    );
+      ];
+      // If this element was already made `relative` as a container in this
+      // batch, drop the child-role `position:absolute` write for it — one
+      // element gets ONE position key. (Deeper-level nesting keeps the
+      // relative context; children of an absolute element also resolve fine —
+      // absolute IS a positioning context — but never write both.)
+      if (relativeWritten.has(cid)) entries.shift();
+      setMultipleStyleProps(s, hit.opening, entries, canvasAbsPath, cid);
+    }
   }
 
   const out = s.toString();
@@ -4771,12 +4811,156 @@ export async function convertToAbsolute(
     if (!(await file.exists())) {
       throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
         canvas: canvasAbsPath,
-        id: spec.containerId,
+        id: spec.containerId ?? 'artboard',
       });
     }
     const source = await file.text();
     const next = applyConvertToAbsolute(canvasAbsPath, source, spec);
     if (next.source === source) return { source, delta: 0, changed: false };
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return { ...next, changed: true };
+  });
+}
+
+/**
+ * feature-4 detach-component (user steer 2026-07-19) — make ONE component
+ * instance independently editable without inlining its JSX. Strategy: CLONE the
+ * component's definition under a fresh name (`<C>Detached`, `<C>Detached2`, …)
+ * and repoint THIS usage's tags at the clone. 100% behavior-preserving for ANY
+ * component (props/children/expressions flow unchanged — no substitution
+ * heuristics), and every subsequent edit lands on the clone's single-usage
+ * definition, so `resolveEditScope` reports it LOCAL. This is the answer to
+ * "moving an absolute child inside a shared component moved it in every
+ * artboard" — detach first, then edit freely.
+ */
+export function applyDetachComponent(
+  canvasAbsPath: string,
+  source: string,
+  id: string,
+  occurrence?: number
+): { source: string; delta: number; detachedName: string } {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    const first = parsed.errors[0];
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${first?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id }
+    );
+  }
+  const usageId = resolveUsageId(parsed.program, id, occurrence ?? 0);
+  if (usageId === id) {
+    throw new CanvasEditError('detach: this element is not part of a reused component instance', {
+      canvas: canvasAbsPath,
+      id,
+    });
+  }
+  const hit = findOpening(parsed.program, usageId);
+  if (!hit) {
+    throw new CanvasEditError(`detach: usage "${usageId}" not found`, {
+      canvas: canvasAbsPath,
+      id,
+    });
+  }
+  const nameNode = hit.opening?.name;
+  if (nameNode?.type !== 'JSXIdentifier' || typeof nameNode.name !== 'string') {
+    throw new CanvasEditError('detach: usage tag is not a plain component identifier', {
+      canvas: canvasAbsPath,
+      id,
+    });
+  }
+  const componentName: string = nameNode.name;
+
+  // Locate the component's top-level definition (function declaration or a
+  // const initialized with a function/arrow), unwrapping an export wrapper.
+  let defStart: number | null = null;
+  let defEnd: number | null = null;
+  let nameStart: number | null = null;
+  let nameEnd: number | null = null;
+  const body: AnyNode[] = Array.isArray(parsed.program?.body) ? parsed.program.body : [];
+  for (const stmtRaw of body) {
+    const stmt =
+      stmtRaw?.type === 'ExportNamedDeclaration' || stmtRaw?.type === 'ExportDefaultDeclaration'
+        ? (stmtRaw.declaration ?? stmtRaw)
+        : stmtRaw;
+    if (!stmt || typeof stmt !== 'object') continue;
+    if (stmt.type === 'FunctionDeclaration' && stmt.id?.name === componentName) {
+      defStart = stmt.start as number;
+      defEnd = stmt.end as number;
+      nameStart = stmt.id.start as number;
+      nameEnd = stmt.id.end as number;
+      break;
+    }
+    if (stmt.type === 'VariableDeclaration' && Array.isArray(stmt.declarations)) {
+      const d = stmt.declarations.find(
+        (dd: AnyNode) => dd?.id?.type === 'Identifier' && dd.id.name === componentName
+      );
+      if (
+        d &&
+        (d.init?.type === 'ArrowFunctionExpression' || d.init?.type === 'FunctionExpression')
+      ) {
+        defStart = stmt.start as number;
+        defEnd = stmt.end as number;
+        nameStart = d.id.start as number;
+        nameEnd = d.id.end as number;
+        break;
+      }
+    }
+  }
+  if (defStart === null || defEnd === null || nameStart === null || nameEnd === null) {
+    throw new CanvasEditError(
+      `detach: definition of <${componentName}> not found in this canvas (imported components can't be detached here)`,
+      { canvas: canvasAbsPath, id }
+    );
+  }
+
+  // Fresh, collision-free clone name. A plain substring check is sufficient —
+  // false positives only bump the counter.
+  let detachedName = `${componentName}Detached`;
+  let n = 2;
+  while (source.includes(detachedName)) {
+    detachedName = `${componentName}Detached${n}`;
+    n += 1;
+  }
+
+  const defText = source.slice(defStart, defEnd);
+  const cloned =
+    defText.slice(0, nameStart - defStart) + detachedName + defText.slice(nameEnd - defStart);
+
+  const s = new MagicString(source);
+  s.appendRight(defEnd, `\n\n${cloned}`);
+  // Repoint the usage's opening (and closing, when present) tag name.
+  s.overwrite(nameNode.start as number, nameNode.end as number, detachedName);
+  const closingName = hit.element?.closingElement?.name;
+  if (closingName?.type === 'JSXIdentifier') {
+    s.overwrite(closingName.start as number, closingName.end as number, detachedName);
+  }
+  const out = s.toString();
+  return { source: out, delta: out.length - source.length, detachedName };
+}
+
+/** Async wrapper for {@link applyDetachComponent} — read, apply, atomic write,
+ *  per-file lock (same shape as `editAttribute`). */
+export async function detachComponent(
+  canvasAbsPath: string,
+  id: string,
+  occurrence?: number
+): Promise<{ source: string; delta: number; changed: boolean; detachedName: string }> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id,
+      });
+    }
+    const source = await file.text();
+    const next = applyDetachComponent(canvasAbsPath, source, id, occurrence);
+    if (next.source === source) {
+      return { source, delta: 0, changed: false, detachedName: next.detachedName };
+    }
     const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
     await Bun.write(tmp, next.source);
     const { rename } = await import('node:fs/promises');

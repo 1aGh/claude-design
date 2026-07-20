@@ -93,6 +93,18 @@ grep -qiE 'web|landing|responsive|breakpoint|reflow|stranka|stránka|webovka' <<
 - Never introduce `vw`/`vh`/`@media` width queries to make one edit "responsive" — use `@container`/`cqw`/`cqh` (the artboard body is already a container) or, for a genuinely different breakpoint, point the user at the "Duplicate at width…" action (T3) instead of hand-copying the artboard.
 - A width/height resize on a `kind="web"` artboard is a legitimate breakpoint test (drag the resize handle, T4) — it's not the same operation as `kind="print"`'s locked paper geometry, so no extra confirmation is needed here.
 
+#### 0.9 Absolute-layout awareness (feature-4, 2026-07-19)
+
+When the active artboard's elements are **predominantly `position: absolute`** (a marketing/graphic composition, a print artboard, or a layout the user converted via "Convert layout to absolute"):
+
+```bash
+ABS_COUNT=$(grep -c 'position: "absolute"' "$ACTIVE_CANVAS_ABS" 2>/dev/null || echo 0)
+[ "${ABS_COUNT:-0}" -ge 3 ] && ABSOLUTE_EDIT=1
+```
+
+- **Preserve the absolute model.** New elements get their own `position: absolute` box (measured against the same relative root); never "normalize" existing absolute elements back into flex/grid flow — the user chose free positioning deliberately (it's what makes every element draggable), and a flow rewrite silently destroys their manual placement.
+- **Per-instance positions for reused components.** If an edit moves/resizes ONE instance of a component used in several places, write the box on the **`<Component/>` usage tag** (each usage styles independently), never on the element inside the shared definition — that would move every instance in every artboard. For per-instance styling beyond the box, detach the instance first (the Inspector's Detach button, or note it to the user).
+
 ### 1. Resolve config
 
 Invoke skill `design` with input `$ARGUMENTS`.

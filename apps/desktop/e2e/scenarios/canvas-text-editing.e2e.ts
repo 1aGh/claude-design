@@ -139,6 +139,26 @@ function synthDblclick(sel: string, cx: number, cy: number) {
   );
 }
 
+/** feature-4 (2026-07-19) — the dblclick ladder is now Figma-exact: each
+ * double-click DRILLS one level along the stamped chain, and text edit opens
+ * only once the LEAF ITSELF is selected. Editing from a cold selection
+ * therefore takes 2–4 dblclicks depending on depth — this helper repeats the
+ * gesture until the predicate holds (edit mode entered / hint toast shown). */
+async function synthDblclickUntil(
+  sel: string,
+  cx: number,
+  cy: number,
+  predicate: () => Promise<boolean>,
+  maxTries = 5
+): Promise<boolean> {
+  for (let i = 0; i < maxTries; i++) {
+    await synthDblclick(sel, cx, cy);
+    await browser.pause(300);
+    if (await predicate()) return true;
+  }
+  return false;
+}
+
 /** Post a shell-style message INTO the canvas window (zoom ops etc. — the
  * same messages the studio shell sends; canvas-shell listens on its own
  * window). */
@@ -378,10 +398,11 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
   it('artboard: synthetic dblclick enters edit mode, caret collapsed at click point, accent caret-color', async () => {
     const box = await frameLocalBox(H1);
     if (!box) throw new Error('no h1 box');
-    await synthDblclick(H1, box.cx, box.cy);
-    await browser.pause(300);
+    await synthDblclickUntil(H1, box.cx, box.cy, async () => (await probe(H1)).ce === 'plaintext-only');
     const p = await probe(H1);
     // Edit-mode entry (DDR-103 path): plaintext-only contenteditable + ring.
+    // (feature-4: dblclicks drill the chain first — the helper repeats until
+    // the leaf is reached and the editor opens.)
     expect(p.ce).toBe('plaintext-only');
     expect(p.editingClass).toBe(true);
     // Caret at the CLICK POINT, not select-all (the artboard baseline).
@@ -404,8 +425,7 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
   it('artboard: [data-maude-caret] present, animated (maude-caret-blink), inside the h1 rect', async () => {
     const box = await frameLocalBox(H1);
     if (!box) throw new Error('no h1 box');
-    await synthDblclick(H1, box.cx, box.cy);
-    await browser.pause(300);
+    await synthDblclickUntil(H1, box.cx, box.cy, async () => (await probe(H1)).ce === 'plaintext-only');
     const p = await probe(H1);
     if (p.ce !== 'plaintext-only') {
       // Diagnostic dump — what state is the frame actually in?
@@ -737,8 +757,7 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     // ---- Artboard (last — its commit rewrites the canvas source + reloads) ----
     const box = await frameLocalBox(H1);
     if (!box) throw new Error('no h1 box');
-    await synthDblclick(H1, box.cx, box.cy);
-    await browser.pause(300);
+    await synthDblclickUntil(H1, box.cx, box.cy, async () => (await probe(H1)).ce === 'plaintext-only');
     expect((await probe(H1)).ce).toBe('plaintext-only');
     await typeAtEnd(' K');
     await synthKey('Enter', { shift: true });
@@ -763,8 +782,14 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     // surfaces the hint toast instead of the DDR-150 dead end.
     const mbox = await frameLocalBox(MIXED);
     if (!mbox) throw new Error('no mixed box');
-    await synthDblclick(MIXED, mbox.cx, mbox.cy);
-    await browser.pause(300);
+    // feature-4 drill ladder: repeat until the leaf is reached and the
+    // refusal toast fires (the editor must never open on mixed content).
+    await synthDblclickUntil(
+      MIXED,
+      mbox.cx,
+      mbox.cy,
+      async () => (await probe('.dc-media-toast')).exists
+    );
     const mp = await probe(MIXED);
     expect(mp.ce).toBeNull();
     const toast = await probe('.dc-media-toast');
@@ -778,8 +803,7 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     const pTextBefore = (await probe('[data-testid="smoke-p"]')).text;
     const box = await frameLocalBox(H1);
     if (!box) throw new Error('no h1 box');
-    await synthDblclick(H1, box.cx, box.cy);
-    await browser.pause(300);
+    await synthDblclickUntil(H1, box.cx, box.cy, async () => (await probe(H1)).ce === 'plaintext-only');
     expect((await probe(H1)).ce).toBe('plaintext-only');
     await typeAtEnd(' P6');
     await synthKey('Enter');
@@ -842,7 +866,11 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     // Edit the SECOND card — dispatch on that exact element (querySelector
     // would hit card 0). The commit carries occurrence=1 + before, so the
     // engine rewrites CARDS[1].body, not card 0 or 2.
-    await browser.execute(
+    // feature-4 drill ladder: repeat the dblclick until the editor opens
+    // (each dblclick drills one chain level first).
+    for (let attempt = 0; attempt < 5; attempt++) {
+      // eslint-disable-next-line no-await-in-loop
+      await browser.execute(
       (x, y) => {
         const iframe = document.querySelector(
           '[data-testid="canvas-frame"]'
@@ -869,8 +897,21 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
       },
       Math.round(cards.second.cx),
       Math.round(cards.second.cy)
-    );
-    await browser.pause(300);
+      );
+      // eslint-disable-next-line no-await-in-loop
+      await browser.pause(300);
+      // eslint-disable-next-line no-await-in-loop
+      const entered = await browser.execute(() => {
+        const iframe = document.querySelector(
+          '[data-testid="canvas-frame"]'
+        ) as HTMLIFrameElement | null;
+        const els = Array.from(
+          iframe?.contentDocument?.querySelectorAll('[data-testid="smoke-card-body"]') ?? []
+        ) as HTMLElement[];
+        return els[1]?.getAttribute('contenteditable') === 'plaintext-only';
+      });
+      if (entered) break;
+    }
     // The editing element is the 2nd card; assert it entered edit mode.
     const editingSecond = await browser.execute(() => {
       const iframe = document.querySelector(

@@ -2240,7 +2240,8 @@ export function createHttp(
         containerSetRelative?: unknown;
         allowShared?: unknown;
         children?: unknown;
-      }>(req, 64 * 1024);
+        containers?: unknown;
+      }>(req, 256 * 1024);
       if (!body) return new Response('body required', { status: 400 });
       const result = await api.convertChildrenToAbsoluteOp(body);
       if (!result.ok) {
@@ -2251,6 +2252,34 @@ export function createHttp(
       }
       return Response.json(
         { ok: true, seq: result.seq },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    '/_api/detach-component': async (req: Request) => {
+      // feature-4 detach-component (2026-07-19) — POST { canvas, id, idIndex? }
+      // → api.detachComponentOp (clone definition + repoint this usage; one
+      // whole-file undo seq). MAIN-ORIGIN ONLY; sameOriginWrite + loopback-Host
+      // gated — same DDR-054 posture as the other structural writes.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{ canvas?: unknown; id?: unknown; idIndex?: unknown }>(
+        req,
+        8 * 1024
+      );
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.detachComponentOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, detachedName: result.detachedName, seq: result.seq },
         { status: 200, headers: { 'Cache-Control': 'no-store' } }
       );
     },

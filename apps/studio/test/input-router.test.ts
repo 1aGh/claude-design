@@ -155,17 +155,25 @@ describe('input-router / browse tool — pure pass-through (boot default)', () =
     );
   });
 
-  test('cmd+left-click → no-op (NO deep-select escape hatch in browse — press V)', () => {
-    expect(classify(browse({ type: 'pointerdown', button: 0, metaKey: true })).kind).toBe('no-op');
+  test('cmd+left-click → select deep (the escape hatch; consumer flips tool to move)', () => {
+    // User steer 2026-07-19 — "I clicked to edit" shouldn't require V first.
+    expect(classify(browse({ type: 'pointerdown', button: 0, metaKey: true }))).toMatchObject({
+      kind: 'select',
+      mode: 'replace',
+      deep: true,
+    });
   });
 
-  test('shift+left-click → no-op', () => {
+  test('shift+left-click → no-op (Shift alone is NOT the escape hatch)', () => {
     expect(classify(browse({ type: 'pointerdown', button: 0, shiftKey: true })).kind).toBe('no-op');
   });
 
-  test('bare hover → no-op (no halo; native cursors win)', () => {
+  test('bare hover → no-op; Cmd-hover previews deep (escape-hatch affordance)', () => {
     expect(classify(browse({ type: 'pointermove', clientX: 1, clientY: 2 })).kind).toBe('no-op');
-    expect(classify(browse({ type: 'pointermove', metaKey: true })).kind).toBe('no-op');
+    expect(classify(browse({ type: 'pointermove', metaKey: true }))).toMatchObject({
+      kind: 'hover',
+      deep: true,
+    });
   });
 
   test('right-click → still context-menu (chrome, not canvas content)', () => {

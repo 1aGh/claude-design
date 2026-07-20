@@ -219,9 +219,19 @@ export function classify(input: ClassifyInput): RouterAction {
     if (isAnnotationTool(input.activeTool)) return { kind: 'no-op' };
     // Hand tool: drag pan is owned by useViewportController; no hover paint.
     if (input.activeTool === 'hand') return { kind: 'no-op' };
-    // Browse tool (feature-4 boot default): pure pass-through — no hover halo,
-    // native interactions flow. Press V to select.
-    if (input.activeTool === 'browse') return { kind: 'no-op' };
+    // Browse tool (feature-4 boot default): pass-through — no hover halo,
+    // native interactions flow. Cmd-held hover previews the deepest element
+    // (the escape-hatch select affordance, mirroring the old move-tool
+    // behavior); bare hover stays native.
+    if (input.activeTool === 'browse') {
+      if (!metaOrCtrl(input)) return { kind: 'no-op' };
+      return {
+        kind: 'hover',
+        deep: true,
+        clientX: input.clientX ?? 0,
+        clientY: input.clientY ?? 0,
+      };
+    }
     // Comment tool: always paint a preview halo on the deepest element under
     // cursor — that's the element the user is about to comment on. Comment
     // pin attachment is to the same element they were hovering.
@@ -279,10 +289,21 @@ export function classify(input: ClassifyInput): RouterAction {
     // the controller's pointerdown listener on the same host claims the drag.
     if (input.activeTool === 'hand') return { kind: 'no-op' };
 
-    // Browse tool (feature-4 boot default): every bare/modified left-click
-    // passes through so the mock stays alive (a button press fires, a link
-    // follows, an input focuses). No select — press V for the Move tool.
-    if (input.activeTool === 'browse') return { kind: 'no-op' };
+    // Browse tool (feature-4 boot default): bare/Shift left-clicks pass
+    // through so the mock stays alive (a button press fires, a link follows,
+    // an input focuses). Cmd/Ctrl+click is the ESCAPE HATCH (user steer
+    // 2026-07-19): it selects the deepest element AND the consumer flips the
+    // tool to Move — "I clicked to edit" shouldn't require pressing V first.
+    if (input.activeTool === 'browse') {
+      if (!metaOrCtrl(input)) return { kind: 'no-op' };
+      return {
+        kind: 'select',
+        mode: input.shiftKey ? 'add' : 'replace',
+        deep: true,
+        clientX: input.clientX ?? 0,
+        clientY: input.clientY ?? 0,
+      };
+    }
 
     // Move (select) tool. feature-4 (DDR-187) — the full Figma ladder:
     //   bare click       → select TOP-level object   (deep:false, replace)
@@ -544,7 +565,7 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
           ? 'drop-comment'
           : tool === 'move' && e.button === 0
             ? 'select'
-            : isAnnotationTool(tool) && mod && e.button === 0
+            : (isAnnotationTool(tool) || tool === 'browse') && mod && e.button === 0
               ? 'select'
               : e.button === 2
                 ? 'context-menu'

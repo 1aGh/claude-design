@@ -227,6 +227,38 @@ const TOAST_CSS = `
 @media (prefers-reduced-motion: reduce) {
   .dc-media-toast { transition: none; }
 }
+/* feature-4 (2026-07-19) — sandbox-safe confirm dialog (window.confirm is
+   silently blocked in the allow-modals-less canvas iframe). HUD-token styled. */
+.dc-confirm-backdrop {
+  position: fixed; inset: 0; z-index: 40;
+  background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+}
+.dc-confirm {
+  min-width: 300px; max-width: 420px;
+  background: var(--maude-chrome-bg-1, #1b1e24);
+  color: var(--maude-chrome-fg-0, #e7eaf0);
+  border: 1px solid var(--maude-chrome-border, #333a45);
+  border-radius: 10px;
+  box-shadow: 0 14px 44px rgba(0,0,0,0.5);
+  padding: 16px;
+  font-family: var(--maude-chrome-font-ui, system-ui, sans-serif);
+}
+.dc-confirm-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.dc-confirm-body { font-size: 12px; line-height: 1.5; color: var(--maude-chrome-fg-1, #b7bec9); white-space: pre-line; }
+.dc-confirm-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.dc-confirm-btn {
+  padding: 5px 12px; border-radius: 7px; font-size: 12px; cursor: pointer;
+  background: var(--maude-chrome-bg-2, #262b33);
+  color: var(--maude-chrome-fg-0, #e7eaf0);
+  border: 1px solid var(--maude-chrome-border, #333a45);
+}
+.dc-confirm-btn--primary {
+  background: var(--maude-hud-accent, #0d99ff);
+  border-color: var(--maude-hud-accent, #0d99ff);
+  color: #fff;
+}
+.dc-confirm-btn:focus-visible { outline: 2px solid var(--maude-hud-accent, #0d99ff); outline-offset: 1px; }
 `.trim();
 
 function ensureMediaStyles(): void {
@@ -236,6 +268,69 @@ function ensureMediaStyles(): void {
   s.id = 'dc-media-css';
   s.textContent = TOAST_CSS;
   document.head.appendChild(s);
+}
+
+/**
+ * feature-4 (2026-07-19) — sandbox-safe in-canvas CONFIRM. The canvas iframe
+ * runs with sandbox="allow-scripts allow-same-origin" (no allow-modals), so
+ * `window.confirm()` silently returns false — this promise-based overlay is
+ * the replacement (Esc / backdrop / Cancel → false, primary / Enter → true).
+ */
+export function canvasConfirm(
+  message: string,
+  opts?: { title?: string; confirmLabel?: string; cancelLabel?: string }
+): Promise<boolean> {
+  if (typeof document === 'undefined') return Promise.resolve(false);
+  ensureMediaStyles();
+  return new Promise((resolve) => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'dc-confirm-backdrop';
+    const box = document.createElement('div');
+    box.className = 'dc-confirm';
+    box.setAttribute('role', 'alertdialog');
+    box.setAttribute('aria-modal', 'true');
+    const title = document.createElement('div');
+    title.className = 'dc-confirm-title';
+    title.textContent = opts?.title ?? 'Are you sure?';
+    const body = document.createElement('div');
+    body.className = 'dc-confirm-body';
+    body.textContent = message;
+    const row = document.createElement('div');
+    row.className = 'dc-confirm-row';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'dc-confirm-btn';
+    cancel.textContent = opts?.cancelLabel ?? 'Cancel';
+    const ok = document.createElement('button');
+    ok.type = 'button';
+    ok.className = 'dc-confirm-btn dc-confirm-btn--primary';
+    ok.textContent = opts?.confirmLabel ?? 'Continue';
+    const done = (v: boolean) => {
+      document.removeEventListener('keydown', onKey, true);
+      backdrop.remove();
+      resolve(v);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        done(false);
+      } else if (e.key === 'Enter') {
+        e.stopPropagation();
+        done(true);
+      }
+    };
+    cancel.addEventListener('click', () => done(false));
+    ok.addEventListener('click', () => done(true));
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) done(false);
+    });
+    document.addEventListener('keydown', onKey, true);
+    row.append(cancel, ok);
+    box.append(title, body, row);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    ok.focus();
+  });
 }
 
 /** Show a brief auto-dismissing toast in the canvas (e.g. an upload failure). */

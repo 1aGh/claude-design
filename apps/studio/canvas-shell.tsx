@@ -98,7 +98,7 @@ import {
   useAnnotationSelectionOptional,
 } from './use-annotation-selection.tsx';
 import { AnnotationsVisibilityProvider } from './use-annotations-visibility.tsx';
-import { showCanvasToast } from './use-canvas-media-drop.tsx';
+import { canvasConfirm, showCanvasToast } from './use-canvas-media-drop.tsx';
 import { ChromeVisibilityProvider, useChromeVisibility } from './use-chrome-visibility.tsx';
 import { useCollab } from './use-collab.tsx';
 import { useCursorModifiers } from './use-cursor-modifiers.tsx';
@@ -1500,15 +1500,45 @@ function buildRegistry(deps: {
       {
         id: 'kind-digital',
         label: 'Digital (default)',
+        // feature-4 (user steer 2026-07-19) — digital/print artboards are the
+        // marketing-graphics kinds: on switching, offer to freeze the whole
+        // layout to absolute so every element is freely draggable. Convert
+        // FIRST (freeze at the current visual), then switch the kind.
         onSelect: (target) => {
-          if (target.artboardId) postArtboardKindRequest(target.artboardId, null);
+          if (!target.artboardId) return;
+          const artboardId = target.artboardId;
+          void (async () => {
+            const freeze = await canvasConfirm(
+              'Digital artboards work best with freely movable elements.\nAlso freeze the current layout (convert everything to position: absolute)? This is a one-way change — ⌘Z right after still reverts it.',
+              {
+                title: 'Switch to Digital',
+                confirmLabel: 'Switch + freeze',
+                cancelLabel: 'Just switch',
+              }
+            );
+            if (freeze) await postConvertArtboardToAbsolute(artboardId, { skipConfirm: true });
+            postArtboardKindRequest(artboardId, null);
+          })();
         },
       },
       {
         id: 'kind-print',
         label: 'Print',
         onSelect: (target) => {
-          if (target.artboardId) postArtboardKindRequest(target.artboardId, 'print');
+          if (!target.artboardId) return;
+          const artboardId = target.artboardId;
+          void (async () => {
+            const freeze = await canvasConfirm(
+              'Print artboards work best with freely movable, absolutely positioned elements.\nAlso freeze the current layout (convert everything to position: absolute)? This is a one-way change — ⌘Z right after still reverts it.',
+              {
+                title: 'Switch to Print',
+                confirmLabel: 'Switch + freeze',
+                cancelLabel: 'Just switch',
+              }
+            );
+            if (freeze) await postConvertArtboardToAbsolute(artboardId, { skipConfirm: true });
+            postArtboardKindRequest(artboardId, 'print');
+          })();
         },
       },
       {
@@ -1588,7 +1618,7 @@ function buildRegistry(deps: {
       return 99;
     }
   };
-  const postConvertToAbsolute = (containerEl: HTMLElement): void => {
+  const postConvertToAbsolute = async (containerEl: HTMLElement): Promise<void> => {
     const containerId = containerEl.getAttribute('data-cd-id');
     if (!containerId) {
       showCanvasToast('That container has no id yet — edit it via chat first, then convert.');
@@ -1626,13 +1656,18 @@ function buildRegistry(deps: {
     // The component must forward `style` for it to paint — the same assumption
     // whole-instance drag-reposition already makes. `.map()` children still
     // refuse server-side (all-or-nothing).
+    // Sandbox note (dogfood 2026-07-19): window.confirm is silently BLOCKED in
+    // the allow-modals-less canvas iframe (returned false → the action aborted
+    // invisibly — "convert nic nedělá"). canvasConfirm is the sandbox-safe
+    // in-canvas dialog.
     const allowShared =
       repeatedCount > 0 &&
-      window.confirm(
+      (await canvasConfirm(
         `${repeatedCount} of these children render from a shared source (component instances or a list). ` +
           'Component instances convert with their OWN frozen position (other instances are unaffected); ' +
-          'repeated list items can’t convert — the whole action aborts if any child is one. Continue?'
-      );
+          'repeated list items can’t convert — the whole action aborts if any child is one. Continue?',
+        { title: 'Convert component instances?', confirmLabel: 'Convert' }
+      ));
     if (repeatedCount > 0 && !allowShared) return;
     // Measure each child's border-box relative to the container's PADDING box,
     // in WORLD units (getBoundingClientRect is post-zoom screen px; computed
@@ -1687,6 +1722,120 @@ function buildRegistry(deps: {
           'Converted — note: grid track editing no longer applies to absolute children.'
         );
       }
+    } catch {
+      /* detached / cross-origin */
+    }
+  };
+
+  // feature-4 artboard-level convert (user steer 2026-07-19) — "convert vše na
+  // absolute": walk EVERY stamped container inside the artboard top-down and
+  // freeze every child's box, so the whole layout becomes freely draggable
+  // (the marketing-graphics flow). One batch → one undo seq. Confirmed via the
+  // sandbox-safe canvasConfirm (irreversible-by-design messaging; ⌘Z still
+  // reverts the single write).
+  const postConvertArtboardToAbsolute = async (
+    artboardId: string,
+    opts?: { skipConfirm?: boolean }
+  ): Promise<void> => {
+    const body = document.querySelector(
+      `[data-dc-screen="${CSS.escape(artboardId)}"] .dc-artboard-body`
+    ) as HTMLElement | null;
+    if (!body) return;
+    const zoom = worldZoomFor(body) || 1;
+    type Entry = {
+      containerId?: string;
+      containerSetRelative: boolean;
+      children: Array<{
+        id: string;
+        idIndex?: number;
+        left: number;
+        top: number;
+        width: number;
+        height: number;
+      }>;
+    };
+    const containers: Entry[] = [];
+    let unstamped = 0;
+    let repeated = 0;
+    const occIndex = (el: Element, cid: string): number | undefined => {
+      try {
+        const same = Array.from(body.querySelectorAll(`[data-cd-id="${CSS.escape(cid)}"]`));
+        if (same.length > 1) repeated += 1;
+        return same.length > 1 ? Math.max(0, same.indexOf(el)) : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+    const walk = (containerEl: HTMLElement, containerId: string | undefined): void => {
+      const kids = convertibleChildrenOf(containerEl);
+      if (!kids) return;
+      for (const c of Array.from(containerEl.children) as HTMLElement[]) {
+        if (c.closest('.dgn-pin, .dc-cv-halo, .dc-cv-group-bbox')) continue;
+        if (!c.getAttribute('data-cd-id')) unstamped += 1;
+      }
+      const cs = getComputedStyle(containerEl);
+      const cRect = containerEl.getBoundingClientRect();
+      const borderL = Number.parseFloat(cs.borderLeftWidth) || 0;
+      const borderT = Number.parseFloat(cs.borderTopWidth) || 0;
+      containers.push({
+        containerId,
+        containerSetRelative: containerId !== undefined && cs.position === 'static',
+        children: kids.map((k) => {
+          const r = k.getBoundingClientRect();
+          const cid = k.getAttribute('data-cd-id') as string;
+          const idIndex = occIndex(k, cid);
+          return {
+            id: cid,
+            ...(idIndex !== undefined ? { idIndex } : {}),
+            left: Math.round((r.left - cRect.left) / zoom - borderL),
+            top: Math.round((r.top - cRect.top) / zoom - borderT),
+            width: Math.round(r.width / zoom),
+            height: Math.round(r.height / zoom),
+          };
+        }),
+      });
+      // Recurse into each stamped child that is itself a container.
+      for (const k of kids) walk(k, k.getAttribute('data-cd-id') ?? undefined);
+    };
+    walk(body, undefined);
+    const total = containers.reduce((n, c) => n + c.children.length, 0);
+    if (total === 0) {
+      showCanvasToast('Nothing to convert — this artboard has no selectable elements.');
+      return;
+    }
+    if (unstamped > 0) {
+      showCanvasToast(
+        'Some elements have no id — edit the canvas via chat first, then convert the artboard.'
+      );
+      return;
+    }
+    const parts = [
+      `Freeze all ${total} elements at their current positions (position: absolute)?`,
+      'Every element becomes freely draggable — the flow layout will no longer reflow.',
+      'This is a one-way change (⌘Z right after still reverts it).',
+    ];
+    if (repeated > 0) {
+      parts.push(
+        `${repeated} element(s) render from shared components — each instance keeps its own frozen position. Repeated list items abort the whole action.`
+      );
+    }
+    const ok =
+      opts?.skipConfirm === true ||
+      (await canvasConfirm(parts.join('\n'), {
+        title: 'Convert artboard layout to absolute?',
+        confirmLabel: 'Convert all',
+      }));
+    if (!ok) return;
+    try {
+      window.parent.postMessage(
+        {
+          dgn: 'convert-to-absolute-request',
+          artboardId,
+          allowShared: repeated > 0,
+          containers,
+        },
+        '*'
+      );
     } catch {
       /* detached / cross-origin */
     }
@@ -1971,6 +2120,18 @@ function buildRegistry(deps: {
         },
         fitItem,
         resetItem,
+      ],
+      [
+        {
+          // feature-4 (user steer 2026-07-19) — freeze the WHOLE artboard's
+          // layout: every element position:absolute at its current box, so the
+          // composition is freely draggable (marketing-graphics flow).
+          id: 'convert-artboard-absolute',
+          label: 'Convert layout to absolute…',
+          onSelect: (target) => {
+            if (target.artboardId) void postConvertArtboardToAbsolute(target.artboardId);
+          },
+        },
       ],
       [
         // DDR-148 — only meaningful (and only enabled) on a video-comp
@@ -2379,6 +2540,14 @@ function CanvasRouter({
         if (typeof t === 'string') setTool(t as never);
         return;
       }
+      // feature-4 (2026-07-19) — generic shell→canvas result toast (convert /
+      // detach success + failure feedback; the zero-visual-delta convert
+      // otherwise LOOKS like nothing happened).
+      if (m.dgn === 'op-toast') {
+        const msg = (m as { message?: string }).message;
+        if (typeof msg === 'string' && msg) showCanvasToast(msg.slice(0, 300));
+        return;
+      }
       // feature-4 T7b — live locked-layer set from the shell's Layers panel.
       if (m.dgn === 'locked-set') {
         const arr = (m as { locked?: unknown }).locked;
@@ -2422,6 +2591,19 @@ function CanvasRouter({
               })
             : null;
         if (target) {
+          // feature-4 dogfood fix (2026-07-19) — an IDEMPOTENT re-select (the
+          // shell's halo-restore ladder re-posts the same selection at 50…5000
+          // ms; artboard-resync does the same) must NOT re-reveal: the user may
+          // be panning elsewhere mid-ladder, and every re-post used to yank the
+          // camera back to the selection ("pan skoči zpět na selected objekt").
+          // Reveal only when the selection actually CHANGES.
+          const cur = selSet.selected;
+          const one = cur.length === 1 ? cur[0] : null;
+          const sameSelection = mm.id
+            ? !!one &&
+              one.id === mm.id &&
+              (mm.index == null || one.index == null || one.index === mm.index)
+            : !!one && !one.id && one.artboardId === (mm.artboardId ?? null);
           selSet.replace(
             hoverTargetToSelection({
               el: target,
@@ -2435,7 +2617,7 @@ function CanvasRouter({
           // transform (Bugs A + B). `revealElementViaCamera` pans the world
           // the minimal amount only when the element is off-screen.
           const host = hostRef.current;
-          if (host && zoomController) {
+          if (host && zoomController && !sameSelection) {
             revealElementViaCamera(host, target as HTMLElement, zoomController);
           }
         }
@@ -2748,19 +2930,23 @@ function CanvasRouter({
       if (!stamped) return;
       const kids = Array.from(stamped.childNodes);
       const isLeafText = kids.length > 0 && kids.every((n) => n.nodeType === 3);
-      if (!isLeafText) {
-        // Task L6 — deep-select: a container (anything that isn't leaf-text)
-        // double-clicked here used to just bail — this is the exact gap the
-        // plan's deep-select task targets. Drill ONE level past whatever's
-        // currently selected along this click's own stamped-ancestor chain
-        // (Figma parity: repeated double-clicks walk progressively deeper);
-        // default to the outermost rung when nothing in the chain is
-        // currently selected. Mutually exclusive with text-edit below by
-        // construction — same capture-phase listener, same branch gate.
+      // Task L6 + feature-4 dogfood fix (2026-07-19) — the Figma ordering: each
+      // double-click drills ONE level along the clicked element's stamped
+      // ancestor chain; text edit opens only when the LEAF ITSELF is already
+      // selected (the drill has reached it). Previously a dblclick on leaf
+      // text jumped straight to the editor from any depth, so the drill ladder
+      // never ran on text-bearing targets.
+      const sel0 = selSet.selected;
+      const currentId = sel0.length === 1 ? sel0[0]?.id : undefined;
+      const leafReached = isLeafText && currentId === stamped.getAttribute('data-cd-id');
+      if (!leafReached) {
+        // Drill ONE level past whatever's currently selected along this
+        // click's own stamped-ancestor chain (repeated double-clicks walk
+        // progressively deeper; the chain's last rung is the clicked element
+        // itself); default to the outermost rung when nothing in the chain is
+        // currently selected.
         const chain = stampedChainToBody(stamped);
         if (chain.length > 0) {
-          const sel = selSet.selected;
-          const currentId = sel.length === 1 ? sel[0]?.id : undefined;
           const curIdx = currentId
             ? chain.findIndex((n) => n.getAttribute('data-cd-id') === currentId)
             : -1;
@@ -2869,6 +3055,36 @@ function CanvasRouter({
         // feature-4 T7b — a locked layer can't be selected from the canvas
         // (the Layers panel row still can, so it stays reachable to unlock).
         if (isLockedElement(target.el, target.cdId)) return;
+        // feature-4 escape hatch (user steer 2026-07-19) — a Cmd+click select
+        // from BROWSE means "I want to edit now": flip to the Move (select)
+        // tool so the follow-up gestures (drag, dblclick drill, keyboard)
+        // work without a separate V press.
+        if (tool === 'browse') setTool('move');
+        // feature-4 dogfood fix (2026-07-19) — Figma's "entered group" context:
+        // a bare (top-mode) click INSIDE the currently selected element keeps
+        // that selection instead of resetting to the top-level ancestor.
+        // Without this the dblclick drill ladder could never descend past one
+        // level — the dblclick's own pointerdown(detail:2) re-selected the top
+        // object right before the drill ran. Clicking OUTSIDE the current
+        // selection (a sibling, empty space) still re-selects normally.
+        if (!deep && mode === 'replace') {
+          const cur = selSet.selected;
+          const one = cur.length === 1 ? cur[0] : null;
+          if (one?.id) {
+            const curEl = resolveSelectionEl(document, one);
+            const hitEl = document.elementFromPoint(clientX, clientY);
+            if (
+              curEl &&
+              hitEl &&
+              curEl !== target.el &&
+              curEl.contains(hitEl) &&
+              target.el &&
+              target.el.contains(curEl)
+            ) {
+              return; // stay in the entered-group context
+            }
+          }
+        }
         const sel = hoverTargetToSelection(target);
         if (mode === 'replace') selSet.replace(sel);
         else selSet.add(sel);
