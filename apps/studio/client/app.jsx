@@ -7437,31 +7437,29 @@ function ArtboardKnobs({
   }
   const setKind = (nextKind) => {
     if (!artboardId) return;
+    // Dogfood fix — switching TO "print" with no print prop yet left the
+    // artboard half-configured (no guides geometry, no bleed for the PDF
+    // exporter). Seed a default A4 print prop + its resolved px size in the
+    // SAME gesture. Round 6: the seed is PASSED THROUGH the kind flow (not
+    // written immediately) so the freeze-convert the canvas may enqueue first
+    // lands BEFORE the A4 resize — resizing pre-freeze moved elements around
+    // while the confirm dialog was still open.
+    let seedPrint = null;
+    if (nextKind === 'print' && !print) {
+      const defaults = { paper: 'a4' };
+      try {
+        const resolved = resolvePrintArtboard(defaults);
+        if (resolved) {
+          seedPrint = { defaults, widthPx: resolved.widthPx, heightPx: resolved.heightPx };
+        }
+      } catch {
+        /* keep null */
+      }
+    }
     // Picking "Digital" clears the explicit prop back to the implicit
     // default (applySetArtboardKind's `kind: null` path) rather than writing
     // a redundant `kind="digital"`.
-    onSetArtboardKind?.(artboardId, nextKind === 'digital' ? null : nextKind);
-    // Dogfood fix — switching TO "print" with no print prop yet left the
-    // artboard in a half-configured state: the guides overlay renders
-    // nothing (print-overlay-content.tsx requires the prop) and the PDF
-    // exporter has no bleed to read, even though the Kind chip already
-    // shows "print". Seed a default A4 print prop + its resolved px size in
-    // the SAME gesture, mirroring the "+ Artboard: print preset" flow —
-    // switching a DIGITAL artboard to print should never require a second,
-    // easy-to-miss step in the (still-collapsed) Print section below.
-    if (nextKind === 'print' && !print) {
-      const defaults = { paper: 'a4' };
-      let resolved;
-      try {
-        resolved = resolvePrintArtboard(defaults);
-      } catch {
-        resolved = null;
-      }
-      if (resolved) {
-        onResizeArtboard?.(artboardId, resolved.widthPx, resolved.heightPx);
-        onSetArtboardPrint?.(artboardId, defaults);
-      }
-    }
+    onSetArtboardKind?.(artboardId, nextKind === 'digital' ? null : nextKind, seedPrint);
     // feature-3-web-artboards Design Decision 1 — a web artboard's height
     // hugs content (`fixed` omitted); switching TO "web" flips hug mode in
     // the same gesture so the artboard doesn't stay pinned to whatever exact
@@ -11081,7 +11079,10 @@ function App() {
         const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
         const okKind = m.kind === null || typeof m.kind === 'string';
         if (e.source === activeWin && typeof m.artboardId === 'string' && okKind) {
-          setArtboardKindShellRef.current?.(m.artboardId, m.kind);
+          // Dogfood round 6 — DIRECT write, never back into the ask flow (the
+          // ask lives shell-side in setArtboardKindShell; re-entering it from
+          // this canvas round-trip looped the confirm dialog forever).
+          directArtboardKindWriteRef.current?.(m.artboardId, m.kind);
         }
       } else if (m.dgn === 'duplicate-artboard-request') {
         // feature-3-web-artboards T3 — context-menu "Duplicate at width…"
@@ -12051,36 +12052,65 @@ function App() {
   // "Preset size…" still listing screen presets) until the user manually
   // re-clicked the artboard — structuralWrite's onOk never refreshed
   // `selected`, only recorded undo history.
-  const setArtboardKindShell = useCallback(
+  // feature-4 dogfood round 6 — the DIRECT kind write (+ the Inspector's
+  // print-seed, sequenced AFTER it on the same structuralWrite chain, so a
+  // freeze-convert enqueued just before lands FIRST and the A4 resize can't
+  // move anything pre-freeze). This is what the canvas's
+  // `set-artboard-kind-request` calls — it must NEVER re-enter the ask flow
+  // below (that round-trip was an infinite confirm loop: every "Switch +
+  // freeze" click spawned the next dialog).
+  const pendingPrintSeedRef = useRef(null);
+  const directArtboardKindWrite = useCallback(
     (artboardId, kind) => {
+      structuralWrite('/_api/set-artboard-kind', { artboardId, kind }, {
+        label: 'artboard kind',
+        onOk: () => scheduleArtboardResync(artboardId, activePath),
+      });
+      const seed = pendingPrintSeedRef.current;
+      if (kind === 'print' && seed && seed.artboardId === artboardId) {
+        pendingPrintSeedRef.current = null;
+        // Same chain → serialized after the kind write (and after any freeze
+        // convert the canvas enqueued before it).
+        structuralWrite(
+          '/_api/resize-artboard',
+          { artboardId, width: seed.widthPx, height: seed.heightPx },
+          { label: 'artboard size' }
+        );
+        structuralWrite(
+          '/_api/set-artboard-print',
+          { artboardId, print: seed.defaults },
+          { label: 'artboard print' }
+        );
+      }
+    },
+    [structuralWrite, scheduleArtboardResync, activePath]
+  );
+  const directArtboardKindWriteRef = useRef(null);
+  useEffect(() => {
+    directArtboardKindWriteRef.current = directArtboardKindWrite;
+  }, [directArtboardKindWrite]);
+
+  const setArtboardKindShell = useCallback(
+    (artboardId, kind, seedPrint) => {
       // feature-4 (user steer 2026-07-20) — Digital & Print are the freely-
       // composed marketing kinds: switching TO them from the Inspector offers
-      // the freeze-and-flatten convert too. The canvas orchestrates the order
-      // (freeze first, then the kind write) so a print resize can't move
-      // anything before it's frozen.
+      // the freeze-and-flatten convert first. The confirm runs IN THE CANVAS
+      // (canvasConfirm — the shell's window.confirm is a silent no-op in the
+      // Tauri WKWebView); the canvas then re-posts `set-artboard-kind-request`,
+      // which lands on the DIRECT writer above (no re-entry → no dialog loop).
       if (kind === 'print' || kind == null || kind === 'digital') {
-        // Dogfood round 5 (2026-07-20) — the confirm must run IN THE CANVAS
-        // (canvasConfirm): the shell's window.confirm is silently a no-op in
-        // the Tauri WKWebView (no JS-dialog implementation), so the freeze
-        // offer never appeared and elements stayed static. `ask: true` makes
-        // the canvas show its own dialog, then run convert-then-kind in order.
+        if (seedPrint) pendingPrintSeedRef.current = { artboardId, ...seedPrint };
         postToActiveCanvas({
           dgn: 'freeze-and-set-kind',
           artboardId,
           kind: kind === 'digital' ? null : kind,
           ask: true,
         });
-        // The kind write itself round-trips via the canvas's ordered
-        // set-artboard-kind-request; still schedule the Inspector resync.
-        scheduleArtboardResync(artboardId, activePath);
         return;
       }
-      structuralWrite('/_api/set-artboard-kind', { artboardId, kind }, {
-        label: 'artboard kind',
-        onOk: () => scheduleArtboardResync(artboardId, activePath),
-      });
+      directArtboardKindWrite(artboardId, kind);
     },
-    [structuralWrite, scheduleArtboardResync, activePath, postToActiveCanvas]
+    [directArtboardKindWrite, postToActiveCanvas]
   );
   // feature-2-print-artboards T2 — paper/orientation/bleed/margins. Direct
   // Inspector-only callable (no canvas-origin postMessage path — same shape
