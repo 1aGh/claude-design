@@ -2577,12 +2577,31 @@ function CanvasRouter({
       // order, so the shell's structuralWrite chain serializes them correctly
       // (freeze lands before a print-kind resize could move anything).
       if (m.dgn === 'freeze-and-set-kind') {
-        const mm = m as { artboardId?: string; kind?: string | null; freeze?: boolean };
+        const mm = m as {
+          artboardId?: string;
+          kind?: string | null;
+          freeze?: boolean;
+          ask?: boolean;
+        };
         if (typeof mm.artboardId === 'string' && mm.artboardId) {
           const artboardId = mm.artboardId;
           const kind = typeof mm.kind === 'string' ? mm.kind : null;
           void (async () => {
-            if (mm.freeze !== false) {
+            // Dogfood round 5 — `ask: true` = the CANVAS shows the freeze
+            // offer itself (canvasConfirm; the shell's window.confirm is a
+            // silent no-op in the Tauri WKWebView).
+            let freeze = mm.freeze !== false;
+            if (mm.ask === true) {
+              freeze = await canvasConfirm(
+                `${kind === 'print' ? 'Print' : 'Digital'} artboards work best with freely movable elements.\nAlso freeze the current layout (convert everything to position: absolute, removing invisible layout wrappers)? One-way change — ⌘Z right after still reverts it.`,
+                {
+                  title: kind === 'print' ? 'Switch to Print' : 'Switch to Digital',
+                  confirmLabel: 'Switch + freeze',
+                  cancelLabel: 'Just switch',
+                }
+              );
+            }
+            if (freeze) {
               const convert = (
                 window as unknown as {
                   __maudeConvertArtboard?: (

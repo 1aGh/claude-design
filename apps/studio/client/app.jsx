@@ -7762,8 +7762,20 @@ const PHOTO_ASSET_RE = /assets\/[0-9a-f]{8}\.[a-z0-9]+/i;
 function photoAssetOfSelection(el) {
   if (!el || Array.isArray(el)) return null;
   if (el.photoAsset) return el.photoAsset;
-  if ((el.tag || '').toLowerCase() !== 'img') return null;
   const html = el.html || '';
+  // feature-4 regression fix (2026-07-20) — the select tool's bare click now
+  // picks the TOP-LEVEL container, so a photo selection often arrives as the
+  // WRAPPER around the <img>, not the <img> itself. When the selection's
+  // subtree contains EXACTLY ONE content-addressed image, offer the Photo tab
+  // for it (ambiguous multi-photo containers stay photo-less — drill/⌘-click
+  // to pick one).
+  if ((el.tag || '').toLowerCase() !== 'img') {
+    const imgs = [...new Set(html.match(/assets\/[0-9a-f]{8}\.[a-z0-9]+/gi) || [])];
+    const tagged = [...new Set([...html.matchAll(/data-photo-asset="([^"]+)"/g)].map((m) => m[1]))];
+    if (tagged.length === 1) return tagged[0];
+    if (tagged.length === 0 && imgs.length === 1 && /<img/i.test(html)) return imgs[0];
+    return null;
+  }
   // Once an edit is baked, the element's LIVE src is a `data:` URL (canvas-lib's
   // PhotoPreviewBridge swaps it in directly) — it never matches PHOTO_ASSET_RE,
   // so a REPLAYED/serialized selection (a WS resync, or the persisted
@@ -12043,20 +12055,20 @@ function App() {
     (artboardId, kind) => {
       // feature-4 (user steer 2026-07-20) — Digital & Print are the freely-
       // composed marketing kinds: switching TO them from the Inspector offers
-      // the freeze-and-flatten convert too (the context-menu path already
-      // asks in-canvas). window.confirm is fine HERE — the shell is the top
-      // window, not the sandboxed iframe. The canvas orchestrates the order
+      // the freeze-and-flatten convert too. The canvas orchestrates the order
       // (freeze first, then the kind write) so a print resize can't move
       // anything before it's frozen.
       if (kind === 'print' || kind == null || kind === 'digital') {
-        const freeze = window.confirm(
-          `${kind === 'print' ? 'Print' : 'Digital'} artboards work best with freely movable elements.\n\nAlso freeze the current layout (convert everything to position: absolute, removing invisible layout wrappers)? This is a one-way change — ⌘Z right after still reverts it.\n\nOK = switch + freeze · Cancel = just switch`
-        );
+        // Dogfood round 5 (2026-07-20) — the confirm must run IN THE CANVAS
+        // (canvasConfirm): the shell's window.confirm is silently a no-op in
+        // the Tauri WKWebView (no JS-dialog implementation), so the freeze
+        // offer never appeared and elements stayed static. `ask: true` makes
+        // the canvas show its own dialog, then run convert-then-kind in order.
         postToActiveCanvas({
           dgn: 'freeze-and-set-kind',
           artboardId,
           kind: kind === 'digital' ? null : kind,
-          freeze,
+          ask: true,
         });
         // The kind write itself round-trips via the canvas's ordered
         // set-artboard-kind-request; still schedule the Inspector resync.
