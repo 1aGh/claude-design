@@ -1627,128 +1627,13 @@ function buildRegistry(deps: {
       return 99;
     }
   };
-  const postConvertToAbsolute = async (containerEl: HTMLElement): Promise<void> => {
-    const containerId = containerEl.getAttribute('data-cd-id');
-    if (!containerId) {
-      showCanvasToast('That container has no id yet — edit it via chat first, then convert.');
-      return;
-    }
-    const children = convertibleChildrenOf(containerEl);
-    if (!children) {
-      showCanvasToast('Nothing to convert — this element has no selectable children.');
-      return;
-    }
-    // Unstamped children abort (all-or-nothing — DDR-188). Repeated-id children
-    // are EITHER component instances (convertible after a confirm — feature-4
-    // T8b, each usage gets its own frozen box via the Stage-H3 local-instance
-    // model) OR `.map()`ed list items (never convertible; the server
-    // distinguishes the two and refuses `.map` with a clear error).
-    let repeatedCount = 0;
-    for (const c of Array.from(containerEl.children) as HTMLElement[]) {
-      if (c.closest('.dgn-pin, .dc-cv-halo, .dc-cv-group-bbox')) continue;
-      const cid = c.getAttribute('data-cd-id');
-      if (!cid) {
-        showCanvasToast('Some children have no id — edit them via chat first, then convert.');
-        return;
-      }
-      if (cdIdCountInArtboard(containerEl, cid) > 1) repeatedCount += 1;
-    }
-    if (cdIdCountInArtboard(containerEl, containerId) > 1) {
-      showCanvasToast(
-        'This container is a repeated/component instance — convert isn’t supported for it yet.'
-      );
-      return;
-    }
-    // feature-4 T8b — the "affects N instances" confirm. Converting writes the
-    // frozen box on each instance's own <Component/> usage (position stays
-    // LOCAL to this instance; the shared component definition is untouched).
-    // The component must forward `style` for it to paint — the same assumption
-    // whole-instance drag-reposition already makes. `.map()` children still
-    // refuse server-side (all-or-nothing).
-    // Sandbox note (dogfood 2026-07-19): window.confirm is silently BLOCKED in
-    // the allow-modals-less canvas iframe (returned false → the action aborted
-    // invisibly — "convert nic nedělá"). canvasConfirm is the sandbox-safe
-    // in-canvas dialog.
-    const allowShared =
-      repeatedCount > 0 &&
-      (await canvasConfirm(
-        `${repeatedCount} of these children render from a shared source (component instances or a list). ` +
-          'Component instances convert with their OWN frozen position (other instances are unaffected); ' +
-          'repeated list items can’t convert — the whole action aborts if any child is one. Continue?',
-        { title: 'Convert component instances?', confirmLabel: 'Convert' }
-      ));
-    if (repeatedCount > 0 && !allowShared) return;
-    // Measure each child's border-box relative to the container's PADDING box,
-    // in WORLD units (getBoundingClientRect is post-zoom screen px; computed
-    // border widths are unscaled world px). left/top for an absolutely-
-    // positioned child are measured from the padding edge; width/height are
-    // border-box (we also write box-sizing:border-box so the rectangle is
-    // preserved regardless of the child's own box-sizing).
-    const zoom = worldZoomFor(containerEl) || 1;
-    const cRect = containerEl.getBoundingClientRect();
-    const cs = getComputedStyle(containerEl);
-    const borderL = Number.parseFloat(cs.borderLeftWidth) || 0;
-    const borderT = Number.parseFloat(cs.borderTopWidth) || 0;
-    const isGrid = cs.display.includes('grid');
-    const body = containerEl.closest('.dc-artboard-body') ?? containerEl.ownerDocument;
-    const payloadChildren = children.map((c) => {
-      const r = c.getBoundingClientRect();
-      const cid = c.getAttribute('data-cd-id') as string;
-      // feature-4 T8b — DOM occurrence index among same-cd-id elements (the
-      // Stage-H3 idIndex): routes a component-instance child's write to ITS
-      // OWN <Component/> usage server-side. Harmless for unique children
-      // (resolveUsageId is a no-op there).
-      let idIndex: number | undefined;
-      try {
-        const same = Array.from(body.querySelectorAll(`[data-cd-id="${CSS.escape(cid)}"]`));
-        idIndex = same.length > 1 ? Math.max(0, same.indexOf(c)) : undefined;
-      } catch {
-        idIndex = undefined;
-      }
-      return {
-        id: cid,
-        ...(idIndex !== undefined ? { idIndex } : {}),
-        left: Math.round((r.left - cRect.left) / zoom - borderL),
-        top: Math.round((r.top - cRect.top) / zoom - borderT),
-        width: Math.round(r.width / zoom),
-        height: Math.round(r.height / zoom),
-      };
-    });
-    const containerSetRelative = cs.position === 'static';
-    try {
-      window.parent.postMessage(
-        {
-          dgn: 'convert-to-absolute-request',
-          containerId,
-          containerSetRelative,
-          allowShared,
-          children: payloadChildren,
-        },
-        '*'
-      );
-      if (isGrid) {
-        showCanvasToast(
-          'Converted — note: grid track editing no longer applies to absolute children.'
-        );
-      }
-    } catch {
-      /* detached / cross-origin */
-    }
-  };
-
-  // feature-4 artboard-level convert (user steer 2026-07-19) — "convert vše na
-  // absolute": walk EVERY stamped container inside the artboard top-down and
-  // freeze every child's box, so the whole layout becomes freely draggable
-  // (the marketing-graphics flow). One batch → one undo seq. Confirmed via the
-  // sandbox-safe canvasConfirm (irreversible-by-design messaging; ⌘Z still
-  // reverts the single write).
-  // feature-4 artboard-level convert + TRUE FLATTEN (user steer 2026-07-19/20)
-  // — "convert vše na absolute a zploštit tree": walk the artboard top-down;
-  // UNSTYLED layout wrappers (no background/border/shadow/radius/clip, unique
-  // id) are DISSOLVED — their tags are removed from the JSX and their children
-  // hoist to the nearest SURVIVING ancestor, measured against it. Styled
-  // containers survive as frozen groups (children absolute inside them). One
-  // batch → one undo seq.
+  // feature-4 unified subtree convert (dogfood round 4, 2026-07-20) — ONE
+  // walk + ONE confirm for the whole subtree, whether rooted at a right-
+  // clicked container (element context menu) or the artboard body. The
+  // earlier per-container element action made the user confirm once PER
+  // nested container ("modal vyskočí 10×"); now a single action converts the
+  // entire subtree in one batch (one undo seq), dissolving unstyled layout
+  // wrappers along the way.
   const isUnstyledWrapper = (el: HTMLElement): boolean => {
     const cs = getComputedStyle(el);
     const bg = cs.backgroundColor;
@@ -1770,6 +1655,206 @@ function buildRegistry(deps: {
       cs.transform === 'none'
     );
   };
+
+  type ConvertChildBox = {
+    id: string;
+    idIndex?: number;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  };
+  type ConvertEntry = {
+    containerId?: string;
+    containerSetRelative: boolean;
+    freezeSize?: { width: number; height: number };
+    children: ConvertChildBox[];
+  };
+
+  /**
+   * Convert an entire SUBTREE to absolute in one batch: `rootEl` is either the
+   * artboard body (artboard-level, `rootId` undefined) or a right-clicked
+   * container (element-level, `rootId` = its cd-id — the root itself keeps its
+   * flow position; only its descendants freeze). Exactly ONE confirm per
+   * invocation (skippable), an in-flight guard so double-invocations can't
+   * stack dialogs, and the rest happens in the background.
+   */
+  const runSubtreeConvert = async (
+    rootEl: HTMLElement,
+    rootId: string | undefined,
+    artboardId: string,
+    opts?: { skipConfirm?: boolean }
+  ): Promise<void> => {
+    const w = window as unknown as { __maudeConvertBusy?: boolean };
+    if (w.__maudeConvertBusy) return;
+    w.__maudeConvertBusy = true;
+    try {
+      const body = rootEl.closest('.dc-artboard-body') ?? rootEl;
+      const zoom = worldZoomFor(rootEl) || 1;
+      const containers: ConvertEntry[] = [];
+      const dissolve: string[] = [];
+      let unstamped = 0;
+      let repeated = 0;
+      const countIn = (cid: string): number => {
+        try {
+          return body.querySelectorAll(`[data-cd-id="${CSS.escape(cid)}"]`).length;
+        } catch {
+          return 99;
+        }
+      };
+      const measure = (el: HTMLElement, vs: HTMLElement): Omit<ConvertChildBox, 'id'> => {
+        const r = el.getBoundingClientRect();
+        const sRect = vs.getBoundingClientRect();
+        const scs = getComputedStyle(vs);
+        const borderL = Number.parseFloat(scs.borderLeftWidth) || 0;
+        const borderT = Number.parseFloat(scs.borderTopWidth) || 0;
+        return {
+          left: Math.round((r.left - sRect.left) / zoom - borderL),
+          top: Math.round((r.top - sRect.top) / zoom - borderT),
+          width: Math.round(r.width / zoom),
+          height: Math.round(r.height / zoom),
+        };
+      };
+      const walk = (
+        containerEl: HTMLElement,
+        survivingEl: HTMLElement,
+        survivingEntry: ConvertEntry
+      ): void => {
+        for (const c of Array.from(containerEl.children) as HTMLElement[]) {
+          if (c.closest('.dgn-pin, .dc-cv-halo, .dc-cv-group-bbox')) continue;
+          const cid = c.getAttribute('data-cd-id');
+          if (!cid) {
+            unstamped += 1;
+            continue;
+          }
+          const count = countIn(cid);
+          if (count > 1) repeated += 1;
+          const hasStampedKids = !!c.querySelector('[data-cd-id]');
+          const dissolvable = hasStampedKids && count === 1 && isUnstyledWrapper(c);
+          if (dissolvable) {
+            dissolve.push(cid);
+            walk(c, survivingEl, survivingEntry);
+            continue;
+          }
+          const idIndex =
+            count > 1
+              ? Math.max(
+                  0,
+                  Array.from(body.querySelectorAll(`[data-cd-id="${CSS.escape(cid)}"]`)).indexOf(c)
+                )
+              : undefined;
+          survivingEntry.children.push({
+            id: cid,
+            ...(idIndex !== undefined ? { idIndex } : {}),
+            ...measure(c, survivingEl),
+          });
+          if (hasStampedKids && count === 1) {
+            const entry: ConvertEntry = {
+              containerId: cid,
+              containerSetRelative: getComputedStyle(c).position === 'static',
+              children: [],
+            };
+            containers.push(entry);
+            walk(c, c, entry);
+          }
+          // A repeated (component-instance) container freezes as a WRAPPED
+          // unit — we don't descend into shared internals (per-instance inner
+          // edits need detach; the whole instance is draggable via its box).
+        }
+      };
+      const rootEntry: ConvertEntry = {
+        ...(rootId !== undefined ? { containerId: rootId } : {}),
+        containerSetRelative:
+          rootId !== undefined && getComputedStyle(rootEl).position === 'static',
+        // The element-level root keeps its FLOW position but its auto height
+        // would collapse once all children go absolute — freeze its box.
+        ...(rootId !== undefined
+          ? {
+              freezeSize: {
+                width: Math.round(rootEl.getBoundingClientRect().width / zoom),
+                height: Math.round(rootEl.getBoundingClientRect().height / zoom),
+              },
+            }
+          : {}),
+        children: [],
+      };
+      containers.push(rootEntry);
+      walk(rootEl, rootEl, rootEntry);
+      const nonEmpty = containers.filter((c) => c.children.length > 0 || c.containerSetRelative);
+      const total = nonEmpty.reduce((n, c) => n + c.children.length, 0);
+      if (total === 0) {
+        showCanvasToast('Nothing to convert — no selectable elements here.');
+        return;
+      }
+      if (unstamped > 0) {
+        showCanvasToast('Some elements have no id — edit the canvas via chat first, then convert.');
+        return;
+      }
+      // ONE confirm for the WHOLE subtree (user steer: "stačí jednou a zbytek
+      // proveď na pozadí"). Skipped entirely for kind-switch (the shell/canvas
+      // already asked there).
+      if (opts?.skipConfirm !== true) {
+        const parts = [
+          `Freeze all ${total} elements at their current positions (position: absolute)?`,
+          dissolve.length > 0
+            ? `${dissolve.length} invisible layout wrapper(s) will be removed — the tree flattens.`
+            : 'Every element becomes freely draggable — the layout will no longer reflow.',
+          'This is a one-way change (⌘Z right after still reverts it).',
+        ];
+        if (repeated > 0) {
+          parts.push(
+            `${repeated} element(s) render from shared components — each instance keeps its own frozen position.`
+          );
+        }
+        const ok = await canvasConfirm(parts.join('\n'), {
+          title:
+            rootId !== undefined
+              ? 'Convert this container to absolute?'
+              : 'Convert artboard layout to absolute?',
+          confirmLabel: 'Convert all',
+        });
+        if (!ok) return;
+      }
+      try {
+        window.parent.postMessage(
+          {
+            dgn: 'convert-to-absolute-request',
+            artboardId,
+            allowShared: repeated > 0,
+            containers: nonEmpty,
+            ...(dissolve.length > 0 ? { dissolve } : {}),
+          },
+          '*'
+        );
+      } catch {
+        /* detached / cross-origin */
+      }
+    } finally {
+      w.__maudeConvertBusy = false;
+    }
+  };
+
+  // Element context menu — recursive over the clicked container's subtree.
+  const postConvertToAbsolute = async (containerEl: HTMLElement): Promise<void> => {
+    const containerId = containerEl.getAttribute('data-cd-id');
+    if (!containerId) {
+      showCanvasToast('That container has no id yet — edit it via chat first, then convert.');
+      return;
+    }
+    const artboardId =
+      (containerEl.closest('[data-dc-screen]') as HTMLElement | null)?.getAttribute(
+        'data-dc-screen'
+      ) ?? '';
+    if (!artboardId) return;
+    if (cdIdCountInArtboard(containerEl, containerId) > 1) {
+      showCanvasToast(
+        'This container is a repeated/component instance — convert isn\u2019t supported for it yet.'
+      );
+      return;
+    }
+    await runSubtreeConvert(containerEl, containerId, artboardId);
+  };
+  // Artboard-level (context menu + kind switch).
   const postConvertArtboardToAbsolute = async (
     artboardId: string,
     opts?: { skipConfirm?: boolean }
@@ -1778,139 +1863,7 @@ function buildRegistry(deps: {
       `[data-dc-screen="${CSS.escape(artboardId)}"] .dc-artboard-body`
     ) as HTMLElement | null;
     if (!body) return;
-    const zoom = worldZoomFor(body) || 1;
-    type ChildBox = {
-      id: string;
-      idIndex?: number;
-      left: number;
-      top: number;
-      width: number;
-      height: number;
-    };
-    type Entry = { containerId?: string; containerSetRelative: boolean; children: ChildBox[] };
-    const containers: Entry[] = [];
-    const dissolve: string[] = [];
-    let unstamped = 0;
-    let repeated = 0;
-    const countIn = (cid: string): number => {
-      try {
-        return body.querySelectorAll(`[data-cd-id="${CSS.escape(cid)}"]`).length;
-      } catch {
-        return 99;
-      }
-    };
-    const measure = (el: HTMLElement, vs: HTMLElement): Omit<ChildBox, 'id'> => {
-      const r = el.getBoundingClientRect();
-      const sRect = vs.getBoundingClientRect();
-      const scs = getComputedStyle(vs);
-      const borderL = Number.parseFloat(scs.borderLeftWidth) || 0;
-      const borderT = Number.parseFloat(scs.borderTopWidth) || 0;
-      return {
-        left: Math.round((r.left - sRect.left) / zoom - borderL),
-        top: Math.round((r.top - sRect.top) / zoom - borderT),
-        width: Math.round(r.width / zoom),
-        height: Math.round(r.height / zoom),
-      };
-    };
-    // Walk: `survivingEl`/`survivingEntry` = the nearest ancestor that stays in
-    // the tree (styled container or the artboard body). Dissolved wrappers add
-    // no entry — their children lift into the surviving entry, measured
-    // against the surviving element.
-    const walk = (
-      containerEl: HTMLElement,
-      survivingEl: HTMLElement,
-      survivingEntry: Entry
-    ): void => {
-      for (const c of Array.from(containerEl.children) as HTMLElement[]) {
-        if (c.closest('.dgn-pin, .dc-cv-halo, .dc-cv-group-bbox')) continue;
-        const cid = c.getAttribute('data-cd-id');
-        if (!cid) {
-          unstamped += 1;
-          continue;
-        }
-        const count = countIn(cid);
-        if (count > 1) repeated += 1;
-        const hasStampedKids = !!c.querySelector('[data-cd-id]');
-        const dissolvable = hasStampedKids && count === 1 && isUnstyledWrapper(c);
-        if (dissolvable) {
-          dissolve.push(cid);
-          walk(c, survivingEl, survivingEntry);
-          continue;
-        }
-        const idIndex =
-          count > 1
-            ? Math.max(
-                0,
-                Array.from(body.querySelectorAll(`[data-cd-id="${CSS.escape(cid)}"]`)).indexOf(c)
-              )
-            : undefined;
-        survivingEntry.children.push({
-          id: cid,
-          ...(idIndex !== undefined ? { idIndex } : {}),
-          ...measure(c, survivingEl),
-        });
-        if (hasStampedKids && count === 1) {
-          const entry: Entry = {
-            containerId: cid,
-            containerSetRelative: getComputedStyle(c).position === 'static',
-            children: [],
-          };
-          containers.push(entry);
-          walk(c, c, entry);
-        }
-        // A repeated (component-instance) container freezes as a UNIT — we
-        // don't descend into shared internals (per-instance inner writes need
-        // detach; the whole instance is draggable via its usage box).
-      }
-    };
-    const rootEntry: Entry = { containerSetRelative: false, children: [] };
-    containers.push(rootEntry);
-    walk(body, body, rootEntry);
-    const nonEmpty = containers.filter((c) => c.children.length > 0 || c.containerSetRelative);
-    const total = nonEmpty.reduce((n, c) => n + c.children.length, 0);
-    if (total === 0) {
-      showCanvasToast('Nothing to convert — this artboard has no selectable elements.');
-      return;
-    }
-    if (unstamped > 0) {
-      showCanvasToast(
-        'Some elements have no id — edit the canvas via chat first, then convert the artboard.'
-      );
-      return;
-    }
-    const parts = [
-      `Freeze all ${total} elements at their current positions (position: absolute)?`,
-      dissolve.length > 0
-        ? `${dissolve.length} invisible layout wrapper(s) will be removed — the tree flattens.`
-        : 'Every element becomes freely draggable — the flow layout will no longer reflow.',
-      'This is a one-way change (⌘Z right after still reverts it).',
-    ];
-    if (repeated > 0) {
-      parts.push(
-        `${repeated} element(s) render from shared components — each instance keeps its own frozen position. Repeated list items abort the whole action.`
-      );
-    }
-    const ok =
-      opts?.skipConfirm === true ||
-      (await canvasConfirm(parts.join('\n'), {
-        title: 'Convert artboard layout to absolute?',
-        confirmLabel: 'Convert all',
-      }));
-    if (!ok) return;
-    try {
-      window.parent.postMessage(
-        {
-          dgn: 'convert-to-absolute-request',
-          artboardId,
-          allowShared: repeated > 0,
-          containers: nonEmpty,
-          ...(dissolve.length > 0 ? { dissolve } : {}),
-        },
-        '*'
-      );
-    } catch {
-      /* detached / cross-origin */
-    }
+    await runSubtreeConvert(body, undefined, artboardId, opts);
   };
 
   // Publish for the CanvasRouter's `freeze-and-set-kind` handler (different

@@ -3122,12 +3122,19 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         if (typeof kids === 'string') return { ok: false, status: 400, error: kids };
         total += kids.length;
         if (total > 500) return { ok: false, status: 400, error: 'too many children' };
+        let freezeSize: { width: number; height: number } | undefined;
+        if (c?.freezeSize && typeof c.freezeSize === 'object') {
+          const fw = num((c.freezeSize as Record<string, unknown>).width);
+          const fh = num((c.freezeSize as Record<string, unknown>).height);
+          if (fw !== null && fh !== null) freezeSize = { width: fw, height: fh };
+        }
         containersSpec.push({
           containerId,
           containerIdIndex: Number.isInteger(c?.containerIdIndex)
             ? (c.containerIdIndex as number)
             : undefined,
           containerSetRelative: c?.containerSetRelative === true,
+          ...(freezeSize ? { freezeSize } : {}),
           children: kids,
         });
       }

@@ -4683,6 +4683,10 @@ interface ConvertContainerSpec {
   containerId?: string;
   containerIdIndex?: number;
   containerSetRelative: boolean;
+  /** feature-4 (dogfood round 4) — freeze the container's OWN border-box size.
+   *  Needed for the element-level subtree ROOT: it keeps its flow position but
+   *  its auto height would collapse once every child goes absolute. */
+  freezeSize?: { width: number; height: number };
   children: ConvertChildBox[];
 }
 
@@ -4758,7 +4762,7 @@ export function applyConvertToAbsolute(
     // Container → position:relative (only when the client says it's currently
     // static; already-positioned containers are left as-is; the artboard-body
     // root level has no container to write).
-    if (c.containerId && c.containerSetRelative) {
+    if (c.containerId && (c.containerSetRelative || c.freezeSize)) {
       const cid =
         typeof c.containerIdIndex === 'number' && Number.isFinite(c.containerIdIndex)
           ? resolveUsageId(parsed.program, c.containerId, c.containerIdIndex)
@@ -4772,7 +4776,16 @@ export function applyConvertToAbsolute(
             id: c.containerId,
           });
         }
-        setMultipleStyleProps(s, chit.opening, [['position', '"relative"']], canvasAbsPath, cid);
+        const entries: Array<[string, string]> = [];
+        if (c.containerSetRelative) entries.push(['position', '"relative"']);
+        if (c.freezeSize) {
+          entries.push(
+            ['width', JSON.stringify(`${c.freezeSize.width}px`)],
+            ['height', JSON.stringify(`${c.freezeSize.height}px`)],
+            ['box-sizing', '"border-box"']
+          );
+        }
+        setMultipleStyleProps(s, chit.opening, entries, canvasAbsPath, cid);
       }
     }
 

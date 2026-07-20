@@ -308,3 +308,26 @@ describe('canvas-edit / applyConvertToAbsolute — dissolve (true flatten)', () 
     ).toThrow(/both a style target and a dissolve/);
   });
 });
+
+// dogfood round 4 — the element-level subtree ROOT keeps flow position but
+// freezes its own box (auto height would collapse once children go absolute).
+describe('canvas-edit / applyConvertToAbsolute — root freezeSize', () => {
+  test('container gets relative + frozen width/height in one style attr', () => {
+    const src = `function Demo() { return <div className="grp"><p>a</p></div>; }`;
+    const ids = idsOf(src);
+    const out = applyConvertToAbsolute(CANVAS, src, {
+      containers: [
+        {
+          containerId: ids.div as string,
+          containerSetRelative: true,
+          freezeSize: { width: 472, height: 131 },
+          children: [{ id: ids.p as string, left: 12, top: 12, width: 60, height: 30 }],
+        },
+      ],
+    });
+    expect(out.source).toContain(
+      '<div style={{ position: "relative", width: "472px", height: "131px", "box-sizing": "border-box" }} className="grp">'
+    );
+    expect(out.source).toContain('position: "absolute"');
+  });
+});
