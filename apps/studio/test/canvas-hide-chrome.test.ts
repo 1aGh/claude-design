@@ -27,9 +27,7 @@ const SHELL_HTML_PATH = join(
 
 describe('_shell.html #canvas-hide-chrome covers every overlay mount class', () => {
   const shellHtml = readFileSync(SHELL_HTML_PATH, 'utf8');
-  const blockMatch = shellHtml.match(
-    /<style id="canvas-hide-chrome"[^>]*>([\s\S]*?)<\/style>/
-  );
+  const blockMatch = shellHtml.match(/<style id="canvas-hide-chrome"[^>]*>([\s\S]*?)<\/style>/);
 
   test('the #canvas-hide-chrome style block exists', () => {
     expect(blockMatch).not.toBeNull();
