@@ -305,23 +305,54 @@ export function canvasConfirm(
     ok.type = 'button';
     ok.className = 'dc-confirm-btn dc-confirm-btn--primary';
     ok.textContent = opts?.confirmLabel ?? 'Continue';
+    // a11y fix (review fan-out, 2026-07-21) — this is a raw DOM overlay, not a
+    // native <dialog>, so it must implement the two APG modal-dialog musts
+    // itself: (1) restore focus to whatever had it before the dialog opened
+    // (a hostile canvas can't spoof this — it's just where focus already was);
+    // (2) trap Tab/Shift+Tab inside the two buttons so it can't escape to
+    // background content (this overlay mounts in the canvas iframe's own
+    // document, so "background" is live, possibly-interactive artboard markup).
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     const done = (v: boolean) => {
       document.removeEventListener('keydown', onKey, true);
       backdrop.remove();
+      try {
+        previouslyFocused?.focus();
+      } catch {
+        /* detached / no-op target — nothing to restore focus to */
+      }
       resolve(v);
     };
     const onKey = (e: KeyboardEvent) => {
+      // SECURITY — ignore script-dispatched events (isTrusted: false). This
+      // dialog mounts in the canvas iframe's own document (untrusted, DDR-054);
+      // without this, hostile canvas JS could synthesize a KeyboardEvent/Event
+      // to auto-confirm itself past the "irreversible convert" prompt.
+      if (!e.isTrusted) return;
       if (e.key === 'Escape') {
         e.stopPropagation();
         done(false);
       } else if (e.key === 'Enter') {
         e.stopPropagation();
         done(true);
+      } else if (e.key === 'Tab') {
+        // 2-element focus trap: Tab/Shift+Tab just toggles between the two
+        // buttons, never leaving the dialog.
+        e.preventDefault();
+        e.stopPropagation();
+        (document.activeElement === ok ? cancel : ok).focus();
       }
     };
-    cancel.addEventListener('click', () => done(false));
-    ok.addEventListener('click', () => done(true));
+    cancel.addEventListener('click', (e) => {
+      if (!e.isTrusted) return;
+      done(false);
+    });
+    ok.addEventListener('click', (e) => {
+      if (!e.isTrusted) return;
+      done(true);
+    });
     backdrop.addEventListener('click', (e) => {
+      if (!e.isTrusted) return;
       if (e.target === backdrop) done(false);
     });
     document.addEventListener('keydown', onKey, true);

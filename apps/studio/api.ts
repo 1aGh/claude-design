@@ -12,6 +12,8 @@ import {
   assembleCompSource,
   CanvasEditError,
   type ClipInfo,
+  type ConvertChildBox,
+  type ConvertContainerSpec,
   componentMapForCanvas,
   convertToAbsolute,
   deleteArtboard,
@@ -3057,17 +3059,13 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1_000_000
         ? Math.round(v)
         : null;
-    type ChildBox = {
-      id: string;
-      idIndex?: number;
-      left: number;
-      top: number;
-      width: number;
-      height: number;
-    };
-    const parseChildren = (raw: unknown): ChildBox[] | string => {
+    // Simplifier fix (review fan-out, 2026-07-21) — reuse canvas-edit.ts's own
+    // exported spec types instead of a locally re-declared shape, which had
+    // drifted (missing `freezeSize?`, populated a few lines below via a spread
+    // that silently bypassed excess-property checking).
+    const parseChildren = (raw: unknown): ConvertChildBox[] | string => {
       if (!Array.isArray(raw) || raw.length === 0) return 'children required';
-      const out: ChildBox[] = [];
+      const out: ConvertChildBox[] = [];
       for (const c of raw as Array<Record<string, unknown>>) {
         const id = typeof c?.id === 'string' ? c.id.trim() : '';
         if (!CD_ID_RE.test(id)) return 'invalid child data-cd-id';
@@ -3088,14 +3086,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     // Each container: optional containerId (absent = the artboard-body root
     // level), a setRelative flag, and its children boxes. Total child count is
     // capped across the batch.
-    let containersSpec:
-      | Array<{
-          containerId?: string;
-          containerIdIndex?: number;
-          containerSetRelative: boolean;
-          children: ChildBox[];
-        }>
-      | undefined;
+    let containersSpec: ConvertContainerSpec[] | undefined;
     if (input.containers !== undefined) {
       if (!Array.isArray(input.containers) || input.containers.length === 0) {
         return { ok: false, status: 400, error: 'invalid containers' };
@@ -3144,7 +3135,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     let containerId = '';
     let containerIdIndex: number | undefined;
     let containerSetRelative = false;
-    let children: ChildBox[] = [];
+    let children: ConvertChildBox[] = [];
     if (!containersSpec) {
       containerId = typeof input.containerId === 'string' ? input.containerId.trim() : '';
       if (!CD_ID_RE.test(containerId)) {
@@ -3872,7 +3863,17 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
     try {
-      const source = await Bun.file(r.abs).text();
+      const file = Bun.file(r.abs);
+      // Security fix (review fan-out, 2026-07-21) — this route is AUTO-fetched
+      // by the shell on every canvas/artboard switch (no user action), unlike
+      // the sibling edit-scope route it mirrors. Per this repo's hub-push
+      // threat model (DDR-060), a peer could otherwise cost a collaborator
+      // CPU/memory the moment they merely open a pathologically large synced
+      // canvas — cap it the same way the structural-write ops cap `before`.
+      if (file.size > MAX_CANVAS_SOURCE) {
+        return { ok: false, status: 413, error: 'canvas source too large' };
+      }
+      const source = await file.text();
       return { ok: true, map: componentMapForCanvas(r.abs, source) };
     } catch (err) {
       return {

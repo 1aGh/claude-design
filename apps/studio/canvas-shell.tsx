@@ -2577,6 +2577,12 @@ function CanvasRouter({
       // order, so the shell's structuralWrite chain serializes them correctly
       // (freeze lands before a print-kind resize could move anything).
       if (m.dgn === 'freeze-and-set-kind') {
+        // SECURITY (ethical-hacker) — accept ONLY from the parent shell, never
+        // from a canvas self-post or a sibling canvas iframe (all canvases share
+        // one canvasOrigin, so any frame can otherwise forge this cross-frame —
+        // confused-deputy: it drives a privileged convert-to-absolute + artboard
+        // kind write). Same gate as apply-style/record-edit above.
+        if (e.source !== window.parent) return;
         const mm = m as {
           artboardId?: string;
           kind?: string | null;

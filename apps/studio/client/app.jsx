@@ -7105,7 +7105,11 @@ function LayerRow({
         aria-expanded={hasKids ? !isCollapsed : undefined}
         aria-grabbed={canDrag ? isDragging : undefined}
         tabIndex={0}
-        title={isSynthetic ? `${node.tag} · group (unstamped wrapper)` : `${node.tag} · ${node.type}`}
+        title={
+          isSynthetic
+            ? `${node.tag} · group (unstamped wrapper)`
+            : `${node.tag} · ${node.type}${onRename ? ' · F2 to rename' : ''}`
+        }
         data-layer-key={key}
         onClick={() => (isSynthetic ? hasKids && onToggle(key) : onSelect(node))}
         onMouseEnter={() => !isSynthetic && onHover(node)}
@@ -7119,6 +7123,15 @@ function LayerRow({
             e.preventDefault();
             if (isSynthetic) hasKids && onToggle(key);
             else onSelect(node);
+          } else if (e.key === 'F2' && onRename && !isSynthetic) {
+            // a11y fix (review fan-out, 2026-07-21) — dblclick was the ONLY
+            // entry point into rename, a keyboard-only user had no way to
+            // reach it at all (WCAG 2.1.1). F2 is the conventional rename key
+            // (Explorer/Finder/most tree UIs); mirrors the dblclick handler's
+            // own pre-fill.
+            e.preventDefault();
+            setRenameDraft(node.dcElement || node.label || '');
+            setRenaming(true);
           }
         }}
       >
@@ -7757,6 +7770,11 @@ function ArtboardKnobs({
 // of the selection's src/html for a selection that reached the panel via a code
 // path predating that field. Returns null for a non-photo element.
 const PHOTO_ASSET_RE = /assets\/[0-9a-f]{8}\.[a-z0-9]+/i;
+// Simplifier fix (review fan-out, 2026-07-21) — reuse PHOTO_ASSET_RE's own
+// source for the global-match variant instead of re-inlining the pattern, so
+// the two can never drift apart (e.g. an extension-charset fix landing in one
+// and not the other).
+const PHOTO_ASSET_RE_G = new RegExp(PHOTO_ASSET_RE.source, 'gi');
 function photoAssetOfSelection(el) {
   if (!el || Array.isArray(el)) return null;
   if (el.photoAsset) return el.photoAsset;
@@ -7768,7 +7786,7 @@ function photoAssetOfSelection(el) {
   // for it (ambiguous multi-photo containers stay photo-less — drill/⌘-click
   // to pick one).
   if ((el.tag || '').toLowerCase() !== 'img') {
-    const imgs = [...new Set(html.match(/assets\/[0-9a-f]{8}\.[a-z0-9]+/gi) || [])];
+    const imgs = [...new Set(html.match(PHOTO_ASSET_RE_G) || [])];
     const tagged = [...new Set([...html.matchAll(/data-photo-asset="([^"]+)"/g)].map((m) => m[1]))];
     if (tagged.length === 1) return tagged[0];
     if (tagged.length === 0 && imgs.length === 1 && /<img/i.test(html)) return imgs[0];

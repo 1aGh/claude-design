@@ -398,7 +398,12 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
   it('artboard: synthetic dblclick enters edit mode, caret collapsed at click point, accent caret-color', async () => {
     const box = await frameLocalBox(H1);
     if (!box) throw new Error('no h1 box');
-    await synthDblclickUntil(H1, box.cx, box.cy, async () => (await probe(H1)).ce === 'plaintext-only');
+    await synthDblclickUntil(
+      H1,
+      box.cx,
+      box.cy,
+      async () => (await probe(H1)).ce === 'plaintext-only'
+    );
     const p = await probe(H1);
     // Edit-mode entry (DDR-103 path): plaintext-only contenteditable + ring.
     // (feature-4: dblclicks drill the chain first — the helper repeats until
@@ -425,7 +430,12 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
   it('artboard: [data-maude-caret] present, animated (maude-caret-blink), inside the h1 rect', async () => {
     const box = await frameLocalBox(H1);
     if (!box) throw new Error('no h1 box');
-    await synthDblclickUntil(H1, box.cx, box.cy, async () => (await probe(H1)).ce === 'plaintext-only');
+    await synthDblclickUntil(
+      H1,
+      box.cx,
+      box.cy,
+      async () => (await probe(H1)).ce === 'plaintext-only'
+    );
     const p = await probe(H1);
     if (p.ce !== 'plaintext-only') {
       // Diagnostic dump — what state is the frame actually in?
@@ -757,7 +767,12 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     // ---- Artboard (last — its commit rewrites the canvas source + reloads) ----
     const box = await frameLocalBox(H1);
     if (!box) throw new Error('no h1 box');
-    await synthDblclickUntil(H1, box.cx, box.cy, async () => (await probe(H1)).ce === 'plaintext-only');
+    await synthDblclickUntil(
+      H1,
+      box.cx,
+      box.cy,
+      async () => (await probe(H1)).ce === 'plaintext-only'
+    );
     expect((await probe(H1)).ce).toBe('plaintext-only');
     await typeAtEnd(' K');
     await synthKey('Enter', { shift: true });
@@ -803,7 +818,12 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     const pTextBefore = (await probe('[data-testid="smoke-p"]')).text;
     const box = await frameLocalBox(H1);
     if (!box) throw new Error('no h1 box');
-    await synthDblclickUntil(H1, box.cx, box.cy, async () => (await probe(H1)).ce === 'plaintext-only');
+    await synthDblclickUntil(
+      H1,
+      box.cx,
+      box.cy,
+      async () => (await probe(H1)).ce === 'plaintext-only'
+    );
     expect((await probe(H1)).ce).toBe('plaintext-only');
     await typeAtEnd(' P6');
     await synthKey('Enter');
@@ -871,32 +891,32 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     for (let attempt = 0; attempt < 5; attempt++) {
       // eslint-disable-next-line no-await-in-loop
       await browser.execute(
-      (x, y) => {
-        const iframe = document.querySelector(
-          '[data-testid="canvas-frame"]'
-        ) as HTMLIFrameElement | null;
-        const doc = iframe?.contentDocument;
-        const win = iframe?.contentWindow as (Window & typeof globalThis) | null;
-        const el = (
-          Array.from(
-            doc?.querySelectorAll('[data-testid="smoke-card-body"]') ?? []
-          ) as HTMLElement[]
-        )[1];
-        if (!el || !win) return false;
-        const opts = { bubbles: true, cancelable: true, view: win, clientX: x, clientY: y };
-        el.dispatchEvent(new win.PointerEvent('pointerdown', { ...opts, pointerId: 1 }));
-        el.dispatchEvent(new win.MouseEvent('mousedown', { ...opts, detail: 1 }));
-        el.dispatchEvent(new win.PointerEvent('pointerup', { ...opts, pointerId: 1 }));
-        el.dispatchEvent(new win.MouseEvent('mouseup', { ...opts, detail: 1 }));
-        el.dispatchEvent(new win.MouseEvent('click', { ...opts, detail: 1 }));
-        el.dispatchEvent(new win.MouseEvent('mousedown', { ...opts, detail: 2 }));
-        el.dispatchEvent(new win.MouseEvent('mouseup', { ...opts, detail: 2 }));
-        el.dispatchEvent(new win.MouseEvent('click', { ...opts, detail: 2 }));
-        el.dispatchEvent(new win.MouseEvent('dblclick', { ...opts, detail: 2 }));
-        return true;
-      },
-      Math.round(cards.second.cx),
-      Math.round(cards.second.cy)
+        (x, y) => {
+          const iframe = document.querySelector(
+            '[data-testid="canvas-frame"]'
+          ) as HTMLIFrameElement | null;
+          const doc = iframe?.contentDocument;
+          const win = iframe?.contentWindow as (Window & typeof globalThis) | null;
+          const el = (
+            Array.from(
+              doc?.querySelectorAll('[data-testid="smoke-card-body"]') ?? []
+            ) as HTMLElement[]
+          )[1];
+          if (!el || !win) return false;
+          const opts = { bubbles: true, cancelable: true, view: win, clientX: x, clientY: y };
+          el.dispatchEvent(new win.PointerEvent('pointerdown', { ...opts, pointerId: 1 }));
+          el.dispatchEvent(new win.MouseEvent('mousedown', { ...opts, detail: 1 }));
+          el.dispatchEvent(new win.PointerEvent('pointerup', { ...opts, pointerId: 1 }));
+          el.dispatchEvent(new win.MouseEvent('mouseup', { ...opts, detail: 1 }));
+          el.dispatchEvent(new win.MouseEvent('click', { ...opts, detail: 1 }));
+          el.dispatchEvent(new win.MouseEvent('mousedown', { ...opts, detail: 2 }));
+          el.dispatchEvent(new win.MouseEvent('mouseup', { ...opts, detail: 2 }));
+          el.dispatchEvent(new win.MouseEvent('click', { ...opts, detail: 2 }));
+          el.dispatchEvent(new win.MouseEvent('dblclick', { ...opts, detail: 2 }));
+          return true;
+        },
+        Math.round(cards.second.cx),
+        Math.round(cards.second.cy)
       );
       // eslint-disable-next-line no-await-in-loop
       await browser.pause(300);

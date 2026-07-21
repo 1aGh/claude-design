@@ -4686,7 +4686,7 @@ function setMultipleStyleProps(
  *     (`.map`ed) direct children before it ever posts — this is the server-side
  *     backstop for the component-usage case it can't see.
  */
-interface ConvertChildBox {
+export interface ConvertChildBox {
   id: string;
   idIndex?: number;
   left: number;
@@ -4695,7 +4695,7 @@ interface ConvertChildBox {
   height: number;
 }
 
-interface ConvertContainerSpec {
+export interface ConvertContainerSpec {
   /** Absent for the artboard-body ROOT level — `.dc-artboard-body` is already
    *  `position:relative` engine chrome with no `data-cd-id`, so its children
    *  get absolute boxes with no container write. */
