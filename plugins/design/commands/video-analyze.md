@@ -81,6 +81,16 @@ offending field and retry. Preserve an existing `ai-generated` provenance stub's
 **Cache:** skip a clip whose `assets/<sha8>.footage.json` already holds a usable shot
 **and** (when audio was requested) a `speech` field — re-running analyzes nothing new.
 
+### Step 3.5 — Record the footage node (kgai — when active)
+
+The sidecar lands via `PUT /_api/footage` (a **server write**), so kgai's edit-tool Stop hook does NOT catch it — record it explicitly at the command boundary. Load **`flow:kgai-backend`**; when `maude kg resolve --json` is `active`, ingest a content-addressed `footage:<sha8>` node (deterministic id converges across machines):
+
+```bash
+echo '{"decision":{"title":"Footage: <sha8>","rationale":"<summary>","date":"<YYYY-MM-DD>","mutations":[{"op":"upsert_element","kind":"footage","name":"<sha8>","props":{"summary":"<summary>","tags":"<tags>"}},{"op":"add_link","from":"footage:<sha8>","to":"asset:<sha8>","link":"FROM"}]}}' | maude kg ingest --root "$CLAUDE_PROJECT_DIR"
+```
+
+Skip silently when inactive. *(Follow-up, option-b: emit this server-side from `apps/studio/footage-store.ts` `saveAnalysis` so UI-driven writes are covered too — deferred as a dev-server change needing packaged-app validation.)*
+
 ## Step 4 — Report
 
 Print a human "what is this about" summary per clip, pulled from the sidecar:

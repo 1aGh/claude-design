@@ -95,7 +95,7 @@ Load **`flow:kgai-backend`** and check `maude kg resolve --json`.
 - **`active: true`** → the graph is the source of truth; record a **paused event** linked to the active plan, then **sync**. HANDOFF.md is still written (Step 3) but becomes a human-readable *projection* of this event, not the authority:
 
   ```bash
-  echo '{"decision":{"title":"Paused: <feature>","rationale":"<why paused>","date":"<YYYY-MM-DD>","mutations":[{"op":"upsert_element","kind":"session","name":"<plan-slug>-paused"},{"op":"set_props","element":"session:<plan-slug>-paused","props":{"phase":"<phase>","active_task":"<task>","blockers":"<blockers>","open_decisions":"<open>"}},{"op":"add_link","from":"session:<plan-slug>-paused","to":"plan:<plan-slug>","link":"PAUSES"}]}}' | maude kg ingest --root .
+  echo '{"decision":{"title":"Paused: <feature>","rationale":"<why paused>","date":"<YYYY-MM-DD>","mutations":[{"op":"upsert_element","kind":"session","name":"<plan-slug>-paused","props":{"phase":"<phase>","active_task":"<task>","blockers":"<blockers>","open_decisions":"<open>"}},{"op":"add_link","from":"session:<plan-slug>-paused","to":"plan:<plan-slug>","link":"PAUSES"}]}}' | maude kg ingest --root .
   maude kg sync --warn-only --root .   # push; no-op when local-only, warns (never blocks) on failure
   ```
 

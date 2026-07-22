@@ -93,6 +93,7 @@ echo '{
 
 - **Author is automatic** — kgai's `guessActor()` resolves `KGAI_ACTOR` env → **`git config user.name`** → `$USER`, stamped at `kg init` (verified: `kg init` on this repo recorded `actor: 1aGh`). Do NOT wire author; inject `KGAI_ACTOR` only for a richer identity string.
 - **Identity is deterministic** — `hash(kind:name)` means `dept:dev`, `footage:<sha8>`, `reel:<slug>` converge to one node across machines/repos with zero coordination. Content-addressed ids (`assetSha8()`/`edlSlug()`) map 1:1.
+- **Valid mutation ops (verified live — do NOT invent others):** `upsert_element` (`kind`, `name`, optional inline `props` map — **props MERGE on re-upsert**, so this doubles as a prop-update), `add_link` (`from`, `to`, `link`), and `set_prop` (singular — `element` + `props`/`key`+`value`). There is **no `set_props`** (plural) op — set props inline on `upsert_element` instead.
 - **Link storage:** `SUPERSEDES` is its own Kuzu rel table; every other `link` (IN_REPO/IN_DEPT/REFERENCES/EXTENDS/…) lands in the generic `LINK` table with the kind in `l.kind` — hence the scope Cypher above. `context` returns them all under each element's `links[]`.
 - Cross-ref extraction (SUPERSEDES / OVERRIDES / REFERENCES / EXTENDS) follows the marker table in `cli/lib/ddr-to-kgai.mjs` (typed edges first, then bare `DDR-\d+` mentions as weak deduped `references`).
 - `--dry-run` prints the deterministic ids + `shapes` without writing — use it to preview a batch.

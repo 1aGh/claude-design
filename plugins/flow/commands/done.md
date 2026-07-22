@@ -240,7 +240,7 @@ If the user lists items, propose CLAUDE.md additions (or moves to `.claude/rules
 > **kgai close (when active).** If `maude kg resolve --json` reports `active` (load `flow:kgai-backend`): the DDR sweep (Step 3) already routed decisions into the graph via the backend-aware `/flow:record-ddr`; here, mark the plan node closed and **push once** — `kg sync` is a close-time operation (never per-edit; the projection rebuild grows with the log):
 >
 > ```bash
-> echo '{"decision":{"title":"Closed: <feature>","rationale":"<retro one-liner>","date":"<YYYY-MM-DD>","mutations":[{"op":"set_props","element":"plan:<plan-slug>","props":{"status":"done"}}]}}' | maude kg ingest --root .
+> echo '{"decision":{"title":"Closed: <feature>","rationale":"<retro one-liner>","date":"<YYYY-MM-DD>","mutations":[{"op":"upsert_element","kind":"plan","name":"<plan-slug>","props":{"status":"done"}}]}}' | maude kg ingest --root .   # upsert props MERGE — status flips, path stays
 > maude kg sync --warn-only --root .   # no-op when local-only; warns (never blocks the close) on remote-sync failure
 > ```
 >

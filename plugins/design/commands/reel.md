@@ -238,6 +238,16 @@ fps/dimensions. Write a `<Name>.meta.json` sidecar (title/subtitle/tags
 3. Unless `--no-critic`: spawn the **motion-critic** (always — the comp animates)
    and **design-critic** on the canvas. Apply blocker fixes.
 
+### Step 5.5 — Record the reel decision (kgai — when active)
+
+The EDL is a **decision** — the "reziser" cut. It lands via a server write (`PUT /_api/footage`), so record it explicitly. Load **`flow:kgai-backend`**; when `maude kg resolve --json` is `active`, ingest a `reel:<slug>` node with a `USES` link per beat's clip:
+
+```bash
+echo '{"decision":{"title":"Reel: <slug>","rationale":"<why this cut>","date":"<YYYY-MM-DD>","mutations":[{"op":"upsert_element","kind":"reel","name":"<slug>"},{"op":"upsert_element","kind":"footage","name":"<beat.clip sha8>"},{"op":"add_link","from":"reel:<slug>","to":"footage:<beat.clip sha8>","link":"USES"}]}}' | maude kg ingest --root "$CLAUDE_PROJECT_DIR"
+```
+
+Add one `USES` link per distinct `beats[].clip`. Skip silently when inactive. *(Follow-up, option-b: emit from `apps/studio/footage-store.ts` `saveEdl` for UI-driven cuts — deferred dev-server change.)*
+
 ## Step 6 — Report
 
 - The generated canvas path + the EDL path.
