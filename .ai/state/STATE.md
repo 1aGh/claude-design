@@ -2,6 +2,41 @@
 
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
+## Execution Progress — feature-kgai-ecosystem-integration — **Phase 1 (Foundation) COMPLETE, in-progress overall (2026-07-22, branch `main`).**
+
+Wiring kgai (event-sourced decision knowledge graph) into flow + design as a capability-gated, opt-out memory backend. 8-phase plan; Phase 1 done, verified **inactive-path only** (`kg` CLI is NOT installed on this machine, so the "kgai-active" live validation for later phases is deferred until `kg` is present).
+
+**Task 0 (upstream sync gate) ✅** — `kg` NOT on PATH. Latest kgai release = **v0.1.9** (2026-07-18) == the plan's pinned `engineVersion`; upstream hasn't moved since the last reconcile (`b00729de`), so no assumptions to reconcile. `maude kg check-upstream` implemented + run (pinned==latest==v0.1.9, macOS prebuilts + libkuzu present).
+
+**Task 1 ✅** — `knowledgeGraph` block added to `config.schema.json` (mode auto|on|off default auto, engine/engineVersion/store/scope{repo,dept}/capture{decisions,state,auto}; `additionalProperties:false`; absent block ⇒ auto). Ajv-validated 7 cases (absent/full/off/empty pass; bad enum/unknown-prop/bad-scope reject). `site/content/docs/config-schema.mdx` regenerated (+82 ln); command-reference no drift.
+
+**Task 2 ✅** — `kg` soft-dep added to BOTH `plugins/flow/dependencies.json` + `plugins/design/dependencies.json` (type:cli, hardness:soft, `kg version`, install hint); `maude doctor` shows it soft/missing in both. Second SessionStart entry in `plugins/flow/hooks/hooks.json` for the `kg sync` **pull** — gated on `command -v kg`, routes through `maude kg session-sync --warn-only`, backgrounded/non-blocking (own 20 s internal timeout).
+
+**Task 3 ✅** — `plugins/flow/skills/kgai-backend/SKILL.md` — the single resolver + contract (config-read → capability-gate → {active,mode,store,scope} + canonical `kg context`/`ingest`/`sync` recipes + element/link vocabulary glossary + the DDR-130 untrusted-data guard extended across persistence + failure/fallback table).
+
+**Task 4 ✅** — `cli/commands/kg.mjs` (`maude kg resolve|doctor|check-upstream|session-sync|sync|context|ingest|scope|import|help`), registered in `maude.mjs`. Resolver is the single source of `active` (mode:on force / mode:off classic / auto = kg-present && store-resolvable). gitignore mirror per DDR-115 across all THREE lists: `.kgai/` in `cli/lib/gitignore-block.mjs`, repo `.gitignore`, and `isMaudeRuntimeState` (`apps/studio/git/service.ts`). `cli/commands/kg.test.mjs` — 11 tests green; full cli suite **206 pass**; `plugin-cli-reachability.test.mjs` green (all kgai reach via `maude kg`).
+
+**No-regression:** every touched surface degrades cleanly when `kg` absent / mode:off — `resolve` reports active:false, `session-sync`/`sync` no-op exit 0, passthrough verbs defer to the caller's classic path. `dist/` untouched.
+
+## Execution Progress — feature-kgai-ecosystem-integration — **Phase 2 (Flow native wiring) COMPLETE, validated against REAL kgai (2026-07-22).**
+
+Installed the pinned prebuilt **kg v0.1.9** (`~/.local/kgai/v0.1.9/kg` + `libkuzu.dylib`, ad-hoc codesigned) after the truncating flaky network (6 download attempts; GitHub CDN drops large assets ~10 MB — chunked ranged download with `-L` fixed it). **Live validation against the real engine caught 3 real correctness bugs my file-only assumptions had:**
+1. **`kg ingest` is stdin-JSON, NOT flags.** Envelope `{"decision":{title,rationale,date,mutations:[{op:"upsert_element",kind,name},{op:"add_link",from,to,link}]}}` piped to stdin — my skill + record-ddr had invented `--kind/--title/--link` flags. Corrected both.
+2. **Scope-bias Cypher was wrong.** kgai stores custom links (IN_REPO/IN_DEPT/REFERENCES) in a GENERIC `LINK` rel table with the kind in `l.kind`; only `SUPERSEDES` is its own table. Correct interim filter: `MATCH (d:Element)-[l:LINK]->(x:Element) WHERE x.name='<dept>' AND l.kind='IN_DEPT'`. `IN_DEPT`-as-a-table (my first guess) errors.
+3. **`config.store` (s3://) is the kgai REMOTE, NOT `KGAI_STORE`.** `KGAI_STORE` is the LOCAL store-root dir (default `<project>/.kgai/store`, confirmed from the binary strings). Removed the wrong `KGAI_STORE=<s3-url>` env injection from `kg.mjs`. Remote is set once via `kg init --remote` (onboarding) + read by `kg sync`.
+
+Also verified live: `kg init` auto-captures **actor `1aGh` from `git config user.name`** (identity-is-automatic ✓); `kg init` (no --root) defaults the store to `.kgai/store` (matches the DDR-115 gitignore mirror ✓); real ingest→context round-trip through `maude kg` works, and the `--root` maude-flag does NOT leak into the `kg` argv (passthrough strip fixed + regression-tested).
+
+**Task 5 ✅** — `/flow:record-ddr` Step 0 branches on `maude kg resolve`: active ⇒ `kg ingest` (stdin JSON + scope tags + cross-ref links, deterministic identity kills the DDR-number race); inactive ⇒ classic `DDR-NNN.md` file path verbatim.
+
+**Task 6 ✅** — flow bookends wired (all with real recipes verified live): `plan.md` Step 0.5 (`kg context` prior-art + `plan:` node ingest); `done.md` Step 7 (close plan node + `kg sync` push, close-time only); `status.md` Step 3.5 (last-movements via author-Cypher + `kg context` current-context + `kg conflicts`, READ-ONLY); `pause.md` Step 4b (`session:` paused event + sync, HANDOFF becomes a projection); `resume.md` Step 2b (reconstruct from graph via SHAPES Cypher, emit resumed event). Every one gated on `active` with the classic path as the `else`.
+
+**Task 7 ✅** — `maude init --kg` opt-in flag (`cli/commands/init.mjs`): writes a thin STATE.md pointer-stub + bootstraps the local `.kgai/store` via `kg init` (git-author actor captured), no-op with a note when `kg` absent. `knowledgeGraph` config block stays ABSENT (bias-free ⇒ auto). Classic `maude init` unchanged (verified: zero kgai output, full STATE.md).
+
+**Verified:** full cli suite **207 pass**; `plugin-cli-reachability` green; biome clean on all 6 touched JS/TS; kg suite 12 (incl. `--root`-strip regression). `dist/` untouched.
+
+**Remaining (NOT started):** Phase 3 (design wiring + footage server-emit in `footage-store.ts`), Phase 4 (scoping — **open architecture fork A-vs-B, fork #7, needs a decision** — + cross-repo trust DDR + debate ingest), Phase 5 (migration importer `ddr-to-kgai.mjs`), Phase 6 (onboarding/company docs), Phase 7 (**risky** — slim STATE.md/CLAUDE.md, gated on migration verified), Phase 8 (**desktop native bundle + ACP inject — needs user/codesign**). Committing Phase 1+2; **pausing at the Phase 4 A/B scoping fork** per the execute plan.
+
 ## Execution Progress — feature-4-canvas-editing-figma-parity — **✅ CLOSED via `/flow:done` (2026-07-21, branch `main`).** Dogfood rounds 4–6 + the formal close-out gate. Commit `82af87a4`.
 
 **Round 4 (confirm-spam):** the element-level convert action re-prompted a confirm dialog per nested container (up to ~10 in a real layout) — direct user report + fix request ("to stačí jen jednou, zbytek proveď na pozadí"). Unified into one recursive subtree walk with exactly one confirm; found + fixed a companion bug live — the subtree root's auto-height collapsed once its children went absolute (needed its own frozen box size, `freezeSize`).

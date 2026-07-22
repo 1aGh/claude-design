@@ -29,6 +29,9 @@ dev-server/.cache/
 .design/_canvas-state/
 .design/_chat/
 .design/_untrusted/
+# kgai knowledge-graph projection — per-machine append-only store, rebuilds from
+# the remote on `kg sync` (feature-kgai-ecosystem-integration, DDR-115).
+.kgai/
 # Auto-managed by the linked-mode sync runtime (lists hub-synced UNTRUSTED files).
 # Machine-local state, regenerated on sync — never committed.
 .claudeignore

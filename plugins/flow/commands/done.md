@@ -237,6 +237,15 @@ If the user lists items, propose CLAUDE.md additions (or moves to `.claude/rules
 - Move the plan to `.ai/plans/archive/<x>.plan.md`.
 - STATE.md → phase + status `done`, history row `done | <date> | <one-liner>`. Active task → `—`. Active plan → `—`.
 
+> **kgai close (when active).** If `maude kg resolve --json` reports `active` (load `flow:kgai-backend`): the DDR sweep (Step 3) already routed decisions into the graph via the backend-aware `/flow:record-ddr`; here, mark the plan node closed and **push once** — `kg sync` is a close-time operation (never per-edit; the projection rebuild grows with the log):
+>
+> ```bash
+> echo '{"decision":{"title":"Closed: <feature>","rationale":"<retro one-liner>","date":"<YYYY-MM-DD>","mutations":[{"op":"set_props","element":"plan:<plan-slug>","props":{"status":"done"}}]}}' | maude kg ingest --root .
+> maude kg sync --warn-only --root .   # no-op when local-only; warns (never blocks the close) on remote-sync failure
+> ```
+>
+> When `active:false` the STATE.md/history behavior above is unchanged.
+
 #### 7a. Refresh coverage baseline (opt-in)
 
 > Reads `skills.coverageTrend` from `.ai/workflows.config.json`. Skip silently if `enabled: false` or missing.

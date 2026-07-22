@@ -87,6 +87,20 @@ If `.ai/state/STATE.md` exists:
 
 If STATE.md doesn't exist, skip this step (handoff alone is sufficient).
 
+### 4b. Knowledge-graph pause event (kgai — when active)
+
+Load **`flow:kgai-backend`** and check `maude kg resolve --json`.
+
+- **`active: false`** (default) → skip; HANDOFF.md + STATE.md above are the source of truth, unchanged.
+- **`active: true`** → the graph is the source of truth; record a **paused event** linked to the active plan, then **sync**. HANDOFF.md is still written (Step 3) but becomes a human-readable *projection* of this event, not the authority:
+
+  ```bash
+  echo '{"decision":{"title":"Paused: <feature>","rationale":"<why paused>","date":"<YYYY-MM-DD>","mutations":[{"op":"upsert_element","kind":"session","name":"<plan-slug>-paused"},{"op":"set_props","element":"session:<plan-slug>-paused","props":{"phase":"<phase>","active_task":"<task>","blockers":"<blockers>","open_decisions":"<open>"}},{"op":"add_link","from":"session:<plan-slug>-paused","to":"plan:<plan-slug>","link":"PAUSES"}]}}' | maude kg ingest --root .
+  maude kg sync --warn-only --root .   # push; no-op when local-only, warns (never blocks) on failure
+  ```
+
+  Author is stamped automatically (`git config user.name`), so `/flow:resume` can find *your* last pause.
+
 ### 5. Print Summary
 
 Output a brief summary to the user:

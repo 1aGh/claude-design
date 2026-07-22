@@ -215,7 +215,10 @@ function isMaudeRuntimeState(p: string): boolean {
     /(^|\/)_server\.(?:lock|log)$/.test(p) ||
     /(^|\/)_(?:history|trash|draw|photo|smoke|canvas-state|state|chat|comments|untrusted|export-jobs)(?:\/|$)/.test(
       p
-    )
+    ) ||
+    // kgai per-machine graph projection (feature-kgai-ecosystem-integration,
+    // DDR-115 taxonomy) — the append-only store rebuilds from the remote on sync.
+    /(^|\/)\.kgai(?:\/|$)/.test(p)
   );
 }
 

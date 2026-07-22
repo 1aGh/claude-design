@@ -384,6 +384,88 @@ Observability knob. If the measured short-circuit escalation rate (fraction of b
 
 **Type:** `integer` · **Default:** `2` · **Min:** `2`
 
+## `knowledgeGraph`
+
+**Type:** `object`
+
+Opt-OUT, capability-gated knowledge-graph memory backend (kgai). ON by default when the capability exists: an absent `knowledgeGraph` block is treated as `mode:auto`, so when the `kg` CLI is on PATH AND a store is resolvable, flow/design decision reads/writes route through the event-sourced graph instead of `.ai/decisions/` + `.ai/state/STATE.md`. When `kg` is absent, the store is unreachable, or `mode:off`, everything falls back to today's `.ai/` file behavior — no regression, nothing to configure downstream. Mirrors the `orchestration` capability-gate (DDR-130). Design plugin reads the SAME block. See the `kgai-backend` skill for the resolver.
+
+### `knowledgeGraph.mode`
+
+**Type:** enum: `"auto"` │ `"on"` │ `"off"` · **Default:** `"auto"`
+
+Opt-out default `auto` (absent block == `auto`). `auto` = active only when `kg` is on PATH AND (`store` is set OR a local `.kgai/store` exists) — conservative, mirrors `orchestration.mode:auto`; a first-run repo stays on files until the user opts in via onboarding. `on` = force kgai active (errors surface rather than silently falling back). `off` = disable entirely; today's classic `.ai/decisions/` + STATE.md path, byte-for-byte unchanged.
+
+**Allowed values:**
+
+- `"auto"`
+- `"on"`
+- `"off"`
+
+### `knowledgeGraph.engine`
+
+**Type:** enum: `"kgai"` · **Default:** `"kgai"`
+
+Knowledge-graph engine. Reserved for future engines; only `kgai` is implemented.
+
+**Allowed values:**
+
+- `"kgai"`
+
+### `knowledgeGraph.engineVersion`
+
+**Type:** `string` · **Default:** `"v0.1.9"`
+
+PINNED kgai release the CLI + desktop bundle target. Advance deliberately (harness-verified via `maude kg check-upstream`), never float — auto-tracking `latest` would let an upstream change silently alter behavior mid-rollout and is a supply-chain surface (DDR-054/056 reasoning: the bundled `kg` is third-party).
+
+### `knowledgeGraph.store`
+
+**Type:** `string` · **Default:** `""`
+
+Remote store the graph syncs to. `s3://company-kg/store` (shared company remote, cross-repo) | `kgai://org/project` (cloud-broker keyspace) | git remote | `""` = local-only `.kgai/store`. Empty string keeps everything on this machine.
+
+### `knowledgeGraph.scope`
+
+**Type:** `object`
+
+Cross-repo scope stamped on every write, so one shared store can host many repos/departments and search can bias to the local scope first. Project-agnostic — values are per-repo config, never hardcoded in the plugin.
+
+#### `knowledgeGraph.scope.repo`
+
+**Type:** `string`
+
+This repo's name, stamped as a `repo:&lt;name>` element + `IN_REPO` link on every decision.
+
+#### `knowledgeGraph.scope.dept`
+
+**Type:** `string`
+
+This repo's department (e.g. dev/marketing/finance/automations), stamped as a `dept:&lt;name>` element + `IN_DEPT` link. Default search bias — reads re-rank `dept:&lt;this>` hits first; `--all-scopes` widens.
+
+### `knowledgeGraph.capture`
+
+**Type:** `object`
+
+Which write paths route into the graph when active. All default `true`.
+
+#### `knowledgeGraph.capture.decisions`
+
+**Type:** `boolean` · **Default:** `true`
+
+Route `/flow:record-ddr` + DDR-worthy design writes to `kg ingest` instead of a `DDR-NNN.md` file.
+
+#### `knowledgeGraph.capture.state`
+
+**Type:** `boolean` · **Default:** `true`
+
+Route STATE.md history / pause-resume events to kgai as dated events.
+
+#### `knowledgeGraph.capture.auto`
+
+**Type:** `boolean` · **Default:** `true`
+
+Let kgai's own `Stop` hook nudge autonomous decision capture after structural edits (zero added LLM cost). Set `false` to suppress the nudge.
+
 ## `security`
 
 **Type:** `object`

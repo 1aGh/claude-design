@@ -147,6 +147,23 @@
       "docsUrl": "https://github.com/1aGh/maude"
     },
     {
+      "id": "kg",
+      "type": "cli",
+      "hardness": "soft",
+      "check": {
+        "command": "kg version",
+        "expectExit": 0
+      },
+      "install": {
+        "preferred": "See docs/kgai-onboarding.md — download the pinned kgai release binary (kgai is capability-gated + opt-out; nothing to install to use classic .ai/ mode)",
+        "darwin": "curl -fsSL https://github.com/kgaidev/kgai/releases/download/v0.1.9/kg-darwin-arm64 -o /usr/local/bin/kg && chmod +x /usr/local/bin/kg"
+      },
+      "autoInstall": false,
+      "fallbackBehavior": "Design DS/canvas/brand decisions are not recorded to the kgai graph; the classic .ai/ path (via /flow:record-ddr) and on-disk sidecars are unchanged.",
+      "usedBy": ["skills/design-system/SKILL.md", "commands/edit.md"],
+      "docsUrl": "https://github.com/kgaidev/kgai"
+    },
+    {
       "id": "jq",
       "type": "system-tool",
       "hardness": "soft",

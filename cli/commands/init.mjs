@@ -1,7 +1,28 @@
-import { stat } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { stat, writeFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { parseArgs } from '../lib/argv.mjs';
 import { copyTree } from '../lib/copy-tree.mjs';
+
+// Thin STATE.md written under --kg: the knowledge graph is the history authority,
+// so STATE.md shrinks to a human breadcrumb (Open fork #2 — stub, not removal).
+const KG_STATE_STUB = `# Workflow State
+
+> **kgai-active repo** — decision history + working context live in the knowledge graph, not this file.
+> The \`flow:workflow-state\` skill reads/writes the graph via \`flow:kgai-backend\`.
+
+**Status:** ready
+**Active plan:** —
+
+## Where the history went
+
+- **Decisions / "why is X so":** \`maude kg context --about "<area>"\`
+- **Recent movements:** \`maude kg query "MATCH (d:Decision) WHERE d.author='<you>' RETURN d.title, d.recorded_at ORDER BY d.recorded_at DESC LIMIT 10"\`
+- **Conflicts:** \`maude kg conflicts\`
+
+The old \`.ai/decisions/\` archive (if any) is preserved read-only — never auto-deleted.
+`;
 
 const PLACEHOLDER = 'PROJECT_NAME';
 // Files in the skeleton that contain the project-name placeholder and should
@@ -43,10 +64,12 @@ const CHANGELOG_STUBS = {
 const VALID_PROVIDERS = new Set(['changesets', 'git-cliff', 'conventional', 'custom', 'none']);
 
 export async function run({ args, pkgRoot }) {
-  const { flags } = parseArgs(args, { booleans: ['force', 'dry-run', 'help'] });
+  const { flags } = parseArgs(args, { booleans: ['force', 'dry-run', 'help', 'kg'] });
   if (flags.help) {
     process.stdout.write(
-      'maude init [--name <project>] [--provider <changesets|git-cliff|conventional|custom|none>] [--force] [--dry-run]\n'
+      'maude init [--name <project>] [--provider <changesets|git-cliff|conventional|custom|none>] [--kg] [--force] [--dry-run]\n' +
+        '  --kg   opt into the kgai knowledge-graph backend: write a thin STATE.md pointer-stub\n' +
+        '         and bootstrap a local store via `kg init` (no-op when `kg` is not installed).\n'
     );
     return;
   }
@@ -136,8 +159,62 @@ export async function run({ args, pkgRoot }) {
     (await pathExists(resolve(cwd, 'CLAUDE.md'))) ||
     (await pathExists(resolve(cwd, '.claude', 'CLAUDE.md')));
 
+  // --kg (opt-in): the knowledge graph becomes the history authority. Replace the
+  // scaffolded STATE.md with a thin pointer-stub and bootstrap a local store.
+  // The `knowledgeGraph` config block stays ABSENT (bias-free skeleton ⇒ auto via
+  // the schema default — onboarding / `maude doctor --fix` fills store + scope).
+  if (flags.kg && !flags['dry-run']) {
+    const statePath = resolve(aiDir, 'state', 'STATE.md');
+    await writeFile(statePath, KG_STATE_STUB, 'utf8');
+    process.stdout.write('  kgai: wrote thin STATE.md pointer-stub (history lives in the graph)\n');
+    const kgBin = resolveKgBin();
+    if (kgBin) {
+      // No --root: kgai defaults the store to `<cwd>/.kgai/store` (which the
+      // resolver auto-detects and the gitignore block ignores). Passing --root
+      // would place the store's loose files at cwd root instead.
+      const r = spawnSync(kgBin, ['init'], {
+        cwd,
+        stdio: 'ignore',
+        env: kgInitEnv(),
+      });
+      process.stdout.write(
+        r.status === 0
+          ? '  kgai: bootstrapped local store via `kg init` (git-author actor captured)\n'
+          : '  kgai: `kg init` did not complete — run it manually (see docs/kgai-onboarding.md)\n'
+      );
+    } else {
+      process.stdout.write(
+        '  kgai: `kg` not installed — store not bootstrapped. See docs/kgai-onboarding.md.\n'
+      );
+    }
+    process.stdout.write(
+      '  kgai: set `knowledgeGraph.store` + `scope` per docs/kgai-onboarding.md\n'
+    );
+  } else if (flags.kg) {
+    process.stdout.write('  kgai: (dry-run) would write STATE.md stub + bootstrap the store\n');
+  }
+
   printSummary(result);
   printNextSteps(projectName, claudeMdExists);
+}
+
+/** KGAI_BIN (desktop-staged sidecar) → `kg` on PATH → null. Mirrors kg.mjs. */
+function resolveKgBin() {
+  if (process.env.KGAI_BIN && existsSync(process.env.KGAI_BIN)) return process.env.KGAI_BIN;
+  const probe = spawnSync('sh', ['-c', 'command -v kg'], { encoding: 'utf8' });
+  const found = (probe.stdout || '').trim();
+  return probe.status === 0 && found ? found : null;
+}
+
+/** Fold KGAI_LIB into DYLD_LIBRARY_PATH so a staged libkuzu resolves (desktop). */
+function kgInitEnv() {
+  const env = { ...process.env };
+  if (process.env.KGAI_LIB) {
+    env.DYLD_LIBRARY_PATH = [process.env.KGAI_LIB, process.env.DYLD_LIBRARY_PATH]
+      .filter(Boolean)
+      .join(':');
+  }
+  return env;
 }
 
 function isValidName(s) {

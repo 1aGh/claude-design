@@ -11,6 +11,34 @@ A DDR (Design Decision Record) is a formal record of a non-trivial decision that
 
 > Use a DDR for: library / framework choice, data model schema, API shape, authorization model, performance trade-off, rebuild vs. refactor, deprecation. **Don't use** for: obvious decisions, local refactor, bug fix without conceptual impact.
 
+## Step 0 — Resolve the backend (kgai-aware)
+
+Load the **`flow:kgai-backend`** skill and resolve the backend once: `maude kg resolve --json` → `{ active, scope, … }`.
+
+- **`active: false`** (kgai absent / `mode:off` / no store — the default for most repos) → run the classic file-based **Process** below **unchanged**. This is the no-regression path; everything after Step 0 is exactly today's behavior.
+- **`active: true`** → record the decision into the knowledge graph instead of a `DDR-NNN.md` file. `kg ingest` reads a decision object on **stdin** (the `flow:kgai-backend` skill owns the full recipe):
+
+  ```bash
+  echo '{ "decision": {
+    "title": "<Title>", "rationale": "<why>", "date": "<YYYY-MM-DD>",
+    "mutations": [
+      { "op": "upsert_element", "kind": "decision", "name": "<slug>" },
+      { "op": "upsert_element", "kind": "repo", "name": "<config.scope.repo>" },
+      { "op": "upsert_element", "kind": "dept", "name": "<config.scope.dept>" },
+      { "op": "add_link", "from": "decision:<slug>", "to": "repo:<repo>", "link": "IN_REPO" },
+      { "op": "add_link", "from": "decision:<slug>", "to": "dept:<dept>", "link": "IN_DEPT" },
+      { "op": "add_link", "from": "decision:<slug>", "to": "decision:<other>", "link": "SUPERSEDES" }
+    ] } }' | maude kg ingest
+  ```
+
+  1. **Author is automatic** (kgai `guessActor()` → `git config user.name`, stamped at `kg init`) — do not set it.
+  2. **Scope tags** — include the `repo:`/`dept:` upserts + `IN_REPO`/`IN_DEPT` links from `config.knowledgeGraph.scope` (never literals). No manual DDR number — kgai's deterministic `hash(kind:name)` identity removes the shared-`main` numbering race entirely.
+  3. **Cross-ref links** — parse the decision body for `Supersedes:`/`Related:`/`Extends:`/`Amends:` markers and add an `add_link` mutation per match (`SUPERSEDES`/`REFERENCES`/`EXTENDS`; same classifier as `cli/lib/ddr-to-kgai.mjs`).
+  4. **No file, no index, no STATE Decisions row** — the graph is the store. The `.ai/decisions/` archive stays read-only (never deleted).
+  5. Still run the **CLAUDE.md sweep** (Process step 5) if the decision encodes a behavioral rule, and **Report** the resolved element id instead of `DDR-NNN`.
+
+The rest of this command (asking the batch of questions in Process step 2, the CLAUDE.md sweep, the report) is shared — only the *storage* (file vs. graph) branches on `active`.
+
 ## Process
 
 1. **Find the next number** — `ls .ai/decisions/DDR-*.md 2>/dev/null | tail -1` → +1, padded to 3 digits (DDR-001, DDR-002…).

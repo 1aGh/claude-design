@@ -305,6 +305,72 @@
         }
       }
     },
+    "knowledgeGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Opt-OUT, capability-gated knowledge-graph memory backend (kgai). ON by default when the capability exists: an absent `knowledgeGraph` block is treated as `mode:auto`, so when the `kg` CLI is on PATH AND a store is resolvable, flow/design decision reads/writes route through the event-sourced graph instead of `.ai/decisions/` + `.ai/state/STATE.md`. When `kg` is absent, the store is unreachable, or `mode:off`, everything falls back to today's `.ai/` file behavior — no regression, nothing to configure downstream. Mirrors the `orchestration` capability-gate (DDR-130). Design plugin reads the SAME block. See the `kgai-backend` skill for the resolver.",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["auto", "on", "off"],
+          "default": "auto",
+          "description": "Opt-out default `auto` (absent block == `auto`). `auto` = active only when `kg` is on PATH AND (`store` is set OR a local `.kgai/store` exists) — conservative, mirrors `orchestration.mode:auto`; a first-run repo stays on files until the user opts in via onboarding. `on` = force kgai active (errors surface rather than silently falling back). `off` = disable entirely; today's classic `.ai/decisions/` + STATE.md path, byte-for-byte unchanged."
+        },
+        "engine": {
+          "type": "string",
+          "enum": ["kgai"],
+          "default": "kgai",
+          "description": "Knowledge-graph engine. Reserved for future engines; only `kgai` is implemented."
+        },
+        "engineVersion": {
+          "type": "string",
+          "default": "v0.1.9",
+          "description": "PINNED kgai release the CLI + desktop bundle target. Advance deliberately (harness-verified via `maude kg check-upstream`), never float — auto-tracking `latest` would let an upstream change silently alter behavior mid-rollout and is a supply-chain surface (DDR-054/056 reasoning: the bundled `kg` is third-party)."
+        },
+        "store": {
+          "type": "string",
+          "default": "",
+          "description": "Remote store the graph syncs to. `s3://company-kg/store` (shared company remote, cross-repo) | `kgai://org/project` (cloud-broker keyspace) | git remote | `\"\"` = local-only `.kgai/store`. Empty string keeps everything on this machine."
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Cross-repo scope stamped on every write, so one shared store can host many repos/departments and search can bias to the local scope first. Project-agnostic — values are per-repo config, never hardcoded in the plugin.",
+          "properties": {
+            "repo": {
+              "type": "string",
+              "description": "This repo's name, stamped as a `repo:<name>` element + `IN_REPO` link on every decision."
+            },
+            "dept": {
+              "type": "string",
+              "description": "This repo's department (e.g. dev/marketing/finance/automations), stamped as a `dept:<name>` element + `IN_DEPT` link. Default search bias — reads re-rank `dept:<this>` hits first; `--all-scopes` widens."
+            }
+          }
+        },
+        "capture": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Which write paths route into the graph when active. All default `true`.",
+          "properties": {
+            "decisions": {
+              "type": "boolean",
+              "default": true,
+              "description": "Route `/flow:record-ddr` + DDR-worthy design writes to `kg ingest` instead of a `DDR-NNN.md` file."
+            },
+            "state": {
+              "type": "boolean",
+              "default": true,
+              "description": "Route STATE.md history / pause-resume events to kgai as dated events."
+            },
+            "auto": {
+              "type": "boolean",
+              "default": true,
+              "description": "Let kgai's own `Stop` hook nudge autonomous decision capture after structural edits (zero added LLM cost). Set `false` to suppress the nudge."
+            }
+          }
+        }
+      }
+    },
     "security": {
       "type": "object",
       "additionalProperties": false,

@@ -51,6 +51,10 @@ export function buildBlock(designRel = '.design') {
     `${root}/_chat/`, // ACP transcripts (per-machine)
     `${root}/_untrusted/`, // hub-synced untrusted file mirror (DDR-054)
     `${root}/_comments/`, // hub-sync-only collab comments (DDR-102/DDR-115 — never git)
+    // kgai knowledge-graph projection (repo-root, NOT under the design root) —
+    // per-machine append-only store, rebuilds from the remote on `kg sync`
+    // (feature-kgai-ecosystem-integration, DDR-115). kgai itself also ignores it.
+    '.kgai/',
     END_MARKER,
   ];
   return `${lines.join('\n')}\n`;

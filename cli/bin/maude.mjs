@@ -18,6 +18,7 @@ const COMMANDS = {
   design: () => import('../commands/design.mjs'),
   'scenario-report': () => import('../commands/scenario-report.mjs'),
   doctor: () => import('../commands/doctor.mjs'),
+  kg: () => import('../commands/kg.mjs'),
   help: () => import('../commands/help.mjs'),
   hub: () => import('../commands/hub.mjs'),
   version: () => import('../commands/version.mjs'),
