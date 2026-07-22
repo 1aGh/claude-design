@@ -97,25 +97,40 @@ async fn pick_directory(app: tauri::AppHandle) -> Result<Option<String>, String>
 }
 
 /// Native "Save As…" for an export payload — opens a save dialog seeded with the
-/// export's filename, writes the bytes to the chosen path, and returns that path
-/// (or `None` if the user cancelled). This is what makes native-app exports OFFER
-/// a save location: the webview's `<a download>` blob path (app.jsx) is swallowed
-/// opaquely by WKWebView, so the user never learns where the file landed. The
-/// dev-server streams the bytes to the webview, which hands them here to persist.
-/// RCA: issue-desktop-export-failures.
+/// export's filename, then streams the finished job's bytes STRAIGHT FROM the
+/// local dev-server to the chosen path over `reqwest`, and returns that path (or
+/// `None` if the user cancelled). This is what makes native-app exports OFFER a
+/// save location: the webview's `<a download>` blob path (app.jsx) is swallowed
+/// opaquely by WKWebView, so the user never learns where the file landed.
+/// RCA: issue-desktop-export-failures (original native-save mechanism).
+///
+/// RCA issue-desktop-print-pdf-save-as-hang-large-payload: this used to accept
+/// the export's `bytes: Vec<u8>` as a plain `invoke()` argument — Tauri's IPC
+/// JSON-serializes command arguments, so a print-ready PDF (hundreds of MB —
+/// `page.pdf()` per artboard re-embeds full-size photos at print DPI with no
+/// cross-page dedup, see `exporters/pdf.ts`) turned the JS-side
+/// `Array.from(new Uint8Array(...))` + that JSON encode into an effectively
+/// unbounded main-thread block. The "Saving…" button kept spinning (a pure-CSS
+/// compositor animation, unaffected by a blocked JS thread) while the whole app
+/// was actually frozen. Fetching the bytes IN Rust and streaming them straight to
+/// disk means the webview never materializes or transmits the payload at all.
 #[tauri::command]
 async fn save_export(
     app: tauri::AppHandle,
+    job_id: String,
     filename: String,
-    bytes: Vec<u8>,
 ) -> Result<Option<String>, String> {
+    let download_url = export_download_url(&app, &job_id)?;
+
     // E2E (debug builds only): a native save dialog can't be DOM-driven, so the
     // harness injects the destination via MAUDE_E2E_SAVE_PATH. Gated on
-    // `debug_assertions` — never compiled into the release `.app`.
+    // `debug_assertions` — never compiled into the release `.app`. Still runs
+    // through the real fetch-and-stream path below (not a shortcut), so the E2E
+    // scenario actually exercises this regression's fix.
     #[cfg(debug_assertions)]
     if let Ok(p) = std::env::var("MAUDE_E2E_SAVE_PATH") {
         if !p.is_empty() {
-            std::fs::write(&p, &bytes).map_err(|e| format!("Couldn’t write the export: {e}"))?;
+            stream_download_to_file(&download_url, std::path::Path::new(&p)).await?;
             return Ok(Some(p));
         }
     }
@@ -126,11 +141,60 @@ async fn save_export(
     let dest = rx.await.map_err(|_| "Save dialog closed unexpectedly.".to_string())?;
     match dest {
         Some(path) => {
-            std::fs::write(&path, &bytes).map_err(|e| format!("Couldn’t write the export: {e}"))?;
+            stream_download_to_file(&download_url, &path).await?;
             Ok(Some(path.to_string_lossy().to_string()))
         }
         None => Ok(None), // cancelled — not an error
     }
+}
+
+/// Resolve the `/_api/export-jobs/download` URL for `job_id` against the
+/// currently-running dev-server sidecar (via `_server.json`). Validates the id
+/// looks like the `crypto.randomUUID()` the server actually generates
+/// (`exporters/jobs.ts`) before it's interpolated into a URL — defense in depth,
+/// since this string arrives from the (trusted, main-origin-only) studio client
+/// rather than the untrusted canvas iframe, but a Rust command has no other gate
+/// of its own on what it's handed.
+fn export_download_url(app: &tauri::AppHandle, job_id: &str) -> Result<String, String> {
+    let looks_like_id = !job_id.is_empty()
+        && job_id.len() <= 64
+        && job_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    if !looks_like_id {
+        return Err("Invalid export job id.".to_string());
+    }
+    let state = app.state::<SidecarState>();
+    let project_root = state.project_root.lock().expect("sidecar mutex poisoned").clone();
+    let design_root = PathBuf::from(project_root).join(".design");
+    let base_url = server_json::read_server_url(&design_root)
+        .ok_or_else(|| "Couldn't reach the local Maude server to fetch the export.".to_string())?;
+    Ok(format!("{base_url}/_api/export-jobs/download?id={job_id}"))
+}
+
+/// Stream a finished export job's bytes from the dev-server straight to `dest`
+/// in chunks, never materializing the whole payload in memory at once — a
+/// print-ready PDF can be hundreds of MB (see `save_export`'s doc comment).
+async fn stream_download_to_file(url: &str, dest: &std::path::Path) -> Result<(), String> {
+    use futures_util::StreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    let resp = reqwest::get(url)
+        .await
+        .map_err(|e| format!("Couldn't reach the local Maude server: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("The export isn't ready to download ({}).", resp.status()));
+    }
+    let mut file = tokio::fs::File::create(dest)
+        .await
+        .map_err(|e| format!("Couldn’t write the export: {e}"))?;
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Couldn't download the export: {e}"))?;
+        file
+            .write_all(&chunk)
+            .await
+            .map_err(|e| format!("Couldn’t write the export: {e}"))?;
+    }
+    Ok(())
 }
 
 /// Serialized picked-file payload for `pick_media_file`.

@@ -93,11 +93,18 @@ export const pickDirectory = () => invoke('pick_directory');
 export const openLocalProject = (path) => invoke('open_local_project', { path });
 /**
  * Native "Save As…" for an export — opens an OS save dialog seeded with
- * `filename`, writes `bytes` (a plain number array from a Uint8Array) to the
- * chosen path, and resolves to that path (or null if cancelled). Only callable in
- * the native app; the browser build uses the `<a download>` blob instead.
+ * `filename`, then has the Rust side fetch the finished `jobId`'s bytes
+ * directly from the local dev-server and stream them to the chosen path, and
+ * resolves to that path (or null if cancelled). Only callable in the native
+ * app; the browser build uses the `<a download>` blob instead.
+ *
+ * Deliberately does NOT take the bytes as an argument (it used to — RCA
+ * issue-desktop-print-pdf-save-as-hang-large-payload): shipping a large export
+ * (a print-ready PDF can be hundreds of MB) through Tauri's JSON-serialized
+ * IPC as `Array.from(new Uint8Array(...))` froze the renderer. Rust fetches
+ * the bytes itself now; the webview never sees the payload.
  */
-export const saveExport = (filename, bytes) => invoke('save_export', { filename, bytes });
+export const saveExport = (filename, jobId) => invoke('save_export', { filename, jobId });
 
 /**
  * Native "open file" for media upload — the read counterpart to saveExport.

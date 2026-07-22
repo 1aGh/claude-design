@@ -45,6 +45,20 @@ pub async fn wait_for_server(design_root: PathBuf, timeout_ms: u64) -> Result<St
     ))
 }
 
+/// One-shot read of `_server.json` — unlike `wait_for_server`, does not poll or
+/// time out. For callers that run AFTER the server is already known to be up
+/// (e.g. `save_export` resolving a download URL for a running session), a
+/// poll loop would be the wrong shape — this just returns `None` if the file
+/// is absent/unparseable so the caller can surface its own clear error.
+pub fn read_server_url(design_root: &std::path::Path) -> Option<String> {
+    let bytes = std::fs::read(design_root.join("_server.json")).ok()?;
+    let info: ServerInfo = serde_json::from_slice(&bytes).ok()?;
+    if let Some(url) = info.url.filter(|u| !u.is_empty()) {
+        return Some(url);
+    }
+    info.port.map(|p| format!("http://localhost:{p}"))
+}
+
 /// Enforce the DDR-109 §1 loopback-only invariant IN CODE at the navigate sites:
 /// only ever navigate the webview to `http://localhost:*` / `http://127.0.0.1:*`.
 /// Defense-in-depth — `_server.json` is cleared before spawn, but its `url` still

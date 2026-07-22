@@ -33,7 +33,7 @@
 // deviceScaleFactor. `resolveDeviceScale` (exporters/png.ts) is reused here
 // unchanged so `dpi` means the same physical resolution in both exporters.
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -77,6 +77,39 @@ function resolveSourceFileUnderRoot(repoRoot: string, sourceFile: string): strin
   const resolvedRoot = path.resolve(repoRoot);
   if (abs !== resolvedRoot && !abs.startsWith(`${resolvedRoot}${path.sep}`)) return null;
   return abs;
+}
+
+// RCA issue-desktop-print-pdf-save-as-hang-large-payload: a print-DPI
+// "canvas as separate" export re-embeds full-size photos independently per
+// page (Chromium's page.pdf() has no cross-page image-object dedup, unlike a
+// single hand-authored PDF), so several photo-heavy artboards at print DPI
+// can legitimately reach hundreds of MB. That's not inherently a bug — a
+// real multi-page print-shop deliverable can genuinely be that big — so this
+// guard exists to fail loud on a RUNAWAY size, not to cap ordinary print
+// output. The desktop Save… path no longer chokes on a large payload either
+// way (apps/desktop/src-tauri/src/lib.rs streams it disk-to-disk), so the
+// remaining risk this guards is server-side: pdf-lib's `out.save()` below
+// must hold the whole assembled document in memory, and the browser (non-
+// desktop) download path still loads the full blob into the tab. Reuses
+// png.ts's own MAX_OUTPUT_BYTES ceiling (_png-playwright.mjs) rather than a
+// fresh number — same "generous RGBA-buffer-scale ceiling, well under
+// typical CI/desktop RAM" rationale (DDR-182) applies to a large assembled
+// PDF just as much as a large raster buffer. Measured on-disk after capture
+// (a PDF's output size, unlike a raster export's, isn't predictable from
+// width×height×scale alone). If a legitimate export outgrows this, raise it
+// deliberately rather than treating the number as sacred.
+export const MAX_TOTAL_OUTPUT_BYTES = 600 * 1024 * 1024;
+export function assertTotalSizeOk(paths: string[]): void {
+  let total = 0;
+  for (const p of paths) total += statSync(p).size;
+  if (total > MAX_TOTAL_OUTPUT_BYTES) {
+    const mb = Math.round(total / 1024 / 1024);
+    const maxMb = Math.round(MAX_TOTAL_OUTPUT_BYTES / 1024 / 1024);
+    throw new Error(
+      `Print PDF export is too large (~${mb}MB, limit ~${maxMb}MB) — try a lower ` +
+        'DPI, exporting fewer artboards at once, or exporting artboards as separate files.'
+    );
+  }
 }
 
 async function capturePdf(
@@ -352,6 +385,7 @@ export async function run(
     if (!written.length) {
       return { filename: 'export.pdf', contentType: 'application/pdf', body: new Uint8Array(0) };
     }
+    assertTotalSizeOk(written.map((w) => w.path));
 
     const baseSlug = elementTargets[0]?.canvasSlug ?? 'export';
     const needsPostPass = !!printOpts || !!pageFit;

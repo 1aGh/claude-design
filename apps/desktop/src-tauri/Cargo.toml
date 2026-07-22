@@ -28,12 +28,18 @@ tauri-plugin-dialog = "2"
 # Driven entirely from Rust (src/updater.rs) so the remote dev-server origin never
 # gets `updater:default` — only the narrow `restart_to_update` command.
 tauri-plugin-updater = "2"
-tokio = { version = "1", features = ["time", "signal", "sync"] }
+tokio = { version = "1", features = ["time", "signal", "sync", "fs", "io-util"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # GitHub OAuth device flow (DDR-108): HTTPS to github.com from the Rust core, not
 # the webview — rustls so CI/cross-platform builds need no system OpenSSL.
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# "stream" (RCA issue-desktop-print-pdf-save-as-hang-large-payload): save_export
+# streams a finished export job's bytes straight from the local dev-server to
+# disk instead of ferrying them through the WebView↔Rust IPC bridge as a JSON
+# argument, which chokes on a payload the size a print-ready PDF can reach.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+# Drives reqwest's `.bytes_stream()` in save_export's chunked download-to-disk.
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 # OS keychain for the GitHub token (DDR-108): macOS Keychain / Windows Credential
 # Manager / Linux Secret Service — the token never touches disk.
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }

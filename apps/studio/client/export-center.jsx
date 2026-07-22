@@ -56,12 +56,13 @@ async function autoDownloadBlob(id, fallbackName) {
   URL.revokeObjectURL(url);
 }
 
-async function saveNative(id, fallbackName) {
-  const got = await fetchJobBytes(id);
-  if (!got) return null;
-  const filename = got.filename || fallbackName || 'export';
-  const bytes = Array.from(new Uint8Array(await got.blob.arrayBuffer()));
-  return saveExport(filename, bytes);
+// Native "Save…" — unlike the web `download()` path, this does NOT fetch the
+// job's bytes into the renderer first. `save_export` fetches them itself
+// (RCA issue-desktop-print-pdf-save-as-hang-large-payload: routing a
+// hundreds-of-MB export through a JS Uint8Array + Tauri's JSON IPC froze the
+// app), so all this needs is the filename already carried on the job record.
+async function saveNative(id, filename) {
+  return saveExport(filename || 'export', id);
 }
 
 export function useExportCenter() {

@@ -6,9 +6,12 @@
 // via a synthetic single-target run that short-circuits screenshot.
 
 import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 import { PDFDocument } from 'pdf-lib';
-import { run } from '../../exporters/pdf.ts';
+import { assertTotalSizeOk, MAX_TOTAL_OUTPUT_BYTES, run } from '../../exporters/pdf.ts';
 
 const CTX = {
   designRoot: '/tmp/.design',
@@ -28,6 +31,35 @@ describe('pdf adapter — contract', () => {
     await expect(run([{ kind: 'file-tree', paths: ['ui/Home.tsx'] }], {}, CTX)).rejects.toThrow(
       /element targets/i
     );
+  });
+});
+
+describe('pdf adapter — total output-size guard (RCA issue-desktop-print-pdf-save-as-hang-large-payload)', () => {
+  test('passes when total bytes are under the ceiling', () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), 'maude-pdf-guard-'));
+    try {
+      const p = path.join(tmp, 'a.pdf');
+      writeFileSync(p, Buffer.alloc(1024));
+      expect(() => assertTotalSizeOk([p])).not.toThrow();
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('throws an actionable error when total bytes exceed the ceiling', () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), 'maude-pdf-guard-'));
+    try {
+      // Two files, each just over half the ceiling — sums past the limit
+      // without needing to actually allocate a giant single buffer.
+      const half = Math.ceil(MAX_TOTAL_OUTPUT_BYTES / 2) + 1024;
+      const a = path.join(tmp, 'a.pdf');
+      const b = path.join(tmp, 'b.pdf');
+      writeFileSync(a, Buffer.alloc(half));
+      writeFileSync(b, Buffer.alloc(half));
+      expect(() => assertTotalSizeOk([a, b])).toThrow(/too large/i);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
 
