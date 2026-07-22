@@ -126,6 +126,7 @@ No UI. The "design" here is the config schema + skill contracts + the scope data
 "knowledgeGraph": {
   "mode": "auto",                     // auto (default) | on | off  — capability-gated opt-out
   "engine": "kgai",                   // reserved for future engines
+  "engineVersion": "v0.1.9",          // PINNED kgai release the CLI + desktop bundle target (Task 0); advance deliberately, never float
   "store": "s3://studyfi-kg/store",   // shared company remote; "" = local-only .kgai/store
   "scope": { "repo": "maude", "dept": "dev" },  // stamped on every write; dept = default search bias
   "capture": {
@@ -187,6 +188,17 @@ Execute in dependency order. Phased so each phase is independently shippable and
 
 ### Phase 1 — Foundation (config + capability gate + soft dep)
 
+#### Task 0: UPSTREAM SYNC GATE — always re-verify kgai online before building (standing gate, not one-shot)
+> kgai ships daily and its capabilities move under the plan (as of 2026-07-19 v0.1.9 already fixed `as-of`, shipped macOS prebuilds, and drifted scoping toward `kgai://org/project` keyspaces — Open fork #7). Several tasks + forks are **version-sensitive**, so the plan must re-check upstream every time it's picked up, not trust a snapshot.
+- **Do**: A repeatable pre-implementation check, run at execute start AND before any rollout widening:
+  1. **Fetch latest** — `curl -s https://api.github.com/repos/kgaidev/kgai/releases/latest` (tag + assets) and the commit log since the pinned version.
+  2. **Re-scan the capability surface** the plan's assumptions hinge on: is there now a native `--scope`/`--project` flag on `context`/`search`/`history` (Open fork #7 / Task 9)? a first-class `kg import` (Task 11 becomes a thin wrapper if so)? a `scope` field in the decision schema? changes to the Stop hook / `guessActor` (Appendix D)? new prebuilt platforms (Task 15)? Grep the fetched source + README + `commands/kg-*.md`.
+  3. **Re-run the harness pinned** — `KGAI_REF=<latest-tag> scripts/kgai-smoke/run.sh` (+ `bigbench.py`) to re-baseline perf on the version we'll target; confirm no regressions vs the recorded numbers.
+  4. **Reconcile** — if upstream moved, update the affected tasks/forks (a landed `--scope` collapses fork #7 to B-native; a landed `kg import` trims Task 11; a new `as-of`/sync perf number updates the caveats) and bump the pinned version.
+- **Wire it as a runnable gate**: add `maude kg check-upstream` (Task 4) that reports **installed vs latest release + a capability diff** (which plan-relevant flags/commands now exist), and pin the target in `config.knowledgeGraph.engineVersion`. The desktop bundle (Task 15) and CLI both target that pin, so "prepared for the latest infrastructure" is a version we deliberately advance, never drift.
+- **Gotcha**: pin, don't float — auto-tracking `latest` would let an upstream change silently alter behavior mid-rollout (and is a supply-chain surface, DDR-054/056 reasoning: the bundled `kg` is third-party). Advancing the pin is a deliberate, harness-verified step.
+- **Validate**: `maude kg check-upstream` prints installed=<pin> latest=<tag> + the capability diff; the harness re-baseline is green on the pinned tag; any moved assumption is reflected in the plan before code is written.
+
 #### Task 1: ADD `knowledgeGraph` block to the config schema
 - **Do**: Add the top-level `knowledgeGraph` object (shape above) to `plugins/flow/.claude-plugin/config.schema.json` with `additionalProperties:false`, `mode` enum `["auto","on","off"]` default `auto`, and documented defaults. **Regenerate + commit `site/content/docs/config-schema.mdx`** (`pnpm --filter @maude/site gen:reference`) in the same change — it's auto-generated from the schema and CI's drift gate fails otherwise.
 - **Pattern**: Mirror the `orchestration` block (capability-gated `mode:auto`, absent-block ⇒ `auto`).
@@ -204,8 +216,8 @@ Execute in dependency order. Phased so each phase is independently shippable and
 - **Gotcha**: project-agnostic — scopes/store come from config only, never literals.
 - **Validate**: dry-run the recipes against the `scripts/kgai-smoke` store; assert `active=false` when `kg` absent.
 
-#### Task 4: ADD `maude kg` CLI dispatcher + gitignore mirror
-- **Do**: `cli/commands/kg.mjs` (`maude kg import|scope|doctor`) wrapping the bundled `kg` with resolved env (store/scope), mirroring `cli/commands/design.mjs`. Add `.kgai/store/` to `cli/lib/gitignore-block.mjs` (+ repo `.gitignore`, + `isMaudeRuntimeState`) per DDR-115.
+#### Task 4: ADD `maude kg` CLI dispatcher (+ `check-upstream`) + gitignore mirror
+- **Do**: `cli/commands/kg.mjs` (`maude kg import|scope|doctor|check-upstream`) wrapping the bundled `kg` with resolved env (store/scope), mirroring `cli/commands/design.mjs`. **`check-upstream`** (Task 0's runnable form): fetch the latest kgai release + commit log, diff against `config.knowledgeGraph.engineVersion`, and report a **capability diff** (does upstream now have `--scope`, `kg import`, new prebuilt platforms, changed hooks) so a maintainer sees at a glance whether a plan assumption moved. Network + best-effort (offline ⇒ report "unknown, using pinned"). Add `.kgai/store/` to `cli/lib/gitignore-block.mjs` (+ repo `.gitignore`, + `isMaudeRuntimeState`) per DDR-115.
 - **Gotcha**: DDR-062 reachability test — plugin markdown must call `maude kg …`, not a raw binary. Add the new verbs to the reachability allowlist.
 - **Validate**: `node cli/bin/maude.mjs kg doctor`; `cli/lib/plugin-cli-reachability.test.mjs` green.
 
@@ -333,7 +345,8 @@ Targeted functional validation:
 
 ## Acceptance Criteria
 
-- [ ] `knowledgeGraph` block in schema; absent block ⇒ `auto`; `off` ⇒ classic `.ai/` unchanged.
+- [ ] **Upstream re-verified at execute start** (Task 0): `maude kg check-upstream` run, pinned `engineVersion` recorded, harness re-baselined on the pinned tag, and any moved assumption (scoping/`--scope`, `kg import`, `as-of`, prebuilts) reconciled into the plan before code.
+- [ ] `knowledgeGraph` block in schema (incl. pinned `engineVersion`); absent block ⇒ `auto`; `off` ⇒ classic `.ai/` unchanged.
 - [ ] `kg` soft-dep surfaced by `maude doctor`; `maude kg` dispatcher reachable (DDR-062 test green).
 - [ ] `kgai-backend` skill is the single resolver; no command re-detects capability.
 - [ ] Flow bookends (plan/record-ddr/execute/done/status/resume) read/write kgai when active, files when not — **zero regression in inactive repos** (exhaustive per-command check).

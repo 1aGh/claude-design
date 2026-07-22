@@ -91,3 +91,11 @@ chunks, measure at checkpoints).
 list (rebuild/sync/history/lookup). Two caveats the page underplays: full-context `lookup`
 drifts up with element-history depth, and `as-of` is O(n)-replay slow. Re-run
 `bigbench.py` after any as-of/lookup optimization lands.
+
+> **Update 2026-07-19 — kgai v0.1.9:** the `as-of` cliff above is **fixed** upstream
+> (bulk loader; re-measured @180: ~10 s → **908 ms**), macOS prebuilt `kg`+libkuzu now
+> ship as release assets, and sync is 29× faster. Project scoping is still not a native
+> `--scope` query filter (a `kgai://org/project` cloud broker is the emerging isolation
+> path). This harness IS the **upstream-sync gate** (plan Task 0): pin + re-baseline with
+> `KGAI_REF=<tag> scripts/kgai-smoke/run.sh` before targeting a new kgai release, so the
+> integration always builds against a verified, pinned infrastructure — never a floating one.
