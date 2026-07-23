@@ -66,7 +66,17 @@ Task 11: productionized `scripts/kgai-smoke/ddr2kgai.py` → **`cli/lib/ddr-to-k
 
 Task 12: `docs/kgai-onboarding.md` (per user — install pinned `kg`+libkuzu w/ macOS codesign note, AWS profile, set store+scope, `kg init --remote`, first `kg sync`, optional `/flow:migrate-kgai`, verify + troubleshooting) + `docs/kgai-company-setup.md` (admin — S3 bucket w/ versioning + public-access-block, per-user IAM policy scoped to the store prefix, `dept` taxonomy {dev,marketing,finance,automations}, the DDR-189 trust boundary enforcement, cross-team verify, cost/scale note). Both grounded in the real verified `kg` interface (not assumptions). README "What's where" cross-links both.
 
-**Remaining:** Phase 7 (**risky** — slim STATE.md/CLAUDE.md to kgai pointers, now UNBLOCKED since migration is verified; slim not gut), Phase 8 (**desktop native bundle + ACP inject — needs user/codesign**).
+## Execution Progress — feature-kgai-ecosystem-integration — **Phase 7 (Full-switch) — non-destructive part DONE; destructive slim CORRECTLY DEFERRED (2026-07-23).**
+
+Task 13's slim is **gated on `active`** ("inactive repos keep full STATE.md/CLAUDE.md"). **This repo (maude) is NOT kgai-active** (`maude kg resolve` → active:false; no knowledgeGraph block) — so gutting maude's own STATE.md/CLAUDE.md would VIOLATE the gate. The destructive slim requires first deciding to make maude itself kgai-active (stand up a real store + migrate maude's 188 DDRs into it = dogfooding) — a deliberate USER decision, not an autonomous edit.
+- **Done (non-destructive):** the STATE.md pointer-stub behavior is already implemented (Task 7 `maude init --kg`); the `flow:workflow-state` skill is now **kgai-aware** (active ⇒ graph is the history authority, STATE.md is a stub, don't append History rows; inactive ⇒ today's schema unchanged — slim not gut, behind the gate).
+- **Deferred (needs user decision):** actually slimming maude's OWN CLAUDE.md decision-catalog prose + STATE.md → pointers happens only if/when the user makes maude kgai-active. Gated correctly; not done blindly.
+
+**Remaining:** Phase 8 (**desktop native bundle + ACP inject — needs user: codesign/notarize + build .app**). Phase 7's destructive slim (needs the "make maude kgai-active" decision).
+
+---
+### kgai integration — session close summary (2026-07-23)
+7 commits (`ac5732ba`→this). Phases 1-6 COMPLETE + committed + live-validated against real kg v0.1.9; Phase 7 non-destructive part done, destructive part correctly gated/deferred; Phase 8 (native) needs the user. Real kg installed at `~/.local/kgai/v0.1.9` (KGAI_BIN/KGAI_LIB). Live validation caught 4 real interface bugs (stdin-JSON ingest, no set_props op, LINK-table cross-refs, KGAI_STORE≠remote) — all fixed + documented in the `kgai-backend` skill + [[reference-kgai-real-cli-interface]] memory. No-regression held throughout (inactive path = today's behavior). Ran alongside a concurrent session on shared `main`; staged only kgai files every commit.
 
 ## Execution Progress — feature-4-canvas-editing-figma-parity — **✅ CLOSED via `/flow:done` (2026-07-21, branch `main`).** Dogfood rounds 4–6 + the formal close-out gate. Commit `82af87a4`.
 

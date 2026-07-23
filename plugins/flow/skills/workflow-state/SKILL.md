@@ -11,6 +11,15 @@ keywords: [state, workflow, phase, handoff, continuity, session]
 
 This skill complements `workflow-orchestration` (which covers the protocol of phases & gates). This skill focuses on the **STATE.md schema and lifecycle**.
 
+## Backend: file vs. knowledge graph (kgai-aware)
+
+Load **`flow:kgai-backend`** and check `maude kg resolve --json` before treating STATE.md as authoritative:
+
+- **`active: false`** (default — most repos) → the schema below **is** the source of truth. Everything in this skill applies unchanged. No regression.
+- **`active: true`** → the **knowledge graph is the history authority**, and `.ai/state/STATE.md` is a thin human-readable **pointer-stub** (written by `maude init --kg`): status line + "history lives in kgai — `kg history` / `kg context`". History rows, the Decisions section, and pause/resume state live as graph events (see `flow:kgai-backend` for the `plan:`/`session:` recipes; `/flow:pause` records a `paused` event, `/flow:resume` reconstructs from it, `/flow:status` overlays `kg history`/`kg context`). Do NOT append full History rows to the stub — write the movement to the graph instead. The narrative files STATE.md never owned (PRD, design-system, plans) stay on disk as prose.
+
+**This is behind the `active` gate — an inactive repo keeps the full STATE.md below, untouched (slim, never gut).**
+
 ## STATE.md schema
 
 ```markdown
