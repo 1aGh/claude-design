@@ -119,6 +119,7 @@ Solo mode (the default) is fully local — no accounts, no telemetry, no network
 User-facing docs live in two places — the README points you the right way:
 
 - **Reference** (every command, every config key, recipes for Next.js / Expo / monorepo) → [`site/content/docs/`](./site/content/docs/) (served at https://maude.sh once Vercel is wired — see [DDR-005](.ai/decisions/DDR-005-docs-site-stack-and-hosting.md)).
+- **kgai knowledge-graph backend** (opt-in shared decision memory across repos) → [`docs/kgai-onboarding.md`](./docs/kgai-onboarding.md) (per user) + [`docs/kgai-company-setup.md`](./docs/kgai-company-setup.md) (one-time admin). Off by default — absent `kg`, every command runs its classic `.ai/` path.
 - **Quickstart** + **contributor info** → this README.
 
 The docs site auto-generates per-command pages from `plugins/{flow,design}/commands/*.md` frontmatter and a typed schema reference from `plugins/flow/.claude-plugin/config.schema.json`. Adding a new command → docs update on next build.

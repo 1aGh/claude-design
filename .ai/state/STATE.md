@@ -62,7 +62,11 @@ Task 11: productionized `scripts/kgai-smoke/ddr2kgai.py` → **`cli/lib/ddr-to-k
 - 6 unit tests (`ddr-to-kgai.test.mjs`) — cli suite **213 pass**; reachability green; biome clean.
 - **Deferred follow-ups (documented in the skill):** `--design` importer (canvas/ds/footage/reel), log-verdict A-class ingest, README/STATE edge-harvest. The DDR core (the validated baseline) is done.
 
-**Remaining:** Phase 6 (onboarding/company docs), Phase 7 (**risky** — slim STATE.md/CLAUDE.md, now UNBLOCKED since migration is verified), Phase 8 (**desktop native bundle + ACP inject — needs user/codesign**).
+## Execution Progress — feature-kgai-ecosystem-integration — **Phase 6 (Onboarding + guides) COMPLETE (2026-07-23).**
+
+Task 12: `docs/kgai-onboarding.md` (per user — install pinned `kg`+libkuzu w/ macOS codesign note, AWS profile, set store+scope, `kg init --remote`, first `kg sync`, optional `/flow:migrate-kgai`, verify + troubleshooting) + `docs/kgai-company-setup.md` (admin — S3 bucket w/ versioning + public-access-block, per-user IAM policy scoped to the store prefix, `dept` taxonomy {dev,marketing,finance,automations}, the DDR-189 trust boundary enforcement, cross-team verify, cost/scale note). Both grounded in the real verified `kg` interface (not assumptions). README "What's where" cross-links both.
+
+**Remaining:** Phase 7 (**risky** — slim STATE.md/CLAUDE.md to kgai pointers, now UNBLOCKED since migration is verified; slim not gut), Phase 8 (**desktop native bundle + ACP inject — needs user/codesign**).
 
 ## Execution Progress — feature-4-canvas-editing-figma-parity — **✅ CLOSED via `/flow:done` (2026-07-21, branch `main`).** Dogfood rounds 4–6 + the formal close-out gate. Commit `82af87a4`.
 
