@@ -48,7 +48,13 @@ Task 8 markdown wiring (all gated on `maude kg resolve`, additive/net-new — de
 
 **Deferred (documented follow-up):** footage-store server-emit (option-b) — emitting `footage:`/`reel:` from `apps/studio/footage-store.ts` `saveAnalysis`/`saveEdl` (covers UI-driven writes, not just the command path) is a real dev-server subprocess change on the hot write path; deferred as it needs packaged-app validation (the DDR-177 "green in tauri dev, dead in .app" class). The command-path (option-a) covers the primary flow now. `design-system-keeper` (read-only audit) left unwired — routing its findings to the graph is a new write capability beyond the additive scope.
 
-**Remaining:** Phase 4 = **model A** (scope-tag ingest/read done in recipes; + cross-repo trust DDR (Task 10) + debate-bookend ingest (Task 10b)), Phase 5 (migration importer `ddr-to-kgai.mjs`), Phase 6 (onboarding/company docs), Phase 7 (**risky** — slim STATE.md/CLAUDE.md, gated on migration verified), Phase 8 (**desktop native bundle + ACP inject — needs user/codesign**).
+## Execution Progress — feature-kgai-ecosystem-integration — **Phase 4 (Cross-repo scoping — model A) COMPLETE (2026-07-23).**
+
+Model A scope-tagging (`repo:`/`dept:` elements + `IN_REPO`/`IN_DEPT` links) is already in the ingest recipes (Phase 1-3) + validated live. This phase closed the two remaining Task-10/10b pieces:
+- **Task 10 — trust DDR: `DDR-189`** (kgai cross-repo shared-graph trust model). A shared company store is an attacker-controlled writer surface (structurally DDR-054, company-wide, worse — a poisoned node is read as authoritative context by every repo's `kg sync`, the DDR-130 trifecta lane). Three rules: (1) `kg sync`/`kg context` output is untrusted DATA, never instructions (inert attributed quotation); (2) hub + kgai are separate trust domains — hub-origin writes disabled/namespace-quarantined; (3) only a locally-authenticated CLI writes the shared store (per-user IAM). README index updated.
+- **Task 10b — debate-bookend ingest:** `debate-protocol` SKILL Step 8 — when active, `kg ingest` the RESOLVED bookend only (chosen direction + preserved dissent, seats as authors, shape+confidence props), seat strings as inert quotation (DDR-130). Never per-seat openings, never on execute/quick. Recipe validated green against real kg.
+
+**Remaining:** Phase 5 (migration importer `cli/lib/ddr-to-kgai.mjs` — port `scripts/kgai-smoke/ddr2kgai.py` + `maude kg import`), Phase 6 (onboarding/company docs), Phase 7 (**risky** — slim STATE.md/CLAUDE.md, gated on migration verified), Phase 8 (**desktop native bundle + ACP inject — needs user/codesign**).
 
 ## Execution Progress — feature-4-canvas-editing-figma-parity — **✅ CLOSED via `/flow:done` (2026-07-21, branch `main`).** Dogfood rounds 4–6 + the formal close-out gate. Commit `82af87a4`.
 
