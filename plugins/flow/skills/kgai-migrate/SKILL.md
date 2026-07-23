@@ -1,0 +1,41 @@
+---
+name: flow:kgai-migrate
+type: skill
+description: "The migration contract for importing an existing file-based decision store (.ai/decisions/DDR-*.md) into the kgai knowledge graph. Use when running /flow:migrate-kgai or `maude kg import`. Owns the element/edge reconstruction rules, the typed-cross-ref-first ordering, scope tagging (model A), idempotency, and archive preservation. The importer itself is cli/lib/ddr-to-kgai.mjs."
+keywords: [kgai, migrate, import, ddr, decisions, cross-ref, scope, idempotent, archive]
+---
+
+# kgai migration contract
+
+How an existing repo's file-based decision store becomes a knowledge graph, once. The importer is `cli/lib/ddr-to-kgai.mjs`, reached via `maude kg import` (DDR-062). This skill is the contract it implements; `/flow:migrate-kgai` is the guided flow.
+
+## The graph shape (few stable elements, many decisions)
+
+kgai's model is "few stable domain elements shaped by many immutable decisions" — so the importer does NOT turn every DDR into an island node. Instead, per DDR:
+
+- one `decision:DDR-NNN` element (so `kg context --about DDR-NNN` resolves), carrying `title`,
+- shaping an `area:<primary-tag>` element (the DDR's first tag) via an `ABOUT` link,
+- remaining tags → `topic:` elements, `area —TOUCHES→ topic`,
+- `repo:`/`dept:` scope tags from `config.knowledgeGraph.scope` + `IN_REPO`/`IN_DEPT` links (model A — DDR-189),
+- the DDR's `## Decision` (or `## Context`) first paragraph as the decision `rationale`, real `Date` preserved.
+
+## Edge reconstruction — typed markers FIRST, then dedupe bare mentions
+
+`DDR-\d+` is BOTH typed cross-refs and thousands of loose body mentions. Resolve the strong ones first, or the graph drowns (DDR-054 alone is name-dropped 100+×). Order:
+
+1. **Typed markers** (`**Supersedes:**` → `SUPERSEDES`, `**Related:**`/`**Relates:**` → `REFERENCES`, `**Extends:**`/`**Amends:**` → `EXTENDS`), keeping the strongest kind per target (`SUPERSEDES > OVERRIDES > EXTENDS > REFERENCES`).
+2. **Bare `DDR-\d+` body mentions** → weak `references`, **skipped if the target already has a typed edge**.
+
+All cross-ref links are `add_link` between two `decision:`-kind elements → they land in kgai's **generic `LINK` table** with the kind in `l.kind` (NOT the dedicated `SUPERSEDES` rel table, which is for Decision-level log supersession). Query them as `MATCH (a:Element)-[l:LINK]->(b:Element) WHERE l.kind='SUPERSEDES'`.
+
+## Safety invariants
+
+- **Archive-preserving.** `.ai/decisions/` is NEVER deleted (DDR-044). Migration is additive.
+- **Idempotent.** Writes an `.ai/.kgai-migrated` marker; re-running refuses without `--force`. Deterministic `hash(kind:name)` converges the *elements* on re-ingest, but re-ingest still appends duplicate decision *events* — hence the guard.
+- **Dry-run first.** `--dry-run` prints counts + a sample subgraph, writes nothing.
+- **Author is automatic** — `git config user.name` via kgai's `guessActor()`.
+
+## Follow-ups (not yet in the importer)
+
+- `--design` — the `.design/` importer (`canvas:` from `ui/*.meta.json`, `ds:` + brand `component:` from `system/<ds>/`, `footage:`/`reel:` from the content-addressed sidecars) is designed but not yet built.
+- Log verdicts (`.ai/logs/{rca,system-reviews,…}`) as dated review events, README/STATE edge-harvest for date/order metadata — the plan's full A-class set. The current importer covers the DDR core (the validated 180→graph baseline).

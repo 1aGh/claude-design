@@ -85,6 +85,7 @@ function resolveState(projectRoot) {
     capture: cfg.capture,
     kgBin,
     kgPresent: Boolean(kgBin),
+    projectRoot,
   };
 }
 
@@ -243,7 +244,12 @@ async function verbImport(state, args, pkgRoot) {
     return 1;
   }
   const mod = await import(libPath);
-  return mod.run({ args, state, runKg: (a, o) => runKg(state, a, o) });
+  return mod.run({
+    args,
+    state,
+    projectRoot: state.projectRoot,
+    runKg: (a, o) => runKg(state, a, o),
+  });
 }
 
 // ── passthrough verbs (context / ingest) ───────────────────────────────────
