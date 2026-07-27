@@ -396,7 +396,14 @@ export function newSessionParams(
     // gets it double-loaded with zero suppression (the exact double-
     // registration risk this override exists to close). No test currently
     // catches this drift.
-    options.settings = { enabledPlugins: { 'design@maude': false } };
+    // `kgai` is the third-party autonomous-capture plugin the desktop bundle
+    // injects (plugin-bootstrap.ts). Suppressing its natively-installed copy is
+    // MORE load-bearing than for our own plugins: a user-installed kgai would
+    // run its own SessionStart `install.sh` (Go/network) and point at a
+    // different engine version than the pinned, signed sidecar we ship. Its id
+    // has no `@marketplace` suffix — it's injected as a bare local plugin dir
+    // whose manifest `name` is `kgai`.
+    options.settings = { enabledPlugins: { 'design@maude': false, kgai: false } };
   }
   meta.claudeCode = { options };
   return {

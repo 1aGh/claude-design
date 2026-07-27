@@ -89,7 +89,10 @@ export const MEDIA_DIR: string = join(DEV_SERVER_ROOT, 'media');
  * the resolver skips injection there (those users have a terminal + the manual
  * marketplace path). Only the dev tree and the staged desktop bundle carry it.
  */
-export function pluginDirFrom(devServerRoot: string, plugin: 'design' | 'flow'): string | null {
+export function pluginDirFrom(
+  devServerRoot: string,
+  plugin: 'design' | 'flow' | 'kgai'
+): string | null {
   const dir = join(devServerRoot, '..', '..', 'plugins', plugin);
   return existsSync(join(dir, '.claude-plugin', 'plugin.json')) ? dir : null;
 }
@@ -99,6 +102,39 @@ export const DESIGN_PLUGIN_DIR: string | null = pluginDirFrom(DEV_SERVER_ROOT, '
 
 /** Bundled `flow` plugin tree, or `null` (npm/web layout). See {@link pluginDirFrom}. */
 export const FLOW_PLUGIN_DIR: string | null = pluginDirFrom(DEV_SERVER_ROOT, 'flow');
+
+/**
+ * Bundled THIRD-PARTY `kgai` plugin tree (kgaidev/kgai, MIT), or `null`.
+ *
+ * Staged only by the desktop build (`apps/desktop/scripts/sync-kg.mjs` fetches a
+ * PINNED upstream release — never vendored, never floating), so this is non-null
+ * exclusively in the packaged `.app`. It carries kgai's `Stop` hook, which is the
+ * autonomous decision-capture nudge; without injecting this plugin the ACP chat
+ * panel captures nothing (the terminal-less DDR-177 user never marketplace-installs
+ * kgai). The upstream `SessionStart` install hook is stripped at stage time.
+ */
+export const KGAI_PLUGIN_DIR: string | null = pluginDirFrom(DEV_SERVER_ROOT, 'kgai');
+
+/**
+ * The staged kgai engine: `{ bin, lib }` absolute paths, or `null` when this
+ * layout doesn't ship it (dev tree / npm — where a user-installed `kg` on PATH
+ * is used instead). `bin` is the Tauri `externalBin` sidecar (signed + notarized
+ * with the app); `lib` is the directory holding `libkuzu`, exported as `KGAI_LIB`
+ * so the spawn folds it into DYLD_/LD_LIBRARY_PATH (`cli/commands/kg.mjs`).
+ *
+ * Resolved from DEV_SERVER_ROOT per DDR-045 (never `import.meta.url`).
+ */
+export function resolveStagedKgai(): { bin: string; lib: string } | null {
+  // Sidecars land beside the app executable; resources under Contents/Resources.
+  // <Resources>/apps/studio → <Resources> → ../MacOS/<sidecar>
+  const resources = join(DEV_SERVER_ROOT, '..', '..');
+  const lib = join(resources, 'kgai');
+  if (!existsSync(lib)) return null;
+  for (const candidate of [join(resources, '..', 'MacOS', 'kg'), join(resources, 'kgai', 'kg')]) {
+    if (existsSync(candidate)) return { bin: candidate, lib };
+  }
+  return null;
+}
 
 /**
  * Whether we are running inside a `bun --compile` standalone binary

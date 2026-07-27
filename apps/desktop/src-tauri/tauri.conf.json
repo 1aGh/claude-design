@@ -5,8 +5,8 @@
   "identifier": "com.maude.app",
   "build": {
     "frontendDist": "../src",
-    "beforeBuildCommand": "node scripts/sync-sidecar.mjs && bun scripts/build-cli-binary.mjs && node scripts/sync-agent-browser.mjs && node scripts/stage-resources.mjs",
-    "beforeDevCommand": "node scripts/sync-sidecar.mjs && bun scripts/build-cli-binary.mjs && node scripts/sync-agent-browser.mjs && node scripts/stage-resources.mjs"
+    "beforeBuildCommand": "node scripts/sync-sidecar.mjs && bun scripts/build-cli-binary.mjs && node scripts/sync-agent-browser.mjs && node scripts/sync-kg.mjs && node scripts/stage-resources.mjs",
+    "beforeDevCommand": "node scripts/sync-sidecar.mjs && bun scripts/build-cli-binary.mjs && node scripts/sync-agent-browser.mjs && node scripts/sync-kg.mjs && node scripts/stage-resources.mjs"
   },
   "app": {
     "withGlobalTauri": true,
@@ -35,7 +35,12 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/maude-server", "binaries/agent-browser", "binaries/maude"],
+    "externalBin": [
+      "binaries/maude-server",
+      "binaries/agent-browser",
+      "binaries/maude",
+      "binaries/kg"
+    ],
     "macOS": {
       "entitlements": "entitlements.plist",
       "dmg": {
@@ -59,7 +64,9 @@
       "resources/cli": "cli",
       "resources/package.json": "package.json",
       "resources/plugins/design": "plugins/design",
-      "resources/plugins/flow": "plugins/flow"
+      "resources/plugins/flow": "plugins/flow",
+      "resources/plugins/kgai": "plugins/kgai",
+      "resources/kgai": "kgai"
     },
     "icon": [
       "icons/32x32.png",

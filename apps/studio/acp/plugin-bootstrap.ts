@@ -38,7 +38,7 @@
 // id via the SDK's documented `flag > user` settings precedence — so the
 // bundled copy injected here is the ONLY one that ever loads.
 
-import { DESIGN_PLUGIN_DIR, FLOW_PLUGIN_DIR } from '../paths.ts';
+import { DESIGN_PLUGIN_DIR, FLOW_PLUGIN_DIR, KGAI_PLUGIN_DIR } from '../paths.ts';
 
 /**
  * SDK plugin-load config (`@anthropic-ai/claude-agent-sdk` `SdkPluginConfig`).
@@ -61,6 +61,8 @@ export interface SessionPluginDeps {
   designDir: string | null;
   /** Bundled `flow` plugin dir, or null (npm/web layout). */
   flowDir: string | null;
+  /** Bundled third-party `kgai` plugin dir, or null (only staged in the .app). */
+  kgaiDir?: string | null;
 }
 
 /**
@@ -81,6 +83,17 @@ export function computeSessionPlugins(deps: SessionPluginDeps): SdkPluginConfig[
   // `/flow` auto-load is intentionally OFF for now (2026-07-03) — the chat ships
   // design-only. `deps.flowDir` stays resolved (harmless) so restoring it is a
   // one-liner: re-add `add(deps.flowDir)`.
+  //
+  // kgai (third-party, MIT) — injected so its `Stop` hook loads and autonomous
+  // decision capture actually fires in the ACP panel. Without this the packaged
+  // app captures NOTHING: the session is built with settingSources:['user']
+  // (DDR-144) and a terminal-less DDR-177 user never marketplace-installs it.
+  // Non-null only in the desktop bundle (sync-kg.mjs stages a pinned release).
+  //
+  // ⚠ DRIFT TRAP — adding an id here REQUIRES a matching `'<id>': false` entry in
+  // bridge.ts's hand-maintained `enabledPlugins` suppression literal, or a user
+  // who ALSO has it natively enabled gets it double-loaded (see that comment).
+  add(deps.kgaiDir ?? null);
   return out;
 }
 
@@ -117,5 +130,6 @@ export function resolveSessionPlugins(): SdkPluginConfig[] {
     native: isNativePluginContext(),
     designDir: DESIGN_PLUGIN_DIR,
     flowDir: FLOW_PLUGIN_DIR,
+    kgaiDir: KGAI_PLUGIN_DIR,
   });
 }

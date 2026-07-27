@@ -24,7 +24,7 @@
 // not found (so CI can distinguish "bundle incomplete" from "ran wrong").
 
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { classifyHelpers, collectImports } from './helper-deps.mjs';
@@ -242,6 +242,85 @@ if (doSmoke) {
         );
       } else {
         ok(`smoke ${h.verb}`, 'reached helper (no missing runtime/dep/helper)');
+      }
+    }
+  }
+}
+
+// === Check 5 — kgai engine + plugin (feature-kgai-ecosystem-integration Ph. 8) ==
+// Without these the packaged app records NOTHING to the knowledge graph: the ACP
+// session is settingSources:['user'] (DDR-144) and the terminal-less DDR-177 user
+// never marketplace-installs kgai. This is exactly the "green in tauri dev, dead
+// in the .app" class the whole gate exists to catch — so kg gets first-class
+// checks, not a manual afterthought.
+console.log('\n[5] kgai engine + plugin (autonomous capture in the shipped app)');
+{
+  const kgaiRes = join(target.resources, 'kgai');
+  const kgaiPlugin = join(target.resources, 'plugins', 'kgai');
+  const libName = process.platform === 'darwin' ? 'libkuzu.dylib' : 'libkuzu.so';
+
+  if (!existsSync(kgaiRes)) {
+    warn(
+      'kgai not staged',
+      'no Resources/kgai — build ran with MAUDE_SKIP_KG_SYNC=1 or on a platform kgai publishes no prebuilt for. The app ships without the graph (every `maude kg` verb no-ops).'
+    );
+  } else {
+    existsSync(join(kgaiRes, libName))
+      ? ok('libkuzu staged', libName)
+      : fail('libkuzu missing', `${join(kgaiRes, libName)} — kg would SIGKILL at load`);
+
+    const ver = join(kgaiRes, 'VERSION');
+    existsSync(ver)
+      ? ok('kgai pin stamped', readFileSync(ver, 'utf8').split('\n')[0])
+      : warn('kgai VERSION absent', 'sync-kg.mjs should stamp the pinned release');
+
+    // The Stop hook IS the autonomous capture — a plugin tree without it is inert.
+    const hooks = join(kgaiPlugin, 'hooks', 'hooks.json');
+    if (!existsSync(hooks)) {
+      fail('kgai plugin not staged', `${hooks} — ACP autonomous capture would be inert`);
+    } else {
+      const parsed = JSON.parse(readFileSync(hooks, 'utf8'));
+      parsed?.hooks?.Stop
+        ? ok('kgai Stop hook present', 'autonomous capture will load in the ACP session')
+        : fail('kgai Stop hook missing', 'plugin staged but capture hook stripped');
+      parsed?.hooks?.SessionStart
+        ? fail(
+            'kgai SessionStart hook present',
+            'upstream install.sh needs Go+network and `scripts/` is not staged — sync-kg.mjs must strip it'
+          )
+        : ok('kgai SessionStart neutralized', 'engine is pre-staged; no install hook');
+    }
+
+    // Round-trip: does the bundled `maude kg` resolve the staged engine with NO
+    // node/bun/kg on PATH? `resolve --json` exercises pkgRoot + sidecar lookup.
+    if (doSmoke && target.binary && existsSync(target.binary)) {
+      const strippedPath = '/usr/bin:/bin:/usr/sbin:/sbin';
+      let output = '';
+      try {
+        output = execFileSync(target.binary, ['kg', 'resolve', '--json'], {
+          env: { PATH: strippedPath, HOME: process.env.HOME || '/tmp' },
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 20000,
+        });
+      } catch (e) {
+        output = `${e.stdout || ''}${e.stderr || ''}`;
+      }
+      let parsed = null;
+      try {
+        parsed = JSON.parse(output);
+      } catch {
+        /* non-JSON ⇒ the command itself failed */
+      }
+      if (!parsed) {
+        fail('smoke kg resolve', `no JSON from \`maude kg resolve\`: ${output.slice(0, 160)}`);
+      } else if (!parsed.kgPresent) {
+        fail(
+          'smoke kg resolve',
+          'kgPresent:false in a stripped PATH — the staged sidecar was NOT resolved from pkgRoot (the .app would silently never capture)'
+        );
+      } else {
+        ok('smoke kg resolve', `staged engine resolved (pin ${parsed.engineVersion})`);
       }
     }
   }

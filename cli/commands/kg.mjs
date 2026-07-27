@@ -57,18 +57,43 @@ function readConfig(projectRoot) {
   };
 }
 
-/** KGAI_BIN (desktop-staged sidecar) → `kg` on PATH → null. */
-function resolveKgBin() {
+/**
+ * The staged desktop engine, resolved from maude's OWN package root (DDR-045 —
+ * never `import.meta.url`, which is `/$bunfs/root` inside the compiled binary).
+ * In the `.app`, pkgRoot is bridged to `Contents/Resources`, the `kg` sidecar
+ * lands in `Contents/MacOS/`, and `libkuzu` under `Resources/kgai/` (see
+ * apps/desktop/scripts/sync-kg.mjs). Returns `{ bin, lib }` or null elsewhere.
+ */
+function resolveStagedKgai(pkgRoot) {
+  if (!pkgRoot) return null;
+  const lib = join(pkgRoot, 'kgai');
+  if (!existsSync(lib)) return null;
+  const exe = process.platform === 'win32' ? '.exe' : '';
+  for (const bin of [join(pkgRoot, '..', 'MacOS', `kg${exe}`), join(lib, `kg${exe}`)]) {
+    if (existsSync(bin)) return { bin, lib };
+  }
+  return null;
+}
+
+/** KGAI_BIN env → desktop-staged sidecar → `kg` on PATH → null. */
+function resolveKgBin(pkgRoot) {
   if (process.env.KGAI_BIN && existsSync(process.env.KGAI_BIN)) return process.env.KGAI_BIN;
+  const staged = resolveStagedKgai(pkgRoot);
+  if (staged) {
+    // Make the sibling libkuzu reachable for this process's spawns (kgEnv folds
+    // it into DYLD_/LD_LIBRARY_PATH) without requiring the caller to plumb env.
+    process.env.KGAI_LIB ||= staged.lib;
+    return staged.bin;
+  }
   const probe = spawnSync('sh', ['-c', 'command -v kg'], { encoding: 'utf8' });
   const found = (probe.stdout || '').trim();
   return probe.status === 0 && found ? found : null;
 }
 
 /** The capability gate — the single source of `active`. */
-function resolveState(projectRoot) {
+function resolveState(projectRoot, pkgRoot) {
   const cfg = readConfig(projectRoot);
-  const kgBin = resolveKgBin();
+  const kgBin = resolveKgBin(pkgRoot);
   const localStore = existsSync(resolve(projectRoot, '.kgai', 'store'));
   const storeResolvable = cfg.store !== '' || localStore;
   let active;
@@ -99,9 +124,8 @@ function kgEnv() {
   // Desktop bundle stages libkuzu next to `kg` and points KGAI_LIB at its dir;
   // fold it into DYLD_LIBRARY_PATH so the dylib resolves. No-op when unset.
   if (process.env.KGAI_LIB) {
-    env.DYLD_LIBRARY_PATH = [process.env.KGAI_LIB, process.env.DYLD_LIBRARY_PATH]
-      .filter(Boolean)
-      .join(':');
+    const key = process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH';
+    env[key] = [process.env.KGAI_LIB, process.env[key]].filter(Boolean).join(':');
   }
   return env;
 }
@@ -308,7 +332,7 @@ export async function run({ args, pkgRoot }) {
     booleans: ['json', 'warn-only', 'dry-run', 'design', 'all-scopes', 'force'],
   }).flags;
   const projectRoot = resolveProjectRoot(flags);
-  const state = resolveState(projectRoot);
+  const state = resolveState(projectRoot, pkgRoot);
 
   let status = 0;
   switch (verb) {

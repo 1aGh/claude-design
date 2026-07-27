@@ -1,0 +1,242 @@
+#!/usr/bin/env node
+// Stage the kgai engine (`kg` binary + its native `libkuzu`) AND the kgai Claude
+// Code plugin tree into the Tauri bundle, so the packaged `.app` can record
+// decisions into the knowledge graph with ZERO install — including autonomous
+// capture inside the ACP chat panel (feature-kgai-ecosystem-integration Phase 8).
+//
+// WHY a build-time fetch and not a vendored copy: this mirrors sync-sidecar /
+// sync-agent-browser — third-party binaries are fetched at build time from a
+// PINNED upstream release, never committed. The pin lives in
+// `config.knowledgeGraph.engineVersion` (KGAI_VERSION below is the build-side
+// mirror); advancing it is deliberate + harness-verified (`maude kg
+// check-upstream`), never floating — an auto-tracking `latest` would let an
+// upstream change silently alter behavior in a signed build (DDR-054/056
+// supply-chain reasoning; the Phase-8 bundling DDR owns the policy).
+//
+// kgai is MIT-licensed (kgaidev/kgai); its LICENSE is staged alongside the tree.
+//
+// Layout produced:
+//   src-tauri/binaries/kg-<target-triple>            ← externalBin sidecar (Tauri signs it)
+//   src-tauri/resources/kgai/libkuzu.<ext>           ← native lib (reached via KGAI_LIB→DYLD/LD_LIBRARY_PATH)
+//   src-tauri/resources/plugins/kgai/                ← the Claude Code plugin (Stop-hook autocapture)
+//
+// Opt out with MAUDE_SKIP_KG_SYNC=1 (the build then ships without kgai; every
+// `maude kg` verb degrades to the documented inactive no-op — no crash).
+
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const BIN_DIR = resolve(SCRIPT_DIR, '..', 'src-tauri', 'binaries');
+const RES_DIR = resolve(SCRIPT_DIR, '..', 'src-tauri', 'resources');
+
+/** PINNED kgai release — mirror of config.knowledgeGraph.engineVersion. */
+const KGAI_VERSION = 'v0.1.9';
+const KGAI_REPO = 'kgaidev/kgai';
+
+if (process.env.MAUDE_SKIP_KG_SYNC === '1') {
+  console.log('[sync-kg] MAUDE_SKIP_KG_SYNC=1 — skipping (bundle ships without kgai).');
+  process.exit(0);
+}
+
+function detectSlug() {
+  const p = process.platform;
+  const a = process.arch;
+  if (p === 'darwin') return a === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
+  if (p === 'win32') return 'win32-x64';
+  if (p === 'linux') return a === 'arm64' ? 'linux-arm64' : 'linux-x64';
+  return null;
+}
+
+// Maude slug → Rust/Tauri target triple (DDR-106 table, mirrors sync-sidecar).
+const TRIPLE = {
+  'darwin-arm64': 'aarch64-apple-darwin',
+  'darwin-x64': 'x86_64-apple-darwin',
+  'linux-x64': 'x86_64-unknown-linux-gnu',
+  'linux-arm64': 'aarch64-unknown-linux-gnu',
+  'win32-x64': 'x86_64-pc-windows-msvc',
+};
+
+// Maude slug → kgai release asset names. kgai publishes darwin + linux only
+// (v0.1.9); Windows has no prebuilt → the build ships without kgai there.
+const ASSETS = {
+  'darwin-arm64': { kg: 'kg-darwin-arm64', lib: 'libkuzu-darwin-universal.dylib', libExt: 'dylib' },
+  'darwin-x64': { kg: 'kg-darwin-x86_64', lib: 'libkuzu-darwin-universal.dylib', libExt: 'dylib' },
+  'linux-x64': { kg: 'kg-linux-x86_64', lib: 'libkuzu-linux-x86_64.so', libExt: 'so' },
+  'linux-arm64': { kg: 'kg-linux-aarch64', lib: 'libkuzu-linux-aarch64.so', libExt: 'so' },
+};
+
+const slug = process.env.MAUDE_SIDECAR_SLUG || detectSlug();
+if (!slug || !TRIPLE[slug]) {
+  console.error(`[sync-kg] unsupported platform slug: ${slug}`);
+  process.exit(1);
+}
+if (!ASSETS[slug]) {
+  console.log(`[sync-kg] kgai publishes no prebuilt for ${slug} — bundle ships without kgai.`);
+  process.exit(0);
+}
+
+const triple = TRIPLE[slug];
+const asset = ASSETS[slug];
+const relBase = `https://github.com/${KGAI_REPO}/releases/download/${KGAI_VERSION}`;
+
+/** Release asset sizes, so a truncated download is caught rather than shipped. */
+async function assetSizes() {
+  const res = await fetch(
+    `https://api.github.com/repos/${KGAI_REPO}/releases/tags/${KGAI_VERSION}`,
+    {
+      headers: { 'user-agent': 'maude-sync-kg', accept: 'application/vnd.github+json' },
+    }
+  );
+  if (!res.ok) throw new Error(`release metadata fetch failed: ${res.status}`);
+  const rel = await res.json();
+  const map = {};
+  for (const a of rel.assets ?? []) map[a.name] = a.size;
+  return map;
+}
+
+/**
+ * Download in ranged chunks with a per-chunk size check.
+ *
+ * GOTCHA (measured 2026-07-22): GitHub's release CDN truncates large assets
+ * (libkuzu is ~34 MB) on a flaky link — a plain `curl -L` silently produced a
+ * short file that then failed `codesign` with "main executable failed strict
+ * validation" and SIGKILLed at runtime. Chunked ranged GETs stay under the drop
+ * threshold, and the final size assert makes a short download a BUILD failure
+ * instead of a broken signed bundle.
+ */
+async function download(url, dest, expectedSize) {
+  const CHUNK = 4 * 1024 * 1024;
+  const parts = [];
+  for (let start = 0; start < expectedSize; start += CHUNK) {
+    const end = Math.min(start + CHUNK - 1, expectedSize - 1);
+    let ok = false;
+    for (let attempt = 1; attempt <= 8 && !ok; attempt++) {
+      try {
+        const res = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } });
+        if (!res.ok && res.status !== 206) throw new Error(`HTTP ${res.status}`);
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length !== end - start + 1) throw new Error(`short chunk ${buf.length}`);
+        parts.push(buf);
+        ok = true;
+      } catch (e) {
+        if (attempt === 8) throw new Error(`chunk ${start}-${end} failed: ${e.message}`);
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+  }
+  const all = Buffer.concat(parts);
+  if (all.length !== expectedSize) {
+    throw new Error(`size mismatch for ${dest}: got ${all.length}, want ${expectedSize}`);
+  }
+  writeFileSync(dest, all);
+}
+
+/** Fetch the pinned kgai plugin tree (hooks/skills/commands + manifest + LICENSE). */
+async function fetchPluginTree(outDir) {
+  const WANT = ['.claude-plugin', 'hooks', 'skills', 'commands'];
+  const base = `https://api.github.com/repos/${KGAI_REPO}/contents`;
+  const hdr = { 'user-agent': 'maude-sync-kg', accept: 'application/vnd.github+json' };
+  const walk = async (path, dest) => {
+    const res = await fetch(`${base}/${path}?ref=${KGAI_VERSION}`, { headers: hdr });
+    if (!res.ok) throw new Error(`contents ${path}: HTTP ${res.status}`);
+    const items = await res.json();
+    mkdirSync(dest, { recursive: true });
+    for (const it of items) {
+      if (it.type === 'dir') {
+        await walk(`${path}/${it.name}`, join(dest, it.name));
+      } else if (it.type === 'file' && it.download_url) {
+        const f = await fetch(it.download_url, { headers: { 'user-agent': 'maude-sync-kg' } });
+        if (!f.ok) throw new Error(`download ${it.path}: HTTP ${f.status}`);
+        const buf = Buffer.from(await f.arrayBuffer());
+        writeFileSync(join(dest, it.name), buf);
+        if (it.name.endsWith('.sh')) chmodSync(join(dest, it.name), 0o755);
+      }
+    }
+  };
+  rmSync(outDir, { recursive: true, force: true });
+  for (const top of WANT) await walk(top, join(outDir, top));
+
+  // NEUTRALIZE kgai's SessionStart hook. Upstream it runs `scripts/install.sh`
+  // (fetches/builds the engine, needs Go + network, 180 s timeout) — dead weight
+  // here: the binary is PRE-STAGED as a signed sidecar, and the DDR-177 target
+  // user has no toolchain. We deliberately do not stage `scripts/`, so leaving
+  // the entry would fail loudly at every session start. Keep ONLY the `Stop`
+  // hook — that's the autonomous-capture nudge this bundling exists for.
+  const hooksPath = join(outDir, 'hooks', 'hooks.json');
+  if (existsSync(hooksPath)) {
+    const parsed = JSON.parse(readFileSync(hooksPath, 'utf8'));
+    const stop = parsed?.hooks?.Stop;
+    if (!stop)
+      throw new Error('kgai hooks.json has no Stop hook — autonomous capture would be inert');
+    writeFileSync(hooksPath, `${JSON.stringify({ hooks: { Stop: stop } }, null, 2)}\n`);
+    console.log(
+      '[sync-kg] neutralized kgai SessionStart install hook (binary is pre-staged); kept Stop capture'
+    );
+  }
+  // LICENSE — kgai is MIT; ship the license text with the vendored tree.
+  const lic = await fetch(
+    `https://raw.githubusercontent.com/${KGAI_REPO}/${KGAI_VERSION}/LICENSE`,
+    {
+      headers: { 'user-agent': 'maude-sync-kg' },
+    }
+  );
+  if (lic.ok) writeFileSync(join(outDir, 'LICENSE'), Buffer.from(await lic.arrayBuffer()));
+}
+
+async function main() {
+  const sizes = await assetSizes();
+  const kgSize = sizes[asset.kg];
+  const libSize = sizes[asset.lib];
+  if (!kgSize || !libSize) {
+    throw new Error(`release ${KGAI_VERSION} is missing ${asset.kg} / ${asset.lib}`);
+  }
+
+  mkdirSync(BIN_DIR, { recursive: true });
+  mkdirSync(join(RES_DIR, 'kgai'), { recursive: true });
+
+  const exe = slug.startsWith('win32') ? '.exe' : '';
+  const kgDest = join(BIN_DIR, `kg-${triple}${exe}`);
+  const libDest = join(RES_DIR, 'kgai', `libkuzu.${asset.libExt}`);
+
+  console.log(
+    `[sync-kg] ${KGAI_VERSION} ${slug} → ${asset.kg} (${kgSize} B), ${asset.lib} (${libSize} B)`
+  );
+  await download(`${relBase}/${asset.kg}`, kgDest, kgSize);
+  await download(`${relBase}/${asset.lib}`, libDest, libSize);
+  if (!exe) chmodSync(kgDest, 0o755);
+
+  console.log(`[sync-kg] plugin tree → ${join(RES_DIR, 'plugins', 'kgai')}`);
+  await fetchPluginTree(join(RES_DIR, 'plugins', 'kgai'));
+
+  // Stamp the pin so the bundle-completeness gate + support can see what shipped.
+  writeFileSync(
+    join(RES_DIR, 'kgai', 'VERSION'),
+    `${KGAI_VERSION}\nrepo: ${KGAI_REPO}\nlicense: MIT\nslug: ${slug}\n`
+  );
+
+  for (const [label, p] of [
+    ['kg', kgDest],
+    ['libkuzu', libDest],
+  ]) {
+    console.log(`[sync-kg] ✓ ${label}: ${p} (${statSync(p).size} B)`);
+  }
+  if (!existsSync(join(RES_DIR, 'plugins', 'kgai', 'hooks'))) {
+    throw new Error('kgai plugin tree staged without hooks/ — autonomous capture would be inert');
+  }
+}
+
+main().catch((e) => {
+  console.error(`[sync-kg] ${e.message}`);
+  console.error('[sync-kg] set MAUDE_SKIP_KG_SYNC=1 to build without kgai.');
+  process.exit(1);
+});

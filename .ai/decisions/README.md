@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-190: Bundling a third-party native engine (kgai `kg` + Kuzu) into the signed desktop app — pinned build-time fetch](DDR-190-kgai-native-bundling-in-the-signed-desktop-app.md) — 2026-07-23, kgai/desktop/tauri/sidecar/bundling/supply-chain/codesign/notarization/provenance/licensing/ddr-126/ddr-177/ddr-189
 - [DDR-189: kgai cross-repo shared-graph trust model — shared store is an attacker-controlled writer surface](DDR-189-kgai-cross-repo-shared-graph-trust-model.md) — 2026-07-23, kgai/knowledge-graph/security/trust-boundary/cross-repo/s3/ddr-054/ddr-130/untrusted-data/trifecta
 - [DDR-188: Convert children to absolute position — reversing a documented non-goal, one batch write, plain-children-only](DDR-188-convert-children-to-absolute-position.md) — 2026-07-18, canvas-edit/convert-to-absolute/ast-write/layout/undo/figma-parity/ddr-054
 - [DDR-187: Figma smart-select — browse/move tool split, boot=alive, and the promoted pass-through invariant](DDR-187-figma-select-browse-move-split-and-boot-posture.md) — 2026-07-18, input-router/tool-mode/canvas/selection/figma-parity/ux/posture

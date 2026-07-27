@@ -72,7 +72,19 @@ Task 13's slim is **gated on `active`** ("inactive repos keep full STATE.md/CLAU
 - **Done (non-destructive):** the STATE.md pointer-stub behavior is already implemented (Task 7 `maude init --kg`); the `flow:workflow-state` skill is now **kgai-aware** (active ⇒ graph is the history authority, STATE.md is a stub, don't append History rows; inactive ⇒ today's schema unchanged — slim not gut, behind the gate).
 - **Deferred (needs user decision):** actually slimming maude's OWN CLAUDE.md decision-catalog prose + STATE.md → pointers happens only if/when the user makes maude kgai-active. Gated correctly; not done blindly.
 
-**Remaining:** Phase 8 (**desktop native bundle + ACP inject — needs user: codesign/notarize + build .app**). Phase 7's destructive slim (needs the "make maude kgai-active" decision).
+## Execution Progress — feature-kgai-ecosystem-integration — **Phase 8 (Desktop bundle + ACP inject) CODE COMPLETE; build/notarize + e2e proof need the user (2026-07-23).**
+
+Task 15/16 implemented + **DDR-190** recorded (bundling a third-party native engine into a signed/notarized `.app`: pinned build-time fetch, never vendored/floating; integrity asserted; upstream install-hook stripped; MIT licensing + provenance shipped; a bundle gate because "green in tauri dev" proves nothing).
+- **`apps/desktop/scripts/sync-kg.mjs`** (new) — fetches the PINNED kgai release: `kg` → `binaries/kg-<triple>` (externalBin ⇒ Tauri signs it), `libkuzu` → `resources/kgai/`, plugin tree → `resources/plugins/kgai/`, + `VERSION` stamp + `LICENSE`. **Chunked + size-verified download** (the GitHub CDN truncated the 34 MB libkuzu repeatedly — a short file passes a naive curl, then fails codesign "strict validation" and SIGKILLs; now a BUILD failure). **Strips upstream's SessionStart install hook** (Go+network, engine is pre-staged), keeps ONLY the `Stop` capture hook. `MAUDE_SKIP_KG_SYNC=1` opts out; Windows = documented no-op (no kgai prebuilt). **Live-verified end to end** (both binaries exact-size, plugin tree with hooks, neutralization confirmed).
+- **tauri.conf.json** — `binaries/kg` in externalBin; `resources/kgai` + `resources/plugins/kgai` staged; `sync-kg.mjs` wired into beforeBuild/beforeDev.
+- **ACP injection** — `KGAI_PLUGIN_DIR` + `resolveStagedKgai()` in `paths.ts` (DDR-045 resolution); `computeSessionPlugins()` injects kgai (so its Stop hook loads ⇒ autonomous capture fires in the panel); **`bridge.ts` `enabledPlugins` gained `kgai:false`** — the file's own documented drift trap, and the existing test caught my change (drift guard working as designed). 4 net-new tests; ACP suites **23/23 + 32/32 pass**.
+- **`maude kg` desktop routing** — resolves the staged sidecar from maude's OWN pkgRoot (`Contents/MacOS/kg` + `Resources/kgai/libkuzu`) and folds the lib dir into DYLD_/LD_LIBRARY_PATH itself, so no spawner threads env; `KGAI_BIN`/`KGAI_LIB` still honored as override. Cross-platform lib var (DYLD vs LD).
+- **`check-bundle-completeness.mjs`** — new Check 5: libkuzu present, pin stamped, **Stop hook present**, **SessionStart absent**, and (`--smoke`) a stripped-PATH `maude kg resolve` asserting `kgPresent:true`. Ran green against the staged resources tree.
+- **Verified:** tsc 8 baseline / 0 new; biome clean; cli suite unaffected; `dist/` untouched throughout.
+
+**NOT done (needs the user — native-app-verification-ceiling):** an actual `tauri build` + codesign/notarize of the `.app`, `check-bundle-completeness.mjs <built .app> --smoke`, and the desktop-e2e proving autonomous capture in the shipped shell (edit a canvas in the ACP panel with no flow/design command ⇒ kgai Stop hook records a decision). The plan makes that last one release-gating.
+
+**Remaining:** Phase 7's destructive slim (needs the "make maude kgai-active" dogfood decision) + the Phase-8 build/e2e verification above.
 
 ---
 ### kgai integration — session close summary (2026-07-23)

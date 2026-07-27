@@ -94,6 +94,12 @@ describe('newSessionParams — plugin carrier shape', () => {
     const p = newSessionParams('/repo', undefined, PLUGINS);
     expect((p._meta as Meta).claudeCode?.options?.settings?.enabledPlugins).toEqual({
       'design@maude': false,
+      // kgai (third-party, injected by the desktop bundle for autonomous capture —
+      // feature-kgai-ecosystem-integration Phase 8). Suppressing a user-installed
+      // copy matters MORE here than for our own plugins: it would run its own
+      // SessionStart install.sh and point at a different engine version than the
+      // pinned, signed sidecar we ship.
+      kgai: false,
     });
   });
 
