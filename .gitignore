@@ -29,9 +29,23 @@ dev-server/.cache/
 .design/_canvas-state/
 .design/_chat/
 .design/_untrusted/
-# kgai knowledge-graph projection — per-machine append-only store, rebuilds from
-# the remote on `kg sync` (feature-kgai-ecosystem-integration, DDR-115).
-.kgai/
+# kgai knowledge-graph store. The split is LOG (durable truth) vs CACHE/IDENTITY
+# (per-machine) — kgai's own store-level .gitignore draws the same line:
+#   • log/*.ndjson  → VERSIONED. The append-only decision log IS the knowledge.
+#     824 KB, one file PER INSTALL ID (so two machines never write the same file)
+#     and `.gitattributes` marks it `merge=union` — it merges without conflicts.
+#     Verified: deleting graph.kuzu and running `kg rebuild` restores all 189
+#     decisions / 566 elements from the log alone. Committing it is what lets
+#     someone clone this repo and inherit the full decision context.
+#   • graph.kuzu (22 MB), kg.config.json (the per-machine INSTALL IDENTITY),
+#     .kg.lock → IGNORED. The projection is derived (`kg rebuild`); sharing the
+#     install identity is what forks a shard (kgai's own remedy: `kg rotate`).
+# ⚠ If this store is ever pointed at a SHARED COMPANY remote, the log will carry
+#   other teams' decisions — do NOT commit it to a public repo then (DDR-189).
+.kgai/*
+!.kgai/store
+.kgai/store/*
+!.kgai/store/log
 # Auto-managed by the linked-mode sync runtime (lists hub-synced UNTRUSTED files).
 # Machine-local state, regenerated on sync — never committed.
 .claudeignore
