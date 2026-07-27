@@ -30,6 +30,8 @@ One-time migration of the file-based decision store (`.ai/decisions/DDR-*.md`) i
 maude kg import
 ```
 
+> **Let it finish — it is not instant.** Measured on this repo: **~4 minutes for ~190 decisions** (≈1.2 s each; the cost is per-decision event append + projection, not the batch build). Run it where it won't be interrupted (a 2-minute tool timeout WILL cut it off mid-way). An interrupted run leaves a **partially ingested** store and writes **no marker** — the safe recovery is to delete the store, `kg init` again, and re-run, NOT to re-run on top (deterministic identity converges elements, but decision *events* would duplicate).
+
 - Builds one `{decisions:[…]}` batch (each DDR → a `decision:DDR-NNN` element shaping an `area:<primary-tag>`, remaining tags → `topic:` + `TOUCHES`, typed cross-refs first (`SUPERSEDES`/`EXTENDS`/`REFERENCES` from the `**Supersedes:**`/`**Related:**`/`**Extends:**` markers, then bare `DDR-\d+` mentions as weak deduped `references`), plus `repo:`/`dept:` scope tags from `config.knowledgeGraph.scope`).
 - Ingests via `kg ingest --file`. Author is stamped automatically from `git config user.name`.
 - Writes an `.ai/.kgai-migrated` marker. **Re-running refuses without `--force`** (deterministic identity converges the elements, but a re-ingest would add duplicate decision *events*).
