@@ -85,6 +85,7 @@ import { createPhotoStore, PHOTO_EDIT_MAX_BYTES } from './photo-store.ts';
 import { probeReadiness } from './readiness.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
 import { linkHub } from './sync/hub-link.ts';
+import { signInToWorkspace, workspaceDisclosure } from './sync/workspace-signin.ts';
 import { readUiPrefs, type UiPrefs, writeUiPrefs } from './ui-prefs.ts';
 import { loadWhatsNew } from './whats-new.ts';
 import { isLoopbackHost } from './ws.ts';
@@ -1757,6 +1758,50 @@ export function createHttp(
         return new Response('local request required', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await linkHub(body));
+    },
+
+    // Cloud Phase 3 Task 3 — "Sign in to workspace". The person-facing
+    // counterpart to /_api/hub/link: an address plus an email and password,
+    // rather than a token to paste. Same gates as the link route (MAIN ORIGIN
+    // only, loopback, POST CSRF) for the same reason — this handler receives a
+    // PASSWORD, so the untrusted canvas origin must never be able to reach it.
+    '/_api/workspace/sign-in': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      const result = await signInToWorkspace((body ?? {}) as Record<string, unknown>);
+      return Response.json(result.json, {
+        status: result.status,
+        headers: { 'Cache-Control': 'no-store' },
+      });
+    },
+
+    // The DDR-054 trust model in plain words, for the panel that replaces
+    // DDR-079's terminal banner (DDR-192 §6). Read-only and main-origin — the
+    // operator name is not secret, but this is UI chrome the canvas has no use
+    // for, and every route the canvas can reach is one more thing to reason about.
+    '/_api/workspace/disclosure': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const url = new URL(req.url);
+      const linked = ctx.cfg.linkedHub?.url ?? null;
+      const operator =
+        url.searchParams.get('operator') || (linked ? new URL(linked).host : 'your team');
+      return Response.json(
+        {
+          operator,
+          workspace: linked,
+          items: workspaceDisclosure({
+            operator,
+            aiAvailable: url.searchParams.get('ai') !== '0',
+          }),
+        },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
     },
 
     '/_api/edit-css': async (req: Request) => {

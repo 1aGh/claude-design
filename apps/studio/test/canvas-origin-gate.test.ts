@@ -62,6 +62,13 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
       for (const p of [
         '/_config',
         '/_sync-status',
+        // Cloud Phase 3 Task 3 — the sign-in handler RECEIVES A PASSWORD, and
+        // the disclosure route is main-origin UI chrome. Both are absent from
+        // CANVAS_SAFE_API and from startCanvasServer's route map, so a GET
+        // 403s at the gate rather than 405-ing from the handler — which is what
+        // proves the route is unreachable on this origin at all.
+        '/_api/workspace/sign-in',
+        '/_api/workspace/disclosure',
         '/_api/export',
         // feature-background-export-notification-center — the background job
         // routes carry the same privileged data class as /_api/export (job
