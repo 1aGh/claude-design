@@ -171,7 +171,13 @@ export function buildDdrBatch(decisionsDir, scope = {}, only = null) {
     const title = (t.match(/^#\s*DDR-\d+:\s*(.+)$/m) || [null, f])[1].trim();
     const date = normDate(field(t, 'Date')) || normDate(field(t, 'Status'));
     const tags = parseTags(field(t, 'Tags'));
-    const rationale = firstPara(t, 'Decision') || firstPara(t, 'Context');
+    // FULL body, not an excerpt. The goal is a real switch: the graph must hold
+    // the whole decision — alternatives, consequences, revisit-when — so nothing
+    // has to be read out of the .md to understand WHY. An earlier cut stored only
+    // the lead paragraph (~3% of the file), which quietly made the graph an index
+    // that could not stand on its own. The committed log grows to ~5 MB for this
+    // corpus; that is the correct price for self-sufficiency.
+    const rationale = t.trim();
     const { out: refs, reversed: revRefs } = crossRefs(t, num);
     if (date) stats.withDate++;
     if (tags.length) {
@@ -306,7 +312,9 @@ export function buildLogBatch(logsDir, scope = {}) {
           .filter((l) => l.trim() && !l.startsWith('#'))
           .slice(0, 3)
           .join(' ');
-      const rationale = body.replace(/\s+/g, ' ').slice(0, 1200);
+      // Full body here too — these files are gitignored, so the graph is the
+      // ONLY copy; truncating would destroy the evidence it exists to preserve.
+      const rationale = t.trim();
 
       const muts = [
         {

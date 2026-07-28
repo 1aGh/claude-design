@@ -17,7 +17,7 @@ kgai's model is "few stable domain elements shaped by many immutable decisions" 
 - shaping an `area:<primary-tag>` element (the DDR's first tag) via an `ABOUT` link,
 - remaining tags → `topic:` elements, `area —TOUCHES→ topic`,
 - `repo:`/`dept:` scope tags from `config.knowledgeGraph.scope` + `IN_REPO`/`IN_DEPT` links (model A — DDR-189),
-- the DDR's `## Decision` (or `## Context`) first paragraph as the decision `rationale`, real `Date` preserved.
+- the **entire source document** as the decision `rationale` (not an excerpt — see below), real `Date` preserved.
 
 ## Edge reconstruction — typed markers FIRST, then dedupe bare mentions
 
@@ -35,12 +35,13 @@ All cross-ref links are `add_link` between two `decision:`-kind elements → the
 - **Dry-run first.** `--dry-run` prints counts + a sample subgraph, writes nothing.
 - **Author is automatic** — `git config user.name` via kgai's `guessActor()`.
 
-## `.ai/logs/**` — migrated, and why the extract is bigger
+## Full-body ingest — the graph must stand on its own
 
-Log verdicts (`rca` · `system-review` · `code-review` · `security-review` · `execution-report`) ride the same import unless `--no-logs`. They are the **opposite case** from DDRs and the extraction reflects it:
+Log verdicts (`rca` · `system-review` · `code-review` · `security-review` · `execution-report`) ride the same import unless `--no-logs`.
 
-- `.ai/decisions/*.md` is **committed**, so the graph can afford a thin index (title + lead paragraph + a `path` prop pointing at the prose).
-- `.ai/logs/**` is **gitignored** (the repo files it under "AI workflow runtime"), so those files exist only on the machine that produced them — while committed docs reference them. Once ingested, the committed graph log is the **only inheritable copy**, so each entry keeps a much larger excerpt (Summary / Verdict / Root cause, ~1200 chars) plus `EVIDENCE_FOR` edges to every DDR it cites.
+**Both DDRs and logs are ingested with their FULL body.** An earlier cut stored only a lead paragraph (~3 % of a DDR) — which quietly made the graph an index that could not stand on its own, so every real "why" still required opening the file. The goal is a genuine switch: the graph answers "what did we reject, and why" with no file open. Cost: the committed log is ~5 MB for this corpus (2 MB of DDR prose + 1.1 MB of logs + envelope).
+
+`.ai/logs/**` additionally matters because it is **gitignored** (the repo files it under "AI workflow runtime"), so those files exist only on the machine that produced them while committed docs reference them — the graph is their ONLY inheritable copy. Each log entry also gets `EVIDENCE_FOR` edges to every DDR it cites.
 
 Dates: `**Date:**` when present (34 of 123), else the file's mtime — they're untracked, so git has no creation date either.
 

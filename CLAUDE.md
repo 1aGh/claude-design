@@ -25,12 +25,14 @@ maude kg doctor                  # is the graph active here?
 
 `kg context --about` on a broad area returns only that area's **head** decision (`dev-server` alone is shaped by 42), so reach for `search` first on topical questions.
 
-**The graph indexes the prose; it does not replace it.** Every node carries a `path` prop:
+**The graph holds the FULL decision text — it is self-sufficient.** Each node stores the entire source document (`rationale`) plus `path`, `date`, `tags` and typed edges, so "what alternatives did we reject, and why" is answerable from `kg` alone, with no file open. The committed log is ~5 MB for this corpus; that's the price of not depending on the working tree.
 
 | | in the graph | on disk |
 | --- | --- | --- |
-| `.ai/decisions/*.md` (189) | title + lead paragraph + tags + typed edges (~3 % of 2 MB) | **committed** — alternatives / consequences / trade-offs live ONLY here. Never delete or move them: 622 references across the repo point at these paths. |
-| `.ai/logs/**` (120) | title + summary/verdict + date + `EVIDENCE_FOR` edges to cited DDRs | **gitignored** (runtime artifacts) — so for these the graph is the only inheritable copy. |
+| `.ai/decisions/*.md` (190) | **full body** + tags + `SUPERSEDES`/`EXTENDS`/`REFERENCES` edges | committed. Still the **authoring surface** (kgai has no editor — you write the file, then ingest) and 622 references across the repo point at these paths. |
+| `.ai/logs/**` (120) | **full body** + date + `EVIDENCE_FOR` edges to cited DDRs | **gitignored** (runtime artifacts) — the graph is their only inheritable copy. |
+
+After editing a decision file, re-ingest it: `maude kg import --only "DDR-NNN"` (safe — identity converges, props merge).
 
 **`/flow:record-ddr` writes to the graph when active** (deterministic `hash(kind:name)` identity — no DDR-number race). Keep writing DDR `.md` files for anything whose reasoning deserves prose; the graph is the index, not the archive.
 
