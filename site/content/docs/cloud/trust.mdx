@@ -1,0 +1,87 @@
+---
+title: Trust
+description: What Maude Cloud can see, what it cannot, who the subprocessors are, and what happens if something goes wrong. Every claim on this page maps to a mechanism you can point at in the source.
+---
+
+Running someone else's design work on your servers is a claim about behaviour, and a claim about behaviour is worth exactly as much as the mechanism behind it. So this page is written with a rule: **no aspirational statements.** If something here is not enforced by code, it does not appear.
+
+Where a claim has a mechanism, the mechanism is named.
+
+## What the operator can see
+
+Plainly, because you should be able to decide:
+
+- **Your designs**, including their full edit history. The workspace holds the authoritative copy.
+- **When you are working**, and on which files — presence and awareness are how collaboration works at all.
+- **Your comments and annotations.** They are stored in the workspace, not only on your machine.
+
+That is the honest list. A disclosure that only lists reassurances is marketing, and you cannot make a decision from marketing.
+
+You see the same list **inside signup**, before you have entrusted anything — not buried in a policy document.
+
+## What it cannot do
+
+**Your designs are never run on our servers.** A workspace stores and syncs canvases. It never renders one, never builds a bundle, never runs a browser against your content.
+
+This is the one guarantee with teeth, so here is its mechanism rather than an assurance:
+
+- A cell **refuses to start** if any surface that could render, export, or evaluate a canvas is reachable — it names the offending route and exits.
+- The cell image contains **no browser at all**. A container that merely chooses not to render is one configuration mistake from rendering.
+- A **CI gate** fails the build if either of those protections is removed, or if a browser reappears as a runtime dependency.
+
+Rendering happens on your own machine, in Maude Desktop. That is also why there is no server-side export or preview: those would require running your code, and the answer is no.
+
+**Nothing else on your computer is read.** Only the project folder syncs.
+
+## Your data is never hostage
+
+- **One-click export, always** — including while your subscription is suspended. The export is a git bundle plus your media, and it opens as a working local project without Maude.
+- **An export is sent before any teardown.** This is a state machine, not a policy: the code makes the transition to "purged" reachable **only** through "exported". A project that never became active is the sole exception, because it never held anything.
+- **Suspension stops a workspace; it does not delete it.** Data is retained 30 days, and if that window elapses without an export having actually been delivered, the system **holds and re-sends** rather than proceeding. The clock does not outrank the guarantee.
+
+## Access to your workspace
+
+- **No standing access.** Operator access is break-glass.
+- **Break-glass is visible to you.** Access appears in an append-only audit log you can read. "We could look but we don't" is not a control; "you can see that we looked" is.
+- Data is **encrypted at rest**.
+
+## Where your data lives
+
+EU jurisdiction, on Cloudflare. Region pinning is available on the Dedicated tier.
+
+## Subprocessors
+
+| Who | What for | Where |
+| --- | --- | --- |
+| **Cloudflare** | Workspace hosting (Containers, Durable Objects), object storage (R2), DNS and TLS | EU |
+| **Stripe** | Payments and subscription management | EU/US (Stripe's own terms) |
+| **Resend** | Transactional email — invitations and billing notices | EU/US |
+| **Vercel** | The documentation site only. **No customer project data.** | US |
+
+This list is part of the DPA. It changes with notice, not quietly.
+
+## If something goes wrong
+
+- **Breach notification within 72 hours** of becoming aware, to the contact on the account.
+- **Hard delete within 30 days** of a purge request, across backups.
+- Security issues: **security@maude.sh**.
+
+## The alternative is always open
+
+Maude is **free forever to self-host**, and it is the same software — not a reduced edition. `maude hub workspace-up` stands up the identical stack on your own box, and the [cost table](/docs/hub/pricing) is published.
+
+That matters here rather than on a pricing page: a hosted service you cannot leave is a hosted service whose promises cannot be tested. You can leave, at any time, with everything.
+
+## Where the claims come from
+
+For anyone who wants to check rather than believe:
+
+| Claim | Mechanism |
+| --- | --- |
+| Designs are never executed by us | `apps/studio/workspace-mode.ts`, `infra/cell/entrypoint.sh`, `scripts/check-containment.sh` |
+| No browser in the workspace image | `infra/cell/Dockerfile` + the CI gate |
+| Export before teardown | `apps/cloud/reconcile.mjs` — `purged` is reachable only via `exported` |
+| Suspension retains data | The same state machine (`cli/lib/cell-plan.mjs`) |
+| One project cannot read another | Per-project container; R2 keys are prefix-isolated per tenant |
+| Sessions expire and can be revoked | `apps/hub/src/tokens.mjs`, `apps/hub/src/users.mjs` |
+| Backups are restorable | `maude hub restore-drill`, run in CI — a backup nobody has restored is a hypothesis |
