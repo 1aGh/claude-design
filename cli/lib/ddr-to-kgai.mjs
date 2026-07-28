@@ -15,7 +15,7 @@
 //     then bare `DDR-\d+` body mentions as weak `references`, deduped — so the
 //     graph doesn't drown in the thousands of loose name-drops (plan caution #2).
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from './argv.mjs';
@@ -139,7 +139,22 @@ export function buildDdrBatch(decisionsDir, scope = {}) {
     const self = `DDR-${num}`;
     const muts = [
       { op: 'upsert_element', kind: 'area', name: primary, props: { last_ddr: self } },
-      { op: 'upsert_element', kind: 'decision', name: self, props: { title: title.slice(0, 120) } },
+      {
+        op: 'upsert_element',
+        kind: 'decision',
+        name: self,
+        // `path` makes the graph an INDEX INTO the archive rather than a lossy
+        // copy of it: the migration keeps only title + the first Decision/Context
+        // paragraph (~3% of the file), so a hit has to be able to say WHICH file
+        // holds the alternatives/consequences. `.ai/decisions/*.md` IS committed,
+        // so the pointer always resolves.
+        props: {
+          title: title.slice(0, 120),
+          path: `.ai/decisions/${f}`,
+          ...(date ? { date } : {}),
+          ...(tags.length ? { tags: tags.join(',') } : {}),
+        },
+      },
       { op: 'add_link', from: `decision:${self}`, to: `area:${primary}`, link: 'ABOUT' },
       ...scopeMuts(self),
     ];
@@ -165,10 +180,111 @@ export function buildDdrBatch(decisionsDir, scope = {}) {
   return { batch: { decisions }, stats };
 }
 
+/**
+ * `.ai/logs/**` → dated verdict/finding decisions.
+ *
+ * These are a DIFFERENT case from DDRs and the extraction reflects it: `.ai/logs/`
+ * is **gitignored** (the repo files it under "AI workflow runtime" beside
+ * device/browser/cache), so unlike `.ai/decisions/*.md` these 123 files exist only
+ * on the machine that produced them — while 164 committed references point AT them.
+ * Once ingested, the graph (whose log IS committed) becomes the only inheritable
+ * copy, so we keep a much larger excerpt than the DDR path does (which can afford
+ * to be a thin index because its prose is versioned).
+ */
+export function buildLogBatch(logsDir, scope = {}) {
+  const KINDS = {
+    rca: 'rca',
+    'system-reviews': 'system-review',
+    'code-reviews': 'code-review',
+    'security-reviews': 'security-review',
+    'execution-reports': 'execution-report',
+  };
+  const decisions = [];
+  const stats = { files: 0, withDate: 0, cited: 0, byKind: {} };
+  const scopeMuts = (name, kind) => {
+    const m = [];
+    if (scope.repo) {
+      m.push({ op: 'upsert_element', kind: 'repo', name: scope.repo });
+      m.push({
+        op: 'add_link',
+        from: `${kind}:${name}`,
+        to: `repo:${scope.repo}`,
+        link: 'IN_REPO',
+      });
+    }
+    if (scope.dept) {
+      m.push({ op: 'upsert_element', kind: 'dept', name: scope.dept });
+      m.push({
+        op: 'add_link',
+        from: `${kind}:${name}`,
+        to: `dept:${scope.dept}`,
+        link: 'IN_DEPT',
+      });
+    }
+    return m;
+  };
+
+  for (const [dir, kind] of Object.entries(KINDS)) {
+    const abs = join(logsDir, dir);
+    if (!existsSync(abs)) continue;
+    for (const f of readdirSync(abs)
+      .filter((x) => x.endsWith('.md'))
+      .sort()) {
+      const path = join(abs, f);
+      const t = readFileSync(path, 'utf8');
+      stats.files++;
+      stats.byKind[kind] = (stats.byKind[kind] ?? 0) + 1;
+      const slug = f.replace(/\.md$/, '');
+      const title = (t.match(/^#\s*(.+)$/m) || [null, slug])[1].trim();
+      // Only 34/123 carry a `**Date:**`; the rest are untracked so git has no
+      // creation date either — fall back to the file's own mtime.
+      const date = normDate(field(t, 'Date')) || statSync(path).mtime.toISOString().slice(0, 10);
+      if (normDate(field(t, 'Date'))) stats.withDate++;
+      // Prefer an explicit Summary/Verdict section; else the lead paragraph.
+      const body =
+        firstPara(t, 'Summary') ||
+        firstPara(t, 'Verdict') ||
+        firstPara(t, 'Root cause') ||
+        t
+          .split('\n')
+          .filter((l) => l.trim() && !l.startsWith('#'))
+          .slice(0, 3)
+          .join(' ');
+      const rationale = body.replace(/\s+/g, ' ').slice(0, 1200);
+
+      const muts = [
+        {
+          op: 'upsert_element',
+          kind,
+          name: slug,
+          props: { title: title.slice(0, 160), path: `.ai/logs/${dir}/${f}`, date },
+        },
+        { op: 'upsert_element', kind: 'area', name: kind },
+        { op: 'add_link', from: `${kind}:${slug}`, to: `area:${kind}`, link: 'ABOUT' },
+        ...scopeMuts(slug, kind),
+      ];
+      // Evidence edges — a review/RCA that cites a DDR is evidence ABOUT it.
+      const cited = new Set([...t.matchAll(/DDR-(\d+)/g)].map((m) => m[1].padStart(3, '0')));
+      for (const num of cited) {
+        muts.push({ op: 'upsert_element', kind: 'decision', name: `DDR-${num}` });
+        muts.push({
+          op: 'add_link',
+          from: `${kind}:${slug}`,
+          to: `decision:DDR-${num}`,
+          link: 'EVIDENCE_FOR',
+        });
+        stats.cited++;
+      }
+      decisions.push({ title, date, rationale, mutations: muts });
+    }
+  }
+  return { batch: { decisions }, stats };
+}
+
 /** Entry — `maude kg import`. Dispatched from cli/commands/kg.mjs verbImport. */
 export async function run({ args, state, projectRoot, runKg }) {
   // `args` here is already the verb's args (kg.mjs stripped the `import` token).
-  const { flags } = parseArgs(args, { booleans: ['dry-run', 'design', 'force'] });
+  const { flags } = parseArgs(args, { booleans: ['dry-run', 'design', 'force', 'no-logs'] });
   const decisionsDir = join(projectRoot, '.ai', 'decisions');
   if (!existsSync(decisionsDir)) {
     process.stderr.write(
@@ -192,6 +308,18 @@ export async function run({ args, state, projectRoot, runKg }) {
   }
 
   const { batch, stats } = buildDdrBatch(decisionsDir, state.scope);
+
+  // `.ai/logs/**` rides the same import unless --no-logs. Deliberately NOT a
+  // separate opt-in verb: these files are gitignored, so leaving them out is how
+  // the RCA/security-review knowledge stays machine-local and dies on a clone.
+  const logsDir = join(projectRoot, '.ai', 'logs');
+  let logStats = null;
+  if (!flags['no-logs'] && existsSync(logsDir)) {
+    const logs = buildLogBatch(logsDir, state.scope);
+    logStats = logs.stats;
+    batch.decisions.push(...logs.batch.decisions);
+  }
+
   const totalMuts = batch.decisions.reduce((n, d) => n + d.mutations.length, 0);
 
   process.stdout.write(
@@ -200,7 +328,12 @@ export async function run({ args, state, projectRoot, runKg }) {
       `  scope:      ${JSON.stringify(state.scope)}\n` +
       `  decisions:  ${batch.decisions.length}\n` +
       `  mutations:  ${totalMuts}\n` +
-      `  with date:  ${stats.withDate}   with tags: ${stats.withTags}   cross-refs: ${stats.crossrefs}   distinct tags: ${stats.tags}\n`
+      `  with date:  ${stats.withDate}   with tags: ${stats.withTags}   cross-refs: ${stats.crossrefs}   distinct tags: ${stats.tags}\n` +
+      (logStats
+        ? `  logs:       ${logStats.files} (${Object.entries(logStats.byKind)
+            .map(([k, n]) => `${k}:${n}`)
+            .join(' ')}), ${logStats.cited} evidence edges\n`
+        : '  logs:       skipped (--no-logs)\n')
   );
 
   if (flags['dry-run']) {

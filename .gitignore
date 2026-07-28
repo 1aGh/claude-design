@@ -104,3 +104,7 @@ cli/.platform-binary-path
 # Local env files — may hold API keys (feature-ai-media-generation); never commit.
 .env.local
 .env*.local
+# (A blanket `.kgai/` rule lived here. Removed deliberately: gitignore is
+# last-match-wins, so it silently re-ignored `.kgai/store/log/` and defeated the
+# log-vs-cache split defined above — see the kgai block near the top, which
+# already ignores the store's cache + install identity, just more precisely.)

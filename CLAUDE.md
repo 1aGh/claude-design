@@ -12,6 +12,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The npm package, the design plugin, the flow plugin, and (since phase-32) the native desktop shell all share a single version — `package.json`, `plugins/design/.claude-plugin/plugin.json`, `plugins/flow/.claude-plugin/plugin.json`, **`apps/desktop/src-tauri/tauri.conf.json`** (drives the auto-updater's `{{current_version}}`), and **`apps/desktop/src-tauri/Cargo.toml`** `[package].version` (the native About box) must move together. `scripts/bump-version.sh` bumps all of them; `scripts/check-version-parity.sh` asserts them; CI enforces parity (`.github/workflows/version-parity.yml`). See [DDR-126](.ai/decisions/DDR-126-native-distribution-auto-update-and-security-posture.md) for the desktop distribution + auto-update + signing-key model.
 
+## Decision memory — this repo is kgai-active
+
+**Before re-deriving why anything is the way it is, query the graph.** 309 decisions (189 DDRs + 120 RCA / security-review / code-review / system-review verdicts) live in a [kgai](https://github.com/kgaidev/kgai) knowledge graph, scope-tagged `repo:maude` / `dept:dev`. `knowledgeGraph` in `.ai/workflows.config.json` turns it on; the resolver + recipes are the **`flow:kgai-backend`** skill.
+
+```sh
+maude kg search "<topic>"        # ← START HERE for "what did we decide about X"
+maude kg context --about "<element>"   # why THIS element is the way it is
+maude kg query "<cypher>"        # typed edges (SUPERSEDES / EXTENDS / EVIDENCE_FOR) live in LINK.kind
+maude kg doctor                  # is the graph active here?
+```
+
+`kg context --about` on a broad area returns only that area's **head** decision (`dev-server` alone is shaped by 42), so reach for `search` first on topical questions.
+
+**The graph indexes the prose; it does not replace it.** Every node carries a `path` prop:
+
+| | in the graph | on disk |
+| --- | --- | --- |
+| `.ai/decisions/*.md` (189) | title + lead paragraph + tags + typed edges (~3 % of 2 MB) | **committed** — alternatives / consequences / trade-offs live ONLY here. Never delete or move them: 622 references across the repo point at these paths. |
+| `.ai/logs/**` (120) | title + summary/verdict + date + `EVIDENCE_FOR` edges to cited DDRs | **gitignored** (runtime artifacts) — so for these the graph is the only inheritable copy. |
+
+**`/flow:record-ddr` writes to the graph when active** (deterministic `hash(kind:name)` identity — no DDR-number race). Keep writing DDR `.md` files for anything whose reasoning deserves prose; the graph is the index, not the archive.
+
+**Store layout is load-bearing** (`.gitignore` near the top): `.kgai/store/log/*.ndjson` is **VERSIONED** — it IS the knowledge, one file per install id, `merge=union`, and a fresh clone restores the whole graph with `kg rebuild`. `graph.kuzu` (22 MB projection) + `kg.config.json` (per-machine install identity) stay ignored — sharing the identity forks the shard. Don't add a blanket `.kgai/` rule; gitignore is last-match-wins and it silently kills the log. Same split in `~/git/.stignore` for Syncthing. Cross-repo trust model: [DDR-189](.ai/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md); desktop bundling: [DDR-190](.ai/decisions/DDR-190-kgai-native-bundling-in-the-signed-desktop-app.md).
+
 ## Common commands
 
 ```sh
