@@ -1,6 +1,18 @@
 # Cloud Phase 0 — Economics, provider decision, pricing & phase index (READ FIRST — not executable)
 
-The master reference for the **Maude Cloud arc**: the complete path from zero infrastructure to a paid production release on maude.sh. Execution order = the numbered files `cloud-phase-1-*.md` → `cloud-phase-10-*.md`. Each phase file is independently executable via `/flow:execute` and has a hard exit gate. Produced from two divergent debates (builder/shipper/breaker, then builder/shipper/breaker/user-advocate — DDR-130 reduce tier) plus a very-thorough architecture sweep. Provider decision revised 2026-07-28 per the owner's call: **Cloudflare everywhere — one unified infra.**
+The master reference for the **Maude Cloud arc**: the complete path from zero infrastructure to a paid production release on maude.sh. Execution order = the numbered files `cloud-phase-1-*.md` → `cloud-phase-10-*.md`. Each phase file is independently executable via `/flow:execute` and has a hard exit gate.
+
+> ### Status as of 2026-07-29 — read this before trusting anything below
+>
+> **All ten phases have been executed and archived** (`.ai/plans/archive/`). Phases 1–4 are complete. Phases 5–10 are **CORE COMPLETE / PARTIAL**: their decision layers are written and tested, their deployment is blocked. **DDR-196** records why and how the split was made.
+>
+> **Nothing in this document has been measured.** §2's unit economics are still the pre-arc estimate — the Phase-5 gate that was supposed to replace them with telemetry never ran, because no cell has ever been deployed. §3's pricing table now exists as real objects in the **Stripe sandbox** (`apps/cloud/pricing.json`), but the numbers are unchanged and unsigned-off.
+>
+> **What blocks the rest**, unchanged and re-probed live on 2026-07-28: Workers Paid (Containers, Queues), R2 enablement, and a `cloud.maude.sh` zone. All three need a browser, payment details, or domain control. See `cloud-phase-0b-manual-prep.md`, which also records what an agent has already done (D1 provisioned + schema applied).
+>
+> Treat §2 as a hypothesis, §3 as a proposal, and §5 as history rather than instructions.
+
+Produced from two divergent debates (builder/shipper/breaker, then builder/shipper/breaker/user-advocate — DDR-130 reduce tier) plus a very-thorough architecture sweep. Provider decision revised 2026-07-28 per the owner's call: **Cloudflare everywhere — one unified infra.**
 
 ## 1. Provider decision: Cloudflare end-to-end
 
@@ -20,7 +32,9 @@ The master reference for the **Maude Cloud arc**: the complete path from zero in
 
 **Recorded alternatives (not v1):** Fly.io Machines (the pre-revision choice — volumes instead of the persistence spike; closest fallback if Containers limits bite), AWS estate (enterprise residency / ≥15 always-on density), DO-native sync (rewrite Hocuspocus on Durable Objects — the true serverless endgame, big rewrite, revisit post-GA).
 
-## 2. Unit economics (directional — Phase 5 gate records real telemetry; verify prices at Phase 8)
+## 2. Unit economics (STILL DIRECTIONAL — no telemetry was ever recorded)
+
+> The Phase-5 gate was meant to replace this section with measurements from a live cell. **It did not run**: Containers need the paid plan, so no cell exists and every number below is the same estimate it was before any code was written. `apps/cloud/fleet.mjs` has the cost-alarm machinery ready (it alarms on the per-cell ratio against a €3 model, and on any R2 egress charge at all, which should be €0 by design) — it has simply never been given real figures.
 
 **Per project-cell (Cloudflare):**
 
@@ -38,7 +52,9 @@ The master reference for the **Maude Cloud arc**: the complete path from zero in
 
 **Break-even: ~2 paying projects.** At 50 projects: MRR ~€950, infra ~€100–200, gross ~€780/mo. Storage add-on is nearly pure margin on R2.
 
-## 3. Pricing table (proposal — final numbers are the owner's call, locked in Phase 8)
+## 3. Pricing table (proposal — final numbers are the owner's call, NOT YET locked)
+
+> Now instantiated in the **Stripe sandbox** (`maude.sh sandbox`, `acct_1TyGz4BU24eXpQyl`) and resolvable through `apps/cloud/pricing.{json,mjs}`: Project €19/mo + €190/yr, Dedicated €99/mo, storage €5 per 50 GB block. Live-mode price ids are deliberately `null`, and `priceIdFor()` **throws** rather than falling back to a sandbox id — a silent fallback is how a real customer gets charged nothing, or a test charge lands on a real card. The numbers below are unchanged and still await sign-off.
 
 The model is **per project** (per the owner's decision): one price = one project = one isolated cell. Seats are never billed — the invite is the product's core action (user-advocate verdict).
 
@@ -64,7 +80,9 @@ Positioning guard (advocate + breaker): the self-host cost table in `pricing.mdx
 
 Buyer signs up on maude.sh (Workers + D1 + Stripe), creates a **project** → the control plane (via Queues + the shared cell lib) births an isolated **cell**: a Cloudflare Container running the exact self-host stack from Phases 1–4 (hub + workspace-agent), fronted by a per-project Durable Object + Worker ingress at `<project>.cloud.maude.sh`, with durability = continuous replication to R2 + rehydrate-on-boot, minting its DDR-053 bootstrap. Autosave = the Part-1 workspace agent (append-only commits, never force-push). Members join via magic-link → `maude://` deep-link into Maude Desktop; **editing is desktop-only, ACP runs on each member's own Claude subscription** (hard boundary: no chat/editing surface in any browser; **containment invariant: no tenant-authored TSX is ever evaluated by vendor-operated compute** — boot-assert + CI grep gate). Stripe subscription state is the single truth; an hourly Cron-Trigger reconciler re-derives desired cell state (webhooks only enqueue "reconcile now" — never load-bearing). Tenant lifecycle: `pending → active → past_due → suspended (stopped, R2 state retained 30 d) → exported → purged`, export e-mail always fires before teardown.
 
-## 5. Phase index — run in this order
+## 5. Phase index — as executed
+
+> Kept as written, with outcomes. The "Exit gate" column is what each phase was *asked* to prove; the Outcome column is what actually happened. Every phase file is archived under `.ai/plans/archive/` with its own closing section listing exactly what remains.
 
 | File | Delivers | Exit gate |
 | --- | --- | --- |
@@ -81,3 +99,26 @@ Buyer signs up on maude.sh (Workers + D1 + Stripe), creates a **project** → th
 | `cloud-phase-10-ga-launch-github-mirror.md` | Self-serve GA, GitHub App mirror, docs + launch (optional: docs-site migration to Workers) | stranger completes signup→pay→invite→mirror→export unaided |
 
 Deferred (recorded, not planned): read-only share links (must not break containment), browser editing (Direction B prerequisite), Fly/AWS alternatives (fallback/enterprise), DO-native sync rewrite, SSO per org.
+
+
+### Outcomes
+
+| Phase | Outcome | What is still missing |
+| --- | --- | --- |
+| 0b prep | **partially executed by agent** | Workers Paid, R2, DNS delegation, live Stripe entity, Resend signup, legal artifacts |
+| 1 safety gates | **COMPLETE** — DDR-192/193, the DDR-122 origin gate, doc namespace | — |
+| 2 hub identity | **COMPLETE** — users, expiring tokens, trusted proxy, backups + a restore drill in CI | — |
+| 3 workspace agent | **CORE COMPLETE** — containment enforced, S3/R2 lane, append-only autosave, sign-in | two-machine round-trip, 60 MB via R2, desktop e2e |
+| 4 self-host skill | **CORE COMPLETE** — `maude hub workspace-up` renders + verifies | 6 of 8 verification steps need a Docker host |
+| 5 cell | **CORE COMPLETE** — image, containment at the image layer, naming/isolation/teardown | persistence spike, `maude cell up`, alligators pilot |
+| 6 invites | **CORE COMPLETE** — magic-link mint/peek/redeem/revoke | `maude://` deep link, desktop UI, one-click export |
+| 7 control plane | **CORE COMPLETE** — the reconciler + D1 schema (applied to a live database) | the Worker, Queues, dashboard |
+| 8 billing | **PARTIAL** — sandbox catalog + resolver | live prices, Checkout, portal, dunning |
+| 9 fleet ops | **CORE COMPLETE** — canary rollout, rollback, board, cost alarms, Trust page (claim-audited) | dashboard UI, live telemetry, scheduled drills. **Tenant cap stays ≤ 3** |
+| 10 GA | **PARTIAL** — the GitHub mirror | App registration, settings UI, self-serve signup, launch |
+
+### The one thing to re-read before resuming
+
+The arc's decisions are all recorded and tested; what has never happened is **any of it running against Cloudflare**. `cellConfig()` renders what the Containers API *should* accept and no Cloudflare API has ever seen it. Expect the first `maude cell up` to find shape and naming problems — a bounded surface, not a design question (DDR-196 says this in its consequences, deliberately).
+
+Code that nothing runs also rots. If the account is still unpaid a release cycle or two from now, `infra/cell/` and `apps/cloud/*` want re-verifying rather than assuming.

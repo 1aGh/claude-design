@@ -204,3 +204,13 @@ Nothing to install; these are the artifacts the Phase-9 Trust page must referenc
 - [ ] Resend account + API key (Step 5)
 
 Everything not on these lists — buckets, tokens, DNS records, D1 schemas, Queues, Workers, Containers, secrets, deployments — is agent work through MCP.
+
+---
+
+**Status: EXECUTED (agent half), OPEN (owner half)** — 2026-07-29.
+
+This file stays in `.ai/plans/` rather than being archived, on purpose: the six
+owner items are a live checklist, not history. Everything an agent could do is
+done and recorded above; the rest is Steps 1a/1b/1c, 3, 4 and 7, each of which
+is a payment authorization, a ToS acceptance, a legal identity, or a human test
+subject.
