@@ -65,6 +65,7 @@ function parseTags(raw) {
  */
 function crossRefs(text, selfNum) {
   const out = {};
+  const reversed = [];
   const put = (tgt, kind) => {
     if (tgt === selfNum) return;
     if (!(tgt in out) || REF_RANK[kind] > REF_RANK[out[tgt]]) out[tgt] = kind;
@@ -81,18 +82,52 @@ function crossRefs(text, selfNum) {
   marker('Relates', 'references');
   marker('Extends', 'extends');
   marker('Amends', 'extends');
-  // Then bare mentions → weak references (skip anything already typed).
+  // Then bare mentions. NOT blindly `references`: a supersede is often declared
+  // in prose rather than a typed marker — e.g. DDR-006's `**Status:** Superseded
+  // by [DDR-191](…)`, or DDR-191's `**Related:** [DDR-006] (superseded by this
+  // DDR)`. Marker-only classification silently downgrades both to `references`
+  // and the supersede chain — the single most useful edge in the graph — is lost.
+  // So sniff a ±80-char window around each bare mention for intent keywords
+  // (restores the behavior of the scripts/kgai-smoke prototype).
   for (const d of text.matchAll(/DDR-(\d+)/g)) {
     const tgt = d[1].padStart(3, '0');
-    if (!(tgt in out)) put(tgt, 'references');
+    // A typed marker is an EXPLICIT statement of intent — never let a keyword
+    // that merely happens to sit within the window override it. (Caught by test:
+    // "We replace the earlier approach. See … DDR-003" hijacked DDR-003's
+    // `**Related:**` REFERENCES into OVERRIDES.)
+    // Also skip a target already captured as a REVERSED edge — otherwise a
+    // later, non-passive mention in the same file adds the opposite direction
+    // too and we are back to an unusable bidirectional pair.
+    if (tgt in out || reversed.some(([t]) => t === tgt)) continue;
+    const before = text.slice(Math.max(0, d.index - 80), d.index).toLowerCase();
+    const ctx = text.slice(Math.max(0, d.index - 80), d.index + d[0].length + 80).toLowerCase();
+    // DIRECTION matters, and prose states it both ways: DDR-006 says "Superseded
+    // by DDR-191" (the MENTION is the superseder) while DDR-191 says it
+    // supersedes DDR-006 (SELF is). Without this the graph gets a bidirectional
+    // SUPERSEDES pair and "what replaced X" becomes unanswerable. Passive voice
+    // right before the mention ⇒ emit the edge reversed.
+    const passive = /(superseded|replaced|overridden|retired|deprecated)\s+(by|in)\s*\[?$/.test(before);
+    let kind = 'references';
+    if (/supersed/.test(ctx)) kind = 'supersedes';
+    else if (/\b(override|reverse[sd]?|replaces?|retire[sd]?|deprecat)/.test(ctx)) kind = 'overrides';
+    else if (/\bextend|amend/.test(ctx)) kind = 'extends';
+    if (passive && kind !== 'references') reversed.push([tgt, kind]);
+    else put(tgt, kind);
   }
-  return out;
+  return { out, reversed };
 }
 
 /** Build the kgai batch from a decisions dir. Pure. */
-export function buildDdrBatch(decisionsDir, scope = {}) {
+export function buildDdrBatch(decisionsDir, scope = {}, only = null) {
   const files = readdirSync(decisionsDir)
     .filter((f) => /^DDR-\d+.*\.md$/.test(f))
+    // `only` = incremental mode: ingest just these (substring match on the
+    // filename, so `DDR-191` or a full path both work). Re-ingesting an existing
+    // DDR is SAFE and is how you refresh one whose file changed — deterministic
+    // `hash(kind:name)` converges the element and props merge on re-upsert; it
+    // only appends one more decision event, which is the honest record of "this
+    // was re-recorded". Bulk re-import is what you must not do casually.
+    .filter((f) => !only || only.some((o) => f.includes(o.replace(/^.*\//, '').replace(/\.md$/, ''))))
     .sort();
   const decisions = [];
   const stats = { files: 0, withDate: 0, withTags: 0, crossrefs: 0, tags: new Set() };
@@ -127,7 +162,7 @@ export function buildDdrBatch(decisionsDir, scope = {}) {
     const date = normDate(field(t, 'Date')) || normDate(field(t, 'Status'));
     const tags = parseTags(field(t, 'Tags'));
     const rationale = firstPara(t, 'Decision') || firstPara(t, 'Context');
-    const refs = crossRefs(t, num);
+    const { out: refs, reversed: revRefs } = crossRefs(t, num);
     if (date) stats.withDate++;
     if (tags.length) {
       stats.withTags++;
@@ -168,6 +203,17 @@ export function buildDdrBatch(decisionsDir, scope = {}) {
         op: 'add_link',
         from: `decision:${self}`,
         to: `decision:DDR-${tgt}`,
+        link: kind.toUpperCase(),
+      });
+    }
+    // Passive-voice mentions ("Superseded by DDR-191") — the MENTION supersedes
+    // SELF, so the edge points the other way.
+    for (const [tgt, kind] of revRefs) {
+      muts.push({ op: 'upsert_element', kind: 'decision', name: `DDR-${tgt}` });
+      muts.push({
+        op: 'add_link',
+        from: `decision:DDR-${tgt}`,
+        to: `decision:${self}`,
         link: kind.toUpperCase(),
       });
     }
@@ -285,6 +331,7 @@ export function buildLogBatch(logsDir, scope = {}) {
 export async function run({ args, state, projectRoot, runKg }) {
   // `args` here is already the verb's args (kg.mjs stripped the `import` token).
   const { flags } = parseArgs(args, { booleans: ['dry-run', 'design', 'force', 'no-logs'] });
+  const only = flags.only ? String(flags.only).split(',').map((x) => x.trim()).filter(Boolean) : null;
   const decisionsDir = join(projectRoot, '.ai', 'decisions');
   if (!existsSync(decisionsDir)) {
     process.stderr.write(
@@ -300,21 +347,21 @@ export async function run({ args, state, projectRoot, runKg }) {
   }
 
   const marker = join(projectRoot, '.ai', '.kgai-migrated');
-  if (existsSync(marker) && !flags.force && !flags['dry-run']) {
+  if (existsSync(marker) && !flags.force && !flags['dry-run'] && !only) {
     process.stderr.write(
       `maude kg import: already migrated (${marker} exists). Re-run with --force to ingest again (adds duplicate decision events).\n`
     );
     return 1;
   }
 
-  const { batch, stats } = buildDdrBatch(decisionsDir, state.scope);
+  const { batch, stats } = buildDdrBatch(decisionsDir, state.scope, only);
 
   // `.ai/logs/**` rides the same import unless --no-logs. Deliberately NOT a
   // separate opt-in verb: these files are gitignored, so leaving them out is how
   // the RCA/security-review knowledge stays machine-local and dies on a clone.
   const logsDir = join(projectRoot, '.ai', 'logs');
   let logStats = null;
-  if (!flags['no-logs'] && existsSync(logsDir)) {
+  if (!only && !flags['no-logs'] && existsSync(logsDir)) {
     const logs = buildLogBatch(logsDir, state.scope);
     logStats = logs.stats;
     batch.decisions.push(...logs.batch.decisions);
