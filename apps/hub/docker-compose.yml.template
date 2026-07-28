@@ -22,6 +22,14 @@ services:
       # Caddy terminates TLS; the hub advertises the public https URL so the
       # admin bootstrap link is correct.
       HUB_PUBLIC_URL: https://${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      # Behind Caddy every request arrives from the compose network, so without
+      # this the hub would bucket ALL clients together — one attacker's login
+      # flood would rate-limit everybody, and the attacker's own budget would be
+      # the whole hub's. These are the RFC-1918 / ULA ranges Docker assigns; the
+      # hub only reads X-Forwarded-For when the peer is inside them, so a
+      # stranger cannot spoof a client address. Safe here because the hub is
+      # `expose`d, never published — Caddy is the only thing that can reach it.
+      HUB_TRUSTED_PROXIES: 172.16.0.0/12,10.0.0.0/8,192.168.0.0/16,fd00::/8
     volumes:
       - hub-data:/data
     expose:

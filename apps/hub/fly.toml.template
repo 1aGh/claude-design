@@ -19,6 +19,12 @@ primary_region = "{{REGION}}"
   # HUB_PUBLIC_URL is set so the admin UI prints the correct bootstrap link.
   # Fly terminates TLS, so the hub sees http:// internally but advertises https.
   HUB_PUBLIC_URL = "https://{{APP_NAME}}.fly.dev"
+  # Fly's edge proxy fronts the app, so every request arrives from the internal
+  # network and would otherwise share ONE rate-limit bucket (an attacker's login
+  # flood would 429 every real user). The hub only reads X-Forwarded-For when
+  # the peer is inside these ranges, so it cannot be spoofed from outside.
+  # fdaa::/16 is Fly's private IPv6 network; the v4 ranges cover the edge.
+  HUB_TRUSTED_PROXIES = "fdaa::/16,172.16.0.0/12,10.0.0.0/8"
 
 # Persistent Yjs state (hub.db) + token store (tokens.db) survive restarts.
 [mounts]

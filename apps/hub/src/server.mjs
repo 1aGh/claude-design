@@ -56,7 +56,9 @@ import {
   handleUserAdminRoutes,
   permissiveDevAuthDisabled,
 } from './auth-routes.mjs';
+import { clientIpFor, parseTrustedProxies } from './client-ip.mjs';
 import { groupCanvases } from './doc-namespace.mjs';
+import { createRateStore } from './rate-store.mjs';
 import { readSettings, writeSettings } from './settings.mjs';
 import {
   addToken,
@@ -167,14 +169,28 @@ export function createHub(config = {}) {
   /** @type {Map<string, { socketId: string, documentName: string, user: string, connectedAt: number, connection: any }>} */
   const peers = new Map();
 
+  // Cloud Phase 2 Task 2 — trusted proxies. Empty by default, which keeps the
+  // DDR-053 §6 stance ("X-Forwarded-For is not trusted") byte-for-byte intact
+  // for anyone who does not opt in.
+  const trustedProxies = parseTrustedProxies(process.env.HUB_TRUSTED_PROXIES);
+  if (trustedProxies.length > 0 && verbose) {
+    console.warn(
+      `[hub] trusting X-Forwarded-For from ${trustedProxies.length} configured proxy range(s)`
+    );
+  }
+  /** The address a rate-limit bucket is keyed by (see client-ip.mjs). */
+  const clientIp = (request) => clientIpFor(request, trustedProxies);
+
+  // Persistent sliding-window limiter. In-memory buckets reset on restart,
+  // which made "crash the hub, keep guessing" a free counter reset.
+  const rateStore = createRateStore(dataDir);
+
   /** Per-IP rate limit buckets (admin API): ip → { count, windowStart } */
   const rateBuckets = new Map();
 
   /** Per-token rate limit buckets (valid WS auth): label → { count, windowStart } */
   const connBuckets = new Map();
 
-  /** DDR-102 — invalid-token attempt buckets (brute-force): ip → { count, windowStart } */
-  const invalidConnBuckets = new Map();
 
   /** Activity feed ring buffer (newest last). Bounded to ACTIVITY_CAP. */
   const activity = [];
@@ -208,8 +224,7 @@ export function createHub(config = {}) {
             const bucket = connBuckets.get(match.label);
             console.warn(
               `[hub] rate limit exceeded for token label=${sanitizeForLog(match.label)} ` +
-                `(valid bucket: ${bucket?.count ?? '?'}/${connRateLimitMax} per 60s; ` +
-                `invalid-attempt buckets tracked per IP: ${invalidConnBuckets.size})`
+                `(valid bucket: ${bucket?.count ?? '?'}/${connRateLimitMax} per 60s)`
             );
           }
           throw authError('rate limit exceeded for this token — retry in up to 60s');
@@ -243,13 +258,17 @@ export function createHub(config = {}) {
       // DDR-102 — invalid-token attempts are the brute-force surface: tight
       // per-IP bucket (100/min). The old design never rate-limited these at
       // all (the label bucket only ever counted VALID tokens).
-      const ip = request?.socket?.remoteAddress ?? '0.0.0.0';
-      if (rateLimit && !checkConnRateLimit(invalidConnBuckets, ip, INVALID_CONN_RATE_LIMIT_MAX)) {
+      // Resolve through the trusted-proxy chain so a hub behind Caddy buckets
+      // attackers individually instead of collapsing them into the proxy's IP.
+      const ip = clientIp(request);
+      if (
+        rateLimit &&
+        !rateStore.check(`auth:${ip}`, INVALID_CONN_RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)
+      ) {
         if (verbose) {
-          const bucket = invalidConnBuckets.get(ip);
           console.warn(
             `[hub] invalid-token attempt rate limit exceeded for ip=${sanitizeForLog(ip)} ` +
-              `(invalid bucket: ${bucket?.count ?? '?'}/${INVALID_CONN_RATE_LIMIT_MAX} per 60s)`
+              `(ceiling ${INVALID_CONN_RATE_LIMIT_MAX} per 60s, persisted across restarts)`
           );
         }
         throw authError('rate limit exceeded — retry in up to 60s');
@@ -309,7 +328,10 @@ export function createHub(config = {}) {
           method,
           dataDir,
           secret,
-          checkRateLimit: rateLimit ? (req) => checkRateLimit(rateBuckets, req) : undefined,
+          checkRateLimit: rateLimit
+            ? (req) =>
+                checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
+            : undefined,
           respondRateLimited: () => respondRateLimited(response),
           respondJson: (status, payload) => respondAdminJson(response, status, payload),
           readJsonBody,
@@ -353,6 +375,8 @@ export function createHub(config = {}) {
           peers,
           publicUrl,
           rateBuckets,
+          rateStore,
+          clientIp,
           rateLimit,
           activity,
           sqlitePath,
@@ -438,6 +462,8 @@ export function createHub(config = {}) {
 
 async function handleAdminApi(ctx) {
   const { request, response, dataDir, secret, peers, publicUrl, rateBuckets, rateLimit } = ctx;
+  const { rateStore, clientIp } = ctx;
+  const rateOpts = { store: rateStore, ip: clientIp?.(request) };
   const { activity, sqlitePath } = ctx;
   const url = new URL(request.url, 'http://x');
   const path = url.pathname.slice('/admin/api'.length); // '/status', '/tokens', …
@@ -458,7 +484,7 @@ async function handleAdminApi(ctx) {
   // /bootstrap is the only state-changing unauthenticated admin route — the
   // bootstrap key in the JSON body validates instead.
   if (method === 'POST' && path === '/bootstrap') {
-    if (rateLimit && !checkRateLimit(rateBuckets, request)) {
+    if (rateLimit && !checkRateLimit(rateBuckets, request, rateOpts)) {
       respondRateLimited(response);
       return;
     }
@@ -467,7 +493,7 @@ async function handleAdminApi(ctx) {
 
   if (!verifyAdminAuth(request, { hubSecret: secret, dataDir })) {
     // Consume budget on 401s — burst of wrong-auth → 429 (limits brute force).
-    if (rateLimit && !checkRateLimit(rateBuckets, request)) {
+    if (rateLimit && !checkRateLimit(rateBuckets, request, rateOpts)) {
       respondRateLimited(response);
       return;
     }
@@ -905,8 +931,12 @@ function listCanvases(sqlitePath, peers) {
  * X-Forwarded-For intentionally not trusted in v1.1 — operators behind a
  * proper reverse proxy get accurate buckets in Task 6 when trustProxy lands.
  */
-function checkRateLimit(buckets, request) {
-  const ip = request.socket?.remoteAddress ?? '0.0.0.0';
+function checkRateLimit(buckets, request, { store = null, ip: resolvedIp } = {}) {
+  const ip = resolvedIp ?? request.socket?.remoteAddress ?? '0.0.0.0';
+  // When a persistent store is wired, it IS the limiter — the in-memory bucket
+  // below stays only as the fallback path (and for the pure-unit tests that
+  // call this without a store).
+  if (store) return store.check(`http:${ip}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
   const now = Date.now();
   // Opportunistic eviction (~1% of calls) so a long-running hub doesn't
   // accumulate entries for one-shot IPs (botnet / IPv6 rotation). Cheap.

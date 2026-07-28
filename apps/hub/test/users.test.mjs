@@ -377,3 +377,41 @@ test('the permissive dev-auth path is off the moment the hub has a user', () => 
     'one real account is enough — there is no flag to turn it back on'
   );
 });
+
+// ------------------------------------------ login brute-force behind a proxy
+
+test('login brute-force is limited PER ATTACKER behind a trusted proxy', async () => {
+  // Regression guard for the collapse this phase fixes: without trusted-proxy
+  // resolution every request behind Caddy shares the proxy's IP, so one
+  // attacker's flood would 429 every legitimate user — and the attacker's own
+  // budget would be the whole hub's.
+  const { clientIpFor, parseTrustedProxies } = await import('../src/client-ip.mjs');
+  const { createRateStore } = await import('../src/rate-store.mjs');
+
+  const trusted = parseTrustedProxies('10.0.0.0/8');
+  const store = createRateStore(dataDir);
+  const RATE_LIMIT_MAX = 5;
+  const WINDOW = 60_000;
+  const attempt = (remoteAddress, xff, at) =>
+    store.check(
+      `http:${clientIpFor({ socket: { remoteAddress }, headers: { 'x-forwarded-for': xff } }, trusted)}`,
+      RATE_LIMIT_MAX,
+      WINDOW,
+      at
+    );
+
+  const t0 = 5_000_000;
+  // The attacker hammers through the proxy.
+  for (let i = 0; i < RATE_LIMIT_MAX; i++) {
+    assert.equal(attempt('10.0.0.1', '203.0.113.66', t0 + i), true);
+  }
+  assert.equal(attempt('10.0.0.1', '203.0.113.66', t0 + 10), false, 'attacker is limited');
+
+  // A real user arriving through the SAME proxy is unaffected.
+  assert.equal(attempt('10.0.0.1', '198.51.100.20', t0 + 11), true);
+
+  // And the attacker cannot buy budget by rotating the claimed address, because
+  // the hop our proxy appended is the rightmost one — the one we read.
+  assert.equal(attempt('10.0.0.1', '1.1.1.1, 203.0.113.66', t0 + 12), false);
+  store.close();
+});
