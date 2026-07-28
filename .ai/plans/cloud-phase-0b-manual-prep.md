@@ -50,6 +50,29 @@ MCP plugins installed + OAuth-authorized: **cloudflare** (api / bindings / build
 
 ---
 
+## Agent-executed items — 2026-07-29 (`/flow:execute` run)
+
+Everything on this checklist that did not need a browser, a card or a legal identity is now done.
+
+| Item | Result |
+| --- | --- |
+| Step 0 — `wrangler` | ✅ installed, v4.115.0 |
+| D1 (`✅ agent can create`) | ✅ **`maude-cloud-control-plane`** created, `uuid cf2b8fdc-6c3f-42f9-9305-0040e01391eb`, region hint **WEUR** — matching the EU-jurisdiction claim on the Trust page rather than defaulting |
+| D1 schema | ✅ applied live from `apps/cloud/schema.sql` (accounts, projects, jobs, account_invites, audit_log, schema_migrations + 7 indexes, migration v1). Verified against the running database: the `state` CHECK constraint rejects an invalid state, and `ON DELETE RESTRICT` refuses to delete an account that still owns a project. Probe rows removed; the database is empty. |
+| Side finding — Vercel deployment `ERROR` | ✅ **investigated; the docs site is fine.** Production is `READY` on v0.48.0. Every `ERROR` is a *preview* build of dependabot **PR #66**, which has now failed four times. |
+
+### The PR-#66 failure is a containment finding, not a build annoyance
+
+`pnpm install` fails with `ERR_PNPM_IGNORED_BUILDS: puppeteer@25.4.0`. Puppeteer is not a direct dependency of anything — it arrives because PR #66 bumps **`dom-to-pptx` 1.1.10 → 2.1.1**, and `dom-to-pptx` is a **runtime dependency of `apps/studio`**.
+
+Merging that PR would put a browser inside the workspace's production dependency closure, with nothing in any manifest to show for it. `scripts/check-containment.sh` only inspected *direct* manifest dependencies, so it would have passed. The only thing that surfaced it at all was an unrelated pnpm build-script error on a preview deploy.
+
+**Closed:** the gate now also checks the resolved production tree (`pnpm why <browser> --prod --filter @maude/hub|@maude/dev-server`), scoped to the two packages that ship into a cell — the docs site legitimately reaches Playwright through Next's peer graph, and a noisy gate gets disabled. Verified to fail on a planted dependency and to pass on the current tree.
+
+**Owner action:** PR #66 should not be merged as-is. Either hold `dom-to-pptx` at 1.x, or replace it — a PPTX exporter that needs a headless browser is a poor fit for a package that ships inside a cell image (DDR-193 §2).
+
+---
+
 ## Step 0 — Local tooling (5 min, do now)
 
 Verified on this machine 2026-07-28: `node` v24.13.0 ✅, `bun` 1.3.3 ✅, `pnpm` 11.0.4 ✅, `gh` 2.93.0 ✅, `claude` 2.1.220 ✅. Missing:

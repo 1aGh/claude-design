@@ -86,6 +86,35 @@ for manifest in package.json apps/studio/package.json apps/hub/package.json; do
   fi
 done
 
+# ---- 2b. no browser TRANSITIVELY, either ----------------------------------
+# The manifest check above only sees DIRECT dependencies, and that is not where
+# this actually goes wrong. Found for real: dependabot PR #66 bumps
+# `dom-to-pptx` (a runtime dependency of apps/studio) from 1.x to 2.x, and 2.x
+# pulls `puppeteer` in as a real dependency — putting a browser inside the
+# workspace's production closure with nothing in the manifests to show for it.
+# The Vercel build failed on `ERR_PNPM_IGNORED_BUILDS: puppeteer@25.4.0`, which
+# is the only reason anyone noticed.
+#
+# Scoped to the two packages that actually ship into a cell. The docs site
+# legitimately reaches Playwright through Next's peer graph and is irrelevant
+# here — a broader check would be noise, and a noisy gate gets disabled.
+if command -v pnpm >/dev/null 2>&1; then
+  for pkg in puppeteer puppeteer-core playwright playwright-core; do
+    for scope in "@maude/hub" "@maude/dev-server"; do
+      if pnpm why "$pkg" --prod --filter "$scope" 2>/dev/null | grep -qE "^${pkg}@"; then
+        echo "FAIL: '$pkg' is reachable from $scope's PRODUCTION dependencies." >&2
+        echo "      Not necessarily as a direct dep — check the transitive path:" >&2
+        echo "        pnpm why $pkg --prod --filter $scope" >&2
+        echo "      A cell that can reach a browser is one import() from rendering" >&2
+        echo "      tenant-authored TSX (DDR-193 §2)." >&2
+        fail=1
+      fi
+    done
+  done
+else
+  echo "note: pnpm not on PATH — skipped the transitive browser check" >&2
+fi
+
 # ---- 3. the CELL IMAGE must not be able to render at all ------------------
 # A cell that merely *chooses* not to render is one config mistake from
 # rendering. A cell with no browser in it cannot, whatever the config says — so
