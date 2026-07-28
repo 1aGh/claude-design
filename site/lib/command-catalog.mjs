@@ -120,6 +120,7 @@ export const COMMAND_CATALOG = [
       { name: 'init', category: 'setup' },
       { name: 'setup-ds', category: 'setup' },
       { name: 'setup-docs', category: 'setup' },
+      { name: 'hub-workspace', category: 'hub' },
       { name: 'smoke', category: 'validate' },
     ],
   },

@@ -26,6 +26,7 @@ const SUBCOMMANDS = new Set([
   'backup',
   'restore-drill',
   'asset-check',
+  'workspace-up',
   'help',
 ]);
 
@@ -49,10 +50,14 @@ export async function run({ args, pkgRoot }) {
   if (sub === 'backup') return runBackupNow({ args, pkgRoot });
   if (sub === 'restore-drill') return runRestoreDrill({ args, pkgRoot });
   if (sub === 'asset-check') return runAssetCheck({ args, pkgRoot });
+  if (sub === 'workspace-up') {
+    const mod = await import('./hub-workspace.mjs');
+    return mod.run({ args, pkgRoot });
+  }
 }
 
 function usage() {
-  return `maude hub <serve|token|status|deploy|backup|restore-drill|asset-check> [options]
+  return `maude hub <serve|token|status|deploy|backup|restore-drill|asset-check|workspace-up> [options]
 
   serve [--port N] [--data PATH] [--secret HEX] [--insecure-http] [--dev]
         Start the self-hostable Yjs sync hub in the current process tree.
@@ -122,6 +127,20 @@ function usage() {
         prefix is NEVER garbage-collected, and bucket lifecycle/expiry rules
         must be OFF for it, because a canvas in git history can reference an
         asset no current canvas does. Exits non-zero when anything dangles.
+
+  workspace-up [--domain HOST] [--admin-email EMAIL] [--s3-* ...] [--dry-run]
+        Stand up a self-hosted WORKSPACE — a hub that owns the project, commits
+        autosaves, and stores media in object storage — and verify it works
+        before saying so. Renders compose + Caddyfile + .env (0600), boots the
+        stack, then runs a verification plan (health, admin credential, sign-in,
+        canvas round-trip, git commit, object storage + no-expiry, restore
+        drill). Re-running is the upgrade path and REUSES existing secrets.
+
+        It scaffolds and verifies once — it does not operate the deployment.
+        Rotation, backups, upgrades and the bill stay with you; the run prints
+        that list rather than saying "done".
+
+        Run 'maude hub workspace-up --help' for every option.
 
   deploy <fly|docker> [--name NAME] [--region CODE] [--tag TAG] [--out DIR] [--force]
         Emit the deploy templates for the chosen target into the current

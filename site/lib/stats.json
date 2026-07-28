@@ -5,7 +5,7 @@
   "contributors": 1,
   "plugins": {
     "design": {
-      "commands": 23,
+      "commands": 24,
       "skills": 8,
       "agents": 22
     },
@@ -15,7 +15,7 @@
       "agents": 12
     },
     "maude": {
-      "subcommands": 18
+      "subcommands": 19
     }
   },
   "pageUpdated": {

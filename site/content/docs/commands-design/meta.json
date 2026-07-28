@@ -25,6 +25,8 @@
     "setup-docs",
     "setup-ds",
     "---validate---",
-    "smoke"
+    "smoke",
+    "---hub---",
+    "hub-workspace"
   ]
 }

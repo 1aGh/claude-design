@@ -1,0 +1,83 @@
+---
+title: Workspace mode
+description: A hub that owns the project — autosave becomes append-only git history, media lives in object storage, and teammates sign in with an email instead of pasting a token. Self-hosted, one command, verified before it claims to work.
+---
+
+A plain hub relays documents between peers who each own their own copy of the project. A **workspace** goes further: the hub owns the project.
+
+That changes three things:
+
+- **Autosave becomes history.** The workspace holds the authoritative checkout and turns saves into append-only git commits, attributed to whoever made the edit. Nothing is ever amended, rebased, or force-pushed.
+- **Heavy media stops riding git.** Images, video and audio go to an S3-compatible bucket. A 60 MB clip stops being 60 MB in every clone, forever.
+- **People sign in.** A teammate gets an address, an email and a password — not a token to paste, and not git.
+
+Everything else is the hub you already know: same image, same admin console, same `maude design link` for peers who prefer it.
+
+## When you want this, and when you don't
+
+Use a **plain hub** ([Deploy a hub](/docs/hub/deploy)) when everyone involved has a clone and is comfortable with git. It is smaller, cheaper, and there is less to operate.
+
+Use a **workspace** when someone on the team should never have to think about git at all, or when you want a single copy that is backed up, versioned, and reachable from anywhere without anybody's laptop being open.
+
+## One command
+
+```sh
+maude hub workspace-up --dry-run \
+  --domain design.acme.com \
+  --acme-email ops@acme.com \
+  --admin-email alice@acme.com \
+  --s3-endpoint https://<account>.r2.cloudflarestorage.com \
+  --s3-bucket acme-design-assets \
+  --s3-access-key-id <id> \
+  --s3-secret-access-key <secret>
+```
+
+`--dry-run` shows exactly what it would write and what it would check. Every configuration problem is reported at once, so you fix them in one pass instead of one round-trip per typo.
+
+Drop `--dry-run` and it writes `docker-compose.yml`, `Caddyfile` and `.env` (mode `0600` — it holds two secrets), brings the stack up, and then **verifies it**.
+
+No object storage yet? Leave the `--s3-*` flags off and add them later; media stays in git in the meantime. `--dev-minio` stands up a throwaway MinIO for trying the whole thing locally — it is for testing, and the credentials are written into the directory, so don't point a real workspace at it.
+
+Prefer a file? `--config workspace.json` accepts the same fields.
+
+## It verifies before it claims to work
+
+This is the part that matters, and it is why the command takes longer than writing three files. Printing a URL without proving a round-trip tells you something the tool does not actually know.
+
+| Check | What it proves |
+| --- | --- |
+| The workspace answers | TLS is up and the hub is serving |
+| The operator credential works | `HUB_SECRET` in your `.env` really is admin |
+| The first person can sign in | The account exists and the password works |
+| A canvas survives a round trip | It syncs up and reads back byte-identical |
+| Autosave produced a commit | The edit is in the workspace's git history |
+| Media reaches the bucket | Object storage is wired, not just configured |
+| Nothing will expire the media | No lifecycle rule applies to `assets/` |
+| A backup can be restored | `maude hub restore-drill` passes |
+
+A check the current build cannot automate prints as **skipped**, never as passed. If you see one, it is unverified and needs a hand check — counting an unrun check as green is the fastest way to make a verification suite worthless.
+
+## Re-running is the upgrade path
+
+Run `workspace-up` again to regenerate the deployment files. Secrets already in `.env` are **reused**, not re-minted: a fresh `HUB_SECRET` would lock out every peer that already has a token, and re-running is exactly what you do after a failed attempt.
+
+## What stays yours
+
+The command scaffolds and verifies a workspace **once**. It does not operate it. On every successful run it prints the list, and it is worth reading rather than skimming:
+
+- **Rotate `HUB_SECRET` when someone leaves.** It is the operator credential. `maude hub token rotate` handles peer tokens.
+- **Watch the restore drill, not the backup.** Schedule `maude hub restore-drill`. A backup nobody has restored is a hypothesis — and a database that restores readable-but-empty looks exactly like a working one until the day you need it.
+- **Pin the image tag.** `latest` means an unplanned upgrade on the next restart.
+- **Upgrades are yours.** Re-running regenerates files; nothing here watches for releases.
+- **The bill is yours.** This runs on your infrastructure.
+- **Never expire the `assets/` prefix.** A canvas in your git history can reference media no *current* canvas does, so "unreferenced" never means "unreachable". An expired object is a permanently broken canvas with no recovery path. `maude hub asset-check` proves nothing dangles.
+
+## Your designs are never run on the server
+
+A workspace stores and syncs canvases. It never renders one, never builds a bundle, never runs a browser against your content — and it will **refuse to start** if any surface that could do so is reachable.
+
+That is enforced by the process itself plus a CI gate, not by a convention someone has to remember. It is why there is no export endpoint on a workspace: exports render your canvas, and rendering happens on your machine, in Maude Desktop, where it belongs.
+
+## Costs
+
+Unchanged from [Hub pricing](/docs/hub/pricing) — one small box plus object storage. A workspace adds the bucket (R2 is ~$0.015/GB with no egress charge) and nothing else. The self-host path is free forever and stays that way.

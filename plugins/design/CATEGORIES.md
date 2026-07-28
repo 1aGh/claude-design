@@ -59,6 +59,16 @@ Why three setup verbs:
 - **`setup-ds`** is per-DS — runs **once per design system** (first one for a project, or every time you add a marketing-vs-admin-vs-mobile DS). Auto-invokes `init` first if config is missing.
 - **`setup-docs`** is per-canvas-event — auto-runs after every `/design:edit` and `/design:new`. Manual trigger when you want to force a regeneration.
 
+### hub — Self-hosted infrastructure
+
+Members:
+
+| Command | Description |
+|---|---|
+| `/design:hub-workspace` | Stand up a self-hosted **workspace** (a hub that owns the project, commits autosaves, and stores media in object storage) and verify it before saying it works. Conversational wrapper over `maude hub workspace-up`. |
+
+Why its own group rather than `setup`: `setup-*` prepares a repo on the machine you are sitting at. A `hub-*` verb provisions **infrastructure other people will depend on**, with secrets, DNS, and an operator who is on the hook afterwards. Grouping the two would put "refresh my README" one autocomplete away from "provision a server", and the blast radius is not comparable.
+
 ## Auto-routed audit agents (NOT user-invocable)
 
 Some files under `plugins/design/agents/` are read-only audit agents auto-routed by the orchestrator — they are **not** user-invocable slash commands and do **not** appear in `/design:help`. Their frontmatter intentionally omits `category:` so they stay out of the catalog. Documented here for discoverability:
