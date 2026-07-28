@@ -154,9 +154,25 @@ export function sha8(bytes: Uint8Array): string {
 /**
  * Extract the sha8 from a designRoot-relative asset path, or null when the path
  * is not a content-addressed asset (a legacy or hand-placed file).
+ *
+ * The suffix after the hash is deliberately permissive, because the real corpus
+ * is more varied than `<sha8>.<ext>`:
+ *
+ *   assets/deadbeef.png            saveAsset's own output
+ *   assets/deadbeef.photo.json     a sidecar (dotted, multi-part)
+ *   assets/deadbeef-cloud.mp4      ingested footage, hash + human label
+ *
+ * A stricter pattern silently classified the last two as "not content
+ * addressed", which made `verifyAssetBytes` refuse them — so the mirror would
+ * have rejected legitimate assets as unverifiable. Found by running
+ * `maude hub asset-check` against this repo's own design root, not by a test:
+ * the fixtures all had the tidy shape.
+ *
+ * What must NOT match is anything where the 8 hex chars are not a complete
+ * token — `deadbeef1.png` is a different name, not this asset.
  */
 export function sha8FromAssetPath(rel: string): string | null {
-  const m = rel.match(/^assets\/([0-9a-f]{8})(?:\.[A-Za-z0-9]+)?$/);
+  const m = rel.match(/^assets\/([0-9a-f]{8})(?:[-.][^/]*)?$/);
   return m?.[1] ?? null;
 }
 

@@ -50,16 +50,18 @@ import {
   verifyAdminAuth,
   writeAdminSecret,
 } from './admin-auth.mjs';
-import { maybeIssueOnBoot, verifyAndConsume } from './bootstrap.mjs';
+import { handleAssetRoute } from './assets.mjs';
 import {
   handleAuthRoutes,
   handleUserAdminRoutes,
   permissiveDevAuthDisabled,
 } from './auth-routes.mjs';
 import { scheduleBackups, targetFromEnv } from './backup.mjs';
+import { maybeIssueOnBoot, verifyAndConsume } from './bootstrap.mjs';
 import { clientIpFor, parseTrustedProxies } from './client-ip.mjs';
 import { groupCanvases } from './doc-namespace.mjs';
 import { createRateStore } from './rate-store.mjs';
+import { s3ConfigFromEnv } from './s3.mjs';
 import { readSettings, writeSettings } from './settings.mjs';
 import {
   addToken,
@@ -190,6 +192,9 @@ export function createHub(config = {}) {
   // configured ⇒ no backups, and that is a quiet no-op rather than a boot
   // failure: a laptop hub genuinely does not need one. Verify with
   // `maude hub restore-drill` — a backup nobody has restored is a hypothesis.
+  // The bucket the asset proxy reads from. Same env set as backups — one
+  // storage configuration per hub, not two.
+  const assetStore = s3ConfigFromEnv();
   const backupTarget = targetFromEnv();
   const backupIntervalMs = Number(process.env.MAUDE_BACKUP_INTERVAL_MS ?? 6 * 3600_000);
   const stopBackups = scheduleBackups({
@@ -208,7 +213,6 @@ export function createHub(config = {}) {
 
   /** Per-token rate limit buckets (valid WS auth): label → { count, windowStart } */
   const connBuckets = new Map();
-
 
   /** Activity feed ring buffer (newest last). Bounded to ACTIVITY_CAP. */
   const activity = [];
@@ -342,7 +346,31 @@ export function createHub(config = {}) {
       // silently fall through on `/auth/login?next=…` and land the request in
       // the Hocuspocus catch-all.
       const authPath = url.split('?')[0];
-      if (authPath === '/auth/login' || authPath === '/auth/logout' || authPath === '/auth/session') {
+
+      // Cloud Phase 3 — authenticated asset proxy. Peer-token gated, GET/HEAD
+      // only, and reachable ONLY for content-addressed keys. Never a presigned
+      // URL: the canvas CSP is `img-src 'self'` and a presigned URL would be a
+      // bearer credential living inside tenant-authored content.
+      if (authPath.startsWith('/assets/')) {
+        const handled = await handleAssetRoute({
+          request,
+          response,
+          pathname: authPath,
+          method,
+          dataDir,
+          secret,
+          s3: assetStore,
+          checkRateLimit: rateLimit
+            ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
+            : undefined,
+        });
+        if (handled) bailFromOnRequest();
+      }
+      if (
+        authPath === '/auth/login' ||
+        authPath === '/auth/logout' ||
+        authPath === '/auth/session'
+      ) {
         const handled = await handleAuthRoutes({
           request,
           response,
@@ -351,8 +379,7 @@ export function createHub(config = {}) {
           dataDir,
           secret,
           checkRateLimit: rateLimit
-            ? (req) =>
-                checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
+            ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
             : undefined,
           respondRateLimited: () => respondRateLimited(response),
           respondJson: (status, payload) => respondAdminJson(response, status, payload),

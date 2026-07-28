@@ -5,7 +5,15 @@
 
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { resolve } from 'node:path';
 
 import { parseArgs } from '../lib/argv.mjs';
@@ -17,6 +25,7 @@ const SUBCOMMANDS = new Set([
   'deploy',
   'backup',
   'restore-drill',
+  'asset-check',
   'help',
 ]);
 
@@ -39,10 +48,11 @@ export async function run({ args, pkgRoot }) {
   if (sub === 'deploy') return runDeploy({ args, pkgRoot });
   if (sub === 'backup') return runBackupNow({ args, pkgRoot });
   if (sub === 'restore-drill') return runRestoreDrill({ args, pkgRoot });
+  if (sub === 'asset-check') return runAssetCheck({ args, pkgRoot });
 }
 
 function usage() {
-  return `maude hub <serve|token|status|deploy|backup|restore-drill> [options]
+  return `maude hub <serve|token|status|deploy|backup|restore-drill|asset-check> [options]
 
   serve [--port N] [--data PATH] [--secret HEX] [--insecure-http] [--dev]
         Start the self-hostable Yjs sync hub in the current process tree.
@@ -101,6 +111,17 @@ function usage() {
         Run this on a schedule. A backup nobody has restored is a hypothesis:
         a database that restores readable-but-empty looks exactly like a
         working one until the day you need it.
+
+  asset-check [--root PATH] [--json]
+        Every 'assets/<sha8>' reference in the project must resolve — locally,
+        in the bucket, or both. Reports DANGLING references (referenced by a
+        canvas, present in neither) and, with a bucket configured, assets that
+        exist locally but were never mirrored.
+
+        A dangling reference is a permanently broken canvas: the 'assets/'
+        prefix is NEVER garbage-collected, and bucket lifecycle/expiry rules
+        must be OFF for it, because a canvas in git history can reference an
+        asset no current canvas does. Exits non-zero when anything dangles.
 
   deploy <fly|docker> [--name NAME] [--region CODE] [--tag TAG] [--out DIR] [--force]
         Emit the deploy templates for the chosen target into the current
@@ -604,4 +625,149 @@ async function runRestoreDrill({ args, pkgRoot }) {
     }
   }
   if (!verdict.ok) process.exit(1);
+}
+
+// ------------------------------------------------------- asset integrity
+
+/**
+ * Every `assets/<sha8>` a canvas points at must resolve somewhere.
+ *
+ * The failure this catches is quiet and permanent: a reference whose bytes
+ * exist on nobody's disk and in no bucket renders as a broken image forever,
+ * and no amount of syncing fixes it. Content addressing means we can check it
+ * cheaply — the reference IS the identity.
+ */
+async function runAssetCheck({ args, pkgRoot }) {
+  const { flags } = parseArgs(args);
+  const root = resolve(flags.root ?? process.env.CLAUDE_PROJECT_DIR ?? process.cwd());
+  const designRoot = resolveDesignRoot(root);
+  if (!designRoot) {
+    process.stderr.write(`maude hub asset-check: no .design/ found under ${root}\n`);
+    process.exit(2);
+  }
+
+  // Scan every text file under the design root for asset references. Regex over
+  // the whole tree rather than parsing TSX: a reference is a reference whether
+  // it appears in JSX, a meta sidecar, or a CSS url().
+  const referenced = new Map(); // key -> Set(files that reference it)
+  const REF = /assets\/([0-9a-f]{8})(?:\.[A-Za-z0-9]{1,8})?/g;
+  const SKIP_DIRS = new Set(['assets', 'node_modules', '.git']);
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') && entry.name !== '.design') continue;
+      // Per-machine runtime state (DDR-115's `_*` taxonomy) is not a canvas
+      // reference — `_generate-history.json` recording an asset it once made
+      // is not a broken canvas, and scanning it would report noise as damage.
+      if (entry.name.startsWith('_')) continue;
+      const abs = resolve(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!SKIP_DIRS.has(entry.name)) walk(abs);
+        continue;
+      }
+      if (!/\.(tsx|jsx|ts|js|json|css|svg|md|html)$/i.test(entry.name)) continue;
+      let text;
+      try {
+        text = readFileSync(abs, 'utf8');
+      } catch {
+        continue;
+      }
+      for (const m of text.matchAll(REF)) {
+        const key = m[0].slice('assets/'.length);
+        if (!referenced.has(key)) referenced.set(key, new Set());
+        referenced.get(key).add(abs.slice(root.length + 1));
+      }
+    }
+  };
+  walk(designRoot);
+
+  // Local presence, keyed by the LEADING 8 hex chars of the filename.
+  //
+  // Splitting on '.' looks equivalent and is not: the real corpus contains
+  // `<sha8>-<label>.<ext>` (ingested footage) and `<sha8>.<part>.json`
+  // (sidecars), so `name.split('.')[0]` yields `deadbeef-cloud` and the asset
+  // reads as missing. That produced a false DANGLING report against this repo's
+  // own design root — the reference was fine and the index was wrong.
+  const assetsDir = resolve(designRoot, 'assets');
+  const localBySha = new Map();
+  if (existsSync(assetsDir)) {
+    for (const name of readdirSync(assetsDir)) {
+      const sha = name.match(/^([0-9a-f]{8})(?:[-.]|$)/)?.[1];
+      if (sha && !localBySha.has(sha)) localBySha.set(sha, name);
+    }
+  }
+
+  const engine = await loadBackupEngine(pkgRoot);
+  const s3mod = await import(`file://${resolve(pkgRoot, 'apps/hub/src/s3.mjs')}`).catch(() => null);
+  const s3 = s3mod?.s3ConfigFromEnv?.() ?? null;
+  void engine;
+
+  const dangling = [];
+  const localOnly = [];
+  let inBucket = 0;
+
+  for (const [key, files] of referenced) {
+    const sha = key.split('.')[0];
+    const local = localBySha.has(sha);
+    let remote = false;
+    if (s3) {
+      try {
+        remote = !!(await s3mod.headObject(s3, `assets/${localBySha.get(sha) ?? key}`));
+      } catch {
+        remote = false;
+      }
+    }
+    if (remote) inBucket++;
+    if (!local && !remote) dangling.push({ key, files: [...files] });
+    else if (local && s3 && !remote) localOnly.push({ key, files: [...files] });
+  }
+
+  const report = {
+    designRoot: designRoot.slice(root.length + 1),
+    referenced: referenced.size,
+    local: localBySha.size,
+    bucket: s3 ? `s3://${s3.bucket}` : null,
+    inBucket: s3 ? inBucket : null,
+    dangling,
+    notMirrored: s3 ? localOnly : null,
+    ok: dangling.length === 0,
+  };
+
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else {
+    process.stdout.write(
+      `asset check — ${report.designRoot}\n` +
+        `  referenced   ${report.referenced}\n` +
+        `  on disk      ${report.local}\n` +
+        (s3
+          ? `  in bucket    ${inBucket}/${report.referenced} (${report.bucket})\n`
+          : '  bucket       not configured (set MAUDE_S3_* to check the mirror)\n')
+    );
+    for (const d of dangling) {
+      process.stderr.write(`  DANGLING assets/${d.key} — referenced by ${d.files.join(', ')}\n`);
+    }
+    if (localOnly.length > 0) {
+      process.stdout.write(
+        `  ${localOnly.length} asset(s) exist locally but are NOT mirrored — ` +
+          'a second machine cannot resolve them yet.\n'
+      );
+    }
+    process.stdout.write(`  ${report.ok ? 'OK' : 'FAILED'}\n`);
+  }
+
+  if (!report.ok) process.exit(1);
+}
+
+/** `.design/` under `root`, honouring a config-declared designRoot. */
+function resolveDesignRoot(root) {
+  const configured = (() => {
+    for (const candidate of ['.design/config.json', '.maude/config.json']) {
+      const abs = resolve(root, candidate);
+      if (existsSync(abs)) return resolve(root, candidate, '..');
+    }
+    return null;
+  })();
+  if (configured) return configured;
+  const fallback = resolve(root, '.design');
+  return existsSync(fallback) ? fallback : null;
 }

@@ -158,6 +158,18 @@ export async function getObject(cfg, key) {
   return Buffer.from(await res.arrayBuffer());
 }
 
+/**
+ * HEAD one object → `{ size }`, or null on 404. Used by the asset proxy's HEAD
+ * and by `asset-check`, which needs existence + size without paying to
+ * download a 60 MB video just to learn it is there.
+ */
+export async function headObject(cfg, key) {
+  const res = await send(cfg, { method: 'HEAD', key });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`S3 HEAD ${key} failed: ${res.status}`);
+  return { size: Number(res.headers.get('content-length') ?? 0) };
+}
+
 export async function deleteObject(cfg, key) {
   const res = await send(cfg, { method: 'DELETE', key });
   if (!res.ok && res.status !== 404) {

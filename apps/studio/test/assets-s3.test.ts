@@ -88,10 +88,20 @@ describe('content addressing', () => {
     expect(sha8FromAssetPath('assets/deadbeef.png')).toBe('deadbeef');
     expect(sha8FromAssetPath('assets/deadbeef')).toBe('deadbeef');
     expect(sha8FromAssetPath('assets/deadbeef.mp4')).toBe('deadbeef');
-    // Legacy / hand-placed / traversal shapes are not content-addressed.
+    // The shapes the REAL corpus contains beyond saveAsset's own output — a
+    // dotted sidecar and hash+label ingested footage. A stricter pattern
+    // classified these as "not content addressed", which made the mirror
+    // refuse legitimate assets as unverifiable.
+    expect(sha8FromAssetPath('assets/deadbeef.photo.json')).toBe('deadbeef');
+    expect(sha8FromAssetPath('assets/deadbeef.footage.json')).toBe('deadbeef');
+    expect(sha8FromAssetPath('assets/deadbeef-cloud.mp4')).toBe('deadbeef');
+    expect(sha8FromAssetPath('assets/deadbeef-cloud.srt')).toBe('deadbeef');
+    // Legacy / hand-placed / traversal shapes are not content-addressed. The
+    // 8 hex chars must be a COMPLETE token — `deadbeef1` is a different name.
     expect(sha8FromAssetPath('assets/my-photo.png')).toBe(null);
     expect(sha8FromAssetPath('assets/DEADBEEF.png')).toBe(null);
     expect(sha8FromAssetPath('assets/deadbeef1.png')).toBe(null);
+    expect(sha8FromAssetPath('assets/deadbeefcafe.png')).toBe(null);
     expect(sha8FromAssetPath('assets/sub/deadbeef.png')).toBe(null);
     expect(sha8FromAssetPath('../assets/deadbeef.png')).toBe(null);
     expect(sha8FromAssetPath('')).toBe(null);
@@ -101,6 +111,9 @@ describe('content addressing', () => {
     const bytes = bytesFor('the real image');
     const path = assetPath(bytes);
     expect(verifyAssetBytes(path, bytes)).toBe(true);
+    // ...including the labelled and sidecar shapes.
+    expect(verifyAssetBytes(`assets/${sha8(bytes)}-cloud.mp4`, bytes)).toBe(true);
+    expect(verifyAssetBytes(`assets/${sha8(bytes)}.photo.json`, bytes)).toBe(true);
     // Substituted content under the same name — the attack DDR-054 describes.
     expect(verifyAssetBytes(path, bytesFor('malicious replacement'))).toBe(false);
     // A path with no content address cannot be verified, so it is not trusted.
