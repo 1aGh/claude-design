@@ -226,6 +226,38 @@ export function lifecycleStates() {
 }
 
 /**
+ * The next state on the shortest LEGAL path from `from` to `to`, or null when
+ * no path exists.
+ *
+ * Needed because a desired state is often not reachable in one hop and that is
+ * perfectly ordinary rather than an error: a `pending` tenant whose payment is
+ * already failing did subscribe, so the truthful route is
+ * `pending → active → past_due`, and a `suspended` tenant who resubscribes with
+ * a failing card goes `suspended → active → past_due`.
+ *
+ * Walking the path beats jumping to the destination, because every hop stays
+ * inside the machine — including the one hop the machine exists to forbid.
+ * `exported` is the only door to `purged` no matter how the search runs.
+ */
+export function stepToward(from, to) {
+  if (from === to) return null;
+  if (!TRANSITIONS[from] || !TRANSITIONS[to]) return null;
+  const queue = [[from, null]];
+  const seen = new Set([from]);
+  while (queue.length > 0) {
+    const [state, firstHop] = queue.shift();
+    for (const next of TRANSITIONS[state]) {
+      if (seen.has(next)) continue;
+      const hop = firstHop ?? next;
+      if (next === to) return hop;
+      seen.add(next);
+      queue.push([next, hop]);
+    }
+  }
+  return null;
+}
+
+/**
  * Render the container + ingress config for one cell.
  *
  * Kept as data (not a template string) so a test can assert a specific field
