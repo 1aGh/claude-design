@@ -51,6 +51,7 @@ import {
   writeAdminSecret,
 } from './admin-auth.mjs';
 import { maybeIssueOnBoot, verifyAndConsume } from './bootstrap.mjs';
+import { groupCanvases } from './doc-namespace.mjs';
 import { readSettings, writeSettings } from './settings.mjs';
 import {
   addToken,
@@ -501,9 +502,13 @@ async function handleAdminApi(ctx) {
     return;
   }
   // Canvases browser — read the Hocuspocus SQLite `documents` table read-only.
-  // Flat list now; repo/branch grouping is phase-30's realignment (DDR-097).
+  // `canvases` stays a flat list (unchanged wire shape for existing admin
+  // clients); `groups` adds the DDR-192 §5 workspace/branch grouping. Legacy
+  // flat slugs are not hidden — they collect in one `legacy: true` group, so a
+  // hub mid-rollout shows both kinds at once instead of appearing to lose docs.
   if (method === 'GET' && path === '/canvases') {
-    respondAdminJson(response, 200, { canvases: listCanvases(sqlitePath, peers) });
+    const canvases = listCanvases(sqlitePath, peers);
+    respondAdminJson(response, 200, { canvases, groups: groupCanvases(canvases) });
     return;
   }
   // Activity feed — newest-first slice of the in-memory ring buffer.

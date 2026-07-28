@@ -38,6 +38,15 @@ export interface LinkedHub {
    * preserved. Only for hubs you operate or fully trust.
    */
   syncTsx?: boolean;
+  /**
+   * DDR-192 §5 — stable workspace identity for the hub document namespace
+   * (`ws/<workspace-id>/<branch>/<slug>`). Authoritative when present; the
+   * cloud control plane sets it at provisioning time. Absent, the sync runtime
+   * derives it from the git `origin` remote — and if there is no origin either,
+   * stays on legacy flat slugs rather than inventing a per-machine id that
+   * would split peers of the same project apart. See sync/doc-name.ts.
+   */
+  workspaceId?: string;
 }
 
 export interface DevServerConfig {

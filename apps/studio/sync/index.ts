@@ -33,6 +33,7 @@ import {
   createConnectionMonitor,
   type ProviderStatus,
 } from './connection-state.ts';
+import { createDocNameResolver } from './doc-name.ts';
 import { createEchoGuard } from './echo-guard.ts';
 import { createFsReader, type FsReader } from './fs-mirror.ts';
 import { getHubToken } from './hubs-config.ts';
@@ -238,6 +239,23 @@ export function createSyncRuntime(
   const schemeError = checkUrlScheme(linkedHub.url);
   if (schemeError) {
     console.error(`[sync] refusing to start: ${schemeError}`);
+    return null;
+  }
+
+  // DDR-192 §5 — slug → wire documentName. Only the WIRE name is namespaced;
+  // every local map (providers, agents, projections, _history/) stays keyed by
+  // the flat slug. Opt-in for now (see createDocNameResolver's rollout rule);
+  // a bad MAUDE_HUB_NAMESPACED=1 with no resolvable workspace id throws here
+  // rather than silently falling back into a shared namespace.
+  let docNameFor: (slug: string) => string;
+  try {
+    docNameFor = createDocNameResolver({
+      repoRoot: ctx.paths.repoRoot,
+      explicitWorkspaceId: linkedHub.workspaceId,
+      flag: process.env.MAUDE_HUB_NAMESPACED,
+    });
+  } catch (err) {
+    console.error(`[sync] refusing to start: ${(err as Error).message}`);
     return null;
   }
 
@@ -565,7 +583,7 @@ export function createSyncRuntime(
       const provider = await providerFactory({
         url: linkedHub.url,
         token,
-        documentName: canvas.slug,
+        documentName: docNameFor(canvas.slug),
         document,
       });
       providers.set(canvas.slug, provider);
