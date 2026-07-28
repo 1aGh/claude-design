@@ -10,6 +10,12 @@ _Last closed:_ `cloud-phase-4-selfhost-skill` (2026-07-28, core complete).
 Phases 1, 2 and 3 closed the same day. Decisions: DDR-192, DDR-193 (arc
 umbrellas), DDR-194 (phase-2), DDR-195 (phase-3); DDR-148 corrected in place.
 
+**Phase 8 groundwork landed early** because Stripe is the one vendor that IS
+usable: the `maude.sh sandbox` account is authenticated and test mode needs no
+paid plan. The Phase-0 §3 catalog exists as real sandbox objects and
+`apps/cloud/pricing.{json,mjs}` resolves them (live ids deliberately null — live
+mode throws rather than falling back). Numbers are a proposal pending sign-off.
+
 Carried into Phase 5 (all need a live host or a paid account):
 - two-machine round-trip + kill -9 recovery (phase 3)
 - 60 MB asset through R2 specifically (phase 3)
