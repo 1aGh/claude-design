@@ -1,0 +1,73 @@
+{
+  "$comment": [
+    "Maude Cloud pricing — Cloud Phase 8, seeded from cloud-phase-0-economics-and-architecture.md §3.",
+    "",
+    "PROPOSAL, NOT SIGNED OFF. Phase 0 §3 says the final numbers are the owner's call, locked",
+    "at Phase 8's start. These objects exist in the Stripe SANDBOX account so the billing code",
+    "has something real to run against; changing a number here means creating a NEW price in",
+    "Stripe (prices are immutable once created) and updating the id, never editing the amount.",
+    "",
+    "The `live` ids are deliberately null. Nothing in live mode has been created, and the code",
+    "that reads this must refuse to operate in live mode until they are filled in — a placeholder",
+    "id that silently falls back to the sandbox is how a real customer gets charged nothing, or",
+    "how a test charge lands on a real card.",
+    "",
+    "Pricing is PER PROJECT and never per seat: the invite is the product's core action",
+    "(DDR-193 §5/§6), so charging for it would tax the thing the product is for."
+  ],
+  "currency": "eur",
+  "taxBehavior": "exclusive",
+  "trialDays": 14,
+  "plans": [
+    {
+      "id": "project",
+      "name": "Cloud Project",
+      "summary": "One isolated workspace per project.",
+      "includedStorageGb": 10,
+      "stripe": {
+        "sandbox": {
+          "product": "prod_UyFPozNZOOaaaY",
+          "monthly": "price_1TyIumBU24eXpQylzkMWEr6G",
+          "annual": "price_1TyIurBU24eXpQylWmsPsxD5"
+        },
+        "live": { "product": null, "monthly": null, "annual": null }
+      },
+      "amounts": { "monthlyMinor": 1900, "annualMinor": 19000 }
+    },
+    {
+      "id": "dedicated",
+      "name": "Dedicated",
+      "summary": "Pinned instance, custom domain, region pinning, priority support.",
+      "includedStorageGb": 100,
+      "stripe": {
+        "sandbox": {
+          "product": "prod_UyFPEy711PAS0v",
+          "monthly": "price_1TyIv0BU24eXpQyl5Rxs4KH4",
+          "annual": null
+        },
+        "live": { "product": null, "monthly": null, "annual": null }
+      },
+      "amounts": { "monthlyMinor": 9900, "annualMinor": null }
+    }
+  ],
+  "addons": [
+    {
+      "id": "storage",
+      "name": "Storage add-on",
+      "summary": "Extra media storage, billed per 50 GB block. Quantity = blocks.",
+      "blockGb": 50,
+      "stripe": {
+        "sandbox": {
+          "product": "prod_UyFPTHwuVWlfos",
+          "monthly": "price_1TyIvCBU24eXpQyluAhZMohh"
+        },
+        "live": { "product": null, "monthly": null }
+      },
+      "amounts": { "monthlyMinor": 500 }
+    }
+  ],
+  "selfHost": {
+    "$comment": "Free forever. The self-host cost table in site/content/docs/hub/pricing.mdx stays intact and first-class (DDR-193 §6) — this file must never be read as replacing it.",
+    "price": 0
+  }
+}
