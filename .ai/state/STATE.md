@@ -3,11 +3,19 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** ready
-**Active plan:** —
+**Status:** in progress — Maude Cloud arc
+**Active plan:** `.ai/plans/cloud-phase-3-workspace-agent-s3.md` (next)
 
-_Last closed:_ `feature-kgai-ecosystem-integration` (2026-07-28) — archived at
-`.ai/plans/archive/`. Two follow-ups need the owner, both queryable:
+_Last closed:_ `cloud-phase-2-hub-identity-durability` (2026-07-28) — archived at
+`.ai/plans/archive/`. `cloud-phase-1-safety-gates` closed the same day.
+Decisions: DDR-192, DDR-193 (arc umbrellas), DDR-194 (phase-2 choices).
+
+Carried forward into later phases:
+- Hub doc namespacing is **opt-in** until Phase 3 makes it default-on in workspace mode.
+- The collab origin gate refuses-and-resyncs a violating canvas peer rather than
+  disconnecting it; revisit before hardening if a false positive is ever observed.
+
+_Older:_ `feature-kgai-ecosystem-integration` (2026-07-28). Two follow-ups need the owner:
 `maude kg query "MATCH (f:Element {kind:'follow-up'}) RETURN f.name, f.props"`.
 
 ## Where it went

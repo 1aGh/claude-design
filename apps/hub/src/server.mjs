@@ -338,11 +338,15 @@ export function createHub(config = {}) {
       // Cloud Phase 2 — human sign-in. /auth/login is unauthenticated (and
       // rate-limited on the same bucket as /admin/api/bootstrap); /auth/logout
       // and /auth/session authenticate with the peer token they concern.
-      if (url === '/auth/login' || url === '/auth/logout' || url === '/auth/session') {
+      // Match on the pathname, not the raw URL: an exact-equality check would
+      // silently fall through on `/auth/login?next=…` and land the request in
+      // the Hocuspocus catch-all.
+      const authPath = url.split('?')[0];
+      if (authPath === '/auth/login' || authPath === '/auth/logout' || authPath === '/auth/session') {
         const handled = await handleAuthRoutes({
           request,
           response,
-          path: url,
+          path: authPath,
           method,
           dataDir,
           secret,
