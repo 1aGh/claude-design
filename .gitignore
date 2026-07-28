@@ -108,3 +108,8 @@ cli/.platform-binary-path
 # last-match-wins, so it silently re-ignored `.kgai/store/log/` and defeated the
 # log-vs-cache split defined above — see the kgai block near the top, which
 # already ignores the store's cache + install identity, just more precisely.)
+# DO NOT re-add a blanket `.kgai/` here. It has been appended twice by other
+# sessions; because gitignore is last-match-wins it silently re-ignores
+# `.kgai/store/log/`, which the owner explicitly wants versioned so a clone
+# inherits the decision context. The block above already ignores the 22 MB
+# projection and the per-machine install identity.
