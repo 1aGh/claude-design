@@ -59,3 +59,9 @@ Package the Phase-4 workspace stack as a **tenant cell on Cloudflare Containers*
 - [ ] Alligators live + used for real work ≥ 2 weeks (dogfood period), incl. ≥ 1 forced restart with zero loss
 - [ ] Weekly restore drill scheduled; containment test in CI; destroy leaves zero orphans
 - [ ] Cost telemetry recorded (real $/cell/mo vs Phase-0 estimates — feeds Phase 8 pricing)
+
+**Status: CORE COMPLETE** (2026-07-29) — the buildable half. See **DDR-196** for why "blocked" meant blocked to DEPLOY, not to build.
+
+Built + tested: `infra/cell/{Dockerfile,entrypoint.sh}` (containment asserted at the IMAGE layer — a cell with no browser cannot render whatever the config says; boot refuses on a bad tenant id or a failed rehydrate), `cli/lib/cell-plan.mjs` (naming derived from one id so it cannot drift, R2 prefix isolation down to the trailing slash, reserved platform names, teardown ordered routing→compute→credential→data, the DDR-193 §3 lifecycle machine), and the containment CI gate extended to the image (proven to fail: adding `RUN apk add chromium` exits 1). 18 tests.
+
+Not done — needs Workers Paid + R2: the persistence spike (Task 1), `maude cell up` against the live API (Task 2's effects half), the alligators pilot (Task 4), and pilot hardening (Task 5).

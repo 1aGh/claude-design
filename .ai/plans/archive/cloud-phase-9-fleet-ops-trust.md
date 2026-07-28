@@ -44,3 +44,11 @@ Operating N cells as a fleet: version pinning, canary-first staged rollout, one-
 - [ ] Weekly restore drill green + visible on the board
 - [ ] Trust page live; every claim mechanically true
 - [ ] Tenant cap lifted only after all above pass
+
+**Status: CORE COMPLETE** (2026-07-29). See **DDR-196**.
+
+Built + tested: `apps/cloud/fleet.mjs` — canary-always-wave-0 (and always alone), a halt that is deliberately not a rollback, rollback as a re-pin never a rebuild, drift detection ("a bespoke cell is a bug"), a board that treats a stale restore drill as a first-class problem, and cost alarms on the per-cell ratio. 20 tests, including the full upgrade rehearsed step by step and the rollback the exit gate asks for.
+
+Task 3 shipped whole: `site/content/docs/cloud/trust.mdx` plus `apps/cloud/trust-claims.test.mjs`, which enforces the page's own "no aspirational statements" rule — every cited file must exist, every load-bearing behaviour is re-asserted, and weasel words fail the build. Proven to fail on both counts.
+
+Not done: the operator dashboard UI, live Cloudflare GraphQL cost telemetry, the weekly cross-fleet restore drill on a schedule. All need live cells. **The tenant cap stays at ≤ 3 — this phase's gate is not met.**

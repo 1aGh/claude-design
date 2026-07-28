@@ -46,3 +46,9 @@ Money: Stripe Checkout + hosted Customer Portal + Stripe Tax, the per-project pr
 - [ ] Export e-mail provably precedes any teardown (state machine test)
 - [ ] Tenant cap ≤ 3 enforced in the provisioner until Phase 9 signs off
 - [ ] Pricing page live; "no SaaS tier" sentence coherently replaced
+
+**Status: PARTIAL** (2026-07-29) — the only phase whose vendor is actually available. See **DDR-196**.
+
+Built + tested: the Phase-0 §3 catalog exists as REAL objects in the `maude.sh` Stripe sandbox (Project €19/mo + €190/yr, Dedicated €99/mo, storage €5 per 50 GB block), and `apps/cloud/pricing.{json,mjs}` resolves them. Live mode THROWS for an unconfigured price rather than falling back — a silent fallback is how a real customer is charged nothing, or a test charge lands on a real card. `publicPricing()` carries no ids. Amounts are checked against Stripe rather than trusted, because Stripe prices are immutable and editing the JSON only makes the page lie. 11 tests, verified against the real sandbox objects (zero mismatches).
+
+Not done: live-mode prices (owner sign-off on the numbers first), Checkout + hosted portal + Stripe Tax, dunning/lapse/resurrect with test clocks, the public pricing page. All need the Phase-7 control plane to exist as a deployed thing.

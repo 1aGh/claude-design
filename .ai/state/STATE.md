@@ -3,10 +3,15 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** in progress — Maude Cloud arc
-**Active plan:** — (phases 1-4 closed; 5-10 blocked on vendor prerequisites)
+**Status:** ready — Maude Cloud arc closed to the vendor boundary
+**Active plan:** — (all 10 phases archived; deployment blocked, see below)
 
-_Last closed:_ `cloud-phase-4-selfhost-skill` (2026-07-28, core complete).
+_Last closed:_ `cloud-phase-10-ga-launch-github-mirror` (2026-07-29, partial). All ten
+phases are archived: 1-4 complete, 5-10 CORE COMPLETE / PARTIAL — the buildable half is
+done and tested, deployment is blocked. **DDR-196** records why, and the pattern (split
+every vendor-facing component into a pure decision layer and a thin effects layer).
+
+_Earlier:_ `cloud-phase-4-selfhost-skill` (2026-07-28, core complete).
 Phases 1, 2 and 3 closed the same day. Decisions: DDR-192, DDR-193 (arc
 umbrellas), DDR-194 (phase-2), DDR-195 (phase-3); DDR-148 corrected in place.
 

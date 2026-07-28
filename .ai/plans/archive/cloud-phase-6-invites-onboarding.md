@@ -46,3 +46,9 @@ The invited zero-git teammate is the persona this product lives or dies by (user
 - [ ] A genuinely non-technical Brno Alligators member, cold e-mail invite, own machine: **first edit < 5 minutes**, no terminal, no GitHub account, no help
 - [ ] Same person's honest feedback recorded into `.ai/logs/` (feeds Phase 7 UI)
 - [ ] Export bundle verified; AI-less state e2e green
+
+**Status: CORE COMPLETE** (2026-07-29). See **DDR-196**.
+
+Built + tested: `apps/hub/src/invites.mjs` + `/join` (GET looks, POST redeems), admin mint/list/revoke. Looking never consumes (a link-preview bot must not burn an invite); a failed signup never burns it either (a typo is a retry); single-use is enforced by the UPDATE's WHERE clause, not the read before it; redeeming signs you in, because a redeem that ends at a login form reintroduced the form. 23 tests, 8 end-to-end against a real hub, including one that asserts no developer vocabulary reaches the person.
+
+Not done: the `maude://` deep link + desktop UI (Task 1's client half), the AI-less ChatPanel state (Task 2), one-click export (Task 3). The exit gate — a timed cold start by a real non-technical human — needs a human.

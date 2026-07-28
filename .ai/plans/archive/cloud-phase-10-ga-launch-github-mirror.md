@@ -46,3 +46,9 @@ Open self-serve signup (cap lifted), ship the optional GitHub mirror via a custo
 - [ ] Docs + migration guides published; What's New entry stamped
 - [ ] `/flow:validate` full pipeline green; security pass on the final diff
 - [ ] Post-launch: cost/margin telemetry reviewed against Phase-0 §2 after 30 days (record a retro)
+
+**Status: PARTIAL** (2026-07-29). See **DDR-196**.
+
+Built + tested: `apps/cloud/mirror.mjs` — one-way, never force (asserted as the ABSENCE of a flag in argv), a dedicated branch by default, `owner/name` targets only, and per-failure messages that say what the customer can actually do. The divergence case is proven against a REAL git remote: the customer's commit is still the tip afterwards, and the message never offers to force. A behind mirror is a warning, not an incident. 10 tests.
+
+Not done: the GitHub App registration and installation-token custody, the mirror settings UI, self-serve signup, launch content, and the optional docs-site migration. All need the account, the App, and a live control plane.

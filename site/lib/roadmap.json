@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-28T22:13:16.050Z",
+  "generated": "2026-07-28T22:17:04.554Z",
   "currentPhase": null,
   "phases": [
     {
@@ -47,6 +47,17 @@
       "phaseKey": null
     },
     {
+      "id": "cloud-phase-10-ga-launch-github-mirror",
+      "title": "Cloud Phase 10 — GA launch + GitHub mirror (production release on maude.sh)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 9. The production-release phase.",
+      "planPath": ".ai/plans/archive/cloud-phase-10-ga-launch-github-mirror.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "cloud-phase-2-hub-identity-durability",
       "title": "Cloud Phase 2 — Hub identity + durability (users, login, expiring tokens, trusted proxy, backup/restore)",
       "status": "done",
@@ -76,6 +87,61 @@
       "date": null,
       "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phases 1–3. This phase keeps the self-host path first-class (positioning guard) and doubles as the cel...",
       "planPath": ".ai/plans/archive/cloud-phase-4-selfhost-skill.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-5-container-cell-alligators-pilot",
+      "title": "Cloud Phase 5 — Cloudflare Container cell + alligators pilot (tenant-of-one, no money)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phases 1–4. First phase that touches vendor-operated infrastructure.",
+      "planPath": ".ai/plans/archive/cloud-phase-5-container-cell-alligators-pilot.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-6-invites-onboarding",
+      "title": "Cloud Phase 6 — Invites + onboarding (magic link, AI-less state, export, disclosure)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 5 (a live cell to invite people into). Still no money.",
+      "planPath": ".ai/plans/archive/cloud-phase-6-invites-onboarding.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-7-control-plane-workers",
+      "title": "Cloud Phase 7 — Control plane on Cloudflare Workers (accounts, projects, invites, provisioner, reconciler)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phases 5–6. Billing still manual (no Stripe yet).",
+      "planPath": ".ai/plans/archive/cloud-phase-7-control-plane-workers.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-8-stripe-pricing",
+      "title": "Cloud Phase 8 — Stripe + pricing (first paying tenants, capped ≤ 3)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first (§2 economics + §3 pricing table are the input). Requires Phase 7.",
+      "planPath": ".ai/plans/archive/cloud-phase-8-stripe-pricing.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-9-fleet-ops-trust",
+      "title": "Cloud Phase 9 — Fleet operations + trust launch surface",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 8. Gate for lifting the ≤ 3 tenant cap — you cannot responsibly onboard tenant #4 without this (...",
+      "planPath": ".ai/plans/archive/cloud-phase-9-fleet-ops-trust.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1506,72 +1572,6 @@
       "date": null,
       "summary": "Everything a human must do by hand — accounts, logins, tokens, tooling, MCP wiring — so the phase executions run smoothly and agent-driven. Companion to cloud-phase-0-economics-and-architecture.md....",
       "planPath": ".ai/plans/cloud-phase-0b-manual-prep.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-10-ga-launch-github-mirror",
-      "title": "Cloud Phase 10 — GA launch + GitHub mirror (production release on maude.sh)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 9. The production-release phase.",
-      "planPath": ".ai/plans/cloud-phase-10-ga-launch-github-mirror.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-5-container-cell-alligators-pilot",
-      "title": "Cloud Phase 5 — Cloudflare Container cell + alligators pilot (tenant-of-one, no money)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phases 1–4. First phase that touches vendor-operated infrastructure.",
-      "planPath": ".ai/plans/cloud-phase-5-container-cell-alligators-pilot.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-6-invites-onboarding",
-      "title": "Cloud Phase 6 — Invites + onboarding (magic link, AI-less state, export, disclosure)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 5 (a live cell to invite people into). Still no money.",
-      "planPath": ".ai/plans/cloud-phase-6-invites-onboarding.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-7-control-plane-workers",
-      "title": "Cloud Phase 7 — Control plane on Cloudflare Workers (accounts, projects, invites, provisioner, reconciler)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phases 5–6. Billing still manual (no Stripe yet).",
-      "planPath": ".ai/plans/cloud-phase-7-control-plane-workers.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-8-stripe-pricing",
-      "title": "Cloud Phase 8 — Stripe + pricing (first paying tenants, capped ≤ 3)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first (§2 economics + §3 pricing table are the input). Requires Phase 7.",
-      "planPath": ".ai/plans/cloud-phase-8-stripe-pricing.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-9-fleet-ops-trust",
-      "title": "Cloud Phase 9 — Fleet operations + trust launch surface",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 8. Gate for lifting the ≤ 3 tenant cap — you cannot responsibly onboard tenant #4 without this (...",
-      "planPath": ".ai/plans/cloud-phase-9-fleet-ops-trust.md",
       "archived": false,
       "phaseKey": null
     },

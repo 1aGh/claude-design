@@ -48,3 +48,11 @@ Part of the Maude Cloud arc — read `cloud-phase-0-economics-and-architecture.m
 - [ ] Chaos suite green (zero orphans, replay/drop safe)
 - [ ] `/flow:validate-security` on apps/cloud (auth + tenant boundary; severity floor medium)
 - [ ] Preview → production promotion flow documented (wrangler environments)
+
+**Status: CORE COMPLETE** (2026-07-29). See **DDR-196**.
+
+Built + tested: `apps/cloud/reconcile.mjs` — the derive-don't-react reconciler that makes the phase's "webhooks only enqueue" rule real. Stripe status + D1 tenant state are inputs; actions are output; the hourly cron re-derives for everybody, so a missed webhook costs an hour and a duplicate costs nothing. 19 tests including the exit gate's 20 chaos cycles with out-of-order, duplicated and dropped events.
+
+The fixed-point test found a real flapping bug (`pending → past_due` is not a legal hop) — fixed with `stepToward()`, which also proves no route to `purged` skips `exported`.
+
+Not done: the Worker itself (Hono + D1 schema + Queues + dashboard). D1 and Workers scripts are reachable on the free plan; Queues needs Workers Paid.
