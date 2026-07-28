@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import type { Dirent } from 'node:fs';
 import { lstat, mkdir, readdir, readFile, rename, rm, stat as statp } from 'node:fs/promises';
 import path from 'node:path';
-
+import { createAssetMirror, s3ConfigFromEnv } from './assets-s3.ts';
 import { renderBriefBoard, validateCanvasName } from './canvas-create.ts';
 import {
   type AssembleClip,
@@ -1646,6 +1646,12 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   //     user input, but a poisoned designRoot must still not escape).
   // Running total of bytes this server instance has actually written (post-dedupe).
   let assetBytesWritten = 0;
+  // S3/R2 asset lane (Cloud Phase 3 Task 2). Unconfigured by default — a local
+  // project and a single-box self-hoster both work with no bucket at all.
+  const assetMirror = createAssetMirror(s3ConfigFromEnv());
+  if (assetMirror.configured) {
+    console.log(`[assets] mirroring new assets to ${assetMirror.describe}`);
+  }
 
   /**
    * DDR-148 — the streaming write path behind `POST /_api/asset`. Reads the
@@ -1777,7 +1783,17 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       }
       await rename(tmpAbs, fileAbs);
       assetBytesWritten += total;
-      return { ok: true, path: `assets/${name}` };
+      const rel = `assets/${name}`;
+      // S3/R2 lane (Cloud Phase 3) — mirror the bytes so a second machine can
+      // resolve them without the file riding git. Deliberately awaited but
+      // never able to fail the save: the asset is already on disk, the mirror
+      // is the redundant copy, and `maude hub asset-check` reconciles a miss.
+      // Only a genuinely NEW file reaches here, so this is not re-uploading on
+      // every dedupe hit.
+      if (assetMirror.configured) {
+        void assetMirror.push(rel, new Uint8Array(await Bun.file(fileAbs).arrayBuffer()));
+      }
+      return { ok: true, path: rel };
     } catch (err) {
       await cleanup();
       return { ok: false, status: 500, error: err instanceof Error ? err.message : 'write failed' };
