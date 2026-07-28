@@ -38,6 +38,15 @@ jobs:
       - name: Test (node:test)
         run: pnpm test
 
+      - name: Containment invariant (DDR-193)
+        # The CI half of "enforced, not asserted". The boot-assert in
+        # apps/studio/workspace-mode.ts refuses to start a cell that exposes a
+        # rendering/evaluating surface; this catches the change that would make
+        # that possible, at review time. The realistic way this invariant is
+        # lost is not an argument against it — it's a refactor quietly dropping
+        # a line while every test stays green.
+        run: bash scripts/check-containment.sh
+
       - name: Hub backup restore drill
         # The exit gate for Cloud Phase 2 Task 3. A backup nobody has restored
         # is a hypothesis: a database that restores readable-but-EMPTY looks

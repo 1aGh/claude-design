@@ -34,6 +34,12 @@ import { createHttp } from './http.ts';
 import { createInspect } from './inspect.ts';
 import { startHeapWatch } from './mem.ts';
 import { createSyncRuntime } from './sync/index.ts';
+import {
+  assertContainment,
+  isForbiddenRoute,
+  isWorkspaceMode,
+  pruneForWorkspace,
+} from './workspace-mode.ts';
 import { createWs, isLoopbackHost, isSameOriginWs, parseCollabSlug, type WsData } from './ws.ts';
 
 // Phase 19 / DDR-044 — covers the marketplace-cache-install gap where
@@ -141,15 +147,72 @@ type BunServer = ReturnType<typeof Bun.serve<WsData, never>>;
 // transient-buffer tradeoff on the buffering routes, noted in DDR-148).
 const MAX_REQUEST_BODY = ASSET_MAX_VIDEO_BYTES + 8 * 1024 * 1024;
 
+// Containment invariant (DDR-193 §2) — the boot-assert. No-op outside workspace
+// mode; in a cell it refuses to start when a rendering / evaluating / exporting
+// surface is reachable, naming exactly which one. See workspace-mode.ts for why
+// this is a process that will not start rather than a convention.
+//
+// Checked against the ACTUAL route table (`http.routes` keys plus the paths the
+// `fetch` fall-through owns), not a hand-maintained list, so a future route can
+// only escape it by being invisible to both.
+const WORKSPACE_FETCH_ROUTES = ['/_ws/acp', '/_canvas-shell.html', '/_canvas-runtime/'];
+const WORKSPACE = isWorkspaceMode();
+// PRUNE first, then assert over what survived — so the assert is a
+// post-condition on the pruning rather than a second, driftable opinion. A
+// prefix added to the vocabulary then both prunes and is verified, together.
+const pruned = WORKSPACE ? pruneForWorkspace(http.routes) : { routes: http.routes, removed: [] };
+const SERVER_ROUTES = pruned.routes as typeof http.routes;
+if (WORKSPACE && pruned.removed.length > 0) {
+  console.log(
+    `[studio] workspace mode — withheld ${pruned.removed.length} route(s) that would evaluate ` +
+      `tenant content: ${pruned.removed.join(', ')}`
+  );
+}
+try {
+  assertContainment([...Object.keys(SERVER_ROUTES), ...(WORKSPACE ? [] : WORKSPACE_FETCH_ROUTES)], {
+    // Presence of the dependency is the signal: a cell image that ships
+    // Playwright is one import() away from rendering tenant content. Skippable
+    // in a dev checkout, where Playwright is a legitimate devDependency of the
+    // E2E harness and would otherwise make workspace mode untestable locally.
+    // A BUILT cell image has no such escape — scripts/check-containment.sh
+    // enforces the runtime-dependency half at build time.
+    resolveModule:
+      process.env.MAUDE_WORKSPACE_ALLOW_DEV_MODULES === '1'
+        ? undefined
+        : (specifier) => {
+            try {
+              return !!import.meta.resolveSync?.(specifier);
+            } catch {
+              return false;
+            }
+          },
+  });
+} catch (err) {
+  console.error(`\n${(err as Error).message}\n`);
+  process.exit(1);
+}
+if (isWorkspaceMode()) {
+  console.log('[studio] workspace mode — sync + git + assets only (DDR-193 containment invariant)');
+}
+
 function startServer(port: number): BunServer {
   return Bun.serve<WsData, never>({
     port,
     hostname: '127.0.0.1',
     development: process.env.NODE_ENV !== 'production',
     maxRequestBodySize: MAX_REQUEST_BODY,
-    routes: http.routes,
+    routes: SERVER_ROUTES,
     async fetch(req, srv) {
       const pathname = new URL(req.url).pathname;
+
+      // Containment (DDR-193 §2) — the `fetch` fall-through owns paths that are
+      // not in the route table (`/_ws/acp`, `/_canvas-shell.html`,
+      // `/_canvas-runtime/*`), so pruning the table alone would leave them
+      // reachable. 404, not 403: a cell should look like it never had the
+      // feature, rather than like it is refusing one.
+      if (WORKSPACE && isForbiddenRoute(pathname)) {
+        return new Response('not found', { status: 404 });
+      }
 
       // Phase 8 — collab WS, binary y-websocket protocol. Loopback-only;
       // DDR-047 makes cross-machine collab a Phase 9 hub-deploy story, not
@@ -383,7 +446,11 @@ ctx.mainOrigin = `http://localhost:${server.port} http://127.0.0.1:${server.port
 const CANVAS_ORIGIN_SPLIT = !/^(0|false|off|no)$/i.test(
   process.env.MAUDE_CANVAS_ORIGIN_SPLIT ?? ''
 );
-const canvasServer = CANVAS_ORIGIN_SPLIT ? startCanvasServer(0) : null;
+// The canvas origin exists to SERVE AND RENDER canvases (DDR-063). A workspace
+// cell has no business starting it — that second origin is the surface the
+// containment invariant is about. Not started here rather than started-and-
+// pruned: there would be nothing left to serve.
+const canvasServer = CANVAS_ORIGIN_SPLIT && !WORKSPACE ? startCanvasServer(0) : null;
 const canvasOrigin = canvasServer ? `http://localhost:${canvasServer.port}` : undefined;
 if (canvasOrigin) ctx.canvasOrigin = canvasOrigin;
 
