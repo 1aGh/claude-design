@@ -106,11 +106,19 @@ function crossRefs(text, selfNum) {
     // supersedes DDR-006 (SELF is). Without this the graph gets a bidirectional
     // SUPERSEDES pair and "what replaced X" becomes unanswerable. Passive voice
     // right before the mention ⇒ emit the edge reversed.
-    const passive = /(superseded|replaced|overridden|retired|deprecated)\s+(by|in)\s*\[?$/.test(before);
+    const passive = /(superseded|replaced|overridden|retired|deprecated)\s+(by|in)\s*\[?$/.test(
+      before
+    );
     let kind = 'references';
     if (/supersed/.test(ctx)) kind = 'supersedes';
-    else if (/\b(override|reverse[sd]?|replaces?|retire[sd]?|deprecat)/.test(ctx)) kind = 'overrides';
+    else if (/\b(override|reverse[sd]?|replaces?|retire[sd]?|deprecat)/.test(ctx))
+      kind = 'overrides';
     else if (/\bextend|amend/.test(ctx)) kind = 'extends';
+    // Self-guard applies to BOTH branches: `put()` has one, and the reversed
+    // path needs it too — DDR-025's own body says "partially superseded by
+    // DDR-025", which produced a `DDR-025 ⇒ DDR-025` self-loop and made "what
+    // superseded DDR-025" answer itself.
+    if (tgt === selfNum) continue;
     if (passive && kind !== 'references') reversed.push([tgt, kind]);
     else put(tgt, kind);
   }
@@ -127,7 +135,9 @@ export function buildDdrBatch(decisionsDir, scope = {}, only = null) {
     // `hash(kind:name)` converges the element and props merge on re-upsert; it
     // only appends one more decision event, which is the honest record of "this
     // was re-recorded". Bulk re-import is what you must not do casually.
-    .filter((f) => !only || only.some((o) => f.includes(o.replace(/^.*\//, '').replace(/\.md$/, ''))))
+    .filter(
+      (f) => !only || only.some((o) => f.includes(o.replace(/^.*\//, '').replace(/\.md$/, '')))
+    )
     .sort();
   const decisions = [];
   const stats = { files: 0, withDate: 0, withTags: 0, crossrefs: 0, tags: new Set() };
@@ -331,7 +341,12 @@ export function buildLogBatch(logsDir, scope = {}) {
 export async function run({ args, state, projectRoot, runKg }) {
   // `args` here is already the verb's args (kg.mjs stripped the `import` token).
   const { flags } = parseArgs(args, { booleans: ['dry-run', 'design', 'force', 'no-logs'] });
-  const only = flags.only ? String(flags.only).split(',').map((x) => x.trim()).filter(Boolean) : null;
+  const only = flags.only
+    ? String(flags.only)
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean)
+    : null;
   const decisionsDir = join(projectRoot, '.ai', 'decisions');
   if (!existsSync(decisionsDir)) {
     process.stderr.write(
