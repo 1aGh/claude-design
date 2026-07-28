@@ -13,17 +13,34 @@ import path from 'node:path';
 import { Awareness, removeAwarenessStates } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
+import { isBodyLane, rootTypesTouched } from './origins.ts';
 import {
+  applySyncMessage,
   type CollabConn,
   encodeAwarenessFrame,
   encodeHandshake,
   encodeSyncUpdate,
   handleMessage,
+  MESSAGE_SYNC,
+  readMessageType,
 } from './protocol.ts';
 
 export interface RoomConn extends CollabConn {
   /** Stable id for this connection (UUID from ws.data.id). */
   id: string;
+  /**
+   * Which server origin upgraded this socket (DDR-063 canvas-origin split).
+   * `'canvas'` = the untrusted canvas iframe origin — its sync frames go
+   * through the origin gate (DDR-122 follow-up) and may never write a body
+   * lane. Absent or `'main'` = the privileged shell origin, ungated.
+   *
+   * Absent defaults to trusted ON PURPOSE: every pre-existing caller (tests,
+   * the shell socket) is main-origin, and the two canvas-origin call sites
+   * (`server.ts`'s `startCanvasServer` upgrade → `ws.ts`'s `bindCollab`) set
+   * it explicitly. `test/collab-origin-gate.test.ts` pins that wiring so the
+   * default can't silently swallow a future canvas path.
+   */
+  realm?: 'main' | 'canvas';
 }
 
 export interface RoomCallbacks {
@@ -72,6 +89,12 @@ export interface Room {
   destroy(): Promise<void>;
   /** Test/inspection: connection count. */
   size(): number;
+  /**
+   * Test/inspection: how many canvas-realm sync frames the origin gate has
+   * refused for touching a body lane. Non-zero in production means untrusted
+   * canvas script tried to write source — worth surfacing, never expected.
+   */
+  gateRefusals(): number;
 }
 
 const DEBOUNCE_MS = 800;
@@ -133,9 +156,104 @@ export function createRoom(slug: string, callbacks: RoomCallbacks): Room {
     }
   }
 
+  // --- Origin gate (DDR-122 follow-up) -------------------------------------
+  //
+  // A canvas-realm sync frame is applied to `mirror` FIRST, under a probe
+  // origin, so `transaction.changed` tells us which root lanes it targets.
+  // Only if it touches no body lane do the same bytes reach `doc`. See
+  // `collab/origins.ts` for why the update bytes alone can't answer this.
+  const GATE_PROBE_ORIGIN = Object.freeze({ maudeOrigin: 'collab-gate-probe' });
+  const GATE_MIRROR_SYNC = Object.freeze({ maudeOrigin: 'collab-gate-mirror-sync' });
+  let mirror: Y.Doc | null = null;
+  let probeRoots: Set<string> | null = null;
+  let gateRefusalCount = 0;
+
+  function ensureMirror(): Y.Doc {
+    if (mirror) return mirror;
+    const m = new Y.Doc();
+    Y.applyUpdate(m, Y.encodeStateAsUpdate(doc), GATE_MIRROR_SYNC);
+    m.on('afterTransaction', (tr: Y.Transaction) => {
+      if (tr.origin === GATE_PROBE_ORIGIN) probeRoots = rootTypesTouched(tr);
+    });
+    mirror = m;
+    return m;
+  }
+
+  /** Drop a mirror that has been poisoned by a refused frame. Rebuilt lazily
+   *  from the (still clean) room doc on the next canvas-realm frame. */
+  function discardMirror(): void {
+    const m = mirror;
+    mirror = null;
+    if (m) {
+      try {
+        m.destroy();
+      } catch {
+        /* best effort */
+      }
+    }
+  }
+
+  /**
+   * Canvas-realm frame path. Awareness frames are unchanged (cursors/presence
+   * are ephemeral and already server-attributed). Sync frames are gated.
+   */
+  function receiveGated(conn: RoomConn, payload: Uint8Array): void {
+    if (readMessageType(payload) !== MESSAGE_SYNC) {
+      const reply = handleMessage(payload, doc, awareness, conn);
+      if (reply) conn.send(reply);
+      return;
+    }
+
+    const m = ensureMirror();
+    probeRoots = null;
+    let probeThrew = false;
+    try {
+      applySyncMessage(payload, m, GATE_PROBE_ORIGIN);
+    } catch (err) {
+      probeThrew = true;
+      console.error(`[collab/${slug}] origin gate: probe apply failed:`, err);
+    }
+    // Fail closed on anything we could not positively classify — a probe that
+    // threw, or a root type we could not resolve to a name.
+    const roots = probeRoots ?? new Set<string>();
+    const refused = [...roots].filter((r) => isBodyLane(r) || r === '<unresolved>');
+    if (probeThrew || refused.length > 0) {
+      gateRefusalCount += 1;
+      discardMirror();
+      console.warn(
+        `[collab/${slug}] origin gate REFUSED a canvas-realm sync frame ` +
+          `(lanes: ${refused.join(', ') || 'unclassifiable'}). Untrusted canvas script may ` +
+          `not write canvas source — see DDR-122 follow-up / collab/origins.ts.`
+      );
+      // Re-assert server truth to that peer so it converges on the authoritative
+      // state instead of silently diverging. Their locally-authored body items
+      // stay in their own realm (they made them) but never reach disk or a peer.
+      try {
+        conn.send(encodeSyncUpdate(Y.encodeStateAsUpdate(doc)));
+      } catch {
+        /* close handler will clean up */
+      }
+      return;
+    }
+
+    const reply = applySyncMessage(payload, doc, conn);
+    if (reply) conn.send(reply);
+  }
+
   // Y.Doc update -> broadcast to all peers + schedule debounced flush.
   doc.on('update', (update: Uint8Array, origin: unknown) => {
     if (destroyed) return;
+    // Keep the gate mirror in lockstep with the room doc, so the next probe is
+    // evaluated against current truth. Idempotent — a re-applied update is a
+    // no-op in yjs, which is what makes the "probe then apply for real" double
+    // application safe.
+    if (mirror) {
+      try {
+        Y.applyUpdate(mirror, update, GATE_MIRROR_SYNC);
+      } catch {
+        discardMirror();
+      }
+    }
     // Don't echo back to the origin — they already have it; reduces noise.
     const except =
       origin && typeof origin === 'object' && 'id' in origin ? (origin as RoomConn) : undefined;
@@ -197,6 +315,10 @@ export function createRoom(slug: string, callbacks: RoomCallbacks): Room {
   }
 
   function receive(conn: RoomConn, payload: Uint8Array): void {
+    if (conn.realm === 'canvas') {
+      receiveGated(conn, payload);
+      return;
+    }
     const reply = handleMessage(payload, doc, awareness, conn);
     if (reply) conn.send(reply);
   }
@@ -235,6 +357,7 @@ export function createRoom(slug: string, callbacks: RoomCallbacks): Room {
     }
     if (dirty) await flush();
     conns.clear();
+    discardMirror();
     awareness.destroy();
     doc.destroy();
   }
@@ -250,6 +373,7 @@ export function createRoom(slug: string, callbacks: RoomCallbacks): Room {
     flush,
     destroy,
     size: () => conns.size,
+    gateRefusals: () => gateRefusalCount,
   };
 }
 

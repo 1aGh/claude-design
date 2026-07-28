@@ -72,6 +72,40 @@ export function encodeAwarenessFrame(
 }
 
 /**
+ * Peek the message type of a frame without consuming it. Lets a caller route
+ * sync vs awareness before deciding *which doc* to apply the frame to — the
+ * origin gate (`collab/origins.ts`) validates sync frames against a mirror doc
+ * first, and needs to know a frame is a sync frame to do so.
+ */
+export function readMessageType(payload: Uint8Array): number {
+  return decoding.readVarUint(decoding.createDecoder(payload));
+}
+
+/**
+ * Apply one MESSAGE_SYNC frame to `doc` with `origin` as the Y transaction
+ * origin, returning the reply frame (sync step 2 / ack) if there is one.
+ *
+ * Split out of `handleMessage` so the same bytes can be applied to a throwaway
+ * mirror doc under a probe origin (the origin gate) before they are allowed
+ * anywhere near the real room doc. Non-sync payloads return `null` untouched.
+ */
+export function applySyncMessage(
+  payload: Uint8Array,
+  doc: Y.Doc,
+  origin: unknown
+): Uint8Array | null {
+  const decoder = decoding.createDecoder(payload);
+  if (decoding.readVarUint(decoder) !== MESSAGE_SYNC) return null;
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, MESSAGE_SYNC);
+  // readSyncMessage applies the peer's update to the doc and writes the
+  // response (sync step 2 / sync step 2 ack) into encoder.
+  syncProtocol.readSyncMessage(decoder, encoder, doc, origin);
+  if (encoding.length(encoder) > 1) return encoding.toUint8Array(encoder);
+  return null;
+}
+
+/**
  * Decode and dispatch one incoming binary frame. Returns an optional reply
  * frame the caller MUST send back to the originating peer (sync step 2 from
  * the server, in response to the peer's sync step 1).
@@ -89,15 +123,8 @@ export function handleMessage(
   const messageType = decoding.readVarUint(decoder);
 
   switch (messageType) {
-    case MESSAGE_SYNC: {
-      const encoder = encoding.createEncoder();
-      encoding.writeVarUint(encoder, MESSAGE_SYNC);
-      // readSyncMessage applies the peer's update to the doc and writes the
-      // response (sync step 2 / sync step 2 ack) into encoder.
-      syncProtocol.readSyncMessage(decoder, encoder, doc, conn);
-      if (encoding.length(encoder) > 1) return encoding.toUint8Array(encoder);
-      return null;
-    }
+    case MESSAGE_SYNC:
+      return applySyncMessage(payload, doc, conn);
     case MESSAGE_AWARENESS: {
       awarenessProtocol.applyAwarenessUpdate(awareness, decoding.readVarUint8Array(decoder), conn);
       return null;

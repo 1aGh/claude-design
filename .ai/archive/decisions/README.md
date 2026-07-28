@@ -9,6 +9,8 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-193: Maude Cloud — one cell per project on Cloudflare, and the containment invariant](DDR-193-maude-cloud-tenant-cells-and-containment-invariant.md) — 2026-07-28, cloud/tenancy/cloudflare/containers/workers/r2/security/containment/gdpr/trust/pricing/lifecycle/umbrella
+- [DDR-192: Remote workspace server architecture — the server owns the checkout, and the desktop stays the only editing surface](DDR-192-remote-workspace-server-architecture.md) — 2026-07-28, cloud/architecture/sync/workspace-agent/hub/collaboration/trust-model/acp/s3/umbrella
 - [DDR-191: Revert the `<plugin>:` prefix baked into plugin `name:` frontmatter — Claude Code now namespaces it itself](DDR-191-revert-plugin-name-prefix-claude-code-now-namespaces.md) — 2026-07-28, flow/design/plugin-design/slash-commands/naming/regression/upstream-drift
 - [DDR-190: Bundling a third-party native engine (kgai `kg` + Kuzu) into the signed desktop app — pinned build-time fetch](DDR-190-kgai-native-bundling-in-the-signed-desktop-app.md) — 2026-07-23, kgai/desktop/tauri/sidecar/bundling/supply-chain/codesign/notarization/provenance/licensing/ddr-126/ddr-177/ddr-189
 - [DDR-189: kgai cross-repo shared-graph trust model — shared store is an attacker-controlled writer surface](DDR-189-kgai-cross-repo-shared-graph-trust-model.md) — 2026-07-23, kgai/knowledge-graph/security/trust-boundary/cross-repo/s3/ddr-054/ddr-130/untrusted-data/trifecta

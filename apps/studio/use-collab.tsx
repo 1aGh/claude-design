@@ -33,6 +33,8 @@ import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protoc
 import { readSyncMessage, writeSyncStep1, writeUpdate } from 'y-protocols/sync';
 import * as Y from 'yjs';
 
+import { isTrustedOrigin, touchesBodyLane } from './collab/origins.ts';
+
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 
@@ -677,10 +679,35 @@ function createSession(slug: string): CollabSession {
 
   // Wire doc updates → broadcast to server. Origin tagged with the ws so
   // server-side updates we receive don't echo back.
-  const onDocUpdate = (update: Uint8Array, origin: unknown) => {
+  //
+  // ORIGIN GATE, lock 1 (DDR-122 follow-up — see collab/origins.ts). This file
+  // runs in the UNTRUSTED canvas realm, so any script sharing the realm can
+  // reach this doc through `useCollab().doc` and write the body lanes — the
+  // canvas's own source. Refuse to broadcast such an op unless it carries a
+  // trusted origin sentinel, which canvas script cannot obtain. Comments,
+  // annotations, and presentation are untouched: the canvas realm co-authors
+  // those by design, and same-machine boards must keep working.
+  let bodyLaneWarned = false;
+  const onDocUpdate = (
+    update: Uint8Array,
+    origin: unknown,
+    _doc: Y.Doc,
+    transaction: Y.Transaction
+  ) => {
     const ws = wsRef;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     if (origin === ws) return; // came from server, don't echo
+    if (touchesBodyLane(transaction) && !isTrustedOrigin(origin)) {
+      if (!bodyLaneWarned) {
+        bodyLaneWarned = true;
+        console.warn(
+          '[collab] refused to broadcast a canvas-realm write to the canvas source ' +
+            '(html/css/meta). Untrusted canvas script may not edit the document body — ' +
+            'DDR-122 follow-up.'
+        );
+      }
+      return;
+    }
     broadcastSyncUpdate(ws, update);
   };
   doc.on('update', onDocUpdate);

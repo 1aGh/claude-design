@@ -27,6 +27,10 @@ export type WsData =
       remote: string;
       kind: 'collab';
       slug: string;
+      /** Which origin upgraded this socket — 'canvas' marks the untrusted
+       *  canvas iframe origin, whose sync frames go through the DDR-122
+       *  origin gate in collab/room.ts. Set at upgrade time in server.ts. */
+      realm: 'main' | 'canvas';
     }
   | {
       // T2 (9.1-A) — HMR-only socket for the segregated canvas origin. Receives
@@ -244,9 +248,10 @@ export function createWs(
   // right room to disconnect from. Multiplexed via ws.data.id.
   const collabConns = new Map<string, { roomSlug: string; conn: RoomConn }>();
 
-  function bindCollab(ws: ServerWebSocket<WsData>, slug: string): RoomConn {
+  function bindCollab(ws: ServerWebSocket<WsData>, slug: string, realm: 'main' | 'canvas'): RoomConn {
     const conn: RoomConn = {
       id: ws.data.id,
+      realm,
       send(payload: Uint8Array) {
         try {
           // Bun's ws.send accepts Uint8Array directly as binary.
@@ -264,7 +269,7 @@ export function createWs(
     async open(ws) {
       if (ws.data.kind === 'collab') {
         const room = collab.registry.get(ws.data.slug);
-        const conn = bindCollab(ws, ws.data.slug);
+        const conn = bindCollab(ws, ws.data.slug, ws.data.realm ?? 'main');
         await room.connect(conn);
         return;
       }

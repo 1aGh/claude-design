@@ -167,6 +167,8 @@ function startServer(port: number): BunServer {
             remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
             kind: 'collab',
             slug: collabSlug,
+            // Privileged shell origin — ungated (see collab/origins.ts).
+            realm: 'main',
           },
         });
         if (ok) return undefined as unknown as Response;
@@ -275,6 +277,10 @@ function startCanvasServer(port: number): BunServer {
             remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
             kind: 'collab',
             slug: collabSlug,
+            // UNTRUSTED canvas iframe origin (DDR-063 split). Every sync frame
+            // from here goes through the origin gate and may never write a
+            // body lane — DDR-122 follow-up, collab/origins.ts.
+            realm: 'canvas',
           },
         });
         if (ok) return undefined as unknown as Response;
