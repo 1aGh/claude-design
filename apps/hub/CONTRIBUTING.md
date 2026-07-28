@@ -17,7 +17,7 @@ pnpm install --filter @maude/hub
 
 The hub is **Node-only** at runtime (Hocuspocus' `crossws` adapter rejects
 Bun/Deno and `better-sqlite3` isn't Bun-compatible — see
-[DDR-052](../../../.ai/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md)).
+[DDR-052](../../../.ai/archive/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md)).
 Bun is used only as the bundler (`bun run build.ts`).
 
 ---

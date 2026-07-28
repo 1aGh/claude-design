@@ -5,7 +5,7 @@ Self-hostable Yjs sync hub for Maude cross-machine canvas collaboration.
 > **⚠ Linked mode is an experimental v1.1 preview.** Hub-pushed content is
 > written to a peer's `.design/` files as untrusted input (treat it like
 > `git pull` from a stranger). **Only link to hubs you operate or fully
-> trust.** See [DDR-054](../../../.ai/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md)
+> trust.** See [DDR-054](../../../.ai/archive/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md)
 > for the trust model and the four architectural items that must land before
 > linked mode is supported for general use.
 
@@ -16,7 +16,7 @@ Self-hostable Yjs sync hub for Maude cross-machine canvas collaboration.
 > Deploy templates (Task 7) land in a subsequent slice.
 
 See `.ai/plans/phase-9-self-hosted-hub-file-sync.md` for the full plan,
-`.ai/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md` for the
+`.ai/archive/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md` for the
 framework choice, and `.ai/docs/research-collab.md` for the design analysis.
 
 ## Run locally

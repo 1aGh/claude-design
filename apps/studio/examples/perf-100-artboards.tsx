@@ -17,7 +17,7 @@
  *              3. Zoom around the cursor with wheel for 5 s; record FPS.
  *              4. Compare against the Phase 3.4 perf budget targets.
  *
- * Results land in .ai/decisions/DDR-024 + .ai/logs/phase-4-perf-<date>.md.
+ * Results land in .ai/archive/decisions/DDR-024 + .ai/logs/phase-4-perf-<date>.md.
  */
 
 import { DCArtboard, DCSection, DesignCanvas } from '@maude/canvas-lib';

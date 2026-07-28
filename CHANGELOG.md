@@ -693,7 +693,7 @@
   - **Declarative quality gates.** New optional top-level `quality` map in `workflows.config.json` (`gate → shell-command` string). Flow commands read it directly via `jq` + `eval` — `/flow:utils-verify` + `/flow:quick` run `format`+`lint`; `/flow:validate` runs `format → lint → typecheck → tests → build` then any custom gates; the release pre-flight runs all. No `maude quality run` wrapper — `pnpm <script>` is already the runner. Gate set is per-project and user-owned; the `ai-skeleton` template ships no `quality` block (populate via `maude doctor --fix`).
   - **Manifest-sourced preflight.** `/design:init` + `/flow:init` now source their dependency table from `dependencies.json` (no hardcoded `command -v` chain), with a `_preflight.json` 5-minute cross-command cache and a SessionStart hook that warns (deps only) when a hard dependency is missing. `/flow:init` re-runs are now drift-aware (per-key keep/apply/skip; never clobbers tuned `prohibited`/`boundaries`/`motion`).
 
-  See [DDR-058](.ai/decisions/DDR-058-maude-doctor-deps-config-quality.md) for the unified-diagnostic + no-wrapper-over-pnpm rationale and the `eval`-of-config trust boundary.
+  See [DDR-058](.ai/archive/decisions/DDR-058-maude-doctor-deps-config-quality.md) for the unified-diagnostic + no-wrapper-over-pnpm rationale and the `eval`-of-config trust boundary.
 
 ### Patch Changes
 
@@ -704,7 +704,7 @@
 
   - **Per-platform showcase, never dropped.** The scaffold roster + fan-out now emit a `ui_kits-<platform>-showcase`/`-index` pair per in-scope platform (Q3), and reconciliation asserts the Q3-derived expected set — an absent mobile/tablet showcase is the same hard-fail as a `pending` one. Reconciliation also runs after partial/failed fan-out batches (not just the happy path), and socket-failure recovery routes back through it.
   - **Fan-out ceiling 3–4** (was 5–8) with sequential waves of ≤4, reconciling between waves — fixes the cohort socket-budget failure that 8 simultaneous long-running agents triggered.
-  - **Aspiration bar raised 3.5 → 4.0** ([DDR-057](.ai/decisions/DDR-057-aspiration-pass-bar-raised-to-4.md)). Only `≥ 4.0` prints a clean silent pass; `3.0–4.0` still completes but surfaces the signature-moment-critic's top-2 specific lifts ("what would take this from hezké to wow") instead of a silent "passed". Kolo 2 (Atraktivita) is non-skippable during a first-bootstrap / additional-ds run.
+  - **Aspiration bar raised 3.5 → 4.0** ([DDR-057](.ai/archive/decisions/DDR-057-aspiration-pass-bar-raised-to-4.md)). Only `≥ 4.0` prints a clean silent pass; `3.0–4.0` still completes but surfaces the signature-moment-critic's top-2 specific lifts ("what would take this from hezké to wow") instead of a silent "passed". Kolo 2 (Atraktivita) is non-skippable during a first-bootstrap / additional-ds run.
   - **Restraint-default typography** (ratio ≤ 1.2, optical-size ≤ 72, display weight ≤ semibold) — opt UP via `/design:edit`, not down. **Research type-fidelity** — mirror the research's primary display-face role exactly; font availability must not flip a grotesque direction into a serif.
   - **Showcase-from-real-app** — for an existing product, the showcase sub-agent reads the real `AppLayout` + nav and restyles, rather than inventing a fictional product UX.
   - **`/design:edit` fixes** — touch the paired `.tsx` after editing a sibling `.css` (the canvas-build bundle keys on `.tsx` mtime, so a CSS-only edit was otherwise invisible); a matchMedia-first fast-path for motion complaints (headless/OS `prefers-reduced-motion: reduce` correctly suppresses motion — rule that out before chasing CSS).
@@ -809,7 +809,7 @@
 
   Adds a vanilla-JS single-page admin at `/admin` bundled into the hub binary (no framework, ~6 KB gz). First-run bootstrap URL printed to logs lets the operator claim the hub without shell access; subsequent visits authenticate via `Authorization: Bearer <secret>`. Four cards: Generate invite (mint copy-paste `maude design link …` command), Connected peers (poll), Hub status (uptime/version/data dir), Active tokens (rotate). One-time bootstrap key is **single-use** (POSIX-atomic rename-to-consume) and **never regenerated** after consumption or expiry — operator falls back to `HUB_SECRET` env on recovery.
 
-  Security architecture pinned in [DDR-053](./.ai/decisions/DDR-053-hub-admin-auth-architecture.md): Bearer-only auth (no `?secret=` query), scope-bound tokens (default `scope = label`; `documentName` must match), session-kick on rotate, per-IP rate limit (5/60s), CSP + X-Frame-Options + Referrer-Policy on `/admin*`, strict `Content-Type: application/json` on POSTs, proto-pollution + body-timeout guards, all log lines scrubbed of CR/LF for log-forging defense, server-side label + documentName + publicUrl validation.
+  Security architecture pinned in [DDR-053](./.ai/archive/decisions/DDR-053-hub-admin-auth-architecture.md): Bearer-only auth (no `?secret=` query), scope-bound tokens (default `scope = label`; `documentName` must match), session-kick on rotate, per-IP rate limit (5/60s), CSP + X-Frame-Options + Referrer-Policy on `/admin*`, strict `Content-Type: application/json` on POSTs, proto-pollution + body-timeout guards, all log lines scrubbed of CR/LF for log-forging defense, server-side label + documentName + publicUrl validation.
 
   A11y: WCAG 2.1 AA — `--muted` token darkened to clear 4 contrast blockers, `role="alert"` on error containers, `<dialog>` focus management + `aria-labelledby`, `aria-live` announcement for "Copied ✓", `aria-hidden` on decorative icons, skip-nav link, semantic table captions + `scope="col"`.
 
@@ -831,7 +831,7 @@
 
   **Still deferred to follow-up.** Phase 8 Tasks 7 (persistence + git-lifecycle reconciliation — `.git/HEAD` watcher, force-snapshot before reload prompt, no-data-loss invariant per DDR-051 §3) + 8 (multi-tab stress harness 2 tabs × 30 Hz × 2 min, bounded memory + Y.Doc growth, CI wiring). Then the 5 collab scenarios.
 
-  See `.ai/decisions/DDR-051-collab-persistence-json-snapshot-at-quiescence.md` and `.ai/plans/phase-8-live-collaboration-yjs-lan.md`.
+  See `.ai/archive/decisions/DDR-051-collab-persistence-json-snapshot-at-quiescence.md` and `.ai/plans/phase-8-live-collaboration-yjs-lan.md`.
 
 - 9efd1b7: **Phase 8 foundation — Yjs collab runtime (Tasks 0–1).** Loopback-only multiplayer is now possible on a single machine: two browser tabs on the same canvas, or two Claude Code instances editing the same repo, can share a per-canvas Y.Doc + Awareness state. DDR-051 spells out the persistence contract — JSON snapshots in `.design/_comments/<slug>.json` stay canonical (legible in PRs, cold-clone safe); `.ydoc.bin` lives under `.design/_state/` (gitignored) as a real-time cache regenerated from JSON on first open; force-snapshot before `.git/HEAD` changes (Task 7) protects in-flight edits from being silently discarded by a branch switch.
 
@@ -845,7 +845,7 @@
 
   **Scope cut for this ship.** Phase 8 Tasks 2–8 (cursor + selection awareness rendering, comments-as-Y.Array client migration, AI activity heartbeat banner, draw annotation sync, participant chrome + follow mode, persistence + git-lifecycle reconciliation, multi-tab stress harness, 5 collab scenarios) are deferred to follow-up sessions. The foundation in this ship is what Phase 9 (cross-machine hub deploy) builds on; Tasks 2–8 are user-visible features that ride on the runtime that just shipped.
 
-  See `.ai/decisions/DDR-051-collab-persistence-json-snapshot-at-quiescence.md` for the persistence contract, `.ai/decisions/DDR-047-collab-scope-cut-no-lan-mode-hub-admin-ui.md` for the v1.0/v1.1 split, and `.ai/plans/phase-8-live-collaboration-yjs-lan.md` for the full task list.
+  See `.ai/archive/decisions/DDR-051-collab-persistence-json-snapshot-at-quiescence.md` for the persistence contract, `.ai/archive/decisions/DDR-047-collab-scope-cut-no-lan-mode-hub-admin-ui.md` for the v1.0/v1.1 split, and `.ai/plans/phase-8-live-collaboration-yjs-lan.md` for the full task list.
 
 - b0cf7be: **Phase 8 — Tasks 2 + 3: cursor awareness + comments backed by Y.Array.** Builds on `9efd1b7` (Yjs foundation). Two browser tabs (or two Claude Code instances) on the same canvas now see each other's cursors live, and any comment add / patch / delete / reply propagates between tabs within ~33 ms via the y-websocket protocol — with the existing JSON snapshot still the canonical persistence format (DDR-051).
 
@@ -863,7 +863,7 @@
 
   **Still deferred to follow-up sessions.** Phase 8 Tasks 4 (AI activity heartbeat banner during `/design:edit`), 5 (draw annotation sync via Y.Array), 6 (participant chrome + follow mode), 7 (persistence + git-lifecycle reconciliation with force-snapshot), 8 (multi-tab stress harness + the 5 collab scenarios). The foundation in this ship is the protocol layer all of those will use.
 
-  See `.ai/decisions/DDR-051-collab-persistence-json-snapshot-at-quiescence.md` and `.ai/plans/phase-8-live-collaboration-yjs-lan.md`.
+  See `.ai/archive/decisions/DDR-051-collab-persistence-json-snapshot-at-quiescence.md` and `.ai/plans/phase-8-live-collaboration-yjs-lan.md`.
 
 - a6ed8bd: **Phase 8 — Tasks 7 + 8: git-lifecycle reconciliation + multi-tab stress harness.** Builds on `acac75d`. Phase 8 now ships complete (all 9 tasks across 4 commits).
 
@@ -887,7 +887,7 @@
 
   **Still ahead (out of Phase 8 scope).** The 5 collab scenarios — `collab-multitab-cursors`, `collab-comment-sync`, `collab-follow-mode`, `collab-ai-banner`, `collab-branch-switch` — authored via `/scenario new` against `agent-browser`'s two-context harness; these belong in the `/flow:done` step that follows this commit. Phase 9 (cross-machine hub deploy) starts after Phase 8 retro.
 
-  See `.ai/decisions/DDR-051-collab-persistence-json-snapshot-at-quiescence.md`, `.ai/decisions/DDR-047-collab-scope-cut-no-lan-mode-hub-admin-ui.md`, and `.ai/plans/phase-8-live-collaboration-yjs-lan.md`.
+  See `.ai/archive/decisions/DDR-051-collab-persistence-json-snapshot-at-quiescence.md`, `.ai/archive/decisions/DDR-047-collab-scope-cut-no-lan-mode-hub-admin-ui.md`, and `.ai/plans/phase-8-live-collaboration-yjs-lan.md`.
 
 - 24e07f3: **Phase A foundation + doctor — `maude doctor` unified workspace diagnostic (Tasks A1–A13 of 28).** One umbrella CLI command that reports missing dependencies, config schema errors, stack drift, and missing quality-gate declarations in one shot. Replaces the per-command `command -v` chains in `/design:init` and `/flow:init` with a single source of truth — `plugins/{design,flow}/dependencies.json` — that both the CLI and slash commands read. `--fix` applies safe auto-fixes (prompts per dep install; silent drift resync; silent additive quality merges; never overwrites existing user values). `--json` for programmatic consumers (slash commands call internal libs directly — no `maude doctor` round-trip from inside `/flow:validate`).
 
@@ -938,7 +938,7 @@
 
   **One-shot codemod** at `scripts/migrate-motion-specimen.ts` migrates legacy `**/preview/motion.html` to the new TSX shape, archives the `.html` to `_history/_migration-motion-2026-06/`, surfaces inline token overrides as JSDoc comments. Skip-if-already-TSX behavior handles the studyfi-style manual-fix path.
 
-  Closes phase 3.7. 468/468 bun tests green (+7 net for motion). `/design:smoke` 42/42 canvases OK. See `.ai/decisions/DDR-049-motion-one-as-canonical-motion-library.md` for the full motion-runtime decision + alternatives considered (framer-motion, GSAP, WAAPI, CSS-only).
+  Closes phase 3.7. 468/468 bun tests green (+7 net for motion). `/design:smoke` 42/42 canvases OK. See `.ai/archive/decisions/DDR-049-motion-one-as-canonical-motion-library.md` for the full motion-runtime decision + alternatives considered (framer-motion, GSAP, WAAPI, CSS-only).
 
 ## 0.19.1
 
@@ -954,7 +954,7 @@
   - **Per-DS `tokensCssRel` auto-resolution** — `designSystems[]` entries without an explicit `tokensCssRel` default to `<entry.path>/colors_and_type.css`. Multi-DS projects (or projects with nested-folder DS layouts) no longer need to spell out the path.
   - **DS picker** — when `designSystems.length > 1`, the System view header renders a selector that switches both tokens and previews. Unknown `?ds=<name>` returns 404 instead of silently falling back.
 
-  See `.ai/decisions/DDR-048-dev-server-system-view-no-shell-bias.md` for the full rationale and the contract between the shell chrome and the user-facing System view.
+  See `.ai/archive/decisions/DDR-048-dev-server-system-view-no-shell-bias.md` for the full rationale and the contract between the shell chrome and the user-facing System view.
 
 ## 0.19.0
 
@@ -964,7 +964,7 @@
 
   Strip every visual prior from `plugins/design/templates/` so the discovery flow becomes the only place visual choices are made. Previously the templates smuggled a complete "Linear-ish dark dashboard" opinion into every project that ran `/design:setup-ds`: a 4 px spacing scale, an 8-step type ladder, specific easing curves, OKLCH-only color space as a hard rule, a one-accent rule as a structural ban, a 1200 px max-width, 44 × 44 touch targets (Apple-flavored), Inter font, indigo accent, and a dark slate background — none of which the discovery had asked for.
 
-  Three coordinated changes (per [DDR-043](.ai/decisions/DDR-043-bias-free-design-plugin-templates.md)):
+  Three coordinated changes (per [DDR-043](.ai/archive/decisions/DDR-043-bias-free-design-plugin-templates.md)):
 
   - **Templates become true skeletons.** Every hardcoded numeric / curve / hue in `core/colors_and_type.css.tpl`, `README.philosophy.md.tpl`, `SKILL.md.tpl`, `canvas.tsx.template` is now a `{{placeholder}}` fed by the discovery payload. The only hardcoded values that remain are the `prefers-reduced-motion: reduce` 1 ms collapse (a11y) and the token NAME contract.
   - **Critic gates become discovery-driven.** `design-system-completeness-critic` C7 (one-accent) and V2 (OKLCH-required) now read `config.accentStrategy` and `config.colorSpace` and gate accordingly. Defaults preserve backwards compatibility: missing fields → `single` + `oklch`. Existing downstream projects keep passing without any config change.
@@ -995,7 +995,7 @@
 
   Before this release, the documented happy-path — `/plugin marketplace add 1aGh/maude` → `/design:setup-ds project` → `/design:browse` — failed with a 404 on `/_client/client.bundle.js` and a 500 on `/_canvas-runtime/*` on a fresh machine. The marketplace install mechanism does a `git clone` (honors `.gitignore`), so `dist/` and `node_modules/` arrived empty even though `npm pack` shipped them. Three independent packaging gaps stacked into one broken first boot.
 
-  Seven coordinated fixes ship together (per [DDR-044](.ai/decisions/DDR-044-marketplace-install-vs-npm-install-artifact-strategy.md)):
+  Seven coordinated fixes ship together (per [DDR-044](.ai/archive/decisions/DDR-044-marketplace-install-vs-npm-install-artifact-strategy.md)):
 
   - **Commit `dist/client.bundle.js` + `dist/styles.css` to git** (~270 KB) so marketplace clones get them out of the box. Per-platform binaries (~70–120 MB each) stay gitignored — they ship via `optionalDependencies` sub-packages per DDR-015.
   - **`bun run build.ts` no longer ENOENT-crashes outside the monorepo.** The brittle `../../../package.json` read at `build.ts:73-74` now resolves `plugins/design/.claude-plugin/plugin.json` (always present in both npm and marketplace installs) with a try/catch fallback to `version: 'dev'`.
@@ -1202,11 +1202,11 @@
   - `POST /_api/comments/<id>/reply` — append to thread, fold @mentions into the union
   - `GET /_api/git-committers` — committer list for the @mention popup, cached 60 s server-side
 
-  Architecture: the overlay renders as a `position: fixed` sibling of `.dc-canvas` (NOT portaled into `.dc-world`) so its z-index actually competes with `SelectionHalos`. Pins stay 24 px at every zoom level, FigJam-style. See [DDR-034](.ai/decisions/DDR-034-comments-overlay-screen-coord-fixed-position.md) for the architectural rationale.
+  Architecture: the overlay renders as a `position: fixed` sibling of `.dc-canvas` (NOT portaled into `.dc-world`) so its z-index actually competes with `SelectionHalos`. Pins stay 24 px at every zoom level, FigJam-style. See [DDR-034](.ai/archive/decisions/DDR-034-comments-overlay-screen-coord-fixed-position.md) for the architectural rationale.
 
   A11y: comment pin is a `<button>` with `aria-label`; thread popover is `role="dialog"` with focus management + Esc-to-close + focus-restore to the originating pin; mention popup uses the WAI-ARIA combobox-with-listbox pattern.
 
-- c9278b2: **Project renamed `md-claude` → Maude.** Atomic rebrand across the npm package, GitHub repo, Claude Code marketplace, CLI binary, dev-server runtime, docs site, and self-dogfooding directories. See [`docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md`](../docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md) and [DDR-032](../.ai/decisions/DDR-032-rename-md-claude-to-maude.md).
+- c9278b2: **Project renamed `md-claude` → Maude.** Atomic rebrand across the npm package, GitHub repo, Claude Code marketplace, CLI binary, dev-server runtime, docs site, and self-dogfooding directories. See [`docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md`](../docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md) and [DDR-032](../.ai/archive/decisions/DDR-032-rename-md-claude-to-maude.md).
 
   User-visible changes:
 
@@ -1221,7 +1221,7 @@
   Intentionally preserved as internal namespaces (DDR-032 sub-decision 2): CSS class identifiers `.mdcc-*`, CSS custom properties `--mdcc-*`, the `site/components/mdcc/` path, the `~/.config/mdcc/` XDG config directory, and `site/app/mdcc-tokens.css`.
 
 - 591f9a8: flow: Add security review subagents — defender (`security-auditor`) for OWASP-class static scans + attacker (`ethical-hacker`) for adversarial threat modeling including AI/MCP attack surface (prompt injection, MCP tool poisoning, confused-deputy, the trifecta). New skill `security-rules` (67 hard-stops across classic + AI-era), new command `/flow:validate-security`, and hooks into `/flow:validate` (step 6.5), `/flow:review-code`, `/flow:done`. New config: top-level `security.{severityFloor,scope,includeAi}` + `skills.securityRules.enabled` (defaults sane; downstream projects get it for free via `mdcc init`).
-- 2c90eb1: **`/design:setup-ds` rewritten as 3-stage discovery (Vision → Research → Refinement).** Replaces the v1 12-question fixed dotazník (3 rounds — Identity / Brand / Pro-designer) with a conversational small-step flow that moves from abstract to concrete the way a human designer talks to a stakeholder. See [DDR-033](../.ai/decisions/DDR-033-three-stage-discovery.md) for full reasoning.
+- 2c90eb1: **`/design:setup-ds` rewritten as 3-stage discovery (Vision → Research → Refinement).** Replaces the v1 12-question fixed dotazník (3 rounds — Identity / Brand / Pro-designer) with a conversational small-step flow that moves from abstract to concrete the way a human designer talks to a stakeholder. See [DDR-033](../.ai/archive/decisions/DDR-033-three-stage-discovery.md) for full reasoning.
 
   User-visible changes:
 
@@ -1248,7 +1248,7 @@
 
 ### Major Changes
 
-- **Project renamed `md-claude` → Maude.** Atomic rebrand across npm, GitHub repo, marketplace, CLI, dev-server, site, docs, and self-dogfooding directories. See [DDR-032](.ai/decisions/DDR-032-rename-md-claude-to-maude.md) and the [migration guide](docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md).
+- **Project renamed `md-claude` → Maude.** Atomic rebrand across npm, GitHub repo, marketplace, CLI, dev-server, site, docs, and self-dogfooding directories. See [DDR-032](.ai/archive/decisions/DDR-032-rename-md-claude-to-maude.md) and the [migration guide](docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md).
 - **npm**: `@1agh/md-claude` → `@1agh/maude` (old package unpublished within 72h window). 7 per-platform sub-packages renamed in lockstep (`@1agh/maude-<slug>`).
 - **GitHub**: repo `1aGh/md-claude` → `1aGh/maude` (301 redirect preserved).
 - **CLI**: primary bin is now `maude` (`maude init`, `maude config`, `maude design serve`). The legacy `mdcc` bin still works as a deprecation-warning alias and will be dropped in v0.17.x. `MD_CLAUDE_SKIP_POSTINSTALL` env var renamed to `MAUDE_SKIP_POSTINSTALL` (old name accepted for one cycle).
@@ -1526,7 +1526,7 @@
 
   New paragraph under § Design plugin: "Pattern priors come first — when working under a project DS that has existing canvases or preview components, those files ARE the design spec. Lift before invent."
 
-  See [DDR-010](.ai/decisions/DDR-010-design-system-keeper-agent.md) and the [Docs Site retro](.ai/logs/system-reviews/docs-site-design-generation-review.md) for the rationale and the cost-saving math (~50–80k tokens per session in the typical "user has existing canvas to lift from" scenario).
+  See [DDR-010](.ai/archive/decisions/DDR-010-design-system-keeper-agent.md) and the [Docs Site retro](.ai/logs/system-reviews/docs-site-design-generation-review.md) for the rationale and the cost-saving math (~50–80k tokens per session in the typical "user has existing canvas to lift from" scenario).
 
 - 61d9e9d: **Phase 3.4 — dev-server runtime + build pipeline + distribution overhaul.**
 
@@ -1547,11 +1547,11 @@
 
   Per-platform sub-packages (new on npm): `@1agh/md-claude-darwin-arm64`, `@1agh/md-claude-darwin-x64`, `@1agh/md-claude-linux-x64`, `@1agh/md-claude-linux-arm64`, `@1agh/md-claude-linux-x64-musl`, `@1agh/md-claude-linux-arm64-musl`, `@1agh/md-claude-win32-x64`. End users should not install these directly — npm resolves the matching one automatically.
 
-  See `.ai/decisions/DDR-{009,012,013,014,015,016}.md` for the full rationale set.
+  See `.ai/archive/decisions/DDR-{009,012,013,014,015,016}.md` for the full rationale set.
 
 - e5eb043: **Phase 3.5 — dev-server shell refresh: shadcn-style menubar + CV-08 tree-panel + Help modal + paper-grid viewport.**
 
-  The `mdcc design serve` chrome is rebuilt against the `project` DS (MDCC-DSN/01) mocks in `.design/ui/Canvas Viewport.html`. The action-button header (`tree · active · comments · open`) is replaced by a 30 px top **menubar** (`■ MDCC · File · Edit · View · Selection · Tools · Help · CV-stamp · file · N ARTBOARDS · ZOOM 100% · project SKU`) per CV-01/CV-08 spec — see [DDR-017](../.ai/decisions/DDR-017-dev-server-shell-menubar-single-canvas.md). The tabs row is gone — the dev-server is single-canvas; opening a file in the tree replaces the active one. The left sidebar becomes a four-section CV-08 tree (`PROJECT / DESIGN SYSTEM · / UI CANVASES / RUNTIME · GITIGNORED`) backed by a new `kind` discriminator in `_index-data` — see [DDR-018](../.ai/decisions/DDR-018-tree-groups-via-kind-discriminator.md).
+  The `mdcc design serve` chrome is rebuilt against the `project` DS (MDCC-DSN/01) mocks in `.design/ui/Canvas Viewport.html`. The action-button header (`tree · active · comments · open`) is replaced by a 30 px top **menubar** (`■ MDCC · File · Edit · View · Selection · Tools · Help · CV-stamp · file · N ARTBOARDS · ZOOM 100% · project SKU`) per CV-01/CV-08 spec — see [DDR-017](../.ai/archive/decisions/DDR-017-dev-server-shell-menubar-single-canvas.md). The tabs row is gone — the dev-server is single-canvas; opening a file in the tree replaces the active one. The left sidebar becomes a four-section CV-08 tree (`PROJECT / DESIGN SYSTEM · / UI CANVASES / RUNTIME · GITIGNORED`) backed by a new `kind` discriminator in `_index-data` — see [DDR-018](../.ai/archive/decisions/DDR-018-tree-groups-via-kind-discriminator.md).
 
   **Visual surfaces (CV-01 / CV-02 static lift)**
 
@@ -1612,7 +1612,7 @@
 
 - 25f7767: **Plugins: namespace `name:` frontmatter + rename `setup-onboard` → `init`.**
 
-  - Every plugin command, skill, and agent now declares `name: <plugin>:<slug>` in its frontmatter (e.g. `flow:resume`, `design:edit`). Without the explicit prefix, Claude Code registers the bare slug — which collides with built-ins like `/resume` and loses the namespaced row in autocomplete. See [Claude Code issue #22063](https://github.com/anthropics/claude-code/issues/22063) and [DDR-006](./.ai/decisions/DDR-006-plugin-namespace-in-name-frontmatter.md).
+  - Every plugin command, skill, and agent now declares `name: <plugin>:<slug>` in its frontmatter (e.g. `flow:resume`, `design:edit`). Without the explicit prefix, Claude Code registers the bare slug — which collides with built-ins like `/resume` and loses the namespaced row in autocomplete. See [Claude Code issue #22063](https://github.com/anthropics/claude-code/issues/22063) and [DDR-006](./.ai/archive/decisions/DDR-006-plugin-namespace-in-name-frontmatter.md).
   - `/flow:setup-onboard` → `/flow:init` and `/design:setup-onboard` → `/design:init`. Bare-verb `init` is the lone exception to the `<group>-<verb>` filename rule, mirroring Claude Code's built-in `/init`. The namespace prefix (`flow:` / `design:`) keeps them unambiguous against the built-in.
   - `/flow:help` and `/design:help` render templates updated to `/<name>` (the prefix is already in `name:`) to avoid double-prefix output.
   - Both `CATEGORIES.md` files updated with new naming convention, the `init` carve-out, and rename-history rows.
@@ -1731,7 +1731,7 @@
 
 ### Patch Changes
 
-- a50c9f4: Docs site lands at [`site/`](https://github.com/1aGh/md-claude/tree/main/site) (Fumadocs + Next.js + Tailwind v4 + Orama search). Public URL pending Vercel wiring — see [DDR-005](https://github.com/1aGh/md-claude/blob/main/.ai/decisions/DDR-005-docs-site-stack-and-hosting.md).
+- a50c9f4: Docs site lands at [`site/`](https://github.com/1aGh/md-claude/tree/main/site) (Fumadocs + Next.js + Tailwind v4 + Orama search). Public URL pending Vercel wiring — see [DDR-005](https://github.com/1aGh/md-claude/blob/main/.ai/archive/decisions/DDR-005-docs-site-stack-and-hosting.md).
 
   What's there:
 
@@ -1772,7 +1772,7 @@
 
   After ~one day on npm with no observed traffic to the old slash names, the stubs were removed early. Anyone still typing `/flow:ddr`, `/flow:onboard`, `/flow:verify`, etc. in v0.6.1+ will see a "command not found" instead of a redirect message; the new names are in `plugins/flow/CATEGORIES.md` (rename history table), DDR-004, and `/flow:help`.
 
-  Decision is recorded in `.ai/decisions/DDR-004-flow-command-naming-prefix-convention.md` under "Compat-stub removal target (actual: v0.6.1)".
+  Decision is recorded in `.ai/archive/decisions/DDR-004-flow-command-naming-prefix-convention.md` under "Compat-stub removal target (actual: v0.6.1)".
 
 ## 0.6.0
 

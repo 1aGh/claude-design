@@ -15,7 +15,7 @@ confusing GitHub error — everything else (the dev-server, git layer, canvases)
 
 1. Go to **https://github.com/organizations/1aGh/settings/applications** →
    **New OAuth App** (an *OAuth App*, not a GitHub App — see DDR in
-   `.ai/decisions/` for why OAuth App now, GitHub App later).
+   `.ai/archive/decisions/` for why OAuth App now, GitHub App later).
 2. Fill in:
    - **Application name:** `Maude`
    - **Homepage URL:** `https://maude.sh` (or the repo URL)

@@ -2,7 +2,7 @@
 // Maude Hub — self-hostable Yjs sync backend.
 //
 // Phase 9 (v1.1). Hocuspocus over PartyKit — see
-// .ai/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md.
+// .ai/archive/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md.
 // Admin auth architecture — see DDR-053-hub-admin-auth-architecture.md.
 //
 // Environment (consumed only when run as a CLI / main module):

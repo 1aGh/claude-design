@@ -3,7 +3,7 @@
 A re-runnable performance harness for [kgai](https://github.com/kgaidev/kgai) — the
 event-sourced decision knowledge graph we're evaluating as a cross-repo, org-wide
 shared-memory layer for the flow/design plugins. It imports this repo's real DDR corpus
-(`.ai/decisions/DDR-*.md`) into a throwaway kgai store and measures the operations that
+(`.ai/archive/decisions/DDR-*.md`) into a throwaway kgai store and measures the operations that
 decide whether kgai scales to a whole-company graph.
 
 ## Run it

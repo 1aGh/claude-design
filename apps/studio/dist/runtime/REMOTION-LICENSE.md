@@ -3,7 +3,7 @@
 Maude's **video-comp** canvas kind bundles the Remotion runtime
 (`remotion`, `@remotion/player`, `@remotion/transitions`) into the pre-built
 `/_canvas-runtime/*.js` bundles in this directory. See
-[DDR-148](../../../.ai/decisions/DDR-148-video-comp-remotion-authoring-capture-export.md).
+[DDR-148](../../../.ai/archive/decisions/DDR-148-video-comp-remotion-authoring-capture-export.md).
 
 **Remotion is source-available software — it is NOT MIT-licensed.** It is
 free for individuals and for companies of up to 3 people (unlimited commercial

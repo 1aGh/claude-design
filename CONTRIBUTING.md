@@ -48,7 +48,7 @@ If those six steps work end-to-end, your PR is ~95% of the way there.
 └── package.json                      # the single npm publisher
 ```
 
-The repo is a **pnpm workspace monorepo** with a single published npm package (`@1agh/maude`). All other workspaces are `"private": true` and never publish — they are dev-time only. See the workspace DDR under `.ai/decisions/` for the rationale.
+The repo is a **pnpm workspace monorepo** with a single published npm package (`@1agh/maude`). All other workspaces are `"private": true` and never publish — they are dev-time only. See the workspace DDR under `.ai/archive/decisions/` for the rationale.
 
 ## Local development loop
 
