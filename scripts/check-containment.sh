@@ -86,10 +86,50 @@ for manifest in package.json apps/studio/package.json apps/hub/package.json; do
   fi
 done
 
+# ---- 3. the CELL IMAGE must not be able to render at all ------------------
+# A cell that merely *chooses* not to render is one config mistake from
+# rendering. A cell with no browser in it cannot, whatever the config says — so
+# the image is where the strongest version of this invariant lives.
+CELL_DOCKERFILE="infra/cell/Dockerfile"
+CELL_ENTRYPOINT="infra/cell/entrypoint.sh"
+if [ -f "$CELL_DOCKERFILE" ]; then
+  for browser in playwright puppeteer chromium chrome firefox; do
+    # Match INSTALL directives only — the file legitimately names these in the
+    # comment explaining why they are absent, and in the entrypoint's own check.
+    if grep -iE '^\s*(RUN|COPY|ADD).*'"$browser" "$CELL_DOCKERFILE" >/dev/null 2>&1; then
+      echo "FAIL: $CELL_DOCKERFILE installs '$browser'." >&2
+      echo "      A tenant cell must not be able to render tenant-authored TSX" >&2
+      echo "      (DDR-193 §2). Rendering happens on a member's own machine." >&2
+      fail=1
+    fi
+  done
+
+  if [ ! -f "$CELL_ENTRYPOINT" ]; then
+    echo "FAIL: $CELL_ENTRYPOINT is missing — the cell's boot-assert is gone." >&2
+    fail=1
+  else
+    # The entrypoint must still CHECK at boot. An image can be hand-modified and
+    # a base image can change under us, so the cheap re-check has to survive.
+    if ! grep -q 'containment' "$CELL_ENTRYPOINT"; then
+      echo "FAIL: $CELL_ENTRYPOINT no longer performs a containment check at boot." >&2
+      fail=1
+    fi
+    # And it must refuse to start on an empty rehydrate. A cell that starts
+    # empty looks exactly like a brand-new project, and autosave would commit
+    # that emptiness over real work.
+    if ! grep -q 'Refusing to start with an empty working set' "$CELL_ENTRYPOINT"; then
+      echo "FAIL: $CELL_ENTRYPOINT no longer refuses to start after a failed rehydrate." >&2
+      echo "      An empty working set is indistinguishable from a deleted project," >&2
+      echo "      and autosave would commit the emptiness over real work." >&2
+      fail=1
+    fi
+  fi
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo "" >&2
   echo "containment gate FAILED" >&2
   exit 1
 fi
 
-echo "containment gate OK — forbidden surfaces still named, assert still wired, no runtime browser dep"
+echo "containment gate OK — forbidden surfaces named, asserts wired (studio + cell image), no runtime browser dep"

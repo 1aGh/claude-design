@@ -45,7 +45,9 @@ jobs:
         # that possible, at review time. The realistic way this invariant is
         # lost is not an argument against it — it's a refactor quietly dropping
         # a line while every test stays green.
-        run: bash scripts/check-containment.sh
+        run: |
+          bash scripts/check-containment.sh
+          sh -n infra/cell/entrypoint.sh
 
       - name: Hub backup restore drill
         # The exit gate for Cloud Phase 2 Task 3. A backup nobody has restored
