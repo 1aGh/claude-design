@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-28T21:03:02.040Z",
+  "generated": "2026-07-28T21:03:33.595Z",
   "currentPhase": null,
   "phases": [
     {
@@ -32,6 +32,17 @@
       "date": null,
       "summary": "Restructure the dev-server sidebar (the FILES panel at app.jsx:273–365) so it stops drowning daily work in non-canvas noise:",
       "planPath": ".ai/plans/archive/client-tree-restructure.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-1-safety-gates",
+      "title": "Cloud Phase 1 — Decisions + safety gates (DDRs, DDR-122 origin-gate, hub namespace)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Nothing else in the arc may start before this phase's gates pass (breaker precondition: \"superseding DDRs writt...",
+      "planPath": ".ai/plans/archive/cloud-phase-1-safety-gates.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1473,17 +1484,6 @@
       "date": null,
       "summary": "Everything a human must do by hand — accounts, logins, tokens, tooling, MCP wiring — so the phase executions run smoothly and agent-driven. Companion to cloud-phase-0-economics-and-architecture.md....",
       "planPath": ".ai/plans/cloud-phase-0b-manual-prep.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-1-safety-gates",
-      "title": "Cloud Phase 1 — Decisions + safety gates (DDRs, DDR-122 origin-gate, hub namespace)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Nothing else in the arc may start before this phase's gates pass (breaker precondition: \"superseding DDRs writt...",
-      "planPath": ".ai/plans/cloud-phase-1-safety-gates.md",
       "archived": false,
       "phaseKey": null
     },
