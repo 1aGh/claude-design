@@ -428,7 +428,18 @@ export async function run({ args, state, projectRoot, runKg }) {
   // STATE.md rides the same import — it is an event stream, not a document.
   let stateStats = null;
   if (!only && !flags['no-state']) {
-    const st = buildStateBatch(join(projectRoot, '.ai', 'state', 'STATE.md'), state.scope);
+    // Prefer the ARCHIVED pre-migration STATE (the live one is a pointer-stub
+    // once the graph took over); fall back to the live file on a repo that
+    // hasn't migrated yet.
+    const archState = join(projectRoot, '.ai', 'archive', 'state');
+    const statePath =
+      [
+        ...(existsSync(archState) ? readdirSync(archState, { withFileTypes: true }) : [])
+          .filter((e) => e.isFile() && e.name.endsWith('.md'))
+          .map((e) => join(archState, e.name))
+          .sort(),
+      ][0] ?? join(projectRoot, '.ai', 'state', 'STATE.md');
+    const st = buildStateBatch(statePath, state.scope);
     if (st.batch.decisions.length) {
       stateStats = st.stats;
       batch.decisions.push(...st.batch.decisions);

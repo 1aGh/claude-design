@@ -217,6 +217,8 @@ Create `.ai/plans/README.md` with:
 
 ### 6. Initialize Workflow State
 
+> **Knowledge-graph backend:** when `maude kg resolve --json` reports `active:true` (load `flow:kgai-backend`), skip this initialization — `/flow:pause` and `/flow:resume` read and write the graph, and `STATE.md` stays a pointer-stub. The steps below are the classic path.
+
 If `.ai/state/STATE.md` does not already exist, initialize it so that session-continuity commands (`/flow:pause`, `/flow:resume`) work from the start:
 
 1. Create the directory: `mkdir -p .ai/state`

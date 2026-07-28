@@ -23,6 +23,8 @@ Read the plan file from `$ARGUMENTS`.
 
 ## Pre-Flight: Ensure Workflow State
 
+> **Knowledge-graph backend (check first).** Load `flow:kgai-backend`; if `maude kg resolve --json` reports `active:true`, **skip this whole pre-flight**: progress is recorded in the graph (task checkpoints below ingest there), `STATE.md` is a thin pointer-stub, and there is no `.ai/templates/STATE.md` to seed from. Scaffolding a full STATE.md here would resurrect the file the migration retired. Everything below is the classic (`active:false`) path.
+
 If `.ai/state/STATE.md` does not exist but `.ai/templates/STATE.md` does:
 
 1. `mkdir -p .ai/state`

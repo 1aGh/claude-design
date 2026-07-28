@@ -51,7 +51,9 @@ git diff --stat
 git log origin/main..HEAD --oneline 2>/dev/null || git log main..HEAD --oneline
 ```
 
-### 3. Write HANDOFF.md
+### 3. Write HANDOFF.md — **classic backend only**
+
+> **Skip this entire step when the knowledge graph is active** (`maude kg resolve --json` → `active:true`; load `flow:kgai-backend`). Step 4b records the same context as a `session:` **paused event** in the graph, which `/flow:resume` reads back. Writing the file too would fork the handoff across two stores and leave a stale `.md` the next resume might trust. Under kgai there is no `HANDOFF.md` and no `.ai/templates/HANDOFF.md` to copy.
 
 Create the state directory if needed:
 
@@ -73,7 +75,9 @@ Write `.ai/state/HANDOFF.md` using the template from `.ai/templates/HANDOFF.md`,
 - **Files Changed:** from `git diff --name-only HEAD` + `git diff --name-only --staged`
 - **Notes for Next Session:** summarize the immediate next action
 
-### 4. Update STATE.md
+### 4. Update STATE.md — **classic backend only**
+
+> **Skip when the graph is active.** The history row belongs in the graph (step 4b); under kgai `STATE.md` is a thin pointer-stub and appending to it would grow the very file the migration retired.
 
 If `.ai/state/STATE.md` exists:
 

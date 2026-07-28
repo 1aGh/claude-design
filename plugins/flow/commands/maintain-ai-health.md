@@ -86,10 +86,10 @@ MAP_FILE="${REPO_ROOT}/.ai/context/codebase-map.md"
 STATE_FILE="${REPO_ROOT}/.ai/state/STATE.md"
 ```
 
-- **Pass:** File exists (workflow state initialized)
-- **Warn:** File missing — commands still run, but `/pause` and `/resume` will not preserve context
+- **Pass:** File exists (workflow state initialized) — **or** the knowledge graph is active (`maude kg resolve --json` → `active:true`), in which case a missing/stub `STATE.md` is CORRECT: continuity lives in the graph, not the file.
+- **Warn:** File missing AND the graph is inactive — commands still run, but `/pause` and `/resume` will not preserve context
 
-**Remediation:** `cp .ai/templates/STATE.md .ai/state/STATE.md`
+**Remediation (classic backend only):** `cp .ai/templates/STATE.md .ai/state/STATE.md`
 
 ### Check 8: Decisions log
 

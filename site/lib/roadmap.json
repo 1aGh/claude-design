@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-28T19:11:05.541Z",
+  "generated": "2026-07-28T19:24:52.367Z",
   "currentPhase": null,
   "phases": [
     {
@@ -740,6 +740,28 @@
       "phaseKey": null
     },
     {
+      "id": "phase-1-contribute-infra-changesets",
+      "title": "Phase 1: Contribute infrastructure + Changesets bootstrap",
+      "status": "done",
+      "shipTarget": "v1.0",
+      "date": null,
+      "summary": "Establish the contribution baseline: documented \"how to contribute\" path, GitHub repo hygiene (PR / issue templates, branch protection docs, Dependabot), basic CI quality gates beyond version parit...",
+      "planPath": ".ai/plans/archive/phase-1-contribute-infra-changesets.md",
+      "archived": true,
+      "phaseKey": "1"
+    },
+    {
+      "id": "phase-11-flow-design-integration",
+      "title": "Phase 11: Flow ↔ Design integration",
+      "status": "done",
+      "shipTarget": "v1.0 late / v1.1",
+      "date": null,
+      "summary": "Close the gap between flow and design plugins. Flow commands (/flow:plan, /flow:done) become aware of .design/ — /flow:plan automatically detects canvases relevant to a feature and pulls them into...",
+      "planPath": ".ai/plans/archive/phase-11-flow-design-integration.md",
+      "archived": true,
+      "phaseKey": "11"
+    },
+    {
       "id": "phase-12-in-canvas-css-and-layers",
       "title": "Phase 12: In-canvas direct edit — CSS + text + Layers panel",
       "status": "done",
@@ -773,6 +795,94 @@
       "phaseKey": "12.2"
     },
     {
+      "id": "phase-13-canvas-activity-overlay",
+      "title": "Feature: Canvas Activity Overlay — live \"agent works here\" indicator",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — the dev-server is Bun-authoritative (DDR-009), the canvas lib is single-source in plu...",
+      "planPath": ".ai/plans/archive/phase-13-canvas-activity-overlay.md",
+      "archived": true,
+      "phaseKey": "13"
+    },
+    {
+      "id": "phase-13-flow-command-categorization",
+      "title": "Phase 13: Flow command categorization (strict prefix naming, no subfolders)",
+      "status": "done",
+      "shipTarget": "v1.0",
+      "date": null,
+      "summary": "Reshape the 29 /flow:* commands (26 existing + 3 Phase 3 additions: help, release-changelog, release-cut) so every command except daily-use ones carries a group prefix. Result:",
+      "planPath": ".ai/plans/archive/phase-13-flow-command-categorization.md",
+      "archived": true,
+      "phaseKey": "13"
+    },
+    {
+      "id": "phase-13-stable-element-ids-and-canonical-screenshots",
+      "title": "Phase 13 — Stable element IDs + canonical screenshot pipeline + cheap helpers",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/phase-13-stable-element-ids-and-canonical-screenshots.md",
+      "archived": true,
+      "phaseKey": "13"
+    },
+    {
+      "id": "phase-14-design-system-keeper-pattern-priors",
+      "title": "Feature: design-system-keeper agent + pattern-priors envelope + token-usage doctrine",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports in plugins/design/agents/, plugins/design/commands/, and .design/system/project/.",
+      "planPath": ".ai/plans/archive/phase-14-design-system-keeper-pattern-priors.md",
+      "archived": true,
+      "phaseKey": "14"
+    },
+    {
+      "id": "phase-15-video-pipeline-toolchain",
+      "title": "Feature: Video pipeline toolchain — setup + smoke tests",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/phase-15-video-pipeline-toolchain.md",
+      "archived": true,
+      "phaseKey": "15"
+    },
+    {
+      "id": "phase-15.1-video-pipeline-infrastructure",
+      "title": "Feature: Video pipeline infrastructure — Remotion-native workspace + skills + caption + regression harness",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/phase-15.1-video-pipeline-infrastructure.md",
+      "archived": true,
+      "phaseKey": "15.1"
+    },
+    {
+      "id": "phase-15.5-marketing-demo-video-30s-v1-pre-15.1-alignment",
+      "title": "Feature: Marketing demo — real green-field onboarding lifecycle (~60s primary + 30s tight cut)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Produce two 1920×1080 H.264 MP4s — site/public/demo.mp4 (primary, ~60s, embedded in the docs landing) and site/public/demo-30s.mp4 (tight cut for the GitHub README, < 10 MB) — by:",
+      "planPath": ".ai/plans/archive/phase-15.5-marketing-demo-video-30s-v1-pre-15.1-alignment.md",
+      "archived": true,
+      "phaseKey": "15.5"
+    },
+    {
+      "id": "phase-15.5-marketing-demo-video-30s",
+      "title": "Feature: Marketing demo video v2.1 — real maude in sandbox, single perfect cut",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Produce one MP4 at site/public/demo.mp4 (~90 s, single cut, < 16 MB post-loudnorm) by composing 16 scenes on top of phase-15.1 infrastructure (nested workspace, <TransitionSeries>, <TerminalFrame>...",
+      "planPath": ".ai/plans/archive/phase-15.5-marketing-demo-video-30s.md",
+      "archived": true,
+      "phaseKey": "15.5"
+    },
+    {
       "id": "phase-16-intro-video-v3-wow",
       "title": "Feature: Intro video v4 — total rebuild, scene-by-scene visual iteration",
       "status": "done",
@@ -793,6 +903,39 @@
       "planPath": ".ai/plans/archive/phase-17-docs-site-infographics.md",
       "archived": true,
       "phaseKey": "17"
+    },
+    {
+      "id": "phase-18-bias-free-templates",
+      "title": "Feature: Bias-free design plugin templates",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate the docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — this plan refactors load-bearing bootstrap contracts (design-system skill ↔ templ...",
+      "planPath": ".ai/plans/archive/phase-18-bias-free-templates.md",
+      "archived": true,
+      "phaseKey": "18"
+    },
+    {
+      "id": "phase-19-dev-server-bootstrap-fixes",
+      "title": "Phase 19 — Dev-server first-boot bootstrap fixes",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
+      "archived": true,
+      "phaseKey": "19"
+    },
+    {
+      "id": "phase-2-docs-site-fumadocs",
+      "title": "Phase 2: Docs site (Fumadocs)",
+      "status": "done",
+      "shipTarget": "v1.0",
+      "date": null,
+      "summary": "Stand up a public documentation site under site/ using Fumadocs — a Next.js-based MDX docs framework chosen because its output is AI-readable (clean MDX in repo, indexable via crawlers + LLM tools)...",
+      "planPath": ".ai/plans/archive/phase-2-docs-site-fumadocs.md",
+      "archived": true,
+      "phaseKey": "2"
     },
     {
       "id": "phase-20-canvas-undo-redo",
@@ -916,6 +1059,39 @@
       "phaseKey": "29"
     },
     {
+      "id": "phase-3-flow-changelog",
+      "title": "Phase 3: `integrations.changelog` + `/flow:release-changelog` + `/flow:release` (downstream-reusable)",
+      "status": "done",
+      "shipTarget": "v1.0",
+      "date": null,
+      "summary": "Productize release-note + release-cut hygiene as a reusable flow capability. Add a new integrations.changelog block to .ai/workflows.config.json (provider + scope + releaseGuide path), implement th...",
+      "planPath": ".ai/plans/archive/phase-3-flow-changelog.md",
+      "archived": true,
+      "phaseKey": "3"
+    },
+    {
+      "id": "phase-3.4-architecture-refactor",
+      "title": "Phase 3.4: Dev-server architecture refactor (performance pre-cleanup)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Refactor the dev-server's shell to a build-pipeline-driven, Bun-runtime-authoritative architecture targeting concrete performance budgets. Concretely: migrate server source to Bun.serve / Bun.file...",
+      "planPath": ".ai/plans/archive/phase-3.4-architecture-refactor.md",
+      "archived": true,
+      "phaseKey": "3.4"
+    },
+    {
+      "id": "phase-3.5-dev-server-ui-ux-refresh",
+      "title": "Phase 3.5: Dev-server UI/UX refresh — shell visuals only",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Two-part scope:",
+      "planPath": ".ai/plans/archive/phase-3.5-dev-server-ui-ux-refresh.md",
+      "archived": true,
+      "phaseKey": "3.5"
+    },
+    {
       "id": "phase-3.6-canvas-tsx-format",
       "title": "Phase 3.6: Canvas format — `.tsx` over single-file HTML (`data-cd-id` ready)",
       "status": "done",
@@ -925,6 +1101,17 @@
       "planPath": ".ai/plans/archive/phase-3.6-canvas-tsx-format.md",
       "archived": true,
       "phaseKey": "3.6"
+    },
+    {
+      "id": "phase-3.6.1-canvas-envelope-and-ds-specimens",
+      "title": "Phase 3.6.1 — Canvas envelope hygiene + reusable canvas-lib + HMR + DS specimens as TSX",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Make every TSX canvas — UI mock OR DS specimen — a fully self-contained, browser-loadable canvas backed by a small shared canvas-lib (@mdcc/canvas-lib, virtual-module-resolved at the dev-server lev...",
+      "planPath": ".ai/plans/archive/phase-3.6.1-canvas-envelope-and-ds-specimens.md",
+      "archived": true,
+      "phaseKey": "3.6.1"
     },
     {
       "id": "phase-3.7-setup-ds-hardening-and-motion-subsystem",
@@ -980,6 +1167,83 @@
       "planPath": ".ai/plans/archive/phase-32-native-collab-distribution.md",
       "archived": true,
       "phaseKey": "32"
+    },
+    {
+      "id": "phase-4-canvas-v2-rendering-engine",
+      "title": "Phase 4: Canvas v2 — infinite-canvas engine inside the canvas runtime",
+      "status": "done",
+      "shipTarget": "v1.0",
+      "date": null,
+      "summary": "Today every .tsx canvas under .design/ renders inside its iframe as a static TSX flow — DCArtboard is a labeled card that participates in normal document flow. Phase 4 turns DesignCanvas into a tra...",
+      "planPath": ".ai/plans/archive/phase-4-canvas-v2-rendering-engine.md",
+      "archived": true,
+      "phaseKey": "4"
+    },
+    {
+      "id": "phase-4.0.5-canvas-lib-single-source",
+      "title": "Phase 4.0.5: canvas-lib + perf-lab single source in dev-server",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Implements DDR-025. The current architecture (DDR-022) treats canvas-lib as project-owned source that gets scaffolded into <designRoot>/_lib/canvas-lib.tsx on first /design:setup-ds. That design ha...",
+      "planPath": ".ai/plans/archive/phase-4.0.5-canvas-lib-single-source.md",
+      "archived": true,
+      "phaseKey": "4.0.5"
+    },
+    {
+      "id": "phase-4.1-figjam-canvas-interactions",
+      "title": "Phase 4.1: FigJam-style canvas interactions",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Add a FigJam-equivalent input layer to canvas-lib's DesignCanvas as an opt-in inputMode prop:",
+      "planPath": ".ai/plans/archive/phase-4.1-figjam-canvas-interactions.md",
+      "archived": true,
+      "phaseKey": "4.1"
+    },
+    {
+      "id": "phase-4.2-artboard-free-move",
+      "title": "Phase 4.2: Free-form artboard repositioning",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Make artboards spatially editable on the infinite canvas:",
+      "planPath": ".ai/plans/archive/phase-4.2-artboard-free-move.md",
+      "archived": true,
+      "phaseKey": "4.2"
+    },
+    {
+      "id": "phase-5-draw-tools",
+      "title": "Phase 5: Draw / annotation tools for the dev server",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Toolbar buttons in canvas chrome: pen, circle, arrow, eraser, color picker. Drawing happens on a transparent SVG layer sized to the canvas world (zoomable with viewport from Phase 4). On stroke com...",
+      "planPath": ".ai/plans/archive/phase-5-draw-tools.md",
+      "archived": true,
+      "phaseKey": "5"
+    },
+    {
+      "id": "phase-5.1-annotations-figjam",
+      "title": "Phase 5.1 — FigJam-style annotation overhaul",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Rework annotations-layer.tsx from a self-contained pointer-claiming overlay into a portal-rendered layer that lives inside .dc-world (so the world's CSS zoom/translate moves the strokes natively, w...",
+      "planPath": ".ai/plans/archive/phase-5.1-annotations-figjam.md",
+      "archived": true,
+      "phaseKey": "5.1"
+    },
+    {
+      "id": "phase-6-comments-presentation-export",
+      "title": "Phase 6: In-place comments UX (FigJam-style bubbles)",
+      "status": "done",
+      "shipTarget": "v1.0",
+      "date": null,
+      "summary": "Replace the current shell-bound BottomBar composer with a FigJam-grade in-place comment experience: the composer pops up at the click location on the canvas (not in a panel chrome at the bottom), p...",
+      "planPath": ".ai/plans/archive/phase-6-comments-presentation-export.md",
+      "archived": true,
+      "phaseKey": "6"
     },
     {
       "id": "phase-6.5-export",
@@ -1167,270 +1431,6 @@
       "planPath": ".ai/plans/archive/setup-ds-round2-scaffold-integrity-and-devserver-fixes.md",
       "archived": true,
       "phaseKey": null
-    },
-    {
-      "id": "phase-1-contribute-infra-changesets",
-      "title": "Phase 1: Contribute infrastructure + Changesets bootstrap",
-      "status": "done",
-      "shipTarget": "v1.0",
-      "date": "2026-05-12",
-      "summary": "Establish the contribution baseline: documented \"how to contribute\" path, GitHub repo hygiene (PR / issue templates, branch protection docs, Dependabot), basic CI quality gates beyond version parit...",
-      "planPath": ".ai/plans/archive/phase-1-contribute-infra-changesets.md",
-      "archived": true,
-      "phaseKey": "1"
-    },
-    {
-      "id": "phase-3-flow-changelog",
-      "title": "Phase 3: `integrations.changelog` + `/flow:release-changelog` + `/flow:release` (downstream-reusable)",
-      "status": "done",
-      "shipTarget": "v1.0",
-      "date": "2026-05-12",
-      "summary": "Productize release-note + release-cut hygiene as a reusable flow capability. Add a new integrations.changelog block to .ai/workflows.config.json (provider + scope + releaseGuide path), implement th...",
-      "planPath": ".ai/plans/archive/phase-3-flow-changelog.md",
-      "archived": true,
-      "phaseKey": "3"
-    },
-    {
-      "id": "phase-11-flow-design-integration",
-      "title": "Phase 11: Flow ↔ Design integration",
-      "status": "done",
-      "shipTarget": "v1.0 late / v1.1",
-      "date": "2026-05-13",
-      "summary": "Close the gap between flow and design plugins. Flow commands (/flow:plan, /flow:done) become aware of .design/ — /flow:plan automatically detects canvases relevant to a feature and pulls them into...",
-      "planPath": ".ai/plans/archive/phase-11-flow-design-integration.md",
-      "archived": true,
-      "phaseKey": "11"
-    },
-    {
-      "id": "phase-2-docs-site-fumadocs",
-      "title": "Phase 2: Docs site (Fumadocs)",
-      "status": "done",
-      "shipTarget": "v1.0",
-      "date": "2026-05-13",
-      "summary": "Stand up a public documentation site under site/ using Fumadocs — a Next.js-based MDX docs framework chosen because its output is AI-readable (clean MDX in repo, indexable via crawlers + LLM tools)...",
-      "planPath": ".ai/plans/archive/phase-2-docs-site-fumadocs.md",
-      "archived": true,
-      "phaseKey": "2"
-    },
-    {
-      "id": "phase-13-canvas-activity-overlay",
-      "title": "Feature: Canvas Activity Overlay — live \"agent works here\" indicator",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-15",
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — the dev-server is Bun-authoritative (DDR-009), the canvas lib is single-source in plu...",
-      "planPath": ".ai/plans/archive/phase-13-canvas-activity-overlay.md",
-      "archived": true,
-      "phaseKey": "13"
-    },
-    {
-      "id": "phase-13-flow-command-categorization",
-      "title": "Phase 13: Flow command categorization (strict prefix naming, no subfolders)",
-      "status": "done",
-      "shipTarget": "v1.0",
-      "date": "2026-05-15",
-      "summary": "Reshape the 29 /flow:* commands (26 existing + 3 Phase 3 additions: help, release-changelog, release-cut) so every command except daily-use ones carries a group prefix. Result:",
-      "planPath": ".ai/plans/archive/phase-13-flow-command-categorization.md",
-      "archived": true,
-      "phaseKey": "13"
-    },
-    {
-      "id": "phase-13-stable-element-ids-and-canonical-screenshots",
-      "title": "Phase 13 — Stable element IDs + canonical screenshot pipeline + cheap helpers",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-15",
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/archive/phase-13-stable-element-ids-and-canonical-screenshots.md",
-      "archived": true,
-      "phaseKey": "13"
-    },
-    {
-      "id": "phase-14-design-system-keeper-pattern-priors",
-      "title": "Feature: design-system-keeper agent + pattern-priors envelope + token-usage doctrine",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-15",
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports in plugins/design/agents/, plugins/design/commands/, and .design/system/project/.",
-      "planPath": ".ai/plans/archive/phase-14-design-system-keeper-pattern-priors.md",
-      "archived": true,
-      "phaseKey": "14"
-    },
-    {
-      "id": "phase-3.4-architecture-refactor",
-      "title": "Phase 3.4: Dev-server architecture refactor (performance pre-cleanup)",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-15",
-      "summary": "Refactor the dev-server's shell to a build-pipeline-driven, Bun-runtime-authoritative architecture targeting concrete performance budgets. Concretely: migrate server source to Bun.serve / Bun.file...",
-      "planPath": ".ai/plans/archive/phase-3.4-architecture-refactor.md",
-      "archived": true,
-      "phaseKey": "3.4"
-    },
-    {
-      "id": "phase-3.5-dev-server-ui-ux-refresh",
-      "title": "Phase 3.5: Dev-server UI/UX refresh — shell visuals only",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-17",
-      "summary": "Two-part scope:",
-      "planPath": ".ai/plans/archive/phase-3.5-dev-server-ui-ux-refresh.md",
-      "archived": true,
-      "phaseKey": "3.5"
-    },
-    {
-      "id": "phase-3.6.1-canvas-envelope-and-ds-specimens",
-      "title": "Phase 3.6.1 — Canvas envelope hygiene + reusable canvas-lib + HMR + DS specimens as TSX",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-19",
-      "summary": "Make every TSX canvas — UI mock OR DS specimen — a fully self-contained, browser-loadable canvas backed by a small shared canvas-lib (@mdcc/canvas-lib, virtual-module-resolved at the dev-server lev...",
-      "planPath": ".ai/plans/archive/phase-3.6.1-canvas-envelope-and-ds-specimens.md",
-      "archived": true,
-      "phaseKey": "3.6.1"
-    },
-    {
-      "id": "phase-4-canvas-v2-rendering-engine",
-      "title": "Phase 4: Canvas v2 — infinite-canvas engine inside the canvas runtime",
-      "status": "done",
-      "shipTarget": "v1.0",
-      "date": "2026-05-19",
-      "summary": "Today every .tsx canvas under .design/ renders inside its iframe as a static TSX flow — DCArtboard is a labeled card that participates in normal document flow. Phase 4 turns DesignCanvas into a tra...",
-      "planPath": ".ai/plans/archive/phase-4-canvas-v2-rendering-engine.md",
-      "archived": true,
-      "phaseKey": "4"
-    },
-    {
-      "id": "phase-4.0.5-canvas-lib-single-source",
-      "title": "Phase 4.0.5: canvas-lib + perf-lab single source in dev-server",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-19",
-      "summary": "Implements DDR-025. The current architecture (DDR-022) treats canvas-lib as project-owned source that gets scaffolded into <designRoot>/_lib/canvas-lib.tsx on first /design:setup-ds. That design ha...",
-      "planPath": ".ai/plans/archive/phase-4.0.5-canvas-lib-single-source.md",
-      "archived": true,
-      "phaseKey": "4.0.5"
-    },
-    {
-      "id": "phase-4.1-figjam-canvas-interactions",
-      "title": "Phase 4.1: FigJam-style canvas interactions",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-19",
-      "summary": "Add a FigJam-equivalent input layer to canvas-lib's DesignCanvas as an opt-in inputMode prop:",
-      "planPath": ".ai/plans/archive/phase-4.1-figjam-canvas-interactions.md",
-      "archived": true,
-      "phaseKey": "4.1"
-    },
-    {
-      "id": "phase-4.2-artboard-free-move",
-      "title": "Phase 4.2: Free-form artboard repositioning",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-19",
-      "summary": "Make artboards spatially editable on the infinite canvas:",
-      "planPath": ".ai/plans/archive/phase-4.2-artboard-free-move.md",
-      "archived": true,
-      "phaseKey": "4.2"
-    },
-    {
-      "id": "phase-15-video-pipeline-toolchain",
-      "title": "Feature: Video pipeline toolchain — setup + smoke tests",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-20",
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/archive/phase-15-video-pipeline-toolchain.md",
-      "archived": true,
-      "phaseKey": "15"
-    },
-    {
-      "id": "phase-15.1-video-pipeline-infrastructure",
-      "title": "Feature: Video pipeline infrastructure — Remotion-native workspace + skills + caption + regression harness",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-20",
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/archive/phase-15.1-video-pipeline-infrastructure.md",
-      "archived": true,
-      "phaseKey": "15.1"
-    },
-    {
-      "id": "phase-15.5-marketing-demo-video-30s-v1-pre-15.1-alignment",
-      "title": "Feature: Marketing demo — real green-field onboarding lifecycle (~60s primary + 30s tight cut)",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-20",
-      "summary": "Produce two 1920×1080 H.264 MP4s — site/public/demo.mp4 (primary, ~60s, embedded in the docs landing) and site/public/demo-30s.mp4 (tight cut for the GitHub README, < 10 MB) — by:",
-      "planPath": ".ai/plans/archive/phase-15.5-marketing-demo-video-30s-v1-pre-15.1-alignment.md",
-      "archived": true,
-      "phaseKey": "15.5"
-    },
-    {
-      "id": "phase-15.5-marketing-demo-video-30s",
-      "title": "Feature: Marketing demo video v2.1 — real maude in sandbox, single perfect cut",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-20",
-      "summary": "Produce one MP4 at site/public/demo.mp4 (~90 s, single cut, < 16 MB post-loudnorm) by composing 16 scenes on top of phase-15.1 infrastructure (nested workspace, <TransitionSeries>, <TerminalFrame>...",
-      "planPath": ".ai/plans/archive/phase-15.5-marketing-demo-video-30s.md",
-      "archived": true,
-      "phaseKey": "15.5"
-    },
-    {
-      "id": "phase-5-draw-tools",
-      "title": "Phase 5: Draw / annotation tools for the dev server",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-20",
-      "summary": "Toolbar buttons in canvas chrome: pen, circle, arrow, eraser, color picker. Drawing happens on a transparent SVG layer sized to the canvas world (zoomable with viewport from Phase 4). On stroke com...",
-      "planPath": ".ai/plans/archive/phase-5-draw-tools.md",
-      "archived": true,
-      "phaseKey": "5"
-    },
-    {
-      "id": "phase-5.1-annotations-figjam",
-      "title": "Phase 5.1 — FigJam-style annotation overhaul",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-20",
-      "summary": "Rework annotations-layer.tsx from a self-contained pointer-claiming overlay into a portal-rendered layer that lives inside .dc-world (so the world's CSS zoom/translate moves the strokes natively, w...",
-      "planPath": ".ai/plans/archive/phase-5.1-annotations-figjam.md",
-      "archived": true,
-      "phaseKey": "5.1"
-    },
-    {
-      "id": "phase-6-comments-presentation-export",
-      "title": "Phase 6: In-place comments UX (FigJam-style bubbles)",
-      "status": "done",
-      "shipTarget": "v1.0",
-      "date": "2026-05-20",
-      "summary": "Replace the current shell-bound BottomBar composer with a FigJam-grade in-place comment experience: the composer pops up at the click location on the canvas (not in a panel chrome at the bottom), p...",
-      "planPath": ".ai/plans/archive/phase-6-comments-presentation-export.md",
-      "archived": true,
-      "phaseKey": "6"
-    },
-    {
-      "id": "phase-18-bias-free-templates",
-      "title": "Feature: Bias-free design plugin templates",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-25",
-      "summary": "Validate the docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — this plan refactors load-bearing bootstrap contracts (design-system skill ↔ templ...",
-      "planPath": ".ai/plans/archive/phase-18-bias-free-templates.md",
-      "archived": true,
-      "phaseKey": "18"
-    },
-    {
-      "id": "phase-19-dev-server-bootstrap-fixes",
-      "title": "Phase 19 — Dev-server first-boot bootstrap fixes",
-      "status": "done",
-      "shipTarget": null,
-      "date": "2026-05-25",
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
-      "archived": true,
-      "phaseKey": "19"
     },
     {
       "id": "cloud-phase-0-economics-and-architecture",
