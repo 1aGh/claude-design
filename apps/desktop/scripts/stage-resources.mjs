@@ -41,7 +41,15 @@
 // design <verb>` fails "helper not found" in the packaged app (shipped broken
 // through v0.45.1).
 
-import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -63,6 +71,30 @@ function need(src, label) {
 
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT_STUDIO, { recursive: true });
+
+// kgai engine + plugin. `sync-kg.mjs` FETCHES into `apps/desktop/.kg-staging/`
+// and this script owns `resources/` — the split matters because the `rmSync`
+// above wipes anything written here earlier in `beforeBuildCommand`, which is
+// exactly how v0.48.0's desktop legs died ("resource path `resources/kgai`
+// doesn't exist"). Absent staging dir = a platform kgai publishes no build for;
+// `tauri.conf.json` maps `resources/kgai` unconditionally, so create it anyway
+// or the bundle fails to configure.
+{
+  const KG_STAGE = resolve(SCRIPT_DIR, '..', '.kg-staging');
+  mkdirSync(join(OUT, 'kgai'), { recursive: true });
+  if (existsSync(KG_STAGE)) {
+    for (const entry of readdirSync(KG_STAGE)) {
+      if (entry === 'plugins') continue; // staged under plugins/kgai below
+      cpSync(join(KG_STAGE, entry), join(OUT, 'kgai', entry), { recursive: true });
+    }
+    if (existsSync(join(KG_STAGE, 'plugins'))) {
+      cpSync(join(KG_STAGE, 'plugins'), join(OUT, 'plugins', 'kgai'), { recursive: true });
+    }
+    console.log('[stage-resources] kgai engine + plugin staged from .kg-staging/');
+  } else {
+    console.log('[stage-resources] no .kg-staging/ — bundle ships without the kgai engine');
+  }
+}
 
 // Ship the whole apps/studio source tree (canvas-lib.tsx + its sibling import
 // graph build canvases at runtime). Exclude: node_modules; build dirs; and the

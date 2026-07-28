@@ -192,24 +192,27 @@ jobs:
           # requirement). So Tauri neither lipos nor signs it: we do both.
           MAUDE_KG_NO_ALIAS=1 MAUDE_SIDECAR_SLUG=darwin-arm64 node scripts/sync-kg.mjs
           MAUDE_KG_NO_ALIAS=1 MAUDE_SIDECAR_SLUG=darwin-x64 node scripts/sync-kg.mjs
-          if [ -f src-tauri/resources/kgai/kg-aarch64-apple-darwin ] \
-             && [ -f src-tauri/resources/kgai/kg-x86_64-apple-darwin ]; then
-            lipo -create -output src-tauri/resources/kgai/kg \
-              src-tauri/resources/kgai/kg-aarch64-apple-darwin \
-              src-tauri/resources/kgai/kg-x86_64-apple-darwin
-            chmod +x src-tauri/resources/kgai/kg
-            rm -f src-tauri/resources/kgai/kg-*-apple-darwin
+          # Staging dir, NOT src-tauri/resources — `stage-resources.mjs` (run by
+          # tauri's own beforeBuildCommand, i.e. AFTER this step) wipes that tree
+          # and copies .kg-staging/ in.
+          if [ -f .kg-staging/kg-aarch64-apple-darwin ] \
+             && [ -f .kg-staging/kg-x86_64-apple-darwin ]; then
+            lipo -create -output .kg-staging/kg \
+              .kg-staging/kg-aarch64-apple-darwin \
+              .kg-staging/kg-x86_64-apple-darwin
+            chmod +x .kg-staging/kg
+            rm -f .kg-staging/kg-*-apple-darwin
             # Notarization requires every Mach-O in the bundle to carry a
             # Developer-ID signature + hardened runtime. libkuzu ships universal
             # already; both still need signing (DDR-190).
             if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
               codesign --force --timestamp --options runtime \
-                --sign "$APPLE_SIGNING_IDENTITY" src-tauri/resources/kgai/libkuzu.dylib
+                --sign "$APPLE_SIGNING_IDENTITY" .kg-staging/libkuzu.dylib
               codesign --force --timestamp --options runtime \
-                --sign "$APPLE_SIGNING_IDENTITY" src-tauri/resources/kgai/kg
+                --sign "$APPLE_SIGNING_IDENTITY" .kg-staging/kg
             else
-              codesign --force -s - src-tauri/resources/kgai/libkuzu.dylib
-              codesign --force -s - src-tauri/resources/kgai/kg
+              codesign --force -s - .kg-staging/libkuzu.dylib
+              codesign --force -s - .kg-staging/kg
             fi
           else
             echo "::warning::kgai engine not staged for both arches — the .app ships without the graph"

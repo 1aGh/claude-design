@@ -16,9 +16,11 @@
 // kgai is MIT-licensed (kgaidev/kgai); its LICENSE is staged alongside the tree.
 //
 // Layout produced:
-//   src-tauri/resources/kgai/kg-<target-triple>      ← the engine, per-triple
-//   src-tauri/resources/kgai/kg                      ← the one the app resolves
+//   apps/desktop/.kg-staging/kg-<target-triple>      ← the engine, per-triple
+//   apps/desktop/.kg-staging/kg                      ← the one the app resolves
 //     (on macOS universal the CI lipos the two per-triple files into this name)
+//   apps/desktop/.kg-staging/plugins/                ← the kgai Claude Code plugin
+//   → stage-resources.mjs copies all of it into src-tauri/resources/{kgai,plugins/kgai}
 //   src-tauri/resources/kgai/libkuzu.<ext>           ← native lib (reached via KGAI_LIB→DYLD/LD_LIBRARY_PATH)
 //   src-tauri/resources/plugins/kgai/                ← the Claude Code plugin (Stop-hook autocapture)
 //
@@ -40,7 +42,13 @@ import { fileURLToPath } from 'node:url';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const BIN_DIR = resolve(SCRIPT_DIR, '..', 'src-tauri', 'binaries');
-const RES_DIR = resolve(SCRIPT_DIR, '..', 'src-tauri', 'resources');
+// Fetch target. NOT `src-tauri/resources/` directly: `stage-resources.mjs` owns
+// that tree and starts by `rmSync`-ing it, and it runs AFTER us in
+// `beforeBuildCommand` — so anything we wrote there was deleted before
+// tauri-build looked for it ("resource path `resources/kgai` doesn't exist",
+// v0.48.0's desktop legs). Single responsibility: we fetch into a staging dir,
+// stage-resources copies it in.
+const STAGE_DIR = resolve(SCRIPT_DIR, '..', '.kg-staging');
 
 /** PINNED kgai release — mirror of config.knowledgeGraph.engineVersion. */
 const KGAI_VERSION = 'v0.1.9';
@@ -87,9 +95,9 @@ if (!ASSETS[slug]) {
   // Still create the resource dir + stamp: `tauri.conf.json` maps it
   // unconditionally, and an absent dir fails the bundle. The app simply finds no
   // engine and `maude kg` reports inactive — the documented degradation.
-  mkdirSync(join(RES_DIR, 'kgai'), { recursive: true });
+  mkdirSync(STAGE_DIR, { recursive: true });
   writeFileSync(
-    join(RES_DIR, 'kgai', 'VERSION'),
+    join(STAGE_DIR, 'VERSION'),
     `${KGAI_VERSION}\nrepo: ${KGAI_REPO}\nlicense: MIT\nslug: ${slug}\nengine: NOT BUNDLED (kgai publishes no ${slug} prebuild)\n`
   );
   console.log(
@@ -215,7 +223,7 @@ async function main() {
   }
 
   mkdirSync(BIN_DIR, { recursive: true });
-  mkdirSync(join(RES_DIR, 'kgai'), { recursive: true });
+  mkdirSync(STAGE_DIR, { recursive: true });
 
   const exe = slug.startsWith('win32') ? '.exe' : '';
   // NOT an `externalBin` sidecar: that list is static, so every platform in the
@@ -225,8 +233,8 @@ async function main() {
   // exactly the capability-gated contract (`maude kg` degrades to inactive).
   // Cost: Tauri does not sign it for us — the macOS CI codesigns it explicitly
   // (hardened runtime) before `tauri build`, as DDR-190 anticipated.
-  const kgDest = join(RES_DIR, 'kgai', `kg-${triple}${exe}`);
-  const libDest = join(RES_DIR, 'kgai', `libkuzu.${asset.libExt}`);
+  const kgDest = join(STAGE_DIR, `kg-${triple}${exe}`);
+  const libDest = join(STAGE_DIR, `libkuzu.${asset.libExt}`);
 
   console.log(
     `[sync-kg] ${KGAI_VERSION} ${slug} → ${asset.kg} (${kgSize} B), ${asset.lib} (${libSize} B)`
@@ -238,16 +246,16 @@ async function main() {
   // cross-arch staging run (MAUDE_SIDECAR_SLUG set for a universal build) skips
   // this — CI lipos the per-triple files into `kg` itself.
   if (!process.env.MAUDE_KG_NO_ALIAS) {
-    copyFileSync(kgDest, join(RES_DIR, 'kgai', `kg${exe}`));
-    if (!exe) chmodSync(join(RES_DIR, 'kgai', `kg${exe}`), 0o755);
+    copyFileSync(kgDest, join(STAGE_DIR, `kg${exe}`));
+    if (!exe) chmodSync(join(STAGE_DIR, `kg${exe}`), 0o755);
   }
 
-  console.log(`[sync-kg] plugin tree → ${join(RES_DIR, 'plugins', 'kgai')}`);
-  await fetchPluginTree(join(RES_DIR, 'plugins', 'kgai'));
+  console.log(`[sync-kg] plugin tree → ${join(STAGE_DIR, 'plugins')}`);
+  await fetchPluginTree(join(STAGE_DIR, 'plugins'));
 
   // Stamp the pin so the bundle-completeness gate + support can see what shipped.
   writeFileSync(
-    join(RES_DIR, 'kgai', 'VERSION'),
+    join(STAGE_DIR, 'VERSION'),
     `${KGAI_VERSION}\nrepo: ${KGAI_REPO}\nlicense: MIT\nslug: ${slug}\n`
   );
 
@@ -257,7 +265,7 @@ async function main() {
   ]) {
     console.log(`[sync-kg] ✓ ${label}: ${p} (${statSync(p).size} B)`);
   }
-  if (!existsSync(join(RES_DIR, 'plugins', 'kgai', 'hooks'))) {
+  if (!existsSync(join(STAGE_DIR, 'plugins', 'hooks'))) {
     throw new Error('kgai plugin tree staged without hooks/ — autonomous capture would be inert');
   }
 }

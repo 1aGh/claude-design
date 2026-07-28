@@ -118,3 +118,6 @@ cli/.platform-binary-path
 # `.kgai/store/log/`, which the owner explicitly wants versioned so a clone
 # inherits the decision context. The block above already ignores the 22 MB
 # projection and the per-machine install identity.
+
+# kgai engine fetch staging (sync-kg.mjs → stage-resources.mjs copies it into resources/)
+apps/desktop/.kg-staging/
