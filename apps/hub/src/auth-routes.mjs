@@ -20,6 +20,15 @@
 import { randomBytes } from 'node:crypto';
 
 import {
+  createInvite,
+  inviteUrl,
+  listInvites,
+  peekInvite,
+  redeemInvite,
+  revokeInvite,
+} from './invites.mjs';
+
+import {
   addToken,
   listTokensForOwner,
   removeToken,
@@ -180,7 +189,99 @@ export async function handleAuthRoutes(ctx) {
     return true;
   }
 
+  // ---- Cloud Phase 6 — magic-link invites -------------------------------
+
+  // GET /join/<token> — LOOK, never consume. A crawler, a link preview, or a
+  // corporate mail scanner following the link must not be able to burn the
+  // invite; that is otherwise a very ordinary way for one to arrive already
+  // used. Redemption is the POST below.
+  if (method === 'GET' && path.startsWith('/join/')) {
+    const value = decodeURIComponent(path.slice('/join/'.length));
+    const check = peekInvite(dataDir, value);
+    if (!check.ok) {
+      respondJson(410, { ok: false, reason: check.reason, error: inviteProblem(check.reason) });
+      return true;
+    }
+    respondJson(200, {
+      ok: true,
+      // Plain words for the landing page. No token echo — the client already
+      // has it, and echoing it puts it somewhere new.
+      workspace: ctx.publicUrl ?? null,
+      needsEmail: !check.invite.email,
+      email: check.invite.email,
+      expiresAt: check.invite.expiresAt,
+    });
+    return true;
+  }
+
+  // POST /join — redeem. A POST because a token in a URL the browser then
+  // navigates away from lands in Referer headers and in every proxy log on the
+  // way.
+  if (method === 'POST' && path === '/join') {
+    if (ctx.checkRateLimit && !ctx.checkRateLimit(ctx.request)) {
+      ctx.respondRateLimited();
+      return true;
+    }
+    let body;
+    try {
+      body = await readJsonBody(ctx.request);
+    } catch (err) {
+      respondJson(400, { ok: false, error: err.message });
+      return true;
+    }
+    const result = redeemInvite(dataDir, {
+      value: body?.token,
+      email: body?.email,
+      password: body?.password,
+      createAccount: ({ email, password, role }) => createUser(dataDir, { email, password, role }),
+    });
+    if (!result.ok) {
+      respondJson(result.reason === 'account-failed' ? 400 : 410, {
+        ok: false,
+        reason: result.reason,
+        error: result.detail ?? inviteProblem(result.reason),
+      });
+      return true;
+    }
+
+    // Sign them straight in. The entire point is that they clicked a link and
+    // are now working — a redeem that ends at a login form has reintroduced
+    // the form it was built to remove.
+    const expiresAt = Date.now() + userTokenTtlMs();
+    const minted = addToken(dataDir, {
+      label: mintLabel(),
+      scope: '*',
+      owner: result.user.email,
+      expiresAt,
+    });
+    ctx.pushActivity?.({ type: 'invite-redeem', user: result.user.email, doc: result.invite.id });
+    respondJson(201, {
+      ok: true,
+      token: minted.value,
+      label: minted.label,
+      expiresAt,
+      user: { email: result.user.email, role: result.user.role },
+    });
+    return true;
+  }
+
   return false;
+}
+
+/** One plain sentence per failure. Never mentions tokens (DDR-193 §5). */
+function inviteProblem(reason) {
+  switch (reason) {
+    case 'expired':
+      return 'This invitation has expired. Ask whoever invited you for a new link.';
+    case 'already-used':
+      return 'This invitation has already been used. Ask for a new link, or sign in if you already have an account.';
+    case 'revoked':
+      return 'This invitation was cancelled. Ask whoever invited you for a new link.';
+    case 'email-required':
+      return 'Enter your email address.';
+    default:
+      return "That invitation link isn't valid. Check you copied all of it.";
+  }
 }
 
 /**
@@ -289,6 +390,61 @@ export async function handleUserAdminRoutes(ctx) {
       doc: `revoked ${revoked.length}`,
     });
     respondJson(200, { ok: true, revoked: revoked.length, kicked });
+    return true;
+  }
+
+  if (path === '/invites' || path.startsWith('/invites/')) {
+    if (method === 'GET' && path === '/invites') {
+      respondJson(200, { invites: listInvites(dataDir) });
+      return true;
+    }
+    if (method === 'POST' && path === '/invites') {
+      let body;
+      try {
+        body = await readJsonBody(ctx.request);
+      } catch (err) {
+        respondJson(400, { error: err.message });
+        return true;
+      }
+      const invite = createInvite(dataDir, {
+        email: body?.email,
+        role: body?.role,
+        ttlHours: body?.ttlHours,
+        createdBy: body?.createdBy,
+      });
+      ctx.pushActivity?.({ type: 'invite-create', user: invite.email ?? '(open)', doc: invite.id });
+      // The raw value exists ONLY in this response. It is never stored, never
+      // logged, and never listed again.
+      respondJson(201, {
+        invite: {
+          id: invite.id,
+          email: invite.email,
+          role: invite.role,
+          expiresAt: invite.expiresAt,
+        },
+        url: ctx.publicUrl ? inviteUrl(ctx.publicUrl, invite.value) : null,
+        value: invite.value,
+      });
+      return true;
+    }
+    if (method === 'POST' && path === '/invites/revoke') {
+      let body;
+      try {
+        body = await readJsonBody(ctx.request);
+      } catch (err) {
+        respondJson(400, { error: err.message });
+        return true;
+      }
+      const revoked = revokeInvite(dataDir, body?.id);
+      if (!revoked) {
+        respondJson(404, { error: 'no such open invitation' });
+        return true;
+      }
+      ctx.pushActivity?.({ type: 'invite-revoke', user: '(admin)', doc: String(body?.id) });
+      respondJson(200, { ok: true });
+      return true;
+    }
+    respondJson(404, { error: 'not found' });
     return true;
   }
 

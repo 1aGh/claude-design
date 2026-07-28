@@ -369,7 +369,11 @@ export function createHub(config = {}) {
       if (
         authPath === '/auth/login' ||
         authPath === '/auth/logout' ||
-        authPath === '/auth/session'
+        authPath === '/auth/session' ||
+        // Cloud Phase 6 — magic-link invites. `/join/<token>` only LOOKS
+        // (a link preview must not burn an invite); `/join` POST redeems.
+        authPath === '/join' ||
+        authPath.startsWith('/join/')
       ) {
         const handled = await handleAuthRoutes({
           request,
@@ -378,6 +382,7 @@ export function createHub(config = {}) {
           method,
           dataDir,
           secret,
+          publicUrl,
           checkRateLimit: rateLimit
             ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
             : undefined,
@@ -561,13 +566,19 @@ async function handleAdminApi(ctx) {
 
   // Cloud Phase 2 — user administration. Reached only past the Bearer gate
   // above; there is deliberately no path from a user password to this surface.
-  if (path === '/users' || path.startsWith('/users/')) {
+  if (
+    path === '/users' ||
+    path.startsWith('/users/') ||
+    path === '/invites' ||
+    path.startsWith('/invites/')
+  ) {
     const handled = await handleUserAdminRoutes({
       request,
       response,
       path,
       method,
       dataDir,
+      publicUrl,
       respondJson: (status, payload) => respondAdminJson(response, status, payload),
       readJsonBody,
       kickLabel: (label) => kickSessionsForLabel(peers, label),
