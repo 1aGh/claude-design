@@ -15,7 +15,15 @@
 //     then bare `DDR-\d+` body mentions as weak `references`, deduped — so the
 //     graph doesn't drown in the thousands of loose name-drops (plan caution #2).
 
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from './argv.mjs';
@@ -73,9 +81,9 @@ function crossRefs(text, selfNum) {
   // Typed markers first (Appendix A.3).
   const marker = (label, kind) => {
     const re = new RegExp(`^\\s*(?:[-*]\\s*)?\\*\\*${label}:\\*\\*(.+)$`, 'gim');
-    let m;
-    while ((m = re.exec(text)))
-      for (const d of m[1].matchAll(/DDR-(\d+)/g)) put(d[1].padStart(3, '0'), kind);
+    for (const line of text.matchAll(re)) {
+      for (const d of line[1].matchAll(/DDR-(\d+)/g)) put(d[1].padStart(3, '0'), kind);
+    }
   };
   marker('Supersedes', 'supersedes');
   marker('Related', 'references');
@@ -302,18 +310,9 @@ export function buildLogBatch(logsDir, scope = {}) {
       // creation date either — fall back to the file's own mtime.
       const date = normDate(field(t, 'Date')) || statSync(path).mtime.toISOString().slice(0, 10);
       if (normDate(field(t, 'Date'))) stats.withDate++;
-      // Prefer an explicit Summary/Verdict section; else the lead paragraph.
-      const body =
-        firstPara(t, 'Summary') ||
-        firstPara(t, 'Verdict') ||
-        firstPara(t, 'Root cause') ||
-        t
-          .split('\n')
-          .filter((l) => l.trim() && !l.startsWith('#'))
-          .slice(0, 3)
-          .join(' ');
-      // Full body here too — these files are gitignored, so the graph is the
-      // ONLY copy; truncating would destroy the evidence it exists to preserve.
+      // Full body — these files are gitignored, so the graph is the ONLY copy;
+      // truncating would destroy the evidence it exists to preserve. (An earlier
+      // cut extracted just the Summary/Verdict/Root-cause section.)
       const rationale = t.trim();
 
       const muts = [
@@ -348,7 +347,9 @@ export function buildLogBatch(logsDir, scope = {}) {
 /** Entry — `maude kg import`. Dispatched from cli/commands/kg.mjs verbImport. */
 export async function run({ args, state, projectRoot, runKg }) {
   // `args` here is already the verb's args (kg.mjs stripped the `import` token).
-  const { flags } = parseArgs(args, { booleans: ['dry-run', 'design', 'force', 'no-logs'] });
+  const { flags } = parseArgs(args, {
+    booleans: ['dry-run', 'design', 'force', 'no-logs', 'no-state', 'archive'],
+  });
   const only = flags.only
     ? String(flags.only)
         .split(',')
@@ -358,10 +359,10 @@ export async function run({ args, state, projectRoot, runKg }) {
   // Prefer `.ai/archive/decisions` — where the prose moved once the graph became
   // the source of truth (2026-07-28) — and fall back to the classic location so
   // the importer still works on a repo that hasn't archived (every other repo).
-  const decisionsDir = [
-    join(projectRoot, '.ai', 'archive', 'decisions'),
-    join(projectRoot, '.ai', 'decisions'),
-  ].find((d) => existsSync(d)) ?? join(projectRoot, '.ai', 'decisions');
+  const decisionsDir =
+    [join(projectRoot, '.ai', 'archive', 'decisions'), join(projectRoot, '.ai', 'decisions')].find(
+      (d) => existsSync(d)
+    ) ?? join(projectRoot, '.ai', 'decisions');
   if (!existsSync(decisionsDir)) {
     process.stderr.write(
       `maude kg import: no .ai/archive/decisions/ under ${projectRoot}. Nothing to migrate.\n`
@@ -388,14 +389,25 @@ export async function run({ args, state, projectRoot, runKg }) {
   // `.ai/logs/**` rides the same import unless --no-logs. Deliberately NOT a
   // separate opt-in verb: these files are gitignored, so leaving them out is how
   // the RCA/security-review knowledge stays machine-local and dies on a clone.
-  const logsDir = [join(projectRoot, '.ai', 'archive', 'logs'), join(projectRoot, '.ai', 'logs')].find(
-    (d) => existsSync(d)
-  );
+  const logsDir = [
+    join(projectRoot, '.ai', 'archive', 'logs'),
+    join(projectRoot, '.ai', 'logs'),
+  ].find((d) => existsSync(d));
   let logStats = null;
   if (!only && !flags['no-logs'] && logsDir) {
     const logs = buildLogBatch(logsDir, state.scope);
     logStats = logs.stats;
     batch.decisions.push(...logs.batch.decisions);
+  }
+
+  // STATE.md rides the same import — it is an event stream, not a document.
+  let stateStats = null;
+  if (!only && !flags['no-state']) {
+    const st = buildStateBatch(join(projectRoot, '.ai', 'state', 'STATE.md'), state.scope);
+    if (st.batch.decisions.length) {
+      stateStats = st.stats;
+      batch.decisions.push(...st.batch.decisions);
+    }
   }
 
   const totalMuts = batch.decisions.reduce((n, d) => n + d.mutations.length, 0);
@@ -411,7 +423,10 @@ export async function run({ args, state, projectRoot, runKg }) {
         ? `  logs:       ${logStats.files} (${Object.entries(logStats.byKind)
             .map(([k, n]) => `${k}:${n}`)
             .join(' ')}), ${logStats.cited} evidence edges\n`
-        : '  logs:       skipped (--no-logs)\n')
+        : '  logs:       skipped (--no-logs)\n') +
+      (stateStats
+        ? `  state:      ${stateStats.progress} progress blocks + ${stateStats.history} history rows (STATE.md event stream)\n`
+        : '  state:      skipped\n')
   );
 
   if (flags['dry-run']) {
@@ -451,4 +466,91 @@ export async function run({ args, state, projectRoot, runKg }) {
     );
   }
   return status;
+}
+
+/**
+ * `.ai/state/STATE.md` → dated milestone events.
+ *
+ * STATE.md is an EVENT STREAM, not a document: 88 `## Execution Progress` blocks
+ * and 127 `| date | phase | note |` History rows on this repo — 930 KB that grows
+ * forever and that nothing but a human ever reads end-to-end. Each entry is
+ * already dated and already describes one movement, so it maps 1:1 onto a kgai
+ * decision. Once ingested, STATE.md can shrink to a pointer-stub (`maude init
+ * --kg` writes one) and the history is queryable instead of scrollable.
+ */
+export function buildStateBatch(statePath, scope = {}) {
+  const decisions = [];
+  const stats = { progress: 0, history: 0 };
+  if (!existsSync(statePath)) return { batch: { decisions }, stats };
+  const t = readFileSync(statePath, 'utf8');
+  const scopeMuts = (ref) => {
+    const m = [];
+    if (scope.repo) {
+      m.push({ op: 'upsert_element', kind: 'repo', name: scope.repo });
+      m.push({ op: 'add_link', from: ref, to: `repo:${scope.repo}`, link: 'IN_REPO' });
+    }
+    if (scope.dept) {
+      m.push({ op: 'upsert_element', kind: 'dept', name: scope.dept });
+      m.push({ op: 'add_link', from: ref, to: `dept:${scope.dept}`, link: 'IN_DEPT' });
+    }
+    return m;
+  };
+
+  // `## Execution Progress — <feature> — <prose>` blocks, body = up to the next `## `.
+  const blocks = t.split(/^## (?=Execution Progress)/m).slice(1);
+  for (const raw of blocks) {
+    const body = raw.split(/^## /m)[0].trim();
+    const header = body.split('\n')[0];
+    const feature = (header.match(/(feature-[a-z0-9.-]+|phase-[a-z0-9.-]+)/i) || [])[1] || null;
+    const date = (body.match(/(\d{4}-\d{2}-\d{2})/) || [])[1];
+    const slug = `${feature || 'progress'}-${date || String(decisions.length).padStart(3, '0')}`;
+    const ref = `milestone:${slug}`;
+    const muts = [
+      {
+        op: 'upsert_element',
+        kind: 'milestone',
+        name: slug,
+        props: { source: '.ai/state/STATE.md', ...(date ? { date } : {}) },
+      },
+      ...scopeMuts(ref),
+    ];
+    if (feature) {
+      muts.push({ op: 'upsert_element', kind: 'plan', name: feature });
+      muts.push({ op: 'add_link', from: ref, to: `plan:${feature}`, link: 'PROGRESS_ON' });
+    }
+    const d = {
+      title: header.replace(/\*\*/g, '').slice(0, 160),
+      rationale: body,
+      mutations: muts,
+    };
+    if (date) d.date = date;
+    decisions.push(d);
+    stats.progress++;
+  }
+
+  // History table rows: | YYYY-MM-DD | phase | note |
+  for (const row of t.matchAll(/^\|\s*(\d{4}-\d{2}-\d{2})\s*\|([^|]*)\|([^|]*)\|(.*)$/gm)) {
+    const [, date, phase, status, note] = row;
+    const slug = `history-${date}-${phase
+      .trim()
+      .replace(/[^a-z0-9.-]+/gi, '-')
+      .toLowerCase()}`.slice(0, 90);
+    const ref = `milestone:${slug}`;
+    decisions.push({
+      title: `${date} · ${phase.trim()} · ${status.trim()}`.slice(0, 160),
+      date,
+      rationale: `${phase.trim()} — ${status.trim()}: ${note.trim()}`.slice(0, 4000),
+      mutations: [
+        {
+          op: 'upsert_element',
+          kind: 'milestone',
+          name: slug,
+          props: { source: '.ai/state/STATE.md', date },
+        },
+        ...scopeMuts(ref),
+      ],
+    });
+    stats.history++;
+  }
+  return { batch: { decisions }, stats };
 }

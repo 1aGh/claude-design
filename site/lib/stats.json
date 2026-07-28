@@ -10,12 +10,12 @@
       "agents": 22
     },
     "flow": {
-      "commands": 30,
-      "skills": 19,
+      "commands": 31,
+      "skills": 21,
       "agents": 12
     },
     "maude": {
-      "subcommands": 16
+      "subcommands": 18
     }
   },
   "pageUpdated": {
@@ -73,10 +73,10 @@
     "commands-flow/validate-security.mdx": "2026-06-11",
     "commands-flow/validate-visual.mdx": "2026-06-11",
     "commands-flow/validate.mdx": "2026-06-11",
-    "config-schema.mdx": "2026-07-15",
+    "config-schema.mdx": "2026-07-22",
     "config.mdx": "2026-05-20",
     "design/bootstrap.mdx": "2026-07-03",
-    "design/categories.mdx": "2026-05-29",
+    "design/categories.mdx": "2026-07-28",
     "design/index.mdx": "2026-07-19",
     "design/multi-ds.mdx": "2026-07-03",
     "design/print.mdx": "2026-07-16",

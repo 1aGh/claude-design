@@ -75,6 +75,7 @@ export const COMMAND_CATALOG = [
       { name: 'setup-prd', category: 'setup' },
       { name: 'setup-context', category: 'setup' },
       { name: 'setup-codebase-map', category: 'setup' },
+      { name: 'migrate-kgai', category: 'setup' },
       { name: 'utils-verify', category: 'utils' },
       { name: 'validate-a11y', category: 'validate' },
       { name: 'validate-security', category: 'validate' },

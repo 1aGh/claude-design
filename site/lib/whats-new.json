@@ -1,11 +1,11 @@
 {
-  "generated": "2026-07-21T06:18:53.898Z",
-  "version": "0.46.0",
+  "generated": "2026-07-28T19:01:21.495Z",
+  "version": "0.47.0",
   "entries": [
     {
       "id": "figma-smart-select",
-      "version": null,
-      "date": null,
+      "version": "0.47.0",
+      "date": "2026-07-21",
       "kind": "feature",
       "title": "Click to select, like Figma",
       "summary": "Your mock now opens live — click a button or link to actually try it. When you want to edit, press V: a plain click selects the object under your cursor, ⌘-click reaches the deepest element, double-click drills in one level, and Enter / Shift+Enter / Tab walk the layer tree. The toolbar's first two tools are Browse (live) and Select (V). The Layers panel grew up too: wrapper groups show at their real depth, component instances render purple with their component's name, you can lock a layer (locked layers can't be selected or dragged on the canvas), double-click a layer's name to rename it, and the tree auto-reveals whatever you pick on the canvas. And when a flex layout fights your manual tweaks, right-click the container → \"Convert children to absolute position\" freezes every child where it sits so you can drag them freely (one undo reverts it) — or convert a whole artboard at once (right-click the artboard, or when switching its kind to Digital/Print). And when a component instance needs its own look, hit Detach on the Inspector's Shared badge — edits stay local to that one instance. Text editing got Figma's exact rhythm too: drilling down to a text layer selects all of it (ready to overwrite), and once you're in, a click places the cursor, a double-click grabs a word, and a triple-click grabs everything.",
@@ -13,8 +13,8 @@
     },
     {
       "id": "acp-safe-defaults-and-attention-notifications",
-      "version": null,
-      "date": null,
+      "version": "0.47.0",
+      "date": "2026-07-21",
       "kind": "improvement",
       "title": "Fewer prompts in chat, and a nudge when you're needed",
       "summary": "The assistant chat now runs common design-workflow actions — browser checks, your own local dev-server requests, reading files, and web search — without asking every time. And when a chat is waiting on your approval or an answer, Maude now sends a system notification so you don't miss it.",
@@ -22,8 +22,8 @@
     },
     {
       "id": "web-artboards",
-      "version": null,
-      "date": null,
+      "version": "0.47.0",
+      "date": "2026-07-21",
       "kind": "feature",
       "title": "Web artboards — breakpoints, duplicate, and a grid editor",
       "summary": "Set an artboard's kind to Web and it becomes a responsive viewport: a small chip shows its current breakpoint, and \"Duplicate at width…\" (right-click or the Inspector) clones it at Mobile/Tablet/Laptop/Desktop widths for reflow testing. Grid containers also get a new Grid section in the Inspector — define columns and rows with px/%/fr/em/auto units, drag the gutters directly on the canvas, and place children into specific cells.",

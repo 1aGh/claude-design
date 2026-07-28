@@ -60,6 +60,34 @@ Bypasses the migration marker, skips the log sweep, doesn't re-stamp the marker.
 1. **kgai is append-only — there is no `remove_link`.** A wrong edge cannot be retracted; the only way to drop one is to rebuild the store from scratch. Get the classification right before a bulk run.
 2. **A clean re-import rebuilds from FILES, so anything recorded graph-native is lost.** Decisions ingested directly (no `.md` behind them) do not survive a wipe-and-reimport — measured: two such records vanished in a rebuild, leaving exactly `DDRs + logs`. If a decision is worth keeping, give it a `.md`; treat graph-native records as ephemeral.
 
+## What in `.ai/` migrates, what is noise, what stays — the full sweep
+
+A migration is only "done" when every folder has been *classified*, not just when the DDRs are in. Audited on this repo (2026-07-28); the same four classes apply anywhere:
+
+| `.ai/` folder | Class | Treatment |
+| --- | --- | --- |
+| `decisions/**` | **A — migrate** | full body → `decision:` nodes + typed edges. Then `--archive`. |
+| `logs/**` (rca · reviews · execution-reports) | **A — migrate** | full body → `rca:`/`*-review:` nodes + `EVIDENCE_FOR` edges. Usually **gitignored**, so the graph becomes their only inheritable copy. Then `--archive`. |
+| `state/STATE.md` | **A — migrate (event stream)** | `## Execution Progress` blocks + `\| date \| phase \| note \|` History rows → dated `milestone:` nodes linked `PROGRESS_ON` → `plan:`. **Never archived** — flow commands write it live; its endpoint is the pointer-stub. 930 KB on this repo. |
+| `docs/**`, `dev-logs/**`, `release-guide.md`, `context/studio-shell-parity.md` | **B — narrative, keep** | prose a human reads start-to-finish. A node + `path` pointer is the most that helps. |
+| `plans/**`, `scenarios/**` | **B — keep, owner's call** | procedural / test specs; excluded here deliberately. |
+| `device/**` (80 MB!), `browser/**`, `cache/**`, `context/codebase-map.md`, `reviews/README.md`, `INDEX.md`, `README.md` | **D — noise** | per-run screenshots, regenerable snapshots, scaffold cruft. **Never migrate.** `device/` alone was 582 files / 80 MB — the single biggest thing that looks like content and isn't. |
+| `templates/**` | **check refs, don't assume** | these are the scaffold the flow plugin copies into downstream repos. On this repo `STATE.md` (3 refs) + `HANDOFF.md` (2 refs, also in the skeleton) are **live**; `PROJECT.md` had **0 refs** and is dead. Grep before deleting any of them. |
+| `workflows.config.json` | keep | config, not knowledge. |
+
+**Rule of thumb:** migrate what is *dated and append-only* (decisions, verdicts, progress). Keep what is *narrative and re-read*. Skip what is *regenerable or per-run*.
+
+## `--archive` — the cleanup half of a migration
+
+```bash
+maude kg import --archive
+```
+
+After a successful ingest, moves the migrated sources under `.ai/archive/` (`decisions/`, `logs/`). Not the default — it rewrites the tree. **Two things it does NOT do, deliberately:**
+
+1. **It does not rewrite in-repo references.** Grep for the old paths afterwards and fix them. Critically: leave the **plugin's own** `.ai/decisions/` mentions alone (`plugins/**`, `site/content/docs/**`, doc canvases) — those describe where DDRs live in *any* repo, and rewriting them exports this repo's archival choice into everyone else's convention.
+2. **It never archives `STATE.md`.** Flow commands write it live; its endpoint is the thin pointer-stub `maude init --kg` writes, not a move.
+
 ## Follow-ups (not yet in the importer)
 
 - `--design` — the `.design/` importer (`canvas:` from `ui/*.meta.json`, `ds:` + brand `component:` from `system/<ds>/`, `footage:`/`reel:` from the content-addressed sidecars) is designed but not built. Plans, `.design/` and scenarios are **deliberately out of scope** (owner's call, 2026-07-28).
