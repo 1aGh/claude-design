@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-28T13:37:05.070Z",
+  "generated": "2026-07-28T15:34:26.688Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1433,8 +1433,129 @@
       "phaseKey": "19"
     },
     {
+      "id": "cloud-phase-0-economics-and-architecture",
+      "title": "Cloud Phase 0 — Economics, provider decision, pricing & phase index (READ FIRST — not executable)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "The master reference for the Maude Cloud arc: the complete path from zero infrastructure to a paid production release on maude.sh. Execution order = the numbered files cloud-phase-1-.md → cloud-pha...",
+      "planPath": ".ai/plans/cloud-phase-0-economics-and-architecture.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-1-safety-gates",
+      "title": "Cloud Phase 1 — Decisions + safety gates (DDRs, DDR-122 origin-gate, hub namespace)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Nothing else in the arc may start before this phase's gates pass (breaker precondition: \"superseding DDRs writt...",
+      "planPath": ".ai/plans/cloud-phase-1-safety-gates.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-10-ga-launch-github-mirror",
+      "title": "Cloud Phase 10 — GA launch + GitHub mirror (production release on maude.sh)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 9. The production-release phase.",
+      "planPath": ".ai/plans/cloud-phase-10-ga-launch-github-mirror.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-2-hub-identity-durability",
+      "title": "Cloud Phase 2 — Hub identity + durability (users, login, expiring tokens, trusted proxy, backup/restore)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 1 complete.",
+      "planPath": ".ai/plans/cloud-phase-2-hub-identity-durability.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-3-workspace-agent-s3",
+      "title": "Cloud Phase 3 — Workspace agent + S3/R2 asset lane + desktop sign-in",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phases 1–2.",
+      "planPath": ".ai/plans/cloud-phase-3-workspace-agent-s3.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-4-selfhost-skill",
+      "title": "Cloud Phase 4 — Self-host provisioning skill (`maude hub workspace-up` + `/design:hub-workspace`)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phases 1–3. This phase keeps the self-host path first-class (positioning guard) and doubles as the cel...",
+      "planPath": ".ai/plans/cloud-phase-4-selfhost-skill.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-5-fly-cell-alligators-pilot",
+      "title": "Cloud Phase 5 — Fly tenant cell + alligators pilot (tenant-of-one, no money)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phases 1–4. First phase that touches vendor-operated infrastructure.",
+      "planPath": ".ai/plans/cloud-phase-5-fly-cell-alligators-pilot.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-6-invites-onboarding",
+      "title": "Cloud Phase 6 — Invites + onboarding (magic link, AI-less state, export, disclosure)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 5 (a live cell to invite people into). Still no money.",
+      "planPath": ".ai/plans/cloud-phase-6-invites-onboarding.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-7-control-plane-vercel",
+      "title": "Cloud Phase 7 — Control plane on Vercel (accounts, projects, invites, provisioner, reconciler)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phases 5–6. Billing still manual (no Stripe yet).",
+      "planPath": ".ai/plans/cloud-phase-7-control-plane-vercel.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-8-stripe-pricing",
+      "title": "Cloud Phase 8 — Stripe + pricing (first paying tenants, capped ≤ 3)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first (§2 economics + §3 pricing table are the input). Requires Phase 7.",
+      "planPath": ".ai/plans/cloud-phase-8-stripe-pricing.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-9-fleet-ops-trust",
+      "title": "Cloud Phase 9 — Fleet operations + trust launch surface",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 8. Gate for lifting the ≤ 3 tenant cap — you cannot responsibly onboard tenant #4 without this (...",
+      "planPath": ".ai/plans/cloud-phase-9-fleet-ops-trust.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
       "id": "feature-enhanced-video-editing",
-      "title": "Feature: Enhanced video editing — iMovie-parity timeline + AI placeholder clips",
+      "title": "Feature: Enhanced video editing — iMovie-parity manual timeline + AI placeholder clips",
       "status": "planned",
       "shipTarget": null,
       "date": null,
@@ -1484,17 +1605,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is the extracted Phase 5 of feature-ai-media-generation (closed at Phase 4, 2026-...",
       "planPath": ".ai/plans/feature-local-media-generation.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-remote-workspace-server",
-      "title": "Feature: Remote Maude — Team Workspace Server (hub + S3 + login + one-skill provisioning)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan was produced by a full divergent debate (builder / shipper / breaker, reduce...",
-      "planPath": ".ai/plans/feature-remote-workspace-server.md",
       "archived": false,
       "phaseKey": null
     }
