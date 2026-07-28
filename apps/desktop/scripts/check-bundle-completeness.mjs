@@ -287,7 +287,10 @@ console.log('\n[5] kgai engine + plugin (autonomous capture in the shipped app)'
           const archs = execFileSync('lipo', ['-archs', kgExe], { encoding: 'utf8' }).trim();
           /arm64/.test(archs) && /x86_64/.test(archs)
             ? ok('kg is universal', archs)
-            : warn('kg is thin', `${archs} — fine for a single-arch build, WRONG for a universal .app`);
+            : warn(
+                'kg is thin',
+                `${archs} — fine for a single-arch build, WRONG for a universal .app`
+              );
         } catch {
           /* lipo unavailable — skip */
         }

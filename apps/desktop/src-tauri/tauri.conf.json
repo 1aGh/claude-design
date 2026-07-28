@@ -27,9 +27,7 @@
   },
   "plugins": {
     "updater": {
-      "endpoints": [
-        "https://maude.sh/releases/{{target}}/{{arch}}/{{current_version}}"
-      ],
+      "endpoints": ["https://maude.sh/releases/{{target}}/{{arch}}/{{current_version}}"],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhCRDc0NTEzMjg2OEY1OEQKUldTTjlXZ29FMFhYaTdLRDVML21INzM2NWI5cXBveUp5MFVOcjJ1Rzc0clhKbTdDYkFsZjlZZ0gK"
     }
   },
@@ -37,11 +35,7 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
-    "externalBin": [
-      "binaries/maude-server",
-      "binaries/agent-browser",
-      "binaries/maude"
-    ],
+    "externalBin": ["binaries/maude-server", "binaries/agent-browser", "binaries/maude"],
     "macOS": {
       "entitlements": "entitlements.plist",
       "dmg": {

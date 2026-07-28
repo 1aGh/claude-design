@@ -92,7 +92,9 @@ if (!ASSETS[slug]) {
     join(RES_DIR, 'kgai', 'VERSION'),
     `${KGAI_VERSION}\nrepo: ${KGAI_REPO}\nlicense: MIT\nslug: ${slug}\nengine: NOT BUNDLED (kgai publishes no ${slug} prebuild)\n`
   );
-  console.log(`[sync-kg] kgai publishes no prebuilt for ${slug} — bundle ships without the engine.`);
+  console.log(
+    `[sync-kg] kgai publishes no prebuilt for ${slug} — bundle ships without the engine.`
+  );
   process.exit(0);
 }
 
