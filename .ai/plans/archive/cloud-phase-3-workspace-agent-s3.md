@@ -55,7 +55,11 @@ The inversion that makes "remote Maude" real: a headless **workspace agent** own
 
 **Deferred — need infrastructure or the desktop app, both blocked (see `cloud-phase-0b-manual-prep.md`):**
 
-- [ ] Two-machine round-trip (edit on A → autosave commit → "Get latest" on B) and kill -9 recovery — needs a compose integration harness running two studio processes against a hub. The engine is unit-proven against real git; the multi-process orchestration is not.
+- [x] **Two-machine round-trip and kill -9 recovery — CLOSED 2026-07-29.** `apps/hub/test/two-machine-workspace.test.mjs`, 5 tests against a REAL hub over a real socket, with real files and a real git repository: an edit on A reaches B and lands on B's disk; the workspace commits it attributed to the human with the bot as committer; a second edit appends and the earlier state is still reachable; a severed connection mid-session loses nothing committed (`git fsck` clean, the pre-crash commit intact) and the in-flight edit is recovered from the hub's doc on wake; three peers converge.
+
+  **The deferral was wrong, and the reason is worth keeping.** This was closed as "needs a compose harness running two studio processes". It does not: a hub, two peers and a git repo are all local, and Node 24 strips TypeScript natively, so the studio's own `sync/autocommit.ts` and `sync/codec.ts` import straight into a Node test. The cross-runtime boundary noted in `two-client-sync.test.mjs` applies to *running the hub under Bun*, not to importing studio modules under Node. The only item here that genuinely needed a vendor was 60 MB through R2 — a storage account, not a second machine.
+
+  Mutation-checked rather than assumed: sabotaging `autocommit.ts` to credit the bot instead of the human turned two of the five red.
 - [ ] 60 MB asset through R2 specifically — the code path is exercised against a live in-process S3-shaped server and is target-pluggable by design, but **R2 is not enabled on the account** (`10042 — Please enable R2 through the Cloudflare Dashboard`).
 - [ ] `desktop-e2e workspace-sign-in` — the flow logic and its HTTP surface are done and live-verified; the Tauri UI that calls them is not built, so there is nothing for a DOM-driven scenario to drive yet.
 

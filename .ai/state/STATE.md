@@ -34,7 +34,6 @@ paid plan. The Phase-0 §3 catalog exists as real sandbox objects and
 mode throws rather than falling back). Numbers are a proposal pending sign-off.
 
 Carried into Phase 5 (all need a live host or a paid account):
-- two-machine round-trip + kill -9 recovery (phase 3)
 - 60 MB asset through R2 specifically (phase 3)
 - `desktop-e2e workspace-sign-in` — needs the Tauri UI (phase 3)
 - `workspace-up`'s remaining verification steps — need a Docker host (phase 4)
