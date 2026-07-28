@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-27T14:03:58.642Z",
+  "generated": "2026-07-28T13:37:05.070Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1433,6 +1433,28 @@
       "phaseKey": "19"
     },
     {
+      "id": "feature-enhanced-video-editing",
+      "title": "Feature: Enhanced video editing — iMovie-parity timeline + AI placeholder clips",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-enhanced-video-editing.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-file-tree-drag-drop-folders",
+      "title": "Feature: File tree — drag & drop move + folder creation",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-file-tree-drag-drop-folders.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
       "id": "feature-goal-unattended-pipelines",
       "title": "Feature: /goal-aware unattended pipelines for flow + design commands",
       "status": "planned",
@@ -1462,6 +1484,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is the extracted Phase 5 of feature-ai-media-generation (closed at Phase 4, 2026-...",
       "planPath": ".ai/plans/feature-local-media-generation.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-remote-workspace-server",
+      "title": "Feature: Remote Maude — Team Workspace Server (hub + S3 + login + one-skill provisioning)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan was produced by a full divergent debate (builder / shipper / breaker, reduce...",
+      "planPath": ".ai/plans/feature-remote-workspace-server.md",
       "archived": false,
       "phaseKey": null
     }

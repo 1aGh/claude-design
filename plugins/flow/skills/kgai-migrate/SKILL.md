@@ -35,7 +35,31 @@ All cross-ref links are `add_link` between two `decision:`-kind elements → the
 - **Dry-run first.** `--dry-run` prints counts + a sample subgraph, writes nothing.
 - **Author is automatic** — `git config user.name` via kgai's `guessActor()`.
 
+## `.ai/logs/**` — migrated, and why the extract is bigger
+
+Log verdicts (`rca` · `system-review` · `code-review` · `security-review` · `execution-report`) ride the same import unless `--no-logs`. They are the **opposite case** from DDRs and the extraction reflects it:
+
+- `.ai/decisions/*.md` is **committed**, so the graph can afford a thin index (title + lead paragraph + a `path` prop pointing at the prose).
+- `.ai/logs/**` is **gitignored** (the repo files it under "AI workflow runtime"), so those files exist only on the machine that produced them — while committed docs reference them. Once ingested, the committed graph log is the **only inheritable copy**, so each entry keeps a much larger excerpt (Summary / Verdict / Root cause, ~1200 chars) plus `EVIDENCE_FOR` edges to every DDR it cites.
+
+Dates: `**Date:**` when present (34 of 123), else the file's mtime — they're untracked, so git has no creation date either.
+
+## Incremental refresh — `--only`
+
+A DDR written straight to disk (not through `/flow:record-ddr`) leaves the graph stale. Refresh just that one:
+
+```bash
+maude kg import --only "DDR-191"          # or several: --only "DDR-006,DDR-191"
+```
+
+Bypasses the migration marker, skips the log sweep, doesn't re-stamp the marker. **Re-ingesting an existing DDR is the supported way to refresh a changed file** — deterministic identity converges the element and props merge; it appends one more decision event, which is the honest record of "this was re-recorded."
+
+## Two traps worth knowing
+
+1. **kgai is append-only — there is no `remove_link`.** A wrong edge cannot be retracted; the only way to drop one is to rebuild the store from scratch. Get the classification right before a bulk run.
+2. **A clean re-import rebuilds from FILES, so anything recorded graph-native is lost.** Decisions ingested directly (no `.md` behind them) do not survive a wipe-and-reimport — measured: two such records vanished in a rebuild, leaving exactly `DDRs + logs`. If a decision is worth keeping, give it a `.md`; treat graph-native records as ephemeral.
+
 ## Follow-ups (not yet in the importer)
 
-- `--design` — the `.design/` importer (`canvas:` from `ui/*.meta.json`, `ds:` + brand `component:` from `system/<ds>/`, `footage:`/`reel:` from the content-addressed sidecars) is designed but not yet built.
-- Log verdicts (`.ai/logs/{rca,system-reviews,…}`) as dated review events, README/STATE edge-harvest for date/order metadata — the plan's full A-class set. The current importer covers the DDR core (the validated 180→graph baseline).
+- `--design` — the `.design/` importer (`canvas:` from `ui/*.meta.json`, `ds:` + brand `component:` from `system/<ds>/`, `footage:`/`reel:` from the content-addressed sidecars) is designed but not built. Plans, `.design/` and scenarios are **deliberately out of scope** (owner's call, 2026-07-28).
+- `decisions/README.md` + `state/STATE.md` edge-harvest (canonical order / date / tag metadata that isn't in the DDR bodies).

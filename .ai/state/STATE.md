@@ -2,6 +2,29 @@
 
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
+## Execution Progress — feature-kgai-ecosystem-integration — **DOGFOOD MIGRATION CLOSED (2026-07-28).** maude is kgai-active; 310 decisions in the graph.
+
+Turned the graph on for this repo and migrated its own history. `kg` installed at `~/.local/kgai/{bin,lib}` (rpath layout ⇒ no env var needed), `knowledgeGraph` block in `workflows.config.json` (mode auto, scope `repo:maude`/`dept:dev`, local-only store).
+
+**Migrated (owner's scope call):** 190 DDRs + 120 log verdicts (rca 42 / security-review 58 / code-review 12 / system-review 7 / execution-report 1) = **310 decisions, 691 elements, 33 SUPERSEDES + 36 EXTENDS + ~700 REFERENCES + 233 EVIDENCE_FOR edges**. **Deliberately NOT migrated:** plans, `.design/`, scenarios.
+
+**The archive question, answered with measurements — the `.md` files STAY:**
+- `.ai/decisions/*.md`: the graph holds ~3 % of the prose (56 KB of 1994 KB) and **622 committed references** point at those paths. The graph is an INDEX (every node now carries `path` + `date` + `tags`), not a replacement. Alternatives / consequences live only in the files.
+- `.ai/logs/**`: the inverse — **gitignored** (filed as "AI workflow runtime") while 164 committed references point at it, so those 120 verdicts existed on one machine only and died on a clone. Hence a much larger excerpt (~1200 chars) — the committed graph log is now their only inheritable copy.
+
+**Log versioned in git (owner's call): `.kgai/store/log/*.ndjson` is committed** (2 MB), `graph.kuzu` (22 MB) + `kg.config.json` (per-machine install identity) stay ignored — kgai's own store-level `.gitignore` draws the same line, and `merge=union` + one-file-per-install-id makes it conflict-free. **Handover VERIFIED end to end:** fresh `git clone` → `kg rebuild` → 190 decisions / 567 elements restored, and the canvas-format question answered in the clone. Same split mirrored into `~/git/.stignore` for Syncthing.
+
+**Findings that changed the code:**
+- No incremental path existed → added `maude kg import --only` (a DDR written straight to disk left the graph stale — exactly what happened with DDR-191).
+- Supersedes stated in PROSE (`**Status:** Superseded by …`) were downgraded to REFERENCES → restored keyword-proximity classification with two guards (typed marker always wins; passive voice reverses direction). Corpus-wide: **SUPERSEDES 13 → 33**.
+- `.ai/logs` is gitignored — discovered mid-task, and it is the reason the log migration was worth doing at all.
+
+**Traps documented (skill + command):** kgai is append-only — **no `remove_link`**, a wrong edge only goes away by rebuilding; and a clean rebuild replays **files only**, so graph-native decisions (no `.md`) do not survive one (measured: two vanished).
+
+**CLAUDE.md** gained a "Decision memory" section up front — query recipes (`search` first: `kg context` on a broad area returns only its head, and `dev-server` alone is shaped by 42 decisions), the index-vs-prose split, and the log-vs-cache store rule.
+
+**Open for the owner:** a blanket `.kgai/` rule keeps being re-added at the end of `.gitignore` by a concurrent session — last-match-wins, so it re-ignores `.kgai/store/log/` and defeats the split (the log is force-added for now). Needs arbitration between sessions.
+
 ## Execution Progress — feature-kgai-ecosystem-integration — **Phase 1 (Foundation) COMPLETE, in-progress overall (2026-07-22, branch `main`).**
 
 Wiring kgai (event-sourced decision knowledge graph) into flow + design as a capability-gated, opt-out memory backend. 8-phase plan; Phase 1 done, verified **inactive-path only** (`kg` CLI is NOT installed on this machine, so the "kgai-active" live validation for later phases is deferred until `kg` is present).

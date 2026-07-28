@@ -49,8 +49,12 @@ maude kg query "MATCH (a:Element)-[l:LINK]->(b:Element) WHERE l.kind='SUPERSEDES
 ## Scope + flags
 
 - `--dry-run` — counts + sample, no write.
+- `--only "DDR-191"` (or a comma list) — **incremental refresh**: ingest just those files, bypassing the migrated marker. This is the path for "someone wrote a DDR straight to disk and the graph doesn't know" — and for refreshing a DDR whose file changed (re-ingest is safe: deterministic identity converges the element, props merge).
+- `--no-logs` — skip `.ai/logs/**`. Included by default: that dir is **gitignored**, so migrating it is what keeps 120 RCA / review verdicts from dying on a clone.
 - `--force` — re-ingest past the migrated marker (adds duplicate events — use only after a deliberate reset).
-- `--design` — the `.design/` importer (`canvas:`/`ds:`/`footage:`/`reel:`) is a **follow-up, not yet implemented**; the command reports so.
+- `--design` — the `.design/` importer (`canvas:`/`ds:`/`footage:`/`reel:`) is a **follow-up, not yet implemented**; the command reports so. Plans, `.design/` and scenarios are deliberately out of scope.
+
+> **kgai is append-only — there is no `remove_link`.** A wrongly-classified edge can only be dropped by rebuilding the store, so prefer `--dry-run` before a bulk run. And a clean rebuild replays **files only**: decisions recorded graph-native (no `.md`) do not survive it.
 
 ## Notes
 
