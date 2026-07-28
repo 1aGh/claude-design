@@ -262,12 +262,14 @@ export function buildDdrBatch(decisionsDir, scope = {}, only = null) {
  * to be a thin index because its prose is versioned).
  */
 export function buildLogBatch(logsDir, scope = {}) {
+  const logsRel = logsDir.includes('/archive/') ? '.ai/archive/logs' : '.ai/logs';
   const KINDS = {
     rca: 'rca',
     'system-reviews': 'system-review',
     'code-reviews': 'code-review',
     'security-reviews': 'security-review',
     'execution-reports': 'execution-report',
+    '.': 'log', // loose .md sitting at the logs root (e.g. a one-off perf note)
   };
   const decisions = [];
   const stats = { files: 0, withDate: 0, cited: 0, byKind: {} };
@@ -297,14 +299,27 @@ export function buildLogBatch(logsDir, scope = {}) {
   for (const [dir, kind] of Object.entries(KINDS)) {
     const abs = join(logsDir, dir);
     if (!existsSync(abs)) continue;
-    for (const f of readdirSync(abs)
-      .filter((x) => x.endsWith('.md'))
-      .sort()) {
+    // Recurse one level into nested dirs (a `rca/archive/` holds real verdicts —
+    // a flat readdir silently skipped them). `.`-rooted loose files stay flat so
+    // the pseudo-kind doesn't re-walk every sibling category.
+    const listing =
+      dir === '.'
+        ? readdirSync(abs).filter((x) => x.endsWith('.md') && x !== 'README.md')
+        : readdirSync(abs, { withFileTypes: true }).flatMap((e) =>
+            e.isDirectory()
+              ? readdirSync(join(abs, e.name))
+                  .filter((x) => x.endsWith('.md'))
+                  .map((x) => `${e.name}/${x}`)
+              : e.name.endsWith('.md') && e.name !== 'README.md'
+                ? [e.name]
+                : []
+          );
+    for (const f of listing.sort()) {
       const path = join(abs, f);
       const t = readFileSync(path, 'utf8');
       stats.files++;
       stats.byKind[kind] = (stats.byKind[kind] ?? 0) + 1;
-      const slug = f.replace(/\.md$/, '');
+      const slug = f.replace(/\.md$/, '').replace(/\//g, '-');
       const title = (t.match(/^#\s*(.+)$/m) || [null, slug])[1].trim();
       // Only 34/123 carry a `**Date:**`; the rest are untracked so git has no
       // creation date either — fall back to the file's own mtime.
@@ -320,7 +335,7 @@ export function buildLogBatch(logsDir, scope = {}) {
           op: 'upsert_element',
           kind,
           name: slug,
-          props: { title: title.slice(0, 160), path: `.ai/logs/${dir}/${f}`, date },
+          props: { title: title.slice(0, 160), path: `${logsRel}/${dir}/${f}`, date },
         },
         { op: 'upsert_element', kind: 'area', name: kind },
         { op: 'add_link', from: `${kind}:${slug}`, to: `area:${kind}`, link: 'ABOUT' },
@@ -348,7 +363,7 @@ export function buildLogBatch(logsDir, scope = {}) {
 export async function run({ args, state, projectRoot, runKg }) {
   // `args` here is already the verb's args (kg.mjs stripped the `import` token).
   const { flags } = parseArgs(args, {
-    booleans: ['dry-run', 'design', 'force', 'no-logs', 'no-state', 'archive'],
+    booleans: ['dry-run', 'design', 'force', 'no-logs', 'no-state', 'no-docs', 'archive'],
   });
   const only = flags.only
     ? String(flags.only)
@@ -400,6 +415,16 @@ export async function run({ args, state, projectRoot, runKg }) {
     batch.decisions.push(...logs.batch.decisions);
   }
 
+  // Narrative docs (B-class) — node + full body so `kg search "PRD"` resolves.
+  let docsStats = null;
+  if (!only && !flags['no-docs']) {
+    const dcs = buildDocsBatch(join(projectRoot, '.ai'), state.scope);
+    if (dcs.batch.decisions.length) {
+      docsStats = dcs.stats;
+      batch.decisions.push(...dcs.batch.decisions);
+    }
+  }
+
   // STATE.md rides the same import — it is an event stream, not a document.
   let stateStats = null;
   if (!only && !flags['no-state']) {
@@ -426,7 +451,8 @@ export async function run({ args, state, projectRoot, runKg }) {
         : '  logs:       skipped (--no-logs)\n') +
       (stateStats
         ? `  state:      ${stateStats.progress} progress blocks + ${stateStats.history} history rows (STATE.md event stream)\n`
-        : '  state:      skipped\n')
+        : '  state:      skipped\n') +
+      (docsStats ? `  docs:       ${docsStats.files} narrative docs (doc: nodes)\n` : '')
   );
 
   if (flags['dry-run']) {
@@ -551,6 +577,61 @@ export function buildStateBatch(statePath, scope = {}) {
       ],
     });
     stats.history++;
+  }
+  return { batch: { decisions }, stats };
+}
+
+/**
+ * Narrative docs (`docs/`, `dev-logs/`, `context/`) → `doc:` nodes, full body.
+ *
+ * B-class in the plan's taxonomy: prose a human reads start-to-finish (PRD,
+ * patterns, research notes), not a dated decision. They still belong in the graph
+ * — the PRD is the single most-referenced piece of context in the repo and
+ * `kg search "PRD"` returning nothing is a hole. Indexes (`README.md`) and
+ * regenerable snapshots (`codebase-map.md`) stay out: D-class.
+ */
+export function buildDocsBatch(aiDir, scope = {}) {
+  const SKIP = new Set(['README.md', 'INDEX.md', 'codebase-map.md']);
+  const decisions = [];
+  const stats = { files: 0 };
+  for (const sub of ['docs', 'dev-logs', 'context']) {
+    const abs = join(aiDir, sub);
+    if (!existsSync(abs)) continue;
+    for (const f of readdirSync(abs)
+      .filter((x) => x.endsWith('.md') && !SKIP.has(x))
+      .sort()) {
+      const t = readFileSync(join(abs, f), 'utf8');
+      const slug = f.replace(/\.md$/, '');
+      const title = (t.match(/^#\s*(.+)$/m) || [null, slug])[1].trim();
+      const ref = `doc:${slug}`;
+      const muts = [
+        {
+          op: 'upsert_element',
+          kind: 'doc',
+          name: slug,
+          props: { title: title.slice(0, 160), path: `.ai/${sub}/${f}`, area: sub },
+        },
+      ];
+      if (scope.repo) {
+        muts.push({ op: 'upsert_element', kind: 'repo', name: scope.repo });
+        muts.push({ op: 'add_link', from: ref, to: `repo:${scope.repo}`, link: 'IN_REPO' });
+      }
+      if (scope.dept) {
+        muts.push({ op: 'upsert_element', kind: 'dept', name: scope.dept });
+        muts.push({ op: 'add_link', from: ref, to: `dept:${scope.dept}`, link: 'IN_DEPT' });
+      }
+      // A doc that cites DDRs is context ABOUT them.
+      for (const num of new Set([...t.matchAll(/DDR-(\d+)/g)].map((m) => m[1].padStart(3, '0')))) {
+        muts.push({ op: 'upsert_element', kind: 'decision', name: `DDR-${num}` });
+        muts.push({ op: 'add_link', from: ref, to: `decision:DDR-${num}`, link: 'REFERENCES' });
+      }
+      decisions.push({
+        title: `Doc: ${title}`.slice(0, 160),
+        rationale: t.trim(),
+        mutations: muts,
+      });
+      stats.files++;
+    }
   }
   return { batch: { decisions }, stats };
 }

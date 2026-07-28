@@ -77,6 +77,21 @@ A migration is only "done" when every folder has been *classified*, not just whe
 
 **Rule of thumb:** migrate what is *dated and append-only* (decisions, verdicts, progress). Keep what is *narrative and re-read*. Skip what is *regenerable or per-run*.
 
+### "Migrated" ≠ "archivable" — two tests, not one
+
+Ingesting a folder does **not** license moving it. Archive only when BOTH hold:
+
+1. **The graph replaced its function** (you'd query the graph, not open the file), and
+2. **Nothing writes it any more.**
+
+| | in the graph | archivable? |
+| --- | --- | --- |
+| `decisions/`, `logs/` | ✓ | **yes** — write-once, superseded by the graph. Archived. |
+| `docs/`, `context/`, `dev-logs/` | ✓ (`doc:` nodes, full body) | **no** — LIVE workspace dirs in the plugin contract: `paths.codebaseMap` defaults to `.ai/context/codebase-map.md`, and `/flow:setup-prd`, `/flow:plan`, `/flow:maintain-docs` write into them. Moving them splits the content and the commands recreate the dir anyway. |
+| `state/STATE.md` | ✓ (215 milestone events) | **no** — written on every `/flow:execute`/`pause`/`done`. Its endpoint is the pointer-stub, not a move. |
+
+So a repo can be fully migrated and still have almost nothing left to archive. That is the expected end state, not an unfinished one.
+
 ## `--archive` — the cleanup half of a migration
 
 ```bash
