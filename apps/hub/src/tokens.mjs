@@ -86,6 +86,19 @@ function db(dataDir) {
        last_used_at INTEGER
      )`
   );
+  // Cloud Phase 2 (DDR-192 §3) — expiring, owner-attributed peer tokens.
+  // ADDITIVE migration: an existing store gains the columns with NULL in every
+  // row, and NULL means exactly what it meant before this shipped — never
+  // expires, no owning user. An operator upgrading a live hub loses nothing.
+  for (const [column, ddl] of [
+    ['expires_at', 'ALTER TABLE tokens ADD COLUMN expires_at INTEGER'],
+    ['owner', 'ALTER TABLE tokens ADD COLUMN owner TEXT'],
+  ]) {
+    const present = handle
+      .prepare('SELECT COUNT(*) AS n FROM pragma_table_info(?) WHERE name = ?')
+      .get('tokens', column).n;
+    if (!present) handle.exec(ddl);
+  }
   try {
     chmodSync(path, 0o600);
   } catch {
@@ -164,8 +177,15 @@ function rowToRecord(row) {
     scope: row.scope ?? '*',
     createdAt: row.created_at,
     lastUsedAt: typeof row.last_used_at === 'number' ? row.last_used_at : null,
+    expiresAt: typeof row.expires_at === 'number' ? row.expires_at : null,
+    ...(row.owner ? { owner: row.owner } : {}),
     ...(row.dev ? { dev: true } : {}),
   };
+}
+
+/** True when a token row's lifetime has elapsed. NULL expires_at = never. */
+function isExpiredRow(row, now = Date.now()) {
+  return typeof row?.expires_at === 'number' && row.expires_at <= now;
 }
 
 /**
@@ -255,7 +275,7 @@ export function matchesScope(scope, documentName) {
  * @param {{ label: string, dev?: boolean, scope?: string | null }} opts
  * @returns {{ label: string, value: string, createdAt: number, dev?: boolean, scope?: string }}
  */
-export function addToken(dataDir, { label, dev = false, scope }) {
+export function addToken(dataDir, { label, dev = false, scope, expiresAt, owner } = {}) {
   assertValidLabel(label);
   assertValidScope(scope);
   const handle = db(dataDir);
@@ -265,17 +285,23 @@ export function addToken(dataDir, { label, dev = false, scope }) {
   const effectiveScope = scope === undefined ? label : scope;
   const storedScope = effectiveScope && effectiveScope !== '*' ? effectiveScope : null;
   const createdAt = Date.now();
+  const storedExpiry = typeof expiresAt === 'number' && Number.isFinite(expiresAt)
+    ? Math.floor(expiresAt)
+    : null;
+  const storedOwner = typeof owner === 'string' && owner.length > 0 ? owner : null;
 
   handle
     .prepare(
-      'INSERT OR REPLACE INTO tokens (label, hash, scope, dev, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, NULL)'
+      'INSERT OR REPLACE INTO tokens (label, hash, scope, dev, created_at, last_used_at, expires_at, owner) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)'
     )
-    .run(label, hashToken(handle, value), storedScope, dev ? 1 : 0, createdAt);
+    .run(label, hashToken(handle, value), storedScope, dev ? 1 : 0, createdAt, storedExpiry, storedOwner);
 
   return {
     label,
     value,
     createdAt,
+    expiresAt: storedExpiry,
+    ...(storedOwner ? { owner: storedOwner } : {}),
     ...(dev ? { dev: true } : {}),
     ...(storedScope ? { scope: storedScope } : {}),
   };
@@ -302,6 +328,10 @@ export function rotateToken(dataDir, label) {
     label,
     dev: !!prior.dev,
     scope: prior.scope === null || prior.scope === undefined ? '*' : prior.scope,
+    // Rotation replaces the VALUE; it does not re-open a lifetime or reassign
+    // ownership. A rotated user token expires exactly when the original would.
+    expiresAt: typeof prior.expires_at === 'number' ? prior.expires_at : undefined,
+    owner: prior.owner ?? undefined,
   });
 }
 
@@ -321,6 +351,79 @@ export function removeToken(dataDir, label) {
   if (info.changes === 0) {
     throw new Error(`no token with label "${label}"`);
   }
+}
+
+/**
+ * Every token minted for one user, newest first. `owner` is an exact match —
+ * never a prefix — so offboarding one person cannot reach another's tokens
+ * just because their addresses share characters.
+ *
+ * @param {string} dataDir
+ * @param {string} owner
+ * @returns {Array<{ label: string, scope: string, createdAt: number, lastUsedAt: number|null, expiresAt: number|null, owner?: string, dev?: boolean }>}
+ */
+export function listTokensForOwner(dataDir, owner) {
+  if (typeof owner !== 'string' || owner.length === 0) return [];
+  try {
+    const rows = db(dataDir)
+      .prepare('SELECT * FROM tokens WHERE owner = ? ORDER BY created_at DESC')
+      .all(owner);
+    return rows.map(rowToRecord);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Revoke every token belonging to one user. Returns the labels removed, so the
+ * caller can kick exactly those live sessions (DDR-053 §4).
+ *
+ * This is the offboarding primitive: it is scoped to `owner` and touches
+ * nothing else — not the admin Bearer, not machine tokens, not another user.
+ *
+ * @param {string} dataDir
+ * @param {string} owner
+ * @returns {string[]} labels of the revoked tokens
+ */
+export function revokeTokensForOwner(dataDir, owner) {
+  const doomed = listTokensForOwner(dataDir, owner).map((t) => t.label);
+  if (doomed.length === 0) return [];
+  const handle = db(dataDir);
+  const del = handle.prepare('DELETE FROM tokens WHERE label = ? AND owner = ?');
+  const tx = handle.transaction((labels) => {
+    for (const label of labels) del.run(label, owner);
+  });
+  tx(doomed);
+  return doomed;
+}
+
+/**
+ * Sweep tokens whose lifetime has elapsed. Returns the labels removed so the
+ * caller can kick their sessions — a peer that authenticated an hour ago holds
+ * a live socket that `verifyToken` will never be asked about again.
+ *
+ * @param {string} dataDir
+ * @param {number} [now]
+ * @returns {string[]}
+ */
+export function purgeExpiredTokens(dataDir, now = Date.now()) {
+  let handle;
+  try {
+    handle = db(dataDir);
+  } catch {
+    return [];
+  }
+  const rows = handle
+    .prepare('SELECT label FROM tokens WHERE expires_at IS NOT NULL AND expires_at <= ?')
+    .all(now);
+  if (rows.length === 0) return [];
+  const labels = rows.map((r) => r.label);
+  const del = handle.prepare('DELETE FROM tokens WHERE label = ?');
+  const tx = handle.transaction((ls) => {
+    for (const l of ls) del.run(l);
+  });
+  tx(labels);
+  return labels;
 }
 
 /**
@@ -382,6 +485,18 @@ export function verifyToken(dataDir, candidate, secret) {
   if (handle) {
     const digest = hashToken(handle, candidate);
     const row = handle.prepare('SELECT * FROM tokens WHERE hash = ?').get(digest);
+    // An expired token is not "wrong" — it is a credential whose lifetime ran
+    // out. Deleting it here (rather than only refusing it) keeps the store from
+    // accumulating dead rows, and means a later presentation of the same value
+    // is indistinguishable from an unknown token.
+    if (row && isExpiredRow(row)) {
+      try {
+        handle.prepare('DELETE FROM tokens WHERE label = ?').run(row.label);
+      } catch {
+        /* best effort — the refusal below is what matters */
+      }
+      return null;
+    }
     if (row && constantTimeEqual(Buffer.from(digest, 'utf8'), Buffer.from(row.hash, 'utf8'))) {
       // lastUsedAt is stamped by the caller (server.mjs onAuthenticate) so the
       // contract matches the pre-Task-6 behavior; verifyToken stays read-only.
@@ -390,6 +505,8 @@ export function verifyToken(dataDir, candidate, secret) {
         createdAt: row.created_at,
         scope: row.scope ?? '*',
         source: 'file',
+        expiresAt: typeof row.expires_at === 'number' ? row.expires_at : null,
+        ...(row.owner ? { owner: row.owner } : {}),
         ...(row.dev ? { dev: true } : {}),
       };
     }

@@ -51,6 +51,11 @@ import {
   writeAdminSecret,
 } from './admin-auth.mjs';
 import { maybeIssueOnBoot, verifyAndConsume } from './bootstrap.mjs';
+import {
+  handleAuthRoutes,
+  handleUserAdminRoutes,
+  permissiveDevAuthDisabled,
+} from './auth-routes.mjs';
 import { groupCanvases } from './doc-namespace.mjs';
 import { readSettings, writeSettings } from './settings.mjs';
 import {
@@ -220,8 +225,14 @@ export function createHub(config = {}) {
         };
       }
       // No tokens configured and no HUB_SECRET → permissive dev mode.
+      //
+      // Cloud Phase 2 — this path is off the moment the hub has ANY user, or
+      // when the operator declares workspace mode. On a scratch hub it is a
+      // convenience; on a hub with real accounts it would let an
+      // unauthenticated stranger read and write every document, which is
+      // strictly worse than refusing to start.
       const { tokens } = readTokens(dataDir);
-      if (tokens.length === 0 && secret === '') {
+      if (tokens.length === 0 && secret === '' && !permissiveDevAuthDisabled(dataDir)) {
         if (verbose) {
           console.warn(
             `[hub] no tokens configured; accepting any token for documentName=${sanitizeForLog(documentName)}`
@@ -287,6 +298,27 @@ export function createHub(config = {}) {
         );
         bailFromOnRequest();
       }
+      // Cloud Phase 2 — human sign-in. /auth/login is unauthenticated (and
+      // rate-limited on the same bucket as /admin/api/bootstrap); /auth/logout
+      // and /auth/session authenticate with the peer token they concern.
+      if (url === '/auth/login' || url === '/auth/logout' || url === '/auth/session') {
+        const handled = await handleAuthRoutes({
+          request,
+          response,
+          path: url,
+          method,
+          dataDir,
+          secret,
+          checkRateLimit: rateLimit ? (req) => checkRateLimit(rateBuckets, req) : undefined,
+          respondRateLimited: () => respondRateLimited(response),
+          respondJson: (status, payload) => respondAdminJson(response, status, payload),
+          readJsonBody,
+          kickLabel: (label) => kickSessionsForLabel(peers, label),
+          pushActivity: (evt) => pushActivity(activity, evt),
+        });
+        if (handled) bailFromOnRequest();
+      }
+
       if (url === '/admin' || url.startsWith('/admin?')) {
         respondAsset(response, ADMIN_HTML, 'text/html; charset=utf-8', { hardenAdminOrigin: true });
         bailFromOnRequest();
@@ -440,6 +472,27 @@ async function handleAdminApi(ctx) {
       return;
     }
     respondAdminJson(response, 401, { error: 'unauthorized' });
+    return;
+  }
+
+  // ---- everything below is ADMIN-BEARER-AUTHENTICATED ----
+
+  // Cloud Phase 2 — user administration. Reached only past the Bearer gate
+  // above; there is deliberately no path from a user password to this surface.
+  if (path === '/users' || path.startsWith('/users/')) {
+    const handled = await handleUserAdminRoutes({
+      request,
+      response,
+      path,
+      method,
+      dataDir,
+      respondJson: (status, payload) => respondAdminJson(response, status, payload),
+      readJsonBody,
+      kickLabel: (label) => kickSessionsForLabel(peers, label),
+      pushActivity: (evt) => pushActivity(activity, evt),
+    });
+    if (handled) return;
+    respondAdminJson(response, 404, { error: 'not found' });
     return;
   }
 
