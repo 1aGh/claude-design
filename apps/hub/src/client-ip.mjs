@@ -133,7 +133,7 @@ export function isTrustedProxy(candidate, cidrs) {
       const restBits = cidr.bits & 7;
       if (fullBytes > 0 && !a.subarray(0, fullBytes).equals(b.subarray(0, fullBytes))) continue;
       if (restBits === 0) return true;
-      const mask = 0xff << (8 - restBits) & 0xff;
+      const mask = (0xff << (8 - restBits)) & 0xff;
       if ((a[fullBytes] & mask) === (b[fullBytes] & mask)) return true;
     }
   }

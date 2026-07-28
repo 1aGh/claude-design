@@ -38,6 +38,17 @@ jobs:
       - name: Test (node:test)
         run: pnpm test
 
+      - name: Hub backup restore drill
+        # The exit gate for Cloud Phase 2 Task 3. A backup nobody has restored
+        # is a hypothesis: a database that restores readable-but-EMPTY looks
+        # exactly like a working one until the day you need it. So CI takes a
+        # real snapshot of a seeded hub and asserts the RESTORED database —
+        # integrity_check, document count, and a named sentinel document with a
+        # non-empty payload. Uses a file:// target; the S3/R2 code path is
+        # covered by apps/hub/test/backup.test.mjs against a live S3-shaped
+        # server.
+        run: bash scripts/hub-restore-drill.sh
+
       - name: Tarball shape
         run: bash scripts/check-tarball-shape.sh
 

@@ -56,6 +56,7 @@ import {
   handleUserAdminRoutes,
   permissiveDevAuthDisabled,
 } from './auth-routes.mjs';
+import { scheduleBackups, targetFromEnv } from './backup.mjs';
 import { clientIpFor, parseTrustedProxies } from './client-ip.mjs';
 import { groupCanvases } from './doc-namespace.mjs';
 import { createRateStore } from './rate-store.mjs';
@@ -184,6 +185,23 @@ export function createHub(config = {}) {
   // Persistent sliding-window limiter. In-memory buckets reset on restart,
   // which made "crash the hub, keep guessing" a free counter reset.
   const rateStore = createRateStore(dataDir);
+
+  // Cloud Phase 2 Task 3 — scheduled doc-store backups. No destination
+  // configured ⇒ no backups, and that is a quiet no-op rather than a boot
+  // failure: a laptop hub genuinely does not need one. Verify with
+  // `maude hub restore-drill` — a backup nobody has restored is a hypothesis.
+  const backupTarget = targetFromEnv();
+  const backupIntervalMs = Number(process.env.MAUDE_BACKUP_INTERVAL_MS ?? 6 * 3600_000);
+  const stopBackups = scheduleBackups({
+    dataDir,
+    target: backupTarget,
+    intervalMs: backupTarget ? backupIntervalMs : 0,
+  });
+  if (backupTarget) {
+    console.log(
+      `[hub] backups → ${backupTarget.describe} every ${Math.round(backupIntervalMs / 60000)} min`
+    );
+  }
 
   /** Per-IP rate limit buckets (admin API): ip → { count, windowStart } */
   const rateBuckets = new Map();
@@ -455,6 +473,13 @@ export function createHub(config = {}) {
     version: HUB_VERSION,
     peers,
     activity,
+    backupTarget,
+    /** Stop the backup schedule + close the rate store. Tests call this; the
+     *  process exiting does the same thing in production. */
+    stopBackgroundWork() {
+      stopBackups();
+      rateStore.close();
+    },
   };
 }
 

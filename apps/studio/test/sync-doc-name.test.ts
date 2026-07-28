@@ -149,7 +149,10 @@ describe('doc-name — the rollout rule', () => {
   });
 
   test('MAUDE_HUB_NAMESPACED=1 namespaces from the origin remote', () => {
-    const root = makeRepo({ origin: 'git@github.com:acme/site.git', head: 'ref: refs/heads/dev\n' });
+    const root = makeRepo({
+      origin: 'git@github.com:acme/site.git',
+      head: 'ref: refs/heads/dev\n',
+    });
     try {
       const resolve = createDocNameResolver({ repoRoot: root, flag: '1' });
       expect(resolve('ui-screen')).toBe('ws/acme-site/dev/ui-screen');

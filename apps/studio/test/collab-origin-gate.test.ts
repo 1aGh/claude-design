@@ -196,7 +196,9 @@ describe('room origin gate — canvas realm', () => {
       )
     );
 
-    expect(room.doc.getArray('comments').toArray()).toEqual([{ id: 'c1', text: 'from the canvas' }]);
+    expect(room.doc.getArray('comments').toArray()).toEqual([
+      { id: 'c1', text: 'from the canvas' },
+    ]);
     expect(room.doc.getMap('annotations').get('svg')).toBe('<svg><rect/></svg>');
     expect(room.gateRefusals()).toBe(0);
     // And it DID reach the other peer.
@@ -259,7 +261,10 @@ describe('room origin gate — canvas realm', () => {
     const legacy = makeConn('legacy');
     await room.connect(legacy);
 
-    room.receive(legacy, syncUpdateFrame(peerDelta(room, (d) => d.getText('html').insert(0, 'ok'))));
+    room.receive(
+      legacy,
+      syncUpdateFrame(peerDelta(room, (d) => d.getText('html').insert(0, 'ok')))
+    );
 
     expect(room.doc.getText('html').toString()).toBe('ok');
     expect(room.gateRefusals()).toBe(0);

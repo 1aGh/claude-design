@@ -226,7 +226,13 @@ export function createUser(dataDir, { email, password, role, scope } = {}) {
       'INSERT INTO users (email, hash, role, scope, created_at, disabled) VALUES (?, ?, ?, ?, ?, 0)'
     )
     .run(normalized, hashPassword(password), effectiveRole, storedScope, createdAt);
-  return { email: normalized, role: effectiveRole, scope: storedScope ?? '*', createdAt, disabled: false };
+  return {
+    email: normalized,
+    role: effectiveRole,
+    scope: storedScope ?? '*',
+    createdAt,
+    disabled: false,
+  };
 }
 
 export function getUser(dataDir, email) {

@@ -5,12 +5,20 @@
 
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { parseArgs } from '../lib/argv.mjs';
 
-const SUBCOMMANDS = new Set(['serve', 'token', 'status', 'deploy', 'help']);
+const SUBCOMMANDS = new Set([
+  'serve',
+  'token',
+  'status',
+  'deploy',
+  'backup',
+  'restore-drill',
+  'help',
+]);
 
 export async function run({ args, pkgRoot }) {
   const { positional } = parseArgs(args);
@@ -29,10 +37,12 @@ export async function run({ args, pkgRoot }) {
   if (sub === 'token') return runToken({ args, pkgRoot });
   if (sub === 'status') return runStatus({ args });
   if (sub === 'deploy') return runDeploy({ args, pkgRoot });
+  if (sub === 'backup') return runBackupNow({ args, pkgRoot });
+  if (sub === 'restore-drill') return runRestoreDrill({ args, pkgRoot });
 }
 
 function usage() {
-  return `maude hub <serve|token|status|deploy> [options]
+  return `maude hub <serve|token|status|deploy|backup|restore-drill> [options]
 
   serve [--port N] [--data PATH] [--secret HEX] [--insecure-http] [--dev]
         Start the self-hostable Yjs sync hub in the current process tree.
@@ -75,6 +85,22 @@ function usage() {
   status [URL] [--json]
         HTTP GET <url>/health, print uptime/version/token-count/peers. URL
         defaults to http://localhost:1234. --json emits the raw response.
+
+  backup [--data PATH] [--target file://DIR] [--keep N]
+        Take one snapshot generation now (VACUUM INTO → gzip → target) and
+        prune to the retention limit. Target defaults to $MAUDE_BACKUP_TARGET,
+        or the MAUDE_S3_* env set (R2 / MinIO / S3).
+
+  restore-drill [--target file://DIR] [--sentinel DOCNAME] [--keep-dir] [--json]
+        Restore the NEWEST complete backup generation into a throwaway
+        directory and verify it: SQLite integrity_check, document count, and
+        (with --sentinel) that one named document came back with a non-empty
+        payload. Never touches the live data dir. Exits non-zero on failure so
+        it can be a CI step.
+
+        Run this on a schedule. A backup nobody has restored is a hypothesis:
+        a database that restores readable-but-empty looks exactly like a
+        working one until the day you need it.
 
   deploy <fly|docker> [--name NAME] [--region CODE] [--tag TAG] [--out DIR] [--force]
         Emit the deploy templates for the chosen target into the current
@@ -467,4 +493,115 @@ function formatDuration(seconds) {
   if (m < 60) return `${m}m${s.toString().padStart(2, '0')}s`;
   const h = Math.floor(m / 60);
   return `${h}h${(m % 60).toString().padStart(2, '0')}m${s.toString().padStart(2, '0')}s`;
+}
+
+// --------------------------------------------------------- backup + drill
+
+/**
+ * Resolve the hub's backup engine. It lives in apps/hub (it is hub-internal,
+ * not part of the published npm surface), so it is imported by path rather
+ * than as a package — the same way runServe reaches the hub entry point.
+ */
+async function loadBackupEngine(pkgRoot) {
+  const candidates = [
+    resolve(pkgRoot, 'apps/hub/src/backup.mjs'),
+    resolve(pkgRoot, '../apps/hub/src/backup.mjs'),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return import(`file://${candidate}`);
+  }
+  process.stderr.write(
+    'maude hub: the backup engine (apps/hub/src/backup.mjs) was not found.\n' +
+      'This verb runs from a full checkout or the hub image, not from a plain npm install.\n'
+  );
+  process.exit(2);
+}
+
+function resolveTarget(engine, flags) {
+  const explicit = flags.target;
+  const target = explicit
+    ? explicit.startsWith('file://')
+      ? engine.fileTarget(explicit)
+      : null
+    : engine.targetFromEnv();
+  if (!target) {
+    process.stderr.write(
+      'maude hub: no backup target configured.\n' +
+        '  --target file:///path/to/dir, or set MAUDE_BACKUP_TARGET,\n' +
+        '  or the MAUDE_S3_{ENDPOINT,BUCKET,ACCESS_KEY_ID,SECRET_ACCESS_KEY} env set.\n'
+    );
+    process.exit(2);
+  }
+  return target;
+}
+
+async function runBackupNow({ args, pkgRoot }) {
+  const { flags } = parseArgs(args);
+  const engine = await loadBackupEngine(pkgRoot);
+  const dataDir = resolve(flags.data ?? process.env.DATA_DIR ?? 'data');
+  const target = resolveTarget(engine, flags);
+  const keep = Number(flags.keep ?? 14);
+
+  try {
+    const result = await engine.runBackup({ dataDir, target, keep });
+    process.stdout.write(`backed up ${dataDir} → ${target.describe}\n  ${result.prefix}\n`);
+    for (const f of result.files) {
+      process.stdout.write(`    ${f.name.padEnd(12)} ${(f.bytes / 1024).toFixed(1)} KB gz\n`);
+    }
+    if (result.pruned.length > 0) {
+      process.stdout.write(`  pruned ${result.pruned.length} old generation(s)\n`);
+    }
+  } catch (err) {
+    process.stderr.write(`maude hub backup: ${err.message}\n`);
+    process.exit(1);
+  }
+}
+
+async function runRestoreDrill({ args, pkgRoot }) {
+  const { flags } = parseArgs(args);
+  const engine = await loadBackupEngine(pkgRoot);
+  const target = resolveTarget(engine, flags);
+  const scratchDir = resolve(
+    flags['scratch-dir'] ?? `${process.env.TMPDIR ?? '/tmp'}/maude-restore-drill-${process.pid}`
+  );
+
+  let verdict;
+  try {
+    verdict = await engine.restoreDrill({
+      target,
+      scratchDir,
+      sentinel: flags.sentinel,
+      which: flags.generation,
+    });
+  } catch (err) {
+    if (flags.json) process.stdout.write(`${JSON.stringify({ ok: false, error: err.message })}\n`);
+    else process.stderr.write(`maude hub restore-drill: ${err.message}\n`);
+    process.exit(1);
+  }
+
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify(verdict, null, 2)}\n`);
+  } else {
+    process.stdout.write(
+      `restore drill — ${target.describe}\n` +
+        `  generation   ${verdict.generation}\n` +
+        `  restored     ${verdict.restored.join(', ')}\n` +
+        `  integrity    ${verdict.integrity}\n` +
+        `  documents    ${verdict.documents}\n` +
+        (verdict.sentinel
+          ? `  sentinel     ${verdict.sentinel.name} — ${verdict.sentinel.present ? `${verdict.sentinel.bytes} bytes` : 'ABSENT'}\n`
+          : '') +
+        `  ${verdict.ok ? 'PASS' : 'FAIL'}\n`
+    );
+    for (const p of verdict.problems) process.stderr.write(`  ! ${p}\n`);
+  }
+
+  if (!flags['keep-dir']) {
+    try {
+      rmSync(scratchDir, { recursive: true, force: true });
+    } catch {
+      /* best effort */
+    }
+  }
+  if (!verdict.ok) process.exit(1);
 }

@@ -148,7 +148,7 @@ export async function handleAuthRoutes(ctx) {
     // deliberately no way to log out anyone else.
     const presented = bearerFrom(ctx.request);
     const match = presented ? verifyToken(dataDir, presented, secret) : null;
-    if (!match || !match.owner) {
+    if (!match?.owner) {
       respondJson(401, { error: 'not a user session token' });
       return true;
     }
@@ -166,7 +166,7 @@ export async function handleAuthRoutes(ctx) {
   if (method === 'GET' && path === '/auth/session') {
     const presented = bearerFrom(ctx.request);
     const match = presented ? verifyToken(dataDir, presented, secret) : null;
-    if (!match || !match.owner) {
+    if (!match?.owner) {
       respondJson(401, { error: 'not a user session token' });
       return true;
     }

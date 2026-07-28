@@ -118,8 +118,16 @@ test('userTokenTtlMs defaults to 30 days and clamps a hostile override', () => {
 // ------------------------------------------------------------------- expiry
 
 test('an expired token stops authenticating AND is swept from the store', () => {
-  const past = addToken(dataDir, { label: 'expired-one', scope: '*', expiresAt: Date.now() - 1000 });
-  const future = addToken(dataDir, { label: 'live-one', scope: '*', expiresAt: Date.now() + 60_000 });
+  const past = addToken(dataDir, {
+    label: 'expired-one',
+    scope: '*',
+    expiresAt: Date.now() - 1000,
+  });
+  const future = addToken(dataDir, {
+    label: 'live-one',
+    scope: '*',
+    expiresAt: Date.now() + 60_000,
+  });
   const forever = addToken(dataDir, { label: 'no-expiry', scope: '*' });
 
   assert.equal(verifyToken(dataDir, past.value, ''), null, 'expired must not authenticate');
@@ -183,7 +191,10 @@ test('a disabled user cannot log in, and is disabled by password too', async () 
   await makeUser('bob@example.com');
   assert.equal((await login('bob@example.com')).status, 200);
 
-  const res = await fetch(`${base()}/admin/api/users/disable`, adminJson({ email: 'bob@example.com' }));
+  const res = await fetch(
+    `${base()}/admin/api/users/disable`,
+    adminJson({ email: 'bob@example.com' })
+  );
   assert.equal(res.status, 200);
 
   assert.equal((await login('bob@example.com')).status, 401);
@@ -244,7 +255,10 @@ test('offboarding one user touches NOBODY else — the exit-gate property', asyn
   // A machine token owned by nobody — the CI credential an offboard must not eat.
   const machine = addToken(dataDir, { label: 'ci-runner', scope: '*' });
 
-  const res = await fetch(`${base()}/admin/api/users/delete`, adminJson({ email: 'alice@example.com' }));
+  const res = await fetch(
+    `${base()}/admin/api/users/delete`,
+    adminJson({ email: 'alice@example.com' })
+  );
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.revoked, 2, 'both of alice’s sessions revoked');
@@ -277,7 +291,10 @@ test('disabling revokes live credentials, not just future logins', async () => {
   const session = await (await login('erin@example.com')).json();
   assert.ok(verifyToken(dataDir, session.token, SECRET));
 
-  const res = await fetch(`${base()}/admin/api/users/disable`, adminJson({ email: 'erin@example.com' }));
+  const res = await fetch(
+    `${base()}/admin/api/users/disable`,
+    adminJson({ email: 'erin@example.com' })
+  );
   assert.equal((await res.json()).revoked, 1);
   assert.equal(
     verifyToken(dataDir, session.token, SECRET),
