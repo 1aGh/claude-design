@@ -53,7 +53,13 @@ Record the architecture on paper before touching code, land the one open HIGH se
 
 ## Exit gate
 
-- [ ] Both DDRs recorded (before any later-phase code lands)
-- [ ] Origin-gate test green; canvas-realm op provably rejected
-- [ ] Namespace tests green incl. the fresh-doc-never-clobbers case
-- [ ] `pnpm --filter @maude/site gen:roadmap` diff committed
+- [x] Both DDRs recorded (before any later-phase code lands) — **DDR-192** (remote workspace server architecture) + **DDR-193** (tenant cells + containment invariant), ingested into kgai.
+- [x] Origin-gate test green; canvas-realm op provably rejected — `apps/studio/test/collab-origin-gate.test.ts` (14 tests). Dual-lock: client sentinel gate in `use-collab.tsx`, server mirror-doc gate in `collab/room.ts` keyed on the new `RoomConn.realm`.
+- [x] Namespace tests green incl. the fresh-doc-never-clobbers case — `apps/hub/test/namespace.test.mjs` (8) + `apps/studio/test/sync-doc-name.test.ts` (15, incl. cross-implementation conformance against the hub's parser and the DDR-076 `seed-local-up` assertion).
+- [x] `pnpm --filter @maude/site gen:roadmap` diff committed.
+
+**Status: COMPLETE** (2026-07-28). Suites at close: `apps/studio` 3127/3127, `apps/hub` 134/134.
+
+Carried forward for later phases:
+- Namespacing is **opt-in** in this phase (`MAUDE_HUB_NAMESPACED` / `linkedHub.workspaceId`); Phase 3 makes it default-on in workspace mode.
+- The origin gate's server lock currently **refuses + resyncs** a violating peer rather than closing its socket. If a legitimate false positive is ever observed (e.g. a canvas peer holding body state across a hub-side room rebuild), revisit before hardening it to a disconnect.
