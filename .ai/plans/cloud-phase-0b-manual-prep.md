@@ -6,6 +6,28 @@ Rule of thumb: agents get **scoped API tokens, never account passwords**, and ev
 
 ---
 
+## Re-probe — 2026-07-28, late (during the Phase 1–3 execution run)
+
+Re-verified against the live API before starting any vendor-dependent phase. **The audit above still holds — nothing has changed.**
+
+| Surface | Result |
+| --- | --- |
+| `GET /accounts/<id>/subscriptions` | `200`, **0 subscriptions** → still Free plan |
+| `GET /accounts/<id>/containers/applications` | **1000 Unauthorized** — "requires the Workers Paid plan" |
+| `GET /accounts/<id>/r2/buckets` | **10042** — "Please enable R2 through the Cloudflare Dashboard" |
+| `GET /zones` | `200`, **0 zones** — no domain on this account |
+| D1 / Workers scripts | `200`, 0 items — reachable, agent can create |
+
+**Consequence for the arc:** Phases 1–4 are fully executable (they touch `apps/studio`, `apps/hub`, `cli` — no vendor infrastructure). **Phase 5 onward is blocked** on three things an agent cannot do — they need a browser, payment details, and domain control:
+
+1. **Workers Paid plan** (~$5/mo) — unlocks Containers. Blocks Phase 5 and 7.
+2. **Enable R2** in the dashboard (ToS + billing acceptance). Blocks the Phase-3 production asset lane and Phase 5.
+3. **`cloud.maude.sh` on Cloudflare DNS** — the zone has to exist before any Workers route or cell ingress.
+
+Until those land, the S3/R2 code paths are exercised against MinIO-compatible / in-process S3 servers, which is why they were built target-pluggable in the first place.
+
+---
+
 ## Live access audit — 2026-07-28 (probed, not assumed)
 
 MCP plugins installed + OAuth-authorized: **cloudflare** (api / bindings / builds / observability / docs), **stripe**, **vercel**. `gh` CLI signed in (two accounts). What the probes actually returned:
