@@ -28,6 +28,8 @@ import { Y_TYPES } from '../collab/persistence.ts';
 import type { Context } from '../context.ts';
 import { createHistory } from '../history.ts';
 import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
+import { atomicWrite } from './atomic-write.ts';
+import { createAutoCommit } from './autocommit.ts';
 import {
   type ConnectionMonitor,
   createConnectionMonitor,
@@ -258,6 +260,25 @@ export function createSyncRuntime(
     console.error(`[sync] refusing to start: ${(err as Error).message}`);
     return null;
   }
+
+  // Cloud Phase 3 Task 1 — in a workspace cell, a disk write is only half the
+  // save: nobody is at a keyboard to commit, so the cell does it. Off entirely
+  // outside workspace mode, where the developer's own git IS the history and
+  // committing under them would be an intrusion (DDR-119).
+  const autoCommit =
+    process.env.MAUDE_WORKSPACE_MODE === '1'
+      ? createAutoCommit({
+          repoRoot: ctx.paths.repoRoot,
+          run: async (args, { cwd }) => {
+            const proc = Bun.spawn(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
+            const [stdout, stderr] = await Promise.all([
+              new Response(proc.stdout).text(),
+              new Response(proc.stderr).text(),
+            ]);
+            return { code: await proc.exited, stdout, stderr };
+          },
+        })
+      : null;
 
   const resolvedToken = getHubToken(linkedHub.url);
   if (!resolvedToken) {
@@ -574,6 +595,35 @@ export function createSyncRuntime(
      * permanent-rejection re-probe (which passes the EXISTING doc so the
      * agent/projection wiring — doc-scoped — survives the provider swap).
      */
+    /**
+     * Who is editing this canvas right now, from hub awareness.
+     *
+     * Presence carries a display name and no address, so the address is
+     * synthesized and clearly marked as derived — inventing a plausible-looking
+     * real address would put an unverified identity into permanent git history.
+     * Absent a remote peer the answer is null, which `autocommit` turns into
+     * "Unknown editor" rather than attributing the work to the server.
+     */
+    const editorOf = (slug: string): { name: string; email: string } | null => {
+      const awareness = providers.get(slug)?.awareness;
+      if (!awareness) return null;
+      for (const [clientId, state] of awareness.getStates() as Map<
+        number,
+        { name?: string } | undefined
+      >) {
+        if (clientId === awareness.clientID) continue; // that's us, the cell
+        const name = state?.name?.trim();
+        if (name) {
+          const slugified = name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '');
+          return { name, email: `${slugified || 'peer'}@peers.maude.local` };
+        }
+      }
+      return null;
+    };
+
     const connectCanvas = async (
       canvas: CanvasDescriptor,
       canvasPaths: import('./agent.ts').CanvasSyncPaths,
@@ -671,6 +721,20 @@ export function createSyncRuntime(
               echoGuard,
               adopt: adoptOnce,
               journal: journal ?? undefined,
+              // Wrap the writer rather than adding a new hook: every path the
+              // agent materializes to disk goes through it, so a future write
+              // surface is committed automatically instead of being forgotten.
+              ...(autoCommit
+                ? {
+                    writer: (file: string, bytes: string | Uint8Array) => {
+                      atomicWrite(file, bytes);
+                      autoCommit.note(
+                        path.relative(ctx.paths.repoRoot, file),
+                        editorOf(canvas.slug)
+                      );
+                    },
+                  }
+                : {}),
               snapshot: async (content, reason) => {
                 try {
                   const snap = await history.writeSnapshot(relBody, content, reason);
@@ -788,6 +852,18 @@ export function createSyncRuntime(
   async function stop(): Promise<void> {
     if (stopped) return;
     stopped = true;
+    // Commit whatever is still inside the quiescence window BEFORE tearing
+    // anything down. Shutting down mid-window would leave the last edits on
+    // disk but out of history — the one state this whole mechanism exists to
+    // make impossible.
+    if (autoCommit) {
+      try {
+        await autoCommit.flush();
+      } catch (err) {
+        console.error('[sync] final autocommit failed:', err);
+      }
+      autoCommit.stop();
+    }
     for (const detach of awarenessDetaches) {
       try {
         detach();
