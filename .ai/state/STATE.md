@@ -4,11 +4,17 @@
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
 **Status:** in progress — Maude Cloud arc
-**Active plan:** `.ai/plans/cloud-phase-4-selfhost-skill.md` (next)
+**Active plan:** — (phases 1-4 closed; 5-10 blocked on vendor prerequisites)
 
-_Last closed:_ `cloud-phase-3-workspace-agent-s3` (2026-07-28, core complete).
-Phases 1 and 2 closed the same day. Decisions: DDR-192, DDR-193 (arc umbrellas),
-DDR-194 (phase-2), DDR-195 (phase-3); DDR-148 corrected in place.
+_Last closed:_ `cloud-phase-4-selfhost-skill` (2026-07-28, core complete).
+Phases 1, 2 and 3 closed the same day. Decisions: DDR-192, DDR-193 (arc
+umbrellas), DDR-194 (phase-2), DDR-195 (phase-3); DDR-148 corrected in place.
+
+Carried into Phase 5 (all need a live host or a paid account):
+- two-machine round-trip + kill -9 recovery (phase 3)
+- 60 MB asset through R2 specifically (phase 3)
+- `desktop-e2e workspace-sign-in` — needs the Tauri UI (phase 3)
+- `workspace-up`'s remaining verification steps — need a Docker host (phase 4)
 
 **Phases 5-10 are BLOCKED on vendor prerequisites an agent cannot satisfy** —
 re-probed live 2026-07-28: Cloudflare account is Free (0 subscriptions),
