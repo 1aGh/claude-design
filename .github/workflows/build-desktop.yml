@@ -187,6 +187,33 @@ jobs:
           MAUDE_SIDECAR_SLUG=darwin-x64 node scripts/sync-sidecar.mjs
           MAUDE_SIDECAR_SLUG=darwin-x64 bun scripts/build-cli-binary.mjs
           MAUDE_SIDECAR_SLUG=darwin-x64 node scripts/sync-agent-browser.mjs
+          # kgai engine — a RESOURCE, not an externalBin sidecar (kgai publishes
+          # no Windows build, and externalBin is a static all-platforms
+          # requirement). So Tauri neither lipos nor signs it: we do both.
+          MAUDE_KG_NO_ALIAS=1 MAUDE_SIDECAR_SLUG=darwin-arm64 node scripts/sync-kg.mjs
+          MAUDE_KG_NO_ALIAS=1 MAUDE_SIDECAR_SLUG=darwin-x64 node scripts/sync-kg.mjs
+          if [ -f src-tauri/resources/kgai/kg-aarch64-apple-darwin ] \
+             && [ -f src-tauri/resources/kgai/kg-x86_64-apple-darwin ]; then
+            lipo -create -output src-tauri/resources/kgai/kg \
+              src-tauri/resources/kgai/kg-aarch64-apple-darwin \
+              src-tauri/resources/kgai/kg-x86_64-apple-darwin
+            chmod +x src-tauri/resources/kgai/kg
+            rm -f src-tauri/resources/kgai/kg-*-apple-darwin
+            # Notarization requires every Mach-O in the bundle to carry a
+            # Developer-ID signature + hardened runtime. libkuzu ships universal
+            # already; both still need signing (DDR-190).
+            if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+              codesign --force --timestamp --options runtime \
+                --sign "$APPLE_SIGNING_IDENTITY" src-tauri/resources/kgai/libkuzu.dylib
+              codesign --force --timestamp --options runtime \
+                --sign "$APPLE_SIGNING_IDENTITY" src-tauri/resources/kgai/kg
+            else
+              codesign --force -s - src-tauri/resources/kgai/libkuzu.dylib
+              codesign --force -s - src-tauri/resources/kgai/kg
+            fi
+          else
+            echo "::warning::kgai engine not staged for both arches — the .app ships without the graph"
+          fi
           cd src-tauri/binaries
           lipo -create -output maude-server-universal-apple-darwin \
             maude-server-aarch64-apple-darwin maude-server-x86_64-apple-darwin

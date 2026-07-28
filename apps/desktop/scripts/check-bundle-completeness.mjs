@@ -269,6 +269,31 @@ console.log('\n[5] kgai engine + plugin (autonomous capture in the shipped app)'
       ? ok('libkuzu staged', libName)
       : fail('libkuzu missing', `${join(kgaiRes, libName)} — kg would SIGKILL at load`);
 
+    // The engine is a RESOURCE, not an externalBin sidecar (kgai has no Windows
+    // build and externalBin is an all-platforms requirement) — so Tauri neither
+    // lipos nor signs it, and its absence must be caught HERE.
+    const kgExe = join(kgaiRes, process.platform === 'win32' ? 'kg.exe' : 'kg');
+    if (!existsSync(kgExe)) {
+      warn(
+        'kgai engine not staged',
+        `${kgExe} — the app ships without the graph (expected on a platform kgai publishes no prebuild for; a BUG anywhere else).`
+      );
+    } else {
+      ok('kgai engine staged', kgExe);
+      if (process.platform === 'darwin') {
+        // A universal build must carry BOTH arches: a thin binary here means the
+        // CI lipo step didn't run and half the users get a broken engine.
+        try {
+          const archs = execFileSync('lipo', ['-archs', kgExe], { encoding: 'utf8' }).trim();
+          /arm64/.test(archs) && /x86_64/.test(archs)
+            ? ok('kg is universal', archs)
+            : warn('kg is thin', `${archs} — fine for a single-arch build, WRONG for a universal .app`);
+        } catch {
+          /* lipo unavailable — skip */
+        }
+      }
+    }
+
     const ver = join(kgaiRes, 'VERSION');
     existsSync(ver)
       ? ok('kgai pin stamped', readFileSync(ver, 'utf8').split('\n')[0])

@@ -16,7 +16,9 @@
 // kgai is MIT-licensed (kgaidev/kgai); its LICENSE is staged alongside the tree.
 //
 // Layout produced:
-//   src-tauri/binaries/kg-<target-triple>            ← externalBin sidecar (Tauri signs it)
+//   src-tauri/resources/kgai/kg-<target-triple>      ← the engine, per-triple
+//   src-tauri/resources/kgai/kg                      ← the one the app resolves
+//     (on macOS universal the CI lipos the two per-triple files into this name)
 //   src-tauri/resources/kgai/libkuzu.<ext>           ← native lib (reached via KGAI_LIB→DYLD/LD_LIBRARY_PATH)
 //   src-tauri/resources/plugins/kgai/                ← the Claude Code plugin (Stop-hook autocapture)
 //
@@ -25,6 +27,7 @@
 
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -81,7 +84,15 @@ if (!slug || !TRIPLE[slug]) {
   process.exit(1);
 }
 if (!ASSETS[slug]) {
-  console.log(`[sync-kg] kgai publishes no prebuilt for ${slug} — bundle ships without kgai.`);
+  // Still create the resource dir + stamp: `tauri.conf.json` maps it
+  // unconditionally, and an absent dir fails the bundle. The app simply finds no
+  // engine and `maude kg` reports inactive — the documented degradation.
+  mkdirSync(join(RES_DIR, 'kgai'), { recursive: true });
+  writeFileSync(
+    join(RES_DIR, 'kgai', 'VERSION'),
+    `${KGAI_VERSION}\nrepo: ${KGAI_REPO}\nlicense: MIT\nslug: ${slug}\nengine: NOT BUNDLED (kgai publishes no ${slug} prebuild)\n`
+  );
+  console.log(`[sync-kg] kgai publishes no prebuilt for ${slug} — bundle ships without the engine.`);
   process.exit(0);
 }
 
@@ -205,7 +216,14 @@ async function main() {
   mkdirSync(join(RES_DIR, 'kgai'), { recursive: true });
 
   const exe = slug.startsWith('win32') ? '.exe' : '';
-  const kgDest = join(BIN_DIR, `kg-${triple}${exe}`);
+  // NOT an `externalBin` sidecar: that list is static, so every platform in the
+  // desktop matrix would be REQUIRED to supply a `kg-<triple>` — and kgai
+  // publishes no Windows build, which would fail the Windows leg outright.
+  // Shipping it as a resource makes the engine per-platform OPTIONAL, which is
+  // exactly the capability-gated contract (`maude kg` degrades to inactive).
+  // Cost: Tauri does not sign it for us — the macOS CI codesigns it explicitly
+  // (hardened runtime) before `tauri build`, as DDR-190 anticipated.
+  const kgDest = join(RES_DIR, 'kgai', `kg-${triple}${exe}`);
   const libDest = join(RES_DIR, 'kgai', `libkuzu.${asset.libExt}`);
 
   console.log(
@@ -214,6 +232,13 @@ async function main() {
   await download(`${relBase}/${asset.kg}`, kgDest, kgSize);
   await download(`${relBase}/${asset.lib}`, libDest, libSize);
   if (!exe) chmodSync(kgDest, 0o755);
+  // Host-native build: also publish the plain `kg` the resolver looks for. A
+  // cross-arch staging run (MAUDE_SIDECAR_SLUG set for a universal build) skips
+  // this — CI lipos the per-triple files into `kg` itself.
+  if (!process.env.MAUDE_KG_NO_ALIAS) {
+    copyFileSync(kgDest, join(RES_DIR, 'kgai', `kg${exe}`));
+    if (!exe) chmodSync(join(RES_DIR, 'kgai', `kg${exe}`), 0o755);
+  }
 
   console.log(`[sync-kg] plugin tree → ${join(RES_DIR, 'plugins', 'kgai')}`);
   await fetchPluginTree(join(RES_DIR, 'plugins', 'kgai'));
