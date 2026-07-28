@@ -10,6 +10,18 @@ _Last closed:_ `cloud-phase-4-selfhost-skill` (2026-07-28, core complete).
 Phases 1, 2 and 3 closed the same day. Decisions: DDR-192, DDR-193 (arc
 umbrellas), DDR-194 (phase-2), DDR-195 (phase-3); DDR-148 corrected in place.
 
+### Phases 5-10 — what is built vs what is blocked
+
+Everything below is written and tested; what is blocked is DEPLOYING it.
+
+| Phase | Built (tested) | Blocked on |
+| --- | --- | --- |
+| **5** cell | `infra/cell/` image + entrypoint (containment assert, tenant-id guard, refuse-empty-rehydrate), `cli/lib/cell-plan.mjs` (naming, R2-prefix isolation, teardown order, lifecycle machine), containment CI gate extended to the image | persistence spike, `maude cell up` API layer, alligators pilot — need Workers Paid + R2 |
+| **6** invites | `apps/hub/src/invites.mjs` + `/join` mint/peek/redeem/revoke, admin surface, 23 tests incl. 8 end-to-end | `maude://` deep link + desktop UI; the timed cold-start gate needs a real human |
+| **7** control plane | `apps/cloud/reconcile.mjs` — the derive-don't-react reconciler, 19 tests incl. 20 chaos cycles | the Worker itself (D1/Queues/dashboard) — D1 is reachable, Queues needs Workers Paid |
+| **8** billing | `apps/cloud/pricing.{json,mjs}` + real Stripe sandbox catalog, 11 tests | live-mode prices, Checkout + portal + test clocks against a control plane |
+| **9-10** | — | need live cells |
+
 **Phase 8 groundwork landed early** because Stripe is the one vendor that IS
 usable: the `maude.sh sandbox` account is authenticated and test mode needs no
 paid plan. The Phase-0 §3 catalog exists as real sandbox objects and
