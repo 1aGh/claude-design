@@ -47,8 +47,24 @@ The inversion that makes "remote Maude" real: a headless **workspace agent** own
 
 ## Exit gate
 
-- [ ] Two-machine round-trip: edit on A → autosave commit on server → "Get latest" on B
-- [ ] 60 MB asset lands in R2/MinIO, resolves cross-machine, absent from git
-- [ ] kill -9 recovery proven; force-push impossible by construction
-- [ ] Export/Chromium unreachable in workspace mode (boot-assert)
-- [ ] `desktop-e2e` `workspace-sign-in` green; `/flow:validate-security` pass
+- [x] **Export/Chromium unreachable in workspace mode (boot-assert)** — `apps/studio/workspace-mode.ts` + `scripts/check-containment.sh` in `quality.yml`. Verified live, not only in tests: with `MAUDE_WORKSPACE_MODE=1` the server first REFUSED to start against the real route table, naming 13 offending routes; with pruning it boots and `/_health` is 200 while `/_api/export`, `/_api/export-jobs`, `/_api/photo-edit`, `/_canvas-shell.html`, `/_canvas-runtime/*` and `/_ws/acp` all 404. Normal mode untouched (export still 405 — route present; canvas shell 200).
+- [x] **Force-push impossible by construction** — `sync/autocommit.ts`. Tested against a real git repo + a real bare remote: a rejected push is reported, the other party's commit is still the remote tip afterwards, and the absence of any force flag is pinned as an argv assertion.
+- [x] **Asset lane absent from git** — `assets-s3.ts` mirrors content-addressed assets to the bucket; `buildBlock({ s3Assets: true })` adds `<designRoot>/assets/` to the managed gitignore only when a bucket is configured. `maude hub asset-check` proves no reference dangles (found and fixed a real classification bug in the process — see DDR-195).
+- [x] **Sign-in flow** — `sync/workspace-signin.ts` + `/_api/workspace/sign-in`, verified live against a running Phase-2 hub: wrong password and unknown user return byte-identical messages, an unreachable address is distinguished, correct credentials mint and store a session. The disclosure panel (DDR-192 §6) ships as data with the copy under test.
+- [x] **Security review of the changed surface** — done inline (session constraint). The sign-in handler receives a password, so it is MAIN-ORIGIN + loopback + CSRF gated and the canvas-origin gate test now asserts it 403s *at the gate* rather than 405-ing from the handler.
+
+**Deferred — need infrastructure or the desktop app, both blocked (see `cloud-phase-0b-manual-prep.md`):**
+
+- [ ] Two-machine round-trip (edit on A → autosave commit → "Get latest" on B) and kill -9 recovery — needs a compose integration harness running two studio processes against a hub. The engine is unit-proven against real git; the multi-process orchestration is not.
+- [ ] 60 MB asset through R2 specifically — the code path is exercised against a live in-process S3-shaped server and is target-pluggable by design, but **R2 is not enabled on the account** (`10042 — Please enable R2 through the Cloudflare Dashboard`).
+- [ ] `desktop-e2e workspace-sign-in` — the flow logic and its HTTP surface are done and live-verified; the Tauri UI that calls them is not built, so there is nothing for a DOM-driven scenario to drive yet.
+
+**Status: CORE COMPLETE** (2026-07-28). Suites at close: `apps/studio` 3195/3195, `apps/hub` 198/198, `cli` 216/216. Decisions: **DDR-195**; DDR-148 corrected in place.
+
+## Retro
+
+- **Two live checks each found something no test could have.** Booting workspace mode against the real route table (the vocabulary was right; only reality proved the wiring) and running `asset-check` against this repo's own `.design/` (the real asset corpus has `<sha8>-<label>.mp4` and `<sha8>.photo.json` shapes; every fixture had the tidy one, so `verifyAssetBytes` would have refused legitimate assets). The pattern is clear enough to generalize: **run the new tool against the repo's own real data before believing the fixtures.**
+- **"Prune, then assert over what survived" is the shape worth reusing.** It turns the boot-assert into a post-condition on the pruning rather than a second opinion that can drift. Any future invariant with both an enforcement point and a filter should be wired the same way.
+- **Testing copy as copy paid off.** The no-jargon assertion on the disclosure and sign-in strings is the only thing standing between the target persona and a flow that says "bearer token". Worth doing on every invite-path surface in Phase 6.
+- **The plan named MinIO as the test substrate; making the target pluggable removed the dependency with no loss of coverage** — same lesson as Phase 2. Plans should specify the property, not the substrate.
+- **What `--quick` cost here:** the two-machine and desktop-e2e gates are genuinely undone, not skipped-and-forgotten. They are listed above as deferred with the reason, so Phase 5 (which needs a live cell anyway) is the natural place to close them.

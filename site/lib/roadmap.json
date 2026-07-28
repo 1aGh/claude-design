@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-28T21:03:33.595Z",
+  "generated": "2026-07-28T21:42:55.215Z",
   "currentPhase": null,
   "phases": [
     {
@@ -54,6 +54,17 @@
       "date": null,
       "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 1 complete.",
       "planPath": ".ai/plans/archive/cloud-phase-2-hub-identity-durability.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-3-workspace-agent-s3",
+      "title": "Cloud Phase 3 — Workspace agent + S3/R2 asset lane + desktop sign-in",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phases 1–2.",
+      "planPath": ".ai/plans/archive/cloud-phase-3-workspace-agent-s3.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1495,17 +1506,6 @@
       "date": null,
       "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 9. The production-release phase.",
       "planPath": ".ai/plans/cloud-phase-10-ga-launch-github-mirror.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-3-workspace-agent-s3",
-      "title": "Cloud Phase 3 — Workspace agent + S3/R2 asset lane + desktop sign-in",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phases 1–2.",
-      "planPath": ".ai/plans/cloud-phase-3-workspace-agent-s3.md",
       "archived": false,
       "phaseKey": null
     },

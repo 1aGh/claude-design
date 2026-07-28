@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-195: A cell is the same server minus routes — plus content-addressed assets and an append-only autosave history](DDR-195-workspace-cell-enforcement-assets-and-autosave-history.md) — 2026-07-28, cloud/workspace/containment/assets/s3/r2/git/autosave/history/sync/security/onboarding/vocabulary
 - [DDR-194: Hub identity + durability — scrypt over the token spine, explicit proxy trust, and a restore drill that can fail](DDR-194-hub-identity-and-durability-choices.md) — 2026-07-28, cloud/hub/security/auth/passwords/rate-limiting/proxy/backup/durability/sqlite/s3/r2/dependencies
 - [DDR-193: Maude Cloud — one cell per project on Cloudflare, and the containment invariant](DDR-193-maude-cloud-tenant-cells-and-containment-invariant.md) — 2026-07-28, cloud/tenancy/cloudflare/containers/workers/r2/security/containment/gdpr/trust/pricing/lifecycle/umbrella
 - [DDR-192: Remote workspace server architecture — the server owns the checkout, and the desktop stays the only editing surface](DDR-192-remote-workspace-server-architecture.md) — 2026-07-28, cloud/architecture/sync/workspace-agent/hub/collaboration/trust-model/acp/s3/umbrella

@@ -4,11 +4,18 @@
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
 **Status:** in progress — Maude Cloud arc
-**Active plan:** `.ai/plans/cloud-phase-3-workspace-agent-s3.md` (next)
+**Active plan:** `.ai/plans/cloud-phase-4-selfhost-skill.md` (next)
 
-_Last closed:_ `cloud-phase-2-hub-identity-durability` (2026-07-28) — archived at
-`.ai/plans/archive/`. `cloud-phase-1-safety-gates` closed the same day.
-Decisions: DDR-192, DDR-193 (arc umbrellas), DDR-194 (phase-2 choices).
+_Last closed:_ `cloud-phase-3-workspace-agent-s3` (2026-07-28, core complete).
+Phases 1 and 2 closed the same day. Decisions: DDR-192, DDR-193 (arc umbrellas),
+DDR-194 (phase-2), DDR-195 (phase-3); DDR-148 corrected in place.
+
+**Phases 5-10 are BLOCKED on vendor prerequisites an agent cannot satisfy** —
+re-probed live 2026-07-28: Cloudflare account is Free (0 subscriptions),
+Containers refuses ("requires the Workers Paid plan"), R2 refuses ("enable R2
+through the Dashboard"), 0 zones on the account. Needs a paid plan, R2
+enablement, and `cloud.maude.sh` on Cloudflare DNS. See
+`.ai/plans/cloud-phase-0b-manual-prep.md`. Phase 4 is local and executable.
 
 Carried forward into later phases:
 - Hub doc namespacing is **opt-in** until Phase 3 makes it default-on in workspace mode.
