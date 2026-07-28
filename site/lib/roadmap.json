@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-28T19:24:52.367Z",
+  "generated": "2026-07-28T19:30:28.736Z",
   "currentPhase": null,
   "phases": [
     {
@@ -472,6 +472,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan is grounded in three research passes (CSS-panel map, Photo-panel map, pro-to...",
       "planPath": ".ai/plans/archive/feature-inspector-controls-redesign.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-kgai-ecosystem-integration",
+      "title": "Feature: kgai as the Maude ecosystem memory layer (cross-repo, opt-out)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan spans flow + design plugins + cli + config schema + templates + docs — it is...",
+      "planPath": ".ai/plans/archive/feature-kgai-ecosystem-integration.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1594,17 +1605,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, frontmatter, and closing-prompt conventions.",
       "planPath": ".ai/plans/feature-goal-unattended-pipelines.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-kgai-ecosystem-integration",
-      "title": "Feature: kgai as the Maude ecosystem memory layer (cross-repo, opt-out)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan spans flow + design plugins + cli + config schema + templates + docs — it is...",
-      "planPath": ".ai/plans/feature-kgai-ecosystem-integration.md",
       "archived": false,
       "phaseKey": null
     },

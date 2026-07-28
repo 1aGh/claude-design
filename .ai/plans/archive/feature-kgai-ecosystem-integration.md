@@ -497,4 +497,25 @@ kgai registers exactly two hooks: **SessionStart** (`install.sh` — installs en
 1. **Phase 8 release-gating criterion** — autonomous capture proven in the *shipped* `.app`: needs `tauri build` + codesign/notarize, `check-bundle-completeness.mjs <built .app> --smoke`, and the desktop-e2e. All code + the gate are in place; none of it has run against a real bundle.
 2. **`/flow:validate-security` on the shared-graph writer surface** — required by the plan before any *multi-user* rollout. Not yet applicable (store is local-only, no company remote), but it gates that step.
 
-Plan deliberately NOT archived while (1) stands.
+**Closed 2026-07-28 (owner's call).** The implementation is complete; the two items above are
+*verification steps that need the owner*, not unfinished work, and are carried forward as follow-ups
+rather than holding the plan open:
+
+- `follow-up:kgai-desktop-verification` — build + notarize the `.app`, run
+  `check-bundle-completeness.mjs --smoke`, run the desktop-e2e that proves autonomous capture in the
+  shipped shell. All code and the gate exist; none has run against a real bundle.
+- `follow-up:kgai-shared-graph-security-review` — `/flow:validate-security` on the shared-graph writer
+  surface, required by DDR-189 before any multi-user rollout (not yet applicable: local-only store).
+
+### Final state
+
+`.ai/` after the switch: `plans/`, `scenarios/`, `docs/`, `context/`, `dev-logs/`, a 1.1 KB pointer-stub
+`STATE.md`, `workflows.config.json` — plus `archive/` holding the 191 decisions, 126 logs, the 930 KB
+pre-migration STATE, and the repo's own templates. **Graph: 537 decisions** (190 DDR + 122 log verdicts +
+216 STATE milestones + 9 narrative docs), full bodies, log versioned in git, handover verified by a fresh
+clone → `kg rebuild`.
+
+Later additions beyond the original 8 phases, all driven by dogfooding: full-body ingest (the graph no
+longer depends on the `.md`), `--only` incremental refresh, `--archive`, prose-stated supersede detection
+(13 → 33 edges), STATE/logs/docs ingestion, and gating the classic file-writers so a kgai repo genuinely
+stops writing STATE/HANDOFF instead of writing both.

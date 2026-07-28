@@ -3,8 +3,12 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** in-progress
-**Active plan:** `.ai/plans/feature-kgai-ecosystem-integration.md` (code-complete; 2 criteria blocked on the owner)
+**Status:** ready
+**Active plan:** —
+
+_Last closed:_ `feature-kgai-ecosystem-integration` (2026-07-28) — archived at
+`.ai/plans/archive/`. Two follow-ups need the owner, both queryable:
+`maude kg query "MATCH (f:Element {kind:'follow-up'}) RETURN f.name, f.props"`.
 
 ## Where it went
 
