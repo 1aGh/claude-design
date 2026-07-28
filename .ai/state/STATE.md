@@ -2,6 +2,15 @@
 
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
+## Execution Progress — feature-kgai-ecosystem-integration — **/flow:done CLOSE-OUT (2026-07-28): code-complete, 2 owner-blocked criteria, plan NOT archived.**
+
+Gates: lint ✓ · format ✓ · build ✓ · parity ✓ · tarball ✓ · tokens ✓. Tests: cli 208/216 — the 8 hub-token failures are the known better-sqlite3 NODE_MODULE_VERSION ABI issue (reproduced with these changes stashed, so pre-existing); dev-server 3097/3103 with 1 photo-edit flake that passes 10/10 in isolation. Two real failures were caught by the gates and fixed: a `noAssignInExpressions` lint error and an unregistered `/flow:migrate-kgai` in `site/lib/command-catalog.mjs`. `dist/` was clobbered by the bun run and restored (the documented hazard).
+
+**Graph: 526 decisions** — 190 DDR + 120 log verdicts + 215 STATE.md events + the closing decision. STATE.md's 88 Execution-Progress blocks + 127 History rows are now dated `milestone:` nodes linked `PROGRESS_ON` → `plan:`. `.ai/` fully classified (A/B/D table now in the `flow:kgai-migrate` skill) and `maude kg import --archive` added so the cleanup is repeatable, not manual. `.ai/templates/PROJECT.md` removed (0 references; STATE/HANDOFF templates are live and stay).
+
+**BLOCKED on the owner (not code):** (1) Phase-8 release-gating criterion — autonomous capture proven in a real signed `.app` (needs `tauri build` + notarize + `check-bundle-completeness --smoke` + desktop-e2e); (2) `/flow:validate-security` on the shared-graph writer surface, required before any multi-user rollout (not yet applicable — store is local-only). Retro + full status in the plan.
+
+
 ## Execution Progress — feature-kgai-ecosystem-integration — **DOGFOOD MIGRATION CLOSED (2026-07-28).** maude is kgai-active; 310 decisions in the graph.
 
 Turned the graph on for this repo and migrated its own history. `kg` installed at `~/.local/kgai/{bin,lib}` (rpath layout ⇒ no env var needed), `knowledgeGraph` block in `workflows.config.json` (mode auto, scope `repo:maude`/`dept:dev`, local-only store).
