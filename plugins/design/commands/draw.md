@@ -1,5 +1,5 @@
 ---
-name: design:draw
+name: draw
 category: daily
 description: Draw a production-grade SVG (logo / icon / illustration / diagram / spot) via a deterministic geometry engine — no LLM-guessed path data. Plan → generate N candidates → render via the draw-proof ladder (16/24/48/256 × light/dark/flatten) → pairwise-rank → keep-best → rubric critique → iterate (cap 3–4). Output either as an asset .svg or inline into the active canvas. Default: runs draw-critic after draw-agent. Opt out via --no-critic.
 argument-hint: "\"<brief>\" [--type icon|logo|illustration|diagram|spot] [--grid 0|1|4|8] [--asset [<path>] | --inline [--into <canvas>]] [--reference <url|path>] [--perfect [N]] [--no-critic]"

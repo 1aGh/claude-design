@@ -1,5 +1,5 @@
 ---
-name: flow:skill-loader
+name: skill-loader
 type: skill
 description: 'Resolve expertise gaps for a tech stack by mapping each library/framework to the best available Claude skill — prefer existing built-in skills (auto-loaded plugins) or matching agents, otherwise fetch via the `terminal-skills` MCP. Use when starting work on an unfamiliar library (yjs, drizzle, hono, tRPC, Convex, Effect, etc.), when /flow:init runs, when package.json contains a tech with no matching loaded skill, when a /plan or /execute references a library you have no documented expertise on, or when the user explicitly asks for skills/expertise on a specific technology.'
 keywords: [skills, terminal-skills, tech-stack, library, framework, expertise, auto-load, mcp, yjs, dependency, onboarding]

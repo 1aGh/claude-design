@@ -1,5 +1,5 @@
 ---
-name: flow:validate-security
+name: validate-security
 category: validate
 type: command
 description: Security review — spawns security-auditor + ethical-hacker subagents, aggregates report, gates on severityFloor
@@ -58,13 +58,13 @@ Per `flow:debate-protocol`, the debate NEVER prompts the user and NEVER hand-rol
 Unless the adversarial debate above handled this run, **spawn `security-auditor` and `ethical-hacker` in parallel.** Use a single message with two Task tool calls so they run concurrently. Both consume the same diff scope.
 
 ```
-Task tool → subagent_type: security-auditor
+Task tool → subagent_type: flow:security-auditor
 prompt: "Audit the diff against `security-rules` §A.
          Diff base: <BASE>. Severity floor: <floor>.
          Write report to .ai/logs/security-reviews/<branch>-<ts>-defender.md.
          Return JSON output block."
 
-Task tool → subagent_type: ethical-hacker
+Task tool → subagent_type: flow:ethical-hacker
 prompt: "Adversarial threat model for the diff.
          Diff base: <BASE>. Severity floor: <floor>. includeAi: <bool>.
          Defender report (if present): <path>.

@@ -1,5 +1,5 @@
 ---
-name: flow:plan
+name: plan
 category: daily
 type: command
 description: "Create a context-rich feature implementation plan grounded in the project PRD and design system"

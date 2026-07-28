@@ -1,5 +1,5 @@
 ---
-name: flow:setup-context
+name: setup-context
 category: setup
 type: command
 description: Prime agent with codebase understanding for the current project

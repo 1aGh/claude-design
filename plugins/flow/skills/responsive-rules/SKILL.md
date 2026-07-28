@@ -1,5 +1,5 @@
 ---
-name: flow:responsive-rules
+name: responsive-rules
 description: Responsive layout hard-stops — mobile-first, fluid typography, container queries, breakpoint tokens, no horizontal overflow, density-per-platform. Reads `platforms` + `responsive` from `.ai/workflows.config.json`. Use when designing/reviewing layouts that span multiple form factors. Triggers on grid/flex/layout work, breakpoint decisions, typography sizing.
 user-invocable: false
 ---

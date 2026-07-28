@@ -1260,13 +1260,13 @@ The seven critic agents are grouped into Pastier's three brand-quality rounds (F
 
 | Round (Pastier) | Critic | Subagent type | What it catches |
 |---|---|---|---|
-| **Round 1 — Clarity** | `design-system-completeness-critic` | `design:design:design-system-completeness-critic` | Structural completeness — required files, token coverage, manifest fields |
-| **Round 1 — Clarity** | `a11y-auditor` | `flow:flow:a11y-auditor` | WCAG 2.1 AA — contrast, focus, semantic HTML, keyboard reach |
-| **Round 2 — Appeal** | `signature-moment-critic` | `design:design:signature-moment-critic` | Brand prominence, hero moments, mock fidelity, specificity — the "is this portfolio-worthy?" axis |
-| **Round 2 — Appeal** | `graphic-design-critic` | `design:design:graphic-design-critic` | Composition, hierarchy, balance, density, rhythm, white-space discipline |
-| **Round 3 — Consistency** | `typography-critic` | `design:design:typography-critic` | **Always run during bootstrap.** Type decisions (font choice, scale, mono pairing) are always non-trivial enough to warrant a sanity pass. Cost: one parallel sub-agent. Opt-out only via `--no-typography-critic`. (Was conditional pre-studio-2-retro — BAD-5 caught the trigger condition was too fuzzy.) |
-| **Round 3 — Consistency** | `brand-critic` | `design:design:brand-critic` | Logo placement / mark integrity / asset ladder / voice-asset alignment |
-| **Round 3 — Consistency** | `copy-critic` | `design:design:copy-critic` | **Always run during bootstrap.** Voice + claim-vs-content drift slip past completeness-critic by definition. Sub-agent peer-reference cross-contamination (e.g. "publish lineup" leaking from studio's sports-stack) is caught here. |
+| **Round 1 — Clarity** | `design-system-completeness-critic` | `design:design-system-completeness-critic` | Structural completeness — required files, token coverage, manifest fields |
+| **Round 1 — Clarity** | `a11y-auditor` | `flow:a11y-auditor` | WCAG 2.1 AA — contrast, focus, semantic HTML, keyboard reach |
+| **Round 2 — Appeal** | `signature-moment-critic` | `design:signature-moment-critic` | Brand prominence, hero moments, mock fidelity, specificity — the "is this portfolio-worthy?" axis |
+| **Round 2 — Appeal** | `graphic-design-critic` | `design:graphic-design-critic` | Composition, hierarchy, balance, density, rhythm, white-space discipline |
+| **Round 3 — Consistency** | `typography-critic` | `design:typography-critic` | **Always run during bootstrap.** Type decisions (font choice, scale, mono pairing) are always non-trivial enough to warrant a sanity pass. Cost: one parallel sub-agent. Opt-out only via `--no-typography-critic`. (Was conditional pre-studio-2-retro — BAD-5 caught the trigger condition was too fuzzy.) |
+| **Round 3 — Consistency** | `brand-critic` | `design:brand-critic` | Logo placement / mark integrity / asset ladder / voice-asset alignment |
+| **Round 3 — Consistency** | `copy-critic` | `design:copy-critic` | **Always run during bootstrap.** Voice + claim-vs-content drift slip past completeness-critic by definition. Sub-agent peer-reference cross-contamination (e.g. "publish lineup" leaking from studio's sports-stack) is caught here. |
 
 **Surface their verdicts in the next-step block.** Use this threshold matrix:
 

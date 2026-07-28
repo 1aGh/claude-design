@@ -1,5 +1,5 @@
 ---
-name: flow:quality-gates
+name: quality-gates
 category: shared
 description: How flow commands read project quality gates from `.ai/workflows.config.json` → `quality`. Use when wiring or running a quality gate (lint, format, typecheck, tests, build), when a command needs the `config.quality` read pattern, or when a `lint script` / `tests script` / `format script` must run. Data-shape reference, NOT a runner.
 user-invocable: false

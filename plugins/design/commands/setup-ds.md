@@ -1,5 +1,5 @@
 ---
-name: design:setup-ds
+name: setup-ds
 category: setup
 description: Create a new design system (first one, an additional one alongside an existing DS, or re-bootstrap an existing one with --force). Thin wrapper that loads skill `design-system` in bootstrap mode with the given target. Auto-invokes /design:init first if .design/config.json is missing.
 argument-hint: "<name> [\"<brief>\"] [--force] [--quick]"

@@ -1,5 +1,5 @@
 ---
-name: design:new
+name: new
 category: daily
 description: Create a new multi-artboard canvas project via frontend-design — generic envelope adapted to .design/config.json. Default = --perfect (8 iter, full panel, target 4.5/5). Opt out via --quick or --no-critic. Opt out of the DS via --opt-out=palette|aesthetic|full.
 argument-hint: "<Name> \"<brief>\" [--blank] [--from-annotations] [--fresh] [--component] [--mobile] [--quick | --no-critic] [--perfect-iter N] [--opt-out=palette|aesthetic|full] [--ds=<name>]"

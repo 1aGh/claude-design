@@ -1,5 +1,5 @@
 ---
-name: design:to-lottie
+name: to-lottie
 category: daily
 description: Productionize a maude animation → ONE `.lottie` FROM CODE for web and mobile (1:1 lottie-web/dotlottie-react + lottie-react-native). Emitter from keyframe data, NOT a converter of rendered SVG. Self-verify via headless lottie-web.
 argument-hint: "\"<animated mark | IR handle | canvas>\" [--out <path>] [--web] [--verify]"

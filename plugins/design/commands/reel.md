@@ -1,5 +1,5 @@
 ---
-name: design:reel
+name: reel
 category: daily
 description: From a folder of raw clips (or the clips on the active canvas) to a directed, graphics-laden video cut — in one prompt. Ingests + content-addresses the footage, runs the SHARED analysis step (same as `/design:video-analyze`: scene-aware keyframes via skill footage-keyframes → optional transcribe → the Read-only footage-analyst watches + returns JSON → orchestrator persists it), has the footage-director assemble an Edit Decision List, generates a Timeline-parseable `<TransitionSeries>` video-comp, and runs the motion + design critics. Wraps `maude design ingest-footage`/`smart-frames`/`transcribe` + the footage-analyst/footage-director agents + skills footage-keyframes/footage-director.
 argument-hint: "<Name> [<folder-path>] \"<brief>\" [--from-canvas] [--target-seconds N] [--fps N] [--aspect 16:9|9:16|1:1] [--frames N] [--music assets/<sha8>.mp3] [--generate-gaps] [--no-propose] [--no-critic]"

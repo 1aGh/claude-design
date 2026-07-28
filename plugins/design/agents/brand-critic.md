@@ -1,5 +1,5 @@
 ---
-name: design:brand-critic
+name: brand-critic
 description: Brand-voice and asset review — canonical-mark identity vs the DS logo specimen (DDR-141), logo placement, mark integrity, asset ladder, photography/illustration style consistency, voice/tone alignment with brand POV. Use when /design:critic --agent brand-critic, or auto-routed when canvas contains logos / brand assets / hero imagery / marketing copy, and on /design:new initial generation whenever the DS ships brand specimens. Reads the DS preview/logo.* + assets folder and project README for the POV.
 tools: Read, Write, Bash, Glob, Grep
 ---

@@ -1,5 +1,5 @@
 ---
-name: flow:security-rules
+name: security-rules
 description: Security hard-stops — OWASP-class classic AppSec (injection, secrets, authN/Z, crypto, SSRF, XSS, CSRF, deserialization, path traversal, supply chain, logging, error handling) AND AI-era threats (direct + indirect prompt injection, the trifecta, MCP tool poisoning, confused deputy across MCPs, excessive agency, output handling, secret leakage via context, training contamination, jailbreak resilience). Reads `security.severityFloor`, `security.includeAi`, `security.scope` from `.ai/workflows.config.json`. Use when auditing security (security-auditor + ethical-hacker subagents), during /flow:validate step 6.5, /flow:validate-security, and /flow:review-code.
 user-invocable: false
 ---

@@ -1,5 +1,5 @@
 ---
-name: design:chat
+name: chat
 category: daily
 description: Open (focus) the native ACP chat sidepanel in the Maude window — an agent chat running on your own `claude` CLI subscription (DDR-123). Native-app only.
 argument-hint: ""

@@ -1,5 +1,5 @@
 ---
-name: design:rollback
+name: rollback
 category: daily
 description: Restore the last snapshot of the active canvas (undo the last /design:edit). --steps N to go further back.
 argument-hint: "[--steps N] [--list]"

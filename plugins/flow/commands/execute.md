@@ -1,5 +1,5 @@
 ---
-name: flow:execute
+name: execute
 category: daily
 type: command
 description: Execute an implementation plan

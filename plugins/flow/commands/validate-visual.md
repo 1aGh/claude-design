@@ -1,5 +1,5 @@
 ---
-name: flow:validate-visual
+name: validate-visual
 category: validate
 type: command
 description: Visual regression check with screenshots

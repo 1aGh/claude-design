@@ -1,5 +1,5 @@
 ---
-name: flow:kgai-migrate
+name: kgai-migrate
 type: skill
 description: "The migration contract for importing an existing file-based decision store (.ai/decisions/DDR-*.md) into the kgai knowledge graph. Use when running /flow:migrate-kgai or `maude kg import`. Owns the element/edge reconstruction rules, the typed-cross-ref-first ordering, scope tagging (model A), idempotency, and archive preservation. The importer itself is cli/lib/ddr-to-kgai.mjs."
 keywords: [kgai, migrate, import, ddr, decisions, cross-ref, scope, idempotent, archive]

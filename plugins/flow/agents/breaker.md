@@ -1,5 +1,5 @@
 ---
-name: flow:breaker
+name: breaker
 description: Dissent/adversarial debate seat. Invoked ONLY by the flow:debate-protocol skill / a bookend orchestrator to argue the strongest reason a direction is wrong — across the maintenance horizon, not just at merge. Also the default occupant of the rotating dissent role. Not for general use; never auto-delegated.
 tools: Read, Grep, Glob, Bash
 ---

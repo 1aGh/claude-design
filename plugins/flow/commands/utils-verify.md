@@ -1,5 +1,5 @@
 ---
-name: flow:utils-verify
+name: utils-verify
 category: utils
 type: command
 description: "Light verification of touched files during /flow:execute — type/lint/affected tests + agent-browser/agent-device smoke for UI changes"

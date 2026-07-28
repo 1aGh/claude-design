@@ -1,5 +1,5 @@
 ---
-name: flow:test-coverage
+name: test-coverage
 description: Use after /execute or before /done to audit test coverage of the changed code. Identifies untested logic paths, missing edge cases, and risky areas. Suggests tests to add — does not write them unless asked.
 tools: Read, Bash, Grep
 ---

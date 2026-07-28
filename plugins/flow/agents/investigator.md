@@ -1,5 +1,5 @@
 ---
-name: flow:investigator
+name: investigator
 description: Research debate seat. Invoked ONLY by the flow:debate-protocol skill / a research orchestrator (bug-rca, ux-research) to hold ONE candidate cause/claim and produce the evidence that confirms or kills it. Not for general use; never auto-delegated.
 tools: Read, Grep, Glob, Bash
 ---

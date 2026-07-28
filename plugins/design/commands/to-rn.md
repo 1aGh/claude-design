@@ -1,5 +1,5 @@
 ---
-name: design:to-rn
+name: to-rn
 category: daily
 description: FALLBACK — generate a native react-native-svg + Reanimated component from the IR for LIGHT/occasional animation. For rich/continuous morph use `/design:to-lottie` (rn-svg has a perf ceiling, `feTurbulence` has no native impl).
 argument-hint: "\"<animated mark | IR handle | canvas>\" [--out <Component.tsx>]"

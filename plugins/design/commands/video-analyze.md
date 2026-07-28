@@ -1,5 +1,5 @@
 ---
-name: design:video-analyze
+name: video-analyze
 category: daily
 description: Analyze ONE video clip (or a folder / the active canvas's clips) end to end — picture AND sound — in one command. Extracts scene-aware keyframes (skill footage-keyframes / `maude design smart-frames`: scene cuts + action beats + endpoints, not a blind frame rate), transcribes the audio (`maude design transcribe`, whisper local / cloud), then the footage-analyst watches the smart frames with the transcript folded in and writes a FootageAnalysis sidecar (shots, on-screen text, mood, tags, summary, best moment, AND a speech section) plus a human "what is this about" report. Analysis-only — distinct from /design:reel, which goes further and assembles a cut. Wraps `maude design smart-frames` + `maude design transcribe` + the footage-analyst agent + skill footage-keyframes.
 argument-hint: "<clip|folder> [--from-canvas] [--engine auto|gemma|ffmpeg|blind] [--frames N] [--no-audio] [--out <path>]"

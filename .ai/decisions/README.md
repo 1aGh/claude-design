@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-191: Revert the `<plugin>:` prefix baked into plugin `name:` frontmatter — Claude Code now namespaces it itself](DDR-191-revert-plugin-name-prefix-claude-code-now-namespaces.md) — 2026-07-28, flow/design/plugin-design/slash-commands/naming/regression/upstream-drift
 - [DDR-190: Bundling a third-party native engine (kgai `kg` + Kuzu) into the signed desktop app — pinned build-time fetch](DDR-190-kgai-native-bundling-in-the-signed-desktop-app.md) — 2026-07-23, kgai/desktop/tauri/sidecar/bundling/supply-chain/codesign/notarization/provenance/licensing/ddr-126/ddr-177/ddr-189
 - [DDR-189: kgai cross-repo shared-graph trust model — shared store is an attacker-controlled writer surface](DDR-189-kgai-cross-repo-shared-graph-trust-model.md) — 2026-07-23, kgai/knowledge-graph/security/trust-boundary/cross-repo/s3/ddr-054/ddr-130/untrusted-data/trifecta
 - [DDR-188: Convert children to absolute position — reversing a documented non-goal, one batch write, plain-children-only](DDR-188-convert-children-to-absolute-position.md) — 2026-07-18, canvas-edit/convert-to-absolute/ast-write/layout/undo/figma-parity/ddr-054
@@ -119,7 +120,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-009: Bun runtime authoritative for `plugins/design/dev-server/` (no Node fallback)](DDR-009-bun-runtime-authoritative-for-dev-server.md) — 2026-05-15, design/dev-server/runtime/bun/distribution/perf/lock-in/npm/ci/phase-3.4
 - [DDR-008: `plugins/design/dev-server/bin/` is the canonical home for shared bash helpers](DDR-008-dev-server-bin-canonical-helper-home.md) — 2026-05-15, design/dev-server/bash/helpers/dry/ci/npm-distribution
 - [DDR-007: Stable element-id schema — paired `data-dc-screen` + `data-dc-element` attributes on canvas content](DDR-007-stable-element-id-schema-data-dc-attrs.md) — 2026-05-15, design/runtime/inspector/screenshots/critics/comments/schema
-- [DDR-006: Plugin commands/skills/agents declare `name: <plugin>:<slug>` in frontmatter](DDR-006-plugin-namespace-in-name-frontmatter.md) — 2026-05-13, flow/design/plugin-design/slash-commands/naming/deprecation
+- [DDR-006: Plugin commands/skills/agents declare `name: <plugin>:<slug>` in frontmatter](DDR-006-plugin-namespace-in-name-frontmatter.md) — 2026-05-13, flow/design/plugin-design/slash-commands/naming/deprecation — **superseded by DDR-191**
 - [DDR-005: Docs site stack and hosting — Fumadocs + Vercel](DDR-005-docs-site-stack-and-hosting.md) — 2026-05-13, infra/docs/fumadocs/vercel
 - [DDR-004: Flow commands use `<group>-<verb>` prefix; subdirectory namespacing is not viable](DDR-004-flow-command-naming-prefix-convention.md) — 2026-05-13, flow/naming/plugin-design/slash-commands/ux/deprecation
 - [DDR-003: `/flow:release` walks a user-authored runbook instead of dispatching on provider](DDR-003-release-runbook-vs-provider-dispatch.md) — 2026-05-12, flow/release/changelog/design-pattern

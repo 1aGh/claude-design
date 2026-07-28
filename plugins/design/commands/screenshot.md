@@ -1,5 +1,5 @@
 ---
-name: design:screenshot
+name: screenshot
 category: daily
 description: Capture a screenshot of the active canvas — full, a single screen, an element, or every screen in a loop. Wrapper over `maude design screenshot` (agent-browser primary, playwright fallback).
 argument-hint: "[--screen|--element <id> | --selector <css> | --full | --all-screens] [--area <n>]"

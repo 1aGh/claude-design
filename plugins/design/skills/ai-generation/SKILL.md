@@ -1,5 +1,5 @@
 ---
-name: design:ai-generation
+name: ai-generation
 description: Generate net-new media (image v1; audio + video in later phases) from the user's OWN AI provider key (BYOK — Google/Nano Banana for image, ElevenLabs for audio, Veo for video) and land it on the canvas. Auto-load whenever the request asks to generate/make/create an AI image, photo, hero, background, illustration-as-photo, or (later) music/voice/clip/subtitles — "generate a hero image of X", "make an AI photo of…", "vygeneruj obrázek/pozadí…", or when a canvas/reel has a visible media GAP the user asks to fill. Owns the provider capability map, prompt conventions, the assets-only localization rule, the server-side key custody guarantee, and the licensing/consent caveats. Distinct from `draw` (vector marks via the geometry engine — this is provider-generated raster/audio/video).
 ---
 

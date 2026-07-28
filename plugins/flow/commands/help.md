@@ -1,5 +1,5 @@
 ---
-name: flow:help
+name: help
 category: daily
 description: List all flow commands grouped by category.
 ---
@@ -14,7 +14,7 @@ Print every `/flow:*` command grouped by its `category:` frontmatter field. Use 
 
 Walk `plugins/flow/commands/*.md`. For each file, parse its YAML frontmatter and collect `name`, `category`, and `description`.
 
-- The `name:` field is the fully-qualified slash name (e.g. `flow:resume`), so render it directly with a leading `/`.
+- The `name:` field is the bare command slug (e.g. `resume`) — Claude Code adds the `flow:` plugin namespace at registration time. Render it as `/flow:<name>`.
 - If a file has no `category`, list it under `(uncategorized)` at the bottom so the gap is visible.
 
 ### 2. Group + order
@@ -42,7 +42,7 @@ For each group, print:
 
 | Command          | Description                          |
 | ---------------- | ------------------------------------ |
-| /<name>          | <description>                        |
+| /flow:<name>     | <description>                        |
 ```
 
 ### 4. Pointer

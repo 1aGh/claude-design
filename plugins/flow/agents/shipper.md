@@ -1,5 +1,5 @@
 ---
-name: flow:shipper
+name: shipper
 description: Divergent debate seat. Invoked ONLY by the flow:debate-protocol skill / a bookend orchestrator (plan, setup-prd, setup-ds) to argue what survives scope, effort, and the existing system. Not for general use; never auto-delegated.
 tools: Read, Grep, Glob, Bash
 ---

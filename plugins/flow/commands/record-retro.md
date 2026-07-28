@@ -1,5 +1,5 @@
 ---
-name: flow:record-retro
+name: record-retro
 category: record
 type: command
 description: Analyze implementation against plan for process improvements

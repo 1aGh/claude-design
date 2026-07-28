@@ -1,7 +1,7 @@
 # DDR-006: Plugin commands/skills/agents declare `name: <plugin>:<slug>` in frontmatter; `init` is the lone bare-verb exception
 
 - **Date:** 2026-05-13
-- **Status:** Accepted
+- **Status:** **Superseded by [DDR-191](./DDR-191-revert-plugin-name-prefix-claude-code-now-namespaces.md)** (2026-07-28) — the upstream Claude Code bug this DDR worked around was fixed (2.1.216), and baking the prefix into `name:` now doubles it (`/design:design:new`). Kept for history; do not follow the "Decision" section below.
 - **Tags:** flow, design, plugin-design, slash-commands, naming, deprecation
 - **Related:** [DDR-004](./DDR-004-flow-command-naming-prefix-convention.md), `plugins/flow/CATEGORIES.md`, `plugins/design/CATEGORIES.md`, `plugins/{flow,design}/commands/help.md`, `CLAUDE.md` (§ Flow command naming, § Design system bootstrap), Claude Code [issue #22063](https://github.com/anthropics/claude-code/issues/22063), [issue #43695](https://github.com/anthropics/claude-code/issues/43695)
 

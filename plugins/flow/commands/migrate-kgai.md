@@ -1,5 +1,5 @@
 ---
-name: flow:migrate-kgai
+name: migrate-kgai
 category: setup
 description: Migrate this repo's .ai/decisions/ into the kgai knowledge graph (one-time, idempotent, archive-preserving)
 argument-hint: "[--dry-run]"

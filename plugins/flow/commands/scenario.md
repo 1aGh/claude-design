@@ -1,5 +1,5 @@
 ---
-name: flow:scenario
+name: scenario
 category: daily
 type: command
 description: "Run a cross-platform UI scenario (5 platforms: web-desktop, web-mobile, ios-phone, ios-tablet, android-phone) — screenshot proof + markdown report"

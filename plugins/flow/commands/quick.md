@@ -1,5 +1,5 @@
 ---
-name: flow:quick
+name: quick
 category: daily
 type: command
 description: Fast-path for trivial changes — skip the full plan cycle, go straight to edit → verify → commit

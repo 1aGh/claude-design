@@ -1,5 +1,5 @@
 ---
-name: design:whiteboard
+name: whiteboard
 description: The FigJam-style whiteboard AI read/write surface (feature-whiteboard-ai-toolkit) — understand a user's sketch with ARTBOARD + ELEMENT context, and author stickies/shapes/connectors/whole tidy TEMPLATES (retro, kanban, social-media calendar, roadmap, brainstorm, checklist, user-flow/flowchart) back onto the board. Auto-load whenever the request mentions a whiteboard, sticky note, annotation, brief board, retro/retrospective, kanban, roadmap, brainstorm, checklist, user flow, flowchart, or "pin a note on <element>". Owns `maude design canvas-rects`/`read-annotations`/`annotate` and the trust model for reading peer-authored board content.
 ---
 

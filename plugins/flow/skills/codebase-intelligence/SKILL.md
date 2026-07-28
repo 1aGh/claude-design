@@ -1,5 +1,5 @@
 ---
-name: flow:codebase-intelligence
+name: codebase-intelligence
 type: skill
 description: "Produce and maintain structured codebase context snapshots. Use when an agent needs to understand a codebase quickly or when existing context is stale."
 keywords:

@@ -1,5 +1,5 @@
 ---
-name: flow:release
+name: release
 type: command
 category: daily
 description: Walk the project's release runbook step by step with explicit confirmation per command.

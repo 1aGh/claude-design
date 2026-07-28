@@ -1,5 +1,5 @@
 ---
-name: design:init
+name: init
 category: setup
 description: One-time project-level environment init for the design plugin. Detects missing dependencies (node ≥ 20, git, agent-browser, maude), prints install hints for soft deps, offers to run /init for CLAUDE.md and /flow:init for .ai/, and writes a skeleton .design/config.json. Does NOT create a design system — use /design:setup-ds <name> for that. Mirrors /flow:init.
 argument-hint: "[--skip-prompts]"

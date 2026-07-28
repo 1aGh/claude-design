@@ -1,5 +1,5 @@
 ---
-name: design:video-comp
+name: video-comp
 description: Author a video-comp canvas — a real Remotion composition mounted in the embedded Player for scrub/preview, exported to MP4/GIF through Maude's own capture spine (no renderer binaries). Auto-load when the brief or feedback mentions video, animation, klip/clip, motion graphics, titles, transitions, or hudba/music, or when authoring/editing a `<VideoComp>` artboard. Owns the Remotion iron rules + Maude's runtime/asset/export conventions (DDR-148).
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: flow:debate-protocol
+name: debate-protocol
 type: skill
 description: "Run a bookend debate among stake-seats and hand the human one decision. Use when a flow/design command convenes a divergent (plan/setup-prd/setup-ds), adversarial (validate-security/critic), or research (bug-rca/ux-research) debate. Owns the capability ladder (native agent-team relay vs read-only reduce-pass), the stakes-gate + blind-opening + short-circuit cost model, rotating dissent, retrieval-grounding, and the one-AskUserQuestion invariant. Reads orchestration.* from .ai/workflows.config.json. See DDR-130."
 keywords: [debate, bookend, orchestration, agent-teams, reduce, relay, stakes-gate, short-circuit, dissent, diverge, adversarial, research, seats, stake, voice]

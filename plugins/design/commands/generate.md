@@ -1,5 +1,5 @@
 ---
-name: design:generate
+name: generate
 category: daily
 description: Generate media with your own AI provider key (BYOK — Google/Nano Banana image; ElevenLabs audio + Veo video in later phases) and land it on the canvas. Image v1. The key is resolved server-side; this verb never handles it. Default output = splice the produced content-addressed asset into the active canvas.
 argument-hint: "\"<prompt>\" [--source assets/<sha8>.<ext>] [--provider gemini] [--model <id>] [--aspect 1:1|16:9|9:16|…] [--asset | --inline [--into <canvas>]]"

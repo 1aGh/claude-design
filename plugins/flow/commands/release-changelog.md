@@ -1,5 +1,5 @@
 ---
-name: flow:release-changelog
+name: release-changelog
 type: command
 category: release
 description: Author a changelog entry using the project's configured changelog provider.

@@ -1,5 +1,5 @@
 ---
-name: flow:bug-fix
+name: bug-fix
 category: bug
 type: command
 description: Implement fix from RCA document for a ticket

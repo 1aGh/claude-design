@@ -1,5 +1,5 @@
 ---
-name: flow:validate
+name: validate
 category: daily
 type: command
 description: "Full validation pipeline — static + tests + build + cross-platform scenario (5 platforms) + a11y + design consistency"

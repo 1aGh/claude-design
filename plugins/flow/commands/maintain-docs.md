@@ -1,5 +1,5 @@
 ---
-name: flow:maintain-docs
+name: maintain-docs
 category: maintain
 type: command
 description: Documentation freshness check — scan for stale references across all docs and content

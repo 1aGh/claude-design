@@ -1,5 +1,5 @@
 ---
-name: flow:validate-a11y
+name: validate-a11y
 category: validate
 type: command
 description: Run accessibility audit on project components

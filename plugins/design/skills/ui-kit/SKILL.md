@@ -1,5 +1,5 @@
 ---
-name: design:ui-kit
+name: ui-kit
 description: Reference UI prototypes and shared components for the project's surfaces (desktop / mobile / tablet). Auto-load when designing or implementing any UI for this repo. Content lives in the project's design root (default `.design/ui/`) — this skill is a pointer.
 ---
 

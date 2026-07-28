@@ -1,5 +1,5 @@
 ---
-name: flow:kgai-backend
+name: kgai-backend
 type: skill
 description: "The single resolver + contract for the kgai knowledge-graph memory backend. Use when any flow/design command needs to read prior decisions (`kg context`), record a decision (`kg ingest`), or sync the shared graph (`kg sync`). Reads `knowledgeGraph.*` from .ai/workflows.config.json, detects the `kg` CLI + store, resolves {active, mode, store, scope}, and owns the canonical read/write/sync recipes + the element/link vocabulary glossary + the untrusted-data guard. Capability-gated + opt-out, mirroring orchestration.mode:auto (DDR-130). No command re-detects capability — every command loads THIS skill."
 keywords: [kgai, kg, knowledge-graph, memory, decisions, ingest, context, sync, scope, cross-repo, backend, resolver, capability-gate, opt-out]

@@ -1,5 +1,5 @@
 ---
-name: flow:agent-device
+name: agent-device
 description: Native mobile/desktop automation CLI for AI agents. Use when interacting with a native iOS app (Expo/RN) in the simulator, opening native apps, taking accessibility snapshots, tapping by ref or selector, scrolling, typing, capturing screenshots/recordings/traces, reading network/perf evidence, profiling React Native via react-devtools, reloading Metro, sending push notifications. Triggers include "open the app on simulator", "tap on the upload button", "snapshot the home screen", "test the mobile flow", "check RN render perf", "reload Metro", "screenshot the app", "deep link into the app", "verify navigation". Use this for native mobile apps — agent-browser does not work for native iOS/Android apps.
 allowed-tools: Bash(agent-device:*), Bash(npx agent-device:*), Bash(xcrun simctl:*)
 hidden: true

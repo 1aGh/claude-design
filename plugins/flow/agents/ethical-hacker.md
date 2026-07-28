@@ -1,5 +1,5 @@
 ---
-name: flow:ethical-hacker
+name: ethical-hacker
 description: Use proactively for adversarial security review of any change — feature work, refactor, new dependency, new MCP server, prompt/tool changes. Runs alongside `security-auditor` during /flow:validate step 6.5, /flow:validate-security, /flow:review-code. Threat-models the change, hunts chained exploits, and **mandatorily** covers AI/MCP attack surface — prompt injection in tool outputs, MCP tool poisoning, confused-deputy across MCP servers, the trifecta. Persona is adversarial, not checklist. Reports findings; never executes exploits or edits code.
 tools: Read, Bash, Grep, Glob, WebSearch
 ---

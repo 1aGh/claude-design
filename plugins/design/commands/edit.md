@@ -1,5 +1,5 @@
 ---
-name: design:edit
+name: edit
 category: daily
 description: Iterate on the active canvas — Claude reads the file you have open in the browser and applies feedback IN PLACE. Default: after the edit, auto-runs the critic panel; add --perfect [N] for N auto-fix iterations, or --no-critic to skip. --opt-out=<scope> overrides the scope from the sidecar for this iteration.
 argument-hint: "\"<feedback>\" [--screenshot <path>] [--perfect [N]] [--no-critic] [--no-propose] [--opt-out=palette|aesthetic|full]"

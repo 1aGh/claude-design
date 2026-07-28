@@ -1,5 +1,5 @@
 ---
-name: flow:bug-rca
+name: bug-rca
 category: bug
 type: command
 description: Analyze and document root cause for a ticket

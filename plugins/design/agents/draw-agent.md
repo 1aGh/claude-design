@@ -1,5 +1,5 @@
 ---
-name: design:draw-agent
+name: draw-agent
 description: Principle-grounded SVG generator + visual self-verify loop. Draws logos, icons, illustrations, diagrams, and decorative spot art — ONLY through the deterministic geometry engine (never free-hand `<path>` coordinates) — then renders, pairwise-ranks N candidates, keeps the best, critiques against the 30-check rubric, and iterates to convergence (hard cap 3–4 rounds). Spawned by `/design:draw`, and auto-routed by `/design:new` + `/design:edit` when a canvas needs genuine custom vector art. Emits the standard JSON verdict the orchestrator's loop reads.
 tools: Read, Write, Bash, Glob, Grep
 ---

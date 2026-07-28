@@ -1,5 +1,5 @@
 ---
-name: flow:question-protocol
+name: question-protocol
 type: skill
 description: "Centralize user interaction in multi-agent workflows. Use when multiple agents or skills need user input — batches questions into a single coherent interaction instead of fragmented interruptions."
 keywords: [question, ask, clarify, batch, multi-agent, protocol, interaction]

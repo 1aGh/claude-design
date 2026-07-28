@@ -1,5 +1,5 @@
 ---
-name: flow:setup-prd
+name: setup-prd
 category: setup
 type: command
 description: "Create a PRD, then auto-generate phase plans and an execution README"

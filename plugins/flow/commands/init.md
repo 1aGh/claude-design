@@ -1,5 +1,5 @@
 ---
-name: flow:init
+name: init
 category: setup
 type: command
 description: Scaffold the .ai/ workspace, auto-detect project stack, populate workflows.config.json, and ensure CLAUDE.md exists (via /init).

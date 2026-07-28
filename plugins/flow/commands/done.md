@@ -1,5 +1,5 @@
 ---
-name: flow:done
+name: done
 category: daily
 description: Close out a feature — /validate gate (incl. cross-platform scenario) → DDR sweep → commit → push → PR → retro → archive. `--quick` trims the gate to affected-scope checks only.
 argument-hint: "[--quick] [path to plan]"

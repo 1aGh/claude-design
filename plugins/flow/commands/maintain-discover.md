@@ -1,5 +1,5 @@
 ---
-name: flow:maintain-discover
+name: maintain-discover
 category: maintain
 type: command
 description: Search AI capabilities by natural-language task description

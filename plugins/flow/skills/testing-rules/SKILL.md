@@ -1,5 +1,5 @@
 ---
-name: flow:testing-rules
+name: testing-rules
 description: Test quality hard-stops — TDD iron law, no any types, no unlinked .skip, no unjustified snapshots, colocation, one-concept-per-test, no mocking of integration boundaries declared in config. Reads `boundaries.*` from `.ai/workflows.config.json`. Use when writing or reviewing test files, evaluating coverage gaps (test-coverage subagent), or auditing testing discipline before /flow:done.
 user-invocable: false
 ---

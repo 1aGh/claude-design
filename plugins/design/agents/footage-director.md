@@ -1,5 +1,5 @@
 ---
-name: design:footage-director
+name: footage-director
 description: The "reziser" — reads EVERY per-clip FootageAnalysis sidecar plus the brief and assembles an Edit Decision List (EDL): an ordered beat list that tells a story, free to pull multiple shots from one clip, assigning a bundled transition + optional graphic overlay per beat and an optional music bed. Emits `<slug>.edl.json`. Spawned by `/design:reel` after all `footage-analyst` runs complete. Never edits a canvas and never generates the comp TSX (that's the `/design:reel` codegen step per skill `footage-director`); it only decides the cut. Vision-derived, visual-rhythm only (no audio-driven timing).
 tools: Read, Write, Bash, Glob, Grep
 ---

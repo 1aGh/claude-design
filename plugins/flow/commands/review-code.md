@@ -1,5 +1,5 @@
 ---
-name: flow:review-code
+name: review-code
 category: review
 type: command
 description: Pre-commit self-review of uncommitted changes

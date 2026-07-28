@@ -1,5 +1,5 @@
 ---
-name: flow:make-skill-template
+name: make-skill-template
 type: skill
 description: 'Scaffold a new AI skill with proper directory structure, SKILL.md frontmatter, and supporting files. Use when creating a new self-contained capability package for the AI system.'
 keywords: [scaffold, template, skill, create, new, generator]

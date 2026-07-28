@@ -1,5 +1,5 @@
 ---
-name: design:export
+name: export
 category: daily
 description: Export the active canvas — PNG / PDF / SVG / HTML / PPTX / MP4 / GIF / WebM / Canva handoff bundle / project ZIP. Thin slash wrapper over `POST /_api/export` (same engine as the ⌘E UI dialog).
 argument-hint: "<png|pdf|svg|html|pptx|mp4|gif|webm|canva|zip> [--scope selection|artboard|canvas-as-separate|project-raw] [--out <path>] [--option key=value]"

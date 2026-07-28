@@ -1,5 +1,5 @@
 ---
-name: flow:builder
+name: builder
 description: Divergent debate seat. Invoked ONLY by the flow:debate-protocol skill / a bookend orchestrator (plan, setup-prd, setup-ds) to argue the most ambitious viable approach for a decision. Not for general use; never auto-delegated.
 tools: Read, Grep, Glob, Bash
 ---

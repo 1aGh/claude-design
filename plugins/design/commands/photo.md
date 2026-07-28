@@ -1,5 +1,5 @@
 ---
-name: design:photo
+name: photo
 category: daily
 description: Edit a photo in the active canvas headlessly — parametric adjustments (brightness/contrast/saturation/exposure/hue/sepia/grayscale/invert), duotone, grain, pattern overlays, preset masks, and magic background removal — via the non-destructive PhotoEdit sidecar. Every edit is scriptable (no slider-clicking): parametric edits go straight to the /_api/photo-edit route; background removal runs client-side ML through a headless harness.
 argument-hint: "--asset <assets/<sha8>.<ext> | <sha8>> [--remove-bg] [--brightness N] [--contrast N] [--saturation N] [--exposure N] [--hue N] [--sepia N] [--grayscale N] [--invert N] [--duotone \"#aabbcc,#ddeeff[,intensity]\"] [--grain \"amt[,size]\"] [--pattern \"type[,scale,opacity,blend]\"] [--mask \"preset[,strength]\"] [--replace|--reset]"

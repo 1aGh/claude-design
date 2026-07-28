@@ -1,5 +1,5 @@
 ---
-name: flow:user-advocate
+name: user-advocate
 description: Debate seat for the end-user's stake. Invoked ONLY by the flow:debate-protocol skill / a bookend orchestrator (setup-prd, setup-ds, ux-research) to argue who is served, confused, or excluded by a decision. Not for general use; never auto-delegated.
 tools: Read, Grep, Glob, Bash
 ---

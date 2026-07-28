@@ -1,5 +1,5 @@
 ---
-name: flow:resume
+name: resume
 category: daily
 type: command
 description: Resume a previously paused workflow from HANDOFF.md and STATE.md

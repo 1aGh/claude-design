@@ -1,5 +1,5 @@
 ---
-name: design:footage-director
+name: footage-director
 description: The footage → cut director layer (feature-footage-analysis-director). Owns (1) the EDL vocabulary + reziser rubric the `footage-director` agent applies, and (2) the EDL → `<TransitionSeries>` video-comp CODEGEN contract that `/design:reel` uses to turn a decided cut into a Timeline-parseable Remotion composition. Auto-load when authoring or editing a footage-driven reel/cut, when consuming an `<slug>.edl.json`, or when the request is "sestřihej ta videa"/"make a reel from these clips". Defers to skill `video-comp` for the Remotion iron rules; this skill is the FOOTAGE-specific layer on top.
 ---
 

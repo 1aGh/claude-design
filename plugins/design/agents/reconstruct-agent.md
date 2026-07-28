@@ -1,5 +1,5 @@
 ---
-name: design:reconstruct-agent
+name: reconstruct-agent
 description: Vision-reconstruction authoring agent for `/design:import --reconstruct` (DDR-174, T15). Reads an untrusted source image (a Figma-frame PNG export) and hand-authors a token-styled DCArtboard `.tsx` + `.meta.json` at a path the orchestrator computes up front. Spawned ONLY by `/design:import`'s orchestrating command — never by the user directly, never as a critic-panel member. Deliberately Bash/WebSearch/WebFetch-free (DDR-174 Decision 1) — the untrusted image's content never reaches a tool call that leaves this machine's filesystem.
 tools: Read, Write, Glob, Grep
 permissionMode: default

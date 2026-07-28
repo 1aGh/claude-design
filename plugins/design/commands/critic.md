@@ -1,5 +1,5 @@
 ---
-name: design:critic
+name: critic
 category: daily
 description: Spawn critic panel (or single agent / all critics) on the active canvas — design + a11y + up to 9 specialists (graphic, brand, typography, motion, copy, frontend, info-architecture, signature-moment, draw). Default = orchestrator routes panel based on canvas content + feedback. Honors opt_out_scope from canvas .meta.json or --opt-out= flag. Use --system-only to audit the design system itself (structural completeness) instead of the active canvas.
 argument-hint: "[--agent <name>] [--all] [--panel] [--system-only [--ds=<name>] [--all-ds]] [--opt-out=palette|aesthetic|full]"
@@ -41,7 +41,7 @@ If `_active.json.selected` is set, also capture element-scoped (`--selector "<se
 If `--system-only` is present, **skip canvas-screenshot logic and skip the panel-routing logic**. Spawn only `design-system-completeness-critic`:
 
 ```
-subagent_type: design-system-completeness-critic
+subagent_type: design:design-system-completeness-critic
 prompt: structured payload (config_path, ds_name, ds_root, output_path, all_ds)
 ```
 
@@ -76,7 +76,7 @@ fi
 **One message with N `Agent` tool calls** (parallel execution). Each call:
 
 ```
-subagent_type: "<critic-name>"
+subagent_type: "design:<critic-name>"
 description: "Critique active canvas <slug>"
 prompt: structured payload (canvas_path, screenshot_path, feedback, selected, config, output_path, iter_n)
 ```

@@ -1,5 +1,5 @@
 ---
-name: design:browse
+name: browse
 category: daily
 description: Launch the local design browser — file tree of every canvas + tabbed iframe preview on a free port
 argument-hint: "[--port <n>]"

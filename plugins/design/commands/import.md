@@ -1,5 +1,5 @@
 ---
-name: design:import
+name: import
 category: daily
 description: Bring an existing design into Maude. `--reconstruct <image>` (T15, experimental) turns a Figma-frame PNG export into a real, token-styled canvas via a Bash-free vision-authoring + reality-check loop (DDR-174). Token files and brand material have their own dedicated entry points — see Notes below.
 argument-hint: "--reconstruct <image-path> [--name \"<title>\"] [--into <canvas-path>] [--rounds N]"

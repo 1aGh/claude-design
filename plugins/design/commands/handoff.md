@@ -1,5 +1,5 @@
 ---
-name: design:handoff
+name: handoff
 category: daily
 description: Emit a shadcn `registry-item.json` sidecar for the active canvas (production-ready drop for Next.js / Vite / Bun)
 argument-hint: "[--canvas <path>] [--force]"

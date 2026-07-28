@@ -1,5 +1,5 @@
 ---
-name: design:board
+name: board
 category: daily
 description: Read the whiteboard with element-aware context, and/or author a whole tidy TEMPLATE (retro, kanban, social-media calendar, roadmap, brainstorm, checklist, user-flow) onto it. Wraps `maude design canvas-rects`/`read-annotations`/`annotate` (skill `whiteboard`) — the FigJam-style two-way surface, distinct from the one-shot `/design:edit` component-editing loop.
 argument-hint: "[\"<feedback or template request>\"] [--near <artboardId>] [--in <artboardId>] [--pin <cdId|selector>] [--dry-run]"

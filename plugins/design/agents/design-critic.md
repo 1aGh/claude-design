@@ -1,5 +1,5 @@
 ---
-name: design:design-critic
+name: design-critic
 description: Holistic UX + design-system review. The default critic. Use when /design:critic is invoked without --agent, or when /design:edit and /design:new auto-run a critic after generation/edit. Reads the active canvas, latest screenshot, and project tokens, then performs a 7-layer UX walk + design-system compliance check inline (no nested subagents) and writes one merged report. Always emits a final JSON verdict block consumed by the auto-fix loop.
 tools: Read, Write, Bash, Glob, Grep
 ---
