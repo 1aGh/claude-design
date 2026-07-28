@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-28T15:34:26.688Z",
+  "generated": "2026-07-28T18:28:43.198Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1499,13 +1499,13 @@
       "phaseKey": null
     },
     {
-      "id": "cloud-phase-5-fly-cell-alligators-pilot",
-      "title": "Cloud Phase 5 — Fly tenant cell + alligators pilot (tenant-of-one, no money)",
+      "id": "cloud-phase-5-container-cell-alligators-pilot",
+      "title": "Cloud Phase 5 — Cloudflare Container cell + alligators pilot (tenant-of-one, no money)",
       "status": "planned",
       "shipTarget": null,
       "date": null,
       "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phases 1–4. First phase that touches vendor-operated infrastructure.",
-      "planPath": ".ai/plans/cloud-phase-5-fly-cell-alligators-pilot.md",
+      "planPath": ".ai/plans/cloud-phase-5-container-cell-alligators-pilot.md",
       "archived": false,
       "phaseKey": null
     },
@@ -1521,13 +1521,13 @@
       "phaseKey": null
     },
     {
-      "id": "cloud-phase-7-control-plane-vercel",
-      "title": "Cloud Phase 7 — Control plane on Vercel (accounts, projects, invites, provisioner, reconciler)",
+      "id": "cloud-phase-7-control-plane-workers",
+      "title": "Cloud Phase 7 — Control plane on Cloudflare Workers (accounts, projects, invites, provisioner, reconciler)",
       "status": "planned",
       "shipTarget": null,
       "date": null,
       "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phases 5–6. Billing still manual (no Stripe yet).",
-      "planPath": ".ai/plans/cloud-phase-7-control-plane-vercel.md",
+      "planPath": ".ai/plans/cloud-phase-7-control-plane-workers.md",
       "archived": false,
       "phaseKey": null
     },

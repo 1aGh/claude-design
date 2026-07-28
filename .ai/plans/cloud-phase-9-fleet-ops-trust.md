@@ -30,12 +30,12 @@ Operating N cells as a fleet: version pinning, canary-first staged rollout, one-
 
 ### Task 2: ADD fleet health board + cost telemetry
 
-- **Do**: `apps/cloud` operator view: per-cell state (machine status, last backup, last restore-drill, disk %, version), Fly cost roll-up vs Phase-0 model, budget alarms. Weekly automated restore drill across a sample of cells lands in CI/cron with visible status.
+- **Do**: `apps/cloud` operator view: per-cell state (container status, last replication checkpoint, last restore-drill, R2 usage, version), Cloudflare cost roll-up (GraphQL analytics: Active-CPU + R2 + DO) vs Phase-0 model, budget alarms. Weekly automated restore drill across a sample of cells lands in CI/cron with visible status.
 - **Validate**: board reflects a manufactured failure (stopped machine, stale backup) within one reconcile cycle.
 
 ### Task 3: FINISH public trust surface
 
-- **Do**: maude.sh Trust page: DPA (processor terms), subprocessor list (Vercel, Fly, Cloudflare R2, Stripe, e-mail provider), breach process (72 h), data residency (EU), hard-delete SLA, break-glass policy + the customer-visible audit log (Phase 6) documented. The DDR-054 disclosure appears **inside signup**, not buried. Legal review by a human before publish.
+- **Do**: maude.sh Trust page: DPA (processor terms), subprocessor list (Cloudflare, Stripe, e-mail provider; Vercel while the docs site remains there), breach process (72 h), data residency (EU), hard-delete SLA, break-glass policy + the customer-visible audit log (Phase 6) documented. The DDR-054 disclosure appears **inside signup**, not buried. Legal review by a human before publish.
 - **Validate**: site builds; every claim on the Trust page maps to an implemented mechanism (checklist audit — no aspirational claims).
 
 ## Exit gate

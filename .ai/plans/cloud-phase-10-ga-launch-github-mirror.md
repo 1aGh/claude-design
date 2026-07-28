@@ -31,12 +31,12 @@ Open self-serve signup (cap lifted), ship the optional GitHub mirror via a custo
 
 ### Task 2: OPEN self-serve GA
 
-- **Do**: remove the tenant cap; production Stripe live; onboarding e-mail sequence; status page (Fly + Vercel status composition or simple self-hosted); support inbox + runbook linkage.
+- **Do**: remove the tenant cap; production Stripe live; onboarding e-mail sequence; status page (Cloudflare status composition or simple self-hosted probe); support inbox + runbook linkage.
 - **Validate**: **stranger test** — someone outside the project completes signup → pay → create → invite → mirror → export with zero human help; recorded.
 
 ### Task 3: LAUNCH content + docs
 
-- **Do**: maude.sh launch page + cloud docs section complete (what's stored where, region, export, disclosure); migration guides **both directions** (self-host → cloud, cloud → self-host — the export bundle is the bridge); changelog + What's New entry (`whats-new-entry` skill); roadmap regen.
+- **Do**: maude.sh launch page + cloud docs section complete (what's stored where, region, export, disclosure); migration guides **both directions** (self-host → cloud, cloud → self-host — the export bundle is the bridge); changelog + What's New entry (`whats-new-entry` skill); roadmap regen. **Optional (one-infra completion, not a gate):** migrate the Fumadocs site Vercel → Workers (via `@opennextjs/cloudflare`) — do it only if it doesn't delay launch; drops the last non-Cloudflare subprocessor.
 - **Validate**: site builds; docs links checked; `/flow:done` closes the arc with the full validate gate.
 
 ## Exit gate (= production release)
