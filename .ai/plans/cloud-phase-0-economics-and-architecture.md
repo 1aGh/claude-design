@@ -68,6 +68,7 @@ Buyer signs up on maude.sh (Workers + D1 + Stripe), creates a **project** → th
 
 | File | Delivers | Exit gate |
 | --- | --- | --- |
+| `cloud-phase-0b-manual-prep.md` | **Human-only prep**: accounts (Cloudflare/Stripe/Resend/GitHub App), tokens, `wrangler`, MCP wiring, legal paperwork, pilot backup | its own readiness checklist — Phases 1–4 need only Steps 0 + 7 |
 | `cloud-phase-1-safety-gates.md` | Umbrella DDRs, DDR-122 origin-gate fix, hub repo/branch namespace | DDRs recorded; origin-gate test green; namespace tests green |
 | `cloud-phase-2-hub-identity-durability.md` | Hub user model + login + expiring per-user tokens, trusted proxy, backup + restore drill | login/expiry/revoke tests; restore drill passes |
 | `cloud-phase-3-workspace-agent-s3.md` | Server-owned checkout autosave agent, S3/R2 asset lane, desktop sign-in | two-client autosave round-trip; 60 MB asset via R2; kill -9 recovery |
