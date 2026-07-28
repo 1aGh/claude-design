@@ -32,7 +32,20 @@ function withDataDir(fn) {
 test('hub help prints subcommand summary on stdout', () => {
   const res = runCli(['hub', 'help']);
   assert.equal(res.status, 0, res.stderr);
-  assert.match(res.stdout, /maude hub <serve\|token\|status\|deploy>/);
+  // Every verb must appear in the usage header — a subcommand that exists but
+  // isn't listed is one nobody finds.
+  assert.match(res.stdout, /maude hub <[a-z|-]+> \[options\]/);
+  for (const verb of [
+    'serve',
+    'token',
+    'status',
+    'deploy',
+    'backup',
+    'restore-drill',
+    'asset-check',
+  ]) {
+    assert.ok(res.stdout.includes(verb), `usage must mention "${verb}"`);
+  }
   assert.match(res.stdout, /token generate --label NAME/);
   assert.match(res.stdout, /token rotate --label NAME/);
   assert.match(res.stdout, /deploy <fly\|docker>/);

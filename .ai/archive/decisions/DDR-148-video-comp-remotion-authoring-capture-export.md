@@ -66,6 +66,8 @@ The DDR-094 lesson is inherited: **freeze-frames lie.** The motion-critic's live
 - **The asset route lives in TWO allowlists** (DDR-088) — video widening touches the caps, not the allowlist membership; the `GET → 405` canvas-origin-gate assertion stays.
 - **`maxRequestBodySize` interplay** — DDR-088 set it to 16 MB on both `Bun.serve` instances. Video uploads (default 100 MB cap) need a higher ceiling; raised **only** as far as the video route needs, with the streamed-write path avoiding a full in-memory buffer. This is a DoS-surface change — enumerated in the threat table.
 - **`.design/assets/` is VERSIONED** — video files ride git + hub sync. v1 ships a size-warning toast on >20 MB drops; a hub-sync policy for large media is a tracked follow-up (Open questions).
+
+  > **Correction (2026-07-28, Cloud Phase 3 Task 2).** "+ hub sync" described an intent this line never made true: the Y.Doc lane carries text, and a binary asset never crossed to a second machine through it. In practice media rode git alone — which is also why a 60 MB clip is 60 MB in every clone, forever. The S3/R2 asset lane (`apps/studio/assets-s3.ts` + the hub's authenticated `/assets/<sha8>` proxy) is what makes cross-machine media actually work, and heavy media stops entering git at all. `.design/assets/` stays versioned for projects with no bucket configured — the lane is additive, not a replacement. See DDR-192 §1 (S3 binary lane, additive to DDR-110).
 - **Whatever is committed is what ships** (the v0.22.0 motion lesson) — Remotion bundles are committed; floors guard regen drift.
 - **Player peer-deps must resolve to the SAME bundled React** (the importmap handles it — verified: no duplicate React → no Invalid-Hook-Call).
 

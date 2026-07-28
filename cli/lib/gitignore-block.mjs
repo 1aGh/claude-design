@@ -20,7 +20,7 @@ export const END_MARKER = '# maude:end';
  * The runtime paths Maude ignores under the design root, relative to repo root.
  * `designRel` defaults to `.design` (the only design root in v1.1 defaults).
  */
-export function buildBlock(designRel = '.design') {
+export function buildBlock(designRel = '.design', { s3Assets = false } = {}) {
   const root = designRel.replace(/\/+$/, '');
   // The canonical IGNORED set is the DDR-115 runtime-state taxonomy — kept in
   // lockstep with `apps/studio/git/service.ts` (isMaudeRuntimeState backstop)
@@ -51,6 +51,17 @@ export function buildBlock(designRel = '.design') {
     `${root}/_chat/`, // ACP transcripts (per-machine)
     `${root}/_untrusted/`, // hub-synced untrusted file mirror (DDR-054)
     `${root}/_comments/`, // hub-sync-only collab comments (DDR-102/DDR-115 — never git)
+    // Cloud Phase 3 Task 2 — when an S3/R2 asset lane is configured, binary
+    // media lives in the bucket and must STOP entering git: a 60 MB clip is
+    // 60 MB in every clone forever, and delta compression does nothing for it.
+    // Off by default, because without a bucket the only copy of an asset is the
+    // one in the repo and ignoring it would delete people's media on the next
+    // clean checkout.
+    ...(s3Assets
+      ? [
+          `${root}/assets/`, // binary media lives in the S3/R2 bucket (DDR-192 §1)
+        ]
+      : []),
     // kgai knowledge-graph projection (repo-root, NOT under the design root) —
     // per-machine append-only store, rebuilds from the remote on `kg sync`
     // (feature-kgai-ecosystem-integration, DDR-115). kgai itself also ignores it.
