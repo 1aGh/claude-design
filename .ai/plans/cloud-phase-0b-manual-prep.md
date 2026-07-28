@@ -6,6 +6,28 @@ Rule of thumb: agents get **scoped API tokens, never account passwords**, and ev
 
 ---
 
+## Live access audit — 2026-07-28 (probed, not assumed)
+
+MCP plugins installed + OAuth-authorized: **cloudflare** (api / bindings / builds / observability / docs), **stripe**, **vercel**. `gh` CLI signed in (two accounts). What the probes actually returned:
+
+| Surface | State | Verdict |
+| --- | --- | --- |
+| Cloudflare account | `M.dovrtel@gmail.com's Account` (`b5b596efe65abb732777c7171dc18145`), type `standard`, **0 subscriptions** | ⚠️ **Free plan** |
+| Cloudflare Containers | `GET /containers/applications` → **1000 Unauthorized: "requires the Workers Paid plan"** | 🔴 **BLOCKER for Phase 5** |
+| R2 | `GET /r2/buckets` → **10042 "Please enable R2 through the Cloudflare Dashboard"** | 🔴 **BLOCKER for Phase 3/5** (dashboard-only, ToS/billing acceptance) |
+| workers.dev subdomain | **10007 — never created** (auto-creates on first Workers & Pages dashboard visit) | 🟡 one click |
+| D1 / Queues | reachable, 0 items | ✅ agent can create |
+| Cloudflare zones | **none** — no domain on this account at all | 🔴 see DNS below |
+| DNS `maude.sh` | NS = `ns1/ns2.vercel-dns.com`, registrar **Name.com** | 🟡 `cloud.maude.sh` must be delegated to Cloudflare (registrar or Vercel DNS change) |
+| Stripe | connected as **`maude.sh sandbox`** (`acct_1TyGz4BU24eXpQyl`) | 🟡 sandbox — fine for Phase 8 dev, a **real verified live account is still required** before charging |
+| Vercel | team **Slant** (`team_W9DettDnXJtrWvpz3GPFQP3P`), project `maude` owns `maude.sh` | ✅ full read/write |
+| GitHub | `gh` OK; **active account = `iagh66`**, but `1aGh` is the one with repo permissions (memory `reference_maude_pr_merge_mechanics`) | 🟡 `gh auth switch --user 1aGh` before any PR/merge |
+| Side finding | Vercel project `maude` latest deployment `readyState: ERROR`, `live: false` | 🟡 unrelated to this arc — worth a look |
+
+**Honest answer to "will you still need me?": yes, for six things** — every one is a payment authorization, a ToS acceptance, a legal identity, or a human test subject. Nothing else. They are listed as Steps 1a/1b/1c, 3, 4 and 7 below. After those, Phases 1–10 run agent-driven through MCP.
+
+---
+
 ## Step 0 — Local tooling (5 min, do now)
 
 Verified on this machine 2026-07-28: `node` v24.13.0 ✅, `bun` 1.3.3 ✅, `pnpm` 11.0.4 ✅, `gh` 2.93.0 ✅, `claude` 2.1.220 ✅. Missing:
@@ -22,68 +44,42 @@ Not needed unless the Fly fallback is taken: `flyctl`.
 
 ---
 
-## Step 1 — Cloudflare account (Phases 5, 7 — the big one)
+## Step 1 — Cloudflare: the three dashboard clicks only you can make (blocks Phase 5)
 
-1. **Sign up / sign in** at <https://dash.cloudflare.com> with the account that should *own the business* (use `michal@…` you'll keep long-term, ideally a shared/ops address, not a personal alias — you cannot easily transfer ownership later).
-2. **Enable Workers Paid ($5/mo)** — Workers → Plans. Required for: Durable Objects, Containers, Queues, and D1 beyond free limits.
-3. **Add the domain** `maude.sh` to Cloudflare (Websites → Add a site) **or**, if you want to keep the apex DNS where it is, delegate just the subdomain: create a zone for `cloud.maude.sh` and point `NS` records at Cloudflare from your current DNS. The arc only needs `*.cloud.maude.sh`.
-   - Keep the apex `maude.sh` (docs site on Vercel) untouched until the optional Phase-10 migration.
-4. **Create an R2 bucket** — R2 → Create bucket → name `maude-cloud` (or `maude-tenants`), location hint **EU**. Note: R2 has zero egress fees; leave lifecycle rules OFF (the `assets/` prefix must never expire — Phase 3 relies on it).
-5. **Create an R2 API token** — R2 → Manage API tokens → *Object Read & Write*, scoped **to that bucket only**. Save `Access Key ID`, `Secret Access Key`, and the S3 endpoint `https://<accountid>.r2.cloudflarestorage.com`.
-6. **Create a Cloudflare API token for automation** — My Profile → API Tokens → Create Token → *Custom token* with:
-   - `Account · Workers Scripts · Edit`
-   - `Account · Workers R2 Storage · Edit`
-   - `Account · D1 · Edit`
-   - `Account · Cloudflare Containers · Edit` (name may differ — pick the Containers/Sandboxes permission)
-   - `Zone · DNS · Edit` (limited to the `cloud.maude.sh` zone)
-   - Save the token; note your **Account ID** (dashboard right sidebar).
-7. **`wrangler login`** in the terminal (OAuth in the browser) — that covers interactive work; the API token above is for CI/control-plane automation.
+The MCP connection is live and works — but three things are gated behind payment/ToS acceptance and **cannot** be done via API by anyone, agent or not.
 
-**Where the secrets go:** create `~/.config/maude/cloud.env` with mode 0600 (the DDR-164 custody shape; the phase code reads it, it never enters the repo):
+### 1a. Enable Workers Paid — $5/mo *(hard blocker for Containers, Durable Objects, Queues at scale)*
+<https://dash.cloudflare.com> → Workers & Pages → **Plans** → Workers Paid. Opening Workers & Pages for the first time also auto-creates the missing `workers.dev` subdomain (Step 1b done for free).
 
-```sh
-mkdir -p ~/.config/maude && touch ~/.config/maude/cloud.env && chmod 600 ~/.config/maude/cloud.env
-# contents:
-# CLOUDFLARE_ACCOUNT_ID=...
-# CLOUDFLARE_API_TOKEN=...
-# R2_ACCESS_KEY_ID=...
-# R2_SECRET_ACCESS_KEY=...
-# R2_ENDPOINT=https://<accountid>.r2.cloudflarestorage.com
-# R2_BUCKET=maude-cloud
-```
+Probe evidence: `GET /accounts/…/containers/applications` → `1000 Unauthorized: … requires the Workers Paid plan`.
+
+### 1b. Enable R2 *(hard blocker for assets + cell durability)*
+Dashboard → **R2** → accept the R2 terms (billing consent). No bucket needed — once R2 is enabled I create `maude-cloud` (EU hint, no lifecycle rules) and its scoped API token via MCP.
+
+Probe evidence: `GET /accounts/…/r2/buckets` → `10042 Please enable R2 through the Cloudflare Dashboard`.
+
+### 1c. Delegate `cloud.maude.sh` to Cloudflare *(DNS ownership change)*
+`maude.sh` currently uses **Vercel DNS** (`ns1/ns2.vercel-dns.com`), registrar **Name.com**. The apex + docs site stay exactly where they are. Two options — pick one:
+
+- **Preferred (zero risk to the docs site):** in Vercel's DNS for `maude.sh`, add `NS` records for the `cloud` subdomain pointing at the two Cloudflare nameservers you get after adding `cloud.maude.sh` as a zone in Cloudflare (Websites → Add a site → enter `cloud.maude.sh`).
+- Alternative: move the whole `maude.sh` zone to Cloudflare (changes NS at Name.com) — only if you also want the Phase-10 docs migration now.
+
+After 1a–1c, everything else on Cloudflare is agent-driven: zones/DNS records, R2 buckets + tokens, D1, Queues, Workers, Containers, secrets. **No API token to create by hand** — the MCP OAuth session covers it; a scoped token gets minted (by me) only when CI needs one.
 
 ---
 
-## Step 2 — MCP servers (this is the "drive it via MCP" part)
+## Step 2 — MCP servers ✅ DONE (2026-07-28)
 
-Cloudflare runs **official remote MCP servers** with OAuth sign-in — no tokens pasted into config. Add the three that matter for this arc (project-scoped, so they live with the repo):
+Installed as **Claude Code plugins** (better than raw `claude mcp add` — they bundle skills too) and OAuth-authorized:
 
-```sh
-cd ~/git/claude-design
-claude mcp add --transport http --scope project cf-bindings   https://bindings.mcp.cloudflare.com/mcp
-claude mcp add --transport http --scope project cf-docs       https://docs.mcp.cloudflare.com/mcp
-claude mcp add --transport http --scope project cf-observability https://observability.mcp.cloudflare.com/mcp
-# then in a Claude Code session: /mcp  → authenticate each (browser OAuth consent)
-```
+- **cloudflare** plugin → `cloudflare-api` (2 500+ endpoints via `search`/`execute`), `cloudflare-bindings` (D1/R2/KV/Workers CRUD), `cloudflare-builds`, `cloudflare-observability`, `cloudflare-docs` + skills (`wrangler`, `durable-objects`, `workers-best-practices`, `sandbox-sdk`, `agents-sdk`, `cloudflare-email-service`)
+- **stripe** plugin → `stripe` MCP (`stripe_api_read`/`write`/`search`, implementation planner) + skills (`stripe-best-practices`, `stripe-projects`, `test-cards`)
+- **vercel** plugin → deployments, logs, projects, domains
+- Pre-existing: `context7`, `productivity-stack`
 
-- **cf-bindings** — create/read D1, R2, KV, Workers resources while building (Phases 5, 7)
-- **cf-docs** — authoritative, current Cloudflare docs in-context; important because Containers GA is recent and my training data may lag
-- **cf-observability** — logs/analytics when debugging a cell or the reconciler (Phases 5, 9)
+All verified live by probe. No further MCP work needed.
 
-Optional later: `https://graphql.mcp.cloudflare.com/mcp` (cost/usage roll-up for the Phase-9 health board), `https://builds.mcp.cloudflare.com/mcp`.
-
-**Stripe MCP** — add at Phase 8, not now, and **in test mode first**:
-
-```sh
-claude mcp add --transport http --scope project stripe https://mcp.stripe.com   # OAuth
-# or local: npx -y @stripe/mcp --tools=all --api-key=rk_test_…  (restricted key)
-```
-
-Use a **restricted key** (`rk_…`), read-only scopes to start, add write scopes only where a phase needs them. Never give an agent your live secret key (`sk_live_…`).
-
-**Already configured on this machine:** `context7` (library docs) ✅, `productivity-stack` ✅. Nothing to change there.
-
-**Optional plugin:** `/plugin marketplace add cloudflare/skills` — Cloudflare's own Claude Code skills; low cost, adds platform-specific guidance.
+**Note on Stripe keys:** the MCP is OAuth-bound to the sandbox account — no key file needed for development. When Phase 8 goes live, the live secret key goes into a **Worker secret** (control plane), never into a local file or shell history; automation uses a **restricted key** (`rk_…`) with only the scopes that phase needs.
 
 ---
 
@@ -91,13 +87,15 @@ Use a **restricted key** (`rk_…`), read-only scopes to start, add write scopes
 
 1. Decide the **owner org** for the Maude GitHub App — your `1aGh` account or a dedicated `maude` org. A dedicated org is cleaner for a commercial product (transferable, separate from personal repos).
 2. Register the App: GitHub → Settings → Developer settings → GitHub Apps → New. Permissions: `Contents: Read & write`, `Metadata: Read`. Where can it be installed: **Any account**. Save the App ID + generate a private key (`.pem`) — store outside the repo, 0600.
-3. `gh auth status` — already signed in on this machine ✅ (note: the `1aGh` account is the one with repo permissions, per the merge-mechanics memory).
+3. `gh auth status` — already signed in on this machine ✅. **Active account is `iagh66`; `1aGh` holds the repo permissions** — run `gh auth switch --user 1aGh` before any PR/merge on this repo (memory `reference_maude_pr_merge_mechanics`).
 
 ---
 
-## Step 4 — Stripe (Phase 8; account creation can happen now, it takes days to verify)
+## Step 4 — Stripe (Phase 8; a **sandbox** is connected — a live account still needs creating, and verification takes days)
 
-1. Create the account at <https://dashboard.stripe.com/register> under the **legal entity that will invoice** (your IČO / company). Verification (identity + bank) can take a few days — start early even though the phase is far out.
+Current state (probed): connected as `maude.sh sandbox` (`acct_1TyGz4BU24eXpQyl`). That's enough for all Phase-8 development and test-clock work — but a sandbox cannot take real money.
+
+1. Create the **live** account at <https://dashboard.stripe.com/register> under the **legal entity that will invoice** (your IČO / company). Verification (identity + bank) can take a few days — start early even though the phase is far out.
 2. Enable **Stripe Tax** (Settings → Tax) and set the origin address; EU VAT + reverse-charge for CZ B2B depends on it.
 3. Enable the **Customer Portal** (Settings → Billing → Customer portal) — no billing UI to build.
 4. Keys: use **restricted keys** for automation; the live secret key stays in the control-plane secret store (Worker secret), never on your laptop's shell history.
@@ -107,9 +105,11 @@ Use a **restricted key** (`rk_…`), read-only scopes to start, add write scopes
 
 ## Step 5 — E-mail sending (Phase 6–7)
 
-1. Create a **Resend** account (<https://resend.com>) — free tier covers the pilot.
-2. Verify the sending domain (`maude.sh` or `mail.maude.sh`) — add the DKIM/SPF records; if the zone is already on Cloudflare (Step 1.3) this is two clicks.
-3. Create an API key, save to `~/.config/maude/cloud.env` as `RESEND_API_KEY=…`.
+Only the signup is yours; the DNS records and the key wiring are agent work afterwards.
+
+1. Create a **Resend** account (<https://resend.com>) — free tier covers the pilot — and generate an API key.
+2. Hand me the key (or drop it into `~/.config/maude/cloud.env` as `RESEND_API_KEY=…`, mode 0600); I add the DKIM/SPF records to the Cloudflare zone and wire the Worker secret.
+3. **Alternative worth evaluating at Phase 6:** Cloudflare's own e-mail sending (the `cloudflare-email-service` skill shipped with the plugin) — one less subprocessor and one less signup. Decide then; Resend is the safe default.
 
 ---
 
@@ -135,14 +135,27 @@ Nothing to install; these are the artifacts the Phase-9 Trust page must referenc
 
 ---
 
-## Readiness gate — you can start `execute` when:
+## Readiness gate
 
-- [ ] `wrangler --version` works and `wrangler whoami` shows your account
-- [ ] `~/.config/maude/cloud.env` exists, mode 0600, with account ID + API token + R2 credentials
-- [ ] `cloud.maude.sh` resolves through Cloudflare (zone active)
-- [ ] R2 bucket exists (EU hint, no lifecycle rules)
-- [ ] `cf-bindings`, `cf-docs`, `cf-observability` MCP servers authenticated (`/mcp` shows them connected)
-- [ ] Alligators repo pushed + separately backed up
-- [ ] Stripe account created (verification can still be pending — only Phase 8 needs it live)
+**Done ✅** — MCP plugins (cloudflare / stripe / vercel) installed + authorized; Vercel + GitHub access verified; D1 + Queues reachable; Stripe sandbox connected.
 
-Phases 1–4 need **none** of the cloud accounts — they're local/self-host work. If you want to start today, Steps 0 + 7 are enough to begin `cloud-phase-1-safety-gates.md`; do Steps 1–2 before Phase 5.
+**Before Phase 1–4** (local work — no cloud accounts needed):
+- [ ] `npm i -g wrangler` (Step 0)
+- [ ] Alligators repo pushed + separately backed up (Step 7)
+
+**Before Phase 5** (the cell):
+- [ ] **1a** Workers Paid enabled ($5/mo) — *blocker: Containers refuse without it*
+- [ ] **1b** R2 enabled in the dashboard — *blocker: R2 API returns 10042 without it*
+- [ ] **1c** `cloud.maude.sh` delegated to Cloudflare (NS records from Vercel DNS)
+- [ ] Human volunteer identified for the Phase-6 timed invitee test
+
+**Before Phase 8** (money):
+- [ ] Live Stripe account created + verified (sandbox is connected already), Stripe Tax + Customer Portal on
+- [ ] `brew install stripe/stripe-cli/stripe`
+
+**Before Phase 9–10** (launch):
+- [ ] Legal pack drafted + lawyer-reviewed (Step 6)
+- [ ] GitHub App registered, owner org decided (Step 3)
+- [ ] Resend account + API key (Step 5)
+
+Everything not on these lists — buckets, tokens, DNS records, D1 schemas, Queues, Workers, Containers, secrets, deployments — is agent work through MCP.
