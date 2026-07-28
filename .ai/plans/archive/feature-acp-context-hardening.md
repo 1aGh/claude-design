@@ -66,8 +66,8 @@ Three additive mechanisms sharing one pipeline (static HOW + dynamic WHAT):
 - `apps/studio/bin/prep.sh` (lines 100–210) — Why: SEL_VALID gate semantics that MUST keep working against the mirrored `selected`.
 - `apps/studio/test/active-state.test.ts` — Why: shape assertions to extend (:59, :96, :137).
 - `apps/studio/node_modules/@agentclientprotocol/claude-agent-acp/dist/acp-agent.js` (lines 2270–2340) — Why: `_meta.systemPrompt` object-spread behavior + `settingSources` (spike ground truth).
-- `.ai/decisions/DDR-125-acp-multichat-parallel-and-security-posture.md` — Why: repo-level chat model this feature must not contradict (per-message context ok, session pinning not).
-- `.ai/decisions/DDR-007-stable-element-id-schema-data-dc-attrs.md` — Why: `data-dc-element` as the re-anchor key for the drift gate.
+- `.ai/archive/decisions/DDR-125-acp-multichat-parallel-and-security-posture.md` — Why: repo-level chat model this feature must not contradict (per-message context ok, session pinning not).
+- `.ai/archive/decisions/DDR-007-stable-element-id-schema-data-dc-attrs.md` — Why: `data-dc-element` as the re-anchor key for the drift gate.
 
 ### Files to Create
 
@@ -161,7 +161,7 @@ None — chip + fenced text block + server string builder only.
 ### Task 8: RECORD DDR — "ACP context pipeline: static session brief + per-turn frozen envelope"
 
 - **Do**: `/flow:record-ddr` capturing: additive `selections` schema + mirror invariant, locators-only prompt rule, bootstrap audit-record requirement, drift-gate semantics, the debate provenance, and the explicit rejection of session↔canvas pinning (DDR-125 compatibility).
-- **Validate**: file exists under `.ai/decisions/`; roadmap regen if plans/state moved (`pnpm --filter @maude/site gen:roadmap`).
+- **Validate**: file exists under `.ai/archive/decisions/`; roadmap regen if plans/state moved (`pnpm --filter @maude/site gen:roadmap`).
 
 ---
 

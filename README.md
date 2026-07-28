@@ -82,7 +82,7 @@ maude doctor --json   # machine-readable envelope
 
 ### Sidecar cache — `maude cache`
 
-Flow + design commands reuse expensive cross-session work through a small sidecar cache at `.ai/cache/` ([DDR-061](.ai/decisions/DDR-061-sidecar-cache-monitor-background-orchestration.md)): domain research (skips 30–90 s of WebSearch on a same-domain brief), codebase-intelligence scans (skips rescan when the tree is unchanged), parsed design-system vocabulary, and security-review reuse (one shared 1-hour window across `/flow:validate`, `/flow:done`, `/flow:validate-security`). Correctness comes first — most layers are content-addressed (a changed input changes the key → guaranteed miss), and a stale entry is never served speculatively.
+Flow + design commands reuse expensive cross-session work through a small sidecar cache at `.ai/cache/` ([DDR-061](.ai/archive/decisions/DDR-061-sidecar-cache-monitor-background-orchestration.md)): domain research (skips 30–90 s of WebSearch on a same-domain brief), codebase-intelligence scans (skips rescan when the tree is unchanged), parsed design-system vocabulary, and security-review reuse (one shared 1-hour window across `/flow:validate`, `/flow:done`, `/flow:validate-security`). Correctness comes first — most layers are content-addressed (a changed input changes the key → guaranteed miss), and a stale entry is never served speculatively.
 
 ```sh
 maude cache list              # layers, entry counts, sizes, last-write time
@@ -95,7 +95,7 @@ The `research/domain` and `codebase-intelligence` layers are **committed** (dete
 
 ### Plugins call `maude` for executable logic
 
-Plugin slash-commands reach all executable logic through the on-PATH `maude` binary — never a relative `cli/lib/*.mjs` path or a raw `$CLAUDE_PLUGIN_ROOT/dev-server/bin/*.sh` invocation ([DDR-062](.ai/decisions/DDR-062-plugins-reach-executable-logic-via-maude.md)). The marketplace copies each plugin alone (no sibling `cli/`, no `dev-server/`), and a flow command's `$CLAUDE_PLUGIN_ROOT` points at the flow plugin (which has no dev-server at all) — so the only contract that holds across every install shape is `maude`, which resolves bundled helpers from its own package root. Cache/preflight go via `maude cache …` / `maude preflight …`; the design dev-server's bash helpers go via **`maude design <verb>`** (`screenshot`, `server-up`, `prep`, `slug`, `smoke`, `runtime-health`, …) — see `maude design help`. Keep the global `maude` current; a stale binary means stale helpers.
+Plugin slash-commands reach all executable logic through the on-PATH `maude` binary — never a relative `cli/lib/*.mjs` path or a raw `$CLAUDE_PLUGIN_ROOT/dev-server/bin/*.sh` invocation ([DDR-062](.ai/archive/decisions/DDR-062-plugins-reach-executable-logic-via-maude.md)). The marketplace copies each plugin alone (no sibling `cli/`, no `dev-server/`), and a flow command's `$CLAUDE_PLUGIN_ROOT` points at the flow plugin (which has no dev-server at all) — so the only contract that holds across every install shape is `maude`, which resolves bundled helpers from its own package root. Cache/preflight go via `maude cache …` / `maude preflight …`; the design dev-server's bash helpers go via **`maude design <verb>`** (`screenshot`, `server-up`, `prep`, `slug`, `smoke`, `runtime-health`, …) — see `maude design help`. Keep the global `maude` current; a stale binary means stale helpers.
 
 ## Runtime requirements
 
@@ -105,10 +105,10 @@ Plugin slash-commands reach all executable logic through the on-PATH `maude` bin
 
 ## Collaboration model
 
-Two clean paths, no middle ground ([DDR-047](.ai/decisions/DDR-047-collab-scope-cut-no-lan-mode-hub-admin-ui.md)):
+Two clean paths, no middle ground ([DDR-047](.ai/archive/decisions/DDR-047-collab-scope-cut-no-lan-mode-hub-admin-ui.md)):
 
 - **v1.0 — git handoff OR loopback multi-tab.** Push / pull is the cross-machine story. On a single machine, two browser tabs (or two Claude Code instances editing the same repo) sync cursors, comments, and annotations live over loopback WebSocket. The dev server refuses any non-loopback `host` header on the collab WS endpoint.
-- **v1.1 — deploy a hub** (Phase 9, in-flight). Cross-machine live collab needs a hub binary you deploy yourself. No tunnel mode; no shared cloud. **Boot order can't eat your work** ([DDR-102](.ai/decisions/DDR-102-cold-start-divergence-resolution.md)): a per-machine journal tells clean catch-ups apart from genuine divergence; diverged canvases snapshot **both** versions to `_history/` before the newer one wins, so the loser is one `/design:rollback` away — and `maude design status` reports per-canvas sync state honestly (synced / pending / auth-rejected).
+- **v1.1 — deploy a hub** (Phase 9, in-flight). Cross-machine live collab needs a hub binary you deploy yourself. No tunnel mode; no shared cloud. **Boot order can't eat your work** ([DDR-102](.ai/archive/decisions/DDR-102-cold-start-divergence-resolution.md)): a per-machine journal tells clean catch-ups apart from genuine divergence; diverged canvases snapshot **both** versions to `_history/` before the newer one wins, so the loser is one `/design:rollback` away — and `maude design status` reports per-canvas sync state honestly (synced / pending / auth-rejected).
 
 ## Security
 
@@ -118,7 +118,7 @@ Solo mode (the default) is fully local — no accounts, no telemetry, no network
 
 User-facing docs live in two places — the README points you the right way:
 
-- **Reference** (every command, every config key, recipes for Next.js / Expo / monorepo) → [`site/content/docs/`](./site/content/docs/) (served at https://maude.sh once Vercel is wired — see [DDR-005](.ai/decisions/DDR-005-docs-site-stack-and-hosting.md)).
+- **Reference** (every command, every config key, recipes for Next.js / Expo / monorepo) → [`site/content/docs/`](./site/content/docs/) (served at https://maude.sh once Vercel is wired — see [DDR-005](.ai/archive/decisions/DDR-005-docs-site-stack-and-hosting.md)).
 - **kgai knowledge-graph backend** (opt-in shared decision memory across repos) → [`docs/kgai-onboarding.md`](./docs/kgai-onboarding.md) (per user) + [`docs/kgai-company-setup.md`](./docs/kgai-company-setup.md) (one-time admin). Off by default — absent `kg`, every command runs its classic `.ai/` path.
 - **Quickstart** + **contributor info** → this README.
 
@@ -131,7 +131,7 @@ The repo is a **pnpm workspace monorepo** with one published npm package (`@1agh
 | Workspace | Purpose |
 | --------- | ------- |
 | `.` (root) | The single npm publisher — CLI, dev-server entry, plugin templates that ship to npm. |
-| `site/` | Docs site — Fumadocs + Next.js, deployed to Vercel ([DDR-005](.ai/decisions/DDR-005-docs-site-stack-and-hosting.md)). |
+| `site/` | Docs site — Fumadocs + Next.js, deployed to Vercel ([DDR-005](.ai/archive/decisions/DDR-005-docs-site-stack-and-hosting.md)). |
 | `apps/studio/` | Zero-dep Node dev server + browser client. Bundled output (`dist/`) is the only thing in the npm tarball. |
 | `apps/hub/` | Reserved for the v1.1 federated hub (Phase 9). |
 

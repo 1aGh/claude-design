@@ -77,7 +77,7 @@ Ship behind a **feature flag (`MAUDE_SHARED_DOC`, default OFF)** so the proven t
 - `plugins/design/dev-server/fs-watch.ts` — `fs:any`/`fs:html`/`fs:css`/`fs:json` emitter (path-based, catches all writes incl. external `/design:edit`).
 - `plugins/design/dev-server/collab/awareness-bridge.ts` — the bidirectional awareness relay (stays; presence is already correctly separate).
 - `plugins/design/hub/src/server.mjs` (lines ~138, ~280) — `@hocuspocus/extension-sqlite` binary persistence + `onLoadDocument`. The hub already persists `Y.encodeStateAsUpdate` binary — do NOT regress to JSON.
-- `.ai/decisions/DDR-051-*` (JSON canonical / `.ydoc.bin` cache), `DDR-052` (Hocuspocus), `DDR-054` (trust model + body gating + §F14), `DDR-060` (TSX sync), `DDR-063` (canvas-origin split).
+- `.ai/archive/decisions/DDR-051-*` (JSON canonical / `.ydoc.bin` cache), `DDR-052` (Hocuspocus), `DDR-054` (trust model + body gating + §F14), `DDR-060` (TSX sync), `DDR-063` (canvas-origin split).
 - `.ai/plans/archive/phase-9.1-tsx-sync-unblock.md` + `.ai/plans/phase-10-structured-crdt-html-coediting.md` — prior art / the body-coedit follow-on.
 - `plugins/design/dev-server/test/stress-integration.test.mjs` (in `plugins/design/hub/test/`) — the 5-peer convergence harness to extend.
 
@@ -88,7 +88,7 @@ Ship behind a **feature flag (`MAUDE_SHARED_DOC`, default OFF)** so the proven t
 - `plugins/design/dev-server/sync/migrate-seed.ts` — one-time authoritative clear-and-rebuild seed (escape the duplication-on-merge trap).
 - `plugins/design/dev-server/test/shared-doc-convergence.test.ts` — property-based convergence (commutativity/associativity/idempotency) + round-trip projection laws.
 - `plugins/design/dev-server/test/shared-doc-projection.test.ts` — file→doc diff-import loop-free + no-echo + no-clobber-of-concurrent-edit.
-- `.ai/decisions/DDR-064-single-shared-collab-doc.md` — record the architecture decision.
+- `.ai/archive/decisions/DDR-064-single-shared-collab-doc.md` — record the architecture decision.
 
 ### Documentation (research — cite in DDR-064)
 
@@ -277,7 +277,7 @@ Ship behind a **feature flag (`MAUDE_SHARED_DOC`, default OFF)** so the proven t
 - [x] Convergence property tests + multi-peer stress green; the shadow-compare primitive (`materializeCanonical`) + laws are in the suite. **Live shadow run before cutover = the user's manual run.**
 - [x] biome clean; no regression in the flag-OFF path (759 dev-server + 126 CLI green). _(`/validate` cross-platform scenario N/A — server-side sync, no UI surface; the load-bearing check is the live cross-machine run, the user's to do.)_
 
-> **Status:** All 12 tasks implemented + unit-verified behind `MAUDE_SHARED_DOC` (default OFF). The flag stays OFF pending (a) the live two-machine cross-edit confirmation + shadow run (Validation steps 5–6, the user's "pak to otestujem") and (b) the security re-audit's pre-cutover checklist (A1 `.html` gate, comments hub→disk cap, A4/A6/A7, provider advisory) — see `.ai/decisions/DDR-064-*` + the security-review log.
+> **Status:** All 12 tasks implemented + unit-verified behind `MAUDE_SHARED_DOC` (default OFF). The flag stays OFF pending (a) the live two-machine cross-edit confirmation + shadow run (Validation steps 5–6, the user's "pak to otestujem") and (b) the security re-audit's pre-cutover checklist (A1 `.html` gate, comments hub→disk cap, A4/A6/A7, provider advisory) — see `.ai/archive/decisions/DDR-064-*` + the security-review log.
 
 ---
 

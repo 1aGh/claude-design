@@ -86,7 +86,7 @@ Five waves, each independently shippable and verifiable. Data-model choices foll
 - `cli/commands/design.mjs` + `cli/lib/plugin-cli-reachability.test.mjs` — verb dispatch table + whitelist for the new `annotate` verb.
 - `plugins/design/commands/new.md` (ingest mode section) + `plugins/design/skills/design/SKILL.md` — where agent-facing annotation docs live today.
 - `.ai/plans/archive/phase-24-annotations-figjam-parity-v2.md` — invariants + regression-inventory format to mirror.
-- `.ai/decisions/DDR-067` (parity v2 scope), `DDR-029` (overlay portal), `DDR-050` (undo command stack), `DDR-054`/`DDR-063` (canvas-origin trust), `DDR-088` (route dual-registration), `DDR-085` (ingest mode), `DDR-062` (CLI verb dispatch).
+- `.ai/archive/decisions/DDR-067` (parity v2 scope), `DDR-029` (overlay portal), `DDR-050` (undo command stack), `DDR-054`/`DDR-063` (canvas-origin trust), `DDR-088` (route dual-registration), `DDR-085` (ingest mode), `DDR-062` (CLI verb dispatch).
 
 ### Files to Create
 

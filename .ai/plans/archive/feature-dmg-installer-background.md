@@ -43,7 +43,7 @@ The current unstyled DMG window doesn't communicate the "drag to install" conven
 - `apps/desktop/src-tauri/icons/icon.png` (512×512 RGBA) — the real app icon Finder will render; the background art must leave a transparent/neutral square where this icon lands so it isn't double-drawn.
 - `plugins/design/agents/draw-agent.md` + `apps/studio/draw/` — the geometry-engine draw pipeline (DDR-070/DDR-067) that must author the arrow shape; **no free-hand SVG path data** per repo convention.
 - `apps/studio/bin/draw-proof.sh` + `apps/studio/bin/screenshot.sh` — existing "render a throwaway canvas, screenshot it, get a PNG" pipeline this plan reuses instead of adding an SVG→PNG conversion dependency.
-- `.ai/decisions/DDR-126-native-distribution-auto-update-and-security-posture.md` — why Phase-32 made native distribution a priority; this feature is a direct continuation of that goal (first-run polish for non-technical users).
+- `.ai/archive/decisions/DDR-126-native-distribution-auto-update-and-security-posture.md` — why Phase-32 made native distribution a priority; this feature is a direct continuation of that goal (first-run polish for non-technical users).
 
 ### Files to Create
 

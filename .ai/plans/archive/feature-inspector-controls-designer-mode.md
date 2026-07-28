@@ -61,7 +61,7 @@ BUILDER's single most load-bearing insight, adopted here: **the real user pain i
 - `apps/studio/client/app.jsx:4099-4155` (approx) — the `CSS_*` enum constants block; add `CSS_BLEND_MODES` here, matching the existing array shape (`CSS_BORDER_STYLES`, `CSS_TEXT_TRANSFORM`, etc.).
 - `apps/studio/canvas-edit.ts:414-466` (`applyEdit`) + `:453` (`editStyleProp` dispatch) — confirms the write path is property-name-generic; no allowlist to extend for `filter`/`mix-blend-mode`.
 - `apps/studio/client/inspector-controls.jsx` — `Segmented`, `AlignPad`, `SliderField`, `NumberField`, `Select` — the Phase-1 primitives Designer mode reuses. `AlignPad` in particular is currently UNUSED in `CssKnobs` — Designer mode's Auto-layout alignment row is its first real caller.
-- `.ai/decisions/DDR-104-css-panel-ux-model.md` — the decision this plan supersedes for the Designer-mode scope only. Read in full; the new DDR (Task 1) must reference and not silently contradict its still-valid parts (single write endpoint, provenance dots, token-first defaults, shadow-flagging).
+- `.ai/archive/decisions/DDR-104-css-panel-ux-model.md` — the decision this plan supersedes for the Designer-mode scope only. Read in full; the new DDR (Task 1) must reference and not silently contradict its still-valid parts (single write endpoint, provenance dots, token-first defaults, shadow-flagging).
 - `.ai/plans/feature-inspector-controls-redesign.md` — Phase 1 (shipped), whose primitives this phase reuses; its "Follow-up (Phase 2)" section is the ORIGINAL capture this plan supersedes with a properly debated + user-confirmed scope (the original text's literal "Text = Size/Line height/Letter spacing" list is NOT followed as-is — see Design Decisions §Text for why).
 
 ### Files to Modify
@@ -72,7 +72,7 @@ BUILDER's single most load-bearing insight, adopted here: **the real user pain i
 
 ### Files to Create
 
-- `.ai/decisions/DDR-<NNN>-css-panel-designer-mode-vocabulary.md` — the DDR superseding DDR-104 §2 for Designer mode (Task 1; number resolved at execute time per the DDR-numbering-races memory — check the decisions dir AND any uncommitted README index diff before claiming a number).
+- `.ai/archive/decisions/DDR-<NNN>-css-panel-designer-mode-vocabulary.md` — the DDR superseding DDR-104 §2 for Designer mode (Task 1; number resolved at execute time per the DDR-numbering-races memory — check the decisions dir AND any uncommitted README index diff before claiming a number).
 
 ---
 

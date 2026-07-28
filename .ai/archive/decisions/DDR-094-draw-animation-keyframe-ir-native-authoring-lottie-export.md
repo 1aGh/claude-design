@@ -313,7 +313,7 @@ physics/particle simulation, video, full app-level motion choreography (stays
 - Plan: [`feature-draw-animation-layer.md`](../plans/feature-draw-animation-layer.md)
 - Deep research: `tasks/wxwv7vc25` (2026-06-05; 23 sources, 25 verified claims)
 - POC: `StudyFiMobile/src/components/mascot/` (react-native-svg + Reanimated port of the studyfi-v3 fire-ring) — validates part 3
-- StudyFi origin: `AI-StudyMate/.ai/decisions/DDR-011-svg-path-morph-uses-smil.md`,
+- StudyFi origin: `AI-StudyMate/.ai/archive/decisions/DDR-011-svg-path-morph-uses-smil.md`,
   `.../logs/execution-reports/studyfi-v3-mascot-fire-and-eyes.md`,
   `.../logs/system-reviews/studyfi-v3-mascot-fire-and-eyes-review.md`
 - Supersedes: — (extends DDR-070 / DDR-074)

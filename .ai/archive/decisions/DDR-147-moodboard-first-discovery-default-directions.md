@@ -65,7 +65,7 @@ It reverses two documented decisions for the most load-bearing design-plugin flo
 - `plugins/design/agents/ux-research-agent.md` + `_pastier-probe-templates.md` — consumption notes (pre-refinement moodboard; default tiles slice the seed; self-harvest = escalation only). **No schema change.**
 - `apps/studio/config.schema.json` + `apps/studio/bin/prep.sh` — `moodboard.variants` knob + `MOODBOARD_VARIANTS` export.
 - `site/content/docs/design/bootstrap.mdx` — public flow description.
-- `.ai/decisions/DDR-080…` + `DDR-136…` — superseded-in-part banners.
+- `.ai/archive/decisions/DDR-080…` + `DDR-136…` — superseded-in-part banners.
 
 ## What this DDR does not change
 

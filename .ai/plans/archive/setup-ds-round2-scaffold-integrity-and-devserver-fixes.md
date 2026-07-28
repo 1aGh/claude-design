@@ -55,11 +55,11 @@ Group B — dev-server boot/export fail-loud (CODE; coordinate w/ Phase-13.x WIP
 - `plugins/design/dev-server/bin/server-up.sh` + `runtime-health.sh` + `visual-sanity` — boot path; where the yjs preflight lands.
 - `plugins/design/dev-server/sync/index.ts` (~line 451 "adopted local state (hub was empty)") — the boot-time `yjs` import site; **NOTE the live WIP + the DDR-076 guard already here.**
 - `plugins/design/dev-server/exporters/{index.ts,png.ts,pdf.ts,svg.ts}` — the Playwright render path that returned empty; add the browser preflight + fail-loud.
-- `plugins/design/dev-server/boot-self-heal.ts` + [DDR-044](.ai/decisions/DDR-044-marketplace-install-vs-npm-install-artifact-strategy.md) — the first-launch `bun install --production` that *should* pull `yjs` but didn't on the global install.
+- `plugins/design/dev-server/boot-self-heal.ts` + [DDR-044](.ai/archive/decisions/DDR-044-marketplace-install-vs-npm-install-artifact-strategy.md) — the first-launch `bun install --production` that *should* pull `yjs` but didn't on the global install.
 
 ### Already done in `main` — do NOT re-implement
 
-- **`maude design serve` truncating local `.tsx` to 0 B on a denied/empty hub sync** (original plan Out-of-scope #2, highest severity) → **fully fixed AND tested in `main`** by [DDR-076](.ai/decisions/DDR-076-empty-hub-doc-never-clobbers-local-canvas.md) + `fc4233b` ("an empty hub doc never clobbers a non-empty local canvas"). The regression test already exists: `plugins/design/dev-server/test/sync-agent.test.ts:205` — *"empty hub doc does NOT clobber a non-empty local body — seeds local up instead (data-loss guard)"*. **Nothing to do** — dropped from Round-2 (was Task B3 in the first draft).
+- **`maude design serve` truncating local `.tsx` to 0 B on a denied/empty hub sync** (original plan Out-of-scope #2, highest severity) → **fully fixed AND tested in `main`** by [DDR-076](.ai/archive/decisions/DDR-076-empty-hub-doc-never-clobbers-local-canvas.md) + `fc4233b` ("an empty hub doc never clobbers a non-empty local canvas"). The regression test already exists: `plugins/design/dev-server/test/sync-agent.test.ts:205` — *"empty hub doc does NOT clobber a non-empty local body — seeds local up instead (data-loss guard)"*. **Nothing to do** — dropped from Round-2 (was Task B3 in the first draft).
 - **TSX sync ON by default + `maude doctor` TSX-sync health** — landed on `main` (`620eff8`, `0d89fd0`, `DDR-079-tsx-sync-default-on`). Unrelated to this plan's scope; listed only so Round-2 doesn't re-touch it.
 
 ### Patterns to Follow

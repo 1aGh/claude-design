@@ -81,14 +81,14 @@ Seven discrete fixes, executed in dependency order. P0 + P1 land the cache-insta
 
 ### Files to Create
 
-- `.ai/decisions/DDR-034-marketplace-install-vs-npm-install-artifact-strategy.md` — record the Task 1 decision (untrack `client.bundle.js`+`styles.css`, leave per-platform binaries gitignored, self-heal node_modules at boot)
+- `.ai/archive/decisions/DDR-034-marketplace-install-vs-npm-install-artifact-strategy.md` — record the Task 1 decision (untrack `client.bundle.js`+`styles.css`, leave per-platform binaries gitignored, self-heal node_modules at boot)
 - `plugins/design/dev-server/test/boot-self-heal.test.ts` — `bun:test` covering the Task 3 startup check (missing dist → builds; missing node_modules → installs; `MAUDE_NO_AUTOBUILD=1` → skips with explicit warning)
 - `plugins/design/dev-server/test/runtime-bundle-error-mapping.test.ts` — Task 4 error-mapping unit test (mock EISDIR from Bun.build, assert human-readable message + remediation command)
 
 ### Documentation
 
-- [DDR-009 — Bun runtime authoritative](.ai/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md) — Why: confirms server.ts is the canonical entry. `server.mjs` is legacy; do not add new logic there.
-- [DDR-019 — per-iframe runtime bundles](.ai/decisions/DDR-019-per-iframe-runtime-bundles.md) — Why: explains why `/_canvas-runtime/*` lazy-builds react instead of shipping it pre-bundled. Constrains Task 1's bundling-React-into-client.bundle.js option.
+- [DDR-009 — Bun runtime authoritative](.ai/archive/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md) — Why: confirms server.ts is the canonical entry. `server.mjs` is legacy; do not add new logic there.
+- [DDR-019 — per-iframe runtime bundles](.ai/archive/decisions/DDR-019-per-iframe-runtime-bundles.md) — Why: explains why `/_canvas-runtime/*` lazy-builds react instead of shipping it pre-bundled. Constrains Task 1's bundling-React-into-client.bundle.js option.
 - [npm `files` field semantics](https://docs.npmjs.com/cli/v10/configuring-npm/package-json#files) — Why: confirms `files` includes everything under listed directories regardless of `.gitignore`; relevant to Task 1 mechanism choice.
 - [Bun.spawn](https://bun.com/docs/api/spawn) — Why: Task 3 self-heal needs to invoke `bun install` + `bun run build.ts`; prefer `Bun.spawn` over `child_process.spawn` per DDR-009.
 
@@ -183,7 +183,7 @@ Each task is atomic and testable. After each one, run `/flow:utils-verify` per t
 
 ### Task 1: DECIDE artifact-distribution strategy + UPDATE `.gitignore`
 
-- **Do**: Decide between (a) commit `client.bundle.js`+`styles.css` to git (recommended) vs (b) bundle React into client.bundle.js so node_modules isn't needed at runtime. Write **DDR-034** in `.ai/decisions/` capturing the choice + rationale + alternatives rejected. Then edit `.gitignore`: change `plugins/design/dev-server/dist/` to explicitly preserve `client.bundle.js` and `styles.css` while keeping the per-platform `maude-*` binaries (~70-120 MB each) gitignored. Use the `!` negation pattern:
+- **Do**: Decide between (a) commit `client.bundle.js`+`styles.css` to git (recommended) vs (b) bundle React into client.bundle.js so node_modules isn't needed at runtime. Write **DDR-034** in `.ai/archive/decisions/` capturing the choice + rationale + alternatives rejected. Then edit `.gitignore`: change `plugins/design/dev-server/dist/` to explicitly preserve `client.bundle.js` and `styles.css` while keeping the per-platform `maude-*` binaries (~70-120 MB each) gitignored. Use the `!` negation pattern:
   ```
   plugins/design/dev-server/dist/
   !plugins/design/dev-server/dist/client.bundle.js
@@ -359,7 +359,7 @@ If `/done`'s scenario-runner gates on the presence of a scenario, justify the sk
 
 ## Acceptance Criteria
 
-- [ ] DDR-034 written and committed under `.ai/decisions/` (captures Task 1 mechanism choice + rejected alternatives)
+- [ ] DDR-034 written and committed under `.ai/archive/decisions/` (captures Task 1 mechanism choice + rejected alternatives)
 - [ ] `.gitignore` updated to preserve `client.bundle.js` and `styles.css` while keeping per-platform binaries ignored; both files committed
 - [ ] `build.ts:73-74` reads from a path that exists in marketplace installs (Task 2), with try/catch fallback to `version: 'dev'`
 - [ ] `server.ts` self-heals missing `dist/` and `node_modules/` on first boot; `MAUDE_NO_AUTOBUILD=1` opts out cleanly
@@ -387,7 +387,7 @@ If `/done`'s scenario-runner gates on the presence of a scenario, justify the sk
 - **DDR-021 step 3.5 smoke gate skipped intentionally, documented in the report.** Live curl checks were a more targeted substitute (covered the 4 exact routes the system review flagged as broken). The full `/design:smoke` would have screenshotted 30+ canvases, none of which had their rendering path touched.
 
 **What didn't**
-- **DDR-034 was taken** — plan referenced it for the artifact-strategy decision, but `.ai/decisions/DDR-034-comments-overlay-screen-coord-fixed-position.md` already existed from April. Required a chain of find-replace across SKILL.md, setup-ds.md, build.ts comments, server.ts comments, completeness-critic, CLAUDE.md to renumber to DDR-044. **Rule going forward**: `/plan` MUST run `ls .ai/decisions/` to find the next free DDR number before referencing one.
+- **DDR-034 was taken** — plan referenced it for the artifact-strategy decision, but `.ai/archive/decisions/DDR-034-comments-overlay-screen-coord-fixed-position.md` already existed from April. Required a chain of find-replace across SKILL.md, setup-ds.md, build.ts comments, server.ts comments, completeness-critic, CLAUDE.md to renumber to DDR-044. **Rule going forward**: `/plan` MUST run `ls .ai/archive/decisions/` to find the next free DDR number before referencing one.
 - **Plan Task 2(a) recommended file didn't exist.** Plan said "read `plugins/design/package.json`" — there is no such file in this repo (only `plugins/design/.claude-plugin/plugin.json` and `plugins/design/dev-server/package.json`). Required an on-the-fly switch during Task 2 execution. **Rule going forward**: `/plan` MUST verify cited paths exist with `ls` before recommending them.
 - **Moved more deps than planned.** Plan said move react+react-dom. Actually needed react+react-dom+lightningcss+magic-string+oxc-parser because `bun install --production` needs every runtime import. Caught in implementation by grepping `from 'oxc-parser'` / `from 'lightningcss'` etc. — but the plan's `grep -rn "import.*from"` reconnaissance step should have caught it during planning. **Rule going forward**: when moving a dep between `dependencies` / `devDependencies`, grep ALL runtime imports against the dep list, not just the named ones.
 - **Marketplace-install simulation never ran end-to-end.** Validation step 6 of the plan was a `git clone --depth 1 . $TMP/maude` + `bun run server.ts` smoke. I substituted live curl checks against the in-place server (artifacts already present). The actual cold-clone smoke is the load-bearing scenario for DDR-044 and currently has no CI coverage. **Follow-up needed**: add a `marketplace-install-smoke.yml` GH Actions workflow that does the full cold clone + boot + curl in a fresh runner.

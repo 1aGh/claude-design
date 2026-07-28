@@ -98,7 +98,7 @@ Today Maude is powerful but **gated behind developer tooling**:
 - `apps/studio/github/` — GitHub identity + repo create + collaborator/share over OAuth + REST. [E3]
 - `apps/studio/client/panels/ProjectsPanel.tsx` + `OnboardingWizard.tsx` + `GitPanel.tsx`. [E2–E4]
 - `apps/studio/client/panels/ChatPanel.tsx` + `client/acp/` + `acp-bridge.mjs` (per phase-7). [E6]
-- `.ai/decisions/DDR-086..0NN-*` — the decisions front-loaded in E0 + per-phase.
+- `.ai/archive/decisions/DDR-086..0NN-*` — the decisions front-loaded in E0 + per-phase.
 - `site/content/docs/desktop/*.mdx` + download page. [E7]
 
 ### Design canvases
@@ -114,7 +114,7 @@ Today Maude is powerful but **gated behind developer tooling**:
 - `isomorphic-git` docs (E0/E2). — Why: pure-JS git, clone/commit/push auth model, LFS/submodule limits vs. design-repo reality.
 - GitHub OAuth (device flow / PKCE) + REST `repos`/`collaborators` (E0/E3). — Why: sign-in + create-repo + share without PAT paste.
 - Agent Client Protocol spec — https://agentclientprotocol.com/get-started/introduction (E6). — Why: ACP subset (already scoped in phase-7 Task 1).
-- `.ai/decisions/DDR-054` (linked-mode trust) + `DDR-064` (shared Y.Doc) + `DDR-076` (empty doc never clobbers) — Why: E5's live-sync reuses the shared-Y.Doc machinery; the DDR-054 iframe sandbox/CSP is the scoped gate for live-syncing peer canvas *code* (not a broad GA gate anymore).
+- `.ai/archive/decisions/DDR-054` (linked-mode trust) + `DDR-064` (shared Y.Doc) + `DDR-076` (empty doc never clobbers) — Why: E5's live-sync reuses the shared-Y.Doc machinery; the DDR-054 iframe sandbox/CSP is the scoped gate for live-syncing peer canvas *code* (not a broad GA gate anymore).
 
 ### Patterns to Follow
 

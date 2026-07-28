@@ -63,7 +63,7 @@ Today `site/` ships fumadocs's default `neutral` preset with Inter and a single 
 - `site/components/mdcc/sku-breadcrumb.tsx` — breadcrumb with MDCC SKU tail used in docs page header.
 - `site/components/mdcc/numbered-h2.tsx` — auto-numbered `01 · …` h2 rule for MDX (or implemented via CSS counters in `global.css`).
 - `site/app/(home)/page.module.css` — local CSS that hosts catalog-grid border-overlap trick + landing-specific rules (kept out of global to avoid leaking into docs).
-- `.ai/decisions/DDR-010-mdcc-skin-of-fumadocs-vs-fork.md` — record the "re-skin via `--fd-*` overrides, do not fork fumadocs" decision.
+- `.ai/archive/decisions/DDR-010-mdcc-skin-of-fumadocs-vs-fork.md` — record the "re-skin via `--fd-*` overrides, do not fork fumadocs" decision.
 
 ### Files to Edit (substantial)
 
@@ -319,8 +319,8 @@ Execute in order. Each task is atomic and testable. Verify with `pnpm --filter @
 
 ### Task 14: RECORD DDR-010
 
-- **Do**: Write `.ai/decisions/DDR-010-mdcc-skin-of-fumadocs-vs-fork.md`. Decision: re-skin fumadocs via `--fd-*` CSS overrides + selective MDX renderer customization, do NOT fork. Trade-offs: tighter coupling to fumadocs's CSS variable contract vs. minimal maintenance burden + automatic behavior updates.
-- **Validate**: DDR registered in `.ai/decisions/README.md` index.
+- **Do**: Write `.ai/archive/decisions/DDR-010-mdcc-skin-of-fumadocs-vs-fork.md`. Decision: re-skin fumadocs via `--fd-*` CSS overrides + selective MDX renderer customization, do NOT fork. Trade-offs: tighter coupling to fumadocs's CSS variable contract vs. minimal maintenance burden + automatic behavior updates.
+- **Validate**: DDR registered in `.ai/archive/decisions/README.md` index.
 
 ---
 

@@ -78,7 +78,7 @@ Once these move, `maude design serve` (and the new `maude studio`) resolves the 
 
 - `apps/studio/` — moved tree (was `plugins/design/dev-server/`).
 - `apps/hub/` — moved tree (was `plugins/design/hub/`).
-- `.ai/decisions/DDR-095-runtime-apps-extracted-to-top-level.md` — record the move + the CLI-invariant rationale + the deferred packages/* phase.
+- `.ai/archive/decisions/DDR-095-runtime-apps-extracted-to-top-level.md` — record the move + the CLI-invariant rationale + the deferred packages/* phase.
 
 ### Patterns to Follow
 
@@ -165,7 +165,7 @@ Execute in order. Each task is atomic and ends green.
     - `.ai/plans/*.md` that are **active / not yet archived** (incl. these two plans + the phase-26..32 native-collab plans that reference `apps/`-relative paths and `plugins/design/dev-server/`).
     - `.ai/scenarios/**` that drive real runs.
     - `.ai/release-guide.md`, `.ai/INDEX.md`, `.ai/README.md`.
-  - **LEAVE as historical record (do NOT edit):** `.ai/plans/archive/**`, completed `.ai/decisions/DDR-*.md` narrative, `.ai/logs/**`, `.ai/reviews/**`, `.ai/dev-logs/**`, `.ai/device/**`. The path in a closed DDR/log describes the world AT THAT TIME — rewriting it falsifies the decision/incident record.
+  - **LEAVE as historical record (do NOT edit):** `.ai/plans/archive/**`, completed `.ai/archive/decisions/DDR-*.md` narrative, `.ai/logs/**`, `.ai/reviews/**`, `.ai/dev-logs/**`, `.ai/device/**`. The path in a closed DDR/log describes the world AT THAT TIME — rewriting it falsifies the decision/incident record.
   - **DDR exception (supersede, don't rewrite):** where a DDR encodes a STILL-LIVE invariant on the old path — DDR-045 (`paths.ts` walk-up), DDR-062 (`maude design <verb>` dispatcher), DDR-009/084 (binary resolution), DDR-001 (npm `files`) — do NOT edit the original; instead have **DDR-095 (Task 9) explicitly supersede/annotate** them with the new `apps/studio` location, and add a one-line "superseded by DDR-095 for path" pointer at the top of each if the convention allows. Record which DDRs got the pointer.
 - **Do (site docs — explicit)**: Rewrite the public docs under `site/content/docs/**` that name the old paths or the launch command — at minimum `cli.mdx`, `getting-started.mdx`, `config-schema.mdx`, `recipes/monorepo.mdx`, `security.mdx`, the whole `hub/*.mdx` set (`index`, `deploy`, `linking`), `design/{bootstrap,categories}.mdx`, and every `commands-design/*.mdx` that references `plugins/design/dev-server` or `maude design serve`. Where a doc shows the launch command, also surface the new **`maude studio`** alias (Task 5b) as the primary form with `maude design serve` noted as the equivalent. Home/marketing pages (`site/app/(home)/*.tsx`) that hardcode paths: update too.
 - **Gotcha (site docs)**: `site/lib/roadmap.json` is AUTO-GENERATED — do NOT hand-edit; it regenerates via `pnpm --filter @maude/site gen:roadmap` (Task 9). Touch only authored `.mdx` / `.tsx`. Verify the docs site still builds (`pnpm --filter @maude/site build` or the fumadocs `.source` regen) since `site/.source` indexes `content/docs`.

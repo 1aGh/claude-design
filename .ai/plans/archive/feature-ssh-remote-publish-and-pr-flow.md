@@ -59,7 +59,7 @@ As a Maude desktop user whose team repo uses an SSH remote and a protected `main
 
 ### Files to Create
 
-- (none — all changes extend existing files. New DDR file: `.ai/decisions/DDR-<n>-pr-flow-for-add-to-shared-version.md`, number resolved at record time — see Task B0.)
+- (none — all changes extend existing files. New DDR file: `.ai/archive/decisions/DDR-<n>-pr-flow-for-add-to-shared-version.md`, number resolved at record time — see Task B0.)
 
 ### Patterns to Follow
 
@@ -126,8 +126,8 @@ Execute in order. A-tasks are independently shippable and unblock the transport;
 
 ### Task B0: RECORD DDR — PR flow for "Add to Shared version"
 
-- **Do**: `/flow:record-ddr`. Decision: on a repo with a GitHub remote, "Add to Shared version" opens a PR (`draft → main`) instead of merging+pushing `main`; local merge retained only for remote-less projects; always-PR (not try-push-then-fallback). Resolve the DDR number at write time (latest is DDR-160 — check `.ai/decisions/` AND the uncommitted README index diff per the numbering-race gotcha; likely 161).
-- **Validate**: DDR file exists + linked in `.ai/decisions/README.md`.
+- **Do**: `/flow:record-ddr`. Decision: on a repo with a GitHub remote, "Add to Shared version" opens a PR (`draft → main`) instead of merging+pushing `main`; local merge retained only for remote-less projects; always-PR (not try-push-then-fallback). Resolve the DDR number at write time (latest is DDR-160 — check `.ai/archive/decisions/` AND the uncommitted README index diff per the numbering-race gotcha; likely 161).
+- **Validate**: DDR file exists + linked in `.ai/archive/decisions/README.md`.
 
 ### Task B1: ADD `createPullRequest` to `github/service.ts`
 

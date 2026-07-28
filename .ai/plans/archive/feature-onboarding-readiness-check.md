@@ -51,8 +51,8 @@ Out of scope for v1 (DDR-128 follow-ups): bundling the `maude` CLI + opt-in PATH
 - `apps/studio/paths.ts` — Why: resolve `~/.claude/` and the maude package root via the sanctioned path module, NOT a local `dirname(fileURLToPath(...))` (DDR-045 — breaks inside `bun --compile`).
 - `apps/desktop/src-tauri/src/sidecar.rs` + `src/lib.rs` — Why: only if the login-shell probe is better run from Rust (it can spawn a login shell cleanly); shows the existing `tauri_plugin_shell` spawn pattern + `invoke_handler` registration.
 - `site/content/docs/desktop/index.mdx` — Why: the "no terminal at any step" + "AI editing pairs with a Claude Code you already have installed" copy to reconcile with the panel.
-- `.ai/decisions/DDR-128-first-open-readiness-check-detect-and-guide.md` — Why: the governing decision (posture, non-blocking, login-shell trap, what's deferred).
-- `.ai/decisions/DDR-126-...` + `DDR-123-...` + `DDR-062-...` — Why: the "no package managers" posture, the verbatim-forward ACP contract, and the `maude design <verb>` shell-out that makes `maude`-on-PATH a real requirement.
+- `.ai/archive/decisions/DDR-128-first-open-readiness-check-detect-and-guide.md` — Why: the governing decision (posture, non-blocking, login-shell trap, what's deferred).
+- `.ai/archive/decisions/DDR-126-...` + `DDR-123-...` + `DDR-062-...` — Why: the "no package managers" posture, the verbatim-forward ACP contract, and the `maude design <verb>` shell-out that makes `maude`-on-PATH a real requirement.
 
 ### Files to Create / Modify
 

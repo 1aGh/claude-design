@@ -119,7 +119,7 @@ If any of these regress in a later phase, the offending change is reverted befor
 - `plugins/design/templates/_shell.html` (new — ~30 LOC) — shared boot harness. Loads `<link rel="stylesheet" href="/tokens.css">` + `<link rel="stylesheet" href="/_components.css">` + Bun's HMR client + a `<script type="module">` that imports `/_canvas-runtime/react.bundle.js` (single React 19 bundle, cached) + `/ui/${slug}.tsx?canvas=${slug}` + mounts via `createRoot(root).render(<Canvas />)`. Used by `/design:new` to write the `_shell.html` into `<designRoot>/` on first canvas creation (one-shot, idempotent).
 - `plugins/design/templates/canvas.tsx.template` (new) — `/design:new` scaffold target. Replaces the current `<!doctype html>` HTML scaffold. Contains envelope-driven JSX skeleton + a one-line comment header.
 - `scripts/migrate-canvases.ts` (new, repo-root — ~250 LOC) — Task 8 codemod. Reads every `.design/**/*.html`, extracts the JSX from `<script type="text/babel">`, extracts the `<style>` block, writes paired `.tsx` + `.meta.json` + (optionally) `.module.css` files. Old `.html` files move to `_history/_migration-2026-05-15/`. Dry-run mode + per-file diff output.
-- `.ai/decisions/DDR-017-canvas-tsx-format.md` — records the decision + the three research rounds + Tailwind-opt-in (not default) choice + motion-Preact escape hatch.
+- `.ai/archive/decisions/DDR-017-canvas-tsx-format.md` — records the decision + the three research rounds + Tailwind-opt-in (not default) choice + motion-Preact escape hatch.
 
 ### Documentation (external — opened during research)
 
@@ -241,7 +241,7 @@ Execute in order. Each is atomic + testable.
 
 ### Task 0 — ARCHIVE research + ADD DDR-017
 
-- **Do**: Save all three research-round reports verbatim to `_history/_system/canvas-format-research-2026-05-15/{round-1-generic.md, round-2-bun-native.md, round-3-phase-12.md}`. Write `.ai/decisions/DDR-017-canvas-tsx-format.md` per `.ai/decisions/template.md`: context (status quo pain points), decision (TSX + two-pass transform + shadcn registry handoff), alternatives considered (Tailwind-everywhere, v0-mode CDN, multi-file project), consequences (Phase 3.4 hard-block, motion-Preact gap, bespoke CSS preserved).
+- **Do**: Save all three research-round reports verbatim to `_history/_system/canvas-format-research-2026-05-15/{round-1-generic.md, round-2-bun-native.md, round-3-phase-12.md}`. Write `.ai/archive/decisions/DDR-017-canvas-tsx-format.md` per `.ai/archive/decisions/template.md`: context (status quo pain points), decision (TSX + two-pass transform + shadcn registry handoff), alternatives considered (Tailwind-everywhere, v0-mode CDN, multi-file project), consequences (Phase 3.4 hard-block, motion-Preact gap, bespoke CSS preserved).
 - **Validate**: DDR opens cleanly + cross-links to this plan.
 
 ### Task 1 — CREATE `canvas-pipeline.ts` (two-pass transform)
@@ -451,7 +451,7 @@ Skip the 5-platform matrix — dev-server has no mobile/native surface.
 **What didn't:**
 
 - **Acceptance criteria missed runtime rendering**. Plan gated on "transpile + build cleanly" but not "render without console errors." The codemod produced files that satisfied all 12 listed criteria yet white-paged at runtime because frame primitives (`DesignCanvas`/`DCSection`/`DCArtboard`) were never defined in TSX-land. The original HTML canvases got them as babel-runtime window globals; the codemod copied JSX verbatim without inlining definitions. Caught by user on first open. Mitigation now lives in Phase 3.6.1 (canvas-lib + virtual-module resolution + handoff inlining).
-- **DDR-017 → DDR-019 numbering drift**. Plan called for DDR-017; foundation slice committed it as DDR-019 because 017/018 were already taken. Both numbers float around in plan + STATE.md prose. Lesson: pick the DDR number **after** scanning `.ai/decisions/`, not in the plan template.
+- **DDR-017 → DDR-019 numbering drift**. Plan called for DDR-017; foundation slice committed it as DDR-019 because 017/018 were already taken. Both numbers float around in plan + STATE.md prose. Lesson: pick the DDR number **after** scanning `.ai/archive/decisions/`, not in the plan template.
 - **Performance budgets were aspirational, not measured**. The plan's "Performance budgets" table listed gates (cold load < 250 ms, transform < 8 ms p50, HMR < 100 ms, token cost < 30 %) but Task 11 only ran the build harness, not wall-clock sampling. None of the gates were actually verified this phase. Carries to 3.6.1's explicit HMR gate (< 200 ms p50, measured).
 - **Smoke TSX.tsx got orphaned**. It was a foundation-slice runtime mount fixture; nobody upgraded it to use the canvas envelope when that contract solidified. Plan said "safe to keep or delete" — that's the kind of language that ages into "neither maintained nor deleted." 3.6.1 rewrites it as a proper canvas.
 - **DS specimens skip-list was the wrong call**. Plan Task 9 explicitly kept `system/<ds>/preview/*.html` as static HTML on the reasoning that "they don't iterate." User flagged immediately that they SHOULD iterate (Cmd+Click + `/design:edit`). The plan-time decision under-weighted the plug-and-play UX. Reversed in 3.6.1.
@@ -459,7 +459,7 @@ Skip the 5-platform matrix — dev-server has no mobile/native surface.
 **What to change in `/plan` / `/execute` next time:**
 
 - **Acceptance criteria must include a runtime gate**, not just static checks. For UI work: "the migrated artifact renders with 0 console errors" is now the minimum bar. Add to `/plan` template.
-- **DDR numbering**: `/plan` should pre-scan `.ai/decisions/` and assign the next free number into the plan template, not let it drift.
+- **DDR numbering**: `/plan` should pre-scan `.ai/archive/decisions/` and assign the next free number into the plan template, not let it drift.
 - **Performance budgets**: if the plan lists a gate, the plan must list the measurement command. "Targets without instrumentation" → either drop the target or schedule the instrumentation as a task.
 - **Skip-lists with weak rationale are tech debt**. When the plan says "X stays in old format because Y", the "Y" must be a hard reason (security, scope, blocking dependency). "Doesn't iterate" was a soft reason that the user immediately contradicted.
 

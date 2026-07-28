@@ -59,7 +59,7 @@ Canvas platform is resolved per-canvas as today (`new.md` step 4: `--mobile` fla
 
 ### Files to Create
 
-- `.ai/decisions/DDR-127-showcase-grounded-canvas-generation.md` — records the decision (showcase as first-class prior + platform-resolution rule + reference-not-prescription stance). Next free number after DDR-105.
+- `.ai/archive/decisions/DDR-127-showcase-grounded-canvas-generation.md` — records the decision (showcase as first-class prior + platform-resolution rule + reference-not-prescription stance). Next free number after DDR-105.
 
 ### Design canvases
 
@@ -182,7 +182,7 @@ Execute in order. Tasks 1–4 are the core ask; Task 5 is a stretch; Tasks 6–7
 
 ### Task 7: RECORD DDR-127
 
-- **Do**: Write `.ai/decisions/DDR-127-showcase-grounded-canvas-generation.md` capturing: the gap (showcases produced but never consumed), the decision (showcase as Tier-0 prior + platform-resolution rule + reference-not-prescription stance + warning-not-blocker keeper), alternatives considered (hard-blocking shell reuse — rejected as over-prescriptive; a `platforms` config field — rejected, platform stays per-canvas), and the link to DDR-010 (design-system-keeper) + DDR-043 (bias-free templates, unaffected since this is consumer-side).
+- **Do**: Write `.ai/archive/decisions/DDR-127-showcase-grounded-canvas-generation.md` capturing: the gap (showcases produced but never consumed), the decision (showcase as Tier-0 prior + platform-resolution rule + reference-not-prescription stance + warning-not-blocker keeper), alternatives considered (hard-blocking shell reuse — rejected as over-prescriptive; a `platforms` config field — rejected, platform stays per-canvas), and the link to DDR-010 (design-system-keeper) + DDR-043 (bias-free templates, unaffected since this is consumer-side).
 - **Pattern**: An existing recent DDR (e.g. DDR-105) for structure.
 - **Validate**: DDR number is unique (DDR-105 is current max); cross-links resolve.
 

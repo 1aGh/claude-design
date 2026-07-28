@@ -99,7 +99,7 @@ Seven small deliverables on the existing substrate.
 
 ### Task 0: Waive the original user-survey gate (record decision)
 
-- **Do:** Write a DDR (`.ai/decisions/DDR-1NN-phase-12-in-canvas-direct-edit.md`) recording: (a) original Task-0 survey gate **waived** — demand established by Plan C shipping panels display-only + naming "live CSS writeback (Phase 12)"; (b) write strategy = inline `style={{}}` merge (CSS) + `JSXText` overwrite with entity-escaping (text), both via the `canvas-edit.ts` engine; leaf-only + inline-only constraints; (c) old Task 4 (Phase-10 CRDT) dropped — single-writer via per-file mutex; (d) drag-to-reorder spun off to `phase-12.1` (rewrite engine is attribute/text-only + `data-cd-id` is positional).
+- **Do:** Write a DDR (`.ai/archive/decisions/DDR-1NN-phase-12-in-canvas-direct-edit.md`) recording: (a) original Task-0 survey gate **waived** — demand established by Plan C shipping panels display-only + naming "live CSS writeback (Phase 12)"; (b) write strategy = inline `style={{}}` merge (CSS) + `JSXText` overwrite with entity-escaping (text), both via the `canvas-edit.ts` engine; leaf-only + inline-only constraints; (c) old Task 4 (Phase-10 CRDT) dropped — single-writer via per-file mutex; (d) drag-to-reorder spun off to `phase-12.1` (rewrite engine is attribute/text-only + `data-cd-id` is positional).
 - **Validate:** DDR exists + indexed; no survey artifact required.
 
 ### Task 1: `POST /_api/edit-css` endpoint (privileged, main-origin only)

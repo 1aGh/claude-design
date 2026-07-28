@@ -52,7 +52,7 @@ Transport: existing dev-server WebSocket on **loopback only**. Cross-machine col
 
 - **Do:** DDR for persistence: `.ydoc.bin` is **gitignored by default**. Snapshot to existing JSON files (`.design/_comments/<slug>.json`) at quiescence (debounce 800ms). The JSON is the git-friendly artifact; `.ydoc.bin` is the live state and is regenerated from JSON on cold open if missing.
 - **Note:** No threat model in this phase — server is loopback-only. Cross-machine threat model lives in Phase 9 DDR (Hocuspocus auth + WSS).
-- **Validate:** DDR exists in `.ai/decisions/`. README clearly states "v1.0 = git handoff or loopback multi-tab; live cross-machine collab is v1.1 via Phase 9 hub deploy."
+- **Validate:** DDR exists in `.ai/archive/decisions/`. README clearly states "v1.0 = git handoff or loopback multi-tab; live cross-machine collab is v1.1 via Phase 9 hub deploy."
 
 ### Task 1: Yjs + y-protocols integration (server)
 

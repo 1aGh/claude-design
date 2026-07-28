@@ -73,7 +73,7 @@ The moodboard is the **headline direction lock**; the hero preview is a **second
 
 ### Files to Create
 
-- `.ai/decisions/DDR-0XX-moodboard-direction-gate.md` — record the new pre-scaffold visual direction gate (verify next free number at record time; DDR-075 + DDR-077 are taken).
+- `.ai/archive/decisions/DDR-0XX-moodboard-direction-gate.md` — record the new pre-scaffold visual direction gate (verify next free number at record time; DDR-075 + DDR-077 are taken).
 - *(No new helper script required for v1)* — the moodboard reuses the existing canvas-render + `maude design screenshot` pipeline. Only add a helper if execution proves the assembly recipe is duplicated across commands.
 
 ### Patterns to Follow
@@ -164,8 +164,8 @@ Execute in order. Each task is atomic and verifiable by re-reading the edited sp
 
 ### Task 6: RECORD DDR for the moodboard direction gate
 
-- **Do**: `/flow:record-ddr` (or hand-author) `.ai/decisions/DDR-0XX-moodboard-direction-gate.md`: the decision to add a pre-scaffold visual direction gate, the StudyFi-revert evidence, why prose Confirm + post-hoc critic panel were insufficient, the moodboard-vs-hero-preview split, and the cost tradeoff (1–3 min gate vs 30–40 min wasted scaffold). Cross-link DDR-033 (3-stage discovery), DDR-057 (4.0 pass bar), DDR-073 (aesthetic ambition).
-- **Validate**: DDR number is unused (`ls .ai/decisions/ | grep DDR-0`); cross-links resolve.
+- **Do**: `/flow:record-ddr` (or hand-author) `.ai/archive/decisions/DDR-0XX-moodboard-direction-gate.md`: the decision to add a pre-scaffold visual direction gate, the StudyFi-revert evidence, why prose Confirm + post-hoc critic panel were insufficient, the moodboard-vs-hero-preview split, and the cost tradeoff (1–3 min gate vs 30–40 min wasted scaffold). Cross-link DDR-033 (3-stage discovery), DDR-057 (4.0 pass bar), DDR-073 (aesthetic ambition).
+- **Validate**: DDR number is unused (`ls .ai/archive/decisions/ | grep DDR-0`); cross-links resolve.
 
 ### Task 7: (verify) Throwaway canvas renders through the dev-server
 

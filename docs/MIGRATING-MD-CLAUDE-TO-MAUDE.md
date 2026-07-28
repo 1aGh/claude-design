@@ -79,7 +79,7 @@ These look like leftover `md-claude`/`mdcc` references but are **intentionally p
 - **`site/components/mdcc/`** component path and `site/app/mdcc-tokens.css`.
 - **`~/.config/mdcc/`** XDG config directory (used by the planned self-hosted hub).
 
-See [DDR-032](.ai/decisions/DDR-032-rename-md-claude-to-maude.md) for the full rationale.
+See [DDR-032](.ai/archive/decisions/DDR-032-rename-md-claude-to-maude.md) for the full rationale.
 
 ### Migrating canvas imports
 

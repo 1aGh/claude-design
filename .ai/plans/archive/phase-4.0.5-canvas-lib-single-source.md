@@ -88,7 +88,7 @@ No new functionality. No behavior change visible to canvas authors or handoff co
 - `plugins/design/templates/canvas-lib.tsx.template` — the template file being deleted (read once to confirm it equals the dogfood copy at deletion time, then `git rm`).
 - `.design/_lib/canvas-lib.tsx` — dogfood copy being deleted.
 - `.design/_lab/perf-100-artboards.tsx` — perf fixture being relocated.
-- `.ai/decisions/DDR-022-canvas-lib-virtual-module-and-inline-on-handoff.md` — the prior DDR getting partially superseded; add a header note pointing at DDR-025.
+- `.ai/archive/decisions/DDR-022-canvas-lib-virtual-module-and-inline-on-handoff.md` — the prior DDR getting partially superseded; add a header note pointing at DDR-025.
 
 ### Files to Create
 
@@ -115,9 +115,9 @@ No new functionality. No behavior change visible to canvas authors or handoff co
 - `plugins/design/skills/design/SKILL.md` — sweep 5 references; replace "scaffolded once from `plugins/design/templates/canvas-lib.tsx.template` on first `/design:setup-ds`" with "ships with the dev-server install"; replace "`<designRoot>/_lib/canvas-lib.tsx`" with "the dev-server-bundled canvas-lib"
 - `plugins/design/skills/ui-kit/SKILL.md` line 22 — same rewording
 - `CLAUDE.md` — "Dev-server runtime contract" section: replace the template + dogfood-must-stay-in-sync paragraph with a one-liner pointing at `plugins/design/dev-server/canvas-lib.tsx`; "Working on plugin internals locally" section: drop the "test in a scratch project" note about canvas-lib regeneration (no longer applicable)
-- `.ai/decisions/DDR-022-canvas-lib-virtual-module-and-inline-on-handoff.md` — add a header note above "## Context": "**Status update (2026-05-19):** Partially superseded by DDR-025. The 'project-owned source under `<designRoot>/_lib/`' assertion is reversed — canvas-lib now ships with the dev-server. The 'virtual specifier at author time + inlined source at handoff time' two-state model remains in force."
+- `.ai/archive/decisions/DDR-022-canvas-lib-virtual-module-and-inline-on-handoff.md` — add a header note above "## Context": "**Status update (2026-05-19):** Partially superseded by DDR-025. The 'project-owned source under `<designRoot>/_lib/`' assertion is reversed — canvas-lib now ships with the dev-server. The 'virtual specifier at author time + inlined source at handoff time' two-state model remains in force."
 - `plugins/design/dev-server/canvas-lib-resolver.ts` `canvasLibPath()` JSDoc — drop "Centralised so the plugin + handoff + tests agree on the location."; replace with "Returns the dev-server-internal canvas-lib path."
-- Any scenario or DDR that references `_lab/perf-100-artboards.tsx` — `.ai/decisions/DDR-024-phase-4-canvas-engine-driver-choice.md` (likely), `.ai/plans/archive/phase-4-canvas-v2-rendering-engine.md` (archive — leave alone, it's history). Run a `grep -rn _lab` sweep to catch stragglers.
+- Any scenario or DDR that references `_lab/perf-100-artboards.tsx` — `.ai/archive/decisions/DDR-024-phase-4-canvas-engine-driver-choice.md` (likely), `.ai/plans/archive/phase-4-canvas-v2-rendering-engine.md` (archive — leave alone, it's history). Run a `grep -rn _lab` sweep to catch stragglers.
 
 ### Documentation
 
@@ -228,7 +228,7 @@ Execute in order. Each task atomic. After every task: `cd plugins/design/dev-ser
 
 ### Task 10: UPDATE `DDR-022` header with the supersession note
 
-- **Do:** Open `.ai/decisions/DDR-022-canvas-lib-virtual-module-and-inline-on-handoff.md`. Above the "## Context" heading, insert: "**Status update (2026-05-19):** Partially superseded by [DDR-025](./DDR-025-canvas-lib-single-source-in-dev-server.md). The 'project-owned source under `<designRoot>/_lib/`' assertion is reversed — canvas-lib now ships with the dev-server install. The 'virtual specifier at author time + inlined source at handoff time' two-state model remains in force."
+- **Do:** Open `.ai/archive/decisions/DDR-022-canvas-lib-virtual-module-and-inline-on-handoff.md`. Above the "## Context" heading, insert: "**Status update (2026-05-19):** Partially superseded by [DDR-025](./DDR-025-canvas-lib-single-source-in-dev-server.md). The 'project-owned source under `<designRoot>/_lib/`' assertion is reversed — canvas-lib now ships with the dev-server install. The 'virtual specifier at author time + inlined source at handoff time' two-state model remains in force."
 - **Validate:** Quick read of DDR-022 — header note is the first thing readers see after the title, and the rest of the DDR remains coherent as historical context.
 
 ### Task 11: SWEEP `cli/commands/init.mjs` for design-side scaffolding

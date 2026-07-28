@@ -46,14 +46,14 @@ Companion changes: envelope template gets a mandatory `## Pattern priors` sectio
 - **GitHub Issue**: n/a (internal retro-driven)
 - **Type**: New Capability (agent) + Enhancements (envelope, commands, docs)
 - **Complexity**: Medium
-- **App/Package**: `plugins/design` (agents + commands + skills) + `.design/system/project` (DS readme) + repo-root CLAUDE.md + `.ai/decisions/`
+- **App/Package**: `plugins/design` (agents + commands + skills) + `.design/system/project` (DS readme) + repo-root CLAUDE.md + `.ai/archive/decisions/`
 - **Affected Systems**:
   - `plugins/design/agents/` — new agent file
   - `plugins/design/commands/new.md` + `edit.md` — orchestrator integration
   - `plugins/design/CATEGORIES.md` — new agent listing (if catalog tracks agents)
   - `.design/system/project/README.md` — Token Usage Guide section
   - root `CLAUDE.md` — pattern-lift rule
-  - `.ai/decisions/` — DDR-009
+  - `.ai/archive/decisions/` — DDR-009
 - **Dependencies**: no new npm packages. Plain Markdown + Bash recipes.
 
 ---
@@ -75,7 +75,7 @@ Companion changes: envelope template gets a mandatory `## Pattern priors` sectio
 ### Files to Create
 
 - `plugins/design/agents/design-system-keeper.md` — the new agent
-- `.ai/decisions/DDR-009-design-system-keeper-agent.md` — decision record
+- `.ai/archive/decisions/DDR-009-design-system-keeper-agent.md` — decision record
 
 ### Documentation
 
@@ -114,7 +114,7 @@ tools: Read, Bash, Glob, Grep
 | ... | ... | ... |
 ```
 
-**DDR shape** (from existing files in `.ai/decisions/`):
+**DDR shape** (from existing files in `.ai/archive/decisions/`):
 
 - frontmatter: `id | title | status | date | tags`
 - sections: Context / Decision / Consequences / Alternatives considered / Open questions
@@ -221,7 +221,7 @@ Execute in order. T1 → T2 → (T3 || T4 || T5 || T7) → T6.
 
 ### Task 6: AUTHOR DDR-009 — design-system-keeper agent
 
-- **Do**: Create `.ai/decisions/DDR-009-design-system-keeper-agent.md` documenting:
+- **Do**: Create `.ai/archive/decisions/DDR-009-design-system-keeper-agent.md` documenting:
   - **Context**: Docs Site retro (link to the review file), 3 divergences quantified, ~80–100k token rework cost.
   - **Decision**: Add read-only ds-keeper agent at `plugins/design/agents/design-system-keeper.md`; auto-route between generation and critic panel; warnings-only severity; opt-out via `--skip-ds-keeper`.
   - **Alternatives considered**:
@@ -230,12 +230,12 @@ Execute in order. T1 → T2 → (T3 || T4 || T5 || T7) → T6.
     - (C) Skip entirely + rely on critics — current state; rejected because the retro proved critics catch this 1-2 iterations too late (after generation + screenshot + critic spawn).
   - **Consequences**: +1 agent spawn per `/design:new` (mandatory) and per `/design:edit` (conditional on ≥10 line diff). Estimated added cost: 5–15k tokens per check. Net cost saving: ~50–80k tokens per session in the typical "user has existing canvas they want lifted from" scenario. Adds the new `--skip-ds-keeper` flag surface.
   - **Open questions**: should ds-keeper read the `.meta.json.designSystem` field to scope priors to the same DS in multi-DS projects? (Decision: yes, defer to v0.13 implementation; current single-DS layout doesn't expose the bug.)
-- **Pattern**: existing `.ai/decisions/DDR-007-stable-element-id-schema-data-dc-attrs.md` and `DDR-008-dev-server-bin-canonical-helper-home.md` — same frontmatter + section layout.
-- **Gotcha**: DDR id must be DDR-009 (next free; verify by `ls .ai/decisions/DDR-*.md | sort | tail -1`).
+- **Pattern**: existing `.ai/archive/decisions/DDR-007-stable-element-id-schema-data-dc-attrs.md` and `DDR-008-dev-server-bin-canonical-helper-home.md` — same frontmatter + section layout.
+- **Gotcha**: DDR id must be DDR-009 (next free; verify by `ls .ai/archive/decisions/DDR-*.md | sort | tail -1`).
 - **Validate**:
   ```bash
-  test -f .ai/decisions/DDR-009-design-system-keeper-agent.md
-  grep -q "^id: DDR-009$" .ai/decisions/DDR-009-design-system-keeper-agent.md
+  test -f .ai/archive/decisions/DDR-009-design-system-keeper-agent.md
+  grep -q "^id: DDR-009$" .ai/archive/decisions/DDR-009-design-system-keeper-agent.md
   ```
 
 ### Task 7: UPDATE plugins/design/CATEGORIES.md — list ds-keeper
@@ -277,7 +277,7 @@ Run these commands to confirm zero regressions:
 - [x] T3: `commands/new.md` step 5 envelope template includes `## Pattern priors` section; step 9.5 invokes ds-keeper in parallel with the panel
 - [x] T4: `commands/edit.md` step 7.5 conditionally invokes ds-keeper; step 8a has the DS-drift fast-path routing
 - [x] T5: `CLAUDE.md` carries the pattern-lift paragraph under "Design plugin" section; file 127 lines (≤200 limit) — committed in `16af2b6` (user bundled with docs phase 3.4 commit)
-- [x] T6: `.ai/decisions/DDR-010-design-system-keeper-agent.md` authored with context + decision + alternatives + consequences (DDR-009 was claimed by `bun-runtime-authoritative` mid-plan; bumped to DDR-010)
+- [x] T6: `.ai/archive/decisions/DDR-010-design-system-keeper-agent.md` authored with context + decision + alternatives + consequences (DDR-009 was claimed by `bun-runtime-authoritative` mid-plan; bumped to DDR-010)
 - [x] T7: `plugins/design/CATEGORIES.md` references ds-keeper as cross-reference note (auto-routed audit agents section)
 - [ ] Smoke run on a scratch canvas confirms ds-keeper fires once and reports at least one finding (pattern-reinvention or token-usage) on a deliberately-drifty input — **NOT YET RUN** (requires fresh project + plugin reload outside this repo; carried into post-merge verification)
 - [x] All 6 retro action items in `[../logs/system-reviews/docs-site-design-generation-review.md](../logs/system-reviews/docs-site-design-generation-review.md)` § "Action checklist" tick to `[x]` — done as part of `/flow:done`
@@ -294,12 +294,12 @@ Run these commands to confirm zero regressions:
 - Light review only (no `/flow:review-code` agent spawn) was the right call for markdown-spec changes — agent overhead would have flagged style nits irrelevant to spec correctness.
 
 **What didn't**
-- **Plan assumed DDR-009 was free.** Mid-session, user landed `DDR-009-bun-runtime-authoritative-for-dev-server.md` in commit `16af2b6`. Caught at T6 validation, renamed to DDR-010, propagated 3 cross-references (agent + CLAUDE.md + plan frontmatter). Cost: ~2 min. **Lesson:** plan task `### Task 6` already said "verify by `ls .ai/decisions/DDR-*.md | sort | tail -1`" — I skipped the verification step on first write and ran it only in validation. Should have run it before authoring.
+- **Plan assumed DDR-009 was free.** Mid-session, user landed `DDR-009-bun-runtime-authoritative-for-dev-server.md` in commit `16af2b6`. Caught at T6 validation, renamed to DDR-010, propagated 3 cross-references (agent + CLAUDE.md + plan frontmatter). Cost: ~2 min. **Lesson:** plan task `### Task 6` already said "verify by `ls .ai/archive/decisions/DDR-*.md | sort | tail -1`" — I skipped the verification step on first write and ran it only in validation. Should have run it before authoring.
 - **User bundled T1 + T5 into unrelated commits during my session** (`3d663e6` swept Token usage guide into docs-site canvas; `16af2b6` swept CLAUDE.md pattern-lift into Phase 3.4 docs). Acceptable — both edits landed correctly and the commit messages are honest — but it means the Phase 14 commit in this `/flow:done` only has T2/T3/T4/T6/T7. Anyone reading the git log will need to follow three commits to reconstruct Phase 14's surface area.
 - **Plan's validation grep for the DDR (`^id: DDR-009$`) didn't match the repo convention.** Sibling DDRs (007/008) use `# DDR-NNN:` heading-style metadata, not YAML frontmatter `id:` field. The plan author copy-pasted a generic check. Followed actual repo convention; verified via `grep "^# DDR-010:"`.
 
 **What to change in `/flow:plan` or `/flow:execute` next time**
-- When a plan creates DDR-NNN files, the plan author MUST run `ls .ai/decisions/DDR-*.md | sort | tail -1` before drafting the plan, and the executor SHOULD re-run it as the first step of the DDR task. (The plan called it out; I skipped it. Both layers should enforce.)
+- When a plan creates DDR-NNN files, the plan author MUST run `ls .ai/archive/decisions/DDR-*.md | sort | tail -1` before drafting the plan, and the executor SHOULD re-run it as the first step of the DDR task. (The plan called it out; I skipped it. Both layers should enforce.)
 - Plan validation greps should be sourced from the actual repo convention by reading 1–2 sibling files first, not from a template.
 - For markdown-only plans, `/flow:done` should default-skip `/validate` (the cross-platform scenario step) per the plan's own "## Validation" n/a flags, rather than requiring the executor to argue around it. A plan-frontmatter field like `validation_profile: docs-only` would automate this.
 

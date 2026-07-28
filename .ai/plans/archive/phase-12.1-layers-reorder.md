@@ -61,7 +61,7 @@ Phase 12 shipped a **browsable, click-to-select** Layers tree and the determinis
 
 - `apps/studio/test/canvas-reorder.test.ts` — `bun:test` unit coverage for `moveElement` (sibling reorder, reparent, all 4 positions, every guardrail refusal, whitespace/formatting preservation, `movedId` recompute).
 - (Milestone B) `apps/studio/use-element-reorder.tsx` — the in-canvas drag hook (drag state + flow-aware drop-target + insertion-line), if the gesture doesn't fold cleanly into an existing hook.
-- `.ai/decisions/DDR-138-jsx-node-move-reorder-and-id-resettle.md` — the decision record (see Task 1).
+- `.ai/archive/decisions/DDR-138-jsx-node-move-reorder-and-id-resettle.md` — the decision record (see Task 1).
 
 ### Design canvases
 
@@ -119,8 +119,8 @@ Execute in order. Milestone A (Tasks 1–6) is independently shippable; Mileston
 
 ### Task 1: RECORD DDR-138 — node-move + id-re-settle + reparent guardrails
 
-- **Do**: Write `.ai/decisions/DDR-138-jsx-node-move-reorder-and-id-resettle.md` capturing: (a) deterministic `magic-string.move` span-move as the reorder primitive (vs agent rewrite); (b) positional-`data-cd-id` churn is accepted, with re-settle priority `movedId → data-dc-element → jsxPath`; (c) reparenting is in scope with the guardrail set; (d) the write stays main-origin-only per DDR-054, canvas-requests-shell-writes.
-- **Pattern**: existing DDR files in `.ai/decisions/`; use `/flow:record-ddr`.
+- **Do**: Write `.ai/archive/decisions/DDR-138-jsx-node-move-reorder-and-id-resettle.md` capturing: (a) deterministic `magic-string.move` span-move as the reorder primitive (vs agent rewrite); (b) positional-`data-cd-id` churn is accepted, with re-settle priority `movedId → data-dc-element → jsxPath`; (c) reparenting is in scope with the guardrail set; (d) the write stays main-origin-only per DDR-054, canvas-requests-shell-writes.
+- **Pattern**: existing DDR files in `.ai/archive/decisions/`; use `/flow:record-ddr`.
 - **Gotcha**: DDR-138 is the next free id (DDR-137 is the highest). Cross-link DDR-019, DDR-103, DDR-054, DDR-007.
 - **Validate**: file exists, front-matter well-formed.
 

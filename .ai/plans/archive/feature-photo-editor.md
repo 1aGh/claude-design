@@ -47,7 +47,7 @@ The tasks below carry BUILDER's own flagged top risk (WebGL per-iframe bundle fr
 
 - `apps/studio/client/app.jsx:5518-5981` (`InspectorPanel`) — the three-tab (Inspect/Layers/CSS) panel the new "Photo" tab slots into; tab bar at `:5824-5837`, tab-body branch chain `:5847-5977`, mount site `:8805`.
 - `apps/studio/client/app.jsx:4280-5178` (`CssKnobs`) — the pattern to mirror exactly: `commit()`/`post()`/`record()`/`onOptimistic()` helpers (`:4342-4432`), `makeScrub` drag-to-value (`:4461-4517`), provenance dots (`:4547-4578`), section layout (`SECTION_PROPS`, `:4597-4632`). The new `PhotoKnobs` component should reuse these helpers, not reimplement them.
-- `.ai/decisions/DDR-104-css-panel-ux-model.md` — why `filter`/`backdrop-filter` are currently excluded from the curated Inspector UI (line 27); this plan is the first curated surface for that CSS family, on a *different* write path (its own route, not `edit-css`), so it doesn't reopen DDR-104's exclusion — record this distinction in the new DDR (Task 27).
+- `.ai/archive/decisions/DDR-104-css-panel-ux-model.md` — why `filter`/`backdrop-filter` are currently excluded from the curated Inspector UI (line 27); this plan is the first curated surface for that CSS family, on a *different* write path (its own route, not `edit-css`), so it doesn't reopen DDR-104's exclusion — record this distinction in the new DDR (Task 27).
 - `apps/studio/use-selection-set.tsx:40-73` (`Selection` shape) and `:132` (`postMessage({dgn:'select-set', ...})`) — where to add an `isPhoto`/`photoKind` flag so `InspectorPanel` can conditionally render the Photo tab per the artboard-`<img>` vs. annotation-`ImageStroke` distinction.
 - `apps/studio/annotations-model.ts:235-250` (`ImageStroke` type) and `apps/studio/annotations-layer.tsx:4252-4270` (`<image href=... />` render) — the annotation-layer image representation the pixi.js compositor must also target.
 - `apps/studio/draw/primitives.ts:448-566` (`fe()`, `filter()`, `grainFilter()`, `pattern()`, `mask()`, `clipPath()`) — the existing SVG filter/effect toolkit; not reused directly (this plan is WebGL-based per the debate outcome) but the API shape (parametric, composable builders) is the right model for `apps/studio/photo/filters.ts`.
@@ -60,8 +60,8 @@ The tasks below carry BUILDER's own flagged top risk (WebGL per-iframe bundle fr
 - `plugins/design/commands/draw.md` (147 lines, read in full) — the step structure (`Pre-flight → resolve args → spawn agent/dispatch → verdict/report`) the new `/design:photo` command mirrors.
 - `apps/studio/canvas-shell.tsx:894-913` (`registry` / `ContextMenuProvider`) and `:1236-1340` (`fitItem`/`resetItem`/"Copy CSS" `MenuItem` entries) — where the new "Edit Photo…" element-context-menu entry gets added.
 - `apps/studio/annotations-layer.tsx:3745-3816` (`AnnotationContextMenu`) — where the annotation-stroke "Edit Photo…" entry gets added.
-- `.ai/decisions/DDR-115-per-user-camera-split-and-runtime-state-taxonomy.md` — the canonical VERSIONED/IGNORED taxonomy table (§3) the new `.photo.json` sidecar must be explicitly added to, and the "three lists must agree" invariant (`git/service.ts` `isMaudeRuntimeState`, `cli/lib/gitignore-block.mjs`, root `.gitignore`).
-- `.ai/decisions/DDR-070-svg-generation-geometry-engine.md`, `DDR-024-phase-4-canvas-engine-driver-choice.md`, `DDR-054-linked-mode-trust-model-and-task-4-hardening.md`, `DDR-088-canvas-media-vocabulary-and-asset-write-surface.md` — read for the new DDR's "alternatives considered" / "supersedes" references (Task 27).
+- `.ai/archive/decisions/DDR-115-per-user-camera-split-and-runtime-state-taxonomy.md` — the canonical VERSIONED/IGNORED taxonomy table (§3) the new `.photo.json` sidecar must be explicitly added to, and the "three lists must agree" invariant (`git/service.ts` `isMaudeRuntimeState`, `cli/lib/gitignore-block.mjs`, root `.gitignore`).
+- `.ai/archive/decisions/DDR-070-svg-generation-geometry-engine.md`, `DDR-024-phase-4-canvas-engine-driver-choice.md`, `DDR-054-linked-mode-trust-model-and-task-4-hardening.md`, `DDR-088-canvas-media-vocabulary-and-asset-write-surface.md` — read for the new DDR's "alternatives considered" / "supersedes" references (Task 27).
 - `apps/studio/bin/runtime-health.sh` and `apps/studio/.min-sizes.json` (or equivalent floor file referenced by `check-runtime-bundles.sh`) — extend for the two new lazy-bundled packages (Task 24), closing BUILDER's flagged bundle-fragility risk.
 
 ### Design canvases
@@ -154,14 +154,14 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 
 #### ✅ Task 2: RECORD the DDR-115 taxonomy addition — completed 2026-07-10 (dated addendum)
 
-- **Do**: Add an explicit row to DDR-115's §3 table (`.ai/decisions/DDR-115-...md`): `assets/**` (including the new `assets/<sha8>.photo.json` sidecar) → **VERSIONED**. This is currently true in practice (assets aren't gitignored) but not explicitly stated in the table — make it explicit before adding a second file type under `assets/`.
+- **Do**: Add an explicit row to DDR-115's §3 table (`.ai/archive/decisions/DDR-115-...md`): `assets/**` (including the new `assets/<sha8>.photo.json` sidecar) → **VERSIONED**. This is currently true in practice (assets aren't gitignored) but not explicitly stated in the table — make it explicit before adding a second file type under `assets/`.
 - **Gotcha**: This is a doc edit to an *Accepted* DDR — add as a dated addendum note, don't rewrite history.
 - **Validate**: Manual read-through; no automated check.
 
 #### ✅ Task 3: ADD a regression guard for the three-list taxonomy invariant — completed 2026-07-10 (photo-taxonomy.test.ts, 4 pass)
 
 - **Do**: Add/extend a test (near `apps/studio/git/service.ts`'s existing `isMaudeRuntimeState` tests, or a new small test file) asserting `assets/<sha8>.photo.json`-shaped paths are classified VERSIONED by `isMaudeRuntimeState`, are **not** matched by any glob in `cli/lib/gitignore-block.mjs`, and are **not** matched by the root `.gitignore`.
-- **Pattern**: `.ai/decisions/DDR-115-...md`'s own "all three lists now agree" framing — this test is the automated version of that manual invariant.
+- **Pattern**: `.ai/archive/decisions/DDR-115-...md`'s own "all three lists now agree" framing — this test is the automated version of that manual invariant.
 - **Validate**: `cd apps/studio && bun test`
 
 ### Stage B — WebGL photo-compositing engine
@@ -307,7 +307,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 #### ✅ Task 26: RECORD the architecture DDR — completed 2026-07-10 (DDR-161; captures pixi activation, PhotoEdit sidecar, /_api/photo-edit route, headless-harness pattern, the BUILDER/SHIPPER/BREAKER debate with top risks verbatim as accepted trade-offs, + the 2 implementation deviations & the bundle-fragility bug fix)
 
 - **Do**: Via `/flow:record-ddr`, record the photo-editor architecture decision — pixi.js activation (superseding DDR-024's "parked" status for this specific use case), the new `PhotoEdit` non-destructive object, the new `/_api/photo-edit` route, and the headless-harness pattern extension. Cross-reference DDR-024, DDR-070, DDR-088, DDR-054, DDR-104, DDR-115. Include the debate outcome (BUILDER's approach chosen over SHIPPER/BREAKER's SVG-filter alternative) in the "Alternatives considered" section, quoting their top risks verbatim as accepted trade-offs.
-- **Validate**: DDR file exists under `.ai/decisions/`, numbered per the next-available-number check (see `project_ddr_numbering_races_on_shared_main` convention — re-check the decisions dir immediately before numbering).
+- **Validate**: DDR file exists under `.ai/archive/decisions/`, numbered per the next-available-number check (see `project_ddr_numbering_races_on_shared_main` convention — re-check the decisions dir immediately before numbering).
 
 #### ✅ Task 27: ADD a what's-new entry (at `/flow:done` time) — completed 2026-07-10 (entry `photo-editor` in `apps/studio/whats-new.json`, with a Photo-tab spotlight-tour step; stamped `version: "0.43.0"` at the v0.43.0 release, ahead of this formal `/flow:done` close-out)
 

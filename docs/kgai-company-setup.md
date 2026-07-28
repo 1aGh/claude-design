@@ -2,7 +2,7 @@
 
 This is the **admin** guide: stand up the single shared kgai store that every repo in the company syncs to, so decisions made in one repo/department are one query away from another. Individual engineers then follow [onboarding](./kgai-onboarding.md).
 
-Maude uses **scope model A** — one shared store, decisions tagged by `repo:`/`dept:` — decided in [DDR-189](../.ai/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md). The pro is cross-team query for free (`--all-scopes`); the con is one blast radius, which the trust rules below bound.
+Maude uses **scope model A** — one shared store, decisions tagged by `repo:`/`dept:` — decided in [DDR-189](../.ai/archive/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md). The pro is cross-team query for free (`--all-scopes`); the con is one blast radius, which the trust rules below bound.
 
 ## 1. Create the S3 store bucket
 
@@ -21,7 +21,7 @@ The store prefix is `s3://studyfi-kg/store` — this is the `knowledgeGraph.stor
 
 ## 2. Per-user IAM (the writer authorization boundary)
 
-**Only a locally-authenticated CLI writes the graph** ([DDR-189](../.ai/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md) rule 3). Give each engineer their **own** IAM identity — never a shared key, never the hub's credentials. Minimum policy scoped to the store prefix:
+**Only a locally-authenticated CLI writes the graph** ([DDR-189](../.ai/archive/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md) rule 3). Give each engineer their **own** IAM identity — never a shared key, never the hub's credentials. Minimum policy scoped to the store prefix:
 
 ```jsonc
 {
@@ -50,7 +50,7 @@ Attach it to each user (or an SSO permission set). **Do NOT** attach it to any h
 
 Each repo sets its own `scope: { repo, dept }` in `.ai/workflows.config.json` (per-repo config — never hardcoded in the plugin). `repo` is free-form (the repo's name); `dept` must be one of the agreed set. That's the whole taxonomy — deterministic identity means `dept:dev` is one node no matter how many repos write it.
 
-## 4. Trust boundary (enforce, don't assume) — [DDR-189](../.ai/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md)
+## 4. Trust boundary (enforce, don't assume) — [DDR-189](../.ai/archive/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md)
 
 A single company store is an **attacker-controlled writer surface**, structurally the DDR-054 untrusted-peer boundary but company-wide: a poisoned decision node is read as authoritative context by every repo's `kg sync`. The three rules Maude enforces:
 

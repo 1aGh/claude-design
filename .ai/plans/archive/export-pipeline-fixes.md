@@ -59,7 +59,7 @@ Address each with a root-caused fix, sharing two pieces of foundational work (se
 
 - pptxgenjs valid-file requirements + `[Content_Types].xml` overrides per slide — Why: item 6 merge must register every `slideN.xml` as a content-type Override or the deck is invalid. (Fetch via context7 `pptxgenjs` / OOXML spec during execute.)
 - `dom-to-svg` README — `elementToSVG` background behaviour — Why: confirm whether the root element's `background` is painted; item 4.
-- DDR-042 (`.ai/decisions/DDR-042-*`) — why SVG/PPTX swapped to `dom-to-svg`/`dom-to-pptx` — Why: don't reintroduce the foreignObject/hand-walker path.
+- DDR-042 (`.ai/archive/decisions/DDR-042-*`) — why SVG/PPTX swapped to `dom-to-svg`/`dom-to-pptx` — Why: don't reintroduce the foreignObject/hand-walker path.
 
 ### Patterns to Follow
 

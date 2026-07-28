@@ -70,7 +70,7 @@ change: stage both arches' sidecars, add the Rust `x86_64-apple-darwin` target, 
 - `apps/desktop/scripts/sync-sidecar.mjs` — Why: already maps `darwin-x64` → `x86_64-apple-darwin` via `MAUDE_SIDECAR_SLUG`; just needs to be invoked twice (once per arch) before the universal build instead of once.
 - `apps/desktop/scripts/sync-agent-browser.mjs` — Why: same pattern, second sidecar (`agent-browser`) that also needs both arches staged.
 - `apps/desktop/src-tauri/tauri.conf.json` — Why: confirms `bundle.targets: "all"` (bundle *formats*, unrelated to CPU arch) and `externalBin` list — no changes needed here, just confirms nothing else assumes a single arch.
-- `.ai/decisions/DDR-106-tauri-v2-native-shell-architecture.md` — Why: already documents the `darwin-x64` → `x86_64-apple-darwin` slug/triple mapping as a founding-decision table; this feature just wires it into the desktop release CI for the first time.
+- `.ai/archive/decisions/DDR-106-tauri-v2-native-shell-architecture.md` — Why: already documents the `darwin-x64` → `x86_64-apple-darwin` slug/triple mapping as a founding-decision table; this feature just wires it into the desktop release CI for the first time.
 - `site/app/(home)/desktop/download-button.tsx` (line ~23, `FILE.macos`) — Why: hardcodes the copy `'.dmg · Apple Silicon'`, needs to say both.
 - `site/content/docs/desktop/index.mdx` (line 23) — Why: system-requirements table says "13 Ventura (Apple Silicon)".
 

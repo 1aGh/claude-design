@@ -87,10 +87,10 @@ Live presence, annotations, comments, **and the TSX body** already sync over the
 > Read in parallel.
 
 - `.ai/docs/collab-model-design.md` — **entire doc.** 3-lane model, UX mental model, microcopy contract. **NOTE:** this phase **reverses** its action A2 (*"TSX code lane = pessimistic locking"*) — DDR (Task 6) records the reversal.
-- `.ai/decisions/DDR-064-single-shared-collab-doc.md` — one Y.Doc per canvas; awareness is per-canvas.
-- `.ai/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md` — the F1 iframe sandbox + trust model. We rely on the canvas-origin split being on.
-- `.ai/decisions/DDR-063-*.md` + `DDR-072-*.md` + `DDR-079-*.md` — `.tsx` sync gating (the two-locks rule; project-level default-on for linked).
-- `.ai/decisions/DDR-078-agent-presence-virtual-collaborators.md` — `ai-activity`; the editing field must follow the same "synthetic peer is read-only display" discipline + the awareness sanitizer.
+- `.ai/archive/decisions/DDR-064-single-shared-collab-doc.md` — one Y.Doc per canvas; awareness is per-canvas.
+- `.ai/archive/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md` — the F1 iframe sandbox + trust model. We rely on the canvas-origin split being on.
+- `.ai/archive/decisions/DDR-063-*.md` + `DDR-072-*.md` + `DDR-079-*.md` — `.tsx` sync gating (the two-locks rule; project-level default-on for linked).
+- `.ai/archive/decisions/DDR-078-agent-presence-virtual-collaborators.md` — `ai-activity`; the editing field must follow the same "synthetic peer is read-only display" discipline + the awareness sanitizer.
 - `apps/studio/use-collab.tsx` — client Yjs provider; `CollabAwarenessState` (lines 83–114) + the `sanitizeForeignState()` chokepoint (lines 248–262). **This is where the `editing` field is added.**
 - `apps/studio/collab/{room.ts,protocol.ts,registry.ts,awareness-bridge.ts,ai-activity.ts}` — server-side room lifecycle + the awareness↔hub bridge + the agent-activity source.
 - `apps/studio/sync/index.ts` + `sync/agent.ts` — the live TSX projection (file ↔ Y.Text ↔ hub, ~800 ms debounce); `scanCanvases()` syncability gating.
@@ -180,7 +180,7 @@ Live presence, annotations, comments, **and the TSX body** already sync over the
 
 ### Task 6: DDRs — ✅ completed 2026-06-19
 
-> **Done:** **DDR-120** (branch-scoped multiplayer + soft editing-presence, no locking — explicitly reverses `collab-model-design.md` A2 + the original phase-30 locking plan; scoped DDR-078 reversal for the agent→awareness bridge; records the F1 re-audit obligation) + **DDR-121** (live-session canvas propagation via Get latest / loopback `canvas-list-update`; no project-level hub doc). Both indexed in `.ai/decisions/README.md`. _(F1 re-audit itself runs in /done's security fan-out.)_
+> **Done:** **DDR-120** (branch-scoped multiplayer + soft editing-presence, no locking — explicitly reverses `collab-model-design.md` A2 + the original phase-30 locking plan; scoped DDR-078 reversal for the agent→awareness bridge; records the F1 re-audit obligation) + **DDR-121** (live-session canvas propagation via Get latest / loopback `canvas-list-update`; no project-level hub doc). Both indexed in `.ai/archive/decisions/README.md`. _(F1 re-audit itself runs in /done's security fan-out.)_
 
 - **Do:** Write 2 DDRs:
   1. **Branch-scoped live multiplayer + soft editing-presence** — the two-rule model; multiplayer requires same branch; live TSX already-on (DDR-079) is the co-edit medium; **soft editing-presence replaces locking** (explicitly **reverses** `collab-model-design.md` A2 and the original phase-30 locking design — cite *why*: users edit via agent/CSS-layer not raw co-typing, so garbage-merge risk is absent and a lock's complexity/orphaned-lease failure mode isn't worth it; the visual conflict picker (DDR-116) remains the safety net for divergent saves). Record the F1 re-audit outcome.

@@ -12,7 +12,7 @@
 
 ## Decisions
 
-- (none — full DDRs live in `.ai/decisions/`)
+- (none — full DDRs live in `.ai/archive/decisions/`)
 
 ## Blockers
 

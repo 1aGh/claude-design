@@ -549,9 +549,9 @@ Execute in order. Each task is atomic and testable.
 
 ### A28 — WRITE DDR for combined scope
 
-- **Do:** Write `.ai/decisions/DDR-053-maude-doctor-deps-config-quality.md`. Title: "`maude doctor` as unified workspace diagnostic (deps + config + quality), single user-facing CLI surface, slash commands call internal libs directly." Cite: (a) audit findings from this planning round; (b) `biome-recurring-failures-review.md` (Layer 4 motivation); (c) `feedback-no-redundant-tooling-over-pnpm` memory (why no `maude quality run` wrapper).
-- **Pattern:** mirror existing DDRs in `.ai/decisions/`. Next free DDR number = 053 (047/048/049/050/051/052 are taken — 052 went to the parallel hocuspocus-vs-partykit hub decision shipped in commit `41d9ad9`. Verify via `ls .ai/decisions/DDR-*.md | tail -10` immediately before writing in case more shipped between plan time and impl time).
-- **Validate:** DDR linked from CLAUDE.md. `ls .ai/decisions/DDR-053-*.md` exists.
+- **Do:** Write `.ai/archive/decisions/DDR-053-maude-doctor-deps-config-quality.md`. Title: "`maude doctor` as unified workspace diagnostic (deps + config + quality), single user-facing CLI surface, slash commands call internal libs directly." Cite: (a) audit findings from this planning round; (b) `biome-recurring-failures-review.md` (Layer 4 motivation); (c) `feedback-no-redundant-tooling-over-pnpm` memory (why no `maude quality run` wrapper).
+- **Pattern:** mirror existing DDRs in `.ai/archive/decisions/`. Next free DDR number = 053 (047/048/049/050/051/052 are taken — 052 went to the parallel hocuspocus-vs-partykit hub decision shipped in commit `41d9ad9`. Verify via `ls .ai/archive/decisions/DDR-*.md | tail -10` immediately before writing in case more shipped between plan time and impl time).
+- **Validate:** DDR linked from CLAUDE.md. `ls .ai/archive/decisions/DDR-053-*.md` exists.
 
 ---
 

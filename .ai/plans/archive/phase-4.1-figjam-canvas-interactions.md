@@ -79,8 +79,8 @@ When `inputMode === 'figjam'`, canvas-lib's `DesignCanvas` sets a window sentine
 - `plugins/design/dev-server/client/app.jsx` — receives postMessage from inspector + writes `_active.json`. Existing keyboard block (around lines 1660–1750), Cmd+C handler (1684–1700), Cmd+Shift+click composer (1581–1595). **Why:** these chords get removed; help overlay (line 668 + 956) gets the new grammar documented; canvas-iframe focus check added to gate shell shortcuts.
 - `.ai/plans/phase-5-draw-tools.md` lines 35–47 (toolbar pen/circle/arrow/eraser shortcuts). **Why:** Phase 5 needs the same tool-mode framework; align the API now.
 - `.ai/plans/phase-6-comments-presentation-export.md` lines 60–72 (comment-pin drop flow). **Why:** the C-tool handler replaces the chord-based drop; Phase 6 inherits the new entry path.
-- `.ai/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md` — single-source contract; locks new modules' location (siblings to canvas-lib.tsx, NOT in `runtime/`).
-- `.ai/decisions/DDR-007-stable-element-id-schema-data-dc-attrs.md` — `data-dc-*` attribute schema; the input router uses these to resolve hover/select target identity.
+- `.ai/archive/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md` — single-source contract; locks new modules' location (siblings to canvas-lib.tsx, NOT in `runtime/`).
+- `.ai/archive/decisions/DDR-007-stable-element-id-schema-data-dc-attrs.md` — `data-dc-*` attribute schema; the input router uses these to resolve hover/select target identity.
 - `plugins/design/templates/design-system-inspiration/audience-pro/components-toast-menu.html` lines 23–28, 67–77 — **pattern prior** for right-click context menu (hairline border, mono shortcut hints, section separators).
 
 ### Files to Create

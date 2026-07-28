@@ -101,7 +101,7 @@ A focused, roadmap-aligned slice:
 ### Files to Create
 
 - (none net-new files in `src/`) — all changes UPDATE existing `src/admin/*` + `src/server.mjs`. New tests may be added under `plugins/design/hub/test/`.
-- DDR file(s) under `.ai/decisions/DDR-0XX-hub-admin-maude-reskin.md` (Task 1). → **Recorded: [DDR-097](../decisions/DDR-097-hub-admin-maude-reskin-and-operator-surfaces.md)** (MDCC→maude DS migration · "Studio Hub" branding · bundle ceiling 15→28 KB gz).
+- DDR file(s) under `.ai/archive/decisions/DDR-0XX-hub-admin-maude-reskin.md` (Task 1). → **Recorded: [DDR-097](../decisions/DDR-097-hub-admin-maude-reskin-and-operator-surfaces.md)** (MDCC→maude DS migration · "Studio Hub" branding · bundle ceiling 15→28 KB gz).
 
 ### Design canvases
 
@@ -171,7 +171,7 @@ Execute in order. Each task is atomic and testable. **No code in planning — th
 ### Task 1: RECORD decisions (DDRs)
 
 - **Do**: Write a DDR for (a) hub admin DS migration MDCC → maude (supersedes `hub-admin-redesign.md`'s DS layer), (b) branding "Studio Hub" as the operator-console name (note coherence w/ "Maude"), (c) bundle-ceiling outcome (decide final gz cap). Cross-link DDR-053/054/056 as preserved invariants.
-- **Pattern**: existing `.ai/decisions/DDR-0XX-*.md` format.
+- **Pattern**: existing `.ai/archive/decisions/DDR-0XX-*.md` format.
 - **Validate**: DDR file(s) exist + linked from this plan.
 
 ### Task 2: PORT maude tokens + component anatomy into `src/admin/style.css`

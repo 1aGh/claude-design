@@ -69,7 +69,7 @@ Then reconcile the three taxonomy lists to one canonical set (below), and (per t
 
 ### Files to Create
 
-- `.ai/decisions/DDR-NNN-per-user-camera-split-and-runtime-state-taxonomy.md` — records: (1) GET-merge / PATCH-split contract, (2) `_canvas-state/<slug>.view.json` as the per-machine camera lane (revises the Phase-4 "meta holds viewport" decision), (3) the single canonical runtime-state taxonomy, (4) the annotations/comments → versioned decision. (DDR number: next free in `.ai/decisions/`.)
+- `.ai/archive/decisions/DDR-NNN-per-user-camera-split-and-runtime-state-taxonomy.md` — records: (1) GET-merge / PATCH-split contract, (2) `_canvas-state/<slug>.view.json` as the per-machine camera lane (revises the Phase-4 "meta holds viewport" decision), (3) the single canonical runtime-state taxonomy, (4) the annotations/comments → versioned decision. (DDR number: next free in `.ai/archive/decisions/`.)
 - `apps/studio/<designRoot>/_canvas-state/<slug>.view.json` — runtime, created at first viewport settle (not committed).
 
 ### Documentation

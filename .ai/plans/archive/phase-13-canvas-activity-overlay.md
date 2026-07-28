@@ -71,8 +71,8 @@ Client (canvas-lib):
 
 ### Documentation
 
-- [`.ai/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md`](.ai/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md) — Why: new server module uses `Bun.*` APIs, not `node:fs`; tests use `bun:test`
-- [`.ai/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md`](.ai/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md) — Why: don't even think about copying overlay component into `<designRoot>/_lib/` — single source in dev-server
+- [`.ai/archive/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md`](.ai/archive/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md) — Why: new server module uses `Bun.*` APIs, not `node:fs`; tests use `bun:test`
+- [`.ai/archive/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md`](.ai/archive/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md) — Why: don't even think about copying overlay component into `<designRoot>/_lib/` — single source in dev-server
 - `plugins/flow/skills/motion-rules/SKILL.md` — Why: animation hard-stops (durations, easing, compositor-only, reduced-motion)
 - `plugins/flow/skills/a11y-rules/SKILL.md` — Why: overlay must be `aria-hidden` (decorative) but respect motion preferences
 
@@ -234,9 +234,9 @@ Execute in order. Each task is atomic and testable. Tasks 1–5 = MVP. Task 6 = 
 
 ### Task 9: ADD DDR
 
-- **Do**: file `.ai/decisions/DDR-029-canvas-activity-overlay-fs-watch-driven.md` recording: (a) why we chose fs.watch over agent push (agent-agnostic, no protocol to maintain), (b) the 3000 ms idle debounce constant, (c) the decision to ship file-level MVP and gate per-artboard behind Task 7, (d) why we extended `inspect.ts:injectInspector` instead of shipping a separate CSS file (single injection point keeps the canvas iframe self-contained).
-- **Pattern**: `.ai/decisions/DDR-025-…` is the closest neighbor in size and shape.
-- **Validate**: `ls .ai/decisions/` shows the new file; cross-link from `phase-13-canvas-activity-overlay.md`.
+- **Do**: file `.ai/archive/decisions/DDR-029-canvas-activity-overlay-fs-watch-driven.md` recording: (a) why we chose fs.watch over agent push (agent-agnostic, no protocol to maintain), (b) the 3000 ms idle debounce constant, (c) the decision to ship file-level MVP and gate per-artboard behind Task 7, (d) why we extended `inspect.ts:injectInspector` instead of shipping a separate CSS file (single injection point keeps the canvas iframe self-contained).
+- **Pattern**: `.ai/archive/decisions/DDR-025-…` is the closest neighbor in size and shape.
+- **Validate**: `ls .ai/archive/decisions/` shows the new file; cross-link from `phase-13-canvas-activity-overlay.md`.
 
 ---
 

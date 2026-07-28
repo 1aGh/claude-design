@@ -142,7 +142,7 @@ Reuse the mature spines; add the two genuinely-missing pieces (an ingestion prim
 ### Documentation
 
 - `plugins/design/skills/video-comp/SKILL.md` — Remotion iron rules, export scope flags — Why: authoring + exporting the explainer.
-- `.ai/decisions/DDR-087` (tour engine), `DDR-128`/`DDR-135` (readiness + onboarding affordances), `DDR-141` (brand Tier-0), `DDR-148` (video-comp), `DDR-045` (fetch-asset real-disk paths + security) — Why: the reuse contracts.
+- `.ai/archive/decisions/DDR-087` (tour engine), `DDR-128`/`DDR-135` (readiness + onboarding affordances), `DDR-141` (brand Tier-0), `DDR-148` (video-comp), `DDR-045` (fetch-asset real-disk paths + security) — Why: the reuse contracts.
 - `site/content/docs/getting-started.mdx` + `site/content/docs/desktop/` — Why: where the public explainer + "how to run" answer land.
 
 ### Patterns to Follow
@@ -278,7 +278,7 @@ Execute in phase order. Each phase is independently shippable. Task IDs `T#` for
 
 **T9: RECORD the ingestion-security DDR (do FIRST)**
 - **Do**: Author the DDR (next-free ≈ 152/153) for local-file + SVG + PDF ingestion: threat model (SVG XSS/script/external-ref, PDF parser CVEs + local-file/SSRF via embedded refs, zip-bomb/size), the sanitize-SVG + rasterize-PDF-page decision, chosen deps, and the write-path containment. This gates all of P3.
-- **Pattern**: `_fetch-asset.mjs` security header + `.ai/decisions/DDR-045`.
+- **Pattern**: `_fetch-asset.mjs` security header + `.ai/archive/decisions/DDR-045`.
 - **Validate**: DDR reviewed by `ethical-hacker` + `security-auditor` subagents before code.
 
 **T10: BUILD `maude design import-asset` (local file + SVG + PDF)** — ✅ SVG DONE 2026-07-14, PDF DEFERRED (mechanism blocker found)

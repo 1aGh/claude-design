@@ -92,8 +92,8 @@ A geometry engine + a draw-agent + a `/design:draw` command + a draw-critic + au
 - `plugins/design/dependencies.json` — **edit**: add SVGO.
 - `package.json` — **edit**: add SVGO to dev-server deps; confirm `draw/` ships.
 - `plugins/design/CATEGORIES.md` — **edit**: add `/design:draw` to daily; note `draw-agent`/`draw-critic` auto-routing.
-- `.ai/decisions/DDR-0XX-svg-generation-geometry-engine.md` — architecture decision (draw-as-code + verify-loop design).
-- `.ai/decisions/DDR-0XX-svgo-dependency.md` — the one new dep, frozen, files-manifest implications.
+- `.ai/archive/decisions/DDR-0XX-svg-generation-geometry-engine.md` — architecture decision (draw-as-code + verify-loop design).
+- `.ai/archive/decisions/DDR-0XX-svgo-dependency.md` — the one new dep, frozen, files-manifest implications.
 
 ### Design canvases
 

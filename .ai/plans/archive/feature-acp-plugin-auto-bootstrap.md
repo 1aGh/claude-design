@@ -73,8 +73,8 @@ Inject the plugin(s) into the ACP session through the **same `_meta` seam alread
 - `apps/desktop/scripts/stage-resources.mjs` (whole file) — Why: `:79-80` stages `plugins/design/templates` only; add the full `plugins/{design,flow}` command/agent/skill/hook + `.claude-plugin` staging + the DDR-129-style fail-loud assertion (adapter-closure staging `:82-171` is the pattern).
 - `apps/desktop/src-tauri/src/sidecar.rs` — Why: `:107-110` login-shell PATH injection (DDR-128) — the reason the spawned `claude`/`maude` are reachable; `:133-146` `MAUDE_DEV_SERVER_ROOT` (the desktop resolution anchor `paths.ts` must honor).
 - `apps/desktop/src-tauri/tauri.conf.json` — Why: `:41-44` `resources` map (add the staged plugin dirs if referenced by path); version-parity field.
-- `.ai/decisions/DDR-128-first-open-readiness-check-detect-and-guide.md` — Why: the posture this feature supersedes; quote its rejected-alternatives in the new DDR.
-- `.ai/decisions/DDR-123-*.md`, `DDR-125-*.md`, `DDR-129-*.md`, `DDR-044-*.md`, `DDR-062-*.md`, `DDR-119-*.md` — Why: the hard constraints enumerated in § Non-negotiable guards.
+- `.ai/archive/decisions/DDR-128-first-open-readiness-check-detect-and-guide.md` — Why: the posture this feature supersedes; quote its rejected-alternatives in the new DDR.
+- `.ai/archive/decisions/DDR-123-*.md`, `DDR-125-*.md`, `DDR-129-*.md`, `DDR-044-*.md`, `DDR-062-*.md`, `DDR-119-*.md` — Why: the hard constraints enumerated in § Non-negotiable guards.
 - `.ai/plans/feature-acp-context-hardening.md` — Why: the adjacent, just-executed plan that built the `_meta` injection seam + the T1 spike pattern this feature reuses.
 - `node_modules/@agentclientprotocol/claude-agent-acp/dist/acp-agent.js` (`:2302`, `:2329-2333`, `:2455`) and `node_modules/.pnpm/@anthropic-ai+claude-agent-sdk@0.3.185*/sdk.d.ts` (`:1670-1683`, `:3766-3778`, `:5011`, `:5097`) — Why: the exact adapter merge + SDK `plugins` shape the injection relies on (read-only evidence; pinned versions).
 
@@ -83,7 +83,7 @@ Inject the plugin(s) into the ACP session through the **same `_meta` seam alread
 - `apps/studio/acp/plugin-bootstrap.ts` — Resolves which local plugins to inject: reads `DESIGN_PLUGIN_DIR`/`FLOW_PLUGIN_DIR`, applies the `scanPlugins()` no-op gate + `isNativeApp()`/bundle gate, returns `SdkPluginConfig[]` (empty ⇒ no injection). Pure, unit-testable.
 - `apps/studio/test/acp-plugin-bootstrap.test.ts` — no-op gate (installed ⇒ skip), native-only gate, path-exists gate, returns both when neither installed.
 - `apps/studio/test/acp-session-plugins.test.ts` — presence-test: `newSessionParams()` emits `_meta.claudeCode.options.plugins` when the resolver returns configs (CI guard for the adapter contract).
-- `.ai/decisions/DDR-143-acp-session-scoped-plugin-auto-bootstrap.md` — supersede DDR-128's guide-only ceiling for the injection path.
+- `.ai/archive/decisions/DDR-143-acp-session-scoped-plugin-auto-bootstrap.md` — supersede DDR-128's guide-only ceiling for the injection path.
 
 ### Design canvases
 
@@ -163,7 +163,7 @@ Execute in order. Each task is atomic and testable. **Task 1 is a go/no-go spike
 
 ### Task 9: RECORD DDR-143
 
-- **Do**: Write `.ai/decisions/DDR-143-acp-session-scoped-plugin-auto-bootstrap.md`. State: session-scoped `_meta.claudeCode.options.plugins` injection is a **third mechanism** DDR-128 didn't consider (not the rejected `~/.claude` mutation); it's non-mutating, reversible, native-scoped, no-op for power users, inside the Claude Code session the adapter drives. Enumerate the guards (DDR-123 env untouched, DDR-125 F2 envelope not widened, `settingSources` leak note, contract presence-test).
+- **Do**: Write `.ai/archive/decisions/DDR-143-acp-session-scoped-plugin-auto-bootstrap.md`. State: session-scoped `_meta.claudeCode.options.plugins` injection is a **third mechanism** DDR-128 didn't consider (not the rejected `~/.claude` mutation); it's non-mutating, reversible, native-scoped, no-op for power users, inside the Claude Code session the adapter drives. Enumerate the guards (DDR-123 env untouched, DDR-125 F2 envelope not widened, `settingSources` leak note, contract presence-test).
 - **Validate**: DDR renders; linked from STATE.md History + the new DDR index.
 
 ### Task 10: DOCS — keep the power-user/manual path, add the zero-install note

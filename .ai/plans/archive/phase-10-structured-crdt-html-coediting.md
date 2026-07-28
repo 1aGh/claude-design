@@ -90,7 +90,7 @@ Three layered pieces (each task block below is one piece):
   3. If 80-95%: ship as **Model C hybrid** — Y.XmlFragment for canonical regions tagged `<section data-cd-edit="structured">`, plain `Y.Text` over raw HTML for everything else.
   4. If < 80%: do not adopt Y.XmlFragment. Re-scope phase to "structured CRDT only for inspector panel ops on tagged regions; layers panel stays single-writer."
 - **Pattern:** Same kind of spike Linear used before committing to their sync engine.
-- **Validate:** Harness output committed to `.ai/decisions/phase-9-fidelity-spike.md` with the measured percentage and the adopted model. **Phase does not proceed without this DDR.**
+- **Validate:** Harness output committed to `.ai/archive/decisions/phase-9-fidelity-spike.md` with the measured percentage and the adopted model. **Phase does not proceed without this DDR.**
 
 ### Task 1: Element identity injection
 

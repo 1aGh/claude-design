@@ -48,7 +48,7 @@ Holds the **values** for one repo. Free-form `defaults` is the escape hatch — 
 
 Generic commands (`/flow:done`, `/flow:bug-rca`, `/flow:bug-fix`) pass `defaults` through to the MCP server untouched. The MCP server understands the provider's shape; the plugin doesn't.
 
-### 3. DDR (`<repo>/.ai/decisions/DDR-NNN-*.md`)
+### 3. DDR (`<repo>/.ai/archive/decisions/DDR-NNN-*.md`)
 
 Anything **non-obvious** about your tracker convention belongs in a DDR. Examples:
 

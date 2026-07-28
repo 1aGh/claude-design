@@ -364,7 +364,7 @@ The verb whitelist (not arbitrary `<verb>.sh` exec) keeps this from becoming a p
 #### C24 — DDR-062 + amend DDR-008
 
 - **Do:** Write **DDR-062** (verified free) — *"Plugins reach ALL executable logic through the on-PATH `maude` CLI; never `$CLAUDE_PLUGIN_ROOT/dev-server/bin` nor a relative `cli/lib`. `maude` resolves bundled helpers from its own package root and sets `CLAUDE_PLUGIN_ROOT` authoritatively for them."* Cross-link DDR-061 (the reachability finding it generalizes) + DDR-045 (real-disk path resolution). **Amend DDR-008** (`dev-server/bin/` as canonical helper home) with a note: the bin scripts remain the canonical home, but are now **maude-internal implementation** invoked via `maude design <verb>`, not called directly from plugin markdown.
-- **Validate:** DDR-062 added to `.ai/decisions/README.md` index; DDR-008 carries the amendment note.
+- **Validate:** DDR-062 added to `.ai/archive/decisions/README.md` index; DDR-008 carries the amendment note.
 
 #### C25 — Docs: `maude design help`, README, CLAUDE.md
 

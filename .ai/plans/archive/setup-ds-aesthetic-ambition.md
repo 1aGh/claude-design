@@ -73,7 +73,7 @@ Opt-out scopes (`aesthetic`/`full`) to umí uvolnit, ale jsou to **per-canvas fl
 
 ### Files to Create
 
-- `.ai/decisions/DDR-073-aesthetic-ambition-axis.md` — the decision record (drafted below in Task 1).
+- `.ai/archive/decisions/DDR-073-aesthetic-ambition-axis.md` — the decision record (drafted below in Task 1).
 
 ### Design canvases
 
@@ -81,9 +81,9 @@ Opt-out scopes (`aesthetic`/`full`) to umí uvolnit, ale jsou to **per-canvas fl
 
 ### Documentation
 
-- `.ai/decisions/DDR-033-*.md` (3-stage discovery, zero hardcoded ladders) — Why: the Stage-0 ambition picker is a 2nd meta-picker; argue the tension explicitly.
-- `.ai/decisions/DDR-043-*.md` (bias-free templates) — Why: this change *reinforces* DDR-043 (removes the hidden conservative `single/soft/mild` prior).
-- `.ai/decisions/DDR-057-*.md` (aspiration bar ≥4.0) — Why: verify a maximalist canvas can still hit 4.0 under relaxed restraint scoring.
+- `.ai/archive/decisions/DDR-033-*.md` (3-stage discovery, zero hardcoded ladders) — Why: the Stage-0 ambition picker is a 2nd meta-picker; argue the tension explicitly.
+- `.ai/archive/decisions/DDR-043-*.md` (bias-free templates) — Why: this change *reinforces* DDR-043 (removes the hidden conservative `single/soft/mild` prior).
+- `.ai/archive/decisions/DDR-057-*.md` (aspiration bar ≥4.0) — Why: verify a maximalist canvas can still hit 4.0 under relaxed restraint scoring.
 
 ### Patterns to Follow
 
@@ -139,12 +139,12 @@ None — no UI components. All work is spec markdown + JSON Schema + one DDR.
 
 Execute in order. Each task is atomic and independently reviewable. **No version bump** (spec-only change; CI parity gate stays green because all three version fields are untouched).
 
-### Task 1: CREATE `.ai/decisions/DDR-073-aesthetic-ambition-axis.md`
+### Task 1: CREATE `.ai/archive/decisions/DDR-073-aesthetic-ambition-axis.md`
 
 - **Do**: Record the decision — the 7 funnel points, the 4-pole axis + mapping table, the 2 new Q9 families, the DDR-033/043/057 relationships, and the chosen capture point (Stage 0 vs Stage 1 — record whichever the user confirms).
-- **Pattern**: Mirror an existing DDR's structure (e.g. `.ai/decisions/DDR-043-*.md`, `DDR-057-*.md`) — Status / Context / Decision / Consequences / Related.
+- **Pattern**: Mirror an existing DDR's structure (e.g. `.ai/archive/decisions/DDR-043-*.md`, `DDR-057-*.md`) — Status / Context / Decision / Consequences / Related.
 - **Gotcha**: 070–072 are already taken (draw / svgo / tsx-sync-opt-in); this is DDR-073 — RE-VERIFY + bump at execute, concurrent work claims numbers fast. Use `/flow:record-ddr` or follow the house format exactly.
-- **Validate**: file exists; `grep -l 'DDR-073' .ai/decisions/` returns it; no duplicate number.
+- **Validate**: file exists; `grep -l 'DDR-073' .ai/archive/decisions/` returns it; no duplicate number.
 
 ### Task 2: UPDATE `plugins/design/dev-server/config.schema.json` — add `aestheticAmbition`
 

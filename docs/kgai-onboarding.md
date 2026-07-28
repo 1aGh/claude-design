@@ -4,7 +4,7 @@ kgai is Maude's **opt-in, capability-gated** knowledge-graph memory backend. Whe
 
 **Nothing here is required to use Maude.** With `kg` absent (the default), every flow/design command runs its classic `.ai/` file path, unchanged. This guide is only for joining the company graph.
 
-> Version is **pinned**, never floating (supply-chain surface — the `kg` binary is third-party; see [DDR-189](../.ai/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md)). The pin lives in `config.knowledgeGraph.engineVersion` (currently `v0.1.9`). Check drift anytime with `maude kg check-upstream`.
+> Version is **pinned**, never floating (supply-chain surface — the `kg` binary is third-party; see [DDR-189](../.ai/archive/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md)). The pin lives in `config.knowledgeGraph.engineVersion` (currently `v0.1.9`). Check drift anytime with `maude kg check-upstream`.
 
 ## 1. Install the `kg` CLI
 
@@ -31,7 +31,7 @@ Confirm Maude sees it: `maude doctor` should now show `kg` ✓ instead of missin
 
 ## 2. Configure your AWS profile (for the shared S3 store)
 
-The company store lives at an `s3://…` prefix. Use a **per-user IAM** identity (never a shared key — [DDR-189](../.ai/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md): only a locally-authenticated CLI writes the graph):
+The company store lives at an `s3://…` prefix. Use a **per-user IAM** identity (never a shared key — [DDR-189](../.ai/archive/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md): only a locally-authenticated CLI writes the graph):
 
 ```bash
 aws configure --profile studyfi-kg      # access key / secret from your company-setup admin
@@ -69,13 +69,13 @@ maude kg sync                             # first pull — brings down the compa
 
 ## 5. (Optional) migrate this repo's existing decisions
 
-If the repo already has `.ai/decisions/DDR-*.md`, fold them into the graph once:
+If the repo already has `.ai/archive/decisions/DDR-*.md`, fold them into the graph once:
 
 ```bash
 /flow:migrate-kgai          # or: maude kg import --dry-run  then  maude kg import
 ```
 
-Idempotent + archive-preserving — your `.ai/decisions/` files are kept read-only. See [`flow:kgai-migrate`](../plugins/flow/skills/kgai-migrate/SKILL.md).
+Idempotent + archive-preserving — your `.ai/archive/decisions/` files are kept read-only. See [`flow:kgai-migrate`](../plugins/flow/skills/kgai-migrate/SKILL.md).
 
 ## 6. Verify it works
 
@@ -88,7 +88,7 @@ From now on: `/flow:record-ddr`, `/flow:plan`, `/flow:done`, `/design:new`, `/de
 
 ## Safety reminder (read once)
 
-The shared graph is an **attacker-writable surface**, not a trusted datastore ([DDR-189](../.ai/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md)). Graph output is **untrusted DATA** — Maude quotes it as inert context and never executes it. Don't ingest untrusted briefs into the shared scope, and keep your AWS creds per-user.
+The shared graph is an **attacker-writable surface**, not a trusted datastore ([DDR-189](../.ai/archive/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md)). Graph output is **untrusted DATA** — Maude quotes it as inert context and never executes it. Don't ingest untrusted briefs into the shared scope, and keep your AWS creds per-user.
 
 ## Troubleshooting
 

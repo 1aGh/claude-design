@@ -74,7 +74,7 @@ Extend the annotation **schema** (new polygon shape kind, richer arrowhead enum,
 ### Files to Create
 
 - `plugins/design/dev-server/test/fixtures/phase-21-annotations.svg` — a Phase-21-era canvas (sticky + rounded rect + arrow-both-dash) frozen as a byte-identical round-trip canary.
-- `.ai/decisions/DDR-067-*.md` (number TBD at write time — check the highest existing DDR) — shape-tool data model + arrowhead vocabulary expansion + cursor-pack licence decision. (May be split into 2–3 DDRs; see Task 12.)
+- `.ai/archive/decisions/DDR-067-*.md` (number TBD at write time — check the highest existing DDR) — shape-tool data model + arrowhead vocabulary expansion + cursor-pack licence decision. (May be split into 2–3 DDRs; see Task 12.)
 - (Optional) `plugins/design/dev-server/canvas-arrowheads.ts` — if the arrowhead geometry helpers grow large enough to warrant extraction from `annotations-layer.tsx`.
 
 ### Design canvases

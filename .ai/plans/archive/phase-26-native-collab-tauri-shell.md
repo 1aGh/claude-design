@@ -62,9 +62,9 @@ The webview shows the existing Maude UI unchanged — no new client code in this
 - `plugins/design/dev-server/server.ts` lines 1–60 — port resolution, `_server.json` write schema `{pid,port,url,started}`. The shell polls this file to know when to open the webview.
 - `plugins/design/dev-server/paths.ts` — DDR-045: disk paths inside compiled binaries. Sidecar runs as a compiled binary; any Rust-side path logic must not assume source-relative layout.
 - `plugins/design/dev-server/boot-self-heal.ts` — first-launch `bun install --production` + `build.ts`. The shell wraps this with a native splash "Preparing Maude…" while self-heal runs.
-- `.ai/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md` + `DDR-084-server-up-boots-compiled-binary.md` — binary build/boot model.
-- `.ai/decisions/DDR-063-canvas-origin-split-default-on-tsx-sync-opt-in.md` — **canvas iframe is cross-origin by default**. Task 4 must verify this works in WKWebView. Highest-risk detail.
-- `.ai/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md` — iframe sandbox/CSP model.
+- `.ai/archive/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md` + `DDR-084-server-up-boots-compiled-binary.md` — binary build/boot model.
+- `.ai/archive/decisions/DDR-063-canvas-origin-split-default-on-tsx-sync-opt-in.md` — **canvas iframe is cross-origin by default**. Task 4 must verify this works in WKWebView. Highest-risk detail.
+- `.ai/archive/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md` — iframe sandbox/CSP model.
 - `plugins/design/dev-server/build.ts` (`bun run build:binary`) — produces the per-platform compiled binary the sidecar bundles.
 - `.github/workflows/build-binaries.yml` — existing CI; Task 7 extends it for Tauri.
 
@@ -122,13 +122,13 @@ Execute in order. Tasks 1–2 are prerequisites; Tasks 3–6 can overlap once Ta
 
 ### Task 1: Write founding DDRs
 
-- **Do:** Write 5 DDRs in `.ai/decisions/` (next free numbers after DDR-088). These decisions are already made (see epic + `collab-model-design.md`); this task formalizes them so all future phases have a stable reference:
+- **Do:** Write 5 DDRs in `.ai/archive/decisions/` (next free numbers after DDR-088). These decisions are already made (see epic + `collab-model-design.md`); this task formalizes them so all future phases have a stable reference:
   1. **Tauri v2 shell architecture** — sidecar-over-compiled-binary model, lifecycle (spawn / poll `_server.json` / webview-open / kill-on-quit / respawn-on-crash), webview CSP, why Tauri over Electron (~10 MB vs ~120 MB, OS webview, mature signing/updater).
   2. **Git engine: isomorphic-git** — pure-JS, zero system-git dep; detect+prefer system git when present; Bun-compatible; LFS/large-file caveat documented.
   3. **GitHub auth: OAuth device flow** — "Sign in with GitHub" in system browser → OS keychain; scopes (`repo`, `read:user`); GitHub App deferred for org installs.
   4. **Native-shell security model** — loopback-only sidecar; strict CSP; `maude://` deep-link allowlist; secrets in keychain (never in `_server.json` / `.design/`).
   5. **Three-lane collaboration model + mental model** — git = canvas distribution (push→pull, no cold-start); Yjs = live overlay (comments/annotations/presence, shipped); artboard locking = code-body lane (soft single-writer, no CRDT merge for TSX); UX vocabulary contract (see `collab-model-design.md`). Cross-link DDR-051/054/064/076.
-- **Gotcha:** Take the next free DDR numbers (check `ls .ai/decisions/DDR-*.md | sort -V | tail -1`). Cross-link each DDR from `epic-native-collab-app.md`'s "DDRs to record in E0" table.
+- **Gotcha:** Take the next free DDR numbers (check `ls .ai/archive/decisions/DDR-*.md | sort -V | tail -1`). Cross-link each DDR from `epic-native-collab-app.md`'s "DDRs to record in E0" table.
 - **Validate:** 5 DDR files exist, numbered, cross-linked from the epic.
 
 ### Task 2: Scaffold `apps/desktop/` Tauri v2 project

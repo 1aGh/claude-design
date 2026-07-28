@@ -107,7 +107,7 @@ outro                                              3.0 s
 - `scripts/video/storyboard.md` — canonical scene script + caption +
   frame budget + **per-scene intent checks** + **affordance-visibility
   hard-checks**.
-- `.ai/decisions/DDR-037-marketing-video-cut-a-cut-b.md` — full v1
+- `.ai/archive/decisions/DDR-037-marketing-video-cut-a-cut-b.md` — full v1
   retro + production gotchas table (#1–9) + v2 + v2.1 decisions.
 - `~/.claude/projects/-Volumes-D-git-claude-design/memory/feedback-marketing-video-production.md`
   — 10 cross-session rules.

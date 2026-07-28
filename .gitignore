@@ -73,6 +73,11 @@ dev-server/.cache/
 # Per-run scenario artifacts (timestamped folders). spec.md / README.md / aggregate reports are committed; PNGs + per-run report.md are local-only.
 .ai/scenarios/**/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9]/
 .ai/logs/
+# Same rule after the archive move (2026-07-28): the RCA/review prose is now IN
+# the knowledge graph (full body, committed via .kgai/store/log), so tracking
+# 1.1 MB of it again here would be pure duplication. `.ai/archive/decisions/`
+# stays VERSIONED — it is the authoring surface + the git-native backup.
+.ai/archive/logs/
 .claude/settings.local.json
 .claude/worktrees/
 
@@ -113,3 +118,5 @@ cli/.platform-binary-path
 # `.kgai/store/log/`, which the owner explicitly wants versioned so a clone
 # inherits the decision context. The block above already ignores the 22 MB
 # projection and the per-machine install identity.
+# kgai per-project knowledge graph store (own git/sync cycle)
+.kgai/

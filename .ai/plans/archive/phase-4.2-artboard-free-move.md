@@ -104,9 +104,9 @@ Snap: a `useSnapGuides({ proposedRect, otherRects, options })` pure function ret
 
 - [Figma snapping behavior](https://help.figma.com/hc/en-us/articles/360039956334) — Why: target snap-guide behavior (1px lines, edge + center match, Alt to disable)
 - [`tldraw` drag-snap implementation](https://github.com/tldraw/tldraw) — Why: minimal reference for snap math (don't bundle; lift the geometry idea)
-- [DDR-007](.ai/decisions/DDR-007-stable-element-id-schema-data-dc-attrs.md) — `data-dc-id` / `data-cd-id` is the persistence key; drag commits keyed by artboard `id`, not by index
-- [DDR-025](.ai/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md) — canvas-lib lives in dev-server only; this plan adds siblings, not project-side files
-- [DDR-026](.ai/decisions/DDR-026-universal-canvas-input-grammar.md) — universal input grammar context; drag is an orthogonal listener path (not through the router classifier)
+- [DDR-007](.ai/archive/decisions/DDR-007-stable-element-id-schema-data-dc-attrs.md) — `data-dc-id` / `data-cd-id` is the persistence key; drag commits keyed by artboard `id`, not by index
+- [DDR-025](.ai/archive/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md) — canvas-lib lives in dev-server only; this plan adds siblings, not project-side files
+- [DDR-026](.ai/archive/decisions/DDR-026-universal-canvas-input-grammar.md) — universal input grammar context; drag is an orthogonal listener path (not through the router classifier)
 
 ### Patterns to Follow
 

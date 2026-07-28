@@ -60,7 +60,7 @@ Fix each item at its root, reusing established patterns rather than patching sym
 ### Documentation
 
 - `apps/studio/node_modules/@imgly/background-removal/dist/index.mjs` — grepped directly to confirm the exact CDN hostname (`https://staticimgly.com`) rather than assuming from memory; also confirmed `onnxruntime-web`'s bundled JS references no external hostname (its WASM binaries load relative to itself).
-- `.ai/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md` §2c — the symlink-attack precedent + fix this plan ports into a second call site.
+- `.ai/archive/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md` §2c — the symlink-attack precedent + fix this plan ports into a second call site.
 
 ### Patterns to Follow
 
@@ -245,7 +245,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 #### Task 24: RECORD a DDR addendum for the CSP exception
 
 - **Do**: Via `/flow:record-ddr` (or as a dated addendum to the existing DDR-054, matching this repo's own convention for amending an *Accepted* DDR without rewriting history — see DDR-115's dated-addendum precedent), record the `connect-src` exception as a deliberate, scoped, documented decision: what host, why, and the note that self-hosting was considered and deferred as separate follow-up work. Re-check the next-available DDR number immediately before recording (per the project's own `project_ddr_numbering_races_on_shared_main` convention — a concurrent session may have claimed a number since this plan was written).
-- **Validate**: DDR file exists under `.ai/decisions/`, cross-referencing DDR-054.
+- **Validate**: DDR file exists under `.ai/archive/decisions/`, cross-referencing DDR-054.
 
 ---
 

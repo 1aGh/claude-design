@@ -590,14 +590,14 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 
 ### Task 13: RECORD a DDR
 
-- **Do**: Create `.ai/decisions/DDR-NNN-video-pipeline-infrastructure-skills-captioning-goldens.md`. Document:
+- **Do**: Create `.ai/archive/decisions/DDR-NNN-video-pipeline-infrastructure-skills-captioning-goldens.md`. Document:
   - **Decision**: standalone nested Remotion workspace under `scripts/video/final/`; install official Remotion Agent Skills globally; cherry-pick TikTok template's captioning components; build-time Whisper.cpp captioning; golden-frame regression via `renderStill` + pixelmatch; scaffolder lives under `flow:` namespace; music curated in-repo (no API).
   - **Rejected**: `asciinema-mp4` (dead 2023); `DojoCodingLabs/remotion-superpowers` (paid SaaS lock-in); pnpm workspace (root not a workspace; nested package is enough); vendor copy of Remotion skills (duplicates upstream maintenance); auto-CI-render on every push (wastes minutes).
   - **Trade-offs**: nested workspace has its own lockfile (drift risk between root pnpm and nested pnpm); golden PNGs add ~3 MB to repo; first Whisper run downloads 466 MB model.
   - **Reversibility**: high. Can collapse the nested workspace back into root by reverting Task 2/3; can re-add WebM-to-MP4 transcode; can swap caption pipeline for any other tool that emits the same Caption[] JSON shape.
   - **Cross-links**: DDR-008 (dev-server-bin helpers — same ladder discipline); DDR-035 (agent-orchestrated marketing video pipeline, the existing DDR from phase 15); [`phase-15-video-pipeline-toolchain.md`](../plans/archive/phase-15-video-pipeline-toolchain.md); [`phase-15.5-marketing-demo-video-30s.md`](../plans/phase-15.5-marketing-demo-video-30s.md).
 - **Pattern**: Mirror DDR-008 shape.
-- **Gotcha**: Pick next free DDR number — `ls .ai/decisions/ | tail -5`.
+- **Gotcha**: Pick next free DDR number — `ls .ai/archive/decisions/ | tail -5`.
 - **Validate**: DDR cross-links resolve; sibling DDRs match shape.
 
 ---
@@ -618,7 +618,7 @@ Run these to confirm zero regressions:
 10. **Phase 15.5 coherence**: read 15.5 top-to-bottom — banner present, no orphan references to deleted ffmpeg transcode steps, all caption tasks reference `sub.mjs`.
 11. **Root publish hygiene unchanged**: `npm pack --dry-run 2>&1 | grep -cE "scripts/video"` returns 0 (workspace excluded from publish).
 12. **Lint clean**: `pnpm lint` from root passes; biome override scoped to `scripts/video/final/**`.
-13. **DDR**: `ls .ai/decisions/DDR-*video-pipeline-infrastructure*.md` returns exactly one file; cross-links from both video phase plans resolve.
+13. **DDR**: `ls .ai/archive/decisions/DDR-*video-pipeline-infrastructure*.md` returns exactly one file; cross-links from both video phase plans resolve.
 
 ---
 

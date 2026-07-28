@@ -43,7 +43,7 @@ A **provider-adapter spine** in the dev-server (`apps/studio/generation/`) that 
 - **App/Package**: `apps/studio` (spine, routes, Settings client), `apps/desktop` (keychain), `cli/` (`maude design generate` + deps), `plugins/design` (commands/agents/skills for prompt-driven + proactive paths)
 - **Affected Systems**: dev-server HTTP + trust boundary (DDR-054/088), asset pipeline (DDR-088), config schema, keychain bridge (DDR-123-adjacent), footage EDL (DDR-163), video-comp (DDR-148), photo-editor (DDR-161), design-plugin commands/agents
 - **Dependencies (new)**: `ollama` (soft, post-v1 local), `whisper.cpp`/`whisper-cli` (soft, for local subtitles), provider HTTP clients (no SDK required — plain `fetch` in the sidecar). ~~`fal` client~~ — dropped (no aggregator).
-- **DDR**: ✅ **DDR-164 written + accepted 2026-07-11** — "BYOK AI media generation — provider-adapter spine, key custody, trust boundary" (`.ai/decisions/DDR-164-byok-ai-media-generation-provider-adapter-spine.md`).
+- **DDR**: ✅ **DDR-164 written + accepted 2026-07-11** — "BYOK AI media generation — provider-adapter spine, key custody, trust boundary" (`.ai/archive/decisions/DDR-164-byok-ai-media-generation-provider-adapter-spine.md`).
 
 ---
 
@@ -110,7 +110,7 @@ A **provider-adapter spine** in the dev-server (`apps/studio/generation/`) that 
 - `plugins/design/agents/media-generation-director.md` — read-only gap→generation-plan agent (footage-director contract).
 - `plugins/design/skills/ai-generation/SKILL.md` — the AI-media generation vocabulary (provider capability map, prompt conventions, licensing caveats, asset-localization rule) + auto-load triggers.
 - `plugins/design/commands/generate.md` — `/design:generate` explicit entry point (+ the `WANTS_GENERATE` seam added to `edit.md`/`new.md`). Reachable the same way from the **ACP chat panel** (the panel drives the user's own `claude`, which has the design plugin loaded) — see the ACP validation task.
-- `.ai/decisions/DDR-164-byok-ai-media-generation-provider-adapter-spine.md` — the decision record (**written; Phase 0 accepted 2026-07-11**).
+- `.ai/archive/decisions/DDR-164-byok-ai-media-generation-provider-adapter-spine.md` — the decision record (**written; Phase 0 accepted 2026-07-11**).
 
 ### Design canvases
 

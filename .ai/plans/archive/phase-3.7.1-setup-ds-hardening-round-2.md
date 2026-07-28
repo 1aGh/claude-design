@@ -62,7 +62,7 @@ Edit the design plugin's authoritative spec files in place:
 
 ### Files to Create
 
-- none — all edits are in-place. (Optional: a DDR under `.ai/decisions/` if the aspiration-threshold change is deemed DDR-worthy — see Task 4 Gotcha.)
+- none — all edits are in-place. (Optional: a DDR under `.ai/archive/decisions/` if the aspiration-threshold change is deemed DDR-worthy — see Task 4 Gotcha.)
 
 ### Documentation
 
@@ -112,7 +112,7 @@ Execute in order. P0 tasks first (they address the user's two hardest felt failu
 
 - **Do**: In the threshold matrix (985–989): (a) raise the silent-pass line — only `aspiration_score ≥ 4.0` prints a clean "aesthetic check passed"; (b) add a middle band `3.0 ≤ score < 4.0` → still prints complete, but MUST append a "What would take this from hezké to wow" block surfacing the signature-moment critic's top 2 specific lifts (not a generic nag — the critic's actual notes, e.g. studyfi's "mesh never enters a product surface"); (c) keep `< 3.0` as the hard "does not match the quality bar" fail. Then in the panel-coverage gate (956–967): during a **first-bootstrap or additional-ds** run, the aesthetic kola (Kolo 2) is **not skippable** — `--quick`/imprint-only may trim Kolo 3 but Kolo 2 always runs, because "hezké ale ne wow" is invisible without it. Update the next-steps print block (1030–1036) to fire on the new `< 4.0` middle band, not just `< 3.0`.
 - **Pattern**: existing matrix + `[IF aspiration < 3.0 …]` block at 1030.
-- **Gotcha**: studyfi scored 3.8 and passed silently — that exact number must now trigger the "what would make it wow" block. Don't over-correct into nagging: the middle band still says *complete*, it just refuses to be silent. **DDR check**: raising a published quality threshold is a behavior change downstream users will feel — record a short DDR (`.ai/decisions/DDR-0NN-aspiration-pass-bar-raised-to-4.md`) capturing the 3.5→4.0 rationale (retro evidence: 3.8 felt "ne wow").
+- **Gotcha**: studyfi scored 3.8 and passed silently — that exact number must now trigger the "what would make it wow" block. Don't over-correct into nagging: the middle band still says *complete*, it just refuses to be silent. **DDR check**: raising a published quality threshold is a behavior change downstream users will feel — record a short DDR (`.ai/archive/decisions/DDR-0NN-aspiration-pass-bar-raised-to-4.md`) capturing the 3.5→4.0 rationale (retro evidence: 3.8 felt "ne wow").
 - **Validate**: `grep -nE "≥ 4.0|3.0 ≤|hezké to wow|to wow" plugins/design/skills/design-system/SKILL.md` returns the new bands; manual read of the panel-coverage gate confirms Kolo 2 non-skippable in bootstrap.
 
 ### Task 5 (P1): UPDATE SKILL.md + SUB-AGENT-PROMPTS.md — restraint-default type scale (D-8)

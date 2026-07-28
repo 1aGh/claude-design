@@ -343,7 +343,7 @@ Existující critic panel (completeness + a11y + graphic-design + typography + s
   - `plugins/design/agents/ux-research-agent.md` — agent prompt rozšířen o Pastier probe templates; payload schema extended s `recommendations` blokem
   - `plugins/design/agents/_ux-research-config.json` — případné dodatky pro probe templates
   - `plugins/design/commands/setup-ds.md` — Examples + brief guidance přepsány (žádné Pastier vocabulary, místo toho "Stage 1 tě vede otázkami")
-  - `.ai/decisions/DDR-NNN-three-stage-discovery.md` — new DDR
+  - `.ai/archive/decisions/DDR-NNN-three-stage-discovery.md` — new DDR
   - User memory: `feedback-design-bootstrap-workflow.md` refresh
 - **Dependencies**: None new.
 
@@ -361,7 +361,7 @@ Existující critic panel (completeness + a11y + graphic-design + typography + s
 
 ### Files to Create
 
-- `.ai/decisions/DDR-NNN-three-stage-discovery.md` — Why: architectural shift; future contributors need rationale.
+- `.ai/archive/decisions/DDR-NNN-three-stage-discovery.md` — Why: architectural shift; future contributors need rationale.
 - `plugins/design/skills/design-system/_pastier-probe-templates.md` — Why: standalone reference for the 5 Pastier probe templates fed to ux-research-agent. Loaded by agent at runtime.
 
 ### Files NOT to Touch
@@ -561,7 +561,7 @@ Execute in order. Each task is atomic and testable.
 
 ### Task 6: CREATE DDR-NNN-three-stage-discovery.md
 
-- **Do**: Write `.ai/decisions/DDR-NNN-three-stage-discovery.md` (resolve NNN by `ls .ai/decisions/ | tail -1`). Document:
+- **Do**: Write `.ai/archive/decisions/DDR-NNN-three-stage-discovery.md` (resolve NNN by `ls .ai/archive/decisions/ | tail -1`). Document:
   - **Decision**: nahradit 12-Q fixed dotazník 3-stage (Vision → Research → Refinement) flow s 0 hardcoded ladders v Stage 3.
   - **Why**: visual-first inversion + "3 codes stačí" princip ignorován + hardcoded fallback ladders byly bias source + scope-agnostic assumptions.
   - **Alternatives considered**:
@@ -573,7 +573,7 @@ Execute in order. Each task is atomic and testable.
     - Re-bootstrap mode lossy on Stage 1 fields (existing DSes don't carry vision-brief).
     - Research agent becomes load-bearing — if it fails, flow stops; no degradation path.
   - **Migration**: zero migration for read flow (token CSS contract unchanged). Re-bootstrap of existing DSes infers vision-brief from README "What this DS is for" + lossy guess on character / OST / lineage; user corrects in confirm step.
-- **Pattern**: Mirror `.ai/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md` shape.
+- **Pattern**: Mirror `.ai/archive/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md` shape.
 - **Validate**: File exists; frontmatter has DDR-NNN; alternatives section lists at least 3 alternatives considered.
 
 ### Task 7: UPDATE user memory `feedback-design-bootstrap-workflow.md`

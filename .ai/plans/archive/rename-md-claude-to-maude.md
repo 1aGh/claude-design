@@ -116,7 +116,7 @@ git ls-files | xargs grep -l 'md-claude\|mdcc\|claude-design' \
 - `~/.config/mdcc/` XDG path (decision-b)
 - `MD_CLAUDE_SKIP_POSTINSTALL` env var (BC alias 1 cyklus, viz Task 3.5)
 - `CHANGELOG.md` historic entries (Task 5.3)
-- `.ai/decisions/DDR-*.md` historic records (Task 7.3 caveat)
+- `.ai/archive/decisions/DDR-*.md` historic records (Task 7.3 caveat)
 - `.ai/plans/archive/*` archived plans
 - `_history/`, `tool-results/`, `.mailmap`
 
@@ -135,7 +135,7 @@ git ls-files | xargs grep -l 'md-claude\|mdcc\|claude-design' \
 - **Do**: Spustit `npm view @1agh/maude time --json` a zjistit kdy byla v0.14.0 publishe'd
 - **Validate**: Pokud `<= 72h od now` → unpublish je možný. Pokud `> 72h` → **přepnout strategii na `npm deprecate`** a updatovat Phase 5 níže
 - **Gotcha**: npm má strict 72h policy pro scoped packages. Jediná exception je security takedown — nikoli rebrand. Pokud propadlo okno, deprecate je jediná cesta.
-- **Output**: zaznamenat eligibility do `.ai/decisions/` jako DDR ("Why we [unpublish|deprecate] @1agh/maude")
+- **Output**: zaznamenat eligibility do `.ai/archive/decisions/` jako DDR ("Why we [unpublish|deprecate] @1agh/maude")
 
 #### Task 0.2: VERIFY GitHub repo rename feasibility
 
@@ -511,7 +511,7 @@ git ls-files | xargs grep -l 'md-claude\|mdcc\|claude-design' \
   - `.ai/INDEX.md`, `.ai/README.md`, `.ai/release-guide.md` — brand refs
   - `.ai/workflows.config.json` — `name: "maude"` → `name: "maude"`
   - `.ai/docs/PRD.md`, `.ai/docs/config-schema.md`, `.ai/docs/research-*.md` — brand refs
-  - `.ai/decisions/DDR-*.md` — **JEN editovat ty, kde brand reference je critically misleading**. DDR jsou historic record — pokud DDR-015 říká "@1agh/maude-<slug>", to je historic fact. Conservative approach: nepřepisovat DDR souborů.
+  - `.ai/archive/decisions/DDR-*.md` — **JEN editovat ty, kde brand reference je critically misleading**. DDR jsou historic record — pokud DDR-015 říká "@1agh/maude-<slug>", to je historic fact. Conservative approach: nepřepisovat DDR souborů.
   - `.ai/plans/*.md` — active plans → update. Archived plans → leave alone.
   - `.ai/state/STATE.md` — brand refs
 - **Plans s největší koncentrací refs (audit 2026-05-20)** — projít s explicitní pozorností, recipe-4 (`mdcc → maude`) sám nestačí:
@@ -636,7 +636,7 @@ Tento rename **NEMÁ UI work** — žádný visual change, žádný uživatelsk�
 - [ ] Grep ověření: `grep -rE "md-claude|@1agh/maude|@md-claude|design@maude|flow@maude" --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=_history --exclude-dir=archive --exclude-dir=.next` vrací 0 výsledků MIMO:
   - `CHANGELOG.md` (historic entries)
   - `docs/MIGRATING-*.md` (migration guides musí mít starý název v explanation)
-  - `.ai/decisions/` (historic DDR records)
+  - `.ai/archive/decisions/` (historic DDR records)
   - `.ai/plans/archive/` (archived plans)
   - `cli/install.cjs` (akceptuje `MD_CLAUDE_SKIP_POSTINSTALL` env var jako BC alias 1 cyklus)
   - `site/components/mdcc/` filenames + CSS `.mdcc-*` + `--mdcc-*` vars + `site/app/mdcc-tokens.css` (decision #2 + decision-e)
@@ -647,7 +647,7 @@ Tento rename **NEMÁ UI work** — žádný visual change, žádný uživatelsk�
   - `grep -rE "md-claude\.dev" .ai/plans/ site/ README.md` vrací 0 mimo migration explanation (decision-f); všechny canonical URLs ukazují na `maude.sh`
 - [ ] Post-merge (Phase 8) tasks proběhly: GitHub repo renamed, npm published `@1agh/maude@0.15.0` + 7 sub-packages, old packages unpublished/deprecated
 - [ ] Žádné regression v `version-parity.yml` CI check
-- [ ] DDR napsaný: `.ai/decisions/DDR-NNN-rename-md-claude-to-maude.md` zachycující rozhodnutí (1) `maude` primary + `mdcc` alias, (2) keep `mdcc-*` CSS namespace, (3) unpublish vs deprecate decision (per actual eligibility), (4) single atomic PR rollout
+- [ ] DDR napsaný: `.ai/archive/decisions/DDR-NNN-rename-md-claude-to-maude.md` zachycující rozhodnutí (1) `maude` primary + `mdcc` alias, (2) keep `mdcc-*` CSS namespace, (3) unpublish vs deprecate decision (per actual eligibility), (4) single atomic PR rollout
 
 ---
 

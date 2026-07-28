@@ -4,7 +4,7 @@ Validate docs and codebase patterns before implementing. Pay attention to existi
 
 ## Revision Log
 
-- **2026-05-26 (rev 1)** — Initial plan, 22 tasks split into Wave 1 (visual identity, T1–T12) + Wave 2 (behavioral, T13–T22). [DDR-046](.ai/decisions/DDR-046-canvas-chrome-three-state-halo-language.md) drafted.
+- **2026-05-26 (rev 1)** — Initial plan, 22 tasks split into Wave 1 (visual identity, T1–T12) + Wave 2 (behavioral, T13–T22). [DDR-046](.ai/archive/decisions/DDR-046-canvas-chrome-three-state-halo-language.md) drafted.
 - **2026-05-26 (rev 2 — current)** — Wave 1 executed and reviewed by user. **9 new grievances** + **3 second-order issues** surfaced post-screenshot. Plan restructured:
   - Tasks 1–12 ✅ done.
   - Tasks 13–22 OBSOLETED / merged. The original Wave-2 backbone (drag-threshold, marquee, cursor state machine, keyboard, ContextualToolbar, LOD, delta-clamp, zoom-easing) moves to **Wave 3** (renumbered T25–T33).
@@ -67,9 +67,9 @@ Two-wave refactor of the chrome + interaction layer of `plugins/design/dev-serve
 - **GitHub Issue**: — (no issue filed; ad-hoc polish pass requested in chat)
 - **Type**: Enhancement
 - **Complexity**: High
-- **App/Package**: `plugins/design/dev-server/` (single-package, multi-file refactor — single source per [DDR-025](.ai/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md))
+- **App/Package**: `plugins/design/dev-server/` (single-package, multi-file refactor — single source per [DDR-025](.ai/archive/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md))
 - **Affected Systems**: canvas-shell, canvas-lib (SnapGuideOverlay), use-snap-guides, input-router, tool-palette, annotations-layer, client styles
-- **Dependencies**: existing — none new (Bun-side per [DDR-009](.ai/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md))
+- **Dependencies**: existing — none new (Bun-side per [DDR-009](.ai/archive/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md))
 
 ---
 
@@ -101,7 +101,7 @@ Two-wave refactor of the chrome + interaction layer of `plugins/design/dev-serve
 - `plugins/design/dev-server/use-keyboard-discipline.tsx` — arrow nudge + Cmd+D with offset memory + Cmd+A + Esc consolidation hook.
 - `plugins/design/dev-server/equal-spacing-detector.ts` — pure function: given 3+ siblings on an axis, returns pink-pill positions + distance label.
 - `plugins/design/dev-server/__tests__/snap-distance-pill.test.ts` — new bun-test fixture for `SnapGuide.delta` and equal-spacing detector.
-- `.ai/decisions/DDR-046-canvas-chrome-three-state-halo-language.md` — locks the 3-state halo contract (hover 1.5 px tinted, selected 2 px + ring + ticks, group 1 px solid). Prevents future drift back to the "one-line-fits-all" pattern.
+- `.ai/archive/decisions/DDR-046-canvas-chrome-three-state-halo-language.md` — locks the 3-state halo contract (hover 1.5 px tinted, selected 2 px + ring + ticks, group 1 px solid). Prevents future drift back to the "one-line-fits-all" pattern.
 
 ### Documentation
 
@@ -253,10 +253,10 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR.
 
 ### Task 1: ADD DDR-046 — canvas-chrome three-state halo language
 
-- **Do**: Write `.ai/decisions/DDR-046-canvas-chrome-three-state-halo-language.md`. Locks the contract: hover = 1.5 px tinted + white-inset ring, selected = 2 px + 18 % ring + 4 corner ticks, group = 1 px solid (NOT dashed — dashed reserved for marquee), marquee = 1 px solid + 8 % fill. Reference [DDR-025](.ai/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md) for the canvas-shell single-source rule.
+- **Do**: Write `.ai/archive/decisions/DDR-046-canvas-chrome-three-state-halo-language.md`. Locks the contract: hover = 1.5 px tinted + white-inset ring, selected = 2 px + 18 % ring + 4 corner ticks, group = 1 px solid (NOT dashed — dashed reserved for marquee), marquee = 1 px solid + 8 % fill. Reference [DDR-025](.ai/archive/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md) for the canvas-shell single-source rule.
 - **Pattern**: Mirror DDR-026 (`universal-canvas-input-grammar`) — short contract + the 4 visual states tabulated + 1 paragraph rationale (8+ overlapping semantic states must be visually distinguishable).
 - **Gotcha**: List the four states + the marquee state as a fifth. Cross-link from `canvas-shell.tsx` `HALO_CSS` comment.
-- **Validate**: `grep -l "DDR-046" .ai/decisions/` returns the file; `grep "DDR-046" plugins/design/dev-server/canvas-shell.tsx` cross-links present.
+- **Validate**: `grep -l "DDR-046" .ai/archive/decisions/` returns the file; `grep "DDR-046" plugins/design/dev-server/canvas-shell.tsx` cross-links present.
 
 ### Task 2: REFACTOR `HALO_CSS` in `canvas-shell.tsx` to the three-state language
 
@@ -279,7 +279,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR.
 ### Task 4: EXTEND `SnapGuide` interface with `delta` and `kind` fields
 
 - **Do**: In `use-snap-guides.tsx:43-50`, add `delta?: number` and `kind?: 'grid' | 'sibling'` (optional — back-compat). In `computeSnap` (lines 119-215), populate `delta = winX.delta` / `winY.delta` on each emitted guide, and tag `kind` based on whether the winning candidate came from `nearestGridDelta` (grid) or the sibling loop (sibling). Re-export `SnapGuide` type unchanged.
-- **Pattern**: Pure-function purity is load-bearing here ([DDR-028](.ai/decisions/DDR-028-snap-tolerance-in-world-units.md)) — `computeSnap` stays no-React, no-DOM. Tag the candidate's `kind` by tracking source in the existing `xCands` / `yCands` arrays (add a `kind` field to `AxisCandidate` at line 71-79).
+- **Pattern**: Pure-function purity is load-bearing here ([DDR-028](.ai/archive/decisions/DDR-028-snap-tolerance-in-world-units.md)) — `computeSnap` stays no-React, no-DOM. Tag the candidate's `kind` by tracking source in the existing `xCands` / `yCands` arrays (add a `kind` field to `AxisCandidate` at line 71-79).
 - **Gotcha**: `mergeAtPos` (line 108) merges multiple sibling candidates at the same `pos` — preserve the first candidate's `kind` and use the maximum `|delta|` among merged candidates (the pill should show the worst-case correction, not average).
 - **Validate**: Write `plugins/design/dev-server/__tests__/snap-distance-pill.test.ts` with bun:test:
   ```ts
@@ -372,7 +372,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR.
 
 ### Task 14: REVISE DDR-046 — clarify dashed = group-container signal (not "reserved for none")
 
-- **Do**: Edit `.ai/decisions/DDR-046-canvas-chrome-three-state-halo-language.md`. The current contract says "Dashed lines are deliberately NOT used anywhere" and reserves dashed for "transient states only" — that's wrong. Dashed is the canonical **group-container** signal in every direct-manipulation tool (Figma group bbox, FigJam Section drag-state, Photoshop selection "marching ants"). Update DDR-046 to:
+- **Do**: Edit `.ai/archive/decisions/DDR-046-canvas-chrome-three-state-halo-language.md`. The current contract says "Dashed lines are deliberately NOT used anywhere" and reserves dashed for "transient states only" — that's wrong. Dashed is the canonical **group-container** signal in every direct-manipulation tool (Figma group bbox, FigJam Section drag-state, Photoshop selection "marching ants"). Update DDR-046 to:
   - Mark dashed as the explicit Group bbox idiom.
   - Update the comparison table: `Group bbox` → `1 px dashed var(--accent)` + 6 px square corner handles.
   - Add a row for **Marquee** (`1 px solid + 8% fill` — note: distinct from dashed group bbox in semantic, both "containers" but marquee = active gesture, group = persistent multi-select state).
@@ -574,7 +574,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR.
   - Cmd+A: select all `[data-cd-id]` elements in active artboard.
   - Esc: clear selection + close context menu (consolidate path through this hook, dedup with T21's cancelStroke).
 - **Pattern**: useEffect + document.addEventListener('keydown'). Bail when focus is in input / textarea / contenteditable.
-- **Gotcha**: 1 px / 10 px in WORLD UNITS, not screen pixels — per [DDR-028](.ai/decisions/DDR-028-snap-tolerance-in-world-units.md).
+- **Gotcha**: 1 px / 10 px in WORLD UNITS, not screen pixels — per [DDR-028](.ai/archive/decisions/DDR-028-snap-tolerance-in-world-units.md).
 - **Validate**: Select element, arrow → moves 1 px world unit. Shift+arrow → 10 px. Cmd+D → +10/+10 duplicate. Cmd+D twice → diagonal of 3.
 
 ### Task 30: ADD `ContextualToolbar` — selection-anchored floating chrome (+ G_S1 collapse stroke/fill)
@@ -696,7 +696,7 @@ Run these commands to confirm zero regressions:
 - [ ] User confirms all 9 grievances + 3 second-order are visually resolved (post-Wave-2)
 - [ ] Scenario report linked in PR description
 - [ ] No DDR-worthy decision left unrecorded (DDR-046 amended in T14; assess if T19 sticky-tool-lock warrants its own DDR)
-- [ ] Code follows project conventions per CLAUDE.md (Bun-first APIs per [DDR-009](.ai/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md), `dev-server/paths.ts` for any FS paths per [DDR-045](.ai/decisions/DDR-045-real-disk-path-resolution-for-compiled-dev-server.md), no project-side `canvas-lib` copy per [DDR-025](.ai/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md))
+- [ ] Code follows project conventions per CLAUDE.md (Bun-first APIs per [DDR-009](.ai/archive/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md), `dev-server/paths.ts` for any FS paths per [DDR-045](.ai/archive/decisions/DDR-045-real-disk-path-resolution-for-compiled-dev-server.md), no project-side `canvas-lib` copy per [DDR-025](.ai/archive/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md))
 
 ---
 

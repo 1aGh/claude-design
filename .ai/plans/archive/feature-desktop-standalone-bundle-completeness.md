@@ -67,7 +67,7 @@ Ship a **self-contained runtime + complete dependency closure**, via a hybrid th
 
 ### Files to Create
 
-- `.ai/decisions/DDR-1XX-desktop-self-contained-runtime-and-bundle-completeness.md` — the invariant + the two-track deps model + the gate (claim the next number per `[[project_ddr_numbering_races_on_shared_main]]`).
+- `.ai/archive/decisions/DDR-1XX-desktop-self-contained-runtime-and-bundle-completeness.md` — the invariant + the two-track deps model + the gate (claim the next number per `[[project_ddr_numbering_races_on_shared_main]]`).
 - `apps/desktop/scripts/check-bundle-completeness.mjs` (or a test) — asserts the staged closure covers every helper's import graph + a stripped-PATH `maude design <verb>` smoke over the bundled `.app`.
 
 ### Patterns to Follow

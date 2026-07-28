@@ -193,7 +193,7 @@ render`.
 - `site/components/mdcc/demo-video.tsx` — `<DemoVideo>` component for
   landing embed (autoplay muted loop, prefers-reduced-motion pause).
 - `site/public/{demo.mp4,demo-30s.mp4,demo-poster.jpg}` — Final artifacts.
-- `.ai/decisions/DDR-035-marketing-video-real-green-field-capture.md` — DDR
+- `.ai/archive/decisions/DDR-035-marketing-video-real-green-field-capture.md` — DDR
   recording the new approach + the rejection of the cinematic-cast
   alternative.
 
@@ -695,7 +695,7 @@ and ship.**
 ### Task 14 — RECORD a DDR
 
 - **Do:** Create
-  `.ai/decisions/DDR-035-marketing-video-real-green-field-capture.md`
+  `.ai/archive/decisions/DDR-035-marketing-video-real-green-field-capture.md`
   documenting:
   1. The hard reset away from cinematic terminal casts.
   2. Why no slash command appears in the marketing reel terminal.

@@ -277,14 +277,14 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 
 ### Task 10: RECORD a DDR
 
-- **Do**: Create `.ai/decisions/DDR-NNN-video-pipeline-toolchain-remotion-vhs-playwright.md`. Document:
+- **Do**: Create `.ai/archive/decisions/DDR-NNN-video-pipeline-toolchain-remotion-vhs-playwright.md`. Document:
   - Decision: choose Remotion (compose) + VHS (terminal) + Playwright (browser) + ffmpeg (post) over the original custom bash pipeline; explicitly reject Revideo/JSON-API SaaS/AI generation tools for stated reasons.
   - Research source: ref to the conversation deep research (2026-05-20).
   - Trade-offs: Remotion license risk above 3 employees; VHS limit on full-screen TUI; Playwright video defaults to WebM.
   - Reversibility: high — VHS/Playwright/Remotion are decoupled; can swap individual tools without rewriting the others.
   - Cross-link: DDR-008 (dev-server-bin canonical helpers — same ladder discipline), [`phase-15.5-marketing-demo-video-30s.md`](../plans/phase-15.5-marketing-demo-video-30s.md), [`phase-15-video-pipeline-toolchain.md`](../plans/phase-15-video-pipeline-toolchain.md).
-- **Pattern**: Follow `.ai/decisions/DDR-008-dev-server-bin-canonical-helper-home.md` shape (Decision, Context, Alternatives Considered, Consequences, Cross-links).
-- **Gotcha**: Pick next free DDR number — `ls .ai/decisions/ | tail -5` to confirm.
+- **Pattern**: Follow `.ai/archive/decisions/DDR-008-dev-server-bin-canonical-helper-home.md` shape (Decision, Context, Alternatives Considered, Consequences, Cross-links).
+- **Gotcha**: Pick next free DDR number — `ls .ai/archive/decisions/ | tail -5` to confirm.
 - **Validate**: DDR validates against the schema implied by sibling DDRs; cross-links work.
 
 ---
@@ -300,7 +300,7 @@ Run these commands to confirm zero regressions:
 5. **Idempotency**: running `video:smoke` twice in a row produces identical-size output (within ±1%); VHS and Remotion are deterministic, Playwright is approximately so.
 6. **Publish hygiene**: `npm pack --dry-run 2>&1 | grep -E "(scripts/video|smoke)"` returns nothing — the smoke artifacts and tooling are repo-only.
 7. **Runbook**: `cat scripts/video/README.md` includes Remotion license ack date (Task 0) and links to `phase-15.5-marketing-demo-video-30s.md` (Task 8).
-8. **DDR**: `ls .ai/decisions/DDR-*video-pipeline*.md` returns exactly one file.
+8. **DDR**: `ls .ai/archive/decisions/DDR-*video-pipeline*.md` returns exactly one file.
 9. **Manual**: `open scripts/video/.work/smoke/smoke.mp4` — three scenes visible in order (terminal `mdcc --help`, Canvas Viewport browser, "smoke test" card). No black frames, no audio (intentional).
 10. **Downstream**: `phase-15.5-marketing-demo-video-30s.md` reads top-to-bottom coherently after Task 9's edits — task ordering still valid, no dangling references to removed scripts.
 

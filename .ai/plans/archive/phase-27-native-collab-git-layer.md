@@ -49,7 +49,7 @@ Today git is 100% terminal-only. Users who change a canvas have no way to see it
 - `plugins/design/dev-server/api.ts` — existing API helpers (`atomicWrite`, response patterns).
 - `plugins/design/dev-server/client/app.jsx` — where `GitPanel` mounts; `<SyncBanner>` idiom to reuse.
 - `plugins/design/dev-server/paths.ts` — DDR-045: disk-path resolution inside compiled binary.
-- `.ai/decisions/DDR-075-canvas-activity-overlay-fs-watch-driven.md` — tree-badge style to mirror for dirty indicators.
+- `.ai/archive/decisions/DDR-075-canvas-activity-overlay-fs-watch-driven.md` — tree-badge style to mirror for dirty indicators.
 
 ### Files to Create
 

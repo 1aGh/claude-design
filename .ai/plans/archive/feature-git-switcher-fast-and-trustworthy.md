@@ -72,7 +72,7 @@ Five work-streams, ordered by leverage:
 
 ### Files to Create
 
-- `.ai/decisions/DDR-133-system-git-autodetect-and-git-native-switcher-vocabulary.md` — records (a) the DDR-107 end-state activation and (b) the git-native vocabulary pivot superseding DDR-110/119 for this surface.
+- `.ai/archive/decisions/DDR-133-system-git-autodetect-and-git-native-switcher-vocabulary.md` — records (a) the DDR-107 end-state activation and (b) the git-native vocabulary pivot superseding DDR-110/119 for this surface.
 
 ### Patterns to Follow
 
@@ -125,7 +125,7 @@ Execute in order. Each task is atomic and testable.
 
 ### Task 7: RECORD DDR-133
 
-- **Do**: Write `.ai/decisions/DDR-133-...md` covering the system-git auto-detect activation (the DDR-107 end-state, why now, the timeout + transport-gate composition) and the git-native vocabulary pivot (supersedes DDR-110/119 for the switcher only, with the user-decision provenance).
+- **Do**: Write `.ai/archive/decisions/DDR-133-...md` covering the system-git auto-detect activation (the DDR-107 end-state, why now, the timeout + transport-gate composition) and the git-native vocabulary pivot (supersedes DDR-110/119 for the switcher only, with the user-decision provenance).
 - **Validate**: linked from this plan + from DDR-107/110/119/131/132.
 
 ### Task 8: REBUILD committed client bundle

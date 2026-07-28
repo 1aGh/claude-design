@@ -68,7 +68,7 @@ Mirror the release-guide.md mechanism for scenario:
 ### External reference (read-only — different repo, not edited by this plan)
 
 - `/Users/iagh/git/AI-StudyMate/.claude/skills/scenario/SKILL.md` — the wrapper this feature obsoletes; source of the 8-section delta taxonomy.
-- `/Users/iagh/git/AI-StudyMate/.ai/decisions/DDR-021-scenario-testing-strategy.md` — their own "integrate, don't fork" rationale; corroborates this plan's direction.
+- `/Users/iagh/git/AI-StudyMate/.ai/archive/decisions/DDR-021-scenario-testing-strategy.md` — their own "integrate, don't fork" rationale; corroborates this plan's direction.
 - `/Users/iagh/git/AI-StudyMate/.ai/logs/2026-07-03-scenario-harness-gap-analysis.md` — real-world failure modes that motivated their gotchas section; useful sanity-check when writing the generic template's section prompts.
 
 ### Documentation

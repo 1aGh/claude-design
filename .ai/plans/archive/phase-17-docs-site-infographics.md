@@ -806,7 +806,7 @@ USER
 │   │   └─ spawn: code-simplifier
 │   ├─ /flow:record-ddr (per unrecorded decision)
 │   │   ├─ Skill(claude-md-keeper)
-│   │   └─ WRITES .ai/decisions/DDR-NNN-*.md + README.md index
+│   │   └─ WRITES .ai/archive/decisions/DDR-NNN-*.md + README.md index
 │   ├─ /flow:release-changelog        → .changeset/*
 │   ├─ /flow:record-retro             → Skill(claude-md-keeper)
 │   ├─ Skill(ddr-keeper)
@@ -837,7 +837,7 @@ USER
 | `.ai/state/STATE.md` | `setup-prd` (seed), `execute` (in-progress + checkpoints), `done` (done + history), `pause` (paused), `resume` (in-progress) | `status`, `plan`, `done`, `pause`, `resume`, `maintain-ai-health` |
 | `.ai/state/HANDOFF.md` | jen `/flow:pause` | jen `/flow:resume` (single P/C) |
 | `.ai/plans/archive/` | jen `/flow:done` | + CLAUDE.md vyžaduje `pnpm gen:roadmap` po move |
-| `.ai/decisions/` | `/flow:record-ddr` | `/flow:done` (sweep), `/flow:validate` (drift) |
+| `.ai/archive/decisions/` | `/flow:record-ddr` | `/flow:done` (sweep), `/flow:validate` (drift) |
 | `.ai/logs/security-reviews/` | `validate`, `validate-security`, `review-code` | mtime = cache klíč pro reuse window |
 | `coverage-baseline.json` | `/flow:done` (jen na baselineBranch) | `/flow:validate` |
 

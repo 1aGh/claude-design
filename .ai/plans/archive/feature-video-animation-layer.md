@@ -64,10 +64,10 @@ Six moves:
 - `plugins/design/commands/export.md` + `commands/edit.md` + `commands/new.md` — Why: command surfaces to extend (new formats; video-comp routing cues).
 - `plugins/design/agents/motion-critic.md` — Why: the critic to extend with video-comp awareness + live-motion proof.
 - `scripts/video/final/src/` (skim) — Why: the repo's OWN Remotion comps — real patterns for `<TransitionSeries>`, audio envelopes, captions the skill should teach.
-- `.ai/decisions/DDR-041-export-v2-mature-libraries-and-world-reset.md` — Why: capture-environment gotchas (zoom reset, hide-chrome) that WILL bite video capture too.
-- `.ai/decisions/DDR-088-canvas-media-vocabulary-and-asset-write-surface.md` — Why: the threat table; video widens it.
-- `.ai/decisions/DDR-094-draw-animation-keyframe-ir-native-authoring-lottie-export.md` — Why: freeze-frame verification lesson; boundary with the draw-engine animation IR.
-- `.ai/decisions/DDR-031-video-pipeline-toolchain-remotion-vhs-playwright.md` — Why: internal Remotion posture; the license-note discipline to mirror user-facing.
+- `.ai/archive/decisions/DDR-041-export-v2-mature-libraries-and-world-reset.md` — Why: capture-environment gotchas (zoom reset, hide-chrome) that WILL bite video capture too.
+- `.ai/archive/decisions/DDR-088-canvas-media-vocabulary-and-asset-write-surface.md` — Why: the threat table; video widens it.
+- `.ai/archive/decisions/DDR-094-draw-animation-keyframe-ir-native-authoring-lottie-export.md` — Why: freeze-frame verification lesson; boundary with the draw-engine animation IR.
+- `.ai/archive/decisions/DDR-031-video-pipeline-toolchain-remotion-vhs-playwright.md` — Why: internal Remotion posture; the license-note discipline to mirror user-facing.
 
 ### Files to Create
 
@@ -77,7 +77,7 @@ Six moves:
 - `apps/studio/client/panels/TimelinePanel.jsx` (+ CSS in `client/styles/4-components.css`) — timeline UI.
 - `plugins/design/skills/video-comp/SKILL.md` — the authoring skill (Remotion + Maude conventions).
 - `apps/studio/test/video-asset.test.ts`, `test/video-comp.test.ts`, extend `test/canvas-origin-gate.test.ts` — guards.
-- `.ai/decisions/DDR-1xx-video-comp-remotion-authoring-capture-export.md` — the architecture DDR (Task 1).
+- `.ai/archive/decisions/DDR-1xx-video-comp-remotion-authoring-capture-export.md` — the architecture DDR (Task 1).
 
 ### Design canvases
 
@@ -163,7 +163,7 @@ Execute in order. Each task is atomic and testable.
 ### Task 1: CREATE the architecture DDR
 
 - **Do**: Record DDR `video-comp-remotion-authoring-capture-export`: the hybrid decision (Remotion authoring in-house — user-ratified over the debate's default after license-fact review; capture-spine export), license evidence + disclosure posture (free ≤3-person tier; 4+ orgs bring their own license; LICENSE passthrough; NOT MIT), what's excluded (`@remotion/renderer`, `@remotion/web-renderer`, ffmpeg, gifski) with revisit-when triggers (renderer if fidelity gaps appear; ffmpeg if encode quality/perf disappoints; Remotion 5.0 migration watch), the determinism contract.
-- **Pattern**: `.ai/decisions/DDR-094-*.md` (decision + evidence table + revisit-when); DDR-031's LICENSE-NOTE discipline.
+- **Pattern**: `.ai/archive/decisions/DDR-094-*.md` (decision + evidence table + revisit-when); DDR-031's LICENSE-NOTE discipline.
 - **Validate**: file exists; linked from this plan.
 
 ### Task 2: ADD Remotion to the runtime bundles + video-comp canvas kind

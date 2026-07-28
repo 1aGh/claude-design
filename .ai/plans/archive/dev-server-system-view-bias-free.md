@@ -66,12 +66,12 @@ The dev-server shell chrome (`1-tokens.css`) **stays unchanged** — it is the M
 - `plugins/design/dev-server/server.mjs` (lines 988-1052, legacy parallel implementation of `buildSystemData`) — the legacy Node entry. Per CLAUDE.md DDR-009, dev-server is migrating to Bun-authoritative; the `.mjs` file is being phased out. Apply the SAME server-side change here so both runtimes stay in lockstep until `.mjs` is removed. Use `Bun.*` APIs in `.ts`, `node:` in `.mjs`.
 - `plugins/design/dev-server/http.ts` (lines 339-352, `/_config` endpoint) — currently exposes `tokensCssRel: ctx.cfg.designSystems?.[0]?.tokensCssRel ?? ctx.cfg.tokensCssRel`. After the per-DS resolution lands in `context.ts`, this falls out naturally because entries will always have `tokensCssRel` populated.
 - `plugins/design/dev-server/config.schema.json` (lines 53-200, `tokensCssRel` + `designSystems`) — update the description of `tokensCssRel` to document the auto-resolution default; bump schema version if appropriate.
-- `.ai/decisions/DDR-043-bias-free-design-plugin-templates.md` — the source-of-truth principle this fix extends. Reference in the new DDR.
-- `.ai/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md` — same isolation philosophy applied to `canvas-lib`. The lesson is the same: dev-server internals must not leak into user content.
+- `.ai/archive/decisions/DDR-043-bias-free-design-plugin-templates.md` — the source-of-truth principle this fix extends. Reference in the new DDR.
+- `.ai/archive/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md` — same isolation philosophy applied to `canvas-lib`. The lesson is the same: dev-server internals must not leak into user content.
 
 ### Files to Create
 
-- `.ai/decisions/DDR-047-dev-server-system-view-no-shell-bias.md` — record the isolation invariant (system view reads user tokens only; shell chrome never participates) and the per-DS `tokensCssRel` auto-resolution.
+- `.ai/archive/decisions/DDR-047-dev-server-system-view-no-shell-bias.md` — record the isolation invariant (system view reads user tokens only; shell chrome never participates) and the per-DS `tokensCssRel` auto-resolution.
 
 ### Files to Change
 
@@ -194,11 +194,11 @@ Execute in order. Each task is atomic and testable.
 
 ### Task 9: WRITE DDR-047 and link from DDR-043
 
-- **Do**: Create `.ai/decisions/DDR-047-dev-server-system-view-no-shell-bias.md` documenting (a) the isolation invariant: dev-server shell chrome MUST NOT participate in user-facing token rendering; (b) the per-DS `tokensCssRel` auto-resolution rule; (c) why the canonical token-NAME contract from DDR-043 stays — but the system view does not depend on it.
+- **Do**: Create `.ai/archive/decisions/DDR-047-dev-server-system-view-no-shell-bias.md` documenting (a) the isolation invariant: dev-server shell chrome MUST NOT participate in user-facing token rendering; (b) the per-DS `tokensCssRel` auto-resolution rule; (c) why the canonical token-NAME contract from DDR-043 stays — but the system view does not depend on it.
 - **Do**: Add a single line under DDR-043's "Related" footer pointing to DDR-047 ("DDR-047 extends bias-free templates into the dev-server runtime").
 - **Pattern**: existing DDR style — Status, Context, Decision, Decision table (if useful), Consequences, References.
 - **Gotcha**: keep the DDR short (≤ 300 lines). The decision IS small; the value is the invariant and the cross-link.
-- **Validate**: `ls .ai/decisions/DDR-047-*.md` exists.
+- **Validate**: `ls .ai/archive/decisions/DDR-047-*.md` exists.
 
 ### Task 10: REBUILD client bundle + manual smoke against AI-StudyMate
 
@@ -262,7 +262,7 @@ No `scenario-runner` invocation — this repo doesn't ship that workflow for dev
 ## Retro
 
 - **What worked.** The plan correctly identified all three layers (wrong document / hardcoded names / single-tokensCssRel) before any code was touched, so the implementation was 10 atomic edits with no rework. Server-side parser was already bias-free (regex over `--[a-z][a-z0-9-]*`) — only the client and the per-DS resolution layer needed work.
-- **What didn't.** I assumed DDR-047 was the next free slot; it was already taken by `collab-scope-cut`. Cost: one bulk sed across 9 files. Lesson: always `ls .ai/decisions/ | tail -3` *before* drafting a DDR number into code comments.
+- **What didn't.** I assumed DDR-047 was the next free slot; it was already taken by `collab-scope-cut`. Cost: one bulk sed across 9 files. Lesson: always `ls .ai/archive/decisions/ | tail -3` *before* drafting a DDR number into code comments.
 - **What didn't, part 2.** The `/_system-data` HTTP path in `server.mjs` uses `reqPath === '/_system-data'` for routing, which silently drops `?ds=...` queries. Took one smoke iteration to catch. The Bun `.ts` entry uses `URL.searchParams` which handles this correctly — the legacy Node entry's flat string matching is a footgun worth retiring with the `.mjs` itself per DDR-009.
 - **What to change in `/plan` next time.** The plan listed "Phase 2 — iframe-mounted system view" as a follow-up. After implementation I think the raw-value approach is enough for token + type rendering; iframe mount would only matter if we wanted live `color-mix()` / `relative-color` resolution or font fallback verification. Skipping it didn't hurt — `availableDesignSystems` + DS picker covered the real user need (StudyFi case).
 - **What to change in `/execute` next time.** The DDR-021 smoke gate is a powerful integration check — running it after the bundle rebuild caught nothing (good) but the *value* was in the green light it provided across all 42 canvases that the new client code didn't regress per-canvas mounting. Keep this as the default for any `plugins/design/dev-server/**` change.

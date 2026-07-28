@@ -86,12 +86,12 @@ S každou novou interaktivní vrstvou (Phase 5 draw, Phase 5.1 annotations FigJa
 - `plugins/design/dev-server/test/input-router-undo.test.ts` — classify Cmd+Z / Cmd+Shift+Z / Cmd+Y / isEditable guard.
 - `plugins/design/dev-server/test/move-artboards-command.test.ts` — inverze pozic, idempotence redo.
 - `plugins/design/dev-server/test/annotation-strokes-command.test.ts` — add/erase round-trip.
-- `.ai/decisions/DDR-050-canvas-undo-redo-command-stack.md` — viz Decisions sekce níže.
+- `.ai/archive/decisions/DDR-050-canvas-undo-redo-command-stack.md` — viz Decisions sekce níže.
 
 ### Documentation
 
-- DDR-013 (`.ai/decisions/DDR-013-server-modular-split-typescript.md`) — module layout convention, ≤ 300 LOC per file.
-- DDR-045 (`.ai/decisions/DDR-045-real-disk-path-resolution-for-compiled-dev-server.md`) — path discipline; tady irelevant ale uvádí dev-server compile constraints.
+- DDR-013 (`.ai/archive/decisions/DDR-013-server-modular-split-typescript.md`) — module layout convention, ≤ 300 LOC per file.
+- DDR-045 (`.ai/archive/decisions/DDR-045-real-disk-path-resolution-for-compiled-dev-server.md`) — path discipline; tady irelevant ale uvádí dev-server compile constraints.
 - DDR-048 (input-router classify table) — pattern, jak rozšířit `RouterAction`.
 - React 19 `useSyncExternalStore` docs — preferovaný pattern pro Context se subscriberem mimo React (potřebujeme to pro fs-watch hook).
 - Figma UX reference: viewport + selection jsou ne-undoable. Toto je standard, nepřevracet.
@@ -282,7 +282,7 @@ Execute in order. Each task is atomic and testable. Pure logic (Tasks 1–5) jde
 
 ### Task 14: DDR-050 — Canvas Undo/Redo Command Stack
 
-- **Do**: Napiš `.ai/decisions/DDR-050-canvas-undo-redo-command-stack.md` s rozhodnutími:
+- **Do**: Napiš `.ai/archive/decisions/DDR-050-canvas-undo-redo-command-stack.md` s rozhodnutími:
   1. Command-pattern (inverse-payload), ne snapshot.
   2. Per-canvas-iframe scope, in-memory, ephemerální. Žádná persistence napříč session-y.
   3. Viewport + selection **ne**-undoable.

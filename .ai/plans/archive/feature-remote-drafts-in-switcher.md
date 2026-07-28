@@ -49,7 +49,7 @@ Two phases, chosen via `/flow:plan` divergence (recommended option **"Fáze 1 + 
 
 ### Files to Create
 
-- `.ai/decisions/DDR-<next>-remote-draft-checkout-and-fetch-model.md` — records: (a) switching to a remote-only draft creates a local tracking branch via `checkout({remote,track})`; (b) the dirty-tree guard reused verbatim; (c) the fetch/token model (server keychain token, loopback-only, explicit-gesture-only, no auto-fetch); (d) why freshness is "last fetch" not "live". Reference DDR-051, DDR-054, DDR-109, DDR-119.
+- `.ai/archive/decisions/DDR-<next>-remote-draft-checkout-and-fetch-model.md` — records: (a) switching to a remote-only draft creates a local tracking branch via `checkout({remote,track})`; (b) the dirty-tree guard reused verbatim; (c) the fetch/token model (server keychain token, loopback-only, explicit-gesture-only, no auto-fetch); (d) why freshness is "last fetch" not "live". Reference DDR-051, DDR-054, DDR-109, DDR-119.
 
 ### Design canvases
 

@@ -74,9 +74,9 @@ Load-bearing invariants (some inherited, some added by the debate): **address by
 - `apps/studio/client/app.jsx` — Why: the shell. Timeline state + wiring (`timelinePlaying`/`timelineCompId`/`activeComps`/`timelineFrame` ~6100–6400; the `<TimelinePanel … onRetime={…→ /_api/retime-sequence}>` block ~8380–8440); the inline-edit persistence handlers (`edit-text`/`apply-edit` ~7131–7186 — the P1 silent `console.warn`); the `select`/`layers-tree`/`reorder-request` postMessage lane (~7098–7271 — the active-canvas-only request gate + `pendingReorderRef` re-settle pattern the P2/P3 ops mirror); `applyOptimisticStyle`; the global keydown surface (P3).
 - `apps/studio/canvas-lib.tsx` — Why: `AnnotationsLayer` owns the media-drop callbacks (commit/undo sink + `screenToWorld`); `onImage`/`onLink` chip creation is the exact path P4's on-canvas media reference mirrors. `VideoComp` re-export.
 - `apps/studio/canvas-pipeline.ts` — Why: where `data-cd-id` is injected (the positional-id precedent P2's stable clip id mirrors; the candidate injection site for a `{/* @mclip id */}` sentinel / `<Sequence name>` normalization).
-- `.ai/decisions/DDR-148-*.md` — Why: the foundation; the determinism contract + "no bespoke IR, Remotion vocabulary IS the model" that scopes ops to Remotion tags.
-- `.ai/decisions/DDR-103-*.md` + `DDR-104-*.md` — Why: the inline-edit trust boundary + UX model P1 hardens; the `editText` refusal is a DDR-103 choice — P1 changes failure *surfacing*, not the escape rule.
-- `.ai/decisions/DDR-088-*.md` + `DDR-054-*.md` + `DDR-138-*.md` — Why: source-write routes main-origin-only + dual-allowlist; untrusted-iframe trust model; the node-move reorder + re-select-through-id-churn precedent.
+- `.ai/archive/decisions/DDR-148-*.md` — Why: the foundation; the determinism contract + "no bespoke IR, Remotion vocabulary IS the model" that scopes ops to Remotion tags.
+- `.ai/archive/decisions/DDR-103-*.md` + `DDR-104-*.md` — Why: the inline-edit trust boundary + UX model P1 hardens; the `editText` refusal is a DDR-103 choice — P1 changes failure *surfacing*, not the escape rule.
+- `.ai/archive/decisions/DDR-088-*.md` + `DDR-054-*.md` + `DDR-138-*.md` — Why: source-write routes main-origin-only + dual-allowlist; untrusted-iframe trust model; the node-move reorder + re-select-through-id-churn precedent.
 - `apps/studio/test/timeline-parse.test.ts` + `test/video-comp.test.ts` + `test/canvas-origin-gate.test.ts` — Why: guards to extend (parser cases, seek determinism, `GET → 405`/route-absence per new route).
 
 ### Files to Create
@@ -86,7 +86,7 @@ Load-bearing invariants (some inherited, some added by the debate): **address by
 - `apps/studio/test/canvas-edit-clip-ops.test.ts` — remove/insert pure-variant tests + reparse-gate + semantic-gate refusals + `src` traversal rejection + `escapeAttr`-on-insert.
 - `apps/studio/test/media-drop-timeline.test.ts` — timeline-drop dispatch + on-canvas media-reference classification.
 - *(extend)* `apps/studio/client/panels/timeline-parse.js` — emit per-clip stable id + content hash (from the enumerator) + media `src`; stop being the addressing authority.
-- `.ai/decisions/DDR-1xx-timeline-clip-addressing-and-inline-edit-persistence.md` — the decision (Task 0): AST clip addressing + fingerprint + semantic gate as the destructive-op prerequisite; the P1 failure-surfacing change; why split/hide are deferred; the debate record.
+- `.ai/archive/decisions/DDR-1xx-timeline-clip-addressing-and-inline-edit-persistence.md` — the decision (Task 0): AST clip addressing + fingerprint + semantic gate as the destructive-op prerequisite; the P1 failure-surfacing change; why split/hide are deferred; the debate record.
 
 ### Design canvases
 

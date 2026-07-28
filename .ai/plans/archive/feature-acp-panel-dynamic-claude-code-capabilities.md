@@ -53,8 +53,8 @@ Three milestones, sequenced. **A** is the dynamic backbone and is a prerequisite
 - `apps/studio/acp/index.ts` (whole; esp. 21-24 `VALID_EFFORT`/`VALID_MODELS`, 124-180 `getOrCreateBridge` sinks incl. `onPermission` 171, 200-245 handlePrompt/handleWarm, 256-289 frame router) — the WS manager / frame translator.
 - `apps/studio/acp/probe.ts` (esp. 208 `getClaudeAuthStatus` — the established `Bun.spawn(claude … --json)` shell pattern) — for reference only; models come from the session, not a shell.
 - `apps/studio/client/styles/6-acp-chat.css` (whole) — the `chat-*` class system to extend (Maude CSS, not the lib theme).
-- `.ai/decisions/DDR-125-acp-multichat-parallel-and-security-posture.md` — F2 auto-approve accepted risk + the approve/deny-UI mitigation contract. **Load-bearing for Milestone B.**
-- `.ai/decisions/DDR-123-acp-chat-runs-on-users-claude-cli-subscription.md` — the three guardrails (scrub `ANTHROPIC_API_KEY`, pin `CLAUDE_CODE_EXECUTABLE`, native-only). Nothing here may weaken them.
+- `.ai/archive/decisions/DDR-125-acp-multichat-parallel-and-security-posture.md` — F2 auto-approve accepted risk + the approve/deny-UI mitigation contract. **Load-bearing for Milestone B.**
+- `.ai/archive/decisions/DDR-123-acp-chat-runs-on-users-claude-cli-subscription.md` — the three guardrails (scrub `ANTHROPIC_API_KEY`, pin `CLAUDE_CODE_EXECUTABLE`, native-only). Nothing here may weaken them.
 
 ### Files to Create
 

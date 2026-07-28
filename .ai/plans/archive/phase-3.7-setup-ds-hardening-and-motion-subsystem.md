@@ -106,7 +106,7 @@ Six task blocks. Each block atomic; A and B can run in parallel after Task 0/1 l
   - `plugins/design/dev-server/bin/visual-sanity.sh` (new) — boots dev-server + screenshots N specimens + reads PNGs back
   - `scripts/migrate-motion-specimen.ts` (new, one-shot) — codemod for any project still holding `motion.html`
   - `.design/system/project/preview/motion.tsx` (this repo's own DS — dogfood the new specimen first)
-  - `.ai/decisions/DDR-049-motion-one-as-canonical-motion-library.md` (new)
+  - `.ai/archive/decisions/DDR-049-motion-one-as-canonical-motion-library.md` (new)
 - **Dependencies**:
   - **Hard-blocks-on Phase 3.6.1** (canvas envelope + DS specimens as TSX). Specimens must already render as TSX for this phase to plug into the lib.
   - New runtime dep in canvas-lib package: `motion ^11` (Motion One). Added as a peer-dep of `@maude/canvas-lib` so handoff registry-item declares it cleanly.
@@ -143,7 +143,7 @@ Regression on any gate → revert before merge.
 - `plugins/design/templates/design-system-inspiration/core/colors_and_type.css.tpl` (lines 96-115) — duration + easing tokens + reduced-motion guard. Unchanged. Source of truth for `useMotionTokens()`.
 - `.ai/plans/archive/phase-3.6-canvas-tsx-format.md` — **structural parallel**. This phase mirrors its discipline: one runtime, one toolchain, AST-readable, screenshot-verified, handoff-clean.
 - `.ai/plans/archive/phase-3.6.1-canvas-envelope-and-ds-specimens.md` — the canvas-lib + specimen-as-TSX foundation. The motion specimen rewrite plugs into the same envelope.
-- `.ai/decisions/DDR-043-bias-free-design-plugin-templates.md` — template bias-freedom rule. Motion tokens stay generic via `{{dur_*}}` placeholders; no aesthetic priors baked into the specimen.
+- `.ai/archive/decisions/DDR-043-bias-free-design-plugin-templates.md` — template bias-freedom rule. Motion tokens stay generic via `{{dur_*}}` placeholders; no aesthetic priors baked into the specimen.
 - `plugins/flow/skills/motion-rules/SKILL.md` (117 LOC) — flow plugin's motion hard-stops. The maude-side spec must stay consistent with this skill; reference it from `motion-critic` and the new sub-agent prompt block.
 
 ### Files to create
@@ -154,7 +154,7 @@ Regression on any gate → revert before merge.
 - `plugins/design/templates/design-system-inspiration/core/preview/_motion-readme.md.tpl` — short author-facing doc explaining the 8 roles + the loop policy + the bounded-geometry rule. Shipped alongside the specimen so a future Claude reading the DS folder cold has the rationale.
 - `plugins/design/templates/design-system-inspiration/SUB-AGENT-PROMPTS.md` — extract the foundations / brand / inputs slice prompt templates from SKILL.md into a single file. Add `ANIMATION SAFETY` block + `RELATIVE-URL SAFETY` block + `PLACEHOLDER POLICY` block to the foundations + brand slices specifically. **Why extract**: SKILL.md is 955 LOC and the sub-agent prompts are buried; splitting them out lets us audit + extend the prompts without scrolling through unrelated bootstrap logic.
 - `scripts/migrate-motion-specimen.ts` — one-shot codemod. Walks `**/preview/motion.html` under a target `.design/` root, rewrites to `motion.tsx` using the new template + project-specific token values, archives the `.html` to `_history/_migration-2026-06-XX/`.
-- `.ai/decisions/DDR-049-motion-one-as-canonical-motion-library.md` — DDR. Records: motion-one vs framer-motion vs CSS-only options considered; production handoff parity as the deciding factor; same-author API compatibility as risk mitigation; canvas-lib as the abstraction layer so canvases can drop motion-one without touching imports.
+- `.ai/archive/decisions/DDR-049-motion-one-as-canonical-motion-library.md` — DDR. Records: motion-one vs framer-motion vs CSS-only options considered; production handoff parity as the deciding factor; same-author API compatibility as risk mitigation; canvas-lib as the abstraction layer so canvases can drop motion-one without touching imports.
 
 ### Documentation (external — opened during research)
 
@@ -273,7 +273,7 @@ Execute in order. A and B can run in parallel after Task 0 + Task 1 + Task 2 lan
 
 ### Task 0 — ARCHIVE retro evidence + ADD DDR-049
 
-- **Do**: Copy the studyfi imprint review (`/Volumes/D/git/AI-StudyMate/.ai/logs/system-reviews/design-system-imprint-bootstrap-review.md`) into `.ai/logs/system-reviews/imprint-bootstrap-review-2026-05-26.md` (so the plan's source-of-truth lives in this repo). Write `.ai/decisions/DDR-049-motion-one-as-canonical-motion-library.md` per `.ai/decisions/template.md`. Cover: status quo (CSS-only, no library); decision (motion-one default + CSS escape hatch); alternatives (framer-motion, GSAP, CSS-only, Animations API); consequences (~10 KB gz canvas-lib bump, production handoff cleanup, framer-motion-compat for sub-agent training data).
+- **Do**: Copy the studyfi imprint review (`/Volumes/D/git/AI-StudyMate/.ai/logs/system-reviews/design-system-imprint-bootstrap-review.md`) into `.ai/logs/system-reviews/imprint-bootstrap-review-2026-05-26.md` (so the plan's source-of-truth lives in this repo). Write `.ai/archive/decisions/DDR-049-motion-one-as-canonical-motion-library.md` per `.ai/archive/decisions/template.md`. Cover: status quo (CSS-only, no library); decision (motion-one default + CSS escape hatch); alternatives (framer-motion, GSAP, CSS-only, Animations API); consequences (~10 KB gz canvas-lib bump, production handoff cleanup, framer-motion-compat for sub-agent training data).
 - **Validate**: DDR opens cleanly; cross-links to this plan; review-copy lives at expected path.
 
 ### Task 1 — CREATE `asset-sweep.sh` + WIRE into SKILL.md pre-scaffold

@@ -58,7 +58,7 @@ As a visitor to maude's docs I want the site to look and read like the Maude stu
 - `site/components/mdcc/intro-video.tsx` — the landing intro-video player (poster + play + scrubber chrome) from `Studio Intro Video.tsx` board A.
 - `site/components/mdcc/changelog-timeline.tsx` — combined Now/Shipped/Next timeline (merges roadmap.json + whats-new.json), if the combine decision is taken (see DDR below).
 - `site/app/(home)/changelog/page.tsx` — the combined page (only if combining; else restyle the existing `/roadmap` + `/whats-new`).
-- `.ai/decisions/DDR-099-site-token-retarget-maude.md` — record the project→maude token retarget + selector-transform approach.
+- `.ai/archive/decisions/DDR-099-site-token-retarget-maude.md` — record the project→maude token retarget + selector-transform approach.
 
 ### Design canvases
 

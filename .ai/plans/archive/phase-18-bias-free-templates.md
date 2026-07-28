@@ -64,7 +64,7 @@ Three coordinated changes:
 
 ### Files to Create
 
-- `.ai/decisions/DDR-026-bias-free-templates.md` — record why we stripped the priors and what the new contract is.
+- `.ai/archive/decisions/DDR-026-bias-free-templates.md` — record why we stripped the priors and what the new contract is.
 - *(optional)* `plugins/design/templates/design-system-inspiration/core/_defaults.json.tpl` — sane-default values the discovery flow can offer as a "skip → use safe defaults" escape hatch (so unopinionated does NOT mean "user must answer 30 questions"). Discuss in Task 0.
 
 ### Documentation
@@ -227,8 +227,8 @@ Execute in order. Each task is atomic and testable.
 
 ### Task 14: RECORD DDR-026
 
-- **Do**: Write `.ai/decisions/DDR-026-bias-free-templates.md`. Include the decision table from Task 1, the soft-gate strategy from Tasks 10-11, the safe-default escape hatch from Task 13, and the rationale (user request 2026-05-25 — eliminate invisible visual priors so non-dashboard projects aren't fighting the templates).
-- **Pattern**: existing DDRs in `.ai/decisions/`.
+- **Do**: Write `.ai/archive/decisions/DDR-026-bias-free-templates.md`. Include the decision table from Task 1, the soft-gate strategy from Tasks 10-11, the safe-default escape hatch from Task 13, and the rationale (user request 2026-05-25 — eliminate invisible visual priors so non-dashboard projects aren't fighting the templates).
+- **Pattern**: existing DDRs in `.ai/archive/decisions/`.
 - **Validate**: DDR keeper subagent reads cleanly.
 
 ### Task 15: UPDATE `CLAUDE.md` "Design plugin" section
@@ -293,7 +293,7 @@ Not applicable — this refactor has no UI surface of its own. Future `/design:s
 - End-to-end scratch scaffold (`/tmp/bias-test/`) was the single most valuable verification step — produced the visual proof that the new defaults look "deliberately unfinished" in practice, not just in intent.
 
 **What didn't work**
-- DDR-026 number reservation was stale — DDRs 026–042 had been allocated since the plan was written. Renamed to DDR-043 mid-execution. Future plans should grep `.ai/decisions/` for the next free number at write time, not assume.
+- DDR-026 number reservation was stale — DDRs 026–042 had been allocated since the plan was written. Renamed to DDR-043 mid-execution. Future plans should grep `.ai/archive/decisions/` for the next free number at write time, not assume.
 - Specimens neutralization (Task 9) was harder to scope cleanly than expected. The line between "bias injection" and "demonstration with hardcoded illustrative values" is judgmental. Settled on: fix clear injections (`#ffffff`, `oklch(8%...)` body bg, theme side-by-side); leave demo OKLCH where it serves the specimen's purpose, with NOTES comments clarifying the values are illustrative.
 
 **What to change next time**

@@ -1,6 +1,6 @@
 // ddr-to-kgai — productionized importer (port of scripts/kgai-smoke/ddr2kgai.py,
 // feature-kgai-ecosystem-integration Task 11). Turns this repo's
-// `.ai/decisions/DDR-*.md` into a kgai `{decisions:[…]}` batch and ingests it via
+// `.ai/archive/decisions/DDR-*.md` into a kgai `{decisions:[…]}` batch and ingests it via
 // `kg ingest --file`, so an existing file-based decision store migrates into the
 // graph in one pass.
 //
@@ -197,11 +197,11 @@ export function buildDdrBatch(decisionsDir, scope = {}, only = null) {
         // `path` makes the graph an INDEX INTO the archive rather than a lossy
         // copy of it: the migration keeps only title + the first Decision/Context
         // paragraph (~3% of the file), so a hit has to be able to say WHICH file
-        // holds the alternatives/consequences. `.ai/decisions/*.md` IS committed,
+        // holds the alternatives/consequences. `.ai/archive/decisions/*.md` IS committed,
         // so the pointer always resolves.
         props: {
           title: title.slice(0, 120),
-          path: `.ai/decisions/${f}`,
+          path: `.ai/archive/decisions/${f}`,
           ...(date ? { date } : {}),
           ...(tags.length ? { tags: tags.join(',') } : {}),
         },
@@ -247,7 +247,7 @@ export function buildDdrBatch(decisionsDir, scope = {}, only = null) {
  *
  * These are a DIFFERENT case from DDRs and the extraction reflects it: `.ai/logs/`
  * is **gitignored** (the repo files it under "AI workflow runtime" beside
- * device/browser/cache), so unlike `.ai/decisions/*.md` these 123 files exist only
+ * device/browser/cache), so unlike `.ai/archive/decisions/*.md` these 123 files exist only
  * on the machine that produced them — while 164 committed references point AT them.
  * Once ingested, the graph (whose log IS committed) becomes the only inheritable
  * copy, so we keep a much larger excerpt than the DDR path does (which can afford
@@ -355,10 +355,16 @@ export async function run({ args, state, projectRoot, runKg }) {
         .map((x) => x.trim())
         .filter(Boolean)
     : null;
-  const decisionsDir = join(projectRoot, '.ai', 'decisions');
+  // Prefer `.ai/archive/decisions` — where the prose moved once the graph became
+  // the source of truth (2026-07-28) — and fall back to the classic location so
+  // the importer still works on a repo that hasn't archived (every other repo).
+  const decisionsDir = [
+    join(projectRoot, '.ai', 'archive', 'decisions'),
+    join(projectRoot, '.ai', 'decisions'),
+  ].find((d) => existsSync(d)) ?? join(projectRoot, '.ai', 'decisions');
   if (!existsSync(decisionsDir)) {
     process.stderr.write(
-      `maude kg import: no .ai/decisions/ under ${projectRoot}. Nothing to migrate.\n`
+      `maude kg import: no .ai/archive/decisions/ under ${projectRoot}. Nothing to migrate.\n`
     );
     return 1;
   }
@@ -382,9 +388,11 @@ export async function run({ args, state, projectRoot, runKg }) {
   // `.ai/logs/**` rides the same import unless --no-logs. Deliberately NOT a
   // separate opt-in verb: these files are gitignored, so leaving them out is how
   // the RCA/security-review knowledge stays machine-local and dies on a clone.
-  const logsDir = join(projectRoot, '.ai', 'logs');
+  const logsDir = [join(projectRoot, '.ai', 'archive', 'logs'), join(projectRoot, '.ai', 'logs')].find(
+    (d) => existsSync(d)
+  );
   let logStats = null;
-  if (!only && !flags['no-logs'] && existsSync(logsDir)) {
+  if (!only && !flags['no-logs'] && logsDir) {
     const logs = buildLogBatch(logsDir, state.scope);
     logStats = logs.stats;
     batch.decisions.push(...logs.batch.decisions);
@@ -414,7 +422,7 @@ export async function run({ args, state, projectRoot, runKg }) {
       );
     }
     process.stdout.write(
-      '  (dry-run — nothing written. `.ai/decisions/` is preserved as archive.)\n'
+      '  (dry-run — nothing written. `.ai/archive/decisions/` is preserved as archive.)\n'
     );
     return 0;
   }

@@ -64,14 +64,14 @@ Key decisions (D1–D11), each argued by at least one seat — the lead added no
 - `plugins/design/skills/design-system/SKILL.md` (line 17 BOOTSTRAP one-liner; frontmatter description) — Why: router enumerates the stage order + gates.
 - `plugins/design/agents/ux-research-agent.md` (lines 145–178 discovery procedure; `_reference_images_doc`; 326–377 recommendations block + confidence heuristic) — Why: payload consumers change (tiles sliced per cluster; moodboard now pre-refinement); doc notes + cross-links must be updated — **payload schema itself is unchanged** (SHIPPER: zero new fields needed; `mood_clusters[]` already carries 3 pairwise-distinct clusters and `reference_images[].anchor → reference_products[].mood_tag` already slices imagery per cluster).
 - `plugins/design/skills/design-system/_pastier-probe-templates.md` (§ E confidence heuristic) — Why: Probe E semantics feed Stage 3; verify wording still matches after refinement moves post-pick.
-- `.ai/decisions/DDR-080-moodboard-direction-gate.md`, `DDR-136-…`, `DDR-033-…`, `DDR-073-…`, `DDR-043-…` — Why: the decisions being superseded-in-part/amended; DDR-147 must cite them precisely.
+- `.ai/archive/decisions/DDR-080-moodboard-direction-gate.md`, `DDR-136-…`, `DDR-033-…`, `DDR-073-…`, `DDR-043-…` — Why: the decisions being superseded-in-part/amended; DDR-147 must cite them precisely.
 - `site/content/docs/design/bootstrap.mdx` (lines 22, 68, 78, 90) — Why: public docs restate the 3-stage order and sub-mode flows.
 - `apps/studio/bin/prep.sh` (ACCENT_STRATEGY/COLOR_SPACE read + `--shell-export` emit, lines ~78–185) — Why: pattern for the `MOODBOARD_VARIANTS` knob export.
 - `apps/studio/config.schema.json` — Why: additive `moodboard.variants` property lands here.
 
 ### Files to Create
 
-- `.ai/decisions/DDR-147-moodboard-first-discovery-default-directions.md` — the governing DDR (D1–D11 above).
+- `.ai/archive/decisions/DDR-147-moodboard-first-discovery-default-directions.md` — the governing DDR (D1–D11 above).
 
 ### Design canvases
 
@@ -128,10 +128,10 @@ Execute in order. Keywords: CREATE, UPDATE, REMOVE.
 
 ### Task 1: CREATE DDR-147
 
-- **Do**: Write `.ai/decisions/DDR-147-moodboard-first-discovery-default-directions.md` recording D1–D11 (context: kanban dogfood evidence + user request; decision; consequences; files changed; what it does NOT change — two-gate model, never-under-`system/<ds>/`, DDR-043 bias-free, Stage-1 fullness, `--no-discovery` skip). Explicitly: **supersedes DDR-080's cost clause**, **amends DDR-033's ordering**, keeps everything else.
+- **Do**: Write `.ai/archive/decisions/DDR-147-moodboard-first-discovery-default-directions.md` recording D1–D11 (context: kanban dogfood evidence + user request; decision; consequences; files changed; what it does NOT change — two-gate model, never-under-`system/<ds>/`, DDR-043 bias-free, Stage-1 fullness, `--no-discovery` skip). Explicitly: **supersedes DDR-080's cost clause**, **amends DDR-033's ordering**, keeps everything else.
 - **Pattern**: DDR-136 (amends-one-aspect structure), DDR-080 (gate spec structure).
 - **Gotcha**: verify 147 is still the next free number at execution time (STATE shows DDR-146 as latest; collisions happened before — see DDR-080's numbering note).
-- **Validate**: DDR cross-links resolve (`grep -o 'DDR-[0-9]*' | sort -u` against `.ai/decisions/`).
+- **Validate**: DDR cross-links resolve (`grep -o 'DDR-[0-9]*' | sort -u` against `.ai/archive/decisions/`).
 
 ### Task 2: UPDATE config schema + prep helper (the D9 knob)
 
@@ -186,7 +186,7 @@ Execute in order. Keywords: CREATE, UPDATE, REMOVE.
 
 ### Task 9: UPDATE public docs + cross-file consistency sweep
 
-- **Do**: `site/content/docs/design/bootstrap.mdx` lines 22/68/78/90 → new stage order (research → **direction moodboard (pick of ~3)** → refinement-residue → lock); then a repo-wide sweep: `grep -rn "Stage 3\|Stage 4\|Show more variants\|default = 1\|prose Confirm" plugins/design/ site/content/docs/design/ .ai/decisions/DDR-147*` — fix stragglers (known extra hits: `_read.md`?, `CATEGORIES.md`?, `new.md`/`edit.md` cross-references — verify at execution).
+- **Do**: `site/content/docs/design/bootstrap.mdx` lines 22/68/78/90 → new stage order (research → **direction moodboard (pick of ~3)** → refinement-residue → lock); then a repo-wide sweep: `grep -rn "Stage 3\|Stage 4\|Show more variants\|default = 1\|prose Confirm" plugins/design/ site/content/docs/design/ .ai/archive/decisions/DDR-147*` — fix stragglers (known extra hits: `_read.md`?, `CATEGORIES.md`?, `new.md`/`edit.md` cross-references — verify at execution).
 - **Validate**: sweep returns only intentional mentions (DDR history + the knob definition).
 
 ### Task 10: REMOVE legacy `.design/_moodboard/` leftovers

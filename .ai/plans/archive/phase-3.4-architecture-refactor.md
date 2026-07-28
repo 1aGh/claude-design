@@ -138,12 +138,12 @@ If any of these regress in a later phase, the offending change is reverted befor
 - `packages/md-claude-linux-arm64-musl/package.json` + binary — Alpine / distroless ARM64.
 - `packages/md-claude-win32-x64/package.json` + binary — Windows x64.
 - `.github/workflows/build-binaries.yml` — release-tag-triggered matrix workflow: `runs-on: [macos-14, macos-13, ubuntu-22.04, ubuntu-22.04-arm, ubuntu-22.04 (Alpine container), windows-2022]`, each installs Bun, builds the binary, uploads as a GitHub Release asset + publishes the per-platform sub-package to npm with `--provenance`.
-- `.ai/decisions/DDR-009-bun-runtime-authoritative.md` — flipped from prior "Stay Node" recommendation. Cites research-runtime.md as superseded by Option-B decision (2026-05-15).
-- `.ai/decisions/DDR-012-react-19-unified-runtime.md` — **React 19 everywhere** (supersedes the prior "Preact via compat for shell" draft). Records the three-draft pivot + the bundle/RAM-vs-complexity trade-off + the relaxed performance budgets.
-- `.ai/decisions/DDR-013-server-modular-split-typescript.md` — module boundaries + TypeScript adoption.
-- `.ai/decisions/DDR-014-css-layer-architecture.md` — `@layer` ordering rationale.
-- `.ai/decisions/DDR-015-per-platform-binary-distribution.md` — `optionalDependencies` sub-package pattern; why not single tarball; CI release-matrix design.
-- `.ai/decisions/DDR-016-runtime-folder-purpose.md` — outcome of the `runtime/` audit.
+- `.ai/archive/decisions/DDR-009-bun-runtime-authoritative.md` — flipped from prior "Stay Node" recommendation. Cites research-runtime.md as superseded by Option-B decision (2026-05-15).
+- `.ai/archive/decisions/DDR-012-react-19-unified-runtime.md` — **React 19 everywhere** (supersedes the prior "Preact via compat for shell" draft). Records the three-draft pivot + the bundle/RAM-vs-complexity trade-off + the relaxed performance budgets.
+- `.ai/archive/decisions/DDR-013-server-modular-split-typescript.md` — module boundaries + TypeScript adoption.
+- `.ai/archive/decisions/DDR-014-css-layer-architecture.md` — `@layer` ordering rationale.
+- `.ai/archive/decisions/DDR-015-per-platform-binary-distribution.md` — `optionalDependencies` sub-package pattern; why not single tarball; CI release-matrix design.
+- `.ai/archive/decisions/DDR-016-runtime-folder-purpose.md` — outcome of the `runtime/` audit.
 
 ### Documentation (external — opened during research)
 
@@ -467,7 +467,7 @@ Prior research (`.ai/docs/research-runtime.md`, 2026-05-12) recommended "Stay No
 
 ### Task 14: WRITE 5 DDRs (DDR-009 already landed)
 
-> Each DDR is short (≤ 100 lines), follows `.ai/decisions/README.md` schema. Land each in the same commit as the matching task — or batch at the end if cheaper.
+> Each DDR is short (≤ 100 lines), follows `.ai/archive/decisions/README.md` schema. Land each in the same commit as the matching task — or batch at the end if cheaper.
 
 - **~~DDR-009~~:** ✅ Already written 2026-05-15 — [`DDR-009-bun-runtime-authoritative-for-dev-server.md`](../decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md). Captures both the Bun-authoritative runtime choice AND the no-Node-fallback consequence (originally drafted as a separate DDR-015 in this plan; consolidated since the fallback acceptance is inseparable from the runtime choice).
 - **~~DDR-012~~:** ✅ Landed 2026-05-15 — [`DDR-012-react-19-unified-runtime.md`](../decisions/DDR-012-react-19-unified-runtime.md). React 19 everywhere — shell + canvases unified. Three-draft pivot (Preact-only → hybrid → unified React 19) + the bundle/RAM-vs-complexity trade-off + the relaxed performance budgets.

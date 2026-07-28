@@ -52,7 +52,7 @@ No new render subsystem, no new write surface. The expensive/untrusted historica
 - `apps/studio/client/panels/DiffView.jsx:209` (props) + `:236-240` (`beforeSha`/`beforeSrc`) — Why: add the version picker + local `beforeSha` state.
 - `apps/studio/client/app.jsx:5304` (`diffTarget` state), `:5843-5852` (`gitLoadLog`), `:6817-6830` (GitPanel render), `:6899-6916` (DiffView render) — Why: make `gitLoadLog` path-aware, thread `activePath`, add `onPreviewVersion`.
 - `apps/studio/client/canvas-url.js:16-37` (`canvasUrl` — `sha`/`hideChrome`/`thumbnail` opts) — Why: confirm the `sha` opt that powers both panes (no change needed; reference only).
-- `.ai/decisions/DDR-113-visual-diff-historical-render.md` — Why: the security envelope (LRU 96 + rate-limit 24/10s, `isSafeGitPositional` + containment) this slice must not weaken; the accepted "current-lib approximation" note.
+- `.ai/archive/decisions/DDR-113-visual-diff-historical-render.md` — Why: the security envelope (LRU 96 + rate-limit 24/10s, `isSafeGitPositional` + containment) this slice must not weaken; the accepted "current-lib approximation" note.
 
 ### Files to Create
 

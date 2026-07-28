@@ -71,12 +71,12 @@ Five pillars, in dependency order:
 - `apps/studio/sync/cold-start.ts` — pure decision function + types (the testable core).
 - `apps/studio/test/sync-journal.test.ts` — journal unit tests.
 - `apps/studio/test/sync-cold-start.test.ts` — the full decision matrix.
-- `.ai/decisions/DDR-102-cold-start-divergence-resolution.md` — supersedes the v1.1 "hub-wins always" scoping.
+- `.ai/archive/decisions/DDR-102-cold-start-divergence-resolution.md` — supersedes the v1.1 "hub-wins always" scoping.
 
 ### Documentation
 
 - `@hocuspocus/provider` README (shipped in node_modules) § shared `HocuspocusProviderWebsocket` — Why: the multiplexing pattern, version-exact.
-- `.ai/decisions/DDR-054-*.md`, `DDR-056-*.md`, `DDR-064-*.md`, `DDR-079-*.md` — Why: governing constraints (hub untrusted, gitignore strategy, shared-doc convergence, TSX default-on). DDR-102 must cite which clause of which DDR it supersedes (only the cold-start resolution; trust model unchanged).
+- `.ai/archive/decisions/DDR-054-*.md`, `DDR-056-*.md`, `DDR-064-*.md`, `DDR-079-*.md` — Why: governing constraints (hub untrusted, gitignore strategy, shared-doc convergence, TSX default-on). DDR-102 must cite which clause of which DDR it supersedes (only the cold-start resolution; trust model unchanged).
 - `site/content/docs/hub/linking.mdx` — Why: user-facing doc to update with the new conflict/recovery story.
 
 ### Patterns to Follow

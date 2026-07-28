@@ -118,8 +118,8 @@ maude design export <format> [--scope selection|artboard|canvas-as-separate|proj
   - `cli/commands/design.mjs` (edit — `export` subcommand)
   - `plugins/design/commands/export.md` (new — `/design:export` slash command)
   - `plugins/design/dev-server/test/exporters/{scope,png,pdf,svg,html,pptx,canva,zip}.test.ts` (new — bun:test)
-  - `.ai/decisions/DDR-NNN-export-pptx-via-pptxgenjs.md` (new — model walker over dom-to-pptx)
-  - `.ai/decisions/DDR-NNN-export-canva-via-pptx-and-mcp-prompt.md` (new — PPTX payload + MCP-prompt artifact; explicit rejection of Connect API OAuth path due to Enterprise gate)
+  - `.ai/archive/decisions/DDR-NNN-export-pptx-via-pptxgenjs.md` (new — model walker over dom-to-pptx)
+  - `.ai/archive/decisions/DDR-NNN-export-canva-via-pptx-and-mcp-prompt.md` (new — PPTX payload + MCP-prompt artifact; explicit rejection of Connect API OAuth path due to Enterprise gate)
 
 ---
 

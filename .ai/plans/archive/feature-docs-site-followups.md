@@ -81,7 +81,7 @@ Three commits, in this order:
 - Aggregate scenario report: [`.ai/scenarios/docs-site/2026-05-15-0906-aggregate.md`](../scenarios/docs-site/2026-05-15-0906-aggregate.md)
 - Code review log: [`.ai/logs/code-reviews/main-docs-site-mdcc-skin.md`](../logs/code-reviews/main-docs-site-mdcc-skin.md)
 - Parent feature plan: [`.ai/plans/archive/feature-docs-site-mdcc-skin.md`](archive/feature-docs-site-mdcc-skin.md)
-- DDR-011 (re-skin strategy): [`.ai/decisions/DDR-011-mdcc-skin-of-fumadocs-vs-fork.md`](../decisions/DDR-011-mdcc-skin-of-fumadocs-vs-fork.md)
+- DDR-011 (re-skin strategy): [`.ai/archive/decisions/DDR-011-mdcc-skin-of-fumadocs-vs-fork.md`](../decisions/DDR-011-mdcc-skin-of-fumadocs-vs-fork.md)
 - Canvas spec: `.design/ui/Docs Site.html`
 - Envelope: `.design/_history/docs-site/000-envelope.md`
 

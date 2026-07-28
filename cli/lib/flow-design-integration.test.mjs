@@ -158,8 +158,8 @@ test('wiring: ddr-keeper + record-ddr have the canvas-reference prompt', () => {
 });
 
 test('wiring: DDR-066 exists and is indexed', () => {
-  const ddr = read('.ai/decisions/DDR-066-soft-handoff-prompt-in-flow-done.md');
+  const ddr = read('.ai/archive/decisions/DDR-066-soft-handoff-prompt-in-flow-done.md');
   assert.match(ddr, /soft prompt/i);
-  const index = read('.ai/decisions/README.md');
+  const index = read('.ai/archive/decisions/README.md');
   assert.match(index, /DDR-066/);
 });

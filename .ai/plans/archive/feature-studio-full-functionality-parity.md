@@ -56,7 +56,7 @@ Close the gaps slice-by-slice, grounded in the audit's file:line citations. Each
 - `apps/studio/participants-chrome.tsx` + `cursors-overlay.tsx` + `use-agent-presence.tsx` — existing in-canvas presence (cursors match design; avatar stack is an unmodeled extra to reconcile).
 - `apps/studio/export-dialog.tsx` — in-iframe `<dialog>` (495–570); `exporters/index.ts` (7 formats), `exporters/scope.ts` (4 scopes), `http.ts` `/_api/export` (688–756) + `/_api/export-history` (680–686).
 - `apps/studio/client/whats-new.jsx` — `mdcc-wn-toast` (135–150), to restyle to `.st-toast`.
-- `.ai/decisions/DDR-096-studio-shell-rewritten-in-maude-ds.md` + `.ai/context/studio-shell-parity.md` + CLAUDE.md "Runtime bundles" / "In-app What's New feed".
+- `.ai/archive/decisions/DDR-096-studio-shell-rewritten-in-maude-ds.md` + `.ai/context/studio-shell-parity.md` + CLAUDE.md "Runtime bundles" / "In-app What's New feed".
 
 ### Design canvases
 

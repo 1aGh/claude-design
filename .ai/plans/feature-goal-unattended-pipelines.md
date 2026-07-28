@@ -62,12 +62,12 @@ Separately, `/goal` state is session-scoped — lost on `/clear`, restored only 
 - `plugins/design/commands/board.md` (tail — "Output report") — Why: template-fill condition target
 - `plugins/design/commands/reel.md` (Step 6 — Report) — Why: ingest→analyze→direct→codegen→critic condition target
 - `plugins/flow/CATEGORIES.md`, `plugins/design/CATEGORIES.md` — Why: naming/frontmatter conventions (DDR-004, DDR-006) the new skill file and any touched frontmatter must follow
-- `.ai/decisions/README.md` (DDR index) — Why: at plan time, DDR-178 and DDR-179 are already claimed (one committed, one staged by a concurrent in-progress change) — confirms the next free number is DDR-180; re-check immediately before committing, DDR numbers race on shared `main`
+- `.ai/archive/decisions/README.md` (DDR index) — Why: at plan time, DDR-178 and DDR-179 are already claimed (one committed, one staged by a concurrent in-progress change) — confirms the next free number is DDR-180; re-check immediately before committing, DDR numbers race on shared `main`
 
 ### Files to Create
 
 - `plugins/flow/skills/goal-patterns/SKILL.md` — the condition-template catalog
-- `.ai/decisions/DDR-180-goal-mechanism-integration-for-unattended-pipelines.md` — the decision record
+- `.ai/archive/decisions/DDR-180-goal-mechanism-integration-for-unattended-pipelines.md` — the decision record
 
 ### Documentation
 
@@ -155,8 +155,8 @@ Execute in order. Each task is atomic and testable.
 
 ### Task 10: RECORD DDR-180
 
-- **Do**: Write `.ai/decisions/DDR-180-goal-mechanism-integration-for-unattended-pipelines.md` following the format of the most recently recorded DDR. Cover: the problem (manual cross-command re-prompting), the constraint (session-scoped, user/CLI-typed only, no tool-level invocation — Task 1's finding), the decision (condition-template skill + closing-prompt nudges + best-effort pause/resume bridge), and explicitly the non-decision (Edit-Verify Loop and `--perfect` loop stay untouched — different granularity, not superseded).
-- **Gotcha**: Re-check `.ai/decisions/` for a newer DDR immediately before this commit — numbers race on a shared `main` ([[project_ddr_numbering_races_on_shared_main]]).
+- **Do**: Write `.ai/archive/decisions/DDR-180-goal-mechanism-integration-for-unattended-pipelines.md` following the format of the most recently recorded DDR. Cover: the problem (manual cross-command re-prompting), the constraint (session-scoped, user/CLI-typed only, no tool-level invocation — Task 1's finding), the decision (condition-template skill + closing-prompt nudges + best-effort pause/resume bridge), and explicitly the non-decision (Edit-Verify Loop and `--perfect` loop stay untouched — different granularity, not superseded).
+- **Gotcha**: Re-check `.ai/archive/decisions/` for a newer DDR immediately before this commit — numbers race on a shared `main` ([[project_ddr_numbering_races_on_shared_main]]).
 - **Validate**: Manual read; confirm no number collision at commit time.
 
 ### Task 11: UPDATE CLAUDE.md pointer

@@ -63,7 +63,7 @@ One **geometry manifest** producer unblocks everything, then read/write/packagin
 - `plugins/design/agents/draw-agent.md` (`113-159` `maude design` invocation + engine surface incl. `diagram`/`placeLabels`/`routeConnector`) + `apps/studio/draw/layout.ts` (`116-153` `placeLabels`, `190-260` `diagram` A\*-routing) — Why: optional borrow for board-connector routing.
 - `cli/lib/plugin-cli-reachability.test.mjs` — Why: the guard that forces all skill/command calls through `maude design <verb>`; keep green.
 - `apps/studio/test/annotate-write.test.ts` + `apps/studio/test/read-annotations.test.ts` — Why: the round-trip contract tests to extend.
-- `.ai/decisions/DDR-100-...md`, `DDR-085-...md`, `DDR-027-...md`, `DDR-115-...md`, `DDR-062-...md`, `DDR-054-...md`, `DDR-045-...md` — Why: the governing decisions this feature extends / must not violate.
+- `.ai/archive/decisions/DDR-100-...md`, `DDR-085-...md`, `DDR-027-...md`, `DDR-115-...md`, `DDR-062-...md`, `DDR-054-...md`, `DDR-045-...md` — Why: the governing decisions this feature extends / must not violate.
 
 ### Files to Create
 
@@ -73,7 +73,7 @@ One **geometry manifest** producer unblocks everything, then read/write/packagin
 - `apps/studio/test/canvas-rects.test.ts` — static-fallback + manifest-shape asserts (bun:test).
 - `plugins/design/skills/whiteboard/SKILL.md` — the authoritative bidirectional whiteboard doc + recipes + trust model.
 - `plugins/design/commands/board.md` — `/design:board` command (`name: design:board`, `category: daily`).
-- `.ai/decisions/DDR-151-whiteboard-ai-toolkit-geometry-manifest-and-element-context.md` — the decision record (see Design Decisions).
+- `.ai/archive/decisions/DDR-151-whiteboard-ai-toolkit-geometry-manifest-and-element-context.md` — the decision record (see Design Decisions).
 
 ### Design canvases
 
@@ -205,8 +205,8 @@ Execute in order. Each task is atomic and testable. Keywords: CREATE, UPDATE, AD
 ### ✅ Task 10: CREATE DDR-151 — completed
 
 - **Do**: Record the five Design Decisions above. Supersedes nothing; **extends** DDR-100 (v3 loop) + DDR-085 (ingest). Note the new-command-vs-overload alternative and the untrusted-content residual (element context ingests more untrusted text → same trifecta framing, mitigated by loopback egress + do-not-obey framing in the skill).
-- **Gotcha**: race the DDR number (memory `project_ddr_numbering_races_on_shared_main`) — re-check `.ai/decisions/` + the README index diff before/at commit; 151 is next as of planning.
-- **Validate**: `record-ddr` conventions; linked from CLAUDE.md if load-bearing. **Done** — `.ai/decisions/DDR-151-whiteboard-ai-toolkit-geometry-manifest-and-element-context.md` created + indexed in `.ai/decisions/README.md`. DDR number re-verified uncontested (150 was HEAD, no uncommitted `.ai/decisions/` races) both at planning time and right before this write. Records all 5 design decisions with alternatives-rejected, plus consequences covering the happy-dom dependency move, the dead-legacy-reference fix in `new.md`, and the DDR-115 taxonomy no-op verification.
+- **Gotcha**: race the DDR number (memory `project_ddr_numbering_races_on_shared_main`) — re-check `.ai/archive/decisions/` + the README index diff before/at commit; 151 is next as of planning.
+- **Validate**: `record-ddr` conventions; linked from CLAUDE.md if load-bearing. **Done** — `.ai/archive/decisions/DDR-151-whiteboard-ai-toolkit-geometry-manifest-and-element-context.md` created + indexed in `.ai/archive/decisions/README.md`. DDR number re-verified uncontested (150 was HEAD, no uncommitted `.ai/archive/decisions/` races) both at planning time and right before this write. Records all 5 design decisions with alternatives-rejected, plus consequences covering the happy-dom dependency move, the dead-legacy-reference fix in `new.md`, and the DDR-115 taxonomy no-op verification.
 
 ---
 

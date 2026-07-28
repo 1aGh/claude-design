@@ -50,9 +50,9 @@ One milestone, closely mirroring Milestone B of `feature-acp-panel-dynamic-claud
 - `apps/studio/client/panels/acp-runtime.js` (whole; esp. `onFrame`'s `permission-request` branch ~line 262, `onPermission` ~line 363, `respondPermission` ~line 376) — the client↔bridge frame protocol to extend the same way.
 - `apps/studio/client/panels/PermissionPrompt.jsx` (whole) — the closest existing UI precedent: card slot, Enter/Esc handling, focus trap. `ElicitationPrompt.jsx` reuses this shape, not this component (the payload — a JSON-Schema form vs. a flat `options[]` — is different enough to need its own renderer).
 - `apps/studio/client/panels/ChatPanel.jsx` (whole; esp. wherever `PermissionPrompt` is rendered in the thread — same slot, mutually exclusive with `.chat-perm`/`.chat-error-card`) — where `ElicitationPrompt` mounts.
-- `.ai/decisions/DDR-179-acp-permission-gate-retires-ddr125-f2.md` — the fail-closed default + timeout precedent this feature must match (deny/decline on timeout, never fabricate an answer).
-- `.ai/decisions/DDR-125-acp-multichat-parallel-and-security-posture.md` — native-only + loopback-only posture; nothing here may widen reach.
-- `.ai/decisions/DDR-123-acp-chat-runs-on-users-claude-cli-subscription.md` — the three guardrails (scrub `ANTHROPIC_API_KEY`, pin `CLAUDE_CODE_EXECUTABLE`, native-only). Nothing here may weaken them.
+- `.ai/archive/decisions/DDR-179-acp-permission-gate-retires-ddr125-f2.md` — the fail-closed default + timeout precedent this feature must match (deny/decline on timeout, never fabricate an answer).
+- `.ai/archive/decisions/DDR-125-acp-multichat-parallel-and-security-posture.md` — native-only + loopback-only posture; nothing here may widen reach.
+- `.ai/archive/decisions/DDR-123-acp-chat-runs-on-users-claude-cli-subscription.md` — the three guardrails (scrub `ANTHROPIC_API_KEY`, pin `CLAUDE_CODE_EXECUTABLE`, native-only). Nothing here may weaken them.
 
 ### Files to Create
 

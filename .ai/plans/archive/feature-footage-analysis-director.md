@@ -126,7 +126,7 @@ binaries**, consistent with DDR-148's "no renderer binaries" posture.
   `<VideoComp>` meta, **Timeline-parseable literal `<TransitionSeries.Sequence>`
   blocks (never `.map()`)**, `assets/` refs, the 6 bundled transition
   presentations. The EDL→TSX task emits exactly this shape.
-- `.ai/decisions/DDR-148-video-comp-remotion-authoring-capture-export.md` — the
+- `.ai/archive/decisions/DDR-148-video-comp-remotion-authoring-capture-export.md` — the
   whole spine: capture-first export, `@remotion/media` `OffthreadVideo` decoding
   to `<canvas>` in Chromium (the frame-grab reuse), asset-intake caps, the dual
   allowlist, `cspForCapture()` (attacker-F1) that the probe render must also carry.
@@ -170,7 +170,7 @@ binaries**, consistent with DDR-148's "no renderer binaries" posture.
   director rubric + EDL→`<TransitionSeries>` codegen contract.
 - `plugins/design/commands/reel-cut.md` — `/design:reel` one-prompt orchestrator
   (name per DDR-006: `name: design:reel`).
-- `.ai/decisions/DDR-XXX-footage-analysis-director-layer.md` — the decision
+- `.ai/archive/decisions/DDR-XXX-footage-analysis-director-layer.md` — the decision
   record (capture-spine frame-grab over ffmpeg; vision-over-heuristic shot
   detection; EDL as the director artifact; whisper deferred/opt-in).
 

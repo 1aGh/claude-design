@@ -33,7 +33,7 @@ It reverses a **deliberate, documented choice** in DDR-080 ("throwaway, never co
 
 - `plugins/design/skills/design-system/_bootstrap.md` — Stage 4: write location `_moodboard/` → `ui/<ds>-moodboard.tsx`; variant sub-agent output contract (return self-contained artboard body); reconcile → compose 2–3 `<DCArtboard>`s side by side; screenshot URL; outcomes table + closing invariant reworded for persistence.
 - `plugins/design/commands/setup-ds.md` — step 3.5 pointer reworded (persistent canvas, revisitable + commentable, variants side by side).
-- `.ai/decisions/DDR-080-moodboard-direction-gate.md` — amendment banner pointing here.
+- `.ai/archive/decisions/DDR-080-moodboard-direction-gate.md` — amendment banner pointing here.
 
 ## What this DDR does not change
 
