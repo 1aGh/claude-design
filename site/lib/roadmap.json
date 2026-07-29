@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-29T13:57:31.010Z",
+  "generated": "2026-07-29T14:04:39.895Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1599,11 +1599,11 @@
     },
     {
       "id": "cloud-phase-11-vendor-unblock",
-      "title": "Cloud Phase 11 — Vendor unblock (OWNER, ~15 minutes)",
+      "title": "Cloud Phase 11 — Vendor unblock: the OWNER checklist",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "maude kg note + this plan updated with the ids; a re-probe (cloudflare-api MCP) shows Containers and R2 accepting instead of refusing.",
+      "summary": "Account: b5b596efe65abb732777c7171dc18145 (M.dovrtel@gmail.com) Live control plane: https://maude-cloud.maude1agh.workers.dev",
       "planPath": ".ai/plans/cloud-phase-11-vendor-unblock.md",
       "archived": false,
       "phaseKey": null
