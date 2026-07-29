@@ -81,7 +81,13 @@ mkdirSync(OUT_STUDIO, { recursive: true });
 // or the bundle fails to configure.
 {
   const KG_STAGE = resolve(SCRIPT_DIR, '..', '.kg-staging');
+  // BOTH resource paths are mapped unconditionally in tauri.conf.json, so both
+  // must exist even when kgai publishes no build for this platform — a missing
+  // dir fails the bundle at configure time. `resources/kgai` alone was not
+  // enough: v0.49.0's Windows leg died on `resources\plugins\kgai`. An empty
+  // plugin dir is inert (plugin-bootstrap gates on .claude-plugin/plugin.json).
   mkdirSync(join(OUT, 'kgai'), { recursive: true });
+  mkdirSync(join(OUT, 'plugins', 'kgai'), { recursive: true });
   if (existsSync(KG_STAGE)) {
     for (const entry of readdirSync(KG_STAGE)) {
       if (entry === 'plugins') continue; // staged under plugins/kgai below
