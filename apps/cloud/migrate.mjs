@@ -54,6 +54,18 @@ export const MIGRATIONS = [
       'CREATE INDEX IF NOT EXISTS sessions_account ON sessions (account_id);',
     ],
   },
+  {
+    version: 3, // Phase 19 — where a project mirrors to
+    statements: [
+      // `owner/name`, validated by mirror.mjs before it is ever written. Stored
+      // on the PROJECT, because the control plane must be able to answer "is
+      // this the repository that project is allowed to push to" without
+      // trusting the asking cell — that check is the whole point of the
+      // credential boundary.
+      'ALTER TABLE projects ADD COLUMN mirror_repo TEXT;',
+      'ALTER TABLE projects ADD COLUMN mirror_branch TEXT;',
+    ],
+  },
 ];
 
 /** Apply baseline + pending versioned migrations. Safe to run repeatedly. */

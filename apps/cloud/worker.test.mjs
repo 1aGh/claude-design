@@ -14,6 +14,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { d1FromSqlite, enqueueReconcile, listProjects, pendingJobs } from './db.mjs';
+import { MIGRATIONS } from './migrate.mjs';
 import worker, { reconcileSweep } from './worker.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -246,9 +247,13 @@ test('the cron applies pending migrations BEFORE sweeping', async () => {
   assert.equal(sqlite.prepare('SELECT MAX(version) AS v FROM schema_migrations').get().v, 1);
 
   await worker.scheduled({}, { DB });
+  // Derived, not literal — the point is "up to what the code expects", and a
+  // hardcoded number turns every future migration into an edit to a test about
+  // something else.
+  const latest = Math.max(...MIGRATIONS.map((m) => m.version));
   assert.equal(
     sqlite.prepare('SELECT MAX(version) AS v FROM schema_migrations').get().v,
-    2,
+    latest,
     'the cron brought the schema up to what the code expects'
   );
 });

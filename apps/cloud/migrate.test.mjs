@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 
 import { d1FromSqlite } from './db.mjs';
-import { applySchema, schemaStatements } from './migrate.mjs';
+import { applySchema, MIGRATIONS, schemaStatements } from './migrate.mjs';
 import { SCHEMA_SQL } from './schema.mjs';
 
 test('the splitter yields every table the schema declares', async () => {
@@ -25,9 +25,13 @@ test('the splitter yields every table the schema declares', async () => {
 test('applySchema is idempotent — the property the live D1 run proved', async () => {
   const db = d1FromSqlite(new DatabaseSync(':memory:'));
   const first = await applySchema(db, SCHEMA_SQL);
-  assert.equal(first.version, 2);
+  // Derived from MIGRATIONS, not a literal: this test is about IDEMPOTENCE,
+  // and hardcoding the number makes every future migration edit a test that
+  // has nothing to do with it.
+  const latest = Math.max(...MIGRATIONS.map((m) => m.version));
+  assert.equal(first.version, latest);
   const second = await applySchema(db, SCHEMA_SQL);
-  assert.equal(second.version, 2, 'a re-run neither fails nor re-migrates');
+  assert.equal(second.version, latest, 'a re-run neither fails nor re-migrates');
 });
 
 test('v2 lands sessions + identity columns exactly once', async () => {

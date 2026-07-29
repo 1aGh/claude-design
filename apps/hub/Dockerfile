@@ -45,6 +45,11 @@ COPY apps/hub ./
 # The ONLY file the hub borrows from the studio: the append-only commit engine.
 # Bun strips its types at bundle time, so the Node runtime stage never sees TS.
 COPY apps/studio/sync/autocommit.ts /build/apps/studio/sync/autocommit.ts
+# The mirror argv + push classifier, imported (never re-typed) by the cell's
+# mirror lane. Its tests assert the ABSENCE of any force flag — absence being
+# exactly what a later edit adds with nothing noticing — so a second copy here
+# would be a copy without that guarantee.
+COPY apps/cloud/mirror.mjs /build/apps/cloud/mirror.mjs
 RUN bun run build.ts --release
 
 # ---- Stage 2: compile the native better-sqlite3 binding for the node:20 ABI ----

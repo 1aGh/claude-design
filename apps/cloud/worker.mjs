@@ -17,6 +17,7 @@
 // not the queue — is the durable record either way.
 
 import { handleAuth } from './auth-routes.mjs';
+import { mintInstallationToken } from './github-app.mjs';
 import {
   audit,
   enqueueReconcile,
@@ -35,6 +36,96 @@ import { projectRefFromEvent, verifyStripeSignature } from './stripe-webhook.mjs
 
 export const WORKER_VERSION = 'phase-13';
 
+/**
+ * Derive a cell's own secret. Must match apps/cells/cell-do.mjs exactly — a
+ * cell authenticates here with the value that file gave it.
+ */
+async function deriveCellSecret(master, tenantId) {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(master),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const mac = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(`maude-cell:hub-secret:${tenantId}`)
+  );
+  return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Constant-time compare — a timing oracle on a per-cell credential still counts. */
+function secretsMatch(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/**
+ * Issue a repository-scoped push token to ONE cell.
+ *
+ * Two independent checks, and both must hold:
+ *   1. the caller proves it is that tenant's cell (derived secret);
+ *   2. the repository it asks for is the one THAT tenant has configured.
+ *
+ * The second is the one that matters. Without it, any cell could ask for a
+ * token to any repository the App is installed on — including repositories
+ * belonging to other customers — and the first check would happily pass.
+ */
+async function mintForCell(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'invalid request' }, 400);
+  }
+  const tenant = String(body?.tenant ?? '');
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tenant)) return json({ error: 'unauthorized' }, 401);
+
+  const offered = (request.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  const expected = await deriveCellSecret(env.CELL_SECRET_MASTER ?? '', tenant);
+  if (!env.CELL_SECRET_MASTER || !secretsMatch(offered, expected)) {
+    return json({ error: 'unauthorized' }, 401);
+  }
+
+  let configured;
+  try {
+    const row = await env.DB.prepare('SELECT mirror_repo FROM projects WHERE id = ?')
+      .bind(tenant)
+      .first();
+    configured = row?.mirror_repo ?? null;
+  } catch {
+    configured = null;
+  }
+  if (!configured) return json({ error: 'no mirror is configured for this project' }, 409);
+
+  const asked = String(body?.repository ?? '');
+  // Compare against the OWNER/NAME the customer configured, not against
+  // whatever the cell sent. The cell may name only the repo half; the owner
+  // is never the cell's to choose.
+  const [, name] = configured.split('/');
+  if (asked !== name && asked !== configured) {
+    return json({ error: 'that repository is not this project\'s mirror' }, 403);
+  }
+
+  try {
+    const minted = await mintInstallationToken({
+      privateKeyPem: env.GITHUB_APP_PRIVATE_KEY,
+      appId: env.GITHUB_APP_ID,
+      installationId: env.GITHUB_APP_INSTALLATION_ID,
+      repository: name,
+    });
+    // Never logged, never stored — issued to one caller and forgotten.
+    return json({ token: minted.token, expiresAt: minted.expiresAt });
+  } catch (err) {
+    console.error(`[mirror-token] ${tenant}: ${err.message}`);
+    return json({ error: 'a push credential could not be issued' }, 502);
+  }
+}
+
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -49,6 +140,16 @@ export default {
     // Identity surface (pages, signup/login, Google, grant mint) — Phase 13.
     const auth = await handleAuth(request, env);
     if (auth) return auth;
+
+    // The mirror credential boundary (Cloud Phase 19).
+    //
+    // The App private key can mint for EVERY repository the App is installed
+    // on. It lives here and only here; a cell asks, presenting its own derived
+    // secret, and receives a token scoped to one repository for about an hour.
+    // A compromised cell is then worth exactly its own mirror.
+    if (request.method === 'POST' && url.pathname === '/internal/mirror-token') {
+      return mintForCell(request, env);
+    }
 
     if (request.method === 'GET' && url.pathname === '/health') {
       let d1 = 'unreachable';
