@@ -16,20 +16,37 @@
 // surface, and R2 bills for what lands in it. Sweeping from a checkout keeps
 // the write path bounded by what git already accepted.
 //
-// CONTENT-ADDRESSED ⇒ IMMUTABLE ⇒ NO EXPIRY. The key IS the hash of the bytes,
-// so an object can never need replacing, an upload can never race, and a
-// lifecycle rule that expired one would break a canvas that still references
-// it. The `s3-no-expiry` verification check asserts exactly this.
+// NOTHING HERE MAY EXPIRE. A canvas in git history can reference media no
+// current canvas does, so "unreferenced" never means "unreachable" and a
+// lifecycle rule on this prefix is a permanently broken canvas. The
+// `s3-no-expiry` verification check asserts it.
+//
+// Cloud Phase 15 widened what counts as an asset: content-addressed names are
+// what `maude design fetch-asset` mints for DOWNLOADED media, but a design
+// system's own fonts and graphics are authored, committed, and referenced by
+// path (`graphics/camo-bg.png`). Mirroring only hashes left a hosted project
+// rendering without its own brand.
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { assetObjectKey, assetPrefixFromEnv } from './asset-key.mjs';
+import { parseAssetPath } from './assets.mjs';
 import { headObject, putObject } from './s3.mjs';
 
-/** The only filenames the sweep will consider. Mirrors assets.mjs' ASSET_KEY,
- *  because an object this uploads must be reachable by that proxy — a stricter
- *  or looser shape here would produce assets nobody can fetch. */
-const ASSET_FILE = /^[0-9a-f]{8}(?:\.[A-Za-z0-9]{1,8})?$/;
+/**
+ * Eligibility is decided by the PROXY, not by a second regex here.
+ *
+ * These two rules must agree exactly: a file this uploads but the proxy will
+ * not serve is spend with no reader, and a file the proxy would serve but this
+ * skips is a broken image in a hosted project. They did not agree — the sweep
+ * required content-addressed names while real projects also carry
+ * `graphics/camo-bg.png` and `gator_badge_roundel.svg` — so the rule now has
+ * one home and this asks it.
+ */
+function servable(relPath) {
+  return parseAssetPath(`/assets/${relPath}`) !== null;
+}
 
 /** Skip anything implausible for a design asset. A 2 GB file in the assets dir
  *  is a mistake, and paying R2 to store it silently is the wrong response. */
@@ -43,9 +60,23 @@ const MAX_ASSET_BYTES = 512 * 1024 * 1024;
  * @param {Set<string>} present  keys already in the bucket (without the `assets/` prefix)
  */
 export function pendingAssets(names, present = new Set()) {
-  // Deduped: the key IS the content hash, so the same name twice is the same
-  // bytes twice — a second PUT would be pure spend for an identical object.
-  return [...new Set(names.filter((n) => ASSET_FILE.test(n) && !present.has(n)))].sort();
+  return [...new Set(names.filter((n) => servable(n) && !present.has(n)))].sort();
+}
+
+/** Every file under `dir`, as paths relative to it. Missing dir → []. */
+function listRecursive(dir, prefix = '', out = []) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) listRecursive(join(dir, entry.name), rel, out);
+    else if (entry.isFile()) out.push(rel);
+  }
+  return out;
 }
 
 /**
@@ -58,22 +89,33 @@ export function pendingAssets(names, present = new Set()) {
  *
  * @returns {Promise<{ uploaded: string[], skipped: number, failed: {key:string,reason:string}[] }>}
  */
-export async function sweepAssets({ designRoot, s3, log = console, deps = {} }) {
+export async function sweepAssets({ designRoot, s3, log = console, deps = {}, prefix }) {
+  // Tenant scope. Resolved ONCE here and passed down, so the reader and the
+  // writer cannot end up computing it differently.
+  const scope = prefix ?? assetPrefixFromEnv();
   const head = deps.headObject ?? headObject;
   const put = deps.putObject ?? putObject;
   const result = { uploaded: [], skipped: 0, failed: [] };
   if (!s3) return result;
 
   const dir = join(designRoot, 'assets');
-  let names;
-  try {
-    names = readdirSync(dir);
-  } catch {
-    return result; // no assets dir — the common case for a fresh project
+  const all = listRecursive(dir);
+  if (all.length === 0) return result; // no assets — the common case for a fresh project
+
+  const eligible = pendingAssets(all);
+  const skipped = all.filter((n) => !servable(n));
+  if (skipped.length > 0) {
+    // Named loudly rather than dropped. A silently skipped asset is a broken
+    // image in a hosted project with nothing anywhere to explain it.
+    log.warn?.(
+      `[assets] ${skipped.length} file(s) cannot be served and were NOT mirrored ` +
+        `(name or depth outside the servable shape): ${skipped.slice(0, 5).join(', ')}` +
+        (skipped.length > 5 ? ` …+${skipped.length - 5}` : '')
+    );
   }
 
-  for (const name of pendingAssets(names)) {
-    const key = `assets/${name}`;
+  for (const name of eligible) {
+    const key = assetObjectKey(name, scope);
     try {
       const existing = await head(s3, key);
       if (existing) {

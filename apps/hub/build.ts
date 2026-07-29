@@ -93,8 +93,45 @@ for (const sibling of readdirSync(DIST)) {
   }
 }
 
+// Second entry: the cold-start rehydrate (Cloud Phase 15). The cell image
+// ships only `dist/`, and its entrypoint invokes this before the server —
+// so a rehydrate that lives only in `src/` is a rehydrate the cell cannot
+// run. That is exactly what shipped: the entrypoint had called
+// `src/rehydrate.mjs` since Phase 5 against an image that contained neither
+// the file nor `src/`.
+const REHYDRATE_ENTRY = join(ROOT, 'src/rehydrate.mjs');
+if (!existsSync(REHYDRATE_ENTRY)) {
+  console.error(`[hub-build] missing entry: ${REHYDRATE_ENTRY}`);
+  process.exit(1);
+}
+const rehydrate = await Bun.build({
+  entrypoints: [REHYDRATE_ENTRY],
+  outdir: DIST,
+  target: 'node',
+  format: 'esm',
+  minify: MODE === 'release',
+  external: ['better-sqlite3', 'bun:sqlite', 'node:sqlite'],
+});
+if (!rehydrate.success) {
+  for (const log of rehydrate.logs) console.error(log);
+  process.exit(1);
+}
+// Bun names the output from the entry basename with a .js extension; the cell
+// entrypoint's contract is dist/rehydrate.mjs.
+const rehydrateEmitted = rehydrate.outputs[0]?.path;
+const rehydrateFinal = join(DIST, 'rehydrate.mjs');
+if (!rehydrateEmitted) {
+  console.error('[hub-build] Bun.build produced no rehydrate output');
+  process.exit(1);
+}
+if (rehydrateEmitted !== rehydrateFinal) {
+  if (existsSync(rehydrateFinal)) unlinkSync(rehydrateFinal);
+  renameSync(rehydrateEmitted, rehydrateFinal);
+}
+
 const sizeKb = Math.round(statSync(finalPath).size / 1024);
 console.log(`[hub-build] ${MODE} → dist/hub.bundle.mjs (${sizeKb} KB)`);
+console.log(`[hub-build] ${MODE} → dist/rehydrate.mjs`);
 
 // Phase 9 plan Validation §1 budget: hub bundle ≤ 5 MB.
 const BUDGET_KB = 5 * 1024;

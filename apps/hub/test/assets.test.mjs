@@ -76,23 +76,49 @@ async function call({ pathname, method = 'GET', token, withS3 = true }) {
   return { handled, ...captured };
 }
 
-test('parseAssetPath admits only content-addressed keys', () => {
+test('parseAssetPath admits the shapes real projects actually use', () => {
+  // Content-addressed — what `maude design fetch-asset` mints.
   assert.equal(parseAssetPath('/assets/deadbeef.png'), 'deadbeef.png');
   assert.equal(parseAssetPath('/assets/deadbeef'), 'deadbeef');
-  // Everything a hostile peer might try to reach the rest of the bucket with.
+  // Authored — a design system's own fonts and graphics, referenced by path.
+  // Requiring hashes (the rule until Cloud Phase 15) left a hosted project
+  // rendering without its own brand and reported nothing anywhere.
+  assert.equal(parseAssetPath('/assets/gator_badge_roundel.svg'), 'gator_badge_roundel.svg');
+  assert.equal(parseAssetPath('/assets/graphics/camo-bg.png'), 'graphics/camo-bg.png');
+  assert.equal(parseAssetPath('/assets/fonts/Gators-Bold.woff2'), 'fonts/Gators-Bold.woff2');
+});
+
+test('parseAssetPath cannot be walked out of the assets prefix', () => {
   for (const bad of [
     '/assets/',
     '/assets/../hub.db',
-    '/assets/backups/20260728T203000Z/hub.db.gz',
-    '/assets/deadbeef.png/extra',
-    '/assets/DEADBEEF.png',
-    '/assets/deadbeef.reallylongextension',
-    '/assets/not-a-hash.png',
+    '/assets/a/../../hub.db',
+    '/assets/..',
+    '/assets//double',
+    '/assets/.hidden',
+    '/assets/a/b/c/d/e/f/too-deep.png',
+    '/assets/has space.png',
+    '/assets/query.png?x=1',
     '/health',
   ]) {
     assert.equal(parseAssetPath(bad), null, `expected null for ${bad}`);
   }
 });
+
+test('a key that LOOKS like a backup path still cannot reach one', () => {
+  // The widened charset admits `backups/<gen>/hub.db.gz` as a NAME. What keeps
+  // it harmless is that the proxy always reads `assets/<key>` — the confinement
+  // is the prefix, not the regex, and this pins that so a future refactor that
+  // drops the prefix fails here instead of in production.
+  assert.equal(
+    parseAssetPath('/assets/backups/20260728T203000Z/hub.db.gz'),
+    'backups/20260728T203000Z/hub.db.gz'
+  );
+  assert.equal(ASSET_OBJECT_KEY('backups/20260728T203000Z/hub.db.gz'), 'assets/backups/20260728T203000Z/hub.db.gz');
+});
+
+/** The one place the proxy turns a parsed key into an object key. */
+const ASSET_OBJECT_KEY = (key) => `assets/${key}`;
 
 test('content types are chosen from the extension and never text/html', () => {
   assert.equal(assetContentType('deadbeef.png'), 'image/png');

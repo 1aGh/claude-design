@@ -25,8 +25,8 @@ die() { echo "[cell] FATAL: $*" >&2; exit 1; }
 # but an image can be hand-modified and a base image can change under us. This
 # is the cheap, unavoidable re-check.
 for forbidden in playwright playwright-core puppeteer puppeteer-core; do
-  if [ -d "/app/apps/hub/node_modules/$forbidden" ]; then
-    die "containment: /app/apps/hub/node_modules/$forbidden is present.
+  if [ -d "/app/node_modules/$forbidden" ]; then
+    die "containment: /app/node_modules/$forbidden is present.
       A cell must never be able to render tenant-authored TSX (DDR-193 §2).
       Refusing to start — a cell that CAN render is one import() from doing it."
   fi
@@ -52,6 +52,21 @@ case "$MAUDE_TENANT_ID" in
     die "MAUDE_TENANT_ID must be lowercase alphanumeric with inner hyphens (got: $MAUDE_TENANT_ID)" ;;
 esac
 PREFIX="tenants/${MAUDE_TENANT_ID}"
+REPO_DIR="${MAUDE_REPO_DIR:-/repo}"
+# EXPORTED, not just passed to rehydrate. The server takes the scheduled
+# backups, so a prefix visible only to the restore half means every cell writes
+# its generations to the same unscoped keys — each tenant's backup silently
+# overwriting the last, and a later rehydrate restoring one tenant's cell from
+# another tenant's documents. That is the single worst failure this system can
+# have, and it was one missing `export` away the whole time.
+export MAUDE_BACKUP_PREFIX="$PREFIX"
+# Media is scoped the same way, and for a sharper reason: since Cloud Phase 15
+# an asset key can be a design system's own authored path (graphics/camo-bg.png)
+# rather than a content hash. Two tenants both have one of those, and an
+# unscoped namespace means the second cell to boot overwrites the first one's
+# brand. Content-addressed keys were collision-proof by construction; named
+# ones are not.
+export MAUDE_TENANT_PREFIX="$PREFIX"
 log "tenant ${MAUDE_TENANT_ID} — R2 prefix ${PREFIX}"
 
 # -------------------------------------------------------------- 2. rehydrate
@@ -60,8 +75,7 @@ if [ -n "${MAUDE_S3_BUCKET:-}" ]; then
     log "working set already present — warm start, skipping rehydrate"
   else
     log "cold start — rehydrating from ${MAUDE_S3_BUCKET}/${PREFIX}"
-    if ! MAUDE_BACKUP_PREFIX="$PREFIX" \
-         bun /app/apps/hub/src/rehydrate.mjs --data /data --repo /repo; then
+    if ! node /app/dist/rehydrate.mjs --data /data --repo "$REPO_DIR"; then
       # A cell that starts empty after a failed rehydrate looks EXACTLY like a
       # brand-new project to the person opening it, and the autosave agent would
       # then happily commit that emptiness over their work. Refusing is the only
@@ -78,11 +92,12 @@ fi
 
 # ------------------------------------------------------------------ 3. serve
 #
-# tini forwards SIGTERM here. The hub flushes SQLite and the autocommit queue on
-# shutdown (sync/index.ts stop()), which is what makes a platform-initiated
+# tini forwards SIGTERM here. The hub owns its own signal handling (Cloud Phase
+# 16 — stopOnSignals:false) and flushes the pending autosave commit before it
+# destroys the server, which is what makes a platform-initiated
 # migration lossless rather than merely usually-lossless.
 # Defaulted so the script is runnable (and its guards testable) outside the
 # image, where the Dockerfile ENV is not in scope.
 PORT="${PORT:-1234}"
 log "starting hub on :${PORT}"
-exec bun /app/apps/hub/src/server.mjs
+exec node /app/dist/hub.bundle.mjs

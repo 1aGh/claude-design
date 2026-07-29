@@ -206,11 +206,20 @@ export function createHub(config = {}) {
     dataDir,
     target: backupTarget,
     intervalMs: backupTarget ? backupIntervalMs : 0,
+    // Cloud Phase 15 — the checkout rides in the same generation as the
+    // databases. A cell's disk is ephemeral, so a history that is not in the
+    // backup is a history that lasts until the next migration.
+    repoDir: process.env.MAUDE_REPO_DIR || null,
+    run: process.env.MAUDE_REPO_DIR ? createGitRunner() : null,
   });
   if (backupTarget) {
-    console.log(
-      `[hub] backups → ${backupTarget.describe} every ${Math.round(backupIntervalMs / 60000)} min`
-    );
+    // Seconds below a minute: `every 0 min` (what a 15 s test interval printed)
+    // reads as "never", which is the opposite of the truth.
+    const every =
+      backupIntervalMs < 60_000
+        ? `${Math.round(backupIntervalMs / 1000)} s`
+        : `${Math.round(backupIntervalMs / 60000)} min`;
+    console.log(`[hub] backups → ${backupTarget.describe} every ${every}`);
   }
 
   /** Per-IP rate limit buckets (admin API): ip → { count, windowStart } */

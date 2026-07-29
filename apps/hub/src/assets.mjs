@@ -23,10 +23,37 @@
 // unrelated objects.
 
 import { getObject, headObject } from './s3.mjs';
+import { assetObjectKey, assetPrefixFromEnv } from './asset-key.mjs';
 import { verifyToken } from './tokens.mjs';
 
-/** The only key shape the proxy will ever request. */
-const ASSET_KEY = /^[0-9a-f]{8}(?:\.[A-Za-z0-9]{1,8})?$/;
+/**
+ * A content-addressed key: the name IS the hash of the bytes. Immutable, so it
+ * can be cached forever.
+ */
+const CONTENT_ADDRESSED = /^[0-9a-f]{8}(?:\.[A-Za-z0-9]{1,8})?$/;
+
+/**
+ * Every key shape the proxy will serve.
+ *
+ * Content-addressing was the ONLY shape until Cloud Phase 15 put a real
+ * project in a cell and found that real projects do not look like that. The
+ * alligators design system references `/assets/graphics/camo-bg.png`,
+ * `/assets/fonts/Gators-Bold.woff2`, `/assets/gator_badge_roundel.svg` — human
+ * names, in subdirectories. `maude design fetch-asset` mints content-addressed
+ * names for things it DOWNLOADS; a design system's own fonts and graphics are
+ * authored, committed, and referenced by path. Serving only hashes meant a
+ * hosted project rendered with its images missing and no error anywhere.
+ *
+ * The security properties that mattered are kept, and they were never about
+ * the hash:
+ *   - no `..` segment, no leading `/`, no backslash ⇒ cannot escape `assets/`;
+ *   - a bounded, conservative charset ⇒ nothing that could be read as a
+ *     control character, a query, or a second path;
+ *   - depth and length caps ⇒ not a vehicle for absurd keys.
+ * What the hash DID buy is cache-safety, and that is handled where it belongs:
+ * only content-addressed keys get an immutable cache header (see below).
+ */
+const ASSET_KEY = /^(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}){0,4}$/;
 
 /** Conservative content types, chosen by extension. Never sniffed, never
  *  taken from the client, and never `text/html` — an asset must not be able to
@@ -54,9 +81,14 @@ export function assetContentType(key) {
   return CONTENT_TYPES[ext] ?? 'application/octet-stream';
 }
 
-/** Parse `/assets/<sha8>[.ext]` → the key, or null when it isn't one. */
+/** True when the key is the hash of its own bytes ⇒ safe to cache forever. */
+export function isContentAddressed(key) {
+  return CONTENT_ADDRESSED.test(String(key ?? ''));
+}
+
+/** Parse `/assets/<path>` → the key, or null when it is not one we will serve. */
 export function parseAssetPath(pathname) {
-  const m = String(pathname ?? '').match(/^\/assets\/([^/?#]+)$/);
+  const m = String(pathname ?? '').match(/^\/assets\/([^?#]+)$/);
   const key = m?.[1];
   if (!key || !ASSET_KEY.test(key)) return null;
   return key;
@@ -107,7 +139,7 @@ export async function handleAssetRoute(ctx) {
 
   try {
     if (method === 'HEAD') {
-      const meta = await headObject(s3, `assets/${key}`);
+      const meta = await headObject(s3, assetObjectKey(key, ctx.assetPrefix ?? assetPrefixFromEnv()));
       if (!meta) {
         respond(response, 404, 'not found');
         return true;
@@ -116,13 +148,13 @@ export async function handleAssetRoute(ctx) {
         .writeHead(200, {
           'Content-Type': assetContentType(key),
           'Content-Length': meta.size,
-          ...IMMUTABLE_HEADERS,
+          ...cacheHeadersFor(key),
         })
         .end();
       return true;
     }
 
-    const body = await getObject(s3, `assets/${key}`);
+    const body = await getObject(s3, assetObjectKey(key, ctx.assetPrefix ?? assetPrefixFromEnv()));
     if (!body) {
       respond(response, 404, 'not found');
       return true;
@@ -131,7 +163,7 @@ export async function handleAssetRoute(ctx) {
       .writeHead(200, {
         'Content-Type': assetContentType(key),
         'Content-Length': body.length,
-        ...IMMUTABLE_HEADERS,
+        ...cacheHeadersFor(key),
       })
       .end(body);
     return true;
@@ -147,12 +179,27 @@ export async function handleAssetRoute(ctx) {
 // `nosniff` is not optional here — the content type is chosen from an
 // extension, and letting a browser sniff its way to text/html would turn an
 // asset into a document on the hub's own origin.
-const IMMUTABLE_HEADERS = {
-  'Cache-Control': 'public, max-age=31536000, immutable',
+const BASE_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'Content-Disposition': 'inline',
   'Content-Security-Policy': "default-src 'none'; sandbox",
 };
+
+/**
+ * Cache policy follows from the KEY, not from a guess.
+ *
+ * A content-addressed key can never point at different bytes, so it is
+ * immutable and cacheable forever. A human-named one can be replaced by its
+ * author tomorrow — caching that for a year means the design system's own font
+ * or logo is stale in every browser that ever loaded it, with no way to
+ * invalidate. `no-cache` still allows revalidation; it just forbids serving a
+ * stale copy blind.
+ */
+function cacheHeadersFor(key) {
+  return isContentAddressed(key)
+    ? { ...BASE_HEADERS, 'Cache-Control': 'public, max-age=31536000, immutable' }
+    : { ...BASE_HEADERS, 'Cache-Control': 'no-cache' };
+}
 
 function respond(response, status, message) {
   const body = JSON.stringify({ error: message });

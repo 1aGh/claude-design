@@ -1,61 +1,60 @@
-# Maude tenant cell — Cloud Phase 5 Task 2.
+# Maude tenant cell — Cloud Phase 5 Task 2, rebuilt in Cloud Phase 15.
 #
-# One container per project: the hub plus the workspace agent, and NOTHING that
-# can render or evaluate tenant-authored TSX (DDR-193 §2). Caddy is gone —
-# TLS and routing are the Cloudflare edge now.
+# A CELL IS THE SAME SERVER AS THE HUB (DDR-195), so it is now literally the
+# same image plus the things that make it a tenant: a boot-time containment
+# assertion, R2 rehydrate, and tenant scoping.
 #
-# THE CONTAINMENT INVARIANT IS AN IMAGE PROPERTY HERE, not just a runtime flag.
-# A cell that merely *chooses* not to render is one config mistake away from
-# rendering; a cell that has no browser in it cannot, whatever the config says.
-# `check-containment.sh` enforces the dependency half in CI, and the entrypoint
-# re-checks at boot so a hand-modified image also fails loud.
+# It used to be an independent `oven/bun:1-alpine` build with its own frozen
+# install. That image had never been built, and could not be: `better-sqlite3`
+# is not Bun-compatible (DDR-052 — the reason the hub runtime is Node), so its
+# install script failed under Bun and would have failed to LOAD even if it had
+# compiled. Deriving from the hub image removes the second dependency tree
+# entirely, which also removes the class of bug where a cell and a hub disagree
+# about what they are running.
 #
-# Frozen install, same reasoning as apps/hub's (DDR-056-adjacent): this is the
-# one component DDR-193 designates "untrusted to peers", so a fresh resolve at
-# build time would let a poisoned transitive land in every tenant's cell.
-
-FROM oven/bun:1-alpine AS deps
-WORKDIR /build
-
-# Hub dependencies, frozen against the committed lockfile.
-COPY apps/hub/package.json apps/hub/bun.lock ./apps/hub/
-RUN cd apps/hub && bun install --frozen-lockfile --production
-
-FROM oven/bun:1-alpine AS runtime
-
-# git is load-bearing: autosave IS git in a cell (DDR-195 §3).
-# ca-certificates for R2/S3 over TLS. tini so SIGTERM reaches the app and the
-# SQLite flush on stop actually runs — a container the platform migrates
-# mid-write is the NORMAL path here, not an edge case.
-RUN apk add --no-cache git ca-certificates tini
-
-# Never root. A cell runs one tenant's data and nothing else needs privilege.
-RUN addgroup -g 10001 maude && adduser -D -u 10001 -G maude maude
-
-WORKDIR /app
-COPY --from=deps /build/apps/hub/node_modules ./apps/hub/node_modules
-COPY apps/hub ./apps/hub
-# The ONE file the hub borrows from the studio: the append-only commit engine
-# behind the server-side workspace agent (Cloud Phase 16). Same implementation
-# the desktop runs, so a server-made commit and a desktop-made commit are
-# indistinguishable in the log. The repo-shaped path is what makes the relative
-# import in workspace-agent.mjs resolve here exactly as it does in a checkout.
+#   docker build --build-arg HUB_IMAGE=<hub tag> -f infra/cell/Dockerfile .
 #
-# It is TS, and this stage runs Bun, which strips types on import. That is the
-# only reason a single source is possible at all — a Node-only cell would need
-# a twin, and a twin of the rules that decide what git does is not a twin worth
-# having.
-COPY apps/studio/sync/autocommit.ts ./apps/studio/sync/autocommit.ts
-COPY infra/cell/entrypoint.sh ./entrypoint.sh
-RUN chmod +x ./entrypoint.sh
+# CI builds the hub first and passes the tag it just pushed.
+ARG HUB_IMAGE=ghcr.io/1agh/maude-hub:latest
+
+FROM ${HUB_IMAGE} AS runtime
+
+USER root
+
+# git: autosave IS git in a cell (DDR-195 §3) — inherited from the hub image
+# since Cloud Phase 16, asserted here so a hub image that loses it fails the
+# cell build rather than the tenant's history.
+RUN command -v git >/dev/null || (echo "cell: the hub image has no git" >&2; exit 1)
+
+# THE CONTAINMENT INVARIANT IS AN IMAGE PROPERTY (DDR-193 §2).
+#
+# A cell that merely *chooses* not to render tenant TSX is one config mistake
+# away from rendering it; a cell with no browser in it cannot, whatever the
+# config says. CI enforces the dependency half at review time, the entrypoint
+# re-checks at boot so a hand-modified image also fails loud, and this asserts
+# it at BUILD time so a bad base image never becomes an artifact.
+#
+# The names live in the script, not here: the CI gate refuses ANY Dockerfile
+# whose RUN/COPY/ADD lines mention a browser and cannot distinguish an install
+# from an assertion. Keeping this file free of them means that gate never needs
+# an exception — and a guard that had to be loosened once gets loosened again.
+COPY infra/cell/assert-containment.sh /tmp/assert-containment.sh
+RUN sh /tmp/assert-containment.sh && rm /tmp/assert-containment.sh
+
+COPY infra/cell/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # The working set. Ephemeral by design — durability is replication to R2 plus
-# rehydrate-on-boot (Phase 5 Task 1), which is the same code path as the
-# restore drill and is therefore exercised on every single wake.
-RUN mkdir -p /data /repo && chown -R maude:maude /data /repo /app
+# rehydrate-on-boot, which is the same code path as the restore drill and is
+# therefore exercised on every single wake rather than once a quarter.
+#
+# Ownership before VOLUME: post-VOLUME filesystem changes are discarded, and a
+# fresh named volume inherits the image's ownership. Getting this wrong for
+# /repo crash-looped the hub on `EACCES` during Phase 16.
+RUN mkdir -p /data /repo && chown -R node:node /data /repo
 VOLUME ["/data", "/repo"]
 
-USER maude
+USER node
 
 ENV NODE_ENV=production \
     DATA_DIR=/data \
@@ -66,8 +65,8 @@ ENV NODE_ENV=production \
 
 EXPOSE 1234
 
-# A cell that cannot answer /health is a cell the DO should not route to.
+# A cell that cannot answer /health is a cell the router should not send to.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:1234/health || exit 1
+  CMD wget -qO- http://127.0.0.1:1234/health > /dev/null 2>&1 || exit 1
 
-ENTRYPOINT ["/sbin/tini", "--", "/app/entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/app/entrypoint.sh"]

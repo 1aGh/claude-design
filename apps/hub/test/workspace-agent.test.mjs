@@ -293,11 +293,30 @@ describe('seedRepo', () => {
 /* ------------------------------------------------------------ asset lane */
 
 describe('asset lane', () => {
-  it('only considers content-addressed names the proxy can serve back', () => {
+  it('mirrors exactly what the proxy will serve — including a DS\'s own named files', () => {
+    // Real projects are not all hashes. alligators references
+    // `graphics/camo-bg.png` and `gator_badge_roundel.svg`; requiring
+    // content-addressed names left a hosted project rendering without its own
+    // brand, silently.
     assert.deepEqual(
-      pendingAssets(['a1b2c3d4.png', 'nope.txt', '../escape', 'deadbeef', 'a1b2c3d4.png']),
-      ['a1b2c3d4.png', 'deadbeef']
+      pendingAssets([
+        'a1b2c3d4.png',
+        'gator_badge_roundel.svg',
+        'graphics/camo-bg.png',
+        'fonts/Gators-Bold.woff2',
+        '../escape',
+        'a/b/c/d/e/f/too-deep.png',
+        '.hidden',
+        'a1b2c3d4.png',
+      ]),
+      ['a1b2c3d4.png', 'fonts/Gators-Bold.woff2', 'gator_badge_roundel.svg', 'graphics/camo-bg.png']
     );
+  });
+
+  it('never mirrors a path that could escape the assets prefix', () => {
+    for (const bad of ['../secret', 'a/../../etc/passwd', '/abs.png', 'a//b.png']) {
+      assert.deepEqual(pendingAssets([bad]), [], bad);
+    }
   });
 
   it('skips what the bucket already holds instead of re-uploading it', async () => {
