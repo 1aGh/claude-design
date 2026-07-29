@@ -21,6 +21,7 @@ const COMMANDS = {
   kg: () => import('../commands/kg.mjs'),
   help: () => import('../commands/help.mjs'),
   hub: () => import('../commands/hub.mjs'),
+  share: () => import('../commands/share.mjs'),
   version: () => import('../commands/version.mjs'),
 };
 

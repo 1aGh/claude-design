@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-29T17:30:41.440Z",
+  "generated": "2026-07-29T18:09:12.466Z",
   "currentPhase": null,
   "phases": [
     {
@@ -98,6 +98,17 @@
       "date": null,
       "summary": "hub docs, drives the EXISTING createAutoCommit (import the studio module — it is runtime-agnostic Node/Bun TS) against the server-side checkout at /data/workspace. Author = the human who edited (fr...",
       "planPath": ".ai/plans/archive/cloud-phase-16-server-owned-checkout.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-18-browser-share-view",
+      "title": "Cloud Phase 18 — The browser surface: read-only share view (DDR-197 territory)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "which is a stronger claim than the plan asked for.",
+      "planPath": ".ai/plans/archive/cloud-phase-18-browser-share-view.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1660,17 +1671,6 @@
       "date": null,
       "summary": "Windows registry via tauri.conf); handler parses maude://join/<workspace>/<invite> and maude://open/<workspace>/<project>. clone/attach the remote project into a local folder → open in Studio. Reus...",
       "planPath": ".ai/plans/cloud-phase-17-desktop-attach-deeplink.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-18-browser-share-view",
-      "title": "Cloud Phase 18 — The browser surface: read-only share view (DDR-197 territory)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "comment text, presence JSON. Bytes it never interprets. cookieless for assets; the cell's boot-assert and CI grep gate stay green.",
-      "planPath": ".ai/plans/cloud-phase-18-browser-share-view.md",
       "archived": false,
       "phaseKey": null
     },
