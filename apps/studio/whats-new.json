@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "file-tree-move-and-folders",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Organize your files — folders, drag & drop, move",
+      "summary": "The file tree is a real file explorer now. Create folders from the header or right-click a canvas or folder for Move to… / New folder here / Delete folder — or just drag a canvas (or a whole folder) onto another folder, including back out to the top level. Every history, comment, annotation, and camera position moves with it, and every move shows an Undo toast.",
+      "surface": "design-ui"
+    },
+    {
       "id": "figma-smart-select",
       "version": "0.47.0",
       "date": "2026-07-21",

@@ -58,7 +58,12 @@ export function canvasArtifacts(input: { rel: string; paths: Paths }): CanvasArt
   }
 
   // Slug-keyed sidecars.
-  out.push({ abs: path.join(paths.historyDir, slug), kind: 'slug-keyed', rekey: true, versioned: false });
+  out.push({
+    abs: path.join(paths.historyDir, slug),
+    kind: 'slug-keyed',
+    rekey: true,
+    versioned: false,
+  });
   out.push({
     abs: path.join(paths.canvasStateDir, `${slug}.json`),
     kind: 'slug-keyed',

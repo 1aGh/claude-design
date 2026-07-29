@@ -82,7 +82,9 @@ describe('file-tree-move (native-desktop / WKWebView)', () => {
       if (!src || !dest) return { ok: false, hasSrc: !!src, hasDest: !!dest };
       const dt = new DataTransfer();
       const fire = (type: string, el: Element) =>
-        el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+        el.dispatchEvent(
+          new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt })
+        );
       fire('dragstart', src);
       fire('dragenter', dest);
       fire('dragover', dest);

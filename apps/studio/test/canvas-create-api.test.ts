@@ -7,7 +7,14 @@
 //       covering happy path, the rejection matrix, group allowlist, duplicate.
 
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 import { componentNameFrom, renderBriefBoard, validateCanvasName } from '../canvas-create.ts';
@@ -634,6 +641,25 @@ describe('/_api/canvas — DELETE (folder delete, dogfood follow-up)', () => {
     try {
       const r = await del(port, 'ui/Nope');
       expect(r.status).toBe(404);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  // Security review finding — see the matching tests in canvas-move-api.test.ts
+  // and fs-mkdir-api.test.ts.
+  test('refuses deleting a symlinked "folder" (would rm -rf outside designRoot)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const outside = join(root, 'OUTSIDE');
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(join(outside, 'Secret.txt'), 'do not delete me');
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      symlinkSync(outside, join(designRoot, 'ui', 'evil'));
+      const r = await del(port, 'ui/evil');
+      expect(r.status).toBe(400);
+      expect(existsSync(join(outside, 'Secret.txt'))).toBe(true);
     } finally {
       await killProc(proc);
     }

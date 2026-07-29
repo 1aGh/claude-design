@@ -2,7 +2,7 @@
 // validation, containment, `.gitkeep`, collision.
 
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { validateFolderName } from '../canvas-create.ts';
@@ -63,7 +63,7 @@ describe('/_api/fs-mkdir — POST round-trip', () => {
   });
 
   test('defaults parent to the design root when omitted', async () => {
-    const { root, designRoot } = makeSandbox();
+    const { root } = makeSandbox();
     const port = nextPort();
     const proc = await bootServer(root, port);
     try {
@@ -185,7 +185,9 @@ describe('/_api/fs-mkdir — POST round-trip', () => {
       const deadline = Date.now() + 2000;
       let hit: (typeof messages)[number] | undefined;
       while (Date.now() < deadline && !hit) {
-        hit = messages.find((m) => m.type === 'canvas-list-update' && m.payload?.action === 'mkdir');
+        hit = messages.find(
+          (m) => m.type === 'canvas-list-update' && m.payload?.action === 'mkdir'
+        );
         if (!hit) await Bun.sleep(25);
       }
       expect(hit?.payload?.dir).toBe('.design/ui/Live Folder');
@@ -222,6 +224,23 @@ describe('/_api/fs-mkdir — POST round-trip', () => {
         body: JSON.stringify({ parent: 'ui', name: 'Forged' }),
       });
       expect(r.status).toBe(403);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  // Security review finding — see the matching test in canvas-move-api.test.ts.
+  test('refuses creating a folder under a symlinked parent', async () => {
+    const { root, designRoot } = makeSandbox();
+    const outside = join(root, 'OUTSIDE');
+    mkdirSync(outside, { recursive: true });
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      symlinkSync(outside, join(designRoot, 'ui', 'link'));
+      const r = await mkdirReq(port, 'ui/link', 'Nested');
+      expect(r.status).toBe(400);
+      expect(existsSync(join(outside, 'Nested'))).toBe(false);
     } finally {
       await killProc(proc);
     }

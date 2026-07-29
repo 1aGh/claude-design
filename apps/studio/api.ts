@@ -3,19 +3,20 @@
 
 import crypto from 'node:crypto';
 import type { Dirent } from 'node:fs';
-import { lstat, mkdir, readdir, readFile, rename, rm, stat as statp } from 'node:fs/promises';
+import {
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat as statp,
+} from 'node:fs/promises';
 import path from 'node:path';
 import { createAssetMirror, s3ConfigFromEnv } from './assets-s3.ts';
-import {
-  canvasArtifacts,
-  locatorKeyFor,
-  relocatedName,
-} from './canvas-artifacts.ts';
-import {
-  renderBriefBoard,
-  validateCanvasName,
-  validateFolderName,
-} from './canvas-create.ts';
+import { canvasArtifacts, locatorKeyFor, relocatedName } from './canvas-artifacts.ts';
+import { renderBriefBoard, validateCanvasName, validateFolderName } from './canvas-create.ts';
 import { canvasSlugFromRel } from './canvas-slug.ts';
 
 // Re-exported so existing external callers (canvas-list-watch.ts, tests) keep
@@ -23,6 +24,7 @@ import { canvasSlugFromRel } from './canvas-slug.ts';
 // canvas-slug.ts (a leaf module) so canvas-artifacts.ts can depend on it
 // without a cycle back through api.ts.
 export { canvasSlugFromRel } from './canvas-slug.ts';
+
 import {
   type AssembleClip,
   assembleCompSource,
@@ -2523,6 +2525,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     if (deletable.some((g) => path.resolve(path.join(paths.designRoot, g.path)) === resolvedDir)) {
       return { ok: false, status: 400, error: 'cannot delete a canvas group root' };
     }
+    if (!(await assertRealpathContained(resolvedDir))) {
+      return { ok: false, status: 400, error: 'path escapes the design root via a symlink' };
+    }
 
     const drPrefix = paths.designRel.replace(/^\/+|\/+$/g, '');
     const dirRelPosix = path.posix.join(paths.designRel, relDir);
@@ -2561,6 +2566,47 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     return { ok: true, rel: relDir, slug: '', trashed, trashDir: lastTrashDir };
   }
 
+  // feature-file-tree-drag-drop-folders (security review finding) — the
+  // string-based `resolvedX.startsWith(designRoot)` containment check (used
+  // throughout this file, inherited from createCanvas's original pattern)
+  // does NOT follow symlinks: `path.resolve()` normalizes `..` segments but
+  // never dereferences a symlink. A symlink planted INSIDE a canvas group —
+  // via a malicious git peer, a hub-synced project, or just an accident —
+  // pointing outside designRoot would pass every existing containment check
+  // while `rename()`/`mkdir()` follow it at the OS level, writing (or
+  // reading) outside the project entirely. Verified exploitable against
+  // moveCanvas pre-fix: a canvas moved "into" a symlinked destination folder
+  // landed on disk outside designRoot. Walks up to the deepest EXISTING
+  // ancestor (a not-yet-created leaf is safe by construction — mkdir cannot
+  // traverse a symlink that doesn't exist yet) and verifies ITS realpath
+  // stays inside designRoot's OWN realpath — resolving BOTH sides matters:
+  // on macOS `$TMPDIR` (and every sandbox test using it) sits under
+  // `/var/folders/...`, itself a symlink to `/private/var/folders/...`, so
+  // comparing a realpath'd candidate against a merely `path.resolve()`d root
+  // false-positives on every path in a temp-dir sandbox (caught by this
+  // function's own test coverage). Same symlink gap likely pre-exists in
+  // createCanvas/deleteCanvas's original containment checks — out of scope
+  // for this feature to fix retroactively, flagged in DDR-198 as a follow-up.
+  async function realpathOfDeepestExisting(targetAbs: string): Promise<string | null> {
+    let probe = targetAbs;
+    for (;;) {
+      try {
+        return path.resolve(await realpath(probe));
+      } catch {
+        const parent = path.dirname(probe);
+        if (parent === probe) return null; // walked to the filesystem root, found nothing
+        probe = parent;
+      }
+    }
+  }
+
+  async function assertRealpathContained(targetAbs: string): Promise<boolean> {
+    const realRoot = await realpathOfDeepestExisting(path.resolve(paths.designRoot));
+    const realTarget = await realpathOfDeepestExisting(targetAbs);
+    if (realRoot === null || realTarget === null) return false;
+    return realTarget === realRoot || realTarget.startsWith(`${realRoot}${path.sep}`);
+  }
+
   // feature-file-tree-drag-drop-folders (Task 3) — move/rename a canvas + its
   // full artifact set (POST /_api/fs-move). Same main-origin-only trust
   // boundary as createCanvas/deleteCanvas (DDR-054): never reachable from the
@@ -2569,10 +2615,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   // never wrong about where the canvas lives) and every relocation is logged
   // to `_history/<toSlug>/_move.json` for forensic recovery. See the DDR
   // (Task 14) for the accepted-limitation writeup.
-  async function moveCanvas(input: {
-    file?: unknown;
-    toDir?: unknown;
-  }): Promise<MoveCanvasResult> {
+  async function moveCanvas(input: { file?: unknown; toDir?: unknown }): Promise<MoveCanvasResult> {
     const raw = input?.file;
     if (typeof raw !== 'string' || !raw.trim()) {
       return { ok: false, status: 400, error: 'file is required' };
@@ -2635,6 +2678,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         error: 'only canvases under a managed canvas group can be moved',
       };
     }
+    if (!(await assertRealpathContained(path.dirname(resolvedFile)))) {
+      return { ok: false, status: 400, error: 'source path escapes the design root via a symlink' };
+    }
 
     const toDirAbs = path.join(paths.designRoot, toDir);
     const resolvedToDir = path.resolve(toDirAbs);
@@ -2649,6 +2695,13 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         ok: false,
         status: 400,
         error: 'destination must be inside a managed canvas group',
+      };
+    }
+    if (!(await assertRealpathContained(resolvedToDir))) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'destination resolves outside the design root via a symlink',
       };
     }
 
@@ -2672,6 +2725,30 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
 
     const fromSlug = fileSlug(rel);
     const toSlug = fileSlug(toRel);
+
+    // Slug-collision guard (security review finding) — canvasSlugFromRel's
+    // `/`→`-` flattening is not injective: "ui/a-b.tsx" and "ui/a/b.tsx" both
+    // hash to "ui-a-b". Without this check, moving a canvas into a directory
+    // that happens to collide with another canvas's slug would silently
+    // clobber that OTHER canvas's history/comments/annotations/camera the
+    // moment the primary rename lands (the "primary moves first" ordering
+    // that makes a crash mid-move recoverable also means the file path check
+    // above — which only looks at the DESTINATION FILE PATH, not the slug —
+    // is not sufficient on its own). Reuses the same authoritative
+    // slug→file resolver `fileForSlug` uses for comment routing (DDR-064).
+    const slugCollision = await fileForSlug(toSlug);
+    if (slugCollision) {
+      let collisionRel = slugCollision;
+      if (collisionRel.startsWith(`${drPrefix}/`))
+        collisionRel = collisionRel.slice(drPrefix.length + 1);
+      if (collisionRel !== rel) {
+        return {
+          ok: false,
+          status: 409,
+          error: `moving here would collide with "${collisionRel}"'s slug ("${toSlug}") — rename one of them first`,
+        };
+      }
+    }
 
     // Collab guard — refuse a move while a shared-doc hub provider is pinned
     // to this slug's room (DDR-064); otherwise flush + force-drop so the room
@@ -2806,6 +2883,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     if (deletable.some((g) => path.resolve(path.join(paths.designRoot, g.path)) === resolvedDir)) {
       return { ok: false, status: 400, error: 'cannot move a canvas group root' };
     }
+    if (!(await assertRealpathContained(resolvedDir))) {
+      return { ok: false, status: 400, error: 'source path escapes the design root via a symlink' };
+    }
 
     const drPrefix = paths.designRel.replace(/^\/+|\/+$/g, '');
     let toDir = typeof toDirRaw === 'string' ? toDirRaw.trim().replace(/^\/+|\/+$/g, '') : '';
@@ -2828,6 +2908,13 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
     if (!withinAGroup(resolvedToDir)) {
       return { ok: false, status: 400, error: 'destination must be inside a managed canvas group' };
+    }
+    if (!(await assertRealpathContained(resolvedToDir))) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'destination resolves outside the design root via a symlink',
+      };
     }
     // Refuse a move into itself or a descendant of itself.
     if (resolvedToDir === resolvedDir || resolvedToDir.startsWith(`${resolvedDir}${path.sep}`)) {
@@ -2860,7 +2947,33 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         error: `folder has ${found.length} canvases — the batch move cap is ${MAX_BATCH}; move a smaller subset`,
       };
     }
-    const canvasRels = found.map((p) => (p.startsWith(`${drPrefix}/`) ? p.slice(drPrefix.length + 1) : p));
+    const canvasRels = found.map((p) =>
+      p.startsWith(`${drPrefix}/`) ? p.slice(drPrefix.length + 1) : p
+    );
+
+    // Slug-collision guard, per nested canvas — same rationale as
+    // moveCanvas's (canvasSlugFromRel's `/`→`-` flattening is not injective).
+    // Excludes collisions AMONG the batch itself (those canvases are moving
+    // together, not being clobbered by an outsider) but refuses if any
+    // destination slug already belongs to a canvas OUTSIDE this move.
+    const batchRelSet = new Set(canvasRels);
+    for (const r of canvasRels) {
+      const toRel = toRelDir + r.slice(relDir.length);
+      const toSlug = fileSlug(toRel);
+      const collision = await fileForSlug(toSlug);
+      if (collision) {
+        let collisionRel = collision;
+        if (collisionRel.startsWith(`${drPrefix}/`))
+          collisionRel = collisionRel.slice(drPrefix.length + 1);
+        if (!batchRelSet.has(collisionRel)) {
+          return {
+            ok: false,
+            status: 409,
+            error: `moving "${path.basename(r)}" would collide with "${collisionRel}"'s slug ("${toSlug}") — rename one of them first`,
+          };
+        }
+      }
+    }
 
     // Collab guard for every canvas found, BEFORE any disk mutation — refuse
     // the whole batch if even one room is pinned (a shared-doc hub provider
@@ -2928,7 +3041,14 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         await Bun.write(
           path.join(toHistoryDir, '_move.json'),
           `${JSON.stringify(
-            { fromRel, toRel, fromSlug, toSlug, folderMove: true, movedAt: new Date().toISOString() },
+            {
+              fromRel,
+              toRel,
+              fromSlug,
+              toSlug,
+              folderMove: true,
+              movedAt: new Date().toISOString(),
+            },
             null,
             2
           )}\n`
@@ -2988,6 +3108,13 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     });
     if (!withinAGroup) {
       return { ok: false, status: 400, error: 'parent must be inside a managed canvas group' };
+    }
+    if (!(await assertRealpathContained(resolvedParent))) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'parent resolves outside the design root via a symlink',
+      };
     }
 
     const dirAbs = path.join(parentAbs, v.name);

@@ -45,6 +45,14 @@ A crash mid-move leaves a partial state — this is explicitly not transactional
 
 `moveFolder` (the `moveCanvas` entry point auto-detects a non-`.tsx` source as a folder) enumerates every nested `.tsx` canvas *before* the rename, then does **one** `rename(srcDir, destDir)` — which relocates the primary + same-dir siblings of every nested canvas for free, since they live inside the moved directory. Only the slug-keyed sidecars (flat dirs like `_history/<slug>/`, not nested by folder structure) need their own per-canvas relocation loop afterward. Capped at 50 canvases per batch move (refused above that with a clear message) — the non-atomicity caveat above multiplies with N.
 
+### 7. Two vulnerabilities found and fixed during `/flow:done`'s code review
+
+Both were found by directly constructing the exploit against a scratch sandbox (not merely reasoned about), fixed, and locked down with permanent regression tests before this branch merged:
+
+- **Slug collision silently clobbers an unrelated canvas.** `canvasSlugFromRel()`'s `/`→`-` flattening is **not injective**: `ui/a-b.tsx` and `ui/a/b.tsx` both hash to slug `ui-a-b`. Before this feature, a user had no UI path to construct that second shape (no folder creation existed), so the collision was latent. `moveCanvas`/`moveFolder` now call the existing `fileForSlug()` resolver (already used for DDR-064 comment routing) before renaming, and refuse with 409 if the destination slug already belongs to a *different* canvas than the one moving.
+- **Symlink escape defeats every containment check.** Every containment check in this file (inherited from `createCanvas`'s original pattern, `resolvedX.startsWith(designRoot)`) uses `path.resolve()`, which normalizes `..` but never dereferences a symlink. A symlink planted inside a canvas group — a malicious git peer, a hub-synced project, or an accident — pointing outside `designRoot` passed every check while `rename()`/`mkdir()`/`rm()` followed it at the OS level. Verified: moving a canvas "into" a symlinked folder landed the file **outside the project entirely**. Fixed with `assertRealpathContained()`, added to all four new mutation paths (`moveCanvas`, `moveFolder`, `createFolder`, `deleteFolder`): walks to the deepest *existing* ancestor of both the candidate path and `designRoot` itself, realpath's both, and checks containment against the **resolved** root — resolving only one side false-positived in every sandbox test, because `$TMPDIR` on macOS sits under `/var/folders/...`, itself a symlink to `/private/var/folders/...`.
+  - **The same symlink gap likely pre-exists in `createCanvas`/`deleteCanvas`'s original containment checks** — those functions predate this feature and weren't touched here. Flagged as a follow-up, not fixed retroactively (out of scope for a file-tree-move PR to become a general symlink-hardening sweep).
+
 ## Consequences
 
 **Positive:**
@@ -61,6 +69,7 @@ A crash mid-move leaves a partial state — this is explicitly not transactional
 
 - A second feature needs to resolve "this canvas" independent of its current path (e.g. true cross-machine rename propagation, or a stable share link) — that is Alternative A's trigger condition, not a nice-to-have.
 - The 50-canvas folder-move batch cap is hit in practice by a real project's directory reorganization.
+- Someone runs a symlink-hardening pass over `createCanvas`/`deleteCanvas` (§7's flagged follow-up) — `assertRealpathContained()` in `api.ts` is ready to reuse as-is.
 
 ## Linked
 

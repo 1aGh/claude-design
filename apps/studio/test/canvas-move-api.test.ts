@@ -6,7 +6,7 @@
 // collab registry.
 
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { createApi } from '../api.ts';
@@ -85,7 +85,11 @@ describe('/_api/fs-move — POST round-trip', () => {
       const locatorKey = 'ui/Full Rekey'; // locatorKeyFor shape: posix, ext-less, NOT slugified
       writeFileSync(
         locatorAbs,
-        JSON.stringify({ [locatorKey]: { a1b2c3d4: { canvas: '/x', line: 1, col: 0, jsxPath: [], componentName: '' } } })
+        JSON.stringify({
+          [locatorKey]: {
+            a1b2c3d4: { canvas: '/x', line: 1, col: 0, jsxPath: [], componentName: '' },
+          },
+        })
       );
 
       const r = await move(port, created.rel, 'ui/nested');
@@ -269,6 +273,122 @@ describe('/_api/fs-move — POST round-trip', () => {
         body: JSON.stringify({ file: created.rel, toDir: 'ui/sub' }),
       });
       expect(r.status).toBe(403);
+    } finally {
+      await killProc(proc);
+    }
+  });
+});
+
+// Security review finding: canvasSlugFromRel's `/`→`-` flattening is not
+// injective — "ui/a-b.tsx" and "ui/a/b.tsx" both hash to slug "ui-a-b". A
+// move that creates this collision would, pre-fix, silently clobber the
+// OTHER canvas's history/comments/annotations the moment the primary rename
+// landed. moveCanvas/moveFolder now refuse with 409 via fileForSlug().
+// Security review finding: `path.resolve()`-only containment does not follow
+// symlinks. A symlink planted inside a canvas group (malicious git peer, hub
+// sync, or accident) pointing outside designRoot passed every pre-fix
+// containment check while rename()/mkdir() followed it at the OS level.
+describe('/_api/fs-move — symlink escape guard (security review finding)', () => {
+  test('refuses moving a canvas INTO a symlinked destination folder', async () => {
+    const { root, designRoot } = makeSandbox();
+    const outside = join(root, 'OUTSIDE');
+    mkdirSync(outside, { recursive: true });
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const created = await createBoard(port, 'Escapee');
+      symlinkSync(outside, join(designRoot, 'ui', 'link'));
+      const r = await move(port, created.rel, 'ui/link');
+      expect(r.status).toBe(400);
+      expect(existsSync(join(outside, 'Escapee.tsx'))).toBe(false);
+      expect(existsSync(join(designRoot, 'ui', 'Escapee.tsx'))).toBe(true);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('refuses moving a symlinked FOLDER as the source', async () => {
+    const { root, designRoot } = makeSandbox();
+    const outside = join(root, 'OUTSIDE');
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(join(outside, 'Secret.tsx'), 'export default function S(){return null}');
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      symlinkSync(outside, join(designRoot, 'ui', 'evil'));
+      const r = await move(port, 'ui/evil', 'ui/dest');
+      expect(r.status).toBe(400);
+      expect(existsSync(join(designRoot, 'ui', 'dest'))).toBe(false);
+    } finally {
+      await killProc(proc);
+    }
+  });
+});
+
+describe('/_api/fs-move — slug-collision guard (security review finding)', () => {
+  test('refuses a move whose destination slug collides with an existing DIFFERENT canvas', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      // Victim: ui/a-b.tsx -> slug "ui-a-b". Give it a real annotations
+      // sidecar so a silent clobber would be observable.
+      const victim = await createBoard(port, 'a-b');
+      expect(victim.slug).toBe('ui-a-b');
+      writeFileSync(join(designRoot, `${victim.slug}.annotations.svg`), '<svg>VICTIM</svg>');
+
+      // Mover: ui/b.tsx, about to move into ui/a/ -> would become
+      // ui/a/b.tsx -> slug "ui-a-b" too.
+      const mover = await createBoard(port, 'b');
+      const r = await move(port, mover.rel, 'ui/a');
+      expect(r.status).toBe(409);
+      const j = (await r.json()) as { error: string };
+      expect(j.error).toContain('ui-a-b');
+
+      // Nothing moved; the victim's sidecar is untouched.
+      expect(existsSync(join(designRoot, 'ui', 'b.tsx'))).toBe(true);
+      expect(existsSync(join(designRoot, 'ui', 'a', 'b.tsx'))).toBe(false);
+      expect(readFileSync(join(designRoot, `${victim.slug}.annotations.svg`), 'utf8')).toBe(
+        '<svg>VICTIM</svg>'
+      );
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('a folder move refuses when a nested canvas would collide with an OUTSIDE canvas', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      // A folder move preserves the moved folder's OWN basename as a path
+      // segment, so to collide with "ui/dest-sub-inner.tsx" (slug
+      // "ui-dest-sub-inner"), move folder "ui/sub" (containing "inner.tsx")
+      // into "ui/dest" -> "ui/dest/sub/inner.tsx" -> same slug.
+      const victim = await createBoard(port, 'dest-sub-inner');
+      expect(victim.slug).toBe('ui-dest-sub-inner');
+
+      await createBoard(port, 'inner');
+      const moveIntoSub = await move(port, 'ui/inner.tsx', 'ui/sub');
+      expect(moveIntoSub.status).toBe(200);
+
+      const r = await move(port, 'ui/sub', 'ui/dest');
+      expect(r.status).toBe(409);
+      expect(existsSync(join(designRoot, 'ui', 'sub'))).toBe(true);
+      expect(existsSync(join(designRoot, 'ui', 'dest', 'sub'))).toBe(false);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('does NOT refuse when the "collision" is the canvas moving into its OWN new slug (no-op false positive)', async () => {
+    const { root } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const created = await createBoard(port, 'Solo');
+      const r = await move(port, created.rel, 'ui/sub');
+      expect(r.status).toBe(200);
     } finally {
       await killProc(proc);
     }
