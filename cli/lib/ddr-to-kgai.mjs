@@ -401,6 +401,115 @@ export function buildLogBatch(logsDir, scope = {}) {
   return { batch: { decisions }, stats };
 }
 
+/**
+ * The thin STATE.md a migrated repo keeps. Byte-identical to the stub
+ * `maude init --kg` writes (cli/commands/init.mjs KG_STATE_STUB) — a repo that
+ * migrated and a repo that started on the graph must not end up with two
+ * different-looking breadcrumbs.
+ */
+const KG_STATE_STUB = `# Workflow State
+
+> **kgai-active repo** — decision history + working context live in the knowledge graph, not this file.
+> The \`flow:workflow-state\` skill reads/writes the graph via \`flow:kgai-backend\`.
+
+**Status:** ready
+**Active plan:** —
+
+## Where the history went
+
+- **Decisions / "why is X so":** \`maude kg search "<topic>"\` (start here) · \`maude kg context --about "<element>"\`
+- **Recent movements:** \`maude kg query "MATCH (d:Decision) WHERE d.author='<you>' RETURN d.title, d.recorded_at ORDER BY d.recorded_at DESC LIMIT 10"\`
+- **Conflicts:** \`maude kg conflicts\`
+
+The pre-migration file is preserved verbatim under \`.ai/archive/state/\` — never auto-deleted.
+`;
+
+/**
+ * `--archive` — the cleanup half of a migration.
+ *
+ * Ingest alone leaves the repo carrying both stores: the graph AND the tree it
+ * replaced. This moves what the graph took over under `.ai/archive/`, which is
+ * what makes "switching to kgai simplifies `.ai/`" true rather than aspirational.
+ *
+ * Rules it will not break:
+ *  - **Never deletes.** Every source is MOVED under `.ai/archive/` (DDR-044).
+ *  - **Only what the graph replaced.** `plans/`, `scenarios/`, `docs/`,
+ *    `context/`, `dev-logs/`, `business/` stay live — they are narrative or
+ *    procedural, not an append-only event stream the graph now owns.
+ *  - **STATE.md is snapshotted, not moved.** Flow commands still read the path,
+ *    so the original goes to `archive/state/` and a pointer-stub takes its place.
+ *  - **Idempotent.** A second run finds the sources gone and reports "nothing to
+ *    archive" instead of clobbering the archive with an empty tree.
+ */
+function archiveMigratedSources(projectRoot, { dryRun = false, today } = {}) {
+  const ai = join(projectRoot, '.ai');
+  const arch = join(ai, 'archive');
+  const moved = [];
+  const plan = [];
+
+  const moveInto = (srcDir, destDir, filter = () => true) => {
+    if (!existsSync(srcDir)) return;
+    const entries = readdirSync(srcDir, { withFileTypes: true }).filter((e) => filter(e));
+    if (!entries.length) return;
+    for (const e of entries) {
+      const from = join(srcDir, e.name);
+      const to = join(destDir, e.name);
+      plan.push(`${from.replace(`${projectRoot}/`, '')} → ${to.replace(`${projectRoot}/`, '')}`);
+      if (dryRun) continue;
+      mkdirSync(destDir, { recursive: true });
+      // An entry already in the archive (a re-run, or a name collision across
+      // nested dirs) must not be silently overwritten — keep both.
+      renameSync(from, existsSync(to) ? `${to}.${Date.now()}` : to);
+      moved.push(e.name);
+    }
+  };
+
+  // A — decisions + their index. Under an active graph the README index has no
+  // job left: `maude kg search` answers what it answered, and ddr-keeper no
+  // longer appends to it.
+  moveInto(join(ai, 'decisions'), join(arch, 'decisions'));
+  // A — log verdicts (gitignored, so the graph is now their only inheritable copy).
+  moveInto(join(ai, 'logs'), join(arch, 'logs'), (e) => e.name !== 'README.md');
+  // A — template seeds that only exist to scaffold the two files the graph
+  // replaced. PROJECT.md rides along: it had zero references even classically.
+  moveInto(
+    join(ai, 'templates'),
+    join(arch, 'templates'),
+    (e) => e.isFile() && ['STATE.md', 'HANDOFF.md', 'PROJECT.md'].includes(e.name)
+  );
+
+  // STATE.md — snapshot + stub, because the path stays live.
+  const statePath = join(ai, 'state', 'STATE.md');
+  if (existsSync(statePath)) {
+    const body = readFileSync(statePath, 'utf8');
+    const alreadyStub = body.includes('kgai-active repo');
+    if (!alreadyStub) {
+      const dest = join(arch, 'state', `STATE-pre-kgai-${today}.md`);
+      plan.push(`${statePath.replace(`${projectRoot}/`, '')} → ${dest.replace(`${projectRoot}/`, '')} (+ pointer-stub)`);
+      if (!dryRun) {
+        mkdirSync(join(arch, 'state'), { recursive: true });
+        writeFileSync(dest, body);
+        writeFileSync(statePath, KG_STATE_STUB);
+        moved.push('STATE.md');
+      }
+    }
+  }
+  // A stale HANDOFF.md would be read by `/flow:resume` as if it were current,
+  // and under the graph it never gets refreshed again — the worst kind of stale.
+  const handoff = join(ai, 'state', 'HANDOFF.md');
+  if (existsSync(handoff)) {
+    const dest = join(arch, 'state', `HANDOFF-pre-kgai-${today}.md`);
+    plan.push(`${handoff.replace(`${projectRoot}/`, '')} → ${dest.replace(`${projectRoot}/`, '')}`);
+    if (!dryRun) {
+      mkdirSync(join(arch, 'state'), { recursive: true });
+      renameSync(handoff, dest);
+      moved.push('HANDOFF.md');
+    }
+  }
+
+  return { plan, moved };
+}
+
 /** Entry — `maude kg import`. Dispatched from cli/commands/kg.mjs verbImport. */
 export async function run({ args, state, projectRoot, runKg }) {
   // `args` here is already the verb's args (kg.mjs stripped the `import` token).
@@ -515,6 +624,17 @@ export async function run({ args, state, projectRoot, runKg }) {
         `  sample:     ${sample.title}\n              ${JSON.stringify(sample.mutations.slice(0, 4))}\n`
       );
     }
+    if (flags.archive) {
+      const { plan } = archiveMigratedSources(projectRoot, {
+        dryRun: true,
+        today: new Date().toISOString().slice(0, 10),
+      });
+      process.stdout.write(
+        plan.length
+          ? `  archive:    ${plan.length} moves planned —\n${plan.map((l) => `              ${l}\n`).join('')}`
+          : '  archive:    nothing to move (already archived)\n'
+      );
+    }
     process.stdout.write(
       '  (dry-run — nothing written. `.ai/archive/decisions/` is preserved as archive.)\n'
     );
@@ -543,6 +663,24 @@ export async function run({ args, state, projectRoot, runKg }) {
     process.stdout.write(
       `  ✓ ingested. Marker: ${marker} (re-import needs --force). Archive kept: ${decisionsDir}\n`
     );
+    // ONLY after a clean ingest. Archiving on a failed one would move the
+    // sources out from under a graph that never received them — the one way
+    // this migration could actually lose someone's decisions.
+    if (flags.archive) {
+      const { plan, moved } = archiveMigratedSources(projectRoot, {
+        today: new Date().toISOString().slice(0, 10),
+      });
+      if (moved.length) {
+        process.stdout.write(`  ✓ archived ${moved.length} sources under .ai/archive/:\n`);
+        for (const line of plan) process.stdout.write(`      ${line}\n`);
+        process.stdout.write(
+          '    Nothing was deleted. `plans/`, `scenarios/`, `docs/`, `context/` stay live.\n' +
+            '    Grep the repo for the old paths — this does NOT rewrite references.\n'
+        );
+      } else {
+        process.stdout.write('  · archive: nothing left to move (already archived).\n');
+      }
+    }
   }
   return status;
 }
