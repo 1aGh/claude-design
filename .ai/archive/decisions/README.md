@@ -9,6 +9,8 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-198: Server-owned git history — the hub commits, and does it with the desktop's engine](DDR-198-server-owned-git-history-in-the-hub.md) — 2026-07-29, cloud/git/history/workspace-agent/assets/docker/shutdown
+- [DDR-197: Narrowing DDR-192 §4 — a read-only browser surface is permitted; evaluating tenant TSX on vendor compute is not](DDR-197-browser-surface-narrowing-of-ddr-192.md) — 2026-07-29, cloud/containment/browser/share/security/vendor-boundary
 - [DDR-196: The cloud arc's buildable half — decisions as pure functions, and where the vendor boundary actually falls](DDR-196-cloud-arc-buildable-half-and-the-vendor-boundary.md) — 2026-07-29, cloud/architecture/testing/provisioning/fleet-ops/billing/invites/mirror/trust/vendor-boundary
 - [DDR-195: A cell is the same server minus routes — plus content-addressed assets and an append-only autosave history](DDR-195-workspace-cell-enforcement-assets-and-autosave-history.md) — 2026-07-28, cloud/workspace/containment/assets/s3/r2/git/autosave/history/sync/security/onboarding/vocabulary
 - [DDR-194: Hub identity + durability — scrypt over the token spine, explicit proxy trust, and a restore drill that can fail](DDR-194-hub-identity-and-durability-choices.md) — 2026-07-28, cloud/hub/security/auth/passwords/rate-limiting/proxy/backup/durability/sqlite/s3/r2/dependencies

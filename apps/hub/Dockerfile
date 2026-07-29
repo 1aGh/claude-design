@@ -1,10 +1,16 @@
 # Maude Hub — production image.
 #
-# Phase 9 Task 7. Build context is the hub package itself (self-contained — no
-# monorepo COPY), so `docker build` works from a published checkout OR the
-# multi-arch release pipeline:
+# Phase 9 Task 7; build context widened to the REPO ROOT in Cloud Phase 16:
 #
-#   docker build -t maude-hub apps/hub
+#   docker build -t maude-hub -f apps/hub/Dockerfile .
+#
+# The context used to be apps/hub alone, which was tidier. It stopped being
+# possible when the hub gained the server-side workspace agent: that agent
+# drives the SAME `createAutoCommit` the desktop uses, and a second copy of the
+# append-only commit rules is exactly the kind of duplication that ends with a
+# server-made commit and a desktop-made commit behaving differently. So the
+# bundler stage reaches one file out of apps/studio, and the stage layout below
+# mirrors the repo so that relative import resolves identically in both places.
 #
 # Published as ghcr.io/1agh/maude-hub:vX.Y.Z + :latest on every release tag
 # (amd64 + arm64 via buildx). Runtime is Node, NOT Bun: Hocuspocus' crossws
@@ -30,9 +36,15 @@ WORKDIR /build
 # postinstall (it would fail under Bun, and the bundler doesn't need the native
 # binding — better-sqlite3 is `external` in build.ts). Hocuspocus + Yjs + ws are
 # pure JS and inline into the bundle.
-COPY package.json bun.lock ./
+# Repo-shaped layout, so `../../studio/sync/autocommit.ts` resolves here exactly
+# as it does in a working tree.
+WORKDIR /build/apps/hub
+COPY apps/hub/package.json apps/hub/bun.lock ./
 RUN bun install --frozen-lockfile --ignore-scripts
-COPY . .
+COPY apps/hub ./
+# The ONLY file the hub borrows from the studio: the append-only commit engine.
+# Bun strips its types at bundle time, so the Node runtime stage never sees TS.
+COPY apps/studio/sync/autocommit.ts /build/apps/studio/sync/autocommit.ts
 RUN bun run build.ts --release
 
 # ---- Stage 2: compile the native better-sqlite3 binding for the node:20 ABI ----
@@ -46,28 +58,43 @@ WORKDIR /build
 # forces node-gyp to compile the vendored, frozen C source instead of downloading
 # an opaque prebuilt binary over the network — deterministic + supply-chain-tight.
 # `npm rebuild <pkg>` never touches the dependency graph, so versions stay pinned.
-COPY --from=bundler /build/node_modules ./node_modules
-COPY --from=bundler /build/package.json ./package.json
+COPY --from=bundler /build/apps/hub/node_modules ./node_modules
+COPY --from=bundler /build/apps/hub/package.json ./package.json
 RUN npm rebuild better-sqlite3 --build-from-source
 
 # ---- Stage 3: runtime ----
 FROM node:20-bookworm-slim AS runtime
+# git is load-bearing since Cloud Phase 16: in a workspace deployment autosave
+# IS git (DDR-195 §3), and a hub without it keeps no history at all — which
+# would also make "mirror to GitHub" a claim with nothing behind it.
+#
+# ca-certificates is load-bearing WITH it. Node carries its own CA bundle, so
+# every fetch-based feature works without this and the omission looks harmless
+# — but git uses the SYSTEM store, so `MAUDE_SEED_REPO` failed every clone with
+# "server certificate verification failed. CAfile: none". Found by running the
+# image, not by reading it.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends tini wget \
+  && apt-get install -y --no-install-recommends tini wget git ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 # node_modules comes from the `native` stage (frozen versions + a node:20-ABI
 # better-sqlite3 binding); the JS bundle + admin assets come from the bundler.
 COPY --from=native /build/node_modules ./node_modules
-COPY --from=bundler /build/dist ./dist
+COPY --from=bundler /build/apps/hub/dist ./dist
 # The container runs as the unprivileged `node` user, but a fresh named volume
 # mounted at /data is initialized from the image's /data ownership. Create it
 # node-owned BEFORE declaring VOLUME (post-VOLUME filesystem changes are
 # discarded), so the SQLite db + bootstrap.json are writable at runtime.
-RUN mkdir -p /data && chown node:node /data
-VOLUME ["/data"]
+# Both mount points must exist and be node-owned BEFORE the VOLUME
+# declaration — post-VOLUME filesystem changes are discarded, and a fresh named
+# volume inherits the image's ownership. Getting this wrong for /repo made the
+# first real container crash-loop on `EACCES: mkdir /repo/.design`, because a
+# volume Docker creates for an undeclared path lands as root.
+RUN mkdir -p /data /repo && chown node:node /data /repo
+VOLUME ["/data", "/repo"]
 ENV PORT=1234 \
     DATA_DIR=/data \
+    MAUDE_REPO_DIR=/repo \
     NODE_ENV=production
 EXPOSE 1234
 # /health is an unauthenticated GET (see src/server.mjs onRequest). TLS

@@ -35,6 +35,17 @@ RUN addgroup -g 10001 maude && adduser -D -u 10001 -G maude maude
 WORKDIR /app
 COPY --from=deps /build/apps/hub/node_modules ./apps/hub/node_modules
 COPY apps/hub ./apps/hub
+# The ONE file the hub borrows from the studio: the append-only commit engine
+# behind the server-side workspace agent (Cloud Phase 16). Same implementation
+# the desktop runs, so a server-made commit and a desktop-made commit are
+# indistinguishable in the log. The repo-shaped path is what makes the relative
+# import in workspace-agent.mjs resolve here exactly as it does in a checkout.
+#
+# It is TS, and this stage runs Bun, which strips types on import. That is the
+# only reason a single source is possible at all — a Node-only cell would need
+# a twin, and a twin of the rules that decide what git does is not a twin worth
+# having.
+COPY apps/studio/sync/autocommit.ts ./apps/studio/sync/autocommit.ts
 COPY infra/cell/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 

@@ -61,6 +61,10 @@ import { maybeIssueOnBoot, verifyAndConsume } from './bootstrap.mjs';
 import { clientIpFor, parseTrustedProxies } from './client-ip.mjs';
 import { groupCanvases } from './doc-namespace.mjs';
 import { seedFirstUserOnBoot } from './first-user.mjs';
+import { createGitRunner } from './git-runner.mjs';
+import { seedRepo } from './seed-repo.mjs';
+import { sweepAssets } from './asset-lane.mjs';
+import { createWorkspaceAgent } from './workspace-agent.mjs';
 import { createRateStore } from './rate-store.mjs';
 import { s3ConfigFromEnv } from './s3.mjs';
 import { readSettings, writeSettings } from './settings.mjs';
@@ -218,8 +222,31 @@ export function createHub(config = {}) {
   /** Activity feed ring buffer (newest last). Bounded to ACTIVITY_CAP. */
   const activity = [];
 
+  // Cloud Phase 16 — the headless workspace agent (server-owned git history).
+  //
+  // Workspace mode ONLY, and that restriction is the point. A laptop hub sits
+  // beside a developer who has their own git and commits when they mean to; a
+  // second committer writing into their working tree would be a hostile
+  // surprise, not a feature. In a cell there is nobody at the keyboard, so an
+  // uncommitted history is no history at all.
+  const workspaceMode =
+    process.env.HUB_WORKSPACE_MODE === '1' || process.env.MAUDE_WORKSPACE_MODE === '1';
+  const repoDir = config.repoDir ?? process.env.MAUDE_REPO_DIR ?? '';
+  /** @type {ReturnType<typeof createWorkspaceAgent>|null} */
+  let workspace = null;
+
   const server = new Server({
     port,
+
+    // Hocuspocus installs its own SIGINT/SIGQUIT/SIGTERM handler that calls
+    // `destroy()` and then `process.exit(0)` — racing ours. Since Cloud Phase
+    // 16 that race is destructive: our handler flushes the pending commit
+    // first, and Hocuspocus' exit fires in the middle of it. The observed
+    // result was a workspace left staged-but-uncommitted on every shutdown —
+    // `git add` had run, `git commit` never did — which silently loses the
+    // last edits of every session the platform migrates, and migration is the
+    // NORMAL path for a cell. Shutdown is ours; see `shutdown()` in runAsMain.
+    stopOnSignals: false,
 
     extensions: [new SQLite({ database: sqlitePath })],
 
@@ -259,6 +286,11 @@ export function createHub(config = {}) {
             source: match.source,
             dev: !!match.dev,
             scope: match.scope ?? '*',
+            // The address the token was minted for. Carried so the server-side
+            // workspace agent can attribute a commit to the PERSON rather than
+            // to their machine's token label — `git blame` on a design should
+            // answer "who designed this" (Cloud Phase 16 / autocommit rule 2).
+            ...(match.owner ? { email: match.owner } : {}),
           },
         };
       }
@@ -497,6 +529,30 @@ export function createHub(config = {}) {
     async onLoadDocument({ documentName }) {
       if (verbose) console.log(`[hub] load documentName=${sanitizeForLog(documentName)}`);
     },
+
+    // Cloud Phase 16 Task 1 — server-owned history.
+    //
+    // `afterStoreDocument`, not `onChange`: by the time this fires the SQLite
+    // extension has already persisted, and Hocuspocus has applied its own
+    // debounce. Committing on every change event would produce one commit per
+    // keystroke; committing before the store would let a crash leave a commit
+    // describing a state the hub does not have.
+    //
+    // Wrapped so a projection failure can never propagate into the store hook
+    // — an exception here aborts storage for every OTHER document too.
+    // `lastContext`, NOT `context` — the store payload names it that (it is the
+    // context of the connection whose change triggered the store, which is
+    // exactly the person to attribute the commit to). Reading `context` here
+    // silently yields undefined, and the only symptom is every server commit
+    // authored by "Unknown editor" — a lie that git blame repeats forever.
+    async afterStoreDocument({ documentName, document, lastContext }) {
+      if (!workspace) return;
+      try {
+        await workspace.onDocumentStored({ documentName, document, user: lastContext?.user });
+      } catch (err) {
+        console.error(`[hub] workspace projection failed: ${err.message}`);
+      }
+    },
   });
 
   return {
@@ -511,6 +567,56 @@ export function createHub(config = {}) {
     peers,
     activity,
     backupTarget,
+    assetStore,
+    workspaceMode,
+    repoDir,
+    /** The live agent, once started. Null outside workspace mode. */
+    get workspace() {
+      return workspace;
+    },
+    /**
+     * Boot the server-side history agent. Separate from createHub() because it
+     * clones, shells out to git and touches a disk — none of which a test that
+     * only wants a Hocuspocus instance should pay for.
+     *
+     * Reports rather than throws: a cell that cannot keep history must still
+     * serve the tenant's work.
+     */
+    async startWorkspaceAgent(deps = {}) {
+      if (!workspaceMode) return { state: 'skipped', reason: 'not a workspace hub' };
+      if (!repoDir) return { state: 'skipped', reason: 'MAUDE_REPO_DIR is not set' };
+      const make = deps.createWorkspaceAgent ?? createWorkspaceAgent;
+      const seed = deps.seedRepo ?? seedRepo;
+      const runner = deps.run ?? createGitRunner();
+
+      const seeded = await seed(repoDir, runner, {
+        url: process.env.MAUDE_SEED_REPO ?? '',
+        branch: process.env.MAUDE_SEED_BRANCH ?? '',
+      });
+      if (seeded.state === 'failed') {
+        // Loud, but not fatal. A cell that refuses to start on a bad seed URL
+        // is a cell the operator cannot reach to fix the seed URL.
+        console.error(`[hub] seed repo failed: ${seeded.reason}`);
+      } else if (seeded.state === 'cloned') {
+        console.log(`[hub] seeded workspace from ${seeded.url}`);
+      }
+
+      const agent = make({ repoDir, designRel: process.env.MAUDE_DESIGN_ROOT ?? '.design', ...deps.options });
+      const started = await agent.start();
+      if (started.state !== 'failed') workspace = agent;
+      return { ...started, seed: seeded.state };
+    },
+    /** Flush the pending commit and detach. The SIGTERM path depends on this. */
+    async stopWorkspaceAgent() {
+      if (!workspace) return;
+      const agent = workspace;
+      workspace = null;
+      const outcome = await agent.stop();
+      if (outcome?.ok) console.log(`[workspace] flushed ${outcome.sha.slice(0, 8)} on shutdown`);
+      else if (outcome && !outcome.ok) {
+        console.error(`[workspace] shutdown flush did NOT commit: ${outcome.reason}`);
+      }
+    },
     /** Stop the backup schedule + close the rate store. Tests call this; the
      *  process exiting does the same thing in production. */
     stopBackgroundWork() {
@@ -1200,7 +1306,7 @@ async function runAsMain() {
     console.error('[hub] config error:', err.message);
     process.exit(1);
   }
-  const { server, sqlitePath } = built;
+  const { server, sqlitePath, workspaceMode, repoDir, assetStore } = built;
 
   try {
     await server.listen();
@@ -1221,6 +1327,27 @@ async function runAsMain() {
   }
 
   seedFirstUserOnBoot(dataDir);
+
+  // Cloud Phase 16 — server-owned history + the server-side asset lane.
+  // Both are workspace-mode-only and both report rather than throw.
+  if (workspaceMode) {
+    const started = await built.startWorkspaceAgent();
+    if (started.state === 'failed') {
+      console.warn(
+        `[hub] server-side history is OFF (${started.reason}). Edits will sync and persist, ` +
+          'but this workspace will keep no git history and cannot mirror to GitHub.'
+      );
+    }
+    if (assetStore && repoDir) {
+      // Sweep once at boot rather than on a timer: assets arrive with a commit,
+      // and a cell wakes on every migration, so boot is already the frequent
+      // event. A timer would mostly re-HEAD objects that have not changed.
+      const designRoot = join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design');
+      sweepAssets({ designRoot, s3: assetStore }).catch((err) =>
+        console.error(`[hub] asset sweep failed: ${err.message}`)
+      );
+    }
+  }
 
   const bootstrap = maybeIssueOnBoot(dataDir, { secret });
   if (bootstrap) {
@@ -1253,8 +1380,13 @@ async function runAsMain() {
 
   const shutdown = (signal) => {
     console.log(`[hub] ${signal} received, shutting down`);
-    server
-      .destroy()
+    // Flush the pending commit FIRST. A cell is migrated mid-session as the
+    // normal path, and destroying the server before the queue drains would
+    // silently drop the last few seconds of every moved session.
+    built
+      .stopWorkspaceAgent()
+      .catch((err) => console.error('[hub] workspace flush error:', err))
+      .then(() => server.destroy())
       .catch((err) => {
         console.error('[hub] shutdown error:', err);
       })

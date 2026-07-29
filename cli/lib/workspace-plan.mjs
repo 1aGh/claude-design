@@ -309,9 +309,18 @@ services:
     restart: unless-stopped
     environment:
       HUB_PUBLIC_URL: ${cfg.local ? 'http' : 'https'}://\${PUBLIC_DOMAIN}
+      # The server-side checkout (Cloud Phase 16). In a workspace there is
+      # nobody at a keyboard to commit, so the hub keeps the history itself —
+      # without this the project's only record is its current bytes.
+      MAUDE_REPO_DIR: /repo
 ${envLines(hubEnv)}
     volumes:
       - hub-data:/data
+      # A SEPARATE volume from hub-data on purpose: the checkout is the one
+      # thing here that can be reconstructed from a mirror, and keeping it
+      # separable is what lets an operator reset it without touching the
+      # documents, or vice versa.
+      - hub-repo:/repo
     expose:
       - "1234"
 
@@ -347,11 +356,37 @@ ${
     ports:
       - "9000:9000"
       - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Creates the bucket the hub was just told to use. Without it, --dev-minio
+  # renders a complete storage configuration pointing at a bucket that does not
+  # exist — every write fails with NoSuchBucket, and the operator sees a
+  # verification failure with no hint that the missing piece was never theirs
+  # to supply. Same "looks configured, does nothing" shape as the admin
+  # credentials and the seed repo before Cloud Phase 16 wired them.
+  minio-init:
+    profiles: ["dev"]
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 \${MAUDE_S3_ACCESS_KEY_ID} \${MAUDE_S3_SECRET_ACCESS_KEY} &&
+      mc mb --ignore-existing local/\${MAUDE_S3_BUCKET} &&
+      echo 'bucket \${MAUDE_S3_BUCKET} ready'
+      "
+    restart: "no"
 `
     : ''
 }
 volumes:
   hub-data:
+  hub-repo:
   caddy-data:
   caddy-config:${cfg.devMinio ? '\n  minio-data:' : ''}
 `;

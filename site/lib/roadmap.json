@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-29T14:50:36.084Z",
+  "generated": "2026-07-29T16:20:56.520Z",
   "currentPhase": null,
   "phases": [
     {
@@ -76,6 +76,17 @@
       "date": null,
       "summary": "users.mjs — same code, control-plane D1 storage) AND Google OAuth (buyer-side only; OAuth on the Worker via PKCE, no client secret in a browser). never to maude.sh. First magic link IS email verifi...",
       "planPath": ".ai/plans/archive/cloud-phase-13-identity-one-account.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-16-server-owned-checkout",
+      "title": "Cloud Phase 16 — Server-owned checkout: git into the cell, autocommit server-side",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "hub docs, drives the EXISTING createAutoCommit (import the studio module — it is runtime-agnostic Node/Bun TS) against the server-side checkout at /data/workspace. Author = the human who edited (fr...",
+      "planPath": ".ai/plans/archive/cloud-phase-16-server-owned-checkout.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1627,17 +1638,6 @@
       "date": null,
       "summary": "can pull from; containment boot-assert verified in the pushed artifact. (dns → worker-route → container → DO → r2-token → r2-prefix). Destroy is the tested destroySweep order. Every step idempotent...",
       "planPath": ".ai/plans/cloud-phase-15-cell-up-alligators.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-16-server-owned-checkout",
-      "title": "Cloud Phase 16 — Server-owned checkout: git into the cell, autocommit server-side",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "hub docs, drives the EXISTING createAutoCommit (import the studio module — it is runtime-agnostic Node/Bun TS) against the server-side checkout at /data/workspace. Author = the human who edited (fr...",
-      "planPath": ".ai/plans/cloud-phase-16-server-owned-checkout.md",
       "archived": false,
       "phaseKey": null
     },

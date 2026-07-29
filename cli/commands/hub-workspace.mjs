@@ -13,7 +13,7 @@
 // It does NOT claim to own the deployment afterwards — see `operatorDuties`.
 
 import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -321,7 +321,7 @@ async function which(bin) {
  * NEVER reports success. Counting an unrun check as passed is the single
  * fastest way to make a verification suite worthless.
  */
-async function runVerification(step, { config, hubSecret }) {
+async function runVerification(step, { config, hubSecret, adminPassword, outDir, pkgRoot }) {
   const base = workspaceBaseUrl(config);
   switch (step.id) {
     case 'health': {
@@ -334,6 +334,16 @@ async function runVerification(step, { config, hubSecret }) {
       });
       return res.ok ? { ok: true } : { ok: false, note: res.note };
     }
+    case 'user-signin':
+      return verifySignin(base, config.adminEmail, adminPassword);
+    case 'git-commit':
+      return verifyGitHistory(outDir);
+    case 's3-object':
+      return verifyBucketRoundTrip(config, pkgRoot);
+    case 's3-no-expiry':
+      return verifyNoLifecycle(config, pkgRoot);
+    case 'restore-drill':
+      return verifyRestoreDrill(config);
     default:
       return {
         ok: false,
@@ -341,6 +351,218 @@ async function runVerification(step, { config, hubSecret }) {
         note: 'not yet automated — verify by hand, then close it in the plan',
       };
   }
+}
+
+/**
+ * The credential the operator is about to be handed actually works.
+ *
+ * This is the check that would have caught the shipped bug where a provisioned
+ * workspace had no users at all: every other check passed, the URL printed,
+ * and the first person to try the login was the one who found out.
+ */
+async function verifySignin(base, email, password) {
+  if (!password) return { ok: false, note: 'no admin password was generated' };
+  try {
+    const res = await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return { ok: false, note: `HTTP ${res.status} — the first user cannot sign in` };
+    const body = await res.json().catch(() => null);
+    return body?.token ? { ok: true } : { ok: false, note: 'login returned no session token' };
+  } catch (err) {
+    return { ok: false, note: err.name === 'TimeoutError' ? 'timed out' : 'unreachable' };
+  }
+}
+
+/**
+ * The server-side checkout has real commits (Cloud Phase 16).
+ *
+ * Read from INSIDE the container, because that is where the history lives.
+ * Checking a path on the operator's laptop would pass on a machine that
+ * happens to have a repo and tell us nothing about the deployment.
+ */
+async function verifyGitHistory(outDir) {
+  const probe = await sh(
+    'docker',
+    ['compose', 'exec', '-T', 'hub', 'git', '-C', '/repo', 'log', '-1', '--format=%H %an'],
+    { cwd: outDir }
+  );
+  if (probe.code !== 0) {
+    const err = `${probe.stderr}`.toLowerCase();
+    // A fresh workspace has no commits because nobody has edited anything yet.
+    // That is the NORMAL state five seconds after provisioning, and reporting
+    // it as a failure trains the operator to ignore a red mark — which is
+    // precisely what makes a real one invisible later. Skipped says the truth:
+    // this was not proven, and here is what would prove it.
+    if (err.includes('does not have any commits') || err.includes('bad default revision')) {
+      return {
+        ok: false,
+        skipped: true,
+        note: 'the checkout is ready but empty — edit a canvas, then re-run to prove autosave commits',
+      };
+    }
+    if (err.includes('not a git repository')) {
+      return { ok: false, note: 'the workspace has no checkout — server-side history is not running' };
+    }
+    if (err.includes('executable file not found') || err.includes('not found')) {
+      return { ok: false, note: 'git is missing from the hub image — history cannot be kept' };
+    }
+    return { ok: false, note: `git log failed: ${probe.stderr.trim().slice(0, 120)}` };
+  }
+  const line = probe.stdout.trim();
+  if (!line) {
+    return { ok: false, skipped: true, note: 'the checkout is ready but empty — edit a canvas, then re-run' };
+  }
+  return { ok: true, note: `HEAD by ${line.split(' ').slice(1).join(' ') || 'unknown'}` };
+}
+
+/** Load the hub's S3 client from the installed package. */
+async function loadS3(pkgRoot) {
+  for (const candidate of [
+    resolve(pkgRoot, 'apps/hub/src/s3.mjs'),
+    resolve(pkgRoot, '../apps/hub/src/s3.mjs'),
+  ]) {
+    const mod = await import(`file://${candidate}`).catch(() => null);
+    if (mod) return mod;
+  }
+  return null;
+}
+
+function s3ConfigFrom(config) {
+  const s = config.s3;
+  // The dev MinIO endpoint (`http://minio:9000`) is a compose-network name.
+  // These checks run on the OPERATOR's machine, which cannot resolve it — but
+  // the compose file publishes the port, so loopback is the same bucket.
+  const endpoint = s.dev ? s.endpoint.replace('//minio:', '//127.0.0.1:') : s.endpoint;
+  return {
+    endpoint,
+    bucket: s.bucket,
+    accessKeyId: s.accessKeyId,
+    secretAccessKey: s.secretAccessKey,
+    region: s.region ?? 'auto',
+  };
+}
+
+/**
+ * A real object goes into the bucket and comes back out.
+ *
+ * Content-addressed, so the sentinel is indistinguishable from a genuine
+ * asset — and it is removed afterwards, because a verification step that
+ * litters a customer's bucket is a verification step people turn off.
+ */
+async function verifyBucketRoundTrip(config, pkgRoot) {
+  if (!config.s3) return { ok: false, skipped: true, note: 'no object storage configured' };
+  const s3 = await loadS3(pkgRoot);
+  if (!s3) return { ok: false, skipped: true, note: 'the hub S3 client was not found in this install' };
+  const cfg = s3ConfigFrom(config);
+  const bytes = Buffer.from(`maude workspace-up sentinel\n`);
+  const key = `assets/${createHash('sha256').update(bytes).digest('hex').slice(0, 8)}.bin`;
+  try {
+    // The stack was declared healthy by the HUB's health check; object storage
+    // is a different container and may still be starting. A one-shot attempt
+    // here reported "fetch failed" against a MinIO that was serving four
+    // seconds later — a false failure, which corrodes the suite as fast as a
+    // false pass.
+    await retry(() => s3.putObject(cfg, key, bytes), { attempts: 6, delayMs: 2000 });
+    const head = await s3.headObject(cfg, key);
+    if (!head) return { ok: false, note: 'the object was written but could not be read back' };
+    if (head.size !== bytes.length) {
+      return { ok: false, note: `read back ${head.size} bytes, wrote ${bytes.length}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    if (/NoSuchBucket/i.test(err.message)) {
+      return {
+        ok: false,
+        note: `the bucket "${cfg.bucket}" does not exist at ${cfg.endpoint} — create it, then re-run`,
+      };
+    }
+    if (/InvalidAccessKeyId|SignatureDoesNotMatch/i.test(err.message)) {
+      return { ok: false, note: 'object storage rejected the credentials' };
+    }
+    return { ok: false, note: `bucket rejected the round trip: ${err.message.slice(0, 120)}` };
+  } finally {
+    await s3.deleteObject(s3ConfigFrom(config), key).catch(() => {});
+  }
+}
+
+/**
+ * No lifecycle rule can expire the media.
+ *
+ * The quiet catastrophe this guards: assets are content-addressed and
+ * referenced from git history forever, so an expiry rule deletes objects that
+ * canvases still point at, with no recovery path and no error at the time.
+ *
+ * A bucket with NO lifecycle configuration answers 404 — that is the pass.
+ */
+async function verifyNoLifecycle(config, pkgRoot) {
+  if (!config.s3) return { ok: false, skipped: true, note: 'no object storage configured' };
+  const s3 = await loadS3(pkgRoot);
+  if (!s3?.signRequest) {
+    return { ok: false, skipped: true, note: 'the hub S3 client was not found in this install' };
+  }
+  const cfg = s3ConfigFrom(config);
+  try {
+    const signed = s3.signRequest(cfg, { method: 'GET', key: '', query: { lifecycle: '' } });
+    const res = await fetch(signed.url, {
+      method: 'GET',
+      headers: signed.headers,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.status === 404) return { ok: true, note: 'no lifecycle configuration' };
+    if (!res.ok) {
+      // Cannot read the config ⇒ cannot claim it is safe. Skipped, never passed.
+      return { ok: false, skipped: true, note: `could not read lifecycle config (HTTP ${res.status})` };
+    }
+    const xml = await res.text();
+    const rules = xml.match(/<Rule>/g)?.length ?? 0;
+    if (rules === 0) return { ok: true, note: 'no lifecycle rules' };
+    // Any rule at all is reported. Deciding which prefixes a rule matches from
+    // its XML is exactly the kind of parsing that is wrong in the one case
+    // that matters, so this reports rather than adjudicates.
+    return {
+      ok: false,
+      note: `${rules} lifecycle rule(s) on this bucket — confirm none can expire assets/`,
+    };
+  } catch (err) {
+    return { ok: false, skipped: true, note: `lifecycle check failed: ${err.message.slice(0, 100)}` };
+  }
+}
+
+/** A backup nobody has restored is a hypothesis. Runs the real drill. */
+async function verifyRestoreDrill(config) {
+  if (!config.s3) return { ok: false, skipped: true, note: 'no backup target configured' };
+  // The drill needs the hub's own data dir, which lives inside the container.
+  // Deliberately left to the operator's `maude hub restore-drill` rather than
+  // reaching into a volume from out here: a half-run drill that reports
+  // success is worse than an honest skip, and this is the one check whose
+  // whole point is that somebody actually did it.
+  return {
+    ok: false,
+    skipped: true,
+    note: 'run `maude hub restore-drill` against this deployment — it needs the hub data dir',
+  };
+}
+
+/** Retry a flaky-at-startup operation. Rethrows the LAST error, so the
+ *  reported cause is the real one rather than "timed out". */
+async function retry(fn, { attempts, delayMs }) {
+  let last;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      // A definitive answer from the service is not worth retrying — only the
+      // "not listening yet" shape is.
+      if (!/fetch failed|ECONNREFUSED|socket hang up/i.test(err.message)) throw err;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw last;
 }
 
 async function tryFetch(url, init) {

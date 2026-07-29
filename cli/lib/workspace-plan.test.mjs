@@ -345,3 +345,35 @@ test('`localhost` has no dot, and only local mode is allowed to skip the FQDN ru
   assert.equal(production.ok, false, 'a real deployment still needs a fully-qualified name');
   assert.ok(production.errors.some((e) => /not a valid hostname|fully qualified/.test(e)));
 });
+
+/* --------------------------------------------- Cloud Phase 16: server-owned git */
+
+test('the workspace gets a checkout the hub can actually commit into', () => {
+  // Until Phase 16 the hub had no repo at all: autosave ran only in the CLIENT,
+  // so a project with no desktop attached kept no history — and "mirror to
+  // GitHub" would have been a claim with nothing behind it.
+  const compose = renderCompose(ok(BASE));
+  assert.match(compose, /MAUDE_REPO_DIR: \/repo/, 'the hub must be told where its checkout is');
+  assert.match(compose, /- hub-repo:\/repo/, 'the checkout needs a volume, or it dies with the container');
+  assert.match(compose, /^volumes:\n(?:.*\n)*?  hub-repo:$/m, 'the volume must be declared');
+});
+
+test('the checkout is a SEPARATE volume from the documents', () => {
+  // Same volume would mean an operator resetting a corrupt checkout also
+  // destroys the documents — and the two have genuinely different recovery
+  // stories (a checkout can come back from a mirror; documents cannot).
+  const compose = renderCompose(ok(BASE));
+  assert.match(compose, /- hub-data:\/data/);
+  assert.match(compose, /- hub-repo:\/repo/);
+});
+
+test('MAUDE_SEED_REPO crosses into the container when one is configured', () => {
+  // The variable existed and was rendered into .env long before anything read
+  // it — the same half-wired shape as MAUDE_ADMIN_PASSWORD. Assert the
+  // forwarding, because that is the half that rotted.
+  const withSeed = renderCompose(ok({ ...BASE, seedRepo: 'https://github.com/acme/design.git' }));
+  assert.match(withSeed, /MAUDE_SEED_REPO: \$\{MAUDE_SEED_REPO\}/);
+
+  const without = renderCompose(ok(BASE));
+  assert.ok(!/MAUDE_SEED_REPO/.test(without), 'no seed configured ⇒ no empty variable to misread');
+});
