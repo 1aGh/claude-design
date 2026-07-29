@@ -13,7 +13,13 @@ Live control plane: `https://maude-cloud.maude1agh.workers.dev`
 
 ---
 
-## Step 1 — Workers Paid (~$5/mo) · unblocks phases 15, 20
+## Step 1 — Workers Paid (~$5/mo) · unblocks phase 15 ONLY · ⬜ OPEN
+
+**Re-probed 2026-07-29 after R2 was enabled: still the only real blocker, and
+it blocks exactly one phase.** Free covers Workers, cron, D1, R2 and Queues-list;
+Containers refuse with `1000 Unauthorized … requires the Workers Paid plan`.
+Phases 12, 13, 14, 16, 18, 19, 20 all run on Free. Phase 15 (the per-project
+cell) cannot exist without it.
 
 1. https://dash.cloudflare.com → **Workers & Pages** → **Plans**
 2. Choose **Workers Paid**, pay.
@@ -21,19 +27,23 @@ Live control plane: `https://maude-cloud.maude1agh.workers.dev`
 Unlocks **Containers** (the per-project cell) and **Queues**. Without it the
 control plane runs but can never provision a project's cell.
 
-## Step 2 — Enable R2 · unblocks phases 15, 16, 18
+## Step 2 — Enable R2 · ✅ DONE 2026-07-29
 
-1. Dashboard → **R2 Object Storage** → **Enable R2** (accept the ToS; billing
-   details required even though the free allowance covers the pilot).
-
-Nothing else — the agent creates the buckets. R2 is where media, checkpoints
-and (phase 18) canvas snapshots live.
+Subscription `R2 Paid` active at €0 (free allowance). Agent created bucket
+**`maude-cloud-assets`** (EEUR). Media, checkpoints and phase-18 snapshots have
+a home.
 
 ## Step 3 — DNS for `cloud.maude.sh` · unblocks the pretty URL only
 
 `maude.sh` currently uses **Vercel nameservers** (`ns1/ns2.vercel-dns.com`,
 registrar Name.com), and the site is served from Vercel. A Cloudflare Worker
 custom domain requires the zone to be **on Cloudflare**. Two options:
+
+> **The domain is REGISTERED at Vercel.** That does not block this: registration
+> and DNS hosting are separate. In the Vercel dashboard the domain has a
+> nameserver setting you can point at Cloudflare while Vercel stays the
+> registrar. If Vercel refuses (some registrars lock newly-purchased domains
+> for 60 days), Option B costs nothing and can wait.
 
 **Option A — move the zone to Cloudflare (recommended).**
 1. Cloudflare dashboard → **Add a site** → `maude.sh` → Free plan.
@@ -52,9 +62,19 @@ wrong for a public product.
 
 > Not urgent: phases 12–14, 16, 19 need no domain at all.
 
-## Step 4 — Google sign-in credentials · unblocks the Google door (phase 13)
+## Step 4 — Google sign-in · ✅ DONE 2026-07-29
 
-The code is built and deployed; it answers an honest 503 until these exist.
+Client id `153921296891-ouvhav32…` uploaded as a Worker secret. **Verified live:**
+`/auth/google` → 303 to `accounts.google.com` with the right client id, the
+right redirect URI, scope `openid email profile`, `code_challenge_method=S256`
+and a state value mirrored into an HttpOnly cookie. The signup page shows
+"Continue with Google".
+
+Remaining (only when you want people other than yourself to sign in): the
+consent screen is in **Testing** mode, so add each tester under *Test users*,
+or publish the app (which triggers Google verification — a GA-time step).
+
+<details><summary>original instructions, for reference</summary>
 
 1. https://console.cloud.google.com → create a project (e.g. **Maude Cloud**).
 2. **APIs & Services → OAuth consent screen**:
@@ -81,11 +101,15 @@ The code is built and deployed; it answers an honest 503 until these exist.
    ```
    The agent uploads them as Worker secrets and verifies the round trip.
 
-> If you'd rather not paste the secret into a file, run these yourself in
-> `apps/cloud/` and tell the agent it's done:
-> `wrangler secret put GOOGLE_CLIENT_ID` · `wrangler secret put GOOGLE_CLIENT_SECRET`
+</details>
 
-## Step 5 — Email sending · unblocks magic-link invites (phase 17)
+## Step 5 — Email sending · ✅ KEY RECEIVED 2026-07-29
+
+`RESEND_API_KEY` uploaded as a Worker secret. Sending domain verification is
+easier after Step 3; until then Resend can still send from its shared testing
+domain, which is enough to prove the invite flow.
+
+<details><summary>original instructions, for reference</summary>
 
 Needed for "invite a teammate with a link" and password recovery. Pick one:
 
@@ -93,11 +117,24 @@ Needed for "invite a teammate with a link" and password recovery. Pick one:
   domain (`maude.sh` — easier after Step 3A) and create an API key.
 - Or any SMTP/API provider; the agent adapts.
 
-Put the key in `apps/cloud/.dev.vars.deploy` as `RESEND_API_KEY=…`.
+</details>
 
-> Until this exists, invites work only as links you copy by hand.
+## Step 6 — GitHub App · ⚠️ CREATED BUT NOT USABLE YET
 
-## Step 6 — GitHub App for mirroring · unblocks phase 19
+App **`maude-mirror`**, App ID **4425366**, owner `1aGh`. Private key moved out
+of `~/Downloads` to `~/.config/maude/maude-mirror.private-key.pem` (mode 0600).
+
+**Verified with a real JWT against `GET /app`:** `permissions: {}` and
+`installations_count: 0`. So two things are missing — the App can authenticate
+but cannot touch a single repository:
+
+1. https://github.com/settings/apps/maude-mirror → **Permissions & events** →
+   **Repository permissions → Contents: Read and write** → *Save changes*.
+   (Also confirm Webhook **Active** is unchecked — the mirror pushes, never listens.)
+2. → **Install App** → install on `1aGh`, "Only select repositories" is fine;
+   the agent needs at least one test repo, and it can create that itself.
+
+<details><summary>original instructions, for reference</summary>
 
 1. https://github.com/settings/apps → **New GitHub App**
    - Name `Maude Mirror`, homepage `https://maude.sh`.
@@ -105,14 +142,7 @@ Put the key in `apps/cloud/.dev.vars.deploy` as `RESEND_API_KEY=…`.
    - **Repository permissions → Contents: Read and write.** Nothing else.
    - "Where can this be installed": **Any account**.
 2. Generate a **private key** (.pem download) and note the **App ID**.
-3. Put in `apps/cloud/.dev.vars.deploy`:
-   ```
-   GITHUB_APP_ID=…
-   GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/the.pem
-   ```
-
-> The `gh` CLI is already authenticated, so the agent can create test repos
-> itself — only the App (which needs a browser) is yours.
+</details>
 
 ## Step 7 — Stripe · NOTHING TO DO for the pilot
 
@@ -124,26 +154,26 @@ live mode until its price ids are filled in, deliberately.
 
 ---
 
-## Order that unblocks the most, fastest
+## Where it stands — 2026-07-29
 
-| # | Step | Time | Unblocks |
-| - | ---- | ---- | -------- |
-| 1 | Workers Paid | 2 min | cells (15), the whole hosted product |
-| 2 | Enable R2 | 2 min | media, checkpoints, snapshots (15/16/18) |
-| 4 | Google credentials | 10 min | the second sign-in door (13) |
-| 3 | Zone → Cloudflare | 10 min + propagation | `cloud.maude.sh` (cosmetic until GA) |
-| 5 | Resend | 10 min | magic-link invites (17) |
-| 6 | GitHub App | 5 min | mirror (19) |
+| Step | State |
+| ---- | ----- |
+| 1 · Workers Paid | ⬜ **OPEN — the only remaining blocker, and it blocks only phase 15** |
+| 2 · R2 | ✅ enabled, bucket `maude-cloud-assets` created |
+| 3 · DNS | ⬜ optional; everything works on workers.dev until GA |
+| 4 · Google | ✅ live and verified |
+| 5 · Resend | ✅ key uploaded |
+| 6 · GitHub App | ⚠️ needs Contents:write + an installation (2 clicks) |
+| 7 · Stripe | ✅ nothing to do for the pilot |
 
-**Steps 1 and 2 alone unblock the alligators pilot.** Do those two and the
-agent can carry phases 14–20 to a working end-to-end product on
-`workers.dev` URLs; 3–6 are polish and specific features.
+**One paid step and two GitHub clicks stand between here and a hosted product.**
 
 ## Exit gate
 
 - [ ] Workers Paid active — a Containers API call stops returning 1000/Unauthorized
-- [ ] R2 enabled — bucket creation stops returning 10042
+- [x] R2 enabled — bucket `maude-cloud-assets` exists
 - [ ] (optional) `maude.sh` Active on Cloudflare, Vercel records intact + grey-clouded
-- [ ] `apps/cloud/.dev.vars.deploy` carries the Google (and optionally Resend /
-      GitHub App) values
-- [ ] Tell the agent — it re-probes, records the ids here, and continues
+- [x] Google credentials live and verified against the deployed Worker
+- [x] Resend key uploaded
+- [ ] GitHub App has Contents:write and at least one installation
+- [x] Agent re-probed and recorded the ids here
