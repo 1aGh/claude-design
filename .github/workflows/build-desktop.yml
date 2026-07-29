@@ -205,11 +205,54 @@ jobs:
             # Notarization requires every Mach-O in the bundle to carry a
             # Developer-ID signature + hardened runtime. libkuzu ships universal
             # already; both still need signing (DDR-190).
-            if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            #
+            # ⚠ The identity is NOT in any keychain yet at this point. Tauri
+            # imports APPLE_CERTIFICATE into a temporary keychain of its own,
+            # but only inside `tauri build` — which runs BELOW this block. So a
+            # bare `codesign --sign "$APPLE_SIGNING_IDENTITY"` here dies with
+            # "error: The specified item could not be found in the keychain."
+            # and takes the whole macOS leg with it (v0.48.0 → v0.49.1 shipped
+            # NO macOS build for exactly this). We therefore stand up our own
+            # short-lived keychain, sign, and tear it down again — leaving a
+            # clean slate so tauri's later import can't hit an ambiguous
+            # duplicate identity across two search-list keychains.
+            if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+              KG_KEYCHAIN="$RUNNER_TEMP/maude-kg-signing.keychain-db"
+              KG_KEYCHAIN_PW="$(openssl rand -base64 24)"
+              KG_P12="$RUNNER_TEMP/maude-kg-cert.p12"
+              ORIG_KEYCHAINS=$(security list-keychains -d user | tr -d '"')
+              security create-keychain -p "$KG_KEYCHAIN_PW" "$KG_KEYCHAIN"
+              security set-keychain-settings -lut 21600 "$KG_KEYCHAIN"
+              security unlock-keychain -p "$KG_KEYCHAIN_PW" "$KG_KEYCHAIN"
+              printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$KG_P12"
+              security import "$KG_P12" -k "$KG_KEYCHAIN" \
+                -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+              rm -f "$KG_P12"
+              # Restore the search list + drop the keychain even if a codesign
+              # below fails — otherwise a failed run leaves tauri's own import
+              # facing a stray duplicate identity.
+              # shellcheck disable=SC2064
+              trap "security list-keychains -d user -s $ORIG_KEYCHAINS; security delete-keychain '$KG_KEYCHAIN' 2>/dev/null || true" EXIT
+              # Without a partition list every codesign call blocks on a GUI
+              # "allow access" prompt — which on a headless runner is a hang.
+              security set-key-partition-list -S apple-tool:,apple:,codesign: \
+                -s -k "$KG_KEYCHAIN_PW" "$KG_KEYCHAIN" >/dev/null
+              # shellcheck disable=SC2086
+              security list-keychains -d user -s "$KG_KEYCHAIN" $ORIG_KEYCHAINS
               codesign --force --timestamp --options runtime \
+                --keychain "$KG_KEYCHAIN" \
                 --sign "$APPLE_SIGNING_IDENTITY" .kg-staging/libkuzu.dylib
               codesign --force --timestamp --options runtime \
+                --keychain "$KG_KEYCHAIN" \
                 --sign "$APPLE_SIGNING_IDENTITY" .kg-staging/kg
+              codesign --verify --strict .kg-staging/libkuzu.dylib
+              codesign --verify --strict .kg-staging/kg
+              # Tear down early (the trap is only the failure path) so tauri's
+              # later import starts from the pre-existing keychain state.
+              trap - EXIT
+              # shellcheck disable=SC2086
+              security list-keychains -d user -s $ORIG_KEYCHAINS
+              security delete-keychain "$KG_KEYCHAIN"
             else
               codesign --force -s - .kg-staging/libkuzu.dylib
               codesign --force -s - .kg-staging/kg
