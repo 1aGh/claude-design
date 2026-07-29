@@ -19,6 +19,8 @@
 
 import { randomBytes } from 'node:crypto';
 
+import { authenticateForMode } from './cloud-identity.mjs';
+
 import {
   createInvite,
   inviteUrl,
@@ -121,7 +123,24 @@ export async function handleAuthRoutes(ctx) {
       respondJson(400, { error: err.message });
       return true;
     }
-    const result = authenticate(dataDir, body?.email, body?.password);
+    // Cloud Phase 22 (DDR-204). In cloud mode this hub has no passwords of its
+    // own — identity comes from the Maude account, and the person arrives with
+    // a project-scoped token instead. One function, two configurations: a
+    // separate cloud path would leave the self-hosted one to rot.
+    const result = authenticateForMode(
+      { email: body?.email, password: body?.password, token: body?.token },
+      {
+        local: (email, password) => authenticate(dataDir, email, password),
+        secret: ctx.secret ?? secret,
+      }
+    );
+    if (result.reason === 'cloud-identity') {
+      // The ONE failure that is not an opaque "invalid email or password":
+      // nothing is wrong with what they typed, the thing they typed into does
+      // not exist here. Telling them where to go instead is the whole point.
+      respondJson(400, { error: result.message });
+      return true;
+    }
     if (!result.ok) {
       // ONE opaque message for every failure mode. The distinction between
       // "no such account", "wrong password" and "disabled" is a user-existence
