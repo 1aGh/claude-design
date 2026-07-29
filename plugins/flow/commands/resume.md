@@ -59,7 +59,7 @@ Extract from the available artifacts:
 Load **`flow:kgai-backend`** and check `maude kg resolve --json`.
 
 - **`active: false`** (default) → skip; reconstruct from HANDOFF.md + STATE.md as above, unchanged.
-- **`active: true`** → the graph is the authority; reconstruct from it instead of trusting the HANDOFF projection:
+- **`active: true`** → the graph is the authority; reconstruct from it. There is no `HANDOFF.md` to fall back on — `/flow:pause` skips writing one under an active graph — so if a stale `HANDOFF.md` *is* present it predates the migration: read it as historical context at most, never as the current handoff.
 
   ```bash
   ME="$(git config user.name)"
