@@ -25,7 +25,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { parseArgs } from './argv.mjs';
 
 const REF_RANK = { references: 0, extends: 1, overrides: 2, supersedes: 3 };
@@ -261,40 +261,108 @@ export function buildDdrBatch(decisionsDir, scope = {}, only = null) {
  * copy, so we keep a much larger excerpt than the DDR path does (which can afford
  * to be a thin index because its prose is versioned).
  */
+/**
+ * Directory name → node kind. Exported because `maude kg record-log` infers the
+ * kind from a file's parent dir, and an inference that disagreed with the bulk
+ * importer would fork the corpus in two (`rca:x` from migration, `logs:x` from
+ * a live run) — the whole point is that a verdict recorded today lands on the
+ * same shelf as the 120 the migration put there.
+ */
+export const LOG_KINDS = {
+  rca: 'rca',
+  'system-reviews': 'system-review',
+  'code-reviews': 'code-review',
+  'security-reviews': 'security-review',
+  'execution-reports': 'execution-report',
+  a11y: 'a11y-audit',
+  visual: 'visual-review',
+  '.': 'log', // loose .md sitting at the logs root (e.g. a one-off perf note)
+};
+
+/** repo:/dept: anchors + their edges — identical for every node kind. */
+function scopeMutations(name, kind, scope = {}) {
+  const m = [];
+  if (scope.repo) {
+    m.push({ op: 'upsert_element', kind: 'repo', name: scope.repo });
+    m.push({ op: 'add_link', from: `${kind}:${name}`, to: `repo:${scope.repo}`, link: 'IN_REPO' });
+  }
+  if (scope.dept) {
+    m.push({ op: 'upsert_element', kind: 'dept', name: scope.dept });
+    m.push({ op: 'add_link', from: `${kind}:${name}`, to: `dept:${scope.dept}`, link: 'IN_DEPT' });
+  }
+  return m;
+}
+
+/**
+ * Build ONE decision envelope from ONE verdict file.
+ *
+ * The single source of truth for "a markdown verdict becomes a graph node",
+ * shared by the bulk importer (`maude kg import`) and the per-file recorder
+ * (`maude kg record-log`, which the flow/design commands call as they write).
+ * Keeping one function is what guarantees a `/flow:bug-rca` run tomorrow
+ * produces a node shaped exactly like the ones migration created — same slug
+ * rule, same props, same ABOUT/scope/EVIDENCE_FOR edges.
+ *
+ * @param {string} absPath   file on disk (read in full — see the full-body note above)
+ * @param {string} kind      node kind (see LOG_KINDS)
+ * @param {object} scope     { repo, dept }
+ * @param {object} [opts]
+ * @param {string} [opts.pathRel]  the `path` prop; defaults to absPath
+ * @param {string} [opts.about]    attach to this element instead of `area:<kind>`
+ *                                 (design verdicts hang off `canvas:<slug>`)
+ * @param {string} [opts.link]     edge kind to `about` (default `ABOUT`)
+ * @param {string} [opts.slug]     override the derived slug
+ */
+export function buildLogDecision(absPath, kind, scope = {}, opts = {}) {
+  const body = readFileSync(absPath, 'utf8');
+  const base = basename(absPath);
+  const slug = opts.slug ?? base.replace(/\.md$/, '').replace(/\//g, '-');
+  const title = (body.match(/^#\s*(.+)$/m) || [null, slug])[1].trim();
+  // `**Date:**` when the author supplied one, else the file's own mtime — these
+  // files are gitignored, so git has no creation date to fall back on either.
+  const explicitDate = normDate(field(body, 'Date'));
+  const date = explicitDate || statSync(absPath).mtime.toISOString().slice(0, 10);
+  const about = opts.about ?? `area:${kind}`;
+  const [aboutKind, ...aboutRest] = about.split(':');
+
+  const mutations = [
+    {
+      op: 'upsert_element',
+      kind,
+      name: slug,
+      props: { title: title.slice(0, 160), path: opts.pathRel ?? absPath, date },
+    },
+    { op: 'upsert_element', kind: aboutKind, name: aboutRest.join(':') },
+    { op: 'add_link', from: `${kind}:${slug}`, to: about, link: opts.link ?? 'ABOUT' },
+    ...scopeMutations(slug, kind, scope),
+  ];
+
+  // Evidence edges — a review/RCA that cites a DDR is evidence ABOUT it.
+  const cited = new Set([...body.matchAll(/DDR-(\d+)/g)].map((m) => m[1].padStart(3, '0')));
+  for (const num of cited) {
+    mutations.push({ op: 'upsert_element', kind: 'decision', name: `DDR-${num}` });
+    mutations.push({
+      op: 'add_link',
+      from: `${kind}:${slug}`,
+      to: `decision:DDR-${num}`,
+      link: 'EVIDENCE_FOR',
+    });
+  }
+  // Full body — these files are gitignored, so the graph is the ONLY copy;
+  // truncating would destroy the evidence it exists to preserve.
+  return {
+    decision: { title, date, rationale: body.trim(), mutations },
+    slug,
+    citedCount: cited.size,
+    hasExplicitDate: Boolean(explicitDate),
+  };
+}
+
 export function buildLogBatch(logsDir, scope = {}) {
   const logsRel = logsDir.includes('/archive/') ? '.ai/archive/logs' : '.ai/logs';
-  const KINDS = {
-    rca: 'rca',
-    'system-reviews': 'system-review',
-    'code-reviews': 'code-review',
-    'security-reviews': 'security-review',
-    'execution-reports': 'execution-report',
-    '.': 'log', // loose .md sitting at the logs root (e.g. a one-off perf note)
-  };
+  const KINDS = LOG_KINDS;
   const decisions = [];
   const stats = { files: 0, withDate: 0, cited: 0, byKind: {} };
-  const scopeMuts = (name, kind) => {
-    const m = [];
-    if (scope.repo) {
-      m.push({ op: 'upsert_element', kind: 'repo', name: scope.repo });
-      m.push({
-        op: 'add_link',
-        from: `${kind}:${name}`,
-        to: `repo:${scope.repo}`,
-        link: 'IN_REPO',
-      });
-    }
-    if (scope.dept) {
-      m.push({ op: 'upsert_element', kind: 'dept', name: scope.dept });
-      m.push({
-        op: 'add_link',
-        from: `${kind}:${name}`,
-        to: `dept:${scope.dept}`,
-        link: 'IN_DEPT',
-      });
-    }
-    return m;
-  };
 
   for (const [dir, kind] of Object.entries(KINDS)) {
     const abs = join(logsDir, dir);
@@ -316,44 +384,18 @@ export function buildLogBatch(logsDir, scope = {}) {
           );
     for (const f of listing.sort()) {
       const path = join(abs, f);
-      const t = readFileSync(path, 'utf8');
       stats.files++;
       stats.byKind[kind] = (stats.byKind[kind] ?? 0) + 1;
-      const slug = f.replace(/\.md$/, '').replace(/\//g, '-');
-      const title = (t.match(/^#\s*(.+)$/m) || [null, slug])[1].trim();
-      // Only 34/123 carry a `**Date:**`; the rest are untracked so git has no
-      // creation date either — fall back to the file's own mtime.
-      const date = normDate(field(t, 'Date')) || statSync(path).mtime.toISOString().slice(0, 10);
-      if (normDate(field(t, 'Date'))) stats.withDate++;
-      // Full body — these files are gitignored, so the graph is the ONLY copy;
-      // truncating would destroy the evidence it exists to preserve. (An earlier
-      // cut extracted just the Summary/Verdict/Root-cause section.)
-      const rationale = t.trim();
-
-      const muts = [
-        {
-          op: 'upsert_element',
-          kind,
-          name: slug,
-          props: { title: title.slice(0, 160), path: `${logsRel}/${dir}/${f}`, date },
-        },
-        { op: 'upsert_element', kind: 'area', name: kind },
-        { op: 'add_link', from: `${kind}:${slug}`, to: `area:${kind}`, link: 'ABOUT' },
-        ...scopeMuts(slug, kind),
-      ];
-      // Evidence edges — a review/RCA that cites a DDR is evidence ABOUT it.
-      const cited = new Set([...t.matchAll(/DDR-(\d+)/g)].map((m) => m[1].padStart(3, '0')));
-      for (const num of cited) {
-        muts.push({ op: 'upsert_element', kind: 'decision', name: `DDR-${num}` });
-        muts.push({
-          op: 'add_link',
-          from: `${kind}:${slug}`,
-          to: `decision:DDR-${num}`,
-          link: 'EVIDENCE_FOR',
-        });
-        stats.cited++;
-      }
-      decisions.push({ title, date, rationale, mutations: muts });
+      // Slug is derived from the path RELATIVE to the kind dir, so a nested
+      // `archive/foo.md` stays `archive-foo` — buildLogDecision's basename-only
+      // default would collapse it onto a sibling. Everything else is shared.
+      const built = buildLogDecision(path, kind, scope, {
+        pathRel: `${logsRel}/${dir}/${f}`,
+        slug: f.replace(/\.md$/, '').replace(/\//g, '-'),
+      });
+      if (built.hasExplicitDate) stats.withDate++;
+      stats.cited += built.citedCount;
+      decisions.push(built.decision);
     }
   }
   return { batch: { decisions }, stats };

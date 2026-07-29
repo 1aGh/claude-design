@@ -92,6 +92,14 @@ The wrapper calls `bun run handoff.ts --emit <canvas> <designRoot>`. The script:
 ### 5. Follow-up steps
 
 - If the sidecar emits successfully + the component runs in a scratch project → save the path to `_history/<slug>/handoff/<NNN>-registry.json.md` as a log.
+- **Record the handoff in the graph (kgai — when active).** A handoff is the moment a canvas stops being a mock and becomes a production contract — worth remembering, and `_history/**` is gitignored so the log alone won't carry it:
+
+  ```bash
+  maude kg record-log --file "<designRoot>/_history/<slug>/handoff/<NNN>-registry.json.md" \
+    --kind handoff --about "canvas:<slug>" --link HANDED_OFF
+  ```
+
+  Silent no-op when the graph is inactive; run it unconditionally. Skip it when the handoff failed its blocker gate — record what shipped, not what was attempted. Contract: **`flow:kgai-backend`**.
 - For a multi-canvas batch handoff: loop over `_active.json.open_tabs` or `find .design/ui -name '*.tsx'`.
 
 ## What handoff DOES / DOES NOT do

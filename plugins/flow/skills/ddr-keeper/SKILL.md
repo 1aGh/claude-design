@@ -46,7 +46,9 @@ A decision is DDR-worthy if any of:
    - `Revisit when` — a concrete trigger condition for re-evaluation, not "if we have problems"
 4. **Canvas reference (UI-affecting DDRs)** — see below.
 5. **Cross-link** — back-link DDR from active plan and from commit message that implements it.
-6. **Index** — append to `.ai/decisions/README.md`.
+6. **Index** — where the index lives depends on the backend (`maude kg resolve --json`; contract in **`flow:kgai-backend`**):
+   - **graph inactive** (default) → append to the decisions README, resolved as `.ai/archive/decisions/README.md` when that directory exists, else `.ai/decisions/README.md`. A repo that has migrated moves its DDR prose under `.ai/archive/`, and appending to the old path silently recreates a second, half-empty index beside the real one.
+   - **graph active** → **there is no README to append to.** The graph *is* the index: `maude kg search "<topic>"` answers what the README was for, and `/flow:record-ddr` already ingested the decision with its `SUPERSEDES`/`EXTENDS`/`REFERENCES` edges. Maintaining a parallel markdown index just gives the next reader two sources that disagree.
 
 ## Canvas reference for UI-affecting decisions
 

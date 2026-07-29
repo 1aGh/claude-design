@@ -120,6 +120,18 @@ EOF
 
 `draw-critic` is an **independent judge** (reads the same `_draw-design-rules.md`, but hasn't seen draw-agent's self-assessment). When its verdict disagrees (finds a HARD fail the agent declared a pass) → surface it and propose one corrective round via `draw-agent`.
 
+### 4.5 Record the mark (kgai — when active)
+
+A mark that survived the proof ladder and the rubric is a design decision, not just a file — and the *reasoning* (which of the N candidates won, and on which rubric axes) lives nowhere on disk once `_draw/` is swept.
+
+Load **`flow:kgai-backend`**; when `maude kg resolve --json` reports `active` (skip silently otherwise — net-new capture, no classic path to preserve):
+
+```bash
+echo '{"decision":{"title":"Mark: <slug>","rationale":"<what was drawn, which candidate won and why, critic verdict + any accepted rubric trade-off>","date":"<YYYY-MM-DD>","mutations":[{"op":"upsert_element","kind":"draw","name":"<slug>","props":{"path":"<output_path>","type":"<logo|icon|illustration|diagram|spot>","mode":"<asset|inline>"}}]}}' | maude kg ingest --root "$CLAUDE_PROJECT_DIR"
+```
+
+In `--inline` mode also link it to the canvas it landed in — add `{"op":"add_link","from":"draw:<slug>","to":"canvas:<canvas-slug>","link":"DRAWN_FOR"}` to `mutations`. Record only a mark that **passed** (or that the user explicitly accepted over a critic objection — say so in the rationale); discarded candidates are noise.
+
 ### 5. Report + docs refresh
 
 - Print the output report (below).

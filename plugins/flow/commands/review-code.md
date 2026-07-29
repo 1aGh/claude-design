@@ -154,6 +154,17 @@ After simplifier pass:
 
 Re-read the simplified diff (`git diff`) and check for any new findings the simplifier introduced (rare with opus-backed simplifier, but possible). Update the review report verdict if needed.
 
+## 7.5. Record the verdicts in the graph (kgai — when active)
+
+`.ai/logs/**` is **gitignored**, so the review and the two security reports exist only on this machine — while the branch they judged goes to everyone. When the graph is active, record each file that was actually written:
+
+```bash
+maude kg record-log --file ".ai/logs/code-reviews/<branch-name>.md"
+maude kg record-log --file ".ai/logs/security-reviews/<branch>-<ts>.md"   # if step 4 wrote one
+```
+
+The verb gates itself and is a **silent no-op when the graph is inactive** — run it unconditionally; the classic `.ai/` path is unchanged. They land as `code-review:<slug>` / `security-review:<slug>` with the full body and `EVIDENCE_FOR` edges to every cited `DDR-NNN`. Run it **after** the simplifier recheck (step 7) so the recorded verdict is the final one, not the pre-simplifier draft. Contract: **`flow:kgai-backend`**.
+
 ## 8. Post-Review
 
 - **PASS**: Ask "Ready to commit?"

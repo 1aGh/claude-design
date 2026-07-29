@@ -147,6 +147,16 @@ If FAIL: prompt _"Found <N> blockers. Should I open the report and propose fixes
 - Re-scan history. Diff scope is the active change (or `--since <ref>` if supplied).
 - Block on warnings alone. The floor is the floor.
 
+## Record it in the graph (kgai — when active)
+
+`.ai/logs/**` is **gitignored** — so a security verdict, the artifact most worth inheriting, is the one that travels least. When the graph is active, record the merged report right after writing it:
+
+```bash
+maude kg record-log --file ".ai/logs/security-reviews/<branch>-<YYYYMMDD-HHMM>.md"
+```
+
+The verb gates itself and is a **silent no-op when the graph is inactive** — run it unconditionally; the classic `.ai/` path is unchanged. It lands a `security-review:<slug>` node with the full body and `EVIDENCE_FOR` edges to every cited `DDR-NNN`, so a later "has this attack surface been reviewed before?" is one `maude kg search` away. Record the **merged** report only — the per-agent defender/attacker drafts are inputs, not verdicts. Contract: **`flow:kgai-backend`**.
+
 ## Reusing a fresh report
 
 If `.ai/logs/security-reviews/<branch>-*.md` exists for the current HEAD SHA (within the last hour and HEAD unchanged), reuse it instead of re-running. `/flow:review-code` and `/flow:validate` step 6.5 honor the same reuse window.

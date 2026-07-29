@@ -60,3 +60,13 @@ For each divergence:
 - Plan improvements
 - Execute improvements
 - Rules updates
+
+## Record it in the graph (kgai — when active)
+
+`.ai/logs/**` is **gitignored**, so when the knowledge graph is active it is the only copy of this report that outlives this machine. Immediately after writing the file:
+
+```bash
+maude kg record-log --file ".ai/logs/execution-reports/<feature-name>.md"
+```
+
+The verb gates itself and is a **silent no-op when the graph is inactive** — run it unconditionally; the classic `.ai/` path is unchanged. It lands an `execution-report:<slug>` node with the full body and an `EVIDENCE_FOR` edge to every `DDR-NNN` cited, matching the shape `maude kg import` produced. Contract: **`flow:kgai-backend`**.

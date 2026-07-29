@@ -139,6 +139,16 @@ Save to: `.ai/logs/rca/issue-$ARGUMENTS.md` — the `issue-` filename prefix is 
 Low / Medium / High
 ```
 
+## Record it in the graph (kgai — when active)
+
+`.ai/logs/**` is **gitignored**. When the knowledge graph is active it is therefore the only copy of this RCA that ever reaches a teammate, a fresh clone, or a future session — the file on disk dies with this machine. Immediately after writing the report:
+
+```bash
+maude kg record-log --file ".ai/logs/rca/issue-$ARGUMENTS.md"
+```
+
+That is the whole step. The verb gates itself against `maude kg resolve` and is a **silent no-op when the graph is inactive**, so run it unconditionally — the classic `.ai/` path stays byte-for-byte unchanged. It lands an `rca:<slug>` node carrying the full report body, plus an `EVIDENCE_FOR` edge to every `DDR-NNN` the RCA cites, shaped identically to RCAs that arrived via `maude kg import`. Re-running on an edited report is safe (identity is `hash(kind:name)`; props merge). Contract: **`flow:kgai-backend`**.
+
 After saving the RCA, ask:
 
 > **RCA documented. Ready to implement the fix?** I can run `/flow:bug-fix $ARGUMENTS` to start.

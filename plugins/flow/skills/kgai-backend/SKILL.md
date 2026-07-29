@@ -108,6 +108,25 @@ echo '{
 - Cross-ref extraction (SUPERSEDES / OVERRIDES / REFERENCES / EXTENDS) follows the marker table in `cli/lib/ddr-to-kgai.mjs` (typed edges first, then bare `DDR-\d+` mentions as weak deduped `references`).
 - `--dry-run` prints the deterministic ids + `shapes` without writing — use it to preview a batch.
 
+### WRITE — `kg record-log` (a verdict FILE becomes a node — one line)
+
+A hand-built `kg ingest` envelope is right for a *decision you are composing*. For a **verdict already written to a file** — an RCA, a code/security review, an a11y or visual audit, a critique panel, a keeper report — use the dedicated verb instead:
+
+```bash
+maude kg record-log --file ".ai/logs/rca/issue-123.md"                     # kind inferred from the dir
+maude kg record-log --file "<designRoot>/_history/<slug>/critique/003-PANEL.md" \
+  --kind critic-verdict --about "canvas:<slug>" --link EVALUATES           # design: attach to the canvas
+```
+
+Why a verb and not a JSON blob per command:
+
+- **It shares the importer's builder**, so a verdict recorded today is shaped exactly like the ones `maude kg import` migrated — same slug rule, same `{title, path, date}` props, same `ABOUT`/`IN_REPO`/`IN_DEPT` edges, same `EVIDENCE_FOR` edge per cited `DDR-NNN`. Two hand-rolled shapes would fork the corpus and `kg search` would return half an answer.
+- **It gates itself** — a silent no-op when the graph is inactive, so a command calls it unconditionally instead of re-deriving the capability check.
+- **It never fails the caller.** An ingest error warns; the file is still on disk. Memory must not break real work.
+- **It guards slug collisions.** Identity is `hash(kind:name)`, so with `--about` it qualifies the slug with the element name (`settings-001-PANEL`). Without that, two canvases' `001-PANEL.md` collapse into one node and the second **silently overwrites** the first — measured, not theoretical.
+
+**This is what keeps the graph from decaying.** `.ai/logs/**` and `<designRoot>/_history/**` are **gitignored**: for those verdicts the graph is the only inheritable copy. A migration that ingests history but leaves nothing feeding it goes stale from the day it finishes.
+
 ### SYNC — `kg sync`
 
 ```
@@ -131,7 +150,10 @@ kgai is schema-free; a "kind" is just a string. This glossary is the shared voca
 | `edit:<slug>-NNN` | `/design:edit` | `MUTATES` → canvas (verbatim feedback prop) |
 | `footage:<sha8>` | `footage-store.ts` server write (`PUT /_api/footage`) | `FROM` → asset; child `shot:` |
 | `reel:<slug>` | `footage-store.ts` (EDL sidecar) | `USES` → footage; `RENDERS_AS` → video-comp canvas |
-| `critic-verdict:` / `keeper-finding:` / `draw:` / `handoff:` / `board:` | design critic/keeper/draw/handoff/board | `EVALUATES`/`FLAGS`/`DRAWN_FOR` → canvas |
+| `rca:` / `code-review:` / `security-review:` / `system-review:` / `execution-report:` / `a11y-audit:` / `visual-review:` | `/flow:bug-rca`, `review-code`, `validate-security`, `record-retro`, `record-execution`, `validate-a11y`, `validate-visual` — via `kg record-log` | `ABOUT` → `area:<kind>`; `EVIDENCE_FOR` → each cited decision |
+| `critic-verdict:` / `keeper-finding:` / `handoff:` | `/design:critic`, `design-system-keeper`, `/design:handoff` — via `kg record-log --about canvas:<slug>` | `EVALUATES` / `FLAGS` / `HANDED_OFF` → canvas |
+| `draw:` / `board:` | `/design:draw`, `/design:board` (board only when a session settled something) | `DRAWN_FOR` / `ANNOTATES` → canvas |
+| `direction:<ds>-locked` | `/design:setup-ds` LOCK gate (DDR-147) | `ds:` —`LOCKED_TO`→ direction |
 
 **Server-write nuance:** kgai's autonomous Stop hook counts **edit-tool** uses (`Edit`/`Write`/`MultiEdit`), so it catches a model-written `.tsx`/`.meta.json` but **NOT** a dev-server-written sidecar (`PUT /_api/footage`, photo-edit). Those need an explicit emit at the server write path (one site, covers UI + CLI + agent callers).
 
