@@ -42,20 +42,50 @@ export function validateWorkspaceConfig(raw = {}) {
   const errors = [];
   const cfg = { ...raw };
 
+  // Local mode serves plain HTTP and never talks to Let's Encrypt, so an ACME
+  // contact is meaningless there. Requiring one anyway is how a verification
+  // suite ends up needing a purchased domain before it can run even once.
+  cfg.local = raw.local === true;
+
   cfg.domain = String(raw.domain ?? '')
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, '')
     .replace(/\/.*$/, '');
+
+  // A local workspace defaults to `localhost` and MUST stay a genuine loopback
+  // NAME, not merely a name that happens to resolve to 127.0.0.1.
+  //
+  // The first cut used `ws.127.0.0.1.nip.io` to satisfy the fully-qualified
+  // rule. It resolved fine and the whole stack came up — and then the studio's
+  // sync agent refused to connect, because its plaintext guard allowlists
+  // loopback names literally. That guard is RIGHT: `127.0.0.1.nip.io` is a
+  // name somebody else registers and controls, so "it resolves to loopback
+  // today" is a promise a third party can withdraw. Pattern-matching an
+  // embedded IP would have opened exactly that hole (`127.0.0.1.evil.com`).
+  //
+  // So the fix belongs here, not in the guard: local mode uses names that ARE
+  // loopback by specification — `localhost` and, per RFC 6761, anything under
+  // `.localhost`.
+  if (cfg.local && !cfg.domain) cfg.domain = 'localhost';
+
+  const isLoopbackName = cfg.domain === 'localhost' || cfg.domain.endsWith('.localhost');
   if (!cfg.domain) errors.push('domain is required (the public hostname, e.g. design.acme.com)');
-  else if (!DOMAIN_RE.test(cfg.domain))
+  else if (cfg.local && isLoopbackName) {
+    // `localhost` has no dot, and that is the point — skip the FQDN rule.
+  } else if (!DOMAIN_RE.test(cfg.domain))
     errors.push(`domain "${cfg.domain}" is not a valid hostname`);
   else if (!cfg.domain.includes('.')) errors.push('domain must be fully qualified');
 
-  // Local mode serves plain HTTP and never talks to Let's Encrypt, so an ACME
-  // contact is meaningless there. Requiring one anyway is how a verification
-  // suite ends up needing a purchased domain before it can run even once.
-  cfg.local = raw.local === true;
+  // A name that only LOOKS local is the trap: it passes every check here and
+  // then fails at the one place that matters, after the operator has already
+  // been told the workspace is up.
+  if (cfg.local && !isLoopbackName) {
+    errors.push(
+      `--local requires a loopback name (localhost or *.localhost); "${cfg.domain}" is not one — ` +
+        'a name that merely resolves to 127.0.0.1 is controlled by whoever owns the domain'
+    );
+  }
 
   cfg.acmeEmail = String(raw.acmeEmail ?? '').trim();
   if (!cfg.acmeEmail) {

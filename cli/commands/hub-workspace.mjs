@@ -46,7 +46,9 @@ export function usage() {
   --s3-secret-access-key SECRET
   --s3-region REGION       default "auto"
   --dev-minio              run a local MinIO under the compose 'dev' profile
-  --local                  TESTING: serve plain HTTP, no certificate, no ACME.
+  --local                  TESTING: serve plain HTTP on localhost, no
+                           certificate, no ACME. --domain defaults to
+                           "localhost" and must stay a loopback NAME.
                            Lets you exercise the whole stack — and every
                            verification step — on a laptop, with no domain and
                            no paid account. Never serve a real workspace this
@@ -191,6 +193,14 @@ export async function run({ args, pkgRoot }) {
     process.exit(1);
   }
 
+  // `compose up -d` returns when the containers are STARTED, not when they are
+  // SERVING. Verifying immediately reported "the workspace answers — ✗
+  // unreachable" against a stack that was healthy three seconds later: a false
+  // failure, which corrodes trust in the suite exactly as fast as a false pass.
+  // Bounded, and it gives up rather than waiting forever — a stack that never
+  // comes up must still be reported.
+  await waitForHealth(workspaceBaseUrl(config));
+
   // Verification is the deliverable. A URL printed without a proven round-trip
   // tells the operator something this command does not know.
   process.stdout.write('\nVerifying — this is the part that matters:\n');
@@ -274,6 +284,29 @@ function sh(cmd, args, opts = {}) {
     child.on('error', () => resolvePromise({ code: 127, stdout, stderr: 'spawn failed' }));
     child.on('close', (code) => resolvePromise({ code: code ?? 1, stdout, stderr }));
   });
+}
+
+/**
+ * Poll `/health` until the stack is serving, or give up.
+ *
+ * Deliberately silent on success and NEVER fatal: if the wait expires, the
+ * verification steps run anyway and report the real failure. This function
+ * removes a timing artefact; it must not become a second place that decides
+ * whether the deployment is good.
+ */
+async function waitForHealth(base, { timeoutMs = 45_000, intervalMs = 1_000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let announced = false;
+  while (Date.now() < deadline) {
+    const res = await tryFetch(`${base}/health`);
+    if (res.ok) return true;
+    if (!announced) {
+      process.stdout.write('Waiting for the stack to answer…\n');
+      announced = true;
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return false;
 }
 
 async function which(bin) {

@@ -232,19 +232,23 @@ test('object storage adds the never-expire duty; dev MinIO adds its own warning'
 // wire — so every test below is about keeping that mode unmistakable and
 // impossible to reach by accident.
 
+const LOCAL = { ...BASE, domain: 'localhost', local: true };
+
 test('local mode drops the certificate, so it must NOT be reachable by default', () => {
   assert.equal(ok(BASE).local, false, 'absent flag is off');
+  // A non-boolean must not switch it on — and then the config is a PRODUCTION
+  // one, so it needs a production domain.
   assert.equal(ok({ ...BASE, local: 'yes' }).local, false, 'only a real boolean turns it on');
-  assert.equal(ok({ ...BASE, local: true }).local, true);
+  assert.equal(ok(LOCAL).local, true);
 });
 
 test('local mode serves http, production serves https — one definition', () => {
   assert.equal(workspaceBaseUrl(ok(BASE)), 'https://design.acme.com');
-  assert.equal(workspaceBaseUrl(ok({ ...BASE, local: true })), 'http://design.acme.com');
+  assert.equal(workspaceBaseUrl(ok(LOCAL)), 'http://localhost');
   // The verification plan must agree, or a local run fails every check for a
   // reason that has nothing to do with the workspace.
-  const step = verificationPlan(ok({ ...BASE, local: true })).find((s) => s.id === 'health');
-  assert.match(step.detail, /http:\/\/design\.acme\.com/);
+  const step = verificationPlan(ok(LOCAL)).find((s) => s.id === 'health');
+  assert.match(step.detail, /http:\/\/localhost/);
   assert.ok(!step.detail.includes('https://'));
 });
 
@@ -253,7 +257,7 @@ test('an ACME contact is required for a real deployment and pointless locally', 
   assert.equal(real.ok, false);
   assert.ok(real.errors.some((e) => /acmeEmail is required/.test(e)));
 
-  const local = validateWorkspaceConfig({ ...BASE, acmeEmail: undefined, local: true });
+  const local = validateWorkspaceConfig({ ...LOCAL, acmeEmail: undefined });
   assert.equal(local.ok, true, 'no certificate is fetched, so no contact is needed');
 });
 
@@ -261,7 +265,7 @@ test('the local Caddyfile turns automatic HTTPS off explicitly', () => {
   // `tls internal` would mint a cert from a CA nothing trusts, so every check
   // would fail on certificate validation instead. An `http://` site address is
   // the only form that disables it outright.
-  const local = renderCaddyfile(ok({ ...BASE, local: true }));
+  const local = renderCaddyfile(ok(LOCAL));
   assert.match(local, /^http:\/\/\{\$PUBLIC_DOMAIN\} \{/m);
   assert.ok(!local.includes('{$ACME_EMAIL}'), 'no ACME block in local mode');
   assert.match(local, /LOCAL TESTING ONLY/);
@@ -279,9 +283,9 @@ test("the hub's own plaintext refusal is lifted ONLY in local mode", () => {
   // else, because that refusal is the thing protecting real deployments.
   const keys = (cfg) => envEntries(cfg, { hubSecret: 'x', adminPassword: 'y' }).map((e) => e.key);
   assert.ok(!keys(ok(BASE)).includes('HUB_INSECURE_HTTP'));
-  assert.ok(keys(ok({ ...BASE, local: true })).includes('HUB_INSECURE_HTTP'));
+  assert.ok(keys(ok(LOCAL)).includes('HUB_INSECURE_HTTP'));
 
-  const entry = envEntries(ok({ ...BASE, local: true }), {
+  const entry = envEntries(ok(LOCAL), {
     hubSecret: 'x',
     adminPassword: 'y',
   }).find((e) => e.key === 'HUB_INSECURE_HTTP');
@@ -290,7 +294,7 @@ test("the hub's own plaintext refusal is lifted ONLY in local mode", () => {
 });
 
 test('the compose file matches the scheme it is actually serving', () => {
-  const local = renderCompose(ok({ ...BASE, local: true }));
+  const local = renderCompose(ok(LOCAL));
   assert.match(local, /HUB_PUBLIC_URL: http:\/\/\$\{PUBLIC_DOMAIN\}/);
   assert.ok(!local.includes('"443:443"'), 'nothing terminates TLS, so nothing binds 443');
   assert.match(local, /HUB_INSECURE_HTTP/, 'and the variable reaches the container');
@@ -309,4 +313,35 @@ test('the admin PASSWORD reaches the container, not just the address', () => {
   const compose = renderCompose(ok(BASE));
   assert.match(compose, /MAUDE_ADMIN_EMAIL/);
   assert.match(compose, /MAUDE_ADMIN_PASSWORD/);
+});
+
+test('local mode defaults to localhost and REFUSES a merely-resolving name', () => {
+  // The bug this pins: the first cut used `ws.127.0.0.1.nip.io` to satisfy the
+  // fully-qualified rule. Everything came up, and then the studio sync agent
+  // refused to connect — its plaintext guard allowlists loopback names
+  // literally, and it is right to: `127.0.0.1.nip.io` is registered and
+  // controlled by a third party, so "resolves to loopback" is a promise that
+  // can be withdrawn. Accepting it here would have pushed the failure to the
+  // one place that matters, after the operator was told the workspace was up.
+  const defaulted = ok({ ...BASE, domain: undefined, local: true });
+  assert.equal(defaulted.domain, 'localhost');
+
+  const sub = validateWorkspaceConfig({ ...BASE, domain: 'ws.localhost', local: true });
+  assert.equal(sub.ok, true, 'RFC 6761 reserves everything under .localhost');
+
+  const fake = validateWorkspaceConfig({ ...BASE, domain: 'ws.127.0.0.1.nip.io', local: true });
+  assert.equal(fake.ok, false);
+  assert.ok(fake.errors.some((e) => /loopback name/.test(e)));
+  assert.ok(
+    fake.errors.some((e) => /controlled by whoever owns the domain/.test(e)),
+    'the error says WHY, or the next person picks another nip.io'
+  );
+});
+
+test('`localhost` has no dot, and only local mode is allowed to skip the FQDN rule', () => {
+  assert.equal(validateWorkspaceConfig({ ...BASE, domain: 'localhost', local: true }).ok, true);
+
+  const production = validateWorkspaceConfig({ ...BASE, domain: 'localhost' });
+  assert.equal(production.ok, false, 'a real deployment still needs a fully-qualified name');
+  assert.ok(production.errors.some((e) => /not a valid hostname|fully qualified/.test(e)));
 });
