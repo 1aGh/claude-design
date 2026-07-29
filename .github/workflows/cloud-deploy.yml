@@ -1,0 +1,87 @@
+name: Cloud control plane
+
+# Deploys apps/cloud (the Maude Cloud control-plane Worker) to Cloudflare.
+#
+# TESTS GATE THE DEPLOY, in one job, on purpose: a separate "test" job that a
+# deploy job merely `needs:` can still race a re-run, and this Worker owns
+# every customer's billing state. It deploys only when the tests that just ran
+# in this job passed.
+#
+# Migrations are NOT run here. `worker.mjs`'s scheduled handler applies pending
+# migrations before each reconcile sweep, so a deploy that ships a schema change
+# converges within the hour — and the same code path runs whether the deploy
+# came from CI or a laptop. A second migration runner in CI would be a second
+# place that can disagree with production.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/cloud/**'
+      - '.github/workflows/cloud-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Render and validate only — do not deploy'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never let two deploys of the same Worker overlap; a superseded run is
+  # cancelled rather than queued, because only the newest commit matters.
+  group: cloud-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Test + deploy maude-cloud
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          # node:sqlite (used by the tests to stand in for the D1 binding) and
+          # node --test both need a current Node; the Worker itself runs on
+          # workerd and takes nothing from here.
+          node-version: '24'
+
+      - name: Test (node:test)
+        working-directory: apps/cloud
+        run: node --test "*.test.mjs"
+
+      - name: Validate the Worker build
+        working-directory: apps/cloud
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 deploy --dry-run
+
+      - name: Deploy
+        if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
+        working-directory: apps/cloud
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 deploy
+
+      - name: Verify the deployment answers
+        if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
+        # A deploy that returns 0 has uploaded a script; it has not proven the
+        # thing serves. Poll /health until it reports its own version AND that
+        # D1 is reachable — the two failure modes a bad deploy actually has.
+        run: |
+          URL="${{ vars.CLOUD_HEALTH_URL || 'https://maude-cloud.maude1agh.workers.dev' }}/health"
+          for i in $(seq 1 20); do
+            BODY=$(curl -fsS --max-time 10 "$URL" || true)
+            echo "attempt $i: ${BODY:-<no response>}"
+            case "$BODY" in
+              *'"ok":true'*'"d1":"ok"'*) echo "verified"; exit 0 ;;
+            esac
+            sleep 6
+          done
+          echo "::error::/health never reported ok+d1 after the deploy"
+          exit 1
