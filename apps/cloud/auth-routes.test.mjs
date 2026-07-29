@@ -11,6 +11,7 @@ import { d1FromSqlite } from './db.mjs';
 import { verifyGrant } from './grants.mjs';
 import { applySchema } from './migrate.mjs';
 import { allCustomerFacingHtml } from './pages.mjs';
+import { SCHEMA_SQL } from './schema.mjs';
 import worker from './worker.mjs';
 
 const PASSWORD = 'a-long-enough-password';
@@ -18,7 +19,7 @@ const PASSWORD = 'a-long-enough-password';
 async function freshEnv(extra = {}) {
   const sqlite = new DatabaseSync(':memory:');
   const DB = d1FromSqlite(sqlite);
-  await applySchema(DB);
+  await applySchema(DB, SCHEMA_SQL);
   return { env: { DB, GRANT_SIGNING_SECRET: 'grant-secret', ...extra }, sqlite };
 }
 

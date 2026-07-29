@@ -30,6 +30,7 @@ import {
 } from './db.mjs';
 import { applySchema } from './migrate.mjs';
 import { settle } from './reconcile.mjs';
+import { SCHEMA_SQL } from './schema.mjs';
 import { projectRefFromEvent, verifyStripeSignature } from './stripe-webhook.mjs';
 
 export const WORKER_VERSION = 'phase-13';
@@ -111,7 +112,7 @@ export default {
     // the code expected v2 — every signup 400'd on a missing column, and the
     // friendly error message hid it.
     try {
-      await applySchema(env.DB);
+      await applySchema(env.DB, SCHEMA_SQL);
     } catch (err) {
       console.error(`[migrate] failed: ${err.message}`);
       return; // never reconcile against a schema we could not establish

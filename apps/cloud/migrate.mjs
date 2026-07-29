@@ -1,21 +1,22 @@
-// Schema migration — Cloud Phase 12.
+// Schema migration — Cloud Phase 12/13.
 //
-// schema.sql is IF-NOT-EXISTS throughout, so "migrate" is "apply it again":
-// proven idempotent against the live D1 (applied 2026-07-28, re-run 2026-07-29
-// with changed_db:false on every statement). This module exists so tests, the
-// local sqlite tools and any future runner all split the file the same way —
-// a second, slightly different splitter is how statement 7 silently never runs.
+// PURE: takes the schema TEXT, never reads a disk. That is not tidiness — a
+// `readFileSync` here made the Worker unpublishable (`No such module
+// "node:fs"`), and the failure was invisible locally because the deploy
+// output was being grepped for a success line. CI caught it; the decision
+// layer taking data instead of fetching it is what makes that fixable in one
+// place (DDR-196 §1).
+//
+// Who supplies the text:
+//   - the Worker: `import schemaSql from './schema.sql'` via wrangler's Text
+//     rule, so `schema.sql` stays the single source of truth;
+//   - Node tests and local tools: `readSchemaSql()` below, which is the only
+//     thing in this file that touches a filesystem and is never imported by
+//     the Worker.
 
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const here = dirname(fileURLToPath(import.meta.url));
-
-/** schema.sql as an ordered list of executable statements. */
-export function schemaStatements() {
-  const raw = readFileSync(join(here, 'schema.sql'), 'utf8');
-  return raw
+/** Split schema text into executable statements. One splitter, one behaviour. */
+export function schemaStatements(sql) {
+  return String(sql)
     .replace(/--[^\n]*/g, '') // comments carry no semantics for the engine
     .split(';')
     .map((s) => s.trim())
@@ -56,8 +57,9 @@ export const MIGRATIONS = [
 ];
 
 /** Apply baseline + pending versioned migrations. Safe to run repeatedly. */
-export async function applySchema(db) {
-  for (const sql of schemaStatements()) {
+export async function applySchema(db, schemaSql) {
+  if (!schemaSql) throw new Error('applySchema needs the schema text (see readSchemaSql)');
+  for (const sql of schemaStatements(schemaSql)) {
     await db.prepare(sql).run();
   }
   for (const m of MIGRATIONS) {
@@ -73,5 +75,19 @@ export async function applySchema(db) {
       .run();
   }
   const row = await db.prepare('SELECT MAX(version) AS v FROM schema_migrations').first();
-  return { version: row?.v ?? null, statements: schemaStatements().length };
+  return { version: row?.v ?? null, statements: schemaStatements(schemaSql).length };
+}
+
+/**
+ * Read `schema.sql` from disk — NODE ONLY.
+ *
+ * Deliberately a dynamic import of `node:fs`, so bundling this module for the
+ * Worker cannot pull the module in. The Worker never calls this; it imports
+ * the .sql as text.
+ */
+export async function readSchemaSql() {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  return readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'schema.sql'), 'utf8');
 }

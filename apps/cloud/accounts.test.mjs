@@ -16,12 +16,13 @@ import {
 } from './accounts.mjs';
 import { d1FromSqlite } from './db.mjs';
 import { applySchema } from './migrate.mjs';
+import { SCHEMA_SQL } from './schema.mjs';
 
 const PASSWORD = 'a-long-enough-password';
 
 async function freshDb() {
   const db = d1FromSqlite(new DatabaseSync(':memory:'));
-  await applySchema(db);
+  await applySchema(db, SCHEMA_SQL);
   return db;
 }
 
