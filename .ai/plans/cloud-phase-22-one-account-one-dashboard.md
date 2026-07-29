@@ -31,9 +31,18 @@
   every state including the unhappy ones. Server-rendered, no script — this is
   the page somebody opens because something is wrong. Live and verified.
   Per-project detail panels (people, billing, sharing) are linked but not built.
-- [~] T5 — membership is now a control-plane fact (`project_members`, schema
-  v4) and roles have one capability table. The invite/remove surface and
-  session revocation are not built.
+- [~] T5 — membership is a control-plane fact (`project_members`, schema v4),
+  roles have one capability table, and the RULES for changing membership are
+  decided and tested (`membership.mjs`): only an owner changes access, the
+  owner cannot be removed or demoted here (that is a transfer), and a
+  DEMOTION revokes as surely as a removal does. The invite/remove HTTP surface
+  is not built.
+
+  The honest limit is written into the module rather than discovered later: a
+  project token is verified offline so a control-plane outage cannot lock
+  anyone out, which means an issued token cannot be recalled. Removal is
+  therefore only as fast as the token is short, the confirmation says so in
+  hours, and it offers pausing the project as the immediate answer.
 - [~] T6 — tests: a cloud-mode cell refuses a local password without touching
   the local store; a self-hosted hub is unaffected; a token survives an outage;
   a token for one project is refused by another; a tampered payload fails on
