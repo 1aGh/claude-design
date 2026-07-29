@@ -114,7 +114,10 @@ test('a key that LOOKS like a backup path still cannot reach one', () => {
     parseAssetPath('/assets/backups/20260728T203000Z/hub.db.gz'),
     'backups/20260728T203000Z/hub.db.gz'
   );
-  assert.equal(ASSET_OBJECT_KEY('backups/20260728T203000Z/hub.db.gz'), 'assets/backups/20260728T203000Z/hub.db.gz');
+  assert.equal(
+    ASSET_OBJECT_KEY('backups/20260728T203000Z/hub.db.gz'),
+    'assets/backups/20260728T203000Z/hub.db.gz'
+  );
 });
 
 /** The one place the proxy turns a parsed key into an object key. */

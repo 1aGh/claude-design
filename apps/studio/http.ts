@@ -1515,6 +1515,66 @@ export function createHttp(
       );
     },
 
+    // feature-file-tree-drag-drop-folders (Task 5) — move/rename a canvas.
+    // POST body { file, toDir } -> 200 { fromRel, toRel, fromSlug, toSlug, moved[] }
+    // Same guard stack as /_api/canvas, copied verbatim: MAIN ORIGIN ONLY —
+    // intentionally absent from BOTH startCanvasServer's allowlist and
+    // CANVAS_SAFE_API (DDR-054/DDR-088) — the untrusted canvas iframe origin
+    // must never reach a file-move endpoint. Validation lives in
+    // api.moveCanvas (containment + non-DS-group allowlist + collision +
+    // collab-pin guard).
+    '/_api/fs-move': async (req: Request) => {
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      const body = await readJson<{ file?: unknown; toDir?: unknown }>(req, 4 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.moveCanvas(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        {
+          ok: true,
+          fromRel: result.fromRel,
+          toRel: result.toRel,
+          fromSlug: result.fromSlug,
+          toSlug: result.toSlug,
+          moved: result.moved,
+        },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    // feature-file-tree-drag-drop-folders (Task 5) — create an empty folder.
+    // POST body { parent?, name } -> 201 { dir }. Same guard stack, same
+    // MAIN-ORIGIN-ONLY / dual-allowlist posture as /_api/fs-move above.
+    '/_api/fs-mkdir': async (req: Request) => {
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      const body = await readJson<{ parent?: unknown; name?: unknown }>(req, 4 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.createFolder(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, dir: result.dir },
+        { status: 201, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     // ── Phase 27 (E2) — in-UI git layer. Save version / Publish / Get latest /
     // History / visual diff. All MAIN-ORIGIN ONLY (see gitApi comment above).
     // POST routes add the sameOriginWrite CSRF guard (cross-site forged POST);

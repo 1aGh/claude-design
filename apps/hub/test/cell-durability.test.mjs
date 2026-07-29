@@ -69,12 +69,19 @@ describe('backup targets are tenant-scoped', () => {
     await b.put('backups/g1/hub.db.gz', Buffer.from('beta'));
 
     assert.equal((await a.get('backups/g1/hub.db.gz')).toString(), 'alpha');
-    assert.equal((await b.get('backups/g1/hub.db.gz')).toString(), 'beta', 'no cross-tenant clobber');
+    assert.equal(
+      (await b.get('backups/g1/hub.db.gz')).toString(),
+      'beta',
+      'no cross-tenant clobber'
+    );
     assert.ok(existsSync(join(root, 'tenants/alpha/backups/g1/hub.db.gz')));
 
     // Callers keep working in unprefixed key-space.
     const listed = await a.list('backups/');
-    assert.deepEqual(listed.map((o) => o.key), ['backups/g1/hub.db.gz']);
+    assert.deepEqual(
+      listed.map((o) => o.key),
+      ['backups/g1/hub.db.gz']
+    );
   });
 
   it('an empty prefix is a no-op rather than a stray leading slash', () => {
@@ -222,7 +229,10 @@ describe('a generation carries documents AND the checkout', () => {
 
     const backed = await runBackup({ dataDir, target, repoDir, run: broken });
     assert.equal(backed.repo, null);
-    assert.ok(backed.files.some((f) => f.name === 'hub.db'), 'the documents still made it');
+    assert.ok(
+      backed.files.some((f) => f.name === 'hub.db'),
+      'the documents still made it'
+    );
   });
 });
 
@@ -234,10 +244,14 @@ describe('media is tenant-scoped', () => {
     // If they ever disagree the sweep uploads to one key and the proxy 404s on
     // another — a hosted project with no images and no error anywhere.
     const { assetObjectKey } = await import('../src/asset-key.mjs');
-    assert.equal(assetObjectKey('deadbeef.png', 'tenants/alligators'),
-      'tenants/alligators/assets/deadbeef.png');
-    assert.equal(assetObjectKey('graphics/camo-bg.png', 'tenants/alligators'),
-      'tenants/alligators/assets/graphics/camo-bg.png');
+    assert.equal(
+      assetObjectKey('deadbeef.png', 'tenants/alligators'),
+      'tenants/alligators/assets/deadbeef.png'
+    );
+    assert.equal(
+      assetObjectKey('graphics/camo-bg.png', 'tenants/alligators'),
+      'tenants/alligators/assets/graphics/camo-bg.png'
+    );
   });
 
   it('an unscoped hub keeps the flat layout it has always had', async () => {
@@ -261,9 +275,16 @@ describe('media is tenant-scoped', () => {
   it('refuses a prefix that could reach another tenant', async () => {
     const { assetPrefixFromEnv } = await import('../src/asset-key.mjs');
     for (const bad of ['../other', 'Tenant', 'a b', '*']) {
-      assert.throws(() => assetPrefixFromEnv({ MAUDE_TENANT_PREFIX: bad }), /must be lowercase/, bad);
+      assert.throws(
+        () => assetPrefixFromEnv({ MAUDE_TENANT_PREFIX: bad }),
+        /must be lowercase/,
+        bad
+      );
     }
     assert.equal(assetPrefixFromEnv({}), '');
-    assert.equal(assetPrefixFromEnv({ MAUDE_TENANT_PREFIX: 'tenants/alligators' }), 'tenants/alligators');
+    assert.equal(
+      assetPrefixFromEnv({ MAUDE_TENANT_PREFIX: 'tenants/alligators' }),
+      'tenants/alligators'
+    );
   });
 });

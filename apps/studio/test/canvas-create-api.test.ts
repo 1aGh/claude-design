@@ -7,7 +7,14 @@
 //       covering happy path, the rejection matrix, group allowlist, duplicate.
 
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 import { componentNameFrom, renderBriefBoard, validateCanvasName } from '../canvas-create.ts';
@@ -455,6 +462,36 @@ describe('/_api/canvas — DELETE (soft-delete)', () => {
     }
   });
 
+  // Task 2 bug fix: deleteCanvas now consumes canvas-artifacts.ts's inventory,
+  // which closes two gaps the old hand-rolled sidecar list missed.
+  test('also trashes the .ydoc.bin cache and the footage EDL (bug fix — canvas-artifacts.ts inventory)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const created = await createBoard(port, 'Full Sweep');
+      mkdirSync(join(designRoot, '_state'), { recursive: true });
+      const ydocAbs = join(designRoot, '_state', `${created.slug}.ydoc.bin`);
+      writeFileSync(ydocAbs, Buffer.from([1, 2, 3]));
+      const edlAbs = join(designRoot, `${created.slug}.edl.json`);
+      writeFileSync(edlAbs, JSON.stringify({ beats: [] }));
+
+      const r = await del(port, created.file);
+      expect(r.status).toBe(200);
+      const j = (await r.json()) as { ok: boolean; trashed: string[] };
+      expect(j.trashed.some((t) => t.endsWith('.ydoc.bin'))).toBe(true);
+      expect(j.trashed.some((t) => t.endsWith('.edl.json'))).toBe(true);
+      expect(existsSync(ydocAbs)).toBe(false);
+      expect(existsSync(edlAbs)).toBe(false);
+      const trashDirs = readdirSync(join(designRoot, '_trash'));
+      const td = join(designRoot, '_trash', trashDirs[0] as string);
+      expect(existsSync(join(td, `_state__${created.slug}.ydoc.bin`))).toBe(true);
+      expect(existsSync(join(td, `${created.slug}.edl.json`))).toBe(true);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
   test('refuses to delete a design-system file (400, untouched)', async () => {
     const { root, designRoot } = makeSandbox();
     const port = nextPort();
@@ -502,6 +539,127 @@ describe('/_api/canvas — DELETE (soft-delete)', () => {
     try {
       const r = await del(port, 'ui/../../escape.tsx');
       expect(r.status).toBe(400);
+    } finally {
+      await killProc(proc);
+    }
+  });
+});
+
+// feature-file-tree-drag-drop-folders (dogfood follow-up) — DELETE now
+// auto-detects a non-.tsx target as a folder delete.
+describe('/_api/canvas — DELETE (folder delete, dogfood follow-up)', () => {
+  async function createBoard(port: number, name: string) {
+    const r = await fetch(`http://localhost:${port}/_api/canvas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    return (await r.json()) as { file: string; slug: string };
+  }
+  const del = (port: number, file: string) =>
+    fetch(`http://localhost:${port}/_api/canvas?file=${encodeURIComponent(file)}`, {
+      method: 'DELETE',
+    });
+
+  test('deletes a folder: trashes every nested canvas, folder itself is gone', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const created = await createBoard(port, 'Inside');
+      const moved = await fetch(`http://localhost:${port}/_api/fs-move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: created.file, toDir: 'ui/Box' }),
+      });
+      expect(moved.status).toBe(200);
+      expect(existsSync(join(designRoot, 'ui', 'Box', 'Inside.tsx'))).toBe(true);
+
+      const r = await del(port, 'ui/Box');
+      expect(r.status).toBe(200);
+      const j = (await r.json()) as { ok: boolean; trashed: string[] };
+      expect(j.ok).toBe(true);
+      expect(j.trashed.some((t) => t.endsWith('Inside.tsx'))).toBe(true);
+      expect(existsSync(join(designRoot, 'ui', 'Box'))).toBe(false);
+      const trashDirs = readdirSync(join(designRoot, '_trash'));
+      expect(trashDirs.length).toBe(1);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('deletes an EMPTY folder (mkdir + delete, no canvases inside)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      await fetch(`http://localhost:${port}/_api/fs-mkdir`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parent: 'ui', name: 'Empty' }),
+      });
+      expect(existsSync(join(designRoot, 'ui', 'Empty'))).toBe(true);
+      const r = await del(port, 'ui/Empty');
+      expect(r.status).toBe(200);
+      expect(existsSync(join(designRoot, 'ui', 'Empty'))).toBe(false);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('refuses deleting a canvas GROUP ROOT (400, untouched)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const r = await del(port, 'ui');
+      expect(r.status).toBe(400);
+      expect(existsSync(join(designRoot, 'ui'))).toBe(true);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('refuses deleting a design-system folder (400, untouched)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'system', 'sub'), { recursive: true });
+      const r = await del(port, 'system/sub');
+      expect(r.status).toBe(400);
+      expect(existsSync(join(designRoot, 'system', 'sub'))).toBe(true);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('a missing folder returns 404', async () => {
+    const { root } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const r = await del(port, 'ui/Nope');
+      expect(r.status).toBe(404);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  // Security review finding — see the matching tests in canvas-move-api.test.ts
+  // and fs-mkdir-api.test.ts.
+  test('refuses deleting a symlinked "folder" (would rm -rf outside designRoot)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const outside = join(root, 'OUTSIDE');
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(join(outside, 'Secret.txt'), 'do not delete me');
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      symlinkSync(outside, join(designRoot, 'ui', 'evil'));
+      const r = await del(port, 'ui/evil');
+      expect(r.status).toBe(400);
+      expect(existsSync(join(outside, 'Secret.txt'))).toBe(true);
     } finally {
       await killProc(proc);
     }

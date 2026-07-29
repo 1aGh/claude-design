@@ -284,7 +284,14 @@ export async function pruneOldBackups({ target, keep = DEFAULT_KEEP }) {
  * against a live data directory by mistake is the one operation that can lose
  * more than it recovers.
  */
-export async function restoreLatest({ target, destDir, force = false, which, repoDir = null, run = null }) {
+export async function restoreLatest({
+  target,
+  destDir,
+  force = false,
+  which,
+  repoDir = null,
+  run = null,
+}) {
   const generations = await listBackups(target);
   const latest = which ?? generations[generations.length - 1];
   if (!latest) throw new Error('restoreLatest: no complete backup generation found');

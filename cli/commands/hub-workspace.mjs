@@ -405,7 +405,10 @@ async function verifyGitHistory(outDir) {
       };
     }
     if (err.includes('not a git repository')) {
-      return { ok: false, note: 'the workspace has no checkout — server-side history is not running' };
+      return {
+        ok: false,
+        note: 'the workspace has no checkout — server-side history is not running',
+      };
     }
     if (err.includes('executable file not found') || err.includes('not found')) {
       return { ok: false, note: 'git is missing from the hub image — history cannot be kept' };
@@ -414,7 +417,11 @@ async function verifyGitHistory(outDir) {
   }
   const line = probe.stdout.trim();
   if (!line) {
-    return { ok: false, skipped: true, note: 'the checkout is ready but empty — edit a canvas, then re-run' };
+    return {
+      ok: false,
+      skipped: true,
+      note: 'the checkout is ready but empty — edit a canvas, then re-run',
+    };
   }
   return { ok: true, note: `HEAD by ${line.split(' ').slice(1).join(' ') || 'unknown'}` };
 }
@@ -456,7 +463,8 @@ function s3ConfigFrom(config) {
 async function verifyBucketRoundTrip(config, pkgRoot) {
   if (!config.s3) return { ok: false, skipped: true, note: 'no object storage configured' };
   const s3 = await loadS3(pkgRoot);
-  if (!s3) return { ok: false, skipped: true, note: 'the hub S3 client was not found in this install' };
+  if (!s3)
+    return { ok: false, skipped: true, note: 'the hub S3 client was not found in this install' };
   const cfg = s3ConfigFrom(config);
   const bytes = Buffer.from(`maude workspace-up sentinel\n`);
   const key = `assets/${createHash('sha256').update(bytes).digest('hex').slice(0, 8)}.bin`;
@@ -515,7 +523,11 @@ async function verifyNoLifecycle(config, pkgRoot) {
     if (res.status === 404) return { ok: true, note: 'no lifecycle configuration' };
     if (!res.ok) {
       // Cannot read the config ⇒ cannot claim it is safe. Skipped, never passed.
-      return { ok: false, skipped: true, note: `could not read lifecycle config (HTTP ${res.status})` };
+      return {
+        ok: false,
+        skipped: true,
+        note: `could not read lifecycle config (HTTP ${res.status})`,
+      };
     }
     const xml = await res.text();
     const rules = xml.match(/<Rule>/g)?.length ?? 0;
@@ -528,7 +540,11 @@ async function verifyNoLifecycle(config, pkgRoot) {
       note: `${rules} lifecycle rule(s) on this bucket — confirm none can expire assets/`,
     };
   } catch (err) {
-    return { ok: false, skipped: true, note: `lifecycle check failed: ${err.message.slice(0, 100)}` };
+    return {
+      ok: false,
+      skipped: true,
+      note: `lifecycle check failed: ${err.message.slice(0, 100)}`,
+    };
   }
 }
 

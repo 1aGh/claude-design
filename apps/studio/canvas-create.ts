@@ -37,6 +37,29 @@ export interface NameValidation {
   error?: string;
 }
 
+/**
+ * Folder names reuse `NAME_RE` — the same path/JSX/JSON-safe allowlist as
+ * canvas names. Folder names never reach JSX or a JSON string interpolation,
+ * but sharing the regex keeps one thing to audit rather than two allowlists
+ * that could drift.
+ */
+export function validateFolderName(raw: unknown): NameValidation {
+  if (typeof raw !== 'string') return { ok: false, error: 'name must be a string' };
+  const name = raw.normalize('NFC').trim().replace(/ +/g, ' ');
+  if (!name) return { ok: false, error: 'name is required' };
+  if (name.length > 60) return { ok: false, error: 'name must be 60 characters or fewer' };
+  if (!NAME_RE.test(name)) {
+    return {
+      ok: false,
+      error: 'name may contain only letters, numbers, spaces, hyphens and underscores',
+    };
+  }
+  if (name.includes('..') || name.includes('/') || name.includes('\\') || name.startsWith('.')) {
+    return { ok: false, error: 'name may not contain path separators or leading dots' };
+  }
+  return { ok: true, name };
+}
+
 export function validateCanvasName(raw: unknown): NameValidation {
   if (typeof raw !== 'string') return { ok: false, error: 'name must be a string' };
   // NFC-normalize so a decomposed (NFD) name and its composed sibling can't hash

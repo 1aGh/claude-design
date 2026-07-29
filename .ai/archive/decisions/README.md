@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-200: File-tree move — path-derived canvas slug re-keyed server-side, no stable canvas id](DDR-200-file-tree-move-path-derived-slug-rekey.md) — 2026-07-29, dev-server/file-tree/canvas-lifecycle/slug/collab/security
 - [DDR-199: Tenant cells on Cloudflare — the data plane is its own Worker, and four platform facts that only deploying reveals](DDR-199-cells-on-cloudflare-and-the-four-things-deploying-taught-us.md) — 2026-07-29, cloud/cells/cloudflare/containers/durable-objects/tls/custom-domains/durability/r2/secrets
 - [DDR-198: Server-owned git history — the hub commits, and does it with the desktop's engine](DDR-198-server-owned-git-history-in-the-hub.md) — 2026-07-29, cloud/git/history/workspace-agent/assets/docker/shutdown
 - [DDR-197: Narrowing DDR-192 §4 — a read-only browser surface is permitted; evaluating tenant TSX on vendor compute is not](DDR-197-browser-surface-narrowing-of-ddr-192.md) — 2026-07-29, cloud/containment/browser/share/security/vendor-boundary

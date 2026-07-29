@@ -485,7 +485,9 @@ function archiveMigratedSources(projectRoot, { dryRun = false, today } = {}) {
     const alreadyStub = body.includes('kgai-active repo');
     if (!alreadyStub) {
       const dest = join(arch, 'state', `STATE-pre-kgai-${today}.md`);
-      plan.push(`${statePath.replace(`${projectRoot}/`, '')} → ${dest.replace(`${projectRoot}/`, '')} (+ pointer-stub)`);
+      plan.push(
+        `${statePath.replace(`${projectRoot}/`, '')} → ${dest.replace(`${projectRoot}/`, '')} (+ pointer-stub)`
+      );
       if (!dryRun) {
         mkdirSync(join(arch, 'state'), { recursive: true });
         writeFileSync(dest, body);

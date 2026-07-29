@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-29T17:17:52.591Z",
+  "generated": "2026-07-29T17:30:41.440Z",
   "currentPhase": null,
   "phases": [
     {
@@ -527,6 +527,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan is grounded in a four-agent read of the studio editing subsystems (selection...",
       "planPath": ".ai/plans/archive/feature-element-editing-robustness.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-file-tree-drag-drop-folders",
+      "title": "Feature: File tree — drag & drop move + folder creation",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-file-tree-drag-drop-folders.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1704,17 +1715,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-enhanced-video-editing.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-file-tree-drag-drop-folders",
-      "title": "Feature: File tree — drag & drop move + folder creation",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-file-tree-drag-drop-folders.md",
       "archived": false,
       "phaseKey": null
     },

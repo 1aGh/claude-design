@@ -82,7 +82,10 @@ export async function bundleRepo(repoDir, run, { tmpDir = '/tmp' } = {}) {
  */
 export async function restoreRepo(repoDir, bytes, run, { tmpDir = '/tmp', force = false } = {}) {
   if (existsSync(join(repoDir, '.git')) && !force) {
-    return { state: 'skipped', reason: 'the checkout already exists — refusing to restore over it' };
+    return {
+      state: 'skipped',
+      reason: 'the checkout already exists — refusing to restore over it',
+    };
   }
   const scratch = join(tmpDir, `maude-restore-${process.pid}-${Date.now()}.bundle`);
   try {

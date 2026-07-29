@@ -22,8 +22,8 @@
 // network call, so a hostile key can neither traverse the bucket nor probe for
 // unrelated objects.
 
-import { getObject, headObject } from './s3.mjs';
 import { assetObjectKey, assetPrefixFromEnv } from './asset-key.mjs';
+import { getObject, headObject } from './s3.mjs';
 import { verifyToken } from './tokens.mjs';
 
 /**
@@ -53,7 +53,8 @@ const CONTENT_ADDRESSED = /^[0-9a-f]{8}(?:\.[A-Za-z0-9]{1,8})?$/;
  * What the hash DID buy is cache-safety, and that is handled where it belongs:
  * only content-addressed keys get an immutable cache header (see below).
  */
-const ASSET_KEY = /^(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}){0,4}$/;
+const ASSET_KEY =
+  /^(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}){0,4}$/;
 
 /** Conservative content types, chosen by extension. Never sniffed, never
  *  taken from the client, and never `text/html` — an asset must not be able to
@@ -139,7 +140,10 @@ export async function handleAssetRoute(ctx) {
 
   try {
     if (method === 'HEAD') {
-      const meta = await headObject(s3, assetObjectKey(key, ctx.assetPrefix ?? assetPrefixFromEnv()));
+      const meta = await headObject(
+        s3,
+        assetObjectKey(key, ctx.assetPrefix ?? assetPrefixFromEnv())
+      );
       if (!meta) {
         respond(response, 404, 'not found');
         return true;

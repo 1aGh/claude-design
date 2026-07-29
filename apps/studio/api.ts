@@ -3,10 +3,28 @@
 
 import crypto from 'node:crypto';
 import type { Dirent } from 'node:fs';
-import { lstat, mkdir, readdir, readFile, rename, rm, stat as statp } from 'node:fs/promises';
+import {
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat as statp,
+} from 'node:fs/promises';
 import path from 'node:path';
 import { createAssetMirror, s3ConfigFromEnv } from './assets-s3.ts';
-import { renderBriefBoard, validateCanvasName } from './canvas-create.ts';
+import { canvasArtifacts, locatorKeyFor, relocatedName } from './canvas-artifacts.ts';
+import { renderBriefBoard, validateCanvasName, validateFolderName } from './canvas-create.ts';
+import { canvasSlugFromRel } from './canvas-slug.ts';
+
+// Re-exported so existing external callers (canvas-list-watch.ts, tests) keep
+// importing it from api.ts — the actual implementation now lives in
+// canvas-slug.ts (a leaf module) so canvas-artifacts.ts can depend on it
+// without a cycle back through api.ts.
+export { canvasSlugFromRel } from './canvas-slug.ts';
+
 import {
   type AssembleClip,
   assembleCompSource,
@@ -55,6 +73,7 @@ import {
   sanitizeReuseText,
 } from './generation/audio-library.ts';
 import { createHistory } from './history.ts';
+import { clearLocatorSlug, readLocator, writeLocator } from './locator.ts';
 import { STICKERS_DIR } from './paths.ts';
 import { getPaperPreset, MAX_PRINT_MM } from './print/units.ts';
 
@@ -109,31 +128,19 @@ export async function findHtmlFiles(absRoot: string, prefixUnderRepo: string): P
 }
 
 /**
- * Canonical canvas slug from a (repo- or design-root-relative) canvas path.
- * Pure — the `fileSlug` closure inside `createApi` delegates here, and the
- * external-canvas watcher (`canvas-list-watch.ts`) imports it so both creation
- * paths derive identical `canvas-list-update` slugs. Strips an optional
- * `<designRel>/` prefix, then `/`→`-`, whitespace→`_`, drops the `.tsx`/`.html`
- * extension, and lowercases.
+ * `dirsOut`, when passed, accumulates every directory visited (group-relative
+ * POSIX paths, same shape as the returned file paths) — INCLUDING empty ones,
+ * since a directory is recorded before recursing into it, not after finding a
+ * match inside. feature-file-tree-drag-drop-folders (Task 6) reuses this one
+ * traversal instead of adding a second full walk of `system/` (the largest
+ * group) just to enumerate directories.
  */
-export function canvasSlugFromRel(file: string, designRel: string): string {
-  let p = String(file).replace(/^\/+|\/+$/g, '');
-  try {
-    p = decodeURIComponent(p);
-  } catch {
-    /* ignore */
-  }
-  const prefix = `${designRel.replace(/^\/+|\/+$/g, '')}/`;
-  if (p.startsWith(prefix)) p = p.slice(prefix.length);
-  return p
-    .replace(/\//g, '-')
-    .replace(/\s+/g, '_')
-    .replace(/\.(tsx|html)$/i, '')
-    .replace(/^\.+/, '')
-    .toLowerCase();
-}
-
-async function findFiles(absRoot: string, prefix: string, exts: string[]): Promise<string[]> {
+async function findFiles(
+  absRoot: string,
+  prefix: string,
+  exts: string[],
+  dirsOut?: string[]
+): Promise<string[]> {
   const out: string[] = [];
   let entries: Dirent[];
   try {
@@ -148,8 +155,10 @@ async function findFiles(absRoot: string, prefix: string, exts: string[]): Promi
     if (SKIP_DIRS.has(e.name)) continue;
     const full = path.join(absRoot, e.name);
     const rel = path.posix.join(prefix, e.name);
-    if (e.isDirectory()) out.push(...(await findFiles(full, rel, exts)));
-    else if (exts.some((x) => e.name.toLowerCase().endsWith(x))) out.push(rel);
+    if (e.isDirectory()) {
+      dirsOut?.push(rel);
+      out.push(...(await findFiles(full, rel, exts, dirsOut)));
+    } else if (exts.some((x) => e.name.toLowerCase().endsWith(x))) out.push(rel);
   }
   return out;
 }
@@ -206,6 +215,15 @@ export type CreateCanvasResult =
 
 export type DeleteCanvasResult =
   | { ok: true; rel: string; slug: string; trashed: string[]; trashDir: string }
+  | { ok: false; status: number; error: string };
+
+// feature-file-tree-drag-drop-folders (Task 3/4).
+export type MoveCanvasResult =
+  | { ok: true; fromRel: string; toRel: string; fromSlug: string; toSlug: string; moved: string[] }
+  | { ok: false; status: number; error: string };
+
+export type CreateFolderResult =
+  | { ok: true; dir: string }
   | { ok: false; status: number; error: string };
 
 /** Phase 12 — result of an in-canvas direct edit (`editCss` / `editText`). */
@@ -323,6 +341,12 @@ export interface Api {
   }): Promise<CreateCanvasResult>;
   // Soft-delete a canvas from the browser (Phase 22 — DELETE /_api/canvas)
   deleteCanvas(input: { file?: unknown }): Promise<DeleteCanvasResult>;
+  // feature-file-tree-drag-drop-folders (Task 3) — move/rename a canvas + its
+  // full artifact set (POST /_api/fs-move).
+  moveCanvas(input: { file?: unknown; toDir?: unknown }): Promise<MoveCanvasResult>;
+  // feature-file-tree-drag-drop-folders (Task 4) — create an empty folder
+  // inside a canvas group, with a `.gitkeep` (POST /_api/fs-mkdir).
+  createFolder(input: { parent?: unknown; name?: unknown }): Promise<CreateFolderResult>;
   // Phase 12 (DDR-103) — single-property inline CSS edit (POST /_api/edit-css).
   // Main-origin only: writes one key into the element's inline `style={{}}` object.
   editCss(input: {
@@ -591,6 +615,17 @@ export interface ApiHooks {
   onCommentsChanged: (file: string) => void;
   /** Phase 8 Task 5 — fires after a successful PUT /_api/annotations write. */
   onAnnotationsChanged?: (file: string, svg: string) => void;
+  /**
+   * feature-file-tree-drag-drop-folders (Task 3) — is a collab room pinned
+   * (a shared-doc hub provider attached, DDR-064)? `moveCanvas` refuses the
+   * move rather than rename a file out from under a live hub session.
+   */
+  isRoomPinned?: (slug: string) => boolean;
+  /** Flush + force-tear-down a canvas's collab room ahead of a move (best
+   *  effort — a room may not be live for the slug at all). */
+  flushAndDropRoom?: (slug: string) => Promise<void>;
+  /** Retarget `_active.json` (active/open_tabs/selected) after a move. */
+  retargetActive?: (fromFile: string, toFile: string) => void;
 }
 
 // FigJam v3 — the annotation sanitizer moved to annotations-model.ts (the
@@ -2354,7 +2389,11 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     // Only a real `.tsx` canvas, no traversal.
     if (rel.includes('..')) return { ok: false, status: 400, error: 'invalid path' };
     if (!/\.tsx$/i.test(rel)) {
-      return { ok: false, status: 400, error: 'only .tsx canvases can be deleted' };
+      // feature-file-tree-drag-drop-folders (follow-up) — a non-.tsx target is
+      // a folder delete (dogfood gap: the tree offered no way to remove a
+      // user-created folder at all). deleteFolder does its own validation, so
+      // an invalid path still reports the right error from there.
+      return deleteFolder(rel);
     }
 
     const fileAbs = path.join(paths.designRoot, rel);
@@ -2390,8 +2429,6 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
 
     const slug = fileSlug(rel);
-    const base = path.basename(rel).replace(/\.tsx$/i, '');
-    const groupDir = path.dirname(fileAbs);
     // Filesystem-safe wall-clock stamp (no `:`) so repeated deletes of the same
     // canvas don't collide in _trash.
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -2413,25 +2450,21 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       }
     };
 
-    // Primary + the full sidecar set (annotations, meta, history, canvas-state,
-    // comments). Flattened names so the trash dir is a self-contained bundle.
-    await moveIfExists(fileAbs, `${base}.tsx`);
-    await moveIfExists(path.join(groupDir, `${base}.meta.json`), `${base}.meta.json`);
-    await moveIfExists(
-      path.join(paths.designRoot, `${slug}.annotations.svg`),
-      `${slug}.annotations.svg`
-    );
-    await moveIfExists(path.join(paths.designRoot, '_history', slug), `_history__${slug}`);
-    await moveIfExists(
-      path.join(paths.canvasStateDir, `${slug}.json`),
-      `_canvas-state__${slug}.json`
-    );
-    // DDR-115 — the per-machine camera view file.
-    await moveIfExists(
-      path.join(paths.canvasStateDir, `${slug}.view.json`),
-      `_canvas-state__${slug}.view.json`
-    );
-    await moveIfExists(path.join(paths.commentsDir, `${slug}.json`), `_comments__${slug}.json`);
+    // Every on-disk artifact this canvas owns — primary, same-basename
+    // siblings (.meta.json/.css/.registry.json), and every slug-keyed sidecar
+    // (history, canvas-state incl. the DDR-115 view file, comments, the
+    // .ydoc.bin cache, annotations, footage EDL). Primary/sibling trash names
+    // stay bare basenames (unchanged from before); slug-keyed sidecars flatten
+    // their designRoot-relative path with `__` — both match the pre-existing
+    // naming exactly, so old trash bundles and any restore tooling stay valid.
+    for (const artifact of canvasArtifacts({ rel, paths })) {
+      const relToDesignRoot = path.relative(paths.designRoot, artifact.abs);
+      const destName =
+        artifact.kind === 'slug-keyed'
+          ? relToDesignRoot.split(path.sep).join('__')
+          : path.basename(artifact.abs);
+      await moveIfExists(artifact.abs, destName);
+    }
 
     await Bun.write(
       path.join(trashDir, '_trash-manifest.json'),
@@ -2447,6 +2480,664 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       trashed,
       trashDir: path.relative(paths.repoRoot, trashDir),
     };
+  }
+
+  // feature-file-tree-drag-drop-folders (dogfood follow-up) — delete a whole
+  // FOLDER. `relDir` is already designRel-stripped (deleteCanvas's caller did
+  // that normalization). Trashes every nested canvas through deleteCanvas
+  // itself (same `_trash/<stamp>__<slug>/` bundle shape, so a folder delete
+  // is recoverable exactly like a single-canvas delete), then best-effort
+  // removes whatever's left (empty subdirs, `.gitkeep` markers).
+  async function deleteFolder(relDir: string): Promise<DeleteCanvasResult> {
+    if (relDir.includes('..')) return { ok: false, status: 400, error: 'invalid path' };
+    const dirAbs = path.join(paths.designRoot, relDir);
+    const resolvedDesignRoot = path.resolve(paths.designRoot);
+    const resolvedDir = path.resolve(dirAbs);
+    if (
+      resolvedDir !== resolvedDesignRoot &&
+      !resolvedDir.startsWith(`${resolvedDesignRoot}${path.sep}`)
+    ) {
+      return { ok: false, status: 400, error: 'path escapes the design root' };
+    }
+    try {
+      const st = await statp(dirAbs);
+      if (!st.isDirectory()) {
+        return { ok: false, status: 400, error: 'only .tsx canvases or folders can be deleted' };
+      }
+    } catch {
+      return { ok: false, status: 404, error: 'folder not found' };
+    }
+
+    const deletable = cfg.canvasGroups.filter(
+      (g) => g.label !== 'Design system' && !/^system(\/|$)/.test(g.path)
+    );
+    const inGroup = deletable.some((g) => {
+      const gAbs = path.resolve(path.join(paths.designRoot, g.path));
+      return resolvedDir === gAbs || resolvedDir.startsWith(`${gAbs}${path.sep}`);
+    });
+    if (!inGroup) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'only folders under a managed canvas group can be deleted',
+      };
+    }
+    if (deletable.some((g) => path.resolve(path.join(paths.designRoot, g.path)) === resolvedDir)) {
+      return { ok: false, status: 400, error: 'cannot delete a canvas group root' };
+    }
+    if (!(await assertRealpathContained(resolvedDir))) {
+      return { ok: false, status: 400, error: 'path escapes the design root via a symlink' };
+    }
+
+    const drPrefix = paths.designRel.replace(/^\/+|\/+$/g, '');
+    const dirRelPosix = path.posix.join(paths.designRel, relDir);
+    const found = (await findHtmlFiles(dirAbs, dirRelPosix)).filter((p) => /\.tsx$/i.test(p));
+    const MAX_BATCH = 50;
+    if (found.length > MAX_BATCH) {
+      return {
+        ok: false,
+        status: 400,
+        error: `folder has ${found.length} canvases — the batch delete cap is ${MAX_BATCH}; delete a smaller subset`,
+      };
+    }
+    const canvasRels = found.map((p) =>
+      p.startsWith(`${drPrefix}/`) ? p.slice(drPrefix.length + 1) : p
+    );
+
+    const trashed: string[] = [];
+    let lastTrashDir = '';
+    for (const r of canvasRels) {
+      const result = await deleteCanvas({ file: r });
+      if (result.ok) {
+        trashed.push(...result.trashed);
+        lastTrashDir = result.trashDir;
+      }
+      // best-effort — a canvas that fails to trash shouldn't abort the whole
+      // folder delete; the final rm below still clears whatever's left.
+    }
+
+    try {
+      await rm(dirAbs, { recursive: true, force: true });
+    } catch {
+      /* best-effort — a leftover empty dir isn't worth failing the op over */
+    }
+
+    ctx.bus.emit('canvas-list-update', { action: 'removed-folder', dir: dirRelPosix });
+    return { ok: true, rel: relDir, slug: '', trashed, trashDir: lastTrashDir };
+  }
+
+  // feature-file-tree-drag-drop-folders (security review finding) — the
+  // string-based `resolvedX.startsWith(designRoot)` containment check (used
+  // throughout this file, inherited from createCanvas's original pattern)
+  // does NOT follow symlinks: `path.resolve()` normalizes `..` segments but
+  // never dereferences a symlink. A symlink planted INSIDE a canvas group —
+  // via a malicious git peer, a hub-synced project, or just an accident —
+  // pointing outside designRoot would pass every existing containment check
+  // while `rename()`/`mkdir()` follow it at the OS level, writing (or
+  // reading) outside the project entirely. Verified exploitable against
+  // moveCanvas pre-fix: a canvas moved "into" a symlinked destination folder
+  // landed on disk outside designRoot. Walks up to the deepest EXISTING
+  // ancestor (a not-yet-created leaf is safe by construction — mkdir cannot
+  // traverse a symlink that doesn't exist yet) and verifies ITS realpath
+  // stays inside designRoot's OWN realpath — resolving BOTH sides matters:
+  // on macOS `$TMPDIR` (and every sandbox test using it) sits under
+  // `/var/folders/...`, itself a symlink to `/private/var/folders/...`, so
+  // comparing a realpath'd candidate against a merely `path.resolve()`d root
+  // false-positives on every path in a temp-dir sandbox (caught by this
+  // function's own test coverage). Same symlink gap likely pre-exists in
+  // createCanvas/deleteCanvas's original containment checks — out of scope
+  // for this feature to fix retroactively, flagged in DDR-198 as a follow-up.
+  async function realpathOfDeepestExisting(targetAbs: string): Promise<string | null> {
+    let probe = targetAbs;
+    for (;;) {
+      try {
+        return path.resolve(await realpath(probe));
+      } catch {
+        const parent = path.dirname(probe);
+        if (parent === probe) return null; // walked to the filesystem root, found nothing
+        probe = parent;
+      }
+    }
+  }
+
+  async function assertRealpathContained(targetAbs: string): Promise<boolean> {
+    const realRoot = await realpathOfDeepestExisting(path.resolve(paths.designRoot));
+    const realTarget = await realpathOfDeepestExisting(targetAbs);
+    if (realRoot === null || realTarget === null) return false;
+    return realTarget === realRoot || realTarget.startsWith(`${realRoot}${path.sep}`);
+  }
+
+  // feature-file-tree-drag-drop-folders (Task 3) — move/rename a canvas + its
+  // full artifact set (POST /_api/fs-move). Same main-origin-only trust
+  // boundary as createCanvas/deleteCanvas (DDR-054): never reachable from the
+  // untrusted canvas iframe. NOT atomic across artifacts — a crash mid-loop
+  // leaves a partial state; the primary `.tsx` moves FIRST (so the tree is
+  // never wrong about where the canvas lives) and every relocation is logged
+  // to `_history/<toSlug>/_move.json` for forensic recovery. See the DDR
+  // (Task 14) for the accepted-limitation writeup.
+  async function moveCanvas(input: { file?: unknown; toDir?: unknown }): Promise<MoveCanvasResult> {
+    const raw = input?.file;
+    if (typeof raw !== 'string' || !raw.trim()) {
+      return { ok: false, status: 400, error: 'file is required' };
+    }
+    let rel = raw.trim();
+    try {
+      rel = decodeURIComponent(rel);
+    } catch {
+      /* leave as-is */
+    }
+    rel = rel.replace(/^\/+/, '');
+    const drPrefix = paths.designRel.replace(/^\/+|\/+$/g, '');
+    if (rel.startsWith(`${drPrefix}/`)) rel = rel.slice(drPrefix.length + 1);
+    if (rel.includes('..')) return { ok: false, status: 400, error: 'invalid path' };
+    if (!/\.tsx$/i.test(rel)) {
+      // feature-file-tree-drag-drop-folders (Task 11) — a non-.tsx source is a
+      // folder move (dragging a folder onto a folder). moveFolder does its own
+      // existence + containment validation, so an invalid path still reports
+      // the right error from there.
+      return moveFolder(rel, input?.toDir);
+    }
+
+    if (typeof input?.toDir !== 'string') {
+      return { ok: false, status: 400, error: 'toDir is required' };
+    }
+    let toDir = input.toDir.trim().replace(/^\/+|\/+$/g, '');
+    try {
+      toDir = decodeURIComponent(toDir);
+    } catch {
+      /* leave as-is */
+    }
+    if (toDir === drPrefix) toDir = '';
+    else if (toDir.startsWith(`${drPrefix}/`)) toDir = toDir.slice(drPrefix.length + 1);
+    if (toDir.includes('..')) return { ok: false, status: 400, error: 'invalid destination' };
+
+    const fileAbs = path.join(paths.designRoot, rel);
+    const resolvedDesignRoot = path.resolve(paths.designRoot);
+    const resolvedFile = path.resolve(fileAbs);
+    if (
+      resolvedFile !== resolvedDesignRoot &&
+      !resolvedFile.startsWith(`${resolvedDesignRoot}${path.sep}`)
+    ) {
+      return { ok: false, status: 400, error: 'source path escapes the design root' };
+    }
+
+    // Two-layer containment + non-DS group membership, for BOTH source and
+    // destination — the exact predicate deleteCanvas uses for the source.
+    const deletable = cfg.canvasGroups.filter(
+      (g) => g.label !== 'Design system' && !/^system(\/|$)/.test(g.path)
+    );
+    const withinAGroup = (abs: string) =>
+      deletable.some((g) => {
+        const gAbs = path.resolve(path.join(paths.designRoot, g.path));
+        return abs === gAbs || abs.startsWith(`${gAbs}${path.sep}`);
+      });
+    if (!withinAGroup(path.dirname(resolvedFile))) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'only canvases under a managed canvas group can be moved',
+      };
+    }
+    if (!(await assertRealpathContained(path.dirname(resolvedFile)))) {
+      return { ok: false, status: 400, error: 'source path escapes the design root via a symlink' };
+    }
+
+    const toDirAbs = path.join(paths.designRoot, toDir);
+    const resolvedToDir = path.resolve(toDirAbs);
+    if (
+      resolvedToDir !== resolvedDesignRoot &&
+      !resolvedToDir.startsWith(`${resolvedDesignRoot}${path.sep}`)
+    ) {
+      return { ok: false, status: 400, error: 'destination resolves outside the design root' };
+    }
+    if (!withinAGroup(resolvedToDir)) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'destination must be inside a managed canvas group',
+      };
+    }
+    if (!(await assertRealpathContained(resolvedToDir))) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'destination resolves outside the design root via a symlink',
+      };
+    }
+
+    if (!(await Bun.file(fileAbs).exists())) {
+      return { ok: false, status: 404, error: 'canvas not found' };
+    }
+
+    const base = path.basename(rel);
+    const toRel = path.posix.join(toDir, base);
+    if (path.posix.normalize(toRel) === path.posix.normalize(rel)) {
+      return { ok: false, status: 400, error: 'source and destination are the same' };
+    }
+    const toAbs = path.join(paths.designRoot, toRel);
+    if (await Bun.file(toAbs).exists()) {
+      return {
+        ok: false,
+        status: 409,
+        error: `a canvas named "${base.replace(/\.tsx$/i, '')}" already exists in ${toDir || '.'}`,
+      };
+    }
+
+    const fromSlug = fileSlug(rel);
+    const toSlug = fileSlug(toRel);
+
+    // Slug-collision guard (security review finding) — canvasSlugFromRel's
+    // `/`→`-` flattening is not injective: "ui/a-b.tsx" and "ui/a/b.tsx" both
+    // hash to "ui-a-b". Without this check, moving a canvas into a directory
+    // that happens to collide with another canvas's slug would silently
+    // clobber that OTHER canvas's history/comments/annotations/camera the
+    // moment the primary rename lands (the "primary moves first" ordering
+    // that makes a crash mid-move recoverable also means the file path check
+    // above — which only looks at the DESTINATION FILE PATH, not the slug —
+    // is not sufficient on its own). Reuses the same authoritative
+    // slug→file resolver `fileForSlug` uses for comment routing (DDR-064).
+    const slugCollision = await fileForSlug(toSlug);
+    if (slugCollision) {
+      let collisionRel = slugCollision;
+      if (collisionRel.startsWith(`${drPrefix}/`))
+        collisionRel = collisionRel.slice(drPrefix.length + 1);
+      if (collisionRel !== rel) {
+        return {
+          ok: false,
+          status: 409,
+          error: `moving here would collide with "${collisionRel}"'s slug ("${toSlug}") — rename one of them first`,
+        };
+      }
+    }
+
+    // Collab guard — refuse a move while a shared-doc hub provider is pinned
+    // to this slug's room (DDR-064); otherwise flush + force-drop so the room
+    // isn't left keyed to a slug that no longer resolves to a file.
+    if (hooks.isRoomPinned?.(fromSlug)) {
+      return {
+        ok: false,
+        status: 409,
+        error: 'canvas has a live shared session — cannot move while pinned to the hub',
+      };
+    }
+    await hooks.flushAndDropRoom?.(fromSlug);
+
+    // Primary `.tsx` moves FIRST — abort the whole op if this fails so the
+    // tree is never wrong about where the canvas lives.
+    await mkdir(toDirAbs, { recursive: true });
+    try {
+      await rename(fileAbs, toAbs);
+    } catch (err) {
+      return { ok: false, status: 500, error: err instanceof Error ? err.message : 'move failed' };
+    }
+
+    const moved: string[] = [path.relative(paths.repoRoot, toAbs)];
+    for (const artifact of canvasArtifacts({ rel, paths })) {
+      if (artifact.kind === 'primary') continue; // already moved above
+      const dest = relocatedName(artifact, rel, toRel, paths);
+      if (path.resolve(dest) === path.resolve(artifact.abs)) continue;
+      try {
+        await statp(artifact.abs); // throws if absent — best-effort, most sidecars won't exist
+      } catch {
+        continue;
+      }
+      try {
+        await mkdir(path.dirname(dest), { recursive: true });
+        await rename(artifact.abs, dest);
+        moved.push(path.relative(paths.repoRoot, dest));
+      } catch {
+        /* best-effort — a sidecar that can't relocate shouldn't abort the move */
+      }
+    }
+
+    // Re-key the `_locator.json` entry (the DIVERGENT slug shape) under its
+    // own per-path mutex.
+    const locatorAbs = path.join(paths.designRoot, '_locator.json');
+    const fromKey = locatorKeyFor(rel);
+    const toKey = locatorKeyFor(toRel);
+    try {
+      const map = await readLocator(locatorAbs, fromKey);
+      if (map) {
+        await writeLocator(locatorAbs, toKey, map);
+        await clearLocatorSlug(locatorAbs, fromKey);
+      }
+    } catch {
+      /* best-effort — a stale locator entry re-derives on next transpile */
+    }
+
+    // Retarget `_active.json` (active canvas / open tabs / selection) if this
+    // canvas was referenced anywhere in it.
+    const fromFile = path.posix.join(paths.designRel, rel);
+    const toFile = path.posix.join(paths.designRel, toRel);
+    hooks.retargetActive?.(fromFile, toFile);
+
+    // Forensic log for the non-atomic move — see the doc comment above.
+    try {
+      const toHistoryDir = path.join(paths.historyDir, toSlug);
+      await mkdir(toHistoryDir, { recursive: true });
+      await Bun.write(
+        path.join(toHistoryDir, '_move.json'),
+        `${JSON.stringify(
+          { fromRel: rel, toRel, fromSlug, toSlug, moved, movedAt: new Date().toISOString() },
+          null,
+          2
+        )}\n`
+      );
+    } catch {
+      /* forensic log only — never block the move on it */
+    }
+
+    ctx.bus.emit('canvas-list-update', {
+      action: 'moved',
+      rel: toRel,
+      slug: toSlug,
+      fromRel: rel,
+      fromSlug,
+    });
+
+    return { ok: true, fromRel: rel, toRel, fromSlug, toSlug, moved };
+  }
+
+  // feature-file-tree-drag-drop-folders (Task 11) — move a whole FOLDER
+  // (dragging a folder onto a folder). `relDir` is already designRel-stripped
+  // (moveCanvas's caller did that normalization). One native directory
+  // `rename()` relocates the primary `.tsx` + same-dir siblings for EVERY
+  // nested canvas at once (they live inside the moved directory); only the
+  // slug-keyed sidecars (flat dirs like `_history/<slug>/`, not nested by
+  // folder structure) need their own per-canvas relocation afterward.
+  async function moveFolder(relDir: string, toDirRaw: unknown): Promise<MoveCanvasResult> {
+    if (relDir.includes('..')) return { ok: false, status: 400, error: 'invalid path' };
+    const dirAbs = path.join(paths.designRoot, relDir);
+    const resolvedDesignRoot = path.resolve(paths.designRoot);
+    const resolvedDir = path.resolve(dirAbs);
+    if (
+      resolvedDir !== resolvedDesignRoot &&
+      !resolvedDir.startsWith(`${resolvedDesignRoot}${path.sep}`)
+    ) {
+      return { ok: false, status: 400, error: 'source path escapes the design root' };
+    }
+    try {
+      const st = await statp(dirAbs);
+      if (!st.isDirectory()) {
+        return { ok: false, status: 400, error: 'only .tsx canvases or folders can be moved' };
+      }
+    } catch {
+      return { ok: false, status: 404, error: 'folder not found' };
+    }
+
+    const deletable = cfg.canvasGroups.filter(
+      (g) => g.label !== 'Design system' && !/^system(\/|$)/.test(g.path)
+    );
+    const withinAGroup = (abs: string) =>
+      deletable.some((g) => {
+        const gAbs = path.resolve(path.join(paths.designRoot, g.path));
+        return abs === gAbs || abs.startsWith(`${gAbs}${path.sep}`);
+      });
+    if (!withinAGroup(resolvedDir)) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'only folders under a managed canvas group can be moved',
+      };
+    }
+    if (deletable.some((g) => path.resolve(path.join(paths.designRoot, g.path)) === resolvedDir)) {
+      return { ok: false, status: 400, error: 'cannot move a canvas group root' };
+    }
+    if (!(await assertRealpathContained(resolvedDir))) {
+      return { ok: false, status: 400, error: 'source path escapes the design root via a symlink' };
+    }
+
+    const drPrefix = paths.designRel.replace(/^\/+|\/+$/g, '');
+    let toDir = typeof toDirRaw === 'string' ? toDirRaw.trim().replace(/^\/+|\/+$/g, '') : '';
+    try {
+      toDir = decodeURIComponent(toDir);
+    } catch {
+      /* leave as-is */
+    }
+    if (toDir === drPrefix) toDir = '';
+    else if (toDir.startsWith(`${drPrefix}/`)) toDir = toDir.slice(drPrefix.length + 1);
+    if (toDir.includes('..')) return { ok: false, status: 400, error: 'invalid destination' };
+
+    const toDirAbs = path.join(paths.designRoot, toDir);
+    const resolvedToDir = path.resolve(toDirAbs);
+    if (
+      resolvedToDir !== resolvedDesignRoot &&
+      !resolvedToDir.startsWith(`${resolvedDesignRoot}${path.sep}`)
+    ) {
+      return { ok: false, status: 400, error: 'destination resolves outside the design root' };
+    }
+    if (!withinAGroup(resolvedToDir)) {
+      return { ok: false, status: 400, error: 'destination must be inside a managed canvas group' };
+    }
+    if (!(await assertRealpathContained(resolvedToDir))) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'destination resolves outside the design root via a symlink',
+      };
+    }
+    // Refuse a move into itself or a descendant of itself.
+    if (resolvedToDir === resolvedDir || resolvedToDir.startsWith(`${resolvedDir}${path.sep}`)) {
+      return { ok: false, status: 400, error: 'cannot move a folder into itself' };
+    }
+
+    const base = path.basename(relDir);
+    const toRelDir = path.posix.join(toDir, base);
+    if (path.posix.normalize(toRelDir) === path.posix.normalize(relDir)) {
+      return { ok: false, status: 400, error: 'source and destination are the same' };
+    }
+    const toDirFinalAbs = path.join(paths.designRoot, toRelDir);
+    try {
+      await statp(toDirFinalAbs);
+      return { ok: false, status: 409, error: `"${base}" already exists in ${toDir || '.'}` };
+    } catch {
+      /* good — doesn't exist yet */
+    }
+
+    // Enumerate every .tsx canvas under this folder (recursive) BEFORE the
+    // rename, so each one's from/to rel is computed against the OLD tree
+    // shape. `.html` legacy canvases are out of scope, same as moveCanvas.
+    const dirRelPosix = path.posix.join(paths.designRel, relDir);
+    const found = (await findHtmlFiles(dirAbs, dirRelPosix)).filter((p) => /\.tsx$/i.test(p));
+    const MAX_BATCH = 50;
+    if (found.length > MAX_BATCH) {
+      return {
+        ok: false,
+        status: 400,
+        error: `folder has ${found.length} canvases — the batch move cap is ${MAX_BATCH}; move a smaller subset`,
+      };
+    }
+    const canvasRels = found.map((p) =>
+      p.startsWith(`${drPrefix}/`) ? p.slice(drPrefix.length + 1) : p
+    );
+
+    // Slug-collision guard, per nested canvas — same rationale as
+    // moveCanvas's (canvasSlugFromRel's `/`→`-` flattening is not injective).
+    // Excludes collisions AMONG the batch itself (those canvases are moving
+    // together, not being clobbered by an outsider) but refuses if any
+    // destination slug already belongs to a canvas OUTSIDE this move.
+    const batchRelSet = new Set(canvasRels);
+    for (const r of canvasRels) {
+      const toRel = toRelDir + r.slice(relDir.length);
+      const toSlug = fileSlug(toRel);
+      const collision = await fileForSlug(toSlug);
+      if (collision) {
+        let collisionRel = collision;
+        if (collisionRel.startsWith(`${drPrefix}/`))
+          collisionRel = collisionRel.slice(drPrefix.length + 1);
+        if (!batchRelSet.has(collisionRel)) {
+          return {
+            ok: false,
+            status: 409,
+            error: `moving "${path.basename(r)}" would collide with "${collisionRel}"'s slug ("${toSlug}") — rename one of them first`,
+          };
+        }
+      }
+    }
+
+    // Collab guard for every canvas found, BEFORE any disk mutation — refuse
+    // the whole batch if even one room is pinned (a shared-doc hub provider
+    // attached, DDR-064).
+    for (const r of canvasRels) {
+      if (hooks.isRoomPinned?.(fileSlug(r))) {
+        return {
+          ok: false,
+          status: 409,
+          error: `"${path.basename(r)}" has a live shared session — cannot move the folder while it's pinned to the hub`,
+        };
+      }
+    }
+    for (const r of canvasRels) {
+      await hooks.flushAndDropRoom?.(fileSlug(r));
+    }
+
+    await mkdir(toDirAbs, { recursive: true });
+    try {
+      await rename(dirAbs, toDirFinalAbs);
+    } catch (err) {
+      return { ok: false, status: 500, error: err instanceof Error ? err.message : 'move failed' };
+    }
+
+    const moved: string[] = [path.relative(paths.repoRoot, toDirFinalAbs)];
+    const locatorAbs = path.join(paths.designRoot, '_locator.json');
+    for (const fromRel of canvasRels) {
+      const toRel = toRelDir + fromRel.slice(relDir.length);
+      const fromSlug = fileSlug(fromRel);
+      const toSlug = fileSlug(toRel);
+      for (const artifact of canvasArtifacts({ rel: fromRel, paths })) {
+        if (artifact.kind !== 'slug-keyed') continue; // primary/siblings already moved with the dir
+        const dest = relocatedName(artifact, fromRel, toRel, paths);
+        if (path.resolve(dest) === path.resolve(artifact.abs)) continue;
+        try {
+          await statp(artifact.abs);
+        } catch {
+          continue;
+        }
+        try {
+          await mkdir(path.dirname(dest), { recursive: true });
+          await rename(artifact.abs, dest);
+          moved.push(path.relative(paths.repoRoot, dest));
+        } catch {
+          /* best-effort */
+        }
+      }
+      const fromKey = locatorKeyFor(fromRel);
+      const toKey = locatorKeyFor(toRel);
+      try {
+        const map = await readLocator(locatorAbs, fromKey);
+        if (map) {
+          await writeLocator(locatorAbs, toKey, map);
+          await clearLocatorSlug(locatorAbs, fromKey);
+        }
+      } catch {
+        /* best-effort */
+      }
+      const fromFile = path.posix.join(paths.designRel, fromRel);
+      const toFile = path.posix.join(paths.designRel, toRel);
+      hooks.retargetActive?.(fromFile, toFile);
+      try {
+        const toHistoryDir = path.join(paths.historyDir, toSlug);
+        await mkdir(toHistoryDir, { recursive: true });
+        await Bun.write(
+          path.join(toHistoryDir, '_move.json'),
+          `${JSON.stringify(
+            {
+              fromRel,
+              toRel,
+              fromSlug,
+              toSlug,
+              folderMove: true,
+              movedAt: new Date().toISOString(),
+            },
+            null,
+            2
+          )}\n`
+        );
+      } catch {
+        /* forensic log only */
+      }
+      ctx.bus.emit('canvas-list-update', {
+        action: 'moved',
+        rel: toRel,
+        slug: toSlug,
+        fromRel,
+        fromSlug,
+      });
+    }
+
+    return { ok: true, fromRel: relDir, toRel: toRelDir, fromSlug: '', toSlug: '', moved };
+  }
+
+  // feature-file-tree-drag-drop-folders (Task 4) — create an empty folder
+  // inside a canvas group (POST /_api/fs-mkdir). Git can't track an empty
+  // directory, so a `.gitkeep` goes in immediately — without it a
+  // collaborator's `git pull` never materializes the folder. Same
+  // main-origin-only / non-DS-group / two-layer-containment posture as
+  // createCanvas/moveCanvas.
+  async function createFolder(input: {
+    parent?: unknown;
+    name?: unknown;
+  }): Promise<CreateFolderResult> {
+    const v = validateFolderName(input?.name);
+    if (!v.ok || !v.name) {
+      return { ok: false, status: 400, error: v.error ?? 'invalid name' };
+    }
+
+    let parent = typeof input?.parent === 'string' ? input.parent.trim() : '';
+    parent = parent.replace(/^\/+|\/+$/g, '');
+    const drPrefix = paths.designRel.replace(/^\/+|\/+$/g, '');
+    if (parent === drPrefix) parent = '';
+    else if (parent.startsWith(`${drPrefix}/`)) parent = parent.slice(drPrefix.length + 1);
+    if (parent.includes('..')) return { ok: false, status: 400, error: 'invalid parent' };
+
+    const parentAbs = path.join(paths.designRoot, parent);
+    const resolvedDesignRoot = path.resolve(paths.designRoot);
+    const resolvedParent = path.resolve(parentAbs);
+    if (
+      resolvedParent !== resolvedDesignRoot &&
+      !resolvedParent.startsWith(`${resolvedDesignRoot}${path.sep}`)
+    ) {
+      return { ok: false, status: 400, error: 'parent resolves outside the design root' };
+    }
+    const deletable = cfg.canvasGroups.filter(
+      (g) => g.label !== 'Design system' && !/^system(\/|$)/.test(g.path)
+    );
+    const withinAGroup = deletable.some((g) => {
+      const gAbs = path.resolve(path.join(paths.designRoot, g.path));
+      return resolvedParent === gAbs || resolvedParent.startsWith(`${gAbs}${path.sep}`);
+    });
+    if (!withinAGroup) {
+      return { ok: false, status: 400, error: 'parent must be inside a managed canvas group' };
+    }
+    if (!(await assertRealpathContained(resolvedParent))) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'parent resolves outside the design root via a symlink',
+      };
+    }
+
+    const dirAbs = path.join(parentAbs, v.name);
+    const resolvedDir = path.resolve(dirAbs);
+    if (
+      resolvedDir !== path.join(resolvedParent, v.name) ||
+      !resolvedDir.startsWith(`${resolvedParent}${path.sep}`)
+    ) {
+      return { ok: false, status: 400, error: 'resolved path escapes the parent folder' };
+    }
+    try {
+      await statp(dirAbs); // throws if absent (works for files AND dirs)
+      return { ok: false, status: 409, error: `"${v.name}" already exists` };
+    } catch {
+      /* good — doesn't exist yet */
+    }
+
+    await mkdir(dirAbs, { recursive: true });
+    await Bun.write(path.join(dirAbs, '.gitkeep'), '');
+
+    const dirRel = path.posix.join(paths.designRel, parent, v.name);
+    ctx.bus.emit('canvas-list-update', { action: 'mkdir', dir: dirRel });
+    return { ok: true, dir: dirRel };
   }
 
   // Phase 12 (DDR-103) — resolve a v2 canvas slug (`selected.canvas`: POSIX,
@@ -4200,9 +4891,14 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       // Always include canvas sidecars (`.meta.json`, `.css`, `.registry.json`)
       // so the client can nest them under their primary `.tsx` / `.html`. DS
       // groups additionally surface `.md` for README + SKILL docs.
+      // feature-file-tree-drag-drop-folders (Task 6) — `dirs` accumulates
+      // every directory in this group (incl. empty ones) via the SAME
+      // traversal, so a freshly `mkdir`'d folder with no files yet is still
+      // representable in the tree.
+      const dirs: string[] = [];
       const filePaths = isDs
-        ? await findFiles(groupAbs, groupRel, ['.tsx', '.html', '.md', '.css', '.json'])
-        : await findFiles(groupAbs, groupRel, ['.tsx', '.html', '.css', '.json']);
+        ? await findFiles(groupAbs, groupRel, ['.tsx', '.html', '.md', '.css', '.json'], dirs)
+        : await findFiles(groupAbs, groupRel, ['.tsx', '.html', '.css', '.json'], dirs);
       // DDR-093 — record each `.tsx` canvas's design system. canvasUrl() only
       // injects tokens for `.tsx`, so skip everything else. Path-owned DS wins
       // (system/<ds>/…); otherwise the sidecar's `meta.designSystem`, defaulting
@@ -4247,6 +4943,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         stripPrefix: `${paths.designRel}/${g.path}/`,
         kind: 'canvas' as const,
         dsFolders: dsFolders.length ? dsFolders : undefined,
+        dirs,
       });
     }
 
@@ -4509,6 +5206,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     resolveChatAttachment,
     createCanvas,
     deleteCanvas,
+    moveCanvas,
+    createFolder,
     editCss,
     editText,
     editAttr,

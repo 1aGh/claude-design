@@ -22,8 +22,8 @@ import { createWorkspaceAgent, slugFromDocName } from '../src/workspace-agent.mj
 import {
   attributionFor,
   canvasSlug,
-  defaultBodyPath,
   DOC_TYPES,
+  defaultBodyPath,
   filesForCanvas,
   indexCanvasPaths,
   readDocContent,
@@ -293,7 +293,7 @@ describe('seedRepo', () => {
 /* ------------------------------------------------------------ asset lane */
 
 describe('asset lane', () => {
-  it('mirrors exactly what the proxy will serve — including a DS\'s own named files', () => {
+  it("mirrors exactly what the proxy will serve — including a DS's own named files", () => {
     // Real projects are not all hashes. alligators references
     // `graphics/camo-bg.png` and `gator_badge_roundel.svg`; requiring
     // content-addressed names left a hosted project rendering without its own
@@ -372,115 +372,111 @@ describe('asset lane', () => {
 describe('workspace agent, end to end against real git', () => {
   const gitOk = gitAvailable();
 
-  it(
-    'a browser-only edit produces a server commit authored by the human',
-    { skip: gitOk ? false : 'git not available' },
-    async () => {
-      const repo = tmp();
-      const agent = createWorkspaceAgent({
-        repoDir: repo,
-        designRel: '.design',
-        debounceMs: 5,
-        log: silent(),
-      });
-      const started = await agent.start();
-      assert.equal(started.state, 'created');
+  it('a browser-only edit produces a server commit authored by the human', {
+    skip: gitOk ? false : 'git not available',
+  }, async () => {
+    const repo = tmp();
+    const agent = createWorkspaceAgent({
+      repoDir: repo,
+      designRel: '.design',
+      debounceMs: 5,
+      log: silent(),
+    });
+    const started = await agent.start();
+    assert.equal(started.state, 'created');
 
-      const doc = new Y.Doc();
-      doc.getText('html').insert(0, 'export default function Home() { return <main/>; }\n');
-      doc.getText('meta').insert(0, '{"title":"Home"}');
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'export default function Home() { return <main/>; }\n');
+    doc.getText('meta').insert(0, '{"title":"Home"}');
 
-      const out = await agent.onDocumentStored({
-        documentName: 'ws/acme/main/home',
-        document: doc,
-        user: { name: 'Alice Novak', email: 'alice@example.com' },
-      });
-      assert.deepEqual(out.written.sort(), ['home.meta.json', 'home.tsx']);
-      assert.ok(existsSync(join(repo, '.design/home.tsx')), 'body written');
-      assert.ok(existsSync(join(repo, '.design/home.meta.json')), 'meta written');
+    const out = await agent.onDocumentStored({
+      documentName: 'ws/acme/main/home',
+      document: doc,
+      user: { name: 'Alice Novak', email: 'alice@example.com' },
+    });
+    assert.deepEqual(out.written.sort(), ['home.meta.json', 'home.tsx']);
+    assert.ok(existsSync(join(repo, '.design/home.tsx')), 'body written');
+    assert.ok(existsSync(join(repo, '.design/home.meta.json')), 'meta written');
 
-      const commit = await agent.flush();
-      assert.equal(commit.ok, true, `commit failed: ${JSON.stringify(commit)}`);
+    const commit = await agent.flush();
+    assert.equal(commit.ok, true, `commit failed: ${JSON.stringify(commit)}`);
 
-      const show = (fmt) =>
-        execFileSync('git', ['log', '-1', `--format=${fmt}`], { cwd: repo, encoding: 'utf8' }).trim();
-      assert.equal(show('%an'), 'Alice Novak', 'author is the human who edited');
-      assert.equal(show('%ae'), 'alice@example.com');
-      assert.equal(show('%cn'), 'Maude Workspace', 'committer is the machine');
-      assert.match(show('%s'), /^design: update home$/);
+    const show = (fmt) =>
+      execFileSync('git', ['log', '-1', `--format=${fmt}`], { cwd: repo, encoding: 'utf8' }).trim();
+    assert.equal(show('%an'), 'Alice Novak', 'author is the human who edited');
+    assert.equal(show('%ae'), 'alice@example.com');
+    assert.equal(show('%cn'), 'Maude Workspace', 'committer is the machine');
+    assert.match(show('%s'), /^design: update home$/);
 
-      await agent.stop();
-    }
-  );
+    await agent.stop();
+  });
 
-  it(
-    'never rewrites history — only add and commit reach git',
-    { skip: gitOk ? false : 'git not available' },
-    async () => {
-      const repo = tmp();
-      const verbs = [];
-      const real = createGitRunner();
-      const agent = createWorkspaceAgent({
-        repoDir: repo,
-        debounceMs: 5,
-        log: silent(),
-        run: (args, o) => {
-          verbs.push(args[0]);
-          return real(args, o);
-        },
-      });
-      await agent.start();
-      const doc = new Y.Doc();
-      doc.getText('html').insert(0, 'x');
-      await agent.onDocumentStored({ documentName: 'ws/a/main/home', document: doc, user: null });
-      await agent.flush();
-      await agent.stop();
+  it('never rewrites history — only add and commit reach git', {
+    skip: gitOk ? false : 'git not available',
+  }, async () => {
+    const repo = tmp();
+    const verbs = [];
+    const real = createGitRunner();
+    const agent = createWorkspaceAgent({
+      repoDir: repo,
+      debounceMs: 5,
+      log: silent(),
+      run: (args, o) => {
+        verbs.push(args[0]);
+        return real(args, o);
+      },
+    });
+    await agent.start();
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'x');
+    await agent.onDocumentStored({ documentName: 'ws/a/main/home', document: doc, user: null });
+    await agent.flush();
+    await agent.stop();
 
-      const forbidden = ['reset', 'rebase', 'checkout', 'push', 'clean', 'restore', 'amend'];
-      for (const v of verbs) assert.ok(!forbidden.includes(v), `history-rewriting verb reached git: ${v}`);
-    }
-  );
+    const forbidden = ['reset', 'rebase', 'checkout', 'push', 'clean', 'restore', 'amend'];
+    for (const v of verbs)
+      assert.ok(!forbidden.includes(v), `history-rewriting verb reached git: ${v}`);
+  });
 
-  it(
-    'keeps a canvas at its existing nested path instead of flattening it',
-    { skip: gitOk ? false : 'git not available' },
-    async () => {
-      const repo = tmp();
-      mkdirSync(join(repo, '.design/ui'), { recursive: true });
-      writeFileSync(join(repo, '.design/ui/Card.tsx'), 'old\n');
-      const agent = createWorkspaceAgent({ repoDir: repo, debounceMs: 5, log: silent() });
-      await agent.start();
+  it('keeps a canvas at its existing nested path instead of flattening it', {
+    skip: gitOk ? false : 'git not available',
+  }, async () => {
+    const repo = tmp();
+    mkdirSync(join(repo, '.design/ui'), { recursive: true });
+    writeFileSync(join(repo, '.design/ui/Card.tsx'), 'old\n');
+    const agent = createWorkspaceAgent({ repoDir: repo, debounceMs: 5, log: silent() });
+    await agent.start();
 
-      const doc = new Y.Doc();
-      doc.getText('html').insert(0, 'new\n');
-      const out = await agent.onDocumentStored({
-        documentName: 'ws/a/main/ui-card',
-        document: doc,
-        user: null,
-      });
-      assert.deepEqual(out.written, ['ui/Card.tsx']);
-      assert.equal(readFileSync(join(repo, '.design/ui/Card.tsx'), 'utf8'), 'new\n');
-      assert.ok(!existsSync(join(repo, '.design/ui-card.tsx')), 'must not flatten an existing canvas');
-      await agent.stop();
-    }
-  );
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'new\n');
+    const out = await agent.onDocumentStored({
+      documentName: 'ws/a/main/ui-card',
+      document: doc,
+      user: null,
+    });
+    assert.deepEqual(out.written, ['ui/Card.tsx']);
+    assert.equal(readFileSync(join(repo, '.design/ui/Card.tsx'), 'utf8'), 'new\n');
+    assert.ok(
+      !existsSync(join(repo, '.design/ui-card.tsx')),
+      'must not flatten an existing canvas'
+    );
+    await agent.stop();
+  });
 
-  it(
-    'an unparseable document name is ignored, not guessed at',
-    { skip: gitOk ? false : 'git not available' },
-    async () => {
-      const repo = tmp();
-      const agent = createWorkspaceAgent({ repoDir: repo, debounceMs: 5, log: silent() });
-      await agent.start();
-      const doc = new Y.Doc();
-      doc.getText('html').insert(0, 'x');
-      assert.equal(
-        await agent.onDocumentStored({ documentName: '../../escape', document: doc, user: null }),
-        null
-      );
-      await agent.stop();
-    }
-  );
+  it('an unparseable document name is ignored, not guessed at', {
+    skip: gitOk ? false : 'git not available',
+  }, async () => {
+    const repo = tmp();
+    const agent = createWorkspaceAgent({ repoDir: repo, debounceMs: 5, log: silent() });
+    await agent.start();
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'x');
+    assert.equal(
+      await agent.onDocumentStored({ documentName: '../../escape', document: doc, user: null }),
+      null
+    );
+    await agent.stop();
+  });
 });
 
 describe('seedRepo: a failed clone must be retryable', () => {
@@ -510,32 +506,30 @@ describe('seedRepo: a failed clone must be retryable', () => {
 });
 
 describe('shutdown must not race the commit', () => {
-  it(
-    'stop() flushes and REPORTS the commit rather than swallowing it',
-    { skip: gitAvailable() ? false : 'git not available' },
-    async () => {
-      const repo = tmp();
-      // Long debounce, so nothing commits on its own — the only thing that can
-      // produce a commit here is stop() doing its job.
-      const agent = createWorkspaceAgent({ repoDir: repo, debounceMs: 60_000, log: silent() });
-      await agent.start();
-      const doc = new Y.Doc();
-      doc.getText('html').insert(0, 'late edit\n');
-      await agent.onDocumentStored({
-        documentName: 'ws/a/main/home',
-        document: doc,
-        user: { name: 'Alice', email: 'alice@example.com' },
-      });
+  it('stop() flushes and REPORTS the commit rather than swallowing it', {
+    skip: gitAvailable() ? false : 'git not available',
+  }, async () => {
+    const repo = tmp();
+    // Long debounce, so nothing commits on its own — the only thing that can
+    // produce a commit here is stop() doing its job.
+    const agent = createWorkspaceAgent({ repoDir: repo, debounceMs: 60_000, log: silent() });
+    await agent.start();
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'late edit\n');
+    await agent.onDocumentStored({
+      documentName: 'ws/a/main/home',
+      document: doc,
+      user: { name: 'Alice', email: 'alice@example.com' },
+    });
 
-      const outcome = await agent.stop();
-      assert.ok(outcome?.ok, `stop() must commit and say so, got ${JSON.stringify(outcome)}`);
-      const count = execFileSync('git', ['rev-list', '--count', 'HEAD'], {
-        cwd: repo,
-        encoding: 'utf8',
-      }).trim();
-      assert.equal(count, '1', 'the edit made just before shutdown must be in history');
-    }
-  );
+    const outcome = await agent.stop();
+    assert.ok(outcome?.ok, `stop() must commit and say so, got ${JSON.stringify(outcome)}`);
+    const count = execFileSync('git', ['rev-list', '--count', 'HEAD'], {
+      cwd: repo,
+      encoding: 'utf8',
+    }).trim();
+    assert.equal(count, '1', 'the edit made just before shutdown must be in history');
+  });
 });
 
 describe('the hub owns its own shutdown', () => {
