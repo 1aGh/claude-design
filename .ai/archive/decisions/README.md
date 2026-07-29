@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-204: One account, one dashboard, two authorities](DDR-204-one-account-one-dashboard-two-authorities.md) — 2026-07-29, cloud/identity/admin/self-service/blast-radius/self-hosting/narrows-ddr-199
 - [DDR-203: Provision first, charge after — nobody pays for a workspace that did not come up](DDR-203-provision-first-charge-after.md) — 2026-07-29, cloud/checkout/stripe/ordering/idempotence/refunds/copy
 - [DDR-202: The export is the promise the rest of the product rests on](DDR-202-export-is-the-promise-the-rest-rests-on.md) — 2026-07-29, cloud/export/lifecycle/data-portability/git-bundle/honesty
 - [DDR-201: The mirror credential boundary — a cell asks, it never holds](DDR-201-mirror-credential-boundary.md) — 2026-07-29, cloud/mirror/github/credentials/blast-radius/tokens/append-only

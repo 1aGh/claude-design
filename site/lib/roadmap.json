@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-29T18:32:42.533Z",
+  "generated": "2026-07-29T18:49:23.743Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1658,7 +1658,7 @@
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "RESERVED_IDS enforced at the UI too so the error arrives while typing). ids; live mode still throws — that stays). Metadata carries project id only. reconciler drives stepToward('active') → cell he...",
+      "summary": "than implemented as a branch. See DDR-203. A card is authorized, the workspace is built, and only a workspace that ANSWERS turns the authorization into a charge; a failure or a timeout voids it and...",
       "planPath": ".ai/plans/cloud-phase-14-checkout-provision-first.md",
       "archived": false,
       "phaseKey": null
@@ -1704,6 +1704,17 @@
       "date": null,
       "summary": "1. Phase 18 share view live and stable (containment proven in production). 2. Paying tenants exist (the pressure DDR-193 warned about is then real, and the decision is made deliberately rather than...",
       "planPath": ".ai/plans/cloud-phase-21-browser-editing-spike.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-22-one-account-one-dashboard",
+      "title": "Cloud Phase 22 — One account, one dashboard",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "configured, the cell's own user store is bypassed and sign-in is delegated. users.mjs stays intact for self-hosted hubs — one code path, two configurations, not two code paths. project-scoped token...",
+      "planPath": ".ai/plans/cloud-phase-22-one-account-one-dashboard.md",
       "archived": false,
       "phaseKey": null
     },
