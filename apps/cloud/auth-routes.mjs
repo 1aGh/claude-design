@@ -70,7 +70,13 @@ function clearCookie(name) {
   return `${name}=; Path=/; Max-Age=0; SameSite=Lax; Secure; HttpOnly`;
 }
 
-async function currentAccount(request, env) {
+/**
+ * The signed-in account, or null.
+ *
+ * Exported so every surface reads a session the same way. Two places that both
+ * "just read the cookie" is how one of them ends up not checking expiry.
+ */
+export async function currentAccount(request, env) {
   const token = cookieValue(request, SESSION_COOKIE);
   return token ? sessionAccount(env.DB, token) : null;
 }

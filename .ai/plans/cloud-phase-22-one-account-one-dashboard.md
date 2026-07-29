@@ -14,9 +14,11 @@
   configured, the cell's own user store is bypassed and sign-in is delegated.
   `users.mjs` is untouched — one code path, two configurations, wired through
   `/auth/login` so it is the real path and not an isolated module.
-- [ ] T2 — **project access tokens**: the control plane mints a short-lived,
-  project-scoped token after checking membership. Same ask-don't-hold shape as
-  the mirror credential (DDR-201), which is already built and tested.
+- [x] T2 — **project access tokens**: `POST /projects/open` decides access
+  (`project-access.mjs`, pure and tested over combinations) and mints a
+  short-lived, project-scoped token. Interop between the two halves is pinned
+  by its own test — they are written in different runtimes against different
+  crypto APIs and agree only if somebody checks.
 - [x] T3 — the cell validates that token instead of a local password, and
   verification is OFFLINE: the token is signed with a key the cell already
   holds, so an issued token survives a control-plane outage. Only obtaining a
@@ -25,8 +27,9 @@
 - [ ] T4 — **one dashboard** at `cloud.maude.sh`: projects, members, billing,
   activity. Per-project detail fetched from the cell, so the customer never
   types a second URL and never learns that a "cell" exists.
-- [ ] T5 — membership becomes control-plane-owned; removing a member revokes
-  live sessions (which a per-cell user store made awkward).
+- [~] T5 — membership is now a control-plane fact (`project_members`, schema
+  v4) and roles have one capability table. The invite/remove surface and
+  session revocation are not built.
 - [~] T6 — tests: a cloud-mode cell refuses a local password without touching
   the local store; a self-hosted hub is unaffected; a token survives an outage;
   a token for one project is refused by another; a tampered payload fails on

@@ -16,8 +16,9 @@
 // Queues (Phase 11 unlock) will drain the same jobs table faster; the table —
 // not the queue — is the durable record either way.
 
-import { handleAuth } from './auth-routes.mjs';
+import { currentAccount, handleAuth } from './auth-routes.mjs';
 import { mintInstallationToken } from './github-app.mjs';
+import { ACCESS_MESSAGES, decideAccess } from './project-access.mjs';
 import {
   audit,
   enqueueReconcile,
@@ -54,6 +55,88 @@ async function deriveCellSecret(master, tenantId) {
     new TextEncoder().encode(`maude-cell:hub-secret:${tenantId}`)
   );
   return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** base64url over raw bytes. Never over a string — see the UTF-8 note below. */
+function b64urlBytes(bytes) {
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * Hand a signed-in person a token for one project.
+ *
+ * The signing key is the SAME per-cell secret the cell already holds
+ * (DDR-199 §6), so no new secret has to exist or be distributed — and the cell
+ * can verify without asking anyone.
+ */
+async function openProject(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'invalid request' }, 400);
+  }
+  const projectId = String(body?.project ?? '');
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(projectId)) {
+    return json({ error: ACCESS_MESSAGES['no-access'] }, 404);
+  }
+
+  const account = await currentAccount(request, env);
+  let project = null;
+  let members = [];
+  try {
+    project = await env.DB.prepare('SELECT * FROM projects WHERE id = ?').bind(projectId).first();
+    const rows = await env.DB.prepare(
+      'SELECT account_id, role FROM project_members WHERE project_id = ?'
+    )
+      .bind(projectId)
+      .all();
+    members = rows?.results ?? [];
+  } catch {
+    /* an unreadable membership list is not access — decideAccess sees [] */
+  }
+
+  const verdict = decideAccess({ accountId: account?.id ?? null, project, members });
+  if (!verdict.ok) {
+    // 404 for everything that is not "sign in", so the response never
+    // distinguishes a project that exists from one that does not.
+    const status = verdict.reason === 'not-signed-in' ? 401 : 404;
+    return json({ error: ACCESS_MESSAGES[verdict.reason] }, status);
+  }
+
+  const secret = await deriveCellSecret(env.CELL_SECRET_MASTER ?? '', projectId);
+  const now = Date.now();
+  const claims = {
+    email: account.email,
+    project: projectId,
+    role: verdict.role,
+    iat: now,
+    exp: now + 12 * 60 * 60 * 1000,
+  };
+  // UTF-8 FIRST. `btoa` throws on any character above U+00FF, so a name with
+  // a Czech "ě" or a Polish "ł" — exactly the input nobody tests with — would
+  // make sign-in fail for that person and nobody else. Encoding to bytes and
+  // base64-ing those is the fix; sanitising the name would be mangling
+  // somebody's name to work around our own encoding bug.
+  const payload = b64urlBytes(new TextEncoder().encode(JSON.stringify(claims)));
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+  const sig = b64urlBytes(new Uint8Array(mac));
+
+  return json({
+    token: `${payload}.${sig}`,
+    role: verdict.role,
+    url: `https://${projectId}.${env.CELL_ZONE ?? 'cloud.maude.sh'}`,
+    expiresAt: claims.exp,
+  });
 }
 
 /** Constant-time compare — a timing oracle on a per-cell credential still counts. */
@@ -140,6 +223,17 @@ export default {
     // Identity surface (pages, signup/login, Google, grant mint) — Phase 13.
     const auth = await handleAuth(request, env);
     if (auth) return auth;
+
+    // Opening a project (Cloud Phase 22 / DDR-204).
+    //
+    // The control plane is the identity provider: it decides whether this
+    // person may open this project, and hands them a short-lived token the
+    // cell can verify OFFLINE. The cell never decides access, and a
+    // control-plane outage never locks anyone out of a token they already
+    // hold — only out of getting a new one.
+    if (request.method === 'POST' && url.pathname === '/projects/open') {
+      return openProject(request, env);
+    }
 
     // The mirror credential boundary (Cloud Phase 19).
     //

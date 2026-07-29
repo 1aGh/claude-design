@@ -66,6 +66,23 @@ export const MIGRATIONS = [
       'ALTER TABLE projects ADD COLUMN mirror_branch TEXT;',
     ],
   },
+  {
+    version: 4, // Phase 22 — membership, so a project can have more than an owner
+    statements: [
+      // Membership is a CONTROL-PLANE fact (DDR-204). It used to be implied by
+      // whoever had a password on a particular cell, which meant removing
+      // somebody required reaching into their cell — and left no way to end a
+      // session they already had.
+      `CREATE TABLE IF NOT EXISTS project_members (
+        project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+        account_id TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+        role       TEXT NOT NULL CHECK (role IN ('viewer','member','owner')),
+        added_at   INTEGER NOT NULL,
+        PRIMARY KEY (project_id, account_id)
+      );`,
+      'CREATE INDEX IF NOT EXISTS members_account ON project_members (account_id);',
+    ],
+  },
 ];
 
 /** Apply baseline + pending versioned migrations. Safe to run repeatedly. */
