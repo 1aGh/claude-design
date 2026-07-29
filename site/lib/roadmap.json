@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-29T06:55:04.925Z",
+  "generated": "2026-07-29T13:25:22.592Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1572,6 +1572,127 @@
       "date": null,
       "summary": "Everything a human must do by hand — accounts, logins, tokens, tooling, MCP wiring — so the phase executions run smoothly and agent-driven. Companion to cloud-phase-0-economics-and-architecture.md....",
       "planPath": ".ai/plans/cloud-phase-0b-manual-prep.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-11-vendor-unblock",
+      "title": "Cloud Phase 11 — Vendor unblock (OWNER, ~15 minutes)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "maude kg note + this plan updated with the ids; a re-probe (cloudflare-api MCP) shows Containers and R2 accepting instead of refusing.",
+      "planPath": ".ai/plans/cloud-phase-11-vendor-unblock.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-12-control-plane-worker",
+      "title": "Cloud Phase 12 — Control-plane Worker (the effects layer over apps/cloud)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "maude-cloud DB via MCP — D1 works on Free, so this is buildable NOW), Queues producer/consumer (deploy-gated on Phase 11), cron trigger (hourly reconcile), static assets dir for the signup SPA (Pha...",
+      "planPath": ".ai/plans/cloud-phase-12-control-plane-worker.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-13-identity-one-account",
+      "title": "Cloud Phase 13 — One account, two doors (signup + the invitee who never sees maude.sh)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "users.mjs — same code, control-plane D1 storage) AND Google OAuth (buyer-side only; OAuth on the Worker via PKCE, no client secret in a browser). never to maude.sh. First magic link IS email verifi...",
+      "planPath": ".ai/plans/cloud-phase-13-identity-one-account.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-14-checkout-provision-first",
+      "title": "Cloud Phase 14 — Checkout that provisions first and charges after",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "RESERVED_IDS enforced at the UI too so the error arrives while typing). ids; live mode still throws — that stays). Metadata carries project id only. reconciler drives stepToward('active') → cell he...",
+      "planPath": ".ai/plans/cloud-phase-14-checkout-provision-first.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-15-cell-up-alligators",
+      "title": "Cloud Phase 15 — `maude cell up` for real + alligators as tenant-of-one",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "can pull from; containment boot-assert verified in the pushed artifact. (dns → worker-route → container → DO → r2-token → r2-prefix). Destroy is the tested destroySweep order. Every step idempotent...",
+      "planPath": ".ai/plans/cloud-phase-15-cell-up-alligators.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-16-server-owned-checkout",
+      "title": "Cloud Phase 16 — Server-owned checkout: git into the cell, autocommit server-side",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "hub docs, drives the EXISTING createAutoCommit (import the studio module — it is runtime-agnostic Node/Bun TS) against the server-side checkout at /data/workspace. Author = the human who edited (fr...",
+      "planPath": ".ai/plans/cloud-phase-16-server-owned-checkout.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-17-desktop-attach-deeplink",
+      "title": "Cloud Phase 17 — Desktop attach: maude:// deep link + the invite's client half",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Windows registry via tauri.conf); handler parses maude://join/<workspace>/<invite> and maude://open/<workspace>/<project>. clone/attach the remote project into a local folder → open in Studio. Reus...",
+      "planPath": ".ai/plans/cloud-phase-17-desktop-attach-deeplink.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-18-browser-share-view",
+      "title": "Cloud Phase 18 — The browser surface: read-only share view (DDR-197 territory)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "comment text, presence JSON. Bytes it never interprets. cookieless for assets; the cell's boot-assert and CI grep gate stay green.",
+      "planPath": ".ai/plans/cloud-phase-18-browser-share-view.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-19-mirror-effects",
+      "title": "Cloud Phase 19 — GitHub mirror: the effects layer",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "only. Installation token minting in the cell (short-lived, never stored raw). (the no-force assertion already exists; the live path must import, not copy). validated form), branch (default maude-wo...",
+      "planPath": ".ai/plans/cloud-phase-19-mirror-effects.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-20-self-administration",
+      "title": "Cloud Phase 20 — Self-administration",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "sessions per Phase 13 T5), rename, share toggle (Phase 18), mirror settings (Phase 19, owner-only). reconciler's view of the world (never a second source of truth). (git bundle + assets manifest) →...",
+      "planPath": ".ai/plans/cloud-phase-20-self-administration.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-21-browser-editing-spike",
+      "title": "Cloud Phase 21 — Browser EDITING spike (gated; decision, not delivery)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "1. Phase 18 share view live and stable (containment proven in production). 2. Paying tenants exist (the pressure DDR-193 warned about is then real, and the decision is made deliberately rather than...",
+      "planPath": ".ai/plans/cloud-phase-21-browser-editing-spike.md",
       "archived": false,
       "phaseKey": null
     },

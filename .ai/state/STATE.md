@@ -3,8 +3,17 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** ready — Maude Cloud arc closed to the vendor boundary
-**Active plan:** — (all 10 phases archived; deployment blocked, see below)
+**Status:** in-progress — Maude Cloud self-service gap arc (phases 11-21)
+**Active plan:** `.ai/plans/cloud-phase-12-control-plane-worker.md` (first buildable; 11 is owner-only)
+
+_2026-07-29:_ four-seat debate (`debate-cloud-selfservice-gap-arc`) resolved the
+self-service gaps: **DDR-197** narrows DDR-192 §4 (read-only browser share view
+permitted; containment DDR-193 §2 reaffirmed verbatim; browser EDITING deferred
+behind the Phase-21 gated spike with both dissents preserved). New plans:
+phases 11 (owner vendor unblock) → 12 worker → 13 one-account identity →
+14 provision-first checkout → 15 cell+alligators → 16 server-owned checkout →
+17 desktop attach → 18 share view → 19 mirror effects → 20 self-admin →
+21 editing spike (gated).
 
 _Last closed:_ `cloud-phase-10-ga-launch-github-mirror` (2026-07-29, partial). All ten
 phases are archived: 1-4 complete, 5-10 CORE COMPLETE / PARTIAL — the buildable half is
