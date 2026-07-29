@@ -35,22 +35,39 @@ shane.ns.cloudflare.com
 sue.ns.cloudflare.com
 ```
 
-Records were populated to mirror what Vercel serves TODAY, all **DNS only**
-(grey cloud), so the site keeps being served and TLS-terminated by Vercel:
+Records mirror what Vercel serves today, all **DNS only** (grey cloud), so the
+site keeps being served and TLS-terminated by Vercel:
 
 | type | name | content |
 | ---- | ---- | ------- |
-| A | `maude.sh` | `216.198.79.1`, `64.29.17.1` |
-| A | `www` | `216.198.79.1`, `216.198.79.65` |
-| A | `*` (wildcard — Vercel has one today) | `216.198.79.1`, `64.29.17.1` |
+| CNAME | `maude.sh` | `44c7d73f1f7105b5.vercel-dns-017.com` |
+| CNAME | `*` | `cname.vercel-dns-017.com` |
+| CNAME | `www` | `cname.vercel-dns-017.com` |
 | CAA | `maude.sh` | letsencrypt.org, sectigo.com, pki.goog, **ssl.com** (added) |
+
+**CNAMEs, not A records — and that correction matters.** The first pass copied
+the IPs the apex resolved to. But Vercel does not publish A records here: the
+apex and the wildcard are **ALIAS** records pointing at Vercel-managed hostnames,
+and Vercel rotates the addresses behind them. Hardcoded IPs would have worked
+on the day of the migration and broken silently later. Cloudflare flattens a
+CNAME at the zone root, so the apex works and Vercel keeps owning its own IPs.
+
+Second correction from the same look: **the wildcard points at a DIFFERENT
+target than the apex** (`cname.vercel-dns-017.com` vs `44c7d73f…`, resolving to
+different address pools). Copying the apex IPs onto the wildcard — which the
+first pass did — would have pointed every subdomain at the wrong Vercel edge.
+
+Both were found by reading the actual Vercel DNS table rather than trusting
+`dig`, which only ever shows the resolved result, never the record type.
 
 `ssl.com` was ADDED to CAA because Cloudflare issues Worker custom-domain certs
 through it; without it `cloud.maude.sh` could not get a certificate. The three
-existing entries are preserved, so Vercel's issuance is unaffected.
+existing entries are preserved, so Vercel's issuance is unaffected. (A `pending`
+zone's nameservers serve a partial CAA set; re-verify after activation.)
 
-Verified by querying the Cloudflare nameservers directly **before** the switch:
-they already answer with the correct Vercel addresses.
+Verified against the Cloudflare nameservers **before** the switch: apex, www and
+a random subdomain all return Vercel edge addresses, matching Vercel's own
+answers.
 
 **YOUR STEP:** at Vercel → Domains → `maude.sh` → nameservers → set the two
 Cloudflare ones above. Registration stays with Vercel; only DNS hosting moves.
