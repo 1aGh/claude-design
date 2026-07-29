@@ -71,6 +71,17 @@ function parseTags(raw) {
  * Classify cross-refs. Typed markers win over bare mentions; strongest kind per
  * target is kept. Returns { 'NNN': 'supersedes'|'overrides'|'extends'|'references' }.
  */
+// DDR numbering is PER-REPO, but kgai identity is `hash(kind:name)` and therefore
+// GLOBAL. On a shared company store every repo's `decision:DDR-001` collapses into
+// ONE node, so two unrelated decisions become competing heads on it (`kg conflicts`).
+// Namespacing the name by `scope.repo` keeps each repo's numbering intact while
+// making the node unique. `area:`/`topic:` are deliberately NOT namespaced — a
+// concept like `area:security` SHOULD converge across repos; that is the whole
+// point of a cross-repo graph.
+function ddrRef(num, scope = {}) {
+  return scope.repo ? `${scope.repo}/DDR-${num}` : `DDR-${num}`;
+}
+
 function crossRefs(text, selfNum) {
   const out = {};
   const reversed = [];
@@ -195,7 +206,7 @@ export function buildDdrBatch(decisionsDir, scope = {}, only = null) {
     stats.crossrefs += Object.keys(refs).length;
 
     const primary = tags[0] || 'general';
-    const self = `DDR-${num}`;
+    const self = ddrRef(num, scope);
     const muts = [
       { op: 'upsert_element', kind: 'area', name: primary, props: { last_ddr: self } },
       {
@@ -222,21 +233,21 @@ export function buildDdrBatch(decisionsDir, scope = {}, only = null) {
       muts.push({ op: 'add_link', from: `area:${primary}`, to: `topic:${tg}`, link: 'TOUCHES' });
     }
     for (const [tgt, kind] of Object.entries(refs)) {
-      muts.push({ op: 'upsert_element', kind: 'decision', name: `DDR-${tgt}` });
+      muts.push({ op: 'upsert_element', kind: 'decision', name: ddrRef(tgt, scope) });
       muts.push({
         op: 'add_link',
         from: `decision:${self}`,
-        to: `decision:DDR-${tgt}`,
+        to: `decision:${ddrRef(tgt, scope)}`,
         link: kind.toUpperCase(),
       });
     }
     // Passive-voice mentions ("Superseded by DDR-191") — the MENTION supersedes
     // SELF, so the edge points the other way.
     for (const [tgt, kind] of revRefs) {
-      muts.push({ op: 'upsert_element', kind: 'decision', name: `DDR-${tgt}` });
+      muts.push({ op: 'upsert_element', kind: 'decision', name: ddrRef(tgt, scope) });
       muts.push({
         op: 'add_link',
-        from: `decision:DDR-${tgt}`,
+        from: `decision:${ddrRef(tgt, scope)}`,
         to: `decision:${self}`,
         link: kind.toUpperCase(),
       });
@@ -340,11 +351,11 @@ export function buildLogDecision(absPath, kind, scope = {}, opts = {}) {
   // Evidence edges — a review/RCA that cites a DDR is evidence ABOUT it.
   const cited = new Set([...body.matchAll(/DDR-(\d+)/g)].map((m) => m[1].padStart(3, '0')));
   for (const num of cited) {
-    mutations.push({ op: 'upsert_element', kind: 'decision', name: `DDR-${num}` });
+    mutations.push({ op: 'upsert_element', kind: 'decision', name: ddrRef(num, scope) });
     mutations.push({
       op: 'add_link',
       from: `${kind}:${slug}`,
-      to: `decision:DDR-${num}`,
+      to: `decision:${ddrRef(num, scope)}`,
       link: 'EVIDENCE_FOR',
     });
   }
@@ -548,6 +559,21 @@ export async function run({ args, state, projectRoot, runKg }) {
   if (existsSync(marker) && !flags.force && !flags['dry-run'] && !only) {
     process.stderr.write(
       `maude kg import: already migrated (${marker} exists). Re-run with --force to ingest again (adds duplicate decision events).\n`
+    );
+    return 1;
+  }
+
+  // Scope is MANDATORY on a shared store, not decorative. `repo` is what makes
+  // `decision:<repo>/DDR-NNN` unique (see ddrRef) and `dept` is the search bias
+  // every read leans on; importing without either produces nodes that collide
+  // with a sibling repo's and cannot be filtered back apart afterwards — and the
+  // log is append-only, so there is no cleanup. Fail loudly instead.
+  const missingScope = ['repo', 'dept'].filter((k) => !state.scope?.[k]);
+  if (missingScope.length) {
+    process.stderr.write(
+      `maude kg import: knowledgeGraph.scope.${missingScope.join(' + .')} missing in .ai/workflows.config.json.\n` +
+        `  Every decision must carry repo + dept scope before it reaches a shared store.\n` +
+        `  Add e.g. "scope": { "repo": "<this-repo>", "dept": "dev" } and re-run.\n`
     );
     return 1;
   }
@@ -815,8 +841,8 @@ export function buildDocsBatch(aiDir, scope = {}) {
       }
       // A doc that cites DDRs is context ABOUT them.
       for (const num of new Set([...t.matchAll(/DDR-(\d+)/g)].map((m) => m[1].padStart(3, '0')))) {
-        muts.push({ op: 'upsert_element', kind: 'decision', name: `DDR-${num}` });
-        muts.push({ op: 'add_link', from: ref, to: `decision:DDR-${num}`, link: 'REFERENCES' });
+        muts.push({ op: 'upsert_element', kind: 'decision', name: ddrRef(num, scope) });
+        muts.push({ op: 'add_link', from: ref, to: `decision:${ddrRef(num, scope)}`, link: 'REFERENCES' });
       }
       decisions.push({
         title: `Doc: ${title}`.slice(0, 160),
