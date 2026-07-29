@@ -30,3 +30,4 @@ database_id = "cf2b8fdc-6c3f-42f9-9305-0040e01391eb"  # live; schema v1 applied 
 # queue = "maude-reconcile"
 
 # Secrets (wrangler secret put): STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
+preview_urls = false

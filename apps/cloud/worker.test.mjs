@@ -73,7 +73,7 @@ test('/health reports D1 reachability truthfully', async () => {
   const res = await worker.fetch(new Request('https://x/health'), env);
   const body = await res.json();
   assert.equal(res.status, 200);
-  assert.deepEqual(body, { ok: true, version: 'phase-12', d1: 'ok' });
+  assert.deepEqual(body, { ok: true, version: 'phase-13', d1: 'ok' });
 
   const broken = await worker.fetch(new Request('https://x/health'), {
     DB: { prepare: () => ({ first: () => Promise.reject(new Error('down')) }) },
@@ -234,4 +234,42 @@ test('listProjects returns every row — the sweep has no silent cap', async () 
   const { env, sqlite } = freshEnv();
   for (let i = 0; i < 7; i++) seedProject(sqlite, { id: `p${i}`, subscription: `s${i}` });
   assert.equal((await listProjects(env.DB)).length, 7);
+});
+
+test('the cron applies pending migrations BEFORE sweeping', async () => {
+  // The Phase-13 bug: code expected schema v2, live D1 was on v1, and every
+  // signup failed on a missing column behind a friendly error message.
+  const sqlite = new DatabaseSync(':memory:');
+  const DB = d1FromSqlite(sqlite);
+  // Only the baseline — as the live database actually was.
+  sqlite.exec(SCHEMA);
+  assert.equal(sqlite.prepare('SELECT MAX(version) AS v FROM schema_migrations').get().v, 1);
+
+  await worker.scheduled({}, { DB });
+  assert.equal(
+    sqlite.prepare('SELECT MAX(version) AS v FROM schema_migrations').get().v,
+    2,
+    'the cron brought the schema up to what the code expects'
+  );
+});
+
+test('a failed migration STOPS the sweep — never reconcile on an unknown schema', async () => {
+  const errors = [];
+  const realError = console.error;
+  console.error = (m) => errors.push(m);
+  try {
+    await worker.scheduled(
+      {},
+      {
+        DB: {
+          prepare: () => {
+            throw new Error('d1 down');
+          },
+        },
+      }
+    );
+  } finally {
+    console.error = realError;
+  }
+  assert.ok(errors.some((e) => /\[migrate\] failed/.test(e)));
 });

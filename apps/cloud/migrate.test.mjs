@@ -24,7 +24,22 @@ test('the splitter yields every table the schema declares', () => {
 test('applySchema is idempotent — the property the live D1 run proved', async () => {
   const db = d1FromSqlite(new DatabaseSync(':memory:'));
   const first = await applySchema(db);
-  assert.equal(first.version, 1);
+  assert.equal(first.version, 2);
   const second = await applySchema(db);
-  assert.equal(second.version, 1, 'a re-run neither fails nor re-migrates');
+  assert.equal(second.version, 2, 'a re-run neither fails nor re-migrates');
+});
+
+test('v2 lands sessions + identity columns exactly once', async () => {
+  const raw = new DatabaseSync(':memory:');
+  const db = d1FromSqlite(raw);
+  await applySchema(db);
+  await applySchema(db); // ALTER TABLE would throw on a second real run
+  const cols = raw
+    .prepare("SELECT name FROM pragma_table_info('accounts')")
+    .all()
+    .map((c) => c.name);
+  for (const c of ['email_verified_at', 'google_sub', 'password_hash']) {
+    assert.ok(cols.includes(c), c);
+  }
+  assert.ok(raw.prepare("SELECT name FROM sqlite_master WHERE name='sessions'").get());
 });

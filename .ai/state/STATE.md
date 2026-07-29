@@ -4,9 +4,16 @@
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
 **Status:** in-progress — Maude Cloud self-service gap arc (phases 11-21)
-**Active plan:** `.ai/plans/cloud-phase-13-identity-one-account.md` (12 done + LIVE; 11 owner-only)
+**Active plan:** `.ai/plans/cloud-phase-16-server-owned-checkout.md` (12+13 done + LIVE; 11 owner-only)
 
-_2026-07-29 (later):_ **Phase 12 DONE + deployed live** — `maude-cloud` Worker at
+_2026-07-29 (later):_ **Phases 12 + 13 DONE + deployed live.** Signup/login/session
++ Google (unconfigured → honest 503) + project-grant mint at
+`https://maude-cloud.maude1agh.workers.dev`, 126 cloud tests. Two live-only
+bugs found by deploying: Workers refuse PBKDF2 >100k iterations (fixed by
+chaining 6×100k — same work, no weakening), and the v2 migration never ran
+against live D1 (fixed: cron applies migrations before sweeping).
+
+_Earlier:_ **Phase 12 deployed live** — `maude-cloud` Worker at
 `https://maude-cloud.maude1agh.workers.dev` (/health ok, d1 ok, cron hourly);
 Workers/cron/D1 turned out Free-tier-capable, only Containers/Queues/R2 wait
 for Phase 11. Deploy path: bun bundle + Cloudflare API multipart PUT.

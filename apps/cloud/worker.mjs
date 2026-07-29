@@ -16,6 +16,7 @@
 // Queues (Phase 11 unlock) will drain the same jobs table faster; the table —
 // not the queue — is the durable record either way.
 
+import { handleAuth } from './auth-routes.mjs';
 import {
   audit,
   enqueueReconcile,
@@ -27,10 +28,11 @@ import {
   saveTenant,
   tenantFromRow,
 } from './db.mjs';
+import { applySchema } from './migrate.mjs';
 import { settle } from './reconcile.mjs';
 import { projectRefFromEvent, verifyStripeSignature } from './stripe-webhook.mjs';
 
-export const WORKER_VERSION = 'phase-12';
+export const WORKER_VERSION = 'phase-13';
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -42,6 +44,10 @@ function json(body, status = 200) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    // Identity surface (pages, signup/login, Google, grant mint) — Phase 13.
+    const auth = await handleAuth(request, env);
+    if (auth) return auth;
 
     if (request.method === 'GET' && url.pathname === '/health') {
       let d1 = 'unreachable';
@@ -99,6 +105,17 @@ export default {
   },
 
   async scheduled(_event, env) {
+    // Pending migrations run BEFORE the sweep. Workers have no boot hook, so
+    // the hourly cron is the only place a deploy can reliably meet its own
+    // schema. Phase 13 shipped without this and the live D1 stayed on v1 while
+    // the code expected v2 — every signup 400'd on a missing column, and the
+    // friendly error message hid it.
+    try {
+      await applySchema(env.DB);
+    } catch (err) {
+      console.error(`[migrate] failed: ${err.message}`);
+      return; // never reconcile against a schema we could not establish
+    }
     await reconcileSweep(env);
   },
 };

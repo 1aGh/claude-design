@@ -121,3 +121,4 @@ cli/.platform-binary-path
 
 # kgai engine fetch staging (sync-kg.mjs → stage-resources.mjs copies it into resources/)
 apps/desktop/.kg-staging/
+apps/cloud/.dev.vars*
