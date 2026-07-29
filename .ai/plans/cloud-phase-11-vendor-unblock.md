@@ -13,19 +13,11 @@ Live control plane: `https://maude-cloud.maude1agh.workers.dev`
 
 ---
 
-## Step 1 — Workers Paid (~$5/mo) · unblocks phase 15 ONLY · ⬜ OPEN
+## Step 1 — Workers Paid · ✅ DONE 2026-07-29
 
-**Re-probed 2026-07-29 after R2 was enabled: still the only real blocker, and
-it blocks exactly one phase.** Free covers Workers, cron, D1, R2 and Queues-list;
-Containers refuse with `1000 Unauthorized … requires the Workers Paid plan`.
-Phases 12, 13, 14, 16, 18, 19, 20 all run on Free. Phase 15 (the per-project
-cell) cannot exist without it.
-
-1. https://dash.cloudflare.com → **Workers & Pages** → **Plans**
-2. Choose **Workers Paid**, pay.
-
-Unlocks **Containers** (the per-project cell) and **Queues**. Without it the
-control plane runs but can never provision a project's cell.
+Subscription `Workers Paid` ($5) active. **Verified:** the Containers API now
+answers `200` with 0 applications instead of `1000 Unauthorized`. Phase 15 is
+unblocked.
 
 ## Step 2 — Enable R2 · ✅ DONE 2026-07-29
 
@@ -33,7 +25,40 @@ Subscription `R2 Paid` active at €0 (free allowance). Agent created bucket
 **`maude-cloud-assets`** (EEUR). Media, checkpoints and phase-18 snapshots have
 a home.
 
-## Step 3 — DNS for `cloud.maude.sh` · unblocks the pretty URL only
+## Step 3 — DNS · 🔄 ZONE READY, ONE SWITCH LEFT (yours)
+
+**Agent did (2026-07-29):** created zone `maude.sh` on the account —
+id `b27eb712a0031253edf58c0e31c57b7b`, status `pending`. Cloudflare nameservers:
+
+```
+shane.ns.cloudflare.com
+sue.ns.cloudflare.com
+```
+
+Records were populated to mirror what Vercel serves TODAY, all **DNS only**
+(grey cloud), so the site keeps being served and TLS-terminated by Vercel:
+
+| type | name | content |
+| ---- | ---- | ------- |
+| A | `maude.sh` | `216.198.79.1`, `64.29.17.1` |
+| A | `www` | `216.198.79.1`, `216.198.79.65` |
+| A | `*` (wildcard — Vercel has one today) | `216.198.79.1`, `64.29.17.1` |
+| CAA | `maude.sh` | letsencrypt.org, sectigo.com, pki.goog, **ssl.com** (added) |
+
+`ssl.com` was ADDED to CAA because Cloudflare issues Worker custom-domain certs
+through it; without it `cloud.maude.sh` could not get a certificate. The three
+existing entries are preserved, so Vercel's issuance is unaffected.
+
+Verified by querying the Cloudflare nameservers directly **before** the switch:
+they already answer with the correct Vercel addresses.
+
+**YOUR STEP:** at Vercel → Domains → `maude.sh` → nameservers → set the two
+Cloudflare ones above. Registration stays with Vercel; only DNS hosting moves.
+
+Then the agent adds `cloud.maude.sh` and per-project subdomains (a more
+specific record always beats the wildcard, so nothing collides).
+
+<details><summary>original notes</summary>
 
 `maude.sh` currently uses **Vercel nameservers** (`ns1/ns2.vercel-dns.com`,
 registrar Name.com), and the site is served from Vercel. A Cloudflare Worker
@@ -60,7 +85,7 @@ The public site keeps working — only the nameservers move. Then the agent adds
 Cells would get workers.dev subdomains too. Fine for the alligators pilot,
 wrong for a public product.
 
-> Not urgent: phases 12–14, 16, 19 need no domain at all.
+</details>
 
 ## Step 4 — Google sign-in · ✅ DONE 2026-07-29
 
@@ -157,21 +182,21 @@ live mode until its price ids are filled in, deliberately.
 
 | Step | State |
 | ---- | ----- |
-| 1 · Workers Paid | ⬜ **OPEN — the only remaining blocker, and it blocks only phase 15** |
+| 1 · Workers Paid | ✅ active — Containers API answers 200 |
 | 2 · R2 | ✅ enabled, bucket `maude-cloud-assets` created |
-| 3 · DNS | ⬜ optional; everything works on workers.dev until GA |
+| 3 · DNS | 🔄 zone built + populated; **you flip nameservers at Vercel** |
 | 4 · Google | ✅ live and verified |
 | 5 · Resend | ✅ key uploaded |
 | 6 · GitHub App | ✅ contents:write, installed, token mint verified |
 | 7 · Stripe | ✅ nothing to do for the pilot |
 
-**One paid step stands between here and a hosted product. Everything else is done.**
+**Everything an agent cannot do is done except one nameserver switch.**
 
 ## Exit gate
 
-- [ ] Workers Paid active — a Containers API call stops returning 1000/Unauthorized
+- [x] Workers Paid active — Containers API returns 200
 - [x] R2 enabled — bucket `maude-cloud-assets` exists
-- [ ] (optional) `maude.sh` Active on Cloudflare, Vercel records intact + grey-clouded
+- [ ] `maude.sh` Active on Cloudflare (zone + records ready; awaiting the NS switch)
 - [x] Google credentials live and verified against the deployed Worker
 - [x] Resend key uploaded
 - [x] GitHub App has Contents:write, one installation, and mints working tokens
