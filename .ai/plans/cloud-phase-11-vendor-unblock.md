@@ -119,20 +119,19 @@ Needed for "invite a teammate with a link" and password recovery. Pick one:
 
 </details>
 
-## Step 6 — GitHub App · ⚠️ CREATED BUT NOT USABLE YET
+## Step 6 — GitHub App · ✅ DONE 2026-07-29
 
-App **`maude-mirror`**, App ID **4425366**, owner `1aGh`. Private key moved out
-of `~/Downloads` to `~/.config/maude/maude-mirror.private-key.pem` (mode 0600).
+App **`maude-mirror`**, App ID **4425366**, owner `1aGh`. Private key at
+`~/.config/maude/maude-mirror.private-key.pem` (mode 0600, moved out of Downloads).
 
-**Verified with a real JWT against `GET /app`:** `permissions: {}` and
-`installations_count: 0`. So two things are missing — the App can authenticate
-but cannot touch a single repository:
+**Verified end to end with a real JWT:**
+- `GET /app` → `permissions: {"contents":"write","metadata":"read"}`, `events: []`
+  (webhook off — the mirror pushes, never listens), 1 installation.
+- Installation **149855203** on `1aGh`, `repository_selection: all`.
+- `POST /app/installations/149855203/access_tokens` → **201**, a `ghs_…` token
+  that expires in one hour with exactly those two permissions.
 
-1. https://github.com/settings/apps/maude-mirror → **Permissions & events** →
-   **Repository permissions → Contents: Read and write** → *Save changes*.
-   (Also confirm Webhook **Active** is unchecked — the mirror pushes, never listens.)
-2. → **Install App** → install on `1aGh`, "Only select repositories" is fine;
-   the agent needs at least one test repo, and it can create that itself.
+Nothing further needed; phase 19 has a working credential path.
 
 <details><summary>original instructions, for reference</summary>
 
@@ -163,10 +162,10 @@ live mode until its price ids are filled in, deliberately.
 | 3 · DNS | ⬜ optional; everything works on workers.dev until GA |
 | 4 · Google | ✅ live and verified |
 | 5 · Resend | ✅ key uploaded |
-| 6 · GitHub App | ⚠️ needs Contents:write + an installation (2 clicks) |
+| 6 · GitHub App | ✅ contents:write, installed, token mint verified |
 | 7 · Stripe | ✅ nothing to do for the pilot |
 
-**One paid step and two GitHub clicks stand between here and a hosted product.**
+**One paid step stands between here and a hosted product. Everything else is done.**
 
 ## Exit gate
 
@@ -175,5 +174,5 @@ live mode until its price ids are filled in, deliberately.
 - [ ] (optional) `maude.sh` Active on Cloudflare, Vercel records intact + grey-clouded
 - [x] Google credentials live and verified against the deployed Worker
 - [x] Resend key uploaded
-- [ ] GitHub App has Contents:write and at least one installation
+- [x] GitHub App has Contents:write, one installation, and mints working tokens
 - [x] Agent re-probed and recorded the ids here
