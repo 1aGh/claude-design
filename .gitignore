@@ -122,3 +122,6 @@ cli/.platform-binary-path
 # kgai engine fetch staging (sync-kg.mjs → stage-resources.mjs copies it into resources/)
 apps/desktop/.kg-staging/
 apps/cloud/.dev.vars*
+
+# Cloud deploy credentials — live tokens, never committed (Cloud Phase 15).
+apps/*/.dev.vars.deploy

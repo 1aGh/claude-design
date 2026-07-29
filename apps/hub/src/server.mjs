@@ -35,7 +35,7 @@
 //   - All log lines that interpolate user data go through sanitizeForLog.
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 
@@ -958,6 +958,46 @@ function formatInviteResponse(record, publicUrl) {
   };
 }
 
+/**
+ * What the workspace half of this hub actually did at boot.
+ *
+ * A CELL HAS NO CONSOLE. Its stdout goes nowhere an operator can reach —
+ * `wrangler tail` shows the Worker's logs, not the container's — so during
+ * Cloud Phase 15 the only way to answer "did the seed clone work?" was to
+ * infer it from whether objects appeared in a bucket ten minutes later. That
+ * is not a diagnosis, it is a guess.
+ *
+ * Deliberately FACTS, not internals: counts and states, no paths, no URLs, no
+ * credentials. Safe on the unauthenticated /health, which is the whole point —
+ * the moment you need it, authenticating is the thing that is broken.
+ */
+function workspaceStatus() {
+  const repoDir = process.env.MAUDE_REPO_DIR;
+  if (!repoDir) return null;
+  const designRoot = join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design');
+  const out = {
+    checkout: existsSync(join(repoDir, '.git')) ? 'present' : 'absent',
+    seedConfigured: Boolean(process.env.MAUDE_SEED_REPO),
+    storageConfigured: Boolean(process.env.MAUDE_S3_BUCKET),
+  };
+  try {
+    const walk = (dir, depth = 0) => {
+      if (depth > 3) return 0;
+      let n = 0;
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.name.startsWith('_') || e.name === '.git') continue;
+        if (e.isDirectory()) n += walk(join(dir, e.name), depth + 1);
+        else if (e.name.endsWith('.tsx')) n += 1;
+      }
+      return n;
+    };
+    out.canvases = walk(designRoot);
+  } catch {
+    out.canvases = 0;
+  }
+  return out;
+}
+
 function buildStatusPayload({
   dataDir,
   secret,
@@ -967,6 +1007,7 @@ function buildStatusPayload({
   exposeDataDir = true,
 }) {
   const { tokens } = readTokens(dataDir);
+  const workspace = workspaceStatus();
   return {
     ok: true,
     version: HUB_VERSION,
@@ -978,6 +1019,7 @@ function buildStatusPayload({
     tokenCount: tokens.length,
     authMode: tokens.length > 0 ? 'tokens' : secret ? 'env-secret' : 'dev',
     peersCount: peersCount ?? 0,
+    ...(workspace ? { workspace } : {}),
   };
 }
 

@@ -11,9 +11,17 @@
 name = "maude-cloud"
 main = "worker.mjs"
 compatibility_date = "2026-07-01"
+preview_urls = false
 
-# Phase 11 fills these in:
-# routes = [{ pattern = "cloud.maude.sh", custom_domain = true }]
+# The control plane answers on cloud.maude.sh. Tenant hostnames
+# (`<tenant>.cloud.maude.sh`) are NOT listed here: each is a Worker CUSTOM
+# DOMAIN created when the project is provisioned, which is the only mechanism
+# that gives a third-level name both a route and a certificate. A wildcard
+# route cannot express it (Cloudflare allows a wildcard only at the start of a
+# hostname) and free Universal SSL does not cover it. Both were tried first.
+routes = [
+  { pattern = "cloud.maude.sh", custom_domain = true },
+]
 
 [triggers]
 crons = ["0 * * * *"]   # hourly reconcile sweep — the source of truth pass
@@ -30,4 +38,16 @@ database_id = "cf2b8fdc-6c3f-42f9-9305-0040e01391eb"  # live; schema v1 applied 
 # queue = "maude-reconcile"
 
 # Secrets (wrangler secret put): STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
-preview_urls = false
+
+# The MaudeCell class briefly lived here before the split. Deleting it is safe
+# and deliberate: no cell ever completed a start under this script, so the
+# namespace holds no tenant state. The data plane creates its own.
+[[migrations]]
+tag = "v2"
+deleted_classes = ["MaudeCell"]
+
+# Cells live in a SEPARATE Worker (apps/cells). `wrangler deploy` reconciles a
+# script's routes and deletes any custom domain not declared in its config —
+# and tenant hostnames are created per project at provision time, so they can
+# never be in a committed config. Keeping them here would mean every
+# control-plane deploy silently unrouted every customer.
