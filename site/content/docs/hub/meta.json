@@ -1,10 +1,4 @@
 {
   "title": "The hub",
-  "pages": [
-    "index",
-    "deploy",
-    "workspace",
-    "linking",
-    "pricing"
-  ]
+  "pages": ["index", "deploy", "workspace", "linking", "pricing"]
 }

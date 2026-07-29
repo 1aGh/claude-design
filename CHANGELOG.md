@@ -1,5 +1,61 @@
 # @1agh/maude
 
+## 0.49.0
+
+### Minor Changes
+
+- 2e78f65: **Hub identity + durability.** The self-hosted hub gains a real user model — the same code the future cloud login runs on.
+
+  - **Sign in instead of pasting a forever-token.** `POST /auth/login` mints a scoped, **expiring** peer token (30 days by default, `HUB_USER_TOKEN_TTL_HOURS`); `/auth/logout` and `/auth/session` manage it. Passwords are scrypt at OWASP parameters, and every login failure returns one opaque message with matched timing, so neither the body nor the clock says whether an account exists.
+  - **Offboarding that actually offboards.** Deleting, disabling, or changing the password of a user revokes their live credentials and kicks their open sessions — it does not merely block the next login. Revocation is scoped to that user exactly: machine tokens, the admin Bearer, and lookalike addresses are untouched.
+  - **The permissive dev-auth path is closed** the moment a hub has any user (or under `HUB_WORKSPACE_MODE=1`). Previously an empty token store with no `HUB_SECRET` meant _any_ token authenticated.
+  - **Rate limiting works behind a reverse proxy.** New `HUB_TRUSTED_PROXIES` (CIDRs) — X-Forwarded-For is honoured only from configured proxies, rightmost-untrusted-hop first, so one attacker's login flood no longer rate-limits every other user (and a spoofed header still cannot buy budget). Set by default in the Docker Compose and Fly deploy templates. The limiter is now a SQLite sliding window, so restarting the hub no longer resets an attacker's counter.
+  - **Backups with a restore drill.** Scheduled `VACUUM INTO` snapshots of the document store to S3-compatible storage (R2 / MinIO / S3) or a local directory, with retention. `maude hub backup` takes one now; `maude hub restore-drill` restores the newest generation into a throwaway directory and verifies it — SQLite integrity check, document count, and an optional sentinel document — exiting non-zero on failure. It runs in CI, because a backup nobody has restored is a hypothesis.
+
+  Also: hub documents can now be namespaced per project and branch (`ws/<workspace-id>/<branch>/<slug>`, opt-in via `linkedHub.workspaceId` or `MAUDE_HUB_NAMESPACED=1`), so two projects that both contain `ui-screen.tsx` can no longer share one document. And untrusted canvas script can no longer write a canvas's own source through the collaboration document.
+
+- 214f440: **Workspace mode, an asset lane that isn't git, and sign-in.**
+
+  - **Heavy media no longer has to ride git.** Point Maude at an S3-compatible bucket (R2 / MinIO / S3) and new images, video and audio are mirrored there instead of bloating every clone — a 60 MB clip stops being 60 MB in every checkout, forever. Assets stay content-addressed, so uploads are idempotent, cached copies are never stale, and bytes fetched back are verified against the name they arrived under: a hub can refuse to serve an asset, but it cannot substitute one.
+  - **`maude hub asset-check`** — every asset a canvas points at must resolve, locally or in the bucket. Reports anything dangling (a permanently broken canvas) and anything present locally but not yet mirrored. Exits non-zero, so it works as a CI step.
+  - **The hub can serve assets** at an authenticated `GET /assets/<sha8>`, so a second machine resolves media it doesn't have on disk. Deliberately not presigned URLs — a presigned URL is a credential, and it has no business inside a canvas.
+  - **Autosave becomes real history in a hosted workspace.** Edits are committed append-only, attributed to the person who made them (the workspace bot is only the committer), batched at quiescence so a typing session is one commit. Nothing is ever amended, rebased or force-pushed; if a mirror push is rejected because someone else saved first, it stops and says so rather than overwriting their work.
+  - **"Sign in to workspace"** — an address, an email and a password, instead of pasting a token. The password reaches only the address you typed and is never stored; what's kept is an expiring session. Failures say something useful ("couldn't reach that workspace", "that address answered, but it isn't a Maude workspace") instead of one generic error.
+  - **A disclosure panel** replaces the terminal banner for people who never open a terminal: who operates this workspace, what they can see (your designs, your edit history, when you're editing), what they can't (anything else on your computer — and your designs are never run on their servers), and that you can leave with everything in one click.
+
+  Under the hood: a hosted workspace now refuses to start if it exposes any surface that would render or execute a canvas. That's enforced by the process itself plus a CI gate, not by convention — designs render on your machine, never on a server.
+
+- d007a32: **`maude hub workspace-up` — self-host a workspace in one command, and know it works.**
+
+  A _workspace_ is a hub that owns the project: it holds the authoritative copy, turns autosave into real version history attributed to whoever made each edit, and keeps images and video in object storage instead of git. Teammates sign in with an email and password — no token to paste, no git.
+
+  ```sh
+  maude hub workspace-up --dry-run --domain design.acme.com --admin-email alice@acme.com \
+    --s3-endpoint https://<account>.r2.cloudflarestorage.com --s3-bucket acme-assets ...
+  ```
+
+  `--dry-run` shows exactly what it would write and check; every configuration problem is reported at once, so you fix them in one pass. Without it, the command renders `docker-compose.yml`, `Caddyfile` and `.env` (mode 0600), brings the stack up, and then **verifies it**: the workspace answers, the operator credential works, the first person can sign in, a canvas survives a round trip, autosave produced a commit, media reaches the bucket, no lifecycle rule will expire it, and a backup can actually be restored. A check it can't automate is reported as skipped — never as passed.
+
+  Re-running is the upgrade path and reuses the secrets already in `.env`, so peers who already have tokens keep working.
+
+  It does not pretend to own your deployment afterwards. Every successful run prints what stays yours — rotating the operator secret, scheduling restore drills, pinning the image tag off `latest`, upgrades, the bill, and never putting an expiry rule on the `assets/` prefix.
+
+  Also available conversationally as **`/design:hub-workspace`**, and documented at [Workspace mode](https://maude.sh/docs/hub/workspace).
+
+- e7e720e: **Maude Cloud — the workspace stack, end to end.**
+
+  - **Invite a teammate with a link.** They click it and they are editing: no account form, no token to paste, no git. Looking at an invite never uses it up (a mail scanner following the link would otherwise burn it), a mistyped password never burns it either, and an invite can only ever be used once.
+  - **A hosted workspace refuses to run your designs.** It stores and syncs them; it never renders, builds or executes one — enforced by the process refusing to start, by a container image with no browser in it, and by a CI gate that fails if either protection is removed.
+  - **Your data is never hostage.** Suspension stops a workspace without deleting it, and an export is delivered before any teardown. That is a state machine, not a policy: the code makes "purged" reachable only through "exported", and if the retention window elapses without the export having actually arrived, it holds and re-sends.
+  - **Mirror to your own GitHub repository** — one way, never forced. If the mirror has commits Maude did not create, it stops and says so rather than overwriting them.
+  - **A Trust page whose claims are checked**, at [maude.sh/docs/cloud/trust](https://maude.sh/docs/cloud/trust): what the operator can see, what it cannot, subprocessors, breach and deletion timelines — each one naming the mechanism behind it, with a test that fails the build if a cited mechanism disappears or an aspirational sentence creeps in.
+
+  Self-hosting stays free forever and stays the same software: `maude hub workspace-up` runs the identical stack on your own box.
+
+### Patch Changes
+
+- Fixes the desktop build, which failed on every platform in v0.48.0 (`resource path 'resources/kgai' doesn't exist`) and so shipped no `.dmg` / `.msi` / `.deb`. The kgai engine was fetched straight into `src-tauri/resources/`, but the staging script owns that directory and clears it — and it runs afterwards, so the engine was deleted before the bundler looked for it. The fetch now lands in a separate staging area that the staging script copies in, and the resource directory is created even on platforms kgai publishes no build for (which is what broke the Windows leg). Verified against a real built `Maude.app`: it carries the engine, its native library and the kgai plugin, and `maude kg` resolves the bundled engine from inside the app with nothing installed on the machine.
+
 ## 0.48.0
 
 ### Minor Changes

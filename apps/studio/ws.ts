@@ -248,7 +248,11 @@ export function createWs(
   // right room to disconnect from. Multiplexed via ws.data.id.
   const collabConns = new Map<string, { roomSlug: string; conn: RoomConn }>();
 
-  function bindCollab(ws: ServerWebSocket<WsData>, slug: string, realm: 'main' | 'canvas'): RoomConn {
+  function bindCollab(
+    ws: ServerWebSocket<WsData>,
+    slug: string,
+    realm: 'main' | 'canvas'
+  ): RoomConn {
     const conn: RoomConn = {
       id: ws.data.id,
       realm,

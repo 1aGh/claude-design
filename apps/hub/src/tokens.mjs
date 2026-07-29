@@ -285,16 +285,23 @@ export function addToken(dataDir, { label, dev = false, scope, expiresAt, owner 
   const effectiveScope = scope === undefined ? label : scope;
   const storedScope = effectiveScope && effectiveScope !== '*' ? effectiveScope : null;
   const createdAt = Date.now();
-  const storedExpiry = typeof expiresAt === 'number' && Number.isFinite(expiresAt)
-    ? Math.floor(expiresAt)
-    : null;
+  const storedExpiry =
+    typeof expiresAt === 'number' && Number.isFinite(expiresAt) ? Math.floor(expiresAt) : null;
   const storedOwner = typeof owner === 'string' && owner.length > 0 ? owner : null;
 
   handle
     .prepare(
       'INSERT OR REPLACE INTO tokens (label, hash, scope, dev, created_at, last_used_at, expires_at, owner) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)'
     )
-    .run(label, hashToken(handle, value), storedScope, dev ? 1 : 0, createdAt, storedExpiry, storedOwner);
+    .run(
+      label,
+      hashToken(handle, value),
+      storedScope,
+      dev ? 1 : 0,
+      createdAt,
+      storedExpiry,
+      storedOwner
+    );
 
   return {
     label,
