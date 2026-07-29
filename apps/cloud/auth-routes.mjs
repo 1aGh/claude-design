@@ -26,7 +26,9 @@ import {
   pkcePair,
   validateCallback,
 } from './oauth-google.mjs';
+import { dashboardPage } from './dashboard.mjs';
 import { homePage, loginPage, messagePage, signupPage } from './pages.mjs';
+import { can } from './project-access.mjs';
 
 const SESSION_COOKIE = 'maude_session';
 const OAUTH_COOKIE = 'maude_oauth';
@@ -82,6 +84,35 @@ export async function currentAccount(request, env) {
 }
 
 /**
+ * Every project this person can see, with the role they hold in each.
+ *
+ * Owned and member-of in one list, because "which of these do I own" is not a
+ * question anybody asks — they want to see their work.
+ *
+ * A failure here yields an EMPTY list, not an error page: a dashboard that
+ * cannot list projects should still let somebody sign out, reach their
+ * account, and read that something is wrong.
+ */
+async function projectsFor(env, accountId) {
+  try {
+    const rows = await env.DB.prepare(
+      `SELECT p.id, p.name, p.state,
+              CASE WHEN p.account_id = ?1 THEN 'owner' ELSE m.role END AS role
+         FROM projects p
+         LEFT JOIN project_members m
+           ON m.project_id = p.id AND m.account_id = ?1
+        WHERE p.account_id = ?1 OR m.account_id IS NOT NULL
+        ORDER BY p.name`
+    )
+      .bind(accountId)
+      .all();
+    return rows?.results ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Route the identity surface. Returns a Response, or null when the path is
  * not ours (worker.mjs falls through to its own routes).
  */
@@ -93,7 +124,12 @@ export async function handleAuth(request, env) {
 
   // ------------------------------------------------------------------ pages
   if (method === 'GET' && pathname === '/') {
-    return html(homePage({ account: await currentAccount(request, env) }));
+    // Signed in? Then "/" IS the dashboard (Cloud Phase 22 / DDR-204). A
+    // signed-in person landing on a marketing page and having to find a link
+    // to their own work is the shape this phase exists to remove.
+    const account = await currentAccount(request, env);
+    if (!account) return html(homePage({ account: null }));
+    return html(dashboardPage({ account, projects: await projectsFor(env, account.id), can }));
   }
   if (method === 'GET' && pathname === '/signup') {
     return html(signupPage({ googleEnabled: google }));

@@ -24,9 +24,13 @@
   holds, so an issued token survives a control-plane outage. Only obtaining a
   NEW one needs the control plane. That asymmetry is the whole reason the token
   is signed rather than looked up.
-- [ ] T4 — **one dashboard** at `cloud.maude.sh`: projects, members, billing,
-  activity. Per-project detail fetched from the cell, so the customer never
-  types a second URL and never learns that a "cell" exists.
+- [x] T4 — **one dashboard** at `cloud.maude.sh`: a signed-in person landing on
+  `/` gets their projects, not a marketing page. Each project states what its
+  situation MEANS rather than its internal state name, actions are filtered by
+  what that person may actually do, and "download everything" is offered in
+  every state including the unhappy ones. Server-rendered, no script — this is
+  the page somebody opens because something is wrong. Live and verified.
+  Per-project detail panels (people, billing, sharing) are linked but not built.
 - [~] T5 — membership is now a control-plane fact (`project_members`, schema
   v4) and roles have one capability table. The invite/remove surface and
   session revocation are not built.

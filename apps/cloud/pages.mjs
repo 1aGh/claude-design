@@ -9,6 +9,8 @@
 // decision happens, not on a page nobody visits. `disclosure_accepted_at` is
 // written only when the box was actually ticked.
 
+import { allDashboardHtml } from './dashboard.mjs';
+
 const BASE_CSS = `
   :root { color-scheme: light dark; }
   body { font: 16px/1.5 system-ui, sans-serif; max-width: 26rem; margin: 8vh auto; padding: 0 1.25rem; }
@@ -92,9 +94,16 @@ export function messagePage(title, text) {
   return page(title, `<h1>${title}</h1><p>${text}</p><p><a href="/">Back</a></p>`);
 }
 
-/** Every customer-facing string, for the vocabulary lint. */
+/**
+ * Every customer-facing string, for the vocabulary lint.
+ *
+ * The dashboard is included HERE rather than lint-tested only in its own file:
+ * a surface that has to opt IN to the copy discipline is a surface that
+ * eventually does not.
+ */
 export function allCustomerFacingHtml() {
   return [
+    allDashboardHtml(),
     signupPage({ googleEnabled: true }),
     loginPage({ googleEnabled: true, error: 'That email and password don’t match.' }),
     homePage(),
