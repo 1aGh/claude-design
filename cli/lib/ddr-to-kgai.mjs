@@ -82,6 +82,13 @@ function ddrRef(num, scope = {}) {
   return scope.repo ? `${scope.repo}/DDR-${num}` : `DDR-${num}`;
 }
 
+// Same collision class as ddrRef, one level up: milestone slugs are built from a
+// DATE (`progress-2026-07-02`) or a date+phase, both of which repeat across repos.
+// Two teams shipping on the same day would otherwise share one milestone node.
+function scopedSlug(slug, scope = {}) {
+  return scope.repo ? `${scope.repo}/${slug}` : slug;
+}
+
 function crossRefs(text, selfNum) {
   const out = {};
   const reversed = [];
@@ -748,7 +755,10 @@ export function buildStateBatch(statePath, scope = {}) {
     const header = body.split('\n')[0];
     const feature = (header.match(/(feature-[a-z0-9.-]+|phase-[a-z0-9.-]+)/i) || [])[1] || null;
     const date = (body.match(/(\d{4}-\d{2}-\d{2})/) || [])[1];
-    const slug = `${feature || 'progress'}-${date || String(decisions.length).padStart(3, '0')}`;
+    const slug = scopedSlug(
+      `${feature || 'progress'}-${date || String(decisions.length).padStart(3, '0')}`,
+      scope
+    );
     const ref = `milestone:${slug}`;
     const muts = [
       {
@@ -776,10 +786,13 @@ export function buildStateBatch(statePath, scope = {}) {
   // History table rows: | YYYY-MM-DD | phase | note |
   for (const row of t.matchAll(/^\|\s*(\d{4}-\d{2}-\d{2})\s*\|([^|]*)\|([^|]*)\|(.*)$/gm)) {
     const [, date, phase, status, note] = row;
-    const slug = `history-${date}-${phase
-      .trim()
-      .replace(/[^a-z0-9.-]+/gi, '-')
-      .toLowerCase()}`.slice(0, 90);
+    const slug = scopedSlug(
+      `history-${date}-${phase
+        .trim()
+        .replace(/[^a-z0-9.-]+/gi, '-')
+        .toLowerCase()}`.slice(0, 90),
+      scope
+    );
     const ref = `milestone:${slug}`;
     decisions.push({
       title: `${date} · ${phase.trim()} · ${status.trim()}`.slice(0, 160),
