@@ -35,14 +35,19 @@ workers_dev = true
 
 [[containers]]
 class_name = "MaudeCell"
-image = "registry.cloudflare.com/b5b596efe65abb732777c7171dc18145/maude-cell:v2"
+image = "registry.cloudflare.com/b5b596efe65abb732777c7171dc18145/maude-cell:v4"
 # The tenant-of-one pilot: ONE project, one instance. Raise deliberately —
 # every instance is billed compute, and the platform tries to keep this many
 # SCHEDULED, which is not the same as this many in use. Three sat in
 # `scheduling` forever and blocked every image rollout at version 1 while the
 # single DO-managed instance kept serving the old image.
 max_instances = 1
-instance_type = "basic"
+# `basic` is 1/4 vCPU and 4 GB disk. A first-boot seed clone of a real design
+# project (alligators: ~280 MB working tree) could not finish checking out
+# before the platform gave up waiting for the port, so the container was killed
+# mid-clone and came up with an empty repo. standard-1 doubles the CPU and the
+# disk; the seed is the slowest thing a cell ever does and it happens once.
+instance_type = "standard-1"
 
 [[durable_objects.bindings]]
 name = "MAUDE_CELL"

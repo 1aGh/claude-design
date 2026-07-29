@@ -81,6 +81,20 @@ import {
 import { createWorkspaceAgent } from './workspace-agent.mjs';
 
 const HUB_VERSION = readOwnVersion();
+
+/**
+ * What the workspace half did at boot, as facts a human can read.
+ *
+ * A CELL HAS NO CONSOLE — its stdout reaches nobody an operator can ask, and
+ * `wrangler tail` shows the Worker, not the container. During Cloud Phase 15
+ * the only way to answer "did the seed clone work?" was to watch a bucket for
+ * ten minutes and infer from what appeared. That is a guess, not a diagnosis.
+ *
+ * Facts only: states and counts, never a URL (a seed URL carries a token) and
+ * never a path. Safe on the unauthenticated /health, which is the point — when
+ * you need this, authentication is usually the thing that is broken.
+ */
+const bootReport = { seed: null, history: null, assets: null };
 const DOCUMENT_NAME_REGEX = /^[A-Za-z0-9._/-]{1,256}$/;
 const PUBLIC_URL_REGEX = /^https?:\/\/[^\s;'"<>`]+$/;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -602,6 +616,9 @@ export function createHub(config = {}) {
         url: process.env.MAUDE_SEED_REPO ?? '',
         branch: process.env.MAUDE_SEED_BRANCH ?? '',
       });
+      // Recorded, not only logged — see bootReport. The reason is kept because
+      // "the clone failed" without it sends the next person back to guessing.
+      bootReport.seed = { state: seeded.state, reason: seeded.reason ?? null };
       if (seeded.state === 'failed') {
         // Loud, but not fatal. A cell that refuses to start on a bad seed URL
         // is a cell the operator cannot reach to fix the seed URL.
@@ -616,8 +633,13 @@ export function createHub(config = {}) {
         ...deps.options,
       });
       const started = await agent.start();
+      bootReport.history = { state: started.state, reason: started.reason ?? null };
       if (started.state !== 'failed') workspace = agent;
       return { ...started, seed: seeded.state };
+    },
+    /** Record the asset sweep's result for /health (see bootReport). */
+    recordAssetSweep(summary) {
+      bootReport.assets = summary;
     },
     /** Flush the pending commit and detach. The SIGTERM path depends on this. */
     async stopWorkspaceAgent() {
@@ -983,6 +1005,13 @@ function workspaceStatus() {
     checkout: existsSync(join(repoDir, '.git')) ? 'present' : 'absent',
     seedConfigured: Boolean(process.env.MAUDE_SEED_REPO),
     storageConfigured: Boolean(process.env.MAUDE_S3_BUCKET),
+    // What each stage of the boot actually DID. `seedConfigured` says a seed
+    // was asked for; `seed` says whether it happened, and why not when it did
+    // not. Distinguishing those two is the whole point — a cell whose seed was
+    // configured and silently skipped looks identical to one that worked.
+    ...(bootReport.seed ? { seed: bootReport.seed } : {}),
+    ...(bootReport.history ? { history: bootReport.history } : {}),
+    ...(bootReport.assets ? { assets: bootReport.assets } : {}),
   };
   try {
     const walk = (dir, depth = 0) => {
@@ -1398,9 +1427,14 @@ async function runAsMain() {
       // and a cell wakes on every migration, so boot is already the frequent
       // event. A timer would mostly re-HEAD objects that have not changed.
       const designRoot = join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design');
-      sweepAssets({ designRoot, s3: assetStore }).catch((err) =>
-        console.error(`[hub] asset sweep failed: ${err.message}`)
-      );
+      sweepAssets({ designRoot, s3: assetStore })
+        .then((r) => {
+          built.recordAssetSweep({ uploaded: r.uploaded.length, skipped: r.skipped, failed: r.failed.length });
+        })
+        .catch((err) => {
+          built.recordAssetSweep({ error: err.message.slice(0, 120) });
+          console.error(`[hub] asset sweep failed: ${err.message}`);
+        });
     }
   }
 

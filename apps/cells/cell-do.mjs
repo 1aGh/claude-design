@@ -174,9 +174,11 @@ export class MaudeCell extends Container {
     const hostname = new URL(request.url).hostname;
     await this.startAndWaitForPorts({
       startOptions: { envVars: await cellEnv({ tenantId, env: this.env, hostname }) },
-      // A cold start pays a rehydrate from R2 before it listens. The default
-      // is too short for that and turns a normal wake into a 500.
-      cancellationOptions: { portReadyTimeoutMS: 120_000 },
+      // A cold start pays a rehydrate from R2 — and a FIRST start also pays a
+      // full clone of the tenant's project — before anything listens. The
+      // default turns that normal path into a 500; 120 s was still not enough
+      // for a ~280 MB seed on a quarter of a vCPU.
+      cancellationOptions: { portReadyTimeoutMS: 600_000 },
     });
     return this.containerFetch(request);
   }
