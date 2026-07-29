@@ -77,6 +77,12 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/export-jobs',
         '/_api/export-jobs/download',
         '/_api/canvas',
+        // feature-file-tree-drag-drop-folders (Task 5) — move/mkdir are
+        // file-write routes, same MAIN-ORIGIN-ONLY posture as /_api/canvas
+        // right above: absent from CANVAS_SAFE_API + startCanvasServer's
+        // routes, so a GET here 403s at the gate, not 405 from the handler.
+        '/_api/fs-move',
+        '/_api/fs-mkdir',
         '/_api/edit-css',
         '/_api/edit-text',
         '/_api/edit-attr',

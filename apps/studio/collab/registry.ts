@@ -98,6 +98,16 @@ export interface Registry {
   destroyAll(): Promise<void>;
   /** Tear down a single room when its last peer leaves. */
   drop(slug: string): Promise<void>;
+  /**
+   * feature-file-tree-drag-drop-folders (Task 3) — flush + tear down a room
+   * for a canvas move, REGARDLESS of live connections (unlike `drop`, which
+   * leaves an active room alone). The move already refused when
+   * `isPinned(slug)` is true (a hub provider owns the doc); this is a plain
+   * best-effort teardown so the rename doesn't leave a room keyed to a slug
+   * that no longer resolves to a file. A peer connected mid-move reconnects
+   * under the new slug via `get()`. No-op if no room is live for the slug.
+   */
+  forceDrop(slug: string): Promise<void>;
   /** Test/introspection. */
   size(): number;
 }
@@ -225,6 +235,18 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
     await room.destroy();
   }
 
+  async function forceDrop(slug: string): Promise<void> {
+    const room = rooms.get(slug);
+    if (!room) return;
+    // Safety net — the caller (moveCanvas) already refuses the move when
+    // pinned, but never yank a doc out from under an attached hub provider.
+    if (pinned.has(slug)) return;
+    await room.flush();
+    teardownBridge(slug);
+    rooms.delete(slug);
+    await room.destroy();
+  }
+
   async function destroyAll(): Promise<void> {
     for (const slug of Array.from(bridges.keys())) teardownBridge(slug);
     hubAwareness.clear();
@@ -247,6 +269,7 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
     flushAll,
     destroyAll,
     drop,
+    forceDrop,
     size: () => rooms.size,
   };
 }

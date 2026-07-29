@@ -101,6 +101,16 @@ export interface Inspect {
   setActive(file: string): void;
   setOpenTabs(tabs: string[]): void;
   setSelected(sel: SetSelectedInput): void;
+  /**
+   * feature-file-tree-drag-drop-folders (Task 3) — a canvas moved server-side
+   * (`moveCanvas`). Retarget every reference to the OLD designRel-prefixed
+   * file path (`active`, `open_tabs[]`, the active `selected`) to the new
+   * one, and re-key the parked `selections` map entry from the old slug to
+   * the new one. Returns whether anything actually changed (so the caller
+   * can skip an unnecessary `canvas-list-update` detail). Idempotent no-op
+   * when the moved canvas wasn't referenced anywhere in this state.
+   */
+  retarget(fromFile: string, toFile: string): boolean;
   save(): Promise<void>;
   injectInspector(html: string): string;
 }
@@ -313,6 +323,44 @@ export function createInspect(
     ctx.bus.emit('selected', state.selected);
   }
 
+  function retarget(fromFile: string, toFile: string): boolean {
+    const fromSlug = deriveCanvasSlug(fromFile);
+    const toSlug = deriveCanvasSlug(toFile);
+    let changed = false;
+
+    if (state.active === fromFile) {
+      state.active = toFile;
+      changed = true;
+    }
+    if (state.open_tabs.includes(fromFile)) {
+      state.open_tabs = state.open_tabs.map((t) => (t === fromFile ? toFile : t));
+      changed = true;
+    }
+    if (Object.hasOwn(state.selections, fromSlug)) {
+      state.selections[toSlug] = state.selections[fromSlug] as SelectedValue;
+      delete state.selections[fromSlug];
+      changed = true;
+    }
+    if (state.selected != null) {
+      const list = Array.isArray(state.selected) ? state.selected : [state.selected];
+      let selChanged = false;
+      const next = list.map((e) => {
+        if (e.canvas !== fromSlug) return e;
+        selChanged = true;
+        return { ...e, canvas: toSlug, file: e.file === fromFile ? toFile : e.file };
+      });
+      if (selChanged) {
+        state.selected = Array.isArray(state.selected) ? next : (next[0] ?? null);
+        changed = true;
+      }
+    }
+
+    if (!changed) return false;
+    state.last_change = new Date().toISOString();
+    scheduleSave();
+    return true;
+  }
+
   /**
    * Canvas slug for v2 selections. Mirrors `canvasSlug()` from locator.ts but
    * accepts a designRoot-relative `file` path (which is what the iframe reports)
@@ -336,6 +384,7 @@ export function createInspect(
     setActive,
     setOpenTabs,
     setSelected,
+    retarget,
     save,
     injectInspector,
   };

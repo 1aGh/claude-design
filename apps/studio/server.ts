@@ -62,6 +62,10 @@ ctx.sharedDoc = /^(1|true|on|yes)$/i.test(process.env.MAUDE_SHARED_DOC ?? '');
 // synchronously below; the callback only fires at runtime, by which point the
 // binding is set.
 let collab: ReturnType<typeof createCollab> | null = null;
+// Forward-declared for the same reason — moveCanvas (feature-file-tree-
+// drag-drop-folders, Task 3) retargets `_active.json` through the live
+// Inspect instance, which is constructed after `api`.
+let inspectHandle: ReturnType<typeof createInspect> | null = null;
 
 const api = createApi(ctx, {
   onCommentsChanged: async (file) => {
@@ -82,9 +86,20 @@ const api = createApi(ctx, {
       collab.registry.syncRoomFromAnnotations(api.fileSlug(file), svg);
     }
   },
+  // feature-file-tree-drag-drop-folders (Task 3) — moveCanvas's collab guard
+  // + `_active.json` retarget, bridged the same forward-declared way as the
+  // comments/annotations hooks above.
+  isRoomPinned: (slug) => collab?.registry.isPinned(slug) ?? false,
+  flushAndDropRoom: async (slug) => {
+    if (collab) await collab.registry.forceDrop(slug);
+  },
+  retargetActive: (fromFile, toFile) => {
+    inspectHandle?.retarget(fromFile, toFile);
+  },
 });
 
 const inspect = createInspect(ctx, (file) => api.loadCommentsForFile(file));
+inspectHandle = inspect;
 await inspect.load();
 
 collab = createCollab(ctx, api);
