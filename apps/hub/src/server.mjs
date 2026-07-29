@@ -60,6 +60,7 @@ import { scheduleBackups, targetFromEnv } from './backup.mjs';
 import { maybeIssueOnBoot, verifyAndConsume } from './bootstrap.mjs';
 import { clientIpFor, parseTrustedProxies } from './client-ip.mjs';
 import { groupCanvases } from './doc-namespace.mjs';
+import { seedFirstUserOnBoot } from './first-user.mjs';
 import { createRateStore } from './rate-store.mjs';
 import { s3ConfigFromEnv } from './s3.mjs';
 import { readSettings, writeSettings } from './settings.mjs';
@@ -1218,6 +1219,8 @@ async function runAsMain() {
       '[hub] admin assets missing — /admin will serve empty page. Run `bun run build` in apps/hub.'
     );
   }
+
+  seedFirstUserOnBoot(dataDir);
 
   const bootstrap = maybeIssueOnBoot(dataDir, { secret });
   if (bootstrap) {

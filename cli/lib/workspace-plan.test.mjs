@@ -16,6 +16,7 @@ import {
   renderEnv,
   validateWorkspaceConfig,
   verificationPlan,
+  workspaceBaseUrl,
 } from './workspace-plan.mjs';
 
 const BASE = {
@@ -220,4 +221,92 @@ test('object storage adds the never-expire duty; dev MinIO adds its own warning'
     .map((d) => d.title)
     .join(' ');
   assert.match(dev, /MinIO credentials are in this directory/);
+});
+
+// ------------------------------------------------------- local testing mode
+//
+// Local mode exists because six of the eight verification steps had never run
+// even once: exercising them required a public domain and a certificate, so
+// nobody could test their own workspace before buying one. The risk it adds is
+// obvious — a workspace served over plain HTTP puts sign-in passwords on the
+// wire — so every test below is about keeping that mode unmistakable and
+// impossible to reach by accident.
+
+test('local mode drops the certificate, so it must NOT be reachable by default', () => {
+  assert.equal(ok(BASE).local, false, 'absent flag is off');
+  assert.equal(ok({ ...BASE, local: 'yes' }).local, false, 'only a real boolean turns it on');
+  assert.equal(ok({ ...BASE, local: true }).local, true);
+});
+
+test('local mode serves http, production serves https — one definition', () => {
+  assert.equal(workspaceBaseUrl(ok(BASE)), 'https://design.acme.com');
+  assert.equal(workspaceBaseUrl(ok({ ...BASE, local: true })), 'http://design.acme.com');
+  // The verification plan must agree, or a local run fails every check for a
+  // reason that has nothing to do with the workspace.
+  const step = verificationPlan(ok({ ...BASE, local: true })).find((s) => s.id === 'health');
+  assert.match(step.detail, /http:\/\/design\.acme\.com/);
+  assert.ok(!step.detail.includes('https://'));
+});
+
+test('an ACME contact is required for a real deployment and pointless locally', () => {
+  const real = validateWorkspaceConfig({ ...BASE, acmeEmail: undefined });
+  assert.equal(real.ok, false);
+  assert.ok(real.errors.some((e) => /acmeEmail is required/.test(e)));
+
+  const local = validateWorkspaceConfig({ ...BASE, acmeEmail: undefined, local: true });
+  assert.equal(local.ok, true, 'no certificate is fetched, so no contact is needed');
+});
+
+test('the local Caddyfile turns automatic HTTPS off explicitly', () => {
+  // `tls internal` would mint a cert from a CA nothing trusts, so every check
+  // would fail on certificate validation instead. An `http://` site address is
+  // the only form that disables it outright.
+  const local = renderCaddyfile(ok({ ...BASE, local: true }));
+  assert.match(local, /^http:\/\/\{\$PUBLIC_DOMAIN\} \{/m);
+  assert.ok(!local.includes('{$ACME_EMAIL}'), 'no ACME block in local mode');
+  assert.match(local, /LOCAL TESTING ONLY/);
+  assert.match(local, /passwords would travel in the clear/i);
+
+  const real = renderCaddyfile(ok(BASE));
+  assert.match(real, /^\{\$PUBLIC_DOMAIN\} \{/m, 'production keeps automatic HTTPS');
+  assert.ok(!real.includes('LOCAL TESTING ONLY'));
+  assert.ok(!real.includes('http://{$PUBLIC_DOMAIN}'));
+});
+
+test("the hub's own plaintext refusal is lifted ONLY in local mode", () => {
+  // The hub refuses to serve a public URL over plaintext. Local mode has to
+  // lift that or the container crash-loops — and it must not lift it anywhere
+  // else, because that refusal is the thing protecting real deployments.
+  const keys = (cfg) => envEntries(cfg, { hubSecret: 'x', adminPassword: 'y' }).map((e) => e.key);
+  assert.ok(!keys(ok(BASE)).includes('HUB_INSECURE_HTTP'));
+  assert.ok(keys(ok({ ...BASE, local: true })).includes('HUB_INSECURE_HTTP'));
+
+  const entry = envEntries(ok({ ...BASE, local: true }), {
+    hubSecret: 'x',
+    adminPassword: 'y',
+  }).find((e) => e.key === 'HUB_INSECURE_HTTP');
+  assert.match(entry.comment, /LOCAL TESTING ONLY/);
+  assert.match(entry.comment, /Delete this line/, 'says how to undo it');
+});
+
+test('the compose file matches the scheme it is actually serving', () => {
+  const local = renderCompose(ok({ ...BASE, local: true }));
+  assert.match(local, /HUB_PUBLIC_URL: http:\/\/\$\{PUBLIC_DOMAIN\}/);
+  assert.ok(!local.includes('"443:443"'), 'nothing terminates TLS, so nothing binds 443');
+  assert.match(local, /HUB_INSECURE_HTTP/, 'and the variable reaches the container');
+
+  const real = renderCompose(ok(BASE));
+  assert.match(real, /HUB_PUBLIC_URL: https:\/\/\$\{PUBLIC_DOMAIN\}/);
+  assert.match(real, /"443:443"/);
+  assert.ok(!real.includes('HUB_INSECURE_HTTP'));
+});
+
+test('the admin PASSWORD reaches the container, not just the address', () => {
+  // The half-wired state that shipped: `.env` held both, compose forwarded
+  // only the email, so the hub knew who the first user was and had no way to
+  // create them — and `workspace-up` still reported success, because the
+  // sign-in check was one of the six that reported `skipped`.
+  const compose = renderCompose(ok(BASE));
+  assert.match(compose, /MAUDE_ADMIN_EMAIL/);
+  assert.match(compose, /MAUDE_ADMIN_PASSWORD/);
 });

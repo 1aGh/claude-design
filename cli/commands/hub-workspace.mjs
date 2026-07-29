@@ -26,6 +26,7 @@ import {
   renderEnv,
   validateWorkspaceConfig,
   verificationPlan,
+  workspaceBaseUrl,
 } from '../lib/workspace-plan.mjs';
 
 export function usage() {
@@ -45,6 +46,11 @@ export function usage() {
   --s3-secret-access-key SECRET
   --s3-region REGION       default "auto"
   --dev-minio              run a local MinIO under the compose 'dev' profile
+  --local                  TESTING: serve plain HTTP, no certificate, no ACME.
+                           Lets you exercise the whole stack — and every
+                           verification step — on a laptop, with no domain and
+                           no paid account. Never serve a real workspace this
+                           way: sign-in passwords would travel in the clear.
   --seed-repo URL          clone an existing project; omit to start fresh
   --image-tag TAG          default "latest" — pin it before you rely on this
   --config FILE            read all of the above from a JSON file
@@ -63,7 +69,9 @@ export function usage() {
 }
 
 export async function run({ args, pkgRoot }) {
-  const { flags } = parseArgs(args, { booleans: ['dry-run', 'json', 'dev-minio'] });
+  const { flags } = parseArgs(args, {
+    booleans: ['help', 'dry-run', 'json', 'dev-minio', 'local'],
+  });
   if (flags.help) {
     process.stdout.write(usage());
     return;
@@ -79,6 +87,7 @@ export async function run({ args, pkgRoot }) {
       ? { adminPassword: flags['admin-password'] ?? raw.adminPassword }
       : {}),
     devMinio: flags['dev-minio'] === true || raw.devMinio === true,
+    local: flags.local === true || raw.local === true,
     seedRepo: flags['seed-repo'] ?? raw.seedRepo,
     imageTag: flags['image-tag'] ?? raw.imageTag,
     ...(flags['s3-endpoint'] || raw.s3
@@ -169,7 +178,14 @@ export async function run({ args, pkgRoot }) {
 
   process.stdout.write(`Wrote ${files.map((f) => f.name).join(', ')} to ${outDir}\n`);
   process.stdout.write('Starting the stack…\n');
-  const up = await sh('docker', ['compose', 'up', '-d'], { cwd: outDir });
+  // `--dev-minio` renders MinIO behind the `dev` compose profile, and a profile
+  // service does NOT start on a plain `compose up`. Rendering the bucket into
+  // the hub's config while never starting the bucket is the shape of failure
+  // that reports "storage configured" and then cannot store anything.
+  const composeArgs = config.s3?.dev
+    ? ['compose', '--profile', 'dev', 'up', '-d']
+    : ['compose', 'up', '-d'];
+  const up = await sh('docker', composeArgs, { cwd: outDir });
   if (up.code !== 0) {
     process.stderr.write(`docker compose up failed:\n${up.stderr}\n`);
     process.exit(1);
@@ -202,7 +218,7 @@ export async function run({ args, pkgRoot }) {
     printDuties(duties);
     process.stdout.write(
       failed === 0
-        ? `\nWorkspace verified: https://${config.domain}\n`
+        ? `\nWorkspace verified: ${workspaceBaseUrl(config)}\n`
         : `\n${failed} check(s) did NOT pass. The stack is running but is not proven — fix and re-run.\n`
     );
   }
@@ -273,7 +289,7 @@ async function which(bin) {
  * fastest way to make a verification suite worthless.
  */
 async function runVerification(step, { config, hubSecret }) {
-  const base = `https://${config.domain}`;
+  const base = workspaceBaseUrl(config);
   switch (step.id) {
     case 'health': {
       const res = await tryFetch(`${base}/health`);
@@ -312,7 +328,7 @@ async function tryFetch(url, init) {
 function printDryRun({ config, outDir, files, plan, duties, reusedSecret }) {
   process.stdout.write(
     `maude hub workspace-up — DRY RUN, nothing was written\n\n` +
-      `  workspace   https://${config.domain}\n` +
+      `  workspace   ${workspaceBaseUrl(config)}${config.local ? '  (LOCAL — plain HTTP)' : ''}\n` +
       `  first user  ${config.adminEmail}\n` +
       `  storage     ${config.s3 ? `${config.s3.bucket} @ ${config.s3.endpoint}${config.s3.dev ? ' (dev MinIO)' : ''}` : 'none — media stays in git'}\n` +
       `  project     ${config.seedRepo ?? 'starts fresh'}\n` +
