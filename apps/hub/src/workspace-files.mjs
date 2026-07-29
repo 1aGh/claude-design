@@ -86,7 +86,11 @@ export function indexCanvasPaths(relPaths) {
     // arbitrary winner would make the agent's output depend on readdir order,
     // and a history that differs between two identical cells is worse than a
     // history that picked the "wrong" one consistently.
-    if (!existing || rel.length < existing.length || (rel.length === existing.length && rel < existing)) {
+    if (
+      !existing ||
+      rel.length < existing.length ||
+      (rel.length === existing.length && rel < existing)
+    ) {
       index.set(slug, rel);
     }
   }

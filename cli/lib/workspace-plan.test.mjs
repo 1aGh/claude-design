@@ -354,8 +354,12 @@ test('the workspace gets a checkout the hub can actually commit into', () => {
   // GitHub" would have been a claim with nothing behind it.
   const compose = renderCompose(ok(BASE));
   assert.match(compose, /MAUDE_REPO_DIR: \/repo/, 'the hub must be told where its checkout is');
-  assert.match(compose, /- hub-repo:\/repo/, 'the checkout needs a volume, or it dies with the container');
-  assert.match(compose, /^volumes:\n(?:.*\n)*?  hub-repo:$/m, 'the volume must be declared');
+  assert.match(
+    compose,
+    /- hub-repo:\/repo/,
+    'the checkout needs a volume, or it dies with the container'
+  );
+  assert.match(compose, /^volumes:\n(?:.*\n)*? {2}hub-repo:$/m, 'the volume must be declared');
 });
 
 test('the checkout is a SEPARATE volume from the documents', () => {

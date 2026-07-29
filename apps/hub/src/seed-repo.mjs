@@ -86,7 +86,10 @@ export async function seedRepo(repoDir, run, { url = '', branch = '', log = cons
     } catch {
       /* best effort — the reason below is what the operator acts on */
     }
-    return { state: 'failed', reason: `git clone exited ${r.code}: ${r.stderr.trim().slice(0, 400)}` };
+    return {
+      state: 'failed',
+      reason: `git clone exited ${r.code}: ${r.stderr.trim().slice(0, 400)}`,
+    };
   }
   return { state: 'cloned', url: safeUrl(seed) };
 }

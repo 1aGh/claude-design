@@ -181,7 +181,9 @@ export function createWorkspaceAgent(opts) {
     if (!ready || !auto) return null;
     const slug = slugFromDocName(documentName);
     if (!slug) {
-      log.warn?.(`[workspace] ignoring unparseable document name: ${String(documentName).slice(0, 80)}`);
+      log.warn?.(
+        `[workspace] ignoring unparseable document name: ${String(documentName).slice(0, 80)}`
+      );
       return null;
     }
 

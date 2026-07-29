@@ -27,7 +27,7 @@
 // path (`graphics/camo-bg.png`). Mirroring only hashes left a hosted project
 // rendering without its own brand.
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { assetObjectKey, assetPrefixFromEnv } from './asset-key.mjs';

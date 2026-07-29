@@ -50,6 +50,7 @@ import {
   verifyAdminAuth,
   writeAdminSecret,
 } from './admin-auth.mjs';
+import { sweepAssets } from './asset-lane.mjs';
 import { handleAssetRoute } from './assets.mjs';
 import {
   handleAuthRoutes,
@@ -62,11 +63,9 @@ import { clientIpFor, parseTrustedProxies } from './client-ip.mjs';
 import { groupCanvases } from './doc-namespace.mjs';
 import { seedFirstUserOnBoot } from './first-user.mjs';
 import { createGitRunner } from './git-runner.mjs';
-import { seedRepo } from './seed-repo.mjs';
-import { sweepAssets } from './asset-lane.mjs';
-import { createWorkspaceAgent } from './workspace-agent.mjs';
 import { createRateStore } from './rate-store.mjs';
 import { s3ConfigFromEnv } from './s3.mjs';
+import { seedRepo } from './seed-repo.mjs';
 import { readSettings, writeSettings } from './settings.mjs';
 import {
   addToken,
@@ -79,6 +78,7 @@ import {
   rotateToken,
   verifyToken,
 } from './tokens.mjs';
+import { createWorkspaceAgent } from './workspace-agent.mjs';
 
 const HUB_VERSION = readOwnVersion();
 const DOCUMENT_NAME_REGEX = /^[A-Za-z0-9._/-]{1,256}$/;
@@ -610,7 +610,11 @@ export function createHub(config = {}) {
         console.log(`[hub] seeded workspace from ${seeded.url}`);
       }
 
-      const agent = make({ repoDir, designRel: process.env.MAUDE_DESIGN_ROOT ?? '.design', ...deps.options });
+      const agent = make({
+        repoDir,
+        designRel: process.env.MAUDE_DESIGN_ROOT ?? '.design',
+        ...deps.options,
+      });
       const started = await agent.start();
       if (started.state !== 'failed') workspace = agent;
       return { ...started, seed: seeded.state };
