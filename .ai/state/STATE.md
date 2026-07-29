@@ -4,7 +4,12 @@
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
 **Status:** in-progress — Maude Cloud self-service gap arc (phases 11-21)
-**Active plan:** `.ai/plans/cloud-phase-12-control-plane-worker.md` (first buildable; 11 is owner-only)
+**Active plan:** `.ai/plans/cloud-phase-13-identity-one-account.md` (12 done + LIVE; 11 owner-only)
+
+_2026-07-29 (later):_ **Phase 12 DONE + deployed live** — `maude-cloud` Worker at
+`https://maude-cloud.maude1agh.workers.dev` (/health ok, d1 ok, cron hourly);
+Workers/cron/D1 turned out Free-tier-capable, only Containers/Queues/R2 wait
+for Phase 11. Deploy path: bun bundle + Cloudflare API multipart PUT.
 
 _2026-07-29:_ four-seat debate (`debate-cloud-selfservice-gap-arc`) resolved the
 self-service gaps: **DDR-197** narrows DDR-192 §4 (read-only browser share view

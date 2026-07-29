@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-29T13:25:22.592Z",
+  "generated": "2026-07-29T13:39:50.010Z",
   "currentPhase": null,
   "phases": [
     {
@@ -54,6 +54,17 @@
       "date": null,
       "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 9. The production-release phase.",
       "planPath": ".ai/plans/archive/cloud-phase-10-ga-launch-github-mirror.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-12-control-plane-worker",
+      "title": "Cloud Phase 12 — Control-plane Worker (the effects layer over apps/cloud)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "maude-cloud DB via MCP — D1 works on Free, so this is buildable NOW), Queues producer/consumer (deploy-gated on Phase 11), cron trigger (hourly reconcile), static assets dir for the signup SPA (Pha...",
+      "planPath": ".ai/plans/archive/cloud-phase-12-control-plane-worker.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1583,17 +1594,6 @@
       "date": null,
       "summary": "maude kg note + this plan updated with the ids; a re-probe (cloudflare-api MCP) shows Containers and R2 accepting instead of refusing.",
       "planPath": ".ai/plans/cloud-phase-11-vendor-unblock.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-12-control-plane-worker",
-      "title": "Cloud Phase 12 — Control-plane Worker (the effects layer over apps/cloud)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "maude-cloud DB via MCP — D1 works on Free, so this is buildable NOW), Queues producer/consumer (deploy-gated on Phase 11), cron trigger (hourly reconcile), static assets dir for the signup SPA (Pha...",
-      "planPath": ".ai/plans/cloud-phase-12-control-plane-worker.md",
       "archived": false,
       "phaseKey": null
     },

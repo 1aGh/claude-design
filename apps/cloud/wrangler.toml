@@ -1,0 +1,32 @@
+# Maude Cloud control plane — Cloud Phase 12.
+#
+# Deployable the moment Phase 11 clears (Workers Paid + zone). Until then:
+# `wrangler deploy --dry-run` must stay clean, and D1 (Free-tier reachable)
+# carries the schema so /health can be proven the day the route exists.
+#
+# Queues are COMMENTED, not configured-and-broken: they need Workers Paid, and
+# the jobs TABLE is the durable record either way — a queue is only a faster
+# drain of it (worker.mjs header). Uncomment in Phase 11's wake.
+
+name = "maude-cloud"
+main = "worker.mjs"
+compatibility_date = "2026-07-01"
+
+# Phase 11 fills these in:
+# routes = [{ pattern = "cloud.maude.sh", custom_domain = true }]
+
+[triggers]
+crons = ["0 * * * *"]   # hourly reconcile sweep — the source of truth pass
+
+[[d1_databases]]
+binding = "DB"
+database_name = "maude-cloud-control-plane"
+database_id = "cf2b8fdc-6c3f-42f9-9305-0040e01391eb"  # live; schema v1 applied 2026-07-28, idempotence re-proven 2026-07-29
+
+# [[queues.producers]]
+# binding = "RECONCILE_QUEUE"
+# queue = "maude-reconcile"
+# [[queues.consumers]]
+# queue = "maude-reconcile"
+
+# Secrets (wrangler secret put): STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
