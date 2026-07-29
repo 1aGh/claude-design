@@ -54,6 +54,34 @@ const STAGE_DIR = resolve(SCRIPT_DIR, '..', '.kg-staging');
 const KGAI_VERSION = 'v0.1.9';
 const KGAI_REPO = 'kgaidev/kgai';
 
+// api.github.com allows 60 requests/hour to UNAUTHENTICATED callers, counted per
+// source IP — and GitHub's hosted runners share IPs across every customer's jobs.
+// One macOS leg spends ~30 of those (two arches × a recursive plugin-tree walk),
+// so the quota is a coin flip: the same code that staged kgai fine on the v0.49.1
+// tag run answered `release metadata fetch failed: 403` half an hour later. A
+// token — any token, even one scoped to an unrelated repo — raises the ceiling to
+// 5000/hour and makes this deterministic. Absent one we still try unauthenticated
+// (a local `pnpm dev:desktop` has no token and usually has quota to spare).
+const GH_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
+
+/** Headers for api.github.com. Only api.github.com — never the CDN hosts below. */
+function apiHeaders() {
+  const h = { 'user-agent': 'maude-sync-kg', accept: 'application/vnd.github+json' };
+  if (GH_TOKEN) h.authorization = `Bearer ${GH_TOKEN}`;
+  return h;
+}
+
+/** Turn a bare status into something that says what to do about it. */
+function apiError(what, status) {
+  const hint =
+    status === 403 || status === 429
+      ? GH_TOKEN
+        ? ' (rate-limited even WITH a token — wait, or re-run later)'
+        : ' — api.github.com rate limit; set GITHUB_TOKEN for the 5000/h ceiling'
+      : '';
+  return new Error(`${what}: HTTP ${status}${hint}`);
+}
+
 if (process.env.MAUDE_SKIP_KG_SYNC === '1') {
   console.log('[sync-kg] MAUDE_SKIP_KG_SYNC=1 — skipping (bundle ships without kgai).');
   process.exit(0);
@@ -114,11 +142,9 @@ const relBase = `https://github.com/${KGAI_REPO}/releases/download/${KGAI_VERSIO
 async function assetSizes() {
   const res = await fetch(
     `https://api.github.com/repos/${KGAI_REPO}/releases/tags/${KGAI_VERSION}`,
-    {
-      headers: { 'user-agent': 'maude-sync-kg', accept: 'application/vnd.github+json' },
-    }
+    { headers: apiHeaders() }
   );
-  if (!res.ok) throw new Error(`release metadata fetch failed: ${res.status}`);
+  if (!res.ok) throw apiError('release metadata fetch failed', res.status);
   const rel = await res.json();
   const map = {};
   for (const a of rel.assets ?? []) map[a.name] = a.size;
@@ -166,10 +192,9 @@ async function download(url, dest, expectedSize) {
 async function fetchPluginTree(outDir) {
   const WANT = ['.claude-plugin', 'hooks', 'skills', 'commands'];
   const base = `https://api.github.com/repos/${KGAI_REPO}/contents`;
-  const hdr = { 'user-agent': 'maude-sync-kg', accept: 'application/vnd.github+json' };
   const walk = async (path, dest) => {
-    const res = await fetch(`${base}/${path}?ref=${KGAI_VERSION}`, { headers: hdr });
-    if (!res.ok) throw new Error(`contents ${path}: HTTP ${res.status}`);
+    const res = await fetch(`${base}/${path}?ref=${KGAI_VERSION}`, { headers: apiHeaders() });
+    if (!res.ok) throw apiError(`contents ${path}`, res.status);
     const items = await res.json();
     mkdirSync(dest, { recursive: true });
     for (const it of items) {
@@ -184,6 +209,15 @@ async function fetchPluginTree(outDir) {
       }
     }
   };
+  // The plugin tree is arch-independent, but a universal macOS build runs this
+  // script once PER ARCH — so an unguarded walk pays the recursive contents-API
+  // cost twice for a byte-identical result. Halving it matters when the quota is
+  // what breaks the build (see the rate-limit note on GH_TOKEN).
+  const pinFile = join(outDir, '.kgai-pin');
+  if (existsSync(pinFile) && readFileSync(pinFile, 'utf8').trim() === KGAI_VERSION) {
+    console.log(`[sync-kg] plugin tree already staged at ${KGAI_VERSION} — skipping refetch`);
+    return;
+  }
   rmSync(outDir, { recursive: true, force: true });
   for (const top of WANT) await walk(top, join(outDir, top));
 
@@ -212,6 +246,8 @@ async function fetchPluginTree(outDir) {
     }
   );
   if (lic.ok) writeFileSync(join(outDir, 'LICENSE'), Buffer.from(await lic.arrayBuffer()));
+  // Written LAST — a half-fetched tree must not look complete to the next run.
+  writeFileSync(pinFile, `${KGAI_VERSION}\n`);
 }
 
 async function main() {

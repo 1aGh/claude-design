@@ -170,6 +170,12 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # sync-kg.mjs talks to api.github.com, whose UNAUTHENTICATED quota is
+          # 60/h shared across every job on the runner's IP — the v0.49.1 tag run
+          # got through, a dispatch 40 minutes later got `403`. Any token lifts
+          # the ceiling to 5000/h (the pinned kgai release is a public repo, so
+          # the default GITHUB_TOKEN's scope is irrelevant — it just authenticates).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           # Stage BOTH arches' sidecars, then fuse each into a single
@@ -278,7 +284,16 @@ jobs:
           if [ -z "$APPLE_CERTIFICATE" ]; then
             unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
           fi
-          pnpm --filter @maude/desktop tauri build --target universal-apple-darwin
+          # MAUDE_SKIP_KG_SYNC=1 is load-bearing HERE, macOS only. tauri's
+          # `beforeBuildCommand` runs `sync-kg.mjs` itself — and this step's
+          # MAUDE_SIDECAR_SLUG (darwin-arm64) with no MAUDE_KG_NO_ALIAS would
+          # make that run re-download the THIN arm64 engine and `copyFileSync`
+          # it over `.kg-staging/kg` — silently replacing the universal binary
+          # we just lipo'd AND signed with an unsigned single-arch one, moments
+          # before stage-resources copies it into the bundle. Notarization would
+          # then reject it (or ship an x86_64-broken app). Skipping leaves our
+          # prepared staging dir untouched; stage-resources only ever copies.
+          MAUDE_SKIP_KG_SYNC=1 pnpm --filter @maude/desktop tauri build --target universal-apple-darwin
 
           # tauri notarizes + staples the .app, but only *signs* the .dmg
           # container (it is NOT notarized). A browser-downloaded (quarantined)
@@ -372,6 +387,12 @@ jobs:
           # (Linux has no Gatekeeper/Authenticode equivalent).
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Linux DOES fetch kgai (a linux-x86_64 prebuilt exists) — via tauri's
+          # own beforeBuildCommand rather than an explicit step. Same 60/h
+          # unauthenticated api.github.com quota, same coin flip. (Windows needs
+          # no token: kgai publishes no win32 build, so sync-kg exits before its
+          # first API call.)
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Restrict to the deb target (config is targets:"all"): the AppImage
           # bundler trips on the static Bun sidecar via linuxdeploy/ldd (see the
