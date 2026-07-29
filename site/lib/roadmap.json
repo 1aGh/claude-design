@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-29T18:09:12.466Z",
+  "generated": "2026-07-29T18:32:42.533Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1680,7 +1680,7 @@
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "only. Installation token minting in the cell (short-lived, never stored raw). (the no-force assertion already exists; the live path must import, not copy). validated form), branch (default maude-wo...",
+      "summary": "raw. Minted in the CONTROL PLANE, not the cell — see DDR-201; the App key can mint for every installed repository, so a cell that held it would be a credential for every other tenant's GitHub. (imp...",
       "planPath": ".ai/plans/cloud-phase-19-mirror-effects.md",
       "archived": false,
       "phaseKey": null
@@ -1691,7 +1691,7 @@
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "sessions per Phase 13 T5), rename, share toggle (Phase 18), mirror settings (Phase 19, owner-only). reconciler's view of the world (never a second source of truth). (git bundle + assets manifest) →...",
+      "summary": "asset manifest + a plain-language README that states what is NOT included). See DDR-202. purged except through exported (DDR-193 §3, tested since Phase 5), and Phase 20 gives that state something r...",
       "planPath": ".ai/plans/cloud-phase-20-self-administration.md",
       "archived": false,
       "phaseKey": null

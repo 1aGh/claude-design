@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-202: The export is the promise the rest of the product rests on](DDR-202-export-is-the-promise-the-rest-rests-on.md) — 2026-07-29, cloud/export/lifecycle/data-portability/git-bundle/honesty
 - [DDR-201: The mirror credential boundary — a cell asks, it never holds](DDR-201-mirror-credential-boundary.md) — 2026-07-29, cloud/mirror/github/credentials/blast-radius/tokens/append-only
 - [DDR-200: File-tree move — path-derived canvas slug re-keyed server-side, no stable canvas id](DDR-200-file-tree-move-path-derived-slug-rekey.md) — 2026-07-29, dev-server/file-tree/canvas-lifecycle/slug/collab/security
 - [DDR-200: The share view serves bytes, not code — a browser surface that cannot execute anything](DDR-200-read-only-share-view-serves-bytes-not-code.md) — 2026-07-29, cloud/share/browser/containment/csp/svg/r2/staleness
