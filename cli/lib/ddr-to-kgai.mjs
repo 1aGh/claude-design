@@ -212,7 +212,11 @@ export function buildDdrBatch(decisionsDir, scope = {}, only = null) {
     }
     stats.crossrefs += Object.keys(refs).length;
 
-    const primary = tags[0] || 'general';
+    // A real tag (`security`, `infra`) SHOULD converge across repos — that is the
+    // cross-repo value. The `general` FALLBACK is not a concept, it means "this DDR
+    // had no tags", which is repo-local noise; left shared it makes every untagged
+    // decision in the company a competing head on one junk node.
+    const primary = tags[0] || scopedSlug('general', scope);
     const self = ddrRef(num, scope);
     const muts = [
       { op: 'upsert_element', kind: 'area', name: primary, props: { last_ddr: self } },
@@ -334,7 +338,8 @@ function scopeMutations(name, kind, scope = {}) {
 export function buildLogDecision(absPath, kind, scope = {}, opts = {}) {
   const body = readFileSync(absPath, 'utf8');
   const base = basename(absPath);
-  const slug = opts.slug ?? base.replace(/\.md$/, '').replace(/\//g, '-');
+  // Log slugs come from FILENAMES (`rc-1.3.3.md`), which repeat across repos.
+  const slug = scopedSlug(opts.slug ?? base.replace(/\.md$/, '').replace(/\//g, '-'), scope);
   const title = (body.match(/^#\s*(.+)$/m) || [null, slug])[1].trim();
   // `**Date:**` when the author supplied one, else the file's own mtime — these
   // files are gitignored, so git has no creation date to fall back on either.
@@ -770,8 +775,9 @@ export function buildStateBatch(statePath, scope = {}) {
       ...scopeMuts(ref),
     ];
     if (feature) {
-      muts.push({ op: 'upsert_element', kind: 'plan', name: feature });
-      muts.push({ op: 'add_link', from: ref, to: `plan:${feature}`, link: 'PROGRESS_ON' });
+      const planName = scopedSlug(feature, scope);
+      muts.push({ op: 'upsert_element', kind: 'plan', name: planName });
+      muts.push({ op: 'add_link', from: ref, to: `plan:${planName}`, link: 'PROGRESS_ON' });
     }
     const d = {
       title: header.replace(/\*\*/g, '').slice(0, 160),
@@ -833,7 +839,8 @@ export function buildDocsBatch(aiDir, scope = {}) {
       .filter((x) => x.endsWith('.md') && !SKIP.has(x))
       .sort()) {
       const t = readFileSync(join(abs, f), 'utf8');
-      const slug = f.replace(/\.md$/, '');
+      // Doc names are filenames — every repo has a `PRD.md`.
+      const slug = scopedSlug(f.replace(/\.md$/, ''), scope);
       const title = (t.match(/^#\s*(.+)$/m) || [null, slug])[1].trim();
       const ref = `doc:${slug}`;
       const muts = [
