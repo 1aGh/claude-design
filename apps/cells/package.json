@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "description": "Maude Cloud data plane — the tenant cell Durable Object and its router.",
-  "scripts": { "deploy": "wrangler deploy" },
-  "dependencies": { "@cloudflare/containers": "^0.3.7" }
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7"
+  }
 }
