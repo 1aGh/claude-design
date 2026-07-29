@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-29T16:20:56.520Z",
+  "generated": "2026-07-29T17:17:52.591Z",
   "currentPhase": null,
   "phases": [
     {
@@ -76,6 +76,17 @@
       "date": null,
       "summary": "users.mjs — same code, control-plane D1 storage) AND Google OAuth (buyer-side only; OAuth on the Worker via PKCE, no client secret in a browser). never to maude.sh. First magic link IS email verifi...",
       "planPath": ".ai/plans/archive/cloud-phase-13-identity-one-account.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-15-cell-up-alligators",
+      "title": "Cloud Phase 15 — `maude cell up` for real + alligators as tenant-of-one",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "containment boot-assert verified in the pushed artifact. → The image had never been built and could not be (better-sqlite3 under Bun). It now derives FROM the hub image; containment is asserted at...",
+      "planPath": ".ai/plans/archive/cloud-phase-15-cell-up-alligators.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1627,17 +1638,6 @@
       "date": null,
       "summary": "RESERVED_IDS enforced at the UI too so the error arrives while typing). ids; live mode still throws — that stays). Metadata carries project id only. reconciler drives stepToward('active') → cell he...",
       "planPath": ".ai/plans/cloud-phase-14-checkout-provision-first.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-15-cell-up-alligators",
-      "title": "Cloud Phase 15 — `maude cell up` for real + alligators as tenant-of-one",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "can pull from; containment boot-assert verified in the pushed artifact. (dns → worker-route → container → DO → r2-token → r2-prefix). Destroy is the tested destroySweep order. Every step idempotent...",
-      "planPath": ".ai/plans/cloud-phase-15-cell-up-alligators.md",
       "archived": false,
       "phaseKey": null
     },
