@@ -138,7 +138,7 @@ export async function handleAuth(request, env) {
     // signed-in person landing on a marketing page and having to find a link
     // to their own work is the shape this phase exists to remove.
     const account = await currentAccount(request, env);
-    if (!account) return html(homePage({ account: null }));
+    if (!account) return html(homePage({ account: null, googleEnabled: google }));
     return html(dashboardPage({ account, projects: await projectsFor(env, account.id), can }));
   }
   if (method === 'GET' && pathname === '/signup') {
@@ -238,17 +238,30 @@ export async function handleAuth(request, env) {
       challenge,
       state,
     });
-    // Verifier+state ride a short-lived HttpOnly cookie — the only place the
-    // browser can hold them without script access.
+    // Verifier+state (+ the optional return path, URI-encoded so it cannot
+    // collide with the dot separators) ride a short-lived HttpOnly cookie —
+    // the only place the browser can hold them without script access.
+    const next = safeNext(url);
+    const jar = `${state}.${verifier}${next ? `.${encodeURIComponent(next)}` : ''}`;
     return redirect(location, {
-      'set-cookie': setCookie(OAUTH_COOKIE, `${state}.${verifier}`, { maxAge: 600 }),
+      'set-cookie': setCookie(OAUTH_COOKIE, jar, { maxAge: 600 }),
     });
   }
 
   if (method === 'GET' && pathname === '/auth/google/callback') {
     if (!google) return json({ ok: false }, 503);
     const stored = cookieValue(request, OAUTH_COOKIE) ?? '';
-    const [cookieState, verifier] = stored.split('.');
+    // state/verifier are base64url (never contain '.'); everything after the
+    // second dot is the encoded return path — which MAY contain dots, hence
+    // the rejoin. Re-validated like any `next` before use.
+    const [cookieState, verifier, ...nextParts] = stored.split('.');
+    let next = null;
+    try {
+      const decoded = nextParts.length ? decodeURIComponent(nextParts.join('.')) : '';
+      if (/^\/(?!\/)[\x20-\x7e]*$/.test(decoded)) next = decoded;
+    } catch {
+      next = null;
+    }
     const check = validateCallback({
       queryState: url.searchParams.get('state'),
       cookieState,
@@ -296,11 +309,15 @@ export async function handleAuth(request, env) {
       });
     }
     const session = await createSession(env.DB, resolved.account.id);
-    return redirect('/', {
-      'set-cookie': [setCookie(SESSION_COOKIE, session.token), clearCookie(OAUTH_COOKIE)].join(
-        ', '
-      ),
-    });
+    // Two cookies = two Set-Cookie HEADERS. Joining them with ", " into one
+    // header made the browser read the whole string as ONE cookie whose later
+    // `Max-Age=0` (from the oauth clear) overrode the session's — the session
+    // died on arrival and Google sign-in silently bounced back to the landing
+    // page signed out.
+    const headers = new Headers({ location: next ?? '/' });
+    headers.append('set-cookie', setCookie(SESSION_COOKIE, session.token));
+    headers.append('set-cookie', clearCookie(OAUTH_COOKIE));
+    return new Response(null, { status: 303, headers });
   }
 
   // ------------------------------------------------- project grant minting

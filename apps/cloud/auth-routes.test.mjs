@@ -169,6 +169,85 @@ test('a callback with mismatched state is refused', async () => {
   assert.equal(res.status, 400);
 });
 
+function fakeIdToken(claims) {
+  const payload = Buffer.from(JSON.stringify(claims)).toString('base64url');
+  return `h.${payload}.s`;
+}
+
+async function withGoogleExchange(claims, fn) {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ id_token: fakeIdToken(claims) }), {
+      headers: { 'content-type': 'application/json' },
+    });
+  try {
+    return await fn();
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+test('a successful Google callback sets the session and clears the oauth jar as TWO Set-Cookie headers', async () => {
+  // Regression (2026-07-30): the two cookies were comma-joined into ONE
+  // header, so the browser read the whole string as one cookie whose trailing
+  // Max-Age=0 deleted the session on arrival — Google sign-in bounced back to
+  // the landing page signed out, with every server-side step "working".
+  const { env } = await freshEnv({ GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'cs' });
+  await withGoogleExchange({ sub: 'g-123', email: 'g@example.com', email_verified: true }, async () => {
+    const res = await worker.fetch(
+      new Request('https://cloud.test/auth/google/callback?code=x&state=legit', {
+        headers: { cookie: 'maude_oauth=legit.verifier' },
+      }),
+      env
+    );
+    assert.equal(res.status, 303);
+    assert.equal(res.headers.get('location'), '/');
+    const cookies = res.headers.getSetCookie();
+    assert.equal(cookies.length, 2, 'session set + oauth clear must be separate headers');
+    const session = cookies.find((c) => c.startsWith('maude_session='));
+    assert.ok(session, 'session cookie present');
+    assert.ok(!/Max-Age=0/.test(session), 'session cookie must not be born expired');
+    const oauth = cookies.find((c) => c.startsWith('maude_oauth='));
+    assert.match(oauth, /Max-Age=0/);
+  });
+});
+
+test('Google sign-in carries ?next through the oauth jar back to the return path', async () => {
+  const { env } = await freshEnv({ GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'cs' });
+  const start = await worker.fetch(
+    new Request('https://cloud.test/auth/google?next=%2Finvite%2Fabc.def', { redirect: 'manual' }),
+    env
+  );
+  const jar = /maude_oauth=([^;]+)/.exec(start.headers.get('set-cookie'))[1];
+  assert.match(jar, /\.%2Finvite%2Fabc\.def$/, 'next rides the cookie, URI-encoded');
+
+  const state = new URL(start.headers.get('location')).searchParams.get('state');
+  await withGoogleExchange({ sub: 'g-456', email: 'n@example.com', email_verified: true }, async () => {
+    const res = await worker.fetch(
+      new Request(`https://cloud.test/auth/google/callback?code=x&state=${state}`, {
+        headers: { cookie: `maude_oauth=${jar}` },
+      }),
+      env
+    );
+    assert.equal(res.status, 303);
+    assert.equal(res.headers.get('location'), '/invite/abc.def');
+  });
+});
+
+test('a hostile next in the oauth jar falls back to the dashboard', async () => {
+  const { env } = await freshEnv({ GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'cs' });
+  await withGoogleExchange({ sub: 'g-789', email: 'h@example.com', email_verified: true }, async () => {
+    const res = await worker.fetch(
+      new Request('https://cloud.test/auth/google/callback?code=x&state=legit', {
+        headers: { cookie: `maude_oauth=legit.verifier.${encodeURIComponent('//evil.example')}` },
+      }),
+      env
+    );
+    assert.equal(res.status, 303);
+    assert.equal(res.headers.get('location'), '/');
+  });
+});
+
 // -------------------------------------------------------------------- grant
 
 test('grant mint: owner gets one, a stranger and a guest both get the SAME 404', async () => {
