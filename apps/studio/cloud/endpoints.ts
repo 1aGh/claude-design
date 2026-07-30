@@ -22,7 +22,18 @@ import { dirname, join } from 'node:path';
 import { saveHubCredential } from '../sync/hub-link.ts';
 import { normalizeUrl } from '../sync/hubs-config.ts';
 
-const CLOUD_URL = (process.env.MAUDE_CLOUD_URL ?? 'https://cloud.maude.sh').replace(/\/+$/, '');
+/**
+ * Where Maude Cloud lives, resolved PER CALL rather than at module load.
+ *
+ * A module-level read baked whatever `MAUDE_CLOUD_URL` happened to be at
+ * import time — so in a shared test process the first importer decided the
+ * address for everyone (the e2e/unit stub silently talked to production and
+ * the assertion failed 410), and the desktop shell could not set the env
+ * after the module graph was already warm.
+ */
+function cloudUrl(): string {
+  return (process.env.MAUDE_CLOUD_URL ?? 'https://cloud.maude.sh').replace(/\/+$/, '');
+}
 
 export interface CloudEndpointResult {
   status: number;
@@ -87,7 +98,7 @@ async function cloudFetch(
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {
-    const res = await fetch(`${CLOUD_URL}${path}`, { ...init, signal: ctl.signal });
+    const res = await fetch(`${cloudUrl()}${path}`, { ...init, signal: ctl.signal });
     return { status: res.status, body: await res.json().catch(() => ({})) };
   } catch (err) {
     return { status: 0, body: { error: (err as Error).message } };
@@ -109,7 +120,7 @@ export function createCloudEndpoints(ctx: Ctx) {
         status: 200,
         json: file
           ? { connected: true, email: file.email ?? null, url: file.url }
-          : { connected: false, url: CLOUD_URL },
+          : { connected: false, url: cloudUrl() },
       };
     },
 
@@ -154,7 +165,7 @@ export function createCloudEndpoints(ctx: Ctx) {
         };
       }
       writeCloudFile({
-        url: CLOUD_URL,
+        url: cloudUrl(),
         token: r.body.token,
         email: r.body.account?.email ?? undefined,
         connectedAt: Date.now(),

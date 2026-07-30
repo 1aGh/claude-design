@@ -56,9 +56,11 @@ function listFiles(dir, prefix = '', out = []) {
 }
 
 function s3ConfigFromEnv(env = process.env) {
-  const missing = ['MAUDE_R2_ENDPOINT', 'MAUDE_R2_ACCESS_KEY_ID', 'MAUDE_R2_SECRET_ACCESS_KEY'].filter(
-    (k) => !env[k]
-  );
+  const missing = [
+    'MAUDE_R2_ENDPOINT',
+    'MAUDE_R2_ACCESS_KEY_ID',
+    'MAUDE_R2_SECRET_ACCESS_KEY',
+  ].filter((k) => !env[k]);
   if (missing.length) {
     throw new Error(
       `object storage is not configured — missing ${missing.join(', ')}.\n` +
@@ -95,7 +97,9 @@ export async function run({ args, pkgRoot }) {
 
   const project = validProjectId(flags.project);
   if (!project) {
-    process.stderr.write('maude share: --project is required (lowercase letters, digits, hyphens)\n');
+    process.stderr.write(
+      'maude share: --project is required (lowercase letters, digits, hyphens)\n'
+    );
     process.exit(2);
   }
   const zone = String(flags.zone ?? 'cloud.maude.sh');

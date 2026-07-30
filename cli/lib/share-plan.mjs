@@ -65,7 +65,11 @@ export function shareMarker(project, { enabled, name }) {
   if (!id) throw new Error(`invalid project id: ${project}`);
   return {
     key: `tenants/${id}/share.json`,
-    body: JSON.stringify({ enabled: Boolean(enabled), name: String(name ?? id).slice(0, 80) }, null, 2),
+    body: JSON.stringify(
+      { enabled: Boolean(enabled), name: String(name ?? id).slice(0, 80) },
+      null,
+      2
+    ),
   };
 }
 

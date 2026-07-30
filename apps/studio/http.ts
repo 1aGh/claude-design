@@ -24,6 +24,7 @@ import { ImportBrandError, importBrand } from './bin/_import-brand.mjs';
 import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
+import { createCloudEndpoints } from './cloud/endpoints.ts';
 import type { AiActivity } from './collab/ai-activity.ts';
 import type { Context } from './context.ts';
 import { reloadConfig } from './context.ts';
@@ -78,7 +79,6 @@ import {
 } from './generation/whisper-models.ts';
 import { createGitEndpoints } from './git/endpoints.ts';
 import { gitShowFile } from './git/service.ts';
-import { createCloudEndpoints } from './cloud/endpoints.ts';
 import { createGitHubEndpoints } from './github/endpoints.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
@@ -1241,7 +1241,10 @@ export function createHttp(
         const m = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(shot);
         if (!m || m[2].length > 7_000_000) continue; // ~5 MB decoded cap
         n += 1;
-        await Bun.write(join(dir, `screenshot-${n}.${m[1] === 'png' ? 'png' : 'jpg'}`), Buffer.from(m[2], 'base64'));
+        await Bun.write(
+          join(dir, `screenshot-${n}.${m[1] === 'png' ? 'png' : 'jpg'}`),
+          Buffer.from(m[2], 'base64')
+        );
       }
       return Response.json(
         { dir: relative(ctx.paths.repoRoot, dir), screenshots: n },

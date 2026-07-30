@@ -3,7 +3,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { isShareable, publishPlan, publishSummary, shareMarker, validProjectId } from './share-plan.mjs';
+import {
+  isShareable,
+  publishPlan,
+  publishSummary,
+  shareMarker,
+  validProjectId,
+} from './share-plan.mjs';
 
 test('SVG is never published, however it is named', () => {
   // Same reason the share origin refuses to SERVE one: an SVG is a document
@@ -22,7 +28,10 @@ test('a publish cannot climb out of the directory it was pointed at', () => {
     ['../secret.png', '/etc/x.png', 'a/../../b.png', 'ok.png', 'ui/home.png'],
     'acme'
   );
-  assert.deepEqual(uploads.map((u) => u.from), ['ok.png', 'ui/home.png']);
+  assert.deepEqual(
+    uploads.map((u) => u.from),
+    ['ok.png', 'ui/home.png']
+  );
   assert.equal(skipped.length, 3);
 });
 

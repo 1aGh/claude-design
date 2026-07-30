@@ -862,7 +862,12 @@ export function buildDocsBatch(aiDir, scope = {}) {
       // A doc that cites DDRs is context ABOUT them.
       for (const num of new Set([...t.matchAll(/DDR-(\d+)/g)].map((m) => m[1].padStart(3, '0')))) {
         muts.push({ op: 'upsert_element', kind: 'decision', name: ddrRef(num, scope) });
-        muts.push({ op: 'add_link', from: ref, to: `decision:${ddrRef(num, scope)}`, link: 'REFERENCES' });
+        muts.push({
+          op: 'add_link',
+          from: ref,
+          to: `decision:${ddrRef(num, scope)}`,
+          link: 'REFERENCES',
+        });
       }
       decisions.push({
         title: `Doc: ${title}`.slice(0, 160),
