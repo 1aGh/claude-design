@@ -88,6 +88,18 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/edit-attr',
         // DDR-148 — raw canvas source for the Timeline parser is MAIN-ORIGIN
         // ONLY (the untrusted canvas iframe must never read project source).
+        // Cloud Phase 23 C3 — the Maude Cloud lane holds the PERSONAL TOKEN
+        // and can write linkedHub + a hub credential. Absent from
+        // CANVAS_SAFE_API and from startCanvasServer's routes; the security
+        // pass confirmed that by reading, which is exactly the kind of fact
+        // that should be pinned rather than re-read (validate 2026-07-30).
+        '/_api/cloud/status',
+        '/_api/cloud/projects',
+        '/_api/cloud/signin/start',
+        '/_api/cloud/signin/poll',
+        '/_api/cloud/signout',
+        '/_api/cloud/attach',
+        '/_api/cloud/attach/code',
         '/_api/canvas-source',
         // DDR-148 — Timeline drag-to-retime is a source-write, MAIN-ORIGIN ONLY.
         '/_api/retime-sequence',

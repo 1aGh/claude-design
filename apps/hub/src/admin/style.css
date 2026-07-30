@@ -1734,3 +1734,15 @@ dialog::backdrop {
     --dur-soft: 1ms;
   }
 }
+
+/* The customer-facing landing's demoted operator link (Phase 23 B5).
+   CLASSES, never inline styles: the admin CSP is `style-src 'self'`, which
+   silently drops every `style=` attribute — the third time that trap fired
+   (DDR-097). `cell-landing-no-inline-style.test.mjs` now fails the build
+   rather than leaving it to be rediscovered in a screenshot. */
+.landing-footnote {
+  margin-top: 14px;
+}
+.landing-footnote-link {
+  color: inherit;
+}

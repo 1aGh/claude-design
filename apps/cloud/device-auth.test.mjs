@@ -229,3 +229,36 @@ test('the device pages ship no script and no vocabulary of ours', () => {
     );
   }
 });
+
+test('a prefilled code NAMES the app that asked — consent without a subject is the phishing shape', async () => {
+  const { env } = await freshEnv();
+  const session = await signedIn(env);
+  const code = await (
+    await worker.fetch(jpost('/auth/device/code', { client: 'Maude Studio on darwin' }), env)
+  ).json();
+
+  const page = await worker.fetch(
+    new Request(`https://cloud.test/activate?code=${code.user_code}`, {
+      headers: { cookie: `maude_session=${session}` },
+    }),
+    env
+  );
+  const html = await page.text();
+  assert.match(html, /Maude Studio on darwin/, 'the requesting app is named');
+  assert.match(html, /wants to use your account/);
+  assert.match(html, /Confirm the code/, 'and the label reflects that it is prefilled');
+});
+
+test('a prefilled code that is NOT waiting names nothing and invents nothing', async () => {
+  const { env } = await freshEnv();
+  const session = await signedIn(env);
+  const page = await worker.fetch(
+    new Request('https://cloud.test/activate?code=ZZZZ-ZZZZ', {
+      headers: { cookie: `maude_session=${session}` },
+    }),
+    env
+  );
+  const html = await page.text();
+  assert.doesNotMatch(html, /wants to use your account/);
+  assert.match(html, /Enter the code/, 'it falls back to the plain ask');
+});

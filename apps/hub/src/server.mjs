@@ -67,7 +67,7 @@ import { createGitRunner } from './git-runner.mjs';
 import { createRateStore } from './rate-store.mjs';
 import { s3ConfigFromEnv } from './s3.mjs';
 import { seedRepo } from './seed-repo.mjs';
-import { readSettings, writeSettings } from './settings.mjs';
+import { DEFAULT_HUB_NAME, readSettings, writeSettings } from './settings.mjs';
 import {
   addToken,
   assertValidLabel,
@@ -391,14 +391,9 @@ export function createHub(config = {}) {
         // surface, deliberately NOT a marketing page (DDR-097). Server-rendered
         // with the hub name; links the admin stylesheet (no inline styles — the
         // admin CSP `style-src 'self'` would drop them).
-        respondAsset(
-          response,
-          renderLanding(readSettings(dataDir).name),
-          'text/html; charset=utf-8',
-          {
-            hardenAdminOrigin: true,
-          }
-        );
+        respondAsset(response, renderLanding(readSettings(dataDir)), 'text/html; charset=utf-8', {
+          hardenAdminOrigin: true,
+        });
         bailFromOnRequest();
       }
       // Cloud Phase 2 — human sign-in. /auth/login is unauthenticated (and
@@ -854,6 +849,15 @@ async function handleAdminApi(ctx) {
       transport: ctx.insecureHttp ? 'plaintext HTTP (dev)' : 'TLS upstream',
       dataDir,
       authMode: tokens.length > 0 ? 'tokens' : secret ? 'env-secret' : 'dev',
+      // WHICH IDENTITY MODE THIS CELL IS ACTUALLY IN.
+      //
+      // `authMode` above describes the token STORE and says nothing about
+      // whether local passwords are still a door. The 2026-07-30 validate
+      // found every retirement gated on `strict` while the whole fleet ran
+      // hybrid — the code was shipped, the behaviour was not, and there was
+      // no way to see that from outside. A mode nobody is in is not shipped,
+      // so the mode is now a fact you can read.
+      identity: identityPosture(),
       version: HUB_VERSION,
     });
     return;
@@ -987,11 +991,57 @@ function escapeHtmlAttr(value) {
  * classes (no inline styles — the CSP `style-src 'self'` drops those). The
  * sparkle uses presentation attributes (fill=), which the CSP allows.
  */
+/**
+ * Prettify a tenant slug for display: `brno-alligators` → `Brno Alligators`.
+ * Only ever a FALLBACK — a real name always wins.
+ */
+/**
+ * The cell's identity posture, as a fact rather than a claim.
+ *
+ * `mode`      off | hybrid | strict — what the door actually accepts.
+ * `localDoor` whether a password on THIS cell can still sign somebody in.
+ * `seeded`    whether an initial admin password was planted at provision.
+ *
+ * Read by a fleet sweep, so "is anybody actually in strict yet" stops being
+ * a question you answer by reading deployment scripts.
+ */
+function identityPosture() {
+  const raw = process.env.MAUDE_CLOUD_IDENTITY ?? '';
+  const mode = raw === 'strict' ? 'strict' : raw === '1' ? 'hybrid' : 'off';
+  return {
+    mode,
+    localDoor: mode !== 'strict',
+    seeded: Boolean(process.env.MAUDE_ADMIN_EMAIL),
+  };
+}
+
+function nameFromSlug(slug) {
+  return String(slug)
+    .split('-')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
 function renderLanding(
-  hubName,
-  { dashboardUrl = process.env.HUB_DASHBOARD_URL, tenantId = process.env.MAUDE_TENANT_ID } = {}
+  settings,
+  {
+    dashboardUrl = process.env.HUB_DASHBOARD_URL,
+    tenantId = process.env.MAUDE_TENANT_ID,
+    projectName = process.env.MAUDE_PROJECT_NAME,
+  } = {}
 ) {
-  const name = escapeHtmlAttr(hubName || (tenantId ? tenantId : 'Studio Hub'));
+  // Precedence, most-specific first. The bug this replaces was a defaulting
+  // one, not a rendering one: the caller passed `readSettings().name`, which
+  // ALREADY substitutes "Studio Hub" when no settings file exists — and a
+  // truthy default meant the tenant could never win. A customer opening their
+  // own project was greeted by a generic placeholder. `settings` now arrives
+  // whole so this function, which is the one that knows about tenants, gets
+  // to decide.
+  const operatorNamed = settings?.name && settings.name !== DEFAULT_HUB_NAME ? settings.name : null;
+  const display =
+    operatorNamed ?? projectName ?? (tenantId ? nameFromSlug(tenantId) : null) ?? DEFAULT_HUB_NAME;
+  const name = escapeHtmlAttr(display);
   // Two audiences, one page (Phase 23 B5). A PLATFORM cell speaks to the
   // customer: their project's name, the way back to their dashboard, and the
   // operator console demoted to a footnote — "self-hosted sync · Yjs +
@@ -1002,7 +1052,7 @@ function renderLanding(
   const sub = isPlatform ? 'your Maude Cloud project' : 'self-hosted sync · Yjs + Hocuspocus';
   const cta = isPlatform
     ? `<a class="btn btn--primary btn--lg" href="${escapeHtmlAttr(dashboardUrl)}">Open your dashboard →</a>
-    <p class="landing-sub" style="margin-top:14px"><a href="admin" style="color:inherit">operator console</a></p>`
+    <p class="landing-footnote"><a class="landing-footnote-link" href="admin">operator console</a></p>`
     : `<a class="btn btn--primary btn--lg" href="admin">Open admin console →</a>`;
   return `<!doctype html>
 <html lang="en">
@@ -1104,6 +1154,7 @@ function buildStatusPayload({
     ...(exposeDataDir ? { dataDir } : {}),
     tokenCount: tokens.length,
     authMode: tokens.length > 0 ? 'tokens' : secret ? 'env-secret' : 'dev',
+    identity: identityPosture(),
     peersCount: peersCount ?? 0,
     ...(workspace ? { workspace } : {}),
   };

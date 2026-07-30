@@ -31,6 +31,7 @@ import {
   tenantFromRow,
 } from './db.mjs';
 import { handleDeviceAuth, personalTokenAccount } from './device-auth.mjs';
+import { costOf, harden, isHtml, sameSiteGate, spend } from './edge.mjs';
 import { mintInstallationToken } from './github-app.mjs';
 import { handleHandoff } from './handoff.mjs';
 import { handleInviteRoutes } from './invites.mjs';
@@ -184,40 +185,30 @@ function json(body, status = 200) {
   });
 }
 
-/**
- * Refuse a state-changing request that a browser tells us came from another
- * SITE (validate 2026-07-30, defender F1).
- *
- * `SameSite=Lax` is same-SITE, not same-ORIGIN, and every workspace lives at
- * `<project>.cloud.maude.sh` — the same registrable domain as the dashboard.
- * A workspace page therefore ships the session cookie on a cross-origin POST
- * here, and workspace pages render customer-authored canvas content, which
- * DDR-054 designates untrusted. Fetch-Metadata closes it: browsers always
- * stamp `Sec-Fetch-Site`, and non-browser clients (the desktop app, the CLI,
- * curl, tests) never do — so a MISSING header is allowed and only an explicit
- * cross-site/same-site claim is refused. `same-site` is refused too: that is
- * precisely the sibling-subdomain case.
- *
- * The `/internal/*` and webhook lanes are exempt — they authenticate with a
- * derived secret or a signature, never with a cookie, so a browser's opinion
- * about them is irrelevant.
- */
-function crossSiteStateChange(request, url) {
-  if (request.method === 'GET' || request.method === 'HEAD') return false;
-  if (url.pathname.startsWith('/internal/') || url.pathname.startsWith('/webhooks/')) return false;
-  const site = request.headers.get('sec-fetch-site');
-  if (!site) return false; // non-browser client
-  return site !== 'same-origin' && site !== 'none';
-}
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-
-    if (crossSiteStateChange(request, url)) {
-      return json({ error: 'That request did not come from Maude Cloud.' }, 403);
+    // Every answer leaves through the same door (edge.mjs) — the gates run
+    // before the router, the header floor is stamped after it. A route can
+    // tighten either; none can forget them.
+    if (!sameSiteGate(request, url)) {
+      return harden(json({ error: 'That request did not come from Maude Cloud.' }, 403), { url });
+    }
+    const rule = costOf(url.pathname, request.method);
+    if (rule) {
+      const budget = await spend(env, request, rule);
+      if (!budget.ok) {
+        return harden(json({ error: 'Too many attempts. Wait a minute and try again.' }, 429), {
+          url,
+        });
+      }
     }
 
+    const response = await this.route(request, env, url);
+    return harden(response, { url, html: isHtml(response) });
+  },
+
+  async route(request, env, url) {
     // Identity surface (pages, signup/login, Google, grant mint) — Phase 13.
     const auth = await handleAuth(request, env);
     if (auth) return auth;

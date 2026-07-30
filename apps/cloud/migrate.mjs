@@ -202,6 +202,20 @@ export const MIGRATIONS = [
       'CREATE INDEX IF NOT EXISTS member_revocations_project ON member_revocations (project_id, revoked_at);',
     ],
   },
+  {
+    version: 11, // validate 2026-07-30 — the plane's own rate-limit budget
+    statements: [
+      // One row per hit, so the window is genuinely SLIDING: a fixed window
+      // lets an attacker spend the whole budget at 59s and again at 61s.
+      // Volume is auth attempts, never document traffic, and the edge prunes
+      // rows older than an hour on every spend.
+      `CREATE TABLE IF NOT EXISTS rate_hits (
+        bucket TEXT    NOT NULL,
+        at     INTEGER NOT NULL
+      );`,
+      'CREATE INDEX IF NOT EXISTS rate_hits_bucket ON rate_hits (bucket, at);',
+    ],
+  },
 ];
 
 /** Apply baseline + pending versioned migrations. Safe to run repeatedly. */

@@ -110,6 +110,10 @@ export async function cellEnv({ tenantId, env, hostname }) {
     // The return leg for the cell's own pages (B5). A NEW variable, so it can
     // never re-trip the identity switch.
     HUB_DASHBOARD_URL: env.DASHBOARD_URL ?? 'https://cloud.maude.sh',
+    // The customer-facing landing shows THIS, not a generic default. Absent,
+    // the cell prettifies its own tenant slug — it never falls back to the
+    // operator placeholder a customer should never meet.
+    ...(env.PROJECT_NAME ? { MAUDE_PROJECT_NAME: env.PROJECT_NAME } : {}),
     // Object storage. The entrypoint derives per-tenant key prefixes from
     // MAUDE_TENANT_ID — one bucket, one prefix per tenant.
     MAUDE_S3_ENDPOINT: env.MAUDE_R2_ENDPOINT ?? '',

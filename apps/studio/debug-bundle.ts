@@ -16,6 +16,8 @@
 
 import { homedir } from 'node:os';
 
+import { redactMaudeCredentials, SECRET_ENV_PATTERN } from './credential-grammar.ts';
+
 const RING_MAX = 500;
 const ring: string[] = [];
 let tapInstalled = false;
@@ -83,6 +85,16 @@ export function scrub(text: string, opts: ScrubOptions = {}): string {
 
   const home = (opts.home ?? homedir()).replace(/\/+$/, '');
   if (home) out = out.replaceAll(home, '~');
+
+  // OURS first — the grammars Maude itself mints (credential-grammar.ts).
+  // Kept separate from the vendor rules below because those chase other
+  // people's formats and change when a vendor changes; this set changes when
+  // WE mint something new, and its test fails if a new prefix is added
+  // without registering it.
+  out = redactMaudeCredentials(out);
+  // Underscore-joined secret env names — `\b(token|secret)` can never match
+  // inside `HUB_SECRET`, because `_` is a word character.
+  out = out.replace(SECRET_ENV_PATTERN, '$1$2[redacted]');
 
   // Known token shapes first (GitHub classic + fine-grained, Anthropic, JWTs).
   out = out.replace(/\b(?:gh[pousr]|github_pat)_[A-Za-z0-9_]{8,}\b/g, '[redacted]');

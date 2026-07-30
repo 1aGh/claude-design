@@ -110,15 +110,23 @@ const ACTIVATE_CSS = `
   }
 `;
 
-export function activatePage({ account, code = '', error = null, done = false }) {
+export function activatePage({ account, code = '', error = null, done = false, client = null }) {
   const body = done
     ? `<div class="card"><h2>You're connected</h2>
        <p class="quiet" style="margin:0">Go back to the app — it signs itself in within a few
          seconds. You can close this tab.</p></div>`
     : `${error ? `<p class="error">${esc(error)}</p>` : ''}
+       ${
+         client
+           ? `<div class="card"><h2>${esc(client.name)} wants to use your account</h2>
+                <p class="quiet" style="margin:0">Asked for ${esc(client.asked)}. If you did not
+                just start that app on that machine, close this page — connecting it lets it act
+                as you.</p></div>`
+           : ''
+}
        <div class="card">
          <form method="post" action="/activate">
-           <label for="code">Enter the code the app is showing</label>
+           <label for="code">${client ? 'Confirm the code the app is showing' : 'Enter the code the app is showing'}</label>
            <input class="code-input" type="text" id="code" name="code" value="${esc(code)}"
                   placeholder="XXXX-XXXX" autocomplete="one-time-code" required>
            <p style="margin-top:var(--space-4)"><button type="submit">Connect the app</button></p>
@@ -247,7 +255,29 @@ export async function handleDeviceAuth(request, env, { account }) {
   if (pathname === '/activate') {
     if (!account) return redirect(`/login?next=${encodeURIComponent(url.pathname + url.search)}`);
     if (request.method === 'GET') {
-      return html(activatePage({ account, code: String(url.searchParams.get('code') ?? '') }));
+      const prefilled = String(url.searchParams.get('code') ?? '')
+        .trim()
+        .toUpperCase();
+      // A prefilled code with NOTHING named is the phishing shape: the page
+      // asks for consent and the warning contradicts the prefill. If the code
+      // is real and waiting, say which app asked and when (validate
+      // 2026-07-30, defender F5).
+      let client = null;
+      if (prefilled) {
+        const row = await env.DB.prepare(
+          'SELECT client_name, created_at FROM device_codes WHERE user_code = ? AND approved_account IS NULL AND expires_at > ?'
+        )
+          .bind(prefilled, now)
+          .first();
+        if (row) {
+          const age = Math.max(0, Math.round((now - Number(row.created_at)) / 1000));
+          client = {
+            name: row.client_name || 'A Maude app',
+            asked: age < 90 ? 'a moment ago' : `${Math.round(age / 60)} minutes ago`,
+          };
+        }
+      }
+      return html(activatePage({ account, code: prefilled, client }));
     }
     if (request.method !== 'POST') return html('<p>Not allowed.</p>', 405);
     const form = await request.formData();
@@ -333,6 +363,11 @@ export function allDeviceHtml() {
   return [
     activatePage({ account }),
     activatePage({ account, code: 'ABCD-EFGH' }),
+    activatePage({
+      account,
+      code: 'ABCD-EFGH',
+      client: { name: 'Maude Studio on darwin', asked: 'a moment ago' },
+    }),
     activatePage({
       account,
       error:

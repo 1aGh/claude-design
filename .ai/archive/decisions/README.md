@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-207: Four missing layers, not eleven bugs](DDR-207-the-plane-needs-an-edge-and-other-layers-that-were-missing.md) — 2026-07-30, cloud/security/edge/rate-limit/csrf/revocation/credential-grammar/consent
 - [DDR-206: Browser editing — decline again, with the path priced](DDR-206-browser-editing-decided-decline-again-with-a-priced-path.md) — 2026-07-30, cloud/containment/browser-editing/spike/esbuild/corpus-census/on-call
 - [DDR-205: Verify a backup when you WRITE it, not when you need it](DDR-205-verify-a-backup-when-you-write-it.md) — 2026-07-30, cloud/durability/backup/git-bundle/shallow-clone/verification/incident
 - [DDR-204: One account, one dashboard, two authorities](DDR-204-one-account-one-dashboard-two-authorities.md) — 2026-07-29, cloud/identity/admin/self-service/blast-radius/self-hosting/narrows-ddr-199
