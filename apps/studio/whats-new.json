@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "maude-deeplink-open-in-app",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Open a cloud project straight from the browser",
+      "summary": "Press “Open in Maude” on your project’s page and the app opens it signed in — a one-time link, nothing to copy. The app always asks before connecting, and viewers get a working “View in the browser” door instead of a dead button.",
+      "surface": "design-ui"
+    },
+    {
       "id": "maude-cloud-signin-attach",
       "version": "0.50.0",
       "date": "2026-07-30",

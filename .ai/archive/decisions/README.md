@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-206: Browser editing — decline again, with the path priced](DDR-206-browser-editing-decided-decline-again-with-a-priced-path.md) — 2026-07-30, cloud/containment/browser-editing/spike/esbuild/corpus-census/on-call
 - [DDR-205: Verify a backup when you WRITE it, not when you need it](DDR-205-verify-a-backup-when-you-write-it.md) — 2026-07-30, cloud/durability/backup/git-bundle/shallow-clone/verification/incident
 - [DDR-204: One account, one dashboard, two authorities](DDR-204-one-account-one-dashboard-two-authorities.md) — 2026-07-29, cloud/identity/admin/self-service/blast-radius/self-hosting/narrows-ddr-199
 - [DDR-203: Provision first, charge after — nobody pays for a workspace that did not come up](DDR-203-provision-first-charge-after.md) — 2026-07-29, cloud/checkout/stripe/ordering/idempotence/refunds/copy

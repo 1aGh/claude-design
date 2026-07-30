@@ -49,28 +49,36 @@
   a mode with no working browser sign-in; withdrawn same day, mirror clock
   asleep as collateral). Restore `MAUDE_CONTROL_PLANE_URL` for the mirror in
   the same roll.
-- [x] B2 — (viewer refused + TTL cap live-verified at 12.0h; revokeSessions consumption still open) — **role must bite on the cell before identity flips**: the exchanged
-  peer token is wildcard-scoped and 30-day; a dashboard *viewer* would become
-  a full editor, and the People page's "viewer can change nothing" +
-  "removal lands within 12 hours" promises would both be false. Enforce
-  viewer (or refuse to mint for it), cap exchanged-token TTL to the project
-  token's, and actually consume `revokeSessions`.
-- [ ] B3 — **browser handoff as ONE exchange shape**: short-lived one-time
-  code, POST/redirect — never a bearer token in a GET URL (the repo's own
-  /join decision) — consumed identically by the browser, workspace-signin.ts
-  (which today swallows the cloud-identity 400 into "try again shortly"),
-  and Phase 17's `maude://`. Three handoff shapes is the unrecoverable
-  mistake.
+- [x] B2 — ✅ COMPLETE 2026-07-30: viewer refused + TTL cap live-verified at
+  12.0h (cell v8); `revokeSessions` now CONSUMED (cell v9) — a remove/demote
+  writes `member_revocations` (D1 v10), the cell's 10-minute sweep
+  (`/internal/revocations`, derived-secret gated) revokes the person's peer
+  tokens and kicks their sockets. Live-verified against production.
+- [x] B3 — ✅ 2026-07-30: ONE exchange shape shipped — single-use 120s
+  hashed-at-rest handoff code (`POST /projects/<id>/handoff` mint, viewer
+  refused; `POST /auth/handoff/exchange` burns first, re-decides membership,
+  returns the same project token `/projects/open` mints). Consumed by the
+  connect page's "Open in Maude" (no-script launch page → `maude://` — a
+  claim ticket in the URL, never a bearer token) and Phase 17's deep link;
+  the studio's CloudBar lane stays on the personal-token POST shape (same
+  family, same cell sink). workspace-signin.ts now surfaces the
+  cloud-identity 400 message verbatim instead of "try again shortly".
+  NOTE: the cell has no signed-in member browser UI to hand into (the
+  browser surface is the DDR-200 share view), so "the browser consumes the
+  code" resolves to the launch page → app lane; a future cell member UI
+  reuses the same exchange.
 - [x] B4 — separate signing purposes: project-token key must not BE
   HUB_SECRET (admin bearer + peer token + identity signing in one value);
   `deriveSecret` already takes a purpose argument.
 - [x] B5 — the cell's landing page speaks to the customer: project name, the
   work, a back-link to the dashboard (`HUB_DASHBOARD_URL` — a NEW var, so it
   cannot re-trip B1), operator console demoted to a footer link.
-- [ ] B6 — members reach the door: cloud-mode cells take identity from the
-  control plane (B1–B3), so `PILOT_ADMIN_EMAIL` seeding and the hub's own
-  magic-link invite (`createUser` with a password cloud mode never accepts)
-  are retired for cloud cells.
+- [x] B6 — ✅ 2026-07-30 (behind the deliberate strict flip):
+  `CELL_IDENTITY_MODE=strict` (cells worker var) stops seeding
+  `PILOT_ADMIN_EMAIL` and the hub answers `/join` + admin invite creation
+  with directions to the dashboard (410/409). Hybrid behavior unchanged —
+  the flip itself stays a deliberate later act, exactly as B1's lesson
+  demands. Shipped in cell v9, tests both modes.
 
 ## C — Maude Desktop: sign in to Maude Cloud and attach from the UI
 ## (owner request 2026-07-30: "to by bylo nejjednodušší" — and it is)
@@ -99,12 +107,19 @@ no-token-in-a-GET-URL rule is satisfied on this lane for free.
   runs the existing link flow (design-link.mjs via the bundled CLI bridge,
   token from the cell exchange, never pasted by a human) → serve + open.
   The CLI path stays for scripting; the UI is the default.
-- [ ] C4 — desktop-e2e scenario `cloud-attach` (DOM-driven, data-testid),
-  stubbing the control plane; bundled-.app verification per DDR-177
-  (`check-bundle-completeness --smoke`) before release.
-- [ ] C5 — Phase 17's `maude://` deep link then lands ON TOP of this (the
-  invite email's "open in app" button) — C is the machinery, 17 is the
-  protocol handler.
+- [x] C4 — ✅ RUN GREEN 2026-07-30: `pnpm test:e2e:desktop:cloud` — 4/4 in
+  the real WKWebView (debug bundle): device sign-in with no human, picker
+  member→Connect / viewer→"View in the browser", linkedHub written +
+  reverted, and the maude:// confirm strip + one-time-code attach. Control
+  plane + cell stubbed in the wdio conf; the e2e bundle registers
+  `maude-e2e`, never `maude` (LaunchServices hijack guard). DDR-177
+  `check-bundle-completeness --smoke` remains the release gate as always.
+- [x] C5 — ✅ 2026-07-30: Phase 17's `maude://` landed ON TOP of this —
+  protocol registration (tauri-plugin-deep-link), Rust parks the untrusted
+  URL, the client asks before connecting, the code exchanges only against
+  the configured cloud address. See the phase-17 plan for the honest
+  remainder (OS-level scheme smoke in a signed bundle + the human cold
+  start).
 
 ## Preserved dissent (verbatim stakes, inert)
 
@@ -120,8 +135,24 @@ no-token-in-a-GET-URL rule is satisfied on this lane for free.
 
 ## Acceptance
 
-- [ ] A stranger: signup → pay (test card) → waiting room → **one click** →
+- [x] A stranger: signup → pay (test card) → waiting room → **one click** →
   their canvases, no second credential, no infrastructure vocabulary.
-- [ ] An invited teammate: email → one link → account → dashboard → the same
-  one click; viewer genuinely cannot edit.
-- [ ] Every outward hop (Stripe, GitHub, the cell) has a visible way back.
+  (Machinery complete: STRIPE_SECRET_KEY live 2026-07-30, connect page's
+  "Open in Maude" → one-time code → app opens signed in. The human
+  click-through is the owner's test-guide walk.)
+- [x] An invited teammate: email → one link → account → dashboard → the same
+  one click; viewer genuinely cannot edit (refused at every mint + exchange,
+  live sessions swept within ~10 min of removal).
+- [x] Every outward hop (Stripe, GitHub, the cell) has a visible way back.
+
+## Retro (2026-07-30)
+
+- The debate's split (cheap A batch / one locked B roll / C on top) held:
+  three deploys, no thrash, every BREAKER precondition landed before the
+  lane that needed it.
+- Two propagation gotchas cost cycles: a comma-joined Set-Cookie header
+  killed Google sign-in silently (RCA in kgai), and Cloudflare edge
+  propagation made freshly-deployed routes 404 for ~a minute — poll before
+  diagnosing.
+- The e2e stub-in-conf pattern (env primed before app spawn) made the whole
+  cloud lane testable with zero real credentials; reuse it for future lanes.

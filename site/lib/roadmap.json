@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-30T13:26:22.754Z",
+  "generated": "2026-07-30T14:41:28.122Z",
   "currentPhase": null,
   "phases": [
     {
@@ -146,6 +146,17 @@
       "phaseKey": null
     },
     {
+      "id": "cloud-phase-17-desktop-attach-deeplink",
+      "title": "Cloud Phase 17 — Desktop attach: maude:// deep link + the invite's client half",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "(tauri.conf.json plugins.deep-link.schemes → Info.plist / registry at bundle time; dev never registers, by platform design). Handler shape changed from the plan: the shipped link is maude://open/<p...",
+      "planPath": ".ai/plans/archive/cloud-phase-17-desktop-attach-deeplink.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "cloud-phase-18-browser-share-view",
       "title": "Cloud Phase 18 — The browser surface: read-only share view (DDR-197 territory)",
       "status": "done",
@@ -190,6 +201,17 @@
       "phaseKey": null
     },
     {
+      "id": "cloud-phase-21-browser-editing-spike",
+      "title": "Cloud Phase 21 — Browser EDITING spike (gated; decision, not delivery)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "1. Phase 18 share view live and stable (containment proven in production). 2. Paying tenants exist (the pressure DDR-193 warned about is then real, and the decision is made deliberately rather than...",
+      "planPath": ".ai/plans/archive/cloud-phase-21-browser-editing-spike.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "cloud-phase-22-one-account-one-dashboard",
       "title": "Cloud Phase 22 — One account, one dashboard",
       "status": "done",
@@ -197,6 +219,17 @@
       "date": null,
       "summary": "configured, the cell's own user store is bypassed and sign-in is delegated. users.mjs is untouched — one code path, two configurations, wired through /auth/login so it is the real path and not an i...",
       "planPath": ".ai/plans/archive/cloud-phase-22-one-account-one-dashboard.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-23-seamless-onboarding",
+      "title": "Cloud Phase 23 — Seamless onboarding: the door actually opens",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "(dashboard card + waiting-room \"Open your project\"): the project address, honest browser sign-in note, desktop Link-workspace path, operator console demoted to a footer line. A pending project's ca...",
+      "planPath": ".ai/plans/archive/cloud-phase-23-seamless-onboarding.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1697,35 +1730,24 @@
       "phaseKey": null
     },
     {
-      "id": "cloud-phase-17-desktop-attach-deeplink",
-      "title": "Cloud Phase 17 — Desktop attach: maude:// deep link + the invite's client half",
+      "id": "feature-bug-autofix-agent",
+      "title": "Feature: Autonomous bug-fix agent (Mac Mini)",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "Windows registry via tauri.conf); handler parses maude://join/<workspace>/<invite> and maude://open/<workspace>/<project>. clone/attach the remote project into a local folder → open in Studio. Reus...",
-      "planPath": ".ai/plans/cloud-phase-17-desktop-attach-deeplink.md",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-bug-autofix-agent.md",
       "archived": false,
       "phaseKey": null
     },
     {
-      "id": "cloud-phase-21-browser-editing-spike",
-      "title": "Cloud Phase 21 — Browser EDITING spike (gated; decision, not delivery)",
+      "id": "feature-bug-report-button",
+      "title": "Feature: \"Report a bug\" in Maude Studio + Maude Desktop",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "1. Phase 18 share view live and stable (containment proven in production). 2. Paying tenants exist (the pressure DDR-193 warned about is then real, and the decision is made deliberately rather than...",
-      "planPath": ".ai/plans/cloud-phase-21-browser-editing-spike.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-23-seamless-onboarding",
-      "title": "Cloud Phase 23 — Seamless onboarding: the door actually opens",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "(dashboard card + waiting-room \"Open your project\"): the project address, honest browser sign-in note, desktop Link-workspace path, operator console demoted to a footer line. A pending project's ca...",
-      "planPath": ".ai/plans/cloud-phase-23-seamless-onboarding.md",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-bug-report-button.md",
       "archived": false,
       "phaseKey": null
     },
