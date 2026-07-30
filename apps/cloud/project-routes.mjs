@@ -96,12 +96,12 @@ export async function handleProjectRoutes(request, env, { account }) {
     const target = people.find((p) => p.account_id === url.searchParams.get('account'));
     if (!target || !isOwner) return redirect(`/projects/${projectId}/people`);
     return html(
-      removeConfirmPage({ project, person: target, tokenTtlMs: ACCESS_TOKEN_TTL_MS })
+      removeConfirmPage({ account, project, person: target, tokenTtlMs: ACCESS_TOKEN_TTL_MS })
     );
   }
 
   if (request.method === 'GET') {
-    return html(peoplePage({ project, people, isOwner }));
+    return html(peoplePage({ account, project, people, isOwner }));
   }
 
   if (request.method !== 'POST') return html('<p>Not allowed.</p>', 405);
@@ -112,13 +112,13 @@ export async function handleProjectRoutes(request, env, { account }) {
   const target = members.find((p) => p.account_id === targetId);
 
   if (action === 'invite') {
-    if (!isOwner) return html(peoplePage({ project, people, isOwner, error: ACCESS_MESSAGES['no-access'] }), 403);
+    if (!isOwner) return html(peoplePage({ account, project, people, isOwner, error: ACCESS_MESSAGES['no-access'] }), 403);
     const email = String(form.get('email') ?? '').trim().toLowerCase();
     // Deliberately shallow: an address is valid if it can be sent to, and the
     // only way to know that is to send to it. A stricter regex rejects real
     // addresses, which is a worse failure than accepting a typo.
     if (!email.includes('@') || email.length > 254) {
-      return html(peoplePage({ project, people, isOwner, error: 'That does not look like an email address.' }), 400);
+      return html(peoplePage({ account, project, people, isOwner, error: 'That does not look like an email address.' }), 400);
     }
     const role = String(form.get('role') ?? 'member');
     const decision = decideMembershipChange({
@@ -129,7 +129,7 @@ export async function handleProjectRoutes(request, env, { account }) {
       newRole: role,
       ownerId: project.account_id,
     });
-    if (!decision.ok) return html(peoplePage({ project, people, isOwner, error: decision.message }), 400);
+    if (!decision.ok) return html(peoplePage({ account, project, people, isOwner, error: decision.message }), 400);
 
     const existing = await env.DB.prepare('SELECT id FROM accounts WHERE email = ?').bind(email).first();
     if (existing) {
@@ -170,7 +170,7 @@ export async function handleProjectRoutes(request, env, { account }) {
     const notice = sent.ok
       ? `Invitation sent to ${email}.`
       : `The invitation is ready, but the email could not be sent. Share this link with them yourself: ${inviteUrl}`;
-    return html(peoplePage({ project, people, isOwner, notice }));
+    return html(peoplePage({ account, project, people, isOwner, notice }));
   }
 
   const decision = decideMembershipChange({
@@ -182,7 +182,7 @@ export async function handleProjectRoutes(request, env, { account }) {
     ownerId: project.account_id,
   });
   if (!decision.ok) {
-    return html(peoplePage({ project, people, isOwner, error: decision.message }), 400);
+    return html(peoplePage({ account, project, people, isOwner, error: decision.message }), 400);
   }
 
   if (decision.action === 'remove') {

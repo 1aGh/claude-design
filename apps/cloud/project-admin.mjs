@@ -16,19 +16,20 @@
 //                             T3). Config lives HERE; the cell asks for it on
 //                             every tick, so saving needs no restart.
 
-import { lockup, PAGE_CSS } from './brand.mjs';
+import { appShell } from './brand.mjs';
 import { mintProjectToken } from './cell-token.mjs';
+import { STATE_COPY } from './dashboard.mjs';
 import { audit } from './db.mjs';
 import { validateTarget } from './mirror.mjs';
 import { ACCESS_MESSAGES, can, decideAccess } from './project-access.mjs';
 import { removeCellDomain } from './provision.mjs';
 
-const CSS = PAGE_CSS + `
-  main { max-width: 40rem; }
-  .crumb { font-size: var(--type-base); margin: 0 0 var(--space-7); }
-  table { width: 100%; border-collapse: collapse; margin: var(--space-4) 0 var(--space-6); }
-  th { text-align: left; font-size: var(--type-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--fg-2); padding-bottom: var(--space-2); }
-  td { padding: var(--space-3) 0; border-top: 1px solid var(--border-subtle); vertical-align: baseline; font-size: var(--type-base); }
+const CSS = `
+  table { width: 100%; border-collapse: collapse; margin: var(--space-4) 0 var(--space-6); background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+  table { border-spacing: 0; overflow: hidden; }
+  th { text-align: left; font-family: var(--font-mono); font-size: var(--type-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--fg-2); padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--border-subtle); }
+  td { padding: var(--space-3) var(--space-5); border-top: 1px solid var(--border-subtle); vertical-align: baseline; font-size: var(--type-base); }
+  tr:first-child td { border-top: 0; }
   td.right { text-align: right; white-space: nowrap; }
   .mono { font-family: var(--font-mono); font-size: var(--type-sm); }
   .card { margin-bottom: var(--space-5); }
@@ -44,8 +45,24 @@ function esc(s) {
   );
 }
 
-function page(title, body) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)} — Maude</title><style>${CSS}</style></head><body><main>${lockup()}${body}</main></body></html>`;
+/**
+ * Wrap one project surface in the admin shell: project nav on the left, the
+ * project's state pill next to the title — the person always knows where they
+ * are and what state the thing they're managing is in.
+ */
+function page(title, body, { account, project, isOwner, active, lede = null } = {}) {
+  const copy = project ? (STATE_COPY[project.state] ?? null) : null;
+  return appShell({
+    account,
+    title,
+    body,
+    project,
+    isOwner,
+    active,
+    lede,
+    pill: copy ? { tone: copy.tone, label: copy.label } : null,
+    extraCss: CSS,
+  });
 }
 
 function html(body, status = 200) {
@@ -65,8 +82,6 @@ function redirect(to) {
   return new Response(null, { status: 303, headers: { location: to } });
 }
 
-const crumb = (project) => `<p class="crumb"><a href="/">← Your projects</a></p>`;
-
 function when(ms) {
   return new Date(Number(ms)).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
 }
@@ -81,7 +96,7 @@ export function parseExportKey(key, projectId) {
 
 // ------------------------------------------------------------------ download
 
-export function downloadPage({ project, generations, isOwner, error = null, notice = null }) {
+export function downloadPage({ account, project, generations, isOwner, error = null, notice = null }) {
   const rows = generations
     .map(
       (g) => `<tr>
@@ -97,13 +112,8 @@ export function downloadPage({ project, generations, isOwner, error = null, noti
     )
     .join('\n');
   return page(
-    `Download ${project.name}`,
-    `<h1>Download everything</h1>
-     ${crumb(project)}
-     <p class="quiet">A complete copy of ${esc(project.name)}: the full history as a standard
-       git bundle, plus a list of every media file. It opens without Maude, and taking it
-       changes nothing here.</p>
-     ${error ? `<p class="error">${esc(error)}</p>` : ''}
+    'Download everything',
+    `${error ? `<p class="error">${esc(error)}</p>` : ''}
      ${notice ? `<p class="ok">${esc(notice)}</p>` : ''}
      ${
        isOwner
@@ -117,7 +127,14 @@ export function downloadPage({ project, generations, isOwner, error = null, noti
        generations.length
          ? `<table><thead><tr><th>Taken</th><th>Files</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
          : '<p class="quiet" style="margin-top:var(--space-5)">No copy has been prepared yet.</p>'
-     }`
+     }`,
+    {
+      account,
+      project,
+      isOwner,
+      active: 'download',
+      lede: `A complete copy of ${project.name}: the full history as a standard git bundle, plus a list of every media file. It opens without Maude, and taking it changes nothing here.`,
+    }
   );
 }
 
@@ -129,13 +146,11 @@ export function downloadPage({ project, generations, isOwner, error = null, noti
  * page is honest about how to get in TODAY, and it is where the one-click
  * handoff will live once the workspace accepts dashboard sign-ins.
  */
-export function connectPage({ project }) {
+export function connectPage({ account, project, isOwner }) {
   const address = `https://${esc(project.id)}.cloud.maude.sh`;
   return page(
     `Open ${project.name}`,
-    `<h1>Open ${esc(project.name)}</h1>
-     ${crumb(project)}
-     <div class="card">
+    `<div class="card">
        <h2>In your browser</h2>
        <p class="quiet">Your project lives at its own address. Sign in there with your
          <strong>workspace email and password</strong> — for now this is separate from your
@@ -149,13 +164,14 @@ export function connectPage({ project }) {
          full local copy that syncs both ways.</p>
      </div>
      <p class="quiet">Running the machinery yourself? The operator console lives at the same
-       address under <span class="mono">/admin</span>.</p>`
+       address under <span class="mono">/admin</span>.</p>`,
+    { account, project, isOwner, active: 'connect' }
   );
 }
 
 // -------------------------------------------------------------------- delete
 
-export function deletePage({ project, hasExport, error = null }) {
+export function deletePage({ account, project, hasExport, error = null }) {
   const body = hasExport
     ? `<div class="card danger">
          <h2>This is permanent</h2>
@@ -180,11 +196,10 @@ export function deletePage({ project, hasExport, error = null }) {
        </div>
        <p><a class="btn" href="/projects/${esc(project.id)}/download">Download everything</a></p>`;
   return page(
-    `Delete ${project.name}`,
-    `<h1>Delete ${esc(project.name)}?</h1>
-     ${crumb(project)}
-     ${error ? `<p class="error">${esc(error)}</p>` : ''}
-     ${body}`
+    `Delete ${project.name}?`,
+    `${error ? `<p class="error">${esc(error)}</p>` : ''}
+     ${body}`,
+    { account, project, isOwner: true, active: 'delete' }
   );
 }
 
@@ -210,7 +225,7 @@ export const AUDIT_COPY = {
   'mirror.disconnected': 'GitHub copy disconnected',
 };
 
-export function auditPage({ project, entries }) {
+export function auditPage({ account, project, isOwner, entries }) {
   const rows = entries
     .map(
       (e) => `<tr>
@@ -221,22 +236,23 @@ export function auditPage({ project, entries }) {
     )
     .join('\n');
   return page(
-    `Activity on ${project.name}`,
-    `<h1>Activity on ${esc(project.name)}</h1>
-     ${crumb(project)}
-     <p class="quiet">Everything that happened to this project — by you, by people you invited,
-       and by the platform itself. If we ever touch your project, it shows up here.</p>
-     ${
-       entries.length
-         ? `<table><thead><tr><th>What</th><th>Who</th><th>When</th></tr></thead><tbody>${rows}</tbody></table>`
-         : '<p class="quiet">Nothing yet.</p>'
-     }`
+    'Activity',
+    entries.length
+      ? `<table><thead><tr><th>What</th><th>Who</th><th>When</th></tr></thead><tbody>${rows}</tbody></table>`
+      : '<p class="quiet">Nothing yet.</p>',
+    {
+      account,
+      project,
+      isOwner,
+      active: 'audit',
+      lede: 'Everything that happened to this project — by you, by people you invited, and by the platform itself. If we ever touch your project, it shows up here.',
+    }
   );
 }
 
 // -------------------------------------------------------------------- mirror
 
-export function mirrorPage({ project, repository, branch, isOwner, error = null, notice = null }) {
+export function mirrorPage({ account, project, repository, branch, isOwner, error = null, notice = null }) {
   const form = isOwner
     ? `<form method="post" action="/projects/${esc(project.id)}/mirror">
          <label for="repository">GitHub repository</label>
@@ -256,17 +272,19 @@ export function mirrorPage({ project, repository, branch, isOwner, error = null,
          when it's done.</p>`
     : '<p class="quiet">Only the project’s owner can change where it copies to.</p>';
   return page(
-    `GitHub copy of ${project.name}`,
-    `<h1>Copy to GitHub</h1>
-     ${crumb(project)}
-     <p class="quiet">${
-       repository
-         ? `This project keeps a copy of its history at <strong>${esc(repository)}</strong> on the “${esc(branch ?? 'main')}” branch.`
-         : 'Keep an automatic copy of this project’s history in a GitHub repository you own.'
-     }</p>
-     ${error ? `<p class="error">${esc(error)}</p>` : ''}
+    'Copy to GitHub',
+    `${error ? `<p class="error">${esc(error)}</p>` : ''}
      ${notice ? `<p class="ok">${esc(notice)}</p>` : ''}
-     <div class="card">${form}</div>`
+     <div class="card">${form}</div>`,
+    {
+      account,
+      project,
+      isOwner,
+      active: 'mirror',
+      lede: repository
+        ? `This project keeps a copy of its history at ${repository} on the “${branch ?? 'main'}” branch.`
+        : 'Keep an automatic copy of this project’s history in a GitHub repository you own.',
+    }
   );
 }
 
@@ -322,7 +340,7 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
 
   // ----------------------------------------------------------------- connect
   if (surface === 'connect' && request.method === 'GET') {
-    return html(connectPage({ project }));
+    return html(connectPage({ account, project, isOwner }));
   }
 
   // ---------------------------------------------------------------- download
@@ -348,7 +366,7 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
   }
 
   if (surface === 'download' && request.method === 'GET') {
-    return html(downloadPage({ project, generations: await listExports(env, projectId), isOwner }));
+    return html(downloadPage({ account, project, generations: await listExports(env, projectId), isOwner }));
   }
 
   if (surface === 'download' && request.method === 'POST') {
@@ -381,6 +399,7 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
       console.error(`[export] ${projectId}: ${outcome.status} ${outcome.body?.error ?? ''}`);
       return html(
         downloadPage({
+          account,
           project,
           generations,
           isOwner,
@@ -404,6 +423,7 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
     });
     return html(
       downloadPage({
+        account,
         project,
         generations: await listExports(env, projectId),
         isOwner,
@@ -418,13 +438,13 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
     const generations = await listExports(env, projectId);
     const hasExport = generations.length > 0;
 
-    if (request.method === 'GET') return html(deletePage({ project, hasExport }));
+    if (request.method === 'GET') return html(deletePage({ account, project, hasExport }));
     if (request.method !== 'POST') return html('<p>Not allowed.</p>', 405);
 
-    if (!hasExport) return html(deletePage({ project, hasExport }), 409);
+    if (!hasExport) return html(deletePage({ account, project, hasExport }), 409);
     const form = await request.formData();
     if (form.get('sure') !== 'yes') {
-      return html(deletePage({ project, hasExport, error: 'Tick the box to confirm.' }), 400);
+      return html(deletePage({ account, project, hasExport, error: 'Tick the box to confirm.' }), 400);
     }
 
     // Billing stops FIRST — a deletion that keeps charging is the worst order.
@@ -436,6 +456,7 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
       if (!res.ok && res.status !== 404) {
         return html(
           deletePage({
+            account,
             project,
             hasExport,
             error: 'Billing could not be stopped, so nothing was deleted. Try again in a minute.',
@@ -468,12 +489,13 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
     )
       .bind(projectId)
       .all();
-    return html(auditPage({ project, entries: rows?.results ?? [] }));
+    return html(auditPage({ account, project, isOwner, entries: rows?.results ?? [] }));
   }
 
   // ------------------------------------------------------------------ mirror
   if (surface === 'mirror') {
     const view = {
+      account,
       project,
       repository: project.mirror_repo,
       branch: project.mirror_branch ?? 'main',
@@ -540,19 +562,20 @@ export function allProjectAdminHtml() {
       ],
     },
   ];
+  const account = { email: 'a@example.com' };
   return [
-    connectPage({ project }),
-    downloadPage({ project, generations, isOwner: true }),
-    downloadPage({ project, generations: [], isOwner: false }),
-    downloadPage({ project, generations, isOwner: true, error: 'The copy could not be prepared right now. Try again in a minute.' }),
-    downloadPage({ project, generations, isOwner: true, notice: 'Your copy is ready below.' }),
-    deletePage({ project, hasExport: true }),
-    deletePage({ project, hasExport: false }),
-    deletePage({ project, hasExport: true, error: 'Tick the box to confirm.' }),
-    auditPage({ project, entries: [{ at: 1753872000000, actor: 'customer:a@b.c', action: 'checkout.settled' }, { at: 1753872000000, actor: 'system', action: 'reconcile' }] }),
-    auditPage({ project, entries: [] }),
-    mirrorPage({ project, repository: '1aGh/alligators', branch: 'main', isOwner: true }),
-    mirrorPage({ project, repository: null, branch: 'main', isOwner: false }),
-    mirrorPage({ project, repository: null, branch: 'main', isOwner: true, error: 'repository must be "owner/name" (not a URL)' }),
+    connectPage({ account, project, isOwner: true }),
+    downloadPage({ account, project, generations, isOwner: true }),
+    downloadPage({ account, project, generations: [], isOwner: false }),
+    downloadPage({ account, project, generations, isOwner: true, error: 'The copy could not be prepared right now. Try again in a minute.' }),
+    downloadPage({ account, project, generations, isOwner: true, notice: 'Your copy is ready below.' }),
+    deletePage({ account, project, hasExport: true }),
+    deletePage({ account, project, hasExport: false }),
+    deletePage({ account, project, hasExport: true, error: 'Tick the box to confirm.' }),
+    auditPage({ account, project, isOwner: true, entries: [{ at: 1753872000000, actor: 'customer:a@b.c', action: 'checkout.settled' }, { at: 1753872000000, actor: 'system', action: 'reconcile' }] }),
+    auditPage({ account, project, isOwner: true, entries: [] }),
+    mirrorPage({ account, project, repository: '1aGh/alligators', branch: 'main', isOwner: true }),
+    mirrorPage({ account, project, repository: null, branch: 'main', isOwner: false }),
+    mirrorPage({ account, project, repository: null, branch: 'main', isOwner: true, error: 'repository must be "owner/name" (not a URL)' }),
   ].join('\n');
 }

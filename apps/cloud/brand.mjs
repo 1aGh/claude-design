@@ -216,3 +216,189 @@ export const LOCKUP_CSS = `
 
 /** Everything a cloud page needs, in one string. */
 export const PAGE_CSS = TOKENS + CHROME + LOCKUP_CSS;
+
+// ───────────────────────────── The admin shell ─────────────────────────────
+//
+// Lifted from the DS platform showcase (`ui_kits-desktop-showcase`), the
+// Tier-0 prior for shell chrome: a GRID with 1px hairline seams (the seam
+// colour is the grid's background showing through the gaps), ONE material
+// (--bg-1) across every chrome region, the dotted canvas as the deepest
+// surface framed by the chrome, panel headers in mono uppercase XS, a thin
+// status bar, and the accent used sparingly — the active nav row is a raised
+// fill (--bg-4), exactly like the showcase's active tool.
+
+export const SHELL_CSS = `
+  html, body { height: 100%; }
+  body {
+    margin: 0; padding: 0;
+    font-family: var(--font-body); font-size: var(--type-base); line-height: var(--lh-base);
+    color: var(--fg-0); background: var(--bg-0);
+    -webkit-font-smoothing: antialiased;
+  }
+  .shell {
+    display: grid; min-height: 100vh;
+    grid-template-columns: 232px 1fr;
+    grid-template-rows: 52px 1fr 32px;
+    grid-template-areas: "top top" "nav main" "foot foot";
+    gap: 1px; background: var(--border-default);
+  }
+  .shell > * { background: var(--bg-1); min-width: 0; }
+
+  .top { grid-area: top; display: flex; align-items: center; gap: var(--space-4); padding: 0 var(--space-5); }
+  .top .lockup { margin: 0; }
+  .top .word { font-size: var(--type-md); }
+  .top-spacer { flex: 1; }
+  .who-mail { color: var(--fg-2); font-size: var(--type-sm); }
+  .top form { margin: 0; }
+
+  .nav { grid-area: nav; display: flex; flex-direction: column; overflow-y: auto; padding-bottom: var(--space-5); }
+  .nav-hd {
+    padding: var(--space-4) var(--space-4) var(--space-2) var(--space-5);
+    font-family: var(--font-mono); font-size: var(--type-xs);
+    letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-2);
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: var(--space-3);
+    margin: 0 var(--space-3); padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    color: var(--fg-1); font-size: var(--type-base); text-decoration: none;
+    transition: background var(--dur-soft) var(--ease-out), color var(--dur-soft) var(--ease-out);
+  }
+  .nav-item:hover { background: var(--bg-2); color: var(--fg-0); }
+  .nav-item[aria-current="page"] { background: var(--bg-4); color: var(--fg-0); font-weight: 600; }
+  .nav-item .g { color: var(--fg-2); }
+  .nav-item[aria-current="page"] .g { color: var(--accent); }
+  .nav-item.danger { color: var(--status-error); }
+  .nav-item.danger .g { color: var(--status-error); }
+  .nav-sep { height: 1px; background: var(--border-subtle); margin: var(--space-4) var(--space-5); flex: none; }
+  .nav-foot { margin-top: auto; }
+
+  .g { width: 15px; height: 15px; display: block; flex: none; }
+  .g path, .g rect, .g circle, .g line, .g polyline {
+    fill: none; stroke: currentColor; stroke-width: 1.25;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+
+  .main {
+    /* CHROME's document-page rule (main { max-width; margin auto }) must not
+       shrink the shell's main REGION — the column lives in .main-inner. */
+    max-width: none; margin: 0;
+    grid-area: main; overflow-y: auto;
+    background-color: var(--bg-0);
+    background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+    background-size: var(--canvas-grid) var(--canvas-grid);
+    padding: var(--space-7) var(--space-8) calc(var(--space-8) * 1.5);
+  }
+  .main-inner { max-width: 46rem; }
+  .page-hd { display: flex; align-items: baseline; gap: var(--space-4); flex-wrap: wrap; margin: 0 0 var(--space-2); }
+  .page-hd h1 { margin: 0; }
+  .lede { color: var(--fg-2); font-size: var(--type-base); line-height: var(--lh-base); margin: 0 0 var(--space-6); max-width: 40rem; }
+
+  .foot {
+    /* CHROME's document-footer rule (margin-top + padding-top) would push
+       this out of its 32px grid row. */
+    margin: 0; padding-top: 0;
+    grid-area: foot; display: flex; align-items: center; gap: var(--space-5);
+    padding: 0 var(--space-5); font-size: var(--type-xs); color: var(--fg-2);
+    border-top: 1px solid var(--border-subtle); white-space: nowrap; overflow: hidden;
+  }
+  .foot .promise { overflow: hidden; text-overflow: ellipsis; }
+  .foot-spacer { flex: 1; }
+
+  .state {
+    font-size: var(--type-xs); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill);
+    border: 1px solid transparent; white-space: nowrap;
+  }
+  .state.ok   { color: var(--status-success); border-color: color-mix(in oklab, var(--status-success) 32%, transparent); }
+  .state.warn { color: var(--status-warn);    border-color: color-mix(in oklab, var(--status-warn) 32%, transparent); }
+  .state.stop { color: var(--status-error);   border-color: color-mix(in oklab, var(--status-error) 32%, transparent); }
+
+  @media (max-width: 760px) {
+    .shell { grid-template-columns: 1fr; grid-template-rows: 52px auto 1fr 32px; grid-template-areas: "top" "nav" "main" "foot"; }
+    .nav { flex-direction: row; flex-wrap: wrap; align-items: center; padding: var(--space-2) var(--space-3); }
+    .nav-hd, .nav-sep { display: none; }
+    .nav-foot { margin-top: 0; }
+    .main { padding: var(--space-6) var(--space-5); }
+  }
+`;
+
+/** 1px-stroke glyphs, showcase recipe (fill:none, currentColor). */
+export const GLYPHS = {
+  grid: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>',
+  plus: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>',
+  open: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3H3v10h10v-3"/><path d="M9 3h4v4"/><line x1="13" y1="3" x2="7" y2="9"/></svg>',
+  people: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5.5" r="2.5"/><path d="M2 13c0-2.2 1.8-4 4-4s4 1.8 4 4"/><path d="M11 9.2c1.7.4 3 1.9 3 3.8"/><path d="M10.5 3.2a2.5 2.5 0 0 1 0 4.6"/></svg>',
+  card: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="4" width="12" height="8" rx="1.5"/><line x1="2" y1="7" x2="14" y2="7"/></svg>',
+  branch: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="4" r="1.8"/><circle cx="4.5" cy="12" r="1.8"/><circle cx="11.5" cy="6" r="1.8"/><path d="M4.5 5.8v4.4"/><path d="M11.5 7.8c0 2.4-3 2.2-5 3.2"/></svg>',
+  clock: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><polyline points="8 5 8 8 10.5 9.5"/></svg>',
+  down: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7"/><polyline points="5 7 8 10 11 7"/><path d="M3 12.5h10"/></svg>',
+  trash: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 5h9"/><path d="M6.5 5V3.5h3V5"/><path d="M5 5l.6 8h4.8L11 5"/></svg>',
+  share: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="8" r="1.8"/><circle cx="12" cy="4" r="1.8"/><circle cx="12" cy="12" r="1.8"/><line x1="5.6" y1="7.2" x2="10.4" y2="4.8"/><line x1="5.6" y1="8.8" x2="10.4" y2="11.2"/></svg>',
+};
+
+function escAttr(s) {
+  return String(s).replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+  );
+}
+
+function navItem({ href, label, glyph, active = false, danger = false }) {
+  return `<a class="nav-item${danger ? ' danger' : ''}" href="${escAttr(href)}"${active ? ' aria-current="page"' : ''}>${GLYPHS[glyph] ?? ''}<span>${escAttr(label)}</span></a>`;
+}
+
+/**
+ * The signed-in admin shell. Server-rendered, no script — the same grid the
+ * DS showcase stages, worn by the product's own control surface.
+ *
+ * @param {object} args
+ * @param {{email: string}} args.account
+ * @param {string} args.title            document + page title
+ * @param {string} args.body             main-column HTML (already escaped)
+ * @param {object|null} [args.project]   {id, name} — adds the project section
+ * @param {boolean} [args.isOwner]       owner-only nav entries
+ * @param {string} [args.active]         nav key: projects|new|connect|people|billing|mirror|audit|download|delete
+ * @param {{tone: string, label: string}|null} [args.pill]  state pill next to the h1
+ * @param {string|null} [args.lede]      one quiet sentence under the h1
+ */
+export function appShell({ account, title, body, project = null, isOwner = false, active = '', pill = null, lede = null, extraCss = '' }) {
+  const p = project ? `/projects/${escAttr(project.id)}` : '';
+  const projectNav = project
+    ? `<div class="nav-sep"></div>
+       <div class="nav-hd">${escAttr(project.name || project.id)}</div>
+       ${navItem({ href: `${p}/connect`, label: 'Open', glyph: 'open', active: active === 'connect' })}
+       ${navItem({ href: `${p}/people`, label: 'People', glyph: 'people', active: active === 'people' })}
+       ${isOwner ? navItem({ href: `${p}/billing`, label: 'Billing', glyph: 'card', active: active === 'billing' }) : ''}
+       ${isOwner ? navItem({ href: `${p}/mirror`, label: 'GitHub copy', glyph: 'branch', active: active === 'mirror' }) : ''}
+       ${navItem({ href: `${p}/audit`, label: 'Activity', glyph: 'clock', active: active === 'audit' })}
+       ${navItem({ href: `${p}/download`, label: 'Download everything', glyph: 'down', active: active === 'download' })}
+       ${isOwner ? navItem({ href: `${p}/delete`, label: 'Delete project…', glyph: 'trash', active: active === 'delete', danger: true }) : ''}`
+    : '';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escAttr(title)} — Maude</title><style>${TOKENS}${CHROME}${LOCKUP_CSS}${SHELL_CSS}${extraCss}</style></head><body>
+<div class="shell">
+  <header class="top">
+    ${lockup()}
+    <span class="top-spacer"></span>
+    <span class="who-mail">${escAttr(account?.email ?? '')}</span>
+    <form method="post" action="/auth/logout"><button type="submit" class="ghost">Sign out</button></form>
+  </header>
+  <nav class="nav" aria-label="Main">
+    <div class="nav-hd">Workspace</div>
+    ${navItem({ href: '/', label: 'Your projects', glyph: 'grid', active: active === 'projects' })}
+    ${navItem({ href: '/projects/new', label: 'Start a project', glyph: 'plus', active: active === 'new' })}
+    ${projectNav}
+  </nav>
+  <main class="main"><div class="main-inner">
+    <div class="page-hd"><h1>${escAttr(title)}</h1>${pill ? `<span class="state ${escAttr(pill.tone)}">${escAttr(pill.label)}</span>` : ''}</div>
+    ${lede ? `<p class="lede">${escAttr(lede)}</p>` : ''}
+    ${body}
+  </div></main>
+  <footer class="foot">
+    <span>Maude Cloud</span>
+    <span class="foot-spacer"></span>
+    <span class="promise">Everything here is yours to take — every project can be downloaded in full, at any time, including after you stop paying for it.</span>
+  </footer>
+</div>
+</body></html>`;
+}

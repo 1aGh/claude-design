@@ -11,20 +11,25 @@
 // people open when something is wrong, including "the wrong person has
 // access".
 
-import { PAGE_CSS, lockup } from './brand.mjs';
+import { appShell } from './brand.mjs';
+import { STATE_COPY } from './dashboard.mjs';
 import { removalEffect, ROLES } from './membership.mjs';
 
-// Styling comes from the design system (brand.mjs); only what this page adds
-// lives here.
-const CSS = PAGE_CSS + `
-  main { max-width: 40rem; }
-  .crumb { font-size: var(--type-base); margin: 0 0 var(--space-7); }
-  table { width: 100%; border-collapse: collapse; margin-bottom: var(--space-7); }
-  th { text-align: left; font-size: var(--type-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--fg-2); padding-bottom: var(--space-2); }
-  td { padding: var(--space-4) 0; border-top: 1px solid var(--border-subtle); vertical-align: baseline; font-size: var(--type-base); }
-  td.right { text-align: right; }
+// Styling comes from the design system shell (brand.mjs); only what this page
+// adds lives here. The table wears the same one-material card the admin
+// surfaces use.
+const CSS = `
+  table { width: 100%; border-collapse: collapse; margin-bottom: var(--space-6); background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
+  th { text-align: left; font-family: var(--font-mono); font-size: var(--type-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--fg-2); padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--border-subtle); }
+  td { padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border-subtle); vertical-align: baseline; font-size: var(--type-base); }
+  tr:first-child td { border-top: 0; }
+  td.right { text-align: right; white-space: nowrap; }
   form.inline { display: inline; }
   select, input[type=email] { width: auto; }
+  td .inline button {
+    background: var(--bg-2); color: var(--fg-1); border-color: var(--border-default);
+  }
+  td .inline button:hover { background: var(--bg-3); color: var(--fg-0); }
   .card h2 { margin: 0 0 var(--space-3); }
   .card { margin-bottom: var(--space-6); }
   .warn { border-color: color-mix(in oklab, var(--status-warn) 45%, transparent); }
@@ -38,8 +43,19 @@ function esc(s) {
   );
 }
 
-function page(title, body) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)} — Maude</title><style>${CSS}</style></head><body><main>${body}</main></body></html>`;
+function page(title, body, { account, project, isOwner, lede = null } = {}) {
+  const copy = project ? (STATE_COPY[project.state] ?? null) : null;
+  return appShell({
+    account,
+    title,
+    body,
+    project,
+    isOwner,
+    active: 'people',
+    lede,
+    pill: copy ? { tone: copy.tone, label: copy.label } : null,
+    extraCss: CSS,
+  });
 }
 
 /** Roles a person can be given here. `owner` is a transfer, not a role change. */
@@ -86,7 +102,7 @@ function personRow(person, { projectId, isOwner }) {
  * @param {{account_id: string, email: string, role: string}[]} args.people
  * @param {boolean} args.isOwner
  */
-export function peoplePage({ project, people = [], isOwner, error = null, notice = null }) {
+export function peoplePage({ account, project, people = [], isOwner, error = null, notice = null }) {
   const invite = isOwner
     ? `<div class="card">
          <h2>Add someone</h2>
@@ -105,11 +121,8 @@ export function peoplePage({ project, people = [], isOwner, error = null, notice
     : '';
 
   return page(
-    `People on ${project.name}`,
-    `${lockup()}
-     <h1>People on ${esc(project.name)}</h1>
-     <p class="crumb"><a href="/">← Your projects</a></p>
-     ${error ? `<p class="error">${esc(error)}</p>` : ''}
+    'People',
+    `${error ? `<p class="error">${esc(error)}</p>` : ''}
      ${notice ? `<p class="ok">${esc(notice)}</p>` : ''}
      ${invite}
      <table>
@@ -120,7 +133,13 @@ export function peoplePage({ project, people = [], isOwner, error = null, notice
        isOwner
          ? ''
          : '<p class="quiet">Only the project’s owner can add or remove people.</p>'
-     }`
+     }`,
+    {
+      account,
+      project,
+      isOwner,
+      lede: `Who is on ${project.name}, and what each person can do.`,
+    }
   );
 }
 
@@ -131,13 +150,11 @@ export function peoplePage({ project, people = [], isOwner, error = null, notice
  * it is not, and the person clicking needs to know that BEFORE they decide,
  * not afterwards from a support reply.
  */
-export function removeConfirmPage({ project, person, tokenTtlMs, csrf }) {
+export function removeConfirmPage({ account, project, person, tokenTtlMs, csrf }) {
   const effect = removalEffect({ tokenTtlMs });
   return page(
-    'Remove someone',
-    `${lockup()}
-     <h1>Remove ${esc(person.email)}?</h1>
-     <p class="crumb"><a href="/projects/${esc(project.id)}/people">← People on ${esc(project.name)}</a></p>
+    `Remove ${person.email}?`,
+    `<p class="quiet" style="margin:0 0 var(--space-5)"><a href="/projects/${esc(project.id)}/people">← Back to People</a></p>
      <div class="card warn">
        <ul>
          <li>${esc(effect.immediate[0])}</li>
@@ -162,11 +179,12 @@ export function allPeopleHtml() {
     { account_id: 'a2', email: 'member@example.com', role: 'member' },
     { account_id: 'a3', email: 'viewer@example.com', role: 'viewer' },
   ];
+  const account = { email: 'owner@example.com' };
   return [
-    peoplePage({ project, people, isOwner: true }),
-    peoplePage({ project, people, isOwner: false }),
-    peoplePage({ project, people, isOwner: true, error: 'That is not an email address.' }),
-    peoplePage({ project, people, isOwner: true, notice: 'Invitation sent.' }),
-    removeConfirmPage({ project, person: people[1], tokenTtlMs: 12 * 3_600_000 }),
+    peoplePage({ account, project, people, isOwner: true }),
+    peoplePage({ account, project, people, isOwner: false }),
+    peoplePage({ account, project, people, isOwner: true, error: 'That is not an email address.' }),
+    peoplePage({ account, project, people, isOwner: true, notice: 'Invitation sent.' }),
+    removeConfirmPage({ account, project, person: people[1], tokenTtlMs: 12 * 3_600_000 }),
   ].join('\n');
 }

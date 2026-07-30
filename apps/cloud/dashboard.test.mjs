@@ -71,8 +71,10 @@ describe('the menu never shows what it will then refuse', () => {
   });
 
   it('an owner sees all of them', () => {
+    // "Sharing" is deliberately absent everywhere: there is no sharing
+    // settings surface yet, and a dead link is the menu lying politely.
     const html = render([project({ role: 'owner' })]);
-    for (const label of ['Billing', 'People', 'Sharing', 'Open']) {
+    for (const label of ['Billing', 'People', 'Open', 'GitHub copy', 'Activity']) {
       assert.match(html, new RegExp(label), label);
     }
   });

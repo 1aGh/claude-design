@@ -14,12 +14,11 @@
 // something is wrong, and a page that needs JavaScript to tell you your
 // project is paused is a page that cannot tell you anything when it is broken.
 
-import { PAGE_CSS, lockup } from './brand.mjs';
+import { appShell } from './brand.mjs';
 
-// Styling comes from the design system (brand.mjs). What is left here is only
-// what this page adds on top of the shared chrome.
-const CSS = PAGE_CSS + `
-  .who { color: var(--fg-2); font-size: var(--type-base); margin: 0 0 var(--space-7); }
+// Styling comes from the design system shell (brand.mjs). What is left here
+// is only what the project cards add on top of the shared chrome.
+const CSS = `
   .project {
     background: var(--bg-1);
     border: 1px solid var(--border-subtle);
@@ -32,16 +31,9 @@ const CSS = PAGE_CSS + `
   .project:hover { border-color: var(--border-default); }
   .project h2 { margin: 0 0 var(--space-1); }
   .row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-5); flex-wrap: wrap; }
-  .state {
-    font-size: var(--type-xs); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-    padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill);
-    border: 1px solid transparent;
-  }
-  .state.ok   { color: var(--status-success); border-color: color-mix(in oklab, var(--status-success) 32%, transparent); }
-  .state.warn { color: var(--status-warn);    border-color: color-mix(in oklab, var(--status-warn) 32%, transparent); }
-  .state.stop { color: var(--status-error);   border-color: color-mix(in oklab, var(--status-error) 32%, transparent); }
   .note { color: var(--fg-2); font-size: var(--type-base); line-height: var(--lh-base); margin: var(--space-3) 0 0; }
   .actions { margin-top: var(--space-4); display: flex; gap: var(--space-5); flex-wrap: wrap; font-size: var(--type-base); }
+  .actions a:first-child { font-weight: 600; }
   .empty {
     border: 1px dashed var(--border-default); border-radius: var(--radius-lg);
     padding: var(--space-8) var(--space-6); text-align: center; background: var(--bg-1);
@@ -53,10 +45,6 @@ function esc(s) {
     /[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
   );
-}
-
-function page(title, body) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)} — Maude</title><style>${CSS}</style></head><body><main>${body}</main></body></html>`;
 }
 
 /**
@@ -117,7 +105,6 @@ function projectCard(project, { can }) {
   } else if (project.state !== 'purged') {
     actions.push(`<a href="/projects/${esc(project.id)}/connect">Open</a>`);
   }
-  if (can('share')) actions.push(`<a href="/projects/${esc(project.id)}/share">Sharing</a>`);
   if (can('invite')) actions.push(`<a href="/projects/${esc(project.id)}/people">People</a>`);
   if (can('billing')) actions.push(`<a href="/projects/${esc(project.id)}/billing">Billing</a>`);
   if (can('mirror')) actions.push(`<a href="/projects/${esc(project.id)}/mirror">GitHub copy</a>`);
@@ -161,18 +148,13 @@ export function dashboardPage({ account, projects = [], can }) {
           .map((p) => projectCard(p, { can: (capability) => can(p.role, capability) }))
           .join('\n');
 
-  return page(
-    'Your projects',
-    `${lockup()}
-     <h1>Your projects</h1>
-     <p class="who">${esc(account.email)} · <a href="/account">Account</a></p>
-     ${body}
-     <footer>
-       Everything here is yours to take. Every project can be downloaded in full,
-       at any time, including after you stop paying for it.
-       <form method="post" action="/auth/logout" style="margin-top:1rem"><button type="submit">Sign out</button></form>
-     </footer>`
-  );
+  return appShell({
+    account,
+    title: 'Your projects',
+    active: 'projects',
+    extraCss: CSS,
+    body,
+  });
 }
 
 /** Every customer-facing string on this surface, for the vocabulary lint. */

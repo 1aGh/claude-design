@@ -5,11 +5,10 @@
 // whole job is to be honest while infrastructure is uncertain should not
 // depend on any of it working.
 
-import { PAGE_CSS, lockup } from './brand.mjs';
+import { appShell, PAGE_CSS, lockup } from './brand.mjs';
 import { PROVISION_STEPS } from './provisioning.mjs';
 
-const CSS = PAGE_CSS + `
-  main { max-width: 34rem; }
+const EXTRA_CSS = `
   .plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin: var(--space-4) 0 var(--space-2); }
   .plan {
     display: block; cursor: pointer;
@@ -31,6 +30,9 @@ const CSS = PAGE_CSS + `
   .steps li.done::before { background: var(--status-success); }
   .reassure { border-color: color-mix(in oklab, var(--status-success) 30%, transparent); }
 `;
+// The centered waiting room keeps the narrow column; inside the shell the
+// column is the shell's own `.main-inner`.
+const CSS = PAGE_CSS + EXTRA_CSS + '\n  main { max-width: 34rem; }\n';
 
 function esc(s) {
   return String(s).replace(
@@ -54,7 +56,7 @@ function euros(minor) {
  * The wizard. One page: name, plan, billing rhythm. The id the name becomes is
  * decided server-side and shown on the NEXT page rather than live — no script.
  */
-export function newProjectPage({ pricing, error = null, values = {} }) {
+export function newProjectPage({ account = null, pricing, error = null, values = {} }) {
   const plans = pricing.plans
     .map((p, i) => {
       const monthly = euros(p.amounts.monthlyMinor);
@@ -66,13 +68,13 @@ export function newProjectPage({ pricing, error = null, values = {} }) {
       </label>`;
     })
     .join('\n');
-  return page(
-    'Start a project',
-    `<h1>Start a project</h1>
-     <p class="quiet">One project is one workspace with its own address, its own people,
-       and its own design system. The first ${pricing.trialDays} days are free — your card
-       is not charged until the trial ends, and you can stop any time before that.</p>
-     ${error ? `<p class="error">${esc(error)}</p>` : ''}
+  return appShell({
+    account,
+    title: 'Start a project',
+    active: 'new',
+    extraCss: EXTRA_CSS,
+    lede: `One project is one workspace with its own address, its own people, and its own design system. The first ${pricing.trialDays} days are free — your card is not charged until the trial ends, and you can stop any time before that.`,
+    body: `${error ? `<p class="error">${esc(error)}</p>` : ''}
      <form method="post" action="/projects/new">
        <label for="name">What is the project called?</label>
        <input type="text" id="name" name="name" required minlength="3" maxlength="60"
@@ -85,8 +87,8 @@ export function newProjectPage({ pricing, error = null, values = {} }) {
        <button type="submit">Continue to payment details</button>
        <p class="quiet" style="margin-top:var(--space-4)">Payment details are handled by Stripe.
          Nothing is charged today.</p>
-     </form>`
-  );
+     </form>`,
+  });
 }
 
 /**
@@ -134,12 +136,15 @@ export function waitingRoomPage({ project, room }) {
  * Billing, per project. The numbers live at Stripe; this page states the
  * situation and hands over to Stripe's own portal for anything that changes it.
  */
-export function billingPage({ project, stateCopy, canPortal }) {
-  return page(
-    `Billing for ${project.name}`,
-    `<h1>Billing for ${esc(project.name)}</h1>
-     <p class="crumb" style="margin-bottom:var(--space-6)"><a href="/">← Your projects</a></p>
-     <div class="card">
+export function billingPage({ account = null, project, stateCopy, canPortal }) {
+  return appShell({
+    account,
+    title: 'Billing',
+    project,
+    isOwner: true,
+    active: 'billing',
+    pill: stateCopy.tone ? { tone: stateCopy.tone, label: stateCopy.label } : null,
+    body: `<div class="card">
        <h2>${esc(stateCopy.label)}</h2>
        ${stateCopy.note ? `<p class="quiet" style="margin:0">${esc(stateCopy.note)}</p>` : ''}
      </div>
@@ -152,23 +157,24 @@ export function billingPage({ project, stateCopy, canPortal }) {
               cancelling all live there — it is your billing relationship, so you hold it directly.</p>`
          : `<p class="quiet" style="margin-top:var(--space-5)">There is no billing set up for this
               project yet.</p>`
-     }`
-  );
+     }`,
+  });
 }
 
 /** Every customer-facing string here, for the vocabulary lint. */
 export function allCheckoutHtml({ pricing }) {
   const project = { id: 'alligators', name: 'Brno Alligators' };
+  const account = { email: 'a@example.com' };
   return [
-    newProjectPage({ pricing }),
-    newProjectPage({ pricing, error: 'Pick one of the plans.', values: { name: 'X', interval: 'annual' } }),
+    newProjectPage({ account, pricing }),
+    newProjectPage({ account, pricing, error: 'Pick one of the plans.', values: { name: 'X', interval: 'annual' } }),
     waitingRoomPage({
       project,
       room: { step: 'workspace', steps: PROVISION_STEPS, done: false, note: 'This usually takes a minute or two. Your card has not been charged yet — that happens once your project is up.' },
     }),
     waitingRoomPage({ project, room: { step: 'ready', steps: PROVISION_STEPS, done: true, note: 'Your project is ready.' } }),
     waitingRoomPage({ project, room: { step: null, steps: PROVISION_STEPS, done: true, note: 'We could not set up your project, so you have not been charged.' } }),
-    billingPage({ project, stateCopy: { label: 'Ready', note: null }, canPortal: true }),
-    billingPage({ project, stateCopy: { label: 'Setting up', note: 'This usually takes a minute or two.' }, canPortal: false }),
+    billingPage({ account, project, stateCopy: { label: 'Ready', note: null }, canPortal: true }),
+    billingPage({ account, project, stateCopy: { label: 'Setting up', note: 'This usually takes a minute or two.' }, canPortal: false }),
   ].join('\n');
 }

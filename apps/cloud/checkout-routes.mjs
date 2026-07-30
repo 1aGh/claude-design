@@ -96,7 +96,7 @@ export async function handleCheckoutRoutes(request, env, { account }) {
   // -------------------------------------------------------------- the wizard
   if (pathname === '/projects/new') {
     if (!account) return redirect('/login');
-    if (request.method === 'GET') return html(newProjectPage({ pricing }));
+    if (request.method === 'GET') return html(newProjectPage({ account, pricing }));
     if (request.method !== 'POST') return html('<p>Not allowed.</p>', 405);
 
     const form = await request.formData();
@@ -106,7 +106,7 @@ export async function handleCheckoutRoutes(request, env, { account }) {
       interval: String(form.get('interval') ?? ''),
     };
     const verdict = validateNewProject({ ...values, pricing });
-    if (!verdict.ok) return html(newProjectPage({ pricing, error: verdict.error, values }), 400);
+    if (!verdict.ok) return html(newProjectPage({ account, pricing, error: verdict.error, values }), 400);
 
     const taken = await env.DB.prepare('SELECT id FROM projects WHERE id = ?')
       .bind(verdict.id)
@@ -114,6 +114,7 @@ export async function handleCheckoutRoutes(request, env, { account }) {
     if (taken) {
       return html(
         newProjectPage({
+          account,
           pricing,
           error: `“${verdict.id}” is already someone's address here. Pick another name.`,
           values,
@@ -131,7 +132,7 @@ export async function handleCheckoutRoutes(request, env, { account }) {
     } catch (err) {
       console.error(`[checkout] price resolution: ${err.message}`);
       return html(
-        newProjectPage({ pricing, error: 'That plan cannot be started right now.', values }),
+        newProjectPage({ account, pricing, error: 'That plan cannot be started right now.', values }),
         503
       );
     }
@@ -155,7 +156,7 @@ export async function handleCheckoutRoutes(request, env, { account }) {
       if (!session.ok || !session.body?.url) {
         console.error(`[checkout] session create: ${session.status} ${JSON.stringify(session.body?.error ?? {}).slice(0, 300)}`);
         return html(
-          newProjectPage({ pricing, error: 'Payment could not be started. Nothing was created — try again.', values }),
+          newProjectPage({ account, pricing, error: 'Payment could not be started. Nothing was created — try again.', values }),
           502
         );
       }
@@ -163,7 +164,7 @@ export async function handleCheckoutRoutes(request, env, { account }) {
     } catch (err) {
       console.error(`[checkout] ${err.message}`);
       return html(
-        newProjectPage({ pricing, error: 'Payment could not be started. Nothing was created — try again.', values }),
+        newProjectPage({ account, pricing, error: 'Payment could not be started. Nothing was created — try again.', values }),
         502
       );
     }
@@ -366,6 +367,7 @@ export async function handleCheckoutRoutes(request, env, { account }) {
     const stateCopy = STATE_COPY[project.state] ?? { label: project.state, note: null };
     return html(
       billingPage({
+        account,
         project,
         stateCopy,
         canPortal: Boolean(account.stripe_customer_id && project.subscription_id),

@@ -62,9 +62,14 @@ describe('the owner is not something you can edit here', () => {
 });
 
 describe('a non-owner sees the truth, not a broken form', () => {
-  it('gets no controls and is told why', () => {
+  it('gets no management controls and is told why', () => {
+    // The SHELL chrome (Sign out) is allowed; the people panel's own
+    // controls — invite, role save, remove — must be absent entirely.
     const html = peoplePage({ project, people, isOwner: false });
-    assert.ok(!/<button/.test(html));
+    assert.ok(!/Remove…/.test(html));
+    assert.ok(!/value="invite"/.test(html));
+    assert.ok(!/value="role"/.test(html));
+    assert.ok(!/<select/.test(html));
     assert.match(html, /Only the project’s owner can add or remove people/);
   });
 });
