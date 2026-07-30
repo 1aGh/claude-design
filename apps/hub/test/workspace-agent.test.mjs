@@ -555,3 +555,44 @@ describe('the hub owns its own shutdown', () => {
     built.stopBackgroundWork();
   });
 });
+
+describe('the seed never leaves a credential on disk', () => {
+  it('rewrites origin to a URL with no token in it', async () => {
+    // `git clone https://x-access-token:<token>@…` writes that URL verbatim
+    // into .git/config, where the tenant's own tooling reads it. The mirror
+    // lane refuses to do this (DDR-201); the seed was quietly doing it.
+    const calls = [];
+    const dir = tmp();
+    await seedRepo(
+      dir,
+      async (args) => {
+        calls.push(args);
+        return { code: 0, stdout: '', stderr: '' };
+      },
+      { url: 'https://x-access-token:ghs_secret@github.com/acme/design.git', log: silent() }
+    );
+    const flat = calls.flat().join(' ');
+    assert.ok(flat.includes('ghs_secret'), 'the clone itself must of course use it');
+    const setUrl = calls.find((a) => a[0] === 'remote' && a[1] === 'set-url');
+    assert.ok(setUrl, 'the remote must be rewritten after cloning');
+    assert.equal(setUrl[3], 'https://github.com/acme/design.git');
+    assert.ok(!setUrl.join(' ').includes('ghs_secret'));
+  });
+
+  it('removes the remote outright if it cannot be rewritten', async () => {
+    // A live credential on disk is worse than losing where the project came
+    // from.
+    const calls = [];
+    await seedRepo(
+      tmp(),
+      async (args) => {
+        calls.push(args);
+        return args[1] === 'set-url'
+          ? { code: 1, stdout: '', stderr: 'nope' }
+          : { code: 0, stdout: '', stderr: '' };
+      },
+      { url: 'https://x-access-token:ghs_secret@github.com/acme/design.git', log: silent() }
+    );
+    assert.ok(calls.some((a) => a[0] === 'remote' && a[1] === 'remove'));
+  });
+});

@@ -95,5 +95,26 @@ export async function seedRepo(repoDir, run, { url = '', branch = '', log = cons
       reason: `git clone exited ${r.code}: ${r.stderr.trim().slice(0, 400)}`,
     };
   }
+  // SCRUB THE CREDENTIAL OUT OF THE REMOTE.
+  //
+  // `git clone https://x-access-token:<token>@…` writes that URL verbatim into
+  // .git/config, where it stays — readable by the tenant's own tooling, and
+  // copied by anything that archives the working tree. This is the same thing
+  // the mirror lane refuses to do (DDR-201: "never `git remote add`, which
+  // would persist the credential"), and the seed was quietly doing it.
+  //
+  // The URL is REWRITTEN rather than the remote removed: where a project came
+  // from is worth keeping, and a later authenticated fetch can supply
+  // credentials out of band. What is not worth keeping is the secret.
+  const clean = seed.replace(/\/\/[^@/]*@/, '//');
+  const scrubbed = await run(['remote', 'set-url', 'origin', clean], { cwd: repoDir });
+  if (scrubbed.code !== 0) {
+    // Failing to scrub means a live credential is sitting on disk. Removing
+    // the remote entirely is the safe fallback — provenance is worth less than
+    // a leaked token.
+    await run(['remote', 'remove', 'origin'], { cwd: repoDir });
+    log.warn?.('[seed] could not rewrite the remote URL; removed it instead');
+  }
+
   return { state: 'cloned', url: safeUrl(seed) };
 }
