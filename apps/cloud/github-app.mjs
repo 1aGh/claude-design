@@ -68,7 +68,10 @@ export async function appJwt(privateKeyPem, appId, nowMs) {
 }
 
 /**
- * Mint an installation token scoped to ONE repository.
+ * Mint an installation token scoped to named repositories — usually ONE
+ * (`repository`); the bug-report intake passes TWO (`repositories`: the public
+ * issue tracker + the private media store), which is still an explicit,
+ * minimal enumeration, never the whole installation.
  *
  * Scoping is not decoration. Without `repositories`, the token can write to
  * every repo the installation covers — so a tenant who configured a mirror to
@@ -78,12 +81,13 @@ export async function appJwt(privateKeyPem, appId, nowMs) {
  * @param {(url: string, init: object) => Promise<Response>} [fetchImpl]
  */
 export async function mintInstallationToken(
-  { privateKeyPem, appId, installationId, repository },
+  { privateKeyPem, appId, installationId, repository, repositories },
   { nowMs = Date.now(), fetchImpl = fetch } = {}
 ) {
   if (!privateKeyPem || !appId || !installationId) {
     throw new Error('the GitHub App is not configured');
   }
+  const scoped = repositories ?? (repository ? [repository] : null);
   const jwt = await appJwt(privateKeyPem, appId, nowMs);
   const res = await fetchImpl(
     `https://api.github.com/app/installations/${encodeURIComponent(installationId)}/access_tokens`,
@@ -95,7 +99,7 @@ export async function mintInstallationToken(
         'content-type': 'application/json',
         'user-agent': 'maude-cloud',
       },
-      body: JSON.stringify(repository ? { repositories: [repository] } : {}),
+      body: JSON.stringify(scoped ? { repositories: scoped } : {}),
     }
   );
   if (!res.ok) {
@@ -105,7 +109,10 @@ export async function mintInstallationToken(
   }
   const body = await res.json();
   if (!body?.token) throw new Error('GitHub returned no token');
-  return { token: body.token, expiresAt: Date.parse(body.expires_at ?? '') || nowMs + TOKEN_TTL_MS };
+  return {
+    token: body.token,
+    expiresAt: Date.parse(body.expires_at ?? '') || nowMs + TOKEN_TTL_MS,
+  };
 }
 
 /**
