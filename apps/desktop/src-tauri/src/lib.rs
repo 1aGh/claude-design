@@ -13,6 +13,7 @@
 
 mod app_state;
 mod crash_reporter;
+mod deep_link;
 mod keychain;
 mod menu;
 mod oauth;
@@ -376,12 +377,20 @@ pub fn run() {
     let builder = tauri::Builder::default()
         // Single-instance MUST be registered first (DDR-106): a second launch
         // focuses the existing window rather than opening a duplicate.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // Windows/Linux deliver a maude:// link by relaunching the binary
+            // with the URL in argv — the running instance receives it here.
+            for arg in &args {
+                if arg.starts_with("maude://") {
+                    deep_link::accept(app, arg);
+                }
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         // Auto-update (Phase 32 / Task 1) — config (endpoints + pubkey) is in
@@ -407,6 +416,9 @@ pub fn run() {
             prefs::prefs_set_crash_reporting,
             prefs::prefs_get_claude_auto_setup,
             prefs::prefs_set_claude_auto_setup,
+            crash_reporter::list_crash_logs,
+            crash_reporter::read_crash_log,
+            deep_link::take_pending_deep_link,
         ])
         .menu(menu::build_menu)
         .on_menu_event(|app, event| {
@@ -415,6 +427,12 @@ pub fn run() {
                 // create-project dialog (name + visibility → POST create-project →
                 // git init + design scaffold → open). IdentityBar listens for this.
                 let _ = app.emit("menu://new-project", ());
+                return;
+            }
+            if event.id().as_ref() == menu::MENU_REPORT_BUG {
+                // Help ▸ Report a Bug… — hand off to the webview's dialog, which
+                // owns capture + consent (feature-bug-report-button).
+                let _ = app.emit("menu://report-bug", ());
                 return;
             }
             if event.id().as_ref() == menu::MENU_CHECK_UPDATES {
@@ -468,6 +486,19 @@ pub fn run() {
             // setup is caught (and, only if opted in, written to a local file).
             prefs::init(&handle);
             crash_reporter::install(&handle);
+
+            // maude:// links (Phase 17). macOS delivers through the plugin;
+            // the state is parked until the client asks for it.
+            app.manage(deep_link::PendingDeepLink::default());
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let dl_handle = handle.clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        deep_link::accept(&dl_handle, url.as_str());
+                    }
+                });
+            }
 
             let project_root = resolve_project_root(&handle);
             eprintln!("[maude] project root: {}", project_root.display());

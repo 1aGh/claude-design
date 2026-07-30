@@ -27,6 +27,7 @@ import { TranspileError } from './canvas-pipeline.ts';
 import type { AiActivity } from './collab/ai-activity.ts';
 import type { Context } from './context.ts';
 import { reloadConfig } from './context.ts';
+import { buildDebugBundle } from './debug-bundle.ts';
 import { probeSetupReadiness } from './design-setup-readiness.ts';
 import { type Format, isFormat, isScope, type Scope } from './exporters/index.ts';
 import { type ExportJobQueue, ExportQueueFullError } from './exporters/jobs.ts';
@@ -88,7 +89,7 @@ import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
 import { linkHub } from './sync/hub-link.ts';
 import { signInToWorkspace, workspaceDisclosure } from './sync/workspace-signin.ts';
 import { readUiPrefs, type UiPrefs, writeUiPrefs } from './ui-prefs.ts';
-import { loadWhatsNew } from './whats-new.ts';
+import { loadWhatsNew, resolveMaudeVersion } from './whats-new.ts';
 import { isLoopbackHost } from './ws.ts';
 
 // Real disk install root — never the virtual `/$bunfs/root` of compiled bins.
@@ -1170,6 +1171,84 @@ export function createHttp(
     '/_api/whats-new': () =>
       Response.json(loadWhatsNew(), { headers: { 'Cache-Control': 'no-store' } }),
 
+    // feature-bug-report-button — the scrubbed diagnostic bundle the Report-a-Bug
+    // dialog previews for consent. PRIVILEGED (logs could reveal paths pre-scrub;
+    // the scrubber runs here, server-side): MAIN-ORIGIN ONLY — absent from
+    // CANVAS_SAFE_API + startCanvasServer routes — plus the same double gate as
+    // /_api/acp/status (a drive-by page must not read logs via DNS rebinding).
+    '/_api/debug-bundle': (req: Request) => {
+      if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      return Response.json(
+        buildDebugBundle({
+          maudeVersion: resolveMaudeVersion(),
+          projectName: ctx.cfg.name ?? null,
+          activeCanvas: (inspect.state as { active?: string | null }).active ?? null,
+          repoRoot: ctx.paths.repoRoot,
+        }),
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    // feature-bug-report-button — submit proxy. The client never talks to
+    // cloud.maude.sh directly (no CORS surface to open, and the endpoint can be
+    // overridden for self-hosters/tests via MAUDE_REPORT_URL). Forwards the
+    // multipart body verbatim; the cloud route owns validation + quota.
+    // PRIVILEGED: main-origin only + double gate (it triggers outbound network).
+    '/_api/report': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const endpoint = process.env.MAUDE_REPORT_URL || 'https://cloud.maude.sh/report';
+      try {
+        const upstream = await fetch(endpoint, {
+          method: 'POST',
+          body: await req.formData(),
+          signal: AbortSignal.timeout(30_000),
+        });
+        const body = await upstream.text();
+        return new Response(body, {
+          status: upstream.status,
+          headers: { 'content-type': 'application/json', 'Cache-Control': 'no-store' },
+        });
+      } catch {
+        // Unreachable/timeout — the client falls back to the local bundle path.
+        return Response.json({ error: 'report service unreachable' }, { status: 502 });
+      }
+    },
+
+    // feature-bug-report-button — offline/declined fallback: persist the bundle
+    // locally under `<designRoot>/_reports/<ts>/` (gitignored runtime state,
+    // DDR-115 taxonomy) so the user can attach it to a hand-filed issue.
+    // PRIVILEGED: main-origin only + double gate (filesystem write).
+    '/_api/report-fallback': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{ report?: unknown; screenshots?: unknown }>(req);
+      if (!body || typeof body.report !== 'object' || body.report === null) {
+        return new Response('body must include { report }', { status: 400 });
+      }
+      const shots = Array.isArray(body.screenshots) ? body.screenshots.slice(0, 3) : [];
+      const dir = join(ctx.paths.designRoot, '_reports', String(Date.now()));
+      await Bun.write(join(dir, 'report.json'), JSON.stringify(body.report, null, 2));
+      let n = 0;
+      for (const shot of shots) {
+        if (typeof shot !== 'string') continue;
+        const m = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(shot);
+        if (!m || m[2].length > 7_000_000) continue; // ~5 MB decoded cap
+        n += 1;
+        await Bun.write(join(dir, `screenshot-${n}.${m[1] === 'png' ? 'png' : 'jpg'}`), Buffer.from(m[2], 'base64'));
+      }
+      return Response.json(
+        { dir: relative(ctx.paths.repoRoot, dir), screenshots: n },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_index-data': async () =>
       Response.json(await api.buildIndexData(), { headers: { 'Cache-Control': 'no-store' } }),
 
@@ -1774,6 +1853,18 @@ export function createHttp(
         return new Response('local request required', { status: 403 });
       const body = (await req.json().catch(() => ({}))) as { project?: string };
       return gitJson(await cloudApi.attach(String(body.project ?? '')));
+    },
+    '/_api/cloud/attach/code': async (req: Request) => {
+      // The maude:// lane (Phase 17): a one-time handoff code from a deep
+      // link. Same gates as attach; the code is exchanged only against the
+      // CONFIGURED cloud address, never one the link named.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = (await req.json().catch(() => ({}))) as { code?: string };
+      return gitJson(await cloudApi.attachCode(String(body.code ?? '')));
     },
 
     '/_api/github/identity': async (req: Request) => {

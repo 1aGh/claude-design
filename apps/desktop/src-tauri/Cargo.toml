@@ -22,6 +22,9 @@ tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-dialog = "2"
+# maude:// protocol handler (Cloud Phase 17): scheme registration lives in
+# tauri.conf.json plugins.deep-link (bundled builds only — dev never registers).
+tauri-plugin-deep-link = "2"
 # Auto-update (Phase 32 / Task 1): poll a signed JSON feed, download in the
 # background, apply on restart. Endpoints + ed25519 pubkey are in tauri.conf.json;
 # the matching private key signs the artifacts in CI (TAURI_SIGNING_PRIVATE_KEY).

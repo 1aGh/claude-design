@@ -1993,6 +1993,8 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .gi-rail { position: relative; flex: 0 0 auto; margin-top: auto; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--border-default); display: flex; flex-direction: column; gap: var(--space-2); }
 .gi-rail-hint { font-size: var(--type-xs); color: var(--fg-2); padding: var(--space-1) var(--space-1); }
 .gi-rail-signin { width: 100%; justify-content: center; }
+.gi-rail-confirm { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-2); }
+.gi-rail-confirm .gi-rail-hint { flex: 1 1 100%; padding: 0; }
 .gi-rail-err { font-size: var(--type-xs); color: var(--status-error); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gi-avatar { border-radius: var(--radius-pill); display: grid; place-items: center; font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--accent-fg); background: var(--accent); flex: 0 0 auto; }
 .gi-rail-account { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-1) var(--space-2); border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--fg-0); cursor: pointer; text-align: left; }

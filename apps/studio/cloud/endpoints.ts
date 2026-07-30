@@ -189,48 +189,96 @@ export function createCloudEndpoints(ctx: Ctx) {
       if (opened.status !== 200 || !opened.body?.token) {
         return { status: 502, json: { ok: false, error: 'The project could not be opened with this account.' } };
       }
+      return linkToWorkspace({ workspaceUrl: opened.body.url, projectToken: opened.body.token, role: opened.body.role });
+    },
 
-      const workspaceUrl: string = opened.body.url;
-      // The cell is a different host than the control plane — one direct call.
-      let hubToken: string | null = null;
-      try {
-        const res = await fetch(`${workspaceUrl}/auth/login`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ token: opened.body.token }),
-        });
-        const body: any = await res.json().catch(() => ({}));
-        if (res.ok && body?.token) hubToken = body.token;
-      } catch {
-        /* handled below */
+    /**
+     * Attach via a one-time handoff code — the maude:// lane (Phase 17). The
+     * code came from an untrusted URL, so it is exchanged ONLY against the
+     * configured Maude Cloud address (never one the link names), and the
+     * workspace we then link is the one THAT exchange returns. Needs no
+     * personal token: the code itself proves the dashboard session.
+     */
+    async attachCode(code: string): Promise<CloudEndpointResult> {
+      if (typeof code !== 'string' || !/^mhc_[0-9a-f]{16,128}$/.test(code)) {
+        return { status: 400, json: { ok: false, error: 'That link is not valid.' } };
       }
-      if (!hubToken) {
-        return { status: 502, json: { ok: false, error: 'The workspace did not accept the sign-in. Try again in a minute.' } };
+      const exchanged = await cloudFetch('/auth/handoff/exchange', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      if (exchanged.status !== 200 || !exchanged.body?.token) {
+        return {
+          status: 410,
+          json: {
+            ok: false,
+            error:
+              'That link expired — it works once, for two minutes. Press “Open in Maude” on the project page again.',
+          },
+        };
       }
-
-      const norm = normalizeUrl(workspaceUrl);
-      saveHubCredential(norm, hubToken);
-
-      // Project side — linkedHub in .design/config.json (committed; no token).
-      const cfgPath = join(ctx.paths.designRoot, 'config.json');
-      let cfg: any = {};
-      try {
-        cfg = JSON.parse(readFileSync(cfgPath, 'utf8'));
-      } catch {
-        /* absent/malformed → start minimal */
-      }
-      cfg.linkedHub = { url: norm, linkedAt: Date.now() };
-      writeFileSync(cfgPath, `${JSON.stringify(cfg, null, 2)}\n`, 'utf8');
-
-      return {
-        status: 200,
-        json: {
-          ok: true,
-          url: norm,
-          role: opened.body.role,
-          note: 'Linked. Restart the studio server to start syncing.',
-        },
-      };
+      return linkToWorkspace({
+        workspaceUrl: exchanged.body.url,
+        projectToken: exchanged.body.token,
+        role: exchanged.body.role,
+        project: exchanged.body.project,
+      });
     },
   };
+
+  /** The shared tail of every attach: cell exchange → credential + linkedHub. */
+  async function linkToWorkspace({
+    workspaceUrl,
+    projectToken,
+    role,
+    project,
+  }: {
+    workspaceUrl: string;
+    projectToken: string;
+    role?: string;
+    project?: string;
+  }): Promise<CloudEndpointResult> {
+    // The cell is a different host than the control plane — one direct call.
+    let hubToken: string | null = null;
+    try {
+      const res = await fetch(`${workspaceUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: projectToken }),
+      });
+      const body: any = await res.json().catch(() => ({}));
+      if (res.ok && body?.token) hubToken = body.token;
+    } catch {
+      /* handled below */
+    }
+    if (!hubToken) {
+      return { status: 502, json: { ok: false, error: 'The workspace did not accept the sign-in. Try again in a minute.' } };
+    }
+
+    const norm = normalizeUrl(workspaceUrl);
+    saveHubCredential(norm, hubToken);
+
+    // Project side — linkedHub in .design/config.json (committed; no token).
+    const cfgPath = join(ctx.paths.designRoot, 'config.json');
+    let cfg: any = {};
+    try {
+      cfg = JSON.parse(readFileSync(cfgPath, 'utf8'));
+    } catch {
+      /* absent/malformed → start minimal */
+    }
+    cfg.linkedHub = { url: norm, linkedAt: Date.now() };
+    writeFileSync(cfgPath, `${JSON.stringify(cfg, null, 2)}\n`, 'utf8');
+
+    return {
+      status: 200,
+      json: {
+        ok: true,
+        url: norm,
+        role: role ?? null,
+        project: project ?? null,
+        note: 'Linked. Restart the studio server to start syncing.',
+      },
+    };
+  }
 }

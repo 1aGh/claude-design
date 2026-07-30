@@ -14,11 +14,37 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { invoke, isNativeApp, listen } from '../github.js';
+
 const api = async (path, init) => {
   const res = await fetch(path, init);
   const json = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, json };
 };
+
+/**
+ * Parse a maude://open/<project>?code=mhc_… deep link. Untrusted input — a
+ * drive-by page can navigate to maude:// — so nothing here is acted on
+ * without the person pressing Connect, and the code is only ever exchanged
+ * against the app's own configured Maude Cloud address.
+ */
+export function parseDeepLink(url) {
+  const m = /^maude:\/\/open\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?\?(.*)$/.exec(String(url ?? ''));
+  if (!m) return null;
+  const code = new URLSearchParams(m[2]).get('code') ?? '';
+  if (!/^mhc_[0-9a-f]{16,128}$/.test(code)) return null;
+  return { project: m[1], code };
+}
+
+/** The share view's address for a project cell URL (viewer's browser home). */
+export function shareViewUrl(projectUrl, projectId) {
+  try {
+    const u = new URL(projectUrl);
+    return `${u.protocol}//view-${u.host}`;
+  } catch {
+    return `https://view-${projectId}.cloud.maude.sh`;
+  }
+}
 
 function Spark({ size = 15 }) {
   return (
@@ -76,6 +102,7 @@ export default function CloudBar() {
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [pending, setPending] = useState(null); // { project, code } from maude://
   const railRef = useRef(null);
   const pollRef = useRef(null);
 
@@ -88,6 +115,43 @@ export default function CloudBar() {
     });
     return () => clearInterval(pollRef.current);
   }, []);
+
+  // maude:// deep links (Phase 17) — native shell only. The link that LAUNCHED
+  // the app is parked in the shell (take once); links while running arrive as
+  // events. Either way: ask, never auto-connect.
+  useEffect(() => {
+    if (!isNativeApp()) return undefined;
+    const consume = (url) => {
+      const parsed = parseDeepLink(url);
+      if (parsed) setPending(parsed);
+    };
+    invoke('take_pending_deep_link')
+      .then((url) => url && consume(url))
+      .catch(() => {});
+    let unlisten = null;
+    listen('maude://deep-link', consume).then((fn) => {
+      unlisten = fn;
+    });
+    return () => unlisten?.();
+  }, []);
+
+  async function connectPending() {
+    if (!pending) return;
+    setBusy('deeplink');
+    setError('');
+    const r = await api('/_api/cloud/attach/code', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: pending.code }),
+    });
+    setBusy('');
+    setPending(null);
+    if (r.ok && r.json?.ok) {
+      setNote(`Linked to ${r.json.project ?? pending.project} — restart the studio server to start syncing.`);
+    } else {
+      setError(r.json?.error || 'The workspace could not be connected.');
+    }
+  }
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -186,6 +250,28 @@ export default function CloudBar() {
 
   return (
     <div className="gi-rail cb-rail" ref={railRef} data-testid="cloud-bar">
+      {pending && (
+        <div className="gi-rail-confirm" data-testid="cloud-deeplink">
+          <span className="gi-rail-hint">Connect this project to {pending.project}?</span>
+          <button
+            type="button"
+            className="btn btn--sm"
+            disabled={busy === 'deeplink'}
+            onClick={connectPending}
+            data-testid="cloud-deeplink-connect"
+          >
+            {busy === 'deeplink' ? 'Connecting…' : 'Connect'}
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => setPending(null)}
+            data-testid="cloud-deeplink-dismiss"
+          >
+            Not now
+          </button>
+        </div>
+      )}
       {state === 'out' && (
         <>
           <button type="button" className="btn btn--ghost btn--sm gi-rail-signin" onClick={startSignIn} data-testid="cloud-signin">
@@ -226,21 +312,39 @@ export default function CloudBar() {
                 <div className="gi-menu-item" aria-disabled="true">No projects yet — start one on the dashboard.</div>
               )}
               {Array.isArray(projects) &&
-                projects.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className="gi-menu-item"
-                    role="menuitem"
-                    disabled={busy === p.id}
-                    onClick={() => connect(p.id)}
-                    title={`Connect this project to ${p.url} (${p.role})`}
-                    data-testid={`cloud-project-${p.id}`}
-                  >
-                    <Icon name="link" size={15} /> {busy === p.id ? 'Connecting…' : `Connect ${p.name || p.id}`}
-                    <span className="gi-menu-login" style={{ marginLeft: 'auto' }}>{p.stateLabel}</span>
-                  </button>
-                ))}
+                projects.map((p) =>
+                  p.role === 'viewer' ? (
+                    // Viewer dignity (Phase 17 T4): no dead Connect that would
+                    // 403 at the workspace — viewing has a first-class home in
+                    // the browser, and the label says why.
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="gi-menu-item"
+                      role="menuitem"
+                      onClick={() => window.open(shareViewUrl(p.url, p.id), '_blank', 'noopener')}
+                      title="Viewing works in the browser. Editing in the app needs the member role — ask whoever runs the project."
+                      data-testid={`cloud-project-${p.id}`}
+                    >
+                      <Icon name="external" size={15} /> View {p.name || p.id} in the browser
+                      <span className="gi-menu-login" style={{ marginLeft: 'auto' }}>viewer</span>
+                    </button>
+                  ) : (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="gi-menu-item"
+                      role="menuitem"
+                      disabled={busy === p.id}
+                      onClick={() => connect(p.id)}
+                      title={`Connect this project to ${p.url} (${p.role})`}
+                      data-testid={`cloud-project-${p.id}`}
+                    >
+                      <Icon name="link" size={15} /> {busy === p.id ? 'Connecting…' : `Connect ${p.name || p.id}`}
+                      <span className="gi-menu-login" style={{ marginLeft: 'auto' }}>{p.stateLabel}</span>
+                    </button>
+                  )
+                )}
               <div className="gi-menu-sep" />
               <button type="button" className="gi-menu-item" role="menuitem" onClick={() => window.open('https://cloud.maude.sh', '_blank', 'noopener')}>
                 <Icon name="external" size={15} /> Open the dashboard

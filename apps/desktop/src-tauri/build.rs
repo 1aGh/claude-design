@@ -26,6 +26,9 @@ fn main() {
                 "save_export",
                 "pick_media_file",
                 "pick_media_files",
+                "list_crash_logs",
+                "read_crash_log",
+                "take_pending_deep_link",
             ]),
         ),
     )
