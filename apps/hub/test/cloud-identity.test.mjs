@@ -19,7 +19,10 @@ import {
 
 const SECRET = 'a'.repeat(64);
 const NOW = 1_700_000_000_000;
-const CLOUD = { MAUDE_CONTROL_PLANE_URL: 'https://cloud.maude.sh', MAUDE_TENANT_ID: 'alligators' };
+// Phase 23 B1: identity is its OWN explicit switch — the URL alone must
+// never flip it (the 2026-07-30 regression). '1' = hybrid, 'strict' = tokens only.
+const CLOUD = { MAUDE_CLOUD_IDENTITY: 'strict', MAUDE_TENANT_ID: 'alligators' };
+const HYBRID = { MAUDE_CLOUD_IDENTITY: '1', MAUDE_TENANT_ID: 'alligators' };
 
 const tokenFor = (over = {}, secret = SECRET) =>
   signAccessToken(
@@ -47,10 +50,55 @@ describe('a self-hosted hub is untouched', () => {
     assert.equal(r.ok, true);
   });
 
-  it('cloud mode needs BOTH a control plane and a project', () => {
+  it('cloud mode is an EXPLICIT switch — a control-plane URL alone never flips it', () => {
     assert.equal(cloudIdentityEnabled({}), false);
-    assert.equal(cloudIdentityEnabled({ MAUDE_CONTROL_PLANE_URL: 'x' }), false);
+    // The regression this guards: the mirror clock needs the URL, and the
+    // URL must not double as consent to an authentication mode.
+    assert.equal(
+      cloudIdentityEnabled({ MAUDE_CONTROL_PLANE_URL: 'x', MAUDE_TENANT_ID: 'alligators' }),
+      false
+    );
+    assert.equal(cloudIdentityEnabled(HYBRID), true);
     assert.equal(cloudIdentityEnabled(CLOUD), true);
+  });
+
+  it('HYBRID keeps the local password working alongside tokens', () => {
+    let asked = null;
+    const r = authenticateForMode(
+      { email: 'a@example.com', password: 'pw' },
+      {
+        env: HYBRID,
+        secret: SECRET,
+        local: (email, password) => {
+          asked = { email, password };
+          return { ok: true, user: { email } };
+        },
+      }
+    );
+    assert.deepEqual(asked, { email: 'a@example.com', password: 'pw' });
+    assert.equal(r.ok, true);
+  });
+
+  it('a viewer token is refused, never silently escalated to an editor', () => {
+    // The hub has no read-only enforcement, so honoring a viewer token
+    // would hand a viewer a write-capable session — and make the People
+    // page's \"cannot change anything\" promise false.
+    const r = authenticateForMode(
+      { token: tokenFor({ role: 'viewer' }) },
+      { env: HYBRID, secret: SECRET, now: NOW, local: () => assert.fail('no local call') }
+    );
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, 'viewer-not-supported');
+    assert.match(r.message, /shared gallery link/);
+  });
+
+  it('a token exchange surfaces the claim expiry so the session dies with it', () => {
+    const r = authenticateForMode(
+      { token: tokenFor() },
+      { env: HYBRID, secret: SECRET, now: NOW, local: () => assert.fail('no local call') }
+    );
+    assert.equal(r.ok, true);
+    assert.equal(r.expiresAt, NOW + ACCESS_TOKEN_TTL_MS);
   });
 });
 

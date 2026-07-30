@@ -53,7 +53,11 @@ describe('a token minted by the control plane opens the cell', () => {
   it('round-trips across two runtimes and two crypto APIs', async () => {
     const token = await signLikeTheWorker(claims(), SECRET);
     const verdict = verifyAccessToken(token, SECRET, { now: NOW, tenantId: 'alligators' });
-    assert.deepEqual(verdict, { ok: true, user: { email: 'a@example.com', role: 'owner' } });
+    assert.deepEqual(verdict, {
+      ok: true,
+      user: { email: 'a@example.com', role: 'owner' },
+      expiresAt: NOW + 12 * 60 * 60 * 1000,
+    });
   });
 
   it('carries the role through, so a viewer does not arrive as an owner', async () => {
