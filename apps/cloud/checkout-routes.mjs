@@ -16,19 +16,20 @@
 // backstop for the person who closed the tab, and there is no third machine
 // to go wrong.
 
+import { attemptFromRow, checkoutSessionParams, validateNewProject } from './checkout.mjs';
+import {
+  allCheckoutHtml,
+  billingPage,
+  newProjectPage,
+  waitingRoomPage,
+} from './checkout-pages.mjs';
 import { STATE_COPY } from './dashboard.mjs';
 import { audit } from './db.mjs';
-import {
-  attemptFromRow,
-  checkoutSessionParams,
-  validateNewProject,
-} from './checkout.mjs';
-import { allCheckoutHtml, billingPage, newProjectPage, waitingRoomPage } from './checkout-pages.mjs';
-import { priceIdFor, publicPricing, stripeMode } from './pricing-core.mjs';
 import pricingCatalog from './pricing.json' with { type: 'json' };
+import { priceIdFor, publicPricing, stripeMode } from './pricing-core.mjs';
 import { ACCESS_MESSAGES, can, decideAccess } from './project-access.mjs';
-import { decideCheckout, waitingRoom } from './provisioning.mjs';
 import { ensureCellDomain, probeCell } from './provision.mjs';
+import { decideCheckout, waitingRoom } from './provisioning.mjs';
 
 export { allCheckoutHtml, pricingCatalog };
 
@@ -39,7 +40,8 @@ function html(body, status = 200) {
       'content-type': 'text/html; charset=utf-8',
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
-      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'",
+      'content-security-policy':
+        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'",
       'referrer-policy': 'no-referrer',
     },
   });
@@ -106,7 +108,8 @@ export async function handleCheckoutRoutes(request, env, { account }) {
       interval: String(form.get('interval') ?? ''),
     };
     const verdict = validateNewProject({ ...values, pricing });
-    if (!verdict.ok) return html(newProjectPage({ account, pricing, error: verdict.error, values }), 400);
+    if (!verdict.ok)
+      return html(newProjectPage({ account, pricing, error: verdict.error, values }), 400);
 
     const taken = await env.DB.prepare('SELECT id FROM projects WHERE id = ?')
       .bind(verdict.id)
@@ -132,7 +135,12 @@ export async function handleCheckoutRoutes(request, env, { account }) {
     } catch (err) {
       console.error(`[checkout] price resolution: ${err.message}`);
       return html(
-        newProjectPage({ account, pricing, error: 'That plan cannot be started right now.', values }),
+        newProjectPage({
+          account,
+          pricing,
+          error: 'That plan cannot be started right now.',
+          values,
+        }),
         503
       );
     }
@@ -154,9 +162,16 @@ export async function handleCheckoutRoutes(request, env, { account }) {
         })
       );
       if (!session.ok || !session.body?.url) {
-        console.error(`[checkout] session create: ${session.status} ${JSON.stringify(session.body?.error ?? {}).slice(0, 300)}`);
+        console.error(
+          `[checkout] session create: ${session.status} ${JSON.stringify(session.body?.error ?? {}).slice(0, 300)}`
+        );
         return html(
-          newProjectPage({ account, pricing, error: 'Payment could not be started. Nothing was created — try again.', values }),
+          newProjectPage({
+            account,
+            pricing,
+            error: 'Payment could not be started. Nothing was created — try again.',
+            values,
+          }),
           502
         );
       }
@@ -164,7 +179,12 @@ export async function handleCheckoutRoutes(request, env, { account }) {
     } catch (err) {
       console.error(`[checkout] ${err.message}`);
       return html(
-        newProjectPage({ account, pricing, error: 'Payment could not be started. Nothing was created — try again.', values }),
+        newProjectPage({
+          account,
+          pricing,
+          error: 'Payment could not be started. Nothing was created — try again.',
+          values,
+        }),
         502
       );
     }
@@ -200,7 +220,15 @@ export async function handleCheckoutRoutes(request, env, { account }) {
       `INSERT OR IGNORE INTO projects (id, account_id, name, state, state_since, subscription_id, plan, created_at)
        VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)`
     )
-      .bind(projectId, account.id, s.metadata.project_name || projectId, now, String(s.subscription), s.metadata.plan || 'project', now)
+      .bind(
+        projectId,
+        account.id,
+        s.metadata.project_name || projectId,
+        now,
+        String(s.subscription),
+        s.metadata.plan || 'project',
+        now
+      )
       .run();
     await env.DB.prepare(
       `INSERT OR IGNORE INTO checkout_attempts (session_id, project_id, payment, subscription_id, authorized_at, created_at)
@@ -245,7 +273,9 @@ export async function handleCheckoutRoutes(request, env, { account }) {
 
     // Ask the workspace itself, then let the decision module rule.
     const provision =
-      attempt.payment === 'authorized' ? await probeCell(env, projectId, { timeoutMs: 4000 }) : 'pending';
+      attempt.payment === 'authorized'
+        ? await probeCell(env, projectId, { timeoutMs: 4000 })
+        : 'pending';
     const row = { ...attempt, provision };
     const decision = decideCheckout(attemptFromRow(row));
 
@@ -282,9 +312,7 @@ export async function handleCheckoutRoutes(request, env, { account }) {
       )
         .bind(Date.now(), attempt.session_id)
         .run();
-      await env.DB.prepare(
-        `UPDATE projects SET state = 'suspended', state_since = ? WHERE id = ?`
-      )
+      await env.DB.prepare(`UPDATE projects SET state = 'suspended', state_since = ? WHERE id = ?`)
         .bind(Date.now(), projectId)
         .run();
       await audit(env.DB, {
@@ -304,7 +332,10 @@ export async function handleCheckoutRoutes(request, env, { account }) {
     // customer sentence — it is the idempotence branch, not a page.
     if (decision.outcome === 'charge') {
       return html(
-        waitingRoomPage({ project, room: { step: 'ready', done: true, note: decision.tellCustomer } })
+        waitingRoomPage({
+          project,
+          room: { step: 'ready', done: true, note: decision.tellCustomer },
+        })
       );
     }
     if (decision.outcome === 'void') {

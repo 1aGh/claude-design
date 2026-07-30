@@ -25,7 +25,8 @@ function html(body, status = 200) {
       'x-content-type-options': 'nosniff',
       // No script anywhere on these pages, and the header says so — a CSP that
       // matches the markup is a claim a reviewer can check without reading it.
-      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'",
+      'content-security-policy':
+        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'",
       'referrer-policy': 'no-referrer',
     },
   });
@@ -37,7 +38,9 @@ function redirect(to) {
 
 /** Load the project, the caller's standing in it, and everyone on it. */
 async function load(env, projectId, accountId) {
-  const project = await env.DB.prepare('SELECT * FROM projects WHERE id = ?').bind(projectId).first();
+  const project = await env.DB.prepare('SELECT * FROM projects WHERE id = ?')
+    .bind(projectId)
+    .first();
   const rows = await env.DB.prepare(
     `SELECT m.account_id, m.role, a.email
        FROM project_members m
@@ -112,13 +115,28 @@ export async function handleProjectRoutes(request, env, { account }) {
   const target = members.find((p) => p.account_id === targetId);
 
   if (action === 'invite') {
-    if (!isOwner) return html(peoplePage({ account, project, people, isOwner, error: ACCESS_MESSAGES['no-access'] }), 403);
-    const email = String(form.get('email') ?? '').trim().toLowerCase();
+    if (!isOwner)
+      return html(
+        peoplePage({ account, project, people, isOwner, error: ACCESS_MESSAGES['no-access'] }),
+        403
+      );
+    const email = String(form.get('email') ?? '')
+      .trim()
+      .toLowerCase();
     // Deliberately shallow: an address is valid if it can be sent to, and the
     // only way to know that is to send to it. A stricter regex rejects real
     // addresses, which is a worse failure than accepting a typo.
     if (!email.includes('@') || email.length > 254) {
-      return html(peoplePage({ account, project, people, isOwner, error: 'That does not look like an email address.' }), 400);
+      return html(
+        peoplePage({
+          account,
+          project,
+          people,
+          isOwner,
+          error: 'That does not look like an email address.',
+        }),
+        400
+      );
     }
     const role = String(form.get('role') ?? 'member');
     const decision = decideMembershipChange({
@@ -129,9 +147,12 @@ export async function handleProjectRoutes(request, env, { account }) {
       newRole: role,
       ownerId: project.account_id,
     });
-    if (!decision.ok) return html(peoplePage({ account, project, people, isOwner, error: decision.message }), 400);
+    if (!decision.ok)
+      return html(peoplePage({ account, project, people, isOwner, error: decision.message }), 400);
 
-    const existing = await env.DB.prepare('SELECT id FROM accounts WHERE email = ?').bind(email).first();
+    const existing = await env.DB.prepare('SELECT id FROM accounts WHERE email = ?')
+      .bind(email)
+      .first();
     if (existing) {
       await env.DB.prepare(
         `INSERT INTO project_members (project_id, account_id, role, added_at) VALUES (?, ?, ?, ?)

@@ -18,15 +18,7 @@
 
 import { currentAccount, handleAuth } from './auth-routes.mjs';
 import { deriveCellSecret, mintProjectToken, secretsMatch } from './cell-token.mjs';
-import { handleDeviceAuth, personalTokenAccount } from './device-auth.mjs';
-import { handleHandoff } from './handoff.mjs';
 import { handleCheckoutRoutes } from './checkout-routes.mjs';
-import { mintInstallationToken } from './github-app.mjs';
-import { handleInviteRoutes } from './invites.mjs';
-import { handleProjectAdminRoutes } from './project-admin.mjs';
-import { handleReport } from './report.mjs';
-import { ACCESS_MESSAGES, decideAccess } from './project-access.mjs';
-import { handleProjectRoutes } from './project-routes.mjs';
 import {
   audit,
   enqueueReconcile,
@@ -38,8 +30,16 @@ import {
   saveTenant,
   tenantFromRow,
 } from './db.mjs';
+import { handleDeviceAuth, personalTokenAccount } from './device-auth.mjs';
+import { mintInstallationToken } from './github-app.mjs';
+import { handleHandoff } from './handoff.mjs';
+import { handleInviteRoutes } from './invites.mjs';
 import { applySchema } from './migrate.mjs';
+import { ACCESS_MESSAGES, decideAccess } from './project-access.mjs';
+import { handleProjectAdminRoutes } from './project-admin.mjs';
+import { handleProjectRoutes } from './project-routes.mjs';
 import { settle } from './reconcile.mjs';
+import { handleReport } from './report.mjs';
 import { SCHEMA_SQL } from './schema.mjs';
 import { projectRefFromEvent, verifyStripeSignature } from './stripe-webhook.mjs';
 
@@ -155,7 +155,7 @@ async function mintForCell(request, env) {
   // is never the cell's to choose.
   const [, name] = configured.split('/');
   if (asked !== name && asked !== configured) {
-    return json({ error: 'that repository is not this project\'s mirror' }, 403);
+    return json({ error: "that repository is not this project's mirror" }, 403);
   }
 
   try {
@@ -250,7 +250,9 @@ export default {
     if (request.method === 'GET' && url.pathname === '/internal/mirror-config') {
       const tenant = String(url.searchParams.get('tenant') ?? '');
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tenant)) return json({ error: 'unauthorized' }, 401);
-      const offered = (request.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+      const offered = (request.headers.get('authorization') ?? '')
+        .replace(/^Bearer\s+/i, '')
+        .trim();
       const expected = await deriveCellSecret(env.CELL_SECRET_MASTER ?? '', tenant);
       if (!env.CELL_SECRET_MASTER || !secretsMatch(offered, expected)) {
         return json({ error: 'unauthorized' }, 401);
@@ -273,7 +275,9 @@ export default {
     if (request.method === 'GET' && url.pathname === '/internal/revocations') {
       const tenant = String(url.searchParams.get('tenant') ?? '');
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tenant)) return json({ error: 'unauthorized' }, 401);
-      const offered = (request.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+      const offered = (request.headers.get('authorization') ?? '')
+        .replace(/^Bearer\s+/i, '')
+        .trim();
       const expected = await deriveCellSecret(env.CELL_SECRET_MASTER ?? '', tenant);
       if (!env.CELL_SECRET_MASTER || !secretsMatch(offered, expected)) {
         return json({ error: 'unauthorized' }, 401);

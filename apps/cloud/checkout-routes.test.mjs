@@ -138,10 +138,7 @@ function cloudflareOk() {
 function cellAnswers(healthy) {
   network.push([
     '.cloud.maude.sh/health',
-    async () =>
-      healthy
-        ? Response.json({ ok: true })
-        : new Response('no', { status: 503 }),
+    async () => (healthy ? Response.json({ ok: true }) : new Response('no', { status: 503 })),
   ]);
 }
 
@@ -337,7 +334,10 @@ test('billing shows the situation and hands the owner to the portal', async () =
   const pageRes = await worker.fetch(get('/projects/zkusebni-tym/billing', session), env);
   assert.match(await pageRes.text(), /Manage billing at Stripe/);
 
-  const portal = await worker.fetch(post('/projects/zkusebni-tym/billing/portal', session, {}), env);
+  const portal = await worker.fetch(
+    post('/projects/zkusebni-tym/billing/portal', session, {}),
+    env
+  );
   assert.equal(portal.status, 303);
   assert.match(portal.headers.get('location'), /billing\.stripe\.com/);
   const created = stripeCalls.find((c) => c.url.includes('billing_portal'));
@@ -361,9 +361,13 @@ test('billing is the owner’s alone — a member sees the same 404 as a strange
     env
   );
   const memberSession = /maude_session=([^;]+)/.exec(other.headers.get('set-cookie'))?.[1];
-  const memberId = sqlite.prepare("SELECT id FROM accounts WHERE email = 'member@example.com'").get().id;
+  const memberId = sqlite
+    .prepare("SELECT id FROM accounts WHERE email = 'member@example.com'")
+    .get().id;
   sqlite
-    .prepare("INSERT INTO project_members (project_id, account_id, role, added_at) VALUES ('zkusebni-tym', ?, 'member', 1)")
+    .prepare(
+      "INSERT INTO project_members (project_id, account_id, role, added_at) VALUES ('zkusebni-tym', ?, 'member', 1)"
+    )
     .run(memberId);
 
   const res = await worker.fetch(get('/projects/zkusebni-tym/billing', memberSession), env);

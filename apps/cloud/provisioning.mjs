@@ -40,7 +40,10 @@ export const OUTCOMES = ['waiting', 'charge', 'void', 'already-settled'];
  * @param {object} [opts]
  * @returns {{outcome: string, reason: string, tellCustomer: string|null}}
  */
-export function decideCheckout(attempt, { now = Date.now(), timeoutMs = PROVISION_TIMEOUT_MS } = {}) {
+export function decideCheckout(
+  attempt,
+  { now = Date.now(), timeoutMs = PROVISION_TIMEOUT_MS } = {}
+) {
   const { payment, provision, authorizedAt } = attempt;
 
   // Idempotence first. A webhook is delivered more than once as a matter of

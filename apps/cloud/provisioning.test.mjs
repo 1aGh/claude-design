@@ -64,7 +64,10 @@ describe('a failure costs the customer nothing', () => {
   });
 
   it('does not void one millisecond early', () => {
-    assert.equal(decideCheckout(attempt(), { now: T0 + PROVISION_TIMEOUT_MS - 1 }).outcome, 'waiting');
+    assert.equal(
+      decideCheckout(attempt(), { now: T0 + PROVISION_TIMEOUT_MS - 1 }).outcome,
+      'waiting'
+    );
   });
 });
 
@@ -92,7 +95,10 @@ describe('the waiting room is honest', () => {
   it('names steps rather than inventing a percentage', () => {
     // A percentage made up from nothing is a lie that gets found out at 90%.
     const w = waitingRoom(attempt(), { now: T0 });
-    assert.deepEqual(w.steps.map((s) => s.key), ['account', 'workspace', 'project', 'ready']);
+    assert.deepEqual(
+      w.steps.map((s) => s.key),
+      ['account', 'workspace', 'project', 'ready']
+    );
     assert.ok(!('percent' in w));
   });
 
@@ -112,11 +118,21 @@ describe('the waiting room is honest', () => {
 describe('the customer-facing wording', () => {
   it('never uses our vocabulary for our problems', () => {
     const said = ['pending', 'healthy', 'failed']
-      .map((provision) => decideCheckout(attempt({ provision }), { now: T0 + PROVISION_TIMEOUT_MS }))
+      .map((provision) =>
+        decideCheckout(attempt({ provision }), { now: T0 + PROVISION_TIMEOUT_MS })
+      )
       .map((d) => d.tellCustomer)
       .filter(Boolean)
       .join(' ');
-    for (const jargon of ['tenant', 'cell', 'provision', 'reconcil', 'webhook', 'R2', 'container']) {
+    for (const jargon of [
+      'tenant',
+      'cell',
+      'provision',
+      'reconcil',
+      'webhook',
+      'R2',
+      'container',
+    ]) {
       assert.ok(!new RegExp(jargon, 'i').test(said), `"${jargon}" leaked into a customer message`);
     }
   });

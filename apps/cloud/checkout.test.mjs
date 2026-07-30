@@ -6,8 +6,8 @@ import { describe, it } from 'node:test';
 import {
   checkoutSessionParams,
   deriveProjectId,
-  validProjectId,
   validateNewProject,
+  validProjectId,
 } from './checkout.mjs';
 import { loadPricing } from './pricing.mjs';
 

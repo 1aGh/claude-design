@@ -37,7 +37,11 @@ export function decideMembershipChange({
   ownerId,
 }) {
   if (actorRole !== 'owner') {
-    return { ok: false, reason: 'not-allowed', message: 'Only the project’s owner can change who has access.' };
+    return {
+      ok: false,
+      reason: 'not-allowed',
+      message: 'Only the project’s owner can change who has access.',
+    };
   }
 
   // The owner cannot be removed or demoted through this path. Not because it
@@ -49,12 +53,14 @@ export function decideMembershipChange({
     return {
       ok: false,
       reason: 'owner-immutable',
-      message: 'The owner cannot be removed here. Transfer the project first if you are handing it over.',
+      message:
+        'The owner cannot be removed here. Transfer the project first if you are handing it over.',
     };
   }
 
   if (newRole === null) {
-    if (!targetRole) return { ok: false, reason: 'not-a-member', message: 'That person is not on this project.' };
+    if (!targetRole)
+      return { ok: false, reason: 'not-a-member', message: 'That person is not on this project.' };
     return { ok: true, action: 'remove', revokeSessions: true };
   }
 

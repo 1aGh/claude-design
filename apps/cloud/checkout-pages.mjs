@@ -5,7 +5,7 @@
 // whole job is to be honest while infrastructure is uncertain should not
 // depend on any of it working.
 
-import { appShell, PAGE_CSS, lockup } from './brand.mjs';
+import { appShell, lockup, PAGE_CSS } from './brand.mjs';
 import { PROVISION_STEPS } from './provisioning.mjs';
 
 const EXTRA_CSS = `
@@ -32,7 +32,7 @@ const EXTRA_CSS = `
 `;
 // The centered waiting room keeps the narrow column; inside the shell the
 // column is the shell's own `.main-inner`.
-const CSS = PAGE_CSS + EXTRA_CSS + '\n  main { max-width: 34rem; }\n';
+const CSS = `${PAGE_CSS + EXTRA_CSS}\n  main { max-width: 34rem; }\n`;
 
 function esc(s) {
   return String(s).replace(
@@ -58,7 +58,7 @@ function euros(minor) {
  */
 export function newProjectPage({ account = null, pricing, error = null, values = {} }) {
   const plans = pricing.plans
-    .map((p, i) => {
+    .map((p, _i) => {
       const monthly = euros(p.amounts.monthlyMinor);
       return `<label class="plan">
         <input type="radio" name="plan" value="${esc(p.id)}" ${(values.plan ?? pricing.plans[0].id) === p.id ? 'checked' : ''} required>

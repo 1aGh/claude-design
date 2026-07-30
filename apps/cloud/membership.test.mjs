@@ -8,7 +8,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { decideMembershipChange, removalConfirmation, removalEffect, ROLES } from './membership.mjs';
+import {
+  decideMembershipChange,
+  ROLES,
+  removalConfirmation,
+  removalEffect,
+} from './membership.mjs';
 
 const base = {
   actorId: 'acct_owner',

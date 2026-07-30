@@ -47,9 +47,12 @@ describe('an installation token is scoped to ONE repository', () => {
       {
         fetchImpl: async (url, init) => {
           seen = { url, body: JSON.parse(init.body) };
-          return new Response(JSON.stringify({ token: 'ghs_x', expires_at: new Date().toISOString() }), {
-            status: 200,
-          });
+          return new Response(
+            JSON.stringify({ token: 'ghs_x', expires_at: new Date().toISOString() }),
+            {
+              status: 200,
+            }
+          );
         },
       }
     );
@@ -64,7 +67,7 @@ describe('an installation token is scoped to ONE repository', () => {
     );
   });
 
-  it('does not leak GitHub\'s response body into the error', async () => {
+  it("does not leak GitHub's response body into the error", async () => {
     // The body names the App and the installation. Neither belongs in a
     // message a tenant might end up reading.
     await assert.rejects(
@@ -73,9 +76,12 @@ describe('an installation token is scoped to ONE repository', () => {
           { privateKeyPem: PEM, appId: '1', installationId: '2' },
           {
             fetchImpl: async () =>
-              new Response('{"message":"Integration maude-mirror not installed for org secret-corp"}', {
-                status: 404,
-              }),
+              new Response(
+                '{"message":"Integration maude-mirror not installed for org secret-corp"}',
+                {
+                  status: 404,
+                }
+              ),
           }
         ),
       (err) => {
@@ -90,7 +96,10 @@ describe('an installation token is scoped to ONE repository', () => {
 describe('the token never survives a log line', () => {
   it('redacts the credential out of a push URL', () => {
     const url = pushUrl('1aGh/alligators', 'ghs_supersecret');
-    assert.match(url, /^https:\/\/x-access-token:ghs_supersecret@github\.com\/1aGh\/alligators\.git$/);
+    assert.match(
+      url,
+      /^https:\/\/x-access-token:ghs_supersecret@github\.com\/1aGh\/alligators\.git$/
+    );
     const safe = redactPushUrl(url);
     assert.ok(!safe.includes('ghs_supersecret'), 'a token in a log is a token on disk forever');
     assert.equal(safe, 'https://***@github.com/1aGh/alligators.git');

@@ -19,7 +19,6 @@
 // reach has no path to the surface that holds the project's data.
 
 import { MaudeCell, routeToCell, tenantFromHostname } from './cell-do.mjs';
-import { htmlResponse, renderGallery, renderNotShared } from './share-pages.mjs';
 import {
   buildGallery,
   SHARE_HEADERS,
@@ -28,6 +27,7 @@ import {
   snapshotPrefix,
   viewTenantFromHostname,
 } from './share.mjs';
+import { htmlResponse, renderGallery, renderNotShared } from './share-pages.mjs';
 
 export { MaudeCell };
 

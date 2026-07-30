@@ -109,7 +109,10 @@ export async function handleHandoff(request, env, { account }) {
         );
       }
       const status = minted.reason === 'not-signed-in' ? 401 : 404;
-      return json({ error: ACCESS_MESSAGES[minted.reason] ?? ACCESS_MESSAGES['no-access'] }, status);
+      return json(
+        { error: ACCESS_MESSAGES[minted.reason] ?? ACCESS_MESSAGES['no-access'] },
+        status
+      );
     }
     await audit(env.DB, {
       accountId: account.id,

@@ -9,8 +9,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
-  accessClaims,
   ACCESS_TOKEN_TTL_MS,
+  accessClaims,
   authenticateForMode,
   cloudIdentityEnabled,
   signAccessToken,
@@ -128,7 +128,12 @@ describe('a cloud cell has no passwords of its own', () => {
   it('accepts a token the control plane minted', () => {
     const r = authenticateForMode(
       { token: tokenFor() },
-      { env: CLOUD, secret: SECRET, now: NOW, local: () => assert.fail('local store must not be used') }
+      {
+        env: CLOUD,
+        secret: SECRET,
+        now: NOW,
+        local: () => assert.fail('local store must not be used'),
+      }
     );
     assert.equal(r.ok, true);
     assert.deepEqual(r.user, { email: 'a@example.com', role: 'member' });
@@ -165,7 +170,7 @@ describe('a token for one project is not a token for another', () => {
     assert.deepEqual(r, { ok: false, reason: 'wrong-project' });
   });
 
-  it('refuses a token signed with another cell\'s secret', () => {
+  it("refuses a token signed with another cell's secret", () => {
     const r = verifyAccessToken(tokenFor({}, 'b'.repeat(64)), SECRET, {
       now: NOW,
       tenantId: 'alligators',

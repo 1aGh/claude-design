@@ -12,10 +12,11 @@
 // a guessed UUID must learn nothing at all.
 
 import { createAccount, createSession, getAccountByEmail } from './accounts.mjs';
-import { audit } from './db.mjs';
 import { lockup, PAGE_CSS } from './brand.mjs';
+import { audit } from './db.mjs';
 
-const DEAD_LINK = 'This invitation link is not valid. Ask the person who invited you for a new one.';
+const DEAD_LINK =
+  'This invitation link is not valid. Ask the person who invited you for a new one.';
 
 function esc(s) {
   return String(s).replace(
@@ -35,7 +36,8 @@ function html(body, status = 200, extraHeaders = {}) {
       'content-type': 'text/html; charset=utf-8',
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
-      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'",
+      'content-security-policy':
+        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'",
       'referrer-policy': 'no-referrer',
       ...extraHeaders,
     },
@@ -197,7 +199,13 @@ export function allInviteHtml() {
     invitePage({ ...base, role: 'member', mode: 'create', email: 'new@example.com' }),
     invitePage({ ...base, role: 'viewer', mode: 'sign-in', email: 'old@example.com' }),
     invitePage({ ...base, role: 'member', mode: 'join', email: 'me@example.com' }),
-    invitePage({ ...base, role: 'member', mode: 'create', email: 'n@example.com', error: 'Please confirm you’ve read what Maude Cloud stores.' }),
+    invitePage({
+      ...base,
+      role: 'member',
+      mode: 'create',
+      email: 'n@example.com',
+      error: 'Please confirm you’ve read what Maude Cloud stores.',
+    }),
     page('Invitation', `<h1>Invitation</h1><p>${DEAD_LINK}</p>`),
   ].join('\n');
 }

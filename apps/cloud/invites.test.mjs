@@ -264,7 +264,10 @@ test('the invite pages ship no script and escape what they interpolate', () => {
 test('the invite pages use no vocabulary of ours', () => {
   const html = allInviteHtml();
   for (const jargon of ['tenant', 'cell', 'token', 'revoke', 'session', 'container']) {
-    assert.ok(!new RegExp(`\\b${jargon}`, 'i').test(html), `"${jargon}" leaked into the invite page`);
+    assert.ok(
+      !new RegExp(`\\b${jargon}`, 'i').test(html),
+      `"${jargon}" leaked into the invite page`
+    );
   }
 });
 

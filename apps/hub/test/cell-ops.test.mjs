@@ -205,7 +205,11 @@ test('a cell with no mirror configured costs one lookup and does nothing', async
 test('fetchMirrorConfig treats an unreachable control plane as "no mirror", never a throw', async () => {
   const out = await fetchMirrorConfig(
     { controlPlaneUrl: 'https://cloud.test', tenantId: TENANT, cellSecret: SECRET },
-    { fetchImpl: async () => { throw new Error('ECONNREFUSED'); } }
+    {
+      fetchImpl: async () => {
+        throw new Error('ECONNREFUSED');
+      },
+    }
   );
   assert.equal(out.repository, null);
 });

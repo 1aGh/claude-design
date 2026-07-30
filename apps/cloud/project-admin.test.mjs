@@ -117,10 +117,15 @@ test('preparing a copy asks the cell with an owner credential and lists the resu
   const cellCalls = [];
   network.push([
     'alligators.cloud.maude.sh/api/export',
-    async (url, init) => {
+    async (_url, init) => {
       cellCalls.push(init.headers.authorization);
       seedExport(env);
-      return Response.json({ ok: true, stamp: '20260730T120000Z', prefix: 'tenants/alligators/exports/20260730T120000Z/', files: [] });
+      return Response.json({
+        ok: true,
+        stamp: '20260730T120000Z',
+        prefix: 'tenants/alligators/exports/20260730T120000Z/',
+        files: [],
+      });
     },
   ]);
   const { session } = await ownerWithProject(env, sqlite);
@@ -172,7 +177,10 @@ test('delete without an export is redirected to the download, and writes nothing
   const page = await worker.fetch(get('/projects/alligators/delete', session), env);
   assert.match(await page.text(), /Download your copy first/);
 
-  const attempt = await worker.fetch(post('/projects/alligators/delete', session, { sure: 'yes' }), env);
+  const attempt = await worker.fetch(
+    post('/projects/alligators/delete', session, { sure: 'yes' }),
+    env
+  );
   assert.equal(attempt.status, 409);
   assert.equal(sqlite.prepare('SELECT state FROM projects').get().state, 'active');
 });
@@ -183,23 +191,29 @@ test('delete with an export stops billing first, then purges, then detaches the 
   const order = [];
   network.push([
     'api.stripe.com',
-    async (url, init) => {
+    async (_url, init) => {
       order.push(`stripe:${init.method}`);
       return Response.json({ id: 'sub_1', status: 'canceled' });
     },
   ]);
   network.push([
     'api.cloudflare.com',
-    async (url, init) => {
+    async (_url, init) => {
       order.push(`cf:${init.method ?? 'GET'}`);
       if ((init.method ?? 'GET') === 'GET') {
-        return Response.json({ success: true, result: [{ id: 'dom1', hostname: 'alligators.cloud.maude.sh' }] });
+        return Response.json({
+          success: true,
+          result: [{ id: 'dom1', hostname: 'alligators.cloud.maude.sh' }],
+        });
       }
       return Response.json({ success: true, result: {} });
     },
   ]);
   const { session } = await ownerWithProject(env, sqlite);
-  const res = await worker.fetch(post('/projects/alligators/delete', session, { sure: 'yes' }), env);
+  const res = await worker.fetch(
+    post('/projects/alligators/delete', session, { sure: 'yes' }),
+    env
+  );
   assert.equal(res.status, 303);
   assert.equal(sqlite.prepare('SELECT state FROM projects').get().state, 'purged');
   assert.equal(order[0], 'stripe:DELETE', 'billing stops before anything else');
@@ -211,7 +225,10 @@ test('when billing cannot be stopped, NOTHING is deleted', async () => {
   seedExport(env);
   network.push(['api.stripe.com', async () => new Response('down', { status: 500 })]);
   const { session } = await ownerWithProject(env, sqlite);
-  const res = await worker.fetch(post('/projects/alligators/delete', session, { sure: 'yes' }), env);
+  const res = await worker.fetch(
+    post('/projects/alligators/delete', session, { sure: 'yes' }),
+    env
+  );
   assert.equal(res.status, 502);
   assert.equal(sqlite.prepare('SELECT state FROM projects').get().state, 'active');
 });
@@ -241,11 +258,18 @@ test('the mirror settings save a validated target and the cell can then read it'
   const { env, sqlite } = await freshEnv();
   const { session } = await ownerWithProject(env, sqlite);
   const res = await worker.fetch(
-    post('/projects/alligators/mirror', session, { do: 'save', repository: '1aGh/alligators-mirror', branch: 'main' }),
+    post('/projects/alligators/mirror', session, {
+      do: 'save',
+      repository: '1aGh/alligators-mirror',
+      branch: 'main',
+    }),
     env
   );
   assert.match(await res.text(), /The first push happens within the hour/);
-  assert.equal(sqlite.prepare('SELECT mirror_repo FROM projects').get().mirror_repo, '1aGh/alligators-mirror');
+  assert.equal(
+    sqlite.prepare('SELECT mirror_repo FROM projects').get().mirror_repo,
+    '1aGh/alligators-mirror'
+  );
 
   // The cell's side of the same fact: /internal/mirror-config with the derived secret.
   const { deriveCellSecret } = await import('./cell-token.mjs');
@@ -272,7 +296,10 @@ test('a URL pasted as the repository is refused with the sentence that fixes it'
   const { env, sqlite } = await freshEnv();
   const { session } = await ownerWithProject(env, sqlite);
   const res = await worker.fetch(
-    post('/projects/alligators/mirror', session, { do: 'save', repository: 'https://github.com/x/y' }),
+    post('/projects/alligators/mirror', session, {
+      do: 'save',
+      repository: 'https://github.com/x/y',
+    }),
     env
   );
   assert.equal(res.status, 400);
@@ -282,9 +309,14 @@ test('a URL pasted as the repository is refused with the sentence that fixes it'
 // --------------------------------------------------------------- pure pieces
 
 test('parseExportKey accepts exactly the export namespace', () => {
-  assert.ok(parseExportKey('tenants/alligators/exports/20260730T120000Z/repo.bundle', 'alligators'));
+  assert.ok(
+    parseExportKey('tenants/alligators/exports/20260730T120000Z/repo.bundle', 'alligators')
+  );
   assert.equal(parseExportKey('tenants/alligators/assets/x.jpg', 'alligators'), null);
-  assert.equal(parseExportKey('tenants/other/exports/20260730T120000Z/repo.bundle', 'alligators'), null);
+  assert.equal(
+    parseExportKey('tenants/other/exports/20260730T120000Z/repo.bundle', 'alligators'),
+    null
+  );
   assert.equal(parseExportKey('tenants/alligators/exports/../../secrets', 'alligators'), null);
 });
 
@@ -309,7 +341,10 @@ test('the admin pages ship no script and no vocabulary of ours', () => {
   assert.ok(!/<script/i.test(html));
   assert.ok(!/\son[a-z]+\s*=/i.test(html));
   for (const jargon of ['tenant', 'cell', 'token', 'container', 'provision', 'webhook', 'purge']) {
-    assert.ok(!new RegExp(`\\b${jargon}(?!s\\/)`, 'i').test(html), `"${jargon}" leaked into the admin pages`);
+    assert.ok(
+      !new RegExp(`\\b${jargon}(?!s\\/)`, 'i').test(html),
+      `"${jargon}" leaked into the admin pages`
+    );
   }
 });
 

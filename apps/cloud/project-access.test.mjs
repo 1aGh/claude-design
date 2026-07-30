@@ -6,9 +6,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ACCESS_MESSAGES, can, CAPABILITIES, decideAccess, ROLES } from './project-access.mjs';
+import { ACCESS_MESSAGES, CAPABILITIES, can, decideAccess, ROLES } from './project-access.mjs';
 
-const project = (over = {}) => ({ id: 'alligators', account_id: 'acct_owner', state: 'active', ...over });
+const project = (over = {}) => ({
+  id: 'alligators',
+  account_id: 'acct_owner',
+  state: 'active',
+  ...over,
+});
 
 describe('access is decided from facts', () => {
   it('the owner always gets in', () => {

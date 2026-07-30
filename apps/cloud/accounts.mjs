@@ -95,7 +95,7 @@ export async function getAccountByEmail(db, email) {
  */
 export async function authenticate(db, email, password) {
   const row = await getAccountByEmail(db, email);
-  if (!row || !row.password_hash) {
+  if (!row?.password_hash) {
     await verifyPassword(typeof password === 'string' ? password : '', DUMMY_HASH);
     return { ok: false, reason: row ? 'no-password-set' : 'unknown-account' };
   }

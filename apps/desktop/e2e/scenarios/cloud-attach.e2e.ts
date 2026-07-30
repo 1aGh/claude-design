@@ -1,7 +1,7 @@
-import { $, browser, expect } from '@wdio/globals';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { $, browser, expect } from '@wdio/globals';
 
 import { capture, startReport } from '../helpers/evidence';
 import { waitForSidecar } from '../helpers/sidecar';
@@ -27,6 +27,11 @@ const tid = (s: string) => `[data-testid="${s}"]`;
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_CONFIG = join(HERE, '..', 'fixtures', 'project', '.design', 'config.json');
 const STUB_CODE = `mhc_${'a'.repeat(64)}`;
+
+/** Only the sliver of the Tauri global this scenario reaches for. */
+interface TauriGlobal {
+  event: { emit: (name: string, payload: unknown) => void };
+}
 
 let originalConfig: string | null = null;
 
@@ -89,7 +94,8 @@ describe('cloud-attach — sign-in, picker, attach, deep-link confirm (stubbed)'
     await browser.execute((code: string) => {
       // The same event the Rust deep-link handler emits — the UI cannot tell
       // the difference, which is the point.
-      (window as any).__TAURI__.event.emit('maude://deep-link', `maude://open/stub-project?code=${code}`);
+      const tauri = (window as unknown as { __TAURI__: TauriGlobal }).__TAURI__;
+      tauri.event.emit('maude://deep-link', `maude://open/stub-project?code=${code}`);
     }, STUB_CODE);
 
     const confirm = await $(tid('cloud-deeplink'));

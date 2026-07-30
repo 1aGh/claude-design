@@ -38,7 +38,10 @@ export function exportPrefix(tenant, stamp) {
 
 /** `20260729T170411Z` — sortable, so "latest" is lexical. */
 export function exportStamp(now = new Date()) {
-  return now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  return now
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}/, '');
 }
 
 /**
@@ -116,7 +119,13 @@ being bad.
  *
  * @returns {Promise<{ok: boolean, prefix?: string, files?: object[], reason?: string}>}
  */
-export async function buildExport({ repoDir, designRel = '.design', tenant, run, now = new Date() }) {
+export async function buildExport({
+  repoDir,
+  designRel = '.design',
+  tenant,
+  run,
+  now = new Date(),
+}) {
   const stamp = exportStamp(now);
   const prefix = exportPrefix(tenant, stamp);
 

@@ -13,7 +13,7 @@
 
 import { appShell } from './brand.mjs';
 import { STATE_COPY } from './dashboard.mjs';
-import { removalEffect, ROLES } from './membership.mjs';
+import { ROLES, removalEffect } from './membership.mjs';
 
 // Styling comes from the design system shell (brand.mjs); only what this page
 // adds lives here. The table wears the same one-material card the admin
@@ -102,7 +102,14 @@ function personRow(person, { projectId, isOwner }) {
  * @param {{account_id: string, email: string, role: string}[]} args.people
  * @param {boolean} args.isOwner
  */
-export function peoplePage({ account, project, people = [], isOwner, error = null, notice = null }) {
+export function peoplePage({
+  account,
+  project,
+  people = [],
+  isOwner,
+  error = null,
+  notice = null,
+}) {
   const invite = isOwner
     ? `<div class="card">
          <h2>Add someone</h2>
@@ -129,11 +136,7 @@ export function peoplePage({ account, project, people = [], isOwner, error = nul
        <thead><tr><th>Person</th><th>What they can do</th><th></th></tr></thead>
        <tbody>${people.map((p) => personRow(p, { projectId: project.id, isOwner })).join('\n')}</tbody>
      </table>
-     ${
-       isOwner
-         ? ''
-         : '<p class="quiet">Only the project’s owner can add or remove people.</p>'
-     }`,
+     ${isOwner ? '' : '<p class="quiet">Only the project’s owner can add or remove people.</p>'}`,
     {
       account,
       project,

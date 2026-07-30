@@ -31,7 +31,7 @@ describe('inviteEmail', () => {
   });
 
   it('uses no vocabulary of ours', () => {
-    const all = mail.subject + '\n' + mail.text;
+    const all = `${mail.subject}\n${mail.text}`;
     for (const jargon of ['tenant', 'cell', 'token', 'hub', 'container', 'provision']) {
       assert.ok(!new RegExp(`\\b${jargon}`, 'i').test(all), `"${jargon}" leaked into the email`);
     }

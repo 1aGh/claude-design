@@ -42,16 +42,23 @@ const jpost = (path, body, headers = {}) =>
 
 /** The whole happy path, reused: code → approve → token. */
 async function connectDevice(env, session) {
-  const code = await (await worker.fetch(jpost('/auth/device/code', { client: 'Maude Desktop' }), env)).json();
+  const code = await (
+    await worker.fetch(jpost('/auth/device/code', { client: 'Maude Desktop' }), env)
+  ).json();
   await worker.fetch(
     new Request('https://cloud.test/activate', {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: `maude_session=${session}` },
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        cookie: `maude_session=${session}`,
+      },
       body: form({ code: code.user_code }),
     }),
     env
   );
-  const token = await (await worker.fetch(jpost('/auth/device/token', { device_code: code.device_code }), env)).json();
+  const token = await (
+    await worker.fetch(jpost('/auth/device/token', { device_code: code.device_code }), env)
+  ).json();
   return { code, token };
 }
 
@@ -59,36 +66,52 @@ test('the flow: code → human approves on /activate → poll → personal token
   const { env } = await freshEnv();
   const session = await signedIn(env);
 
-  const code = await (await worker.fetch(jpost('/auth/device/code', { client: 'Maude Desktop on MacBook' }), env)).json();
+  const code = await (
+    await worker.fetch(jpost('/auth/device/code', { client: 'Maude Desktop on MacBook' }), env)
+  ).json();
   assert.match(code.user_code, /^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
   assert.match(code.verification_url, /\/activate\?code=/);
 
   // Polling BEFORE approval: pending, not an error, not a token.
-  const pending = await worker.fetch(jpost('/auth/device/token', { device_code: code.device_code }), env);
+  const pending = await worker.fetch(
+    jpost('/auth/device/token', { device_code: code.device_code }),
+    env
+  );
   assert.equal(pending.status, 202);
   assert.equal((await pending.json()).pending, true);
 
   // The human approves. The activate page requires the dashboard session.
-  const anon = await worker.fetch(new Request(`https://cloud.test/activate?code=${code.user_code}`), env);
+  const anon = await worker.fetch(
+    new Request(`https://cloud.test/activate?code=${code.user_code}`),
+    env
+  );
   assert.equal(anon.status, 303);
   assert.match(anon.headers.get('location'), /^\/login\?next=/);
 
   const approve = await worker.fetch(
     new Request('https://cloud.test/activate', {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: `maude_session=${session}` },
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        cookie: `maude_session=${session}`,
+      },
       body: form({ code: code.user_code.toLowerCase() }), // case must not matter
     }),
     env
   );
   assert.match(await approve.text(), /You're connected/);
 
-  const minted = await (await worker.fetch(jpost('/auth/device/token', { device_code: code.device_code }), env)).json();
+  const minted = await (
+    await worker.fetch(jpost('/auth/device/token', { device_code: code.device_code }), env)
+  ).json();
   assert.match(minted.token, /^mpt_[0-9a-f]{48}$/);
   assert.equal(minted.account.email, 'owner@example.com');
 
   // The code is burnt — a second poll cannot mint a second credential.
-  const replay = await worker.fetch(jpost('/auth/device/token', { device_code: code.device_code }), env);
+  const replay = await worker.fetch(
+    jpost('/auth/device/token', { device_code: code.device_code }),
+    env
+  );
   assert.equal(replay.status, 400);
 });
 
@@ -106,7 +129,9 @@ test('the personal token lists projects and opens one', async () => {
 
   const list = await (
     await worker.fetch(
-      new Request('https://cloud.test/api/projects', { headers: { authorization: `Bearer ${token.token}` } }),
+      new Request('https://cloud.test/api/projects', {
+        headers: { authorization: `Bearer ${token.token}` },
+      }),
       env
     )
   ).json();
@@ -118,7 +143,11 @@ test('the personal token lists projects and opens one', async () => {
   // The same Bearer opens the project — no cookie anywhere in the lane.
   const opened = await (
     await worker.fetch(
-      jpost('/projects/open', { project: 'alligators' }, { authorization: `Bearer ${token.token}` }),
+      jpost(
+        '/projects/open',
+        { project: 'alligators' },
+        { authorization: `Bearer ${token.token}` }
+      ),
       env
     )
   ).json();
@@ -135,14 +164,19 @@ test('revoking from /account cuts the device off, with ONE neutral 401', async (
   await worker.fetch(
     new Request('https://cloud.test/account', {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: `maude_session=${session}` },
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        cookie: `maude_session=${session}`,
+      },
       body: form({ revoke: id }),
     }),
     env
   );
 
   const after = await worker.fetch(
-    new Request('https://cloud.test/api/projects', { headers: { authorization: `Bearer ${token.token}` } }),
+    new Request('https://cloud.test/api/projects', {
+      headers: { authorization: `Bearer ${token.token}` },
+    }),
     env
   );
   assert.equal(after.status, 401);
@@ -157,7 +191,10 @@ test('an expired or foreign code cannot be approved', async () => {
   const res = await worker.fetch(
     new Request('https://cloud.test/activate', {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: `maude_session=${session}` },
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        cookie: `maude_session=${session}`,
+      },
       body: form({ code: code.user_code }),
     }),
     env
@@ -176,7 +213,19 @@ test('the device pages ship no script and no vocabulary of ours', () => {
   const html = allDeviceHtml();
   assert.ok(!/<script/i.test(html));
   assert.ok(!/\son[a-z]+\s*=/i.test(html));
-  for (const jargon of ['tenant', 'cell', 'token', 'container', 'provision', 'webhook', 'oauth', 'device flow']) {
-    assert.ok(!new RegExp(`\\b${jargon}`, 'i').test(html), `"${jargon}" leaked into the device pages`);
+  for (const jargon of [
+    'tenant',
+    'cell',
+    'token',
+    'container',
+    'provision',
+    'webhook',
+    'oauth',
+    'device flow',
+  ]) {
+    assert.ok(
+      !new RegExp(`\\b${jargon}`, 'i').test(html),
+      `"${jargon}" leaked into the device pages`
+    );
   }
 });

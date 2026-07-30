@@ -122,13 +122,25 @@ describe('the manifest says what is NOT there', () => {
   });
 
   it('tells the reader how to open it without Maude', () => {
-    const text = manifestText({ project: 'acme', canvases: 1, assets: 0, totalBytes: 0, stamp: 'x' });
+    const text = manifestText({
+      project: 'acme',
+      canvases: 1,
+      assets: 0,
+      totalBytes: 0,
+      stamp: 'x',
+    });
     assert.match(text, /git clone repo\.bundle acme/);
     assert.match(text, /Nothing about it depends on Maude/);
   });
 
   it('says how to tell a bad download from a bad archive', () => {
-    const text = manifestText({ project: 'acme', canvases: 1, assets: 0, totalBytes: 0, stamp: 'x' });
+    const text = manifestText({
+      project: 'acme',
+      canvases: 1,
+      assets: 0,
+      totalBytes: 0,
+      stamp: 'x',
+    });
     assert.match(text, /git bundle verify/);
     assert.match(text, /download is incomplete/);
   });

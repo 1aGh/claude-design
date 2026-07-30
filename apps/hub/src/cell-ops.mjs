@@ -56,7 +56,9 @@ export async function handleExportRoute(ctx) {
   }
 
   if (!ctx.repoDir || !ctx.run) {
-    respondJson(409, { error: 'this workspace keeps no history here, so there is nothing to export' });
+    respondJson(409, {
+      error: 'this workspace keeps no history here, so there is nothing to export',
+    });
     return true;
   }
 

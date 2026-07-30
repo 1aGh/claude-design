@@ -300,10 +300,15 @@ describe('a bundle that cannot be restored is never written', () => {
     // restore, which is the one moment it must not.
     const run = createGitRunner();
     const origin = repoWith({ 'a.txt': '1' });
-    execFileSync('git', ['commit', '--allow-empty', '-m', 'second'], { cwd: origin, stdio: 'ignore' });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'second'], {
+      cwd: origin,
+      stdio: 'ignore',
+    });
 
     const shallow = join(tmp(), 'shallow');
-    execFileSync('git', ['clone', '--depth', '1', `file://${origin}`, shallow], { stdio: 'ignore' });
+    execFileSync('git', ['clone', '--depth', '1', `file://${origin}`, shallow], {
+      stdio: 'ignore',
+    });
 
     const made = await bundleRepo(shallow, run);
     assert.equal(made.state, 'failed');
@@ -312,7 +317,9 @@ describe('a bundle that cannot be restored is never written', () => {
     assert.ok(!('bytes' in made));
   });
 
-  it('verifies the bundle before keeping the bytes, not only before using them', { skip }, async () => {
+  it('verifies the bundle before keeping the bytes, not only before using them', {
+    skip,
+  }, async () => {
     // `git bundle create` exits 0 on archives that cannot be cloned, so "it
     // was written" is not "it can be restored".
     const run = createGitRunner();

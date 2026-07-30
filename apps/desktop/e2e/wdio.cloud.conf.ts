@@ -16,8 +16,9 @@
  * emits the same `maude://deep-link` Tauri event the Rust handler emits;
  * OS-level scheme registration itself is a bundled-.app smoke item (DDR-177).
  */
-import { createServer } from 'node:http';
+
 import { mkdirSync, mkdtempSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -60,25 +61,54 @@ function startStub(): Promise<{ port: number; close: () => void }> {
       if (req.url === '/api/projects') {
         return send(200, {
           projects: [
-            { id: 'stub-project', name: 'Stub Project', state: 'active', role: 'owner', stateLabel: 'Ready', url: origin },
-            { id: 'stub-gallery', name: 'Stub Gallery', state: 'active', role: 'viewer', stateLabel: 'Ready', url: origin },
+            {
+              id: 'stub-project',
+              name: 'Stub Project',
+              state: 'active',
+              role: 'owner',
+              stateLabel: 'Ready',
+              url: origin,
+            },
+            {
+              id: 'stub-gallery',
+              name: 'Stub Gallery',
+              state: 'active',
+              role: 'viewer',
+              stateLabel: 'Ready',
+              url: origin,
+            },
           ],
         });
       }
       if (req.url === '/projects/open') {
-        return send(200, { token: 'x.y', role: 'owner', url: origin, expiresAt: Date.now() + 3600_000 });
+        return send(200, {
+          token: 'x.y',
+          role: 'owner',
+          url: origin,
+          expiresAt: Date.now() + 3600_000,
+        });
       }
       if (req.url === '/auth/handoff/exchange') {
         const body = await read();
         if (body?.code === STUB_CODE) {
-          return send(200, { token: 'x.y', role: 'owner', project: 'stub-project', url: origin, expiresAt: Date.now() + 3600_000 });
+          return send(200, {
+            token: 'x.y',
+            role: 'owner',
+            project: 'stub-project',
+            url: origin,
+            expiresAt: Date.now() + 3600_000,
+          });
         }
         return send(400, { error: 'that code is not valid or has expired' });
       }
       if (req.url === '/auth/login') {
         const body = await read();
         return body?.token === 'x.y'
-          ? send(200, { token: 'mau_stub_hub', user: { email: 'e2e@example.com', role: 'owner' }, expiresAt: Date.now() + 3600_000 })
+          ? send(200, {
+              token: 'mau_stub_hub',
+              user: { email: 'e2e@example.com', role: 'owner' },
+              expiresAt: Date.now() + 3600_000,
+            })
           : send(401, { error: 'no' });
       }
       if (req.url === '/health') return send(200, { ok: true, version: 'stub' });

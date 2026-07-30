@@ -17,6 +17,7 @@ import {
   revokeSession,
   sessionAccount,
 } from './accounts.mjs';
+import { dashboardPage } from './dashboard.mjs';
 import { audit, getProject } from './db.mjs';
 import { mintGrant } from './grants.mjs';
 import {
@@ -26,7 +27,6 @@ import {
   pkcePair,
   validateCallback,
 } from './oauth-google.mjs';
-import { dashboardPage } from './dashboard.mjs';
 import { homePage, loginPage, messagePage, signupPage } from './pages.mjs';
 import { can } from './project-access.mjs';
 

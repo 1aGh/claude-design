@@ -36,9 +36,12 @@ describe('the push credential', () => {
       {
         fetchImpl: async (url, init) => {
           seen = { url, auth: init.headers.authorization, body: JSON.parse(init.body) };
-          return new Response(JSON.stringify({ token: 'ghs_x', expiresAt: Date.now() + 3600_000 }), {
-            status: 200,
-          });
+          return new Response(
+            JSON.stringify({ token: 'ghs_x', expiresAt: Date.now() + 3600_000 }),
+            {
+              status: 200,
+            }
+          );
         },
       }
     );
@@ -104,7 +107,11 @@ describe('the push itself', () => {
         ...BASE,
         branch: 'main',
         log: silent(),
-        run: async () => ({ code: 1, stdout: '', stderr: 'rejected: non-fast-forward, fetch first' }),
+        run: async () => ({
+          code: 1,
+          stdout: '',
+          stderr: 'rejected: non-fast-forward, fetch first',
+        }),
       },
       OK_TOKEN()
     );

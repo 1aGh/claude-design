@@ -137,7 +137,10 @@ export function verifyAccessToken(token, secret, { now = Date.now(), tenantId } 
  * Exported so the control plane and the cell agree on the shape by sharing it
  * rather than by both being careful.
  */
-export function accessClaims({ email, project, role = 'member' }, { now = Date.now(), ttlMs = ACCESS_TOKEN_TTL_MS } = {}) {
+export function accessClaims(
+  { email, project, role = 'member' },
+  { now = Date.now(), ttlMs = ACCESS_TOKEN_TTL_MS } = {}
+) {
   return { email, project, role, iat: now, exp: now + ttlMs };
 }
 
@@ -163,7 +166,10 @@ export const LOCAL_PASSWORD_REFUSED = {
  * @param {object} deps
  * @param {(email: string, password: string) => object} deps.local  users.mjs authenticate, bound to its dataDir
  */
-export function authenticateForMode({ email, password, token }, { local, env = process.env, secret, now = Date.now() }) {
+export function authenticateForMode(
+  { email, password, token },
+  { local, env = process.env, secret, now = Date.now() }
+) {
   if (!cloudIdentityEnabled(env)) {
     return local(email, password);
   }

@@ -36,8 +36,12 @@ test('removing a member writes a revocation; the cell reads it with its derived 
   const { env, sqlite } = await freshEnv();
   const owner = await signedIn(env, 'owner@example.com');
   await signedIn(env, 'member@example.com');
-  const ownerId = sqlite.prepare("SELECT id FROM accounts WHERE email = 'owner@example.com'").get().id;
-  const memberId = sqlite.prepare("SELECT id FROM accounts WHERE email = 'member@example.com'").get().id;
+  const ownerId = sqlite
+    .prepare("SELECT id FROM accounts WHERE email = 'owner@example.com'")
+    .get().id;
+  const memberId = sqlite
+    .prepare("SELECT id FROM accounts WHERE email = 'member@example.com'")
+    .get().id;
   sqlite
     .prepare(
       "INSERT INTO projects (id, account_id, name, state, state_since, created_at) VALUES ('alligators', ?, 'Alligators', 'active', 1, 1)"
@@ -89,9 +93,12 @@ test('removing a member writes a revocation; the cell reads it with its derived 
 
   // `since` bounds the window — the sweep never replays ancient history.
   const later = await worker.fetch(
-    new Request(`https://cloud.test/internal/revocations?tenant=alligators&since=${Date.now() + 60_000}`, {
-      headers: { authorization: `Bearer ${secret}` },
-    }),
+    new Request(
+      `https://cloud.test/internal/revocations?tenant=alligators&since=${Date.now() + 60_000}`,
+      {
+        headers: { authorization: `Bearer ${secret}` },
+      }
+    ),
     env
   );
   assert.deepEqual((await later.json()).revocations, []);

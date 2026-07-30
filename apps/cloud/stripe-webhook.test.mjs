@@ -62,9 +62,9 @@ test('malformed headers are rejected, not crashed on', () => {
   for (const bad of [
     '',
     'nonsense',
-    't=abc,v1=' + 'f'.repeat(64),
+    `t=abc,v1=${'f'.repeat(64)}`,
     't=123',
-    'v1=' + 'a'.repeat(64),
+    `v1=${'a'.repeat(64)}`,
     't=1,v1=short',
     null,
     undefined,

@@ -172,7 +172,10 @@ describe('failure modes are distinguishable and actionable', () => {
       '/health': HEALTHY,
       '/auth/login': () =>
         json(
-          { error: 'This workspace signs in through Maude Cloud — use Sign in to Maude Cloud in the app.' },
+          {
+            error:
+              'This workspace signs in through Maude Cloud — use Sign in to Maude Cloud in the app.',
+          },
           400
         ),
     });

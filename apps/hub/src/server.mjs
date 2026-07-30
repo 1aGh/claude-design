@@ -59,6 +59,7 @@ import {
 } from './auth-routes.mjs';
 import { scheduleBackups, targetFromEnv } from './backup.mjs';
 import { maybeIssueOnBoot, verifyAndConsume } from './bootstrap.mjs';
+import { handleExportRoute, scheduleMirror, scheduleRevocationSweep } from './cell-ops.mjs';
 import { clientIpFor, parseTrustedProxies } from './client-ip.mjs';
 import { groupCanvases } from './doc-namespace.mjs';
 import { seedFirstUserOnBoot } from './first-user.mjs';
@@ -79,7 +80,6 @@ import {
   rotateToken,
   verifyToken,
 } from './tokens.mjs';
-import { handleExportRoute, scheduleMirror, scheduleRevocationSweep } from './cell-ops.mjs';
 import { createWorkspaceAgent } from './workspace-agent.mjs';
 
 const HUB_VERSION = readOwnVersion();
@@ -987,7 +987,10 @@ function escapeHtmlAttr(value) {
  * classes (no inline styles — the CSP `style-src 'self'` drops those). The
  * sparkle uses presentation attributes (fill=), which the CSP allows.
  */
-function renderLanding(hubName, { dashboardUrl = process.env.HUB_DASHBOARD_URL, tenantId = process.env.MAUDE_TENANT_ID } = {}) {
+function renderLanding(
+  hubName,
+  { dashboardUrl = process.env.HUB_DASHBOARD_URL, tenantId = process.env.MAUDE_TENANT_ID } = {}
+) {
   const name = escapeHtmlAttr(hubName || (tenantId ? tenantId : 'Studio Hub'));
   // Two audiences, one page (Phase 23 B5). A PLATFORM cell speaks to the
   // customer: their project's name, the way back to their dashboard, and the
@@ -996,9 +999,7 @@ function renderLanding(hubName, { dashboardUrl = process.env.HUB_DASHBOARD_URL, 
   // never to see. A self-hosted hub (no dashboard URL) keeps the operator
   // landing unchanged.
   const isPlatform = Boolean(dashboardUrl && tenantId);
-  const sub = isPlatform
-    ? 'your Maude Cloud project'
-    : 'self-hosted sync · Yjs + Hocuspocus';
+  const sub = isPlatform ? 'your Maude Cloud project' : 'self-hosted sync · Yjs + Hocuspocus';
   const cta = isPlatform
     ? `<a class="btn btn--primary btn--lg" href="${escapeHtmlAttr(dashboardUrl)}">Open your dashboard →</a>
     <p class="landing-sub" style="margin-top:14px"><a href="admin" style="color:inherit">operator console</a></p>`
@@ -1481,7 +1482,11 @@ async function runAsMain() {
       const designRoot = join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design');
       sweepAssets({ designRoot, s3: assetStore })
         .then((r) => {
-          built.recordAssetSweep({ uploaded: r.uploaded.length, skipped: r.skipped, failed: r.failed.length });
+          built.recordAssetSweep({
+            uploaded: r.uploaded.length,
+            skipped: r.skipped,
+            failed: r.failed.length,
+          });
         })
         .catch((err) => {
           built.recordAssetSweep({ error: err.message.slice(0, 120) });

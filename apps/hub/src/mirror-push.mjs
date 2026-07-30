@@ -45,7 +45,11 @@ export async function requestPushToken(
     body: JSON.stringify({ tenant: tenantId, repository }),
   });
   if (!res.ok) {
-    return { ok: false, state: 'unauthorized', message: `the control plane refused (HTTP ${res.status})` };
+    return {
+      ok: false,
+      state: 'unauthorized',
+      message: `the control plane refused (HTTP ${res.status})`,
+    };
   }
   const body = await res.json();
   if (!body?.token) return { ok: false, state: 'failed', message: 'no token was issued' };

@@ -104,7 +104,10 @@ describe('copy and safety', () => {
   it('uses no vocabulary of ours', () => {
     const html = allPeopleHtml();
     for (const jargon of ['tenant', 'cell', 'token', 'revoke', 'session', 'container']) {
-      assert.ok(!new RegExp(`\\b${jargon}`, 'i').test(html), `"${jargon}" leaked into the people panel`);
+      assert.ok(
+        !new RegExp(`\\b${jargon}`, 'i').test(html),
+        `"${jargon}" leaked into the people panel`
+      );
     }
   });
 });

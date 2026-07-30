@@ -72,7 +72,8 @@ function html(body, status = 200) {
       'content-type': 'text/html; charset=utf-8',
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
-      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'",
+      'content-security-policy':
+        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'",
       'referrer-policy': 'no-referrer',
     },
   });
@@ -83,7 +84,7 @@ function redirect(to) {
 }
 
 function when(ms) {
-  return new Date(Number(ms)).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+  return `${new Date(Number(ms)).toISOString().replace('T', ' ').slice(0, 16)} UTC`;
 }
 
 /** `tenants/<id>/exports/<stamp>/<name>` → { stamp, name }, or null. */
@@ -96,7 +97,14 @@ export function parseExportKey(key, projectId) {
 
 // ------------------------------------------------------------------ download
 
-export function downloadPage({ account, project, generations, isOwner, error = null, notice = null }) {
+export function downloadPage({
+  account,
+  project,
+  generations,
+  isOwner,
+  error = null,
+  notice = null,
+}) {
   const rows = generations
     .map(
       (g) => `<tr>
@@ -122,12 +130,12 @@ export function downloadPage({ account, project, generations, isOwner, error = n
               <span class="quiet" style="margin-left:var(--space-4)">takes a moment for large projects</span>
             </form>`
          : '<p class="quiet">Only the project’s owner can prepare and download the full copy.</p>'
-     }
+}
      ${
        generations.length
          ? `<table><thead><tr><th>Taken</th><th>Files</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
          : '<p class="quiet" style="margin-top:var(--space-5)">No copy has been prepared yet.</p>'
-     }`,
+}`,
     {
       account,
       project,
@@ -256,7 +264,15 @@ export function auditPage({ account, project, isOwner, entries }) {
 
 // -------------------------------------------------------------------- mirror
 
-export function mirrorPage({ account, project, repository, branch, isOwner, error = null, notice = null }) {
+export function mirrorPage({
+  account,
+  project,
+  repository,
+  branch,
+  isOwner,
+  error = null,
+  notice = null,
+}) {
   const form = isOwner
     ? `<form method="post" action="/projects/${esc(project.id)}/mirror">
          <label for="repository">GitHub repository</label>
@@ -295,8 +311,12 @@ export function mirrorPage({ account, project, repository, branch, isOwner, erro
 // -------------------------------------------------------------------- routes
 
 async function loadAccess(env, projectId, accountId) {
-  const project = await env.DB.prepare('SELECT * FROM projects WHERE id = ?').bind(projectId).first();
-  const rows = await env.DB.prepare('SELECT account_id, role FROM project_members WHERE project_id = ?')
+  const project = await env.DB.prepare('SELECT * FROM projects WHERE id = ?')
+    .bind(projectId)
+    .first();
+  const rows = await env.DB.prepare(
+    'SELECT account_id, role FROM project_members WHERE project_id = ?'
+  )
     .bind(projectId)
     .all();
   const verdict = decideAccess({ accountId, project, members: rows?.results ?? [] });
@@ -331,14 +351,19 @@ async function listExports(env, projectId) {
  */
 export async function handleProjectAdminRoutes(request, env, { account }) {
   const url = new URL(request.url);
-  const m = url.pathname.match(/^\/projects\/([a-z0-9-]+)\/(connect|download|delete|audit|mirror)(\/file)?$/);
+  const m = url.pathname.match(
+    /^\/projects\/([a-z0-9-]+)\/(connect|download|delete|audit|mirror)(\/file)?$/
+  );
   if (!m) return null;
   const [, projectId, surface, isFile] = m;
   if (!account) return redirect('/login');
 
   const { project, verdict } = await loadAccess(env, projectId, account.id);
   if (!verdict.ok) {
-    return html(`<p>${ACCESS_MESSAGES[verdict.reason]}</p>`, verdict.reason === 'not-signed-in' ? 401 : 404);
+    return html(
+      `<p>${ACCESS_MESSAGES[verdict.reason]}</p>`,
+      verdict.reason === 'not-signed-in' ? 401 : 404
+    );
   }
   const isOwner = can(verdict.role, 'delete');
 
@@ -370,7 +395,9 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
   }
 
   if (surface === 'download' && request.method === 'GET') {
-    return html(downloadPage({ account, project, generations: await listExports(env, projectId), isOwner }));
+    return html(
+      downloadPage({ account, project, generations: await listExports(env, projectId), isOwner })
+    );
   }
 
   if (surface === 'download' && request.method === 'POST') {
@@ -448,15 +475,21 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
     if (!hasExport) return html(deletePage({ account, project, hasExport }), 409);
     const form = await request.formData();
     if (form.get('sure') !== 'yes') {
-      return html(deletePage({ account, project, hasExport, error: 'Tick the box to confirm.' }), 400);
+      return html(
+        deletePage({ account, project, hasExport, error: 'Tick the box to confirm.' }),
+        400
+      );
     }
 
     // Billing stops FIRST — a deletion that keeps charging is the worst order.
     if (project.subscription_id && env.STRIPE_SECRET_KEY) {
-      const res = await fetch(`https://api.stripe.com/v1/subscriptions/${project.subscription_id}`, {
-        method: 'DELETE',
-        headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
-      });
+      const res = await fetch(
+        `https://api.stripe.com/v1/subscriptions/${project.subscription_id}`,
+        {
+          method: 'DELETE',
+          headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
+        }
+      );
       if (!res.ok && res.status !== 404) {
         return html(
           deletePage({
@@ -511,7 +544,9 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
 
     const form = await request.formData();
     if (form.get('do') === 'disconnect') {
-      await env.DB.prepare('UPDATE projects SET mirror_repo = NULL, mirror_branch = NULL WHERE id = ?')
+      await env.DB.prepare(
+        'UPDATE projects SET mirror_repo = NULL, mirror_branch = NULL WHERE id = ?'
+      )
         .bind(projectId)
         .run();
       await audit(env.DB, {
@@ -520,7 +555,14 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
         actor: `customer:${account.email}`,
         action: 'mirror.disconnected',
       });
-      return html(mirrorPage({ ...view, repository: null, branch: 'main', notice: 'Disconnected. Nothing already pushed was touched.' }));
+      return html(
+        mirrorPage({
+          ...view,
+          repository: null,
+          branch: 'main',
+          notice: 'Disconnected. Nothing already pushed was touched.',
+        })
+      );
     }
 
     const checked = validateTarget({
@@ -571,15 +613,42 @@ export function allProjectAdminHtml() {
     connectPage({ account, project, isOwner: true }),
     downloadPage({ account, project, generations, isOwner: true }),
     downloadPage({ account, project, generations: [], isOwner: false }),
-    downloadPage({ account, project, generations, isOwner: true, error: 'The copy could not be prepared right now. Try again in a minute.' }),
-    downloadPage({ account, project, generations, isOwner: true, notice: 'Your copy is ready below.' }),
+    downloadPage({
+      account,
+      project,
+      generations,
+      isOwner: true,
+      error: 'The copy could not be prepared right now. Try again in a minute.',
+    }),
+    downloadPage({
+      account,
+      project,
+      generations,
+      isOwner: true,
+      notice: 'Your copy is ready below.',
+    }),
     deletePage({ account, project, hasExport: true }),
     deletePage({ account, project, hasExport: false }),
     deletePage({ account, project, hasExport: true, error: 'Tick the box to confirm.' }),
-    auditPage({ account, project, isOwner: true, entries: [{ at: 1753872000000, actor: 'customer:a@b.c', action: 'checkout.settled' }, { at: 1753872000000, actor: 'system', action: 'reconcile' }] }),
+    auditPage({
+      account,
+      project,
+      isOwner: true,
+      entries: [
+        { at: 1753872000000, actor: 'customer:a@b.c', action: 'checkout.settled' },
+        { at: 1753872000000, actor: 'system', action: 'reconcile' },
+      ],
+    }),
     auditPage({ account, project, isOwner: true, entries: [] }),
     mirrorPage({ account, project, repository: '1aGh/alligators', branch: 'main', isOwner: true }),
     mirrorPage({ account, project, repository: null, branch: 'main', isOwner: false }),
-    mirrorPage({ account, project, repository: null, branch: 'main', isOwner: true, error: 'repository must be "owner/name" (not a URL)' }),
+    mirrorPage({
+      account,
+      project,
+      repository: null,
+      branch: 'main',
+      isOwner: true,
+      error: 'repository must be "owner/name" (not a URL)',
+    }),
   ].join('\n');
 }

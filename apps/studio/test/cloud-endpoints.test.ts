@@ -24,7 +24,10 @@ beforeAll(() => {
       const url = new URL(req.url);
       seen.push(`${req.method} ${url.pathname}`);
       const json = (b: unknown, status = 200) =>
-        new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
+        new Response(JSON.stringify(b), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        });
       if (url.pathname === '/auth/handoff/exchange') {
         const body: any = await req.json();
         if (body.code === 'mhc_' + 'a'.repeat(64)) {
@@ -63,7 +66,9 @@ afterAll(() => {
 
 describe('parseDeepLink — untrusted input, strict shape', () => {
   test('accepts exactly the minted shape', () => {
-    const p = parseDeepLink(`maude://open/alligators?code=mhc_${'a'.repeat(64)}&origin=https://cloud.maude.sh`);
+    const p = parseDeepLink(
+      `maude://open/alligators?code=mhc_${'a'.repeat(64)}&origin=https://cloud.maude.sh`
+    );
     expect(p).toEqual({ project: 'alligators', code: `mhc_${'a'.repeat(64)}` });
   });
   test('refuses everything else', () => {

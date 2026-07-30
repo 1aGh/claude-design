@@ -216,10 +216,7 @@ export async function handleAuthRoutes(ctx) {
   // Retired under strict cloud identity (Phase 23 B6): every door into a
   // cloud cell is the control plane's — a hub-local invite would mint exactly
   // the local credential strict exists to end. One message, both verbs.
-  if (
-    cloudIdentityStrict() &&
-    (path === '/join' || path.startsWith('/join/'))
-  ) {
+  if (cloudIdentityStrict() && (path === '/join' || path.startsWith('/join/'))) {
     respondJson(410, {
       ok: false,
       error:

@@ -6,8 +6,6 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-
-import { renderGallery, renderNotShared } from './share-pages.mjs';
 import {
   buildGallery,
   describeAge,
@@ -17,6 +15,7 @@ import {
   snapshotObjectKey,
   viewTenantFromHostname,
 } from './share.mjs';
+import { renderGallery, renderNotShared } from './share-pages.mjs';
 
 describe('containment: only inert bytes are shareable', () => {
   it('SVG is NOT shareable, whatever else is', () => {

@@ -9,7 +9,7 @@
 // decision happens, not on a page nobody visits. `disclosure_accepted_at` is
 // written only when the box was actually ticked.
 
-import { PAGE_CSS, lockup } from './brand.mjs';
+import { lockup, PAGE_CSS } from './brand.mjs';
 import { allDashboardHtml } from './dashboard.mjs';
 import { allHandoffHtml } from './handoff.mjs';
 import { allPeopleHtml } from './people-page.mjs';
@@ -17,7 +17,9 @@ import { allPeopleHtml } from './people-page.mjs';
 // Styling comes from the design system (brand.mjs), not from ad-hoc CSS.
 // These pages are the first thing anyone sees of Maude and were the one
 // surface not wearing it.
-const BASE_CSS = PAGE_CSS + `
+const BASE_CSS =
+  PAGE_CSS +
+  `
   body { display: grid; place-items: center; min-height: 100vh; padding: var(--space-8) var(--space-5); }
   main { width: 100%; max-width: 26rem; }
   main > :last-child { margin-bottom: 0; }

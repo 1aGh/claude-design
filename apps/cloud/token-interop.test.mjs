@@ -76,7 +76,7 @@ describe('a token minted by the control plane opens the cell', () => {
     );
   });
 
-  it('the cell rejects a token signed with a different cell\'s secret', async () => {
+  it("the cell rejects a token signed with a different cell's secret", async () => {
     const token = await signLikeTheWorker(claims(), 'e'.repeat(64));
     assert.equal(
       verifyAccessToken(token, SECRET, { now: NOW, tenantId: 'alligators' }).reason,
