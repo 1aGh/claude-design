@@ -266,6 +266,33 @@ export default {
       return json({ repository: row?.mirror_repo ?? null, branch: row?.mirror_branch ?? 'main' });
     }
 
+    // A cell asking whose live sessions must die (Phase 23 B2). Same derived-
+    // secret gate as the mirror endpoints; the answer is emails + timestamps,
+    // never tokens. `since` bounds the read — the sweep asks for a window a
+    // little wider than the longest token it could have minted.
+    if (request.method === 'GET' && url.pathname === '/internal/revocations') {
+      const tenant = String(url.searchParams.get('tenant') ?? '');
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tenant)) return json({ error: 'unauthorized' }, 401);
+      const offered = (request.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+      const expected = await deriveCellSecret(env.CELL_SECRET_MASTER ?? '', tenant);
+      if (!env.CELL_SECRET_MASTER || !secretsMatch(offered, expected)) {
+        return json({ error: 'unauthorized' }, 401);
+      }
+      const since = Number(url.searchParams.get('since') ?? 0) || 0;
+      let rows = [];
+      try {
+        const res = await env.DB.prepare(
+          'SELECT email, revoked_at FROM member_revocations WHERE project_id = ? AND revoked_at >= ? ORDER BY revoked_at'
+        )
+          .bind(tenant, since)
+          .all();
+        rows = res?.results ?? [];
+      } catch {
+        /* an unreadable table is an empty sweep, not an error the clock can act on */
+      }
+      return json({ revocations: rows.map((r) => ({ email: r.email, at: r.revoked_at })) });
+    }
+
     // Bug-report intake (feature-bug-report-button). Deliberately BEFORE any
     // signed-in surface check — reporters need no account. report.mjs owns
     // validation, quotas, and the kill switch; the issue lands in the private

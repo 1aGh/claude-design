@@ -182,3 +182,94 @@ export function scheduleMirror({
     },
   };
 }
+
+/**
+ * Ask the control plane whose live sessions must die (Phase 23 B2).
+ * `{ revocations: [{email, at}] }` — emails and timestamps, never tokens.
+ */
+export async function fetchRevocations(
+  { controlPlaneUrl, tenantId, cellSecret, since },
+  { fetchImpl = fetch } = {}
+) {
+  try {
+    const res = await fetchImpl(
+      `${controlPlaneUrl.replace(/\/+$/, '')}/internal/revocations?tenant=${encodeURIComponent(tenantId)}&since=${encodeURIComponent(since)}`,
+      { headers: { authorization: `Bearer ${cellSecret}` } }
+    );
+    if (!res.ok) return { revocations: [], reason: `HTTP ${res.status}` };
+    const body = await res.json();
+    return { revocations: Array.isArray(body?.revocations) ? body.revocations : [] };
+  } catch (err) {
+    return { revocations: [], reason: err.message };
+  }
+}
+
+/**
+ * The revocation sweep (Phase 23 B2) — the missing half of "removal lands
+ * within 12 hours". The TTL merely BOUNDS how long an already-open session
+ * survives a removal; this clock actively ends it, usually within minutes.
+ *
+ * Idempotent by construction: the window always reaches back past the longest
+ * token the cell could have minted, and revoking an already-revoked owner is
+ * a no-op — so a restart never misses a removal and never double-counts one.
+ */
+export function scheduleRevocationSweep({
+  dataDir,
+  revokeForOwner,
+  kickLabel,
+  env = process.env,
+  intervalMs = Number(env.MAUDE_REVOCATION_INTERVAL_MS ?? 10 * 60 * 1000),
+  firstDelayMs = 60 * 1000,
+  windowMs = 26 * 60 * 60 * 1000,
+  log = console,
+  fetchImpl = fetch,
+  nowFn = Date.now,
+}) {
+  const controlPlaneUrl = env.MAUDE_CONTROL_PLANE_URL ?? '';
+  const tenantId = env.MAUDE_TENANT_ID ?? '';
+  const cellSecret = env.HUB_SECRET ?? '';
+  if (!controlPlaneUrl || !tenantId || !cellSecret || !dataDir || !revokeForOwner) {
+    return { stop() {}, enabled: false };
+  }
+
+  let running = false;
+  const tick = async () => {
+    if (running) return null;
+    running = true;
+    try {
+      const { revocations } = await fetchRevocations(
+        { controlPlaneUrl, tenantId, cellSecret, since: nowFn() - windowMs },
+        { fetchImpl }
+      );
+      let revokedTotal = 0;
+      for (const r of revocations) {
+        if (typeof r?.email !== 'string' || !r.email) continue;
+        const labels = revokeForOwner(dataDir, r.email.trim().toLowerCase());
+        for (const label of labels) kickLabel?.(label);
+        if (labels.length) {
+          revokedTotal += labels.length;
+          log.log?.(`[revocation] ended ${labels.length} session(s) for a removed member`);
+        }
+      }
+      return { seen: revocations.length, revoked: revokedTotal };
+    } catch (err) {
+      log.error?.(`[revocation] tick failed: ${err.message}`);
+      return null;
+    } finally {
+      running = false;
+    }
+  };
+
+  const first = setTimeout(tick, firstDelayMs);
+  const timer = setInterval(tick, intervalMs);
+  first.unref?.();
+  timer.unref?.();
+  return {
+    enabled: true,
+    tick,
+    stop() {
+      clearTimeout(first);
+      clearInterval(timer);
+    },
+  };
+}

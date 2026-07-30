@@ -187,6 +187,21 @@ export const MIGRATIONS = [
       'CREATE INDEX IF NOT EXISTS handoff_codes_project ON handoff_codes (project_id);',
     ],
   },
+  {
+    version: 10, // Phase 23 B2 — removals reach live sessions, not just future tokens
+    statements: [
+      // One row per removal/demotion that must kill live workspace sessions.
+      // The cell sweeps these (derived-secret gated /internal/revocations) and
+      // revokes the person's peer tokens — closing the "already signed in"
+      // window the 12h TTL merely bounds.
+      `CREATE TABLE IF NOT EXISTS member_revocations (
+        project_id TEXT NOT NULL,
+        email      TEXT NOT NULL,
+        revoked_at INTEGER NOT NULL
+      );`,
+      'CREATE INDEX IF NOT EXISTS member_revocations_project ON member_revocations (project_id, revoked_at);',
+    ],
+  },
 ];
 
 /** Apply baseline + pending versioned migrations. Safe to run repeatedly. */

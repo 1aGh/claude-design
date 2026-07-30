@@ -19,7 +19,7 @@
 
 import { randomBytes } from 'node:crypto';
 
-import { authenticateForMode } from './cloud-identity.mjs';
+import { authenticateForMode, cloudIdentityStrict } from './cloud-identity.mjs';
 
 import {
   createInvite,
@@ -212,6 +212,21 @@ export async function handleAuthRoutes(ctx) {
   }
 
   // ---- Cloud Phase 6 — magic-link invites -------------------------------
+
+  // Retired under strict cloud identity (Phase 23 B6): every door into a
+  // cloud cell is the control plane's — a hub-local invite would mint exactly
+  // the local credential strict exists to end. One message, both verbs.
+  if (
+    cloudIdentityStrict() &&
+    (path === '/join' || path.startsWith('/join/'))
+  ) {
+    respondJson(410, {
+      ok: false,
+      error:
+        'Invitations for this workspace are sent from its Maude Cloud dashboard now. Ask whoever runs the project to add you there.',
+    });
+    return true;
+  }
 
   // GET /join/<token> — LOOK, never consume. A crawler, a link preview, or a
   // corporate mail scanner following the link must not be able to burn the
@@ -421,6 +436,14 @@ export async function handleUserAdminRoutes(ctx) {
       return true;
     }
     if (method === 'POST' && path === '/invites') {
+      if (cloudIdentityStrict()) {
+        // B6: the dashboard's People page is the one place members are added.
+        respondJson(409, {
+          error:
+            'This workspace takes its members from Maude Cloud. Add people on the project’s People page instead.',
+        });
+        return true;
+      }
       let body;
       try {
         body = await readJsonBody(ctx.request);

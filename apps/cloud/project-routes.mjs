@@ -198,6 +198,26 @@ export async function handleProjectRoutes(request, env, { account }) {
       .run();
   }
 
+  // Removals and demotions must reach LIVE sessions, not only future tokens
+  // (Phase 23 B2). The row is what the cell's revocation sweep consumes; a
+  // failed write must not fail the change itself — the 12h TTL still bounds it.
+  if (decision.revokeSessions) {
+    try {
+      const who = await env.DB.prepare('SELECT email FROM accounts WHERE id = ?')
+        .bind(targetId)
+        .first();
+      if (who?.email) {
+        await env.DB.prepare(
+          'INSERT INTO member_revocations (project_id, email, revoked_at) VALUES (?, ?, ?)'
+        )
+          .bind(projectId, who.email, Date.now())
+          .run();
+      }
+    } catch {
+      /* bounded by the token TTL either way */
+    }
+  }
+
   // The audit entry is written for every change, not only removals. "Who let
   // them in" is asked as often as "who took them out", and a log that only
   // records the alarming half cannot answer it.

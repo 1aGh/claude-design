@@ -75,10 +75,11 @@ import {
   readTokens,
   recordTokenUse,
   removeToken,
+  revokeTokensForOwner,
   rotateToken,
   verifyToken,
 } from './tokens.mjs';
-import { handleExportRoute, scheduleMirror } from './cell-ops.mjs';
+import { handleExportRoute, scheduleMirror, scheduleRevocationSweep } from './cell-ops.mjs';
 import { createWorkspaceAgent } from './workspace-agent.mjs';
 
 const HUB_VERSION = readOwnVersion();
@@ -260,6 +261,8 @@ export function createHub(config = {}) {
   let workspace = null;
   /** @type {ReturnType<typeof scheduleMirror>|null} */
   let mirror = null;
+  /** @type {ReturnType<typeof scheduleRevocationSweep>|null} */
+  let revocationSweep = null;
 
   const server = new Server({
     port,
@@ -658,6 +661,16 @@ export function createHub(config = {}) {
       if (!mirror) {
         mirror = scheduleMirror({ repoDir, run: runner });
         if (mirror.enabled) console.log('[mirror] schedule armed');
+      }
+      // Phase 23 B2 — removals reach LIVE sessions. Same enablement rule as
+      // the mirror clock: only a cell that knows its control plane ticks.
+      if (!revocationSweep) {
+        revocationSweep = scheduleRevocationSweep({
+          dataDir,
+          revokeForOwner: revokeTokensForOwner,
+          kickLabel: (label) => kickSessionsForLabel(peers, label),
+        });
+        if (revocationSweep.enabled) console.log('[revocation] sweep armed');
       }
       return { ...started, seed: seeded.state };
     },

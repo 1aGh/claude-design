@@ -101,8 +101,9 @@ export async function cellEnv({ tenantId, env, hostname }) {
     // HYBRID cloud identity (Phase 23 B1/B2): the cell accepts control-plane
     // project tokens IN ADDITION to its local user store, so the workspace
     // password keeps working while the dashboard/desktop lanes migrate.
-    // 'strict' (tokens only) is a later, deliberate flip.
-    MAUDE_CLOUD_IDENTITY: '1',
+    // Flip CELL_IDENTITY_MODE=strict (worker var) once the handoff lanes have
+    // carried real sign-ins — a deliberate act, never inferred (B1's lesson).
+    MAUDE_CLOUD_IDENTITY: env.CELL_IDENTITY_MODE === 'strict' ? 'strict' : '1',
     // Project tokens verify against their OWN derived key (B4) — never
     // HUB_SECRET, which is already the admin bearer and a peer token.
     MAUDE_PROJECT_TOKEN_KEY: await deriveSecret(env.CELL_SECRET_MASTER, tenantId, 'project-token'),
@@ -130,7 +131,10 @@ export async function cellEnv({ tenantId, env, hostname }) {
     // without adding a secret the platform did not already know. It is an
     // INITIAL credential — the same status as the one `workspace-up` prints —
     // and the person is told to change it.
-    ...(env.PILOT_ADMIN_EMAIL
+    // Retired under strict (Phase 23 B6): a cloud-identity cell takes every
+    // sign-in from the control plane, so seeding a local password would
+    // recreate the credential class strict exists to end.
+    ...(env.PILOT_ADMIN_EMAIL && env.CELL_IDENTITY_MODE !== 'strict'
       ? {
           MAUDE_ADMIN_EMAIL: env.PILOT_ADMIN_EMAIL,
           MAUDE_ADMIN_PASSWORD: await deriveSecret(
