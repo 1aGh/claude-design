@@ -72,6 +72,38 @@
   magic-link invite (`createUser` with a password cloud mode never accepts)
   are retired for cloud cells.
 
+## C — Maude Desktop: sign in to Maude Cloud and attach from the UI
+## (owner request 2026-07-30: "to by bylo nejjednodušší" — and it is)
+
+Depends on B (the cell must accept a project token before any client can use
+one). Consumes the exchange the desktop-friendly way that ALREADY exists:
+`POST /auth/login {token}` on the cell — a POST body, so the BREAKER's
+no-token-in-a-GET-URL rule is satisfied on this lane for free.
+
+- [ ] C1 — **control-plane device flow** (mirror of the desktop's proven
+  GitHub pattern, oauth.rs / DDR-108): `POST /auth/device/code` →
+  short user code + verification page (signed-in dashboard user types the
+  code — or lands on it from a link), desktop polls `POST /auth/device/token`
+  → a personal token, stored ONLY in the OS keychain (keychain.rs). New D1
+  table for device codes + personal tokens; personal tokens revocable from
+  the dashboard (Account page lists signed-in devices — the revocation UI the
+  12h-window story needs anyway).
+- [ ] C2 — **projects API for clients**: `GET /api/projects` (Bearer personal
+  token) → projects + roles; `POST /projects/open` accepts the same Bearer
+  (today it is cookie-session-only) → project token + url.
+- [ ] C3 — **desktop UI**: a "Maude Cloud" section (first-run + menu):
+  Sign in → device-code modal (same component family as GitHubIdentity) →
+  project picker (name, state pill, role) → choose a local folder → the app
+  runs the existing link flow (design-link.mjs via the bundled CLI bridge,
+  token from the cell exchange, never pasted by a human) → serve + open.
+  The CLI path stays for scripting; the UI is the default.
+- [ ] C4 — desktop-e2e scenario `cloud-attach` (DOM-driven, data-testid),
+  stubbing the control plane; bundled-.app verification per DDR-177
+  (`check-bundle-completeness --smoke`) before release.
+- [ ] C5 — Phase 17's `maude://` deep link then lands ON TOP of this (the
+  invite email's "open in app" button) — C is the machinery, 17 is the
+  protocol handler.
+
 ## Preserved dissent (verbatim stakes, inert)
 
 - USER-ADVOCATE (conf 10): the handoff is "the one thing to ship before
