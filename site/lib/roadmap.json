@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-29T18:49:23.743Z",
+  "generated": "2026-07-30T06:56:15.323Z",
   "currentPhase": null,
   "phases": [
     {
@@ -54,6 +54,17 @@
       "date": null,
       "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 9. The production-release phase.",
       "planPath": ".ai/plans/archive/cloud-phase-10-ga-launch-github-mirror.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-11-vendor-unblock",
+      "title": "Cloud Phase 11 — Vendor unblock: the OWNER checklist",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Account: b5b596efe65abb732777c7171dc18145 (M.dovrtel@gmail.com) Live control plane: https://maude-cloud.maude1agh.workers.dev",
+      "planPath": ".ai/plans/archive/cloud-phase-11-vendor-unblock.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1642,17 +1653,6 @@
       "phaseKey": null
     },
     {
-      "id": "cloud-phase-11-vendor-unblock",
-      "title": "Cloud Phase 11 — Vendor unblock: the OWNER checklist",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Account: b5b596efe65abb732777c7171dc18145 (M.dovrtel@gmail.com) Live control plane: https://maude-cloud.maude1agh.workers.dev",
-      "planPath": ".ai/plans/cloud-phase-11-vendor-unblock.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
       "id": "cloud-phase-14-checkout-provision-first",
       "title": "Cloud Phase 14 — Checkout that provisions first and charges after",
       "status": "planned",
@@ -1713,7 +1713,7 @@
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "configured, the cell's own user store is bypassed and sign-in is delegated. users.mjs stays intact for self-hosted hubs — one code path, two configurations, not two code paths. project-scoped token...",
+      "summary": "configured, the cell's own user store is bypassed and sign-in is delegated. users.mjs is untouched — one code path, two configurations, wired through /auth/login so it is the real path and not an i...",
       "planPath": ".ai/plans/cloud-phase-22-one-account-one-dashboard.md",
       "archived": false,
       "phaseKey": null

@@ -25,7 +25,17 @@ Subscription `R2 Paid` active at €0 (free allowance). Agent created bucket
 **`maude-cloud-assets`** (EEUR). Media, checkpoints and phase-18 snapshots have
 a home.
 
-## Step 3 — DNS · 🔄 ZONE READY, ONE SWITCH LEFT (yours)
+## Step 3 — DNS · ✅ DONE 2026-07-30 (owner flipped the nameservers)
+
+Verified live: `dig NS maude.sh` answers `shane`/`sue.ns.cloudflare.com`, the
+zone is Active, `cloud.maude.sh` + `alligators.cloud.maude.sh` +
+`view-alligators.cloud.maude.sh` all serve over Worker custom domains with
+valid certificates, and the Vercel-served site keeps working through the
+grey-cloud CNAMEs. Original working notes preserved below.
+
+<details><summary>pre-switch notes</summary>
+
+## Step 3 (original) — DNS · 🔄 ZONE READY, ONE SWITCH LEFT (yours)
 
 **Agent did (2026-07-29):** created zone `maude.sh` on the account —
 id `b27eb712a0031253edf58c0e31c57b7b`, status `pending`. Cloudflare nameservers:
@@ -101,6 +111,8 @@ The public site keeps working — only the nameservers move. Then the agent adds
 **Option B — skip it.** Everything works at `maude-cloud.maude1agh.workers.dev`.
 Cells would get workers.dev subdomains too. Fine for the alligators pilot,
 wrong for a public product.
+
+</details>
 
 </details>
 
@@ -201,19 +213,19 @@ live mode until its price ids are filled in, deliberately.
 | ---- | ----- |
 | 1 · Workers Paid | ✅ active — Containers API answers 200 |
 | 2 · R2 | ✅ enabled, bucket `maude-cloud-assets` created |
-| 3 · DNS | 🔄 zone built + populated; **you flip nameservers at Vercel** |
+| 3 · DNS | ✅ nameservers flipped 2026-07-30; zone Active, custom domains live |
 | 4 · Google | ✅ live and verified |
 | 5 · Resend | ✅ key uploaded |
 | 6 · GitHub App | ✅ contents:write, installed, token mint verified |
 | 7 · Stripe | ✅ nothing to do for the pilot |
 
-**Everything an agent cannot do is done except one nameserver switch.**
+**Everything a human had to do is done. Phase closed 2026-07-30.**
 
 ## Exit gate
 
 - [x] Workers Paid active — Containers API returns 200
 - [x] R2 enabled — bucket `maude-cloud-assets` exists
-- [ ] `maude.sh` Active on Cloudflare (zone + records ready; awaiting the NS switch)
+- [x] `maude.sh` Active on Cloudflare — NS switch done, custom domains serving
 - [x] Google credentials live and verified against the deployed Worker
 - [x] Resend key uploaded
 - [x] GitHub App has Contents:write, one installation, and mints working tokens
