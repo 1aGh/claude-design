@@ -27,6 +27,7 @@ import { useTreeDrag } from './use-tree-drag.js';
 import ChatPanel from './panels/ChatPanel.jsx';
 import DiffView from './panels/DiffView.jsx';
 import GitPanel from './panels/GitPanel.jsx';
+import CloudBar from './panels/CloudBar.jsx';
 import IdentityBar from './panels/IdentityBar.jsx';
 import OnboardingWizard from './panels/OnboardingWizard.jsx';
 import { ReadinessDialog } from './panels/ReadinessList.jsx';
@@ -2781,6 +2782,10 @@ function Sidebar({
           opens UPWARD, sitting directly above the GitHub identity avatar so the two
           form one bottom dock. Renders nothing until the project is a git repo. */}
       <RepoBranchSwitcher project={project} liveBranch={gitBranch} remoteSync={remoteSync} onGetLatest={onGetLatest} />
+      {/* Cloud Phase 23 C3 — Maude Cloud sign-in + remote-project attach, docked
+          above the GitHub identity. Dev-server-backed, so it works in the desktop
+          shell AND a plain browser. */}
+      <CloudBar />
       {/* Phase 28 (E3) — GitHub identity as a compact avatar docked at the BOTTOM:
           sign in, connected account + New/Pull/Share, sign out. Self-contained
           (owns its device-code + CreateProject dialogs). Renders nothing in browser. */}

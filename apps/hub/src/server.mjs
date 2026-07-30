@@ -974,22 +974,8 @@ function escapeHtmlAttr(value) {
  * classes (no inline styles — the CSP `style-src 'self'` drops those). The
  * sparkle uses presentation attributes (fill=), which the CSP allows.
  */
-function renderLanding(hubName, { dashboardUrl = process.env.HUB_DASHBOARD_URL, tenantId = process.env.MAUDE_TENANT_ID } = {}) {
-  const name = escapeHtmlAttr(hubName || (tenantId ? tenantId : 'Studio Hub'));
-  // Two audiences, one page (Phase 23 B5). A PLATFORM cell speaks to the
-  // customer: their project's name, the way back to their dashboard, and the
-  // operator console demoted to a footnote — "self-hosted sync · Yjs +
-  // Hocuspocus" is infrastructure vocabulary a paying customer was promised
-  // never to see. A self-hosted hub (no dashboard URL) keeps the operator
-  // landing unchanged.
-  const isPlatform = Boolean(dashboardUrl && tenantId);
-  const sub = isPlatform
-    ? 'your Maude Cloud project'
-    : 'self-hosted sync · Yjs + Hocuspocus';
-  const cta = isPlatform
-    ? `<a class="btn btn--primary btn--lg" href="${escapeHtmlAttr(dashboardUrl)}">Open your dashboard →</a>
-    <p class="landing-sub" style="margin-top:14px"><a href="admin" style="color:inherit">operator console</a></p>`
-    : `<a class="btn btn--primary btn--lg" href="admin">Open admin console →</a>`;
+function renderLanding(hubName) {
+  const name = escapeHtmlAttr(hubName || 'Studio Hub');
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -1004,9 +990,9 @@ function renderLanding(hubName, { dashboardUrl = process.env.HUB_DASHBOARD_URL, 
   <div class="landing-card">
     <span class="mark mark--lg" aria-hidden="true"><svg class="mark-ic" viewBox="0 0 32 32" fill="currentColor"><path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z"/></svg></span>
     <h1>${name}</h1>
-    <p class="landing-sub">${sub}</p>
+    <p class="landing-sub">self-hosted sync · Yjs + Hocuspocus</p>
     <p class="landing-status"><span class="presence-dot presence-dot--online" aria-hidden="true"></span> online</p>
-    ${cta}
+    <a class="btn btn--primary btn--lg" href="admin">Open admin console →</a>
   </div>
 </div>
 </body>

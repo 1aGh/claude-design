@@ -77,6 +77,7 @@ import {
 } from './generation/whisper-models.ts';
 import { createGitEndpoints } from './git/endpoints.ts';
 import { gitShowFile } from './git/service.ts';
+import { createCloudEndpoints } from './cloud/endpoints.ts';
 import { createGitHubEndpoints } from './github/endpoints.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
@@ -837,6 +838,11 @@ export function createHttp(
   // and every route is token-bearing (server-held keychain token via the loopback
   // bridge), so all four also carry a loopback-Host check.
   const githubApi = createGitHubEndpoints(ctx);
+  // Cloud Phase 23 C3 — `/_api/cloud/*`. Same dual-allowlist rule as the
+  // GitHub routes: MAIN-ORIGIN ONLY (absent from CANVAS_SAFE_API +
+  // startCanvasServer) and loopback-Host gated — every route either bears or
+  // stores the cloud credential.
+  const cloudApi = createCloudEndpoints(ctx);
   const gitJson = (r: { status: number; json: unknown }) =>
     Response.json(r.json, { status: r.status, headers: { 'Cache-Control': 'no-store' } });
 
@@ -1723,6 +1729,53 @@ export function createHttp(
     // since every one is token-bearing. (Sign-out is the `github_sign_out` Tauri
     // command — the dev-server can't touch the OS keychain — so there is no
     // DELETE /_api/github/identity here; see DDR-114.)
+    '/_api/cloud/status': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      return gitJson(cloudApi.status());
+    },
+    '/_api/cloud/signin/start': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      return gitJson(await cloudApi.signinStart());
+    },
+    '/_api/cloud/signin/poll': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = (await req.json().catch(() => ({}))) as { deviceCode?: string };
+      return gitJson(await cloudApi.signinPoll(String(body.deviceCode ?? '')));
+    },
+    '/_api/cloud/signout': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      return gitJson(cloudApi.signout());
+    },
+    '/_api/cloud/projects': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      return gitJson(await cloudApi.projects());
+    },
+    '/_api/cloud/attach': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = (await req.json().catch(() => ({}))) as { project?: string };
+      return gitJson(await cloudApi.attach(String(body.project ?? '')));
+    },
+
     '/_api/github/identity': async (req: Request) => {
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
       if (!isLoopbackHost(req.headers.get('host')))

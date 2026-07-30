@@ -93,22 +93,19 @@ export async function cellEnv({ tenantId, env, hostname }) {
     // Behind Cloudflare every request arrives from the edge. Without this the
     // per-client rate limiter buckets the entire internet as one client.
     HUB_TRUSTED_PROXIES: '0.0.0.0/0,::/0',
-    // Where this cell's platform lives — powers the mirror clock (Phase 19).
-    // Safe to pass again since Phase 23 B1: identity is keyed on its OWN
-    // explicit switch below, never inferred from this URL (the 2026-07-30
-    // regression: one env var was doubling as two switches).
-    MAUDE_CONTROL_PLANE_URL: env.CONTROL_PLANE_URL ?? 'https://cloud.maude.sh',
-    // HYBRID cloud identity (Phase 23 B1/B2): the cell accepts control-plane
-    // project tokens IN ADDITION to its local user store, so the workspace
-    // password keeps working while the dashboard/desktop lanes migrate.
-    // 'strict' (tokens only) is a later, deliberate flip.
-    MAUDE_CLOUD_IDENTITY: '1',
-    // Project tokens verify against their OWN derived key (B4) — never
-    // HUB_SECRET, which is already the admin bearer and a peer token.
-    MAUDE_PROJECT_TOKEN_KEY: await deriveSecret(env.CELL_SECRET_MASTER, tenantId, 'project-token'),
-    // The return leg for the cell's own pages (B5). A NEW variable, so it can
-    // never re-trip the identity switch.
-    HUB_DASHBOARD_URL: env.DASHBOARD_URL ?? 'https://cloud.maude.sh',
+    // Where this cell's platform lives (Cloud Phases 19/20/22). Powers the
+    // mirror clock and — once enabled per-cell — cloud identity.
+    //
+    // WITHDRAWN 2026-07-30, deliberately: `cloudIdentityEnabled()` in the hub
+    // keys on MAUDE_CONTROL_PLANE_URL && MAUDE_TENANT_ID, so passing the URL
+    // for the MIRROR silently flipped the live cell into cloud-identity mode
+    // — and with no browser consumer for the project token yet, that made the
+    // cell unreachable in a browser (the derived password was refused with
+    // "sign in at the dashboard", and the dashboard had nothing to hand over).
+    // One env var was doubling as two switches. Until the browser handoff
+    // lands (and identity gets its own explicit switch), the URL stays out:
+    // the mirror clock sleeps, the tenant keeps their working sign-in.
+    // MAUDE_CONTROL_PLANE_URL: env.CONTROL_PLANE_URL ?? 'https://cloud.maude.sh',
     // Object storage. The entrypoint derives per-tenant key prefixes from
     // MAUDE_TENANT_ID — one bucket, one prefix per tenant.
     MAUDE_S3_ENDPOINT: env.MAUDE_R2_ENDPOINT ?? '',
