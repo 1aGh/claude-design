@@ -387,7 +387,6 @@ export function appShell({ account, title, body, project = null, isOwner = false
     <div class="nav-hd">Workspace</div>
     ${navItem({ href: '/', label: 'Your projects', glyph: 'grid', active: active === 'projects' })}
     ${navItem({ href: '/projects/new', label: 'Start a project', glyph: 'plus', active: active === 'new' })}
-    ${navItem({ href: '/account', label: 'Account', glyph: 'people', active: active === 'account' })}
     ${projectNav}
   </nav>
   <main class="main"><div class="main-inner">

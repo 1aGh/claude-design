@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-30T13:26:22.754Z",
+  "generated": "2026-07-30T09:06:47.488Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1724,7 +1724,7 @@
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "(dashboard card + waiting-room \"Open your project\"): the project address, honest browser sign-in note, desktop Link-workspace path, operator console demoted to a footer line. A pending project's ca...",
+      "summary": "(dashboard.mjs:110, checkout-pages.mjs \"Open your project\"): states the project address, hands over the real connect path (desktop app / maude design link <url> --token=…), offers the operator cons...",
       "planPath": ".ai/plans/cloud-phase-23-seamless-onboarding.md",
       "archived": false,
       "phaseKey": null

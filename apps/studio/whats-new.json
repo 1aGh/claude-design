@@ -2,18 +2,9 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
-      "id": "maude-cloud-signin-attach",
-      "version": "0.50.0",
-      "date": "2026-07-30",
-      "kind": "feature",
-      "title": "Sign in to Maude Cloud from the studio",
-      "summary": "The sidebar footer now signs you into Maude Cloud with a short code — no pasted addresses or keys — and connects this project to your cloud workspace in one click.",
-      "surface": "design-ui"
-    },
-    {
       "id": "file-tree-move-and-folders",
-      "version": "0.50.0",
-      "date": "2026-07-30",
+      "version": null,
+      "date": null,
       "kind": "feature",
       "title": "Organize your files — folders, drag & drop, move",
       "summary": "The file tree is a real file explorer now. Create folders from the header or right-click a canvas or folder for Move to… / New folder here / Delete folder — or just drag a canvas (or a whole folder) onto another folder, including back out to the top level. Every history, comment, annotation, and camera position moves with it, and every move shows an Undo toast.",

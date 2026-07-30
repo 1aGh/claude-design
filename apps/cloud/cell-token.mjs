@@ -10,7 +10,7 @@
  * Derive a cell's own secret. Must match apps/cells/cell-do.mjs exactly — a
  * cell authenticates with the value that file gave it.
  */
-export async function deriveCellSecret(master, tenantId, purpose = 'hub-secret') {
+export async function deriveCellSecret(master, tenantId) {
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(master),
@@ -21,7 +21,7 @@ export async function deriveCellSecret(master, tenantId, purpose = 'hub-secret')
   const mac = await crypto.subtle.sign(
     'HMAC',
     key,
-    new TextEncoder().encode(`maude-cell:${purpose}:${tenantId}`)
+    new TextEncoder().encode(`maude-cell:hub-secret:${tenantId}`)
   );
   return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
@@ -42,9 +42,7 @@ export async function mintProjectToken(
   { master, project, email, role, ttlMs = 12 * 60 * 60 * 1000 },
   { now = Date.now() } = {}
 ) {
-  // Its OWN signing purpose (Phase 23 B4): the hub-secret is already the
-  // admin bearer and a wildcard peer token — one value must not be all three.
-  const secret = await deriveCellSecret(master, project, 'project-token');
+  const secret = await deriveCellSecret(master, project);
   const claims = { email, project, role, iat: now, exp: now + ttlMs };
   const payload = b64urlBytes(new TextEncoder().encode(JSON.stringify(claims)));
   const key = await crypto.subtle.importKey(

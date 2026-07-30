@@ -1,6 +1,6 @@
 {
   "name": "@1agh/maude",
-  "version": "0.50.0",
+  "version": "0.49.2",
   "description": "Marketplace of Claude Code plugins by Michal Dovrtěl: `design` (canvas-first design iteration) + `flow` (generic agentic workflow loop with .ai second brain). Ships the `maude` CLI (with `mdcc` legacy alias) to scaffold workspace, run the design dev server, and manage configs.",
   "type": "module",
   "engines": {
@@ -51,13 +51,13 @@
     "test:e2e:desktop:acp-cold-start": "pnpm --filter @maude/desktop-e2e e2e:acp-cold-start"
   },
   "optionalDependencies": {
-    "@1agh/maude-darwin-arm64": "0.50.0",
-    "@1agh/maude-darwin-x64": "0.50.0",
-    "@1agh/maude-linux-arm64": "0.50.0",
-    "@1agh/maude-linux-arm64-musl": "0.50.0",
-    "@1agh/maude-linux-x64": "0.50.0",
-    "@1agh/maude-linux-x64-musl": "0.50.0",
-    "@1agh/maude-win32-x64": "0.50.0"
+    "@1agh/maude-darwin-arm64": "0.49.2",
+    "@1agh/maude-darwin-x64": "0.49.2",
+    "@1agh/maude-linux-arm64": "0.49.2",
+    "@1agh/maude-linux-arm64-musl": "0.49.2",
+    "@1agh/maude-linux-x64": "0.49.2",
+    "@1agh/maude-linux-x64-musl": "0.49.2",
+    "@1agh/maude-win32-x64": "0.49.2"
   },
   "files": [
     "cli",
