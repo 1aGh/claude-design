@@ -26,6 +26,14 @@ routes = [
 [triggers]
 crons = ["0 * * * *"]   # hourly reconcile sweep — the source of truth pass
 
+[vars]
+# Provisioning a project = attaching `<id>.cloud.maude.sh` to the data-plane
+# Worker (apps/cells) through the API. The ids are not secrets; the token
+# (CF_PROVISION_TOKEN, `wrangler secret put`) is.
+CF_ACCOUNT_ID = "b5b596efe65abb732777c7171dc18145"
+CF_ZONE_ID = "b27eb712a0031253edf58c0e31c57b7b"
+CELL_ZONE = "cloud.maude.sh"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "maude-cloud-control-plane"

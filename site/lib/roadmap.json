@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-30T07:02:32.282Z",
+  "generated": "2026-07-30T07:14:57.042Z",
   "currentPhase": null,
   "phases": [
     {
@@ -87,6 +87,17 @@
       "date": null,
       "summary": "users.mjs — same code, control-plane D1 storage) AND Google OAuth (buyer-side only; OAuth on the Worker via PKCE, no client secret in a browser). never to maude.sh. First magic link IS email verifi...",
       "planPath": ".ai/plans/archive/cloud-phase-13-identity-one-account.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-14-checkout-provision-first",
+      "title": "Cloud Phase 14 — Checkout that provisions first and charges after",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "+ checkout-pages.mjs, design-system chrome, no script). The id is derived from the name server-side (diacritics fold: \"Zkušební tým\" → \"zkusebni-tym\"); reserved names and the view-* share namespace...",
+      "planPath": ".ai/plans/archive/cloud-phase-14-checkout-provision-first.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1660,17 +1671,6 @@
       "date": null,
       "summary": "Everything a human must do by hand — accounts, logins, tokens, tooling, MCP wiring — so the phase executions run smoothly and agent-driven. Companion to cloud-phase-0-economics-and-architecture.md....",
       "planPath": ".ai/plans/cloud-phase-0b-manual-prep.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-14-checkout-provision-first",
-      "title": "Cloud Phase 14 — Checkout that provisions first and charges after",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "than implemented as a branch. See DDR-203. A card is authorized, the workspace is built, and only a workspace that ANSWERS turns the authorization into a charge; a failure or a timeout voids it and...",
-      "planPath": ".ai/plans/cloud-phase-14-checkout-provision-first.md",
       "archived": false,
       "phaseKey": null
     },

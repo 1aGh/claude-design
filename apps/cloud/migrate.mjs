@@ -103,6 +103,27 @@ export const MIGRATIONS = [
       'CREATE INDEX IF NOT EXISTS project_invites_email ON project_invites (email);',
     ],
   },
+  {
+    version: 6, // Phase 14 — checkout attempts, the provision-first ledger
+    statements: [
+      // One row per Checkout Session. `payment` records how the DDR-203
+      // ordering settled — authorized (card held, workspace building),
+      // charged (workspace answered, subscription kept), voided (it did not,
+      // subscription cancelled at zero cost). The row is the idempotence:
+      // a redelivered return or a refreshed waiting room finds it settled.
+      `CREATE TABLE IF NOT EXISTS checkout_attempts (
+        session_id      TEXT PRIMARY KEY,
+        project_id      TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+        payment         TEXT NOT NULL DEFAULT 'pending'
+                          CHECK (payment IN ('pending','authorized','charged','voided')),
+        subscription_id TEXT,
+        authorized_at   INTEGER,
+        settled_at      INTEGER,
+        created_at      INTEGER NOT NULL
+      );`,
+      'CREATE INDEX IF NOT EXISTS checkout_attempts_project ON checkout_attempts (project_id);',
+    ],
+  },
 ];
 
 /** Apply baseline + pending versioned migrations. Safe to run repeatedly. */

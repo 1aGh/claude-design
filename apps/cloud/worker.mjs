@@ -17,6 +17,7 @@
 // not the queue — is the durable record either way.
 
 import { currentAccount, handleAuth } from './auth-routes.mjs';
+import { handleCheckoutRoutes } from './checkout-routes.mjs';
 import { mintInstallationToken } from './github-app.mjs';
 import { handleInviteRoutes } from './invites.mjs';
 import { ACCESS_MESSAGES, decideAccess } from './project-access.mjs';
@@ -226,19 +227,24 @@ export default {
     const auth = await handleAuth(request, env);
     if (auth) return auth;
 
+    // One session read for every signed-in surface below.
+    const account = await currentAccount(request, env);
+
     // Per-project control surfaces (Cloud Phase 22 / DDR-204). Before the
     // control-plane routes, because `/projects/...` is theirs.
-    const projectSurface = await handleProjectRoutes(request, env, {
-      account: await currentAccount(request, env),
-    });
+    const projectSurface = await handleProjectRoutes(request, env, { account });
     if (projectSurface) return projectSurface;
 
     // Accepting an invitation (Cloud Phase 22). The invite is the account:
     // one link signs somebody up AND lands them in the project.
-    const inviteSurface = await handleInviteRoutes(request, env, {
-      account: await currentAccount(request, env),
-    });
+    const inviteSurface = await handleInviteRoutes(request, env, { account });
     if (inviteSurface) return inviteSurface;
+
+    // Starting a project + billing (Cloud Phase 14 / DDR-203): the wizard,
+    // the Checkout return, the waiting room that settles provision-first,
+    // and the Stripe-hosted billing portal handoff.
+    const checkoutSurface = await handleCheckoutRoutes(request, env, { account });
+    if (checkoutSurface) return checkoutSurface;
 
     // Opening a project (Cloud Phase 22 / DDR-204).
     //

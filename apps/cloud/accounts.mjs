@@ -172,7 +172,7 @@ export async function sessionAccount(db, token, { now = Date.now() } = {}) {
   if (typeof token !== 'string' || !token.startsWith('mcs_')) return null;
   const row = await db
     .prepare(
-      'SELECT a.id, a.email, a.name, a.disclosure_accepted_at FROM sessions s JOIN accounts a ON a.id = s.account_id ' +
+      'SELECT a.id, a.email, a.name, a.stripe_customer_id, a.disclosure_accepted_at FROM sessions s JOIN accounts a ON a.id = s.account_id ' +
         'WHERE s.id = ? AND s.revoked_at IS NULL AND s.expires_at > ?'
     )
     .bind(await sha256Hex(token), now)

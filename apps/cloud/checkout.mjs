@@ -1,0 +1,151 @@
+// Starting a project — Cloud Phase 14, the decisions.
+//
+// Pure module, same posture as provisioning.mjs: everything here is provable
+// without Stripe, and the routes (checkout-routes.mjs) only carry verdicts
+// out. What is decided here:
+//
+//   - what may be a project id (it becomes a HOSTNAME, so the rules are DNS
+//     rules plus our own reserved names — `view-<id>` is the share view's
+//     namespace, so `view-*` can never be a project);
+//   - what a valid "start a project" request is;
+//   - the exact Checkout Session the control plane asks Stripe for.
+//
+// HOW THE PROVISION-FIRST PROMISE MEETS STRIPE (DDR-203). The subscription is
+// created by Checkout with the advertised free trial, so nothing is charged at
+// checkout — the card is collected and validated, which is the "authorization".
+// The workspace is then built INSIDE the trial. Only a workspace that answers
+// lets the subscription live on to convert ("charge"); a failure or a timeout
+// CANCELS it while it has cost nothing ("void"), which is the one ordering a
+// subscription-mode integration cannot get wrong by accident once it is
+// decided here.
+
+/**
+ * Names that can never be a project, because the hostname (or the namespace)
+ * is already spoken for. `view-` as a PREFIX is reserved wholesale — that is
+ * the share view's namespace (Phase 18).
+ */
+export const RESERVED_IDS = new Set([
+  'cloud',
+  'www',
+  'api',
+  'app',
+  'admin',
+  'mail',
+  'view',
+  'share',
+  'status',
+  'docs',
+  'help',
+  'billing',
+  'account',
+  'accounts',
+  'login',
+  'signup',
+  'maude',
+]);
+
+/**
+ * Turn what a human calls their project into the id that becomes its address.
+ * Diacritics fold rather than drop: "Zkušební tým" → "zkusebni-tym".
+ */
+export function deriveProjectId(name) {
+  return String(name ?? '')
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-')
+    .slice(0, 40)
+    .replace(/-+$/, '');
+}
+
+/**
+ * Is this a project id we can build an address on?
+ * Same grammar the rest of the platform enforces, plus the reservations.
+ */
+export function validProjectId(id) {
+  if (typeof id !== 'string') return false;
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) return false;
+  if (id.length < 3 || id.length > 40) return false;
+  if (RESERVED_IDS.has(id)) return false;
+  if (id.startsWith('view-')) return false;
+  return true;
+}
+
+/**
+ * Validate a "start a project" submission against the price catalog.
+ *
+ * Returns `{ ok: true, id, plan, interval }` or `{ ok: false, error }` with a
+ * sentence fit for the form, never for a log.
+ */
+export function validateNewProject({ name, plan, interval, pricing }) {
+  const trimmed = String(name ?? '').trim();
+  if (trimmed.length < 3) {
+    return { ok: false, error: 'Give the project a name — at least 3 characters.' };
+  }
+  const id = deriveProjectId(trimmed);
+  if (!validProjectId(id)) {
+    return {
+      ok: false,
+      error: 'That name cannot become a web address here. Try one with a few more letters.',
+    };
+  }
+  const known = pricing.plans.find((p) => p.id === plan);
+  if (!known) return { ok: false, error: 'Pick one of the plans.' };
+  if (interval !== 'monthly' && interval !== 'annual') {
+    return { ok: false, error: 'Pick monthly or annual billing.' };
+  }
+  if (interval === 'annual' && !known.amounts.annualMinor) {
+    return { ok: false, error: 'That plan is billed monthly only.' };
+  }
+  return { ok: true, id, name: trimmed, plan, interval };
+}
+
+/**
+ * The Checkout Session, as the flat form params Stripe's API takes.
+ *
+ * `subscription_data[trial_period_days]` is the advertised trial from
+ * pricing.json — nothing is charged at checkout, which is what makes the
+ * provision-first ordering possible in subscription mode at all.
+ */
+export function checkoutSessionParams({
+  projectId,
+  projectName,
+  plan,
+  priceId,
+  trialDays,
+  customerId,
+  origin,
+}) {
+  return {
+    mode: 'subscription',
+    customer: customerId,
+    'line_items[0][price]': priceId,
+    'line_items[0][quantity]': '1',
+    'subscription_data[trial_period_days]': String(trialDays),
+    'subscription_data[metadata][project_id]': projectId,
+    'metadata[project_id]': projectId,
+    // The project row is written on RETURN, not before checkout — an
+    // abandoned checkout must not squat the address. The session therefore
+    // carries everything the return needs to write it.
+    'metadata[project_name]': projectName,
+    'metadata[plan]': plan,
+    // The card is collected and validated even though the trial is free —
+    // that validation IS the authorization the ordering relies on.
+    payment_method_collection: 'always',
+    success_url: `${origin}/checkout/return?project=${projectId}&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${origin}/projects/new`,
+  };
+}
+
+/**
+ * Map a stored attempt row onto the shape `decideCheckout` reasons about.
+ */
+export function attemptFromRow(row) {
+  return {
+    payment: row.payment,
+    authorizedAt: row.authorized_at ?? 0,
+    provision: row.provision ?? 'pending',
+  };
+}
