@@ -46,6 +46,14 @@ struct UpdateReady {
 /// Spawn the background check loop: initial check after a short delay, then every
 /// `CHECK_INTERVAL_SECS`. Call once from `setup`.
 pub fn spawn_update_loop(handle: AppHandle) {
+    // Never auto-update a dev build: `tauri dev` is how in-flight worktree
+    // changes get dogfooded, and the silent loop was replacing the dev app
+    // with the released version MID-TEST (2026-07-30). The explicit
+    // "Check for Updates…" menu path stays available in debug.
+    if cfg!(debug_assertions) {
+        eprintln!("[maude] debug build — background auto-update disabled");
+        return;
+    }
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(INITIAL_DELAY_SECS)).await;
         let mut ticker = tokio::time::interval(Duration::from_secs(CHECK_INTERVAL_SECS));
@@ -59,6 +67,9 @@ pub fn spawn_update_loop(handle: AppHandle) {
 /// One-shot check (used on window focus). Safe to call concurrently with the loop —
 /// the updater plugin no-ops a second in-flight check.
 pub fn check_now(handle: AppHandle) {
+    if cfg!(debug_assertions) {
+        return; // silent focus-check — same dev-build guard as the loop
+    }
     tauri::async_runtime::spawn(async move {
         check_and_apply(&handle, false).await;
     });

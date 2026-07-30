@@ -1982,6 +1982,53 @@ export function createHttp(
       );
     },
 
+    '/_api/clip-edit': async (req: Request) => {
+      // feature-enhanced-video-editing (Phase 2) — parametric clip verbs, one
+      // dispatch route: POST { canvas, artboardId?, stableId, contentHash?,
+      // verb: speed|trim-in|audio|detach-audio|framing|grade|transition, …verb
+      // params }. Same MAIN-ORIGIN-ONLY trust boundary as the other source
+      // writes (absent from CANVAS_SAFE_API + startCanvasServer routes,
+      // DDR-054) — this is also the agent door for /design:edit's timeline
+      // vocabulary.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        artboardId?: unknown;
+        stableId?: unknown;
+        contentHash?: unknown;
+        verb?: unknown;
+        rate?: unknown;
+        deltaFrames?: unknown;
+        muted?: unknown;
+        volume?: unknown;
+        framing?: unknown;
+        grade?: unknown;
+        presentation?: unknown;
+        durationInFrames?: unknown;
+        atFrame?: unknown;
+        src?: unknown;
+        mediaKind?: unknown;
+        text?: unknown;
+        toIndex?: unknown;
+      }>(req, 16 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.clipEditOp(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, seq: result.seq, ...result.extra },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/remove-sequence': async (req: Request) => {
       // DDR-150 P3 — remove a clip. POST { canvas, stableId, artboardId?,
       // contentHash? } → removeClip (fingerprint + semantic gate; refuses the
@@ -2030,7 +2077,10 @@ export function createHttp(
         durationInFrames?: unknown;
         mediaTag?: unknown;
         src?: unknown;
-      }>(req, 8 * 1024);
+        lane?: unknown;
+        index?: unknown;
+        placeholder?: unknown;
+      }>(req, 16 * 1024);
       if (!body) return new Response('body required', { status: 400 });
       const result = await api.insertSequenceOp(body);
       if (!result.ok) {
@@ -2065,6 +2115,7 @@ export function createHttp(
         refStableId?: unknown;
         refContentHash?: unknown;
         position?: unknown;
+        mode?: unknown;
       }>(req, 8 * 1024);
       if (!body) return new Response('body required', { status: 400 });
       const result = await api.reorderSequenceOp(body);
@@ -3544,6 +3595,36 @@ export function createHttp(
         { started: id },
         { status: 202, headers: { 'Cache-Control': 'no-store' } }
       );
+    },
+
+    '/_api/timeline-media': async (req: Request) => {
+      // Task 7 (enhanced-video-editing) — filmstrip/waveform cache. Runtime
+      // state under `_canvas-state/timeline-media/` (DDR-115). MAIN-ORIGIN only
+      // (shell UI cache — not in CANVAS_SAFE_API / startCanvasServer routes).
+      // DNS-rebinding guard on BOTH methods (security review 2026-07-30): under
+      // rebinding sameOriginWrite passes (page origin == req origin == attacker
+      // host), so a remote page could otherwise READ the cache (filmstrip JPEG
+      // dataURLs of local footage → disclosure) or WRITE arbitrary JSON later
+      // rendered as <img src> in the trusted shell. The loopback-host check is
+      // the same backstop every sibling privileged route carries.
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const url = new URL(req.url);
+      const key = url.searchParams.get('key') ?? '';
+      if (req.method === 'GET') {
+        const data = await api.timelineMediaLoad(key);
+        if (!data) return Response.json({ ok: false }, { status: 404 });
+        return Response.json({ ok: true, data }, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      if (req.method === 'PUT' || req.method === 'POST') {
+        if (!sameOriginWrite(req))
+          return new Response('cross-origin write rejected', { status: 403 });
+        const body = await readJson<Record<string, unknown>>(req, 8 * 1024 * 1024);
+        if (!body) return new Response('body required', { status: 400 });
+        const ok = await api.timelineMediaSave(key, body);
+        return Response.json({ ok }, { status: ok ? 200 : 400 });
+      }
+      return new Response('Method not allowed', { status: 405 });
     },
 
     '/_canvas-state': async (req: Request) => {

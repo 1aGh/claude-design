@@ -95,6 +95,14 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/insert-sequence',
         // DDR-150 P5 — z-order reorder is a source-write, MAIN-ORIGIN ONLY.
         '/_api/reorder-sequence',
+        // enhanced-video-editing Phase 2 — the parametric clip-verb door (speed ·
+        // trim · split · transition · layer-order · set-text · to-overlay · …) is
+        // a source-write, MAIN-ORIGIN ONLY; the layer-order verb rides this route
+        // and does NOT widen the canvas surface (security review 2026-07-30).
+        '/_api/clip-edit',
+        // enhanced-video-editing Task 7 — the filmstrip/waveform cache holds
+        // dataURL frames of local footage; MAIN-ORIGIN ONLY + DNS-rebinding guard.
+        '/_api/timeline-media',
         // DDR-150 dogfood — array-src replace is a source-write, MAIN-ORIGIN ONLY.
         '/_api/edit-array-src',
         // DDR-150 dogfood — clip hide/show is a source-write, MAIN-ORIGIN ONLY.

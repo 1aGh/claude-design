@@ -33,7 +33,6 @@ import {
   type MovePosition,
   moveElement,
   removeAttribute,
-  removeClip,
   reorderClip,
   resizeArtboard,
   resolveEditScope,
@@ -47,6 +46,29 @@ import {
   setArtboardStyle,
   toggleClipHidden,
 } from './canvas-edit.ts';
+import {
+  applyClipAudio,
+  applyClipFraming,
+  applyClipGrade,
+  applyDetachAudio,
+  applyEditTransition,
+  applyInsertTransition,
+  applyOnDisk,
+  applyRemoveTransition,
+  applyFitTotalToContent,
+  applyMoveClipToOverlay,
+  applyMoveClipToStoryline,
+  applyReorderOverlayLayer,
+  applyResolvePlaceholder,
+  applySetClipText,
+  applySetPlaybackRate,
+  applySplitClip,
+  applyTrimIn,
+  type GradeParams,
+  insertClipAt,
+  removeClipRippled,
+  seriesMove,
+} from './clip-ops.ts';
 import type { Context } from './context.ts';
 import {
   type AudioMatch,
@@ -192,6 +214,12 @@ export interface Comment {
   author: string;
   thread: Reply[];
   mentions: string[];
+  /** enhanced-video-editing (Task 23) — a TIMELINE anchor: preferred
+   *  `{ clipStableId, frameOffset }` (survives reorder/ripple), fallback
+   *  `{ frame }` (track-level). Absent on ordinary element comments. Comment
+   *  text is untrusted user/peer text (DDR-054) — rendered as text, never
+   *  into TSX. */
+  timeline?: { clipStableId?: string; frameOffset?: number; frame?: number; lane?: string };
 }
 
 export interface GitCommitter {
@@ -258,6 +286,8 @@ export interface Api {
   // Canvas state
   loadCanvasState(file: string): Promise<Record<string, unknown> | null>;
   saveCanvasState(file: string, state: Record<string, unknown>): Promise<void>;
+  timelineMediaLoad(key: string): Promise<Record<string, unknown> | null>;
+  timelineMediaSave(key: string, data: Record<string, unknown>): Promise<boolean>;
   // Canvas meta sidecar (Phase 4 T5 — .design/ui/<slug>.meta.json)
   loadCanvasMeta(file: string): Promise<Record<string, unknown> | null>;
   /** DDR-148 — raw .tsx source for the Timeline sequence/keyframe parser. */
@@ -370,6 +400,31 @@ export interface Api {
     durationInFrames?: unknown;
     from?: unknown;
   }): Promise<{ ok: true; seq?: number } | { ok: false; status: number; error: string }>;
+  // feature-enhanced-video-editing (Phase 2) — parametric clip verbs (speed ·
+  // trim-in · audio · detach-audio · framing · grade · transition).
+  clipEditOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    stableId?: unknown;
+    contentHash?: unknown;
+    verb?: unknown;
+    rate?: unknown;
+    deltaFrames?: unknown;
+    muted?: unknown;
+    volume?: unknown;
+    framing?: unknown;
+    grade?: unknown;
+    presentation?: unknown;
+    durationInFrames?: unknown;
+    atFrame?: unknown;
+    src?: unknown;
+    mediaKind?: unknown;
+    text?: unknown;
+    toIndex?: unknown;
+  }): Promise<
+    | { ok: true; seq?: number; extra?: Record<string, unknown> }
+    | { ok: false; status: number; error: string }
+  >;
   // DDR-150 P3 — remove a clip addressed by stableId (fingerprint + semantic
   // gate; refuses the only clip; drops an adjacent transition in a series).
   removeSequenceOp(input: {
@@ -948,13 +1003,36 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  // Security (adversarial review 2026-07-30): the timeline anchor is read by
+  // the /design:edit agent (edit.md §0.6b treats `lane` as navigation), and a
+  // comment can arrive from an UNTRUSTED hub peer (DDR-054) via the sync-persist
+  // path — which does NOT go through commentsAdd's validation. So re-clamp the
+  // anchor HERE, at the read boundary every consumer (incl. /_comments served to
+  // the agent) passes through: bound `lane`/`clipStableId` length, coerce frame
+  // ints, and drop unknown fields — a poisoned over-long `lane` can't smuggle an
+  // instruction past the 40-char label the feature is documented to carry.
+  function sanitizeTimelineAnchor(raw: unknown): Comment['timeline'] | undefined {
+    if (!raw || typeof raw !== 'object') return undefined;
+    const t = raw as Record<string, unknown>;
+    const anchor: NonNullable<Comment['timeline']> = {};
+    if (typeof t.clipStableId === 'string' && t.clipStableId.length <= 200)
+      anchor.clipStableId = t.clipStableId;
+    if (Number.isFinite(Number(t.frameOffset)))
+      anchor.frameOffset = Math.max(0, Math.round(Number(t.frameOffset)));
+    if (Number.isFinite(Number(t.frame))) anchor.frame = Math.max(0, Math.round(Number(t.frame)));
+    if (typeof t.lane === 'string' && t.lane.length <= 40) anchor.lane = t.lane;
+    return anchor.clipStableId != null || anchor.frame != null ? anchor : undefined;
+  }
+
   function backfillComment(raw: unknown): Comment {
     const c = (raw ?? {}) as Partial<Comment>;
+    const timeline = sanitizeTimelineAnchor((c as { timeline?: unknown }).timeline);
     return {
       ...(c as Comment),
       author: typeof c.author === 'string' ? c.author : '',
       thread: Array.isArray(c.thread) ? c.thread : [],
       mentions: Array.isArray(c.mentions) ? c.mentions : [],
+      ...(timeline ? { timeline } : { timeline: undefined }),
     };
   }
 
@@ -1113,6 +1191,27 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       thread: [],
       mentions: parseMentions(text),
     };
+    // Task 23 — timeline anchor pass-through (validated shape only).
+    const tl = payload.timeline;
+    if (tl && typeof tl === 'object') {
+      const anchor: NonNullable<Comment['timeline']> = {};
+      if (typeof tl.clipStableId === 'string' && tl.clipStableId.length <= 200) {
+        anchor.clipStableId = tl.clipStableId;
+      }
+      if (Number.isFinite(Number(tl.frameOffset))) {
+        anchor.frameOffset = Math.max(0, Math.round(Number(tl.frameOffset)));
+      }
+      if (Number.isFinite(Number(tl.frame))) {
+        anchor.frame = Math.max(0, Math.round(Number(tl.frame)));
+      }
+      // Dogfood (2026-07-30) — the C-tool records WHICH lane the click landed
+      // on (storyline · V<n> overlay · A<n> audio) so an agent reading the
+      // comment knows exactly where to look.
+      if (typeof (tl as { lane?: unknown }).lane === 'string' && (tl as { lane: string }).lane.length <= 40) {
+        anchor.lane = (tl as { lane: string }).lane;
+      }
+      if (anchor.clipStableId != null || anchor.frame != null) c.timeline = anchor;
+    }
     list.push(c);
     await saveCommentsForFile(payload.file, list);
     onCommentsChanged(payload.file);
@@ -1198,6 +1297,60 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       return obj && typeof obj === 'object' ? obj : null;
     } catch {
       return null;
+    }
+  }
+
+  // ---------- Timeline media visuals cache (enhanced-video-editing Task 7) ----
+  //
+  // Filmstrip dataURL strips + waveform peak arrays, keyed `<sha8>:<bucket>`,
+  // persisted under `_canvas-state/timeline-media/` — per-machine runtime state
+  // (DDR-115; `_canvas-state/` is already on all three ignore lists, so a
+  // subdirectory needs no list change).
+
+  const TL_MEDIA_KEY_RE = /^[A-Za-z0-9._:-]{1,160}$/;
+
+  function timelineMediaPath(key: string): string | null {
+    if (!TL_MEDIA_KEY_RE.test(key) || key.includes('..')) return null;
+    return path.join(paths.canvasStateDir, 'timeline-media', `${key.replaceAll(':', '__')}.json`);
+  }
+
+  async function timelineMediaLoad(key: string): Promise<Record<string, unknown> | null> {
+    const p = timelineMediaPath(key);
+    if (!p) return null;
+    try {
+      const obj = JSON.parse(await Bun.file(p).text());
+      return obj && typeof obj === 'object' ? obj : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function timelineMediaSave(key: string, data: Record<string, unknown>): Promise<boolean> {
+    const p = timelineMediaPath(key);
+    if (!p) return false;
+    // Shape gate (security review 2026-07-30): `strip[]` is later rendered as
+    // `<img src={u}>` in the trusted shell (TimelinePanel), so persist only the
+    // two known shapes — a filmstrip of `data:image/*` URLs and a numeric peak
+    // array. Anything else (a poisoned `http(s)://` beacon URL, a non-array) is
+    // dropped rather than cached. Defense-in-depth over the loopback guard.
+    const clean: Record<string, unknown> = {};
+    if (Array.isArray(data.strip)) {
+      const strip = data.strip.filter(
+        (u): u is string => typeof u === 'string' && /^data:image\//.test(u)
+      );
+      if (strip.length !== data.strip.length) return false; // reject if any entry was rejected
+      clean.strip = strip;
+    }
+    if (Array.isArray(data.peaks)) {
+      if (!data.peaks.every((n) => typeof n === 'number' && Number.isFinite(n))) return false;
+      clean.peaks = data.peaks;
+    }
+    if (Object.keys(clean).length === 0) return false;
+    try {
+      await Bun.write(p, JSON.stringify(clean));
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -2197,8 +2350,11 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     // Parse + validate the assemble clip list up front (video-comp only).
     const assembleClips: AssembleClip[] = [];
     if (kind === 'video-comp') {
-      if (!Array.isArray(input.clips) || input.clips.length === 0) {
-        return { ok: false, status: 400, error: 'video-comp needs a non-empty clips[]' };
+      // Task 20 (enhanced-video-editing) — an EMPTY clips[] is the greenfield
+      // "New video" flow: scaffold an editable empty comp, build the cut
+      // drop-first on the Timeline.
+      if (!Array.isArray(input.clips)) {
+        return { ok: false, status: 400, error: 'video-comp needs a clips[] (may be empty)' };
       }
       if (input.clips.length > 60) {
         return { ok: false, status: 400, error: 'too many clips (max 60)' };
@@ -2272,6 +2428,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
           fps: Number.isFinite(Number(input.fps)) ? Number(input.fps) : undefined,
           width: Number.isFinite(Number(input.width)) ? Number(input.width) : undefined,
           height: Number.isFinite(Number(input.height)) ? Number(input.height) : undefined,
+          allowEmpty: assembleClips.length === 0,
         });
       } catch (err) {
         return {
@@ -2806,6 +2963,13 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       const before = await Bun.file(r.abs).text();
       if (stableId) await retimeSequenceByClip(r.abs, artboardId, stableId, contentHash, patch);
       else await retimeSequence(r.abs, index, patch);
+      // A trim/move that pushes a clip past the comp end stretches the comp
+      // (the timeline always reaches the last clip — dogfood rule).
+      try {
+        await applyOnDisk(r.abs, (src) => applyFitTotalToContent(r.abs, src, artboardId));
+      } catch {
+        /* fit is best-effort — the retime itself already landed */
+      }
       const after = await Bun.file(r.abs).text();
       if (after === before) {
         ctx.bus.emit('activity:unsuppress', rel);
@@ -2843,7 +3007,10 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     ctx.bus.emit('activity:suppress', rel);
     try {
       const before = await Bun.file(r.abs).text();
-      await removeClip(r.abs, artboardId, stableId, contentHash);
+      // feature-enhanced-video-editing — the iMovie Delete ripples: a series
+      // beat's removal shrinks the comp TOTAL (duration − transition overlap);
+      // a standalone overlay/audio clip removes without moving the cut.
+      await removeClipRippled(r.abs, artboardId, stableId, contentHash);
       const after = await Bun.file(r.abs).text();
       if (after === before) {
         ctx.bus.emit('activity:unsuppress', rel);
@@ -2872,6 +3039,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     durationInFrames?: unknown;
     mediaTag?: unknown;
     src?: unknown;
+    lane?: unknown;
+    index?: unknown;
+    placeholder?: unknown;
   }): Promise<
     | { ok: true; stableId: string | null; seq?: number }
     | { ok: false; status: number; error: string }
@@ -2887,11 +3057,36 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       : 90;
     const mediaTag = typeof input.mediaTag === 'string' ? input.mediaTag : null;
     const src = typeof input.src === 'string' ? input.src : null;
+    // Task 6 — positional insert: lane + (storyline) index route through the
+    // caret-aware engine; the legacy append path stays for lane-less callers.
+    const lane =
+      input.lane === 'storyline' || input.lane === 'overlay' || input.lane === 'audio'
+        ? input.lane
+        : null;
+    const laneIndex = Number.isInteger(Number(input.index))
+      ? Math.max(0, Math.round(Number(input.index)))
+      : undefined;
+    // Task 22 — a prompt-carrying AI slate instead of media.
+    const ph = input.placeholder as { prompt?: unknown; kind?: unknown } | null | undefined;
+    const placeholder =
+      ph && typeof ph === 'object' && typeof ph.prompt === 'string'
+        ? { prompt: ph.prompt, kind: typeof ph.kind === 'string' ? ph.kind : 'veo' }
+        : null;
     const rel = path.relative(paths.designRoot, r.abs);
     ctx.bus.emit('activity:suppress', rel);
     try {
       const before = await Bun.file(r.abs).text();
-      const res = await insertClip(r.abs, artboardId, { from, durationInFrames, mediaTag, src });
+      const res = lane
+        ? await insertClipAt(r.abs, artboardId, {
+            lane,
+            index: laneIndex,
+            from,
+            durationInFrames,
+            mediaTag,
+            src,
+            placeholder,
+          })
+        : await insertClip(r.abs, artboardId, { from, durationInFrames, mediaTag, src });
       const after = await Bun.file(r.abs).text();
       let seq: number | undefined;
       if (after === before) {
@@ -2911,6 +3106,167 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
         ok: false,
         status: err instanceof CanvasEditError ? 422 : 500,
         error: err instanceof Error ? err.message : 'insert failed',
+      };
+    }
+  }
+
+  /**
+   * feature-enhanced-video-editing (Phase 2) — the parametric clip verbs, one
+   * dispatch op: speed · trim-in · audio · detach-audio · framing · grade ·
+   * transition. Every verb is a pure clip-ops fn run under the file lock, with
+   * the same stableId + contentHash optimistic-concurrency discipline, pre-op
+   * snapshot, and whole-file undo seq as the structural clip ops.
+   */
+  async function clipEditOp(input: {
+    canvas?: unknown;
+    artboardId?: unknown;
+    stableId?: unknown;
+    contentHash?: unknown;
+    verb?: unknown;
+    rate?: unknown;
+    deltaFrames?: unknown;
+    muted?: unknown;
+    volume?: unknown;
+    framing?: unknown;
+    grade?: unknown;
+    presentation?: unknown;
+    durationInFrames?: unknown;
+    atFrame?: unknown;
+    src?: unknown;
+    mediaKind?: unknown;
+    text?: unknown;
+    toIndex?: unknown;
+  }): Promise<
+    | { ok: true; seq?: number; extra?: Record<string, unknown> }
+    | { ok: false; status: number; error: string }
+  > {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const stableId = typeof input.stableId === 'string' ? input.stableId : null;
+    if (!stableId) return { ok: false, status: 400, error: 'stableId required' };
+    const artboardId = typeof input.artboardId === 'string' ? input.artboardId : undefined;
+    const hash = typeof input.contentHash === 'string' ? input.contentHash : undefined;
+    const verb = typeof input.verb === 'string' ? input.verb : '';
+    const abs = r.abs;
+    let run: ((source: string) => { source: string } & Record<string, unknown>) | null = null;
+    switch (verb) {
+      case 'speed': {
+        const rate = Number(input.rate);
+        run = (src) => applySetPlaybackRate(abs, src, artboardId, stableId, hash, rate);
+        break;
+      }
+      case 'trim-in': {
+        const delta = Number(input.deltaFrames);
+        if (!Number.isFinite(delta))
+          return { ok: false, status: 400, error: 'deltaFrames required' };
+        run = (src) => applyTrimIn(abs, src, artboardId, stableId, hash, delta);
+        break;
+      }
+      case 'audio': {
+        const opts: { muted?: boolean; volume?: number | null } = {};
+        if (typeof input.muted === 'boolean') opts.muted = input.muted;
+        if (input.volume !== undefined)
+          opts.volume = input.volume == null ? null : Number(input.volume);
+        run = (src) => applyClipAudio(abs, src, artboardId, stableId, hash, opts);
+        break;
+      }
+      case 'detach-audio': {
+        run = (src) => applyDetachAudio(abs, src, artboardId, stableId, hash);
+        break;
+      }
+      case 'framing': {
+        const f = input.framing as { scale?: unknown; x?: unknown; y?: unknown } | null;
+        const framing =
+          f == null
+            ? null
+            : { scale: Number(f.scale) || 1, x: Number(f.x) || 0, y: Number(f.y) || 0 };
+        run = (src) => applyClipFraming(abs, src, artboardId, stableId, hash, framing);
+        break;
+      }
+      case 'grade': {
+        const grade = input.grade == null ? null : (input.grade as GradeParams);
+        run = (src) => applyClipGrade(abs, src, artboardId, stableId, hash, grade);
+        break;
+      }
+      case 'transition': {
+        const opts: { presentation?: string; durationInFrames?: number } = {};
+        if (typeof input.presentation === 'string') opts.presentation = input.presentation;
+        if (input.durationInFrames != null) opts.durationInFrames = Number(input.durationInFrames);
+        run = (src) => applyEditTransition(abs, src, artboardId, stableId, hash, opts);
+        break;
+      }
+      case 'split': {
+        const atFrame = Number(input.atFrame);
+        if (!Number.isFinite(atFrame)) return { ok: false, status: 400, error: 'atFrame required' };
+        run = (src) => applySplitClip(abs, src, artboardId, stableId, hash, atFrame);
+        break;
+      }
+      case 'insert-transition': {
+        const presentation = typeof input.presentation === 'string' ? input.presentation : 'fade';
+        const frames = Number(input.durationInFrames) || 15;
+        run = (src) =>
+          applyInsertTransition(abs, src, artboardId, stableId, hash, presentation, frames);
+        break;
+      }
+      case 'remove-transition': {
+        run = (src) => applyRemoveTransition(abs, src, artboardId, stableId, hash);
+        break;
+      }
+      case 'set-text': {
+        const t = typeof input.text === 'string' ? input.text : '';
+        run = (src) => applySetClipText(abs, src, artboardId, stableId, hash, t);
+        break;
+      }
+      case 'to-overlay': {
+        run = (src) => applyMoveClipToOverlay(abs, src, artboardId, stableId, hash);
+        break;
+      }
+      case 'to-storyline': {
+        run = (src) => applyMoveClipToStoryline(abs, src, artboardId, stableId, hash);
+        break;
+      }
+      case 'layer-order': {
+        const toIndex = Number(input.toIndex);
+        if (!Number.isFinite(toIndex))
+          return { ok: false, status: 400, error: 'toIndex required' };
+        run = (src) => applyReorderOverlayLayer(abs, src, artboardId, stableId, hash, toIndex);
+        break;
+      }
+      case 'resolve-placeholder': {
+        const src2 = typeof input.src === 'string' ? input.src : '';
+        const mediaKind = input.mediaKind === 'image' ? 'image' : 'video';
+        run = (src) =>
+          applyResolvePlaceholder(abs, src, artboardId, stableId, hash, src2, mediaKind);
+        break;
+      }
+      default:
+        return { ok: false, status: 400, error: `unknown clip verb "${verb}"` };
+    }
+    const rel = path.relative(paths.designRoot, abs);
+    ctx.bus.emit('activity:suppress', rel);
+    try {
+      const before = await Bun.file(abs).text();
+      const result = await applyOnDisk(abs, run);
+      const after = await Bun.file(abs).text();
+      let seq: number | undefined;
+      if (after === before) {
+        ctx.bus.emit('activity:unsuppress', rel);
+      } else {
+        try {
+          await history.writeSnapshot(rel, before, `pre-clip-${verb}`);
+        } catch {
+          /* snapshot best-effort */
+        }
+        seq = logUndo(abs, before, after);
+      }
+      const { source: _src, ...extra } = result;
+      return { ok: true, seq, extra };
+    } catch (err) {
+      ctx.bus.emit('activity:unsuppress', rel);
+      return {
+        ok: false,
+        status: err instanceof CanvasEditError ? 422 : 500,
+        error: err instanceof Error ? err.message : `clip ${verb} failed`,
       };
     }
   }
@@ -3985,6 +4341,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     refStableId?: unknown;
     refContentHash?: unknown;
     position?: unknown;
+    /** 'move' = the magnetic drag commit: a real series MOVE (any distance)
+     *  instead of the legacy adjacent swap. */
+    mode?: unknown;
   }): Promise<
     | { ok: true; stableId: string | null; seq?: number }
     | { ok: false; status: number; error: string }
@@ -4005,15 +4364,26 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     ctx.bus.emit('activity:suppress', rel);
     try {
       const before = await Bun.file(r.abs).text();
-      const res = await reorderClip(
-        r.abs,
-        artboardId,
-        stableId,
-        contentHash,
-        refStableId,
-        refContentHash,
-        position
-      );
+      const res =
+        input.mode === 'move'
+          ? await seriesMove(
+              r.abs,
+              artboardId,
+              stableId,
+              contentHash,
+              refStableId,
+              refContentHash,
+              position
+            )
+          : await reorderClip(
+              r.abs,
+              artboardId,
+              stableId,
+              contentHash,
+              refStableId,
+              refContentHash,
+              position
+            );
       const after = await Bun.file(r.abs).text();
       let seq: number | undefined;
       if (after === before) {
@@ -4492,6 +4862,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     parseMentions,
     loadCanvasState,
     saveCanvasState,
+    timelineMediaLoad,
+    timelineMediaSave,
     loadCanvasMeta,
     loadCanvasSource,
     patchCanvasMeta,
@@ -4512,6 +4884,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     editCss,
     editText,
     editAttr,
+    clipEditOp,
     removeSequenceOp,
     insertSequenceOp,
     reorderSequenceOp,

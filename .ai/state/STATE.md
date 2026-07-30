@@ -3,10 +3,17 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** ready — Maude Cloud arc closed to the vendor boundary
-**Active plan:** — (all 10 phases archived; deployment blocked, see below)
+**Status:** ready
+**Active plan:** —
 
-_Last closed:_ `cloud-phase-10-ga-launch-github-mirror` (2026-07-29, partial). All ten
+_Last closed:_ `feature-enhanced-video-editing` (2026-07-30). TSX-first manual
+timeline editor (split/trim/speed/crop/grade/audio/transitions as named clip
+verbs over `/_api/clip-edit`; three-band iMovie layout + stacked pure-JSX
+projection; movable layers; AI placeholder clips; frame-anchored comment tool).
+4 dogfood rounds; security review resolved 3 blockers. Phase 6 deferred. Plan
+archived at `.ai/plans/archive/`.
+
+_Earlier:_ `cloud-phase-10-ga-launch-github-mirror` (2026-07-29, partial). All ten
 phases are archived: 1-4 complete, 5-10 CORE COMPLETE / PARTIAL — the buildable half is
 done and tested, deployment is blocked. **DDR-196** records why, and the pattern (split
 every vendor-facing component into a pure decision layer and a thin effects layer).

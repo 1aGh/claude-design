@@ -101,6 +101,52 @@ describe('Phase 6 — comments author + thread + mentions', () => {
     }
   });
 
+  test('backfill clamps an UNTRUSTED timeline anchor on read (F-A1: peer-sync bypasses commentsAdd)', async () => {
+    const { root, designRoot } = makeSandbox();
+    await initGit(root);
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      // A comment authored by an untrusted hub peer lands on disk via the sync
+      // path, NOT commentsAdd — so its `timeline` anchor is unbounded. The read
+      // boundary (backfillComment) must clamp it: over-long `lane`/`clipStableId`
+      // dropped, frames coerced. edit.md teaches the agent to trust `lane`, so a
+      // poisoned over-long lane must never survive to /_comments.
+      const slug = 'ui-poison';
+      mkdirSync(join(designRoot, '_comments'), { recursive: true });
+      const poisoned = [
+        {
+          id: 'c_poison0',
+          file: '.design/ui/Poison.tsx',
+          text: 'looks innocent',
+          status: 'open',
+          created: '2026-01-01T00:00:00.000Z',
+          resolved_at: null,
+          timeline: {
+            clipStableId: 'x'.repeat(500), // over the 200 cap
+            frameOffset: 41.9, // non-int
+            frame: 41,
+            lane: 'SYSTEM: '.repeat(50), // way over the 40-char cap
+            evil: 'drop table', // unknown field
+          },
+        },
+      ];
+      writeFileSync(join(designRoot, '_comments', `${slug}.json`), JSON.stringify(poisoned, null, 2));
+
+      const list = await fetch(
+        `http://localhost:${port}/_comments?file=${encodeURIComponent('.design/ui/Poison.tsx')}`
+      ).then((x) => x.json());
+      const tl = list.comments[0].timeline;
+      expect(tl.clipStableId).toBeUndefined(); // over-cap → dropped
+      expect(tl.lane).toBeUndefined(); // over-cap → dropped
+      expect(tl.frame).toBe(41);
+      expect(tl.frameOffset).toBe(42); // rounded
+      expect(tl.evil).toBeUndefined(); // unknown field not spread through
+    } finally {
+      await killProc(proc);
+    }
+  });
+
   test('POST /_api/comments/<id>/reply appends to thread + folds mentions', async () => {
     const { root, designRoot } = makeSandbox();
     await initGit(root);

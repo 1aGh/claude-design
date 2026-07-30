@@ -228,7 +228,7 @@ export async function acquireFileLock(filePath: string): Promise<() => Promise<v
 }
 
 const locks = new Map<string, Promise<void>>();
-function withLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
+export function withLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
   const prev = locks.get(filePath) ?? Promise.resolve();
   let release!: () => void;
   const gate = new Promise<void>((res) => {
@@ -920,7 +920,7 @@ function getStringAttr(opening: AnyNode, name: string): string | null {
 
 /** Info about the line a byte offset sits on: the whitespace indentation, where
  *  it begins, and whether a newline immediately precedes it. */
-function lineStartInfo(
+export function lineStartInfo(
   source: string,
   pos: number
 ): { indent: string; indentStart: number; newlineBefore: boolean } {
@@ -2114,12 +2114,29 @@ export interface ClipInfo {
   mediaShared: boolean;
   /** Positional cd-id of the clip's OWN `<Sequence>` node (for `moveElement` z-order reorder). */
   clipCdId: string | null;
+  /** feature-enhanced-video-editing — the media element's parametric props, so
+   *  the clip inspector shows authoritative current values (two-tokenizer rule:
+   *  the enumerator is the display source of truth). Null when the clip has no
+   *  direct media element. */
+  mediaProps: {
+    playbackRate: number | null;
+    volume: number | null;
+    muted: boolean;
+    trimBefore: number | null;
+    /** The style `filter` string (grade), when a literal. */
+    filter: string | null;
+    /** Crop/reposition wrapper marker (`data-mframe="scale,x,y"`). */
+    framing: { scale: number; x: number; y: number } | null;
+  } | null;
   /** The clip's stacked layers (mp4 background + title/lower-third + …) for the
    *  expandable timeline rows. Empty for a pure inline card. */
   layers: ClipLayer[];
   /** True when the clip's body is gated behind `{false && (…)}` (hidden — renders
    *  nothing but keeps its time slot + the TransitionSeries alternation). */
   hidden: boolean;
+  /** enhanced-video-editing (Task 21) — a prompt-carrying `<AIPlaceholder>`
+   *  slate clip, awaiting generation. Null for ordinary clips. */
+  placeholder: { prompt: string | null; kind: string } | null;
   /** Fingerprint of the clip's source span — refuse an op if it no longer matches. */
   contentHash: string;
   start: number;
@@ -2299,6 +2316,40 @@ export function enumerateClips(
     // Resolve media even through a wrapper component (the showreel pattern) so
     // the Timeline can badge the clip video/image/audio AND replace its source.
     const m = resolveNestedMedia(c.node, componentBodies, arrays, cdIdOf);
+    // Parametric media props (enhanced-video-editing) — only for a DIRECT media
+    // element (wrapper media is shared; the verbs refuse it anyway).
+    let mediaProps: ClipInfo['mediaProps'] = null;
+    const direct = firstMediaDescendant(c.node);
+    if (direct) {
+      const mo = direct.openingElement;
+      let filter: string | null = null;
+      const st = findAttribute(mo, 'style');
+      if (
+        st?.value?.type === 'JSXExpressionContainer' &&
+        st.value.expression?.type === 'ObjectExpression'
+      ) {
+        for (const p of st.value.expression.properties ?? []) {
+          const key = p?.key?.name ?? p?.key?.value;
+          if (
+            key === 'filter' &&
+            (p.value?.type === 'Literal' || p.value?.type === 'StringLiteral')
+          ) {
+            filter = String(p.value.value);
+          }
+        }
+      }
+      let framing: { scale: number; x: number; y: number } | null = null;
+      const fm = source.slice(c.start, c.end).match(/data-mframe="([-\d.]+),([-\d.]+),([-\d.]+)"/);
+      if (fm) framing = { scale: Number(fm[1]), x: Number(fm[2]), y: Number(fm[3]) };
+      mediaProps = {
+        playbackRate: numAttr(mo, 'playbackRate', consts),
+        volume: numAttr(mo, 'volume', consts),
+        muted: !!findAttribute(mo, 'muted'),
+        trimBefore: numAttr(mo, 'trimBefore', consts) ?? numAttr(mo, 'startFrom', consts),
+        filter,
+        framing,
+      };
+    }
     return {
       stableId,
       kind: c.kind,
@@ -2311,6 +2362,46 @@ export function enumerateClips(
       mediaArrayRef: m ? m.arrayRef : null,
       mediaShared: m ? m.shared : false,
       clipCdId: cdIdOf.get(c.node) ?? null,
+      mediaProps,
+      placeholder: (() => {
+        // Direct <AIPlaceholder> child → a slate clip (Task 21). The prompt is
+        // authored as `prompt={"…"}` (JSON.stringify — DDR-150 P1), so read
+        // both the expression-container and plain-string spellings.
+        for (const child of (c.node.children ?? []) as AnyNode[]) {
+          if (child?.type !== 'JSXElement' || jsxTagName(child) !== 'AIPlaceholder') continue;
+          const po = child.openingElement;
+          const pAttr = findAttribute(po, 'prompt');
+          let prompt: string | null = null;
+          let pv = pAttr?.value;
+          if (pv?.type === 'JSXExpressionContainer') pv = pv.expression;
+          if (pv && (pv.type === 'Literal' || pv.type === 'StringLiteral')) {
+            prompt = String(pv.value);
+          }
+          if (prompt == null) {
+            // Paired-tag form: the prompt is a `{"…"}` literal inside a child
+            // element (the inline-editable <span>). First string-literal
+            // expression anywhere under the placeholder wins.
+            const scan = (n: AnyNode | null | undefined): string | null => {
+              if (!n || typeof n !== 'object') return null;
+              if (n.type === 'JSXExpressionContainer') {
+                let e = (n as AnyNode).expression;
+                if (e && (e.type === 'Literal' || e.type === 'StringLiteral') && typeof e.value === 'string') {
+                  return String(e.value);
+                }
+                return null;
+              }
+              for (const kid of ((n as AnyNode).children ?? []) as AnyNode[]) {
+                const hit = scan(kid);
+                if (hit != null) return hit;
+              }
+              return null;
+            };
+            prompt = scan(child);
+          }
+          return { prompt, kind: getStringAttr(po, 'kind') ?? 'veo' };
+        }
+        return null;
+      })(),
       layers: collectClipLayers(c.node, componentBodies, arrays, cdIdOf),
       hidden: clipChildrenHidden(c.node, source),
       contentHash: hashSpan(source, c.start, c.end),
@@ -2412,13 +2503,19 @@ export function assertCompSemantics(canvasAbsPath: string, source: string): { ok
       else if (tag && CLIP_TAGS.has(tag)) kinds.push('sequence');
     }
     if (kinds.length === 0) continue;
+    // Adjacent SEQUENCES are valid Remotion (a hard cut — no transition between
+    // beats); real shipped canvases use them, so the gate refuses only what
+    // actually breaks the renderer: a transition at the head/tail, or two
+    // transitions back-to-back (enhanced-video-editing relaxation of the
+    // original strict-alternation check, which refused every op on a
+    // hard-cut comp).
     const bad =
-      kinds[0] !== 'sequence' ||
-      kinds[kinds.length - 1] !== 'sequence' ||
-      kinds.some((k, i) => i > 0 && k === kinds[i - 1]);
+      kinds[0] === 'transition' ||
+      kinds[kinds.length - 1] === 'transition' ||
+      kinds.some((k, i) => i > 0 && k === 'transition' && kinds[i - 1] === 'transition');
     if (bad) {
       throw new CanvasEditError(
-        'TransitionSeries must alternate Sequence/Transition and begin + end with a Sequence (a leading, trailing, or doubled Transition is invalid Remotion)',
+        'TransitionSeries must begin + end with a Sequence and never stack two Transitions (a leading, trailing, or doubled Transition is invalid Remotion)',
         { canvas: canvasAbsPath, id: '' }
       );
     }
@@ -2428,7 +2525,7 @@ export function assertCompSemantics(canvasAbsPath: string, source: string): { ok
 
 /** Source span of an element extended back over its leading indent + newline
  *  (so removing it doesn't leave a blank line) — mirrors moveElement's removeStart. */
-function spanWithFraming(source: string, start: number, end: number): [number, number] {
+export function spanWithFraming(source: string, start: number, end: number): [number, number] {
   const line = lineStartInfo(source, start);
   const rs = line.newlineBefore ? line.indentStart - 1 : line.indentStart;
   return [rs, end];
@@ -4406,14 +4503,14 @@ function assertContainedAssetSrc(src: string, canvasAbsPath: string): void {
 export function assembleCompSource(
   componentName: string,
   clips: AssembleClip[],
-  opts: { fps?: number; width?: number; height?: number } = {}
+  opts: { fps?: number; width?: number; height?: number; allowEmpty?: boolean } = {}
 ): string {
   const fps = Math.max(1, Math.round(opts.fps ?? 30));
   const width = Math.max(1, Math.round(opts.width ?? 1280));
   const height = Math.max(1, Math.round(opts.height ?? 720));
   const videos = clips.filter((c) => c.mediaKind === 'video');
   const audios = clips.filter((c) => c.mediaKind === 'audio');
-  if (videos.length === 0 && audios.length === 0) {
+  if (videos.length === 0 && audios.length === 0 && !opts.allowEmpty) {
     throw new CanvasEditError('assemble needs at least one clip', {
       canvas: componentName,
       id: '',
@@ -4421,31 +4518,51 @@ export function assembleCompSource(
   }
   for (const c of clips) assertContainedAssetSrc(c.src, componentName);
 
+  // enhanced-video-editing (Task 20, Blueprint default-container rule): video
+  // beats land in a <TransitionSeries> STORYLINE (hard cuts — series membership
+  // is what makes clips butt magnetically + accept seam transitions later).
   const defDur = fps * 3;
   let cursor = 0;
   const seqLines: string[] = [];
-  videos.forEach((c, i) => {
-    const dur = Math.max(1, Math.round(c.durationInFrames ?? defDur));
+  if (videos.length) {
+    seqLines.push('      <TransitionSeries>');
+    videos.forEach((c, i) => {
+      const dur = Math.max(1, Math.round(c.durationInFrames ?? defDur));
+      seqLines.push(
+        `        <TransitionSeries.Sequence name="clip-${i + 1}" durationInFrames={${dur}}>`,
+        `          <OffthreadVideo src="${escapeAttr(c.src)}" />`,
+        `        </TransitionSeries.Sequence>`
+      );
+      cursor += dur;
+    });
+    seqLines.push('      </TransitionSeries>');
+  } else if (audios.length === 0) {
+    // Greenfield empty comp — the drop-first hint (the first storyline drop
+    // authors the <TransitionSeries> around it).
     seqLines.push(
-      `      <Sequence name="clip-${i + 1}" from={${cursor}} durationInFrames={${dur}}>`,
-      `        <OffthreadVideo src="${escapeAttr(c.src)}" />`,
-      `      </Sequence>`
+      `      <AbsoluteFill style={{ display: 'grid', placeItems: 'center' }}>`,
+      `        <div style={{ color: 'var(--fg-2, #888)', fontFamily: 'system-ui', fontSize: 24 }}>Drop clips on the timeline to start the cut</div>`,
+      `      </AbsoluteFill>`
     );
-    cursor += dur;
-  });
+  }
   // Audio beds run under the whole reel (no seek — a bed, not a clip).
   audios.forEach((c) => {
     seqLines.push(`      <Audio src="${escapeAttr(c.src)}" />`);
   });
-  const total = Math.max(cursor, defDur);
+  // Empty (greenfield) comps get a 5 s canvas to scrub; a real reel's total is
+  // the cursor (with the historical defDur floor for degenerate inputs).
+  const total = videos.length || audios.length ? Math.max(cursor, defDur) : fps * 5;
 
-  const remotionImports = ['AbsoluteFill', 'Sequence'];
+  const remotionImports = ['AbsoluteFill'];
   if (videos.length) remotionImports.push('OffthreadVideo');
   if (audios.length) remotionImports.push('Audio');
+  const transitionsImport = videos.length
+    ? `import { TransitionSeries } from '@remotion/transitions';\n`
+    : '';
 
   return [
     `import { DesignCanvas, DCSection, DCArtboard, VideoComp } from '@maude/canvas-lib';`,
-    `import { ${remotionImports.join(', ')} } from 'remotion';`,
+    `${transitionsImport}import { ${remotionImports.join(', ')} } from 'remotion';`,
     ``,
     `const Comp = () => (`,
     `  <AbsoluteFill style={{ background: 'var(--bg-0)' }}>`,
@@ -4542,7 +4659,7 @@ function editStringAttr(
   s.appendLeft(insertAt, ` ${name}="${escapeAttr(value)}"`);
 }
 
-function escapeAttr(value: string): string {
+export function escapeAttr(value: string): string {
   return value.replace(/"/g, '&quot;').replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;'));
 }
 

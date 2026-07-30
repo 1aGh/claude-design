@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "manual-timeline-editor",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Edit video on the timeline, like iMovie",
+      "summary": "Split, trim, retime, crop, grade, and lay clips across stacked layers right on the timeline — drag to reorder, drop to make a new layer, add transitions, drop AI placeholder clips, and pin comments to an exact frame with the C tool.",
+      "surface": "design-ui"
+    },
+    {
       "id": "figma-smart-select",
       "version": "0.47.0",
       "date": "2026-07-21",

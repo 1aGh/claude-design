@@ -133,6 +133,10 @@ export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
   }
 
   const items = [];
+  // Spans of clip bodies — used below to spot LOOSE media (a bare
+  // <OffthreadVideo>/<Img> sibling outside every Sequence), which previously
+  // never showed on the timeline at all (dogfood 2026-07-30).
+  const clipSpans = [];
   const tagRe =
     /<(TransitionSeries\.Sequence|TransitionSeries\.Transition|Series\.Sequence|Sequence)\b([^>]*)>/g;
   let m;
@@ -152,6 +156,7 @@ export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
       // a phantom audio). FALLBACK badge only; the enumerator (comp-clips)
       // overlays authoritative media by index (incl. wrapper-component media).
       const closeIdx = scope.indexOf(`</${kind}>`, openEnd);
+      clipSpans.push([m.index, closeIdx >= 0 ? closeIdx : openEnd + 240]);
       const bound = closeIdx >= 0 ? Math.min(closeIdx, openEnd + 400) : openEnd + 240;
       const after = scope.slice(openEnd, bound);
       const lm = after.match(/<([A-Z][A-Za-z0-9]*)\b/);
@@ -178,13 +183,23 @@ export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
 
   let cursor = 0;
   const sequences = [];
+  // Task 5 (enhanced-video-editing) — seam transitions between series beats,
+  // so the storyline lane can draw its ⧓ chips: { afterIndex, dur } where
+  // afterIndex is the sequence-row index the transition FOLLOWS.
+  const transitions = [];
+  let pendingTransition = null;
   for (const it of items) {
     if (it.type === 'transition') {
       cursor -= it.dur || 0;
+      if (sequences.length > 0) pendingTransition = { afterIndex: sequences.length - 1, dur: it.dur || 0 };
       continue;
     }
     const from = it.from != null ? it.from : cursor;
     const duration = it.dur != null ? it.dur : 30;
+    if (pendingTransition) {
+      transitions.push(pendingTransition);
+      pendingTransition = null;
+    }
     sequences.push({
       label: it.compName ?? `Seq ${sequences.length + 1}`,
       series: !!it.series,
@@ -216,8 +231,31 @@ export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
     audio.push({
       kind: 'audio',
       label: name,
+      src: srcM ? srcM[1] : null,
       from: Math.max(0, from),
       duration: dur != null ? Math.max(1, dur) : Math.max(1, total - from),
+    });
+  }
+
+  // Loose VISUAL media — a bare <OffthreadVideo>/<Video>/<Img> sibling outside
+  // every clip span. Remotion renders it from frame 0 for the whole comp, so
+  // show it as a read-only overlay row (`loose: true` — no clip ops; it has no
+  // enumerator identity). Dogfood 2026-07-30: these were invisible before.
+  for (const lm of scope.matchAll(/<(OffthreadVideo|Video|Img)\b([^>]*?)\/?>/g)) {
+    const at = lm.index ?? 0;
+    if (clipSpans.some(([s2, e2]) => at >= s2 && at <= e2)) continue;
+    const srcM = lm[2].match(/src=["']([^"']+)["']/);
+    if (!srcM) continue;
+    const name = String(srcM[1]).split(/[\\/]/).pop();
+    sequences.push({
+      label: name || lm[1],
+      series: false,
+      loose: true,
+      mediaTag: lm[1],
+      mediaSrc: srcM[1],
+      from: 0,
+      duration: Math.max(1, total),
+      keyframes: [],
     });
   }
 
@@ -225,5 +263,12 @@ export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
   // to /_api/comp-clips + every clip op so the enumerator targets the SAME comp
   // (on a multi-comp canvas its own fallback picks a different one — the
   // showreel badge/replace mis-scoped to the wrong comp without this).
-  return { total, fps: scopedFps || undefined, sequences, audio, artboardId: scopedArtboardId };
+  return {
+    total,
+    fps: scopedFps || undefined,
+    sequences,
+    audio,
+    transitions,
+    artboardId: scopedArtboardId,
+  };
 }

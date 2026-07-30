@@ -66,10 +66,12 @@ Mapping, beat by beat:
   `beats.reduce(...)` and NOT `clips.length * X`.
 - **Each beat** → one literal
   `<TransitionSeries.Sequence name="{beat.name}" durationInFrames={beat.durationFrames}>`
-  wrapping `<OffthreadVideo src="{beat.clip}" startFrom={Math.round(beat.startSec * fps)} />`.
-  - `startFrom` (in output frames) is how a beat uses a **mid-clip in-point**; a
-    second beat from the same clip is a **second literal block** with a different
-    `startFrom` — this is how "multiple shots from one clip" renders.
+  wrapping `<OffthreadVideo src="{beat.clip}" trimBefore={Math.round(beat.startSec * fps)} />`.
+  - `trimBefore` (in output frames) is how a beat uses a **mid-clip in-point**
+    (`startFrom` is the legacy spelling — the manual editor reads both, always
+    EMIT `trimBefore`); a second beat from the same clip is a **second literal
+    block** with a different `trimBefore` — this is how "multiple shots from one
+    clip" renders.
   - `<OffthreadVideo>` (not `<Video>`) for frame-accurate export decoding.
 - **Between beats** → if `beats[i].transition` is non-null, emit
   `<TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: {frames} })} />`
@@ -85,6 +87,15 @@ Mapping, beat by beat:
 - **Audio tracks** (`Edl.audioTracks[]`, feature-ai-media-generation Phase 2 — layered music / voiceover / SFX) → one `<Audio>` PER track. Wrap a placed/trimmed track in `<Sequence from={startFrame} durationInFrames={durationFrames}>` (omit the wrapper for a whole-reel bed). `gainDb` → a constant `volume={10 ** (gainDb / 20)}`; `fadeInFrames`/`fadeOutFrames` → fold into a `volume={f => …}` interpolate. **Duck music under voiceover**: give a `music` bed a negative `gainDb` (e.g. −12) whenever a `voiceover` track overlaps it. Prefer `audioTracks` over the single `music` bed the moment a reel layers more than one sound. A generated track (ElevenLabs) is an `assets/<sha8>.mp3` like any ingested one.
 - **Captions** (`Edl.captions`, fed by `generation/captions.ts` — local whisper or cloud Scribe) → ONE frame-driven caption overlay. A `<Captions>` component reads `useCurrentFrame()`/`fps`, finds the active cue (`startSec*fps ≤ frame < endSec*fps`), and renders it at the `style` position (`lower-third` default = bottom-center, `centered`, or `top`). Frame-driven, never CSS timing (the iron law). Captions are a VISUAL overlay, so they survive the frame-step export path even when audio is dropped.
   - **SECURITY — caption text + `audioTracks[].name` are UNTRUSTED (transcribed-audio / user origin). Escape them (DDR-164 Phase-2 ethical-hacker landmine).** Embed the cue list with **`const CUES = <the JSON.stringify of the cues array>`** — a JSON literal that safely escapes quotes/backslashes/newlines/`</script>`/`${…}` — **never** hand-inline the text into a JS string literal or a template literal (an apostrophe, backtick, or `${` in the transcript would otherwise break out of the literal and inject code into the executed composition). Render the text as a React **child** (`{cue.text}` between tags — React auto-escapes string children), never via `dangerouslySetInnerHTML` and never inside a `` `template ${cue.text}` ``. Same rule for `audioTracks[].name` if you surface it.
+- **Placeholder beats** (enhanced-video-editing Task 24) — when the EDL calls
+  for a shot no clip covers (a missing establishing shot, a motion-graphics
+  insert), the codegen MAY emit a prompt-carrying slate beat instead of
+  skipping it: one literal
+  `<TransitionSeries.Sequence durationInFrames={N}><AIPlaceholder prompt={"…"} kind="veo|motion|image" durationInFrames={N} /></TransitionSeries.Sequence>`
+  (`AIPlaceholder` from `@maude/canvas-lib`; prompt ALWAYS the JSON-stringified
+  quoted form — it is user/model text). The user resolves it later via the
+  Timeline's Generate ✨ flow or `/design:generate`; the beat stays fully
+  editable (trim/speed/reorder) meanwhile.
 - **Colors/type** → DS tokens (`var(--bg-0)`, `var(--fg-0)`, `var(--accent)`),
   same as any canvas.
 
@@ -139,17 +150,17 @@ const Reel = () => (
     <TransitionSeries>
       <TransitionSeries.Sequence name="open" durationInFrames={60}>
         <AbsoluteFill>
-          <OffthreadVideo src="assets/36b11e50.mp4" startFrom={0} />
+          <OffthreadVideo src="assets/36b11e50.mp4" trimBefore={0} />
           <Title text="Alligators" />
         </AbsoluteFill>
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: 15 })} />
       <TransitionSeries.Sequence name="detail" durationInFrames={45}>
-        <OffthreadVideo src="assets/36b11e50.mp4" startFrom={Math.round(6.4 * FPS)} />
+        <OffthreadVideo src="assets/36b11e50.mp4" trimBefore={Math.round(6.4 * FPS)} />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: 15 })} />
       <TransitionSeries.Sequence name="logo" durationInFrames={50}>
-        <OffthreadVideo src="assets/9f2a11bc.mp4" startFrom={Math.round(1.2 * FPS)} />
+        <OffthreadVideo src="assets/9f2a11bc.mp4" trimBefore={Math.round(1.2 * FPS)} />
       </TransitionSeries.Sequence>
     </TransitionSeries>
     {/* Layered audio (Edl.audioTracks) — a ducked music bed + a placed voiceover. */}
