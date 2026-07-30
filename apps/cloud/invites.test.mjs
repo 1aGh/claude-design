@@ -267,3 +267,41 @@ test('the invite pages use no vocabulary of ours', () => {
     assert.ok(!new RegExp(`\\b${jargon}`, 'i').test(html), `"${jargon}" leaked into the invite page`);
   }
 });
+
+test('sign-in mode carries the invite as the login destination, and login honors it', async () => {
+  const { env, sqlite } = await freshEnv();
+  const { session } = await ownerWithProject(env, sqlite);
+  await inviteSomeone(env, session);
+  const invite = sqlite.prepare('SELECT * FROM project_invites').get();
+  await signup(env, { email: 'teammate@example.com' });
+
+  const page = await worker.fetch(new Request(`https://cloud.test/invite/${invite.id}`), env);
+  assert.match(await page.text(), new RegExp(`/login\\?next=%2Finvite%2F${invite.id}`));
+
+  const login = await worker.fetch(
+    new Request(`https://cloud.test/auth/login?next=%2Finvite%2F${invite.id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: form({ email: 'teammate@example.com', password: PASSWORD }),
+    }),
+    env
+  );
+  assert.equal(login.status, 303);
+  assert.equal(login.headers.get('location'), `/invite/${invite.id}`);
+});
+
+test('a hostile next is ignored — external and protocol-relative URLs fall back to /', async () => {
+  const { env } = await freshEnv();
+  await signup(env, { email: 'a@example.com' });
+  for (const evil of ['https://evil.example', '//evil.example', 'javascript:alert(1)']) {
+    const res = await worker.fetch(
+      new Request(`https://cloud.test/auth/login?next=${encodeURIComponent(evil)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: form({ email: 'a@example.com', password: PASSWORD }),
+      }),
+      env
+    );
+    assert.equal(res.headers.get('location'), '/', `"${evil}" must not be a destination`);
+  }
+});

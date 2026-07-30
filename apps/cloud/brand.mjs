@@ -182,22 +182,24 @@ export const CHROME = `
  * `logo.css` — including the squared bottom-right corner, which is the thing
  * that makes it the Maude mark rather than a generic star in a rounded box.
  */
-export function lockup({ size = 26, words = 'Maude Cloud' } = {}) {
-  return `<span class="lockup">
+export function lockup({ size = 26, words = 'Maude Cloud', href = '/' } = {}) {
+  // A LINK, not a decoration (Cloud Phase 23 A2). Every page wearing the mark
+  // gets the way home for free — the return leg people reach for first.
+  return `<a class="lockup" href="${href}">
     <span class="mark" style="width:${size}px;height:${size}px">
       <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
         <path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z" fill="currentColor"/>
       </svg>
     </span>
     <span class="word">${words}</span>
-  </span>`;
+  </a>`;
 }
 
 // `border-radius: 24% 24% 0 24%` is TL · TR · BR(square) · BL — the bubble.
 // The squared bottom-right corner is what makes it the Maude mark rather than
 // a star in a rounded box.
 export const LOCKUP_CSS = `
-  .lockup { display: inline-flex; align-items: center; gap: 0.34em; margin-bottom: var(--space-6); }
+  .lockup { display: inline-flex; align-items: center; gap: 0.34em; margin-bottom: var(--space-6); text-decoration: none; }
   .mark {
     display: grid; place-items: center; flex: none;
     background: var(--accent); color: var(--accent-fg);

@@ -63,8 +63,8 @@ export function invitePage({ projectName, role, mode, email, inviteId, error = n
     body = `<form method="post" action="${action}"><button type="submit">Join the project</button></form>`;
   } else if (mode === 'sign-in') {
     body = `<p>You already have a Maude account for <strong>${esc(email)}</strong>.
-      Sign in, then open this link again to join.</p>
-      <p><a class="btn" href="/login">Sign in</a></p>`;
+      Sign in and you'll come straight back here.</p>
+      <p><a class="btn" href="/login?next=${encodeURIComponent(`/invite/${inviteId}`)}">Sign in</a></p>`;
   } else {
     body = `<form method="post" action="${action}">
       <label for="password">Choose a password</label>

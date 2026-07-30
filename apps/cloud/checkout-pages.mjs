@@ -107,7 +107,7 @@ export function waitingRoomPage({ project, room }) {
       `${project.name} is ready`,
       `<h1>${esc(project.name)} is ready</h1>
        <p class="quiet">${esc(room.note ?? '')}</p>
-       <p><a class="btn" href="https://${esc(project.id)}.cloud.maude.sh">Open your project</a></p>
+       <p><a class="btn" href="/projects/${esc(project.id)}/connect">Open your project</a></p>
        <p class="quiet"><a href="/">Back to your projects</a></p>`
     );
   }

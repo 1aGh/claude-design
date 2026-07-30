@@ -55,6 +55,16 @@ function redirect(location, extraHeaders = {}) {
   return new Response(null, { status: 303, headers: { location, ...extraHeaders } });
 }
 
+/**
+ * The post-sign-in destination, or null. Same-origin RELATIVE paths only —
+ * `//evil.example` and absolute URLs are open-redirect food, so anything that
+ * is not a plain in-app path falls back to the dashboard.
+ */
+function safeNext(url) {
+  const next = url.searchParams.get('next') ?? '';
+  return /^\/(?!\/)[\x20-\x7e]*$/.test(next) ? next : null;
+}
+
 function cookieValue(request, name) {
   const header = request.headers.get('cookie') ?? '';
   for (const part of header.split(';')) {
@@ -135,7 +145,7 @@ export async function handleAuth(request, env) {
     return html(signupPage({ googleEnabled: google }));
   }
   if (method === 'GET' && pathname === '/login') {
-    return html(loginPage({ googleEnabled: google }));
+    return html(loginPage({ googleEnabled: google, next: safeNext(url) }));
   }
 
   // ----------------------------------------------------------------- signup
@@ -180,6 +190,7 @@ export async function handleAuth(request, env) {
 
   // ------------------------------------------------------------------ login
   if (method === 'POST' && pathname === '/auth/login') {
+    const next = safeNext(url);
     const form = await request.formData();
     const verdict = await authenticate(
       env.DB,
@@ -188,12 +199,12 @@ export async function handleAuth(request, env) {
     );
     if (!verdict.ok) {
       return html(
-        loginPage({ googleEnabled: google, error: 'That email and password don’t match.' }),
+        loginPage({ googleEnabled: google, error: 'That email and password don’t match.', next }),
         401
       );
     }
     const session = await createSession(env.DB, verdict.account.id);
-    return redirect('/', { 'set-cookie': setCookie(SESSION_COOKIE, session.token) });
+    return redirect(next ?? '/', { 'set-cookie': setCookie(SESSION_COOKIE, session.token) });
   }
 
   if (method === 'POST' && pathname === '/auth/logout') {

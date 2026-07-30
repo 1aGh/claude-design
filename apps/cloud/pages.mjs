@@ -23,7 +23,10 @@ const BASE_CSS = PAGE_CSS + `
 `;
 
 function page(title, body) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title} — Maude Cloud</title><style>${BASE_CSS}</style></head><body><main>${body}</main></body></html>`;
+  // The home page's title IS the product name — suffixing it again would read
+  // "Maude Cloud — Maude Cloud" in the tab (Cloud Phase 23 A4).
+  const tab = title === 'Maude Cloud' ? title : `${title} — Maude Cloud`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${tab}</title><style>${BASE_CSS}</style></head><body><main>${body}</main></body></html>`;
 }
 
 export const DISCLOSURE_HTML = `
@@ -57,13 +60,17 @@ export function signupPage({ googleEnabled = false, error = null } = {}) {
   );
 }
 
-export function loginPage({ googleEnabled = false, error = null } = {}) {
+export function loginPage({ googleEnabled = false, error = null, next = null } = {}) {
+  // `next` carries the page that sent them here (an invite, mostly), so
+  // signing in lands them back where they were going — not on a dashboard
+  // they then have to leave to re-find the email (Cloud Phase 23 A5).
+  const action = next ? `/auth/login?next=${encodeURIComponent(next)}` : '/auth/login';
   return page(
     'Sign in',
     `
     <h1>Sign in</h1>
     ${error ? `<p class="error">${error}</p>` : ''}
-    <form method="post" action="/auth/login">
+    <form method="post" action="${action}">
       <label for="email">Email</label>
       <input id="email" name="email" type="email" autocomplete="email" required>
       <label for="password">Password</label>
@@ -81,7 +88,7 @@ export function homePage({ account = null } = {}) {
     account
       ? `<h1>You're signed in</h1>
          <p>${account.email}</p>
-         <p class="quiet">Projects arrive in the next update — your account is ready for them.</p>
+         <p><a class="btn" href="/">Your projects</a></p>
          <form method="post" action="/auth/logout"><button type="submit">Sign out</button></form>`
       : `${lockup()}
          <h1>A home for your design projects</h1>

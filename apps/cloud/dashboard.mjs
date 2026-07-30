@@ -56,7 +56,7 @@ function esc(s) {
 }
 
 function page(title, body) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)} — Maude</title><style>${CSS}</style></head><body>${body}</body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)} — Maude</title><style>${CSS}</style></head><body><main>${body}</main></body></html>`;
 }
 
 /**
@@ -71,7 +71,9 @@ export const STATE_COPY = {
   pending: {
     tone: 'warn',
     label: 'Setting up',
-    note: 'This usually takes a minute or two. We will email you when it is ready.',
+    // No email promise — no such email exists yet, and the setup page is the
+    // thing that actually finishes the job (it drives settlement as it polls).
+    note: 'This usually takes a minute or two. The setup page shows each step live.',
   },
   active: { tone: 'ok', label: 'Ready', note: null },
   past_due: {
@@ -106,8 +108,14 @@ export const STATE_COPY = {
 function projectCard(project, { can }) {
   const copy = STATE_COPY[project.state] ?? { tone: 'warn', label: project.state, note: null };
   const actions = [];
-  if (project.state !== 'purged') {
-    actions.push(`<a href="https://${esc(project.id)}.cloud.maude.sh">Open</a>`);
+  // "Open" goes to OUR connect page, never to a bare hostname (Cloud Phase 23
+  // A1) — the workspace's front door is an operator surface until the
+  // one-click handoff lands, and a link that promises the project must not
+  // deliver infrastructure. A pending project opens its live setup instead.
+  if (project.state === 'pending') {
+    actions.push(`<a href="/projects/${esc(project.id)}/setup">Setup progress</a>`);
+  } else if (project.state !== 'purged') {
+    actions.push(`<a href="/projects/${esc(project.id)}/connect">Open</a>`);
   }
   if (can('share')) actions.push(`<a href="/projects/${esc(project.id)}/share">Sharing</a>`);
   if (can('invite')) actions.push(`<a href="/projects/${esc(project.id)}/people">People</a>`);

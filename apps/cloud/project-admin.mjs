@@ -121,6 +121,38 @@ export function downloadPage({ project, generations, isOwner, error = null, noti
   );
 }
 
+// ------------------------------------------------------------------- connect
+
+/**
+ * The last door (Cloud Phase 23 A1). "Open" used to be a bare link to the
+ * workspace hostname — which greets a customer with an operator console. This
+ * page is honest about how to get in TODAY, and it is where the one-click
+ * handoff will live once the workspace accepts dashboard sign-ins.
+ */
+export function connectPage({ project }) {
+  const address = `https://${esc(project.id)}.cloud.maude.sh`;
+  return page(
+    `Open ${project.name}`,
+    `<h1>Open ${esc(project.name)}</h1>
+     ${crumb(project)}
+     <div class="card">
+       <h2>In your browser</h2>
+       <p class="quiet">Your project lives at its own address. Sign in there with your
+         <strong>workspace email and password</strong> — for now this is separate from your
+         Maude account; one sign-in for both is on the roadmap.</p>
+       <p style="margin:0"><a class="btn" href="${address}">Open ${esc(project.id)}.cloud.maude.sh</a></p>
+     </div>
+     <div class="card">
+       <h2>In the Maude desktop app</h2>
+       <p class="quiet" style="margin:0">Choose <strong>Link workspace</strong> and paste the
+         address above together with the sign-in your workspace gave you. The app then keeps a
+         full local copy that syncs both ways.</p>
+     </div>
+     <p class="quiet">Running the machinery yourself? The operator console lives at the same
+       address under <span class="mono">/admin</span>.</p>`
+  );
+}
+
 // -------------------------------------------------------------------- delete
 
 export function deletePage({ project, hasExport, error = null }) {
@@ -218,8 +250,10 @@ export function mirrorPage({ project, repository, branch, isOwner, error = null,
          </p>
        </form>
        <p class="quiet">Your project pushes itself to this repository about once an hour —
-         additions only, never overwriting anything already there. Give the Maude Mirror app
-         access to the repository on GitHub first, or the push has nowhere to land.</p>`
+         additions only, never overwriting anything already there. First
+         <a href="https://github.com/apps/maude-mirror">give the Maude Mirror app access</a>
+         to the repository on GitHub — that page opens on GitHub; come back here and save
+         when it's done.</p>`
     : '<p class="quiet">Only the project’s owner can change where it copies to.</p>';
   return page(
     `GitHub copy of ${project.name}`,
@@ -275,7 +309,7 @@ async function listExports(env, projectId) {
  */
 export async function handleProjectAdminRoutes(request, env, { account }) {
   const url = new URL(request.url);
-  const m = url.pathname.match(/^\/projects\/([a-z0-9-]+)\/(download|delete|audit|mirror)(\/file)?$/);
+  const m = url.pathname.match(/^\/projects\/([a-z0-9-]+)\/(connect|download|delete|audit|mirror)(\/file)?$/);
   if (!m) return null;
   const [, projectId, surface, isFile] = m;
   if (!account) return redirect('/login');
@@ -285,6 +319,11 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
     return html(`<p>${ACCESS_MESSAGES[verdict.reason]}</p>`, verdict.reason === 'not-signed-in' ? 401 : 404);
   }
   const isOwner = can(verdict.role, 'delete');
+
+  // ----------------------------------------------------------------- connect
+  if (surface === 'connect' && request.method === 'GET') {
+    return html(connectPage({ project }));
+  }
 
   // ---------------------------------------------------------------- download
   if (surface === 'download' && isFile && request.method === 'GET') {
@@ -502,6 +541,7 @@ export function allProjectAdminHtml() {
     },
   ];
   return [
+    connectPage({ project }),
     downloadPage({ project, generations, isOwner: true }),
     downloadPage({ project, generations: [], isOwner: false }),
     downloadPage({ project, generations, isOwner: true, error: 'The copy could not be prepared right now. Try again in a minute.' }),

@@ -312,3 +312,20 @@ test('the admin pages ship no script and no vocabulary of ours', () => {
     assert.ok(!new RegExp(`\\b${jargon}(?!s\\/)`, 'i').test(html), `"${jargon}" leaked into the admin pages`);
   }
 });
+
+// ------------------------------------------------------------------ connect
+
+test('Open leads to the connect page, which is honest about the two ways in', async () => {
+  const { env, sqlite } = await freshEnv();
+  const { session } = await ownerWithProject(env, sqlite);
+  const res = await worker.fetch(get('/projects/alligators/connect', session), env);
+  assert.equal(res.status, 200);
+  const body = await res.text();
+  assert.match(body, /Open Brno Alligators/);
+  assert.match(body, /alligators\.cloud\.maude\.sh/);
+  assert.match(body, /workspace email and password/);
+  assert.match(body, /Link workspace/);
+
+  const anon = await worker.fetch(get('/projects/alligators/connect'), env);
+  assert.equal(anon.status, 303, 'a stranger is sent to sign in');
+});

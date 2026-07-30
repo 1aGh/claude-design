@@ -39,7 +39,7 @@ function esc(s) {
 }
 
 function page(title, body) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)} — Maude</title><style>${CSS}</style></head><body>${body}</body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)} — Maude</title><style>${CSS}</style></head><body><main>${body}</main></body></html>`;
 }
 
 /** Roles a person can be given here. `owner` is a transfer, not a role change. */
@@ -98,6 +98,8 @@ export function peoplePage({ project, people = [], isOwner, error = null, notice
          <p class="quiet" style="font-size:.87rem;margin:.6rem 0 0">
            They get an email with a link. If they do not have a Maude account yet,
            the link makes one — they never have to find this project themselves.
+           Getting into the workspace itself still uses the workspace's own
+           sign-in for now; this invitation covers everything on this dashboard.
          </p>
        </div>`
     : '';

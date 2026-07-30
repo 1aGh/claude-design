@@ -17,24 +17,29 @@
 > dashboard was rejected again: proxying privileged per-cell APIs through the
 > control plane reopens the DDR-193 containment boundary.
 
-## A — control-plane only (cheap, no image roll)
+## A — control-plane only (cheap, no image roll) · ✅ SHIPPED 2026-07-30
 
-- [ ] A1 — **`/projects/<id>/connect` page** replaces both bare `Open` links
-  (`dashboard.mjs:110`, `checkout-pages.mjs` "Open your project"): states the
-  project address, hands over the real connect path (desktop app / `maude
-  design link <url> --token=…`), offers the operator console as secondary.
-  The page is honest about today; it BECOMES the handoff button when B lands.
-- [ ] A2 — `lockup()` links to `/` (brand.mjs) — every control-plane page gets
-  the return leg for free; drop hand-rolled crumbs where redundant.
-- [ ] A3 — honest invite/People copy: control-plane membership does not yet
-  reach the workspace door; say so rather than dead-ending a teammate.
-- [ ] A4 — copy sweep: home `<title>` reads "Maude Cloud — Maude Cloud";
-  pending-state card promises "We will email you when it is ready" but no
-  such email exists — either send it (email.mjs has the boundary) or change
-  the promise. Mirror page: link the GitHub App install URL, and note the
-  way back.
-- [ ] A5 — invite sign-in round trip: `/login?next=/invite/<id>` so an
-  existing-account invitee doesn't have to re-find the email link.
+- [x] A1 — **`/projects/<id>/connect` page** replaces both bare `Open` links
+  (dashboard card + waiting-room "Open your project"): the project address,
+  honest browser sign-in note, desktop Link-workspace path, operator console
+  demoted to a footer line. A pending project's card opens its live setup
+  instead. The page BECOMES the handoff button when B lands.
+- [x] A2 — `lockup()` is a link to `/` (brand.mjs) — every control-plane page
+  gets the return leg for free.
+- [x] A3 — honest invite/People copy: the invitation covers the dashboard;
+  the workspace door still uses the workspace's own sign-in for now.
+- [x] A4 — copy sweep: home `<title>` deduplicated; pending-card email
+  promise replaced with the truthful "the setup page shows each step live";
+  mirror page links the GitHub App install (github.com/apps/maude-mirror)
+  with come-back-and-save guidance; stale signed-in home copy replaced.
+- [x] A5 — `/login?next=…` (same-origin relative paths only — hostile values
+  fall back to `/`); the invite's sign-in mode carries its own return.
+- [x] A6 (found by the screenshot pass, not the HTML): `dashboard.mjs` and
+  `people-page.mjs` page helpers rendered `<body>` without `<main>`, so
+  their `main { max-width }` rules never applied and content sat on the left
+  edge. Same class of bug the brand fix caught earlier on other pages —
+  screenshot verification keeps earning its keep. 258/258 tests green;
+  deployed and live-verified.
 
 ## B — ONE cell image roll (v8), contents locked by BREAKER
 
