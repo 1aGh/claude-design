@@ -9,22 +9,21 @@
 // decision happens, not on a page nobody visits. `disclosure_accepted_at` is
 // written only when the box was actually ticked.
 
+import { PAGE_CSS, lockup } from './brand.mjs';
 import { allDashboardHtml } from './dashboard.mjs';
+import { allPeopleHtml } from './people-page.mjs';
 
-const BASE_CSS = `
-  :root { color-scheme: light dark; }
-  body { font: 16px/1.5 system-ui, sans-serif; max-width: 26rem; margin: 8vh auto; padding: 0 1.25rem; }
-  h1 { font-size: 1.35rem; }
-  label { display: block; margin: .9rem 0 .25rem; font-weight: 600; font-size: .9rem; }
-  input[type=email], input[type=password], input[type=text] { width: 100%; padding: .55rem .6rem; font: inherit; box-sizing: border-box; }
-  button { margin-top: 1.1rem; padding: .6rem 1.1rem; font: inherit; font-weight: 600; cursor: pointer; }
-  .quiet { color: color-mix(in srgb, currentColor 62%, transparent); font-size: .85rem; }
-  .card { border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 10px; padding: 1rem 1.1rem; margin-top: 1.2rem; }
-  .error { color: #b00020; font-weight: 600; }
+// Styling comes from the design system (brand.mjs), not from ad-hoc CSS.
+// These pages are the first thing anyone sees of Maude and were the one
+// surface not wearing it.
+const BASE_CSS = PAGE_CSS + `
+  body { display: grid; place-items: center; min-height: 100vh; padding: var(--space-8) var(--space-5); }
+  main { width: 100%; max-width: 26rem; }
+  main > :last-child { margin-bottom: 0; }
 `;
 
 function page(title, body) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title} — Maude Cloud</title><style>${BASE_CSS}</style></head><body>${body}</body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title} — Maude Cloud</title><style>${BASE_CSS}</style></head><body><main>${body}</main></body></html>`;
 }
 
 export const DISCLOSURE_HTML = `
@@ -84,9 +83,11 @@ export function homePage({ account = null } = {}) {
          <p>${account.email}</p>
          <p class="quiet">Projects arrive in the next update — your account is ready for them.</p>
          <form method="post" action="/auth/logout"><button type="submit">Sign out</button></form>`
-      : `<h1>Maude Cloud</h1>
-         <p>A home for your design projects: synced, versioned, and always yours to take with you.</p>
-         <p><a href="/signup">Create an account</a> · <a href="/login">Sign in</a></p>`
+      : `${lockup()}
+         <h1>A home for your design projects</h1>
+         <p class="quiet">Synced, versioned, and always yours to take with you.</p>
+         <p><a class="btn" href="/signup">Create an account</a>
+            <a href="/login" style="margin-left:var(--space-5)">Sign in</a></p>`
   );
 }
 
@@ -104,6 +105,7 @@ export function messagePage(title, text) {
 export function allCustomerFacingHtml() {
   return [
     allDashboardHtml(),
+    allPeopleHtml(),
     signupPage({ googleEnabled: true }),
     loginPage({ googleEnabled: true, error: 'That email and password don’t match.' }),
     homePage(),

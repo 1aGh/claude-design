@@ -14,24 +14,38 @@
 // something is wrong, and a page that needs JavaScript to tell you your
 // project is paused is a page that cannot tell you anything when it is broken.
 
-const CSS = `
-  :root { color-scheme: light dark; }
-  * { box-sizing: border-box; }
-  body { font: 16px/1.55 system-ui, sans-serif; max-width: 44rem; margin: 6vh auto; padding: 0 1.25rem 4rem; }
-  h1 { font-size: 1.4rem; margin: 0 0 .2rem; }
-  .who { color: color-mix(in srgb, currentColor 60%, transparent); font-size: .9rem; margin: 0 0 2rem; }
-  .project { border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: .9rem; }
-  .project h2 { font-size: 1.05rem; margin: 0 0 .15rem; }
-  .row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-  .state { font-size: .82rem; font-weight: 600; }
-  .state.ok { color: #1a7f37; }
-  .state.warn { color: #9a6700; }
-  .state.stop { color: #b00020; }
-  .note { color: color-mix(in srgb, currentColor 62%, transparent); font-size: .87rem; margin: .5rem 0 0; }
-  .actions { margin-top: .8rem; display: flex; gap: .9rem; flex-wrap: wrap; font-size: .9rem; }
-  .empty { border: 1px dashed color-mix(in srgb, currentColor 25%, transparent); border-radius: 10px; padding: 2rem 1.2rem; text-align: center; }
-  footer { margin-top: 2.5rem; font-size: .85rem; color: color-mix(in srgb, currentColor 60%, transparent); }
-  button { font: inherit; padding: .45rem .9rem; cursor: pointer; }
+import { PAGE_CSS, lockup } from './brand.mjs';
+
+// Styling comes from the design system (brand.mjs). What is left here is only
+// what this page adds on top of the shared chrome.
+const CSS = PAGE_CSS + `
+  .who { color: var(--fg-2); font-size: var(--type-base); margin: 0 0 var(--space-7); }
+  .project {
+    background: var(--bg-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5) var(--space-6);
+    margin-bottom: var(--space-4);
+    box-shadow: var(--shadow-sm);
+    transition: border-color var(--dur-soft) var(--ease-out);
+  }
+  .project:hover { border-color: var(--border-default); }
+  .project h2 { margin: 0 0 var(--space-1); }
+  .row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-5); flex-wrap: wrap; }
+  .state {
+    font-size: var(--type-xs); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill);
+    border: 1px solid transparent;
+  }
+  .state.ok   { color: var(--status-success); border-color: color-mix(in oklab, var(--status-success) 32%, transparent); }
+  .state.warn { color: var(--status-warn);    border-color: color-mix(in oklab, var(--status-warn) 32%, transparent); }
+  .state.stop { color: var(--status-error);   border-color: color-mix(in oklab, var(--status-error) 32%, transparent); }
+  .note { color: var(--fg-2); font-size: var(--type-base); line-height: var(--lh-base); margin: var(--space-3) 0 0; }
+  .actions { margin-top: var(--space-4); display: flex; gap: var(--space-5); flex-wrap: wrap; font-size: var(--type-base); }
+  .empty {
+    border: 1px dashed var(--border-default); border-radius: var(--radius-lg);
+    padding: var(--space-8) var(--space-6); text-align: center; background: var(--bg-1);
+  }
 `;
 
 function esc(s) {
@@ -134,7 +148,8 @@ export function dashboardPage({ account, projects = [], can }) {
 
   return page(
     'Your projects',
-    `<h1>Your projects</h1>
+    `${lockup()}
+     <h1>Your projects</h1>
      <p class="who">${esc(account.email)} · <a href="/account">Account</a></p>
      ${body}
      <footer>

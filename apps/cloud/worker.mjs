@@ -19,6 +19,7 @@
 import { currentAccount, handleAuth } from './auth-routes.mjs';
 import { mintInstallationToken } from './github-app.mjs';
 import { ACCESS_MESSAGES, decideAccess } from './project-access.mjs';
+import { handleProjectRoutes } from './project-routes.mjs';
 import {
   audit,
   enqueueReconcile,
@@ -223,6 +224,13 @@ export default {
     // Identity surface (pages, signup/login, Google, grant mint) — Phase 13.
     const auth = await handleAuth(request, env);
     if (auth) return auth;
+
+    // Per-project control surfaces (Cloud Phase 22 / DDR-204). Before the
+    // control-plane routes, because `/projects/...` is theirs.
+    const projectSurface = await handleProjectRoutes(request, env, {
+      account: await currentAccount(request, env),
+    });
+    if (projectSurface) return projectSurface;
 
     // Opening a project (Cloud Phase 22 / DDR-204).
     //
