@@ -18,6 +18,7 @@
 
 import { currentAccount, handleAuth } from './auth-routes.mjs';
 import { mintInstallationToken } from './github-app.mjs';
+import { handleInviteRoutes } from './invites.mjs';
 import { ACCESS_MESSAGES, decideAccess } from './project-access.mjs';
 import { handleProjectRoutes } from './project-routes.mjs';
 import {
@@ -231,6 +232,13 @@ export default {
       account: await currentAccount(request, env),
     });
     if (projectSurface) return projectSurface;
+
+    // Accepting an invitation (Cloud Phase 22). The invite is the account:
+    // one link signs somebody up AND lands them in the project.
+    const inviteSurface = await handleInviteRoutes(request, env, {
+      account: await currentAccount(request, env),
+    });
+    if (inviteSurface) return inviteSurface;
 
     // Opening a project (Cloud Phase 22 / DDR-204).
     //

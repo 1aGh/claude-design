@@ -6,6 +6,7 @@
 // is left here is reading rows, writing rows, and turning a verdict into a
 // response — which is the whole point of the split (DDR-196 §1).
 
+import { emailConfigured, inviteEmail, sendEmail } from './email.mjs';
 import { decideMembershipChange } from './membership.mjs';
 import { peoplePage, removeConfirmPage } from './people-page.mjs';
 import { ACCESS_MESSAGES, can, decideAccess } from './project-access.mjs';
@@ -142,13 +143,34 @@ export async function handleProjectRoutes(request, env, { account }) {
     }
     // No account yet. The invite is the account: they follow one link and land
     // in the project, rather than signing up and then having to find it.
+    const inviteId = crypto.randomUUID();
     await env.DB.prepare(
       `INSERT INTO project_invites (id, project_id, email, role, created_at, expires_at)
        VALUES (?, ?, ?, ?, ?, ?)`
     )
-      .bind(crypto.randomUUID(), projectId, email, role, Date.now(), Date.now() + 14 * 86_400_000)
+      .bind(inviteId, projectId, email, role, Date.now(), Date.now() + 14 * 86_400_000)
       .run();
-    return html(peoplePage({ project, people, isOwner, notice: `Invitation sent to ${email}.` }));
+
+    const inviteUrl = `${url.origin}/invite/${inviteId}`;
+    const sent = emailConfigured(env)
+      ? await sendEmail(env, {
+          to: email,
+          ...inviteEmail({
+            projectName: project.name || project.id,
+            role,
+            inviteUrl,
+            invitedBy: account.email,
+          }),
+        })
+      : { ok: false };
+    // A failed (or unconfigured) send still created a real invitation — the
+    // owner gets the link to pass along themselves, which also happens to be
+    // exactly what "invite them over chat instead" needs. The link goes to the
+    // OWNER, who controls the invite either way; it leaks nothing.
+    const notice = sent.ok
+      ? `Invitation sent to ${email}.`
+      : `The invitation is ready, but the email could not be sent. Share this link with them yourself: ${inviteUrl}`;
+    return html(peoplePage({ project, people, isOwner, notice }));
   }
 
   const decision = decideMembershipChange({
