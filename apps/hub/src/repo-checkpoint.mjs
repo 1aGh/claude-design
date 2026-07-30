@@ -46,6 +46,12 @@ export async function hasCommits(repoDir, run) {
   return r.code === 0 && r.stdout.trim().length > 0;
 }
 
+/** True when the repo has no full history — a shallow clone. */
+export async function isShallow(repoDir, run) {
+  const r = await run(['rev-parse', '--is-shallow-repository'], { cwd: repoDir });
+  return r.code === 0 && r.stdout.trim() === 'true';
+}
+
 /**
  * Produce a bundle of the whole checkout.
  *
@@ -55,11 +61,41 @@ export async function bundleRepo(repoDir, run, { tmpDir = '/tmp' } = {}) {
   if (!(await hasCommits(repoDir, run))) {
     return { state: 'empty', reason: 'the checkout has no commits yet' };
   }
+  // A SHALLOW repository cannot produce a complete bundle. `git bundle --all`
+  // succeeds against one and writes an archive that references parent commits
+  // it does not contain — so the failure surfaces months later, at restore,
+  // as "remote did not send all necessary objects".
+  //
+  // This is not hypothetical: the alligators cell was seeded with `clone
+  // --depth 1`, checkpointed happily for a day, and then could not restore a
+  // single one of those generations. Refusing here is the difference between
+  // "no backup" (visible) and "a backup that is not one" (invisible).
+  if (await isShallow(repoDir, run)) {
+    return {
+      state: 'failed',
+      reason:
+        'the checkout is shallow, so a complete bundle cannot be made from it — ' +
+        'run `git fetch --unshallow` before relying on backups',
+    };
+  }
+
   const scratch = join(tmpDir, `maude-repo-${process.pid}-${Date.now()}.bundle`);
   try {
     const made = await run(['bundle', 'create', scratch, '--all'], { cwd: repoDir });
     if (made.code !== 0) {
       return { state: 'failed', reason: `git bundle create: ${made.stderr.trim().slice(0, 300)}` };
+    }
+    // VERIFY BEFORE RETURNING. `git bundle create` exits 0 on archives that
+    // cannot be cloned, so "it was written" is not "it can be restored" — and
+    // the only moment anyone finds out otherwise is the moment they need it.
+    // DDR-202 promised verification before an export is OFFERED; this puts it
+    // before the bytes are even kept.
+    const checked = await run(['bundle', 'verify', scratch], { cwd: repoDir });
+    if (checked.code !== 0) {
+      return {
+        state: 'failed',
+        reason: `the bundle would not restore: ${checked.stderr.trim().slice(0, 300)}`,
+      };
     }
     return { state: 'ok', bytes: await readFile(scratch) };
   } catch (err) {

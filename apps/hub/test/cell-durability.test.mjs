@@ -288,3 +288,45 @@ describe('media is tenant-scoped', () => {
     );
   });
 });
+
+/* ------------------------------ a backup that is not one ------------------ */
+
+describe('a bundle that cannot be restored is never written', () => {
+  it('refuses a SHALLOW checkout instead of writing a broken bundle', { skip }, async () => {
+    // The alligators cell was seeded with `clone --depth 1`, checkpointed
+    // happily for a day, and then could not restore a single one of those
+    // generations: `git bundle --all` exits 0 on a shallow repo and writes an
+    // archive referencing parents it does not contain. The failure surfaced at
+    // restore, which is the one moment it must not.
+    const run = createGitRunner();
+    const origin = repoWith({ 'a.txt': '1' });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'second'], { cwd: origin, stdio: 'ignore' });
+
+    const shallow = join(tmp(), 'shallow');
+    execFileSync('git', ['clone', '--depth', '1', `file://${origin}`, shallow], { stdio: 'ignore' });
+
+    const made = await bundleRepo(shallow, run);
+    assert.equal(made.state, 'failed');
+    assert.match(made.reason, /shallow/);
+    // "No backup" is visible. "A backup that is not one" is not.
+    assert.ok(!('bytes' in made));
+  });
+
+  it('verifies the bundle before keeping the bytes, not only before using them', { skip }, async () => {
+    // `git bundle create` exits 0 on archives that cannot be cloned, so "it
+    // was written" is not "it can be restored".
+    const run = createGitRunner();
+    const source = repoWith({ 'a.txt': 'x' });
+    const calls = [];
+    const spy = async (args, o) => {
+      calls.push(args[0] === 'bundle' ? `bundle ${args[1]}` : args[0]);
+      return run(args, o);
+    };
+    const made = await bundleRepo(source, spy);
+    assert.equal(made.state, 'ok');
+    assert.ok(
+      calls.includes('bundle verify'),
+      `creation must verify; git calls were: ${calls.join(', ')}`
+    );
+  });
+});

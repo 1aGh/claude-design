@@ -84,17 +84,63 @@ async function main() {
     process.exit(1);
   }
 
+  // WALK BACK THROUGH GENERATIONS. The newest is tried first, but a generation
+  // that cannot be restored must not be the end of it: a cell whose latest
+  // backup is bad still has yesterday's, and refusing outright would leave the
+  // tenant unreachable over a fault that older copies do not share.
+  //
+  // Learned the hard way: the alligators cell was seeded with a shallow clone,
+  // so every generation it wrote contained a bundle that `git clone` refuses.
+  // The cell crash-looped rather than falling back, and "refuses to start"
+  // looked identical to "the platform is broken".
+  const newestFirst = [...generations].reverse();
+  const attempted = [];
   try {
-    const result = await restoreLatest({
-      target,
-      destDir: dataDir,
-      repoDir,
-      run: createGitRunner(),
-      // The working set is empty on a cold start — that is the precondition
-      // the entrypoint checks before calling us. Not forcing means a restore
-      // over live data fails loudly instead of overwriting it.
-      force: false,
-    });
+    let result = null;
+    for (const which of newestFirst) {
+      try {
+        result = await restoreLatest({
+          target,
+          which,
+          destDir: dataDir,
+          repoDir,
+          run: createGitRunner(),
+          // The working set is empty on a cold start — that is the
+          // precondition the entrypoint checks before calling us. Not forcing
+          // means a restore over live data fails loudly instead of
+          // overwriting it.
+          force: false,
+        });
+        break;
+      } catch (err) {
+        attempted.push(`${which}: ${err.message.slice(0, 160)}`);
+        // Clear whatever the failed attempt left behind, or the next attempt
+        // refuses on "already exists" and the fallback is no fallback at all.
+        const { rmSync } = await import('node:fs');
+        for (const dir of [dataDir, repoDir]) {
+          try {
+            rmSync(dir, { recursive: true, force: true });
+          } catch {
+            /* best effort — the next attempt reports it */
+          }
+        }
+      }
+    }
+    if (!result) {
+      console.error(
+        `[rehydrate] every backup generation failed to restore:\n  ${attempted.join('\n  ')}`
+      );
+      process.exit(1);
+    }
+    if (attempted.length > 0) {
+      // Loud, because a tenant restored from an older copy has LOST work, and
+      // finding that out from the data rather than from a message is the worst
+      // way to learn it.
+      console.error(
+        `[rehydrate] restored an OLDER generation — ${attempted.length} newer one(s) could not be ` +
+          `restored:\n  ${attempted.join('\n  ')}`
+      );
+    }
     console.log(
       `[rehydrate] restored ${result.generation} — ` +
         `${result.restored.join(', ')}${result.repo?.state === 'restored' ? ' + checkout' : ''}`

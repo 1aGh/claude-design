@@ -67,7 +67,11 @@ export async function seedRepo(repoDir, run, { url = '', branch = '', log = cons
     return { state: 'skipped', reason: 'checkout is not empty — refusing to seed over it' };
   }
 
-  const args = ['clone', '--depth', '1'];
+  // FULL clone, not `--depth 1`. A shallow checkout cannot produce a complete
+  // bundle, so a shallow seed makes the cell's history unbackupable from the
+  // moment it is created — and nothing says so until a restore fails. The
+  // extra bytes at seed time are the cheapest part of this whole system.
+  const args = ['clone'];
   if (branch) args.push('--branch', String(branch));
   // `--` so a URL that starts with a dash can never become an option.
   args.push('--', seed, repoDir);
