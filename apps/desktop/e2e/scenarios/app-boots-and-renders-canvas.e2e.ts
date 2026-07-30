@@ -57,14 +57,12 @@ describe('app-boots-and-renders-canvas (native-desktop)', () => {
       const content = await $('[data-testid="smoke-artboard-content"]');
       await content.waitForDisplayed({ timeout: 10_000 });
       const text = await content.getText();
-      // biome-ignore lint/suspicious/noConsole: surfaced in the wdio run log
       console.log(
         text.includes('Maude desktop E2E')
           ? '[smoke] canvas-iframe content rendered + asserted ✓'
           : `[smoke] canvas-iframe content present but unexpected text: ${text}`
       );
     } catch (err) {
-      // biome-ignore lint/suspicious/noConsole: surfaced in the wdio run log
       console.log(
         `[smoke] canvas-iframe DOM not assertable (known boundary — cross-origin / bundled-runtime canvas render): ${err instanceof Error ? err.message : String(err)}`
       );

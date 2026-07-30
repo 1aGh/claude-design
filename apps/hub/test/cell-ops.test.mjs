@@ -140,7 +140,7 @@ test('the mirror clock stays off without a control plane — a self-hosted hub n
 
 test('a tick asks the control plane, then pushes with the minted credential', async () => {
   const calls = [];
-  const fetchImpl = async (url, init) => {
+  const fetchImpl = async (url, _init) => {
     calls.push(String(url));
     if (String(url).includes('/internal/mirror-config')) {
       return Response.json({ repository: '1aGh/alligators-mirror', branch: 'main' });

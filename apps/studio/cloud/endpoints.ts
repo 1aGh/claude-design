@@ -29,6 +29,21 @@ export interface CloudEndpointResult {
   json: unknown;
 }
 
+/** Whatever the control plane answered. Read defensively at every use. */
+type CloudBody = Record<string, unknown> & {
+  token?: string;
+  url?: string;
+  role?: string;
+  project?: string;
+  user_code?: string;
+  device_code?: string;
+  verification_url?: string;
+  interval?: number;
+  projects?: unknown[];
+  account?: { email?: string };
+  error?: string;
+};
+
 interface CloudFile {
   url: string;
   token: string;
@@ -68,7 +83,7 @@ async function cloudFetch(
   path: string,
   init: RequestInit = {},
   { timeoutMs = 15_000 } = {}
-): Promise<{ status: number; body: any }> {
+): Promise<{ status: number; body: CloudBody }> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {
@@ -106,7 +121,10 @@ export function createCloudEndpoints(ctx: Ctx) {
         body: JSON.stringify({ client: `Maude Studio on ${process.platform}` }),
       });
       if (r.status !== 200) {
-        return { status: 502, json: { ok: false, error: 'Maude Cloud could not be reached. Try again in a moment.' } };
+        return {
+          status: 502,
+          json: { ok: false, error: 'Maude Cloud could not be reached. Try again in a moment.' },
+        };
       }
       return {
         status: 200,
@@ -130,7 +148,10 @@ export function createCloudEndpoints(ctx: Ctx) {
       });
       if (r.status === 202) return { status: 200, json: { ok: true, pending: true } };
       if (r.status !== 200 || !r.body?.token) {
-        return { status: 410, json: { ok: false, error: 'The code expired. Start the sign-in again.' } };
+        return {
+          status: 410,
+          json: { ok: false, error: 'The code expired. Start the sign-in again.' },
+        };
       }
       writeCloudFile({
         url: CLOUD_URL,
@@ -138,7 +159,10 @@ export function createCloudEndpoints(ctx: Ctx) {
         email: r.body.account?.email ?? undefined,
         connectedAt: Date.now(),
       });
-      return { status: 200, json: { ok: true, pending: false, email: r.body.account?.email ?? null } };
+      return {
+        status: 200,
+        json: { ok: true, pending: false, email: r.body.account?.email ?? null },
+      };
     },
 
     /** Forget the local credential. (Revocation lives on /account.) */
@@ -154,14 +178,18 @@ export function createCloudEndpoints(ctx: Ctx) {
     /** The signed-in account's projects, states included. */
     async projects(): Promise<CloudEndpointResult> {
       const file = readCloudFile();
-      if (!file) return { status: 401, json: { ok: false, error: 'Sign in to Maude Cloud first.' } };
+      if (!file)
+        return { status: 401, json: { ok: false, error: 'Sign in to Maude Cloud first.' } };
       const r = await cloudFetch('/api/projects', {
         headers: { authorization: `Bearer ${file.token}` },
       });
       if (r.status === 401) {
         // Revoked from the dashboard — honor it locally too.
         this.signout();
-        return { status: 401, json: { ok: false, error: 'This device was disconnected. Sign in again.' } };
+        return {
+          status: 401,
+          json: { ok: false, error: 'This device was disconnected. Sign in again.' },
+        };
       }
       if (r.status !== 200) {
         return { status: 502, json: { ok: false, error: 'Maude Cloud could not be reached.' } };
@@ -176,7 +204,8 @@ export function createCloudEndpoints(ctx: Ctx) {
      */
     async attach(projectId: string): Promise<CloudEndpointResult> {
       const file = readCloudFile();
-      if (!file) return { status: 401, json: { ok: false, error: 'Sign in to Maude Cloud first.' } };
+      if (!file)
+        return { status: 401, json: { ok: false, error: 'Sign in to Maude Cloud first.' } };
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(String(projectId ?? ''))) {
         return { status: 400, json: { ok: false, error: 'unknown project' } };
       }
@@ -187,9 +216,16 @@ export function createCloudEndpoints(ctx: Ctx) {
         body: JSON.stringify({ project: projectId }),
       });
       if (opened.status !== 200 || !opened.body?.token) {
-        return { status: 502, json: { ok: false, error: 'The project could not be opened with this account.' } };
+        return {
+          status: 502,
+          json: { ok: false, error: 'The project could not be opened with this account.' },
+        };
       }
-      return linkToWorkspace({ workspaceUrl: opened.body.url, projectToken: opened.body.token, role: opened.body.role });
+      return linkToWorkspace({
+        workspaceUrl: opened.body.url,
+        projectToken: opened.body.token,
+        role: opened.body.role,
+      });
     },
 
     /**
@@ -247,13 +283,19 @@ export function createCloudEndpoints(ctx: Ctx) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ token: projectToken }),
       });
-      const body: any = await res.json().catch(() => ({}));
+      const body = (await res.json().catch(() => ({}))) as CloudBody;
       if (res.ok && body?.token) hubToken = body.token;
     } catch {
       /* handled below */
     }
     if (!hubToken) {
-      return { status: 502, json: { ok: false, error: 'The workspace did not accept the sign-in. Try again in a minute.' } };
+      return {
+        status: 502,
+        json: {
+          ok: false,
+          error: 'The workspace did not accept the sign-in. Try again in a minute.',
+        },
+      };
     }
 
     const norm = normalizeUrl(workspaceUrl);
@@ -261,7 +303,7 @@ export function createCloudEndpoints(ctx: Ctx) {
 
     // Project side — linkedHub in .design/config.json (committed; no token).
     const cfgPath = join(ctx.paths.designRoot, 'config.json');
-    let cfg: any = {};
+    let cfg: Record<string, unknown> = {};
     try {
       cfg = JSON.parse(readFileSync(cfgPath, 'utf8'));
     } catch {

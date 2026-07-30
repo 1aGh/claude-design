@@ -194,7 +194,7 @@ describe('every rejection says WHY', () => {
   it('a tampered payload fails on the signature, not on the parse', () => {
     // Order matters: parsing attacker-controlled bytes before checking that
     // they are ours is the wrong way round.
-    const [body, sig] = tokenFor().split('.');
+    const [_body, sig] = tokenFor().split('.');
     const forged = Buffer.from(
       JSON.stringify({ email: 'evil@example.com', project: 'alligators', exp: NOW + 1e9 })
     ).toString('base64url');

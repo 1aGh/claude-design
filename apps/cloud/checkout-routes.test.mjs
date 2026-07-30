@@ -324,7 +324,7 @@ test('a settled attempt is never settled again — the void is idempotent', asyn
 // ---------------------------------------------------------------- billing
 
 test('billing shows the situation and hands the owner to the portal', async () => {
-  const { env, sqlite } = await freshEnv();
+  const { env } = await freshEnv();
   const stripeCalls = stripeHappy();
   cloudflareOk();
   cellAnswers(true);

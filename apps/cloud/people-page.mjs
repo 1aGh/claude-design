@@ -170,7 +170,12 @@ export function removeConfirmPage({ account, project, person, tokenTtlMs, csrf }
        ${csrf ? `<input type="hidden" name="csrf" value="${esc(csrf)}">` : ''}
        <button type="submit" name="do" value="remove">Remove them</button>
        <a href="/projects/${esc(project.id)}/people" style="margin-left:1rem">Cancel</a>
-     </form>`
+     </form>`,
+    // The shell options were destructured but never passed, so the confirm
+    // step dropped the nav and the account chip — the one page in the flow
+    // where somebody most needs to see which project they are acting on.
+    // Only an owner reaches removal, hence isOwner.
+    { account, project, isOwner: true }
   );
 }
 

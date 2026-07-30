@@ -21,15 +21,13 @@ export const ROLES = ['viewer', 'member', 'owner'];
  * Decide a membership change.
  *
  * @param {object} args
- * @param {string} args.actorId          who is asking
- * @param {string} args.actorRole        their role on this project
+ * @param {string} args.actorRole        the asker's role on this project
  * @param {string} args.targetAccountId  who it is about
  * @param {string|null} args.targetRole   their current role, null if not a member
  * @param {string|null} args.newRole      the role to set, null to remove
  * @param {string} args.ownerId          the project's owner account
  */
 export function decideMembershipChange({
-  actorId,
   actorRole,
   targetAccountId,
   targetRole,

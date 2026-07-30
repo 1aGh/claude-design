@@ -153,11 +153,11 @@ test('a file downloads only inside the export prefix, only for the owner', async
 
   // Traversal out of the export namespace is refused by shape, not by lookup.
   env.EXPORTS.objects.set('tenants/alligators/assets/photo.jpg', 'x');
-  const escape = await worker.fetch(
+  const traversal = await worker.fetch(
     get('/projects/alligators/download/file?g=..%2F..%2Fassets&f=photo.jpg', session),
     env
   );
-  assert.equal(escape.status, 404);
+  assert.equal(traversal.status, 404);
 
   // Another project's export cannot be addressed at all — the project id in
   // the key comes from the PATH, which access control already gated.
