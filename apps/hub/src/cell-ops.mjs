@@ -21,7 +21,7 @@
 // Both report rather than throw: they run inside a serving hub, and a failed
 // export or push must cost exactly that operation, never the workspace.
 
-import { verifyAccessToken } from './cloud-identity.mjs';
+import { projectTokenKey, verifyAccessToken } from './cloud-identity.mjs';
 import { buildExport } from './export.mjs';
 import { pushMirror } from './mirror-push.mjs';
 import { putObject, s3ConfigFromEnv } from './s3.mjs';
@@ -47,7 +47,7 @@ export async function handleExportRoute(ctx) {
   }
 
   const tenant = env.MAUDE_TENANT_ID ?? '';
-  const secret = env.HUB_SECRET ?? '';
+  const secret = projectTokenKey(env);
   const auth = (ctx.request?.headers?.authorization ?? '').replace(/^Bearer\s+/i, '').trim();
   const verdict = verifyAccessToken(auth, secret, { tenantId: tenant || undefined });
   if (!tenant || !secret || !verdict.ok || verdict.user.role !== 'owner') {
