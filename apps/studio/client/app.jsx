@@ -78,6 +78,7 @@ import { PhotoKnobs } from './photo-knobs.jsx';
 import {
   appIsFirstRun,
   isNativeApp,
+  onMenuReportBug,
   onUpdateReady,
   pickMediaFile,
   pickMediaFiles,
@@ -88,6 +89,7 @@ import { TourOverlay } from './tour/overlay.jsx';
 import { QUICK_SETUP_TOUR } from './tour/quick-setup-tour.js';
 import { USAGE_TOUR } from './tour/usage-tour.js';
 import { ExportBadge, ExportPanel, ExportToast, useExportCenter } from './export-center.jsx';
+import { ReportBugDialog } from './report-bug.jsx';
 import { useWhatsNew, WhatsNewPanel, WhatsNewToast } from './whats-new.jsx';
 
 const USAGE_TOUR_STORE = 'mdcc-usage-tour-seen';
@@ -3408,6 +3410,7 @@ function HelpDropdown({ onAction, onClose }) {
       items={[
         { id: 'shortcuts', label: 'Keyboard shortcuts', shortcut: '?' },
         { id: 'help', label: 'Help · commands & flows', shortcut: 'F1' },
+        { id: 'report-bug', label: 'Report a bug…' },
         { sep: true },
         { id: 'tour', label: 'Take the tour' },
         { id: 'watch-intro', label: 'Watch the intro' },
@@ -3552,6 +3555,7 @@ function Menubar({
   onToggleShowHidden,
   onOpenHelp,
   onOpenShortcuts,
+  onReportBug,
   onStartTour,
   onStartCollabTour,
   annotationsVisible,
@@ -3878,6 +3882,7 @@ function Menubar({
           onAction={(id) => {
             if (id === 'shortcuts') onOpenShortcuts?.();
             else if (id === 'help') onOpenHelp?.();
+            else if (id === 'report-bug') onReportBug?.();
             else if (id === 'tour') onStartTour?.();
             else if (id === 'collab-tour') onStartCollabTour?.();
             else if (id === 'quick-setup') onOpenQuickSetup?.();
@@ -9158,6 +9163,17 @@ function App() {
   const [showHidden, setShowHidden] = useState(() => readBoolStore(SHOW_HIDDEN_STORE, false));
   const [sectionsExpanded, setSectionsExpanded] = useState(() => readJsonStore(SECTIONS_STORE, {}));
   const [helpOpen, setHelpOpen] = useState(false);
+  const [reportBugOpen, setReportBugOpen] = useState(false);
+
+  // Native Help ▸ Report a Bug… (menu.rs emits `menu://report-bug`) — same
+  // lane as IdentityBar's File ▸ New Project… subscription.
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    const p = onMenuReportBug(() => setReportBugOpen(true));
+    return () => {
+      p.then((un) => un()).catch(() => {});
+    };
+  }, []);
   const [readinessOpen, setReadinessOpen] = useState(false);
   const [introOpen, setIntroOpen] = useState(false);
   const [quickSetupOpen, setQuickSetupOpen] = useState(false);
@@ -13309,6 +13325,13 @@ function App() {
         kbd: 'F1',
         run: () => setHelpOpen(true),
       },
+      {
+        id: 'report-bug',
+        group: 'Help',
+        label: 'Report a bug…',
+        icon: 'help',
+        run: () => setReportBugOpen(true),
+      },
     ],
     [openSystem, toggleTheme, reloadActive, whatsNew]
   );
@@ -13522,6 +13545,7 @@ function App() {
           onToggleShowHidden={() => setShowHidden((v) => !v)}
           onOpenHelp={() => setHelpOpen(true)}
           onOpenShortcuts={() => setShortcutsOpen(true)}
+          onReportBug={() => setReportBugOpen(true)}
           onStartTour={() => startTour(USAGE_TOUR)}
           onStartCollabTour={() => startTour(COLLAB_TOUR)}
           annotationsVisible={annotationsVisible}
@@ -14182,6 +14206,7 @@ function App() {
           startTour(USAGE_TOUR);
         }}
       />
+      <ReportBugDialog open={reportBugOpen} onClose={() => setReportBugOpen(false)} />
       <WhatsNewPanel wn={whatsNew} onStartTour={startTour} />
       <ExportPanel center={exportCenter} />
       <ReadinessDialog open={readinessOpen} onClose={() => setReadinessOpen(false)} />

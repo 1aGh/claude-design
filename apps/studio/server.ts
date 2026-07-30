@@ -26,6 +26,7 @@ import { type AiActivityEntry, createAiActivity } from './collab/ai-activity.ts'
 import { createGitLifecycle } from './collab/git-lifecycle.ts';
 import { createCollab } from './collab/index.ts';
 import { createContext, reloadConfig } from './context.ts';
+import { installLogRing } from './debug-bundle.ts';
 import { createExportJobQueue } from './exporters/jobs.ts';
 import { createFsWatch } from './fs-watch.ts';
 import { createGenerationJobQueue } from './generation/jobs.ts';
@@ -41,6 +42,12 @@ import {
   pruneForWorkspace,
 } from './workspace-mode.ts';
 import { createWs, isLoopbackHost, isSameOriginWs, parseCollabSlug, type WsData } from './ws.ts';
+
+// feature-bug-report-button — mirror console output into the in-memory log
+// ring BEFORE anything else logs, so a bug report's serverLogTail covers the
+// boot sequence too (where "wrong project root" class failures announce
+// themselves). Stdout/stderr behavior is unchanged.
+installLogRing();
 
 // Phase 19 / DDR-044 — covers the marketplace-cache-install gap where
 // node_modules/ ships empty (git clone honors .gitignore). Auto-installs +

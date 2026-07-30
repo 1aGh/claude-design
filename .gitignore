@@ -25,6 +25,7 @@ dev-server/.cache/
 .design/_draw/
 .design/_photo/
 .design/_smoke/
+.design/_reports/
 .design/_comments/
 .design/_canvas-state/
 .design/_chat/

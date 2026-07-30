@@ -13,6 +13,63 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
+/// Rotating sidecar log (`<app-log-dir>/server.log`, 1 MB × 3 files).
+/// Volume is tiny (boot lines + request warnings), so plain sync writes on
+/// the drain task are fine.
+struct ServerLog {
+    file: std::fs::File,
+    size: u64,
+    dir: PathBuf,
+}
+
+const SERVER_LOG_MAX_BYTES: u64 = 1_000_000;
+const SERVER_LOG_KEEP: usize = 3;
+
+impl ServerLog {
+    fn open(app: &AppHandle) -> Option<Self> {
+        let dir = app.path().app_log_dir().ok()?;
+        std::fs::create_dir_all(&dir).ok()?;
+        let path = dir.join("server.log");
+        let file = std::fs::OpenOptions::new().create(true).append(true).open(&path).ok()?;
+        let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+        Some(Self { file, size, dir })
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        use std::io::Write;
+        if self.size > SERVER_LOG_MAX_BYTES {
+            self.rotate();
+        }
+        if self.file.write_all(bytes).is_ok() {
+            self.size += bytes.len() as u64;
+        }
+    }
+
+    /// server.log → server.log.1 → … → server.log.<KEEP> (oldest dropped).
+    fn rotate(&mut self) {
+        for i in (1..=SERVER_LOG_KEEP).rev() {
+            let from = if i == 1 {
+                self.dir.join("server.log")
+            } else {
+                self.dir.join(format!("server.log.{}", i - 1))
+            };
+            let _ = std::fs::rename(&from, self.dir.join(format!("server.log.{i}")));
+        }
+        if let Some(fresh) = Self::open_fresh(&self.dir) {
+            self.file = fresh;
+            self.size = 0;
+        }
+    }
+
+    fn open_fresh(dir: &std::path::Path) -> Option<std::fs::File> {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("server.log"))
+            .ok()
+    }
+}
+
 /// Managed state holding the live sidecar child + supervision flags.
 pub struct SidecarState {
     pub child: Mutex<Option<CommandChild>>,
@@ -296,13 +353,26 @@ pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
 
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        // feature-bug-report-button (T4/1b) — mirror the sidecar's output into a
+        // rotating file under the OS log dir (~/Library/Logs/<bundle-id> on
+        // macOS). A Finder-launched .app has no terminal, so without this the
+        // server's own output is unrecoverable post-mortem; the dev-server's
+        // in-memory ring only covers the live process. Best-effort: an
+        // unopenable log dir degrades to today's stderr-only behavior.
+        let mut server_log = ServerLog::open(&app);
         while let Some(event) = rx.recv().await {
             match event {
                 CommandEvent::Stdout(line) => {
                     eprint!("[maude:server] {}", String::from_utf8_lossy(&line));
+                    if let Some(log) = server_log.as_mut() {
+                        log.write(&line);
+                    }
                 }
                 CommandEvent::Stderr(line) => {
                     eprint!("[maude:server] {}", String::from_utf8_lossy(&line));
+                    if let Some(log) = server_log.as_mut() {
+                        log.write(&line);
+                    }
                 }
                 CommandEvent::Error(err) => {
                     eprintln!("[maude:server] error: {err}");
