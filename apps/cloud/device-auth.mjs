@@ -83,7 +83,8 @@ function html(body, status = 200) {
       'content-type': 'text/html; charset=utf-8',
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
-      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'",
+      'content-security-policy':
+        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'",
       'referrer-policy': 'no-referrer',
     },
   });
@@ -189,7 +190,13 @@ export async function handleDeviceAuth(request, env, { account }) {
       `INSERT INTO device_codes (device_code, user_code, client_name, created_at, expires_at)
        VALUES (?, ?, ?, ?, ?)`
     )
-      .bind(deviceCode, userCode, String(body?.client ?? 'Maude app').slice(0, 80), now, now + DEVICE_CODE_TTL_MS)
+      .bind(
+        deviceCode,
+        userCode,
+        String(body?.client ?? 'Maude app').slice(0, 80),
+        now,
+        now + DEVICE_CODE_TTL_MS
+      )
       .run();
     return json({
       device_code: deviceCode,
@@ -244,7 +251,9 @@ export async function handleDeviceAuth(request, env, { account }) {
     }
     if (request.method !== 'POST') return html('<p>Not allowed.</p>', 405);
     const form = await request.formData();
-    const code = String(form.get('code') ?? '').trim().toUpperCase();
+    const code = String(form.get('code') ?? '')
+      .trim()
+      .toUpperCase();
     const row = await env.DB.prepare(
       'SELECT * FROM device_codes WHERE user_code = ? AND approved_account IS NULL'
     )
@@ -252,7 +261,11 @@ export async function handleDeviceAuth(request, env, { account }) {
       .first();
     if (!row || row.expires_at < now) {
       return html(
-        activatePage({ account, error: 'That code is not waiting for approval. Codes expire after a few minutes — ask the app for a fresh one.' }),
+        activatePage({
+          account,
+          error:
+            'That code is not waiting for approval. Codes expire after a few minutes — ask the app for a fresh one.',
+        }),
         400
       );
     }
@@ -320,12 +333,23 @@ export function allDeviceHtml() {
   return [
     activatePage({ account }),
     activatePage({ account, code: 'ABCD-EFGH' }),
-    activatePage({ account, error: 'That code is not waiting for approval. Codes expire after a few minutes — ask the app for a fresh one.' }),
+    activatePage({
+      account,
+      error:
+        'That code is not waiting for approval. Codes expire after a few minutes — ask the app for a fresh one.',
+    }),
     activatePage({ account, done: true }),
     accountPage({ account, tokens: [] }),
     accountPage({
       account,
-      tokens: [{ id: 'x', label: 'Maude Desktop on MacBook', created_at: 1753872000000, last_used_at: 1753872000000 }],
+      tokens: [
+        {
+          id: 'x',
+          label: 'Maude Desktop on MacBook',
+          created_at: 1753872000000,
+          last_used_at: 1753872000000,
+        },
+      ],
       notice: 'Disconnected. The app signs out the next time it checks in.',
     }),
   ].join('\n');

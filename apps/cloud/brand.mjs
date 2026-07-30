@@ -328,13 +328,18 @@ export const GLYPHS = {
   grid: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>',
   plus: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>',
   open: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3H3v10h10v-3"/><path d="M9 3h4v4"/><line x1="13" y1="3" x2="7" y2="9"/></svg>',
-  people: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5.5" r="2.5"/><path d="M2 13c0-2.2 1.8-4 4-4s4 1.8 4 4"/><path d="M11 9.2c1.7.4 3 1.9 3 3.8"/><path d="M10.5 3.2a2.5 2.5 0 0 1 0 4.6"/></svg>',
+  people:
+    '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5.5" r="2.5"/><path d="M2 13c0-2.2 1.8-4 4-4s4 1.8 4 4"/><path d="M11 9.2c1.7.4 3 1.9 3 3.8"/><path d="M10.5 3.2a2.5 2.5 0 0 1 0 4.6"/></svg>',
   card: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="4" width="12" height="8" rx="1.5"/><line x1="2" y1="7" x2="14" y2="7"/></svg>',
-  branch: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="4" r="1.8"/><circle cx="4.5" cy="12" r="1.8"/><circle cx="11.5" cy="6" r="1.8"/><path d="M4.5 5.8v4.4"/><path d="M11.5 7.8c0 2.4-3 2.2-5 3.2"/></svg>',
-  clock: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><polyline points="8 5 8 8 10.5 9.5"/></svg>',
+  branch:
+    '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="4" r="1.8"/><circle cx="4.5" cy="12" r="1.8"/><circle cx="11.5" cy="6" r="1.8"/><path d="M4.5 5.8v4.4"/><path d="M11.5 7.8c0 2.4-3 2.2-5 3.2"/></svg>',
+  clock:
+    '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><polyline points="8 5 8 8 10.5 9.5"/></svg>',
   down: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7"/><polyline points="5 7 8 10 11 7"/><path d="M3 12.5h10"/></svg>',
-  trash: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 5h9"/><path d="M6.5 5V3.5h3V5"/><path d="M5 5l.6 8h4.8L11 5"/></svg>',
-  share: '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="8" r="1.8"/><circle cx="12" cy="4" r="1.8"/><circle cx="12" cy="12" r="1.8"/><line x1="5.6" y1="7.2" x2="10.4" y2="4.8"/><line x1="5.6" y1="8.8" x2="10.4" y2="11.2"/></svg>',
+  trash:
+    '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 5h9"/><path d="M6.5 5V3.5h3V5"/><path d="M5 5l.6 8h4.8L11 5"/></svg>',
+  share:
+    '<svg class="g" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="8" r="1.8"/><circle cx="12" cy="4" r="1.8"/><circle cx="12" cy="12" r="1.8"/><line x1="5.6" y1="7.2" x2="10.4" y2="4.8"/><line x1="5.6" y1="8.8" x2="10.4" y2="11.2"/></svg>',
 };
 
 function escAttr(s) {
@@ -362,7 +367,17 @@ function navItem({ href, label, glyph, active = false, danger = false }) {
  * @param {{tone: string, label: string}|null} [args.pill]  state pill next to the h1
  * @param {string|null} [args.lede]      one quiet sentence under the h1
  */
-export function appShell({ account, title, body, project = null, isOwner = false, active = '', pill = null, lede = null, extraCss = '' }) {
+export function appShell({
+  account,
+  title,
+  body,
+  project = null,
+  isOwner = false,
+  active = '',
+  pill = null,
+  lede = null,
+  extraCss = '',
+}) {
   const p = project ? `/projects/${escAttr(project.id)}` : '';
   const projectNav = project
     ? `<div class="nav-sep"></div>

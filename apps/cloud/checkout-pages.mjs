@@ -61,7 +61,7 @@ export function newProjectPage({ account = null, pricing, error = null, values =
     .map((p, i) => {
       const monthly = euros(p.amounts.monthlyMinor);
       return `<label class="plan">
-        <input type="radio" name="plan" value="${esc(p.id)}" ${((values.plan ?? pricing.plans[0].id) === p.id) ? 'checked' : ''} required>
+        <input type="radio" name="plan" value="${esc(p.id)}" ${(values.plan ?? pricing.plans[0].id) === p.id ? 'checked' : ''} required>
         <strong>${esc(p.name)}</strong>
         <span class="quiet" style="display:block">${esc(p.summary)}</span>
         <p class="price">${monthly}<span class="per"> / month</span></p>
@@ -157,7 +157,7 @@ export function billingPage({ account = null, project, stateCopy, canPortal }) {
               cancelling all live there — it is your billing relationship, so you hold it directly.</p>`
          : `<p class="quiet" style="margin-top:var(--space-5)">There is no billing set up for this
               project yet.</p>`
-     }`,
+}`,
   });
 }
 
@@ -167,14 +167,40 @@ export function allCheckoutHtml({ pricing }) {
   const account = { email: 'a@example.com' };
   return [
     newProjectPage({ account, pricing }),
-    newProjectPage({ account, pricing, error: 'Pick one of the plans.', values: { name: 'X', interval: 'annual' } }),
+    newProjectPage({
+      account,
+      pricing,
+      error: 'Pick one of the plans.',
+      values: { name: 'X', interval: 'annual' },
+    }),
     waitingRoomPage({
       project,
-      room: { step: 'workspace', steps: PROVISION_STEPS, done: false, note: 'This usually takes a minute or two. Your card has not been charged yet — that happens once your project is up.' },
+      room: {
+        step: 'workspace',
+        steps: PROVISION_STEPS,
+        done: false,
+        note: 'This usually takes a minute or two. Your card has not been charged yet — that happens once your project is up.',
+      },
     }),
-    waitingRoomPage({ project, room: { step: 'ready', steps: PROVISION_STEPS, done: true, note: 'Your project is ready.' } }),
-    waitingRoomPage({ project, room: { step: null, steps: PROVISION_STEPS, done: true, note: 'We could not set up your project, so you have not been charged.' } }),
+    waitingRoomPage({
+      project,
+      room: { step: 'ready', steps: PROVISION_STEPS, done: true, note: 'Your project is ready.' },
+    }),
+    waitingRoomPage({
+      project,
+      room: {
+        step: null,
+        steps: PROVISION_STEPS,
+        done: true,
+        note: 'We could not set up your project, so you have not been charged.',
+      },
+    }),
     billingPage({ account, project, stateCopy: { label: 'Ready', note: null }, canPortal: true }),
-    billingPage({ account, project, stateCopy: { label: 'Setting up', note: 'This usually takes a minute or two.' }, canPortal: false }),
+    billingPage({
+      account,
+      project,
+      stateCopy: { label: 'Setting up', note: 'This usually takes a minute or two.' },
+      canPortal: false,
+    }),
   ].join('\n');
 }

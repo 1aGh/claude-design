@@ -41,7 +41,11 @@ const CONTENT_TYPES = {
  * meaningful.
  */
 export function snapshotContentType(key) {
-  const ext = String(key ?? '').split('.').pop()?.toLowerCase() ?? '';
+  const ext =
+    String(key ?? '')
+      .split('.')
+      .pop()
+      ?.toLowerCase() ?? '';
   return CONTENT_TYPES[ext] ?? null;
 }
 
@@ -72,7 +76,8 @@ export function snapshotPrefix(tenant) {
 }
 
 /** A snapshot key must not be able to address anything but a snapshot. */
-const SNAPSHOT_NAME = /^(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}){0,3}$/;
+const SNAPSHOT_NAME =
+  /^(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}){0,3}$/;
 
 export function snapshotObjectKey(tenant, name) {
   const n = String(name ?? '');

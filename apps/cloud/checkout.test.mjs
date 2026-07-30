@@ -44,13 +44,33 @@ describe('validProjectId', () => {
 
 describe('validateNewProject', () => {
   it('passes a real submission through with the derived id', () => {
-    const v = validateNewProject({ name: 'Brno Alligators', plan: 'project', interval: 'monthly', pricing });
-    assert.deepEqual(v, { ok: true, id: 'brno-alligators', name: 'Brno Alligators', plan: 'project', interval: 'monthly' });
+    const v = validateNewProject({
+      name: 'Brno Alligators',
+      plan: 'project',
+      interval: 'monthly',
+      pricing,
+    });
+    assert.deepEqual(v, {
+      ok: true,
+      id: 'brno-alligators',
+      name: 'Brno Alligators',
+      plan: 'project',
+      interval: 'monthly',
+    });
   });
   it('refuses an unknown plan, a bad interval, a hopeless name', () => {
-    assert.equal(validateNewProject({ name: 'ok name', plan: 'nope', interval: 'monthly', pricing }).ok, false);
-    assert.equal(validateNewProject({ name: 'ok name', plan: 'project', interval: 'weekly', pricing }).ok, false);
-    assert.equal(validateNewProject({ name: '!!', plan: 'project', interval: 'monthly', pricing }).ok, false);
+    assert.equal(
+      validateNewProject({ name: 'ok name', plan: 'nope', interval: 'monthly', pricing }).ok,
+      false
+    );
+    assert.equal(
+      validateNewProject({ name: 'ok name', plan: 'project', interval: 'weekly', pricing }).ok,
+      false
+    );
+    assert.equal(
+      validateNewProject({ name: '!!', plan: 'project', interval: 'monthly', pricing }).ok,
+      false
+    );
   });
 });
 
@@ -78,7 +98,10 @@ describe('checkoutSessionParams', () => {
     assert.equal(params['metadata[plan]'], 'project');
   });
   it('returns to the waiting room, cancels back to the wizard', () => {
-    assert.match(params.success_url, /\/checkout\/return\?project=brno-alligators&session_id=\{CHECKOUT_SESSION_ID\}/);
+    assert.match(
+      params.success_url,
+      /\/checkout\/return\?project=brno-alligators&session_id=\{CHECKOUT_SESSION_ID\}/
+    );
     assert.match(params.cancel_url, /\/projects\/new$/);
   });
 });

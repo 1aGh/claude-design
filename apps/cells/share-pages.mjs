@@ -67,7 +67,11 @@ function shell(title, body) {
 export function htmlResponse(body, status = 200) {
   return new Response(body, {
     status,
-    headers: { ...SHARE_HEADERS, 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+    headers: {
+      ...SHARE_HEADERS,
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+    },
   });
 }
 

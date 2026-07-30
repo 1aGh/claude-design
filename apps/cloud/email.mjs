@@ -34,9 +34,7 @@ export function fromAddress(env) {
  */
 export function inviteEmail({ projectName, role, inviteUrl, invitedBy }) {
   const doing =
-    role === 'viewer'
-      ? 'look at the work and leave comments'
-      : 'design and edit alongside them';
+    role === 'viewer' ? 'look at the work and leave comments' : 'design and edit alongside them';
   return {
     subject: `${invitedBy} invited you to ${projectName}`,
     text: [

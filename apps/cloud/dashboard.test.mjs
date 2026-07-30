@@ -10,9 +10,14 @@ import { allDashboardHtml, dashboardPage, STATE_COPY } from './dashboard.mjs';
 import { can } from './project-access.mjs';
 
 const account = { email: 'a@example.com' };
-const project = (over = {}) => ({ id: 'alligators', name: 'Brno Alligators', state: 'active', role: 'owner', ...over });
-const render = (projects, capable = can) =>
-  dashboardPage({ account, projects, can: capable });
+const project = (over = {}) => ({
+  id: 'alligators',
+  name: 'Brno Alligators',
+  state: 'active',
+  role: 'owner',
+  ...over,
+});
+const render = (projects, capable = can) => dashboardPage({ account, projects, can: capable });
 
 describe('every project state says what is true and what to do', () => {
   it('covers every state the database allows', () => {
@@ -90,10 +95,22 @@ describe('an empty account is not an error', () => {
 });
 
 describe('copy discipline', () => {
-  it('never uses our vocabulary for the customer\'s things', () => {
+  it("never uses our vocabulary for the customer's things", () => {
     const html = allDashboardHtml();
-    for (const jargon of ['tenant', 'cell', 'container', 'R2', 'webhook', 'reconcil', 'purge', 'provision']) {
-      assert.ok(!new RegExp(`\\b${jargon}`, 'i').test(html), `"${jargon}" leaked into the dashboard`);
+    for (const jargon of [
+      'tenant',
+      'cell',
+      'container',
+      'R2',
+      'webhook',
+      'reconcil',
+      'purge',
+      'provision',
+    ]) {
+      assert.ok(
+        !new RegExp(`\\b${jargon}`, 'i').test(html),
+        `"${jargon}" leaked into the dashboard`
+      );
     }
   });
 

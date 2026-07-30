@@ -46,7 +46,11 @@ describe('containment: only inert bytes are shareable', () => {
 
   it('the rendered page ships no script tag at all', () => {
     const html = renderGallery(
-      buildGallery([{ key: 'tenants/acme/snapshots/a.png', size: 1, lastModified: new Date().toISOString() }], 'acme', Date.now()),
+      buildGallery(
+        [{ key: 'tenants/acme/snapshots/a.png', size: 1, lastModified: new Date().toISOString() }],
+        'acme',
+        Date.now()
+      ),
       'Acme'
     );
     assert.ok(!/<script/i.test(html), 'a script tag here would undo the whole claim');
@@ -93,7 +97,11 @@ describe('the view never implies liveness', () => {
     // A warning that appears only when stale teaches people that its absence
     // means current — which is exactly the belief this prevents.
     const fresh = renderGallery(
-      buildGallery([{ key: 'tenants/acme/snapshots/a.png', size: 1, lastModified: new Date().toISOString() }], 'acme', Date.now()),
+      buildGallery(
+        [{ key: 'tenants/acme/snapshots/a.png', size: 1, lastModified: new Date().toISOString() }],
+        'acme',
+        Date.now()
+      ),
       'Acme'
     );
     assert.match(fresh, /pictures, not the live project/);
@@ -118,7 +126,10 @@ describe('the view never implies liveness', () => {
       'acme',
       0
     );
-    assert.deepEqual(g.items.map((i) => i.name), ['a.png']);
+    assert.deepEqual(
+      g.items.map((i) => i.name),
+      ['a.png']
+    );
   });
 });
 

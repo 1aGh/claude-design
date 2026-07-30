@@ -20,7 +20,12 @@ describe('inviteEmail', () => {
   });
 
   it('tells a viewer and a member different truths about what they can do', () => {
-    const viewer = inviteEmail({ projectName: 'P', role: 'viewer', inviteUrl: 'u', invitedBy: 'a@b.c' });
+    const viewer = inviteEmail({
+      projectName: 'P',
+      role: 'viewer',
+      inviteUrl: 'u',
+      invitedBy: 'a@b.c',
+    });
     assert.match(viewer.text, /comments/);
     assert.match(mail.text, /design and edit/);
   });
@@ -36,7 +41,15 @@ describe('inviteEmail', () => {
 describe('sendEmail', () => {
   it('refuses quietly when no key is configured — and never calls out', async () => {
     let called = false;
-    const out = await sendEmail({}, { to: 'a@b.c', subject: 's', text: 't' }, { fetchImpl: async () => { called = true; } });
+    const out = await sendEmail(
+      {},
+      { to: 'a@b.c', subject: 's', text: 't' },
+      {
+        fetchImpl: async () => {
+          called = true;
+        },
+      }
+    );
     assert.equal(out.ok, false);
     assert.equal(called, false);
   });
@@ -76,7 +89,11 @@ describe('sendEmail', () => {
     const outage = await sendEmail(
       { RESEND_API_KEY: 'key' },
       { to: 'a@b.c', subject: 's', text: 't' },
-      { fetchImpl: async () => { throw new Error('ECONNRESET'); } }
+      {
+        fetchImpl: async () => {
+          throw new Error('ECONNRESET');
+        },
+      }
     );
     assert.equal(outage.ok, false);
   });
