@@ -83,6 +83,26 @@ export const MIGRATIONS = [
       'CREATE INDEX IF NOT EXISTS members_account ON project_members (account_id);',
     ],
   },
+  {
+    version: 5, // Phase 22 — inviting someone who has no account yet
+    statements: [
+      // SEPARATE from account_invites, which invites somebody to the PLATFORM
+      // (Phase 6). A project invite has to carry the project and the role, and
+      // overloading one table would mean a row whose meaning depends on which
+      // columns happen to be null — and every reader having to know that.
+      `CREATE TABLE IF NOT EXISTS project_invites (
+        id          TEXT PRIMARY KEY,
+        project_id  TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+        email       TEXT NOT NULL,
+        role        TEXT NOT NULL CHECK (role IN ('viewer','member')),
+        created_at  INTEGER NOT NULL,
+        expires_at  INTEGER NOT NULL,
+        redeemed_at INTEGER,
+        revoked_at  INTEGER
+      );`,
+      'CREATE INDEX IF NOT EXISTS project_invites_email ON project_invites (email);',
+    ],
+  },
 ];
 
 /** Apply baseline + pending versioned migrations. Safe to run repeatedly. */

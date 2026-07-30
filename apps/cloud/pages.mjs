@@ -10,6 +10,7 @@
 // written only when the box was actually ticked.
 
 import { allDashboardHtml } from './dashboard.mjs';
+import { allPeopleHtml } from './people-page.mjs';
 
 const BASE_CSS = `
   :root { color-scheme: light dark; }
@@ -104,6 +105,7 @@ export function messagePage(title, text) {
 export function allCustomerFacingHtml() {
   return [
     allDashboardHtml(),
+    allPeopleHtml(),
     signupPage({ googleEnabled: true }),
     loginPage({ googleEnabled: true, error: 'That email and password don’t match.' }),
     homePage(),
