@@ -94,10 +94,18 @@ export async function cellEnv({ tenantId, env, hostname }) {
     // per-client rate limiter buckets the entire internet as one client.
     HUB_TRUSTED_PROXIES: '0.0.0.0/0,::/0',
     // Where this cell's platform lives (Cloud Phases 19/20/22). Powers the
-    // mirror clock and — once enabled per-cell — cloud identity. A cell asks
-    // the control plane and presents its own derived secret; it never holds a
-    // platform credential.
-    MAUDE_CONTROL_PLANE_URL: env.CONTROL_PLANE_URL ?? 'https://cloud.maude.sh',
+    // mirror clock and — once enabled per-cell — cloud identity.
+    //
+    // WITHDRAWN 2026-07-30, deliberately: `cloudIdentityEnabled()` in the hub
+    // keys on MAUDE_CONTROL_PLANE_URL && MAUDE_TENANT_ID, so passing the URL
+    // for the MIRROR silently flipped the live cell into cloud-identity mode
+    // — and with no browser consumer for the project token yet, that made the
+    // cell unreachable in a browser (the derived password was refused with
+    // "sign in at the dashboard", and the dashboard had nothing to hand over).
+    // One env var was doubling as two switches. Until the browser handoff
+    // lands (and identity gets its own explicit switch), the URL stays out:
+    // the mirror clock sleeps, the tenant keeps their working sign-in.
+    // MAUDE_CONTROL_PLANE_URL: env.CONTROL_PLANE_URL ?? 'https://cloud.maude.sh',
     // Object storage. The entrypoint derives per-tenant key prefixes from
     // MAUDE_TENANT_ID — one bucket, one prefix per tenant.
     MAUDE_S3_ENDPOINT: env.MAUDE_R2_ENDPOINT ?? '',
