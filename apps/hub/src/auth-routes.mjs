@@ -131,10 +131,11 @@ export async function handleAuthRoutes(ctx) {
       { email: body?.email, password: body?.password, token: body?.token },
       {
         local: (email, password) => authenticate(dataDir, email, password),
-        secret: ctx.secret ?? secret,
+        // No explicit secret: token verification resolves its OWN key
+        // (MAUDE_PROJECT_TOKEN_KEY, falling back to HUB_SECRET pre-B4).
       }
     );
-    if (result.reason === 'cloud-identity') {
+    if (result.reason === 'cloud-identity' || result.reason === 'viewer-not-supported') {
       // The ONE failure that is not an opaque "invalid email or password":
       // nothing is wrong with what they typed, the thing they typed into does
       // not exist here. Telling them where to go instead is the whole point.
@@ -153,7 +154,9 @@ export async function handleAuthRoutes(ctx) {
     }
 
     const user = result.user;
-    const expiresAt = Date.now() + userTokenTtlMs();
+    // A token-exchanged session dies WITH the project token that minted it
+    // (Phase 23 B2) — never the default 30 days beyond the removal window.
+    const expiresAt = Math.min(Date.now() + userTokenTtlMs(), result.expiresAt ?? Infinity);
     const minted = addToken(dataDir, {
       label: mintLabel(),
       scope: user.scope ?? '*',

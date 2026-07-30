@@ -124,6 +124,35 @@ export const MIGRATIONS = [
       'CREATE INDEX IF NOT EXISTS checkout_attempts_project ON checkout_attempts (project_id);',
     ],
   },
+  {
+    version: 7, // Phase 23 C — the desktop signs in like a device, not like a browser
+    statements: [
+      // One row per pending device sign-in. The device_code is the poller's
+      // secret; the user_code is what a human confirms on /activate. Rows are
+      // short-lived and deleted on redemption.
+      `CREATE TABLE IF NOT EXISTS device_codes (
+        device_code      TEXT PRIMARY KEY,
+        user_code        TEXT NOT NULL UNIQUE,
+        client_name      TEXT,
+        approved_account TEXT,
+        created_at       INTEGER NOT NULL,
+        expires_at       INTEGER NOT NULL
+      );`,
+      // Personal tokens: what a device HOLDS after the flow. Stored hashed —
+      // a leaked D1 dump must not be a bag of live credentials. Revocable
+      // from the Account page, which is the revocation surface the offline
+      // project-token story has needed all along.
+      `CREATE TABLE IF NOT EXISTS personal_tokens (
+        id           TEXT PRIMARY KEY,
+        account_id   TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+        label        TEXT,
+        created_at   INTEGER NOT NULL,
+        last_used_at INTEGER,
+        revoked_at   INTEGER
+      );`,
+      'CREATE INDEX IF NOT EXISTS personal_tokens_account ON personal_tokens (account_id);',
+    ],
+  },
 ];
 
 /** Apply baseline + pending versioned migrations. Safe to run repeatedly. */

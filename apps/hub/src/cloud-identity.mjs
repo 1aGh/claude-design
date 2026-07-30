@@ -26,9 +26,40 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 /** How long an access token is good for. */
 export const ACCESS_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 
-/** True when this hub takes its identity from a control plane. */
+/**
+ * True when this hub accepts control-plane project tokens.
+ *
+ * An EXPLICIT switch, never inferred (Phase 23 B1). The first wiring keyed
+ * this on MAUDE_CONTROL_PLANE_URL && MAUDE_TENANT_ID — and adding the URL for
+ * the MIRROR clock silently flipped the live cell into a mode with no working
+ * browser sign-in. An env var that names a dependency must never double as
+ * consent to a behavioral mode.
+ *
+ * Values: unset/'' → off. '1' → HYBRID: token exchange accepted IN ADDITION
+ * to the local user store, so a workspace password keeps working while the
+ * dashboard/desktop lanes migrate. 'strict' → tokens only (the DDR-204 end
+ * state, once the browser handoff exists).
+ */
 export function cloudIdentityEnabled(env = process.env) {
-  return Boolean(env.MAUDE_CONTROL_PLANE_URL && env.MAUDE_TENANT_ID);
+  return env.MAUDE_CLOUD_IDENTITY === '1' || env.MAUDE_CLOUD_IDENTITY === 'strict';
+}
+
+/** Tokens-only — no local passwords. The end state, opt-in separately. */
+export function cloudIdentityStrict(env = process.env) {
+  return env.MAUDE_CLOUD_IDENTITY === 'strict';
+}
+
+/**
+ * The key project tokens are verified against.
+ *
+ * Its OWN derived key (purpose `project-token`), never HUB_SECRET — HUB_SECRET
+ * is already the admin bearer AND a wildcard peer token, and the admin console
+ * asks operators to paste it into a browser. One value must not be all three
+ * (Phase 23 B4 / the debate's BREAKER finding). Falls back to HUB_SECRET only
+ * so pre-B4 tokens keep verifying during the rollout.
+ */
+export function projectTokenKey(env = process.env) {
+  return env.MAUDE_PROJECT_TOKEN_KEY || env.HUB_SECRET || '';
 }
 
 function b64url(buf) {
@@ -91,7 +122,13 @@ export function verifyAccessToken(token, secret, { now = Date.now(), tenantId } 
   if (!claims.email) return { ok: false, reason: 'malformed' };
   if (typeof claims.exp !== 'number' || claims.exp <= now) return { ok: false, reason: 'expired' };
 
-  return { ok: true, user: { email: claims.email, role: claims.role ?? 'member' } };
+  return {
+    ok: true,
+    user: { email: claims.email, role: claims.role ?? 'member' },
+    // Surfaced so the exchanged peer token can be CAPPED to the project
+    // token's own lifetime (Phase 23 B2).
+    expiresAt: claims.exp,
+  };
 }
 
 /**
@@ -130,9 +167,31 @@ export function authenticateForMode({ email, password, token }, { local, env = p
   if (!cloudIdentityEnabled(env)) {
     return local(email, password);
   }
-  // Cloud mode: a local password is not merely wrong, it is not a thing here.
-  if (!token) return LOCAL_PASSWORD_REFUSED;
-  const verdict = verifyAccessToken(token, secret, { now, tenantId: env.MAUDE_TENANT_ID });
-  if (!verdict.ok) return { ok: false, reason: verdict.reason };
-  return { ok: true, user: verdict.user };
+
+  if (token) {
+    const key = secret ?? projectTokenKey(env);
+    const verdict = verifyAccessToken(token, key, { now, tenantId: env.MAUDE_TENANT_ID });
+    if (!verdict.ok) return { ok: false, reason: verdict.reason };
+    // A viewer must not become an editor by walking through this door. The
+    // hub has no read-only enforcement yet (peer tokens are write-capable),
+    // so a viewer-role token is REFUSED here rather than silently escalated
+    // — the People page's "cannot change anything" promise stays true
+    // (Phase 23 B2 / the debate's BREAKER finding).
+    if (verdict.user.role === 'viewer') {
+      return {
+        ok: false,
+        reason: 'viewer-not-supported',
+        message:
+          'Viewing works from the shared gallery link for now — editing access in the workspace needs the member role.',
+      };
+    }
+    // The exchanged session must die WITH the project token, not outlive it
+    // by 30 days — "removal lands within 12 hours" is a written promise.
+    return { ok: true, user: verdict.user, expiresAt: verdict.expiresAt };
+  }
+
+  // HYBRID keeps the local user store alive alongside tokens; STRICT is the
+  // end state where a password is not a thing here at all.
+  if (!cloudIdentityStrict(env)) return local(email, password);
+  return LOCAL_PASSWORD_REFUSED;
 }

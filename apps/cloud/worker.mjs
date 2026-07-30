@@ -18,6 +18,7 @@
 
 import { currentAccount, handleAuth } from './auth-routes.mjs';
 import { deriveCellSecret, mintProjectToken, secretsMatch } from './cell-token.mjs';
+import { handleDeviceAuth, personalTokenAccount } from './device-auth.mjs';
 import { handleCheckoutRoutes } from './checkout-routes.mjs';
 import { mintInstallationToken } from './github-app.mjs';
 import { handleInviteRoutes } from './invites.mjs';
@@ -64,7 +65,10 @@ async function openProject(request, env) {
     return json({ error: ACCESS_MESSAGES['no-access'] }, 404);
   }
 
-  const account = await currentAccount(request, env);
+  // A device's personal token and a browser's session are the same person
+  // through two doors (Phase 23 C2).
+  const account =
+    (await personalTokenAccount(env, request)) ?? (await currentAccount(request, env));
   let project = null;
   let members = [];
   try {
@@ -184,6 +188,11 @@ export default {
 
     // One session read for every signed-in surface below.
     const account = await currentAccount(request, env);
+
+    // The desktop's lane (Phase 23 C): device sign-in, the Account page, and
+    // the Bearer client API.
+    const deviceSurface = await handleDeviceAuth(request, env, { account });
+    if (deviceSurface) return deviceSurface;
 
     // Per-project control surfaces (Cloud Phase 22 / DDR-204). Before the
     // control-plane routes, because `/projects/...` is theirs.
