@@ -78,6 +78,7 @@ import {
   rotateToken,
   verifyToken,
 } from './tokens.mjs';
+import { handleExportRoute, scheduleMirror } from './cell-ops.mjs';
 import { createWorkspaceAgent } from './workspace-agent.mjs';
 
 const HUB_VERSION = readOwnVersion();
@@ -257,6 +258,8 @@ export function createHub(config = {}) {
   const repoDir = config.repoDir ?? process.env.MAUDE_REPO_DIR ?? '';
   /** @type {ReturnType<typeof createWorkspaceAgent>|null} */
   let workspace = null;
+  /** @type {ReturnType<typeof scheduleMirror>|null} */
+  let mirror = null;
 
   const server = new Server({
     port,
@@ -419,6 +422,19 @@ export function createHub(config = {}) {
           checkRateLimit: rateLimit
             ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
             : undefined,
+        });
+        if (handled) bailFromOnRequest();
+      }
+      // Cloud Phase 20 — the take-your-work-home export, started by the owner
+      // (or the dashboard on the owner's behalf) with a project access token.
+      if (authPath === '/api/export') {
+        const handled = await handleExportRoute({
+          request,
+          path: authPath,
+          method,
+          repoDir: workspaceMode ? repoDir : null,
+          run: workspaceMode && repoDir ? createGitRunner() : null,
+          respondJson: (status, payload) => respondAdminJson(response, status, payload),
         });
         if (handled) bailFromOnRequest();
       }
@@ -635,6 +651,14 @@ export function createHub(config = {}) {
       const started = await agent.start();
       bootReport.history = { state: started.state, reason: started.reason ?? null };
       if (started.state !== 'failed') workspace = agent;
+
+      // Cloud Phase 19 — the mirror clock. Enabled only when this cell knows
+      // its control plane; a self-hosted hub never ticks. The schedule asks
+      // "is a mirror configured" each tick, so connecting one needs no restart.
+      if (!mirror) {
+        mirror = scheduleMirror({ repoDir, run: runner });
+        if (mirror.enabled) console.log('[mirror] schedule armed');
+      }
       return { ...started, seed: seeded.state };
     },
     /** Record the asset sweep's result for /health (see bootReport). */
@@ -656,6 +680,7 @@ export function createHub(config = {}) {
      *  process exiting does the same thing in production. */
     stopBackgroundWork() {
       stopBackups();
+      mirror?.stop();
       rateStore.close();
     },
   };

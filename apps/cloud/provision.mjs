@@ -51,6 +51,29 @@ export async function ensureCellDomain(env, projectId, { fetchImpl = fetch } = {
 }
 
 /**
+ * Detach `<projectId>.cloud.maude.sh` — the delete flow's last step.
+ * Best-effort and idempotent: an already-absent hostname reports ok.
+ */
+export async function removeCellDomain(env, projectId, { fetchImpl = fetch } = {}) {
+  if (!env.CF_PROVISION_TOKEN || !env.CF_ACCOUNT_ID) return { ok: false, error: 'not configured' };
+  const hostname = `${projectId}.${env.CELL_ZONE ?? 'cloud.maude.sh'}`;
+  const base = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/domains`;
+  const headers = { authorization: `Bearer ${env.CF_PROVISION_TOKEN}` };
+  try {
+    const listed = await fetchImpl(`${base}?hostname=${encodeURIComponent(hostname)}`, { headers });
+    const body = await listed.json().catch(() => ({}));
+    const found = (body?.result ?? []).find((d) => d.hostname === hostname);
+    if (!found) return { ok: true, hostname, removed: false };
+    const res = await fetchImpl(`${base}/${found.id}`, { method: 'DELETE', headers });
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    return { ok: true, hostname, removed: true };
+  } catch (err) {
+    console.error(`[provision] detach ${hostname}: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
  * Is the workspace actually up? One question, asked of the thing itself.
  *
  * Returns 'healthy' | 'pending'. Never 'failed' from a single probe: a cold

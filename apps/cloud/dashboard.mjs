@@ -106,14 +106,21 @@ export const STATE_COPY = {
 function projectCard(project, { can }) {
   const copy = STATE_COPY[project.state] ?? { tone: 'warn', label: project.state, note: null };
   const actions = [];
-  if (project.state !== 'purged') actions.push(`<a href="/projects/${esc(project.id)}">Open</a>`);
+  if (project.state !== 'purged') {
+    actions.push(`<a href="https://${esc(project.id)}.cloud.maude.sh">Open</a>`);
+  }
   if (can('share')) actions.push(`<a href="/projects/${esc(project.id)}/share">Sharing</a>`);
   if (can('invite')) actions.push(`<a href="/projects/${esc(project.id)}/people">People</a>`);
   if (can('billing')) actions.push(`<a href="/projects/${esc(project.id)}/billing">Billing</a>`);
+  if (can('mirror')) actions.push(`<a href="/projects/${esc(project.id)}/mirror">GitHub copy</a>`);
+  actions.push(`<a href="/projects/${esc(project.id)}/audit">Activity</a>`);
   // Always offered, in every state, including states where somebody is
   // deciding whether to leave. An export you can only reach while everything
   // is fine is not a guarantee.
   actions.push(`<a href="/projects/${esc(project.id)}/download">Download everything</a>`);
+  if (can('delete') && project.state !== 'purged') {
+    actions.push(`<a href="/projects/${esc(project.id)}/delete">Delete…</a>`);
+  }
 
   return `<div class="project">
     <div class="row">

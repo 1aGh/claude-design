@@ -93,6 +93,11 @@ export async function cellEnv({ tenantId, env, hostname }) {
     // Behind Cloudflare every request arrives from the edge. Without this the
     // per-client rate limiter buckets the entire internet as one client.
     HUB_TRUSTED_PROXIES: '0.0.0.0/0,::/0',
+    // Where this cell's platform lives (Cloud Phases 19/20/22). Powers the
+    // mirror clock and — once enabled per-cell — cloud identity. A cell asks
+    // the control plane and presents its own derived secret; it never holds a
+    // platform credential.
+    MAUDE_CONTROL_PLANE_URL: env.CONTROL_PLANE_URL ?? 'https://cloud.maude.sh',
     // Object storage. The entrypoint derives per-tenant key prefixes from
     // MAUDE_TENANT_ID — one bucket, one prefix per tenant.
     MAUDE_S3_ENDPOINT: env.MAUDE_R2_ENDPOINT ?? '',

@@ -94,6 +94,9 @@ This is a complete copy of your design project, taken from Maude.
 - **Comments, presence, and per-machine state.** These live outside the
   versioned project by design and are not part of what you authored.
 - **The media bytes themselves** — see \`assets.json\` above.
+- **Git LFS objects.** If your project tracks large files with Git LFS, this
+  bundle carries their pointers, not their bytes — that is how git bundles
+  work. Clone with \`GIT_LFS_SKIP_SMUDGE=1\` if the LFS server is gone.
 - **Anything belonging to another project.** This export contains only
   ${project}.
 

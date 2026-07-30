@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-30T07:14:57.042Z",
+  "generated": "2026-07-30T07:37:01.036Z",
   "currentPhase": null,
   "phases": [
     {
@@ -142,6 +142,17 @@
       "date": null,
       "summary": "Part of the Maude Cloud arc — read cloud-phase-0-economics-and-architecture.md first. Requires Phase 1 complete.",
       "planPath": ".ai/plans/archive/cloud-phase-2-hub-identity-durability.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-20-self-administration",
+      "title": "Cloud Phase 20 — Self-administration",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Open, Sharing, People (Phase 22), Billing, GitHub copy (mirror settings, /projects/<id>/mirror, validated by the tested mirror.mjs grammar, saved to the control plane where the cell's clock reads i...",
+      "planPath": ".ai/plans/archive/cloud-phase-20-self-administration.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1693,17 +1704,6 @@
       "date": null,
       "summary": "raw. Minted in the CONTROL PLANE, not the cell — see DDR-201; the App key can mint for every installed repository, so a cell that held it would be a credential for every other tenant's GitHub. (imp...",
       "planPath": ".ai/plans/cloud-phase-19-mirror-effects.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-20-self-administration",
-      "title": "Cloud Phase 20 — Self-administration",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "asset manifest + a plain-language README that states what is NOT included). See DDR-202. purged except through exported (DDR-193 §3, tested since Phase 5), and Phase 20 gives that state something r...",
-      "planPath": ".ai/plans/cloud-phase-20-self-administration.md",
       "archived": false,
       "phaseKey": null
     },

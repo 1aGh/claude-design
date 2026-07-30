@@ -39,6 +39,13 @@ binding = "DB"
 database_name = "maude-cloud-control-plane"
 database_id = "cf2b8fdc-6c3f-42f9-9305-0040e01391eb"  # live; schema v1 applied 2026-07-28, idempotence re-proven 2026-07-29
 
+# The dashboard's "Download everything" serves export files the CELL wrote
+# (Cloud Phase 20). Same bucket the cells use; the binding reads only
+# `tenants/<id>/exports/` keys, enforced in project-admin.mjs.
+[[r2_buckets]]
+binding = "EXPORTS"
+bucket_name = "maude-cloud-assets"
+
 # [[queues.producers]]
 # binding = "RECONCILE_QUEUE"
 # queue = "maude-reconcile"

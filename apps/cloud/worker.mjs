@@ -17,9 +17,11 @@
 // not the queue — is the durable record either way.
 
 import { currentAccount, handleAuth } from './auth-routes.mjs';
+import { deriveCellSecret, mintProjectToken, secretsMatch } from './cell-token.mjs';
 import { handleCheckoutRoutes } from './checkout-routes.mjs';
 import { mintInstallationToken } from './github-app.mjs';
 import { handleInviteRoutes } from './invites.mjs';
+import { handleProjectAdminRoutes } from './project-admin.mjs';
 import { ACCESS_MESSAGES, decideAccess } from './project-access.mjs';
 import { handleProjectRoutes } from './project-routes.mjs';
 import {
@@ -40,32 +42,8 @@ import { projectRefFromEvent, verifyStripeSignature } from './stripe-webhook.mjs
 
 export const WORKER_VERSION = 'phase-13';
 
-/**
- * Derive a cell's own secret. Must match apps/cells/cell-do.mjs exactly — a
- * cell authenticates here with the value that file gave it.
- */
-async function deriveCellSecret(master, tenantId) {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(master),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const mac = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(`maude-cell:hub-secret:${tenantId}`)
-  );
-  return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/** base64url over raw bytes. Never over a string — see the UTF-8 note below. */
-function b64urlBytes(bytes) {
-  let binary = '';
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+// Token minting + derived-secret helpers live in cell-token.mjs since the
+// dashboard grew a second caller (the Phase-20 export trigger).
 
 /**
  * Hand a signed-in person a token for one project.
@@ -109,45 +87,22 @@ async function openProject(request, env) {
     return json({ error: ACCESS_MESSAGES[verdict.reason] }, status);
   }
 
-  const secret = await deriveCellSecret(env.CELL_SECRET_MASTER ?? '', projectId);
-  const now = Date.now();
-  const claims = {
-    email: account.email,
+  // UTF-8-first signing lives in cell-token.mjs — `btoa` throws on any
+  // character above U+00FF, so a name with a Czech "ě" would break sign-in
+  // for that person and nobody else; the interop test pins this.
+  const { token, claims } = await mintProjectToken({
+    master: env.CELL_SECRET_MASTER ?? '',
     project: projectId,
+    email: account.email,
     role: verdict.role,
-    iat: now,
-    exp: now + 12 * 60 * 60 * 1000,
-  };
-  // UTF-8 FIRST. `btoa` throws on any character above U+00FF, so a name with
-  // a Czech "ě" or a Polish "ł" — exactly the input nobody tests with — would
-  // make sign-in fail for that person and nobody else. Encoding to bytes and
-  // base64-ing those is the fix; sanitising the name would be mangling
-  // somebody's name to work around our own encoding bug.
-  const payload = b64urlBytes(new TextEncoder().encode(JSON.stringify(claims)));
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
-  const sig = b64urlBytes(new Uint8Array(mac));
+  });
 
   return json({
-    token: `${payload}.${sig}`,
+    token,
     role: verdict.role,
     url: `https://${projectId}.${env.CELL_ZONE ?? 'cloud.maude.sh'}`,
     expiresAt: claims.exp,
   });
-}
-
-/** Constant-time compare — a timing oracle on a per-cell credential still counts. */
-function secretsMatch(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
 }
 
 /**
@@ -235,6 +190,12 @@ export default {
     const projectSurface = await handleProjectRoutes(request, env, { account });
     if (projectSurface) return projectSurface;
 
+    // Self-administration (Cloud Phase 20 + the Phase 19 settings half):
+    // download everything, delete-through-export, the customer-visible
+    // activity record, and where the history mirrors to.
+    const adminSurface = await handleProjectAdminRoutes(request, env, { account });
+    if (adminSurface) return adminSurface;
+
     // Accepting an invitation (Cloud Phase 22). The invite is the account:
     // one link signs somebody up AND lands them in the project.
     const inviteSurface = await handleInviteRoutes(request, env, { account });
@@ -265,6 +226,28 @@ export default {
     // A compromised cell is then worth exactly its own mirror.
     if (request.method === 'POST' && url.pathname === '/internal/mirror-token') {
       return mintForCell(request, env);
+    }
+
+    // A cell asking which repository it mirrors to (Cloud Phase 19). The cell
+    // holds no config of its own — connecting a mirror in the dashboard needs
+    // no cell restart, because the clock asks this on every tick.
+    if (request.method === 'GET' && url.pathname === '/internal/mirror-config') {
+      const tenant = String(url.searchParams.get('tenant') ?? '');
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tenant)) return json({ error: 'unauthorized' }, 401);
+      const offered = (request.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+      const expected = await deriveCellSecret(env.CELL_SECRET_MASTER ?? '', tenant);
+      if (!env.CELL_SECRET_MASTER || !secretsMatch(offered, expected)) {
+        return json({ error: 'unauthorized' }, 401);
+      }
+      let row = null;
+      try {
+        row = await env.DB.prepare('SELECT mirror_repo, mirror_branch FROM projects WHERE id = ?')
+          .bind(tenant)
+          .first();
+      } catch {
+        /* an unreadable row is "no mirror", not an error the clock can act on */
+      }
+      return json({ repository: row?.mirror_repo ?? null, branch: row?.mirror_branch ?? 'main' });
     }
 
     if (request.method === 'GET' && url.pathname === '/health') {
