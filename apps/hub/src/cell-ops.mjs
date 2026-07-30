@@ -24,6 +24,7 @@
 import { projectTokenKey, verifyAccessToken } from './cloud-identity.mjs';
 import { buildExport } from './export.mjs';
 import { pushMirror } from './mirror-push.mjs';
+import { recordRevocations } from './revocations.mjs';
 import { putObject, s3ConfigFromEnv } from './s3.mjs';
 
 /**
@@ -243,6 +244,10 @@ export function scheduleRevocationSweep({
         { controlPlaneUrl, tenantId, cellSecret, since: nowFn() - windowMs },
         { fetchImpl }
       );
+      // Persist BEFORE killing sessions: the registry is what stops the
+      // holder re-opening what the kick just closed, so it must be in place
+      // even if the kick half throws.
+      recordRevocations(dataDir, revocations);
       let revokedTotal = 0;
       for (const r of revocations) {
         if (typeof r?.email !== 'string' || !r.email) continue;

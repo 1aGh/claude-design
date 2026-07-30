@@ -200,3 +200,77 @@ test('the browser form POST answers with the no-script launch page carrying the 
   // No script anywhere near a page that holds a live code.
   assert.doesNotMatch(html, /<script/i);
 });
+
+// ---- validate 2026-07-30: the security pass's findings, pinned ------------
+
+test('F1 — a cross-site POST carrying the session cookie is refused', async () => {
+  // SameSite=Lax is same-SITE: a workspace page at <project>.cloud.maude.sh
+  // shares the registrable domain and ships the cookie. Fetch-Metadata is what
+  // actually distinguishes it.
+  const { env, sqlite } = await freshEnv();
+  const session = await signedIn(env);
+  const ownerId = sqlite
+    .prepare('SELECT id FROM accounts WHERE email = ?')
+    .get('owner@example.com').id;
+  seedProject(sqlite, { owner: ownerId });
+
+  for (const site of ['cross-site', 'same-site']) {
+    const res = await worker.fetch(
+      new Request('https://cloud.test/projects/alligators/handoff', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          cookie: `maude_session=${session}`,
+          'sec-fetch-site': site,
+        },
+      }),
+      env
+    );
+    assert.equal(res.status, 403, `${site} must be refused`);
+  }
+
+  // The app and the CLI send no Sec-Fetch-Site at all — they must still work.
+  const { res } = await mintCode(env, session);
+  assert.equal(res.status, 200);
+});
+
+test('F1 — the derived-secret lanes are exempt (no cookie, no browser)', async () => {
+  const { env } = await freshEnv();
+  const res = await worker.fetch(
+    new Request('https://cloud.test/internal/mirror-token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'sec-fetch-site': 'cross-site' },
+      body: JSON.stringify({ tenant: 'alligators' }),
+    }),
+    env
+  );
+  assert.notEqual(res.status, 403, 'the guard must not shadow the secret check');
+  assert.equal(res.status, 401, 'it is refused on its OWN authentication');
+});
+
+test('F4 — an unset CELL_SECRET_MASTER refuses to mint rather than signing with an empty key', async () => {
+  const sqlite = new DatabaseSync(':memory:');
+  const DB = d1FromSqlite(sqlite);
+  await applySchema(DB, SCHEMA_SQL);
+  const env = { DB }; // no CELL_SECRET_MASTER
+  const session = await signedIn(env);
+  const ownerId = sqlite
+    .prepare('SELECT id FROM accounts WHERE email = ?')
+    .get('owner@example.com').id;
+  seedProject(sqlite, { owner: ownerId });
+
+  const { body } = await mintCode(env, session);
+  const res = await worker.fetch(jpost('/auth/handoff/exchange', { code: body.code }), env);
+  assert.equal(res.status, 503);
+  const open = await worker.fetch(
+    jpost(
+      '/projects/open',
+      { project: 'alligators' },
+      {
+        cookie: `maude_session=${session}`,
+      }
+    ),
+    env
+  );
+  assert.equal(open.status, 503);
+});

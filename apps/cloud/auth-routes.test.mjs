@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
-
+import { isSameOriginPath } from './auth-routes.mjs';
 import { d1FromSqlite } from './db.mjs';
 import { verifyGrant } from './grants.mjs';
 import { applySchema } from './migrate.mjs';
@@ -335,4 +335,30 @@ test('phase-12 routes still answer (health + webhook refusal)', async () => {
     env
   );
   assert.equal(hook.status, 400);
+});
+
+test('F3 — a backslash authority is not a same-origin path (open-redirect)', async () => {
+  // `/\evil.example` passes a naive "one leading slash" test, but WHATWG URL
+  // parsing turns `\` into `/`, so the browser reads it as https://evil.example/.
+  for (const bad of ['/\\evil.example', '//evil.example', '/\\\\evil.example', '/ok\\path']) {
+    assert.equal(isSameOriginPath(bad), false, `${bad} must be refused`);
+  }
+  for (const good of ['/', '/account', '/invite/abc.def', '/projects/x/people?q=1']) {
+    assert.equal(isSameOriginPath(good), true, `${good} must be allowed`);
+  }
+});
+
+test('F3 — the login redirect never leaves the origin', async () => {
+  const { env } = await freshEnv();
+  await signup(env);
+  const res = await worker.fetch(
+    new Request('https://cloud.test/auth/login?next=%2F%5Cevil.example', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: form({ email: 'alice@example.com', password: PASSWORD }),
+    }),
+    env
+  );
+  assert.equal(res.status, 303);
+  assert.equal(res.headers.get('location'), '/', 'a hostile next falls back to the dashboard');
 });

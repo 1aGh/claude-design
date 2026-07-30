@@ -246,7 +246,7 @@ export function createCloudEndpoints(ctx: Ctx) {
      * workspace we then link is the one THAT exchange returns. Needs no
      * personal token: the code itself proves the dashboard session.
      */
-    async attachCode(code: string): Promise<CloudEndpointResult> {
+    async attachCode(code: string, claimedProject?: string): Promise<CloudEndpointResult> {
       if (typeof code !== 'string' || !/^mhc_[0-9a-f]{16,128}$/.test(code)) {
         return { status: 400, json: { ok: false, error: 'That link is not valid.' } };
       }
@@ -265,6 +265,24 @@ export function createCloudEndpoints(ctx: Ctx) {
           },
         };
       }
+
+      // The link CLAIMED a project name and the person confirmed THAT name.
+      // The exchange is the only authority on which project the code really
+      // opens, so the two must agree — otherwise a code minted for the
+      // attacker's own project, wrapped in a link naming something familiar,
+      // would be confirmed by a victim and then linked, sending their local
+      // work to the attacker's workspace. Refuse rather than silently link
+      // something the person did not agree to.
+      if (claimedProject && exchanged.body.project && claimedProject !== exchanged.body.project) {
+        return {
+          status: 409,
+          json: {
+            ok: false,
+            error: `That link said ${claimedProject} but it opens ${exchanged.body.project}. Nothing was connected — open the project from its own page instead.`,
+          },
+        };
+      }
+
       return linkToWorkspace({
         workspaceUrl: exchanged.body.url,
         projectToken: exchanged.body.token,

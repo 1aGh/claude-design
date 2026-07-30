@@ -42,6 +42,14 @@ export async function mintProjectToken(
   { master, project, email, role, ttlMs = 12 * 60 * 60 * 1000 },
   { now = Date.now() } = {}
 ) {
+  // Fail CLOSED on a missing binding (validate 2026-07-30, defender F4). An
+  // empty master derives a publicly-computable key, so every token minted
+  // under it would be forgeable for any tenant — and the cell, deriving the
+  // same empty key, would happily verify the forgery. Refusing to mint turns
+  // a silent total-compromise into a loud outage.
+  if (typeof master !== 'string' || master.length === 0) {
+    throw new Error('CELL_SECRET_MASTER is not configured — refusing to mint a project token');
+  }
   // Its OWN signing purpose (Phase 23 B4): the hub-secret is already the
   // admin bearer and a wildcard peer token — one value must not be all three.
   const secret = await deriveCellSecret(master, project, 'project-token');

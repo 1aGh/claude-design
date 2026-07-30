@@ -62,7 +62,20 @@ function redirect(location, extraHeaders = {}) {
  */
 function safeNext(url) {
   const next = url.searchParams.get('next') ?? '';
-  return /^\/(?!\/)[\x20-\x7e]*$/.test(next) ? next : null;
+  return isSameOriginPath(next) ? next : null;
+}
+
+/**
+ * A plain in-app path, or nothing.
+ *
+ * The backslash exclusion is load-bearing (validate 2026-07-30, defender F3):
+ * `/\evil.example` passes a naive "starts with one slash" test, but WHATWG URL
+ * parsing normalizes `\` to `/`, so the browser reads `Location: /\evil.example`
+ * as `https://evil.example/`. Anything that is not printable ASCII, or carries
+ * a backslash, or begins `//`, is refused.
+ */
+export function isSameOriginPath(next) {
+  return typeof next === 'string' && /^\/(?![/\\])[\x20-\x7e]*$/.test(next) && !next.includes('\\');
 }
 
 function cookieValue(request, name) {
@@ -258,7 +271,7 @@ export async function handleAuth(request, env) {
     let next = null;
     try {
       const decoded = nextParts.length ? decodeURIComponent(nextParts.join('.')) : '';
-      if (/^\/(?!\/)[\x20-\x7e]*$/.test(decoded)) next = decoded;
+      if (isSameOriginPath(decoded)) next = decoded;
     } catch {
       next = null;
     }

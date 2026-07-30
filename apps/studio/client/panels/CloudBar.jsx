@@ -123,7 +123,13 @@ export default function CloudBar() {
     if (!isNativeApp()) return undefined;
     const consume = (url) => {
       const parsed = parseDeepLink(url);
-      if (parsed) setPending(parsed);
+      if (!parsed) return;
+      // NEVER replace a link the person is already looking at. The strip is a
+      // single slot, so an overwrite would swap the code out from under a
+      // click that was aimed at the previous one — the person confirms the
+      // name they read and connects the link that arrived last (validate
+      // 2026-07-30, attacker A1). A second link waits its turn instead.
+      setPending((current) => current ?? parsed);
     };
     invoke('take_pending_deep_link')
       .then((url) => url && consume(url))
@@ -142,7 +148,11 @@ export default function CloudBar() {
     const r = await api('/_api/cloud/attach/code', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ code: pending.code }),
+      // Send the project the LINK claimed — the one this person just read in
+      // the confirm strip. The server compares it against what the exchange
+      // actually opens and refuses a mismatch, so a familiar name wrapped
+      // around somebody else's code cannot borrow that consent.
+      body: JSON.stringify({ code: pending.code, project: pending.project }),
     });
     setBusy('');
     setPending(null);

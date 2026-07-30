@@ -8,6 +8,8 @@ import { after, test } from 'node:test';
 
 import { handleAuthRoutes } from '../src/auth-routes.mjs';
 import { fetchRevocations, scheduleRevocationSweep } from '../src/cell-ops.mjs';
+import { accessClaims, authenticateForMode, signAccessToken } from '../src/cloud-identity.mjs';
+import { isRevoked, recordRevocations, resetRevocationCache } from '../src/revocations.mjs';
 import { addToken, listTokensForOwner } from '../src/tokens.mjs';
 
 const scratch = [];
@@ -141,4 +143,83 @@ test('hybrid: /join keeps working — retirement is strict-only', async () => {
     delete process.env.MAUDE_CLOUD_IDENTITY;
     delete process.env.MAUDE_TENANT_ID;
   }
+});
+
+// ---- validate 2026-07-30 (attacker A2/A3): the sweep must CLOSE the door ---
+
+test('a removed member cannot re-open a session with the token they already hold', async () => {
+  const dir = dataDir();
+  resetRevocationCache();
+  const NOW = 1_700_000_000_000;
+  const key = 'a'.repeat(64);
+  const env = {
+    MAUDE_CLOUD_IDENTITY: '1',
+    MAUDE_TENANT_ID: 'alligators',
+    MAUDE_PROJECT_TOKEN_KEY: key,
+  };
+
+  // A token minted BEFORE the removal — signature and expiry both still good.
+  const token = signAccessToken(
+    accessClaims(
+      { email: 'gone@example.com', project: 'alligators', role: 'member' },
+      { now: NOW }
+    ),
+    key
+  );
+  const before = authenticateForMode(
+    { token },
+    {
+      local: () => ({ ok: false }),
+      revoked: (e, iat) => isRevoked(dir, e, iat),
+      env,
+      now: NOW + 1000,
+    }
+  );
+  assert.equal(before.ok, true, 'valid before the removal');
+
+  // The sweep learns about the removal.
+  recordRevocations(dir, [{ email: 'Gone@Example.com', at: NOW + 60_000 }]);
+
+  const after = authenticateForMode(
+    { token },
+    {
+      local: () => ({ ok: false }),
+      revoked: (e, iat) => isRevoked(dir, e, iat),
+      env,
+      now: NOW + 120_000,
+    }
+  );
+  assert.equal(after.ok, false, 'the same token is spent after the removal');
+  assert.equal(after.reason, 'access-withdrawn');
+  assert.match(after.message, /add you again/);
+
+  // Re-adding them mints a NEWER token, which must work without a manual reset.
+  const fresh = signAccessToken(
+    accessClaims(
+      { email: 'gone@example.com', project: 'alligators', role: 'member' },
+      { now: NOW + 120_000 }
+    ),
+    key
+  );
+  const readded = authenticateForMode(
+    { token: fresh },
+    {
+      local: () => ({ ok: false }),
+      revoked: (e, iat) => isRevoked(dir, e, iat),
+      env,
+      now: NOW + 130_000,
+    }
+  );
+  assert.equal(readded.ok, true, 'a token minted after the removal is honoured');
+});
+
+test('the registry survives a restart and an outage never empties it', () => {
+  const dir = dataDir();
+  resetRevocationCache();
+  recordRevocations(dir, [{ email: 'gone@example.com', at: 5_000 }]);
+  resetRevocationCache(); // simulate a cell restart
+  assert.equal(isRevoked(dir, 'gone@example.com', 4_000), true, 'remembered across a restart');
+  // An outage yields an EMPTY fetch; recording nothing must not forget.
+  recordRevocations(dir, []);
+  assert.equal(isRevoked(dir, 'gone@example.com', 4_000), true);
 });

@@ -57,6 +57,10 @@ describe('a token minted by the control plane opens the cell', () => {
       ok: true,
       user: { email: 'a@example.com', role: 'owner' },
       expiresAt: NOW + 12 * 60 * 60 * 1000,
+      // `issuedAt` joined the verdict so the cell's revocation registry can
+      // tell a token minted BEFORE a removal from one minted after it
+      // (validate 2026-07-30, attacker A2).
+      issuedAt: NOW,
     });
   });
 

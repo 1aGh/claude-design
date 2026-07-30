@@ -20,7 +20,6 @@
 import { randomBytes } from 'node:crypto';
 
 import { authenticateForMode, cloudIdentityStrict } from './cloud-identity.mjs';
-
 import {
   createInvite,
   inviteUrl,
@@ -29,6 +28,7 @@ import {
   redeemInvite,
   revokeInvite,
 } from './invites.mjs';
+import { isRevoked } from './revocations.mjs';
 
 import {
   addToken,
@@ -130,6 +130,12 @@ export async function handleAuthRoutes(ctx) {
     const result = authenticateForMode(
       { email: body?.email, password: body?.password, token: body?.token },
       {
+        // What the revocation sweep LEARNED, this door READS (validate
+        // 2026-07-30, attacker A2/A3). Without it the sweep only killed
+        // sessions: a removed member re-presented the project token they
+        // already held — verified offline, valid up to 12 h — and collected a
+        // fresh session every time the clock killed one.
+        revoked: (email, issuedAt) => isRevoked(dataDir, email, issuedAt),
         local: (email, password) => authenticate(dataDir, email, password),
         // No explicit secret: token verification resolves its OWN key
         // (MAUDE_PROJECT_TOKEN_KEY, falling back to HUB_SECRET pre-B4).

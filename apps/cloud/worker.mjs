@@ -93,6 +93,10 @@ async function openProject(request, env) {
     return json({ error: ACCESS_MESSAGES[verdict.reason] }, status);
   }
 
+  if (!env.CELL_SECRET_MASTER) {
+    console.error('[open] CELL_SECRET_MASTER is not configured');
+    return json({ error: 'This project cannot be opened right now. Try again shortly.' }, 503);
+  }
   // UTF-8-first signing lives in cell-token.mjs — `btoa` throws on any
   // character above U+00FF, so a name with a Czech "ě" would break sign-in
   // for that person and nobody else; the interop test pins this.
@@ -180,9 +184,39 @@ function json(body, status = 200) {
   });
 }
 
+/**
+ * Refuse a state-changing request that a browser tells us came from another
+ * SITE (validate 2026-07-30, defender F1).
+ *
+ * `SameSite=Lax` is same-SITE, not same-ORIGIN, and every workspace lives at
+ * `<project>.cloud.maude.sh` — the same registrable domain as the dashboard.
+ * A workspace page therefore ships the session cookie on a cross-origin POST
+ * here, and workspace pages render customer-authored canvas content, which
+ * DDR-054 designates untrusted. Fetch-Metadata closes it: browsers always
+ * stamp `Sec-Fetch-Site`, and non-browser clients (the desktop app, the CLI,
+ * curl, tests) never do — so a MISSING header is allowed and only an explicit
+ * cross-site/same-site claim is refused. `same-site` is refused too: that is
+ * precisely the sibling-subdomain case.
+ *
+ * The `/internal/*` and webhook lanes are exempt — they authenticate with a
+ * derived secret or a signature, never with a cookie, so a browser's opinion
+ * about them is irrelevant.
+ */
+function crossSiteStateChange(request, url) {
+  if (request.method === 'GET' || request.method === 'HEAD') return false;
+  if (url.pathname.startsWith('/internal/') || url.pathname.startsWith('/webhooks/')) return false;
+  const site = request.headers.get('sec-fetch-site');
+  if (!site) return false; // non-browser client
+  return site !== 'same-origin' && site !== 'none';
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (crossSiteStateChange(request, url)) {
+      return json({ error: 'That request did not come from Maude Cloud.' }, 403);
+    }
 
     // Identity surface (pages, signup/login, Google, grant mint) — Phase 13.
     const auth = await handleAuth(request, env);

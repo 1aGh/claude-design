@@ -128,6 +128,9 @@ export function verifyAccessToken(token, secret, { now = Date.now(), tenantId } 
     // Surfaced so the exchanged peer token can be CAPPED to the project
     // token's own lifetime (Phase 23 B2).
     expiresAt: claims.exp,
+    // Surfaced so the revocation registry can tell a token minted BEFORE a
+    // removal from one minted after it (a re-add must just work).
+    issuedAt: claims.iat,
   };
 }
 
@@ -168,7 +171,7 @@ export const LOCAL_PASSWORD_REFUSED = {
  */
 export function authenticateForMode(
   { email, password, token },
-  { local, env = process.env, secret, now = Date.now() }
+  { local, revoked, env = process.env, secret, now = Date.now() }
 ) {
   if (!cloudIdentityEnabled(env)) {
     return local(email, password);
@@ -189,6 +192,18 @@ export function authenticateForMode(
         reason: 'viewer-not-supported',
         message:
           'Viewing works from the shared gallery link for now — editing access in the workspace needs the member role.',
+      };
+    }
+    // A token minted BEFORE the person was removed or demoted is spent, even
+    // though its signature and expiry are both still good. Offline
+    // verification cannot recall a token, so the door has to remember
+    // (validate 2026-07-30, attacker A2/A3) — otherwise the revocation sweep
+    // ends sessions the holder simply re-opens.
+    if (revoked?.(verdict.user.email, verdict.issuedAt)) {
+      return {
+        ok: false,
+        reason: 'access-withdrawn',
+        message: 'Your access to this project was removed. Ask whoever runs it to add you again.',
       };
     }
     // The exchanged session must die WITH the project token, not outlive it

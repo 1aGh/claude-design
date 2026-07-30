@@ -1813,6 +1813,12 @@ export function createHttp(
     // DELETE /_api/github/identity here; see DDR-114.)
     '/_api/cloud/status': async (req: Request) => {
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      // isLoopbackHost is a DNS-rebind guard, not a CSRF guard: a cross-site
+      // page can issue a no-cors GET at 127.0.0.1:<port>. These two GETs read
+      // the cloud credential's identity and (for projects) make a Bearer call
+      // whose 401 DELETES the stored credential — a confused deputy worth
+      // closing (validate 2026-07-30, defender F6).
+      if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
       if (!isLoopbackHost(req.headers.get('host')))
         return new Response('local request required', { status: 403 });
       return gitJson(cloudApi.status());
@@ -1844,6 +1850,7 @@ export function createHttp(
     },
     '/_api/cloud/projects': async (req: Request) => {
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
       if (!isLoopbackHost(req.headers.get('host')))
         return new Response('local request required', { status: 403 });
       return gitJson(await cloudApi.projects());
@@ -1866,8 +1873,13 @@ export function createHttp(
         return new Response('cross-origin write rejected', { status: 403 });
       if (!isLoopbackHost(req.headers.get('host')))
         return new Response('local request required', { status: 403 });
-      const body = (await req.json().catch(() => ({}))) as { code?: string };
-      return gitJson(await cloudApi.attachCode(String(body.code ?? '')));
+      const body = (await req.json().catch(() => ({}))) as { code?: string; project?: string };
+      return gitJson(
+        await cloudApi.attachCode(
+          String(body.code ?? ''),
+          typeof body.project === 'string' ? body.project : undefined
+        )
+      );
     },
 
     '/_api/github/identity': async (req: Request) => {

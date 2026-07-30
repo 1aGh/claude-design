@@ -188,6 +188,10 @@ export async function handleHandoff(request, env, { account }) {
       return json({ error: 'that code is not valid or has expired' }, 400);
     }
 
+    if (!env.CELL_SECRET_MASTER) {
+      console.error('[handoff] CELL_SECRET_MASTER is not configured');
+      return json({ error: 'This project cannot be opened right now. Try again shortly.' }, 503);
+    }
     const { token, claims } = await mintProjectToken({
       master: env.CELL_SECRET_MASTER ?? '',
       project: row.project_id,
