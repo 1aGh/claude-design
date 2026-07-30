@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-30T07:43:10.477Z",
+  "generated": "2026-07-30T09:06:47.488Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1715,6 +1715,17 @@
       "date": null,
       "summary": "1. Phase 18 share view live and stable (containment proven in production). 2. Paying tenants exist (the pressure DDR-193 warned about is then real, and the decision is made deliberately rather than...",
       "planPath": ".ai/plans/cloud-phase-21-browser-editing-spike.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-23-seamless-onboarding",
+      "title": "Cloud Phase 23 — Seamless onboarding: the door actually opens",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "(dashboard.mjs:110, checkout-pages.mjs \"Open your project\"): states the project address, hands over the real connect path (desktop app / maude design link <url> --token=…), offers the operator cons...",
+      "planPath": ".ai/plans/cloud-phase-23-seamless-onboarding.md",
       "archived": false,
       "phaseKey": null
     },
