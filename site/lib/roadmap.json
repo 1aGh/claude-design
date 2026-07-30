@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-30T07:37:01.036Z",
+  "generated": "2026-07-30T07:42:13.497Z",
   "currentPhase": null,
   "phases": [
     {
@@ -131,6 +131,17 @@
       "date": null,
       "summary": "which is a stronger claim than the plan asked for.",
       "planPath": ".ai/plans/archive/cloud-phase-18-browser-share-view.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-19-mirror-effects",
+      "title": "Cloud Phase 19 — GitHub mirror: the effects layer",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "raw. Minted in the CONTROL PLANE, not the cell — see DDR-201; the App key can mint for every installed repository, so a cell that held it would be a credential for every other tenant's GitHub. (imp...",
+      "planPath": ".ai/plans/archive/cloud-phase-19-mirror-effects.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1693,17 +1704,6 @@
       "date": null,
       "summary": "Windows registry via tauri.conf); handler parses maude://join/<workspace>/<invite> and maude://open/<workspace>/<project>. clone/attach the remote project into a local folder → open in Studio. Reus...",
       "planPath": ".ai/plans/cloud-phase-17-desktop-attach-deeplink.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-19-mirror-effects",
-      "title": "Cloud Phase 19 — GitHub mirror: the effects layer",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "raw. Minted in the CONTROL PLANE, not the cell — see DDR-201; the App key can mint for every installed repository, so a cell that held it would be a credential for every other tenant's GitHub. (imp...",
-      "planPath": ".ai/plans/cloud-phase-19-mirror-effects.md",
       "archived": false,
       "phaseKey": null
     },

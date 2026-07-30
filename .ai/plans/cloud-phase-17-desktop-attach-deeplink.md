@@ -1,5 +1,17 @@
 # Cloud Phase 17 — Desktop attach: maude:// deep link + the invite's client half
 
+> **Status 2026-07-30 — deliberately still open; the one remaining cloud
+> phase that is buildable.** Everything server-side it depends on now exists:
+> invites send a real email with one link (Phase 22), the share view is the
+> phone fallback (Phase 18), and a browser signs into the project through the
+> dashboard. What remains is genuinely DESKTOP work: protocol registration in
+> the signed .app (only testable in a bundled build, not `tauri dev` — the
+> scheme registers at install), the attach flow UI, and an acceptance gate
+> that requires a HUMAN (the timed club-member cold start). Per the
+> native-app verification ceiling, half-shipping Rust changes into the signed
+> shell at the tail of a long autonomous run is the wrong trade — this phase
+> wants its own focused session with a full build + notarize + E2E cycle.
+
 > The invite currently dead-ends on a phone at "install a desktop app" — the
 > persona the arc is staked on (DDR-193 §5) converts to zero. This phase builds
 > the desktop half; the browser fallback ("keep looking in the browser") is
