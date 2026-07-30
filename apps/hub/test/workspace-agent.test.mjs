@@ -253,16 +253,19 @@ describe('seedRepo', () => {
       { url: 'https://github.com/acme/design.git', branch: 'main', log: silent() }
     );
     assert.equal(r.state, 'cloned');
+    // FULL clone, not `--depth 1`. A shallow checkout cannot produce a
+    // complete bundle, so a shallow seed makes the cell's history
+    // unbackupable from the moment it is created — which is how alligators
+    // wrote a day of backups that could not be restored.
     assert.deepEqual(calls[0], [
       'clone',
-      '--depth',
-      '1',
       '--branch',
       'main',
       '--',
       'https://github.com/acme/design.git',
       dir,
     ]);
+    assert.ok(!calls[0].includes('--depth'), 'a shallow seed is unbackupable by construction');
   });
 
   it('refuses schemes that are local, unauthenticated, or arbitrary execution', async () => {
