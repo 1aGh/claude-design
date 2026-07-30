@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-30T07:42:13.497Z",
+  "generated": "2026-07-30T07:43:10.477Z",
   "currentPhase": null,
   "phases": [
     {
@@ -32,6 +32,28 @@
       "date": null,
       "summary": "Restructure the dev-server sidebar (the FILES panel at app.jsx:273–365) so it stops drowning daily work in non-canvas noise:",
       "planPath": ".ai/plans/archive/client-tree-restructure.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-0-economics-and-architecture",
+      "title": "Cloud Phase 0 — Economics, provider decision, pricing & phase index (READ FIRST — not executable)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "The master reference for the Maude Cloud arc: the complete path from zero infrastructure to a paid production release on maude.sh. Execution order = the numbered files cloud-phase-1-.md → cloud-pha...",
+      "planPath": ".ai/plans/archive/cloud-phase-0-economics-and-architecture.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-0b-manual-prep",
+      "title": "Cloud Phase 0b — Manual prep checklist (do this BEFORE `/flow:execute` on any phase)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Everything a human must do by hand — accounts, logins, tokens, tooling, MCP wiring — so the phase executions run smoothly and agent-driven. Companion to cloud-phase-0-economics-and-architecture.md....",
+      "planPath": ".ai/plans/archive/cloud-phase-0b-manual-prep.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1672,28 +1694,6 @@
       "summary": "The moodboard direction gates catch a disliked direction before the scaffold. They do not catch a scaffold that ran but produced silently-broken output — empty files trusted as written, a transpile...",
       "planPath": ".ai/plans/archive/setup-ds-round2-scaffold-integrity-and-devserver-fixes.md",
       "archived": true,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-0-economics-and-architecture",
-      "title": "Cloud Phase 0 — Economics, provider decision, pricing & phase index (READ FIRST — not executable)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "The master reference for the Maude Cloud arc: the complete path from zero infrastructure to a paid production release on maude.sh. Execution order = the numbered files cloud-phase-1-.md → cloud-pha...",
-      "planPath": ".ai/plans/cloud-phase-0-economics-and-architecture.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-0b-manual-prep",
-      "title": "Cloud Phase 0b — Manual prep checklist (do this BEFORE `/flow:execute` on any phase)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Everything a human must do by hand — accounts, logins, tokens, tooling, MCP wiring — so the phase executions run smoothly and agent-driven. Companion to cloud-phase-0-economics-and-architecture.md....",
-      "planPath": ".ai/plans/cloud-phase-0b-manual-prep.md",
-      "archived": false,
       "phaseKey": null
     },
     {
