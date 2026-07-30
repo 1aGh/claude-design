@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "e2e": "wdio run ./wdio.conf.ts",
+    "e2e:cloud": "wdio run ./wdio.cloud.conf.ts",
     "e2e:git": "wdio run ./wdio.git.conf.ts",
     "e2e:build": "cd .. && pnpm tauri build --debug",
     "e2e:lifecycle": "wdio run ./wdio.lifecycle.conf.ts",
