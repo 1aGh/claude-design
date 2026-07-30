@@ -118,6 +118,36 @@ describe('attachCode — the maude:// lane end to end (stubbed)', () => {
     expect(seen.filter((s) => s.includes('/auth/handoff/exchange')).length).toBe(1);
   });
 
+  test('F2 — a link that names one project but opens another is refused, nothing linked', async () => {
+    // The person confirmed a FAMILIAR name. If the exchange opens something
+    // else, that consent was borrowed — refuse rather than point linkedHub at
+    // whoever minted the code (validate 2026-07-30, defender F2).
+    const { createCloudEndpoints } = await import('../cloud/endpoints.ts');
+    const designRoot = join(scratch, '.design-f2');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(designRoot, { recursive: true });
+    writeFileSync(join(designRoot, 'config.json'), '{}\n');
+
+    const apiEndpoints = createCloudEndpoints({ paths: { repoRoot: scratch, designRoot } });
+    const r = await apiEndpoints.attachCode(`mhc_${'a'.repeat(64)}`, 'a-project-i-trust');
+    expect(r.status).toBe(409);
+    expect((r.json as { error: string }).error).toContain('stub-project');
+
+    const cfg = JSON.parse(readFileSync(join(designRoot, 'config.json'), 'utf8'));
+    expect(cfg.linkedHub).toBeUndefined();
+  });
+
+  test('F2 — a matching claim still links', async () => {
+    const { createCloudEndpoints } = await import('../cloud/endpoints.ts');
+    const designRoot = join(scratch, '.design-f2-ok');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(designRoot, { recursive: true });
+    writeFileSync(join(designRoot, 'config.json'), '{}\n');
+    const apiEndpoints = createCloudEndpoints({ paths: { repoRoot: scratch, designRoot } });
+    const r = await apiEndpoints.attachCode(`mhc_${'a'.repeat(64)}`, 'stub-project');
+    expect(r.status).toBe(200);
+  });
+
   test('a malformed or dead code never reaches the network', async () => {
     const { createCloudEndpoints } = await import('../cloud/endpoints.ts');
     const apiEndpoints = createCloudEndpoints({
