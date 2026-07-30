@@ -35,7 +35,7 @@ workers_dev = true
 
 [[containers]]
 class_name = "MaudeCell"
-image = "registry.cloudflare.com/b5b596efe65abb732777c7171dc18145/maude-cell:v10"
+image = "registry.cloudflare.com/b5b596efe65abb732777c7171dc18145/maude-cell:v11"
 # The tenant-of-one pilot: ONE project, one instance. Raise deliberately —
 # every instance is billed compute, and the platform tries to keep this many
 # SCHEDULED, which is not the same as this many in use. Three sat in
