@@ -17,26 +17,80 @@
 import { appShell } from './brand.mjs';
 
 // Styling comes from the design system shell (brand.mjs). What is left here
-// is only what the project cards add on top of the shared chrome.
+// is a GALLERY of project cards: a decorative mini-canvas header (the
+// showcase's artboards-on-dots motif, in pure CSS), the name + state, one
+// primary action, and everything secondary folded into a ⋯ menu — a native
+// <details> dropdown, because these pages ship no script.
 const CSS = `
+  .main-inner { max-width: 72rem; }
+  .projects { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-5); }
   .project {
+    display: flex; flex-direction: column;
     background: var(--bg-1);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
-    padding: var(--space-5) var(--space-6);
-    margin-bottom: var(--space-4);
+    overflow: visible;
     box-shadow: var(--shadow-sm);
-    transition: border-color var(--dur-soft) var(--ease-out);
+    transition: border-color var(--dur-soft) var(--ease-out), box-shadow var(--dur-soft) var(--ease-out);
   }
-  .project:hover { border-color: var(--border-default); }
-  .project h2 { margin: 0 0 var(--space-1); }
-  .row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-5); flex-wrap: wrap; }
-  .note { color: var(--fg-2); font-size: var(--type-base); line-height: var(--lh-base); margin: var(--space-3) 0 0; }
-  .actions { margin-top: var(--space-4); display: flex; gap: var(--space-5); flex-wrap: wrap; font-size: var(--type-base); }
-  .actions a:first-child { font-weight: 600; }
+  .project:hover { border-color: var(--border-default); box-shadow: var(--shadow-md); }
+
+  .pcanvas {
+    display: block; position: relative; height: 96px;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-bottom: 1px solid var(--border-subtle);
+    background-color: var(--bg-0);
+    background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+    background-size: 16px 16px;
+    overflow: hidden;
+  }
+  .pcanvas .ab { position: absolute; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); }
+  .pcanvas .ab-1 { left: 14%; top: 22%; width: 26%; height: 52%; }
+  .pcanvas .ab-2 { left: 46%; top: 34%; width: 20%; height: 40%; }
+  .pcanvas .ab-3 { left: 72%; top: 18%; width: 14%; height: 34%; }
+  .project:hover .pcanvas .ab-1 { border-color: var(--accent-muted); }
+
+  .pbody { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4) var(--space-5) var(--space-5); flex: 1; }
+  .prow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+  .prow h2 { margin: 0; font-size: var(--type-md); line-height: var(--lh-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prow h2 a { color: var(--fg-0); text-decoration: none; }
+  .prow h2 a:hover { color: var(--accent-hover); }
+  .note { color: var(--fg-2); font-size: var(--type-sm); line-height: var(--lh-sm); margin: 0; }
+  .pfoot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: auto; padding-top: var(--space-4); }
+  .pfoot .btn { font-size: var(--type-sm); line-height: var(--lh-sm); padding: var(--space-2) var(--space-4); }
+
+  .menu { position: relative; }
+  .menu > summary {
+    list-style: none; cursor: pointer;
+    display: grid; place-items: center;
+    width: 30px; height: 30px; border-radius: var(--radius-md);
+    color: var(--fg-2); font-weight: 600; letter-spacing: 0.08em;
+    border: 1px solid transparent;
+    transition: background var(--dur-soft) var(--ease-out), color var(--dur-soft) var(--ease-out);
+  }
+  .menu > summary::-webkit-details-marker { display: none; }
+  .menu > summary:hover { background: var(--bg-2); color: var(--fg-0); }
+  .menu[open] > summary { background: var(--bg-3); color: var(--fg-0); border-color: var(--border-default); }
+  .menu-list {
+    position: absolute; right: 0; top: calc(100% + var(--space-2)); z-index: 20;
+    min-width: 210px; padding: var(--space-2);
+    background: var(--bg-2); border: 1px solid var(--border-default);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-md);
+    display: flex; flex-direction: column;
+  }
+  .menu-list a {
+    display: block; padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    color: var(--fg-1); text-decoration: none; font-size: var(--type-base);
+  }
+  .menu-list a:hover { background: var(--bg-3); color: var(--fg-0); }
+  .menu-list a.danger { color: var(--status-error); }
+  .menu-list .menu-sep { height: 1px; background: var(--border-subtle); margin: var(--space-2) var(--space-2); }
+
   .empty {
     border: 1px dashed var(--border-default); border-radius: var(--radius-lg);
     padding: var(--space-8) var(--space-6); text-align: center; background: var(--bg-1);
+    max-width: 34rem;
   }
 `;
 
@@ -95,36 +149,54 @@ export const STATE_COPY = {
  */
 function projectCard(project, { can }) {
   const copy = STATE_COPY[project.state] ?? { tone: 'warn', label: project.state, note: null };
-  const actions = [];
+  const p = `/projects/${esc(project.id)}`;
+
   // "Open" goes to OUR connect page, never to a bare hostname (Cloud Phase 23
   // A1) — the workspace's front door is an operator surface until the
   // one-click handoff lands, and a link that promises the project must not
   // deliver infrastructure. A pending project opens its live setup instead.
-  if (project.state === 'pending') {
-    actions.push(`<a href="/projects/${esc(project.id)}/setup">Setup progress</a>`);
-  } else if (project.state !== 'purged') {
-    actions.push(`<a href="/projects/${esc(project.id)}/connect">Open</a>`);
-  }
-  if (can('invite')) actions.push(`<a href="/projects/${esc(project.id)}/people">People</a>`);
-  if (can('billing')) actions.push(`<a href="/projects/${esc(project.id)}/billing">Billing</a>`);
-  if (can('mirror')) actions.push(`<a href="/projects/${esc(project.id)}/mirror">GitHub copy</a>`);
-  actions.push(`<a href="/projects/${esc(project.id)}/audit">Activity</a>`);
-  // Always offered, in every state, including states where somebody is
-  // deciding whether to leave. An export you can only reach while everything
-  // is fine is not a guarantee.
-  actions.push(`<a href="/projects/${esc(project.id)}/download">Download everything</a>`);
+  const primary =
+    project.state === 'pending'
+      ? `<a class="btn" href="${p}/setup">Setup progress</a>`
+      : project.state !== 'purged'
+        ? `<a class="btn" href="${p}/connect">Open</a>`
+        : '';
+  const primaryHref = project.state === 'pending' ? `${p}/setup` : `${p}/connect`;
+
+  // Everything secondary folds into the ⋯ menu, filtered by what this person
+  // may actually do. "Download everything" is in EVERY state, including the
+  // ones where somebody is deciding whether to leave — an export you can only
+  // reach while everything is fine is not a guarantee.
+  const menu = [];
+  if (can('invite')) menu.push(`<a href="${p}/people">People</a>`);
+  if (can('billing')) menu.push(`<a href="${p}/billing">Billing</a>`);
+  if (can('mirror')) menu.push(`<a href="${p}/mirror">GitHub copy</a>`);
+  menu.push(`<a href="${p}/audit">Activity</a>`);
+  menu.push(`<a href="${p}/download">Download everything</a>`);
   if (can('delete') && project.state !== 'purged') {
-    actions.push(`<a href="/projects/${esc(project.id)}/delete">Delete…</a>`);
+    menu.push('<div class="menu-sep"></div>');
+    menu.push(`<a class="danger" href="${p}/delete">Delete project…</a>`);
   }
 
-  return `<div class="project">
-    <div class="row">
-      <h2>${esc(project.name || project.id)}</h2>
-      <span class="state ${copy.tone}">${esc(copy.label)}</span>
+  return `<article class="project">
+    <a class="pcanvas" href="${primaryHref}" aria-hidden="true" tabindex="-1">
+      <span class="ab ab-1"></span><span class="ab ab-2"></span><span class="ab ab-3"></span>
+    </a>
+    <div class="pbody">
+      <div class="prow">
+        <h2><a href="${primaryHref}">${esc(project.name || project.id)}</a></h2>
+        <span class="state ${copy.tone}">${esc(copy.label)}</span>
+      </div>
+      ${copy.note ? `<p class="note">${esc(copy.note)}</p>` : ''}
+      <div class="pfoot">
+        ${primary}
+        <details class="menu">
+          <summary aria-label="More for ${esc(project.name || project.id)}">⋯</summary>
+          <div class="menu-list">${menu.join('\n')}</div>
+        </details>
+      </div>
     </div>
-    ${copy.note ? `<p class="note">${esc(copy.note)}</p>` : ''}
-    <div class="actions">${actions.join('\n')}</div>
-  </div>`;
+  </article>`;
 }
 
 /**
@@ -144,9 +216,9 @@ export function dashboardPage({ account, projects = [], can }) {
              You can invite people to it once it exists.</p>
            <form method="get" action="/projects/new"><button type="submit">Start a project</button></form>
          </div>`
-      : projects
+      : `<div class="projects">${projects
           .map((p) => projectCard(p, { can: (capability) => can(p.role, capability) }))
-          .join('\n');
+          .join('\n')}</div>`;
 
   return appShell({
     account,
