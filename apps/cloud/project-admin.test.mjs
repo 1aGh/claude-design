@@ -324,7 +324,10 @@ test('Open leads to the connect page, which is honest about the two ways in', as
   assert.match(body, /Open Brno Alligators/);
   assert.match(body, /alligators\.cloud\.maude\.sh/);
   assert.match(body, /workspace email and password/);
-  assert.match(body, /Link workspace/);
+  // The one-click app lane (Phase 23 B3): a form POST to the handoff mint,
+  // never a token in a link.
+  assert.match(body, /action="\/projects\/alligators\/handoff"/);
+  assert.match(body, /Open in Maude/);
 
   const anon = await worker.fetch(get('/projects/alligators/connect'), env);
   assert.equal(anon.status, 303, 'a stranger is sent to sign in');

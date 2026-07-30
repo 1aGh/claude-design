@@ -11,6 +11,7 @@
 
 import { PAGE_CSS, lockup } from './brand.mjs';
 import { allDashboardHtml } from './dashboard.mjs';
+import { allHandoffHtml } from './handoff.mjs';
 import { allPeopleHtml } from './people-page.mjs';
 
 // Styling comes from the design system (brand.mjs), not from ad-hoc CSS.
@@ -144,6 +145,7 @@ export function messagePage(title, text) {
 export function allCustomerFacingHtml() {
   return [
     allDashboardHtml(),
+    allHandoffHtml(),
     allPeopleHtml(),
     signupPage({ googleEnabled: true }),
     loginPage({ googleEnabled: true, error: 'That email and password don’t match.' }),

@@ -151,17 +151,21 @@ export function connectPage({ account, project, isOwner }) {
   return page(
     `Open ${project.name}`,
     `<div class="card">
+       <h2>In the Maude app</h2>
+       <p class="quiet">One click — the app opens this project signed in as you. Nothing to
+         copy, nothing to paste.</p>
+       <form method="post" action="/projects/${esc(project.id)}/handoff" style="margin:0">
+         <button type="submit">Open in Maude</button>
+       </form>
+       <p class="quiet" style="margin:var(--space-3) 0 0">Don’t have the app yet?
+         <a href="https://maude.sh">Download Maude</a>, then come back and press the button.</p>
+     </div>
+     <div class="card">
        <h2>In your browser</h2>
        <p class="quiet">Your project lives at its own address. Sign in there with your
          <strong>workspace email and password</strong> — for now this is separate from your
          Maude account; one sign-in for both is on the roadmap.</p>
        <p style="margin:0"><a class="btn" href="${address}">Open ${esc(project.id)}.cloud.maude.sh</a></p>
-     </div>
-     <div class="card">
-       <h2>In the Maude desktop app</h2>
-       <p class="quiet" style="margin:0">Choose <strong>Link workspace</strong> and paste the
-         address above together with the sign-in your workspace gave you. The app then keeps a
-         full local copy that syncs both ways.</p>
      </div>
      <p class="quiet">Running the machinery yourself? The operator console lives at the same
        address under <span class="mono">/admin</span>.</p>`,

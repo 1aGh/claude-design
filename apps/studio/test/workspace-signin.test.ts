@@ -164,6 +164,25 @@ describe('failure modes are distinguishable and actionable', () => {
     expect((res.json as { error: string }).error).toMatch(/wait a minute/i);
   });
 
+  test("a cloud workspace's 400 message reaches the person verbatim (Phase 23 B3)", async () => {
+    // The hub's cloud-identity refusal comes WITH directions ("sign in through
+    // Maude Cloud" / what viewing needs). Swallowing it into "try again
+    // shortly" turned the most actionable message on this path into a shrug.
+    const { impl } = scriptedFetch({
+      '/health': HEALTHY,
+      '/auth/login': () =>
+        json(
+          { error: 'This workspace signs in through Maude Cloud — use Sign in to Maude Cloud in the app.' },
+          400
+        ),
+    });
+    const res = await signInToWorkspace(CREDS, { fetchImpl: impl, save: () => {} });
+    expect(res.status).toBe(400);
+    expect((res.json as { reason: string }).reason).toBe('cloud-identity');
+    expect((res.json as { error: string }).error).toMatch(/signs in through Maude Cloud/);
+    expect((res.json as { error: string }).error).not.toMatch(/try again shortly/i);
+  });
+
   test('a failed save is reported instead of pretending success', async () => {
     const { impl } = scriptedFetch({ '/health': HEALTHY, '/auth/login': LOGGED_IN });
     const res = await signInToWorkspace(CREDS, {

@@ -153,6 +153,40 @@ export const MIGRATIONS = [
       'CREATE INDEX IF NOT EXISTS personal_tokens_account ON personal_tokens (account_id);',
     ],
   },
+  {
+    version: 8, // feature-bug-report-button — daily quota buckets for /report
+    statements: [
+      // One row per (bucket, UTC day). Buckets are `install:<id>` and
+      // `ip:<addr>`; report.mjs increments-with-cap so an unauthenticated
+      // intake endpoint can exist without being an issue-spam oracle. Rows are
+      // tiny and self-expiring in effect (old days are never read again).
+      `CREATE TABLE IF NOT EXISTS report_quota (
+        bucket TEXT    NOT NULL,
+        day    TEXT    NOT NULL,
+        count  INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (bucket, day)
+      );`,
+    ],
+  },
+  {
+    version: 9, // Phase 23 B3 / Phase 17 — one-time handoff codes (browser → app)
+    statements: [
+      // The claim ticket a maude:// deep link carries instead of a bearer
+      // token. Stored hashed, single-use (used_at burns it), two-minute TTL.
+      // Role is captured at mint AND re-decided at exchange, so a code never
+      // outlives a removal.
+      `CREATE TABLE IF NOT EXISTS handoff_codes (
+        id         TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        account_id TEXT NOT NULL,
+        role       TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        used_at    INTEGER
+      );`,
+      'CREATE INDEX IF NOT EXISTS handoff_codes_project ON handoff_codes (project_id);',
+    ],
+  },
 ];
 
 /** Apply baseline + pending versioned migrations. Safe to run repeatedly. */

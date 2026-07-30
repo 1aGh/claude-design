@@ -19,10 +19,12 @@
 import { currentAccount, handleAuth } from './auth-routes.mjs';
 import { deriveCellSecret, mintProjectToken, secretsMatch } from './cell-token.mjs';
 import { handleDeviceAuth, personalTokenAccount } from './device-auth.mjs';
+import { handleHandoff } from './handoff.mjs';
 import { handleCheckoutRoutes } from './checkout-routes.mjs';
 import { mintInstallationToken } from './github-app.mjs';
 import { handleInviteRoutes } from './invites.mjs';
 import { handleProjectAdminRoutes } from './project-admin.mjs';
+import { handleReport } from './report.mjs';
 import { ACCESS_MESSAGES, decideAccess } from './project-access.mjs';
 import { handleProjectRoutes } from './project-routes.mjs';
 import {
@@ -194,6 +196,11 @@ export default {
     const deviceSurface = await handleDeviceAuth(request, env, { account });
     if (deviceSurface) return deviceSurface;
 
+    // The one-time browser→app handoff (Phase 23 B3 / Phase 17): a code in a
+    // maude:// URL, a project token only ever in a POST body.
+    const handoffSurface = await handleHandoff(request, env, { account });
+    if (handoffSurface) return handoffSurface;
+
     // Per-project control surfaces (Cloud Phase 22 / DDR-204). Before the
     // control-plane routes, because `/projects/...` is theirs.
     const projectSurface = await handleProjectRoutes(request, env, { account });
@@ -258,6 +265,13 @@ export default {
       }
       return json({ repository: row?.mirror_repo ?? null, branch: row?.mirror_branch ?? 'main' });
     }
+
+    // Bug-report intake (feature-bug-report-button). Deliberately BEFORE any
+    // signed-in surface check — reporters need no account. report.mjs owns
+    // validation, quotas, and the kill switch; the issue lands in the private
+    // intake repo, never here.
+    const reportSurface = await handleReport(request, env);
+    if (reportSurface) return reportSurface;
 
     if (request.method === 'GET' && url.pathname === '/health') {
       let d1 = 'unreachable';
