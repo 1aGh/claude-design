@@ -170,7 +170,12 @@ export interface AIPlaceholderProps {
   children?: React.ReactNode;
 }
 
-export function AIPlaceholder({ prompt, kind = 'veo', durationInFrames, children }: AIPlaceholderProps) {
+export function AIPlaceholder({
+  prompt,
+  kind = 'veo',
+  durationInFrames,
+  children,
+}: AIPlaceholderProps) {
   return (
     <div
       data-ai-placeholder={kind}

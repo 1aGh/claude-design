@@ -131,7 +131,10 @@ describe('Phase 6 — comments author + thread + mentions', () => {
           },
         },
       ];
-      writeFileSync(join(designRoot, '_comments', `${slug}.json`), JSON.stringify(poisoned, null, 2));
+      writeFileSync(
+        join(designRoot, '_comments', `${slug}.json`),
+        JSON.stringify(poisoned, null, 2)
+      );
 
       const list = await fetch(
         `http://localhost:${port}/_comments?file=${encodeURIComponent('.design/ui/Poison.tsx')}`

@@ -2384,8 +2384,12 @@ export function enumerateClips(
             const scan = (n: AnyNode | null | undefined): string | null => {
               if (!n || typeof n !== 'object') return null;
               if (n.type === 'JSXExpressionContainer') {
-                let e = (n as AnyNode).expression;
-                if (e && (e.type === 'Literal' || e.type === 'StringLiteral') && typeof e.value === 'string') {
+                const e = (n as AnyNode).expression;
+                if (
+                  e &&
+                  (e.type === 'Literal' || e.type === 'StringLiteral') &&
+                  typeof e.value === 'string'
+                ) {
                   return String(e.value);
                 }
                 return null;

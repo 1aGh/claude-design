@@ -6,20 +6,20 @@ import { describe, expect, test } from 'bun:test';
 import { enumerateClips } from '../canvas-edit.ts';
 import {
   applyClipAudio,
-  applyMoveClipToOverlay,
-  applyMoveClipToStoryline,
-  applySetClipText,
   applyClipFraming,
   applyClipGrade,
   applyDetachAudio,
   applyEditTransition,
   applyInsertClipAt,
   applyInsertTransition,
+  applyMoveClipToOverlay,
+  applyMoveClipToStoryline,
   applyRemoveClipRippled,
   applyRemoveTransition,
   applyReorderOverlayLayer,
   applyResolvePlaceholder,
   applySeriesMove,
+  applySetClipText,
   applySetPlaybackRate,
   applySplitClip,
   applyTrimIn,
@@ -428,7 +428,7 @@ describe('applySplitClip (Task 16)', () => {
   });
 
   test('corruption fixture: a beat touching a transition refuses with guidance', () => {
-    let err;
+    let err: unknown;
     try {
       applySplitClip(CANVAS, SERIES, 'a', 'name:s2', undefined, 100);
     } catch (e) {
@@ -665,27 +665,37 @@ describe('applyReorderOverlayLayer — vertical z-order (dogfood 2026-07-30)', (
 
   test('moves a layer to the top of the paint order (audio excluded from the ladder)', () => {
     const cc = enumerateClips(CANVAS, LAYERED, 'a');
-    const base = cc.clips.find((c) => c.kind === 'sequence' && /name="base"/.test(LAYERED.slice(c.start, c.end)));
+    const base = cc.clips.find(
+      (c) => c.kind === 'sequence' && /name="base"/.test(LAYERED.slice(c.start, c.end))
+    );
     const r = applyReorderOverlayLayer(CANVAS, LAYERED, 'a', base!.stableId, undefined, 2);
     expect(names(r.source)).toEqual(['mid', 'top', 'base', 'bed']);
   });
 
   test('one-step down + same-index no-op + audio refused', () => {
     const cc = enumerateClips(CANVAS, LAYERED, 'a');
-    const spanOf = (n: string) => cc.clips.find((c) => c.kind === 'sequence' && new RegExp(`name="${n}"`).test(LAYERED.slice(c.start, c.end)));
+    const spanOf = (n: string) =>
+      cc.clips.find(
+        (c) =>
+          c.kind === 'sequence' && new RegExp(`name="${n}"`).test(LAYERED.slice(c.start, c.end))
+      );
     const top = spanOf('top');
     const down = applyReorderOverlayLayer(CANVAS, LAYERED, 'a', top!.stableId, undefined, 1);
     expect(names(down.source)).toEqual(['base', 'top', 'mid', 'bed']);
     const noop = applyReorderOverlayLayer(CANVAS, LAYERED, 'a', top!.stableId, undefined, 2);
     expect(noop.source).toBe(LAYERED);
     const bed = spanOf('bed');
-    expect(() => applyReorderOverlayLayer(CANVAS, LAYERED, 'a', bed!.stableId, undefined, 0)).toThrow();
+    expect(() =>
+      applyReorderOverlayLayer(CANVAS, LAYERED, 'a', bed!.stableId, undefined, 0)
+    ).toThrow();
   });
 
   test('a series beat is refused (horizontal reorder owns it)', () => {
     const cc = enumerateClips(CANVAS, SERIES, 'a');
     const beat = cc.clips.find((c) => c.kind === 'sequence');
-    expect(() => applyReorderOverlayLayer(CANVAS, SERIES, 'a', beat!.stableId, undefined, 1)).toThrow();
+    expect(() =>
+      applyReorderOverlayLayer(CANVAS, SERIES, 'a', beat!.stableId, undefined, 1)
+    ).toThrow();
   });
 });
 
@@ -772,7 +782,14 @@ describe('layers model — set-text + move between layers', () => {
       mediaTag: 'Title',
       src: 'Hello',
     });
-    const r = applySetClipText(CANVAS, withTitle.source, 'a', withTitle.stableId, undefined, 'Nový titulek "s uvozovkami"');
+    const r = applySetClipText(
+      CANVAS,
+      withTitle.source,
+      'a',
+      withTitle.stableId,
+      undefined,
+      'Nový titulek "s uvozovkami"'
+    );
     expect(r.source).toContain(JSON.stringify('Nový titulek "s uvozovkami"'));
     const withPh = applyInsertClipAt(CANVAS, SERIES, 'a', {
       lane: 'storyline',
@@ -780,9 +797,18 @@ describe('layers model — set-text + move between layers', () => {
       durationInFrames: 60,
       placeholder: { prompt: 'stary prompt', kind: 'veo' },
     });
-    const r2 = applySetClipText(CANVAS, withPh.source, 'a', withPh.stableId, undefined, 'novy prompt');
+    const r2 = applySetClipText(
+      CANVAS,
+      withPh.source,
+      'a',
+      withPh.stableId,
+      undefined,
+      'novy prompt'
+    );
     const cc = enumerateClips(CANVAS, r2.source, 'a');
-    expect(cc.clips.find((c) => c.stableId === withPh.stableId)?.placeholder?.prompt).toBe('novy prompt');
+    expect(cc.clips.find((c) => c.stableId === withPh.stableId)?.placeholder?.prompt).toBe(
+      'novy prompt'
+    );
   });
 
   test('beat → overlay layer keeps timing and ripples the storyline', () => {

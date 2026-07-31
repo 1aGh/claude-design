@@ -258,10 +258,13 @@ function assertContainedSrc(canvasAbsPath: string, src: string, id: string): voi
     !/^[a-z][a-z0-9+.-]*:/i.test(t) && // any URI scheme
     !t.startsWith('//'); // protocol-relative
   if (!contained) {
-    throw new CanvasEditError('media src must be a contained asset path (no ../, schemes, or //host)', {
-      canvas: canvasAbsPath,
-      id,
-    });
+    throw new CanvasEditError(
+      'media src must be a contained asset path (no ../, schemes, or //host)',
+      {
+        canvas: canvasAbsPath,
+        id,
+      }
+    );
   }
 }
 
@@ -1589,10 +1592,13 @@ export function applyResolvePlaceholder(
     const closeTag = '</AIPlaceholder>';
     const close = source.lastIndexOf(closeTag, clip.end - 1);
     if (close < phEnd || close + closeTag.length > clip.end) {
-      throw new CanvasEditError('placeholder element has no matching close tag — fix the JSX by hand', {
-        canvas: canvasAbsPath,
-        id: stableId,
-      });
+      throw new CanvasEditError(
+        'placeholder element has no matching close tag — fix the JSX by hand',
+        {
+          canvas: canvasAbsPath,
+          id: stableId,
+        }
+      );
     }
     phEnd = close + closeTag.length;
   }
@@ -1663,7 +1669,6 @@ export function applyEnsureVideoComp(
   assertParses(canvasAbsPath, out, targetId);
   return { source: out, artboardId: targetId };
 }
-
 
 /**
  * Dogfood — edit the text a clip carries: a Title overlay's literal child or an
@@ -1798,10 +1803,10 @@ export function applyMoveClipToOverlay(
   }
   const mediaStart = directMediaTagStart(source, clip);
   if (mediaStart == null || !clip.mediaSrc || clip.durationInFrames == null) {
-    throw new CanvasEditError(
-      'only a media clip with a direct source can move between layers',
-      { canvas: canvasAbsPath, id: stableId }
-    );
+    throw new CanvasEditError('only a media clip with a direct source can move between layers', {
+      canvas: canvasAbsPath,
+      id: stableId,
+    });
   }
   const start = clipAbsoluteStart(source, canvasAbsPath, artboardId, stableId);
   const trim =
@@ -1823,7 +1828,13 @@ export function applyMoveClipToOverlay(
     (c) => c.contentHash === clip.contentHash && c.stableId !== ins.stableId
   );
   if (original) {
-    out = applyRemoveClipRippled(canvasAbsPath, out, artboardId, original.stableId, undefined).source;
+    out = applyRemoveClipRippled(
+      canvasAbsPath,
+      out,
+      artboardId,
+      original.stableId,
+      undefined
+    ).source;
   }
   // The storyline shrank under the overlay — stretch the comp back to it.
   out = applyFitTotalToContent(canvasAbsPath, out, artboardId).source;
@@ -1851,10 +1862,10 @@ export function applyMoveClipToStoryline(
   }
   const mediaStart = directMediaTagStart(source, clip);
   if (mediaStart == null || !clip.mediaSrc || clip.durationInFrames == null) {
-    throw new CanvasEditError(
-      'only a media clip with a direct source can move between layers',
-      { canvas: canvasAbsPath, id: stableId }
-    );
+    throw new CanvasEditError('only a media clip with a direct source can move between layers', {
+      canvas: canvasAbsPath,
+      id: stableId,
+    });
   }
   const trim =
     numAttrText(source, mediaStart, 'trimBefore') ??
@@ -1874,7 +1885,13 @@ export function applyMoveClipToStoryline(
     (c) => c.contentHash === clip.contentHash && c.stableId !== ins.stableId
   );
   if (original) {
-    out = applyRemoveClipRippled(canvasAbsPath, out, artboardId, original.stableId, undefined).source;
+    out = applyRemoveClipRippled(
+      canvasAbsPath,
+      out,
+      artboardId,
+      original.stableId,
+      undefined
+    ).source;
   }
   // Exact-fit the comp end (the storyline insert over-bumped while the overlay
   // still existed).
@@ -1888,7 +1905,6 @@ export function applyMoveClipToStoryline(
     : null;
   return { source: out, stableId: settled?.stableId ?? ins.stableId };
 }
-
 
 /**
  * "The timeline always reaches the last clip" (dogfood rule): compute the real

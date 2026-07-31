@@ -55,7 +55,7 @@ describe('tickStepFrames — density adapts 1 s → 10 f → 1 f', () => {
     expect(step).toBeGreaterThanOrEqual(150);
   });
   test('zoomed to 8px/frame → single-frame ticks', () => {
-    expect(tickStepFrames(8, 30)).toBe(10 * 8 >= 56 ? 10 : 1); // 10f = 80px ≥ 56
+    expect(tickStepFrames(8, 30)).toBe(10); // 10f = 80px ≥ 56 → 10-frame ticks
     expect(tickStepFrames(60, 30)).toBe(1); // 1f = 60px ≥ 56
   });
   test('labels: seconds at whole seconds, frames otherwise', () => {

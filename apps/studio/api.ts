@@ -70,12 +70,12 @@ import {
   applyClipGrade,
   applyDetachAudio,
   applyEditTransition,
-  applyInsertTransition,
-  applyOnDisk,
-  applyRemoveTransition,
   applyFitTotalToContent,
+  applyInsertTransition,
   applyMoveClipToOverlay,
   applyMoveClipToStoryline,
+  applyOnDisk,
+  applyRemoveTransition,
   applyReorderOverlayLayer,
   applyResolvePlaceholder,
   applySetClipText,
@@ -1242,7 +1242,10 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       // Dogfood (2026-07-30) — the C-tool records WHICH lane the click landed
       // on (storyline · V<n> overlay · A<n> audio) so an agent reading the
       // comment knows exactly where to look.
-      if (typeof (tl as { lane?: unknown }).lane === 'string' && (tl as { lane: string }).lane.length <= 40) {
+      if (
+        typeof (tl as { lane?: unknown }).lane === 'string' &&
+        (tl as { lane: string }).lane.length <= 40
+      ) {
         anchor.lane = (tl as { lane: string }).lane;
       }
       if (anchor.clipStableId != null || anchor.frame != null) c.timeline = anchor;
@@ -3918,8 +3921,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       }
       case 'layer-order': {
         const toIndex = Number(input.toIndex);
-        if (!Number.isFinite(toIndex))
-          return { ok: false, status: 400, error: 'toIndex required' };
+        if (!Number.isFinite(toIndex)) return { ok: false, status: 400, error: 'toIndex required' };
         run = (src) => applyReorderOverlayLayer(abs, src, artboardId, stableId, hash, toIndex);
         break;
       }
