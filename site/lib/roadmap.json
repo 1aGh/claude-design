@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-30T22:14:37.810Z",
+  "generated": "2026-07-31T11:31:28.045Z",
   "currentPhase": null,
   "phases": [
     {
@@ -549,6 +549,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-background-export-notification-center.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-bug-report-button",
+      "title": "Feature: \"Report a bug\" in Maude Studio + Maude Desktop",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-bug-report-button.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1748,17 +1759,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-bug-autofix-agent.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-bug-report-button",
-      "title": "Feature: \"Report a bug\" in Maude Studio + Maude Desktop",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-bug-report-button.md",
       "archived": false,
       "phaseKey": null
     },

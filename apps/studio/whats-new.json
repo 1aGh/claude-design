@@ -2,6 +2,23 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "report-a-bug-from-the-app",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Report a bug without leaving Maude",
+      "summary": "Hit a problem? Help › Report a Bug… files it for you — with a screenshot of your canvas you can black-out before sending, and a review screen where you choose exactly what gets attached. The report lands on the public Maude issue tracker; screenshots and logs stay in a private space only maintainers can open.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour=\"help\"]",
+          "title": "Report a bug",
+          "body": "Open Help › Report a bug… whenever something breaks — a screenshot and the details maintainers need are gathered for you, and nothing is sent until you approve it.",
+          "placement": "bottom"
+        }
+      ]
+    },
+    {
       "id": "maude-deeplink-open-in-app",
       "version": "0.51.0",
       "date": "2026-07-30",

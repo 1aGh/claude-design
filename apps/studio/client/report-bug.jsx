@@ -327,24 +327,24 @@ export function ReportBugDialog({ open, onClose }) {
   const canPreview = description.trim().length > 0;
 
   return (
-    <div className="help-modal-backdrop" onClick={close} data-testid="report-bug-dialog">
+    <div className="st-scrim" onClick={close} data-testid="report-bug-dialog">
       <div
-        className="help-modal rb-modal"
+        className="st-dialog rb-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="rb-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="help-modal-hd">
-          <span className="title" id="rb-title">
+        <div className="st-dialog-hd">
+          <span className="st-dialog-title" id="rb-title">
             Report a bug
           </span>
-          <button type="button" className="help-modal-close" onClick={close} aria-label="Close">
+          <button type="button" className="st-iconbtn" onClick={close} aria-label="Close">
             ×
           </button>
-        </header>
+        </div>
 
-        <div className="help-modal-body rb-body">
+        <div className="st-dialog-bd rb-body">
           {step === 'describe' && (
             <>
               <label className="rb-label" htmlFor="rb-desc">
@@ -352,7 +352,7 @@ export function ReportBugDialog({ open, onClose }) {
               </label>
               <textarea
                 id="rb-desc"
-                className="rb-desc"
+                className="textarea"
                 data-testid="report-bug-description"
                 rows={5}
                 autoFocus
@@ -364,12 +364,12 @@ export function ReportBugDialog({ open, onClose }) {
                 Next you'll see exactly what gets attached — nothing is sent until you approve it.
               </p>
               <footer className="rb-actions">
-                <button type="button" className="rb-btn" onClick={close}>
+                <button type="button" className="st-btn" onClick={close}>
                   Cancel
                 </button>
                 <button
                   type="button"
-                  className="rb-btn rb-primary"
+                  className="st-btn rb-primary"
                   data-testid="report-bug-preview"
                   disabled={!canPreview}
                   onClick={() => setStep('preview')}
@@ -501,12 +501,12 @@ export function ReportBugDialog({ open, onClose }) {
                 repository only maintainers can open.
               </p>
               <footer className="rb-actions">
-                <button type="button" className="rb-btn" onClick={() => setStep('describe')}>
+                <button type="button" className="st-btn" onClick={() => setStep('describe')}>
                   Back
                 </button>
                 <button
                   type="button"
-                  className="rb-btn rb-primary"
+                  className="st-btn rb-primary"
                   data-testid="report-bug-send"
                   onClick={send}
                 >
@@ -556,7 +556,7 @@ export function ReportBugDialog({ open, onClose }) {
                 </p>
               )}
               <footer className="rb-actions">
-                <button type="button" className="rb-btn rb-primary" onClick={close}>
+                <button type="button" className="st-btn rb-primary" onClick={close}>
                   Done
                 </button>
               </footer>
@@ -574,10 +574,10 @@ export function ReportBugDialog({ open, onClose }) {
                 attach them by hand.
               </p>
               <footer className="rb-actions">
-                <button type="button" className="rb-btn" onClick={() => setStep('preview')}>
+                <button type="button" className="st-btn" onClick={() => setStep('preview')}>
                   Back
                 </button>
-                <button type="button" className="rb-btn rb-primary" onClick={saveFallback}>
+                <button type="button" className="st-btn rb-primary" onClick={saveFallback}>
                   Save locally &amp; open GitHub
                 </button>
               </footer>

@@ -178,11 +178,19 @@ Standard DS tokens only (`--bg-*`, `--fg-*`, `--accent*`); no new visual vocabul
 
 ## Acceptance Criteria
 
-- [ ] All tasks completed; `/flow:utils-verify` per task
-- [ ] Nothing transmits without the consent screen; every item opt-out-able; verified by inspection of the submit payload
-- [ ] Scrubber tests cover: home paths, tokens, emails, project paths
-- [ ] New `/_api/debug-bundle` + `_reports` write route are in NEITHER canvas allowlist
-- [ ] Issue lands in `1aGh/maude-reports` with parseable `maude-report/v1` block + committed media
-- [ ] Kill switch verified (flag on → 503, client shows fallback)
-- [ ] DDRs recorded (transport/broker decision, consent posture, media-in-repo)
-- [ ] What's New entry appended (pending) via `whats-new-entry` skill at `/flow:done`
+- [x] All tasks completed; verified per task (targeted suites in place of `/flow:utils-verify`)
+- [x] Nothing transmits without the consent screen; every item opt-out-able; verified live via agent-browser walk
+- [x] Scrubber tests cover: home paths, tokens, emails, project paths (`test/debug-bundle.test.ts`)
+- [x] New `/_api/debug-bundle` + `/_api/report` + `/_api/report-fallback` are in NEITHER canvas allowlist (`canvas-origin-gate.test.ts`)
+- [x] Issue lands with parseable `maude-report/v1` block + committed media — live-verified (#1 intake probe; after the owner's public-destination override, #69 on `1aGh/maude` with private media links, byte-identical round-trip)
+- [x] Kill switch covered by `report.test.mjs` (flag on → 503) — client fallback path exercised in tests + fallback UI walk
+- [x] DDR recorded: DDR-208 (broker transport, public-issue + private-media split, consent posture, media-in-repo)
+- [x] What's New entry appended (pending version) via `whats-new-entry` skill
+
+## Retro
+
+- **The debate earned its cost:** SHIPPER's "GitHub API cannot attach images" fact and BREAKER's confused-deputy finding decided the architecture before a line was written; both survived contact with reality unchanged. The owner later overrode F3 (public issues) — the split-destination answer preserved the privacy line while honoring the override, which is exactly what a recorded rejected-alternative is for.
+- **Live verification > mocks:** the mocked-GitHub tests were green, but only the real end-to-end probe (harness driving production `handleReport` against real GitHub) proved the contents-API commit + issue flow — and the very first dogfood report caught the dialog off-DS. Screenshot-driven bug reports work; report #69's own screenshot was the repro.
+- **Shared-tree hazard bit again (3rd time in v0.51.0):** committing shared files (`worker.mjs`, `http.ts`, `lib.rs`) from the concurrent session carried this feature's imports into main while the modules were untracked here — the other session had to land them to fix CI. The new import-coherence gate + CLAUDE.md rule exist because of this; `/flow:plan` should flag "shared-file edits on a concurrent tree" as a coordination risk up front.
+- **`bun test` clobbered `dist/` exactly as the CLAUDE.md warning predicts** — the checksum-before/after habit caught it both times. Keep the habit; the root cause is still unconfirmed.
+- **What to change next time:** when a feature spans two deploy surfaces (worker + client), plan the *deploy* step explicitly — code-complete ≠ live; the worker still needs a deliberate deploy after the tree quiets down.

@@ -61,7 +61,7 @@ describe('report-bug-dialog', () => {
     // Esc closes menubar dropdowns; the dialog closes via its × button.
     const dialog = await $(tid('report-bug-dialog'));
     if (await dialog.isDisplayed().catch(() => false)) {
-      await (await $('.rb-modal .help-modal-close')).click();
+      await (await $('[data-testid="report-bug-dialog"] .st-dialog-hd .st-iconbtn')).click();
     }
     await browser.waitUntil(
       async () => !(await (await $(tid('report-bug-dialog'))).isDisplayed().catch(() => false)),
