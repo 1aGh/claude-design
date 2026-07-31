@@ -151,14 +151,14 @@ Execute in order. Golden-file tests land BEFORE UI wiring for every op (breaker 
 
 ### Phase 0 — Guardrails (preconditions, do first)
 
-#### Task 1: UPDATE export cap — surface + raise
+#### ✅ Task 1: UPDATE export cap — surface + raise
 
 - **Do**: Make `MAX_FRAMES` (exporters/video.ts:45) an option with a raised default (e.g. 3600 = 2 min @ 30 fps) + explicit `options.maxFrames`; keep 900 as the *warning* threshold for the heavy/frame-step path. Loud pre-export notice in the export dialog + a Timeline duration badge when comp length exceeds the safe tier. Never silently truncate.
 - **Pattern**: DDR-157 loud-degradation stamps (`video.ts:137–157`)
 - **Gotcha**: 1080p frame-step died ~frame 190 from memory pressure — keep the 720p recommendation; test a 2700-frame export (the RCA reel length) at 720p before settling the default
 - **Validate**: `cd apps/studio && bun test` + manual 90 s comp export (audio path + forced frame-step)
 
-#### Task 2: CREATE ripple subsystem
+#### ✅ Task 2: CREATE ripple subsystem
 
 - **Do**: Pure module: given `CompClips` + clip index + frame delta → downstream `from`/`durationInFrames`/`TOTAL` rewrites. Handles literal ints; simple `const`-arithmetic expressions (house style `from={A + B - 20}`); refuses loudly (structured error → UI message) on expressions it can't rewrite. Series clips need no `from` ripple, but DO need `TOTAL` rewrite.
 - **Pattern**: `enumerateClips` tokenization; golden-file fixtures
@@ -167,42 +167,42 @@ Execute in order. Golden-file tests land BEFORE UI wiring for every op (breaker 
 
 ### Phase 1 — Timeline UX foundation (the iMovie feel — before any new verb)
 
-#### Task 3: ADD selection model
+#### ✅ Task 3: ADD selection model
 
 - **Do**: `selectedClipId` (stableId) state in app.jsx; click selects (accent outline via canvas selection token), Esc deselects, Delete = remove-with-ripple, click empty track deselects. Selection survives comp-clips refetch by stableId (not index). Keyboard shortcuts route by selection; ⌘B targets selection, else the clip under the playhead.
 - **Pattern**: existing timeline state block (app.jsx:8862–8912) + shortcut wiring (9325–9440)
 - **Gotcha**: all existing op handlers are index-based today — migrate handler signatures to stableId now, so later ops don't inherit index addressing (DDR-150: never address by row index)
 - **Validate**: select → Delete → undo chain; selection stable across an external file edit (HMR refetch)
 
-#### Task 4: ADD timeline zoom + scroll
+#### ✅ Task 4: ADD timeline zoom + scroll
 
 - **Do**: `timeline-scale.js` pure helpers (frame↔px at `pxPerFrame`, fit-to-width, zoom-around-anchor). Replace `%` positioning with `frame × scale` px on a scaled inner track; horizontal scroll when content > viewport; ruler ticks adapt density (1 s → 10 f → 1 f as you zoom in). Header zoom slider + ⌘+/⌘− + pinch (wheel with ctrlKey) + `0` = fit. Playhead/selection stays anchored during zoom.
 - **Pattern**: `pct()`/`LABEL_GUTTER` math being replaced; `snapThresholdFrames` already px-derived — feed it the scaled width
 - **Gotcha**: `seekAt`, both drag machines, snap thresholds, block/handle/caret positioning ALL assume `%`-of-total — migrate together, behind one scale helper, or drags will land on wrong frames at zoom ≠ fit
 - **Validate**: unit tests for scale math; drag/trim/seek correct at 3 zoom levels; 2700-frame comp scrolls smoothly
 
-#### Task 5: REFACTOR layout to three-band storyline
+#### ✅ Task 5: REFACTOR layout to three-band storyline
 
 - **Do**: Series beats render side-by-side in ONE storyline lane (order = play order); standalone Sequences render in an overlay band above (z-order = vertical order); `<Audio>` rows in an audio band below. Transitions render as ⧓ seam chips between storyline clips (read-only this phase). Layer expansion moves to the selected clip's detail (popover section), not inline rows. Non-series comps (no TransitionSeries) keep the stacked-rows fallback.
 - **Pattern**: `rowKind`/glyph identity code reused per block; existing series detection (`seq.series`)
 - **Gotcha**: this changes most `data-testid` anchors — update desktop-e2e in the same change; keep `timeline-seq-<i>` testids keyed by stableId slug now
 - **Validate**: Alligators Cinematic Cut renders as one storyline + audio band; every pre-existing op (retime, remove, reorder, hide, replace) still works from the new layout
 
-#### Task 6: ADD magnetic drag-to-reorder + positional drop
+#### ✅ Task 6: ADD magnetic drag-to-reorder + positional drop
 
 - **Do**: Dragging a storyline clip horizontally = live reorder preview (siblings shuffle around a gap ghost; commit = existing reorder op with the new index). Standalone clips keep free body-drag (`from` edit). Drag-over with files shows an insertion caret between storyline clips → `onDropMedia(file, {index|lane})`; audio files caret into the audio band; multiple files insert in order. Remove ▲▼ buttons from storyline labels (kept in context menu for a11y/keyboard).
 - **Pattern**: move-drag state machine (TimelinePanel.jsx:265–314) extended with reorder mode for `seq.series`; `hasFiles` drop plumbing (338–347)
 - **Gotcha**: reorder commit is index-pair based today — go through stableId; suppress click-to-seek after a reorder drag (existing `movedRef` pattern). First drop into an empty/greenfield comp scaffolds the `<TransitionSeries>` storyline (Blueprint default-container rule) so later transitions/magnetic behavior work without a convert step
 - **Validate**: drag clip 3 before clip 1 → plays in new order; drop 2 files at caret position → inserted in order at that index; e2e scenario
 
-#### Task 7: ADD filmstrip thumbnails + real waveforms
+#### ✅ Task 7: ADD filmstrip thumbnails + real waveforms
 
 - **Do**: `timeline-media-cache.js`: for video srcs, extract N frames (client `<video>` seek → canvas, N by zoom bucket) → dataURL strips; for audio srcs, WebAudio `decodeAudioData` → peak array → SVG path. Async with today's blocks as instant fallback; cache keyed `<sha8>:<bucket>` in memory + persisted under `<designRoot>/_canvas-state/timeline-media/` (runtime state, DDR-115 ignored-list — verify the three-list rule).
 - **Pattern**: PhotoBgRemoveHarness-style client-side media work; `_canvas-state/` camera-file precedent
 - **Gotcha**: decode work must never block the scrub (idle-callback / queue, cancel on close); WKWebView memory — cap concurrent decodes, thumbnails ≤ ~160 px wide; assets are same-origin (`assets/…`) so canvas readback is clean
 - **Validate**: storyline shows filmstrips within ~1 s on the fixture canvas; audio band shows true peaks; no dropped frames while scrubbing during extraction
 
-#### Task 8: ADD trim-delta feedback + source-bounds clamping
+#### ✅ Task 8: ADD trim-delta feedback + source-bounds clamping
 
 - **Do**: Live tooltip on both trim drags (`+12f / +0.40s`, red at clamp); clamp in-point/duration to source duration when `assets/<sha8>.footage.json` exists (fetch via existing footage route, cached); toast every committed op with the op name; 409 → "Timeline changed — reloaded, try again" + auto-refetch.
 - **Pattern**: existing inline `· 240f` readouts (TimelinePanel.jsx:604–606); `shellToast`
@@ -210,48 +210,48 @@ Execute in order. Golden-file tests land BEFORE UI wiring for every op (breaker 
 
 ### Phase 2 — Editing verbs (on the selection + popover foundation)
 
-#### Task 9: ADD clip inspector popover shell
+#### ✅ Task 9: ADD clip inspector popover shell
 
 - **Do**: Selection opens (via toolbar button / double-click / context menu "Adjust…") a popover anchored to the clip: tabs **Speed · Audio · Crop · Grade · Transition** (tabs appear per clip kind). Houses the knobs from Tasks 10–14. Draggable, Esc closes, one instance.
 - **Pattern**: photo-knobs.jsx panel structure; Inspector tab precedent (app.jsx:8235–8352)
 - **Validate**: popover targets follow selection; keyboard reachable (a11y pass)
 
-#### Task 10: ADD speed op (`playbackRate`)
+#### ✅ Task 10: ADD speed op (`playbackRate`)
 
 - **Do**: `applySetPlaybackRate(clipId, rate)` — set/remove `playbackRate` on the media child, recompute `durationInFrames` (= source span / rate), ripple. Route `/_api/clip-speed` (main-origin). UI: Speed tab presets (0.25/0.5/1/1.5/2/4) + custom NumberField; storyline chip `2×`.
 - **Pattern**: `applyRetimeSequenceByClip` (canvas-edit.ts:1541)
 - **Gotcha**: `timeline-parse.js` must display the chip (two-tokenizer rule); no speed ramps (fence)
 - **Validate**: golden-file test + preview at 2× + export spot-check
 
-#### Task 11: ADD in-point trim (left-edge)
+#### ✅ Task 11: ADD in-point trim (left-edge)
 
 - **Do**: `applyTrimIn(clipId, deltaFrames)` — rewrite `trimBefore`/`startFrom` + duration + ripple. UI: left-edge handle mirroring the right-edge drag, with Task-8 clamping/tooltip.
 - **Pattern**: right-edge trim gesture + snap
 - **Gotcha**: `startFrom` (legacy) vs `trimBefore` (4.0.319+) — read both, emit `trimBefore`
 - **Validate**: golden-file + drag e2e
 
-#### Task 12: ADD per-clip mute/volume + detach audio
+#### ✅ Task 12: ADD per-clip mute/volume + detach audio
 
 - **Do**: `applyClipAudio(clipId, {muted?, volume?})`. Detach = `muted` video + `<Audio src={same} trimBefore={same}>` in the audio band (same file, two elements, zero preprocessing). UI: mute icon on selected clip / Audio tab slider; "Detach audio" in context menu.
 - **Pattern**: `applyInsertClip` audio kind; existing audio rows
 - **Gotcha**: Remotion `volume` accepts per-frame functions — v1 emits constants only (fades v2)
 - **Validate**: golden-file + preview + mp4 export carries audio
 
-#### Task 13: ADD crop/reposition op
+#### ✅ Task 13: ADD crop/reposition op
 
 - **Do**: `applyClipFraming(clipId, {scale, x, y} | null)` — idempotent wrapper (`overflow:hidden` + inner transform; fit/fill presets via objectFit). UI: Crop tab NumberFields + presets; (viewer drag-rect = v2 stretch).
 - **Pattern**: style-attr editing precedent
 - **Gotcha**: wrapper must stay a literal block both tokenizers parse
 - **Validate**: golden-file wrap/unwrap round-trip + visual + export
 
-#### Task 14: ADD color grade op
+#### ✅ Task 14: ADD color grade op
 
 - **Do**: `applyClipGrade(clipId, params | null)` — parametric object (PhotoEdit vocabulary: brightness/contrast/saturation/hue/sepia/grayscale) compiled to ONE CSS `filter` string on the media element; named preset "looks" = parameter bundles. UI: Grade tab with photo-knobs sliders + preset row.
 - **Pattern**: `photo/schema.ts` params; `photo-knobs.jsx` UI
 - **Gotcha**: **WKWebView filter ceiling** — preview applies on paused frame only (re-apply on pause), stated in the panel. Round-trip: parse existing `filter:` back to params; unrecognized functions → read-only badge.
 - **Validate**: golden-file param↔filter round-trip + paused-frame preview + export color spot-check
 
-#### Task 15: ADD transition edit (existing seams)
+#### ✅ Task 15: ADD transition edit (existing seams)
 
 - **Do**: `applyEditTransition(transitionId, {presentation?, durationInFrames?})` among the 6 bundled presentations; `TOTAL` ripple on duration change. UI: click seam chip → picker popover (presentation grid + duration field).
 - **Pattern**: transitions already enumerate (`kind === 'transition'`)
@@ -260,28 +260,28 @@ Execute in order. Golden-file tests land BEFORE UI wiring for every op (breaker 
 
 ### Phase 3 — Structural ops
 
-#### Task 16: ADD split at playhead
+#### ✅ Task 16: ADD split at playhead
 
 - **Do**: `applySplitClip(clipId, atFrame)` — two literal blocks: first keeps in-point/duration to the cut; second gets `trimBefore = original + atFrame×rate` + remainder; ripple. **Scope fence:** standalone `<Sequence>` + series clips NOT adjacent to a transition; at a transition boundary → structured refusal rendered as "move the clip out of the transition first" (series-overlap split stays deferred per DDR-150). Both halves inherit attrs (name, grade, crop, audio props).
 - **Pattern**: `applyInsertClip` + `applyRetimeSequenceByClip` composition
 - **Gotcha**: corruption fixtures required (orphaned transition, wrong-half seam, off-by-one at cut frame) BEFORE UI wiring
 - **Validate**: fixture suite green; then ⌘B / context menu / toolbar scissors
 
-#### Task 17: ADD transition insert/remove
+#### ✅ Task 17: ADD transition insert/remove
 
 - **Do**: `applyInsertTransition(betweenClipIds, presentation, frames)` / `applyRemoveTransition(transitionId)` with `TOTAL` ripple. UI: hover seam affordance (+) between storyline clips → picker; remove via seam chip context.
 - **Pattern**: `applyRemoveClip` transition-neighbor merge math (~2482)
 - **Gotcha**: only between series siblings; standalone pairs → refusal message (convert-to-series = v2)
 - **Validate**: golden-file + assertCompSemantics + preview
 
-#### Task 18: ADD audio band authoring
+#### ✅ Task 18: ADD audio band authoring
 
 - **Do**: Positional drop of audio (Task 6 caret) → `applyInsertClip` audio kind with `startFrame`/`volume`; audio blocks movable (`from` drag) + trimmable + per-Task-12 volume; trim-to-comp-end snap target ("stretch the song across the whole cut" is one drag). Music longer than the comp trims; shorter music: no loop in v1 (Remotion `loop` prop = v2).
 - **Pattern**: existing `<Audio>` rows + LooseMediaInfo
 - **Gotcha**: `assertContainedAssetSrc` on every dropped src; audio uses plain `<Sequence from>` (real `from`, drag allowed)
 - **Validate**: drop mp3 → move/trim → export carries the bed
 
-#### Task 19: ADD overlay band authoring (titles/graphics)
+#### ✅ Task 19: ADD overlay band authoring (titles/graphics)
 
 - **Do**: Surface add/remove/retime/move for overlay-lane standalone Sequences (text/image kinds via existing `applyInsertClip` snippet generators); "+ Title" / "+ Image" toolbar entries; z-order via existing reorder.
 - **Gotcha**: cap ONE overlay lane (iMovie fence — 2 video layers total)
@@ -289,28 +289,28 @@ Execute in order. Golden-file tests land BEFORE UI wiring for every op (breaker 
 
 ### Phase 4 — Greenfield + AI placeholder (secondary to manual editing)
 
-#### Task 20: ADD greenfield empty-comp flow
+#### ✅ Task 20: ADD greenfield empty-comp flow
 
 - **Do**: "New video" entry (canvas browser + `/design:new --video` docs note): scaffold via `assembleCompSource` — minimal literal comp with an empty `<TransitionSeries>` storyline; the whole editor then works drop-first. Dimensions/fps are user-settable in the flow (presets 1920×1080 / 1080×1920 / 1080×1080 + custom fields, e.g. 1440×1024; default 30 fps) — they land in `VideoCompMeta`.
 - **Pattern**: `assembleCompSource` (canvas-edit.ts:4406) — already the "udělej z toho video" path
 - **Gotcha**: scaffold honors literal-blocks + Timeline-parseability from frame zero
 - **Validate**: empty comp → drop 3 clips → split/trim/transition → export
 
-#### Task 21: CREATE `<AIPlaceholder>` canvas-lib primitive
+#### ✅ Task 21: CREATE `<AIPlaceholder>` canvas-lib primitive
 
 - **Do**: DS-tokened slate (`AbsoluteFill`, prompt text + kind badge + duration), props `{prompt, kind: 'veo'|'motion'|'image', durationInFrames}`. Enumerator learns `kind: 'placeholder'`. Deterministic render, export-safe.
 - **Pattern**: `DrawProof`/`PhotoLayer` canvas-lib precedents
 - **Gotcha**: prompt is USER TEXT → `JSON.stringify` quoted-string path only; injection fixtures (`*/`, backticks, `${}`)
 - **Validate**: injection fixtures + slate renders in Player + exports as slate
 
-#### Task 22: ADD placeholder insert + resolve flow
+#### ✅ Task 22: ADD placeholder insert + resolve flow
 
 - **Do**: "+ AI clip" (toolbar/context menu) → `applyInsertClip` placeholder kind with prompt dialog; row shows ✨ + prompt preview; "Generate" → existing `/_api/generate-jobs` (veo→Veo, motion→Veo w/ motion-graphics prompt, image→Nano Banana); on completion → existing replace-media swaps slate → media in place (stableId survives). Reuse generate-dialog/jobs + notification center (DDR-153) — no new generation UI.
 - **Pattern**: DDR-164 spine; media-generation-director stays proposer-only
 - **Gotcha**: async Veo (1–10 min) — placeholder stays fully editable meanwhile; job→clip binding by stableId + 409 on hash miss
 - **Validate**: insert → generate (mock adapter) → in-place swap, identity preserved
 
-#### Task 23: ADD timeline comments (frame-anchored markers + agent context)
+#### ✅ Task 23: ADD timeline comments (frame-anchored markers + agent context)
 
 - **Do**: Extend the existing canvas comment system (`_comments/` runtime state, DDR-115) with a timeline anchor: `{clipStableId, frameOffset}` (preferred — survives reorder/ripple) or `{frame}` (track-level). UI per Blueprint: marker strip above the ruler, add via context menu / `C`, thread popover on click, resolve/delete. **Agent context is the point:** expose comments for the active comp via the existing comment-read surface + include them in what `/design:edit` and the ACP session read for the canvas (comment → "user wants X at clip `intro`, frame 42–90"), so "predelej cast, ktera mi nevyhovuje" needs no manual frame description.
 - **Pattern**: existing comments store + UI (`_comments/`); whiteboard `read-annotations` precedent for agent-readable feedback surfaces
@@ -319,13 +319,13 @@ Execute in order. Golden-file tests land BEFORE UI wiring for every op (breaker 
 
 ### Phase 5 — Agent parity, e2e, docs
 
-#### Task 24: UPDATE agent door + plugin docs
+#### ✅ Task 24: UPDATE agent door + plugin docs
 
 - **Do**: Every op reachable headlessly (routes are the door; `/design:edit` markdown gains the verb vocabulary: "split shot 3 at 2.1s", "speed up clip 2 2×", "mute clip 1", "add fade between 2 and 3", "insert a Veo placeholder: <prompt>", "resolve the timeline comments"). Update `video-comp/SKILL.md` (playbackRate/trimBefore/filter/wrapper/AIPlaceholder vocabulary) + `footage-director/SKILL.md` (codegen may emit placeholder beats). Timeline comments + placeholder prompts are first-class agent inputs (Task 23).
 - **Gotcha**: flow/design markdown stays project-agnostic; two-tokenizer doc rule
 - **Validate**: `/design:edit "split the second clip at 1s"` end-to-end on a fixture
 
-#### Task 25: ADD e2e + rebuild committed bundles
+#### ✅ Task 25: ADD e2e + rebuild committed bundles
 
 - **Do**: `data-testid`s for every affordance (`timeline-storyline`, `timeline-clip-<slug>`, `timeline-seam-<i>`, `timeline-split`, `timeline-speed-menu`, `timeline-zoom`, `timeline-placeholder-add`, …); desktop-e2e scenario (select → split → trim → speed → reorder → undo chain); `/design:smoke`; rebuild `dist/client.bundle.js` + `dist/styles.css` release-minified.
 - **Gotcha**: `git status apps/studio/dist/` before AND after every `bun test`; `MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release`
@@ -394,3 +394,11 @@ Seats: builder 0.74 / shipper 0.82 / breaker 0.78 (block→grudging-A). Converge
 **Rev 3 (user scenario walkthrough):** validated against the 13-step greenfield scenario (new canvas → custom-size video artboard → drop/trim/split/delete/reorder → transition → mute → music bed → placeholder → comment → ACP finish). Added: Task 23 frame-anchored timeline comments as agent context; default-`<TransitionSeries>` container rule (magnetic butting + seam transitions work from the first drop); Backspace alias + `C` shortcut; custom dimensions in greenfield; trim-to-comp-end snap for music; `timeline-greenfield-cut` e2e scenario.
 
 **Rev 2 (user steer):** manual-editing UX promoted to the primary deliverable — added the normative UX Blueprint (three-band storyline, selection model, zoom, magnetic reorder, positional drop, filmstrips/waveforms, feedback + keyboard map, iMovie omission fences) as Phase 1 before any new verb; AI placeholder demoted to Phase 4; skimming + viewer-crop added as Phase 6 stretch. Grounded in a line-level read of `TimelinePanel.jsx` + `timeline-snap.js` (percent-math, no selection, row-per-sequence, ▲▼ reorder, positionless drop confirmed).
+
+## Retro (2026-07-30)
+
+- **What worked:** TSX-first paid off exactly as the debate predicted — every gesture is a named AST op with stableId + content-hash + ripple, so the manual UI and the `/design:edit` agent door share one code path, and the `oxc-parse → assertParses → assertCompSemantics` gate made every op fail *closed* (the F-A3 fake-`</AIPlaceholder>` attack corrupts nothing because the parse gate rejects before the write). The ripple engine as a standalone fixture-first subsystem (Phase 0) meant no dependent op ever shipped on an unproven rewrite.
+- **What didn't (the real cost was dogfooding, not the plan):** the plan's UX blueprint was necessary but not sufficient — four rounds of live desktop feedback reshaped it past the fences (drops create new *layers* not just storyline appends; bandMode is wrong for pure-JSX comps; the modal comment composer had to become an anchored popover; WKWebView needs the `<video>` attached to the DOM to decode a filmstrip; `window.prompt` is a silent no-op). None of these were derivable from reading `TimelinePanel.jsx` — they only surfaced in the packaged `.app`. Lesson for `/plan`: for a WKWebView/Tauri surface, budget explicit dogfood rounds as plan tasks, not as post-hoc polish.
+- **Security surprise:** the adversarial seat earned its seat. The `lane` field — added purely as agent-navigation UX — was the exact seam where untrusted peer-comment data got promoted from "rendered pin" to "agent instruction," and the validation everyone pointed at (`commentsAdd`) guarded the wrong door (local WS) while the hub-sync persist path (`saveCommentsForFile`/`backfillComment`) spread raw. Fix landed at the *read* boundary so it covers every write source. Lesson: when a feature wires untrusted content into an agent loop, validate at the read boundary the agent consumes, not at each write site.
+- **Process:** the desktop auto-updater silently replaced the dev build with the released version mid-test twice before it was caught — now gated on `cfg!(debug_assertions)`. A dev-tooling footgun that cost real debugging time; recorded as its own DDR.
+- **Change for next time:** the full `/design:smoke` sweep (~70 canvases) auto-escalated on a `canvas-lib.tsx` touch and timed out for what was a decorative-chip removal in a component no committed canvas instantiates. A "which canvases actually instantiate the changed export" pre-filter would make the smoke gate proportional to blast radius.

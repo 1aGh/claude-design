@@ -687,9 +687,11 @@ describe('assembleCompSource — refs → comp (DDR-150 P4 Task 12)', () => {
     const { clips, compName, durationInFrames } = enumerateClips('/abs/MyReel.tsx', tsx, 'reel');
     expect(compName).toBe('Comp');
     expect(clips.map((c) => c.mediaSrc)).toEqual(['assets/a.mp4', 'assets/b.mp4']);
-    // …laid back-to-back (cursor advances by each duration)…
-    expect(clips[0]!.from).toBe(0);
-    expect(clips[1]!.from).toBe(60);
+    // …as series beats butted back-to-back (enhanced-video-editing Task 20:
+    // the storyline is a <TransitionSeries> now — beats carry no `from`, the
+    // series computes their offsets)…
+    expect(clips[0]!.tag).toBe('TransitionSeries.Sequence');
+    expect(clips[0]!.durationInFrames).toBe(60);
     expect(clips[1]!.durationInFrames).toBe(40);
     // …with durable <Sequence name> identity so hand-edits land right.
     expect(clips.map((c) => c.stableId)).toEqual(['name:clip-1', 'name:clip-2']);
@@ -705,9 +707,8 @@ describe('assembleCompSource — refs → comp (DDR-150 P4 Task 12)', () => {
       { src: 'assets/music.mp3', mediaKind: 'audio' },
     ]);
     expect(tsx).toContain('<Audio src="assets/music.mp3" />');
-    expect(tsx).toContain(
-      `import { AbsoluteFill, Sequence, OffthreadVideo, Audio } from 'remotion';`
-    );
+    expect(tsx).toContain(`import { TransitionSeries } from '@remotion/transitions';`);
+    expect(tsx).toContain(`import { AbsoluteFill, OffthreadVideo, Audio } from 'remotion';`);
     // total driven by the video clip's duration (audio doesn't extend it).
     expect(enumerateClips('/abs/R.tsx', tsx, 'reel').durationInFrames).toBe(90);
   });

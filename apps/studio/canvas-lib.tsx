@@ -150,6 +150,67 @@ export type { CompSnapshot, VideoCompMeta, VideoCompProps } from './video-comp.t
 export { VideoComp };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// AIPlaceholder — feature-enhanced-video-editing (Task 21). A prompt-carrying
+// slate clip: occupies real timeline space inside a video-comp until the
+// DDR-164 generation spine resolves it into media (replace-media swaps the
+// slate in place; the clip's stableId survives). Deterministic, DS-tokened,
+// export-safe (renders identically in the Player and both export paths).
+// Plain absolutely-filled divs — deliberately no remotion import here.
+
+export interface AIPlaceholderProps {
+  /** The generation prompt (user text — rendered as TEXT, never executed).
+   *  Prefer passing it as CHILDREN (`<AIPlaceholder>{"…"}</AIPlaceholder>`) —
+   *  a stamped child element is inline-editable in the artboard. */
+  prompt?: string;
+  /** Target generator: veo (video) · motion (motion-graphics video) · image. */
+  kind?: 'veo' | 'motion' | 'image';
+  /** Optional display hint (the clip's own durationInFrames rules playback). */
+  durationInFrames?: number;
+  /** The prompt slot (wins over `prompt` when present). */
+  children?: React.ReactNode;
+}
+
+export function AIPlaceholder({
+  prompt,
+  kind = 'veo',
+  durationInFrames,
+  children,
+}: AIPlaceholderProps) {
+  return (
+    <div
+      data-ai-placeholder={kind}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'grid',
+        placeItems: 'center',
+        background:
+          'repeating-linear-gradient(45deg, var(--bg-0, #101014), var(--bg-0, #101014) 14px, var(--bg-1, #16161c) 14px, var(--bg-1, #16161c) 28px)',
+        border: '2px dashed var(--accent, #7c8cf8)',
+        boxSizing: 'border-box',
+        color: 'var(--fg-0, #fff)',
+        fontFamily: 'system-ui, sans-serif',
+        textAlign: 'center',
+        padding: '6%',
+      }}
+    >
+      <div style={{ display: 'grid', gap: 10, maxWidth: '80%' }}>
+        <div style={{ fontSize: 22, lineHeight: 1.4, color: 'var(--fg-0, #fff)' }}>
+          {children ?? prompt}
+        </div>
+        {durationInFrames ? (
+          <div
+            style={{ fontSize: 12, color: 'var(--fg-2, #9aa)', fontVariantNumeric: 'tabular-nums' }}
+          >
+            {durationInFrames}f
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Module constants
 
 const ZOOM_MIN = 0.1;

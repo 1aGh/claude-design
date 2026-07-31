@@ -6,6 +6,12 @@
 **Status:** in-progress — Maude Cloud self-service gap arc (phases 11-21)
 **Active plan:** `.ai/plans/cloud-phase-16-server-owned-checkout.md` (12+13 done + LIVE; 11 owner-only)
 
+_2026-07-30 (side branch):_ **`feature-enhanced-video-editing` closed + PR'd** — TSX-first
+manual timeline editor (split/trim/speed/crop/grade/audio/transitions as clip verbs over
+`/_api/clip-edit`; three-band iMovie layout + stacked pure-JSX projection; movable layers;
+AI placeholder clips; frame-anchored comment tool). 4 dogfood rounds; security review
+resolved 3 blockers. Phase 6 deferred. Plan archived; kgai holds the close.
+
 _2026-07-29 (later):_ **Phases 12 + 13 DONE + deployed live.** Signup/login/session
 + Google (unconfigured → honest 503) + project-grant mint at
 `https://maude-cloud.maude1agh.workers.dev`, 126 cloud tests. Two live-only

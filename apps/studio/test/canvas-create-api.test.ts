@@ -163,17 +163,23 @@ describe('/_api/canvas — POST round-trip', () => {
     }
   });
 
-  test('rejects a video-comp with an empty clips[] (400) and a traversal src (400)', async () => {
+  test('accepts an empty clips[] as the greenfield "New video" (201) and rejects a traversal src (400)', async () => {
     const { root } = makeSandbox();
     const port = nextPort();
     const proc = await bootServer(root, port);
     try {
+      // enhanced-video-editing Task 20 — empty clips[] scaffolds an editable
+      // empty comp (drop-first cut building), no longer a 400.
       const empty = await fetch(`http://localhost:${port}/_api/canvas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Empty', kind: 'video-comp', clips: [] }),
       });
-      expect(empty.status).toBe(400);
+      expect(empty.status).toBe(201);
+      const created = (await empty.json()) as { file?: string };
+      const tsx = await Bun.file(`${root}/${created.file}`).text();
+      expect(tsx).toContain('Drop clips on the timeline');
+      expect(tsx).toContain('<VideoComp');
       const bad = await fetch(`http://localhost:${port}/_api/canvas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

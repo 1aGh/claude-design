@@ -1,0 +1,17 @@
+{
+  "title": "Cut",
+  "subtitle": "desktop E2E timeline fixture — 3-beat TransitionSeries storyline",
+  "brief": "Deterministic video-comp for the timeline-manual-cut scenario (select / split / delete / undo / zoom). No media, no motion — restored byte-exact after every run.",
+  "platform": "desktop",
+  "kind": "video-comp",
+  "sections": [
+    {
+      "id": "cut",
+      "title": "Timeline cut fixture",
+      "artboards": [{ "id": "cut", "label": "CUT/01", "width": 480, "height": 270 }]
+    }
+  ],
+  "created": "2026-07-29",
+  "css_mode": "inline",
+  "layout": { "artboards": [{ "id": "cut", "x": 0, "y": 0 }] }
+}

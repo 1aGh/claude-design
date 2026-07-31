@@ -50,6 +50,7 @@ const {
   'license-key': licenseKeyArg,
   timeout = '60',
   scale = '1',
+  'max-frames': maxFramesArg, // frame ceiling (exporters/video.ts resolveMaxFrames)
 } = args;
 
 if (!url) {
@@ -316,12 +317,20 @@ async function frameStepCapture({
     }
   }, compId);
   const fps = Number(fpsArg) || compMeta?.fps || 30;
-  // Cap at 900 frames (30 s @ 30 fps) so a runaway/huge comp can't spawn an
-  // unbounded screenshot loop — matches exporters/video.ts MAX_FRAMES.
-  const frameCount = Math.min(
-    900,
-    Number(framesArg) || compMeta?.durationInFrames || Math.round(fps * 3) // 3 s default
-  );
+  // Frame ceiling so a runaway/huge comp can't spawn an unbounded screenshot
+  // loop — passed by exporters/video.ts (resolveMaxFrames; raisable per-export
+  // via options.maxFrames). Clamping is LOUD: a truncated export says so on
+  // stderr instead of silently shipping a shorter file.
+  const maxFrames = Number(maxFramesArg) > 0 ? Number(maxFramesArg) : 3600;
+  const wantedFrames = Number(framesArg) || compMeta?.durationInFrames || Math.round(fps * 3); // 3 s default
+  const frameCount = Math.min(maxFrames, wantedFrames);
+  if (wantedFrames > maxFrames) {
+    console.error(
+      `⚠ _video-playwright: comp is ${wantedFrames} frames but the export cap is ` +
+        `${maxFrames} — capturing only the first ${maxFrames} frames. Pass ` +
+        'options.maxFrames to raise the cap.'
+    );
+  }
   if (!Number.isFinite(fps) || fps <= 0 || !Number.isFinite(frameCount) || frameCount <= 0) {
     console.error('_video-playwright: could not resolve fps/frameCount (no comp meta, no args)');
     process.exit(2);

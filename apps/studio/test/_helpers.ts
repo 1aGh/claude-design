@@ -63,9 +63,11 @@ export async function bootServer(
     stdout: 'pipe',
     stderr: 'pipe',
   });
-  // Wait up to 3 s for the server to bind.
+  // Wait up to 10 s for the server to bind — the first spawn cold-compiles the
+  // whole studio TS, which under parallel test load regularly blows a 3 s
+  // budget (the flaky "server did not start" class of failure).
   const start = Date.now();
-  while (Date.now() - start < 3000) {
+  while (Date.now() - start < 10000) {
     try {
       const r = await fetch(`http://localhost:${port}/_health`, {
         signal: AbortSignal.timeout(200),
@@ -85,7 +87,7 @@ export async function bootServer(
     await Bun.sleep(50);
   }
   proc.kill();
-  throw new Error(`server did not start on port ${port} within 3 s`);
+  throw new Error(`server did not start on port ${port} within 10 s`);
 }
 
 export async function killProc(proc: Subprocess) {

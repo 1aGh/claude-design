@@ -41,8 +41,17 @@ const CONTENT_TYPE: Record<string, string> = {
   gif: 'image/gif',
 };
 
-/** Hard cap so a runaway/huge comp can't spawn an unbounded screenshot loop. */
-const MAX_FRAMES = 900; // 30 s @ 30 fps
+/** Default frame ceiling — 2 min @ 30 fps. Raisable per-export via
+ *  `options.maxFrames` (an editor invites longer cuts than the original 30 s
+ *  cap; the flatmap RCA's real 90 s reel already violated it). A request that
+ *  exceeds the resolved ceiling is REFUSED with remediation, never silently
+ *  truncated. */
+const DEFAULT_MAX_FRAMES = 3600;
+/** Absolute backstop for `options.maxFrames` itself (10 min @ 30 fps). */
+const MAX_FRAMES_CEILING = 18000;
+/** Above this, the frame-step fallback path gets slow (~2.5 s/frame) and 1080p
+ *  captures have died from memory pressure — warn loudly, recommend ≤720p. */
+const HEAVY_FRAMES_WARNING = 900; // 30 s @ 30 fps
 
 async function runVideo(
   format: VideoFormat,
@@ -112,8 +121,19 @@ async function runVideo(
   const fps = clampInt(options.fps, 1, 60);
   if (fps) args.push('--fps', String(fps));
 
-  const frames = resolveFrames(options, fps);
+  const maxFrames = resolveMaxFrames(options);
+  const frames = resolveFrames(options, fps, maxFrames);
   if (frames) args.push('--frames', String(frames));
+  // The shim clamps its comp-meta fallback to this same ceiling (and reports
+  // loudly when it has to), so raising the cap here raises it end-to-end.
+  args.push('--max-frames', String(maxFrames));
+  if ((frames ?? 0) > HEAVY_FRAMES_WARNING) {
+    console.error(
+      `⚠ long export: ${frames} frames. If the fast renderer falls back to ` +
+        `frame-step capture this runs ~2.5 s/frame; scale ≤2× (≈720–1080p) is ` +
+        'recommended for memory headroom.'
+    );
+  }
 
   if (format === 'gif') {
     const colors = clampInt(options.gifColors, 2, 256);
@@ -175,16 +195,35 @@ function clampInt(raw: unknown, lo: number, hi: number): number | undefined {
   return Math.max(lo, Math.min(hi, n));
 }
 
-/** Resolve the frame count from options (frames | durationMs×fps), capped. */
-function resolveFrames(options: ExportOptions, fps: number | undefined): number | undefined {
-  const explicit = clampInt(options.frames, 1, MAX_FRAMES);
-  if (explicit) return explicit;
+/** The frame ceiling for this export: `options.maxFrames` (clamped to the
+ *  absolute backstop) or the raised default. */
+function resolveMaxFrames(options: ExportOptions): number {
+  return clampInt(options.maxFrames, 1, MAX_FRAMES_CEILING) ?? DEFAULT_MAX_FRAMES;
+}
+
+/** Resolve the frame count from options (frames | durationMs×fps). A request
+ *  over the ceiling is REFUSED with remediation — never silently truncated. */
+function resolveFrames(
+  options: ExportOptions,
+  fps: number | undefined,
+  maxFrames: number
+): number | undefined {
+  const explicit = clampInt(options.frames, 1, MAX_FRAMES_CEILING);
   const durationMs = Number(options.durationMs);
-  if (Number.isFinite(durationMs) && durationMs > 0 && fps) {
-    return Math.min(MAX_FRAMES, Math.max(1, Math.round((durationMs / 1000) * fps)));
+  const fromDuration =
+    Number.isFinite(durationMs) && durationMs > 0 && fps
+      ? Math.max(1, Math.round((durationMs / 1000) * fps))
+      : undefined;
+  const requested = explicit ?? fromDuration;
+  if (requested != null && requested > maxFrames) {
+    throw new Error(
+      `export of ${requested} frames exceeds the ${maxFrames}-frame cap — ` +
+        'pass options.maxFrames to raise it (long exports can take minutes and real memory)'
+    );
   }
+  if (requested != null) return requested;
   // No hint → the shim falls back to the in-page comp meta (durationInFrames),
-  // still clamped there. Pass the ceiling so an unbounded comp can't run away.
+  // clamped to the --max-frames ceiling we pass it (loudly, never silently).
   return undefined;
 }
 
