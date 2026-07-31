@@ -281,6 +281,10 @@
   appearance: none; border: 0; background: transparent; text-align: left;
 }
 .st-tree-sec-hd:hover { color: var(--fg-0); }
+/* feature-file-tree-drag-drop-folders (dogfood follow-up) — the section
+   header is the drop target for "move back to this group's root". Same
+   accent language as .st-row.is-drop-target. */
+.st-tree-sec-hd.is-drop-target { background: var(--accent-tint); color: var(--fg-0); box-shadow: inset 2px 0 0 var(--accent); }
 .st-tree-sec-hd .st-sec-name { font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; }
 .st-tree-sec-hd .st-pill {
   margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--fg-3);
@@ -298,6 +302,15 @@
 .st-row.is-sel { background: var(--accent-tint); color: var(--fg-0); box-shadow: inset 2px 0 0 var(--accent); }
 .st-row.is-muted { color: var(--fg-3); }
 .st-row[aria-disabled="true"] { cursor: default; }
+/* feature-file-tree-drag-drop-folders (Task 8) — a valid drop target reuses
+   the exact .st-row.is-sel treatment (same accent language: "this is where
+   it lands"), the dragged source dims, and a busy row (server round-trip
+   in flight) dims further + suspends pointer events so it can't be re-dragged
+   mid-move. */
+.st-row.is-drop-target { background: var(--accent-tint); color: var(--fg-0); box-shadow: inset 2px 0 0 var(--accent); }
+.st-row.is-dragging { opacity: 0.45; transition: opacity var(--dur-soft) var(--ease-out); }
+.st-row.is-busy { opacity: 0.6; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .st-row.is-dragging { transition-duration: 1ms; } }
 .st-row-glyph { width: 14px; display: inline-flex; justify-content: center; color: var(--fg-3); flex: 0 0 14px; }
 .st-row.is-sel .st-row-glyph { color: var(--accent); }
 .st-row-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
@@ -339,6 +352,19 @@
 .st-row-wrap:hover .st-git-badge,
 .st-row-wrap:focus-within .st-git-badge { margin-right: 24px; }
 .st-row-del:hover { color: var(--status-error); background: color-mix(in oklab, var(--status-error) 14%, transparent); }
+/* feature-file-tree-drag-drop-folders (Task 9) — the keyboard-reachable
+   "⋯" trigger (Move to… / New folder here). Same treatment as .st-row-del;
+   sits to ITS left when both share a row (a canvas row has delete too). */
+.st-row-menu-btn {
+  position: absolute; right: var(--space-2); top: 50%; transform: translateY(-50%);
+  appearance: none; border: 0; background: transparent; color: var(--fg-3); cursor: pointer;
+  width: 22px; height: 22px; display: grid; place-items: center; border-radius: var(--radius-xs);
+  opacity: 0; transition: opacity var(--dur-soft) var(--ease-out);
+}
+.st-row-wrap:hover .st-row-menu-btn, .st-row-menu-btn:focus-visible { opacity: 1; }
+.st-row-menu-btn:hover { background: var(--bg-3); color: var(--fg-0); }
+.st-row-menu-btn.has-delete-sibling { right: calc(var(--space-2) + 24px); }
+@media (prefers-reduced-motion: reduce) { .st-row-menu-btn, .st-row-del { transition-duration: 1ms; } }
 
 /* DS-folder row — chevron toggles disclosure, name opens the system view. */
 .st-ds-folder { display: flex; align-items: center; gap: 0; padding: 0; }
@@ -2184,15 +2210,16 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 /* text inputs — the maude DS .input/.textarea recipe (lifted from the canvas-side
  * _components.css, which isn't in the client bundle → my fields fell back to native).
  * Scoped to the github dialogs so it can't collide with the shell's .st-search/.st-field. */
-.gi-dialog .input, .cp-dialog .input, .gi-dialog .textarea, .cp-dialog .textarea {
+.gi-dialog .input, .cp-dialog .input, .gi-dialog .textarea, .cp-dialog .textarea, .rb-dialog .textarea {
   font-family: var(--font-body); font-size: var(--type-sm); color: var(--fg-0);
   background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-sm);
   padding: var(--space-3) var(--space-4); width: 100%;
   transition: border-color var(--dur-soft) var(--ease-out), box-shadow var(--dur-soft) var(--ease-out);
 }
 .gi-dialog .input::placeholder, .cp-dialog .input::placeholder,
-.gi-dialog .textarea::placeholder, .cp-dialog .textarea::placeholder { color: var(--fg-3); }
-.gi-dialog .input:focus, .cp-dialog .input:focus, .gi-dialog .textarea:focus, .cp-dialog .textarea:focus {
+.gi-dialog .textarea::placeholder, .cp-dialog .textarea::placeholder,
+.rb-dialog .textarea::placeholder { color: var(--fg-3); }
+.gi-dialog .input:focus, .cp-dialog .input:focus, .gi-dialog .textarea:focus, .cp-dialog .textarea:focus, .rb-dialog .textarea:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint);
 }
 .cp-dialog .textarea { resize: vertical; min-height: 76px; }
@@ -2201,6 +2228,8 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .gi-rail { position: relative; flex: 0 0 auto; margin-top: auto; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--border-default); display: flex; flex-direction: column; gap: var(--space-2); }
 .gi-rail-hint { font-size: var(--type-xs); color: var(--fg-2); padding: var(--space-1) var(--space-1); }
 .gi-rail-signin { width: 100%; justify-content: center; }
+.gi-rail-confirm { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-2); }
+.gi-rail-confirm .gi-rail-hint { flex: 1 1 100%; padding: 0; }
 .gi-rail-err { font-size: var(--type-xs); color: var(--status-error); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gi-avatar { border-radius: var(--radius-pill); display: grid; place-items: center; font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--accent-fg); background: var(--accent); flex: 0 0 auto; }
 .gi-rail-account { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-1) var(--space-2); border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--fg-0); cursor: pointer; text-align: left; }

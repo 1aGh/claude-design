@@ -2,12 +2,13 @@
 
 <!-- AUTO-MAINTAINED by /design:setup-docs — do not edit by hand. Add notes to system/<project>/README.md or INDEX.md sections that aren't auto-generated. -->
 
-_Auto-maintained by `/design:setup-docs`. Last updated 2026-07-08T00:00:00Z._
+_Auto-maintained by `/design:setup-docs`. Last updated 2026-07-31T08:32:00Z._
 
 ## All canvases
 
 | File | Title | Platform | Sections | Artboards | Iter | Last modified |
 |---|---|---|---|---|---|---|
+| `Cloud Self Service.tsx` | Cloud Self Service | desktop | 5 | 14 | 1 | 2026-07-31T08:32 |
 | `Smoke TSX.tsx` | Smoke TSX | desktop | 1 | 1 | 36 | 2026-07-08T12:24 |
 | `Maude Video Intro.tsx` | Maude Video Intro | desktop | 1 | 2 | 24 | 2026-07-07T07:28 |
 | `Onboarding.tsx` | Onboarding | desktop | 5 | 5 | 2 | 2026-07-02T10:33 |
@@ -313,6 +314,38 @@ _Auto-maintained by `/design:setup-docs`. Last updated 2026-07-08T00:00:00Z._
 **Tokens used (58):** `--accent` `--accent-fg` `--accent-muted` `--accent-tint` `--bg-0`…`--bg-3` `--border-default` `--border-strong` `--border-subtle` `--canvas-bg` `--canvas-dot` `--canvas-grid` `--dur-soft` `--ease-out` `--fg-0`…`--fg-3` `--font-body` `--font-display` `--font-mono` `--lh-2xl` `--lh-3xl` `--lh-base` `--lh-lg` `--lh-md` `--lh-sm` `--lh-xl` `--lh-xs` `--radius-lg` `--radius-md` `--radius-pill` `--radius-sm` `--radius-xs` `--shadow-lg` `--space-1`…`--space-8` `--status-info` `--status-success` `--status-warn` `--tracking-tight` `--tracking-wide` `--type-2xl` `--type-3xl` `--type-base` `--type-lg` `--type-md` `--type-sm` `--type-xl` `--type-xs`
 **Iteration history:** 16 cycles · last edit 2026-06-08T14:37 · transcript at `_history/studio-docs/chat.md`
 **Latest screenshot:** `_history/studio-docs/018-changelog.png`
+
+---
+
+### Cloud Self Service.tsx
+
+**Title:** Cloud Self Service
+**Brief:** Every screen a Maude Cloud customer walks through, in order — the whole self-service hub, with sticky notes at every step so the complete user flow reads side by side.
+**Platform:** desktop
+**Sections:**
+- arrive — 1 · Arrive
+  - landing — A1 · landing · cloud.maude.sh
+  - auth — A2 · create account · sign in
+- buy — 2 · Buy
+  - dashboard-empty — B1 · your projects · empty
+  - new-project — B2 · start a project · the wizard
+  - payment — B3 · payment details · Stripe (not our page)
+  - waiting — B4 · waiting room · three endings
+- open — 3 · Open it
+  - dashboard — C1 · your projects · every state
+  - connect — C2 · open your project · the last door
+  - launch — C3 · maude:// hand-off · the app opens
+- run — 4 · Run it
+  - people — D1 · people · invitation · join
+  - billing — D2 · billing · handed to Stripe
+  - mirror-activity — D3 · GitHub copy · activity log
+- leave — 5 · Leave it · more devices
+  - leave — E1 · download everything · delete
+  - devices — E2 · connect an app · connected devices
+**Source of truth:** re-draw of `apps/cloud/{pages,checkout-pages,dashboard,brand,project-admin,people-page,invites,handoff,device-auth}.mjs` — every artboard is one page function that exists today.
+**Sticky notes:** yellow = what happens here and where it goes next; red = a finding from the 2026-07-31 production-readiness audit that lands on this screen; green = a fork the person takes.
+**Iteration history:** 1 cycle · last edit 2026-07-31T08:32 · snapshots at `_history/ui-cloud_self_service/`
+**Latest screenshot:** `_history/ui-cloud_self_service/007-screen-dashboard.png`
 
 ---
 

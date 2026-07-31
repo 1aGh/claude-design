@@ -13,6 +13,9 @@ pub const MENU_OPEN_PROJECT: &str = "open_project";
 /// Menu-item id for the Maude ▸ Check for Updates… action (manual update check).
 pub const MENU_CHECK_UPDATES: &str = "check_updates";
 
+/// Menu-item id for the Help ▸ Report a Bug… action (feature-bug-report-button).
+pub const MENU_REPORT_BUG: &str = "report_bug";
+
 /// Build the application menu. The first submenu becomes the macOS app menu.
 pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let about = AboutMetadataBuilder::new()
@@ -46,6 +49,11 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(&open_project)
         .build()?;
 
+    // Help menu — Report a Bug… hands off to the webview's report dialog
+    // (app.jsx listens for `menu://report-bug`), which owns capture + consent.
+    let report_bug = MenuItemBuilder::with_id(MENU_REPORT_BUG, "Report a Bug…").build(app)?;
+    let help_menu = SubmenuBuilder::new(app, "Help").item(&report_bug).build()?;
+
     // Edit menu — carries the standard Cut/Copy/Paste/Select-All predefined items.
     // These are load-bearing on macOS: WKWebView only receives the Cmd+X/C/V/A
     // shortcuts when the app menu exposes the matching predefined items (they wire
@@ -58,6 +66,6 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let edit_menu = edit_menu.cut().copy().paste().select_all().build()?;
 
     MenuBuilder::new(app)
-        .items(&[&app_menu, &file_menu, &edit_menu])
+        .items(&[&app_menu, &file_menu, &edit_menu, &help_menu])
         .build()
 }

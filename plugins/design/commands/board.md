@@ -85,6 +85,18 @@ maude design screenshot --full --out "$DESIGN_ROOT/_history/$SLUG/screenshots/bo
 
 Read the PNG. Confirm: new content renders, doesn't overlap existing strokes or artboards, text is legible. If it doesn't look right, iterate with `move`/`set-text`/`set-color` ops (id-preserving — from the `refs` the previous `annotate` call printed) rather than delete-and-redo the whole thing.
 
+### 5.5 Record the session (kgai — when active) — sparingly
+
+Unlike critiques and RCAs, the board's artifact (`<slug>.annotations.svg`) is **versioned** (DDR-115), so git already carries it. Record a `board:` node **only** when the session actually resolved something — an `answer` or a `template` run that settled a direction, an open question, or a plan. A pure `read` pass records nothing; a graph full of "read the board" events buries the sessions that mattered.
+
+When it did resolve something, and `maude kg resolve --json` reports `active`:
+
+```bash
+echo '{"decision":{"title":"Board: <what was settled>","rationale":"<the question that was on the board and the answer that came out of it>","date":"<YYYY-MM-DD>","mutations":[{"op":"upsert_element","kind":"board","name":"<slug>-<YYYYMMDD>","props":{"path":"<DESIGN_ROOT>/<slug>.annotations.svg","intent":"<answer|template:preset|both>"}},{"op":"add_link","from":"board:<slug>-<YYYYMMDD>","to":"canvas:<slug>","link":"ANNOTATES"}]}}' | maude kg ingest --root "$CLAUDE_PROJECT_DIR"
+```
+
+Skip silently when inactive — net-new capture, no classic path to preserve. Contract: **`flow:kgai-backend`**.
+
 ## Output report
 
 ```

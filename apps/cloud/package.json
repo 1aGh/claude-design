@@ -1,0 +1,13 @@
+{
+  "name": "@maude/cloud",
+  "private": true,
+  "type": "module",
+  "description": "Maude Cloud control plane (Cloudflare Worker) + the tenant cell Durable Object.",
+  "scripts": {
+    "test": "node --test --test-force-exit *.test.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7"
+  }
+}

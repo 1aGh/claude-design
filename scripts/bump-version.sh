@@ -126,6 +126,14 @@ fi
 node "$ROOT/scripts/stamp-whats-new.mjs" "$NEW"
 
 "$ROOT/scripts/check-version-parity.sh"
+
+# Every relative import in a tracked file must have a tracked target. In a
+# Syncthing tree with concurrent sessions, a `git add` of a SHARED file can
+# carry another session's in-flight import into main while the module stays
+# untracked — green locally, fatal in CI, and it killed the whole v0.51.0
+# binary + desktop matrix twice before this check existed.
+"$ROOT/scripts/check-import-coherence.sh"
+
 echo ""
 echo "Review the diff, then:"
 echo "  git commit -am 'chore: release v$NEW' && git tag v$NEW && git push --follow-tags"

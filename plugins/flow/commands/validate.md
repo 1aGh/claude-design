@@ -166,6 +166,16 @@ Skip the `security-auditor` + `ethical-hacker` pair entirely when `SEC_ENABLED =
 
 **Wait for all five to complete before evaluating the exit gates in §5.**
 
+### 4.5 Record the security verdict in the graph (kgai — when active)
+
+This command spawns the security pair **itself** rather than delegating to `/flow:validate-security`, so the report it aggregates would otherwise never reach the graph — and `.ai/logs/**` is gitignored, so it would exist only here. After aggregation writes the merged report:
+
+```bash
+maude kg record-log --file ".ai/logs/security-reviews/<branch>-<ts>.md"
+```
+
+**Skip it on a cache hit.** When the `security/<head-sha>` reuse window above short-circuited the spawn, that report was already recorded by the run that produced it; recording again just appends a duplicate event for the same node. Record only when the pair actually ran. Silent no-op when the graph is inactive. Contract: **`flow:kgai-backend`**.
+
 ### 5. Exit gates
 
 Evaluate after all five subagents return. **Stop on first hard fail**, accumulate soft warnings.

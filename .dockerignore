@@ -1,0 +1,53 @@
+# Docker build context — the REPO ROOT for both images we ship:
+#
+#   docker build -f apps/hub/Dockerfile   -t maude-hub  .
+#   docker build -f infra/cell/Dockerfile -t maude-cell .
+#
+# Until Cloud Phase 16 the hub built from `apps/hub` alone and used that
+# directory's own .dockerignore. Widening the context (so the bundler can reach
+# the single-source commit engine at apps/studio/sync/autocommit.ts) made that
+# file inert — Docker reads ONLY the .dockerignore beside the context root. The
+# first build after the change failed on a stale local node_modules being
+# copied over a freshly-installed one, which is exactly the class of problem
+# this file exists to prevent.
+#
+# The rule of thumb: exclude anything a maintainer's machine produces. An image
+# must be a function of the committed tree, not of whoever ran the build.
+
+# ---- never ship a maintainer's installed dependencies -----------------------
+# Both Dockerfiles run a frozen install of their own; a local tree copied over
+# it would silently substitute whatever versions this laptop happens to hold.
+**/node_modules
+
+# ---- version control + CI ---------------------------------------------------
+.git
+.github
+
+# ---- build output the image regenerates ------------------------------------
+apps/hub/dist
+apps/desktop/src-tauri/target
+apps/desktop/src-tauri/resources
+
+# ---- local runtime state ----------------------------------------------------
+**/*.db
+**/*.db-journal
+**/*.db-wal
+**/*.db-shm
+apps/hub/data
+.bun-cache
+.kgai/store/graph.kuzu
+
+# ---- deployment scaffolding, never part of an image -------------------------
+**/docker-compose*.yml
+**/Caddyfile
+**/fly.toml
+**/.dockerignore
+**/Dockerfile
+
+# ---- secrets. Belt and braces: these are gitignored, but a build context is
+# read from the WORKING TREE, so a gitignored file is still in scope here. ----
+**/.env
+**/.env.*
+**/.dev.vars
+**/.dev.vars.*
+**/*.pem

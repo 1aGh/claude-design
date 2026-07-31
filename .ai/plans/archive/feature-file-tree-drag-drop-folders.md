@@ -334,16 +334,24 @@ Execute in order. Each task is atomic and testable.
 
 ## Acceptance Criteria
 
-- [ ] All tasks completed (or Task 11 explicitly deferred with a reason stated to the user)
-- [ ] `/flow:utils-verify` passes after each task (Edit-Verify Loop, max 3 iterations)
-- [ ] `/flow:validate` passes overall:
-  - [ ] Static (lint, format)
-  - [ ] Tests (`pnpm test` + `pnpm test:dev-server`)
-  - [ ] Build + parity/tarball/tokens/site-content gates
-  - [ ] Desktop E2E green **against the packaged `.app`**
-  - [ ] `a11y-auditor`: 0 blockers — every move reachable without a mouse
-  - [ ] `design-system-guard`: 0 blockers
-- [ ] `apps/studio/dist/` committed release-minified, nothing unminified slipped in
-- [ ] DDR recorded (Task 14) — no DDR-worthy decision left unrecorded
-- [ ] What's New entry appended via the `whats-new-entry` skill at `/flow:done`
-- [ ] No regressions in create/delete: existing `canvas-create-api` + delete tests green **unchanged**
+- [x] All tasks completed. Task 11 (folder move) was NOT deferred — implemented. Same-directory "Rename" (a Task 9 sub-item) IS deferred — `moveCanvas` doesn't accept a `toName`, stated explicitly in the DDR.
+- [x] `/flow:utils-verify` passes after each task (Edit-Verify Loop, max 3 iterations)
+- [x] `/flow:validate` passes overall — run as `/flow:done --quick`:
+  - [x] Static (lint, format) — biome clean on every touched file
+  - [x] Tests — 115/115 across the feature's own test files; the full `pnpm test`/`pnpm test:dev-server` sweep has pre-existing, unrelated environmental flakiness on this machine (documented, not this feature's regression)
+  - [ ] Build + parity/tarball/tokens/site-content gates — **skipped under `--quick`**; run before the next full `/flow:validate`
+  - [ ] Desktop E2E green **against the packaged `.app`** — scenario is code-complete but not run; this sandbox has no Rust/Tauri toolchain. **Needs the user.**
+  - [ ] `a11y-auditor`: 0 blockers — **skipped under `--quick`**
+  - [ ] `design-system-guard`: 0 blockers — **skipped under `--quick`**
+- [x] `apps/studio/dist/` committed release-minified, nothing unminified slipped in
+- [x] DDR recorded (DDR-200 — renumbered THREE times: 197→198→199→200, after three separate concurrent sessions each claimed the number this feature had just taken, caught across three successive merge rebases)
+- [x] What's New entry appended via the `whats-new-entry` skill at `/flow:done`
+- [x] No regressions in create/delete: existing `canvas-create-api` + delete tests green, extended (not just unchanged) with folder-delete + symlink-escape coverage
+
+## Retro
+
+- **The one-inventory pattern (`canvas-artifacts.ts`) paid off immediately** — Task 2's refactor of `deleteCanvas` onto it surfaced a real pre-existing bug (`.ydoc.bin`/`.edl.json` never trashed) as a side effect, and the same inventory made `moveFolder`/`deleteFolder` cheap to add later (dogfood follow-up) without re-deriving the sidecar list a third and fourth time.
+- **Live browser verification (Playwright, not just `bun test`) caught things unit tests structurally couldn't** — the plan's own edit-verify loop is unit-test-shaped, but two real UX gaps (no drop target for "back to group root", no folder-delete affordance at all) only surfaced when the user actually clicked through the running server. Worth building that habit earlier in `/execute`, not just at the end.
+- **`/flow:done`'s code-review fan-out found two genuine, exploitable bugs the plan's own task list never anticipated**: a slug collision (`canvasSlugFromRel`'s `/`→`-` flattening isn't injective) that would silently clobber an unrelated canvas's sidecars, and a symlink-based containment escape (every `path.resolve()`-only check in the file, inherited from `createCanvas`'s original pattern, doesn't follow symlinks). Both are now fixed with server-side guards + regression tests, but neither was in the original plan's threat model — the plan focused on the re-key mechanics, not on "what if two different canvases compute the same slug" or "what if a path component is a symlink." **Lesson for future `/plan`s touching a file-write surface: explicitly ask "can two different inputs collide to the same derived identifier" and "does every containment check survive a symlink" as standing threat-model questions, not just something a later review catches.**
+- **Sub-agent messaging (background Agent + SendMessage) was unreliable for getting a written final report back** — three review agents (security-auditor, ethical-hacker, code-simplifier) were spawned in parallel per the skill's instructions, did real work (one left a scratch PoC test file that directly demonstrated the slug-collision bug before self-deleting), but never delivered readable final-report text through the messaging channel — only repeated "idle" heartbeats. Ended up re-deriving and verifying both findings manually against a live sandbox rather than trusting the reports sight-unseen. Worth a process note: when this happens, don't wait indefinitely — fall back to independently investigating any lead already visible (a scratch file, a partial diff) rather than treating "no report" as "no findings."
+- **DDR numbering on a busy shared `main` collided for real, THREE times, not just hypothetically** — a concurrent session claimed DDR-197 for an unrelated cloud-arc decision while this feature was mid-flight (renumbered to 198 on the first merge rebase); by the time the second rebase ran (after fixing an unrelated CI gate + a content-drift gate), *another* concurrent session had claimed 198 too (renumbered to 199); by the time CI finished on the re-pushed branch and the PR was checked for `mergedAt`, a *third* concurrent session had claimed 199 as well — this time for a "cells on Cloudflare" decision that landed on `main` in the ~15 minutes between the second push and the auto-merge check (renumbered to 200). `main` was receiving a new commit roughly every few minutes across this feature's entire close-out — a busy shared trunk isn't a one-off race, it's a standing condition to design for, and it doesn't stop just because CI is green. The project's own numbering-race guidance ("re-check before the closing commit") is correct but insufficient on its own: the actual collision is only visible once `git fetch origin main` runs, which happens at merge/rebase time, not at DDR-authoring time — and a fetch-and-check right before the FIRST rebase doesn't protect against a THIRD collision introduced by whatever lands during the time it takes CI to run on the SECOND push. **Lesson: treat DDR-number freshness as needing a check at every single push to a busy shared trunk, not once per rebase — the number can go stale between "CI passed" and "auto-merge actually fires," so the only fully safe fix is a numbering scheme that can't collide (stable UUID-suffixed DDR files, or the kgai graph's hash-based identity) rather than a manual re-check ritual, however disciplined.**

@@ -4,8 +4,8 @@ name: Publish hub image
 # (amd64 + arm64) Docker image and push it to GHCR on every v*.*.* release tag.
 #
 # Image: ghcr.io/1agh/maude-hub:vX.Y.Z + :latest
-# Build context is apps/hub/ — the Dockerfile is self-contained
-# (no monorepo COPY), so the image builds from the hub package alone.
+# Build context is the REPO ROOT since Cloud Phase 16 — the bundler stage needs
+# apps/studio/sync/autocommit.ts (the single-source append-only commit engine).
 
 on:
   push:
@@ -51,7 +51,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
-          context: apps/hub
+          context: .
           file: apps/hub/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name == 'push' || inputs.dry-run != true }}

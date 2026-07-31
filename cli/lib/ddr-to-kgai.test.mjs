@@ -97,3 +97,22 @@ test('non-DDR files are ignored', () => {
   const { batch } = buildDdrBatch(fixtureDir({ 'DDR-001-x.md': DDR1, 'README.md': '# index' }), {});
   assert.equal(batch.decisions.length, 1);
 });
+
+test('decision names are namespaced by repo so DDR numbers do not collide cross-repo', () => {
+  const files = { 'DDR-001-a.md': '# DDR-001: Alpha\n\n**Tags:** infra\n' };
+  const a = buildDdrBatch(fixtureDir(files), { repo: 'vantage', dept: 'marketing' });
+  const b = buildDdrBatch(fixtureDir(files), { repo: 'AI-StudyMate', dept: 'dev' });
+  const nameOf = (batch) => batch.decisions[0].mutations.find((m) => m.kind === 'decision').name;
+  assert.equal(nameOf(a.batch), 'vantage/DDR-001');
+  assert.equal(nameOf(b.batch), 'AI-StudyMate/DDR-001');
+  assert.notEqual(nameOf(a.batch), nameOf(b.batch));
+});
+
+test('area elements are NOT namespaced — concepts must converge across repos', () => {
+  const { batch } = buildDdrBatch(
+    fixtureDir({ 'DDR-001-a.md': '# DDR-001: Alpha\n\n**Tags:** security\n' }),
+    { repo: 'vantage', dept: 'marketing' }
+  );
+  const area = batch.decisions[0].mutations.find((m) => m.kind === 'area');
+  assert.equal(area.name, 'security');
+});

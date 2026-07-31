@@ -1,0 +1,1214 @@
+/* Cloud Self Service — flow board chrome.
+ *
+ * Every value is a var(--*) token from the maude DS. Two layers live here:
+ *
+ *   1. FLOW-BOARD chrome  (.cs-step / .cs-browser / .dc-postit) — the storyboard
+ *      furniture: a browser frame per screen, a sticky-note column beside it.
+ *   2. SCREEN chrome      (.cs-shell / .cs-narrow / …) — a faithful re-draw of
+ *      apps/cloud's own two surfaces: `appShell()` (brand.mjs SHELL_CSS) and the
+ *      centred narrow page (pages.mjs BASE_CSS). Lifted, not reinvented.
+ *
+ * Artboard isolation: no vw/vh, no viewport @media. Every box is fixed px or %
+ * against its own artboard.
+ */
+
+/* ─────────────────────────── flow-board furniture ────────────────────────── */
+
+/* The product ships `* { box-sizing: border-box }` (brand.mjs CHROME). Without
+ * it every `.cs-narrow` overflowed its frame by exactly its own 96px of
+ * padding, pushing the centred column 48px below true centre. Scoped to the
+ * board so it never reaches canvas-lib's own chrome. */
+.cs-step *,
+.cs-step *::before,
+.cs-step *::after {
+  box-sizing: border-box;
+}
+
+.cs-step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-7);
+  height: 100%;
+}
+.cs-stage {
+  flex: none;
+  width: 1280px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.cs-notes {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-2);
+}
+
+/* The step marker — a mono chip naming where in the journey this board sits. */
+.cs-marker {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.cs-marker b {
+  color: var(--accent);
+  font-weight: 600;
+}
+/* The stage name. DCSection renders `display: contents` inside DesignCanvas, so
+ * its title never reaches the screen — the chapter spine has to live on the
+ * board itself or the five stages are invisible at every zoom. */
+.cs-marker .cs-stage-name {
+  color: var(--fg-1);
+  font-weight: 600;
+  padding-right: var(--space-3);
+  border-right: 1px solid var(--border-default);
+  margin-right: var(--space-1);
+}
+.cs-marker .cs-actor {
+  margin-left: auto;
+  color: var(--fg-2);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Sticky note. canvas-lib ships <DCPostIt> as an unstyled <aside class="dc-postit">
+ * — the vocabulary exists, the look is the canvas's own. */
+.dc-postit {
+  position: relative;
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
+  border-radius: var(--radius-xs);
+  background: #f4e08a;
+  color: #2a2410;
+  font-size: var(--type-sm);
+  line-height: 1.42;
+  box-shadow: var(--shadow-md);
+  rotate: -0.4deg;
+}
+.dc-postit:nth-child(even) {
+  rotate: 0.5deg;
+}
+.dc-postit strong {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--type-base);
+  letter-spacing: var(--tracking-tight);
+  margin-bottom: var(--space-2);
+}
+.dc-postit p {
+  margin: 0 0 var(--space-2);
+}
+.dc-postit p:last-child {
+  margin-bottom: 0;
+}
+.dc-postit code {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  background: rgb(0 0 0 / 0.09);
+  border-radius: var(--radius-xs);
+  padding: 0 4px;
+}
+/* The spine — a darker edge so a wall of notes still reads as separate slips. */
+.dc-postit::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-radius: var(--radius-xs) 0 0 var(--radius-xs);
+  background: rgb(0 0 0 / 0.16);
+}
+
+/* A gap note — what the 2026-07-31 readiness audit found broken at THIS step.
+ * Deliberately a different slip colour: the board must not read as "all fine". */
+.dc-postit.cs-gap {
+  background: #f3b6a8;
+  color: #3a1a12;
+}
+.dc-postit.cs-gap::before {
+  background: var(--status-error);
+}
+.dc-postit.cs-gap strong::after {
+  content: "gap";
+  float: right;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  background: rgb(0 0 0 / 0.14);
+}
+
+/* A decision note — a fork the person takes, not a screen. Carries its own text
+ * badge for the same reason the gap slip does: hue alone is a WCAG 1.4.1 fail,
+ * and under deuteranopia the green and red slips measure 1.01:1 against each
+ * other — indistinguishable. */
+.dc-postit.cs-fork {
+  background: #a9d6c4;
+  color: #10261f;
+}
+.dc-postit.cs-fork::before {
+  background: var(--status-success);
+}
+.dc-postit.cs-fork strong::after {
+  content: "fork";
+  float: right;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  background: rgb(0 0 0 / 0.14);
+}
+
+/* ───────────────────────────── browser frame ─────────────────────────────── */
+
+.cs-browser {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  background: var(--bg-1);
+}
+.cs-urlbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: 38px;
+  padding: 0 var(--space-4);
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-default);
+}
+.cs-dots {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+.cs-dots i {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-4);
+}
+.cs-url {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--bg-0);
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cs-url b {
+  color: var(--fg-1);
+  font-weight: 500;
+}
+.cs-url .cs-lock {
+  color: var(--status-success);
+}
+.cs-tag {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
+}
+.cs-tag.cs-tag--ext {
+  color: var(--status-warn);
+  border-color: color-mix(in oklab, var(--status-warn) 34%, transparent);
+}
+
+/* Two or three narrow pages shown as one board (variants of a single state). */
+.cs-variants {
+  display: flex;
+  gap: var(--space-6);
+  align-items: flex-start;
+}
+.cs-variants > * {
+  flex: 1;
+  min-width: 0;
+}
+.cs-vlabel {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  margin-bottom: var(--space-3);
+}
+
+/* ─────────────────── screen chrome A — the centred narrow page ───────────── */
+/* pages.mjs BASE_CSS: body { display:grid; place-items:center }, main 26rem.   */
+
+.cs-narrow {
+  display: grid;
+  place-items: center;
+  padding: var(--space-8) var(--space-5);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: var(--font-body);
+  font-size: var(--type-md);
+  min-height: 100%;
+}
+.cs-narrow > main {
+  width: 100%;
+  max-width: 26rem;
+}
+/* Type sizes below are the product's, not a guess: brand.mjs CHROME sets body
+ * --type-md, h1 --type-2xl, h2 --type-lg. A board people read to plan a change
+ * must not under-draw the vertical budget of the screens it depicts. */
+.cs-narrow h1,
+.cs-inner h1 {
+  font-family: var(--font-display);
+  font-size: var(--type-2xl);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.15;
+  margin: 0 0 var(--space-4);
+  color: var(--fg-0);
+}
+.cs-narrow h2,
+.cs-inner h2 {
+  font-family: var(--font-display);
+  font-size: var(--type-lg);
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 0 0 var(--space-3);
+  color: var(--fg-0);
+}
+.cs-narrow p {
+  margin: 0 0 var(--space-4);
+  color: var(--fg-1);
+  line-height: 1.5;
+}
+
+/* ─────────────────── screen chrome B — the signed-in app shell ───────────── */
+/* brand.mjs SHELL_CSS, lifted: 1px hairline seams from the grid background.    */
+
+.cs-shell {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  grid-template-rows: 52px 1fr 32px;
+  grid-template-areas: "top top" "nav main" "foot foot";
+  gap: 1px;
+  background: var(--border-default);
+  height: 100%;
+  font-family: var(--font-body);
+  font-size: var(--type-base);
+  color: var(--fg-0);
+}
+.cs-shell > * {
+  background: var(--bg-1);
+  min-width: 0;
+}
+
+.cs-top {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-5);
+}
+.cs-top .cs-lockup {
+  margin: 0;
+}
+.cs-spacer {
+  flex: 1;
+}
+.cs-who {
+  color: var(--fg-2);
+  font-size: var(--type-sm);
+}
+
+.cs-nav {
+  grid-area: nav;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--space-5);
+  overflow: hidden;
+}
+.cs-navhd {
+  padding: var(--space-4) var(--space-4) var(--space-2) var(--space-5);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cs-navitem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--fg-1);
+  font-size: var(--type-base);
+}
+.cs-navitem[aria-current="page"] {
+  background: var(--bg-4);
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.cs-navitem .cs-g {
+  color: var(--fg-2);
+}
+.cs-navitem[aria-current="page"] .cs-g {
+  color: var(--accent);
+}
+.cs-navitem.cs-danger,
+.cs-navitem.cs-danger .cs-g {
+  color: var(--status-error);
+}
+.cs-navsep {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: var(--space-4) var(--space-5);
+  flex: none;
+}
+.cs-navfoot {
+  margin-top: auto;
+}
+
+.cs-g {
+  width: 15px;
+  height: 15px;
+  display: block;
+  flex: none;
+}
+.cs-g path,
+.cs-g rect,
+.cs-g circle,
+.cs-g line,
+.cs-g polyline,
+.cs-g polygon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cs-main {
+  grid-area: main;
+  overflow: hidden;
+  background-color: var(--bg-0);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  padding: var(--space-7) var(--space-8);
+}
+.cs-inner {
+  max-width: 46rem;
+}
+.cs-pagehd {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-2);
+}
+.cs-pagehd h1 {
+  margin: 0;
+  font-size: var(--type-2xl);
+}
+.cs-lede {
+  color: var(--fg-2);
+  font-size: var(--type-base);
+  line-height: 1.5;
+  margin: 0 0 var(--space-6);
+  max-width: 40rem;
+}
+
+.cs-foot {
+  grid-area: foot;
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: 0 var(--space-5);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.cs-foot .cs-promise {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ───────────────────────────── shared page atoms ─────────────────────────── */
+
+.cs-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34em;
+  margin-bottom: var(--space-6);
+}
+.cs-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-radius: 24% 24% 0 24%;
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+/* 100%, not 66%. The star path already carries its own inset — it spans 5→27 of
+ * a 32 viewBox, i.e. 68.75% of the tile — so a second 66% scale double-insets
+ * it and the mark reads as a blue square with a cross in it at small sizes.
+ * (The same double-inset ships in apps/cloud/brand.mjs — worth fixing there.) */
+.cs-mark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.cs-word {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--type-lg);
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--fg-0);
+}
+/* The shell's top bar shrinks the wordmark — brand.mjs SHELL_CSS `.top .word`. */
+.cs-top .cs-word {
+  font-size: var(--type-md);
+}
+/* Only the page lockups carry the bottom margin; in a bar it must not push the
+ * mark out of vertical centre. */
+.cs-appbar .cs-lockup {
+  margin-bottom: 0;
+}
+
+.cs-quiet {
+  color: var(--fg-2);
+  font-size: var(--type-sm);
+  line-height: 1.5;
+}
+.cs-mono {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+}
+
+/* Product materials, verified against brand.mjs CHROME `.card`: the card is
+ * --bg-1 with a shadow (raised), NOT --bg-2. The board had it inverted. */
+.cs-card {
+  background: var(--bg-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5) var(--space-6);
+  margin-bottom: var(--space-5);
+}
+.cs-card:last-child {
+  margin-bottom: 0;
+}
+.cs-card.cs-ok {
+  border-color: color-mix(in oklab, var(--status-success) 30%, transparent);
+}
+.cs-card.cs-warn {
+  border-color: color-mix(in oklab, var(--status-warn) 34%, transparent);
+}
+.cs-card.cs-stop {
+  border-color: color-mix(in oklab, var(--status-error) 34%, transparent);
+}
+
+/* Buttons — the DS .btn family, re-declared here as inert canvas marks so the
+ * mock never depends on interactive state it cannot have. */
+/* Geometry is the product's: brand.mjs CHROME `button, .btn` — --type-base,
+ * padding space-3/space-5, radius-md. No fixed height; the padding sets it,
+ * exactly as it does in the real page. */
+.cs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: var(--font-body);
+  font-size: var(--type-base);
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.cs-btn.cs-btn--ghost {
+  background: var(--bg-2);
+  color: var(--fg-1);
+  border-color: var(--border-default);
+}
+.cs-btn.cs-btn--google {
+  background: var(--bg-2);
+  color: var(--fg-0);
+  border-color: var(--border-subtle);
+  gap: 10px;
+}
+.cs-btn.cs-btn--wide {
+  display: flex;
+  width: 100%;
+}
+/* No `--danger` variant: project-admin.mjs's delete confirmation ships a plain
+ * primary button. Inventing a red one on a board that declares itself a re-draw
+ * would make the board lie about the scariest screen in the flow. */
+.cs-btn.cs-btn--stripe {
+  background: #635bff;
+  color: #fff;
+}
+
+/* Underlined, not accent-only: an inline link that differs from its surrounding
+ * text by hue alone measures ~1.03:1 against it — colour carrying meaning on
+ * its own (WCAG 1.4.1). */
+.cs-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cs-or {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--fg-3);
+  font-size: var(--type-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  margin: var(--space-5) 0;
+}
+.cs-or::before,
+.cs-or::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.cs-label {
+  display: block;
+  font-size: var(--type-sm);
+  font-weight: 600;
+  color: var(--fg-1);
+  margin: var(--space-5) 0 var(--space-2);
+}
+/* A field is RAISED (--bg-3) against the page, per brand.mjs CHROME `input`.
+ * The board had it sunken into --bg-0 — which on a --bg-0 page is a 1.00:1
+ * fill delineated by nothing but a hairline. Wrong twice: wrong material, and
+ * a control with no visible edge. */
+.cs-input {
+  display: flex;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--bg-3);
+  border: 1px solid var(--border-default);
+  color: var(--fg-2);
+  font-size: var(--type-base);
+}
+.cs-input.cs-filled {
+  color: var(--fg-0);
+}
+.cs-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  font-size: var(--type-sm);
+  color: var(--fg-1);
+  line-height: 1.45;
+  margin: var(--space-4) 0;
+}
+.cs-box {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 3px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-3);
+}
+.cs-box.cs-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  display: grid;
+  place-items: center;
+  color: var(--accent-fg);
+}
+.cs-box.cs-on svg {
+  width: 10px;
+  height: 10px;
+}
+
+.cs-pill {
+  font-size: var(--type-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.cs-pill.ok {
+  color: var(--status-success);
+  border-color: color-mix(in oklab, var(--status-success) 32%, transparent);
+}
+.cs-pill.warn {
+  color: var(--status-warn);
+  border-color: color-mix(in oklab, var(--status-warn) 32%, transparent);
+}
+.cs-pill.stop {
+  color: var(--status-error);
+  border-color: color-mix(in oklab, var(--status-error) 32%, transparent);
+}
+
+.cs-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  font-size: var(--type-base);
+}
+.cs-table th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  font-weight: 400;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.cs-table td {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--fg-1);
+  vertical-align: baseline;
+}
+.cs-table tbody tr:first-child td {
+  border-top: 0;
+}
+.cs-table td.cs-right {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ─────────────────────── screen-specific: the wizard ─────────────────────── */
+
+.cs-plans {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin: var(--space-4) 0 var(--space-2);
+}
+.cs-plan {
+  background: var(--bg-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+}
+.cs-plan.cs-picked {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.cs-plan strong {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--fg-0);
+}
+.cs-radio {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+}
+.cs-radio.cs-on {
+  border: 4px solid var(--accent);
+}
+.cs-price {
+  font-family: var(--font-display);
+  font-size: var(--type-xl);
+  font-weight: 600;
+  color: var(--fg-0);
+  margin: var(--space-3) 0 0;
+}
+.cs-price span {
+  font-family: var(--font-body);
+  font-size: var(--type-sm);
+  font-weight: 400;
+  color: var(--fg-2);
+}
+.cs-interval {
+  display: flex;
+  gap: var(--space-5);
+  margin: var(--space-4) 0;
+  font-size: var(--type-sm);
+  color: var(--fg-1);
+}
+.cs-interval label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ────────────────── screen-specific: the waiting room steps ──────────────── */
+
+.cs-steps {
+  list-style: none;
+  margin: var(--space-6) 0;
+  padding: 0;
+}
+.cs-steps li {
+  position: relative;
+  padding: var(--space-3) 0 var(--space-3) var(--space-6);
+  color: var(--fg-2);
+  font-size: var(--type-sm);
+}
+.cs-steps li::before {
+  content: "";
+  position: absolute;
+  left: var(--space-2);
+  top: 50%;
+  translate: 0 -50%;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-4);
+}
+.cs-steps li.cs-now {
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.cs-steps li.cs-now::before {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+.cs-steps li.cs-done {
+  color: var(--fg-1);
+}
+.cs-steps li.cs-done::before {
+  background: var(--status-success);
+}
+
+/* ─────────────────── screen-specific: the project cards grid ─────────────── */
+
+.cs-projects {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+}
+/* No `overflow: hidden` here — the open ⋯ menu has to escape the card, and
+ * clipping it is what hid the whole secondary-actions story on board C1. The
+ * canvas preview clips its own top corners instead. */
+.cs-project {
+  background: var(--bg-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  position: relative;
+}
+.cs-pcanvas {
+  height: 92px;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background-color: var(--bg-0);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.cs-ab {
+  position: absolute;
+  border-radius: var(--radius-xs);
+  background: var(--bg-3);
+  border: 1px solid var(--border-subtle);
+}
+.cs-ab1 {
+  left: 18px;
+  top: 16px;
+  width: 62px;
+  height: 44px;
+}
+.cs-ab2 {
+  left: 92px;
+  top: 24px;
+  width: 48px;
+  height: 52px;
+}
+.cs-ab3 {
+  left: 152px;
+  top: 14px;
+  width: 76px;
+  height: 38px;
+}
+.cs-pbody {
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+.cs-prow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.cs-prow h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--type-md);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.cs-pnote {
+  margin: var(--space-2) 0 var(--space-4);
+  color: var(--fg-2);
+  font-size: var(--type-sm);
+  line-height: 1.45;
+  min-height: 2.9em;
+}
+.cs-pfoot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.cs-dots-btn {
+  color: var(--fg-2);
+  font-size: var(--type-md);
+  letter-spacing: 2px;
+}
+
+/* The ⋯ menu, shown open on one card so the flow map names every exit. */
+.cs-menu {
+  position: absolute;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  translate: 0 100%;
+  z-index: 2;
+  min-width: 214px;
+  padding: var(--space-2);
+  background: var(--bg-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+.cs-menu a {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--type-sm);
+  color: var(--fg-1);
+}
+.cs-menu a.cs-danger {
+  color: var(--status-error);
+}
+.cs-menusep {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: var(--space-2) var(--space-3);
+}
+
+/* ───────────────── screen-specific: the desktop-app window ───────────────── */
+
+.cs-app {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  background: var(--bg-1);
+}
+.cs-appbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: 38px;
+  padding: 0 var(--space-4);
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-default);
+  font-size: var(--type-sm);
+  color: var(--fg-1);
+}
+.cs-appbar .cs-title {
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.cs-cloudchip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in oklab, var(--status-success) 34%, transparent);
+  color: var(--status-success);
+  font-size: var(--type-xs);
+}
+.cs-cloudchip i {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--presence-online);
+}
+
+/* The app's own canvas, on board C3 — "where the work actually happens". It has
+ * to show WORK, not two empty rectangles, or the one board whose whole claim is
+ * that this is the real destination shows nothing arriving. */
+.cs-wsp {
+  height: 460px;
+  display: flex;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  background-color: var(--bg-0);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+}
+.cs-wsp-rail {
+  width: 210px;
+  flex: none;
+  background: var(--bg-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+.cs-wsp-rail div + div {
+  margin-top: var(--space-2);
+}
+.cs-wsp-row {
+  font-size: var(--type-sm);
+  color: var(--fg-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+}
+.cs-wsp-row.cs-on {
+  background: var(--bg-4);
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.cs-wsp-boards {
+  flex: 1;
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-start;
+}
+.cs-wsp-ab {
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.cs-wsp-cap {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+/* A poster, drawn the way the club's actually looks: a full-bleed accent field,
+ * a stacked headline, a fixture line. */
+.cs-poster {
+  height: 258px;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.cs-poster b {
+  font-family: var(--font-display);
+  font-size: var(--type-3xl);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  line-height: 0.95;
+}
+.cs-poster span {
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  letter-spacing: var(--tracking-wide);
+  opacity: 0.85;
+}
+.cs-swatches {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+.cs-swatches i {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+/* The device-code display — mono, wide-tracked, the one place a human retypes. */
+.cs-code {
+  font-family: var(--font-mono);
+  font-size: var(--type-xl);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--fg-0);
+  background: var(--bg-0);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  max-width: 15rem;
+}
+
+/* ─────────────────────────── the legend board ────────────────────────────── */
+/* Board 00. The one thing that makes a 14-board wall legible before you have
+ * read a single note: what the stages are, what the slip colours mean, and
+ * where to start. */
+
+.cs-legend {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-7) var(--space-8);
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+.cs-legend h1 {
+  font-family: var(--font-display);
+  font-size: var(--type-3xl);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.1;
+  margin: 0;
+  color: var(--fg-0);
+}
+.cs-legend .cs-lede {
+  max-width: 46rem;
+  font-size: var(--type-md);
+  margin: 0;
+}
+.cs-legend-cols {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: var(--space-8);
+  flex: 1;
+  min-height: 0;
+}
+.cs-legend-hd {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  margin-bottom: var(--space-4);
+}
+.cs-spine-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.cs-spine-row:first-of-type {
+  border-top: 0;
+}
+.cs-spine-row b {
+  font-family: var(--font-display);
+  font-size: var(--type-lg);
+  font-weight: 600;
+  color: var(--fg-0);
+  white-space: nowrap;
+}
+.cs-spine-row .cs-boards {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--accent);
+  white-space: nowrap;
+}
+.cs-spine-row span:last-child {
+  color: var(--fg-2);
+  font-size: var(--type-sm);
+  margin-left: auto;
+  text-align: right;
+}
+.cs-keys {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.cs-key {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+.cs-key i {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-xs);
+  box-shadow: var(--shadow-sm);
+}
+.cs-key i.cs-k-note {
+  background: #f4e08a;
+}
+.cs-key i.cs-k-gap {
+  background: #f3b6a8;
+}
+.cs-key i.cs-k-fork {
+  background: #a9d6c4;
+}
+.cs-key div {
+  font-size: var(--type-sm);
+  color: var(--fg-2);
+  line-height: 1.45;
+}
+.cs-key div b {
+  display: block;
+  color: var(--fg-0);
+  font-family: var(--font-display);
+  font-size: var(--type-base);
+  font-weight: 600;
+}
+
+/* The invitation email, drawn as the client renders it — the one surface in
+ * this flow that is not a page of ours. */
+.cs-email {
+  background: var(--bg-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.cs-emailhd {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+}
+.cs-emailbd {
+  padding: var(--space-5);
+  font-size: var(--type-sm);
+  line-height: 1.55;
+  color: var(--fg-1);
+}

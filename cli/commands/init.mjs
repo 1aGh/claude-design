@@ -195,7 +195,7 @@ export async function run({ args, pkgRoot }) {
   }
 
   printSummary(result);
-  printNextSteps(projectName, claudeMdExists);
+  printNextSteps(projectName, claudeMdExists, Boolean(resolveKgBin()), Boolean(flags.kg));
 }
 
 /** KGAI_BIN (desktop-staged sidecar) → `kg` on PATH → null. Mirrors kg.mjs. */
@@ -242,7 +242,7 @@ function printSummary({ created, replaced, skipped }) {
   }
 }
 
-function printNextSteps(name, claudeMdExists) {
+function printNextSteps(name, claudeMdExists, kgAvailable = false, usedKg = false) {
   process.stdout.write('\nNext steps:\n');
   process.stdout.write('  1. In Claude Code: /plugin marketplace add 1aGh/maude\n');
   process.stdout.write('                     /plugin install flow@maude\n');
@@ -261,4 +261,35 @@ function printNextSteps(name, claudeMdExists) {
   }
   process.stdout.write(`  4. Create .ai/${name}-prd.md with your product brief.\n`);
   process.stdout.write('  5. /flow:status to see where you are; /flow:plan to start work.\n');
+  printKgOffer(kgAvailable, usedKg);
+}
+
+/**
+ * Surface the knowledge-graph choice at scaffold time.
+ *
+ * Without this, `--kg` is discoverable only by reading `--help` — so a fresh
+ * user never learns the option exists at the one moment it is cheapest to take
+ * (an empty `.ai/` needs no migration). Deliberately NOT shown when `kg` is
+ * absent: advertising a backend the user would first have to go install is
+ * noise, and `mode:auto` picks it up by itself if they ever do.
+ */
+function printKgOffer(kgAvailable, usedKg) {
+  if (!kgAvailable) return;
+  if (usedKg) {
+    process.stdout.write(
+      '\nkgai: this workspace uses the knowledge graph as its decision memory.\n' +
+        '      `maude kg doctor` to confirm · `maude kg search "<topic>"` to read it back.\n'
+    );
+    return;
+  }
+  process.stdout.write(
+    '\nkgai: `kg` is installed on this machine, and this workspace was scaffolded\n' +
+      '      CLASSIC (markdown decisions + STATE.md history). Both work; the graph\n' +
+      '      makes "what did we decide about X" a query instead of a grep, and gives\n' +
+      '      the gitignored .ai/logs/ verdicts a copy that travels.\n' +
+      '      To switch now (empty workspace — nothing to migrate):\n' +
+      '        maude init --kg --force\n' +
+      '      Later, once you have decisions on disk, use the migration instead:\n' +
+      '        maude kg import --dry-run --archive     (then drop --dry-run)\n'
+  );
 }

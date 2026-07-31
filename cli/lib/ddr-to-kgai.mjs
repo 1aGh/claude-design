@@ -25,7 +25,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { parseArgs } from './argv.mjs';
 
 const REF_RANK = { references: 0, extends: 1, overrides: 2, supersedes: 3 };
@@ -71,6 +71,24 @@ function parseTags(raw) {
  * Classify cross-refs. Typed markers win over bare mentions; strongest kind per
  * target is kept. Returns { 'NNN': 'supersedes'|'overrides'|'extends'|'references' }.
  */
+// DDR numbering is PER-REPO, but kgai identity is `hash(kind:name)` and therefore
+// GLOBAL. On a shared company store every repo's `decision:DDR-001` collapses into
+// ONE node, so two unrelated decisions become competing heads on it (`kg conflicts`).
+// Namespacing the name by `scope.repo` keeps each repo's numbering intact while
+// making the node unique. `area:`/`topic:` are deliberately NOT namespaced — a
+// concept like `area:security` SHOULD converge across repos; that is the whole
+// point of a cross-repo graph.
+function ddrRef(num, scope = {}) {
+  return scope.repo ? `${scope.repo}/DDR-${num}` : `DDR-${num}`;
+}
+
+// Same collision class as ddrRef, one level up: milestone slugs are built from a
+// DATE (`progress-2026-07-02`) or a date+phase, both of which repeat across repos.
+// Two teams shipping on the same day would otherwise share one milestone node.
+function scopedSlug(slug, scope = {}) {
+  return scope.repo ? `${scope.repo}/${slug}` : slug;
+}
+
 function crossRefs(text, selfNum) {
   const out = {};
   const reversed = [];
@@ -194,8 +212,12 @@ export function buildDdrBatch(decisionsDir, scope = {}, only = null) {
     }
     stats.crossrefs += Object.keys(refs).length;
 
-    const primary = tags[0] || 'general';
-    const self = `DDR-${num}`;
+    // A real tag (`security`, `infra`) SHOULD converge across repos — that is the
+    // cross-repo value. The `general` FALLBACK is not a concept, it means "this DDR
+    // had no tags", which is repo-local noise; left shared it makes every untagged
+    // decision in the company a competing head on one junk node.
+    const primary = tags[0] || scopedSlug('general', scope);
+    const self = ddrRef(num, scope);
     const muts = [
       { op: 'upsert_element', kind: 'area', name: primary, props: { last_ddr: self } },
       {
@@ -222,21 +244,21 @@ export function buildDdrBatch(decisionsDir, scope = {}, only = null) {
       muts.push({ op: 'add_link', from: `area:${primary}`, to: `topic:${tg}`, link: 'TOUCHES' });
     }
     for (const [tgt, kind] of Object.entries(refs)) {
-      muts.push({ op: 'upsert_element', kind: 'decision', name: `DDR-${tgt}` });
+      muts.push({ op: 'upsert_element', kind: 'decision', name: ddrRef(tgt, scope) });
       muts.push({
         op: 'add_link',
         from: `decision:${self}`,
-        to: `decision:DDR-${tgt}`,
+        to: `decision:${ddrRef(tgt, scope)}`,
         link: kind.toUpperCase(),
       });
     }
     // Passive-voice mentions ("Superseded by DDR-191") — the MENTION supersedes
     // SELF, so the edge points the other way.
     for (const [tgt, kind] of revRefs) {
-      muts.push({ op: 'upsert_element', kind: 'decision', name: `DDR-${tgt}` });
+      muts.push({ op: 'upsert_element', kind: 'decision', name: ddrRef(tgt, scope) });
       muts.push({
         op: 'add_link',
-        from: `decision:DDR-${tgt}`,
+        from: `decision:${ddrRef(tgt, scope)}`,
         to: `decision:${self}`,
         link: kind.toUpperCase(),
       });
@@ -261,40 +283,109 @@ export function buildDdrBatch(decisionsDir, scope = {}, only = null) {
  * copy, so we keep a much larger excerpt than the DDR path does (which can afford
  * to be a thin index because its prose is versioned).
  */
+/**
+ * Directory name → node kind. Exported because `maude kg record-log` infers the
+ * kind from a file's parent dir, and an inference that disagreed with the bulk
+ * importer would fork the corpus in two (`rca:x` from migration, `logs:x` from
+ * a live run) — the whole point is that a verdict recorded today lands on the
+ * same shelf as the 120 the migration put there.
+ */
+export const LOG_KINDS = {
+  rca: 'rca',
+  'system-reviews': 'system-review',
+  'code-reviews': 'code-review',
+  'security-reviews': 'security-review',
+  'execution-reports': 'execution-report',
+  a11y: 'a11y-audit',
+  visual: 'visual-review',
+  '.': 'log', // loose .md sitting at the logs root (e.g. a one-off perf note)
+};
+
+/** repo:/dept: anchors + their edges — identical for every node kind. */
+function scopeMutations(name, kind, scope = {}) {
+  const m = [];
+  if (scope.repo) {
+    m.push({ op: 'upsert_element', kind: 'repo', name: scope.repo });
+    m.push({ op: 'add_link', from: `${kind}:${name}`, to: `repo:${scope.repo}`, link: 'IN_REPO' });
+  }
+  if (scope.dept) {
+    m.push({ op: 'upsert_element', kind: 'dept', name: scope.dept });
+    m.push({ op: 'add_link', from: `${kind}:${name}`, to: `dept:${scope.dept}`, link: 'IN_DEPT' });
+  }
+  return m;
+}
+
+/**
+ * Build ONE decision envelope from ONE verdict file.
+ *
+ * The single source of truth for "a markdown verdict becomes a graph node",
+ * shared by the bulk importer (`maude kg import`) and the per-file recorder
+ * (`maude kg record-log`, which the flow/design commands call as they write).
+ * Keeping one function is what guarantees a `/flow:bug-rca` run tomorrow
+ * produces a node shaped exactly like the ones migration created — same slug
+ * rule, same props, same ABOUT/scope/EVIDENCE_FOR edges.
+ *
+ * @param {string} absPath   file on disk (read in full — see the full-body note above)
+ * @param {string} kind      node kind (see LOG_KINDS)
+ * @param {object} scope     { repo, dept }
+ * @param {object} [opts]
+ * @param {string} [opts.pathRel]  the `path` prop; defaults to absPath
+ * @param {string} [opts.about]    attach to this element instead of `area:<kind>`
+ *                                 (design verdicts hang off `canvas:<slug>`)
+ * @param {string} [opts.link]     edge kind to `about` (default `ABOUT`)
+ * @param {string} [opts.slug]     override the derived slug
+ */
+export function buildLogDecision(absPath, kind, scope = {}, opts = {}) {
+  const body = readFileSync(absPath, 'utf8');
+  const base = basename(absPath);
+  // Log slugs come from FILENAMES (`rc-1.3.3.md`), which repeat across repos.
+  const slug = scopedSlug(opts.slug ?? base.replace(/\.md$/, '').replace(/\//g, '-'), scope);
+  const title = (body.match(/^#\s*(.+)$/m) || [null, slug])[1].trim();
+  // `**Date:**` when the author supplied one, else the file's own mtime — these
+  // files are gitignored, so git has no creation date to fall back on either.
+  const explicitDate = normDate(field(body, 'Date'));
+  const date = explicitDate || statSync(absPath).mtime.toISOString().slice(0, 10);
+  const about = opts.about ?? `area:${kind}`;
+  const [aboutKind, ...aboutRest] = about.split(':');
+
+  const mutations = [
+    {
+      op: 'upsert_element',
+      kind,
+      name: slug,
+      props: { title: title.slice(0, 160), path: opts.pathRel ?? absPath, date },
+    },
+    { op: 'upsert_element', kind: aboutKind, name: aboutRest.join(':') },
+    { op: 'add_link', from: `${kind}:${slug}`, to: about, link: opts.link ?? 'ABOUT' },
+    ...scopeMutations(slug, kind, scope),
+  ];
+
+  // Evidence edges — a review/RCA that cites a DDR is evidence ABOUT it.
+  const cited = new Set([...body.matchAll(/DDR-(\d+)/g)].map((m) => m[1].padStart(3, '0')));
+  for (const num of cited) {
+    mutations.push({ op: 'upsert_element', kind: 'decision', name: ddrRef(num, scope) });
+    mutations.push({
+      op: 'add_link',
+      from: `${kind}:${slug}`,
+      to: `decision:${ddrRef(num, scope)}`,
+      link: 'EVIDENCE_FOR',
+    });
+  }
+  // Full body — these files are gitignored, so the graph is the ONLY copy;
+  // truncating would destroy the evidence it exists to preserve.
+  return {
+    decision: { title, date, rationale: body.trim(), mutations },
+    slug,
+    citedCount: cited.size,
+    hasExplicitDate: Boolean(explicitDate),
+  };
+}
+
 export function buildLogBatch(logsDir, scope = {}) {
   const logsRel = logsDir.includes('/archive/') ? '.ai/archive/logs' : '.ai/logs';
-  const KINDS = {
-    rca: 'rca',
-    'system-reviews': 'system-review',
-    'code-reviews': 'code-review',
-    'security-reviews': 'security-review',
-    'execution-reports': 'execution-report',
-    '.': 'log', // loose .md sitting at the logs root (e.g. a one-off perf note)
-  };
+  const KINDS = LOG_KINDS;
   const decisions = [];
   const stats = { files: 0, withDate: 0, cited: 0, byKind: {} };
-  const scopeMuts = (name, kind) => {
-    const m = [];
-    if (scope.repo) {
-      m.push({ op: 'upsert_element', kind: 'repo', name: scope.repo });
-      m.push({
-        op: 'add_link',
-        from: `${kind}:${name}`,
-        to: `repo:${scope.repo}`,
-        link: 'IN_REPO',
-      });
-    }
-    if (scope.dept) {
-      m.push({ op: 'upsert_element', kind: 'dept', name: scope.dept });
-      m.push({
-        op: 'add_link',
-        from: `${kind}:${name}`,
-        to: `dept:${scope.dept}`,
-        link: 'IN_DEPT',
-      });
-    }
-    return m;
-  };
 
   for (const [dir, kind] of Object.entries(KINDS)) {
     const abs = join(logsDir, dir);
@@ -316,47 +407,132 @@ export function buildLogBatch(logsDir, scope = {}) {
           );
     for (const f of listing.sort()) {
       const path = join(abs, f);
-      const t = readFileSync(path, 'utf8');
       stats.files++;
       stats.byKind[kind] = (stats.byKind[kind] ?? 0) + 1;
-      const slug = f.replace(/\.md$/, '').replace(/\//g, '-');
-      const title = (t.match(/^#\s*(.+)$/m) || [null, slug])[1].trim();
-      // Only 34/123 carry a `**Date:**`; the rest are untracked so git has no
-      // creation date either — fall back to the file's own mtime.
-      const date = normDate(field(t, 'Date')) || statSync(path).mtime.toISOString().slice(0, 10);
-      if (normDate(field(t, 'Date'))) stats.withDate++;
-      // Full body — these files are gitignored, so the graph is the ONLY copy;
-      // truncating would destroy the evidence it exists to preserve. (An earlier
-      // cut extracted just the Summary/Verdict/Root-cause section.)
-      const rationale = t.trim();
-
-      const muts = [
-        {
-          op: 'upsert_element',
-          kind,
-          name: slug,
-          props: { title: title.slice(0, 160), path: `${logsRel}/${dir}/${f}`, date },
-        },
-        { op: 'upsert_element', kind: 'area', name: kind },
-        { op: 'add_link', from: `${kind}:${slug}`, to: `area:${kind}`, link: 'ABOUT' },
-        ...scopeMuts(slug, kind),
-      ];
-      // Evidence edges — a review/RCA that cites a DDR is evidence ABOUT it.
-      const cited = new Set([...t.matchAll(/DDR-(\d+)/g)].map((m) => m[1].padStart(3, '0')));
-      for (const num of cited) {
-        muts.push({ op: 'upsert_element', kind: 'decision', name: `DDR-${num}` });
-        muts.push({
-          op: 'add_link',
-          from: `${kind}:${slug}`,
-          to: `decision:DDR-${num}`,
-          link: 'EVIDENCE_FOR',
-        });
-        stats.cited++;
-      }
-      decisions.push({ title, date, rationale, mutations: muts });
+      // Slug is derived from the path RELATIVE to the kind dir, so a nested
+      // `archive/foo.md` stays `archive-foo` — buildLogDecision's basename-only
+      // default would collapse it onto a sibling. Everything else is shared.
+      const built = buildLogDecision(path, kind, scope, {
+        pathRel: `${logsRel}/${dir}/${f}`,
+        slug: f.replace(/\.md$/, '').replace(/\//g, '-'),
+      });
+      if (built.hasExplicitDate) stats.withDate++;
+      stats.cited += built.citedCount;
+      decisions.push(built.decision);
     }
   }
   return { batch: { decisions }, stats };
+}
+
+/**
+ * The thin STATE.md a migrated repo keeps. Byte-identical to the stub
+ * `maude init --kg` writes (cli/commands/init.mjs KG_STATE_STUB) — a repo that
+ * migrated and a repo that started on the graph must not end up with two
+ * different-looking breadcrumbs.
+ */
+const KG_STATE_STUB = `# Workflow State
+
+> **kgai-active repo** — decision history + working context live in the knowledge graph, not this file.
+> The \`flow:workflow-state\` skill reads/writes the graph via \`flow:kgai-backend\`.
+
+**Status:** ready
+**Active plan:** —
+
+## Where the history went
+
+- **Decisions / "why is X so":** \`maude kg search "<topic>"\` (start here) · \`maude kg context --about "<element>"\`
+- **Recent movements:** \`maude kg query "MATCH (d:Decision) WHERE d.author='<you>' RETURN d.title, d.recorded_at ORDER BY d.recorded_at DESC LIMIT 10"\`
+- **Conflicts:** \`maude kg conflicts\`
+
+The pre-migration file is preserved verbatim under \`.ai/archive/state/\` — never auto-deleted.
+`;
+
+/**
+ * `--archive` — the cleanup half of a migration.
+ *
+ * Ingest alone leaves the repo carrying both stores: the graph AND the tree it
+ * replaced. This moves what the graph took over under `.ai/archive/`, which is
+ * what makes "switching to kgai simplifies `.ai/`" true rather than aspirational.
+ *
+ * Rules it will not break:
+ *  - **Never deletes.** Every source is MOVED under `.ai/archive/` (DDR-044).
+ *  - **Only what the graph replaced.** `plans/`, `scenarios/`, `docs/`,
+ *    `context/`, `dev-logs/`, `business/` stay live — they are narrative or
+ *    procedural, not an append-only event stream the graph now owns.
+ *  - **STATE.md is snapshotted, not moved.** Flow commands still read the path,
+ *    so the original goes to `archive/state/` and a pointer-stub takes its place.
+ *  - **Idempotent.** A second run finds the sources gone and reports "nothing to
+ *    archive" instead of clobbering the archive with an empty tree.
+ */
+function archiveMigratedSources(projectRoot, { dryRun = false, today } = {}) {
+  const ai = join(projectRoot, '.ai');
+  const arch = join(ai, 'archive');
+  const moved = [];
+  const plan = [];
+
+  const moveInto = (srcDir, destDir, filter = () => true) => {
+    if (!existsSync(srcDir)) return;
+    const entries = readdirSync(srcDir, { withFileTypes: true }).filter((e) => filter(e));
+    if (!entries.length) return;
+    for (const e of entries) {
+      const from = join(srcDir, e.name);
+      const to = join(destDir, e.name);
+      plan.push(`${from.replace(`${projectRoot}/`, '')} → ${to.replace(`${projectRoot}/`, '')}`);
+      if (dryRun) continue;
+      mkdirSync(destDir, { recursive: true });
+      // An entry already in the archive (a re-run, or a name collision across
+      // nested dirs) must not be silently overwritten — keep both.
+      renameSync(from, existsSync(to) ? `${to}.${Date.now()}` : to);
+      moved.push(e.name);
+    }
+  };
+
+  // A — decisions + their index. Under an active graph the README index has no
+  // job left: `maude kg search` answers what it answered, and ddr-keeper no
+  // longer appends to it.
+  moveInto(join(ai, 'decisions'), join(arch, 'decisions'));
+  // A — log verdicts (gitignored, so the graph is now their only inheritable copy).
+  moveInto(join(ai, 'logs'), join(arch, 'logs'), (e) => e.name !== 'README.md');
+  // A — template seeds that only exist to scaffold the two files the graph
+  // replaced. PROJECT.md rides along: it had zero references even classically.
+  moveInto(
+    join(ai, 'templates'),
+    join(arch, 'templates'),
+    (e) => e.isFile() && ['STATE.md', 'HANDOFF.md', 'PROJECT.md'].includes(e.name)
+  );
+
+  // STATE.md — snapshot + stub, because the path stays live.
+  const statePath = join(ai, 'state', 'STATE.md');
+  if (existsSync(statePath)) {
+    const body = readFileSync(statePath, 'utf8');
+    const alreadyStub = body.includes('kgai-active repo');
+    if (!alreadyStub) {
+      const dest = join(arch, 'state', `STATE-pre-kgai-${today}.md`);
+      plan.push(
+        `${statePath.replace(`${projectRoot}/`, '')} → ${dest.replace(`${projectRoot}/`, '')} (+ pointer-stub)`
+      );
+      if (!dryRun) {
+        mkdirSync(join(arch, 'state'), { recursive: true });
+        writeFileSync(dest, body);
+        writeFileSync(statePath, KG_STATE_STUB);
+        moved.push('STATE.md');
+      }
+    }
+  }
+  // A stale HANDOFF.md would be read by `/flow:resume` as if it were current,
+  // and under the graph it never gets refreshed again — the worst kind of stale.
+  const handoff = join(ai, 'state', 'HANDOFF.md');
+  if (existsSync(handoff)) {
+    const dest = join(arch, 'state', `HANDOFF-pre-kgai-${today}.md`);
+    plan.push(`${handoff.replace(`${projectRoot}/`, '')} → ${dest.replace(`${projectRoot}/`, '')}`);
+    if (!dryRun) {
+      mkdirSync(join(arch, 'state'), { recursive: true });
+      renameSync(handoff, dest);
+      moved.push('HANDOFF.md');
+    }
+  }
+
+  return { plan, moved };
 }
 
 /** Entry — `maude kg import`. Dispatched from cli/commands/kg.mjs verbImport. */
@@ -395,6 +571,21 @@ export async function run({ args, state, projectRoot, runKg }) {
   if (existsSync(marker) && !flags.force && !flags['dry-run'] && !only) {
     process.stderr.write(
       `maude kg import: already migrated (${marker} exists). Re-run with --force to ingest again (adds duplicate decision events).\n`
+    );
+    return 1;
+  }
+
+  // Scope is MANDATORY on a shared store, not decorative. `repo` is what makes
+  // `decision:<repo>/DDR-NNN` unique (see ddrRef) and `dept` is the search bias
+  // every read leans on; importing without either produces nodes that collide
+  // with a sibling repo's and cannot be filtered back apart afterwards — and the
+  // log is append-only, so there is no cleanup. Fail loudly instead.
+  const missingScope = ['repo', 'dept'].filter((k) => !state.scope?.[k]);
+  if (missingScope.length) {
+    process.stderr.write(
+      `maude kg import: knowledgeGraph.scope.${missingScope.join(' + .')} missing in .ai/workflows.config.json.\n` +
+        `  Every decision must carry repo + dept scope before it reaches a shared store.\n` +
+        `  Add e.g. "scope": { "repo": "<this-repo>", "dept": "dev" } and re-run.\n`
     );
     return 1;
   }
@@ -473,6 +664,17 @@ export async function run({ args, state, projectRoot, runKg }) {
         `  sample:     ${sample.title}\n              ${JSON.stringify(sample.mutations.slice(0, 4))}\n`
       );
     }
+    if (flags.archive) {
+      const { plan } = archiveMigratedSources(projectRoot, {
+        dryRun: true,
+        today: new Date().toISOString().slice(0, 10),
+      });
+      process.stdout.write(
+        plan.length
+          ? `  archive:    ${plan.length} moves planned —\n${plan.map((l) => `              ${l}\n`).join('')}`
+          : '  archive:    nothing to move (already archived)\n'
+      );
+    }
     process.stdout.write(
       '  (dry-run — nothing written. `.ai/archive/decisions/` is preserved as archive.)\n'
     );
@@ -501,6 +703,24 @@ export async function run({ args, state, projectRoot, runKg }) {
     process.stdout.write(
       `  ✓ ingested. Marker: ${marker} (re-import needs --force). Archive kept: ${decisionsDir}\n`
     );
+    // ONLY after a clean ingest. Archiving on a failed one would move the
+    // sources out from under a graph that never received them — the one way
+    // this migration could actually lose someone's decisions.
+    if (flags.archive) {
+      const { plan, moved } = archiveMigratedSources(projectRoot, {
+        today: new Date().toISOString().slice(0, 10),
+      });
+      if (moved.length) {
+        process.stdout.write(`  ✓ archived ${moved.length} sources under .ai/archive/:\n`);
+        for (const line of plan) process.stdout.write(`      ${line}\n`);
+        process.stdout.write(
+          '    Nothing was deleted. `plans/`, `scenarios/`, `docs/`, `context/` stay live.\n' +
+            '    Grep the repo for the old paths — this does NOT rewrite references.\n'
+        );
+      } else {
+        process.stdout.write('  · archive: nothing left to move (already archived).\n');
+      }
+    }
   }
   return status;
 }
@@ -540,7 +760,10 @@ export function buildStateBatch(statePath, scope = {}) {
     const header = body.split('\n')[0];
     const feature = (header.match(/(feature-[a-z0-9.-]+|phase-[a-z0-9.-]+)/i) || [])[1] || null;
     const date = (body.match(/(\d{4}-\d{2}-\d{2})/) || [])[1];
-    const slug = `${feature || 'progress'}-${date || String(decisions.length).padStart(3, '0')}`;
+    const slug = scopedSlug(
+      `${feature || 'progress'}-${date || String(decisions.length).padStart(3, '0')}`,
+      scope
+    );
     const ref = `milestone:${slug}`;
     const muts = [
       {
@@ -552,8 +775,9 @@ export function buildStateBatch(statePath, scope = {}) {
       ...scopeMuts(ref),
     ];
     if (feature) {
-      muts.push({ op: 'upsert_element', kind: 'plan', name: feature });
-      muts.push({ op: 'add_link', from: ref, to: `plan:${feature}`, link: 'PROGRESS_ON' });
+      const planName = scopedSlug(feature, scope);
+      muts.push({ op: 'upsert_element', kind: 'plan', name: planName });
+      muts.push({ op: 'add_link', from: ref, to: `plan:${planName}`, link: 'PROGRESS_ON' });
     }
     const d = {
       title: header.replace(/\*\*/g, '').slice(0, 160),
@@ -568,10 +792,13 @@ export function buildStateBatch(statePath, scope = {}) {
   // History table rows: | YYYY-MM-DD | phase | note |
   for (const row of t.matchAll(/^\|\s*(\d{4}-\d{2}-\d{2})\s*\|([^|]*)\|([^|]*)\|(.*)$/gm)) {
     const [, date, phase, status, note] = row;
-    const slug = `history-${date}-${phase
-      .trim()
-      .replace(/[^a-z0-9.-]+/gi, '-')
-      .toLowerCase()}`.slice(0, 90);
+    const slug = scopedSlug(
+      `history-${date}-${phase
+        .trim()
+        .replace(/[^a-z0-9.-]+/gi, '-')
+        .toLowerCase()}`.slice(0, 90),
+      scope
+    );
     const ref = `milestone:${slug}`;
     decisions.push({
       title: `${date} · ${phase.trim()} · ${status.trim()}`.slice(0, 160),
@@ -612,7 +839,8 @@ export function buildDocsBatch(aiDir, scope = {}) {
       .filter((x) => x.endsWith('.md') && !SKIP.has(x))
       .sort()) {
       const t = readFileSync(join(abs, f), 'utf8');
-      const slug = f.replace(/\.md$/, '');
+      // Doc names are filenames — every repo has a `PRD.md`.
+      const slug = scopedSlug(f.replace(/\.md$/, ''), scope);
       const title = (t.match(/^#\s*(.+)$/m) || [null, slug])[1].trim();
       const ref = `doc:${slug}`;
       const muts = [
@@ -633,8 +861,13 @@ export function buildDocsBatch(aiDir, scope = {}) {
       }
       // A doc that cites DDRs is context ABOUT them.
       for (const num of new Set([...t.matchAll(/DDR-(\d+)/g)].map((m) => m[1].padStart(3, '0')))) {
-        muts.push({ op: 'upsert_element', kind: 'decision', name: `DDR-${num}` });
-        muts.push({ op: 'add_link', from: ref, to: `decision:DDR-${num}`, link: 'REFERENCES' });
+        muts.push({ op: 'upsert_element', kind: 'decision', name: ddrRef(num, scope) });
+        muts.push({
+          op: 'add_link',
+          from: ref,
+          to: `decision:${ddrRef(num, scope)}`,
+          link: 'REFERENCES',
+        });
       }
       decisions.push({
         title: `Doc: ${title}`.slice(0, 160),

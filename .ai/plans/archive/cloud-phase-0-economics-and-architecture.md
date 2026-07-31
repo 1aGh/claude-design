@@ -2,15 +2,20 @@
 
 The master reference for the **Maude Cloud arc**: the complete path from zero infrastructure to a paid production release on maude.sh. Execution order = the numbered files `cloud-phase-1-*.md` → `cloud-phase-10-*.md`. Each phase file is independently executable via `/flow:execute` and has a hard exit gate.
 
-> ### Status as of 2026-07-29 — read this before trusting anything below
+> ### Status as of 2026-07-30 — the arc is LIVE; this file is history
 >
-> **All ten phases have been executed and archived** (`.ai/plans/archive/`). Phases 1–4 are complete. Phases 5–10 are **CORE COMPLETE / PARTIAL**: their decision layers are written and tested, their deployment is blocked. **DDR-196** records why and how the split was made.
->
-> **Nothing in this document has been measured.** §2's unit economics are still the pre-arc estimate — the Phase-5 gate that was supposed to replace them with telemetry never ran, because no cell has ever been deployed. §3's pricing table now exists as real objects in the **Stripe sandbox** (`apps/cloud/pricing.json`), but the numbers are unchanged and unsigned-off.
->
-> **What blocks the rest**, unchanged and re-probed live on 2026-07-28: Workers Paid (Containers, Queues), R2 enablement, and a `cloud.maude.sh` zone. All three need a browser, payment details, or domain control. See `cloud-phase-0b-manual-prep.md`, which also records what an agent has already done (D1 provisioned + schema applied).
->
-> Treat §2 as a hypothesis, §3 as a proposal, and §5 as history rather than instructions.
+> Phases 1–16, 18–20 and 22 are executed and archived; every vendor unblock
+> (Phase 11) is done including DNS. **Maude Cloud runs in production**:
+> control plane + dashboard at `cloud.maude.sh`, the alligators pilot cell at
+> `alligators.cloud.maude.sh` (image v7), the read-only share view at
+> `view-alligators.cloud.maude.sh`, checkout/waiting-room/billing-portal,
+> export + delete-through-export, the customer audit log, invites by email,
+> and the hourly GitHub mirror (proven against `1aGh/alligators-mirror`).
+> Remaining: Phase 17 (desktop attach — needs a native build cycle + a timed
+> human cold start) and Phase 21 (browser editing — gated on the owner's
+> explicit re-confirmation). §2's unit economics remain UNMEASURED estimates
+> and §3's pricing is still an unsigned proposal (sandbox-only; live Stripe
+> ids deliberately null).
 
 Produced from two divergent debates (builder/shipper/breaker, then builder/shipper/breaker/user-advocate — DDR-130 reduce tier) plus a very-thorough architecture sweep. Provider decision revised 2026-07-28 per the owner's call: **Cloudflare everywhere — one unified infra.**
 

@@ -24,9 +24,11 @@ import { ImportBrandError, importBrand } from './bin/_import-brand.mjs';
 import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
+import { createCloudEndpoints } from './cloud/endpoints.ts';
 import type { AiActivity } from './collab/ai-activity.ts';
 import type { Context } from './context.ts';
 import { reloadConfig } from './context.ts';
+import { buildDebugBundle } from './debug-bundle.ts';
 import { probeSetupReadiness } from './design-setup-readiness.ts';
 import { type Format, isFormat, isScope, type Scope } from './exporters/index.ts';
 import { type ExportJobQueue, ExportQueueFullError } from './exporters/jobs.ts';
@@ -87,7 +89,7 @@ import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
 import { linkHub } from './sync/hub-link.ts';
 import { signInToWorkspace, workspaceDisclosure } from './sync/workspace-signin.ts';
 import { readUiPrefs, type UiPrefs, writeUiPrefs } from './ui-prefs.ts';
-import { loadWhatsNew } from './whats-new.ts';
+import { loadWhatsNew, resolveMaudeVersion } from './whats-new.ts';
 import { isLoopbackHost } from './ws.ts';
 
 // Real disk install root — never the virtual `/$bunfs/root` of compiled bins.
@@ -837,6 +839,11 @@ export function createHttp(
   // and every route is token-bearing (server-held keychain token via the loopback
   // bridge), so all four also carry a loopback-Host check.
   const githubApi = createGitHubEndpoints(ctx);
+  // Cloud Phase 23 C3 — `/_api/cloud/*`. Same dual-allowlist rule as the
+  // GitHub routes: MAIN-ORIGIN ONLY (absent from CANVAS_SAFE_API +
+  // startCanvasServer) and loopback-Host gated — every route either bears or
+  // stores the cloud credential.
+  const cloudApi = createCloudEndpoints(ctx);
   const gitJson = (r: { status: number; json: unknown }) =>
     Response.json(r.json, { status: r.status, headers: { 'Cache-Control': 'no-store' } });
 
@@ -1163,6 +1170,87 @@ export function createHttp(
     // allowlist below (the untrusted canvas iframe never needs it).
     '/_api/whats-new': () =>
       Response.json(loadWhatsNew(), { headers: { 'Cache-Control': 'no-store' } }),
+
+    // feature-bug-report-button — the scrubbed diagnostic bundle the Report-a-Bug
+    // dialog previews for consent. PRIVILEGED (logs could reveal paths pre-scrub;
+    // the scrubber runs here, server-side): MAIN-ORIGIN ONLY — absent from
+    // CANVAS_SAFE_API + startCanvasServer routes — plus the same double gate as
+    // /_api/acp/status (a drive-by page must not read logs via DNS rebinding).
+    '/_api/debug-bundle': (req: Request) => {
+      if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      return Response.json(
+        buildDebugBundle({
+          maudeVersion: resolveMaudeVersion(),
+          projectName: ctx.cfg.name ?? null,
+          activeCanvas: (inspect.state as { active?: string | null }).active ?? null,
+          repoRoot: ctx.paths.repoRoot,
+        }),
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    // feature-bug-report-button — submit proxy. The client never talks to
+    // cloud.maude.sh directly (no CORS surface to open, and the endpoint can be
+    // overridden for self-hosters/tests via MAUDE_REPORT_URL). Forwards the
+    // multipart body verbatim; the cloud route owns validation + quota.
+    // PRIVILEGED: main-origin only + double gate (it triggers outbound network).
+    '/_api/report': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const endpoint = process.env.MAUDE_REPORT_URL || 'https://cloud.maude.sh/report';
+      try {
+        const upstream = await fetch(endpoint, {
+          method: 'POST',
+          body: await req.formData(),
+          signal: AbortSignal.timeout(30_000),
+        });
+        const body = await upstream.text();
+        return new Response(body, {
+          status: upstream.status,
+          headers: { 'content-type': 'application/json', 'Cache-Control': 'no-store' },
+        });
+      } catch {
+        // Unreachable/timeout — the client falls back to the local bundle path.
+        return Response.json({ error: 'report service unreachable' }, { status: 502 });
+      }
+    },
+
+    // feature-bug-report-button — offline/declined fallback: persist the bundle
+    // locally under `<designRoot>/_reports/<ts>/` (gitignored runtime state,
+    // DDR-115 taxonomy) so the user can attach it to a hand-filed issue.
+    // PRIVILEGED: main-origin only + double gate (filesystem write).
+    '/_api/report-fallback': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const body = await readJson<{ report?: unknown; screenshots?: unknown }>(req);
+      if (!body || typeof body.report !== 'object' || body.report === null) {
+        return new Response('body must include { report }', { status: 400 });
+      }
+      const shots = Array.isArray(body.screenshots) ? body.screenshots.slice(0, 3) : [];
+      const dir = join(ctx.paths.designRoot, '_reports', String(Date.now()));
+      await Bun.write(join(dir, 'report.json'), JSON.stringify(body.report, null, 2));
+      let n = 0;
+      for (const shot of shots) {
+        if (typeof shot !== 'string') continue;
+        const m = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(shot);
+        if (!m || m[2].length > 7_000_000) continue; // ~5 MB decoded cap
+        n += 1;
+        await Bun.write(
+          join(dir, `screenshot-${n}.${m[1] === 'png' ? 'png' : 'jpg'}`),
+          Buffer.from(m[2], 'base64')
+        );
+      }
+      return Response.json(
+        { dir: relative(ctx.paths.repoRoot, dir), screenshots: n },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
 
     '/_index-data': async () =>
       Response.json(await api.buildIndexData(), { headers: { 'Cache-Control': 'no-store' } }),
@@ -1515,6 +1603,66 @@ export function createHttp(
       );
     },
 
+    // feature-file-tree-drag-drop-folders (Task 5) — move/rename a canvas.
+    // POST body { file, toDir } -> 200 { fromRel, toRel, fromSlug, toSlug, moved[] }
+    // Same guard stack as /_api/canvas, copied verbatim: MAIN ORIGIN ONLY —
+    // intentionally absent from BOTH startCanvasServer's allowlist and
+    // CANVAS_SAFE_API (DDR-054/DDR-088) — the untrusted canvas iframe origin
+    // must never reach a file-move endpoint. Validation lives in
+    // api.moveCanvas (containment + non-DS-group allowlist + collision +
+    // collab-pin guard).
+    '/_api/fs-move': async (req: Request) => {
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      const body = await readJson<{ file?: unknown; toDir?: unknown }>(req, 4 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.moveCanvas(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        {
+          ok: true,
+          fromRel: result.fromRel,
+          toRel: result.toRel,
+          fromSlug: result.fromSlug,
+          toSlug: result.toSlug,
+          moved: result.moved,
+        },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    // feature-file-tree-drag-drop-folders (Task 5) — create an empty folder.
+    // POST body { parent?, name } -> 201 { dir }. Same guard stack, same
+    // MAIN-ORIGIN-ONLY / dual-allowlist posture as /_api/fs-move above.
+    '/_api/fs-mkdir': async (req: Request) => {
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      const body = await readJson<{ parent?: unknown; name?: unknown }>(req, 4 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.createFolder(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, dir: result.dir },
+        { status: 201, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     // ── Phase 27 (E2) — in-UI git layer. Save version / Publish / Get latest /
     // History / visual diff. All MAIN-ORIGIN ONLY (see gitApi comment above).
     // POST routes add the sameOriginWrite CSRF guard (cross-site forged POST);
@@ -1663,6 +1811,77 @@ export function createHttp(
     // since every one is token-bearing. (Sign-out is the `github_sign_out` Tauri
     // command — the dev-server can't touch the OS keychain — so there is no
     // DELETE /_api/github/identity here; see DDR-114.)
+    '/_api/cloud/status': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      // isLoopbackHost is a DNS-rebind guard, not a CSRF guard: a cross-site
+      // page can issue a no-cors GET at 127.0.0.1:<port>. These two GETs read
+      // the cloud credential's identity and (for projects) make a Bearer call
+      // whose 401 DELETES the stored credential — a confused deputy worth
+      // closing (validate 2026-07-30, defender F6).
+      if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      return gitJson(cloudApi.status());
+    },
+    '/_api/cloud/signin/start': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      return gitJson(await cloudApi.signinStart());
+    },
+    '/_api/cloud/signin/poll': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = (await req.json().catch(() => ({}))) as { deviceCode?: string };
+      return gitJson(await cloudApi.signinPoll(String(body.deviceCode ?? '')));
+    },
+    '/_api/cloud/signout': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      return gitJson(cloudApi.signout());
+    },
+    '/_api/cloud/projects': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      return gitJson(await cloudApi.projects());
+    },
+    '/_api/cloud/attach': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = (await req.json().catch(() => ({}))) as { project?: string };
+      return gitJson(await cloudApi.attach(String(body.project ?? '')));
+    },
+    '/_api/cloud/attach/code': async (req: Request) => {
+      // The maude:// lane (Phase 17): a one-time handoff code from a deep
+      // link. Same gates as attach; the code is exchanged only against the
+      // CONFIGURED cloud address, never one the link named.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = (await req.json().catch(() => ({}))) as { code?: string; project?: string };
+      return gitJson(
+        await cloudApi.attachCode(
+          String(body.code ?? ''),
+          typeof body.project === 'string' ? body.project : undefined
+        )
+      );
+    },
+
     '/_api/github/identity': async (req: Request) => {
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
       if (!isLoopbackHost(req.headers.get('host')))

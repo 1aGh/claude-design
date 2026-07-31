@@ -42,19 +42,55 @@ export function validateWorkspaceConfig(raw = {}) {
   const errors = [];
   const cfg = { ...raw };
 
+  // Local mode serves plain HTTP and never talks to Let's Encrypt, so an ACME
+  // contact is meaningless there. Requiring one anyway is how a verification
+  // suite ends up needing a purchased domain before it can run even once.
+  cfg.local = raw.local === true;
+
   cfg.domain = String(raw.domain ?? '')
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, '')
     .replace(/\/.*$/, '');
+
+  // A local workspace defaults to `localhost` and MUST stay a genuine loopback
+  // NAME, not merely a name that happens to resolve to 127.0.0.1.
+  //
+  // The first cut used `ws.127.0.0.1.nip.io` to satisfy the fully-qualified
+  // rule. It resolved fine and the whole stack came up — and then the studio's
+  // sync agent refused to connect, because its plaintext guard allowlists
+  // loopback names literally. That guard is RIGHT: `127.0.0.1.nip.io` is a
+  // name somebody else registers and controls, so "it resolves to loopback
+  // today" is a promise a third party can withdraw. Pattern-matching an
+  // embedded IP would have opened exactly that hole (`127.0.0.1.evil.com`).
+  //
+  // So the fix belongs here, not in the guard: local mode uses names that ARE
+  // loopback by specification — `localhost` and, per RFC 6761, anything under
+  // `.localhost`.
+  if (cfg.local && !cfg.domain) cfg.domain = 'localhost';
+
+  const isLoopbackName = cfg.domain === 'localhost' || cfg.domain.endsWith('.localhost');
   if (!cfg.domain) errors.push('domain is required (the public hostname, e.g. design.acme.com)');
-  else if (!DOMAIN_RE.test(cfg.domain))
+  else if (cfg.local && isLoopbackName) {
+    // `localhost` has no dot, and that is the point — skip the FQDN rule.
+  } else if (!DOMAIN_RE.test(cfg.domain))
     errors.push(`domain "${cfg.domain}" is not a valid hostname`);
   else if (!cfg.domain.includes('.')) errors.push('domain must be fully qualified');
 
+  // A name that only LOOKS local is the trap: it passes every check here and
+  // then fails at the one place that matters, after the operator has already
+  // been told the workspace is up.
+  if (cfg.local && !isLoopbackName) {
+    errors.push(
+      `--local requires a loopback name (localhost or *.localhost); "${cfg.domain}" is not one — ` +
+        'a name that merely resolves to 127.0.0.1 is controlled by whoever owns the domain'
+    );
+  }
+
   cfg.acmeEmail = String(raw.acmeEmail ?? '').trim();
-  if (!cfg.acmeEmail) errors.push('acmeEmail is required (Let’s Encrypt expiry notices)');
-  else if (!EMAIL_RE.test(cfg.acmeEmail))
+  if (!cfg.acmeEmail) {
+    if (!cfg.local) errors.push('acmeEmail is required (Let’s Encrypt expiry notices)');
+  } else if (!EMAIL_RE.test(cfg.acmeEmail))
     errors.push(`acmeEmail "${cfg.acmeEmail}" is not an email`);
 
   cfg.adminEmail = String(raw.adminEmail ?? '')
@@ -116,6 +152,18 @@ export function validateWorkspaceConfig(raw = {}) {
 }
 
 /**
+ * The URL the workspace is reachable at.
+ *
+ * ONE definition, used by the compose render, the verification steps and every
+ * message printed to the operator — a local run that verified `https://` while
+ * Caddy served `http://` would fail every check for a reason that has nothing
+ * to do with the workspace.
+ */
+export function workspaceBaseUrl(cfg) {
+  return `${cfg.local ? 'http' : 'https'}://${cfg.domain}`;
+}
+
+/**
  * The `.env` a workspace deployment needs. Returned as an ordered array of
  * `{ key, value, comment }` so the renderer can annotate and a test can assert
  * a secret is present without string-matching a whole file.
@@ -129,9 +177,15 @@ export function envEntries(cfg, { hubSecret, adminPassword }) {
     {
       key: 'PUBLIC_DOMAIN',
       value: cfg.domain,
-      comment: 'public hostname; Caddy fetches a cert for it',
+      comment: cfg.local
+        ? 'hostname Caddy matches on; LOCAL MODE — plain HTTP, no certificate'
+        : 'public hostname; Caddy fetches a cert for it',
     },
-    { key: 'ACME_EMAIL', value: cfg.acmeEmail, comment: "Let's Encrypt expiry notices" },
+    {
+      key: 'ACME_EMAIL',
+      value: cfg.acmeEmail,
+      comment: cfg.local ? 'unused in local mode' : "Let's Encrypt expiry notices",
+    },
     {
       key: 'HUB_SECRET',
       value: hubSecret,
@@ -143,6 +197,17 @@ export function envEntries(cfg, { hubSecret, adminPassword }) {
       comment: 'Caddy fronts the hub; without this every client shares one rate-limit bucket',
     },
     { key: 'HUB_WORKSPACE_MODE', value: '1', comment: 'users required; permissive dev auth off' },
+    ...(cfg.local
+      ? [
+          {
+            key: 'HUB_INSECURE_HTTP',
+            value: '1',
+            comment:
+              'LOCAL TESTING ONLY — lifts the hub’s refusal to serve over plaintext. ' +
+              'Delete this line before this deployment is reachable by anyone else.',
+          },
+        ]
+      : []),
     {
       key: 'MAUDE_WORKSPACE_MODE',
       value: '1',
@@ -209,8 +274,13 @@ export function renderCompose(cfg) {
     'HUB_SECRET',
     'HUB_TRUSTED_PROXIES',
     'HUB_WORKSPACE_MODE',
+    ...(cfg.local ? ['HUB_INSECURE_HTTP'] : []),
     'MAUDE_WORKSPACE_MODE',
     'MAUDE_ADMIN_EMAIL',
+    // The password has to cross into the container too, or the hub knows WHO
+    // the first user is and has no way to create them — which is precisely the
+    // half-wired state that shipped: `.env` held both, compose forwarded one.
+    'MAUDE_ADMIN_PASSWORD',
     ...(cfg.s3
       ? [
           'MAUDE_S3_ENDPOINT',
@@ -238,10 +308,19 @@ services:
     image: ghcr.io/1agh/maude-hub:\${MAUDE_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
-      HUB_PUBLIC_URL: https://\${PUBLIC_DOMAIN}
+      HUB_PUBLIC_URL: ${cfg.local ? 'http' : 'https'}://\${PUBLIC_DOMAIN}
+      # The server-side checkout (Cloud Phase 16). In a workspace there is
+      # nobody at a keyboard to commit, so the hub keeps the history itself —
+      # without this the project's only record is its current bytes.
+      MAUDE_REPO_DIR: /repo
 ${envLines(hubEnv)}
     volumes:
       - hub-data:/data
+      # A SEPARATE volume from hub-data on purpose: the checkout is the one
+      # thing here that can be reconstructed from a mirror, and keeping it
+      # separable is what lets an operator reset it without touching the
+      # documents, or vice versa.
+      - hub-repo:/repo
     expose:
       - "1234"
 
@@ -249,8 +328,7 @@ ${envLines(hubEnv)}
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "80:80"${cfg.local ? '' : '\n      - "443:443"'}
     environment:
       PUBLIC_DOMAIN: \${PUBLIC_DOMAIN}
       ACME_EMAIL: \${ACME_EMAIL}
@@ -278,11 +356,37 @@ ${
     ports:
       - "9000:9000"
       - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Creates the bucket the hub was just told to use. Without it, --dev-minio
+  # renders a complete storage configuration pointing at a bucket that does not
+  # exist — every write fails with NoSuchBucket, and the operator sees a
+  # verification failure with no hint that the missing piece was never theirs
+  # to supply. Same "looks configured, does nothing" shape as the admin
+  # credentials and the seed repo before Cloud Phase 16 wired them.
+  minio-init:
+    profiles: ["dev"]
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 \${MAUDE_S3_ACCESS_KEY_ID} \${MAUDE_S3_SECRET_ACCESS_KEY} &&
+      mc mb --ignore-existing local/\${MAUDE_S3_BUCKET} &&
+      echo 'bucket \${MAUDE_S3_BUCKET} ready'
+      "
+    restart: "no"
 `
     : ''
 }
 volumes:
   hub-data:
+  hub-repo:
   caddy-data:
   caddy-config:${cfg.devMinio ? '\n  minio-data:' : ''}
 `;
@@ -290,13 +394,27 @@ volumes:
 
 /** Caddyfile with `trusted_proxies` wired, so XFF is honoured correctly. */
 export function renderCaddyfile(cfg) {
-  return `# Maude workspace — generated by \`maude hub workspace-up\`.
-
+  // LOCAL MODE: an explicit `http://` site address turns Caddy's automatic
+  // HTTPS off entirely. The alternative — `tls internal` — mints a cert from a
+  // CA nothing on the machine trusts, so every verification step would fail on
+  // certificate validation rather than on anything about the workspace.
+  //
+  // This is a TESTING mode and the file says so, because a Caddyfile serving a
+  // real workspace over plain HTTP would put every password on the wire.
+  const site = cfg.local ? 'http://{$PUBLIC_DOMAIN}' : '{$PUBLIC_DOMAIN}';
+  const header = cfg.local
+    ? `# LOCAL TESTING ONLY — plain HTTP, no certificate. Never serve a real
+# workspace from this file: sign-in passwords would travel in the clear.
+`
+    : `
 {
   email {$ACME_EMAIL}
 }
+`;
 
-{$PUBLIC_DOMAIN} {
+  return `# Maude workspace — generated by \`maude hub workspace-up\`.
+${header}
+${site} {
   encode zstd gzip
 
   # The hub reads X-Forwarded-For only from addresses it trusts
@@ -324,7 +442,7 @@ export function verificationPlan(cfg) {
     {
       id: 'health',
       title: 'the workspace answers',
-      detail: `GET https://${cfg.domain}/health returns ok`,
+      detail: `GET ${workspaceBaseUrl(cfg)}/health returns ok`,
     },
     {
       id: 'admin-claimed',

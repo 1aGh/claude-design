@@ -4,5 +4,12 @@
   "bundle": {
     "targets": ["app"],
     "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["maude-e2e"]
+      }
+    }
   }
 }

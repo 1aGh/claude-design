@@ -12,8 +12,9 @@
 // or an informative message — a command's classic `.ai/` path is unaffected.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, join, resolve } from 'node:path';
 import { parseArgs } from '../lib/argv.mjs';
 
 const CONFIG_PATH = '.ai/workflows.config.json';
@@ -30,6 +31,7 @@ const VERBS = new Set([
   'ingest',
   'scope',
   'import',
+  'record-log',
   'help',
 ]);
 
@@ -131,15 +133,19 @@ function kgEnv() {
 }
 
 /** Spawn the resolved `kg` with the given args, inheriting stdio. Returns exit status. */
-function runKg(state, kgArgs, { timeoutMs } = {}) {
+function runKg(state, kgArgs, { timeoutMs, swallowStdout } = {}) {
   if (!state.kgBin) {
     process.stderr.write(
       'maude kg: the `kg` CLI is not available. kgai is capability-gated — install it (see docs/kgai-onboarding.md) or use classic `.ai/` mode.\n'
     );
     return 127;
   }
+  // `swallowStdout` is for verbs that print their OWN one-line summary — `kg
+  // ingest` dumps a ~25-line JSON receipt per call, and a command that records
+  // a verdict on every run would bury the agent's real output in it. stderr
+  // still passes through, so a genuine failure is never hidden.
   const child = spawnSync(state.kgBin, kgArgs, {
-    stdio: 'inherit',
+    stdio: swallowStdout ? ['inherit', 'pipe', 'inherit'] : 'inherit',
     env: kgEnv(),
     ...(timeoutMs ? { timeout: timeoutMs } : {}),
   });
@@ -276,6 +282,117 @@ async function verbImport(state, args, pkgRoot) {
   });
 }
 
+// ── verb: record-log (keep the graph fed as verdicts are written) ───────────
+//
+// WHY this exists rather than a JSON blob per command: `.ai/logs/**` is
+// GITIGNORED, so for RCAs / reviews / audits the graph is the only inheritable
+// copy. The Phase-5 migration put 120 of them in — but nothing kept feeding it,
+// so the corpus began decaying the moment migration finished. Seven flow
+// commands and six design ones now call this as they write.
+//
+// It delegates to `buildLogDecision`, the SAME builder the bulk importer uses,
+// because a second hand-rolled shape would fork the corpus: a node recorded
+// today has to land on the same shelf as the ones migration created (same slug
+// rule, props, ABOUT/scope/EVIDENCE_FOR edges) or `kg search` returns half an
+// answer. Re-recording is safe — identity is `hash(kind:name)`, props MERGE.
+async function verbRecordLog(state, args, pkgRoot) {
+  const { flags } = parseArgs(args, { booleans: ['dry-run', 'quiet'] });
+  // Inactive is the COMMON case downstream, and it must be a clean no-op so a
+  // command can call this unconditionally instead of re-deriving the gate.
+  if (!state.active) return 0;
+
+  const file = flags.file;
+  if (!file) {
+    process.stderr.write('maude kg record-log: --file <path> is required.\n');
+    return 1;
+  }
+  const abs = resolve(state.projectRoot, file);
+  if (!existsSync(abs)) {
+    // A verdict the caller says it wrote but didn't is a caller bug, not a
+    // reason to fail the command that produced real work — warn and move on.
+    process.stderr.write(`maude kg record-log: no such file: ${abs} — nothing recorded.\n`);
+    return 0;
+  }
+
+  const libPath = join(pkgRoot, 'cli', 'lib', 'ddr-to-kgai.mjs');
+  if (!existsSync(libPath)) {
+    process.stderr.write('maude kg record-log: builder unavailable in this build.\n');
+    return 0;
+  }
+  const { LOG_KINDS, buildLogDecision } = await import(libPath);
+
+  // Kind: explicit wins; else infer from the parent dir via the SAME table the
+  // importer keys on, so `.ai/logs/rca/x.md` → `rca` either way.
+  const parent = abs.split('/').slice(-2, -1)[0] ?? '';
+  const kind = flags.kind || LOG_KINDS[parent];
+  if (!kind) {
+    process.stderr.write(
+      `maude kg record-log: cannot infer kind from "${parent}/" — pass --kind (known: ${Object.values(
+        LOG_KINDS
+      ).join(', ')}).\n`
+    );
+    return 1;
+  }
+
+  const rel = abs.startsWith(`${state.projectRoot}/`)
+    ? abs.slice(state.projectRoot.length + 1)
+    : abs;
+
+  // Slug collision guard. Identity is `hash(kind:name)`, so two files sharing a
+  // basename become ONE node and the second silently overwrites the first's
+  // props — measured: recording `_history/settings/critique/001-PANEL.md` then
+  // `_history/login/critique/001-PANEL.md` left a single node pointing at login,
+  // with the settings critique gone. Flow logs are safe (their basenames are
+  // already unique across `.ai/logs/<kind>/`) and must keep the bare slug to
+  // match the migrated corpus — but anything attached to a specific element
+  // (`--about canvas:foo`) is per-element by nature, so qualify it with that
+  // element's name. Doing it HERE rather than in each caller means six design
+  // commands can't each forget it.
+  const aboutName = flags.about ? String(flags.about).split(':').slice(1).join(':') : '';
+  const derivedSlug =
+    flags.slug ||
+    (aboutName
+      ? `${aboutName}-${basename(abs).replace(/\.md$/, '')}`.replace(/\//g, '-')
+      : undefined);
+
+  const built = buildLogDecision(abs, kind, state.scope, {
+    pathRel: rel,
+    about: flags.about, // e.g. canvas:<slug> for a design verdict
+    link: flags.link, // e.g. EVALUATES
+    slug: derivedSlug,
+  });
+
+  if (flags['dry-run']) {
+    process.stdout.write(`${JSON.stringify({ decisions: [built.decision] }, null, 2)}\n`);
+    return 0;
+  }
+  // Temp file + `kg ingest --file`, matching the importer: the same plumbing
+  // that ingested 310 decisions during migration, so no new stdin path to get
+  // wrong (and a verdict body is far past comfortable argv size anyway).
+  const tmp = join(tmpdir(), `kg-record-${kind}-${built.slug}.json`);
+  writeFileSync(tmp, JSON.stringify({ decisions: [built.decision] }));
+  const status = runKg(state, ['ingest', '--file', tmp], {
+    timeoutMs: 30000,
+    swallowStdout: true,
+  });
+  try {
+    rmSync(tmp, { force: true });
+  } catch {
+    /* best-effort temp cleanup */
+  }
+  if (status !== 0) {
+    // Same contract as `sync`: never fail the caller's real work over memory.
+    process.stderr.write(`maude kg record-log: ingest failed for ${rel} — the file is on disk.\n`);
+    return 0;
+  }
+  if (!flags.quiet) {
+    process.stdout.write(
+      `[kg] recorded ${kind}:${built.slug}${built.citedCount ? ` (${built.citedCount} EVIDENCE_FOR)` : ''}\n`
+    );
+  }
+  return 0;
+}
+
 // ── passthrough verbs (context / ingest) ───────────────────────────────────
 function verbPassthrough(verb, state, args) {
   if (!state.active) {
@@ -311,6 +428,11 @@ function usage() {
   ingest <args…>          Record a decision + scope tags (passthrough to \`kg ingest\`).
   scope                   Print the resolved scope ({repo, dept}).
   import [--dry-run …]    Migrate .ai/decisions/ + .design/ into kgai (Phase 5).
+  record-log --file F     Record ONE verdict file (RCA / review / audit / critique) as a
+    [--kind K]            graph node, shaped exactly like the migrated corpus. Kind is
+    [--about E --link L]  inferred from the parent dir; --about/--link attach a design
+    [--slug S] [--quiet]  verdict to canvas:<slug> instead of area:<kind>. Silent no-op
+    [--dry-run]           when inactive, so callers invoke it unconditionally.
   --root <path>           Project root (default $CLAUDE_PROJECT_DIR or cwd).
 
 kgai is capability-gated + opt-out. When \`kg\` is absent or mode:off, verbs no-op cleanly
@@ -356,6 +478,9 @@ export async function run({ args, pkgRoot }) {
       break;
     case 'import':
       status = await verbImport(state, args.slice(1), pkgRoot);
+      break;
+    case 'record-log':
+      status = await verbRecordLog(state, args.slice(1), pkgRoot);
       break;
     case 'context':
     case 'ingest':

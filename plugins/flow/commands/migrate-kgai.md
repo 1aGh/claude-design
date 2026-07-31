@@ -59,4 +59,17 @@ maude kg query "MATCH (a:Element)-[l:LINK]->(b:Element) WHERE l.kind='SUPERSEDES
 ## Notes
 
 - Verified live (2026-07-23): this repo's 188 DDRs → 564 elements, 188 decisions, all scope-tagged, 13 `SUPERSEDES` + 36 `EXTENDS` + 700 `REFERENCES` typed cross-refs in the graph.
-- The `.ai/decisions/` archive stays intact. Migration does not slim STATE.md / CLAUDE.md — that's a separate, later step gated on a verified migration (plan Phase 7).
+- Migration never rewrites in-repo references and never touches CLAUDE.md — grep for the old paths afterwards yourself.
+
+## Step 4 — Offer the cleanup (`--archive`)
+
+Ingest alone leaves the repo carrying **both** stores: the graph and the tree it replaced. Simplifying `.ai/` is most of why someone switches, so offer it once the ingest is verified — never in the same breath as an unverified one.
+
+```bash
+maude kg import --dry-run --archive     # prints every planned move, writes nothing
+maude kg import --archive               # after the user has read the plan
+```
+
+Show the user the dry-run output and ask before the real run. It moves `decisions/` (incl. its README — under an active graph `kg search` is the index), `logs/`, the dead `templates/` seeds, and snapshots `STATE.md`/`HANDOFF.md` into `archive/state/` leaving a pointer-stub. `plans/`, `scenarios/`, `docs/`, `context/` stay live. **Nothing is deleted**, and it only runs after a clean ingest.
+
+Full contract + the "migrated ≠ archivable" tests: **`flow:kgai-migrate`**.

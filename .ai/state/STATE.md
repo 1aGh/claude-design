@@ -3,17 +3,37 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** ready
-**Active plan:** —
+**Status:** in-progress — Maude Cloud self-service gap arc (phases 11-21)
+**Active plan:** `.ai/plans/cloud-phase-16-server-owned-checkout.md` (12+13 done + LIVE; 11 owner-only)
 
-_Last closed:_ `feature-enhanced-video-editing` (2026-07-30). TSX-first manual
-timeline editor (split/trim/speed/crop/grade/audio/transitions as named clip
-verbs over `/_api/clip-edit`; three-band iMovie layout + stacked pure-JSX
-projection; movable layers; AI placeholder clips; frame-anchored comment tool).
-4 dogfood rounds; security review resolved 3 blockers. Phase 6 deferred. Plan
-archived at `.ai/plans/archive/`.
+_2026-07-30 (side branch):_ **`feature-enhanced-video-editing` closed + PR'd** — TSX-first
+manual timeline editor (split/trim/speed/crop/grade/audio/transitions as clip verbs over
+`/_api/clip-edit`; three-band iMovie layout + stacked pure-JSX projection; movable layers;
+AI placeholder clips; frame-anchored comment tool). 4 dogfood rounds; security review
+resolved 3 blockers. Phase 6 deferred. Plan archived; kgai holds the close.
 
-_Earlier:_ `cloud-phase-10-ga-launch-github-mirror` (2026-07-29, partial). All ten
+_2026-07-29 (later):_ **Phases 12 + 13 DONE + deployed live.** Signup/login/session
++ Google (unconfigured → honest 503) + project-grant mint at
+`https://maude-cloud.maude1agh.workers.dev`, 126 cloud tests. Two live-only
+bugs found by deploying: Workers refuse PBKDF2 >100k iterations (fixed by
+chaining 6×100k — same work, no weakening), and the v2 migration never ran
+against live D1 (fixed: cron applies migrations before sweeping).
+
+_Earlier:_ **Phase 12 deployed live** — `maude-cloud` Worker at
+`https://maude-cloud.maude1agh.workers.dev` (/health ok, d1 ok, cron hourly);
+Workers/cron/D1 turned out Free-tier-capable, only Containers/Queues/R2 wait
+for Phase 11. Deploy path: bun bundle + Cloudflare API multipart PUT.
+
+_2026-07-29:_ four-seat debate (`debate-cloud-selfservice-gap-arc`) resolved the
+self-service gaps: **DDR-197** narrows DDR-192 §4 (read-only browser share view
+permitted; containment DDR-193 §2 reaffirmed verbatim; browser EDITING deferred
+behind the Phase-21 gated spike with both dissents preserved). New plans:
+phases 11 (owner vendor unblock) → 12 worker → 13 one-account identity →
+14 provision-first checkout → 15 cell+alligators → 16 server-owned checkout →
+17 desktop attach → 18 share view → 19 mirror effects → 20 self-admin →
+21 editing spike (gated).
+
+_Last closed:_ `cloud-phase-10-ga-launch-github-mirror` (2026-07-29, partial). All ten
 phases are archived: 1-4 complete, 5-10 CORE COMPLETE / PARTIAL — the buildable half is
 done and tested, deployment is blocked. **DDR-196** records why, and the pattern (split
 every vendor-facing component into a pure decision layer and a thin effects layer).

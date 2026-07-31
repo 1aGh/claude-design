@@ -45,6 +45,8 @@ export const onDeviceCode = (cb) => listen('github://device-code', cb);
 export const onSignedIn = (cb) => listen('github://signed-in', cb);
 /** Fire when the native File ▸ New Project… menu item is chosen. Returns an unlisten promise. */
 export const onMenuNewProject = (cb) => listen('menu://new-project', cb);
+/** Fire when the native Help ▸ Report a Bug… menu item is chosen. Returns an unlisten promise. */
+export const onMenuReportBug = (cb) => listen('menu://report-bug', cb);
 
 // ── dev-server endpoints ────────────────────────────────────────────────────────
 async function api(path, opts = {}) {

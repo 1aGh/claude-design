@@ -64,3 +64,13 @@ Include:
 - Key learnings
 
 **Be specific. Don't say "plan was unclear" — say "plan didn't specify which auth pattern to use."**
+
+## Record it in the graph (kgai — when active)
+
+`.ai/logs/**` is **gitignored**, so a retro written today is invisible to the next person unless the graph carries it. Immediately after writing the review file:
+
+```bash
+maude kg record-log --file ".ai/logs/system-reviews/<feature-name>-review.md"
+```
+
+The verb gates itself and is a **silent no-op when the graph is inactive** — run it unconditionally; the classic `.ai/` path is unchanged. It lands a `system-review:<slug>` node with the full body plus `EVIDENCE_FOR` edges to every `DDR-NNN` the retro cites — which is what makes "what did we learn about X" answerable from `maude kg search` alone. Contract: **`flow:kgai-backend`**.

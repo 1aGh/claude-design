@@ -110,6 +110,16 @@ Save to `.ai/logs/a11y/<date>-audit.md`:
 - Suggestions: X
 ```
 
+## Record it in the graph (kgai — when active)
+
+`.ai/logs/**` is **gitignored**, so an audit's findings vanish with the machine that ran it — and the next person re-audits the same components from scratch. When the graph is active, right after writing the report:
+
+```bash
+maude kg record-log --file ".ai/logs/a11y/<date>-audit.md"
+```
+
+The verb gates itself and is a **silent no-op when the graph is inactive** — run it unconditionally; the classic `.ai/` path is unchanged. It lands an `a11y-audit:<slug>` node with the full body plus `EVIDENCE_FOR` edges to any cited `DDR-NNN`. Contract: **`flow:kgai-backend`**.
+
 ## Post-Audit
 
 If issues found, ask:

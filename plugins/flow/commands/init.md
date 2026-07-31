@@ -100,6 +100,31 @@ After this:
 - `.ai/` has every subfolder (`plans/`, `decisions/`, `reviews/`, `scenarios/`, `logs/`, `context/`, `business/`, `docs/`, `state/`, `templates/`, …).
 - `.ai/workflows.config.json` exists with sensible defaults and `name: "$PRE_NAME"`.
 
+### Step 1.5: Offer the knowledge-graph backend (optional)
+
+`maude init` scaffolds the **classic** file-based workspace. If the `kg` CLI is on this machine, the project can instead use the kgai knowledge graph as its decision + history authority — decisions, RCAs and review verdicts become queryable (`maude kg search "<topic>"`) instead of grep-over-markdown, and the gitignored `.ai/logs/**` verdicts gain an inheritable copy.
+
+```bash
+command -v kg >/dev/null 2>&1 && echo "kg present" || echo "kg absent"
+```
+
+- **`kg` absent** → say nothing and move on. Don't advertise a tool the user would have to go install; `mode:auto` means the workspace picks it up automatically if they ever do.
+- **`kg` present** → ask once:
+
+  > **`kg` is installed here. Use the knowledge graph as this project's decision memory?** It replaces `.ai/state/STATE.md` history and `.ai/decisions/*.md` with a queryable graph (the markdown stays as the authoring surface). Everything still works without it. [y/N]
+
+  On **yes**: re-run with `--kg`, then initialize the store.
+
+  ```bash
+  maude init --name "$PRE_NAME" --kg --force
+  kg init
+  maude kg doctor          # confirm: active
+  ```
+
+  `--kg` writes a thin `STATE.md` pointer-stub instead of the full template (the graph is the history authority) and adds the `knowledgeGraph` block to `workflows.config.json`. On **no**, change nothing — the absent block means `mode:auto`, so it stays dormant and every command runs its classic path.
+
+**Migrating an existing repo is a different command** — `/flow:migrate-kgai` (or `maude kg import`) ingests decisions and log verdicts that are already on disk. `--kg` here only configures a fresh workspace.
+
 ## Step 2: Auto-detect the stack
 
 Run detection — collect into shell variables for Step 3.

@@ -22,9 +22,12 @@ import { GRID_KEYWORD_UNITS, parseTrackList, serializeTrackList } from '../grid-
 import { PAPER_PRESETS, resolvePrintArtboard } from '../print/units.ts';
 import { sizingModeOf, sizingModePatch } from '../sizing-mode.ts';
 import { canvasUrl } from './canvas-url.js';
+import { TreeRowMenu, useRowMenu } from './tree-row-menu.jsx';
+import { useTreeDrag } from './use-tree-drag.js';
 import ChatPanel from './panels/ChatPanel.jsx';
 import DiffView from './panels/DiffView.jsx';
 import GitPanel from './panels/GitPanel.jsx';
+import CloudBar from './panels/CloudBar.jsx';
 import IdentityBar from './panels/IdentityBar.jsx';
 import OnboardingWizard from './panels/OnboardingWizard.jsx';
 import { ReadinessDialog } from './panels/ReadinessList.jsx';
@@ -75,6 +78,7 @@ import { PhotoKnobs } from './photo-knobs.jsx';
 import {
   appIsFirstRun,
   isNativeApp,
+  onMenuReportBug,
   onUpdateReady,
   pickMediaFile,
   pickMediaFiles,
@@ -85,6 +89,7 @@ import { TourOverlay } from './tour/overlay.jsx';
 import { QUICK_SETUP_TOUR } from './tour/quick-setup-tour.js';
 import { USAGE_TOUR } from './tour/usage-tour.js';
 import { ExportBadge, ExportPanel, ExportToast, useExportCenter } from './export-center.jsx';
+import { ReportBugDialog } from './report-bug.jsx';
 import { useWhatsNew, WhatsNewPanel, WhatsNewToast } from './whats-new.jsx';
 
 const USAGE_TOUR_STORE = 'mdcc-usage-tour-seen';
@@ -178,6 +183,18 @@ function DockSlot({ side, width, open, ids, activeId, onPick, children }) {
   );
 }
 const CANVAS_EXT_RE = /\.(tsx|html?)$/i;
+// Shared testid-slug derivation (desktop-e2e skill convention: kebab-case,
+// designRoot-stripped, extension-stripped) — mirrors FileRow's inline
+// `canvas-row-<slug>` computation so DirRow / the row-menu trigger use the
+// SAME shape for `tree-folder-<slug>` / `tree-row-menu-<slug>`.
+function pathTestIdSlug(p) {
+  return p
+    .replace(/^\.[^/]+\//, '')
+    .replace(CANVAS_EXT_RE, '')
+    .replace(/[^a-z0-9]+/gi, '-')
+    .toLowerCase()
+    .replace(/^-+|-+$/g, '');
+}
 // Bun's `define` substitutes this at build time (see build.ts); falls back when
 // the bundle is consumed in a context that hasn't run the build.
 const MDCC_VERSION = typeof __MDCC_VERSION__ !== 'undefined' ? __MDCC_VERSION__ : 'dev';
@@ -252,7 +269,11 @@ function basename(p) {
 // The clip ops used to console.warn their failures (a 422 "series clip can't
 // move" looked like "the button does nothing"). Self-contained DOM (no React
 // state), mirrors the canvas-side showCanvasToast.
-function shellToast(message, ok = false) {
+// `action` (feature-file-tree-drag-drop-folders, Task 10) — optional
+// `{ label, onClick }` for an inline undo affordance (the move toast). Absent
+// for every other caller, so their toast stays the plain auto-dismissing text
+// bubble this always was.
+function shellToast(message, ok = false, action) {
   if (typeof document === 'undefined') return;
   let el = document.getElementById('st-op-toast');
   if (!el) {
@@ -261,18 +282,41 @@ function shellToast(message, ok = false) {
     el.setAttribute('role', 'status');
     el.style.cssText =
       'position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:80;' +
-      'max-width:440px;padding:8px 14px;border-radius:8px;font:12px/1.45 var(--font-mono,monospace);' +
+      'display:flex;align-items:center;gap:10px;max-width:440px;padding:8px 14px;' +
+      'border-radius:8px;font:12px/1.45 var(--font-mono,monospace);' +
       'box-shadow:0 8px 28px rgba(0,0,0,.34);pointer-events:none;opacity:0;transition:opacity 140ms ease;';
     document.body.appendChild(el);
   }
   el.style.background = ok ? '#1d3524' : '#3a1d1d';
   el.style.color = ok ? '#b7e4c0' : '#f1b8b8';
-  el.textContent = message;
+  el.textContent = '';
+  const text = document.createElement('span');
+  text.textContent = message;
+  el.appendChild(text);
+  if (action) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = action.label;
+    btn.style.cssText =
+      'pointer-events:auto;background:none;border:0;text-decoration:underline;' +
+      'color:inherit;font:inherit;cursor:pointer;padding:0;';
+    btn.onclick = () => {
+      action.onClick();
+      el.style.opacity = '0';
+      el.style.pointerEvents = 'none';
+    };
+    el.appendChild(btn);
+  }
   el.style.opacity = '1';
+  el.style.pointerEvents = action ? 'auto' : 'none';
   clearTimeout(shellToast._t);
-  shellToast._t = setTimeout(() => {
-    el.style.opacity = '0';
-  }, 3200);
+  shellToast._t = setTimeout(
+    () => {
+      el.style.opacity = '0';
+      el.style.pointerEvents = 'none';
+    },
+    action ? 6000 : 3200
+  );
 }
 
 // feature-4 (browse/move split, DDR-187) — one-time first-run teaching hint.
@@ -389,8 +433,20 @@ function groupBySidecar(files) {
   };
 }
 
-function buildTree(paths, stripPrefix) {
+// `dirs` (feature-file-tree-drag-drop-folders, Task 7) — group-relative dir
+// paths from the server's /_index-data payload, same shape as `paths`. Seeded
+// FIRST so an empty folder (no files inside yet) still gets a node — without
+// this a freshly `mkdir`'d folder would be invisible until something landed
+// inside it, since the tree is otherwise built entirely from file paths.
+function buildTree(paths, stripPrefix, dirs) {
   const root = {};
+  for (const d of dirs || []) {
+    const stripped = d.startsWith(stripPrefix) ? d.slice(stripPrefix.length).replace(/^\/+/, '') : d;
+    const parts = stripped.split('/').filter(Boolean);
+    let node = root;
+    for (const key of parts) node = node[key] = node[key] || {};
+    node._files = node._files || [];
+  }
   for (const p of paths) {
     const stripped = p.startsWith(stripPrefix)
       ? p.slice(stripPrefix.length).replace(/^\/+/, '')
@@ -506,6 +562,14 @@ const STICONS = {
     </>
   ),
   folder: <path d="M2 4.5h4l1.3 1.5H14V13H2z" />,
+  // feature-file-tree-drag-drop-folders (Task 9/12) — folder outline + a "+"
+  // mark, single-stroke family matching `folder`/`file`/`panel-left`.
+  'folder-plus': (
+    <>
+      <path d="M2 4.5h4l1.3 1.5H14V13H2z" />
+      <path d="M8 7.5v3.5M6.25 9.25h3.5" />
+    </>
+  ),
   // feature-4 T7b — Layers padlock (closed / open).
   lock: (
     <>
@@ -1815,24 +1879,70 @@ function ExportDialog({
 const TREE_INDENT_BASE = 12;
 const TREE_INDENT_STEP = 16;
 
-function DirRow({ name, depth, defaultOpen, children }) {
+function DirRow({ name, depth, defaultOpen, children, dirPath, drag, menu }) {
   const [open, setOpen] = useState(defaultOpen);
+  // feature-file-tree-drag-drop-folders (Task 8) — a folder row IS the drop
+  // target. `drag` is undefined for groups that can't accept a move (the
+  // design-system group) — no handlers attach there, so the browser's default
+  // "no drop" cursor applies with zero extra code. Spring-load reopens a
+  // closed folder after a sustained hover; `setOpen` is this row's OWN local
+  // state, which is why the callback lives here rather than in the hook.
+  const dropHandlers = drag ? drag.dropProps(dirPath, true, () => setOpen(true)) : {};
+  const isOver = drag?.overDir === dirPath;
+  // feature-file-tree-drag-drop-folders (Task 11) — a folder is ALSO a drag
+  // SOURCE (drag folder onto folder). No client-side branching needed beyond
+  // this: the payload is just `dirPath` (no `.tsx` suffix), and the server's
+  // moveCanvas auto-detects a non-.tsx source as a folder move.
+  const dragHandlers = drag ? drag.dragProps(dirPath, true) : {};
+  const isDragging = drag?.draggedPath === dirPath;
+  const isBusy = drag?.busyPath === dirPath;
+  const row = (
+    <button
+      type="button"
+      role="treeitem"
+      data-testid={`tree-folder-${pathTestIdSlug(dirPath)}`}
+      aria-expanded={open}
+      aria-dropeffect={drag ? 'move' : undefined}
+      aria-busy={isBusy || undefined}
+      tabIndex={-1}
+      className={
+        'st-row' +
+        (isOver ? ' is-drop-target' : '') +
+        (isDragging ? ' is-dragging' : '') +
+        (isBusy ? ' is-busy' : '')
+      }
+      style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
+      onClick={() => setOpen((v) => !v)}
+      onContextMenu={menu ? (e) => menu.openAt(e, { kind: 'dir', dirPath }) : undefined}
+      {...dragHandlers}
+      {...dropHandlers}
+    >
+      <span className="st-row-glyph">
+        <StIcon name="chevron-right" className={'st-chev' + (open ? ' is-open' : '')} size={13} />
+      </span>
+      <span className="st-row-name">{name}</span>
+    </button>
+  );
   return (
     <Fragment>
-      <button
-        type="button"
-        role="treeitem"
-        aria-expanded={open}
-        tabIndex={-1}
-        className="st-row"
-        style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="st-row-glyph">
-          <StIcon name="chevron-right" className={'st-chev' + (open ? ' is-open' : '')} size={13} />
-        </span>
-        <span className="st-row-name">{name}</span>
-      </button>
+      {menu ? (
+        <div className="st-row-wrap" role="none">
+          {row}
+          <button
+            type="button"
+            className="st-row-menu-btn"
+            data-testid={`tree-row-menu-${pathTestIdSlug(dirPath)}`}
+            title={`Folder actions — ${name}`}
+            aria-label={`Folder actions for ${name}`}
+            aria-haspopup="menu"
+            onClick={(e) => menu.openAt(e, { kind: 'dir', dirPath })}
+          >
+            <Icon d="M12 6a1 1 0 100-2 1 1 0 000 2zM12 13a1 1 0 100-2 1 1 0 000 2zM12 20a1 1 0 100-2 1 1 0 000 2z" size={12} />
+          </button>
+        </div>
+      ) : (
+        row
+      )}
       {open && children}
     </Fragment>
   );
@@ -1890,6 +2000,8 @@ function FileRow({
   sidecar,
   dirty,
   experimentalKind,
+  drag,
+  menu,
 }) {
   const isSel = file.path === activePath;
   const isCanvas = CANVAS_EXT_RE.test(file.name);
@@ -1901,6 +2013,17 @@ function FileRow({
   // Delete only real canvases in a deletable group (onDelete is undefined for the
   // DS group + runtime files); the server enforces the rest.
   const canDelete = isCanvas && typeof onDelete === 'function' && kind !== 'runtime';
+  // feature-file-tree-drag-drop-folders (Task 8) — only real canvas primaries
+  // (never sidecars, never runtime rows) are draggable; `drag` is undefined
+  // for groups that can't be a move source (the design-system group).
+  const draggableRow = isCanvas && !sidecar && kind !== 'runtime' && typeof drag !== 'undefined';
+  const dragHandlers = draggableRow ? drag.dragProps(file.path, true) : {};
+  const isDragging = drag?.draggedPath === file.path;
+  const isBusy = drag?.busyPath === file.path;
+  // feature-file-tree-drag-drop-folders (Task 9) — the KEYBOARD path for
+  // "Move to…" (drag-only fails WCAG 2.1.1). Same eligibility as dragging.
+  const canMove = draggableRow && typeof menu !== 'undefined';
+  const fileDir = file.path.split('/').slice(0, -1).join('/');
   // Stable hook for the desktop E2E harness (data-testid convention — see the
   // `desktop-e2e` skill): canvas rows only, slug derived from the relative path
   // (e.g. `ui/Smoke.tsx` → `canvas-row-ui-smoke`).
@@ -1920,15 +2043,24 @@ function FileRow({
       data-testid={testId}
       aria-selected={isSel}
       aria-disabled={inert ? 'true' : undefined}
+      aria-busy={isBusy || undefined}
       tabIndex={isSel ? 0 : -1}
       className={
-        'st-row' + (isSel ? ' is-sel' : '') + (kind === 'runtime' ? ' is-muted' : '')
+        'st-row' +
+        (isSel ? ' is-sel' : '') +
+        (kind === 'runtime' ? ' is-muted' : '') +
+        (isDragging ? ' is-dragging' : '') +
+        (isBusy ? ' is-busy' : '')
       }
       style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
       title={file.path + (oc ? ` — ${oc} open` : inert ? ' (file index only)' : '')}
       onClick={() => {
         if (!inert) onOpen(file.path);
       }}
+      onContextMenu={
+        canMove ? (e) => menu.openAt(e, { kind: 'file', path: file.path, dir: fileDir }) : undefined
+      }
+      {...dragHandlers}
     >
       <span className="st-row-glyph">
         <StIcon name="file" size={13} />
@@ -1951,24 +2083,39 @@ function FileRow({
       {oc > 0 && <span className="st-row-badge">{oc}</span>}
     </button>
   );
-  if (!canDelete) return row;
-  // A sibling delete button (can't nest a button in the row button). The wrapper
-  // is presentational so the treeitem stays the tree's child for a11y.
+  if (!canDelete && !canMove) return row;
+  // Sibling menu/delete buttons (can't nest a button in the row button). The
+  // wrapper is presentational so the treeitem stays the tree's child for a11y.
   return (
     <div className="st-row-wrap" role="none">
       {row}
-      <button
-        type="button"
-        className="st-row-del"
-        title={`Delete ${label}`}
-        aria-label={`Delete canvas ${label}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(file.path, label);
-        }}
-      >
-        <Icon d="M3 6h18 M8 6V4h8v2 M6 6l1 14h10l1-14 M10 11v6 M14 11v6" size={12} />
-      </button>
+      {canMove && (
+        <button
+          type="button"
+          className={'st-row-menu-btn' + (canDelete ? ' has-delete-sibling' : '')}
+          data-testid={`tree-row-menu-${pathTestIdSlug(file.path)}`}
+          title={`Move ${label}…`}
+          aria-label={`Actions for ${label}`}
+          aria-haspopup="menu"
+          onClick={(e) => menu.openAt(e, { kind: 'file', path: file.path, dir: fileDir })}
+        >
+          <Icon d="M12 6a1 1 0 100-2 1 1 0 000 2zM12 13a1 1 0 100-2 1 1 0 000 2zM12 20a1 1 0 100-2 1 1 0 000 2z" size={12} />
+        </button>
+      )}
+      {canDelete && (
+        <button
+          type="button"
+          className="st-row-del"
+          title={`Delete ${label}`}
+          aria-label={`Delete canvas ${label}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(file.path, label);
+          }}
+        >
+          <Icon d="M3 6h18 M8 6V4h8v2 M6 6l1 14h10l1-14 M10 11v6 M14 11v6" size={12} />
+        </button>
+      )}
     </div>
   );
 }
@@ -1986,6 +2133,8 @@ function CanvasRow({
   forceOpen,
   dirtyByPath,
   experimentalKind,
+  drag,
+  menu,
 }) {
   const dirty = dirtyByPath?.get(primary.path);
   const hasSidecars = sidecars.length > 0;
@@ -2008,55 +2157,93 @@ function CanvasRow({
         kind={kind}
         dirty={dirty}
         experimentalKind={experimentalKind}
+        drag={drag}
+        menu={menu}
       />
     );
   }
-  return (
-    <Fragment>
-      <button
-        type="button"
-        role="treeitem"
-        aria-selected={isSel}
-        aria-expanded={open}
-        tabIndex={isSel ? 0 : -1}
-        className={'st-row st-canvas-row' + (isSel ? ' is-sel' : '')}
-        style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
-        title={primary.path}
+  const draggableRow = typeof drag !== 'undefined';
+  const dragHandlers = draggableRow ? drag.dragProps(primary.path, true) : {};
+  const isDragging = drag?.draggedPath === primary.path;
+  const isBusy = drag?.busyPath === primary.path;
+  const canMove = draggableRow && typeof menu !== 'undefined';
+  const primaryDir = primary.path.split('/').slice(0, -1).join('/');
+  const row = (
+    <button
+      type="button"
+      role="treeitem"
+      aria-selected={isSel}
+      aria-expanded={open}
+      aria-busy={isBusy || undefined}
+      tabIndex={isSel ? 0 : -1}
+      className={
+        'st-row st-canvas-row' +
+        (isSel ? ' is-sel' : '') +
+        (isDragging ? ' is-dragging' : '') +
+        (isBusy ? ' is-busy' : '')
+      }
+      style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
+      title={primary.path}
+      onClick={(e) => {
+        // Click the chevron region → toggle disclosure. Click anywhere else → open canvas.
+        if (e.target.closest('.st-canvas-chev')) {
+          setOpenState((v) => !v);
+          return;
+        }
+        onOpen(primary.path);
+      }}
+      onContextMenu={
+        canMove ? (e) => menu.openAt(e, { kind: 'file', path: primary.path, dir: primaryDir }) : undefined
+      }
+      {...dragHandlers}
+    >
+      <span
+        className="st-row-glyph st-canvas-chev"
         onClick={(e) => {
-          // Click the chevron region → toggle disclosure. Click anywhere else → open canvas.
-          if (e.target.closest('.st-canvas-chev')) {
-            setOpenState((v) => !v);
-            return;
-          }
-          onOpen(primary.path);
+          e.stopPropagation();
+          setOpenState((v) => !v);
         }}
       >
+        <StIcon name="chevron-right" className={'st-chev' + (open ? ' is-open' : '')} size={13} />
+      </span>
+      <span className="st-row-name">{displayName(primary.name)}</span>
+      {experimentalKind === 'reconstructed-experimental' && (
         <span
-          className="st-row-glyph st-canvas-chev"
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpenState((v) => !v);
-          }}
+          className="st-row-exp-badge"
+          title="Reconstructed from an image via /design:import --reconstruct — experimental, lossy, review before trusting (DDR-174)"
+          aria-label="Reconstructed, experimental"
         >
-          <StIcon name="chevron-right" className={'st-chev' + (open ? ' is-open' : '')} size={13} />
+          exp
         </span>
-        <span className="st-row-name">{displayName(primary.name)}</span>
-        {experimentalKind === 'reconstructed-experimental' && (
-          <span
-            className="st-row-exp-badge"
-            title="Reconstructed from an image via /design:import --reconstruct — experimental, lossy, review before trusting (DDR-174)"
-            aria-label="Reconstructed, experimental"
+      )}
+      {dirty && (
+        <span className="st-git-badge" data-kind={dirty} title={`Unsaved (${dirty})`} aria-label={`Unsaved, ${dirty}`}>
+          {dirty}
+        </span>
+      )}
+      {oc > 0 && <span className="st-row-badge">{oc}</span>}
+    </button>
+  );
+  return (
+    <Fragment>
+      {canMove ? (
+        <div className="st-row-wrap" role="none">
+          {row}
+          <button
+            type="button"
+            className="st-row-menu-btn"
+            data-testid={`tree-row-menu-${pathTestIdSlug(primary.path)}`}
+            title={`Move ${displayName(primary.name)}…`}
+            aria-label={`Actions for ${displayName(primary.name)}`}
+            aria-haspopup="menu"
+            onClick={(e) => menu.openAt(e, { kind: 'file', path: primary.path, dir: primaryDir })}
           >
-            exp
-          </span>
-        )}
-        {dirty && (
-          <span className="st-git-badge" data-kind={dirty} title={`Unsaved (${dirty})`} aria-label={`Unsaved, ${dirty}`}>
-            {dirty}
-          </span>
-        )}
-        {oc > 0 && <span className="st-row-badge">{oc}</span>}
-      </button>
+            <Icon d="M12 6a1 1 0 100-2 1 1 0 000 2zM12 13a1 1 0 100-2 1 1 0 000 2zM12 20a1 1 0 100-2 1 1 0 000 2z" size={12} />
+          </button>
+        </div>
+      ) : (
+        row
+      )}
       {open &&
         sidecars.map((sc) => (
           <FileRow
@@ -2089,6 +2276,15 @@ function Tree({
   onDelete,
   dirtyByPath,
   canvasKinds,
+  // feature-file-tree-drag-drop-folders (Task 8) — `dirPath` accumulates this
+  // node's full path (starts at the group's `fullPath`) so a DirRow knows
+  // where to fs-move a drop TO; `drag` is the shared drag-bookkeeping bundle
+  // from useTreeDrag, undefined for groups that can't participate (DS).
+  dirPath = '',
+  drag,
+  // feature-file-tree-drag-drop-folders (Task 9) — the shared row-menu
+  // instance (useRowMenu()), undefined for groups that can't participate.
+  menu,
 }) {
   const dirs = Object.keys(node)
     .filter((k) => k !== '_files')
@@ -2132,6 +2328,8 @@ function Tree({
             forceOpen={forceOpen}
             dirtyByPath={dirtyByPath}
             experimentalKind={canvasKinds?.[entry.primary.path]}
+            drag={drag}
+            menu={menu}
           />
         );
       })}
@@ -2147,9 +2345,10 @@ function Tree({
             kind={kind}
           />
         ))}
-      {/* orphans are sidecars/loose files — no canvas to delete, so no onDelete */}
+      {/* orphans are sidecars/loose files — no canvas to delete, so no onDelete/drag */}
       {dirs.map((d) => {
         const dsMatch = dsFolderByName?.get(d);
+        const childPath = dirPath ? `${dirPath}/${d}` : d;
         const childTree = (
           <Tree
             node={node[d]}
@@ -2165,6 +2364,9 @@ function Tree({
             onDelete={onDelete}
             dirtyByPath={dirtyByPath}
             canvasKinds={canvasKinds}
+            dirPath={childPath}
+            drag={drag}
+            menu={menu}
           />
         );
         if (dsMatch && onOpenSystem) {
@@ -2183,7 +2385,15 @@ function Tree({
           );
         }
         return (
-          <DirRow key={d} name={d} depth={depth} defaultOpen={true}>
+          <DirRow
+            key={d}
+            name={d}
+            depth={depth}
+            defaultOpen={true}
+            dirPath={childPath}
+            drag={drag}
+            menu={menu}
+          >
             {childTree}
           </DirRow>
         );
@@ -2240,25 +2450,109 @@ function Sidebar({
   remoteSync,
   onGetLatest,
   canvasKinds,
+  onMoveCanvas,
+  onNewFolder,
+  onDeleteFolder,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
     return groups.map((g) => ({ ...g, tree: filterTree(g.tree, search), filtered: !!search }));
   }, [groups, search]);
 
+  // feature-file-tree-drag-drop-folders (Task 8) — one drag-bookkeeping
+  // instance shared by every group's Tree; `onMoveCanvas` does the actual
+  // fetch + tree refresh (App-level, alongside createBoard/deleteBoard).
+  const treeDrag = useTreeDrag(onMoveCanvas);
+
+  // feature-file-tree-drag-drop-folders (Task 9) — the keyboard path. One
+  // shared row-menu instance (only one row's menu is ever open); every
+  // non-DS canvas group folder (incl. each group's own root) is a valid
+  // "Move to…" destination.
+  const rowMenu = useRowMenu();
+  const destinations = useMemo(() => {
+    const out = [];
+    for (const g of groups) {
+      if (g.label === 'Design system' || g.kind !== 'canvas') continue;
+      const rootLabel = g.fullPath.replace(/^\.[^/]+\//, '') || g.fullPath;
+      out.push({ path: g.fullPath, label: rootLabel });
+      for (const d of g.dirs || []) {
+        out.push({ path: d, label: d.replace(/^\.[^/]+\//, '') });
+      }
+    }
+    return out;
+  }, [groups]);
+  const menuExtra = rowMenu.state?.extra;
+  const rowMenuRootItems =
+    menuExtra?.kind === 'file'
+      ? [{ id: 'move-to', label: 'Move to…', onSelect: () => rowMenu.showMoveTo() }]
+      : menuExtra?.kind === 'dir'
+        ? [
+            {
+              id: 'new-folder-here',
+              label: 'New folder here',
+              onSelect: () => {
+                rowMenu.close();
+                const name = window.prompt('New folder name:');
+                if (name?.trim()) onNewFolder(menuExtra.dirPath, name.trim());
+              },
+            },
+            {
+              id: 'delete-folder',
+              label: 'Delete folder',
+              destructive: true,
+              onSelect: () => {
+                rowMenu.close();
+                onDeleteFolder(menuExtra.dirPath, menuExtra.dirPath.split('/').pop());
+              },
+            },
+          ]
+        : [];
+  const rowMenuDestinations =
+    menuExtra?.kind === 'file'
+      ? destinations.filter((d) => d.path !== menuExtra.dir)
+      : [];
+
   // Phase 22 — inline "new brief board" composer in the tree header. Click +,
   // type a name, Enter to create (Esc cancels). The board opens active so it's
   // ready to annotate; generation (ingest) still goes through /design:new.
+  // feature-file-tree-drag-drop-folders (Task 12) — the SAME composer, in
+  // 'folder' mode, backs the header "New folder" button — the plan's
+  // InlineComposer intent (one composer, two submit paths) without a full
+  // component extraction: `composerMode` picks the placeholder + handler.
   const [creating, setCreating] = useState(false);
+  const [composerMode, setComposerMode] = useState('board');
   const [newName, setNewName] = useState('');
   const [newErr, setNewErr] = useState('');
   const [newBusy, setNewBusy] = useState(false);
 
-  const submitNewBoard = useCallback(async () => {
+  // Default folder-creation target: the first non-DS canvas group's root
+  // (mirrors the server's own `newCanvasDir` default for board creation).
+  const defaultFolderParent = useMemo(
+    () => groups.find((g) => g.kind === 'canvas' && g.label !== 'Design system')?.fullPath,
+    [groups]
+  );
+
+  const submitComposer = useCallback(async () => {
     const name = newName.trim();
     if (!name || newBusy) return;
     setNewBusy(true);
     setNewErr('');
+    if (composerMode === 'folder') {
+      if (!defaultFolderParent) {
+        setNewBusy(false);
+        setNewErr('no canvas group to create a folder in');
+        return;
+      }
+      const res = await onNewFolder(defaultFolderParent, name);
+      setNewBusy(false);
+      if (res?.ok) {
+        setCreating(false);
+        setNewName('');
+      } else {
+        setNewErr(res?.error || 'could not create folder');
+      }
+      return;
+    }
     const res = await onNewBoard(name);
     setNewBusy(false);
     if (res?.ok) {
@@ -2267,7 +2561,7 @@ function Sidebar({
     } else {
       setNewErr(res?.error || 'could not create board');
     }
-  }, [newName, newBusy, onNewBoard]);
+  }, [newName, newBusy, onNewBoard, onNewFolder, composerMode, defaultFolderParent]);
 
   // Mock uses `42 / 42` — total openable canvases, not every listed file.
   // We count canvas files (TSX Phase 3.6+ default, HTML legacy) so the counter
@@ -2299,14 +2593,32 @@ function Sidebar({
             className="st-iconbtn"
             data-tip="New blank brief board"
             aria-label="New blank brief board"
-            aria-expanded={creating}
+            aria-expanded={creating && composerMode === 'board'}
             onClick={() => {
               setNewErr('');
-              setCreating((v) => !v);
+              setComposerMode('board');
+              setCreating((v) => (composerMode === 'board' ? !v : true));
             }}
           >
             <StIcon name="plus" size={15} />
           </button>
+          {defaultFolderParent && (
+            <button
+              type="button"
+              className="st-iconbtn"
+              data-tip="New folder"
+              aria-label="New folder"
+              data-testid="tree-new-folder"
+              aria-expanded={creating && composerMode === 'folder'}
+              onClick={() => {
+                setNewErr('');
+                setComposerMode('folder');
+                setCreating((v) => (composerMode === 'folder' ? !v : true));
+              }}
+            >
+              <StIcon name="folder-plus" size={15} />
+            </button>
+          )}
           {onRefresh && (
             <button
               type="button"
@@ -2347,16 +2659,16 @@ function Sidebar({
             type="text"
             // biome-ignore lint/a11y/noAutofocus: deliberate — the composer opens on an explicit click.
             autoFocus
-            placeholder="brief board name…"
+            placeholder={composerMode === 'folder' ? 'folder name…' : 'brief board name…'}
             value={newName}
             maxLength={60}
             disabled={newBusy}
-            aria-label="New brief board name"
+            aria-label={composerMode === 'folder' ? 'New folder name' : 'New brief board name'}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
-                submitNewBoard();
+                submitComposer();
               } else if (e.key === 'Escape') {
                 e.preventDefault();
                 setCreating(false);
@@ -2370,8 +2682,8 @@ function Sidebar({
             className="st-newboard-go"
             disabled={newBusy || !newName.trim()}
             data-tip="Create · Enter"
-            aria-label="Create brief board"
-            onClick={submitNewBoard}
+            aria-label={composerMode === 'folder' ? 'Create folder' : 'Create brief board'}
+            onClick={submitComposer}
           >
             {newBusy ? '…' : '↵'}
           </button>
@@ -2441,14 +2753,24 @@ function Sidebar({
           const explicit = sectionsExpanded[g.label];
           // Active search forces every section open so hits aren't hidden.
           const sectionOpen = !!search || (explicit === undefined ? defaultOpen : explicit);
+          // feature-file-tree-drag-drop-folders (dogfood follow-up) — the
+          // section header IS the drop target for "move back to this group's
+          // root". Without this a canvas inside a folder could never return
+          // to the top level via drag & drop — DirRow only covers actual
+          // subfolders, never the group root itself.
+          const canDropOnRoot = !isDs && g.kind === 'canvas';
+          const rootDropHandlers = canDropOnRoot ? treeDrag.dropProps(g.fullPath, true) : {};
+          const isRootOver = treeDrag.overDir === g.fullPath;
           return (
             <div className="st-tree-section" key={g.label}>
               <button
                 type="button"
-                className="st-tree-sec-hd"
+                className={'st-tree-sec-hd' + (isRootOver ? ' is-drop-target' : '')}
                 onClick={() => onToggleSection(g.label, defaultOpen)}
                 aria-expanded={sectionOpen}
+                aria-dropeffect={canDropOnRoot ? 'move' : undefined}
                 title={sectionOpen ? 'Collapse section' : 'Expand section'}
+                {...rootDropHandlers}
               >
                 <StIcon name="chevron-right" className={'st-chev' + (sectionOpen ? ' is-open' : '')} size={13} />
                 <span className="st-sec-name">{meta.title}</span>
@@ -2471,6 +2793,9 @@ function Sidebar({
                     onDelete={isDs ? undefined : onDeleteBoard}
                     dirtyByPath={dirtyByPath}
                     canvasKinds={canvasKinds}
+                    dirPath={g.fullPath}
+                    drag={!isDs && g.kind === 'canvas' ? treeDrag : undefined}
+                    menu={!isDs && g.kind === 'canvas' ? rowMenu : undefined}
                   />
                 ) : (
                   <div className="st-tree-empty">{search ? 'No matches.' : 'Empty.'}</div>
@@ -2479,10 +2804,21 @@ function Sidebar({
           );
         })}
       </div>
+      <TreeRowMenu
+        state={rowMenu.state}
+        onClose={rowMenu.close}
+        rootItems={rowMenuRootItems}
+        destinations={rowMenuDestinations}
+        onPickDestination={(dest) => onMoveCanvas(menuExtra.path, dest)}
+      />
       {/* Phase 29 (E4) — the project + draft switcher: a compact one-line dock that
           opens UPWARD, sitting directly above the GitHub identity avatar so the two
           form one bottom dock. Renders nothing until the project is a git repo. */}
       <RepoBranchSwitcher project={project} liveBranch={gitBranch} remoteSync={remoteSync} onGetLatest={onGetLatest} />
+      {/* Cloud Phase 23 C3 — Maude Cloud sign-in + remote-project attach, docked
+          above the GitHub identity. Dev-server-backed, so it works in the desktop
+          shell AND a plain browser. */}
+      <CloudBar />
       {/* Phase 28 (E3) — GitHub identity as a compact avatar docked at the BOTTOM:
           sign in, connected account + New/Pull/Share, sign out. Self-contained
           (owns its device-code + CreateProject dialogs). Renders nothing in browser. */}
@@ -3105,6 +3441,7 @@ function HelpDropdown({ onAction, onClose }) {
       items={[
         { id: 'shortcuts', label: 'Keyboard shortcuts', shortcut: '?' },
         { id: 'help', label: 'Help · commands & flows', shortcut: 'F1' },
+        { id: 'report-bug', label: 'Report a bug…' },
         { sep: true },
         { id: 'tour', label: 'Take the tour' },
         { id: 'watch-intro', label: 'Watch the intro' },
@@ -3249,6 +3586,7 @@ function Menubar({
   onToggleShowHidden,
   onOpenHelp,
   onOpenShortcuts,
+  onReportBug,
   onStartTour,
   onStartCollabTour,
   annotationsVisible,
@@ -3575,6 +3913,7 @@ function Menubar({
           onAction={(id) => {
             if (id === 'shortcuts') onOpenShortcuts?.();
             else if (id === 'help') onOpenHelp?.();
+            else if (id === 'report-bug') onReportBug?.();
             else if (id === 'tour') onStartTour?.();
             else if (id === 'collab-tour') onStartCollabTour?.();
             else if (id === 'quick-setup') onOpenQuickSetup?.();
@@ -8855,6 +9194,17 @@ function App() {
   const [showHidden, setShowHidden] = useState(() => readBoolStore(SHOW_HIDDEN_STORE, false));
   const [sectionsExpanded, setSectionsExpanded] = useState(() => readJsonStore(SECTIONS_STORE, {}));
   const [helpOpen, setHelpOpen] = useState(false);
+  const [reportBugOpen, setReportBugOpen] = useState(false);
+
+  // Native Help ▸ Report a Bug… (menu.rs emits `menu://report-bug`) — same
+  // lane as IdentityBar's File ▸ New Project… subscription.
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    const p = onMenuReportBug(() => setReportBugOpen(true));
+    return () => {
+      p.then((un) => un()).catch(() => {});
+    };
+  }, []);
   const [readinessOpen, setReadinessOpen] = useState(false);
   const [introOpen, setIntroOpen] = useState(false);
   const [quickSetupOpen, setQuickSetupOpen] = useState(false);
@@ -10132,7 +10482,7 @@ function App() {
       setProject(data.project || 'Design');
       const built = data.groups.map((g) => ({
         ...g,
-        tree: buildTree(g.paths, g.stripPrefix),
+        tree: buildTree(g.paths, g.stripPrefix, g.dirs),
       }));
       setGroups(built);
       // DDR-093 — fold the server-resolved per-canvas DS map into cfg so
@@ -10284,6 +10634,22 @@ function App() {
             // the branch-scoped tree so other open tabs reflect it without a
             // reload. Cross-machine peers get a new canvas via git "Get latest".
             loadTree();
+            // feature-file-tree-drag-drop-folders (Task 10) — a canvas moved.
+            // moveCanvasReq already retargets the INITIATING tab locally (no
+            // need to wait for this broadcast to round-trip); this branch is
+            // for every OTHER open tab on the same dev-server, so a canvas
+            // that was open there doesn't go dead pointing at a path that no
+            // longer exists.
+            if (m.payload?.action === 'moved' && m.payload.fromRel && m.payload.rel) {
+              const designRel = (cfg?.designRel || cfg?.designRoot || '.design').replace(
+                /^\/+|\/+$/g,
+                ''
+              );
+              const fromFile = `${designRel}/${m.payload.fromRel}`;
+              const toFile = `${designRel}/${m.payload.rel}`;
+              setTabs((prev) => prev.map((t) => (t.path === fromFile ? { path: toFile } : t)));
+              setActivePath((prev) => (prev === fromFile ? toFile : prev));
+            }
           } else if (m.type === 'config-updated') {
             // Server hot-reloaded .design/config.json (/design:setup-ds rewrote
             // it) — refetch /_config so designSystems / tokensCssRel / groups
@@ -10805,6 +11171,110 @@ function App() {
       }
     },
     [loadTree, activePath]
+  );
+
+  // feature-file-tree-drag-drop-folders (Task 8/10) — drag-drop AND the
+  // context-menu "Move to…" both funnel through this one function. POSTs the
+  // main-origin-only /_api/fs-move, then (only AFTER the server ack — no
+  // optimistic UI, per rca/issue-canvas-hmr-optimistic-update-consistency)
+  // reloads the tree and retargets any open tab / the active path so a
+  // dragged-and-open canvas doesn't go dead. Toasts with an inverse-move
+  // Undo. Named function expression so the Undo click can call itself.
+  const moveCanvasReq = useCallback(
+    async function moveCanvasReq(fromPath, toDir) {
+      try {
+        const r = await fetch('/_api/fs-move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file: fromPath, toDir }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) {
+          shellToast(`Could not move: ${j.error || `error ${r.status}`}`);
+          return { ok: false, error: j.error };
+        }
+        const designRel = (cfg?.designRel || cfg?.designRoot || '.design').replace(
+          /^\/+|\/+$/g,
+          ''
+        );
+        const fromFile = `${designRel}/${j.fromRel}`;
+        const toFile = `${designRel}/${j.toRel}`;
+        await loadTree();
+        setTabs((prev) => prev.map((t) => (t.path === fromFile ? { path: toFile } : t)));
+        setActivePath((prev) => (prev === fromFile ? toFile : prev));
+        const fromDir = fromFile.split('/').slice(0, -1).join('/');
+        shellToast(`Moved to ${j.toRel.split('/').slice(0, -1).join('/') || '.'}`, true, {
+          label: 'Undo',
+          onClick: () => {
+            moveCanvasReq(toFile, fromDir);
+          },
+        });
+        return { ok: true };
+      } catch (e) {
+        shellToast(`Move failed: ${e instanceof Error ? e.message : 'network error'}`);
+        return { ok: false, error: 'network error' };
+      }
+    },
+    [loadTree, cfg]
+  );
+
+  // feature-file-tree-drag-drop-folders (Task 4/9/12) — create a folder under
+  // `parentDir`. Two callers: the sidebar header composer (name from its own
+  // input state) and the tree-row context menu's "New folder here" (name via
+  // `window.prompt` — a native, fully keyboard/screen-reader-operable input,
+  // so that path doesn't need its own inline composer instance).
+  const newFolderReq = useCallback(
+    async (parentDir, name) => {
+      try {
+        const r = await fetch('/_api/fs-mkdir', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ parent: parentDir, name }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) {
+          const error = j.error || `error ${r.status}`;
+          shellToast(`Could not create folder: ${error}`);
+          return { ok: false, error };
+        }
+        await loadTree();
+        return { ok: true, dir: j.dir };
+      } catch (e) {
+        const error = e instanceof Error ? e.message : 'network error';
+        shellToast(`Create folder failed: ${error}`);
+        return { ok: false, error };
+      }
+    },
+    [loadTree]
+  );
+
+  // feature-file-tree-drag-drop-folders (dogfood follow-up) — delete a
+  // folder from the tree-row context menu. Reuses DELETE /_api/canvas (the
+  // route now auto-detects a non-.tsx target as a folder delete); every
+  // canvas inside is trashed the same recoverable way as a single-canvas
+  // delete (`.design/_trash/<stamp>__<slug>/`).
+  const deleteFolderReq = useCallback(
+    async (dirPath, label) => {
+      const ok = window.confirm(
+        `Delete folder "${label}"?\n\nEvery canvas inside moves to trash (recoverable from .design/_trash/); ` +
+          `any empty subfolders are removed.`
+      );
+      if (!ok) return;
+      try {
+        const r = await fetch(`/_api/canvas?file=${encodeURIComponent(dirPath)}`, {
+          method: 'DELETE',
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) {
+          shellToast(`Could not delete folder: ${j.error || `error ${r.status}`}`);
+          return;
+        }
+        await loadTree();
+      } catch (e) {
+        shellToast(`Delete folder failed: ${e instanceof Error ? e.message : 'network error'}`);
+      }
+    },
+    [loadTree]
   );
 
   const clearSelected = useCallback(() => {
@@ -13164,6 +13634,13 @@ function App() {
         kbd: 'F1',
         run: () => setHelpOpen(true),
       },
+      {
+        id: 'report-bug',
+        group: 'Help',
+        label: 'Report a bug…',
+        icon: 'help',
+        run: () => setReportBugOpen(true),
+      },
     ],
     [openSystem, toggleTheme, reloadActive, whatsNew, createVideo]
   );
@@ -13217,6 +13694,9 @@ function App() {
           onToggleSection={toggleSection}
           onNewBoard={createBoard}
           onDeleteBoard={deleteBoard}
+          onMoveCanvas={moveCanvasReq}
+          onNewFolder={newFolderReq}
+          onDeleteFolder={deleteFolderReq}
           onRefresh={refreshTree}
           refreshing={treeRefreshing}
           collapsed={false}
@@ -13374,6 +13854,7 @@ function App() {
           onToggleShowHidden={() => setShowHidden((v) => !v)}
           onOpenHelp={() => setHelpOpen(true)}
           onOpenShortcuts={() => setShortcutsOpen(true)}
+          onReportBug={() => setReportBugOpen(true)}
           onStartTour={() => startTour(USAGE_TOUR)}
           onStartCollabTour={() => startTour(COLLAB_TOUR)}
           annotationsVisible={annotationsVisible}
@@ -14428,6 +14909,7 @@ function App() {
           startTour(USAGE_TOUR);
         }}
       />
+      <ReportBugDialog open={reportBugOpen} onClose={() => setReportBugOpen(false)} />
       <WhatsNewPanel wn={whatsNew} onStartTour={startTour} />
       <ExportPanel center={exportCenter} />
       <ReadinessDialog open={readinessOpen} onClose={() => setReadinessOpen(false)} />

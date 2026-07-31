@@ -53,6 +53,7 @@ export type SignInFailure =
   | 'unreachable'
   | 'not-a-maude-workspace'
   | 'bad-credentials'
+  | 'cloud-identity'
   | 'rate-limited'
   | 'save-failed'
   | 'server-error';
@@ -147,6 +148,20 @@ export async function signInToWorkspace(
   }
   if (res.status === 429) {
     return fail(429, 'Too many attempts. Wait a minute and try again.', 'rate-limited');
+  }
+  if (res.status === 400) {
+    // The ONE refusal that comes with directions (Phase 23 B3): a cloud
+    // workspace saying "this door signs in through Maude Cloud" — or a viewer
+    // being told what viewing needs. Swallowing it into "try again shortly"
+    // turned the most actionable message on this path into a shrug.
+    let message = 'The workspace refused the sign-in.';
+    try {
+      const body = (await res.json()) as { error?: unknown };
+      if (typeof body.error === 'string' && body.error) message = body.error;
+    } catch {
+      /* keep the generic sentence */
+    }
+    return fail(400, message, 'cloud-identity');
   }
   if (!res.ok) {
     return fail(502, 'The workspace refused the sign-in. Try again shortly.', 'server-error');

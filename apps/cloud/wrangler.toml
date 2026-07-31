@@ -1,0 +1,68 @@
+# Maude Cloud control plane — Cloud Phase 12.
+#
+# Deployable the moment Phase 11 clears (Workers Paid + zone). Until then:
+# `wrangler deploy --dry-run` must stay clean, and D1 (Free-tier reachable)
+# carries the schema so /health can be proven the day the route exists.
+#
+# Queues are COMMENTED, not configured-and-broken: they need Workers Paid, and
+# the jobs TABLE is the durable record either way — a queue is only a faster
+# drain of it (worker.mjs header). Uncomment in Phase 11's wake.
+
+name = "maude-cloud"
+main = "worker.mjs"
+compatibility_date = "2026-07-01"
+preview_urls = false
+
+# The control plane answers on cloud.maude.sh. Tenant hostnames
+# (`<tenant>.cloud.maude.sh`) are NOT listed here: each is a Worker CUSTOM
+# DOMAIN created when the project is provisioned, which is the only mechanism
+# that gives a third-level name both a route and a certificate. A wildcard
+# route cannot express it (Cloudflare allows a wildcard only at the start of a
+# hostname) and free Universal SSL does not cover it. Both were tried first.
+routes = [
+  { pattern = "cloud.maude.sh", custom_domain = true },
+]
+
+[triggers]
+crons = ["0 * * * *"]   # hourly reconcile sweep — the source of truth pass
+
+[vars]
+# Provisioning a project = attaching `<id>.cloud.maude.sh` to the data-plane
+# Worker (apps/cells) through the API. The ids are not secrets; the token
+# (CF_PROVISION_TOKEN, `wrangler secret put`) is.
+CF_ACCOUNT_ID = "b5b596efe65abb732777c7171dc18145"
+CF_ZONE_ID = "b27eb712a0031253edf58c0e31c57b7b"
+CELL_ZONE = "cloud.maude.sh"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "maude-cloud-control-plane"
+database_id = "cf2b8fdc-6c3f-42f9-9305-0040e01391eb"  # live; schema v1 applied 2026-07-28, idempotence re-proven 2026-07-29
+
+# The dashboard's "Download everything" serves export files the CELL wrote
+# (Cloud Phase 20). Same bucket the cells use; the binding reads only
+# `tenants/<id>/exports/` keys, enforced in project-admin.mjs.
+[[r2_buckets]]
+binding = "EXPORTS"
+bucket_name = "maude-cloud-assets"
+
+# [[queues.producers]]
+# binding = "RECONCILE_QUEUE"
+# queue = "maude-reconcile"
+# [[queues.consumers]]
+# queue = "maude-reconcile"
+
+# Secrets (wrangler secret put): STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
+
+# The MaudeCell class briefly lived here before the split. Deleting it is safe
+# and deliberate: no cell ever completed a start under this script, so the
+# namespace holds no tenant state. The data plane creates its own.
+[[migrations]]
+tag = "v2"
+deleted_classes = ["MaudeCell"]
+
+# Cells live in a SEPARATE Worker (apps/cells). `wrangler deploy` reconciles a
+# script's routes and deletes any custom domain not declared in its config —
+# and tenant hostnames are created per project at provision time, so they can
+# never be in a committed config. Keeping them here would mean every
+# control-plane deploy silently unrouted every customer.

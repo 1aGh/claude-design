@@ -123,6 +123,24 @@ For maximum reconciliation quality, escalate the reduce-pass to a **live design-
 
 This is the ONLY place `/design:critic` uses the `relay` tier; it fires only on genuine cross-discipline conflict (the stakes-gate), never on a single-discipline panel. When `designTeam.enabled` is false or no conflict crosses the threshold, the step-6.1 reduce-pass stands. The team NEVER prompts the user; the reduce-vs-relay line holds — only the native runtime relays.
 
+### 6.5 Record the verdict in the graph (kgai — when active)
+
+`<designRoot>/_history/**` is **gitignored** (DDR-115 runtime-state taxonomy), so a critique — the record of *why* a canvas looks the way it does — never leaves this machine. When the graph is active it becomes the only inheritable copy.
+
+After the reports are final (post-6.1/6.2, so the recorded list is the reconciled one):
+
+```bash
+# The consolidated panel — one node per critique run.
+maude kg record-log --file "<designRoot>/_history/<slug>/critique/<NNN>-PANEL.md" \
+  --kind critic-verdict --about "canvas:<slug>" --link EVALUATES
+
+# Single-critic run (no PANEL written) — record that report instead.
+maude kg record-log --file "<designRoot>/_history/<slug>/critique/<NNN>-<critic>.md" \
+  --kind critic-verdict --about "canvas:<slug>" --link EVALUATES
+```
+
+Record the **panel** when one exists, the single report otherwise — never both, or the same run counts twice. The verb gates itself and is a **silent no-op when the graph is inactive**, so run it unconditionally. It derives a per-canvas slug automatically (`<canvas>-<NNN>-PANEL`) — without that, two canvases' `001-PANEL.md` collapse into one node and the second silently overwrites the first. Contract: **`flow:kgai-backend`**.
+
 ### 7. Print summary
 
 ```

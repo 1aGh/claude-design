@@ -1,0 +1,206 @@
+{
+  "title": "Cloud Self Service",
+  "subtitle": "Every screen a Maude Cloud customer walks through, in order — a legend board plus 14 screen boards across 5 stages, each annotated with sticky notes",
+  "brief": "udelej mi nejdriv kompletni design vsech screens ktere aktualne v cloud maude uzivatel musi projit, chci videt cely self service hub a pridej mi k tomu sticky notes at vidim cely proces hezky vedle sebe. Potrebuji videt komplet user flow",
+  "kind": "canvas",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "palette",
+  "brief_sha": "fe893bc4",
+  "tags": [
+    "cloud",
+    "self-service",
+    "user-flow",
+    "onboarding",
+    "billing"
+  ],
+  "status": "draft",
+  "sections": [
+    {
+      "id": "guide",
+      "title": "0 · How to read this",
+      "subtitle": "the spine and the key"
+    },
+    {
+      "id": "arrive",
+      "title": "1 · Arrive",
+      "subtitle": "cloud.maude.sh — the two doors, and the account behind both"
+    },
+    {
+      "id": "buy",
+      "title": "2 · Buy",
+      "subtitle": "empty dashboard → wizard → Stripe → waiting room. The only irreversible step in the flow."
+    },
+    {
+      "id": "open",
+      "title": "3 · Open it",
+      "subtitle": "the dashboard, the last door, and the hand-off into the desktop app"
+    },
+    {
+      "id": "run",
+      "title": "4 · Run it",
+      "subtitle": "self-administration — people, money, and the copy on GitHub"
+    },
+    {
+      "id": "depart",
+      "title": "5 · Leave it · more devices",
+      "subtitle": "the exit that makes the rest credible, and the door for a second machine"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "legend",
+      "label": "00 · how to read this board",
+      "note": "The entry point: title block, the five-stage spine with its board ranges, and the key for the three sticky-note colours (what happens / gap / fork). Exists because DCSection renders display:contents inside DesignCanvas, so section titles never reach the screen — the chapter spine has to live on the boards themselves."
+    },
+    {
+      "id": "landing",
+      "label": "A1 · landing · cloud.maude.sh",
+      "note": "pages.mjs homePage — lockup, 'A home for your design projects', Google button first-class beside 'Create an account'. Gap note: the bill of materials (desktop computer, Maude app, paid Anthropic subscription) is never stated."
+    },
+    {
+      "id": "auth",
+      "label": "A2 · create account · sign in",
+      "note": "pages.mjs signupPage + loginPage side by side — Google wide, the in-page disclosure card + consent tick, ?next= carry-back, one error message for both fields. Gap note: Google consent screen still in Testing."
+    },
+    {
+      "id": "dashboard-empty",
+      "label": "B1 · your projects · empty",
+      "note": "dashboard.mjs dashboardPage, zero projects — the full appShell arrives before anything is in it. Gap note: production audit_log holds no project-creation event; the wizard has never run."
+    },
+    {
+      "id": "new-project",
+      "label": "B2 · start a project · the wizard",
+      "note": "checkout-pages.mjs newProjectPage — name, two plan tiles, monthly/annual, trial framing. Gap note: this is the last honest moment before a card form."
+    },
+    {
+      "id": "payment",
+      "label": "B3 · payment details · Stripe (not our page)",
+      "note": "Stripe-hosted checkout on checkout.stripe.com — the one surface in the flow that is not ours. Gap note: rk_test_ key, every live price id null, no automatic_tax, no legal pack, no public pricing page."
+    },
+    {
+      "id": "waiting",
+      "label": "B4 · waiting room · three endings",
+      "note": "checkout-pages.mjs waitingRoomPage — named steps never a percentage (DDR-203), meta-refresh not script, the 'have I been charged?' answer on screen. Ready and failed endings shown. Gap note: max_instances = 1 and Worker-global per-tenant config."
+    },
+    {
+      "id": "dashboard",
+      "label": "C1 · your projects · every state",
+      "note": "dashboard.mjs with four cards across the STATE_COPY ladder + the ⋯ menu open. Download everything appears in every state. Gap note: the reconciler computes suspend-cell and never runs it."
+    },
+    {
+      "id": "connect",
+      "label": "C2 · open your project · the last door",
+      "note": "project-admin.mjs connectPage — 'In the Maude app' one-click handoff vs 'In your browser'. Gap note: the browser card instructs a workspace password no customer is ever issued; Windows download is unsigned."
+    },
+    {
+      "id": "launch",
+      "label": "C3 · maude:// hand-off · the app opens",
+      "note": "handoff.mjs launchPage + the desktop app arriving attached. One-time code, 120s, burn-before-decide; the app redeems against its OWN configured cloud address. Gap note: the second (Anthropic) bill lands here."
+    },
+    {
+      "id": "people",
+      "label": "D1 · people · invitation · join",
+      "note": "people-page.mjs peoplePage + the invitation email + invites.mjs invitePage (create-account mode). The invitation IS the account. Gap note: the viewer's gallery is linked from nowhere and only a terminal can publish into it."
+    },
+    {
+      "id": "billing",
+      "label": "D2 · billing · handed to Stripe",
+      "note": "checkout-pages.mjs billingPage — we state the situation, Stripe's portal owns everything that changes it. All three state cards shown. Gap note: the past-due → suspend → export → purge ladder has never run."
+    },
+    {
+      "id": "mirror-activity",
+      "label": "D3 · GitHub copy · activity log",
+      "note": "project-admin.mjs mirrorPage + auditPage — additions-only hourly copy to a repo the customer owns, and the audit log in the customer's language (AUDIT_COPY). Together these are the trust surface."
+    },
+    {
+      "id": "leave",
+      "label": "E1 · download everything · delete",
+      "note": "project-admin.mjs downloadPage + deletePage — delete is gated on an export existing. Gap notes: 'it opens without Maude' describes a git bundle; delete never purges tenants/<id>/ from storage."
+    },
+    {
+      "id": "devices",
+      "label": "E2 · connect an app · connected devices",
+      "note": "device-auth.mjs activatePage + accountPage — the device-code path in from a second machine, and the list of connected apps with the offline-revocation caveat."
+    }
+  ],
+  "layout": {
+    "artboards": [
+      {
+        "id": "legend",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "landing",
+        "x": 0,
+        "y": 1220
+      },
+      {
+        "id": "auth",
+        "x": 1900,
+        "y": 1220
+      },
+      {
+        "id": "dashboard-empty",
+        "x": 0,
+        "y": 2440
+      },
+      {
+        "id": "new-project",
+        "x": 1900,
+        "y": 2440
+      },
+      {
+        "id": "payment",
+        "x": 3800,
+        "y": 2440
+      },
+      {
+        "id": "waiting",
+        "x": 5700,
+        "y": 2440
+      },
+      {
+        "id": "dashboard",
+        "x": 0,
+        "y": 3660
+      },
+      {
+        "id": "connect",
+        "x": 1900,
+        "y": 3660
+      },
+      {
+        "id": "launch",
+        "x": 3800,
+        "y": 3660
+      },
+      {
+        "id": "people",
+        "x": 0,
+        "y": 4880
+      },
+      {
+        "id": "billing",
+        "x": 1900,
+        "y": 4880
+      },
+      {
+        "id": "mirror-activity",
+        "x": 3800,
+        "y": 4880
+      },
+      {
+        "id": "leave",
+        "x": 0,
+        "y": 6100
+      },
+      {
+        "id": "devices",
+        "x": 1900,
+        "y": 6100
+      }
+    ]
+  }
+}

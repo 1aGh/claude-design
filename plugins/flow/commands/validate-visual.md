@@ -82,6 +82,16 @@ Save to `.ai/logs/visual/<date>-visual.md`:
 PASS / NEEDS FIXES
 ```
 
+## Record it in the graph (kgai — when active)
+
+`.ai/logs/**` is **gitignored**, so a visual regression verdict never reaches anyone else. When the graph is active, right after writing the report:
+
+```bash
+maude kg record-log --file ".ai/logs/visual/<date>-visual.md"
+```
+
+The verb gates itself and is a **silent no-op when the graph is inactive** — run it unconditionally; the classic `.ai/` path is unchanged. It lands a `visual-review:<slug>` node with the full body plus `EVIDENCE_FOR` edges to any cited `DDR-NNN`. Contract: **`flow:kgai-backend`**.
+
 ## Post-Validation
 
 If issues found:

@@ -25,6 +25,7 @@ dev-server/.cache/
 .design/_draw/
 .design/_photo/
 .design/_smoke/
+.design/_reports/
 .design/_comments/
 .design/_canvas-state/
 .design/_chat/
@@ -121,3 +122,7 @@ cli/.platform-binary-path
 
 # kgai engine fetch staging (sync-kg.mjs → stage-resources.mjs copies it into resources/)
 apps/desktop/.kg-staging/
+apps/cloud/.dev.vars*
+
+# Cloud deploy credentials — live tokens, never committed (Cloud Phase 15).
+apps/*/.dev.vars.deploy

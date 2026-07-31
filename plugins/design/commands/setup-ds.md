@@ -106,6 +106,21 @@ See `plugins/design/skills/design-system/SKILL.md` "Bootstrap flow" for the cano
 10. **4 brand rounds panel** — **Round 1 (Clarity: completeness + a11y) runs first** (the structural floor must hold before aesthetics matter, and Round 2 reads Round 1's blocker count to set severity). After Round 1 returns, **Rounds 2 + 3 fire together as one parallel batch** (single assistant message, multiple Agent calls): Round 2 (Appeal: graphic-design + signature-moment) + Round 3 (Consistency: typography + brand + copy). Honest verdicts surface in the completion block. Canonical spec (gating + verdicts + parallelism) lives in `plugins/design/skills/design-system/SKILL.md` post-scaffold gate — this is a pointer.
 11. Post-flight — print next-step block.
 
+### Step 3.9 — Record the locked direction (kgai — when active)
+
+The **LOCK gate** (DDR-147) is the single most consequential decision this command makes: it freezes one moodboard direction as the contract every later canvas is generated against. Today that contract survives only as scaffolded files — nothing states *which* direction was chosen, *why*, or what the runner-up was.
+
+Load **`flow:kgai-backend`** and check `maude kg resolve --json`.
+
+- **`active: false`** (default) → skip silently. This is a **net-new** capture; there is no classic file path to preserve.
+- **`active: true`** → after the LOCK gate resolves and the scaffold succeeds, record the direction as a `ds:` node:
+
+  ```bash
+  echo '{"decision":{"title":"Design system locked: <DS_NAME>","rationale":"<the locked direction in the user'"'"'s own words + why it beat the runner-up + any Stage-4 residue>","date":"<YYYY-MM-DD>","mutations":[{"op":"upsert_element","kind":"ds","name":"<DS_NAME>","props":{"path":"<DESIGN_ROOT>/system/<DS_NAME>","accentStrategy":"<ACCENT_STRATEGY>","colorSpace":"<COLOR_SPACE>","status":"locked"}},{"op":"upsert_element","kind":"direction","name":"<DS_NAME>-locked"},{"op":"add_link","from":"ds:<DS_NAME>","to":"direction:<DS_NAME>-locked","link":"LOCKED_TO"}]}}' | maude kg ingest --root "$CLAUDE_PROJECT_DIR"
+  ```
+
+  Put the **user's own words** in `rationale`, verbatim — not a polished paraphrase. This is the one record of intent behind every downstream canvas, and the value is in what they actually said. Re-bootstrap (`--force`) re-locks: record again; identity converges on `ds:<DS_NAME>` and props merge, so `status`/`accentStrategy` update in place while the decision history keeps both events.
+
 ### Step 4 — Return
 
 The skill prints its "Bootstrap complete" block. This command body has no Post-flight of its own.

@@ -9,6 +9,19 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-208: Bug-report pipeline — cloud-brokered intake, public issue + private media, consent-first](DDR-208-bug-report-pipeline-cloud-brokered-intake-public-issue-private-media.md) — 2026-07-31, studio/cloud/desktop/bug-report/privacy/consent/quota/github-app
+- [DDR-207: Four missing layers, not eleven bugs](DDR-207-the-plane-needs-an-edge-and-other-layers-that-were-missing.md) — 2026-07-30, cloud/security/edge/rate-limit/csrf/revocation/credential-grammar/consent
+- [DDR-206: Browser editing — decline again, with the path priced](DDR-206-browser-editing-decided-decline-again-with-a-priced-path.md) — 2026-07-30, cloud/containment/browser-editing/spike/esbuild/corpus-census/on-call
+- [DDR-205: Verify a backup when you WRITE it, not when you need it](DDR-205-verify-a-backup-when-you-write-it.md) — 2026-07-30, cloud/durability/backup/git-bundle/shallow-clone/verification/incident
+- [DDR-204: One account, one dashboard, two authorities](DDR-204-one-account-one-dashboard-two-authorities.md) — 2026-07-29, cloud/identity/admin/self-service/blast-radius/self-hosting/narrows-ddr-199
+- [DDR-203: Provision first, charge after — nobody pays for a workspace that did not come up](DDR-203-provision-first-charge-after.md) — 2026-07-29, cloud/checkout/stripe/ordering/idempotence/refunds/copy
+- [DDR-202: The export is the promise the rest of the product rests on](DDR-202-export-is-the-promise-the-rest-rests-on.md) — 2026-07-29, cloud/export/lifecycle/data-portability/git-bundle/honesty
+- [DDR-201: The mirror credential boundary — a cell asks, it never holds](DDR-201-mirror-credential-boundary.md) — 2026-07-29, cloud/mirror/github/credentials/blast-radius/tokens/append-only
+- [DDR-200: File-tree move — path-derived canvas slug re-keyed server-side, no stable canvas id](DDR-200-file-tree-move-path-derived-slug-rekey.md) — 2026-07-29, dev-server/file-tree/canvas-lifecycle/slug/collab/security
+- [DDR-200: The share view serves bytes, not code — a browser surface that cannot execute anything](DDR-200-read-only-share-view-serves-bytes-not-code.md) — 2026-07-29, cloud/share/browser/containment/csp/svg/r2/staleness
+- [DDR-199: Tenant cells on Cloudflare — the data plane is its own Worker, and four platform facts that only deploying reveals](DDR-199-cells-on-cloudflare-and-the-four-things-deploying-taught-us.md) — 2026-07-29, cloud/cells/cloudflare/containers/durable-objects/tls/custom-domains/durability/r2/secrets
+- [DDR-198: Server-owned git history — the hub commits, and does it with the desktop's engine](DDR-198-server-owned-git-history-in-the-hub.md) — 2026-07-29, cloud/git/history/workspace-agent/assets/docker/shutdown
+- [DDR-197: Narrowing DDR-192 §4 — a read-only browser surface is permitted; evaluating tenant TSX on vendor compute is not](DDR-197-browser-surface-narrowing-of-ddr-192.md) — 2026-07-29, cloud/containment/browser/share/security/vendor-boundary
 - [DDR-196: The cloud arc's buildable half — decisions as pure functions, and where the vendor boundary actually falls](DDR-196-cloud-arc-buildable-half-and-the-vendor-boundary.md) — 2026-07-29, cloud/architecture/testing/provisioning/fleet-ops/billing/invites/mirror/trust/vendor-boundary
 - [DDR-195: A cell is the same server minus routes — plus content-addressed assets and an append-only autosave history](DDR-195-workspace-cell-enforcement-assets-and-autosave-history.md) — 2026-07-28, cloud/workspace/containment/assets/s3/r2/git/autosave/history/sync/security/onboarding/vocabulary
 - [DDR-194: Hub identity + durability — scrypt over the token spine, explicit proxy trust, and a restore drill that can fail](DDR-194-hub-identity-and-durability-choices.md) — 2026-07-28, cloud/hub/security/auth/passwords/rate-limiting/proxy/backup/durability/sqlite/s3/r2/dependencies

@@ -1,0 +1,245 @@
+// The one place — Cloud Phase 22 Task 4 (DDR-204).
+//
+// Before this, a customer with three projects signed in four times: once to
+// the platform and once to each project's own admin, because a project is a
+// hub and a hub was originally something one person self-hosted. This is the
+// page that makes that history invisible.
+//
+// It is a CONTROL surface. It shows what you have, what it costs, and what
+// state it is in — and hands you into a project rather than asking you to
+// find it. Per-project detail is fetched from the project itself; the person
+// never types a second address and never learns that a "cell" exists.
+//
+// Server-rendered, no script. The dashboard is where somebody goes when
+// something is wrong, and a page that needs JavaScript to tell you your
+// project is paused is a page that cannot tell you anything when it is broken.
+
+import { appShell } from './brand.mjs';
+
+// Styling comes from the design system shell (brand.mjs). What is left here
+// is a GALLERY of project cards: a decorative mini-canvas header (the
+// showcase's artboards-on-dots motif, in pure CSS), the name + state, one
+// primary action, and everything secondary folded into a ⋯ menu — a native
+// <details> dropdown, because these pages ship no script.
+const CSS = `
+  .main-inner { max-width: 72rem; }
+  .projects { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-5); }
+  .project {
+    display: flex; flex-direction: column;
+    background: var(--bg-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    overflow: visible;
+    box-shadow: var(--shadow-sm);
+    transition: border-color var(--dur-soft) var(--ease-out), box-shadow var(--dur-soft) var(--ease-out);
+  }
+  .project:hover { border-color: var(--border-default); box-shadow: var(--shadow-md); }
+
+  .pcanvas {
+    display: block; position: relative; height: 96px;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-bottom: 1px solid var(--border-subtle);
+    background-color: var(--bg-0);
+    background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+    background-size: 16px 16px;
+    overflow: hidden;
+  }
+  .pcanvas .ab { position: absolute; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); }
+  .pcanvas .ab-1 { left: 14%; top: 22%; width: 26%; height: 52%; }
+  .pcanvas .ab-2 { left: 46%; top: 34%; width: 20%; height: 40%; }
+  .pcanvas .ab-3 { left: 72%; top: 18%; width: 14%; height: 34%; }
+  .project:hover .pcanvas .ab-1 { border-color: var(--accent-muted); }
+
+  .pbody { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4) var(--space-5) var(--space-5); flex: 1; }
+  .prow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+  .prow h2 { margin: 0; font-size: var(--type-md); line-height: var(--lh-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prow h2 a { color: var(--fg-0); text-decoration: none; }
+  .prow h2 a:hover { color: var(--accent-hover); }
+  .note { color: var(--fg-2); font-size: var(--type-sm); line-height: var(--lh-sm); margin: 0; }
+  .pfoot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: auto; padding-top: var(--space-4); }
+  .pfoot .btn { font-size: var(--type-sm); line-height: var(--lh-sm); padding: var(--space-2) var(--space-4); }
+
+  .menu { position: relative; }
+  .menu > summary {
+    list-style: none; cursor: pointer;
+    display: grid; place-items: center;
+    width: 30px; height: 30px; border-radius: var(--radius-md);
+    color: var(--fg-2); font-weight: 600; letter-spacing: 0.08em;
+    border: 1px solid transparent;
+    transition: background var(--dur-soft) var(--ease-out), color var(--dur-soft) var(--ease-out);
+  }
+  .menu > summary::-webkit-details-marker { display: none; }
+  .menu > summary:hover { background: var(--bg-2); color: var(--fg-0); }
+  .menu[open] > summary { background: var(--bg-3); color: var(--fg-0); border-color: var(--border-default); }
+  .menu-list {
+    position: absolute; right: 0; top: calc(100% + var(--space-2)); z-index: 20;
+    min-width: 210px; padding: var(--space-2);
+    background: var(--bg-2); border: 1px solid var(--border-default);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-md);
+    display: flex; flex-direction: column;
+  }
+  .menu-list a {
+    display: block; padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    color: var(--fg-1); text-decoration: none; font-size: var(--type-base);
+  }
+  .menu-list a:hover { background: var(--bg-3); color: var(--fg-0); }
+  .menu-list a.danger { color: var(--status-error); }
+  .menu-list .menu-sep { height: 1px; background: var(--border-subtle); margin: var(--space-2) var(--space-2); }
+
+  .empty {
+    border: 1px dashed var(--border-default); border-radius: var(--radius-lg);
+    padding: var(--space-8) var(--space-6); text-align: center; background: var(--bg-1);
+    max-width: 34rem;
+  }
+`;
+
+function esc(s) {
+  return String(s).replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+  );
+}
+
+/**
+ * What a project's state means to the person who owns it.
+ *
+ * Our state names are ours. `past_due` is an accounting word, `suspended`
+ * sounds like a punishment, and `pending` tells somebody nothing about whether
+ * to wait or to worry. Each one gets a sentence that says what is true and
+ * what, if anything, they should do.
+ */
+export const STATE_COPY = {
+  pending: {
+    tone: 'warn',
+    label: 'Setting up',
+    // No email promise — no such email exists yet, and the setup page is the
+    // thing that actually finishes the job (it drives settlement as it polls).
+    note: 'This usually takes a minute or two. The setup page shows each step live.',
+  },
+  active: { tone: 'ok', label: 'Ready', note: null },
+  past_due: {
+    tone: 'warn',
+    label: 'Payment did not go through',
+    note: 'Your work is safe and the project keeps running. Update your card to avoid it pausing.',
+  },
+  suspended: {
+    tone: 'stop',
+    label: 'Paused',
+    note: 'Nothing has been deleted. Restart it, or download everything and keep it.',
+  },
+  exported: {
+    tone: 'warn',
+    label: 'Downloaded, ready to delete',
+    note: 'You have a full copy. Deleting is permanent from here.',
+  },
+  purged: {
+    tone: 'stop',
+    label: 'Deleted',
+    note: 'This project was deleted. If you downloaded it, that copy is still yours.',
+  },
+};
+
+/**
+ * One project card.
+ *
+ * Actions are filtered by what this person may actually do — a menu that shows
+ * everything and then refuses is worse than a shorter menu, because it teaches
+ * people that the interface lies.
+ */
+function projectCard(project, { can }) {
+  const copy = STATE_COPY[project.state] ?? { tone: 'warn', label: project.state, note: null };
+  const p = `/projects/${esc(project.id)}`;
+
+  // "Open" goes to OUR connect page, never to a bare hostname (Cloud Phase 23
+  // A1) — the workspace's front door is an operator surface until the
+  // one-click handoff lands, and a link that promises the project must not
+  // deliver infrastructure. A pending project opens its live setup instead.
+  const primary =
+    project.state === 'pending'
+      ? `<a class="btn" href="${p}/setup">Setup progress</a>`
+      : project.state !== 'purged'
+        ? `<a class="btn" href="${p}/connect">Open</a>`
+        : '';
+  const primaryHref = project.state === 'pending' ? `${p}/setup` : `${p}/connect`;
+
+  // Everything secondary folds into the ⋯ menu, filtered by what this person
+  // may actually do. "Download everything" is in EVERY state, including the
+  // ones where somebody is deciding whether to leave — an export you can only
+  // reach while everything is fine is not a guarantee.
+  const menu = [];
+  if (can('invite')) menu.push(`<a href="${p}/people">People</a>`);
+  if (can('billing')) menu.push(`<a href="${p}/billing">Billing</a>`);
+  if (can('mirror')) menu.push(`<a href="${p}/mirror">GitHub copy</a>`);
+  menu.push(`<a href="${p}/audit">Activity</a>`);
+  menu.push(`<a href="${p}/download">Download everything</a>`);
+  if (can('delete') && project.state !== 'purged') {
+    menu.push('<div class="menu-sep"></div>');
+    menu.push(`<a class="danger" href="${p}/delete">Delete project…</a>`);
+  }
+
+  return `<article class="project">
+    <a class="pcanvas" href="${primaryHref}" aria-hidden="true" tabindex="-1">
+      <span class="ab ab-1"></span><span class="ab ab-2"></span><span class="ab ab-3"></span>
+    </a>
+    <div class="pbody">
+      <div class="prow">
+        <h2><a href="${primaryHref}">${esc(project.name || project.id)}</a></h2>
+        <span class="state ${copy.tone}">${esc(copy.label)}</span>
+      </div>
+      ${copy.note ? `<p class="note">${esc(copy.note)}</p>` : ''}
+      <div class="pfoot">
+        ${primary}
+        <details class="menu">
+          <summary aria-label="More for ${esc(project.name || project.id)}">⋯</summary>
+          <div class="menu-list">${menu.join('\n')}</div>
+        </details>
+      </div>
+    </div>
+  </article>`;
+}
+
+/**
+ * The dashboard.
+ *
+ * @param {object} args
+ * @param {{email: string}} args.account
+ * @param {object[]} args.projects  each with `role`, so actions can be filtered
+ * @param {(role: string, capability: string) => boolean} args.can
+ */
+export function dashboardPage({ account, projects = [], can }) {
+  const body =
+    projects.length === 0
+      ? `<div class="empty">
+           <p><strong>No projects yet.</strong></p>
+           <p class="note">A project is one design system and the work around it.
+             You can invite people to it once it exists.</p>
+           <form method="get" action="/projects/new"><button type="submit">Start a project</button></form>
+         </div>`
+      : `<div class="projects">${projects
+          .map((p) => projectCard(p, { can: (capability) => can(p.role, capability) }))
+          .join('\n')}</div>`;
+
+  return appShell({
+    account,
+    title: 'Your projects',
+    active: 'projects',
+    extraCss: CSS,
+    body,
+  });
+}
+
+/** Every customer-facing string on this surface, for the vocabulary lint. */
+export function allDashboardHtml() {
+  const can = () => true;
+  const projects = Object.keys(STATE_COPY).map((state, i) => ({
+    id: `p${i}`,
+    name: `Project ${i}`,
+    state,
+    role: 'owner',
+  }));
+  return [
+    dashboardPage({ account: { email: 'a@example.com' }, projects: [], can }),
+    dashboardPage({ account: { email: 'a@example.com' }, projects, can }),
+  ].join('\n');
+}

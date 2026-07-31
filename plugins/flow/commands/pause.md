@@ -96,7 +96,7 @@ If STATE.md doesn't exist, skip this step (handoff alone is sufficient).
 Load **`flow:kgai-backend`** and check `maude kg resolve --json`.
 
 - **`active: false`** (default) → skip; HANDOFF.md + STATE.md above are the source of truth, unchanged.
-- **`active: true`** → the graph is the source of truth; record a **paused event** linked to the active plan, then **sync**. HANDOFF.md is still written (Step 3) but becomes a human-readable *projection* of this event, not the authority:
+- **`active: true`** → the graph is the source of truth; record a **paused event** linked to the active plan, then **sync**. This event is the *only* record of the pause — Steps 3 and 4 were skipped, so there is no `HANDOFF.md` and no STATE.md row to fall back on, and `/flow:resume` reconstructs entirely from here. Put everything the next session needs into the props; a thin `rationale` here is a genuinely lost handoff, not a terse one.
 
   ```bash
   echo '{"decision":{"title":"Paused: <feature>","rationale":"<why paused>","date":"<YYYY-MM-DD>","mutations":[{"op":"upsert_element","kind":"session","name":"<plan-slug>-paused","props":{"phase":"<phase>","active_task":"<task>","blockers":"<blockers>","open_decisions":"<open>"}},{"op":"add_link","from":"session:<plan-slug>-paused","to":"plan:<plan-slug>","link":"PAUSES"}]}}' | maude kg ingest --root .

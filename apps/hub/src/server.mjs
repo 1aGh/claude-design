@@ -35,7 +35,7 @@
 //   - All log lines that interpolate user data go through sanitizeForLog.
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 
@@ -50,6 +50,7 @@ import {
   verifyAdminAuth,
   writeAdminSecret,
 } from './admin-auth.mjs';
+import { sweepAssets } from './asset-lane.mjs';
 import { handleAssetRoute } from './assets.mjs';
 import {
   handleAuthRoutes,
@@ -58,11 +59,15 @@ import {
 } from './auth-routes.mjs';
 import { scheduleBackups, targetFromEnv } from './backup.mjs';
 import { maybeIssueOnBoot, verifyAndConsume } from './bootstrap.mjs';
+import { handleExportRoute, scheduleMirror, scheduleRevocationSweep } from './cell-ops.mjs';
 import { clientIpFor, parseTrustedProxies } from './client-ip.mjs';
 import { groupCanvases } from './doc-namespace.mjs';
+import { seedFirstUserOnBoot } from './first-user.mjs';
+import { createGitRunner } from './git-runner.mjs';
 import { createRateStore } from './rate-store.mjs';
 import { s3ConfigFromEnv } from './s3.mjs';
-import { readSettings, writeSettings } from './settings.mjs';
+import { seedRepo } from './seed-repo.mjs';
+import { DEFAULT_HUB_NAME, readSettings, writeSettings } from './settings.mjs';
 import {
   addToken,
   assertValidLabel,
@@ -71,11 +76,27 @@ import {
   readTokens,
   recordTokenUse,
   removeToken,
+  revokeTokensForOwner,
   rotateToken,
   verifyToken,
 } from './tokens.mjs';
+import { createWorkspaceAgent } from './workspace-agent.mjs';
 
 const HUB_VERSION = readOwnVersion();
+
+/**
+ * What the workspace half did at boot, as facts a human can read.
+ *
+ * A CELL HAS NO CONSOLE — its stdout reaches nobody an operator can ask, and
+ * `wrangler tail` shows the Worker, not the container. During Cloud Phase 15
+ * the only way to answer "did the seed clone work?" was to watch a bucket for
+ * ten minutes and infer from what appeared. That is a guess, not a diagnosis.
+ *
+ * Facts only: states and counts, never a URL (a seed URL carries a token) and
+ * never a path. Safe on the unauthenticated /health, which is the point — when
+ * you need this, authentication is usually the thing that is broken.
+ */
+const bootReport = { seed: null, history: null, assets: null };
 const DOCUMENT_NAME_REGEX = /^[A-Za-z0-9._/-]{1,256}$/;
 const PUBLIC_URL_REGEX = /^https?:\/\/[^\s;'"<>`]+$/;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -201,11 +222,20 @@ export function createHub(config = {}) {
     dataDir,
     target: backupTarget,
     intervalMs: backupTarget ? backupIntervalMs : 0,
+    // Cloud Phase 15 — the checkout rides in the same generation as the
+    // databases. A cell's disk is ephemeral, so a history that is not in the
+    // backup is a history that lasts until the next migration.
+    repoDir: process.env.MAUDE_REPO_DIR || null,
+    run: process.env.MAUDE_REPO_DIR ? createGitRunner() : null,
   });
   if (backupTarget) {
-    console.log(
-      `[hub] backups → ${backupTarget.describe} every ${Math.round(backupIntervalMs / 60000)} min`
-    );
+    // Seconds below a minute: `every 0 min` (what a 15 s test interval printed)
+    // reads as "never", which is the opposite of the truth.
+    const every =
+      backupIntervalMs < 60_000
+        ? `${Math.round(backupIntervalMs / 1000)} s`
+        : `${Math.round(backupIntervalMs / 60000)} min`;
+    console.log(`[hub] backups → ${backupTarget.describe} every ${every}`);
   }
 
   /** Per-IP rate limit buckets (admin API): ip → { count, windowStart } */
@@ -217,8 +247,35 @@ export function createHub(config = {}) {
   /** Activity feed ring buffer (newest last). Bounded to ACTIVITY_CAP. */
   const activity = [];
 
+  // Cloud Phase 16 — the headless workspace agent (server-owned git history).
+  //
+  // Workspace mode ONLY, and that restriction is the point. A laptop hub sits
+  // beside a developer who has their own git and commits when they mean to; a
+  // second committer writing into their working tree would be a hostile
+  // surprise, not a feature. In a cell there is nobody at the keyboard, so an
+  // uncommitted history is no history at all.
+  const workspaceMode =
+    process.env.HUB_WORKSPACE_MODE === '1' || process.env.MAUDE_WORKSPACE_MODE === '1';
+  const repoDir = config.repoDir ?? process.env.MAUDE_REPO_DIR ?? '';
+  /** @type {ReturnType<typeof createWorkspaceAgent>|null} */
+  let workspace = null;
+  /** @type {ReturnType<typeof scheduleMirror>|null} */
+  let mirror = null;
+  /** @type {ReturnType<typeof scheduleRevocationSweep>|null} */
+  let revocationSweep = null;
+
   const server = new Server({
     port,
+
+    // Hocuspocus installs its own SIGINT/SIGQUIT/SIGTERM handler that calls
+    // `destroy()` and then `process.exit(0)` — racing ours. Since Cloud Phase
+    // 16 that race is destructive: our handler flushes the pending commit
+    // first, and Hocuspocus' exit fires in the middle of it. The observed
+    // result was a workspace left staged-but-uncommitted on every shutdown —
+    // `git add` had run, `git commit` never did — which silently loses the
+    // last edits of every session the platform migrates, and migration is the
+    // NORMAL path for a cell. Shutdown is ours; see `shutdown()` in runAsMain.
+    stopOnSignals: false,
 
     extensions: [new SQLite({ database: sqlitePath })],
 
@@ -258,6 +315,11 @@ export function createHub(config = {}) {
             source: match.source,
             dev: !!match.dev,
             scope: match.scope ?? '*',
+            // The address the token was minted for. Carried so the server-side
+            // workspace agent can attribute a commit to the PERSON rather than
+            // to their machine's token label — `git blame` on a design should
+            // answer "who designed this" (Cloud Phase 16 / autocommit rule 2).
+            ...(match.owner ? { email: match.owner } : {}),
           },
         };
       }
@@ -329,14 +391,9 @@ export function createHub(config = {}) {
         // surface, deliberately NOT a marketing page (DDR-097). Server-rendered
         // with the hub name; links the admin stylesheet (no inline styles — the
         // admin CSP `style-src 'self'` would drop them).
-        respondAsset(
-          response,
-          renderLanding(readSettings(dataDir).name),
-          'text/html; charset=utf-8',
-          {
-            hardenAdminOrigin: true,
-          }
-        );
+        respondAsset(response, renderLanding(readSettings(dataDir)), 'text/html; charset=utf-8', {
+          hardenAdminOrigin: true,
+        });
         bailFromOnRequest();
       }
       // Cloud Phase 2 — human sign-in. /auth/login is unauthenticated (and
@@ -363,6 +420,19 @@ export function createHub(config = {}) {
           checkRateLimit: rateLimit
             ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
             : undefined,
+        });
+        if (handled) bailFromOnRequest();
+      }
+      // Cloud Phase 20 — the take-your-work-home export, started by the owner
+      // (or the dashboard on the owner's behalf) with a project access token.
+      if (authPath === '/api/export') {
+        const handled = await handleExportRoute({
+          request,
+          path: authPath,
+          method,
+          repoDir: workspaceMode ? repoDir : null,
+          run: workspaceMode && repoDir ? createGitRunner() : null,
+          respondJson: (status, payload) => respondAdminJson(response, status, payload),
         });
         if (handled) bailFromOnRequest();
       }
@@ -496,6 +566,30 @@ export function createHub(config = {}) {
     async onLoadDocument({ documentName }) {
       if (verbose) console.log(`[hub] load documentName=${sanitizeForLog(documentName)}`);
     },
+
+    // Cloud Phase 16 Task 1 — server-owned history.
+    //
+    // `afterStoreDocument`, not `onChange`: by the time this fires the SQLite
+    // extension has already persisted, and Hocuspocus has applied its own
+    // debounce. Committing on every change event would produce one commit per
+    // keystroke; committing before the store would let a crash leave a commit
+    // describing a state the hub does not have.
+    //
+    // Wrapped so a projection failure can never propagate into the store hook
+    // — an exception here aborts storage for every OTHER document too.
+    // `lastContext`, NOT `context` — the store payload names it that (it is the
+    // context of the connection whose change triggered the store, which is
+    // exactly the person to attribute the commit to). Reading `context` here
+    // silently yields undefined, and the only symptom is every server commit
+    // authored by "Unknown editor" — a lie that git blame repeats forever.
+    async afterStoreDocument({ documentName, document, lastContext }) {
+      if (!workspace) return;
+      try {
+        await workspace.onDocumentStored({ documentName, document, user: lastContext?.user });
+      } catch (err) {
+        console.error(`[hub] workspace projection failed: ${err.message}`);
+      }
+    },
   });
 
   return {
@@ -510,10 +604,91 @@ export function createHub(config = {}) {
     peers,
     activity,
     backupTarget,
+    assetStore,
+    workspaceMode,
+    repoDir,
+    /** The live agent, once started. Null outside workspace mode. */
+    get workspace() {
+      return workspace;
+    },
+    /**
+     * Boot the server-side history agent. Separate from createHub() because it
+     * clones, shells out to git and touches a disk — none of which a test that
+     * only wants a Hocuspocus instance should pay for.
+     *
+     * Reports rather than throws: a cell that cannot keep history must still
+     * serve the tenant's work.
+     */
+    async startWorkspaceAgent(deps = {}) {
+      if (!workspaceMode) return { state: 'skipped', reason: 'not a workspace hub' };
+      if (!repoDir) return { state: 'skipped', reason: 'MAUDE_REPO_DIR is not set' };
+      const make = deps.createWorkspaceAgent ?? createWorkspaceAgent;
+      const seed = deps.seedRepo ?? seedRepo;
+      const runner = deps.run ?? createGitRunner();
+
+      const seeded = await seed(repoDir, runner, {
+        url: process.env.MAUDE_SEED_REPO ?? '',
+        branch: process.env.MAUDE_SEED_BRANCH ?? '',
+      });
+      // Recorded, not only logged — see bootReport. The reason is kept because
+      // "the clone failed" without it sends the next person back to guessing.
+      bootReport.seed = { state: seeded.state, reason: seeded.reason ?? null };
+      if (seeded.state === 'failed') {
+        // Loud, but not fatal. A cell that refuses to start on a bad seed URL
+        // is a cell the operator cannot reach to fix the seed URL.
+        console.error(`[hub] seed repo failed: ${seeded.reason}`);
+      } else if (seeded.state === 'cloned') {
+        console.log(`[hub] seeded workspace from ${seeded.url}`);
+      }
+
+      const agent = make({
+        repoDir,
+        designRel: process.env.MAUDE_DESIGN_ROOT ?? '.design',
+        ...deps.options,
+      });
+      const started = await agent.start();
+      bootReport.history = { state: started.state, reason: started.reason ?? null };
+      if (started.state !== 'failed') workspace = agent;
+
+      // Cloud Phase 19 — the mirror clock. Enabled only when this cell knows
+      // its control plane; a self-hosted hub never ticks. The schedule asks
+      // "is a mirror configured" each tick, so connecting one needs no restart.
+      if (!mirror) {
+        mirror = scheduleMirror({ repoDir, run: runner });
+        if (mirror.enabled) console.log('[mirror] schedule armed');
+      }
+      // Phase 23 B2 — removals reach LIVE sessions. Same enablement rule as
+      // the mirror clock: only a cell that knows its control plane ticks.
+      if (!revocationSweep) {
+        revocationSweep = scheduleRevocationSweep({
+          dataDir,
+          revokeForOwner: revokeTokensForOwner,
+          kickLabel: (label) => kickSessionsForLabel(peers, label),
+        });
+        if (revocationSweep.enabled) console.log('[revocation] sweep armed');
+      }
+      return { ...started, seed: seeded.state };
+    },
+    /** Record the asset sweep's result for /health (see bootReport). */
+    recordAssetSweep(summary) {
+      bootReport.assets = summary;
+    },
+    /** Flush the pending commit and detach. The SIGTERM path depends on this. */
+    async stopWorkspaceAgent() {
+      if (!workspace) return;
+      const agent = workspace;
+      workspace = null;
+      const outcome = await agent.stop();
+      if (outcome?.ok) console.log(`[workspace] flushed ${outcome.sha.slice(0, 8)} on shutdown`);
+      else if (outcome && !outcome.ok) {
+        console.error(`[workspace] shutdown flush did NOT commit: ${outcome.reason}`);
+      }
+    },
     /** Stop the backup schedule + close the rate store. Tests call this; the
      *  process exiting does the same thing in production. */
     stopBackgroundWork() {
       stopBackups();
+      mirror?.stop();
       rateStore.close();
     },
   };
@@ -674,6 +849,15 @@ async function handleAdminApi(ctx) {
       transport: ctx.insecureHttp ? 'plaintext HTTP (dev)' : 'TLS upstream',
       dataDir,
       authMode: tokens.length > 0 ? 'tokens' : secret ? 'env-secret' : 'dev',
+      // WHICH IDENTITY MODE THIS CELL IS ACTUALLY IN.
+      //
+      // `authMode` above describes the token STORE and says nothing about
+      // whether local passwords are still a door. The 2026-07-30 validate
+      // found every retirement gated on `strict` while the whole fleet ran
+      // hybrid — the code was shipped, the behaviour was not, and there was
+      // no way to see that from outside. A mode nobody is in is not shipped,
+      // so the mode is now a fact you can read.
+      identity: identityPosture(),
       version: HUB_VERSION,
     });
     return;
@@ -807,8 +991,69 @@ function escapeHtmlAttr(value) {
  * classes (no inline styles — the CSP `style-src 'self'` drops those). The
  * sparkle uses presentation attributes (fill=), which the CSP allows.
  */
-function renderLanding(hubName) {
-  const name = escapeHtmlAttr(hubName || 'Studio Hub');
+/**
+ * Prettify a tenant slug for display: `brno-alligators` → `Brno Alligators`.
+ * Only ever a FALLBACK — a real name always wins.
+ */
+/**
+ * The cell's identity posture, as a fact rather than a claim.
+ *
+ * `mode`      off | hybrid | strict — what the door actually accepts.
+ * `localDoor` whether a password on THIS cell can still sign somebody in.
+ * `seeded`    whether an initial admin password was planted at provision.
+ *
+ * Read by a fleet sweep, so "is anybody actually in strict yet" stops being
+ * a question you answer by reading deployment scripts.
+ */
+function identityPosture() {
+  const raw = process.env.MAUDE_CLOUD_IDENTITY ?? '';
+  const mode = raw === 'strict' ? 'strict' : raw === '1' ? 'hybrid' : 'off';
+  return {
+    mode,
+    localDoor: mode !== 'strict',
+    seeded: Boolean(process.env.MAUDE_ADMIN_EMAIL),
+  };
+}
+
+function nameFromSlug(slug) {
+  return String(slug)
+    .split('-')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function renderLanding(
+  settings,
+  {
+    dashboardUrl = process.env.HUB_DASHBOARD_URL,
+    tenantId = process.env.MAUDE_TENANT_ID,
+    projectName = process.env.MAUDE_PROJECT_NAME,
+  } = {}
+) {
+  // Precedence, most-specific first. The bug this replaces was a defaulting
+  // one, not a rendering one: the caller passed `readSettings().name`, which
+  // ALREADY substitutes "Studio Hub" when no settings file exists — and a
+  // truthy default meant the tenant could never win. A customer opening their
+  // own project was greeted by a generic placeholder. `settings` now arrives
+  // whole so this function, which is the one that knows about tenants, gets
+  // to decide.
+  const operatorNamed = settings?.name && settings.name !== DEFAULT_HUB_NAME ? settings.name : null;
+  const display =
+    operatorNamed ?? projectName ?? (tenantId ? nameFromSlug(tenantId) : null) ?? DEFAULT_HUB_NAME;
+  const name = escapeHtmlAttr(display);
+  // Two audiences, one page (Phase 23 B5). A PLATFORM cell speaks to the
+  // customer: their project's name, the way back to their dashboard, and the
+  // operator console demoted to a footnote — "self-hosted sync · Yjs +
+  // Hocuspocus" is infrastructure vocabulary a paying customer was promised
+  // never to see. A self-hosted hub (no dashboard URL) keeps the operator
+  // landing unchanged.
+  const isPlatform = Boolean(dashboardUrl && tenantId);
+  const sub = isPlatform ? 'your Maude Cloud project' : 'self-hosted sync · Yjs + Hocuspocus';
+  const cta = isPlatform
+    ? `<a class="btn btn--primary btn--lg" href="${escapeHtmlAttr(dashboardUrl)}">Open your dashboard →</a>
+    <p class="landing-footnote"><a class="landing-footnote-link" href="admin">operator console</a></p>`
+    : `<a class="btn btn--primary btn--lg" href="admin">Open admin console →</a>`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -823,9 +1068,9 @@ function renderLanding(hubName) {
   <div class="landing-card">
     <span class="mark mark--lg" aria-hidden="true"><svg class="mark-ic" viewBox="0 0 32 32" fill="currentColor"><path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z"/></svg></span>
     <h1>${name}</h1>
-    <p class="landing-sub">self-hosted sync · Yjs + Hocuspocus</p>
+    <p class="landing-sub">${sub}</p>
     <p class="landing-status"><span class="presence-dot presence-dot--online" aria-hidden="true"></span> online</p>
-    <a class="btn btn--primary btn--lg" href="admin">Open admin console →</a>
+    ${cta}
   </div>
 </div>
 </body>
@@ -842,6 +1087,53 @@ function formatInviteResponse(record, publicUrl) {
   };
 }
 
+/**
+ * What the workspace half of this hub actually did at boot.
+ *
+ * A CELL HAS NO CONSOLE. Its stdout goes nowhere an operator can reach —
+ * `wrangler tail` shows the Worker's logs, not the container's — so during
+ * Cloud Phase 15 the only way to answer "did the seed clone work?" was to
+ * infer it from whether objects appeared in a bucket ten minutes later. That
+ * is not a diagnosis, it is a guess.
+ *
+ * Deliberately FACTS, not internals: counts and states, no paths, no URLs, no
+ * credentials. Safe on the unauthenticated /health, which is the whole point —
+ * the moment you need it, authenticating is the thing that is broken.
+ */
+function workspaceStatus() {
+  const repoDir = process.env.MAUDE_REPO_DIR;
+  if (!repoDir) return null;
+  const designRoot = join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design');
+  const out = {
+    checkout: existsSync(join(repoDir, '.git')) ? 'present' : 'absent',
+    seedConfigured: Boolean(process.env.MAUDE_SEED_REPO),
+    storageConfigured: Boolean(process.env.MAUDE_S3_BUCKET),
+    // What each stage of the boot actually DID. `seedConfigured` says a seed
+    // was asked for; `seed` says whether it happened, and why not when it did
+    // not. Distinguishing those two is the whole point — a cell whose seed was
+    // configured and silently skipped looks identical to one that worked.
+    ...(bootReport.seed ? { seed: bootReport.seed } : {}),
+    ...(bootReport.history ? { history: bootReport.history } : {}),
+    ...(bootReport.assets ? { assets: bootReport.assets } : {}),
+  };
+  try {
+    const walk = (dir, depth = 0) => {
+      if (depth > 3) return 0;
+      let n = 0;
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.name.startsWith('_') || e.name === '.git') continue;
+        if (e.isDirectory()) n += walk(join(dir, e.name), depth + 1);
+        else if (e.name.endsWith('.tsx')) n += 1;
+      }
+      return n;
+    };
+    out.canvases = walk(designRoot);
+  } catch {
+    out.canvases = 0;
+  }
+  return out;
+}
+
 function buildStatusPayload({
   dataDir,
   secret,
@@ -851,6 +1143,7 @@ function buildStatusPayload({
   exposeDataDir = true,
 }) {
   const { tokens } = readTokens(dataDir);
+  const workspace = workspaceStatus();
   return {
     ok: true,
     version: HUB_VERSION,
@@ -861,7 +1154,9 @@ function buildStatusPayload({
     ...(exposeDataDir ? { dataDir } : {}),
     tokenCount: tokens.length,
     authMode: tokens.length > 0 ? 'tokens' : secret ? 'env-secret' : 'dev',
+    identity: identityPosture(),
     peersCount: peersCount ?? 0,
+    ...(workspace ? { workspace } : {}),
   };
 }
 
@@ -1199,7 +1494,7 @@ async function runAsMain() {
     console.error('[hub] config error:', err.message);
     process.exit(1);
   }
-  const { server, sqlitePath } = built;
+  const { server, sqlitePath, workspaceMode, repoDir, assetStore } = built;
 
   try {
     await server.listen();
@@ -1217,6 +1512,38 @@ async function runAsMain() {
     console.warn(
       '[hub] admin assets missing — /admin will serve empty page. Run `bun run build` in apps/hub.'
     );
+  }
+
+  seedFirstUserOnBoot(dataDir);
+
+  // Cloud Phase 16 — server-owned history + the server-side asset lane.
+  // Both are workspace-mode-only and both report rather than throw.
+  if (workspaceMode) {
+    const started = await built.startWorkspaceAgent();
+    if (started.state === 'failed') {
+      console.warn(
+        `[hub] server-side history is OFF (${started.reason}). Edits will sync and persist, ` +
+          'but this workspace will keep no git history and cannot mirror to GitHub.'
+      );
+    }
+    if (assetStore && repoDir) {
+      // Sweep once at boot rather than on a timer: assets arrive with a commit,
+      // and a cell wakes on every migration, so boot is already the frequent
+      // event. A timer would mostly re-HEAD objects that have not changed.
+      const designRoot = join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design');
+      sweepAssets({ designRoot, s3: assetStore })
+        .then((r) => {
+          built.recordAssetSweep({
+            uploaded: r.uploaded.length,
+            skipped: r.skipped,
+            failed: r.failed.length,
+          });
+        })
+        .catch((err) => {
+          built.recordAssetSweep({ error: err.message.slice(0, 120) });
+          console.error(`[hub] asset sweep failed: ${err.message}`);
+        });
+    }
   }
 
   const bootstrap = maybeIssueOnBoot(dataDir, { secret });
@@ -1250,8 +1577,13 @@ async function runAsMain() {
 
   const shutdown = (signal) => {
     console.log(`[hub] ${signal} received, shutting down`);
-    server
-      .destroy()
+    // Flush the pending commit FIRST. A cell is migrated mid-session as the
+    // normal path, and destroying the server before the queue drains would
+    // silently drop the last few seconds of every moved session.
+    built
+      .stopWorkspaceAgent()
+      .catch((err) => console.error('[hub] workspace flush error:', err))
+      .then(() => server.destroy())
       .catch((err) => {
         console.error('[hub] shutdown error:', err);
       })

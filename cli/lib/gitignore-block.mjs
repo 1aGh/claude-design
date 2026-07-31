@@ -47,6 +47,7 @@ export function buildBlock(designRel = '.design', { s3Assets = false } = {}) {
     `${root}/_draw/`, // draw-agent proof canvases (regenerable — Phase 25)
     `${root}/_photo/`, // photo-bg-remove headless proof canvases (regenerable — feature-photo-editor)
     `${root}/_smoke/`, // batch-screenshot output (regenerable — DDR-021)
+    `${root}/_reports/`, // offline bug-report bundles (feature-bug-report-button — local fallback, may hold screenshots)
     `${root}/_canvas-state/`, // per-machine canvas scratch + camera (`*.view.json`, DDR-115)
     `${root}/_chat/`, // ACP transcripts (per-machine)
     `${root}/_untrusted/`, // hub-synced untrusted file mirror (DDR-054)

@@ -27,6 +27,10 @@
     "allow-prefs-set-crash-reporting",
     "allow-prefs-get-claude-auto-setup",
     "allow-prefs-set-claude-auto-setup",
+    "allow-list-crash-logs",
+    "allow-read-crash-log",
+    "allow-take-pending-deep-link",
+    "deep-link:default",
     "wdio-webdriver:default"
   ]
 }

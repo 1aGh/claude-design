@@ -472,6 +472,17 @@ REPORT
 
 The **last fenced `json` block in the report is the verdict** — the orchestrator parses it. Always emit it. Always close it cleanly.
 
+### Record the findings in the graph (kgai — when active)
+
+`_history/**` is **gitignored**, so this report — the record of which patterns were reinvented and which tokens drifted — dies with this machine. Immediately after the heredoc closes, from the same `Bash` tool this agent already uses:
+
+```bash
+maude kg record-log --file "$OUTPUT_PATH" \
+  --kind keeper-finding --about "canvas:{canvas_slug}" --link FLAGS
+```
+
+Silent no-op when the graph is inactive, so run it unconditionally — it does not change this agent's read-only contract (the report file was already the one permitted side effect, and this only copies it into the graph). The per-canvas slug is derived automatically. Contract: **`flow:kgai-backend`**.
+
 `opt_out_applied` is `"n/a"` in all cases except one (DDR-141): a resolved `opt_out_scope` of **`full`** downgrades `strict` back to `advisory` — report that as `"full→advisory"` for auditability. Otherwise this agent does not honor scope: pattern-lift and token-role discipline are correctness concerns, not stylistic ones, and finding *visibility* applies at every scope — only the strict *severity promotion* yields to an explicit free-use canvas. (A11y stays universally enforced via `a11y-critic`; this agent is a parallel correctness layer for DS fidelity.)
 
 ## Returning to the orchestrator

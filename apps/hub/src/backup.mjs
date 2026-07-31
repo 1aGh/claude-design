@@ -33,6 +33,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 
+import { bundleRepo, REPO_BUNDLE, restoreRepo } from './repo-checkpoint.mjs';
 import { deleteObject, getObject, listObjects, putObject, s3ConfigFromEnv } from './s3.mjs';
 
 const require = createRequire(import.meta.url);
@@ -108,14 +109,49 @@ export function s3Target(cfg) {
 }
 
 /**
+ * Namespace every key of a target under `prefix`.
+ *
+ * TENANT ISOLATION, and it is not optional. Cells share one bucket, so without
+ * this every cell writes its generations to the same `backups/` keys and each
+ * tenant's backup silently overwrites the last one to run — with `restoreLatest`
+ * then rehydrating one tenant's cell from another tenant's documents. The cell
+ * entrypoint has exported MAUDE_BACKUP_PREFIX since Phase 5; nothing read it
+ * until Cloud Phase 15, which means the isolation the comment describes did not
+ * exist.
+ *
+ * `list` strips the prefix back off, so callers keep working in unprefixed
+ * key-space and the whole thing is invisible above this line.
+ */
+export function prefixedTarget(target, prefix) {
+  const clean = String(prefix).replace(/^\/+|\/+$/g, '');
+  if (!clean) return target;
+  const at = (key) => `${clean}/${key}`;
+  return {
+    describe: `${target.describe} [${clean}/]`,
+    put: (key, body) => target.put(at(key), body),
+    get: (key) => target.get(at(key)),
+    remove: (key) => target.remove(at(key)),
+    list: async (p) =>
+      (await target.list(at(p))).map((o) => ({ ...o, key: o.key.slice(clean.length + 1) })),
+  };
+}
+
+/**
  * Resolve the configured target, or null when the operator configured none.
  * `MAUDE_BACKUP_TARGET=file:///var/backups/maude` or a full S3 env set.
+ *
+ * `MAUDE_BACKUP_PREFIX` scopes it to one tenant (see prefixedTarget).
  */
 export function targetFromEnv(env = process.env) {
   const explicit = env.MAUDE_BACKUP_TARGET;
-  if (explicit?.startsWith('file://')) return fileTarget(explicit);
-  const s3 = s3ConfigFromEnv(env);
-  return s3 ? s3Target(s3) : null;
+  const base = explicit?.startsWith('file://')
+    ? fileTarget(explicit)
+    : (() => {
+        const s3 = s3ConfigFromEnv(env);
+        return s3 ? s3Target(s3) : null;
+      })();
+  if (!base) return null;
+  return env.MAUDE_BACKUP_PREFIX ? prefixedTarget(base, env.MAUDE_BACKUP_PREFIX) : base;
 }
 
 // ------------------------------------------------------------------ snapshot
@@ -168,7 +204,14 @@ export function snapshotPrefix(now = new Date()) {
  * generation complete. A crash mid-upload leaves an unlisted, ignorable partial
  * rather than a directory that looks restorable and isn't.
  */
-export async function runBackup({ dataDir, target, now = new Date(), keep = DEFAULT_KEEP }) {
+export async function runBackup({
+  dataDir,
+  target,
+  now = new Date(),
+  keep = DEFAULT_KEEP,
+  repoDir = null,
+  run = null,
+}) {
   if (!target) throw new Error('runBackup: no target configured');
   const prefix = snapshotPrefix(now);
   const files = [];
@@ -180,15 +223,36 @@ export async function runBackup({ dataDir, target, now = new Date(), keep = DEFA
   }
   if (files.length === 0) throw new Error('runBackup: nothing to back up (no databases found)');
 
+  // Cloud Phase 15 — the checkout rides in the SAME generation as the
+  // databases. Documents from 03:00 restored beside a checkout from 02:00
+  // would give a workspace whose documents reference canvases the checkout
+  // does not have; consistency between the two is why this is not a separate
+  // schedule. A cell with no commits yet contributes nothing, which is a
+  // normal state and not a failure.
+  let repo = null;
+  if (repoDir && run) {
+    const bundled = await bundleRepo(repoDir, run);
+    if (bundled.state === 'ok') {
+      await target.put(`${prefix}/${REPO_BUNDLE}`, bundled.bytes);
+      repo = { name: REPO_BUNDLE, bytes: bundled.bytes.length };
+    } else if (bundled.state === 'failed') {
+      // Loud, but the databases are already up and a partial generation with
+      // no manifest is ignorable. Throwing here would discard a good document
+      // backup because the checkout lane had a bad day.
+      console.error(`[backup] the checkout was NOT included: ${bundled.reason}`);
+    }
+  }
+
   const manifest = {
     version: 1,
     createdAt: now.toISOString(),
     files,
+    ...(repo ? { repo } : {}),
   };
   await target.put(`${prefix}/manifest.json`, Buffer.from(JSON.stringify(manifest, null, 2)));
 
   const pruned = await pruneOldBackups({ target, keep });
-  return { prefix, files, manifest, pruned };
+  return { prefix, files, manifest, repo, pruned };
 }
 
 /** List complete generations (those that have a manifest), oldest first. */
@@ -220,7 +284,14 @@ export async function pruneOldBackups({ target, keep = DEFAULT_KEEP }) {
  * against a live data directory by mistake is the one operation that can lose
  * more than it recovers.
  */
-export async function restoreLatest({ target, destDir, force = false, which }) {
+export async function restoreLatest({
+  target,
+  destDir,
+  force = false,
+  which,
+  repoDir = null,
+  run = null,
+}) {
   const generations = await listBackups(target);
   const latest = which ?? generations[generations.length - 1];
   if (!latest) throw new Error('restoreLatest: no complete backup generation found');
@@ -244,7 +315,20 @@ export async function restoreLatest({ target, destDir, force = false, which }) {
     writeFileSync(dest, gunzipSync(gz));
     restored.push(file.name);
   }
-  return { generation: latest, restored, manifest };
+
+  // The checkout lane. Only when the caller asked for it AND the generation
+  // carries one — an older generation predating Cloud Phase 15 has none, and
+  // that must restore the databases rather than fail.
+  let repo = null;
+  if (repoDir && run && manifest.repo) {
+    const bytes = await target.get(`${latest}/${manifest.repo.name}`);
+    if (!bytes) throw new Error(`restoreLatest: ${latest}/${manifest.repo.name} missing`);
+    repo = await restoreRepo(repoDir, bytes, run, { force });
+    if (repo.state === 'failed') {
+      throw new Error(`restoreLatest: the checkout could not be restored — ${repo.reason}`);
+    }
+  }
+  return { generation: latest, restored, manifest, repo };
 }
 
 // --------------------------------------------------------------- the drill
@@ -331,11 +415,17 @@ export function scheduleBackups({
   intervalMs,
   keep = DEFAULT_KEEP,
   log = console,
+  repoDir = null,
+  run = null,
 }) {
   if (!target || !intervalMs || intervalMs <= 0) return () => {};
   const timer = setInterval(() => {
-    runBackup({ dataDir, target, keep })
-      .then((r) => log.log?.(`[hub] backup ${r.prefix} (${r.files.length} file(s))`))
+    runBackup({ dataDir, target, keep, repoDir, run })
+      .then((r) =>
+        log.log?.(
+          `[hub] backup ${r.prefix} (${r.files.length} file(s)${r.repo ? ' + checkout' : ''})`
+        )
+      )
       .catch((err) => log.error?.(`[hub] backup FAILED: ${err.message}`));
   }, intervalMs);
   timer.unref?.();

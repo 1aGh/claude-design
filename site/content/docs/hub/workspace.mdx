@@ -40,6 +40,19 @@ No object storage yet? Leave the `--s3-*` flags off and add them later; media st
 
 Prefer a file? `--config workspace.json` accepts the same fields.
 
+### Try it on your laptop first
+
+`--local` runs the whole stack on your own machine with **no domain, no certificate and no account anywhere**:
+
+```sh
+maude hub workspace-up --local --dev-minio \
+  --domain ws.127.0.0.1.nip.io --admin-email you@example.com
+```
+
+That hostname resolves to `127.0.0.1` without touching `/etc/hosts`, so the stack comes up and the verification steps run against a real workspace — the same code a public deployment runs, minus TLS.
+
+It is **for testing only**, and both the generated `Caddyfile` and `.env` say so: local mode serves plain HTTP, so a sign-in password would travel in the clear. Never point anyone else at a workspace started this way.
+
 ## It verifies before it claims to work
 
 This is the part that matters, and it is why the command takes longer than writing three files. Printing a URL without proving a round-trip tells you something the tool does not actually know.

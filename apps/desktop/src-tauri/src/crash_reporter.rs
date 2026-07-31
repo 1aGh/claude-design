@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde::Serialize;
 use tauri::Manager;
 
 use crate::prefs::CRASH_REPORTING;
@@ -40,6 +41,72 @@ fn prune_old_logs(dir: &std::path::Path) {
     for old in &files[..files.len() - MAX_CRASH_LOGS] {
         let _ = std::fs::remove_file(old);
     }
+}
+
+/// One row in the Report-a-Bug dialog's crash-log consent checkbox.
+#[derive(Serialize)]
+pub struct CrashLogInfo {
+    pub name: String,
+    /// The report's first line ("Maude crash report") — enough for the
+    /// consent UI to show something human without shipping the body yet.
+    pub first_line: String,
+}
+
+fn crashes_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("crashes"))
+}
+
+/// Only ever serve names we generated ourselves — the name doubles as a path
+/// segment, so anything else is a traversal attempt, not a crash log.
+fn valid_log_name(name: &str) -> bool {
+    name.strip_prefix("crash-")
+        .and_then(|rest| rest.strip_suffix(".log"))
+        .is_some_and(|ts| !ts.is_empty() && ts.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// List local crash logs (newest first) for the Report-a-Bug dialog. Reading
+/// them is consent-gated in the dialog; this only names them. Reports are
+/// written scrubbed by design (no user data, no tokens — see module header),
+/// so listing carries nothing sensitive.
+#[tauri::command]
+pub fn list_crash_logs(app: tauri::AppHandle) -> Vec<CrashLogInfo> {
+    let Some(dir) = crashes_dir(&app) else { return Vec::new() };
+    let Ok(rd) = std::fs::read_dir(&dir) else { return Vec::new() };
+    let mut names: Vec<String> = rd
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| valid_log_name(n))
+        .collect();
+    names.sort();
+    names.reverse(); // crash-<unix-secs> — lexical == chronological
+    names
+        .into_iter()
+        .take(10)
+        .map(|name| {
+            let first_line = std::fs::read_to_string(dir.join(&name))
+                .ok()
+                .and_then(|s| s.lines().next().map(str::to_string))
+                .unwrap_or_default();
+            CrashLogInfo { name, first_line }
+        })
+        .collect()
+}
+
+/// Read one crash log body for a consented report attachment. The backtrace
+/// can carry the user's home path in frame locations (our own source files
+/// when built locally) — collapse it to `~` before it leaves the shell.
+#[tauri::command]
+pub fn read_crash_log(app: tauri::AppHandle, name: String) -> Result<String, String> {
+    if !valid_log_name(&name) {
+        return Err("not a crash log".into());
+    }
+    let dir = crashes_dir(&app).ok_or("no crash-log directory")?;
+    let body = std::fs::read_to_string(dir.join(&name)).map_err(|e| e.to_string())?;
+    let scrubbed = match app.path().home_dir() {
+        Ok(home) => body.replace(&home.to_string_lossy().to_string(), "~"),
+        Err(_) => body,
+    };
+    Ok(scrubbed)
 }
 
 /// Install the panic hook. Chains the default hook (so stderr still shows the panic),
