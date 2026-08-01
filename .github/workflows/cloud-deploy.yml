@@ -73,8 +73,15 @@ jobs:
         # A deploy that returns 0 has uploaded a script; it has not proven the
         # thing serves. Poll /health until it reports its own version AND that
         # D1 is reachable — the two failure modes a bad deploy actually has.
+        #
+        # The default is the CUSTOM DOMAIN, because that is the only address
+        # this Worker has. `wrangler.toml` sets `preview_urls = false` and
+        # declares one route, so `maude-cloud.maude1agh.workers.dev` — the
+        # previous default here — 404s and always would have. It turned every
+        # deploy red at the last step (2026-08-01), which is worse than no
+        # check: a permanently red workflow is one nobody reads.
         run: |
-          URL="${{ vars.CLOUD_HEALTH_URL || 'https://maude-cloud.maude1agh.workers.dev' }}/health"
+          URL="${{ vars.CLOUD_HEALTH_URL || 'https://cloud.maude.sh' }}/health"
           for i in $(seq 1 20); do
             BODY=$(curl -fsS --max-time 10 "$URL" || true)
             echo "attempt $i: ${BODY:-<no response>}"
