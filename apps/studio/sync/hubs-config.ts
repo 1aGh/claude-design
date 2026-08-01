@@ -12,6 +12,17 @@ import { join } from 'node:path';
 export interface HubRecord {
   token: string;
   linkedAt: number;
+  /**
+   * The role the workspace vouched for at sign-in (Cloud Phase 25 C2).
+   *
+   * Stored so a viewer is known to be a viewer at BOOT, before any request is
+   * made — the alternative is discovering it from the first refusal, which
+   * means showing somebody an editor and taking it away.
+   *
+   * Absent means `member`: every credential written before this shipped was
+   * write-capable, and nobody is demoted by an upgrade.
+   */
+  role?: string;
 }
 
 export interface HubsConfig {
@@ -71,6 +82,27 @@ function warnIfWorldOrGroupReadable(path: string): void {
     }
   } catch {
     /* statSync raced with a delete — next read will retry */
+  }
+}
+
+/**
+ * Is the credential for `url` a READ-ONLY one? (Cloud Phase 25 C2)
+ *
+ * Answered from the role the workspace vouched for at sign-in, so the app
+ * knows at BOOT rather than discovering it from the first refused write —
+ * which would mean showing somebody an editor and then taking it away.
+ *
+ * Unknown, unreadable, or absent all answer FALSE, matching every credential
+ * written before this shipped. This flag decides what the UI OFFERS; it is
+ * never the thing that stops a write. That is the cell (Phase 25 C1) and the
+ * gate in http.ts, both of which hold whatever this returns.
+ */
+export function isHubReadOnly(url: string): boolean {
+  try {
+    const record = loadHubsConfig().hubs[normalizeUrl(url)];
+    return record?.role === 'viewer';
+  } catch {
+    return false;
   }
 }
 

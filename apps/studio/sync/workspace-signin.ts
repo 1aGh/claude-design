@@ -67,7 +67,7 @@ export interface SignInInput {
 /** Injected in tests. */
 export interface SignInDeps {
   fetchImpl?: typeof fetch;
-  save?: (normUrl: string, token: string) => void;
+  save?: (normUrl: string, token: string, role?: string) => void;
 }
 
 /**
@@ -181,9 +181,13 @@ export async function signInToWorkspace(
     return fail(502, 'The workspace sent an unexpected reply.', 'server-error');
   }
 
-  // 3. Persist ONLY the minted token, 0600, in the shared credential store.
+  // 3. Persist ONLY the minted token, 0600, in the shared credential store —
+  //    plus the role the workspace vouched for (Cloud Phase 25 C2), so a
+  //    viewer is known to be one at BOOT. Learning it from the first refusal
+  //    instead means showing somebody an editor and then taking it away.
+  const vouchedRole = typeof body.user?.role === 'string' ? body.user.role : 'member';
   try {
-    save(norm, body.token);
+    save(norm, body.token, vouchedRole);
   } catch {
     return fail(500, "Couldn't save the workspace connection on this computer.", 'save-failed');
   }
@@ -195,7 +199,7 @@ export async function signInToWorkspace(
       url: norm,
       user: {
         email: typeof body.user?.email === 'string' ? body.user.email : String(input.email).trim(),
-        role: typeof body.user?.role === 'string' ? body.user.role : 'member',
+        role: vouchedRole,
       },
       expiresAt: typeof body.expiresAt === 'number' ? body.expiresAt : null,
       version: probe.version,

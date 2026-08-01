@@ -108,8 +108,8 @@ async function probeHealth(url: string): Promise<{ ok: boolean; version?: string
   }
 }
 
-/** Upsert the token under `normUrl` + record per-machine trust; mode 0600. */
-export function saveHubCredential(normUrl: string, token: string): void {
+/** Upsert the token (+ the vouched role) under `normUrl` + record per-machine trust; mode 0600. */
+export function saveHubCredential(normUrl: string, token: string, role?: string): void {
   const path = hubsConfigPath();
   const dir = dirname(path);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -123,7 +123,7 @@ export function saveHubCredential(normUrl: string, token: string): void {
       /* malformed → start fresh rather than throw */
     }
   }
-  cfg.hubs[normUrl] = { token, linkedAt: Date.now() };
+  cfg.hubs[normUrl] = { token, linkedAt: Date.now(), ...(role ? { role } : {}) };
   if (!Array.isArray(cfg.trusted)) cfg.trusted = [];
   if (!cfg.trusted.includes(normUrl)) cfg.trusted.push(normUrl);
   writeFileSync(path, `${JSON.stringify(cfg, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });

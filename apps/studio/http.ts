@@ -87,6 +87,7 @@ import { createPhotoStore, PHOTO_EDIT_MAX_BYTES } from './photo-store.ts';
 import { probeReadiness } from './readiness.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
 import { linkHub } from './sync/hub-link.ts';
+import { isHubReadOnly } from './sync/hubs-config.ts';
 import { signInToWorkspace, workspaceDisclosure } from './sync/workspace-signin.ts';
 import { readUiPrefs, type UiPrefs, writeUiPrefs } from './ui-prefs.ts';
 import { loadWhatsNew, resolveMaudeVersion } from './whats-new.ts';
@@ -1163,7 +1164,17 @@ export function createHttp(
       }
     },
 
-    '/_config': () => Response.json({ ...ctx.cfg, canvasOrigin: ctx.canvasOrigin }),
+    // `readOnly` is COMPUTED, not stored in cfg: it comes from the role the
+    // workspace vouched for at sign-in (Cloud Phase 25 C2), so the client
+    // knows before it draws anything. It decides what the UI OFFERS and is
+    // never what stops a write — the cell enforces that (Phase 25 C1),
+    // whatever a patched client believes.
+    '/_config': () =>
+      Response.json({
+        ...ctx.cfg,
+        canvasOrigin: ctx.canvasOrigin,
+        readOnly: ctx.cfg.linkedHub ? isHubReadOnly(ctx.cfg.linkedHub.url) : false,
+      }),
 
     // What's New feed (DDR-A) — read-only product-update list surfaced in the
     // Maude UI chrome. Main-origin only by omission from the canvas-origin
