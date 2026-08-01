@@ -103,8 +103,9 @@ export function newProjectPage({ account = null, pricing, error = null, values =
          the <a href="https://maude.sh/terms">Terms</a> and the
          <a href="https://maude.sh/privacy">Privacy notice</a>.</p>
        <button type="submit">Continue to payment details</button>
-       <p class="quiet" style="margin-top:var(--space-4)">Payment details are handled by Stripe.
-         Nothing is charged today.</p>
+       <p class="quiet" style="margin-top:var(--space-4)">Payment details are handled by Stripe,
+         who also add your country's VAT to the price above — the next screen shows the exact
+         total. Nothing is charged today.</p>
      </form>`,
   });
 }

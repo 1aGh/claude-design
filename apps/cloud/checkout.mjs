@@ -134,16 +134,29 @@ export function checkoutSessionParams({
     // The card is collected and validated even though the trial is free —
     // that validation IS the authorization the ordering relies on.
     payment_method_collection: 'always',
-    // VAT (Cloud Phase 24 D2). An EU product selling to EU customers has a
-    // legal obligation to charge the right rate, not a feature request — and
-    // this integration had `automatic_tax` nowhere. Stripe needs somewhere to
-    // place the customer, so the address is collected at checkout and the
-    // customer object is updated with it; the billing page's "Billing details"
-    // section (A10) is where it is corrected afterwards.
+    // VAT — ON, AND NOT OURS TO SWITCH OFF (measured 2026-08-01, during C1).
+    //
+    // The account runs Stripe **Managed Payments**, which makes STRIPE the
+    // merchant of record: it calculates the customer's local VAT, collects it,
+    // and remits it. The session says whose liability it is —
+    // `automatic_tax.liability: {type: "stripe"}` — and Stripe refuses
+    // `automatic_tax[enabled]=false` outright ("Managed Payments handles taxes
+    // for you"). Omitting the flag inherits ON from the account, so there is
+    // no arrangement in which this integration does not charge tax.
+    //
+    // WHY THAT IS THE POINT RATHER THAN A NUISANCE. The provider is not
+    // registered for VAT in the Czech Republic (ARES: `stavZdrojeDph:
+    // NEEXISTUJICI`) and, under merchant-of-record, does not need to be for
+    // these sales — the same arrangement Paddle and Lemon Squeezy sell.
+    //
+    // What it DOES mean is that the customer pays the listed price PLUS their
+    // own local VAT, so every page quoting a price has to say so. C1 caught
+    // the funnel showing "Total after trial €22.99" one click after a page
+    // promising €19.
     'automatic_tax[enabled]': 'true',
-    // Stripe REFUSES automatic tax on a session with an existing `customer`
-    // unless it is allowed to write the collected address back — the session
-    // create fails outright, so this pair is not optional decoration.
+    // Stripe REFUSES automatic tax on a session naming an existing `customer`
+    // unless it may write the collected address back — without this pair the
+    // session create fails outright.
     'customer_update[address]': 'auto',
     'customer_update[name]': 'auto',
     billing_address_collection: 'required',

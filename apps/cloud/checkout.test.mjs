@@ -97,17 +97,23 @@ describe('checkoutSessionParams', () => {
     assert.equal(params['metadata[project_name]'], 'Brno Alligators');
     assert.equal(params['metadata[plan]'], 'project');
   });
-  // Cloud Phase 24 D2. An EU product selling to EU customers has a legal
-  // obligation to charge the right VAT — `automatic_tax` was nowhere.
-  it('charges VAT automatically, and gives Stripe what it needs to compute it', () => {
+  // 2026-08-01, measured during C1 by walking the real funnel. The account
+  // runs Stripe Managed Payments, which makes Stripe the merchant of record:
+  // it adds the customer's local VAT, collects it and remits it. Stripe
+  // REFUSES `automatic_tax[enabled]=false` under Managed Payments, and
+  // omitting the flag inherits ON from the account — so there is no shape of
+  // this integration that does not charge tax, and every page quoting a price
+  // has to say the price is net.
+  it('charges VAT through Stripe as merchant of record, and says so to Stripe', () => {
     assert.equal(params['automatic_tax[enabled]'], 'true');
-    assert.equal(params.billing_address_collection, 'required');
-    assert.equal(params['tax_id_collection[enabled]'], 'true');
-    // Without the write-back Stripe REFUSES automatic tax on a session that
+    // Without the write-back Stripe refuses automatic tax on a session that
     // names an existing customer — the session create fails outright.
     assert.equal(params['customer_update[address]'], 'auto');
     assert.equal(params['customer_update[name]'], 'auto');
+    assert.equal(params.billing_address_collection, 'required');
+    assert.equal(params['tax_id_collection[enabled]'], 'true');
   });
+
   it('returns to the waiting room, cancels back to the wizard', () => {
     assert.match(
       params.success_url,
