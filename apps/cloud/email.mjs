@@ -18,11 +18,34 @@ export function emailConfigured(env) {
 }
 
 /**
- * The sender. `EMAIL_FROM` overrides for the (temporary) Resend testing
- * domain; once maude.sh is verified at Resend this default takes over.
+ * The sender.
+ *
+ * SENDING AND RECEIVING ARE DIFFERENT DOMAINS, ON PURPOSE (2026-08-01).
+ * Mail goes out from the `notif.maude.sh` subdomain, which is what is verified
+ * at Resend; the apex `maude.sh` carries Cloudflare Email Routing's MX so the
+ * addresses printed in the legal pack actually receive. Verifying the apex for
+ * sending instead would have put two systems in charge of one domain's mail.
+ *
+ * The default below is the FALLBACK, and it is deliberately the receiving
+ * address: if `EMAIL_FROM` is ever unset, Resend refuses the send with a 403
+ * rather than mail going out from a domain nobody reads. That is the failure
+ * we want — this default was live for two days and every invitation silently
+ * 403'd, because `sendEmail` reports rather than throws.
  */
 export function fromAddress(env) {
   return env?.EMAIL_FROM || 'Maude Cloud <cloud@maude.sh>';
+}
+
+/**
+ * Where a reply goes.
+ *
+ * A person answering an automated mail is answering a HUMAN — they have a
+ * problem and they hit reply. Without this, the reply lands at the sending
+ * subdomain, which has no inbox at all (`receiving: disabled` at Resend), and
+ * the person hears nothing back and concludes there is nobody there.
+ */
+export function replyToAddress(env) {
+  return env?.EMAIL_REPLY_TO || 'cloud@maude.sh';
 }
 
 /**
@@ -123,7 +146,13 @@ export async function sendEmail(env, { to, subject, text }, { fetchImpl = fetch 
         authorization: `Bearer ${env.RESEND_API_KEY}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ from: fromAddress(env), to: [to], subject, text }),
+      body: JSON.stringify({
+        from: fromAddress(env),
+        reply_to: replyToAddress(env),
+        to: [to],
+        subject,
+        text,
+      }),
     });
     if (!res.ok) {
       // The provider's reason goes to logs; callers get a boolean. Nothing in

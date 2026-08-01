@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { emailConfigured, fromAddress, inviteEmail, sendEmail } from './email.mjs';
+import { emailConfigured, fromAddress, inviteEmail, replyToAddress, sendEmail } from './email.mjs';
 
 describe('inviteEmail', () => {
   const mail = inviteEmail({
@@ -72,10 +72,32 @@ describe('sendEmail', () => {
     assert.equal(seen.init.headers.authorization, 'Bearer key');
     assert.deepEqual(JSON.parse(seen.init.body), {
       from: 'Maude <x@y.z>',
+      reply_to: 'cloud@maude.sh',
       to: ['a@b.c'],
       subject: 's',
       text: 't',
     });
+  });
+
+  // 2026-08-01. Mail is SENT from notif.maude.sh (what Resend verifies) and
+  // RECEIVED at maude.sh (what Cloudflare Email Routing serves). Without a
+  // reply-to, a person who hits reply reaches the sending subdomain, which has
+  // no inbox at all — they hear nothing back and conclude nobody is there.
+  it('always carries a reply-to that can actually receive', async () => {
+    let seen;
+    await sendEmail(
+      { RESEND_API_KEY: 'key', EMAIL_FROM: 'Maude Cloud <cloud@notif.maude.sh>' },
+      { to: 'a@b.c', subject: 's', text: 't' },
+      {
+        fetchImpl: async (_url, init) => {
+          seen = JSON.parse(init.body);
+          return new Response(JSON.stringify({ id: 'em_1' }), { status: 200 });
+        },
+      }
+    );
+    assert.notEqual(seen.from, seen.reply_to, 'the sending domain is not the receiving one');
+    assert.equal(seen.reply_to, replyToAddress({}));
+    assert.equal(replyToAddress({ EMAIL_REPLY_TO: 'x@y.z' }), 'x@y.z');
   });
 
   it('a provider rejection or outage is a false, never a throw', async () => {
