@@ -451,6 +451,41 @@ test('the admin pages ship no script and no vocabulary of ours', () => {
   }
 });
 
+// Cloud Phase 24 C1, 2026-08-01. Walking the funnel as a stranger found a dead
+// end nobody could leave: a brand-new project has no commits, the cell answers
+// 409 "nothing to export", and `delete` is gated on an export existing — so
+// somebody who mistypes the project name at signup can never delete it. It is
+// the very first thing a person does wrong.
+test('a project with nothing in it can still be deleted', async () => {
+  const { env, sqlite } = await freshEnv();
+  network.push([
+    'alligators.cloud.maude.sh/api/export',
+    async () =>
+      Response.json(
+        { error: 'this project has no history yet — there is nothing to export' },
+        { status: 409 }
+      ),
+  ]);
+  network.push(['api.stripe.com', async () => Response.json({ id: 'sub_1' })]);
+  network.push(['api.cloudflare.com', async () => Response.json({ success: true, result: [] })]);
+  const { session } = await ownerWithProject(env, sqlite);
+
+  // Asking for the copy is answered honestly, not as a 502.
+  const asked = await worker.fetch(post('/projects/alligators/download', session), env);
+  assert.equal(asked.status, 200);
+  assert.match(await asked.text(), /nothing to download yet/);
+
+  // …and the gate now opens.
+  const page = await worker.fetch(get('/projects/alligators/delete', session), env);
+  assert.match(await page.text(), /This is permanent/);
+  const gone = await worker.fetch(
+    post('/projects/alligators/delete', session, { sure: 'yes' }),
+    env
+  );
+  assert.equal(gone.status, 303);
+  assert.equal(sqlite.prepare('SELECT state FROM projects').get().state, 'purged');
+});
+
 // Cloud Phase 24 A6. Two defects on the leaving path, both about a promise the
 // page could not keep for the person actually reading it.
 test('the export page says what the file IS and who can open it', () => {

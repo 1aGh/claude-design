@@ -455,6 +455,36 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
       outcome = { status: 0, body: { error: err.message } };
     }
     const generations = await listExports(env, projectId);
+
+    // A BRAND-NEW PROJECT HAS NOTHING TO HAND BACK, and that is not a failure.
+    //
+    // The cell answers 409 for a repository with no commits. Treated as an
+    // error, that made a dead end nobody could leave: `delete` is gated on an
+    // export existing, and the export refuses because there is nothing to
+    // export — so a customer who mistypes the project name at signup cannot
+    // delete it and start again. Found by walking the funnel as a stranger
+    // (Cloud Phase 24 C1); it is the very first thing somebody does wrong.
+    //
+    // The export guarantee (DDR-193 §3) is "you are handed your work before
+    // anything is torn down". With no work, it is discharged the moment it is
+    // asked for, so the timestamp is stamped and the delete gate opens.
+    if (outcome.status === 409) {
+      await env.DB.prepare('UPDATE projects SET export_sent_at = ? WHERE id = ?')
+        .bind(Date.now(), projectId)
+        .run();
+      return html(
+        downloadPage({
+          account,
+          project,
+          generations,
+          isOwner,
+          notice:
+            'There is nothing to download yet — no work has been saved in this project. ' +
+            'You can delete it whenever you like.',
+        })
+      );
+    }
+
     if (outcome.status !== 200) {
       console.error(`[export] ${projectId}: ${outcome.status} ${outcome.body?.error ?? ''}`);
       return html(
@@ -496,7 +526,10 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
   if (surface === 'delete') {
     if (!isOwner) return html(`<p>${ACCESS_MESSAGES['no-access']}</p>`, 404);
     const generations = await listExports(env, projectId);
-    const hasExport = generations.length > 0;
+    // A prepared copy OR a recorded discharge of the guarantee. The second
+    // covers the empty project, which can never produce a generation and would
+    // otherwise be undeletable forever (see the 409 branch above).
+    const hasExport = generations.length > 0 || Boolean(project.export_sent_at);
 
     if (request.method === 'GET') return html(deletePage({ account, project, hasExport }));
     if (request.method !== 'POST') return html('<p>Not allowed.</p>', 405);
