@@ -90,9 +90,13 @@ function db(dataDir) {
   // ADDITIVE migration: an existing store gains the columns with NULL in every
   // row, and NULL means exactly what it meant before this shipped — never
   // expires, no owning user. An operator upgrading a live hub loses nothing.
+  // Cloud Phase 25 C1 — read-only peer tokens, so `viewer` can mean something.
+  // Same additive shape: NULL/0 in every existing row means write-capable,
+  // which is what every token minted before this shipped already was.
   for (const [column, ddl] of [
     ['expires_at', 'ALTER TABLE tokens ADD COLUMN expires_at INTEGER'],
     ['owner', 'ALTER TABLE tokens ADD COLUMN owner TEXT'],
+    ['read_only', 'ALTER TABLE tokens ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0'],
   ]) {
     const present = handle
       .prepare('SELECT COUNT(*) AS n FROM pragma_table_info(?) WHERE name = ?')
@@ -275,7 +279,10 @@ export function matchesScope(scope, documentName) {
  * @param {{ label: string, dev?: boolean, scope?: string | null }} opts
  * @returns {{ label: string, value: string, createdAt: number, dev?: boolean, scope?: string }}
  */
-export function addToken(dataDir, { label, dev = false, scope, expiresAt, owner } = {}) {
+export function addToken(
+  dataDir,
+  { label, dev = false, scope, expiresAt, owner, readOnly = false } = {}
+) {
   assertValidLabel(label);
   assertValidScope(scope);
   const handle = db(dataDir);
@@ -291,7 +298,7 @@ export function addToken(dataDir, { label, dev = false, scope, expiresAt, owner 
 
   handle
     .prepare(
-      'INSERT OR REPLACE INTO tokens (label, hash, scope, dev, created_at, last_used_at, expires_at, owner) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)'
+      'INSERT OR REPLACE INTO tokens (label, hash, scope, dev, created_at, last_used_at, expires_at, owner, read_only) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)'
     )
     .run(
       label,
@@ -300,7 +307,8 @@ export function addToken(dataDir, { label, dev = false, scope, expiresAt, owner 
       dev ? 1 : 0,
       createdAt,
       storedExpiry,
-      storedOwner
+      storedOwner,
+      readOnly ? 1 : 0
     );
 
   return {
@@ -309,6 +317,7 @@ export function addToken(dataDir, { label, dev = false, scope, expiresAt, owner 
     createdAt,
     expiresAt: storedExpiry,
     ...(storedOwner ? { owner: storedOwner } : {}),
+    ...(readOnly ? { readOnly: true } : {}),
     ...(dev ? { dev: true } : {}),
     ...(storedScope ? { scope: storedScope } : {}),
   };
@@ -339,6 +348,10 @@ export function rotateToken(dataDir, label) {
     // ownership. A rotated user token expires exactly when the original would.
     expiresAt: typeof prior.expires_at === 'number' ? prior.expires_at : undefined,
     owner: prior.owner ?? undefined,
+    // …and it does not grant a capability the original did not have. Dropping
+    // this would make "rotate" a silent promotion from viewer to editor, which
+    // is the escalation the read-only token exists to prevent.
+    readOnly: !!prior.read_only,
   });
 }
 
@@ -513,13 +526,16 @@ export function verifyToken(dataDir, candidate, secret) {
         scope: row.scope ?? '*',
         source: 'file',
         expiresAt: typeof row.expires_at === 'number' ? row.expires_at : null,
+        // Absent column (a store older than Phase 25) reads as write-capable,
+        // which is what those tokens have always been.
+        readOnly: !!row.read_only,
         ...(row.owner ? { owner: row.owner } : {}),
         ...(row.dev ? { dev: true } : {}),
       };
     }
   }
   if (secret && constantTimeEqual(Buffer.from(candidate, 'utf8'), Buffer.from(secret, 'utf8'))) {
-    return { label: 'env-secret', createdAt: 0, scope: '*', source: 'env' };
+    return { label: 'env-secret', createdAt: 0, scope: '*', source: 'env', readOnly: false };
   }
   return null;
 }

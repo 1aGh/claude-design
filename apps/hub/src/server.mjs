@@ -153,6 +153,24 @@ function authError(reason) {
  *
  * @param {HubConfig} [config]
  */
+/** Methods that cannot change anything, so a read-only session may use them. */
+const READ_ONLY_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * The mutating paths a READ-ONLY session is still allowed (Cloud Phase 25 C1).
+ *
+ * Deliberately a short, explicit list rather than a pattern:
+ *   /auth/logout  — ending your OWN session is not changing the project, and a
+ *                   viewer who cannot sign out is a viewer stuck signed in.
+ *   /api/export   — "look, comment and download" is what the role means; the
+ *                   export is a READ of the project, POSTed only because it
+ *                   takes work to build.
+ * Comments join this list when they exist (Phase 25 C3).
+ */
+function readOnlyAllowedPath(path) {
+  return path === '/auth/logout' || path === '/api/export';
+}
+
 export function createHub(config = {}) {
   const port = config.port ?? 1234;
   const dataDir = config.dataDir ?? resolve(process.cwd(), 'data');
@@ -279,7 +297,7 @@ export function createHub(config = {}) {
 
     extensions: [new SQLite({ database: sqlitePath })],
 
-    async onAuthenticate({ token, documentName, request }) {
+    async onAuthenticate({ token, documentName, request, connectionConfig }) {
       // DDR-053 §5: defend against log forging + future XSS regression by
       // rejecting documentNames with HTML / log metacharacters at source.
       // DDR-102: every rejection goes through authError() so the SPECIFIC
@@ -309,12 +327,19 @@ export function createHub(config = {}) {
           throw authError('rate limit exceeded for this token — retry in up to 60s');
         }
         if (match.source === 'file') recordTokenUse(dataDir, match.label);
+        // Cloud Phase 25 C1 — read-only is enforced by the PROTOCOL, not by
+        // the UI. Hocuspocus drops this connection's SyncStep2 and Update
+        // messages, so a viewer whose client is patched, scripted, or simply
+        // out of date still cannot mutate the document. Hiding the buttons is
+        // the last layer, never the only one.
+        if (connectionConfig && match.readOnly) connectionConfig.readOnly = true;
         return {
           user: {
             name: match.label,
             source: match.source,
             dev: !!match.dev,
             scope: match.scope ?? '*',
+            readOnly: !!match.readOnly,
             // The address the token was minted for. Carried so the server-side
             // workspace agent can attribute a commit to the PERSON rather than
             // to their machine's token label — `git blame` on a design should
@@ -403,6 +428,29 @@ export function createHub(config = {}) {
       // silently fall through on `/auth/login?next=…` and land the request in
       // the Hocuspocus catch-all.
       const authPath = url.split('?')[0];
+
+      // ---- READ-ONLY SESSIONS (Cloud Phase 25 C1) -------------------------
+      //
+      // ONE gate, at the single HTTP entry point, rather than a branch inside
+      // each of the sixteen mutating handlers — because a capability check
+      // that has to be remembered sixteen times is a capability check that is
+      // eventually forgotten once, and the once is the whole hole.
+      //
+      // A viewer may still do the things "viewer" means (Phase 25: look,
+      // comment, download), so the exceptions are named explicitly and are
+      // few. Everything else that changes state is refused with the same
+      // sentence the People page promises.
+      if (!READ_ONLY_SAFE_METHODS.has(method) && !readOnlyAllowedPath(authPath)) {
+        const presented = (request.headers?.authorization ?? '').replace(/^Bearer\s+/i, '').trim();
+        const bearer = presented ? verifyToken(dataDir, presented, secret) : null;
+        if (bearer?.readOnly) {
+          respondJson(response, 403, {
+            error: 'You can look at this project, comment and download it, but not change it.',
+            reason: 'read-only',
+          });
+          bailFromOnRequest();
+        }
+      }
 
       // Cloud Phase 3 — authenticated asset proxy. Peer-token gated, GET/HEAD
       // only, and reachable ONLY for content-addressed keys. Never a presigned

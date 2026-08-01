@@ -79,17 +79,19 @@ describe('a self-hosted hub is untouched', () => {
     assert.equal(r.ok, true);
   });
 
-  it('a viewer token is refused, never silently escalated to an editor', () => {
-    // The hub has no read-only enforcement, so honoring a viewer token
-    // would hand a viewer a write-capable session — and make the People
-    // page's \"cannot change anything\" promise false.
+  it('a viewer token is ADMITTED, carrying the role that makes it read-only', () => {
+    // Until Phase 25 C1 this was a refusal: peer tokens were write-capable, so
+    // honoring a viewer token would have handed a viewer an editor's session
+    // and made the People page's "cannot change anything" promise false.
+    // Enforcement now exists (read-only tokens + a protocol-level Yjs gate +
+    // one HTTP gate), so the honest answer is to let them in and stop them
+    // writing — which is what the role has meant to customers all along.
     const r = authenticateForMode(
       { token: tokenFor({ role: 'viewer' }) },
       { env: HYBRID, secret: SECRET, now: NOW, local: () => assert.fail('no local call') }
     );
-    assert.equal(r.ok, false);
-    assert.equal(r.reason, 'viewer-not-supported');
-    assert.match(r.message, /shared gallery link/);
+    assert.equal(r.ok, true);
+    assert.equal(r.user.role, 'viewer');
   });
 
   it('a token exchange surfaces the claim expiry so the session dies with it', () => {

@@ -141,7 +141,7 @@ export async function handleAuthRoutes(ctx) {
         // (MAUDE_PROJECT_TOKEN_KEY, falling back to HUB_SECRET pre-B4).
       }
     );
-    if (result.reason === 'cloud-identity' || result.reason === 'viewer-not-supported') {
+    if (result.reason === 'cloud-identity') {
       // The ONE failure that is not an opaque "invalid email or password":
       // nothing is wrong with what they typed, the thing they typed into does
       // not exist here. Telling them where to go instead is the whole point.
@@ -168,6 +168,10 @@ export async function handleAuthRoutes(ctx) {
       scope: user.scope ?? '*',
       owner: user.email,
       expiresAt,
+      // Cloud Phase 25 C1. The capability is decided HERE, once, from the role
+      // the control plane vouched for — not re-derived at each write surface,
+      // where one forgotten branch is a viewer with an editor's session.
+      readOnly: user.role === 'viewer',
     });
     ctx.pushActivity?.({ type: 'login', user: user.email, doc: minted.label });
     respondJson(200, {

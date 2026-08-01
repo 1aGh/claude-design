@@ -181,19 +181,19 @@ export function authenticateForMode(
     const key = secret ?? projectTokenKey(env);
     const verdict = verifyAccessToken(token, key, { now, tenantId: env.MAUDE_TENANT_ID });
     if (!verdict.ok) return { ok: false, reason: verdict.reason };
-    // A viewer must not become an editor by walking through this door. The
-    // hub has no read-only enforcement yet (peer tokens are write-capable),
-    // so a viewer-role token is REFUSED here rather than silently escalated
-    // — the People page's "cannot change anything" promise stays true
-    // (Phase 23 B2 / the debate's BREAKER finding).
-    if (verdict.user.role === 'viewer') {
-      return {
-        ok: false,
-        reason: 'viewer-not-supported',
-        message:
-          'Viewing works from the shared gallery link for now — editing access in the workspace needs the member role.',
-      };
-    }
+    // A viewer USED TO BE REFUSED HERE (Phase 23 B2 / the debate's BREAKER
+    // finding), because peer tokens were write-capable and letting one in
+    // would have been a silent promotion from "can look" to "can change" —
+    // the People page's "cannot change anything" promise, quietly broken.
+    //
+    // Cloud Phase 25 C1 closes that properly instead of refusing: the session
+    // this mints carries `readOnly`, Hocuspocus drops the peer's SyncStep2 and
+    // Update messages, and every mutating HTTP route refuses. So the viewer
+    // gets in and genuinely cannot write, which is what the role always meant
+    // and what the invitation email has been promising since Phase 20.
+    //
+    // The old refusal also pointed at "the shared gallery link" — a surface
+    // Phase 25 C4 deletes. It was already sending people nowhere.
     // A token minted BEFORE the person was removed or demoted is spent, even
     // though its signature and expiry are both still good. Offline
     // verification cannot recall a token, so the door has to remember
