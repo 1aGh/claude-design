@@ -3,8 +3,29 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** in-progress — Maude Cloud self-service gap arc (phases 11-21)
-**Active plan:** `.ai/plans/cloud-phase-16-server-owned-checkout.md` (12+13 done + LIVE; 11 owner-only)
+**Status:** done — Cloud Phase 24 closed 2026-08-01
+**Active plan:** — (Phase 25 open, not started as a unit; Phase 26 drafted)
+**Active task:** —
+
+_2026-08-01:_ **Cloud Phase 24 CLOSED — tracks A + B, plus D2/D5 and D4's code half.**
+The funnel now states the bill of materials (a computer, the free app, **your own
+Claude subscription**) before the card; the legal pack exists and is linked; per-tenant
+config left the Worker globals (customer #2's first boot could have cloned the pilot's
+repo); the reconciler's actions became real effects with export-before-teardown; delete
+purges the bytes. **C1 walked a real second tenant through the paid wizard** — two cells
+concurrent, the new one seeded from nothing, then deleted through the product. **D3 drove
+the dunning ladder through a real Stripe test clock.**
+
+Eight defects found by using it rather than testing it: every outbound email had been
+403-ing for two days · the deploy workflow had been red since 07-30, hiding a real failure
+· an `exported` flap made the promised deletion unreachable · the deletion warning would
+have sent ~48× · an empty project could never be deleted · the funnel quoted €19 and
+charged €22.99 · `CF_PROVISION_TOKEN` could not attach a domain, so self-service was dead
+· a CLI relink erased the role the studio had just written.
+
+Left, all owner gates: **C3/C4** (a real non-technical human with a stopwatch), the Windows
+certificate, counsel review, the accountant on *identifikovaná osoba*, and **D1/D3-live**.
+Phase 25 C1 (read-only enforcement at the cell) also landed; its client half is open.
 
 _2026-07-30 (side branch):_ **`feature-enhanced-video-editing` closed + PR'd** — TSX-first
 manual timeline editor (split/trim/speed/crop/grade/audio/transitions as clip verbs over

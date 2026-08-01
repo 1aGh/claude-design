@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-31T14:31:37.182Z",
+  "generated": "2026-08-01T19:37:33.988Z",
   "currentPhase": null,
   "phases": [
     {
@@ -230,6 +230,17 @@
       "date": null,
       "summary": "(dashboard card + waiting-room \"Open your project\"): the project address, honest browser sign-in note, desktop Link-workspace path, operator console demoted to a footer line. A pending project's ca...",
       "planPath": ".ai/plans/archive/cloud-phase-23-seamless-onboarding.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-24-self-service-ready",
+      "title": "Cloud Phase 24 — Self-service ready: close the gap the audit measured",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "The fork this plan opened — \"is there an online Maude Studio in the browser?\" — was answered in the owner review of .design/ui/Cloud Self Service.tsx: yes, read-only, and the gallery is dropped ent...",
+      "planPath": ".ai/plans/archive/cloud-phase-24-self-service-ready.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1752,17 +1763,6 @@
       "phaseKey": null
     },
     {
-      "id": "cloud-phase-24-self-service-ready",
-      "title": "Cloud Phase 24 — Self-service ready: close the gap the audit measured",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "The fork this plan opened — \"is there an online Maude Studio in the browser?\" — was answered in the owner review of .design/ui/Cloud Self Service.tsx: yes, read-only, and the gallery is dropped ent...",
-      "planPath": ".ai/plans/cloud-phase-24-self-service-ready.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
       "id": "cloud-phase-25-one-project-two-doors",
       "title": "Cloud Phase 25 — One project, two doors",
       "status": "planned",
@@ -1770,6 +1770,17 @@
       "date": null,
       "summary": "1. The read-only gallery is dropped. view-<project>.cloud.maude.sh, the published-snapshot surface, and the maude share publish CLI verb all go. 2. Read-only becomes a permission on the real projec...",
       "planPath": ".ai/plans/cloud-phase-25-one-project-two-doors.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-26-operator-view-and-analytics",
+      "title": "Cloud Phase 26 — Operator view (superadmin) + product analytics",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — apps/cloud has a strong house style (pure logic vs route effects, DDR-196 §1; colocat...",
+      "planPath": ".ai/plans/cloud-phase-26-operator-view-and-analytics.md",
       "archived": false,
       "phaseKey": null
     },

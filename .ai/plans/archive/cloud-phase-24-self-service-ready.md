@@ -264,14 +264,37 @@ disjoint. Its unblocked track (read-only in the desktop app) can start today.
 
 ## Acceptance
 
-- [ ] A stranger completes signup → pay → project → first design **unaided**,
+- [~] A stranger completes signup → pay → project → first design **unaided**,
   and the funnel told them the full cost before the card.
-- [ ] Two projects run concurrently, provisioned by the wizard, with no shared
+  **Partly.** C1 walked signup → wizard → Stripe → payment → provision → first
+  open on 2026-08-01, and the funnel now states the bill of materials before
+  the card (verified in the live UI, not in a test). But it was walked by an
+  agent, and one click needed a human: Stripe's agentic-commerce control asks
+  the buyer to confirm they are not an AI, and that assertion is not mine to
+  make. **Unaided by a real stranger is C4 and is still open.**
+- [x] Two projects run concurrently, provisioned by the wizard, with no shared
   seed and no manual step.
-- [ ] A non-payer's cell actually suspends; a deleted project's bytes are
+  Two cells served at once; the second resolved its OWN config
+  (`projectName: "C1 Stranger Test"`, `seedRepo: null`, its own owner) and
+  booted with `canvases: 0` — it did not clone the pilot's 65. The manual step
+  that remained on the day (the domain) was the `CF_PROVISION_TOKEN`
+  permission, since fixed and re-verified through the Worker's own path.
+- [x] A non-payer's cell actually suspends; a deleted project's bytes are
   actually gone.
+  Proven end to end against a real Stripe test clock: trial → past_due →
+  (grace) → suspended + export + email → warning → purged, with
+  `do.send-export → ok` before any teardown and another tenant's objects
+  untouched. Delete-through-product purged the C1 project's bytes and detached
+  its address.
 - [ ] The timed club-member cold start is RUN and its time recorded.
-- [ ] No customer-facing page instructs an action the customer cannot perform.
+  **Not done — owner gate (C3).** Deliberately not simulated: the measurement
+  IS a non-technical human with a stopwatch.
+- [x] No customer-facing page instructs an action the customer cannot perform.
+  The impossible connect card and its operator-console footnote are gone; the
+  export page says what the file is and who opens it; the delete gate carries
+  the button it demands; the viewer refusal no longer points at a gallery that
+  is being deleted; and an empty project can now actually be deleted, which it
+  could not before C1 found it.
 
 ## Decisions to record
 
@@ -339,3 +362,46 @@ and pinned by two tests.
 | **D1, D3** | Live money. D1 is the one irreversible step in the plan and is gated on C; D3 needs Stripe test clocks against a real account. |
 | **D4** | The pack is written and linked (A8) and the code-checkable claims are pinned. What remains is not code: the registered entity details and a counsel review, both hard gates on D1. |
 | **E1** | An aspirational landing page. A1 did the honest half; this is a marketing rewrite, not a defect. |
+
+---
+
+## Retro — 2026-08-01
+
+**Unit tests said nothing about the four worst defects.** 359 green tests, and
+every one of these took a real request to find: email had been 403-ing on every
+send for two days; the deploy workflow had been red so long that a genuine
+failure hid inside it; the funnel quoted €19 and charged €22.99; a brand-new
+project could never be deleted. A payment integration proven against a faked
+`globalThis.fetch` is proven against our own idea of the provider. **Probe the
+live thing with the exact payload the code builds, before a human walks it.**
+
+**"Nobody has tried" and "it cannot work" look identical from a database.** The
+audit read an empty `audit_log` as an unwalked path. C1 found the wizard could
+not complete a checkout at all — Stripe's Managed Payments needed a product tax
+code no product had. The absence of evidence was evidence, and reading it as
+laziness cost a phase's worth of assumption.
+
+**I got the tax question wrong twice before measuring it.** First "Stripe Tax is
+inert without registrations", then "switch it off until an accountant answers".
+Both plausible, both wrong; the third answer came from one API call. When a
+claim is cheap to test and expensive to be wrong about, test it in the same
+breath as making it — and prefer superseding a recorded decision over quietly
+leaving a wrong fact in the graph.
+
+**The plan's own proposal contradicted a published promise.** A11 asked for a
+7-day retention window; the Trust page has said 30 since Phase 9. Shipping 7
+would have been the exact breach A11's own note warned about. **Grep the
+published surfaces for a number before implementing a plan's number.**
+
+**Two commits went wrong through the shared index, not through the code.**
+`~/git` is a Syncthing tree with concurrent sessions, and an index entry I did
+not stage rode along in a commit and reverted a file. CLAUDE.md already says to
+verify content AFTER committing; I skipped it once and it cost a red CI run and
+a follow-up commit. `bun test` also clobbered `apps/studio/dist/` twice. **Both
+rules were already written down. The failure was not knowing them, it was not
+running them.**
+
+**For `/plan` next time:** when a phase's acceptance criteria include a human
+walk, schedule the *machine-checkable* half of that walk first — it found five
+defects here that the human would otherwise have hit live, and it cost minutes.
+
