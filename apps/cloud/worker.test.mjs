@@ -317,6 +317,35 @@ test('the promised deletion actually deletes — retention over, bytes gone', as
   assert.deepEqual([...env.EXPORTS.store], ['tenants/other-club/repo.bundle']);
 });
 
+// Found by the D3 Stripe-test-clock run, 2026-08-01: the "two days left" mail
+// went out TWICE. `audit()` defaults to the wall clock while the guard compares
+// against `state_since`, which the sweep wrote with ITS clock — let the two
+// diverge and the guard stops matching and re-sends on every hourly tick.
+test('the deletion warning is sent once, however many times the cron ticks', async (t) => {
+  const { env, sqlite } = freshEnv();
+  const pausedAt = NOW - 29 * 86_400_000; // inside the 28–30 day warning window
+  seedProject(sqlite, { id: 'alligators', state: 'suspended', subscription: 'sub_1' });
+  sqlite
+    .prepare(
+      "UPDATE projects SET state_since = ?, export_sent_at = ?, cell_running = 0 WHERE id='alligators'"
+    )
+    .run(pausedAt, pausedAt);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = stubNetwork({ subscriptions: { sub_1: { status: 'canceled' } } });
+  t.after(() => {
+    globalThis.fetch = realFetch;
+  });
+  Object.assign(env, { CELL_SECRET_MASTER: 'master', RESEND_API_KEY: 'k' });
+
+  // Three hourly ticks inside the window.
+  for (const tick of [0, 3600_000, 7200_000]) await reconcileSweep(env, { now: NOW + tick });
+
+  const warnings = sqlite
+    .prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'do.warn-deletion'")
+    .get().n;
+  assert.equal(warnings, 1, 'one warning, not one per tick');
+});
+
 test('a paying tenant is never touched by any of the teardown effects', async (t) => {
   const { env, sqlite } = freshEnv();
   seedProject(sqlite, { id: 'alligators', state: 'active', subscription: 'sub_1' });

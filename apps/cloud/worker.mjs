@@ -544,9 +544,16 @@ async function runOne(env, projectId, { jobId = null, now }) {
 async function performActions(env, projectId, row, actions, { now }) {
   const kinds = new Set(actions.map((a) => a.kind));
   const performed = [];
+  // The sweep's clock, not the wall clock. `audit()` defaults to `Date.now()`,
+  // and the "have we already warned" guard below compares an audit row's `at`
+  // against `state_since` — which the sweep wrote with THIS `now`. Let the two
+  // diverge and the guard silently stops matching, re-sending a "two days
+  // left" email on every hourly tick. Production never noticed because both
+  // clocks are the wall clock there; a Stripe test-clock run is where it shows
+  // up, which is also the only place anybody would try to prove the guard.
   const record = async (action, outcome, detail = null) => {
     performed.push({ action, outcome });
-    await audit(env.DB, { projectId, actor: 'system', action: `do.${action}`, detail });
+    await audit(env.DB, { projectId, actor: 'system', action: `do.${action}`, detail }, { now });
   };
 
   // 1. The guarantee, before anything that could make it impossible.
