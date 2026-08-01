@@ -12,8 +12,9 @@
 // a guessed UUID must learn nothing at all.
 
 import { createAccount, createSession, getAccountByEmail } from './accounts.mjs';
-import { lockup, PAGE_CSS } from './brand.mjs';
+import { GOOGLE_BUTTON_CSS, googleButton, lockup, PAGE_CSS } from './brand.mjs';
 import { audit } from './db.mjs';
+import { googleConfigured } from './oauth-google.mjs';
 
 const DEAD_LINK =
   'This invitation link is not valid. Ask the person who invited you for a new one.';
@@ -26,7 +27,7 @@ function esc(s) {
 }
 
 function page(title, body) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)} — Maude</title><style>${PAGE_CSS}\n  main { max-width: 26rem; }</style></head><body><main>${lockup()}${body}</main></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)} — Maude</title><style>${PAGE_CSS}${GOOGLE_BUTTON_CSS}\n  main { max-width: 26rem; }</style></head><body><main>${lockup()}${body}</main></body></html>`;
 }
 
 function html(body, status = 200, extraHeaders = {}) {
@@ -57,18 +58,40 @@ const ROLE_MEANING = {
  *   'sign-in' — an account with this address exists; go sign in first.
  *   'create'  — no account; choose a password right here.
  */
-export function invitePage({ projectName, role, mode, email, inviteId, error = null }) {
+export function invitePage({
+  projectName,
+  role,
+  mode,
+  email,
+  inviteId,
+  error = null,
+  googleEnabled = false,
+}) {
   const meaning = ROLE_MEANING[role] ?? '';
   const action = `/invite/${esc(inviteId)}`;
+  const next = `/invite/${inviteId}`;
   let body = '';
   if (mode === 'join') {
     body = `<form method="post" action="${action}"><button type="submit">Join the project</button></form>`;
   } else if (mode === 'sign-in') {
     body = `<p>You already have a Maude account for <strong>${esc(email)}</strong>.
       Sign in and you'll come straight back here.</p>
-      <p><a class="btn" href="/login?next=${encodeURIComponent(`/invite/${inviteId}`)}">Sign in</a></p>`;
+      ${googleEnabled ? `${googleButton({ next, wide: true })}<div class="or">or</div>` : ''}
+      <p><a class="btn" href="/login?next=${encodeURIComponent(next)}">Sign in</a></p>`;
   } else {
-    body = `<form method="post" action="${action}">
+    // Cloud Phase 24 A12b. This screen is the invitee's FIRST contact with
+    // Maude, and it used to be the one door in the whole funnel that offered
+    // only "invent 12 characters" — while the dashboard's own front door two
+    // clicks away offers one click. Worst possible place to drop the easy
+    // option, so Google goes ABOVE the password field, not beside it.
+    body = `${
+      googleEnabled
+        ? `${googleButton({ next, wide: true })}
+      <p class="quiet" style="margin:var(--space-3) 0 0">Use ${esc(email)} — the address this
+        invitation was sent to.</p>
+      <div class="or">or</div>`
+        : ''
+    }<form method="post" action="${action}">
       <label for="password">Choose a password</label>
       <input type="password" id="password" name="password" minlength="12" required
              autocomplete="new-password" placeholder="at least 12 characters">
@@ -140,6 +163,7 @@ export async function handleInviteRoutes(request, env, { account }) {
     role: invite.role,
     email: invite.email,
     inviteId: invite.id,
+    googleEnabled: googleConfigured(env),
   };
   const existing = await getAccountByEmail(env.DB, invite.email);
   const signedInAsInvitee = account && existing && account.id === existing.id;
@@ -194,7 +218,7 @@ export async function handleInviteRoutes(request, env, { account }) {
 
 /** Every customer-facing string here, for the vocabulary lint. */
 export function allInviteHtml() {
-  const base = { projectName: 'Brno Alligators', inviteId: 'x'.repeat(36) };
+  const base = { projectName: 'Brno Alligators', inviteId: 'x'.repeat(36), googleEnabled: true };
   return [
     invitePage({ ...base, role: 'member', mode: 'create', email: 'new@example.com' }),
     invitePage({ ...base, role: 'viewer', mode: 'sign-in', email: 'old@example.com' }),

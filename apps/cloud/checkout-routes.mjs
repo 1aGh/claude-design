@@ -16,10 +16,20 @@
 // backstop for the person who closed the tab, and there is no third machine
 // to go wrong.
 
+import {
+  cancelSchedule,
+  currentVatId,
+  customerParams,
+  invoiceRows,
+  pauseClock,
+  subscriptionView,
+  validateBillingDetails,
+} from './billing.mjs';
 import { attemptFromRow, checkoutSessionParams, validateNewProject } from './checkout.mjs';
 import {
   allCheckoutHtml,
   billingPage,
+  cancelPage,
   newProjectPage,
   waitingRoomPage,
 } from './checkout-pages.mjs';
@@ -360,11 +370,11 @@ export async function handleCheckoutRoutes(request, env, { account }) {
   }
 
   // ---------------------------------------------------------------- billing
-  m = pathname.match(/^\/projects\/([a-z0-9-]+)\/billing(\/portal)?$/);
+  m = pathname.match(/^\/projects\/([a-z0-9-]+)\/billing(?:\/(portal|cancel|details|resume))?$/);
   if (m) {
     if (!account) return redirect('/login');
     const projectId = m[1];
-    const wantsPortal = Boolean(m[2]);
+    const surface = m[2] ?? null;
     const project = await env.DB.prepare('SELECT * FROM projects WHERE id = ?')
       .bind(projectId)
       .first();
@@ -382,7 +392,8 @@ export async function handleCheckoutRoutes(request, env, { account }) {
       return html(`<p>${ACCESS_MESSAGES['no-access']}</p>`, 404);
     }
 
-    if (wantsPortal && request.method === 'POST') {
+    if (surface === 'portal') {
+      if (request.method !== 'POST') return html('<p>Not allowed.</p>', 405);
       const portal = await stripe(env, 'POST', '/v1/billing_portal/sessions', {
         customer: account.stripe_customer_id,
         return_url: `${url.origin}/projects/${projectId}/billing`,
@@ -393,20 +404,264 @@ export async function handleCheckoutRoutes(request, env, { account }) {
       }
       return redirect(portal.body.url);
     }
-    if (wantsPortal) return html('<p>Not allowed.</p>', 405);
 
-    const stateCopy = STATE_COPY[project.state] ?? { label: project.state, note: null };
-    return html(
-      billingPage({
-        account,
-        project,
-        stateCopy,
-        canPortal: Boolean(account.stripe_customer_id && project.subscription_id),
-      })
-    );
+    // ---- the cancel ladder (Cloud Phase 24 A11, canvas board E0) ------------
+    if (surface === 'cancel') {
+      if (!project.subscription_id) return html('<p>Not allowed.</p>', 405);
+      const subscription = subscriptionView(await readSubscription(env, project.subscription_id));
+      const schedule = cancelSchedule({ periodEndMs: subscription.periodEndMs });
+
+      if (request.method === 'GET') {
+        return html(
+          cancelPage({
+            account,
+            project,
+            schedule,
+            hasExport: Boolean(project.export_sent_at),
+          })
+        );
+      }
+      if (request.method !== 'POST') return html('<p>Not allowed.</p>', 405);
+
+      const form = await request.formData();
+      if (form.get('sure') !== 'yes') {
+        return html(
+          cancelPage({
+            account,
+            project,
+            schedule,
+            hasExport: Boolean(project.export_sent_at),
+            error: 'Tick the box to confirm.',
+          }),
+          400
+        );
+      }
+      // At period end, NOT now: they paid for the rest of the period and
+      // taking it away at the moment of cancelling is the cheapest possible
+      // way to turn a churn into a complaint.
+      const cancelled = await stripe(env, 'POST', `/v1/subscriptions/${project.subscription_id}`, {
+        cancel_at_period_end: 'true',
+      });
+      if (!cancelled.ok) {
+        console.error(`[billing] cancel failed (${cancelled.status})`);
+        return html(
+          cancelPage({
+            account,
+            project,
+            schedule,
+            hasExport: Boolean(project.export_sent_at),
+            error: 'That could not be cancelled right now, so nothing changed. Try again shortly.',
+          }),
+          502
+        );
+      }
+      await audit(env.DB, {
+        accountId: account.id,
+        projectId,
+        actor: `customer:${account.email}`,
+        action: 'billing.cancelled',
+        detail: `ends ${new Date(schedule.pausesOn).toISOString()}`,
+      });
+      return redirect(`/projects/${projectId}/billing`);
+    }
+
+    if (surface === 'resume') {
+      if (request.method !== 'POST') return html('<p>Not allowed.</p>', 405);
+      if (!project.subscription_id) return html('<p>Not allowed.</p>', 405);
+      const resumed = await stripe(env, 'POST', `/v1/subscriptions/${project.subscription_id}`, {
+        cancel_at_period_end: 'false',
+      });
+      if (!resumed.ok) {
+        console.error(`[billing] resume failed (${resumed.status})`);
+        return html('<p>That could not be undone right now. Try again in a minute.</p>', 502);
+      }
+      await audit(env.DB, {
+        accountId: account.id,
+        projectId,
+        actor: `customer:${account.email}`,
+        action: 'billing.resumed',
+      });
+      return redirect(`/projects/${projectId}/billing`);
+    }
+
+    // ---- what goes on the invoice (A10 + D2) --------------------------------
+    if (surface === 'details') {
+      if (request.method !== 'POST') return html('<p>Not allowed.</p>', 405);
+      if (!account.stripe_customer_id) return html('<p>Not allowed.</p>', 405);
+      const form = await request.formData();
+      const checked = validateBillingDetails({
+        company: form.get('company'),
+        line1: form.get('line1'),
+        city: form.get('city'),
+        postalCode: form.get('postalCode'),
+        country: form.get('country'),
+        vatId: form.get('vatId'),
+      });
+      if (!checked.ok) {
+        return html(
+          await renderBilling(env, {
+            account,
+            project,
+            details: checked.details,
+            error: checked.errors.join(' '),
+          }),
+          400
+        );
+      }
+      const saved = await saveBillingDetails(env, account.stripe_customer_id, checked.details);
+      if (!saved.ok) {
+        return html(
+          await renderBilling(env, {
+            account,
+            project,
+            details: checked.details,
+            error: 'Those could not be saved right now, so nothing changed. Try again shortly.',
+          }),
+          502
+        );
+      }
+      await audit(env.DB, {
+        accountId: account.id,
+        projectId,
+        actor: `customer:${account.email}`,
+        action: 'billing.details',
+      });
+      return html(
+        await renderBilling(env, { account, project, notice: 'Saved. Future invoices use these.' })
+      );
+    }
+
+    if (request.method !== 'GET') return html('<p>Not allowed.</p>', 405);
+    return html(await renderBilling(env, { account, project }));
   }
 
   return null;
+}
+
+// -------------------------------------------------------------- billing reads
+//
+// EVERY Stripe read on the billing page is best-effort and non-fatal. This is
+// the page somebody opens when their card failed; a Stripe outage that blanks
+// it turns one problem into two, and the state card — the part that answers
+// "is my work safe" — comes from our own database and always renders.
+
+/** One subscription, or null when Stripe cannot say. */
+async function readSubscription(env, subscriptionId) {
+  if (!subscriptionId || !env.STRIPE_SECRET_KEY) return null;
+  try {
+    const res = await stripe(env, 'GET', `/v1/subscriptions/${subscriptionId}`);
+    return res.ok ? res.body : null;
+  } catch (err) {
+    console.error(`[billing] subscription read: ${err.message}`);
+    return null;
+  }
+}
+
+/** Assemble the billing page from our row plus whatever Stripe answers. */
+async function renderBilling(
+  env,
+  { account, project, details = null, error = null, notice = null }
+) {
+  const stateCopy = STATE_COPY[project.state] ?? { label: project.state, note: null };
+  const canPortal = Boolean(account.stripe_customer_id && project.subscription_id);
+  const pausedUntil = pauseClock({ state: project.state, stateSince: project.state_since });
+  if (!canPortal) {
+    return billingPage({ account, project, stateCopy, canPortal, pausedUntil, error, notice });
+  }
+
+  const subscription = subscriptionView(await readSubscription(env, project.subscription_id));
+
+  let invoices = [];
+  let invoicesUnavailable = false;
+  try {
+    const res = await stripe(
+      env,
+      'GET',
+      `/v1/invoices?customer=${encodeURIComponent(account.stripe_customer_id)}&limit=12`
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    invoices = invoiceRows(res.body?.data ?? []);
+  } catch (err) {
+    console.error(`[billing] invoice list: ${err.message}`);
+    invoicesUnavailable = true;
+  }
+
+  // A just-submitted form wins over what Stripe holds: re-rendering somebody's
+  // rejected input as the old saved values loses what they typed.
+  let onFile = details;
+  let detailsUnavailable = false;
+  if (!onFile) {
+    try {
+      onFile = await readBillingDetails(env, account.stripe_customer_id);
+    } catch (err) {
+      console.error(`[billing] details read: ${err.message}`);
+      detailsUnavailable = true;
+    }
+  }
+
+  return billingPage({
+    account,
+    project,
+    stateCopy,
+    canPortal,
+    subscription,
+    invoices,
+    invoicesUnavailable,
+    details: onFile,
+    detailsUnavailable,
+    pausedUntil,
+    error,
+    notice,
+  });
+}
+
+/** What Stripe currently holds for this customer, in our own shape. */
+async function readBillingDetails(env, customerId) {
+  const customer = await stripe(env, 'GET', `/v1/customers/${customerId}`);
+  if (!customer.ok) throw new Error(`customer HTTP ${customer.status}`);
+  const taxIds = await stripe(env, 'GET', `/v1/customers/${customerId}/tax_ids?limit=1`);
+  const vat = taxIds.ok ? currentVatId(taxIds.body?.data ?? []) : null;
+  const address = customer.body?.address ?? {};
+  return {
+    company: customer.body?.name ?? '',
+    line1: address.line1 ?? '',
+    city: address.city ?? '',
+    postalCode: address.postal_code ?? '',
+    country: address.country ?? '',
+    vatId: vat?.value ?? '',
+  };
+}
+
+/**
+ * Write them back.
+ *
+ * A tax id cannot be edited at Stripe, only replaced — so the old one is
+ * removed and the new one created. Order matters: remove first, because a
+ * customer briefly holding two VAT ids is a customer whose next invoice may
+ * carry the wrong one.
+ */
+async function saveBillingDetails(env, customerId, details) {
+  const updated = await stripe(env, 'POST', `/v1/customers/${customerId}`, {
+    ...customerParams(details),
+    'tax[validate_location]': 'deferred',
+  });
+  if (!updated.ok) return { ok: false };
+
+  const existing = await stripe(env, 'GET', `/v1/customers/${customerId}/tax_ids?limit=1`);
+  const held = existing.ok ? currentVatId(existing.body?.data ?? []) : null;
+  if (held && held.value !== details.vatId) {
+    await stripe(env, 'DELETE', `/v1/customers/${customerId}/tax_ids/${held.id}`);
+  }
+  if (details.vatId && held?.value !== details.vatId) {
+    const created = await stripe(env, 'POST', `/v1/customers/${customerId}/tax_ids`, {
+      type: 'eu_vat',
+      value: details.vatId,
+    });
+    // A rejected VAT id is a validation failure the customer must see, not a
+    // silent no-op that leaves them believing it was saved.
+    if (!created.ok) return { ok: false };
+  }
+  return { ok: true };
 }
 
 /** For tests: the public pricing shape the wizard renders from. */

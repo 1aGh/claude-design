@@ -9,9 +9,10 @@
 // decision happens, not on a page nobody visits. `disclosure_accepted_at` is
 // written only when the box was actually ticked.
 
-import { lockup, PAGE_CSS } from './brand.mjs';
+import { GOOGLE_BUTTON_CSS, googleButton, lockup, PAGE_CSS } from './brand.mjs';
 import { allDashboardHtml } from './dashboard.mjs';
 import { allHandoffHtml } from './handoff.mjs';
+import { allInviteHtml } from './invites.mjs';
 import { allPeopleHtml } from './people-page.mjs';
 
 // Styling comes from the design system (brand.mjs), not from ad-hoc CSS.
@@ -19,25 +20,11 @@ import { allPeopleHtml } from './people-page.mjs';
 // surface not wearing it.
 const BASE_CSS =
   PAGE_CSS +
+  GOOGLE_BUTTON_CSS +
   `
   body { display: grid; place-items: center; min-height: 100vh; padding: var(--space-8) var(--space-5); }
   main { width: 100%; max-width: 26rem; }
   main > :last-child { margin-bottom: 0; }
-  .btn-google {
-    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-    background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--border-subtle);
-  }
-  .btn-google:hover { background: var(--bg-3); color: var(--fg-0); }
-  .btn-google:active { background: var(--bg-3); }
-  .btn-google svg { flex: none; }
-  .btn-google.wide { display: flex; width: 100%; }
-  .or {
-    display: flex; align-items: center; gap: var(--space-4);
-    color: var(--fg-3); font-size: var(--type-sm);
-    text-transform: uppercase; letter-spacing: 0.08em;
-    margin: var(--space-5) 0;
-  }
-  .or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--border-subtle); }
   .cta { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
 `;
 
@@ -48,15 +35,35 @@ function page(title, body) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${tab}</title><style>${BASE_CSS}</style></head><body><main>${body}</main></body></html>`;
 }
 
-// The official multicolor "G" — inline so the page stays a single request and
-// works under the strict CSP. Google's brand rules allow the standard G on a
-// neutral button; the button chrome itself wears our tokens.
-const GOOGLE_G = `<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.2-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 18.9 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.2 5.7l6.2 5.2C40.7 35.7 44 30.3 44 24c0-1.2-.1-2.4-.4-3.5z"/></svg>`;
+// `googleButton` + its CSS moved to brand.mjs in Cloud Phase 24 (A12b) — the
+// invitation's join screen needs the same button, and a second copy is how two
+// of them drift. Re-exported so existing importers keep working.
+export { googleButton };
 
-export function googleButton({ next = null, wide = false } = {}) {
-  const href = next ? `/auth/google?next=${encodeURIComponent(next)}` : '/auth/google';
-  return `<a class="btn btn-google${wide ? ' wide' : ''}" href="${href}">${GOOGLE_G} Continue with Google</a>`;
-}
+/**
+ * The bill of materials, said BEFORE anybody reaches a card (Cloud Phase 24 A1).
+ *
+ * The audit's sharpest finding was that every page is honest and the journey
+ * lies: a customer authorizes payment for "a home for your design projects" and
+ * then discovers, one door at a time, that they need a desktop computer, an
+ * install, and a SECOND paid subscription with Anthropic. The string "Claude"
+ * appeared in zero customer-facing cloud pages.
+ *
+ * It is framed as the reason the work stays private rather than as a caveat,
+ * because that is what it actually is — the disclosure's own argument, told
+ * forwards. Same block on the landing and in the wizard: the two places
+ * somebody decides.
+ */
+export const BILL_OF_MATERIALS_HTML = `
+  <div class="card">
+    <strong>What you’ll need</strong>
+    <p class="quiet">Maude runs on your own computer — a Mac or a PC, not a phone or a tablet.
+    You’ll install the free Maude app, and the AI that draws with you runs on
+    <strong>your own Claude subscription</strong> (about €20 a month, paid to Anthropic,
+    not to us).</p>
+    <p class="quiet" style="margin-bottom:0">That is also why your work stays private: we sync and
+    version your project, but it is only ever drawn on your machine.</p>
+  </div>`;
 
 export const DISCLOSURE_HTML = `
   <div class="card">
@@ -83,6 +90,9 @@ export function signupPage({ googleEnabled = false, error = null } = {}) {
       ${DISCLOSURE_HTML}
       <label style="font-weight:400"><input type="checkbox" name="disclosure" value="yes" required>
       I understand what Maude Cloud stores and what it never does.</label>
+      <p class="quiet">Creating an account means you accept the
+        <a href="https://maude.sh/terms">Terms</a> and the
+        <a href="https://maude.sh/privacy">Privacy notice</a>.</p>
       <button type="submit">Create account</button>
     </form>
     <p class="quiet">Already have an account? <a href="/login">Sign in</a>.</p>`
@@ -129,7 +139,8 @@ export function homePage({ account = null, googleEnabled = false } = {}) {
            ${googleEnabled ? googleButton() : ''}
            <a class="btn" href="/signup">Create an account</a>
          </div>
-         <p class="quiet">Already have an account? <a href="/login">Sign in</a>.</p>`
+         <p class="quiet">Already have an account? <a href="/login">Sign in</a>.</p>
+         ${BILL_OF_MATERIALS_HTML}`
   );
 }
 
@@ -148,6 +159,7 @@ export function allCustomerFacingHtml() {
   return [
     allDashboardHtml(),
     allHandoffHtml(),
+    allInviteHtml(),
     allPeopleHtml(),
     signupPage({ googleEnabled: true }),
     loginPage({ googleEnabled: true, error: 'That email and password don’t match.' }),

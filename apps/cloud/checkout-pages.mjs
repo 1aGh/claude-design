@@ -5,7 +5,9 @@
 // whole job is to be honest while infrastructure is uncertain should not
 // depend on any of it working.
 
+import { formatDay } from './billing.mjs';
 import { appShell, lockup, PAGE_CSS } from './brand.mjs';
+import { BILL_OF_MATERIALS_HTML } from './pages.mjs';
 import { PROVISION_STEPS } from './provisioning.mjs';
 
 const EXTRA_CSS = `
@@ -29,6 +31,18 @@ const EXTRA_CSS = `
   .steps li.done { color: var(--fg-1); }
   .steps li.done::before { background: var(--status-success); }
   .reassure { border-color: color-mix(in oklab, var(--status-success) 30%, transparent); }
+  .warn { border-color: color-mix(in oklab, var(--status-warn) 45%, transparent); }
+  .card ul { margin: var(--space-3) 0 var(--space-4); padding-left: var(--space-6); line-height: 1.9; color: var(--fg-2); }
+  .card ul strong { color: var(--fg-0); }
+  .actions { display: flex; gap: var(--space-4); flex-wrap: wrap; margin: var(--space-5) 0 var(--space-4); }
+  .pair { display: flex; gap: var(--space-4); align-items: flex-end; }
+  .pair > div { flex: 1; }
+  table { width: 100%; border-collapse: collapse; margin: var(--space-4) 0 var(--space-6); background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow: hidden; }
+  th { text-align: left; font-family: var(--font-mono); font-size: var(--type-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--fg-2); padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--border-subtle); }
+  td { padding: var(--space-3) var(--space-5); border-top: 1px solid var(--border-subtle); vertical-align: baseline; font-size: var(--type-base); }
+  tr:first-child td { border-top: 0; }
+  td.right, th.right { text-align: right; white-space: nowrap; }
+  .mono { font-family: var(--font-mono); font-size: var(--type-sm); }
 `;
 // The centered waiting room keeps the narrow column; inside the shell the
 // column is the shell's own `.main-inner`.
@@ -84,6 +98,10 @@ export function newProjectPage({ account = null, pricing, error = null, values =
          <label><input type="radio" name="interval" value="monthly" ${values.interval !== 'annual' ? 'checked' : ''}> Monthly</label>
          <label><input type="radio" name="interval" value="annual" ${values.interval === 'annual' ? 'checked' : ''}> Annual — two months free</label>
        </div>
+       ${BILL_OF_MATERIALS_HTML}
+       <p class="quiet" style="margin:var(--space-5) 0 var(--space-4)">By continuing you agree to
+         the <a href="https://maude.sh/terms">Terms</a> and the
+         <a href="https://maude.sh/privacy">Privacy notice</a>.</p>
        <button type="submit">Continue to payment details</button>
        <p class="quiet" style="margin-top:var(--space-4)">Payment details are handled by Stripe.
          Nothing is charged today.</p>
@@ -133,31 +151,212 @@ export function waitingRoomPage({ project, room }) {
 }
 
 /**
- * Billing, per project. The numbers live at Stripe; this page states the
- * situation and hands over to Stripe's own portal for anything that changes it.
+ * Billing, per project.
+ *
+ * Stripe stays the source of everything that CHANGES money — cards and plan
+ * changes open their portal, because it is the customer's billing relationship
+ * and they should hold it directly. What moved here (Cloud Phase 24 A10,
+ * canvas board D2) is everything they only need to READ or to decide:
+ * the invoice list, what goes on the invoice, and cancelling — which Stripe's
+ * own button cannot explain, because it knows nothing about the project.
  */
-export function billingPage({ account = null, project, stateCopy, canPortal }) {
+export function billingPage({
+  account = null,
+  project,
+  stateCopy,
+  canPortal,
+  subscription = { exists: false, cancelling: false, periodEndMs: null },
+  invoices = [],
+  invoicesUnavailable = false,
+  details = null,
+  detailsUnavailable = false,
+  pausedUntil = null,
+  error = null,
+  notice = null,
+}) {
+  const p = `/projects/${esc(project.id)}`;
+  const d = details ?? {
+    company: '',
+    line1: '',
+    city: '',
+    postalCode: '',
+    country: '',
+    vatId: '',
+  };
+
+  // Cancelled-but-still-running is the state the old page could not show at
+  // all: everything worked, the customer had cancelled, and no Maude screen
+  // said so (canvas E0, screen 2).
+  const cancelBanner = subscription.cancelling
+    ? `<div class="card warn">
+         <h2>Cancelled — ends ${esc(formatDay(subscription.periodEndMs ?? Date.now()))}</h2>
+         <p class="quiet">Everything works normally until then. You will not be charged again.</p>
+         <form method="post" action="${p}/billing/resume" style="margin:0">
+           <button type="submit">Keep ${esc(project.name)}</button>
+         </form>
+         <p class="quiet" style="margin:var(--space-3) 0 0">Changing your mind before then puts
+           everything back exactly as it is now — same address, same people, nothing lost.</p>
+       </div>`
+    : '';
+
+  const invoiceSection = invoicesUnavailable
+    ? `<p class="quiet">Your invoices could not be loaded right now. They are always available in
+         the billing portal.</p>`
+    : invoices.length
+      ? `<table><thead><tr><th>Date</th><th>What for</th><th></th><th></th></tr></thead><tbody>${invoices
+          .map(
+            (i) => `<tr>
+             <td class="mono">${esc(formatDay(i.at))}</td>
+             <td>${esc(i.description)}${i.unpaid ? ' <span class="quiet">— unpaid</span>' : ''}</td>
+             <td class="right">${esc(i.amount)}</td>
+             <td class="right"><a href="${esc(i.pdf)}">PDF</a></td>
+           </tr>`
+          )
+          .join('\n')}</tbody></table>`
+      : '<p class="quiet">No invoices yet. The first one arrives when the trial ends.</p>';
+
+  const detailsSection = detailsUnavailable
+    ? `<p class="quiet">Your billing details could not be loaded right now. Try again in a minute.</p>`
+    : `<p class="quiet">What goes on the invoice. Changing it here changes every future one — and
+         it is what decides which VAT you are charged.</p>
+       <form method="post" action="${p}/billing/details">
+         <label for="company">Billed to</label>
+         <input type="text" id="company" name="company" value="${esc(d.company ?? '')}"
+                placeholder="e.g. Brno Alligators z.s.">
+         <label for="line1">Street and number</label>
+         <input type="text" id="line1" name="line1" value="${esc(d.line1 ?? '')}">
+         <div class="pair">
+           <div>
+             <label for="postalCode">Postcode</label>
+             <input type="text" id="postalCode" name="postalCode" value="${esc(d.postalCode ?? '')}">
+           </div>
+           <div>
+             <label for="city">City</label>
+             <input type="text" id="city" name="city" value="${esc(d.city ?? '')}">
+           </div>
+           <div>
+             <label for="country">Country</label>
+             <input type="text" id="country" name="country" maxlength="2" placeholder="CZ"
+                    value="${esc(d.country ?? '')}">
+           </div>
+         </div>
+         <label for="vatId">VAT id <span class="quiet">— if you have one</span></label>
+         <input type="text" id="vatId" name="vatId" value="${esc(d.vatId ?? '')}"
+                placeholder="CZ26547891">
+         <p style="margin-top:var(--space-4)"><button type="submit">Save</button></p>
+       </form>`;
+
   return appShell({
     account,
     title: 'Billing',
     project,
     isOwner: true,
     active: 'billing',
-    pill: stateCopy.tone ? { tone: stateCopy.tone, label: stateCopy.label } : null,
-    body: `<div class="card">
-       <h2>${esc(stateCopy.label)}</h2>
-       ${stateCopy.note ? `<p class="quiet" style="margin:0">${esc(stateCopy.note)}</p>` : ''}
-     </div>
+    extraCss: EXTRA_CSS,
+    pill: pausedUntil
+      ? { tone: 'stop', label: 'Paused' }
+      : subscription.cancelling
+        ? { tone: 'warn', label: `Ending ${formatDay(subscription.periodEndMs ?? Date.now())}` }
+        : stateCopy.tone
+          ? { tone: stateCopy.tone, label: stateCopy.label }
+          : null,
+    body: `${error ? `<p class="error">${esc(error)}</p>` : ''}
+     ${notice ? `<p class="ok">${esc(notice)}</p>` : ''}
+     ${cancelBanner}
+     ${
+       // Paused, with the clock visible (A11, canvas E0 screen 3). A retention
+       // window nobody can see the end of is not a promise, it is a surprise.
+       pausedUntil
+         ? `<div class="card warn">
+              <h2>Paused — deleted in ${pausedUntil.daysLeft} day${pausedUntil.daysLeft === 1 ? '' : 's'}</h2>
+              <p class="quiet">${esc(project.name)} stopped on ${esc(formatDay(pausedUntil.pausedOn))}.
+                Nothing has been deleted yet. Everything goes on
+                <strong>${esc(formatDay(pausedUntil.deletedOn))}</strong> unless you restart it.</p>
+              <div class="actions" style="margin:0">
+                <form method="post" action="${p}/billing/portal" style="margin:0">
+                  <button type="submit">Restart ${esc(project.name)}</button>
+                </form>
+                <form method="post" action="${p}/download" style="margin:0">
+                  <button type="submit" class="ghost">Download everything</button>
+                </form>
+              </div>
+            </div>`
+         : `<div class="card">
+              <h2>${esc(stateCopy.label)}</h2>
+              ${stateCopy.note ? `<p class="quiet" style="margin:0">${esc(stateCopy.note)}</p>` : ''}
+            </div>`
+}
      ${
        canPortal
-         ? `<form method="post" action="/projects/${esc(project.id)}/billing/portal" style="margin-top:var(--space-5)">
-              <button type="submit">Manage billing at Stripe</button>
-            </form>
-            <p class="quiet" style="margin-top:var(--space-4)">Cards, invoices, plan changes and
-              cancelling all live there — it is your billing relationship, so you hold it directly.</p>`
+         ? `<div class="actions">
+              <form method="post" action="${p}/billing/portal" style="margin:0">
+                <button type="submit">Change plan or card</button>
+              </form>
+              ${
+                subscription.cancelling
+                  ? ''
+                  : `<form method="get" action="${p}/billing/cancel" style="margin:0">
+                       <button type="submit" class="ghost">Cancel subscription</button>
+                     </form>`
+              }
+            </div>
+            <p class="quiet">Cards and plan changes open Stripe, who handle the payment itself.</p>
+            <h2 style="margin-top:var(--space-7)">Invoices</h2>
+            ${invoiceSection}
+            <h2 style="margin-top:var(--space-7)">Billing details</h2>
+            ${detailsSection}`
          : `<p class="quiet" style="margin-top:var(--space-5)">There is no billing set up for this
               project yet.</p>`
 }`,
+  });
+}
+
+/**
+ * Cancelling, with every date on the screen before the click (A11, canvas E0).
+ *
+ * The download offer is ON this screen rather than a link to the page that
+ * makes one: a gate that sends somebody hunting for the thing it just demanded
+ * is a gate that gets abandoned, and this is the moment they are most likely to
+ * want the copy.
+ */
+export function cancelPage({ account = null, project, schedule, hasExport = false, error = null }) {
+  const p = `/projects/${esc(project.id)}`;
+  return appShell({
+    account,
+    title: `Cancel ${project.name}?`,
+    project,
+    isOwner: true,
+    active: 'billing',
+    extraCss: EXTRA_CSS,
+    body: `${error ? `<p class="error">${esc(error)}</p>` : ''}
+     <div class="card warn">
+       <h2>Here is what happens</h2>
+       <ul>
+         <li>${esc(project.name)} keeps working until
+           <strong>${esc(formatDay(schedule.worksUntil))}</strong>, which you have already paid for.</li>
+         <li>It pauses that day. Nothing is deleted and you can restart it.</li>
+         <li><strong>${esc(formatDay(schedule.deletedOn))}</strong> — ${schedule.retentionDays} days
+           later — everything is deleted from our computers. We email you before that happens.</li>
+         <li>The copy you download stays yours, forever.</li>
+       </ul>
+     </div>
+     <div class="card">
+       <h2>Take your work with you first</h2>
+       <p class="quiet">One file with every design and its full history. It takes a minute, and
+         taking it changes nothing.</p>
+       <form method="post" action="${p}/download" style="margin:0">
+         <button type="submit" class="ghost">Download everything</button>
+         ${hasExport ? '<span class="quiet" style="margin-left:var(--space-4)">you already have one — this makes a fresh copy</span>' : ''}
+       </form>
+     </div>
+     <form method="post" action="${p}/billing/cancel">
+       <label style="font-weight:400"><input type="checkbox" name="sure" value="yes" required>
+         I understand ${esc(project.name)} will be deleted on ${esc(formatDay(schedule.deletedOn))}.</label>
+       <p style="margin-top:var(--space-4)">
+         <button type="submit">Cancel the subscription</button>
+         <a href="${p}/billing" style="margin-left:var(--space-5)">Keep it running</a>
+       </p>
+     </form>`,
   });
 }
 

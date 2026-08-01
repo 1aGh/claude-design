@@ -38,6 +38,15 @@ jobs:
       - name: Test (node:test)
         run: pnpm test
 
+      - name: Data-plane tests (apps/cells)
+        # Cloud Phase 24 B1. `cellEnv` is where a mistake means one tenant
+        # reading another's data, and it had no tests and no CI at all — the
+        # control plane's suite runs in cloud-deploy.yml, but nothing ever ran
+        # the cells half. It runs here rather than there because a cells change
+        # must not trigger a control-plane deploy.
+        working-directory: apps/cells
+        run: node --test --test-force-exit "*.test.mjs"
+
       - name: Containment invariant (DDR-193)
         # The CI half of "enforced, not asserted". The boot-assert in
         # apps/studio/workspace-mode.ts refuses to start a cell that exposes a

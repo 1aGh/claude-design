@@ -213,6 +213,131 @@ test('a VANISHED subscription (404) alerts and holds — it is an anomaly, not a
   assert.equal(row.cell_running, 1, 'the running cell is left alone');
 });
 
+// ------------------------------------------------- the actions become real
+//
+// Cloud Phase 24 B3. Until this phase `runOne` computed suspend-cell /
+// resume-cell / send-export and wrote them into the job detail — the comment
+// said "become real in Phase 15" and it was still saying it in Phase 23. A
+// tenant who stopped paying kept a serving cell, and the export-before-
+// teardown guarantee never sent itself.
+
+/** A network that records every call and answers everything plausibly. */
+function stubNetwork({ subscriptions = {}, exportOk = true, calls = [] } = {}) {
+  return async (input, init = {}) => {
+    const url = String(input?.url ?? input);
+    calls.push({ url, method: init.method ?? 'GET', body: init.body });
+    if (url.includes('api.stripe.com')) {
+      const id = url.split('/').pop();
+      const sub = subscriptions[id];
+      if (sub === undefined) return { status: 404, ok: false };
+      return { status: 200, ok: true, json: async () => sub };
+    }
+    if (url.includes('/api/export')) {
+      return new Response(JSON.stringify({ ok: exportOk }), { status: exportOk ? 200 : 502 });
+    }
+    if (url.includes('api.resend.com')) return Response.json({ id: 'em_1' });
+    return Response.json({ success: true, result: [] });
+  };
+}
+
+/** An in-memory R2 binding — list + delete, the two the purge needs. */
+function fakeExports(keys = []) {
+  const store = new Set(keys);
+  return {
+    store,
+    async list({ prefix }) {
+      return { objects: [...store].filter((k) => k.startsWith(prefix)).map((key) => ({ key })) };
+    },
+    async delete(keys) {
+      for (const k of [].concat(keys)) store.delete(k);
+    },
+  };
+}
+
+test('suspension builds the copy and emails it BEFORE the address goes away', async (t) => {
+  const { env, sqlite } = freshEnv();
+  seedProject(sqlite, { id: 'alligators', state: 'active', subscription: 'sub_1' });
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = stubNetwork({ subscriptions: { sub_1: { status: 'canceled' } }, calls });
+  t.after(() => {
+    globalThis.fetch = realFetch;
+  });
+  Object.assign(env, {
+    CELL_SECRET_MASTER: 'master',
+    CF_PROVISION_TOKEN: 'cf',
+    CF_ACCOUNT_ID: 'acct',
+    RESEND_API_KEY: 'k',
+  });
+
+  await reconcileSweep(env, { now: NOW });
+
+  const order = calls.map((c) => c.url);
+  const exported = order.findIndex((u) => u.includes('/api/export'));
+  const detached = order.findIndex((u) => u.includes('api.cloudflare.com'));
+  assert.ok(exported >= 0, 'the export was actually built');
+  assert.ok(detached >= 0, 'the address was actually detached');
+  assert.ok(exported < detached, 'DDR-193 §3: the copy goes out before the teardown');
+
+  const mail = calls.find((c) => c.url.includes('api.resend.com'));
+  assert.ok(mail, 'the owner was told');
+  assert.match(JSON.parse(mail.body).subject, /has paused/);
+
+  const row = sqlite
+    .prepare("SELECT state, export_sent_at FROM projects WHERE id='alligators'")
+    .get();
+  assert.equal(row.state, 'suspended');
+  assert.ok(row.export_sent_at > 0, 'the guarantee is recorded, not merely intended');
+});
+
+test('the promised deletion actually deletes — retention over, bytes gone', async (t) => {
+  const { env, sqlite } = freshEnv();
+  seedProject(sqlite, { id: 'alligators', state: 'exported', subscription: 'sub_1' });
+  sqlite
+    .prepare("UPDATE projects SET export_sent_at = ?, state_since = ? WHERE id = 'alligators'")
+    .run(NOW - 40 * 86_400_000, NOW - 40 * 86_400_000);
+  env.EXPORTS = fakeExports(['tenants/alligators/repo.bundle', 'tenants/other-club/repo.bundle']);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = stubNetwork({ subscriptions: { sub_1: { status: 'canceled' } } });
+  t.after(() => {
+    globalThis.fetch = realFetch;
+  });
+  Object.assign(env, {
+    CELL_SECRET_MASTER: 'master',
+    CF_PROVISION_TOKEN: 'cf',
+    CF_ACCOUNT_ID: 'a',
+  });
+
+  await reconcileSweep(env, { now: NOW });
+
+  assert.equal(
+    sqlite.prepare("SELECT state FROM projects WHERE id='alligators'").get().state,
+    'purged'
+  );
+  assert.deepEqual([...env.EXPORTS.store], ['tenants/other-club/repo.bundle']);
+});
+
+test('a paying tenant is never touched by any of the teardown effects', async (t) => {
+  const { env, sqlite } = freshEnv();
+  seedProject(sqlite, { id: 'alligators', state: 'active', subscription: 'sub_1' });
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = stubNetwork({ subscriptions: { sub_1: { status: 'active' } }, calls });
+  t.after(() => {
+    globalThis.fetch = realFetch;
+  });
+  Object.assign(env, {
+    CELL_SECRET_MASTER: 'master',
+    CF_PROVISION_TOKEN: 'cf',
+    CF_ACCOUNT_ID: 'a',
+  });
+
+  await reconcileSweep(env, { now: NOW });
+  assert.ok(!calls.some((c) => c.url.includes('/api/export')));
+  assert.ok(!calls.some((c) => c.url.includes('api.cloudflare.com')));
+  assert.ok(!calls.some((c) => c.url.includes('_cell/restart')));
+});
+
 test('the sweep is a FIXED POINT — a second run right after does nothing', async (t) => {
   const { env, sqlite } = freshEnv();
   seedProject(sqlite, { id: 'alligators', subscription: 'sub_1' });

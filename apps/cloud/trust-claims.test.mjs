@@ -106,6 +106,53 @@ test('"suspension retains data, and the clock does not outrank the guarantee"', 
   assert.ok(r.actions.some((a) => a.kind === 'send-export'));
 });
 
+// Cloud Phase 24 D4. Two claims on this page were true of the DECISION module
+// and false of the running system: the export before teardown was computed and
+// never performed, and "you can leave" sat next to a delete that left every
+// byte in storage. Re-checked here against what the code now does.
+
+test('"export before teardown" is PERFORMED, not merely computed', () => {
+  const worker = readFileSync(join(REPO, 'apps/cloud/worker.mjs'), 'utf8');
+  assert.match(worker, /performActions/, 'the reconciler must have an executor at all');
+  // The ordering is the claim. `reconcile()` emits suspend-cell before
+  // send-export; performing them in that order would tear the workspace down
+  // and only then try to build the copy from it.
+  const exportAt = worker.indexOf("kinds.has('send-export')");
+  const suspendAt = worker.indexOf("kinds.has('suspend-cell')");
+  assert.ok(exportAt > 0 && suspendAt > 0);
+  assert.ok(exportAt < suspendAt, 'the copy must go out before the teardown');
+});
+
+test('"deleting erases the bytes" — the delete route really purges storage', () => {
+  const admin = readFileSync(join(REPO, 'apps/cloud/project-admin.mjs'), 'utf8');
+  assert.match(admin, /purgeTenantObjects/);
+  // And the automatic path, which is what makes a cancellation countdown honest.
+  const worker = readFileSync(join(REPO, 'apps/cloud/worker.mjs'), 'utf8');
+  assert.match(worker, /purgeTenantObjects/);
+  assert.ok(existsSync(join(REPO, 'apps/cloud/purge.mjs')));
+});
+
+test('the retention the customer is shown is the retention the reconciler enforces', async () => {
+  // Two places that both "know" this number is how the screen and the platform
+  // come to disagree — and shortening a published retention is a breach, not a
+  // tweak.
+  const { RETENTION_DAYS } = await import('./billing.mjs');
+  const { SUSPEND_RETENTION_DAYS } = await import('./reconcile.mjs');
+  assert.equal(RETENTION_DAYS, SUSPEND_RETENTION_DAYS);
+  assert.match(page, new RegExp(`retained ${SUSPEND_RETENTION_DAYS} days`));
+});
+
+test('the legal pack the page now points at actually exists', () => {
+  for (const rel of [
+    'site/content/docs/legal/terms.mdx',
+    'site/content/docs/legal/privacy.mdx',
+    'site/content/docs/legal/dpa.mdx',
+    'site/content/docs/cloud/pricing.mdx',
+  ]) {
+    assert.ok(existsSync(join(REPO, rel)), `the Trust page links ${rel}, which does not exist`);
+  }
+});
+
 test('"backups are restorable" — the drill exists and runs in CI', () => {
   assert.ok(existsSync(join(REPO, 'scripts/hub-restore-drill.sh')));
   const ci = readFileSync(join(REPO, '.github/workflows/quality.yml'), 'utf8');

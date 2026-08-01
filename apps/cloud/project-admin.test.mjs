@@ -6,7 +6,13 @@ import { after, before, beforeEach, test } from 'node:test';
 
 import { d1FromSqlite } from './db.mjs';
 import { applySchema } from './migrate.mjs';
-import { allProjectAdminHtml, exportGenerations, parseExportKey } from './project-admin.mjs';
+import {
+  allProjectAdminHtml,
+  deletePage,
+  downloadPage,
+  exportGenerations,
+  parseExportKey,
+} from './project-admin.mjs';
 import { SCHEMA_SQL } from './schema.mjs';
 import worker from './worker.mjs';
 
@@ -43,6 +49,9 @@ function fakeExports(objects = new Map()) {
     },
     async get(key) {
       return objects.has(key) ? { body: objects.get(key) } : null;
+    },
+    async delete(keys) {
+      for (const k of [].concat(keys)) objects.delete(k);
     },
   };
 }
@@ -218,6 +227,47 @@ test('delete with an export stops billing first, then purges, then detaches the 
   assert.equal(sqlite.prepare('SELECT state FROM projects').get().state, 'purged');
   assert.equal(order[0], 'stripe:DELETE', 'billing stops before anything else');
   assert.ok(order.includes('cf:DELETE'), 'the address was detached');
+  // Cloud Phase 24 B4. Until this phase, "purges" in this test's own name was
+  // aspirational: the row said `purged` and `tenants/<id>/` stayed in storage
+  // forever. The bytes go, and the audit log says how many.
+  assert.equal(env.EXPORTS.objects.size, 0, 'nothing of this project is left in storage');
+  const purge = sqlite
+    .prepare("SELECT action, detail FROM audit_log WHERE action LIKE 'project.purge%'")
+    .get();
+  assert.equal(purge.action, 'project.purged');
+  assert.match(purge.detail, /3 objects/);
+});
+
+test('another project’s objects survive a delete — the prefix IS the isolation', async () => {
+  const { env, sqlite } = await freshEnv();
+  seedExport(env);
+  env.EXPORTS.objects.set('tenants/other-club/exports/x/repo.bundle', 'not-yours');
+  env.EXPORTS.objects.set('tenants/alligators-reserve/exports/x/repo.bundle', 'nor-this');
+  network.push(['api.stripe.com', async () => Response.json({ id: 'sub_1' })]);
+  network.push(['api.cloudflare.com', async () => Response.json({ success: true, result: [] })]);
+  const { session } = await ownerWithProject(env, sqlite);
+  await worker.fetch(post('/projects/alligators/delete', session, { sure: 'yes' }), env);
+  assert.deepEqual([...env.EXPORTS.objects.keys()].sort(), [
+    'tenants/alligators-reserve/exports/x/repo.bundle',
+    'tenants/other-club/exports/x/repo.bundle',
+  ]);
+});
+
+test('a purge that fails is RECORDED, not swallowed behind a row that says deleted', async () => {
+  const { env, sqlite } = await freshEnv();
+  seedExport(env);
+  env.EXPORTS.delete = async () => {
+    throw new Error('R2 is unreachable');
+  };
+  network.push(['api.stripe.com', async () => Response.json({ id: 'sub_1' })]);
+  network.push(['api.cloudflare.com', async () => Response.json({ success: true, result: [] })]);
+  const { session } = await ownerWithProject(env, sqlite);
+  await worker.fetch(post('/projects/alligators/delete', session, { sure: 'yes' }), env);
+  const failed = sqlite
+    .prepare("SELECT action, detail FROM audit_log WHERE action = 'project.purge-failed'")
+    .get();
+  assert.ok(failed, 'the operator can find the projects whose bytes are still there');
+  assert.match(failed.detail, /unreachable/);
 });
 
 test('when billing cannot be stopped, NOTHING is deleted', async () => {
@@ -250,6 +300,59 @@ test('the activity page shows entries in the customer’s language', async () =>
   assert.match(body, /Project came up — billing began/);
   assert.match(body, /Routine platform check/);
   assert.ok(!/checkout\.settled/.test(body), 'internal action names stay internal');
+});
+
+// ------------------------------------------------------------- cell identity
+
+// Cloud Phase 24 B1. The control-plane half of "per-tenant config stops being
+// Worker-GLOBAL": a cell asks who IT is, authorized by a secret derived from
+// the tenant it names, so it can ask about itself and nothing else.
+test('a cell can read its OWN config, and only with its own derived secret', async () => {
+  const { env, sqlite } = await freshEnv();
+  await ownerWithProject(env, sqlite);
+  sqlite.prepare("UPDATE projects SET seed_repo = 'https://github.com/1aGh/alligators.git'").run();
+  const { deriveCellSecret } = await import('./cell-token.mjs');
+
+  const mine = await worker.fetch(
+    new Request('https://cloud.test/internal/cell-config?tenant=alligators', {
+      headers: { authorization: `Bearer ${await deriveCellSecret('master', 'alligators')}` },
+    }),
+    env
+  );
+  assert.deepEqual(await mine.json(), {
+    projectName: 'Brno Alligators',
+    seedRepo: 'https://github.com/1aGh/alligators.git',
+    adminEmail: 'owner@example.com',
+  });
+
+  // Another tenant's secret does not open this door — the secret IS the
+  // isolation, and this is the pair that used to be one shared global.
+  const notMine = await worker.fetch(
+    new Request('https://cloud.test/internal/cell-config?tenant=alligators', {
+      headers: { authorization: `Bearer ${await deriveCellSecret('master', 'other-club')}` },
+    }),
+    env
+  );
+  assert.equal(notMine.status, 401);
+});
+
+test('an unknown project answers "nothing known", never another tenant’s values', async () => {
+  const { env, sqlite } = await freshEnv();
+  await ownerWithProject(env, sqlite);
+  sqlite.prepare("UPDATE projects SET seed_repo = 'https://github.com/1aGh/alligators.git'").run();
+  const { deriveCellSecret } = await import('./cell-token.mjs');
+
+  const res = await worker.fetch(
+    new Request('https://cloud.test/internal/cell-config?tenant=ghost-club', {
+      headers: { authorization: `Bearer ${await deriveCellSecret('master', 'ghost-club')}` },
+    }),
+    env
+  );
+  assert.deepEqual(await res.json(), {
+    projectName: null,
+    seedRepo: null,
+    adminEmail: null,
+  });
 });
 
 // -------------------------------------------------------------------- mirror
@@ -348,21 +451,53 @@ test('the admin pages ship no script and no vocabulary of ours', () => {
   }
 });
 
+// Cloud Phase 24 A6. Two defects on the leaving path, both about a promise the
+// page could not keep for the person actually reading it.
+test('the export page says what the file IS and who can open it', () => {
+  const html = downloadPage({
+    account: { email: 'a@example.com' },
+    project: { id: 'alligators', name: 'Brno Alligators' },
+    generations: [],
+    isOwner: true,
+  });
+  assert.doesNotMatch(html, /opens without Maude/i, 'the sentence that was false for a volunteer');
+  assert.match(html, /developer archive/);
+  assert.match(html, /double-click/);
+  assert.match(html, /anyone who writes software/i);
+});
+
+test('the delete gate carries the button it demands, not directions to it', () => {
+  const html = deletePage({
+    account: { email: 'a@example.com' },
+    project: { id: 'alligators', name: 'Brno Alligators' },
+    hasExport: false,
+  });
+  assert.match(html, /action="\/projects\/alligators\/download"[^>]*>\s*<button/);
+  assert.match(html, /Prepare my copy now/);
+});
+
 // ------------------------------------------------------------------ connect
 
-test('Open leads to the connect page, which is honest about the two ways in', async () => {
+test('Open leads to the connect page, which offers only doors that exist', async () => {
   const { env, sqlite } = await freshEnv();
   const { session } = await ownerWithProject(env, sqlite);
   const res = await worker.fetch(get('/projects/alligators/connect', session), env);
   assert.equal(res.status, 200);
   const body = await res.text();
   assert.match(body, /Open Brno Alligators/);
-  assert.match(body, /alligators\.cloud\.maude\.sh/);
-  assert.match(body, /workspace email and password/);
   // The one-click app lane (Phase 23 B3): a form POST to the handoff mint,
   // never a token in a link.
   assert.match(body, /action="\/projects\/alligators\/handoff"/);
   assert.match(body, /Open in Maude/);
+  // Cloud Phase 24 A2. The browser card told the customer to sign in with a
+  // "workspace email and password" that no customer is ever issued, and the
+  // footnote pointed at an operator console behind the same credential. Both
+  // are gone — an impossible instruction is worse than one door.
+  assert.doesNotMatch(body, /workspace email and password/);
+  assert.doesNotMatch(body, /alligators\.cloud\.maude\.sh/);
+  assert.doesNotMatch(body, /operator console/i);
+  // A7: one download address, everywhere in the product.
+  assert.match(body, /maude\.sh\/desktop/);
 
   const anon = await worker.fetch(get('/projects/alligators/connect'), env);
   assert.equal(anon.status, 303, 'a stranger is sent to sign in');

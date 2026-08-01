@@ -31,6 +31,9 @@ export const SUSPEND_RETENTION_DAYS = 30;
 /** Grace between a failed payment and suspension — dunning happens in here. */
 export const PAST_DUE_GRACE_DAYS = 14;
 
+/** How long before the deletion the last-chance email goes out (A11, canvas E0). */
+export const DELETION_WARNING_DAYS = 2;
+
 const DAY_MS = 24 * 3600_000;
 
 /**
@@ -98,6 +101,7 @@ export function reconcile(tenant, subscription, { now = Date.now() } = {}) {
   }
 
   const implied = stateForSubscription(subscription);
+
   if (implied === 'unknown') {
     // Fail visible, not open. A status we do not understand must not decide
     // anything, and it must not be quiet.
@@ -111,6 +115,40 @@ export function reconcile(tenant, subscription, { now = Date.now() } = {}) {
     };
   }
 
+  // `exported` is PAST the point where a subscription status decides anything,
+  // and it needs its own branch (Cloud Phase 24 B3).
+  //
+  // Without one, the generic walk below asked for `suspended`, found no legal
+  // one-hop route from `exported`, and took the shortest path — which is
+  // `exported → active → suspended`. That resurrected a project queued for
+  // deletion, reset its retention clock, and did it again every time the
+  // window elapsed: the deletion the trust page and the cancellation screen
+  // both promise could never actually happen. A countdown nothing performs is
+  // a lie with a timestamp on it.
+  if (tenant.state === 'exported') {
+    if (implied === 'active' || implied === 'past_due') {
+      // They resubscribed before we destroyed anything — a failing card counts,
+      // because it means they came back. `active` is the only legal first hop
+      // out of `exported`; a still-failing card walks on to `past_due` next
+      // round, which is the machine doing its job rather than a special case.
+      return {
+        desiredState: 'active',
+        actions: [
+          { kind: 'set-state', from: 'exported', to: 'active' },
+          ...(tenant.cellRunning ? [] : [{ kind: 'resume-cell' }]),
+        ],
+        notes: ['paid during the retention window — restored rather than purged'],
+      };
+    }
+    return {
+      desiredState: 'purged',
+      actions: [
+        { kind: 'purge-data', why: 'retention elapsed after an export was delivered' },
+        { kind: 'set-state', from: 'exported', to: 'purged' },
+      ],
+      notes: ['retention is over and the copy went out — this is the promised deletion'],
+    };
+  }
   let desired = implied;
 
   // past_due is a GRACE PERIOD, not an immediate stop. A card that expired on
@@ -182,6 +220,19 @@ export function reconcile(tenant, subscription, { now = Date.now() } = {}) {
   // ---- retention ----------------------------------------------------------
   if (desired === 'suspended') {
     const heldDays = (now - since) / DAY_MS;
+    // "Two days left" (Cloud Phase 24 A11, canvas E0). The 30 days are only a
+    // promise if somebody is told the clock is running; the executor sends
+    // this once, guarded by the audit log, because the cron runs hourly.
+    if (
+      tenant.state === 'suspended' &&
+      heldDays >= SUSPEND_RETENTION_DAYS - DELETION_WARNING_DAYS &&
+      heldDays < SUSPEND_RETENTION_DAYS
+    ) {
+      actions.push({
+        kind: 'warn-deletion',
+        deletesAt: since + SUSPEND_RETENTION_DAYS * DAY_MS,
+      });
+    }
     if (tenant.state === 'suspended' && heldDays >= SUSPEND_RETENTION_DAYS) {
       if (tenant.exportSent) {
         actions.push({ kind: 'set-state', from: 'suspended', to: 'exported' });

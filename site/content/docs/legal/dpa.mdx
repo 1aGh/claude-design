@@ -1,0 +1,86 @@
+---
+title: Data Processing Addendum
+description: The GDPR Article 28 processor terms for Maude Cloud — scope, instructions, subprocessors, security measures, deletion, and audit.
+---
+
+<Callout type="warn" title="Published before the service takes live payments">
+Maude Cloud is in private pilot. This addendum is published so it can be read and negotiated before the service takes live money; the provider's registration number is added, and the pack reviewed by counsel, before the first live charge.
+</Callout>
+
+**Last updated:** 31 July 2026
+
+This addendum forms part of the [Terms of Service](/docs/legal/terms) and applies whenever we process personal data on your behalf. It is accepted by using the service; a signed counterpart is available on request to **cloud@maude.sh**.
+
+## 1. Roles
+
+You are the **controller**. **Michal Dovrtěl**, Brno, Czech Republic is the **processor**.
+
+For your own account data — your email, your billing details, your audit log — we are the controller instead, and the [privacy notice](/docs/legal/privacy) governs that.
+
+## 2. Subject matter, duration, nature, purpose
+
+**Subject matter:** hosting, synchronising, versioning and returning the design work you place in a project.
+
+**Duration:** for as long as the project exists, plus the retention window stated on your billing and cancellation screens.
+
+**Nature and purpose:** storage, synchronisation, version history, backup, export, and transmission to the people you authorise. **Not** rendering, analysis, training, or profiling.
+
+**Types of personal data:** whatever your design files and comments happen to contain (we do not inspect them), plus the email addresses and display names of the people you invite to the project.
+
+**Categories of data subject:** your team members and invitees, and any people depicted or named in the content you upload.
+
+## 3. Our instructions
+
+We process personal data only on your documented instructions. Using the service is the instruction; the product's own buttons are its vocabulary.
+
+We tell you if an instruction appears to breach the GDPR, and we do not carry it out until it is resolved.
+
+If we are compelled by law to disclose data, we tell you first unless the law forbids it.
+
+## 4. Confidentiality
+
+Everybody with access is bound to confidentiality. There is **no standing operator access** to a project: access is break-glass, requires a stated reason, and is written to an append-only audit log **that you can read**. "We could look but we don't" is not a control; "you can see that we looked" is.
+
+## 5. Security (Article 32)
+
+- One **container per project** — a project cannot read another's data, and object-storage keys are prefix-isolated per project.
+- **Encryption in transit and at rest.**
+- **No renderer in the workspace image.** A workspace refuses to start if any route that could render, export or evaluate your files is reachable, and a CI gate fails the build if that protection is removed.
+- **Short-lived, verifiable access credentials**; sessions expire and can be revoked.
+- **Backups are restore-drilled in CI** — a backup nobody has restored is a hypothesis.
+- **Append-only audit log**, with no application path that can update or delete a row.
+
+The mechanisms behind each of these are named, with file paths, on the [Trust](/docs/cloud/trust) page.
+
+## 6. Subprocessors
+
+You give general authorisation for the subprocessors below. We give notice before adding or replacing one; if you object on reasonable data-protection grounds, you may cancel and we refund the unused part of the current period.
+
+| Who | What for | Where |
+| --- | --- | --- |
+| **Cloudflare** | Workspace hosting (Containers, Durable Objects), object storage (R2), DNS and TLS | EU |
+| **Stripe** | Payments and subscription management | EU/US, under Stripe's own terms |
+| **Resend** | Transactional email — invitations and billing notices | EU/US |
+| **Vercel** | The documentation site only. **No customer project data.** | US |
+
+Each subprocessor is bound by terms no less protective than these, and transfers outside the EEA run on the European Commission's Standard Contractual Clauses.
+
+## 7. Helping you with your own obligations
+
+- **Data subject requests:** the product answers the two that matter without asking us — *Download everything* (portability) and *Delete project* (erasure). For anything else we assist within 10 working days.
+- **Breach notification:** we notify you within **72 hours** of becoming aware.
+- **Impact assessments:** we provide the information you reasonably need; most of it is already on the [Trust](/docs/cloud/trust) page.
+
+## 8. Deletion and return
+
+You can export a complete copy at any time, including while a project is paused or past due, and the export is offered automatically **before** any teardown — the service cannot reach a deleted state except through that step.
+
+On deletion we erase the stored data and confirm it in your audit log. Backup copies age out within **30 days**.
+
+## 9. Audit
+
+We make the information needed to demonstrate compliance available on request, and the source code of the mechanisms is public. On-site audits are available on the Dedicated tier, at reasonable notice and no more than once a year, or where a supervisory authority requires one.
+
+## 10. Where your data lives
+
+EU jurisdiction, on Cloudflare. Region pinning is available on the Dedicated tier.

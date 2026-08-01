@@ -32,6 +32,7 @@ import {
 } from './db.mjs';
 import { handleDeviceAuth, personalTokenAccount } from './device-auth.mjs';
 import { costOf, harden, isHtml, sameSiteGate, spend } from './edge.mjs';
+import { deletionWarningEmail, projectPausedEmail, sendEmail } from './email.mjs';
 import { mintInstallationToken } from './github-app.mjs';
 import { handleHandoff } from './handoff.mjs';
 import { handleInviteRoutes } from './invites.mjs';
@@ -39,7 +40,9 @@ import { applySchema } from './migrate.mjs';
 import { ACCESS_MESSAGES, decideAccess } from './project-access.mjs';
 import { handleProjectAdminRoutes } from './project-admin.mjs';
 import { handleProjectRoutes } from './project-routes.mjs';
-import { settle } from './reconcile.mjs';
+import { ensureCellDomain, removeCellDomain } from './provision.mjs';
+import { purgeTenantObjects } from './purge.mjs';
+import { SUSPEND_RETENTION_DAYS, settle } from './reconcile.mjs';
 import { handleReport } from './report.mjs';
 import { SCHEMA_SQL } from './schema.mjs';
 import { projectRefFromEvent, verifyStripeSignature } from './stripe-webhook.mjs';
@@ -269,6 +272,51 @@ export default {
       return mintForCell(request, env);
     }
 
+    // A cell asking who IT is (Cloud Phase 24 B1).
+    //
+    // THE MOST DANGEROUS THING THIS PHASE FIXED. `cellEnv()` used to read
+    // `MAUDE_SEED_REPO`, `PROJECT_NAME` and `PILOT_ADMIN_EMAIL` from the
+    // cells-Worker's own environment — values shared by every tenant on the
+    // platform. A second customer's FIRST boot could therefore clone the
+    // first customer's repository, and their workspace could be seeded with
+    // somebody else's admin address. It was survivable only because there has
+    // never been a second customer.
+    //
+    // Same derived-secret gate as the mirror endpoints: a cell can ask about
+    // itself and about nothing else, because the secret it must present is
+    // computed from the tenant id in the query.
+    if (request.method === 'GET' && url.pathname === '/internal/cell-config') {
+      const tenant = String(url.searchParams.get('tenant') ?? '');
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tenant)) return json({ error: 'unauthorized' }, 401);
+      const offered = (request.headers.get('authorization') ?? '')
+        .replace(/^Bearer\s+/i, '')
+        .trim();
+      const expected = await deriveCellSecret(env.CELL_SECRET_MASTER ?? '', tenant);
+      if (!env.CELL_SECRET_MASTER || !secretsMatch(offered, expected)) {
+        return json({ error: 'unauthorized' }, 401);
+      }
+      let row = null;
+      try {
+        row = await env.DB.prepare(
+          `SELECT p.name, p.seed_repo, a.email AS owner_email
+             FROM projects p JOIN accounts a ON a.id = p.account_id
+            WHERE p.id = ?`
+        )
+          .bind(tenant)
+          .first();
+      } catch {
+        /* an unreadable row is "no per-tenant config", never another tenant's */
+      }
+      // Absent is a real answer, and the cell's fail-closed default. It must
+      // never be filled in from a shared value — that is the bug this exists
+      // to close.
+      return json({
+        projectName: row?.name ?? null,
+        seedRepo: row?.seed_repo ?? null,
+        adminEmail: row?.owner_email ?? null,
+      });
+    }
+
     // A cell asking which repository it mirrors to (Cloud Phase 19). The cell
     // holds no config of its own — connecting a mirror in the dashboard needs
     // no cell restart, because the clock asks this on every tick.
@@ -446,7 +494,16 @@ async function runOne(env, projectId, { jobId = null, now }) {
   try {
     const { tenant, actions } = settle(tenantFromRow(row), subscription, { now });
     await saveTenant(env.DB, tenant, { now });
-    const detail = actions.length ? JSON.stringify(actions) : null;
+    // Cloud Phase 24 B3. Until this line the settled actions were RECORDED and
+    // nothing else — "become real in Phase 15" said the comment, through Phase
+    // 23. So a tenant who stopped paying kept a serving cell, and the
+    // export-before-teardown guarantee (DDR-193 §3) never sent itself.
+    //
+    // Effects run AFTER the row is saved, deliberately: an effect that fails
+    // must leave a state we can re-derive on the next sweep, not a state we
+    // never wrote down.
+    const performed = await performActions(env, projectId, row, actions, { now });
+    const detail = actions.length ? JSON.stringify({ actions, performed }) : null;
     if (jobId) await finishJob(env.DB, jobId, 'ok', detail, { now });
     if (actions.length) {
       await audit(env.DB, {
@@ -456,7 +513,7 @@ async function runOne(env, projectId, { jobId = null, now }) {
         detail,
       });
     }
-    return { projectId, outcome: 'ok', actions };
+    return { projectId, outcome: 'ok', actions, performed };
   } catch (err) {
     // settle() throwing means a flapping loop — the one thing that must page.
     if (jobId) await finishJob(env.DB, jobId, 'failed', err.message, { now });
@@ -467,6 +524,169 @@ async function runOne(env, projectId, { jobId = null, now }) {
       detail: err.message,
     });
     return { projectId, outcome: 'failed', detail: err.message };
+  }
+}
+
+/**
+ * Turn the reconciler's ACTIONS into effects — Cloud Phase 24 B3.
+ *
+ * THE ORDER IS NOT THE ARRAY'S ORDER, and that is the point. `reconcile()`
+ * emits `suspend-cell` before `send-export` because it computes compute before
+ * guarantees; performing them in that order would take the workspace away and
+ * only then try to build the copy we promised — from a workspace that is no
+ * longer reachable. So the export goes FIRST, always, and the teardown steps
+ * go last. DDR-193 §3 is an ordering, and orderings belong in one place.
+ *
+ * Every effect is best-effort and reported. A sweep that throws stops the rest
+ * of the fleet; a sweep that records what failed gets re-derived next hour,
+ * which is the whole reason the reconciler is a fixed point.
+ */
+async function performActions(env, projectId, row, actions, { now }) {
+  const kinds = new Set(actions.map((a) => a.kind));
+  const performed = [];
+  const record = async (action, outcome, detail = null) => {
+    performed.push({ action, outcome });
+    await audit(env.DB, { projectId, actor: 'system', action: `do.${action}`, detail });
+  };
+
+  // 1. The guarantee, before anything that could make it impossible.
+  if (kinds.has('send-export')) {
+    const built = await prepareExportFor(env, projectId, row);
+    if (built.ok) {
+      await env.DB.prepare('UPDATE projects SET export_sent_at = ? WHERE id = ?')
+        .bind(now, projectId)
+        .run();
+    }
+    const told = built.ok
+      ? await notifyOwner(env, projectId, row, 'paused', {
+          deletesAt: now + SUSPEND_RETENTION_DAYS * 24 * 3600_000,
+        })
+      : { ok: false, error: 'no export to send' };
+    await record('send-export', built.ok && told.ok ? 'ok' : 'failed', built.reason ?? told.error);
+  }
+
+  // 2. The last-chance notice. Once — the cron runs hourly and the action
+  //    recurs for two days, so the audit log is the idempotence.
+  if (kinds.has('warn-deletion')) {
+    const warning = actions.find((a) => a.kind === 'warn-deletion');
+    const already = await env.DB.prepare(
+      `SELECT 1 AS x FROM audit_log
+        WHERE project_id = ? AND action = 'do.warn-deletion' AND at >= ?`
+    )
+      .bind(projectId, Number(row.state_since ?? 0))
+      .first()
+      .catch(() => null);
+    if (!already) {
+      const told = await notifyOwner(env, projectId, row, 'warning', {
+        deletesAt: warning.deletesAt,
+      });
+      await record('warn-deletion', told.ok ? 'ok' : 'failed', told.error);
+    }
+  }
+
+  // 3. Compute. `resume` and `provision` both mean "this address must answer".
+  if (kinds.has('resume-cell') || kinds.has('provision-cell')) {
+    const routed = await ensureCellDomain(env, projectId);
+    await record('resume-cell', routed.ok ? 'ok' : 'failed', routed.error);
+  }
+
+  // 4. Teardown, last.
+  //
+  // Suspension detaches the ADDRESS and stops the container. It deliberately
+  // does not touch storage: the customer's prepared copy is served by the
+  // control plane straight out of object storage (`/projects/<id>/download`),
+  // so "one-click export, always — including while suspended" stays true even
+  // though the workspace itself is gone.
+  if (kinds.has('suspend-cell')) {
+    await stopCell(env, projectId);
+    const detached = await removeCellDomain(env, projectId);
+    await record('suspend-cell', detached.ok ? 'ok' : 'failed', detached.error);
+  }
+
+  // 5. The promised deletion. B4's purge, on the automatic path.
+  if (kinds.has('purge-data')) {
+    const purged = await purgeTenantObjects(env.EXPORTS, projectId);
+    await record(
+      'purge-data',
+      purged.ok ? 'ok' : 'failed',
+      purged.reason ?? `${purged.deleted} objects`
+    );
+    await removeCellDomain(env, projectId);
+  }
+
+  return performed;
+}
+
+/** Ask a tenant's own cell to build the take-your-work-home copy. */
+async function prepareExportFor(env, projectId, row) {
+  if (!env.CELL_SECRET_MASTER) return { ok: false, reason: 'no cell secret configured' };
+  const owner = await ownerEmail(env, row);
+  const { token } = await mintProjectToken({
+    master: env.CELL_SECRET_MASTER,
+    project: projectId,
+    email: owner ?? 'system@maude.sh',
+    role: 'owner',
+    ttlMs: 10 * 60 * 1000,
+  });
+  try {
+    const res = await fetch(
+      `https://${projectId}.${env.CELL_ZONE ?? 'cloud.maude.sh'}/api/export`,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(120_000),
+      }
+    );
+    if (!res.ok) return { ok: false, reason: `export HTTP ${res.status}` };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
+}
+
+async function ownerEmail(env, row) {
+  try {
+    const found = await env.DB.prepare('SELECT email FROM accounts WHERE id = ?')
+      .bind(row.account_id)
+      .first();
+    return found?.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** One of the two lifecycle emails (canvas board E0). */
+async function notifyOwner(env, projectId, row, which, { deletesAt }) {
+  const to = await ownerEmail(env, row);
+  if (!to) return { ok: false, error: 'no owner address' };
+  const dashboard = env.DASHBOARD_URL ?? 'https://cloud.maude.sh';
+  const body = {
+    projectName: row.name || projectId,
+    downloadUrl: `${dashboard}/projects/${projectId}/download`,
+    deletesAt,
+  };
+  const message = which === 'paused' ? projectPausedEmail(body) : deletionWarningEmail(body);
+  return sendEmail(env, { to, ...message });
+}
+
+/**
+ * Stop the container so a non-paying tenant is not billed compute.
+ *
+ * `/_cell/restart` destroys the running container; with the address detached
+ * nothing wakes it again. Best-effort: a cell that was already asleep, or a
+ * data plane that is briefly unreachable, must not fail the sweep.
+ */
+async function stopCell(env, projectId) {
+  if (!env.CELL_SECRET_MASTER) return;
+  try {
+    const secret = await deriveCellSecret(env.CELL_SECRET_MASTER, projectId);
+    await fetch(`https://${projectId}.${env.CELL_ZONE ?? 'cloud.maude.sh'}/_cell/restart`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${secret}` },
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (err) {
+    console.warn(`[reconcile] ${projectId}: could not stop the cell — ${err.message}`);
   }
 }
 

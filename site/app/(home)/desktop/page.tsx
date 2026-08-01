@@ -49,6 +49,15 @@ const FAQ = [
     q: 'Does it update itself?',
     a: 'Yes. Maude downloads new versions in the background and shows “Maude updated · restart to apply.” No npm, no terminal.',
   },
+  // Cloud Phase 24 A7. Windows is not code-signed yet, so the OS tells a
+  // first-time user that the app is dangerous at the exact moment they are
+  // following our instructions. Until there is a certificate, the honest thing
+  // is to say what they will see BEFORE they see it — an unexplained
+  // SmartScreen warning is where a non-technical installer stops.
+  {
+    q: 'Windows says the app is not recognised. Is something wrong?',
+    a: 'No — that warning is expected, and we would rather tell you than let it surprise you. The Windows installer is not code-signed yet (the certificate is an annual cost we have not paid), so SmartScreen shows “Windows protected your PC”. Choose “More info”, then “Run anyway”. macOS builds are signed and notarised by Apple and show no such warning.',
+  },
 ];
 
 export default function DesktopPage() {
@@ -127,7 +136,10 @@ export default function DesktopPage() {
           </div>
           <div>
             <dt>Windows</dt>
-            <dd>10 or newer · 64-bit · .msi</dd>
+            <dd>
+              10 or newer · 64-bit · .msi · <strong>not code-signed yet</strong> — SmartScreen will
+              warn; choose “More info” then “Run anyway”
+            </dd>
           </div>
           <div>
             <dt>Disk</dt>

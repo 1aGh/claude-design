@@ -16,13 +16,14 @@
 //                             T3). Config lives HERE; the cell asks for it on
 //                             every tick, so saving needs no restart.
 
-import { appShell } from './brand.mjs';
+import { appShell, DESKTOP_DOWNLOAD_URL } from './brand.mjs';
 import { mintProjectToken } from './cell-token.mjs';
 import { STATE_COPY } from './dashboard.mjs';
 import { audit } from './db.mjs';
 import { validateTarget } from './mirror.mjs';
 import { ACCESS_MESSAGES, can, decideAccess } from './project-access.mjs';
 import { removeCellDomain } from './provision.mjs';
+import { purgeTenantObjects } from './purge.mjs';
 
 const CSS = `
   table { width: 100%; border-collapse: collapse; margin: var(--space-4) 0 var(--space-6); background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
@@ -135,13 +136,25 @@ export function downloadPage({
        generations.length
          ? `<table><thead><tr><th>Taken</th><th>Files</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
          : '<p class="quiet" style="margin-top:var(--space-5)">No copy has been prepared yet.</p>'
-}`,
+}
+     <div class="card" style="margin-top:var(--space-6)">
+       <h2>What you are downloading</h2>
+       <p class="quiet" style="margin:0">One file holding every design and every version of it,
+         and a list of your media alongside it. It is a developer archive — a git bundle — not a
+         folder you can double-click: anyone who writes software can unpack it in a minute, and so
+         can the Maude app. It needs nothing from us, and it does not expire.</p>
+     </div>`,
     {
       account,
       project,
       isOwner,
       active: 'download',
-      lede: `A complete copy of ${project.name}: the full history as a standard git bundle, plus a list of every media file. It opens without Maude, and taking it changes nothing here.`,
+      // Cloud Phase 24 A6. This lede used to end "It opens without Maude" —
+      // true for an engineer, false for the person the whole arc is staked on,
+      // and said on the one page a LEAVING customer must use. The format did
+      // not change (a bundle is what keeps the history rather than a snapshot),
+      // so the sentence does, and the card below names who can open it.
+      lede: `A complete copy of ${project.name}: every design and every version of it, plus a list of your media. Taking a copy changes nothing here — the project keeps running exactly as it is.`,
     }
   );
 }
@@ -151,32 +164,35 @@ export function downloadPage({
 /**
  * The last door (Cloud Phase 23 A1). "Open" used to be a bare link to the
  * workspace hostname — which greets a customer with an operator console. This
- * page is honest about how to get in TODAY, and it is where the one-click
- * handoff will live once the workspace accepts dashboard sign-ins.
+ * page is honest about how to get in TODAY.
+ *
+ * ONE DOOR, DELIBERATELY (Cloud Phase 24 A2). There used to be a second card
+ * telling the customer to sign in at their project's own address with a
+ * "workspace email and password" — a credential NO customer is ever issued
+ * (only a derived `PILOT_ADMIN_EMAIL` exists, apps/cells/cell-do.mjs). A page
+ * that instructs an impossible action is worse than a page with one door, so
+ * the card is gone rather than reworded, and the same goes for the pointer at
+ * the workspace's operator console: it is behind the same credential.
+ *
+ * The second door comes back in Cloud Phase 25 (B5) as Maude Studio in the
+ * browser, behind THIS account — canvas board C2 draws the finished state.
  */
 export function connectPage({ account, project, isOwner }) {
-  const address = `https://${esc(project.id)}.cloud.maude.sh`;
   return page(
     `Open ${project.name}`,
     `<div class="card">
        <h2>In the Maude app</h2>
        <p class="quiet">One click — the app opens this project signed in as you. Nothing to
-         copy, nothing to paste.</p>
+         copy, nothing to paste. This is where you make things.</p>
        <form method="post" action="/projects/${esc(project.id)}/handoff" style="margin:0">
          <button type="submit">Open in Maude</button>
        </form>
        <p class="quiet" style="margin:var(--space-3) 0 0">Don’t have the app yet?
-         <a href="https://maude.sh">Download Maude</a>, then come back and press the button.</p>
+         <a href="${DESKTOP_DOWNLOAD_URL}">Get it at maude.sh/desktop</a>, then come back and
+         press the button.</p>
      </div>
-     <div class="card">
-       <h2>In your browser</h2>
-       <p class="quiet">Your project lives at its own address. Sign in there with your
-         <strong>workspace email and password</strong> — for now this is separate from your
-         Maude account; one sign-in for both is on the roadmap.</p>
-       <p style="margin:0"><a class="btn" href="${address}">Open ${esc(project.id)}.cloud.maude.sh</a></p>
-     </div>
-     <p class="quiet">Running the machinery yourself? The operator console lives at the same
-       address under <span class="mono">/admin</span>.</p>`,
+     <p class="quiet">Opening ${esc(project.name)} in a browser tab is coming — for now the app
+       is the way in.</p>`,
     { account, project, isOwner, active: 'connect' }
   );
 }
@@ -190,6 +206,9 @@ export function deletePage({ account, project, hasExport, error = null }) {
          <ul style="margin:var(--space-2) 0 0;padding-left:var(--space-6)">
            <li>The workspace and its address stop existing.</li>
            <li>Billing stops — nothing further is charged.</li>
+           <li><strong>Everything is erased from our computers, including the copies prepared
+             on the download page.</strong> Make sure the one you want is already on your
+             machine.</li>
            <li>The copy you downloaded stays yours, forever.</li>
          </ul>
        </div>
@@ -201,12 +220,22 @@ export function deletePage({ account, project, hasExport, error = null }) {
            <a href="/" style="margin-left:var(--space-5)">Cancel</a>
          </p>
        </form>`
-    : `<div class="card">
+    : // Cloud Phase 24 A6. The gate used to demand a copy and then send the
+      // customer off to go and find the page that makes one. A gate that sends
+      // somebody hunting for the thing it just demanded is a gate that gets
+      // abandoned, so the button that starts it lives HERE (canvas board E1).
+      `<div class="card">
          <h2>Download your copy first</h2>
-         <p class="quiet" style="margin:0">Deleting is permanent, so it is only offered once a
-           complete copy of your work exists. It takes a minute and it is yours to keep.</p>
+         <p class="quiet">Deleting is permanent, so it is only offered once a complete copy of your
+           work exists. It takes a minute and it is yours to keep.</p>
+         <form method="post" action="/projects/${esc(project.id)}/download" style="margin:0">
+           <button type="submit">Prepare my copy now</button>
+           <span class="quiet" style="margin-left:var(--space-4)">no need to go and find the
+             download page</span>
+         </form>
        </div>
-       <p><a class="btn" href="/projects/${esc(project.id)}/download">Download everything</a></p>`;
+       <p class="quiet"><a href="/projects/${esc(project.id)}/download">See copies you already
+         prepared</a></p>`;
   return page(
     `Delete ${project.name}?`,
     `${error ? `<p class="error">${esc(error)}</p>` : ''}
@@ -512,6 +541,20 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
       projectId,
       actor: `customer:${account.email}`,
       action: 'project.deleted',
+    });
+    // The bytes, not just the row (Cloud Phase 24 B4). Until this line, delete
+    // stopped billing and left `tenants/<id>/` in storage forever — the one
+    // thing that must not be true for a product whose pitch is "you can
+    // leave". Failure is recorded and re-runnable rather than thrown: a purge
+    // that half-completed must be visible, not a 500 over a row that already
+    // says deleted.
+    const purged = await purgeTenantObjects(env.EXPORTS, projectId);
+    await audit(env.DB, {
+      accountId: account.id,
+      projectId,
+      actor: 'system',
+      action: purged.ok ? 'project.purged' : 'project.purge-failed',
+      detail: purged.ok ? `${purged.deleted} objects` : purged.reason,
     });
     // The address stops answering. Best-effort — a leftover route serves 404s
     // from the cell worker, not somebody's data.

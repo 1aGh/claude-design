@@ -18,6 +18,7 @@
 // Guessing is not a lane: 32 random bytes; the exchange burns the row on
 // first use, win or lose downstream.
 
+import { DESKTOP_DOWNLOAD_URL } from './brand.mjs';
 import { mintProjectToken } from './cell-token.mjs';
 import { audit } from './db.mjs';
 import { personalTokenAccount } from './device-auth.mjs';
@@ -94,24 +95,38 @@ export async function handleHandoff(request, env, { account }) {
   if (mintMatch) {
     // A browser session and a device's personal token are the same person
     // through two doors — same rule as /projects/open.
+    // The caller decides the medium, ONCE, for every answer this route gives
+    // (Cloud Phase 24 A3). The success path always negotiated; the refusals did
+    // not, so a customer who pressed "Open in Maude" as a viewer met raw JSON —
+    // a regression introduced 2026-07-30 in this very lane.
+    const wantsJson = (request.headers.get('accept') ?? '').includes('application/json');
+    const refuse = (message, status, { projectId = null } = {}) =>
+      wantsJson
+        ? json({ error: message }, status)
+        : htmlPage(refusalPage({ message, projectId }), status);
+
     if (!account) account = await personalTokenAccount(env, request, { now });
-    if (!account) return json({ error: ACCESS_MESSAGES['not-signed-in'] }, 401);
+    if (!account) return refuse(ACCESS_MESSAGES['not-signed-in'], 401);
     const projectId = mintMatch[1];
     const minted = await mintHandoffCode(env, { account, projectId, now });
     if (!minted.ok) {
       if (minted.reason === 'viewer-not-supported') {
-        return json(
-          {
-            error:
-              'Viewing works from the shared gallery link — opening the project in the app needs the member role.',
-          },
-          403
+        // No gallery to send them to (Cloud Phase 25 C4 removes it), so this
+        // says what IS true today: the dashboard is theirs, the app is not.
+        return refuse(
+          'You are on this project as a viewer, so you can follow it here on the dashboard. ' +
+            'Opening it in the Maude app needs the member role — ask whoever runs the project.',
+          403,
+          { projectId }
         );
       }
       const status = minted.reason === 'not-signed-in' ? 401 : 404;
-      return json(
-        { error: ACCESS_MESSAGES[minted.reason] ?? ACCESS_MESSAGES['no-access'] },
-        status
+      return refuse(
+        ACCESS_MESSAGES[minted.reason] ?? ACCESS_MESSAGES['no-access'],
+        status,
+        // A 404 must not confirm that the project exists, so it gets no
+        // project-scoped link back.
+        status === 404 ? {} : { projectId }
       );
     }
     await audit(env.DB, {
@@ -122,22 +137,12 @@ export async function handleHandoff(request, env, { account }) {
     });
 
     const deepLink = `maude://open/${encodeURIComponent(projectId)}?code=${encodeURIComponent(minted.code)}&origin=${encodeURIComponent(url.origin)}`;
-    const wantsJson = (request.headers.get('accept') ?? '').includes('application/json');
     if (wantsJson) return json({ code: minted.code, url: deepLink, expires_in: minted.expiresIn });
 
     // The browser lane: a tiny no-script page whose meta refresh fires the
     // maude:// navigation, with the same link visible for when the browser
     // asks first — and honest fallbacks for "nothing happened".
-    return new Response(launchPage({ projectId, deepLink }), {
-      status: 200,
-      headers: {
-        'content-type': 'text/html; charset=utf-8',
-        'cache-control': 'no-store',
-        'x-content-type-options': 'nosniff',
-        'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'",
-        'referrer-policy': 'no-referrer',
-      },
-    });
+    return htmlPage(launchPage({ projectId, deepLink }));
   }
 
   if (request.method === 'POST' && pathname === '/auth/handoff/exchange') {
@@ -217,6 +222,31 @@ function esc(s) {
   );
 }
 
+// These pages carry a LIVE code, so they ship no script and no stylesheet
+// (CSP `default-src 'none'`) — the styling is inline, and that is why it does
+// not come from brand.mjs's shell.
+const PAGE_STYLE = `
+  body { font-family: -apple-system, system-ui, sans-serif; background:#111318; color:#f2f3f7;
+         display:grid; place-items:center; min-height:100vh; margin:0; padding:24px; }
+  main { max-width:26rem; text-align:center; }
+  a.btn { display:inline-block; background:#7a86f8; color:#14162b; font-weight:600;
+          padding:10px 18px; border-radius:10px; text-decoration:none; margin-top:12px; }
+  p.quiet { color:#9aa0b0; font-size:14px; line-height:1.5; }
+  a.plain { color:#aab3ff; }`;
+
+function htmlPage(body, status = 200) {
+  return new Response(body, {
+    status,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'",
+      'referrer-policy': 'no-referrer',
+    },
+  });
+}
+
 function launchPage({ projectId, deepLink }) {
   // No script (CSP default-src 'none'): the meta refresh fires the app, the
   // visible link covers browsers that ask before leaving the page.
@@ -224,27 +254,52 @@ function launchPage({ projectId, deepLink }) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="0;url=${esc(deepLink)}">
 <title>Opening ${esc(projectId)} in Maude</title>
-<style>
-  body { font-family: -apple-system, system-ui, sans-serif; background:#111318; color:#f2f3f7;
-         display:grid; place-items:center; min-height:100vh; margin:0; padding:24px; }
-  main { max-width:26rem; text-align:center; }
-  a.btn { display:inline-block; background:#7a86f8; color:#14162b; font-weight:600;
-          padding:10px 18px; border-radius:10px; text-decoration:none; margin-top:12px; }
-  p.quiet { color:#9aa0b0; font-size:14px; line-height:1.5; }
+<style>${PAGE_STYLE}
 </style></head><body><main>
   <h1>Opening in Maude…</h1>
   <p class="quiet">If nothing happened, use the button below.</p>
   <a class="btn" href="${esc(deepLink)}">Open ${esc(projectId)} in Maude</a>
-  <p class="quiet">Don’t have the app yet? <a href="https://maude.sh" style="color:#aab3ff">Download Maude</a>,
+  <p class="quiet">Don’t have the app yet? <a class="plain" href="${DESKTOP_DOWNLOAD_URL}">Get it at maude.sh/desktop</a>,
   then come back here and press the button again. The link works once and expires after two
   minutes — coming back later just needs another press of “Open in Maude” on the project page.</p>
 </main></body></html>`;
 }
 
+/**
+ * The same door, refused (Cloud Phase 24 A3).
+ *
+ * A browser form POST gets a page, never a JSON body — the mint path already
+ * negotiated and the refusals did not, which is how "Open in Maude" could end
+ * a non-technical customer's afternoon on `{"error":"..."}`.
+ */
+function refusalPage({ message, projectId = null }) {
+  const back = projectId
+    ? `<a class="btn" href="/projects/${esc(projectId)}/connect">Back to the project</a>`
+    : '<a class="btn" href="/">Back to your projects</a>';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cannot open this project — Maude</title>
+<style>${PAGE_STYLE}
+</style></head><body><main>
+  <h1>Cannot open this</h1>
+  <p class="quiet">${esc(message)}</p>
+  ${back}
+</main></body></html>`;
+}
+
 /** Customer-facing strings for the vocabulary lint. */
 export function allHandoffHtml() {
-  return launchPage({
-    projectId: 'alligators',
-    deepLink: 'maude://open/alligators?code=mhc_x&origin=https://cloud.maude.sh',
-  });
+  return [
+    launchPage({
+      projectId: 'alligators',
+      deepLink: 'maude://open/alligators?code=mhc_x&origin=https://cloud.maude.sh',
+    }),
+    refusalPage({
+      message:
+        'You are on this project as a viewer, so you can follow it here on the dashboard. ' +
+        'Opening it in the Maude app needs the member role — ask whoever runs the project.',
+      projectId: 'alligators',
+    }),
+    refusalPage({ message: ACCESS_MESSAGES['no-access'] }),
+  ].join('\n');
 }

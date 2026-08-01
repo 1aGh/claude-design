@@ -151,6 +151,51 @@ test('retention elapsing WITH an export advances to exported', () => {
   assert.ok(r.actions.some((a) => a.kind === 'set-state' && a.to === 'exported'));
 });
 
+// Cloud Phase 24 B3/A11. `exported` used to have no branch of its own, so the
+// generic walk asked for `suspended`, found no legal one-hop route, and took
+// the shortest path — `exported → active → suspended` — resurrecting a project
+// queued for deletion and resetting its retention clock. Forever. The
+// cancellation screen's deletion date could never actually arrive.
+test('an exported tenant nobody paid for is PURGED, not bounced back to suspended', () => {
+  const exported = tenant({ state: 'exported', cellRunning: false, exportSent: true });
+  const { desiredState, actions } = reconcile(exported, sub('canceled'));
+  assert.equal(desiredState, 'purged');
+  assert.ok(actions.some((a) => a.kind === 'purge-data'));
+  assert.ok(actions.some((a) => a.kind === 'set-state' && a.to === 'purged'));
+
+  const settled = settle(exported, sub('canceled'));
+  assert.equal(settled.tenant.state, 'purged');
+});
+
+test('the retention clock cannot be reset by the reconciler walking backwards', () => {
+  // The old flap, pinned: suspended → (30d) → exported → active → suspended,
+  // with `state_since` reset on every lap.
+  const suspended = tenant({
+    state: 'suspended',
+    stateSince: 0,
+    cellRunning: false,
+    exportSent: true,
+  });
+  const first = settle(suspended, sub('canceled'), { now: DAY * 31 });
+  assert.equal(first.tenant.state, 'purged', 'it reaches the promised end, in one settle');
+});
+
+test('two days out, the last-chance email is asked for — once the window is open', () => {
+  const suspended = tenant({
+    state: 'suspended',
+    stateSince: 0,
+    cellRunning: false,
+    exportSent: true,
+  });
+  const early = reconcile(suspended, sub('canceled'), { now: DAY * 20 });
+  assert.ok(!early.actions.some((a) => a.kind === 'warn-deletion'));
+
+  const late = reconcile(suspended, sub('canceled'), { now: DAY * 28.5 });
+  const warn = late.actions.find((a) => a.kind === 'warn-deletion');
+  assert.ok(warn, 'somebody must be told the clock is running');
+  assert.equal(warn.deletesAt, DAY * 30);
+});
+
 test('a tenant that never became active can be cleaned up directly', () => {
   // No customer data ever existed, so there is nothing to hand back.
   const r = reconcile(tenant({ state: 'pending' }), sub('incomplete_expired'));

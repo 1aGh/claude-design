@@ -1,0 +1,90 @@
+---
+title: Terms of Service
+description: The agreement between you and the provider of Maude Cloud — what you get, what you pay, what happens when you stop paying, and what happens to your work when you leave.
+---
+
+<Callout type="warn" title="Published before it is in force">
+Maude Cloud is in private pilot and takes **no live payments** — the payment integration runs in Stripe test mode. These terms are published now so they can be read and challenged before that changes. The provider's registration number and VAT identifier are added here, and the whole pack reviewed by counsel, **before the first live charge**. That is a gate on the live-payments work, not an intention.
+</Callout>
+
+**Last updated:** 31 July 2026
+
+## 1. Who you are contracting with
+
+Maude Cloud is operated by **Michal Dovrtěl**, Brno, Czech Republic ("we", "us", the "provider"). Contact: **cloud@maude.sh**. Security reports: **security@maude.sh**.
+
+The Maude software itself is open source under the MIT licence and is not covered by these terms — you may run it yourself, for free, forever. These terms cover only the hosted service at `cloud.maude.sh`.
+
+## 2. What the service is
+
+A **project** is one hosted workspace with its own address, its own people, and its own design system. It stores and synchronises your design files and their history, and it hands them back on demand.
+
+**It does not render your designs.** Rendering happens on your own computer, in the Maude desktop app. This is a technical property of the service, not a policy — see [Trust](/docs/cloud/trust) for the mechanisms.
+
+### What you need, and what it costs you elsewhere
+
+Using Maude Cloud requires things we do not sell you:
+
+- a **desktop computer** (macOS or Windows) — not a phone or a tablet;
+- the **free Maude desktop app**;
+- for AI-assisted design, **your own Claude subscription**, purchased from Anthropic. It is billed by Anthropic, on their terms, and we neither resell it nor receive any part of it.
+
+We state this before you reach a payment form. If you did not want it stated, the trial is how you find out cheaply.
+
+## 3. Your account and your people
+
+You are responsible for who you invite and what they do with the access you gave them. Roles are enforced by the service — an **owner** holds billing and deletion, a **member** can change designs, a **viewer** can look, comment and download.
+
+Removing somebody stops new access immediately and existing sessions within the window the removal screen states before you confirm it. We do not hide that number.
+
+You must be at least 18, or have the authority to bind the organisation you are acting for.
+
+## 4. Money
+
+- Prices are shown **before** you enter card details, in euros, exclusive of VAT unless stated.
+- The **trial** runs for the number of days shown in the wizard. Your card is authorised but not charged during it, and you can stop at any point before it ends.
+- **We charge only for a project that actually came up.** If provisioning fails or times out, the authorisation is released and nothing is taken. This is enforced in code, not by our good intentions.
+- Subscriptions renew automatically at the interval you chose until cancelled.
+- Payments are processed by **Stripe**. We never see or store your card number.
+- VAT is charged where we are required to charge it, based on the billing details you give us. Supplying an incorrect VAT identifier is your responsibility.
+
+## 5. If a payment fails
+
+A failed payment is a conversation, not a switch:
+
+1. The project **keeps running** while we retry and contact you.
+2. If it is still unpaid after the grace period stated on your billing page, the project **pauses**. Pausing stops the workspace; it does not delete anything.
+3. **Before any teardown, a complete copy of your work is prepared and offered to you.** The service cannot reach a deleted state except through that step — it is a state machine, not a promise.
+4. Data is retained for the period stated on the billing and cancellation screens, and the countdown is shown to you on screen and by email before it runs out.
+
+## 6. Cancelling and leaving
+
+You can cancel at any time from your project's billing page. The screen tells you, before you click: the date the project keeps working until, the date it pauses, and the date the data is deleted.
+
+You can **download everything at any time**, including while a project is paused or past due. The copy is yours to keep forever, and taking it changes nothing about your project.
+
+You can delete a project yourself. Deletion is only offered once a complete copy exists, and when you confirm it we stop billing, detach the address, and **erase the stored data**.
+
+## 7. What we may do
+
+We may suspend a project without notice if it is being used to break the law, to attack somebody, or to distribute malware, and we will tell you why. We may change these terms with reasonable notice; if a change materially disadvantages you, you may cancel and we refund the unused part of the current period.
+
+We may change subprocessors with notice, as recorded in the [Data Processing Addendum](/docs/legal/dpa).
+
+## 8. What we do not promise
+
+The service is provided **as is**. We do not warrant that it will be uninterrupted or error-free. There is no uptime SLA on the standard plans; if one is offered on a plan, it is stated on that plan.
+
+To the extent Czech law permits, our aggregate liability for any claim is limited to the fees you paid in the twelve months before it arose. Nothing here limits liability for death, personal injury, fraud, or anything else that cannot lawfully be limited.
+
+You keep every right in your designs. We claim no licence beyond what is technically necessary to store, sync, back up and hand back your files at your instruction.
+
+## 9. Law
+
+Czech law. Courts of the Czech Republic. If you are a consumer, this does not deprive you of protections you have where you live.
+
+## 10. Reading the rest
+
+- [Privacy notice](/docs/legal/privacy) — what personal data we hold and why.
+- [Data Processing Addendum](/docs/legal/dpa) — the GDPR processor terms, including the subprocessor list.
+- [Trust](/docs/cloud/trust) — the mechanisms behind the claims on this page.

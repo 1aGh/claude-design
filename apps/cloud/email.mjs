@@ -53,6 +53,65 @@ export function inviteEmail({ projectName, role, inviteUrl, invitedBy }) {
 }
 
 /**
+ * `1753...` ms → `28 August 2026`. The same format the billing pages use; a
+ * date that reads one way on screen and another in the inbox is a date nobody
+ * trusts.
+ */
+function day(ms) {
+  return new Date(Number(ms)).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+/**
+ * "Your project has paused, and here is your copy" — Cloud Phase 24 B3/A11.
+ *
+ * THE EXPORT GUARANTEE'S ACTUAL DELIVERY. DDR-193 §3 says an export always
+ * goes out before any teardown, and until this phase the reconciler computed
+ * that intent and sent nothing. This is the email; it carries both halves,
+ * because a pause notice with no copy attached is the notice people ignore.
+ */
+export function projectPausedEmail({ projectName, downloadUrl, deletesAt }) {
+  return {
+    subject: `${projectName} has paused`,
+    text: [
+      `Your subscription ended, so “${projectName}” is paused.`,
+      'Nothing has been deleted.',
+      '',
+      `A complete copy of your work has been prepared and is waiting here:`,
+      '',
+      `  ${downloadUrl}`,
+      '',
+      `On ${day(deletesAt)} the project is deleted from our computers.`,
+      'Restart it before then and everything comes back exactly as it was —',
+      'same address, same people, nothing lost.',
+      '',
+      'The copy you download stays yours, whatever you decide.',
+    ].join('\n'),
+  };
+}
+
+/** The last-chance notice, two days out (canvas board E0, email 2). */
+export function deletionWarningEmail({ projectName, downloadUrl, deletesAt }) {
+  return {
+    subject: `Two days left to keep ${projectName}`,
+    text: [
+      `“${projectName}” will be deleted on ${day(deletesAt)}.`,
+      '',
+      'If you want a copy, this is the moment — it takes a minute and it is',
+      'yours to keep afterwards:',
+      '',
+      `  ${downloadUrl}`,
+      '',
+      'Restarting the subscription before that date keeps everything instead.',
+    ].join('\n'),
+  };
+}
+
+/**
  * Send one email through Resend. Resolves `{ ok, id?, error? }`; never throws.
  */
 export async function sendEmail(env, { to, subject, text }, { fetchImpl = fetch } = {}) {

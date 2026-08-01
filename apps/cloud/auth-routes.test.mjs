@@ -10,7 +10,7 @@ import { isSameOriginPath } from './auth-routes.mjs';
 import { d1FromSqlite } from './db.mjs';
 import { verifyGrant } from './grants.mjs';
 import { applySchema } from './migrate.mjs';
-import { allCustomerFacingHtml } from './pages.mjs';
+import { allCustomerFacingHtml, homePage } from './pages.mjs';
 import { SCHEMA_SQL } from './schema.mjs';
 import worker from './worker.mjs';
 
@@ -324,6 +324,19 @@ test('customer-facing copy never says token/repository/oauth/bearer/crdt/git', (
   ]) {
     assert.ok(!text.includes(banned), `banned word reached the customer: "${banned.trim()}"`);
   }
+});
+
+// Cloud Phase 24 A1. The audit's sharpest finding: every page was honest and
+// the journey lied. "Claude" appeared in ZERO customer-facing cloud pages, so
+// the second subscription was a discovery, not a disclosure.
+test('the landing states the full bill of materials before anyone reaches a card', () => {
+  const html = homePage({ googleEnabled: true });
+  assert.match(html, /your own Claude subscription/);
+  assert.match(html, /Anthropic/);
+  assert.match(html, /not a phone/);
+  assert.match(html, /free Maude app/i);
+  // …and it is framed as the reason the work stays private, not as a caveat.
+  assert.match(html, /only ever drawn on your machine/);
 });
 
 test('phase-12 routes still answer (health + webhook refusal)', async () => {

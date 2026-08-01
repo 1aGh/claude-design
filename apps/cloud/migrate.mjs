@@ -216,6 +216,17 @@ export const MIGRATIONS = [
       'CREATE INDEX IF NOT EXISTS rate_hits_bucket ON rate_hits (bucket, at);',
     ],
   },
+  {
+    version: 12, // Cloud Phase 24 B1 — per-tenant config stops being Worker-GLOBAL
+    statements: [
+      // What a cell starts FROM, on first boot only. It used to be the
+      // cells-Worker's own `MAUDE_SEED_REPO` — one value shared by every
+      // tenant, which meant customer number two's first boot could clone
+      // customer number one's project. It belongs on the project row, where
+      // the id in the query is the isolation.
+      'ALTER TABLE projects ADD COLUMN seed_repo TEXT;',
+    ],
+  },
 ];
 
 /** Apply baseline + pending versioned migrations. Safe to run repeatedly. */

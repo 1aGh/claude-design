@@ -1,11 +1,55 @@
 {
-  "generated": "2026-07-29T16:22:17.419Z",
-  "version": "0.49.2",
+  "generated": "2026-07-31T14:30:04.835Z",
+  "version": "0.51.1",
   "entries": [
     {
-      "id": "file-tree-move-and-folders",
+      "id": "manual-timeline-editor",
       "version": null,
       "date": null,
+      "kind": "feature",
+      "title": "Edit video on the timeline, like iMovie",
+      "summary": "Split, trim, retime, crop, grade, and lay clips across stacked layers right on the timeline — drag to reorder, drop to make a new layer, add transitions, drop AI placeholder clips, and pin comments to an exact frame with the C tool.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "report-a-bug-from-the-app",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Report a bug without leaving Maude",
+      "summary": "Hit a problem? Help › Report a Bug… files it for you — with a screenshot of your canvas you can black-out before sending, and a review screen where you choose exactly what gets attached. The report lands on the public Maude issue tracker; screenshots and logs stay in a private space only maintainers can open.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour=\"help\"]",
+          "title": "Report a bug",
+          "body": "Open Help › Report a bug… whenever something breaks — a screenshot and the details maintainers need are gathered for you, and nothing is sent until you approve it.",
+          "placement": "bottom"
+        }
+      ]
+    },
+    {
+      "id": "maude-deeplink-open-in-app",
+      "version": "0.51.0",
+      "date": "2026-07-30",
+      "kind": "feature",
+      "title": "Open a cloud project straight from the browser",
+      "summary": "Press “Open in Maude” on your project’s page and the app opens it signed in — a one-time link, nothing to copy. The app always asks before connecting, and viewers get a working “View in the browser” door instead of a dead button.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "maude-cloud-signin-attach",
+      "version": "0.50.0",
+      "date": "2026-07-30",
+      "kind": "feature",
+      "title": "Sign in to Maude Cloud from the studio",
+      "summary": "The sidebar footer now signs you into Maude Cloud with a short code — no pasted addresses or keys — and connects this project to your cloud workspace in one click.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "file-tree-move-and-folders",
+      "version": "0.50.0",
+      "date": "2026-07-30",
       "kind": "feature",
       "title": "Organize your files — folders, drag & drop, move",
       "summary": "The file tree is a real file explorer now. Create folders from the header or right-click a canvas or folder for Move to… / New folder here / Delete folder — or just drag a canvas (or a whole folder) onto another folder, including back out to the top level. Every history, comment, annotation, and camera position moves with it, and every move shows an Undo toast.",

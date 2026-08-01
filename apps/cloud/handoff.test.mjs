@@ -134,6 +134,23 @@ test('a viewer cannot mint — no silent escalation through the handoff lane', a
   const { res, body } = await mintCode(env, viewerSession);
   assert.equal(res.status, 403);
   assert.match(body.error, /member role/);
+  // Cloud Phase 24 A3: the refusal is a PAGE for a browser form POST. The
+  // success path negotiated and the refusals did not, so pressing "Open in
+  // Maude" as a viewer used to end on raw JSON. It also no longer sends
+  // anybody to a gallery — Phase 25 C4 deletes it.
+  const asBrowser = await worker.fetch(
+    new Request('https://cloud.test/projects/alligators/handoff', {
+      method: 'POST',
+      headers: { cookie: `maude_session=${viewerSession}` },
+    }),
+    env
+  );
+  assert.equal(asBrowser.status, 403);
+  assert.match(asBrowser.headers.get('content-type'), /text\/html/);
+  const page = await asBrowser.text();
+  assert.match(page, /member role/);
+  assert.doesNotMatch(page, /gallery/i);
+  assert.doesNotMatch(page, /^\s*\{/, 'a browser never meets raw JSON');
   assert.ok(ownerSession);
 });
 
@@ -195,7 +212,8 @@ test('the browser form POST answers with the no-script launch page carrying the 
   assert.equal(res.status, 200);
   const html = await res.text();
   assert.match(html, /maude:\/\/open\/alligators\?code=mhc_/);
-  assert.match(html, /Download Maude/);
+  // Cloud Phase 24 A7: one download address across the whole product.
+  assert.match(html, /maude\.sh\/desktop/);
   assert.match(res.headers.get('content-security-policy'), /default-src 'none'/);
   // No script anywhere near a page that holds a live code.
   assert.doesNotMatch(html, /<script/i);

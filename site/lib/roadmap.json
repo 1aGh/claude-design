@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-31T12:13:32.801Z",
+  "generated": "2026-07-31T14:31:37.182Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1757,8 +1757,19 @@
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "The owner's stated target includes \"an online Maude Studio anyone with access can connect to in the browser.\" DDR-206 declined that on 2026-07-30, with the path priced: build parity is solved (136/...",
+      "summary": "The fork this plan opened — \"is there an online Maude Studio in the browser?\" — was answered in the owner review of .design/ui/Cloud Self Service.tsx: yes, read-only, and the gallery is dropped ent...",
       "planPath": ".ai/plans/cloud-phase-24-self-service-ready.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-25-one-project-two-doors",
+      "title": "Cloud Phase 25 — One project, two doors",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "1. The read-only gallery is dropped. view-<project>.cloud.maude.sh, the published-snapshot surface, and the maude share publish CLI verb all go. 2. Read-only becomes a permission on the real projec...",
+      "planPath": ".ai/plans/cloud-phase-25-one-project-two-doors.md",
       "archived": false,
       "phaseKey": null
     },

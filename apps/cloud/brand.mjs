@@ -23,6 +23,17 @@
 // drift test is what makes a subset safe.
 
 /**
+ * The ONE address every "get the app" link in the product points at
+ * (Cloud Phase 24 A7).
+ *
+ * Not a release list, not a GitHub page: one page that hands a non-technical
+ * person the right file for their machine, and that is also where the honest
+ * warning about the unsigned Windows build lives. A second download address is
+ * a second place that can go stale while somebody is following instructions.
+ */
+export const DESKTOP_DOWNLOAD_URL = 'https://maude.sh/desktop';
+
+/**
  * Tokens, verbatim from the design system. Dark is the default theme there,
  * and it is the default here — same reason: this is app chrome, not a
  * document.
@@ -174,6 +185,43 @@ export const CHROME = `
   .ok { color: var(--status-success); font-weight: 600; }
   footer { margin-top: var(--space-8); padding-top: var(--space-5); border-top: 1px solid var(--border-subtle); color: var(--fg-2); font-size: var(--type-sm); line-height: var(--lh-sm); }
 `;
+
+/**
+ * The "Continue with Google" button, and the rules it needs.
+ *
+ * Lives HERE rather than on the signup surface because it is now needed on
+ * three unrelated pages — signup, sign-in, and the invitation's join screen
+ * (Cloud Phase 24 A12b). A second copy of a brand-constrained button is how
+ * two of them drift.
+ *
+ * The official multicolor "G" is inline so a page stays a single request and
+ * works under the strict CSP. Google's brand rules allow the standard G on a
+ * neutral button; the button chrome itself wears our tokens.
+ */
+export const GOOGLE_BUTTON_CSS = `
+  .btn-google {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--border-subtle);
+  }
+  .btn-google:hover { background: var(--bg-3); color: var(--fg-0); }
+  .btn-google:active { background: var(--bg-3); }
+  .btn-google svg { flex: none; }
+  .btn-google.wide { display: flex; width: 100%; }
+  .or {
+    display: flex; align-items: center; gap: var(--space-4);
+    color: var(--fg-3); font-size: var(--type-sm);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin: var(--space-5) 0;
+  }
+  .or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--border-subtle); }
+`;
+
+const GOOGLE_G = `<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.2-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 18.9 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.2 5.7l6.2 5.2C40.7 35.7 44 30.3 44 24c0-1.2-.1-2.4-.4-3.5z"/></svg>`;
+
+export function googleButton({ next = null, wide = false } = {}) {
+  const href = next ? `/auth/google?next=${encodeURIComponent(next)}` : '/auth/google';
+  return `<a class="btn btn-google${wide ? ' wide' : ''}" href="${href}">${GOOGLE_G} Continue with Google</a>`;
+}
 
 /**
  * The mark: the spark on its bubble tile.

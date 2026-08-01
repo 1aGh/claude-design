@@ -35,7 +35,8 @@ Rendering happens on your own machine, in Maude Desktop. That is also why there 
 
 ## Your data is never hostage
 
-- **One-click export, always** — including while your subscription is suspended. The export is a git bundle plus your media, and it opens as a working local project without Maude.
+- **One-click export, always** — including while your subscription is suspended. The export is a git bundle plus your media. It needs nothing from us and it does not expire, but it is a developer archive rather than a folder you can double-click: anyone who writes software can unpack it, and so can the Maude desktop app.
+- **Deleting deletes the bytes.** When you delete a project we stop billing, detach the address, and erase everything under that project's storage prefix — including the copies prepared on the download page. There is no second retention window hiding under the first, which is why the confirmation screen tells you to take the copy you want first.
 - **An export is sent before any teardown.** This is a state machine, not a policy: the code makes the transition to "purged" reachable **only** through "exported". A project that never became active is the sole exception, because it never held anything.
 - **Suspension stops a workspace; it does not delete it.** Data is retained 30 days, and if that window elapses without an export having actually been delivered, the system **holds and re-sends** rather than proceeding. The clock does not outrank the guarantee.
 
@@ -72,6 +73,10 @@ Maude is **free forever to self-host**, and it is the same software — not a re
 
 That matters here rather than on a pricing page: a hosted service you cannot leave is a hosted service whose promises cannot be tested. You can leave, at any time, with everything.
 
+## The paperwork these claims sit inside
+
+[Terms](/docs/legal/terms) · [Privacy notice](/docs/legal/privacy) · [Data Processing Addendum](/docs/legal/dpa) · [Cloud pricing](/docs/cloud/pricing)
+
 ## Where the claims come from
 
 For anyone who wants to check rather than believe:
@@ -80,8 +85,9 @@ For anyone who wants to check rather than believe:
 | --- | --- |
 | Designs are never executed by us | `apps/studio/workspace-mode.ts`, `infra/cell/entrypoint.sh`, `scripts/check-containment.sh` |
 | No browser in the workspace image | `infra/cell/Dockerfile` + the CI gate |
-| Export before teardown | `apps/cloud/reconcile.mjs` — `purged` is reachable only via `exported` |
+| Export before teardown | `apps/cloud/reconcile.mjs` — `purged` is reachable only via `exported`, and `apps/cloud/worker.mjs` performs the export BEFORE any teardown step, whatever order the actions arrive in |
 | Suspension retains data | The same state machine (`cli/lib/cell-plan.mjs`) |
-| One project cannot read another | Per-project container; R2 keys are prefix-isolated per tenant |
+| Deleting erases the bytes | `apps/cloud/purge.mjs` — the prefix is checked twice, and the delete is reported and re-runnable rather than assumed |
+| One project cannot read another | Per-project container; R2 keys are prefix-isolated per tenant; a cell's own configuration is fetched with a secret derived from its own tenant id (`apps/cells/cell-config.mjs`), never read from a fleet-wide variable |
 | Sessions expire and can be revoked | `apps/hub/src/tokens.mjs`, `apps/hub/src/users.mjs` |
 | Backups are restorable | `maude hub restore-drill`, run in CI — a backup nobody has restored is a hypothesis |

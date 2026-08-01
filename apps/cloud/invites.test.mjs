@@ -11,7 +11,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 
 import { d1FromSqlite } from './db.mjs';
-import { allInviteHtml } from './invites.mjs';
+import { allInviteHtml, invitePage } from './invites.mjs';
 import { applySchema } from './migrate.mjs';
 import { SCHEMA_SQL } from './schema.mjs';
 import worker from './worker.mjs';
@@ -251,6 +251,39 @@ test('declining the disclosure creates neither account nor membership', async ()
   assert.equal(res.status, 400);
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM accounts').get().n, 1); // just the owner
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM project_members').get().n, 0);
+});
+
+// Cloud Phase 24 A12b. The join screen is the invitee's FIRST contact with
+// Maude and was the one door in the funnel offering only "invent 12
+// characters" — while the dashboard's own front door offers one click.
+test('the join page offers Google ABOVE the password field, carrying the invite', () => {
+  const html = invitePage({
+    projectName: 'Brno Alligators',
+    inviteId: 'x'.repeat(36),
+    role: 'viewer',
+    mode: 'create',
+    email: 'petra@example.com',
+    googleEnabled: true,
+  });
+  const google = html.indexOf('Continue with Google');
+  const password = html.indexOf('Choose a password');
+  assert.ok(google > 0 && google < password, 'Google must come first on the join screen');
+  assert.match(html, /\/auth\/google\?next=%2Finvite%2Fx{36}/);
+  // And it names the address, because signing in with the wrong Google account
+  // silently lands somebody back on a page asking for a password.
+  assert.match(html, /petra@example\.com/);
+});
+
+test('with Google unconfigured the join page is exactly what it was', () => {
+  const html = invitePage({
+    projectName: 'Brno Alligators',
+    inviteId: 'x'.repeat(36),
+    role: 'member',
+    mode: 'create',
+    email: 'new@example.com',
+  });
+  assert.doesNotMatch(html, /Continue with Google/);
+  assert.match(html, /Choose a password/);
 });
 
 // ------------------------------------------------------------------- strings

@@ -95,6 +95,20 @@ describe('copy and safety', () => {
     assert.match(html, /&lt;img/);
   });
 
+  // Cloud Phase 24 A12a. The select rendered bare single words, which asks the
+  // inviter to already know a vocabulary we invented. With no script on the
+  // page, the option text is the only place the meaning can appear at the
+  // moment of the decision.
+  it('the role dropdown says what each role means while it is being chosen', () => {
+    const html = peoplePage({ project, people: [], isOwner: true });
+    assert.match(html, /<option value="member"[^>]*>Member — can change the designs<\/option>/);
+    assert.match(
+      html,
+      /<option value="viewer"[^>]*>Viewer — can look and download, not change<\/option>/
+    );
+    assert.doesNotMatch(html, /<option value="member"[^>]*>member<\/option>/);
+  });
+
   it('ships no script', () => {
     const html = allPeopleHtml();
     assert.ok(!/<script/i.test(html));

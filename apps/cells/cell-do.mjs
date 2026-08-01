@@ -4,13 +4,12 @@
 // idle-sleep, wake); the container is the tenant's Maude workspace, which is
 // the SAME image as the self-hosted hub plus tenant scoping (DDR-195).
 //
-// WHY PER-TENANT SECRETS ARE DERIVED, NOT SHARED. A cell needs an operator
-// credential (HUB_SECRET) and it needs one that is ITS OWN: handing every cell
-// the same value would make one leaked cell an operator credential for every
-// other project on the platform. Deriving it — HMAC(master, tenant) — gives a
-// distinct, unguessable value per tenant from a single stored secret, so
-// rotating the master rotates every cell and no per-tenant secret store has to
-// exist. The master itself never enters a container.
+// THE RUNTIME HALF ONLY. Everything decidable without a container — the tenant
+// grammar, the derived secrets, the env mapping, and (since Phase 24 B1) the
+// per-tenant config fetch — lives in `cell-config.mjs`, because this file
+// imports `@cloudflare/containers` and that does not resolve under plain Node.
+// The split is what makes the mapping testable at all; it is re-exported here
+// so every existing importer is unaffected.
 //
 // CONTAINMENT (DDR-193 §2) is an image property, asserted at CI time, at build
 // time and at boot. Nothing here can re-enable rendering; the image has no
@@ -18,138 +17,28 @@
 
 import { Container } from '@cloudflare/containers';
 
-/** The port the cell image listens on. Matches its EXPOSE / PORT. */
-export const CELL_PORT = 1234;
+import {
+  CELL_PORT,
+  cellEnv,
+  deriveSecret,
+  fetchTenantConfig,
+  isValidTenantId,
+  RESTART_PATH,
+  secretsMatch,
+  TENANT_HEADER,
+} from './cell-config.mjs';
 
-/**
- * The header the Worker uses to tell a DO which tenant it is.
- *
- * Safe ONLY because a Durable Object is unreachable from the internet — the
- * sole caller is our own Worker, which derives the value from the hostname it
- * was routed on. If a DO ever becomes directly addressable this stops being
- * trustworthy input, so it is named to make that obvious.
- */
-export const TENANT_HEADER = 'x-maude-internal-tenant';
-
-/** Same charset the cell entrypoint enforces — the id becomes an R2 prefix. */
-const TENANT_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-export function isValidTenantId(raw) {
-  return typeof raw === 'string' && raw.length > 0 && raw.length <= 63 && TENANT_ID.test(raw);
-}
-
-/**
- * Derive this tenant's operator credential from the platform master.
- *
- * Hex, 64 chars — the same shape `workspace-up` generates, so a cell cannot
- * tell (and must not care) whether the platform or a self-hoster provisioned it.
- */
-export async function deriveSecret(master, tenantId, purpose = 'hub-secret') {
-  if (!master) throw new Error('CELL_SECRET_MASTER is not configured');
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(master),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const mac = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(`maude-cell:${purpose}:${tenantId}`)
-  );
-  return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Environment for one tenant's cell.
- *
- * PURE and exported, because this mapping is where a mistake means one tenant
- * reading another's data — and that must be reviewable without booting a
- * container (DDR-196 §1).
- */
-export async function cellEnv({ tenantId, env, hostname }) {
-  if (!isValidTenantId(tenantId)) throw new Error(`invalid tenant id: ${tenantId}`);
-  return {
-    // EVERYTHING THE CELL NEEDS, EXPLICITLY.
-    //
-    // `startOptions.envVars` REPLACES the image's ENV, it does not merge with
-    // it. Relying on the Dockerfile's values cost a debugging cycle: the cell
-    // booted, answered /health, and quietly had no MAUDE_REPO_DIR and no
-    // workspace mode — so no checkout, no history, no seed, and nothing in the
-    // response that said so. Anything the cell needs is listed here, even when
-    // the image also sets it.
-    NODE_ENV: 'production',
-    DATA_DIR: '/data',
-    MAUDE_REPO_DIR: '/repo',
-    HUB_WORKSPACE_MODE: '1',
-    MAUDE_WORKSPACE_MODE: '1',
-    MAUDE_TENANT_ID: tenantId,
-    PORT: String(CELL_PORT),
-    // The cell terminates TLS at the edge, so it sees http:// and must be told
-    // the https:// name it actually answers as.
-    HUB_PUBLIC_URL: `https://${hostname}`,
-    HUB_SECRET: await deriveSecret(env.CELL_SECRET_MASTER, tenantId),
-    // Behind Cloudflare every request arrives from the edge. Without this the
-    // per-client rate limiter buckets the entire internet as one client.
-    HUB_TRUSTED_PROXIES: '0.0.0.0/0,::/0',
-    // Where this cell's platform lives — powers the mirror clock (Phase 19).
-    // Safe to pass again since Phase 23 B1: identity is keyed on its OWN
-    // explicit switch below, never inferred from this URL (the 2026-07-30
-    // regression: one env var was doubling as two switches).
-    MAUDE_CONTROL_PLANE_URL: env.CONTROL_PLANE_URL ?? 'https://cloud.maude.sh',
-    // HYBRID cloud identity (Phase 23 B1/B2): the cell accepts control-plane
-    // project tokens IN ADDITION to its local user store, so the workspace
-    // password keeps working while the dashboard/desktop lanes migrate.
-    // Flip CELL_IDENTITY_MODE=strict (worker var) once the handoff lanes have
-    // carried real sign-ins — a deliberate act, never inferred (B1's lesson).
-    MAUDE_CLOUD_IDENTITY: env.CELL_IDENTITY_MODE === 'strict' ? 'strict' : '1',
-    // Project tokens verify against their OWN derived key (B4) — never
-    // HUB_SECRET, which is already the admin bearer and a peer token.
-    MAUDE_PROJECT_TOKEN_KEY: await deriveSecret(env.CELL_SECRET_MASTER, tenantId, 'project-token'),
-    // The return leg for the cell's own pages (B5). A NEW variable, so it can
-    // never re-trip the identity switch.
-    HUB_DASHBOARD_URL: env.DASHBOARD_URL ?? 'https://cloud.maude.sh',
-    // The customer-facing landing shows THIS, not a generic default. Absent,
-    // the cell prettifies its own tenant slug — it never falls back to the
-    // operator placeholder a customer should never meet.
-    ...(env.PROJECT_NAME ? { MAUDE_PROJECT_NAME: env.PROJECT_NAME } : {}),
-    // Object storage. The entrypoint derives per-tenant key prefixes from
-    // MAUDE_TENANT_ID — one bucket, one prefix per tenant.
-    MAUDE_S3_ENDPOINT: env.MAUDE_R2_ENDPOINT ?? '',
-    MAUDE_S3_BUCKET: env.MAUDE_R2_BUCKET ?? 'maude-cloud-assets',
-    MAUDE_S3_ACCESS_KEY_ID: env.MAUDE_R2_ACCESS_KEY_ID ?? '',
-    MAUDE_S3_SECRET_ACCESS_KEY: env.MAUDE_R2_SECRET_ACCESS_KEY ?? '',
-    MAUDE_S3_REGION: 'auto',
-    // Checkpoint cadence. A cell's disk is ephemeral and the platform migrates
-    // instances freely, so the gap between checkpoints IS the window of
-    // possible loss. Ten minutes is the current trade against R2 write cost.
-    MAUDE_BACKUP_INTERVAL_MS: String(10 * 60 * 1000),
-    // The project this cell starts from, on FIRST boot only. The cell refuses
-    // to seed over an existing checkout, so this is inert on every later wake.
-    ...(env.MAUDE_SEED_REPO ? { MAUDE_SEED_REPO: env.MAUDE_SEED_REPO } : {}),
-    // The first person who can sign in.
-    //
-    // The password is DERIVED, not stored: the platform already holds the
-    // master, so a per-tenant secret store would add a place to leak from
-    // without adding a secret the platform did not already know. It is an
-    // INITIAL credential — the same status as the one `workspace-up` prints —
-    // and the person is told to change it.
-    // Retired under strict (Phase 23 B6): a cloud-identity cell takes every
-    // sign-in from the control plane, so seeding a local password would
-    // recreate the credential class strict exists to end.
-    ...(env.PILOT_ADMIN_EMAIL && env.CELL_IDENTITY_MODE !== 'strict'
-      ? {
-          MAUDE_ADMIN_EMAIL: env.PILOT_ADMIN_EMAIL,
-          MAUDE_ADMIN_PASSWORD: await deriveSecret(
-            env.CELL_SECRET_MASTER,
-            tenantId,
-            'initial-admin-password'
-          ),
-        }
-      : {}),
-  };
-}
+export {
+  CELL_PORT,
+  cellEnv,
+  deriveSecret,
+  fetchTenantConfig,
+  isValidTenantId,
+  RESTART_PATH,
+  secretsMatch,
+  TENANT_HEADER,
+  tenantFromHostname,
+} from './cell-config.mjs';
 
 export class MaudeCell extends Container {
   defaultPort = CELL_PORT;
@@ -196,8 +85,16 @@ export class MaudeCell extends Container {
     this.tenantId = tenantId;
 
     const hostname = new URL(request.url).hostname;
+    // Who this tenant is, asked of the control plane rather than read from a
+    // fleet-wide variable (B1). Resolved per start; the DO's own storage is
+    // the offline fallback, never another tenant's value.
+    const config = await fetchTenantConfig({
+      tenantId,
+      env: this.env,
+      storage: this.ctx.storage,
+    });
     await this.startAndWaitForPorts({
-      startOptions: { envVars: await cellEnv({ tenantId, env: this.env, hostname }) },
+      startOptions: { envVars: await cellEnv({ tenantId, env: this.env, hostname, config }) },
       // A cold start pays a rehydrate from R2 — and a FIRST start also pays a
       // full clone of the tenant's project — before anything listens. The
       // default turns that normal path into a 500; 120 s was still not enough
@@ -220,46 +117,6 @@ export class MaudeCell extends Container {
   onError(error) {
     console.error(`[cell] ${this.tenantId ?? '?'} error: ${error}`);
   }
-}
-
-/**
- * The tenant a request is for.
- *
- * From the HOSTNAME, never a header or a path: the hostname is routed by our
- * own DNS; the others are attacker-controlled. `<tenant>.cloud.maude.sh`.
- *
- * HOW THIS HOSTNAME EXISTS AT ALL. Not a wildcard route — Cloudflare accepts a
- * wildcard only at the START of a hostname pattern, and free Universal SSL
- * covers the apex plus ONE level, so `<tenant>.cloud.maude.sh` is neither
- * routable by `cell-*.maude.sh/*` nor on the certificate. Both were tried; the
- * TLS failure has no HTTP status to read, which is why it is written down.
- *
- * A Worker CUSTOM DOMAIN solves both at once: it provisions the DNS record and
- * an edge certificate for any hostname in the zone, at any depth. So a cell's
- * hostname is created per tenant at provision time (`maude cell up`) rather
- * than pre-declared, which is also what `cellResources()` already modelled —
- * `dns` and `worker-route` as per-cell resources, not global config.
- */
-export function tenantFromHostname(hostname, zone) {
-  const h = String(hostname ?? '').toLowerCase();
-  const suffix = `.${String(zone ?? '').toLowerCase()}`;
-  if (!zone || !h.endsWith(suffix)) return null;
-  const label = h.slice(0, -suffix.length);
-  return isValidTenantId(label) ? label : null;
-}
-
-/** The operator route: `POST /_cell/restart`, authorized by the cell's own secret. */
-export const RESTART_PATH = '/_cell/restart';
-
-/**
- * Constant-time compare. A timing oracle on an operator credential is worth
- * closing even when the credential is derived rather than stored.
- */
-function secretsMatch(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
 }
 
 /** Route one request to its tenant's cell. */

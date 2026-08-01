@@ -67,9 +67,27 @@ const ROLE_MEANING = {
   owner: 'Everything, plus billing, people and deleting the project.',
 };
 
-function roleSelect(name, current) {
-  return `<select name="${name}">${ASSIGNABLE.map(
-    (r) => `<option value="${r}"${r === current ? ' selected' : ''}>${r}</option>`
+/**
+ * What each option says WHILE it is being chosen (Cloud Phase 24 A12a, canvas
+ * board D1).
+ *
+ * The select used to render bare single words — "member", "viewer" — which
+ * asks the inviter to already know a vocabulary we invented. The meaning has
+ * to be inside the option, because with no script on this page there is
+ * nowhere else it can appear at the moment of the decision.
+ *
+ * `owner` is deliberately absent: it is a transfer, not a role change, and the
+ * owner's own row states what the role means.
+ */
+const ROLE_OPTION = {
+  member: 'Member — can change the designs',
+  viewer: 'Viewer — can look and download, not change',
+};
+
+function roleSelect(name, current, { label = 'What they can do' } = {}) {
+  return `<select name="${name}" aria-label="${esc(label)}">${ASSIGNABLE.map(
+    (r) =>
+      `<option value="${r}"${r === current ? ' selected' : ''}>${esc(ROLE_OPTION[r] ?? r)}</option>`
   ).join('')}</select>`;
 }
 
@@ -114,15 +132,14 @@ export function peoplePage({
     ? `<div class="card">
          <h2>Add someone</h2>
          <form method="post" action="/projects/${esc(project.id)}/people">
-           <input type="email" name="email" placeholder="their email" required>
+           <input type="email" name="email" placeholder="their email" aria-label="Their email"
+                  required>
            ${roleSelect('role', 'member')}
            <button type="submit" name="do" value="invite">Send invitation</button>
          </form>
          <p class="quiet" style="font-size:.87rem;margin:.6rem 0 0">
            They get an email with a link. If they do not have a Maude account yet,
            the link makes one — they never have to find this project themselves.
-           Getting into the workspace itself still uses the workspace's own
-           sign-in for now; this invitation covers everything on this dashboard.
          </p>
        </div>`
     : '';

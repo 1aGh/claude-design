@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { after, before, beforeEach, test } from 'node:test';
 
-import { allCheckoutHtml } from './checkout-pages.mjs';
+import { allCheckoutHtml, newProjectPage } from './checkout-pages.mjs';
 import { d1FromSqlite } from './db.mjs';
 import { applySchema } from './migrate.mjs';
 import { loadPricing } from './pricing.mjs';
@@ -88,9 +88,18 @@ function get(path, session) {
   });
 }
 
+/** 28 August 2026, as Stripe would report a period end (seconds). */
+const PERIOD_END_S = Math.floor(Date.UTC(2026, 7, 28, 12, 0, 0) / 1000);
+
 /** The standard Stripe fake for a happy checkout. Returns the recorded calls. */
-function stripeHappy() {
+function stripeHappy({ invoices = [] } = {}) {
   const calls = [];
+  // Mutable Stripe-side state, so the billing surfaces can be driven as a
+  // sequence (cancel → read it back → resume) rather than one call at a time.
+  let subscriptionCancelling = false;
+  let customerOnFile = { id: 'cus_1', name: '', address: {} };
+  let taxIds = [];
+  const invoicesOnFile = invoices;
   network.push([
     'api.stripe.com',
     async (url, init) => {
@@ -114,8 +123,49 @@ function stripeHappy() {
       if (url.includes('/v1/subscriptions/sub_1') && init.method === 'DELETE') {
         return Response.json({ id: 'sub_1', status: 'canceled' });
       }
+      if (url.includes('/v1/subscriptions/sub_1')) {
+        // POST toggles cancel_at_period_end; GET reads it back.
+        if (init.method === 'POST') subscriptionCancelling = body.cancel_at_period_end === 'true';
+        return Response.json({
+          id: 'sub_1',
+          status: 'active',
+          cancel_at_period_end: subscriptionCancelling,
+          current_period_end: PERIOD_END_S,
+        });
+      }
       if (url.includes('/v1/billing_portal/sessions')) {
         return Response.json({ url: 'https://billing.stripe.com/p/session_1' });
+      }
+      // Cloud Phase 24 A10 — the billing page's own reads. tax_ids is matched
+      // BEFORE the customer itself; the customer URL is a prefix of it.
+      if (url.includes('/v1/customers/cus_1/tax_ids')) {
+        if (init.method === 'POST') {
+          taxIds = [{ id: 'txi_1', value: body.value }];
+          return Response.json(taxIds[0]);
+        }
+        if (init.method === 'DELETE') {
+          taxIds = [];
+          return Response.json({ id: 'txi_1', deleted: true });
+        }
+        return Response.json({ data: taxIds });
+      }
+      if (url.includes('/v1/customers/cus_1')) {
+        if (init.method === 'POST') {
+          customerOnFile = {
+            ...customerOnFile,
+            name: body.name ?? '',
+            address: {
+              line1: body['address[line1]'] ?? '',
+              city: body['address[city]'] ?? '',
+              postal_code: body['address[postal_code]'] ?? '',
+              country: body['address[country]'] ?? '',
+            },
+          };
+        }
+        return Response.json(customerOnFile);
+      }
+      if (url.includes('/v1/invoices')) {
+        return Response.json({ data: invoicesOnFile });
       }
       return Response.json({ error: { message: `unexpected ${url}` } }, { status: 500 });
     },
@@ -332,7 +382,7 @@ test('billing shows the situation and hands the owner to the portal', async () =
   await throughCheckout(env, session);
 
   const pageRes = await worker.fetch(get('/projects/zkusebni-tym/billing', session), env);
-  assert.match(await pageRes.text(), /Manage billing at Stripe/);
+  assert.match(await pageRes.text(), /Change plan or card/);
 
   const portal = await worker.fetch(
     post('/projects/zkusebni-tym/billing/portal', session, {}),
@@ -342,6 +392,171 @@ test('billing shows the situation and hands the owner to the portal', async () =
   assert.match(portal.headers.get('location'), /billing\.stripe\.com/);
   const created = stripeCalls.find((c) => c.url.includes('billing_portal'));
   assert.equal(created.body.customer, 'cus_1');
+});
+
+// Cloud Phase 24 A10 — the three questions that used to be a two-hop journey
+// through somebody else's product.
+test('billing lists invoices with a PDF each, and never invents a draft', async () => {
+  const { env } = await freshEnv();
+  stripeHappy({
+    invoices: [
+      {
+        id: 'in_1',
+        status: 'paid',
+        created: Math.floor(Date.UTC(2026, 6, 28) / 1000),
+        total: 2900,
+        currency: 'eur',
+        invoice_pdf: 'https://files.stripe.com/in_1.pdf',
+        lines: { data: [{ description: 'Cloud Project — monthly' }] },
+      },
+      // A draft is not a receipt: showing one invites somebody to hand their
+      // accountant a number that has not happened yet.
+      { id: 'in_2', status: 'draft', created: 1, total: 2900, currency: 'eur' },
+    ],
+  });
+  cloudflareOk();
+  cellAnswers(true);
+  const session = await signedIn(env);
+  await throughCheckout(env, session);
+
+  const body = await (
+    await worker.fetch(get('/projects/zkusebni-tym/billing', session), env)
+  ).text();
+  assert.match(body, /28 July 2026/);
+  assert.match(body, /€29\.00/);
+  assert.match(body, /href="https:\/\/files\.stripe\.com\/in_1\.pdf"/);
+  assert.equal((body.match(/>PDF</g) ?? []).length, 1, 'the draft must not be listed');
+});
+
+test('billing details reach Stripe, VAT id included — which is what Stripe Tax reads', async () => {
+  const { env } = await freshEnv();
+  const stripeCalls = stripeHappy();
+  cloudflareOk();
+  cellAnswers(true);
+  const session = await signedIn(env);
+  await throughCheckout(env, session);
+
+  const saved = await worker.fetch(
+    post('/projects/zkusebni-tym/billing/details', session, {
+      company: 'Brno Alligators z.s.',
+      line1: 'Sportovní 12',
+      city: 'Brno',
+      postalCode: '602 00',
+      country: 'cz',
+      vatId: 'cz 26547891',
+    }),
+    env
+  );
+  assert.equal(saved.status, 200);
+  const update = stripeCalls.find(
+    (c) => c.method === 'POST' && /\/v1\/customers\/cus_1$/.test(c.url)
+  );
+  assert.equal(update.body.name, 'Brno Alligators z.s.');
+  assert.equal(update.body['address[country]'], 'CZ');
+  const vat = stripeCalls.find((c) => c.method === 'POST' && c.url.includes('/tax_ids'));
+  assert.equal(vat.body.type, 'eu_vat');
+  assert.equal(
+    vat.body.value,
+    'CZ26547891',
+    'spaces and case are normalized before Stripe sees it'
+  );
+
+  // …and the page renders them back on the next visit.
+  const body = await (
+    await worker.fetch(get('/projects/zkusebni-tym/billing', session), env)
+  ).text();
+  assert.match(body, /Brno Alligators z\.s\./);
+  assert.match(body, /CZ26547891/);
+});
+
+test('a mismatched VAT id is refused with a sentence, and nothing is sent', async () => {
+  const { env } = await freshEnv();
+  const stripeCalls = stripeHappy();
+  cloudflareOk();
+  cellAnswers(true);
+  const session = await signedIn(env);
+  await throughCheckout(env, session);
+  const before = stripeCalls.length;
+
+  const res = await worker.fetch(
+    post('/projects/zkusebni-tym/billing/details', session, {
+      country: 'DE',
+      vatId: 'CZ26547891',
+    }),
+    env
+  );
+  assert.equal(res.status, 400);
+  assert.match(await res.text(), /do not match/);
+  assert.equal(
+    stripeCalls.filter((c, i) => i >= before && c.method === 'POST' && c.url.includes('/tax_ids'))
+      .length,
+    0
+  );
+});
+
+// Cloud Phase 24 A11 — the cancel ladder, canvas board E0.
+test('cancelling shows every date BEFORE the click, then ends at period end', async () => {
+  const { env } = await freshEnv();
+  const stripeCalls = stripeHappy();
+  cloudflareOk();
+  cellAnswers(true);
+  const session = await signedIn(env);
+  await throughCheckout(env, session);
+
+  const confirm = await (
+    await worker.fetch(get('/projects/zkusebni-tym/billing/cancel', session), env)
+  ).text();
+  assert.match(confirm, /28 August 2026/, 'works until');
+  assert.match(confirm, /27 September 2026/, 'deleted 30 days after it pauses');
+  // The download offer is ON this screen, not a link to the page that makes one.
+  assert.match(confirm, /action="\/projects\/zkusebni-tym\/download"/);
+  assert.match(confirm, /Download everything/);
+
+  // An unticked box changes nothing at Stripe.
+  const unticked = await worker.fetch(
+    post('/projects/zkusebni-tym/billing/cancel', session, {}),
+    env
+  );
+  assert.equal(unticked.status, 400);
+  assert.equal(stripeCalls.filter((c) => c.body?.cancel_at_period_end).length, 0);
+
+  const done = await worker.fetch(
+    post('/projects/zkusebni-tym/billing/cancel', session, { sure: 'yes' }),
+    env
+  );
+  assert.equal(done.status, 303);
+  const cancel = stripeCalls.find((c) => c.body?.cancel_at_period_end === 'true');
+  assert.match(cancel.url, /\/v1\/subscriptions\/sub_1/);
+
+  // Cancelled-but-still-running is a state the old page could not show at all.
+  const after = await (
+    await worker.fetch(get('/projects/zkusebni-tym/billing', session), env)
+  ).text();
+  assert.match(after, /Cancelled — ends 28 August 2026/);
+  assert.match(after, /Keep Zkušební tým/);
+  assert.doesNotMatch(after, /Cancel subscription/, 'no second cancel button once cancelled');
+
+  const kept = await worker.fetch(post('/projects/zkusebni-tym/billing/resume', session, {}), env);
+  assert.equal(kept.status, 303);
+  assert.ok(stripeCalls.find((c) => c.body?.cancel_at_period_end === 'false'));
+});
+
+test('billing survives Stripe being unreachable — the state card always renders', async () => {
+  const { env } = await freshEnv();
+  stripeHappy();
+  cloudflareOk();
+  cellAnswers(true);
+  const session = await signedIn(env);
+  await throughCheckout(env, session);
+  // Every later Stripe call fails. This is the page somebody opens BECAUSE
+  // their card failed; blanking it turns one problem into two.
+  network.unshift(['api.stripe.com', async () => new Response('nope', { status: 503 })]);
+
+  const res = await worker.fetch(get('/projects/zkusebni-tym/billing', session), env);
+  assert.equal(res.status, 200);
+  const body = await res.text();
+  assert.match(body, /invoices could not be loaded/);
+  assert.match(body, /Setting up/, 'the state card comes from our own database');
 });
 
 test('billing is the owner’s alone — a member sees the same 404 as a stranger', async () => {
@@ -383,4 +598,23 @@ test('the checkout pages ship no script and no vocabulary of ours', () => {
   for (const jargon of ['tenant', 'cell', 'provision', 'webhook', 'container']) {
     assert.ok(!new RegExp(`\\b${jargon}`, 'i').test(html), `"${jargon}" leaked into checkout`);
   }
+});
+
+// Cloud Phase 24 A1. The wizard is the last screen before a card form, so it
+// is the last honest moment: a customer must not learn about the desktop
+// requirement or the Anthropic subscription AFTER authorizing payment.
+test('the wizard states the full bill of materials above the payment button', () => {
+  const html = newProjectPage({ account: { email: 'a@example.com' }, pricing: loadPricing() });
+  assert.match(html, /your own Claude subscription/);
+  assert.match(html, /Anthropic/);
+  assert.match(html, /not a phone/);
+  const bom = html.indexOf('What you’ll need');
+  const button = html.indexOf('Continue to payment details');
+  assert.ok(bom > 0 && bom < button, 'the bill of materials must precede the payment button');
+
+  // Cloud Phase 24 A8: the legal pack is linked where the decision is made,
+  // not somewhere a customer would have to go looking for it.
+  const terms = html.indexOf('maude.sh/terms');
+  assert.ok(terms > 0 && terms < button, 'Terms must be linked above the payment button');
+  assert.match(html, /maude\.sh\/privacy/);
 });

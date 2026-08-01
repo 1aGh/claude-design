@@ -134,6 +134,23 @@ export function checkoutSessionParams({
     // The card is collected and validated even though the trial is free —
     // that validation IS the authorization the ordering relies on.
     payment_method_collection: 'always',
+    // VAT (Cloud Phase 24 D2). An EU product selling to EU customers has a
+    // legal obligation to charge the right rate, not a feature request — and
+    // this integration had `automatic_tax` nowhere. Stripe needs somewhere to
+    // place the customer, so the address is collected at checkout and the
+    // customer object is updated with it; the billing page's "Billing details"
+    // section (A10) is where it is corrected afterwards.
+    'automatic_tax[enabled]': 'true',
+    // Stripe REFUSES automatic tax on a session with an existing `customer`
+    // unless it is allowed to write the collected address back — the session
+    // create fails outright, so this pair is not optional decoration.
+    'customer_update[address]': 'auto',
+    'customer_update[name]': 'auto',
+    billing_address_collection: 'required',
+    // A business customer's reverse-charge VAT id, offered at the moment they
+    // are already entering an address. Asking later means asking after an
+    // invoice has been issued with the wrong tax on it.
+    'tax_id_collection[enabled]': 'true',
     success_url: `${origin}/checkout/return?project=${projectId}&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/projects/new`,
   };

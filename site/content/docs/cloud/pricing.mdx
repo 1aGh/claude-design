@@ -1,0 +1,60 @@
+---
+title: Cloud pricing
+description: What Maude Cloud costs, what a project includes, what you also need to buy elsewhere, and what happens to your money when something goes wrong.
+---
+
+<Callout type="warn" title="Not yet taking live payments">
+Maude Cloud is in private pilot: the payment integration runs in Stripe **test mode** and no live prices exist yet. These are the intended numbers, published so nobody has to start a checkout to find out what it costs.
+</Callout>
+
+## The prices
+
+Pricing is **per project**, never per seat. The invitation is the product's core action, so charging for it would tax the thing the product is for — invite as many people as the project needs.
+
+| | Cloud Project | Dedicated |
+| --- | --- | --- |
+| **Monthly** | €19 | €99 |
+| **Annual** | €190 — two months free | monthly only |
+| Included media storage | 10 GB | 100 GB |
+| Isolated workspace, own address | ✓ | ✓ |
+| People, roles, invitations | ✓ | ✓ |
+| Full history + one-click export | ✓ | ✓ |
+| Automatic copy to your own GitHub | ✓ | ✓ |
+| Pinned instance, region pinning | — | ✓ |
+| Custom domain, priority support | — | ✓ |
+
+Extra storage is **€5 per 50 GB block per month**. All prices are in euros and **exclude VAT**, which is added at the rate for your country; supply a VAT id on the billing page and reverse charge applies.
+
+**The first 14 days are free.** Your card is authorised but not charged, and you can stop any time before the trial ends. We also do not charge for a project that failed to come up: if provisioning does not finish, the authorisation is released — that ordering is enforced in code, not by intention.
+
+## What you also need, which we do not sell you
+
+Being told this after entering a card would be a bad way to find out, so:
+
+- a **desktop computer** — macOS or Windows, not a phone or a tablet;
+- the **free Maude desktop app** ([maude.sh/desktop](/desktop));
+- for AI-assisted design, **your own Claude subscription** — about €20 a month, paid to Anthropic on their terms. We do not resell it and receive no part of it.
+
+That third item is also the reason your work stays private: Maude Cloud stores, syncs and versions your project, but your designs are only ever rendered on your own machine. The mechanism behind that claim is on the [Trust](/docs/cloud/trust) page.
+
+## What happens when you stop paying
+
+Nothing sudden, and nothing silent.
+
+1. A failed payment leaves the project **running** while we retry and contact you.
+2. After the grace period it **pauses**. Pausing stops the workspace; it deletes nothing.
+3. **A complete copy of your work is prepared and emailed to you before any teardown.** The system cannot reach a deleted state except through that step.
+4. The data is kept **30 days** after the pause. You are emailed again two days before it goes.
+5. Restarting at any point before that brings everything back — same address, same people.
+
+You can download everything at any time, including while a project is paused, and you can delete a project yourself whenever you like. Deleting erases the stored data, including the copies prepared on the download page — so take the one you want first.
+
+## The free alternative
+
+Maude is **free forever to self-host**, and it is the same software rather than a reduced edition: `maude hub workspace-up` stands up the identical stack on your own box, and the [self-hosting cost table](/docs/hub/pricing) is published too.
+
+That belongs on a pricing page rather than buried: a hosted service you cannot leave is a hosted service whose promises cannot be tested.
+
+## The paperwork
+
+[Terms](/docs/legal/terms) · [Privacy notice](/docs/legal/privacy) · [Data Processing Addendum](/docs/legal/dpa) · [Trust](/docs/cloud/trust)

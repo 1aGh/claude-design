@@ -97,6 +97,17 @@ describe('checkoutSessionParams', () => {
     assert.equal(params['metadata[project_name]'], 'Brno Alligators');
     assert.equal(params['metadata[plan]'], 'project');
   });
+  // Cloud Phase 24 D2. An EU product selling to EU customers has a legal
+  // obligation to charge the right VAT — `automatic_tax` was nowhere.
+  it('charges VAT automatically, and gives Stripe what it needs to compute it', () => {
+    assert.equal(params['automatic_tax[enabled]'], 'true');
+    assert.equal(params.billing_address_collection, 'required');
+    assert.equal(params['tax_id_collection[enabled]'], 'true');
+    // Without the write-back Stripe REFUSES automatic tax on a session that
+    // names an existing customer — the session create fails outright.
+    assert.equal(params['customer_update[address]'], 'auto');
+    assert.equal(params['customer_update[name]'], 'auto');
+  });
   it('returns to the waiting room, cancels back to the wizard', () => {
     assert.match(
       params.success_url,

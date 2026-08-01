@@ -4,6 +4,7 @@
   "type": "module",
   "description": "Maude Cloud data plane — the tenant cell Durable Object and its router.",
   "scripts": {
+    "test": "node --test --test-force-exit *.test.mjs",
     "deploy": "wrangler deploy"
   },
   "dependencies": {
