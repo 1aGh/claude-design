@@ -83,12 +83,26 @@ export function saveHubsConfig(config) {
  *
  * @param {string} url
  * @param {string} token
+ * `role` is the ONE prior field carried across a relink (Cloud Phase 25 C2).
+ * It records what the workspace vouched for at sign-in, and this path has no
+ * fresher answer — the CLI does not sign in. Dropping it would silently show
+ * a viewer the editing UI again, which is the exact experience the flag
+ * exists to prevent; a stale value costs a redundant hidden affordance and
+ * self-corrects at the next workspace sign-in. Nothing ELSE is preserved:
+ * `adoptedAt` is a per-machine attestation that a relink is entitled to clear.
+ *
  * @param {{ adoptedAt?: number }} [extra]
  */
 export function addHub(url, token, extra = {}) {
   const norm = normalizeUrl(url);
   const cfg = loadHubsConfig();
-  cfg.hubs[norm] = { token, linkedAt: Date.now(), ...extra };
+  const priorRole = cfg.hubs[norm]?.role;
+  cfg.hubs[norm] = {
+    token,
+    linkedAt: Date.now(),
+    ...(priorRole ? { role: priorRole } : {}),
+    ...extra,
+  };
   saveHubsConfig(cfg);
   return cfg.hubs[norm];
 }

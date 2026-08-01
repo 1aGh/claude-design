@@ -98,3 +98,22 @@ test('addHub keys URLs case-insensitively (same hub after host normalization)', 
     assert.equal(hubs['https://hub.example.com'].token, 'mau_second');
   });
 });
+
+// Cloud Phase 25 C2 — the studio writes `role` into this shared file, and a
+// CLI relink used to replace the record wholesale and drop it. Not an access
+// hole (the cell refuses the write regardless), but it would silently show a
+// viewer the editing UI again, which is exactly what the flag exists to stop.
+test('a relink preserves the vouched role, and still clears per-machine attestations', () => {
+  withTmpConfig(() => {
+    addHub('https://p.cloud.maude.sh', 'mau_first', { adoptedAt: 111 });
+    // The studio stamps the role after a workspace sign-in.
+    const cfg = loadHubsConfig();
+    cfg.hubs['https://p.cloud.maude.sh'].role = 'viewer';
+    saveHubsConfig(cfg);
+
+    const after = addHub('https://p.cloud.maude.sh', 'mau_second');
+    assert.equal(after.token, 'mau_second');
+    assert.equal(after.role, 'viewer', 'the role survives a relink');
+    assert.equal(after.adoptedAt, undefined, 'a per-machine attestation does not');
+  });
+});
