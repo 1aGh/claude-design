@@ -55,6 +55,7 @@ export function tenantFromRow(row) {
     stateSince: row.state_since,
     cellRunning: !!row.cell_running,
     exportSent: !!row.export_sent_at,
+    adverseSince: typeof row.adverse_since === 'number' ? row.adverse_since : null,
   };
 }
 
@@ -62,7 +63,7 @@ export function tenantFromRow(row) {
 export async function saveTenant(db, tenant, { now = Date.now() } = {}) {
   return db
     .prepare(
-      'UPDATE projects SET state = ?, state_since = ?, cell_running = ?, ' +
+      'UPDATE projects SET state = ?, state_since = ?, cell_running = ?, adverse_since = ?, ' +
         'export_sent_at = CASE WHEN ? THEN COALESCE(export_sent_at, ?) ELSE export_sent_at END ' +
         'WHERE id = ?'
     )
@@ -70,6 +71,7 @@ export async function saveTenant(db, tenant, { now = Date.now() } = {}) {
       tenant.state,
       tenant.stateSince,
       tenant.cellRunning ? 1 : 0,
+      tenant.adverseSince ?? null,
       tenant.exportSent ? 1 : 0,
       now,
       tenant.id

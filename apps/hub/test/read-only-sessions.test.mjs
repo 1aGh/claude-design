@@ -11,12 +11,19 @@
 // matters.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 
+import { fileURLToPath } from 'node:url';
+
 import { addToken, rotateToken, verifyToken } from '../src/tokens.mjs';
+
+const SERVER_SRC = readFileSync(
+  fileURLToPath(new URL('../src/server.mjs', import.meta.url)),
+  'utf8'
+);
 
 const dirs = [];
 function freshDir() {
@@ -68,5 +75,55 @@ describe('the capability lives on the token, not in the UI', () => {
     const seen = verifyToken(dir, 'the-hub-secret', 'the-hub-secret');
     assert.equal(seen.source, 'env');
     assert.equal(seen.readOnly, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A GUARD FOR THE NEXT CHANGE, not for this one.
+//
+// Phase 25 C3 adds comments, and a comment is a WRITE — the first one a viewer
+// legitimately holds a credential for. It has to reach the allowlist below,
+// and whoever adds it will be adding the only sanctioned mutation a read-only
+// session can perform. The adversarial review named that as the place the
+// whole read-only model gets undone: a comment channel that can carry a Yjs
+// update, or a route that isn't tightly shape-checked, reopens the hole three
+// layers were built to close.
+//
+// So the allowlist is pinned. Growing it fails here, loudly, with the
+// constraint attached — the point is not to forbid the change, it is to make
+// nobody make it by accident.
+describe('the read-only allowlist is a decision, not a convenience', () => {
+  const ALLOWED = ['/auth/logout', '/api/export'];
+
+  it('has nothing added to it without reading this', () => {
+    const fn = SERVER_SRC.slice(
+      SERVER_SRC.indexOf('function readOnlyAllowedPath'),
+      SERVER_SRC.indexOf('function readOnlyAllowedPath') + 400
+    );
+    const paths = [...fn.matchAll(/path === '([^']+)'/g)].map((m) => m[1]).sort();
+    assert.deepEqual(
+      paths,
+      [...ALLOWED].sort(),
+      'A mutating path became reachable by a READ-ONLY session.\n' +
+        'If this is Phase 25 C3 (comments): the comment channel must be\n' +
+        'structurally incapable of carrying a Yjs document update — a separate\n' +
+        'store, a server-authored envelope, and a shape-checked body — because\n' +
+        'this is the one write a viewer is meant to perform and therefore the\n' +
+        'one place the read-only guarantee can be undone by a scope bug.\n' +
+        'Add it to ALLOWED here together with a test proving a comment POST\n' +
+        'cannot mutate a document.'
+    );
+  });
+
+  it('allows each path for a reason that still holds', () => {
+    // /auth/logout ends the caller's OWN session — not a change to the project.
+    assert.ok(SERVER_SRC.includes("'/auth/logout'"));
+    // /api/export carries its own OWNER-only project-token gate, so a viewer's
+    // peer token cannot actually use the exception it is granted here.
+    const cellOps = readFileSync(
+      fileURLToPath(new URL('../src/cell-ops.mjs', import.meta.url)),
+      'utf8'
+    );
+    assert.match(cellOps, /role !== 'owner'/);
   });
 });

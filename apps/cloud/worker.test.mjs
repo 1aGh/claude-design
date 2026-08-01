@@ -24,7 +24,16 @@ const SECRET = 'whsec_worker_test';
 
 function freshEnv({ fetchImpl } = {}) {
   const sqlite = new DatabaseSync(':memory:');
+  // Baseline AND migrations — the Worker assumes a migrated schema (its cron
+  // applies them before every sweep), so a fixture that stops at schema.sql
+  // fails on whatever column shipped last rather than on the behaviour under
+  // test. The one place that deliberately starts un-migrated is the test for
+  // the migration step itself, further down.
   sqlite.exec(SCHEMA);
+  for (const m of MIGRATIONS) for (const stmt of m.statements) sqlite.exec(stmt);
+  sqlite.exec(
+    `INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES ${MIGRATIONS.map((m) => `(${m.version}, 0)`).join(',')}`
+  );
   const env = {
     DB: d1FromSqlite(sqlite),
     STRIPE_WEBHOOK_SECRET: SECRET,
@@ -257,6 +266,12 @@ function fakeExports(keys = []) {
 test('suspension builds the copy and emails it BEFORE the address goes away', async (t) => {
   const { env, sqlite } = freshEnv();
   seedProject(sqlite, { id: 'alligators', state: 'active', subscription: 'sub_1' });
+  // The subscription has read non-active for a day. Since 2026-08-01 a single
+  // adverse reading no longer tears anything down, so a fixture that means
+  // "this really is cancelled" has to say the reading has persisted.
+  sqlite
+    .prepare("UPDATE projects SET adverse_since = ? WHERE id = 'alligators'")
+    .run(NOW - 86_400_000);
   const calls = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = stubNetwork({ subscriptions: { sub_1: { status: 'canceled' } }, calls });

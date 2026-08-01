@@ -34,6 +34,22 @@ export const PAST_DUE_GRACE_DAYS = 14;
 /** How long before the deletion the last-chance email goes out (A11, canvas E0). */
 export const DELETION_WARNING_DAYS = 2;
 
+/**
+ * How long a non-active subscription must PERSIST before it tears anything down.
+ *
+ * The reconciler stopped being record-only in Phase 24 B3: `suspend-cell` now
+ * stops the container and detaches the customer's address, unattended, on an
+ * hourly cron. Before this, ONE `fetchSubscription` returning `canceled` — an
+ * eventual-consistency blip, a partial Stripe outage, a replicated read behind
+ * a write — was enough to do that to a paying customer, with the 30-day
+ * retention as the only thing between a bad read and destroyed data.
+ *
+ * Six hours is six consecutive adverse readings at the current cadence: long
+ * enough to ride out an API wobble, far too short to be free service. It
+ * delays only the FIRST teardown; nothing else in the ladder moves.
+ */
+export const SUSPEND_DEBOUNCE_MS = 6 * 3600_000;
+
 const DAY_MS = 24 * 3600_000;
 
 /**
@@ -151,6 +167,18 @@ export function reconcile(tenant, subscription, { now = Date.now() } = {}) {
   }
   let desired = implied;
 
+  // ---- the adverse-reading debounce -----------------------------------------
+  //
+  // Remember WHEN a non-active reading first appeared, and forget it the moment
+  // a good one does. The teardown below consults it so a single blip cannot
+  // detach a paying customer's address (security review, 2026-08-01).
+  // NOT an action. The action list means "things the executor must DO", and it
+  // is written verbatim into the customer-visible audit log; bookkeeping in
+  // there is noise that makes the real entries harder to read. It rides on the
+  // RESULT instead, and `applyActions` carries it onto the next row.
+  const adverse = implied !== 'active';
+  const adverseSince = adverse ? (tenant.adverseSince ?? now) : null;
+
   // past_due is a GRACE PERIOD, not an immediate stop. A card that expired on
   // holiday should not cost someone their working week.
   if (implied === 'past_due') {
@@ -161,6 +189,26 @@ export function reconcile(tenant, subscription, { now = Date.now() } = {}) {
     } else {
       desired = 'past_due';
     }
+  }
+
+  // A RUNNING tenant is never torn down on one reading. `past_due` already has
+  // its own 14-day grace; this covers the abrupt route — `canceled`/`paused`
+  // arriving while the tenant is `active` — which until now suspended the cell
+  // and detached the address in the same sweep that first saw it.
+  // ONLY from `active`. `past_due` already IS a persistence check — fourteen
+  // days of the same reading — so debouncing it again would just delay a real
+  // lapse for no extra safety.
+  if (
+    desired === 'suspended' &&
+    tenant.state === 'active' &&
+    now - adverseSince < SUSPEND_DEBOUNCE_MS
+  ) {
+    const mins = Math.round((now - adverseSince) / 60_000);
+    notes.push(
+      `subscription has read non-active for ${mins}m — holding until ` +
+        `${Math.round(SUSPEND_DEBOUNCE_MS / 60_000)}m before any teardown`
+    );
+    desired = tenant.state;
   }
 
   // A tenant that never became active has no customer data, so it may be
@@ -246,7 +294,7 @@ export function reconcile(tenant, subscription, { now = Date.now() } = {}) {
     }
   }
 
-  return { desiredState: desired, actions, notes };
+  return { desiredState: desired, actions, notes, adverseSince };
 }
 
 /**
@@ -256,7 +304,14 @@ export function reconcile(tenant, subscription, { now = Date.now() } = {}) {
  * anything is written.
  */
 export function applyActions(tenant, result, { now = Date.now() } = {}) {
-  let next = { ...tenant };
+  // The debounce clock is carried on the RESULT rather than as an action —
+  // see reconcile(). `undefined` means a caller built a result by hand and did
+  // not speak to it; leave the row's value alone rather than silently arming
+  // or disarming the teardown delay.
+  let next =
+    result.adverseSince === undefined
+      ? { ...tenant }
+      : { ...tenant, adverseSince: result.adverseSince };
   for (const action of result.actions) {
     switch (action.kind) {
       case 'set-state':

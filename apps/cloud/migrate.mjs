@@ -227,6 +227,16 @@ export const MIGRATIONS = [
       'ALTER TABLE projects ADD COLUMN seed_repo TEXT;',
     ],
   },
+  {
+    version: 13, // 2026-08-01 — a single bad Stripe read must not start a teardown
+    statements: [
+      // When we FIRST saw a non-active subscription for a tenant that was
+      // running. Suspension waits until the reading has persisted, so an API
+      // blip cannot detach a paying customer's address on one sweep. NULL =
+      // nothing adverse currently seen, which is every existing row.
+      'ALTER TABLE projects ADD COLUMN adverse_since INTEGER;',
+    ],
+  },
 ];
 
 /** Apply baseline + pending versioned migrations. Safe to run repeatedly. */

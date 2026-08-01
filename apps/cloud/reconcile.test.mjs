@@ -12,6 +12,7 @@ import {
   applyActions,
   PAST_DUE_GRACE_DAYS,
   reconcile,
+  SUSPEND_DEBOUNCE_MS,
   SUSPEND_RETENTION_DAYS,
   settle,
   stateForSubscription,
@@ -27,6 +28,14 @@ const tenant = (over = {}) => ({
   stateSince: T0,
   cellRunning: false,
   exportSent: false,
+  // A non-active reading that has already PERSISTED. Since 2026-08-01 a
+  // teardown needs one — a single blip cannot detach a paying customer's
+  // address — so a fixture meaning "the subscription really is cancelled" has
+  // to say the reading is old. The epoch, not `T0 - something`: T0 is a fixed
+  // future instant, so tests that omit `now` (and get the real clock) would
+  // otherwise compute a NEGATIVE age and read as a fresh blip. Tests about the
+  // debounce itself override this.
+  adverseSince: 0,
   ...over,
 });
 const sub = (status) => ({ status, currentPeriodEnd: T0 + 30 * DAY });
@@ -376,4 +385,33 @@ test('the migration backlog cannot collapse to purged in a single sweep', () => 
   const r = settle(stale, sub('canceled'), { now: 31 * DAY });
   assert.equal(r.tenant.state, 'suspended');
   assert.deepEqual([...new Set(r.actions.map((a) => a.kind))], ['send-export']);
+});
+
+// The reconciler stopped being record-only in Phase 24 B3: `suspend-cell` now
+// stops the container and detaches the address, unattended, hourly. Before this
+// a single `fetchSubscription` returning `canceled` — an eventual-consistency
+// blip, a partial outage, a replica behind a write — did that to a paying
+// customer (attacker review, 2026-08-01).
+test('one bad reading never tears anything down', () => {
+  const running = tenant({ state: 'active', cellRunning: true, adverseSince: null });
+  const first = reconcile(running, sub('canceled'), { now: T0 });
+  assert.equal(first.desiredState, 'active', 'the tenant is left alone');
+  assert.ok(!kinds(first).includes('suspend-cell'), 'the cell keeps running');
+  assert.equal(first.adverseSince, T0, 'but the clock starts');
+  assert.match(first.notes.join(' '), /holding until/);
+});
+
+test('a reading that RECOVERS disarms the clock entirely', () => {
+  const wobbled = tenant({ state: 'active', cellRunning: true, adverseSince: T0 });
+  const back = reconcile(wobbled, sub('active'), { now: T0 + 3 * 3600_000 });
+  assert.equal(back.adverseSince, null);
+  assert.deepEqual(back.actions, [], 'nothing happened, and nothing is remembered');
+});
+
+test('a reading that PERSISTS past the debounce does tear down', () => {
+  const persistent = tenant({ state: 'active', cellRunning: true, adverseSince: T0 });
+  const r = reconcile(persistent, sub('canceled'), { now: T0 + SUSPEND_DEBOUNCE_MS + 1 });
+  assert.equal(r.desiredState, 'suspended');
+  assert.ok(kinds(r).includes('suspend-cell'));
+  assert.ok(kinds(r).includes('send-export'), 'and the copy still goes first');
 });
