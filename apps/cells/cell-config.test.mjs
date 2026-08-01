@@ -155,6 +155,29 @@ test('an unreachable control plane falls back to THIS cell’s cache, never to a
   assert.equal(offline.seedRepo, 'r');
 });
 
+test('the offline cache is bound to its tenant — a rebound DO cannot inherit it', async () => {
+  // cell-do.mjs carries a branch that rebinds a DO's tenant id. `idFromName()`
+  // makes it unreachable today, but an unkeyed cache would hand the NEW tenant
+  // the OLD tenant's seedRepo during a control-plane outage — B1's exact bug,
+  // re-entering through the fallback that exists to be safe.
+  const storage = memoryStorage();
+  await fetchTenantConfig({
+    tenantId: 'alligators',
+    env: baseEnv,
+    storage,
+    fetchImpl: async () => Response.json({ projectName: 'Brno Alligators', seedRepo: 'theirs' }),
+  });
+  const other = await fetchTenantConfig({
+    tenantId: 'second-customer',
+    env: baseEnv,
+    storage,
+    fetchImpl: async () => {
+      throw new Error('control plane is down');
+    },
+  });
+  assert.deepEqual(other, { projectName: null, seedRepo: null, adminEmail: null });
+});
+
 test('no cache and no control plane is EMPTY — fail closed, because the fallback was the bug', async () => {
   const config = await fetchTenantConfig({
     tenantId: 'brand-new',

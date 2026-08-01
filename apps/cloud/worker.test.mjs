@@ -296,7 +296,13 @@ test('the promised deletion actually deletes — retention over, bytes gone', as
   sqlite
     .prepare("UPDATE projects SET export_sent_at = ?, state_since = ? WHERE id = 'alligators'")
     .run(NOW - 40 * 86_400_000, NOW - 40 * 86_400_000);
-  env.EXPORTS = fakeExports(['tenants/alligators/repo.bundle', 'tenants/other-club/repo.bundle']);
+  // A DELIVERED export must be PRESENT — since the 2026-08-01 review the purge
+  // asserts the artefact rather than trusting the flag.
+  env.EXPORTS = fakeExports([
+    'tenants/alligators/exports/20260801T000000Z/repo.bundle',
+    'tenants/alligators/repo.bundle',
+    'tenants/other-club/repo.bundle',
+  ]);
   const realFetch = globalThis.fetch;
   globalThis.fetch = stubNetwork({ subscriptions: { sub_1: { status: 'canceled' } } });
   t.after(() => {
@@ -344,6 +350,37 @@ test('the deletion warning is sent once, however many times the cron ticks', asy
     .prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'do.warn-deletion'")
     .get().n;
   assert.equal(warnings, 1, 'one warning, not one per tick');
+});
+
+// The other half of the 2026-08-01 critical finding. `reconcile()` decides the
+// purge from a FLAG; the executor must check the ARTEFACT. Trusting the flag is
+// how a project whose export never actually landed gets destroyed anyway.
+test('purge REFUSES when no export is in storage, and says so', async (t) => {
+  const { env, sqlite } = freshEnv();
+  seedProject(sqlite, { id: 'alligators', state: 'exported', subscription: 'sub_1' });
+  sqlite
+    .prepare("UPDATE projects SET export_sent_at = ?, state_since = ? WHERE id = 'alligators'")
+    .run(NOW - 40 * 86_400_000, NOW - 40 * 86_400_000);
+  // The flag says an export went out. Storage says otherwise — storage wins.
+  env.EXPORTS = fakeExports(['tenants/alligators/repo.bundle']);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = stubNetwork({ subscriptions: { sub_1: { status: 'canceled' } } });
+  t.after(() => {
+    globalThis.fetch = realFetch;
+  });
+  Object.assign(env, {
+    CELL_SECRET_MASTER: 'master',
+    CF_PROVISION_TOKEN: 'cf',
+    CF_ACCOUNT_ID: 'a',
+  });
+
+  await reconcileSweep(env, { now: NOW });
+
+  assert.deepEqual([...env.EXPORTS.store], ['tenants/alligators/repo.bundle'], 'nothing destroyed');
+  const said = sqlite
+    .prepare("SELECT detail FROM audit_log WHERE action = 'do.purge-data' ORDER BY at DESC LIMIT 1")
+    .get();
+  assert.match(said.detail, /refusing to purge/);
 });
 
 test('a paying tenant is never touched by any of the teardown effects', async (t) => {

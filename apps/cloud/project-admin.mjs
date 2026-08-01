@@ -376,6 +376,39 @@ async function listExports(env, projectId) {
 }
 
 /**
+ * Does the cell say this project has nothing to hand back?
+ *
+ * Only `code: 'no-history'` counts. A packaging failure is also a 409 and must
+ * NOT be read as "nothing to export" — that confusion is how a project full of
+ * work reaches `purged` with no copy, the one thing DDR-193 §3 forbids.
+ */
+async function cellHasNothingToExport(env, projectId, account) {
+  if (!env.CELL_SECRET_MASTER) return false;
+  try {
+    const { token } = await mintProjectToken({
+      master: env.CELL_SECRET_MASTER,
+      project: projectId,
+      email: account.email,
+      role: 'owner',
+      ttlMs: 5 * 60 * 1000,
+    });
+    const res = await fetch(
+      `https://${projectId}.${env.CELL_ZONE ?? 'cloud.maude.sh'}/api/export`,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(60_000),
+      }
+    );
+    if (res.status !== 409) return false;
+    const body = await res.json().catch(() => ({}));
+    return body?.code === 'no-history';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Route the per-project admin surfaces. Returns a Response, or null.
  */
 export async function handleProjectAdminRoutes(request, env, { account }) {
@@ -457,43 +490,14 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
     const generations = await listExports(env, projectId);
 
     // A BRAND-NEW PROJECT HAS NOTHING TO HAND BACK, and that is not a failure.
+    // The 409 is reported honestly instead of as a 502 "could not be prepared".
     //
-    // The cell answers 409 for a repository with no commits. Treated as an
-    // error, that made a dead end nobody could leave: `delete` is gated on an
-    // export existing, and the export refuses because there is nothing to
-    // export — so a customer who mistypes the project name at signup cannot
-    // delete it and start again. Found by walking the funnel as a stranger
-    // (Cloud Phase 24 C1); it is the very first thing somebody does wrong.
-    //
-    // The export guarantee (DDR-193 §3) is "you are handed your work before
-    // anything is torn down". With no work, it is discharged the moment it is
-    // asked for, so the timestamp is stamped and the delete gate opens.
-    // A BRAND-NEW PROJECT HAS NOTHING TO HAND BACK, and that is not a failure.
-    //
-    // Treated as an error, that made a dead end nobody could leave: `delete` is
-    // gated on an export existing, and the export refuses because there is
-    // nothing to export — so a customer who mistypes the project name at
-    // signup cannot delete it and start again. Found by walking the funnel as
-    // a stranger (Cloud Phase 24 C1); it is the very first thing somebody does
-    // wrong.
-    //
-    // GATED ON THE CODE, NEVER ON THE STATUS. The cell answers 409 for TWO
-    // opposite situations — "there is nothing to hand back" and "there IS work
-    // and packaging it failed". Accepting either would let a project with real
-    // work reach `purged` without the files ever going out, which is the exact
-    // breach DDR-193 §3 exists to prevent. Only `no-history` discharges the
-    // guarantee; a packaging failure keeps the gate shut and reads as an error.
-    //
-    // The message match is a compatibility shim for cells older than the code
-    // (the deployed v11 predates it) and can go once the fleet has rolled.
-    const nothingToExport =
-      outcome.status === 409 &&
-      (outcome.body?.code === 'no-history' ||
-        /nothing to export/.test(String(outcome.body?.error ?? '')));
-    if (nothingToExport) {
-      await env.DB.prepare('UPDATE projects SET export_sent_at = ? WHERE id = ?')
-        .bind(Date.now(), projectId)
-        .run();
+    // NOTHING IS STAMPED HERE. An earlier cut recorded `export_sent_at` so the
+    // delete gate would open — and that flag never re-arms, so a project that
+    // was empty on day one and full of work by month three would have walked
+    // through a gate that promised "only offered once a complete copy exists".
+    // Emptiness is a fact about NOW; it is re-established at the gate itself.
+    if (outcome.status === 409 && outcome.body?.code === 'no-history') {
       return html(
         downloadPage({
           account,
@@ -548,10 +552,22 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
   if (surface === 'delete') {
     if (!isOwner) return html(`<p>${ACCESS_MESSAGES['no-access']}</p>`, 404);
     const generations = await listExports(env, projectId);
-    // A prepared copy OR a recorded discharge of the guarantee. The second
-    // covers the empty project, which can never produce a generation and would
-    // otherwise be undeletable forever (see the 409 branch above).
-    const hasExport = generations.length > 0 || Boolean(project.export_sent_at);
+    // A prepared copy, OR the project having nothing to copy — established
+    // LIVE, at the gate, not from a flag set at some point in the past.
+    //
+    // A stored `export_sent_at` cannot carry this: it never re-arms, so a
+    // project that was empty in January would still open the gate in June with
+    // six months of work behind it and no copy anywhere. Emptiness is a fact
+    // about the project right now, so it is asked right now — and the answer
+    // must be the cell's structured `no-history`, never a 409 on its own,
+    // because the cell also answers 409 when packaging real work FAILS.
+    //
+    // Fails CLOSED: an unreachable cell, a missing code (a cell image older
+    // than the field), or any other refusal leaves the gate shut. That costs
+    // an empty project's owner a retry; the alternative costs somebody their
+    // work.
+    const hasExport =
+      generations.length > 0 || (await cellHasNothingToExport(env, projectId, account));
 
     if (request.method === 'GET') return html(deletePage({ account, project, hasExport }));
     if (request.method !== 'POST') return html('<p>Not allowed.</p>', 405);

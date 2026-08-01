@@ -298,7 +298,7 @@ export default {
       let row = null;
       try {
         row = await env.DB.prepare(
-          `SELECT p.name, p.seed_repo, a.email AS owner_email
+          `SELECT p.name, p.seed_repo, p.state, a.email AS owner_email
              FROM projects p JOIN accounts a ON a.id = p.account_id
             WHERE p.id = ?`
         )
@@ -310,6 +310,14 @@ export default {
       // Absent is a real answer, and the cell's fail-closed default. It must
       // never be filled in from a shared value — that is the bug this exists
       // to close.
+      //
+      // A PURGED tenant is described to nobody. "Everything is erased from our
+      // computers" is the sentence on the delete screen; continuing to hand
+      // out that project's name, seed repository and owner address afterwards
+      // makes it not quite true (attacker review, 2026-08-01).
+      if (row?.state === 'purged') {
+        return json({ projectName: null, seedRepo: null, adminEmail: null });
+      }
       return json({
         projectName: row?.name ?? null,
         seedRepo: row?.seed_repo ?? null,
@@ -611,17 +619,51 @@ async function performActions(env, projectId, row, actions, { now }) {
   }
 
   // 5. The promised deletion. B4's purge, on the automatic path.
+  //
+  // ASSERTED, NOT ASSUMED. `reconcile()` decides this from a flag; here we
+  // check the artefact. DDR-193 §3 makes `purged` reachable only through a
+  // delivered export, and the gap between "the state machine believes one went
+  // out" and "one is sitting in storage" is the gap between a guarantee and a
+  // comment. A missing generation stops the destruction and says so; the next
+  // sweep re-derives, and an operator can see why in the audit log.
   if (kinds.has('purge-data')) {
-    const purged = await purgeTenantObjects(env.EXPORTS, projectId);
-    await record(
-      'purge-data',
-      purged.ok ? 'ok' : 'failed',
-      purged.reason ?? `${purged.deleted} objects`
-    );
-    await removeCellDomain(env, projectId);
+    const held = await listExportGenerations(env, projectId);
+    if (held === null) {
+      await record('purge-data', 'failed', 'could not confirm an export — refusing to purge');
+    } else if (held === 0) {
+      await record('purge-data', 'failed', 'no export in storage — refusing to purge');
+    } else {
+      const purged = await purgeTenantObjects(env.EXPORTS, projectId);
+      await record(
+        'purge-data',
+        purged.ok ? 'ok' : 'failed',
+        purged.reason ?? `${purged.deleted} objects`
+      );
+      if (purged.ok) await removeCellDomain(env, projectId);
+    }
   }
 
   return performed;
+}
+
+/**
+ * How many export generations this tenant actually has in storage.
+ *
+ * `null` means WE COULD NOT TELL (no binding, or the listing failed) — which
+ * the caller must treat as "do not destroy anything", not as zero.
+ */
+async function listExportGenerations(env, projectId) {
+  if (!env.EXPORTS) return null;
+  try {
+    const listed = await env.EXPORTS.list({
+      prefix: `tenants/${projectId}/exports/`,
+      limit: 1,
+    });
+    return (listed?.objects ?? []).length;
+  } catch (err) {
+    console.error(`[reconcile] ${projectId}: export listing failed — ${err.message}`);
+    return null;
+  }
 }
 
 /** Ask a tenant's own cell to build the take-your-work-home copy. */

@@ -141,12 +141,17 @@ export async function fetchTenantConfig({ tenantId, env, storage = null, fetchIm
     // Cached against the NEXT cold start, which may happen during an outage —
     // and a cell that cannot learn its seed repo on first boot comes up empty
     // with nothing in the response saying why.
-    if (storage) await storage.put('config', config);
+    // KEYED BY TENANT. `cell-do.mjs` contains a branch that rebinds a DO's
+    // tenant id, and while `idFromName()` makes it unreachable today, an
+    // unkeyed cache would hand the new tenant the OLD tenant's seedRepo during
+    // a control-plane outage — B1's bug, re-entering through the fallback that
+    // exists to be safe.
+    if (storage) await storage.put(`config:${tenantId}`, config);
     return config;
   } catch (err) {
     console.error(`[cell] ${tenantId} could not read its config: ${err.message}`);
     if (storage) {
-      const cached = await storage.get('config');
+      const cached = await storage.get(`config:${tenantId}`);
       if (cached) return cached;
     }
     return { ...NO_CONFIG };

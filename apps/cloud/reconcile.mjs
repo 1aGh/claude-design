@@ -271,7 +271,21 @@ export function applyActions(tenant, result, { now = Date.now() } = {}) {
         next = { ...next, cellRunning: false };
         break;
       case 'send-export':
-        next = { ...next, exportSent: true };
+        // DELIBERATELY NOT `exportSent: true`.
+        //
+        // This flag is the sole precondition for destroying customer data, and
+        // it must mean DELIVERED, not REQUESTED. Setting it on emission made a
+        // failed export indistinguishable from a handed-over one: the
+        // "retention elapsed but no export was sent — holding, and re-sending"
+        // branch below became unreachable, and one failed attempt satisfied
+        // DDR-193 §3 forever. The executor stamps it, and only on success
+        // (worker.mjs performActions → prepareExportFor).
+        //
+        // Leaving it false here also stops `settle()` walking
+        // suspended → exported → purged inside a single sweep on the
+        // migration backlog — a tenant suspended before the effects existed
+        // would otherwise have been exported and purged in the same tick,
+        // with the email pointing at bytes that were already gone.
         break;
       default:
         break; // alerts change no state

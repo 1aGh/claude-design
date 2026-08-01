@@ -117,15 +117,27 @@ test('paying again resurrects, without a new provision', () => {
 
 // ---------------------------------------------------- the export guarantee
 
-test('suspension ALWAYS sends the export first', () => {
+test('suspension ALWAYS sends the export first, and ASKING is not DELIVERING', () => {
   // DDR-193 §3 — there is no path from "stopped paying" to "your designs are
   // gone" that skips "you were handed your files".
   const r = reconcile(tenant({ state: 'active', cellRunning: true }), sub('canceled'));
   assert.ok(kinds(r).includes('send-export'));
-  const sent = applyActions(tenant({ state: 'active', cellRunning: true }), r);
-  assert.equal(sent.exportSent, true);
-  // ...and it is not re-sent on every subsequent hourly run.
-  assert.ok(!kinds(reconcile(sent, sub('canceled'))).includes('send-export'));
+
+  // The flag is the sole precondition for destroying data, so emitting the
+  // action must NOT set it (security review, 2026-08-01). Setting it here made
+  // a failed export indistinguishable from a delivered one and turned the
+  // re-send branch below into dead code. Only the executor stamps it, on
+  // success.
+  const asked = applyActions(tenant({ state: 'active', cellRunning: true }), r);
+  assert.equal(asked.exportSent, false, 'requested is not delivered');
+  assert.ok(
+    kinds(reconcile(asked, sub('canceled'))).includes('send-export'),
+    'an undelivered export is asked for again'
+  );
+
+  // Once the executor records a real delivery, it stops being re-sent.
+  const delivered = { ...asked, exportSent: true };
+  assert.ok(!kinds(reconcile(delivered, sub('canceled'))).includes('send-export'));
 });
 
 test('retention elapsing WITHOUT an export holds, and re-sends', () => {
@@ -284,16 +296,31 @@ test('20 chaos cycles converge, and never purge without exporting', () => {
     const settled = settle(current, sub(status), { now });
     current = settled.tenant;
 
-    // Duplicate delivery: the exact same reconcile again must be a no-op.
+    // Duplicate delivery: the exact same reconcile again must not MOVE
+    // anything. An idempotent re-ask for an export that was never delivered is
+    // allowed — indeed required, since 2026-08-01 the flag means delivered and
+    // an undelivered one has to be asked for again. What must never recur is a
+    // state change or a destruction.
+    const again = reconcile(current, sub(status), { now }).actions;
     assert.deepEqual(
-      reconcile(current, sub(status), { now }).actions,
+      again.filter((a) => a.kind !== 'send-export'),
       [],
       `cycle ${i} (${status}) did not settle`
     );
 
+    // The EXECUTOR is what marks an export delivered (worker.mjs), so the
+    // chaos loop stands in for it: a `send-export` action that the real system
+    // would have completed successfully.
+    if (settled.actions.some((a) => a.kind === 'send-export')) {
+      current = { ...current, exportSent: true };
+    }
+
     if (current.state === 'suspended' && before.state !== 'pending') {
       everSuspendedWithData = true;
-      assert.equal(current.exportSent, true, `cycle ${i}: suspended a live tenant without export`);
+      assert.ok(
+        settled.actions.some((a) => a.kind === 'send-export') || current.exportSent,
+        `cycle ${i}: suspended a live tenant without asking for an export`
+      );
     }
     // The invariant, checked every single cycle: a tenant that ever held data
     // cannot reach purged, and nothing reaches it without an export at all.
@@ -315,4 +342,38 @@ test('a DROPPED event costs at most one reconcile, not a support ticket', () => 
 
 test('settle refuses to loop forever', () => {
   assert.throws(() => settle(tenant(), sub('active'), { maxRounds: 0 }), /did not settle|flapping/);
+});
+
+// The critical finding of the 2026-08-01 security review, pinned. `applyActions`
+// used to set `exportSent` the moment the action was EMITTED, so a failed
+// export was indistinguishable from a delivered one: the "hold and re-send"
+// branch became unreachable and one failure satisfied DDR-193 §3 forever. Worse,
+// a tenant already suspended past retention walked
+// suspended → exported → purged inside ONE sweep — the export and the deletion
+// of that export in the same tick.
+test('an export that NEVER succeeds can never lead to a purge, however long it runs', () => {
+  let current = tenant({ state: 'active', cellRunning: true, stateSince: T0 });
+  // A year of hourly-ish sweeps in which the executor never manages a delivery.
+  for (let i = 0; i < 400; i++) {
+    const now = T0 + i * DAY;
+    current = settle(current, sub('canceled'), { now }).tenant;
+    // The executor is NOT simulated here: every export attempt fails.
+    assert.notEqual(current.state, 'exported', `cycle ${i}: advanced without a delivered export`);
+    assert.notEqual(current.state, 'purged', `cycle ${i}: PURGED without a delivered export`);
+  }
+  assert.equal(current.state, 'suspended', 'it holds, indefinitely, which is the point');
+});
+
+test('the migration backlog cannot collapse to purged in a single sweep', () => {
+  // A tenant suspended long before the effects layer existed: 31 days elapsed,
+  // nothing ever delivered. One sweep must ASK, not destroy.
+  const stale = tenant({
+    state: 'suspended',
+    cellRunning: false,
+    exportSent: false,
+    stateSince: 0,
+  });
+  const r = settle(stale, sub('canceled'), { now: 31 * DAY });
+  assert.equal(r.tenant.state, 'suspended');
+  assert.deepEqual([...new Set(r.actions.map((a) => a.kind))], ['send-export']);
 });
