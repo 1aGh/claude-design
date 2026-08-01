@@ -462,7 +462,10 @@ test('a project with nothing in it can still be deleted', async () => {
     'alligators.cloud.maude.sh/api/export',
     async () =>
       Response.json(
-        { error: 'this project has no history yet — there is nothing to export' },
+        {
+          code: 'no-history',
+          error: 'this project has no history yet — there is nothing to export',
+        },
         { status: 409 }
       ),
   ]);
@@ -484,6 +487,40 @@ test('a project with nothing in it can still be deleted', async () => {
   );
   assert.equal(gone.status, 303);
   assert.equal(sqlite.prepare('SELECT state FROM projects').get().state, 'purged');
+});
+
+// The other 409. The cell answers 409 for TWO opposite situations, and the
+// first cut of the empty-project fix accepted both — which would have let a
+// project with real work reach `purged` without its files ever going out, the
+// exact breach DDR-193 §3 exists to prevent.
+test('a FAILED export does not open the delete gate, however it is phrased', async () => {
+  const { env, sqlite } = await freshEnv();
+  network.push([
+    'alligators.cloud.maude.sh/api/export',
+    async () =>
+      Response.json(
+        { code: 'export-failed', error: 'the project history could not be packaged: disk full' },
+        { status: 409 }
+      ),
+  ]);
+  const { session } = await ownerWithProject(env, sqlite);
+
+  const asked = await worker.fetch(post('/projects/alligators/download', session), env);
+  assert.equal(asked.status, 502, 'a packaging failure is an error, not a discharge');
+  assert.equal(
+    sqlite.prepare('SELECT export_sent_at FROM projects').get().export_sent_at,
+    null,
+    'the guarantee is NOT discharged'
+  );
+
+  const page = await worker.fetch(get('/projects/alligators/delete', session), env);
+  assert.match(await page.text(), /Download your copy first/, 'the gate stays shut');
+  const blocked = await worker.fetch(
+    post('/projects/alligators/delete', session, { sure: 'yes' }),
+    env
+  );
+  assert.equal(blocked.status, 409);
+  assert.equal(sqlite.prepare('SELECT state FROM projects').get().state, 'active');
 });
 
 // Cloud Phase 24 A6. Two defects on the leaving path, both about a promise the

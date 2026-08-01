@@ -133,6 +133,10 @@ export async function buildExport({
   if (bundled.state !== 'ok') {
     return {
       ok: false,
+      // `no-history` is dischargeable — there is nothing to hand back, so the
+      // export guarantee is satisfied by asking. Anything else is a FAILURE
+      // over real work and must keep the delete gate shut.
+      code: bundled.state === 'empty' ? 'no-history' : 'export-failed',
       reason:
         bundled.state === 'empty'
           ? 'this project has no history yet — there is nothing to export'

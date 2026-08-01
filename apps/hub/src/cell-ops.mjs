@@ -56,8 +56,16 @@ export async function handleExportRoute(ctx) {
     return true;
   }
 
+  // A MACHINE-READABLE CODE, not just a sentence (2026-08-01). Both branches
+  // below answer 409 and they mean opposite things: "there is nothing to hand
+  // back" versus "there IS work and we failed to package it". The control
+  // plane opens the delete gate on the first and must never open it on the
+  // second — DDR-193 §3 exists so `purged` is unreachable without the files
+  // actually going out. Distinguishing them by prose would make that
+  // guarantee depend on a string.
   if (!ctx.repoDir || !ctx.run) {
     respondJson(409, {
+      code: 'no-history',
       error: 'this workspace keeps no history here, so there is nothing to export',
     });
     return true;
@@ -65,7 +73,7 @@ export async function handleExportRoute(ctx) {
 
   const built = await buildExport({ repoDir: ctx.repoDir, tenant, run: ctx.run });
   if (!built.ok) {
-    respondJson(409, { error: built.reason });
+    respondJson(409, { code: built.code ?? 'export-failed', error: built.reason });
     return true;
   }
 

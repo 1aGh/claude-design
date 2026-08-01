@@ -468,7 +468,29 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
     // The export guarantee (DDR-193 §3) is "you are handed your work before
     // anything is torn down". With no work, it is discharged the moment it is
     // asked for, so the timestamp is stamped and the delete gate opens.
-    if (outcome.status === 409) {
+    // A BRAND-NEW PROJECT HAS NOTHING TO HAND BACK, and that is not a failure.
+    //
+    // Treated as an error, that made a dead end nobody could leave: `delete` is
+    // gated on an export existing, and the export refuses because there is
+    // nothing to export — so a customer who mistypes the project name at
+    // signup cannot delete it and start again. Found by walking the funnel as
+    // a stranger (Cloud Phase 24 C1); it is the very first thing somebody does
+    // wrong.
+    //
+    // GATED ON THE CODE, NEVER ON THE STATUS. The cell answers 409 for TWO
+    // opposite situations — "there is nothing to hand back" and "there IS work
+    // and packaging it failed". Accepting either would let a project with real
+    // work reach `purged` without the files ever going out, which is the exact
+    // breach DDR-193 §3 exists to prevent. Only `no-history` discharges the
+    // guarantee; a packaging failure keeps the gate shut and reads as an error.
+    //
+    // The message match is a compatibility shim for cells older than the code
+    // (the deployed v11 predates it) and can go once the fleet has rolled.
+    const nothingToExport =
+      outcome.status === 409 &&
+      (outcome.body?.code === 'no-history' ||
+        /nothing to export/.test(String(outcome.body?.error ?? '')));
+    if (nothingToExport) {
       await env.DB.prepare('UPDATE projects SET export_sent_at = ? WHERE id = ?')
         .bind(Date.now(), projectId)
         .run();
