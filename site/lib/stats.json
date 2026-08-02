@@ -1,5 +1,5 @@
 {
-  "version": "v0.53.0",
+  "version": "v0.52.2",
   "nodeRange": ">=20",
   "publishedDate": "2026-08-02",
   "contributors": 1,
@@ -15,7 +15,7 @@
       "agents": 12
     },
     "maude": {
-      "subcommands": 19
+      "subcommands": 20
     }
   },
   "pageUpdated": {

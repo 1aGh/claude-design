@@ -101,3 +101,46 @@ Write it up in `.ai/archive/logs/rca/`, and — if the sandbox's bounds were the
 thing that failed — amend `scripts/check-containment.sh` so the same shape
 cannot come back quietly. A guard added after the fact is the only one that
 was ever proven necessary.
+
+---
+
+## Operator: two secrets turn per-tenant storage on
+
+**Until these exist on the control plane, A-1's isolation is NOT active** —
+minting refuses, every cell falls back to the fleet-wide R2 key it already
+holds, and nothing breaks. That fallback is deliberate (a cell without storage
+must not start), and it is also exactly how a security change stays shipped-
+but-not-deployed. `GET https://cloud.maude.sh/health` answers the question:
+
+```json
+{ "ok": true, "r2Creds": "legacy-shared" }   ← not on it yet
+{ "ok": true, "r2Creds": "per-tenant" }      ← on it
+```
+
+To switch:
+
+```sh
+# 1. An R2 API token with Object Read & Write on the bucket. Note BOTH values —
+#    the Access Key ID is the parent key the temporary credentials sign against.
+#    Cloudflare dashboard → R2 → Manage API Tokens → Create Account API token.
+
+cd apps/cloud
+npx wrangler secret put R2_PARENT_ACCESS_KEY_ID   # the token's Access Key ID
+npx wrangler secret put R2_CREDS_TOKEN            # a Cloudflare API token with
+                                                  # Account → Workers R2 Storage: Edit
+# (CF_ACCOUNT_ID is already set; MAUDE_R2_BUCKET defaults to maude-cloud-assets)
+
+# 2. Confirm the posture flipped, then restart a cell so it mints on next boot:
+curl -s https://cloud.maude.sh/health           # expect "r2Creds":"per-tenant"
+
+# 3. Once a cell has come up on minted credentials, DELETE the fleet-wide key —
+#    it is the whole point of A-1 and it is not gone until it is gone:
+cd ../cells
+npx wrangler secret delete MAUDE_R2_ACCESS_KEY_ID
+npx wrangler secret delete MAUDE_R2_SECRET_ACCESS_KEY
+```
+
+Step 3 is the one that actually removes the credential from every container. A
+cell whose mint fails after that refuses to start rather than running without
+storage — which is the correct, loud failure, and the reason to do step 2's
+check first.
