@@ -22,6 +22,7 @@
 // project, for people who actually have access. A surface that stays
 // half-alive is worse than one that never shipped.
 
+import { canvasOriginTenant } from './cell-config.mjs';
 import { MaudeCell, routeToCell, tenantFromHostname } from './cell-do.mjs';
 
 export { MaudeCell };
@@ -29,6 +30,35 @@ export { MaudeCell };
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    // THE CANVAS ORIGIN (Cloud Phase 25 A4). One hostname for the whole
+    // fleet, the tenant in the FIRST PATH SEGMENT — so the browser treats a
+    // rendered canvas as a different origin from the shell that edits it,
+    // which is the whole point (DDR-054).
+    //
+    // This has to be decided BEFORE the hostname is read as a tenant label,
+    // because `canvas` is a syntactically valid tenant id: without this branch
+    // the request would route to a cell called "canvas" and quietly serve the
+    // generic landing page instead of the origin. (`canvas` is also a reserved
+    // project id at signup for the same reason — a project allocated that name
+    // would take the hostname every project's canvases are served from.)
+    const canvasTenant = canvasOriginTenant(url, env.CELL_ZONE);
+    if (canvasTenant) {
+      if (!canvasTenant.tenant) {
+        return new Response('the canvas origin needs a project in the path\n', {
+          status: 404,
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+        });
+      }
+      // The cell answers its own canvas routes; the path it sees is the one
+      // WITHOUT the tenant prefix, so a cell serving a self-hoster and a cell
+      // serving a Cloud tenant handle byte-identical requests.
+      const inner = new Request(
+        new URL(canvasTenant.rest + url.search, url.origin).toString(),
+        request
+      );
+      return routeToCell(inner, env, canvasTenant.tenant);
+    }
 
     const tenant = tenantFromHostname(url.hostname, env.CELL_ZONE);
     if (!tenant) {

@@ -100,6 +100,28 @@ export function tenantFromHostname(hostname, zone) {
   return isValidTenantId(label) ? label : null;
 }
 
+/** The single hostname label the canvas origin lives on, fleet-wide. */
+const CANVAS_LABEL = 'canvas';
+
+/**
+ * Is this a canvas-origin request, and if so which project is it for?
+ *
+ * Returns `null` when the hostname is not the canvas origin (so the caller
+ * falls through to normal per-project hostname routing), or
+ * `{ tenant, rest }` where `rest` is the path with the tenant segment removed.
+ * A canvas-origin URL with no project segment yields `{ tenant: null }` — a
+ * refusal, never a fall-through to a cell.
+ */
+export function canvasOriginTenant(url, zone) {
+  if (!zone) return null;
+  if (String(url.hostname).toLowerCase() !== `${CANVAS_LABEL}.${String(zone).toLowerCase()}`) {
+    return null;
+  }
+  const [, first, ...rest] = url.pathname.split('/');
+  if (!first) return { tenant: null, rest: '/' };
+  return { tenant: first, rest: `/${rest.join('/')}` };
+}
+
 /** Nothing known about this tenant. The fail-closed default, and never a shared value. */
 const NO_CONFIG = Object.freeze({ projectName: null, seedRepo: null, adminEmail: null });
 
