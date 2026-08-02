@@ -410,3 +410,31 @@ the thing they installed.
 
 **What is still true from A0's honest column:** no paying tenant asked for
 this. It is a product bet, recorded as one.
+
+## What production said that the diff did not (2026-08-02)
+
+Three defects surfaced only by curling the live platform after v0.53.0 was
+tagged. All three were green in every test, every gate and every review.
+
+**A4's origin was documented and not implemented.** `apps/cells/worker.mjs`
+described `canvas.<zone>/<tenant>/…` in its own header comment and routed
+nothing. `canvas` is a valid tenant-id shape, so every canvas-origin request
+resolved to a cell *named* "canvas" and served the generic landing page — 200,
+styled, plausible. A feature that returns a working-looking page at exactly the
+right address is invisible to every check that asks "did it respond".
+
+**C5 deleted the gallery's routes, not its address.** `view-alligators.cloud
+.maude.sh` was still serving the old share page in production, because a Worker
+route and a Worker custom domain are different objects and only one of them is
+in this repo. Deleted now — and the code refuses the whole `view-` namespace,
+because an unguarded stale hostname is worse than a 404: it starts a NEW empty
+cell at an old URL, with autosave ready to commit over it.
+
+**The deploy path had never been run.** The cell image was a laptop, a docker
+push and a wrangler command; the first CI run found two things that a manual
+step had simply absorbed each time — a shared module the hub image never
+staged, and a registry that does not take a docker login.
+
+The pattern in all three: **the repo cannot tell you about an object that is
+not in it.** A hostname, a route, a token scope. `cells-deploy.yml` exists so
+that at least the deploy is one of the things the repo knows.
