@@ -123,6 +123,15 @@ export function renderStudioPage({
                font-weight:600; padding:7px 12px; cursor:pointer; }
   button.act[disabled] { opacity:.5; cursor:default; }
   button.ghost { background:var(--bg-2); color:var(--fg-1); border:1px solid var(--line); }
+  .cmts { display:flex; flex-direction:column; gap:6px; margin:8px 0; max-height:34vh; overflow:auto; }
+  .cmt { background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:7px 9px; font-size:12.5px; }
+  .cmt[data-resolved="true"] { opacity:.55; }
+  .cmt-h { display:flex; justify-content:space-between; gap:8px; color:var(--fg-2); font-size:11px; margin-bottom:3px; }
+  .cmt-b { color:var(--fg-1); white-space:pre-wrap; word-break:break-word; }
+  .cmt-a { display:flex; gap:8px; margin-top:5px; }
+  .cmt-a button { background:none; border:0; color:var(--fg-2); font:inherit; font-size:11.5px;
+                  cursor:pointer; padding:0; text-decoration:underline; }
+  .cmt-a button:hover { color:var(--fg-0); }
   .note { color:var(--fg-2); font-size:12.5px; line-height:1.5; margin:10px 0 0; }
   .note a { color:var(--accent); }
   .toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:var(--bg-3);
@@ -168,6 +177,14 @@ export function renderStudioPage({
       <div class="field"><label></label><button class="act" id="apply">Apply</button></div>
     </div>`
     }
+    <h2 style="margin-top:18px">Comments</h2>
+    <div id="comments" class="cmts"></div>
+    <div class="field">
+      <input id="c-text" type="text" placeholder="Leave a note…" autocomplete="off">
+      <button class="act" id="c-add">Post</button>
+    </div>
+    <p class="note" id="c-hint">Select something first to anchor your note to it.</p>
+
     <h2 style="margin-top:18px">This project</h2>
     <p class="note" id="ds"></p>
     <p class="note">
@@ -226,6 +243,7 @@ function open(rel) {
     row.setAttribute('aria-current', String(row.dataset.rel === rel));
   }
   history.replaceState(null, '', '?canvas=' + encodeURIComponent(rel));
+  loadComments();
 }
 
 tree.addEventListener('click', (e) => {
@@ -247,11 +265,13 @@ setInterval(async () => {
 function renderSelection() {
   if (!selection) {
     selBox.innerHTML = 'Nothing selected. Press <b>V</b> in the canvas, then click an element.';
+    if (cHint) cHint.textContent = 'Select something first to anchor your note to it.';
     if (!BOOT.readOnly) editBox.hidden = true;
     return;
   }
   selBox.textContent = (selection.tag || 'element') + (selection.id ? ' · ' + selection.id : '') +
     (selection.text ? ' — "' + String(selection.text).slice(0, 60) + '"' : '');
+  if (cHint) cHint.textContent = 'Your next note anchors to this element.';
   if (!BOOT.readOnly) {
     editBox.hidden = false;
     document.getElementById('f-text').value = selection.text ? String(selection.text).slice(0, 500) : '';
@@ -349,6 +369,95 @@ window.addEventListener('message', async (event) => {
     if (await edit({ kind: 'set-text', id: m.id, idIndex: m.occurrence, text: m.after })) toast('Saved.');
     return;
   }
+});
+
+// ── comments (B5) — the same store the desktop writes, and the one write a
+// viewer holds. Rendered for every role; posting is offered to every role too,
+// because that is what the role matrix says (viewer.comment === true).
+const cmtsBox = document.getElementById('comments');
+const cText = document.getElementById('c-text');
+const cHint = document.getElementById('c-hint');
+let comments = [];
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+function renderComments() {
+  if (!comments.length) {
+    cmtsBox.innerHTML = '<p class="note">No notes on this screen yet.</p>';
+    return;
+  }
+  cmtsBox.innerHTML = comments
+    .map((c) => {
+      const when = new Date(c.created).toLocaleDateString();
+      const replies = (c.thread || [])
+        .map((r) => '<div class="cmt-b" style="margin-top:5px;opacity:.8">↳ ' + escapeHtml(r.body) + '</div>')
+        .join('');
+      return '<div class="cmt" data-id="' + escapeHtml(c.id) + '" data-resolved="' + (c.status === 'resolved') + '">' +
+        '<div class="cmt-h"><span>' + escapeHtml(c.author || 'someone') + '</span><span>' + when + '</span></div>' +
+        '<div class="cmt-b">' + escapeHtml(c.text) + '</div>' + replies +
+        '<div class="cmt-a">' +
+          '<button data-act="reply">Reply</button>' +
+          '<button data-act="status">' + (c.status === 'resolved' ? 'Reopen' : 'Resolve') + '</button>' +
+        '</div></div>';
+    })
+    .join('');
+}
+
+async function loadComments() {
+  if (!current) return;
+  try {
+    const res = await fetch('/api/studio/comments?canvas=' + encodeURIComponent(current));
+    comments = res.ok ? (await res.json()).comments || [] : [];
+  } catch (_) {
+    comments = [];
+  }
+  renderComments();
+}
+
+async function postComment(payload) {
+  const res = await fetch('/api/studio/comments', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(Object.assign({ canvas: current }, payload)),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || body.ok === false) {
+    toast(body.error || 'That note could not be saved.', 'error');
+    return false;
+  }
+  await loadComments();
+  return true;
+}
+
+document.getElementById('c-add').addEventListener('click', async () => {
+  const text = cText.value.trim();
+  if (!text) return;
+  const ok = await postComment({
+    text,
+    selector: selection?.selector ?? '',
+    index: selection?.index,
+    tag: selection?.tag,
+  });
+  if (ok) { cText.value = ''; toast('Note added.'); }
+});
+cText.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('c-add').click(); }
+});
+
+cmtsBox.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const id = btn.closest('.cmt')?.dataset.id;
+  const c = comments.find((x) => x.id === id);
+  if (!c) return;
+  if (btn.dataset.act === 'reply') {
+    const body = window.prompt('Reply');
+    if (body?.trim()) await postComment({ action: 'reply', id, body });
+    return;
+  }
+  await postComment({ action: 'status', id, status: c.status === 'resolved' ? 'open' : 'resolved' });
 });
 
 const wanted = new URLSearchParams(location.search).get('canvas');

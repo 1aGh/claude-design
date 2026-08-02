@@ -84,12 +84,10 @@ class_name = "MaudeCell"
 tag = "v1"
 new_sqlite_classes = ["MaudeCell"]
 
-# The share view reads snapshots straight from storage and never touches a
-# container (Cloud Phase 18). That is the point: the surface anyone with a link
-# can reach has no path to the surface holding the project's data.
-[[r2_buckets]]
-binding = "SNAPSHOTS"
-bucket_name = "maude-cloud-assets"
+# The SNAPSHOTS binding is gone with the gallery it served (Cloud Phase 25 C5).
+# Nothing in this Worker reads object storage any more: a cell's own storage
+# credentials are minted per tenant by the control plane (A-1) and used INSIDE
+# the container, which is the only place they belong.
 
 [vars]
 # The zone whose subdomains are projects: `<tenant>.cloud.maude.sh`.

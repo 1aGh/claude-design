@@ -21,6 +21,7 @@
 
 import { authenticateForMode } from './../cloud-identity.mjs';
 import { isRevoked } from './../revocations.mjs';
+import { isReadOnlyRole } from './../role-matrix.mjs';
 import { addToken, removeToken, verifyToken } from './../tokens.mjs';
 import { authenticate as localAuthenticate } from './../users.mjs';
 import { servicePage } from './routes.mjs';
@@ -133,7 +134,7 @@ export async function handleBrowserAuth({
         scope: user.scope ?? '*',
         owner: user.email,
         expiresAt: Date.now() + ttlMs,
-        readOnly: user.role === 'viewer',
+        readOnly: isReadOnlyRole(user.role),
       });
       setSessionCookie(response, minted.value, ttlMs / 1000);
       redirect(response, '/studio');
@@ -219,7 +220,7 @@ export async function handleBrowserAuth({
     expiresAt: Date.now() + ttlMs,
     // The capability is decided ONCE, from the role the control plane vouched
     // for — the same line as /auth/login (C1).
-    readOnly: user.role === 'viewer',
+    readOnly: isReadOnlyRole(user.role),
   });
   setSessionCookie(response, minted.value, ttlMs / 1000);
   redirect(response, '/studio');

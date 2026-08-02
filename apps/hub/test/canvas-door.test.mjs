@@ -169,3 +169,65 @@ test('the mutation vocabulary is CLOSED — adding to it is a deliberate edit', 
     ['set-style', 'reposition', 'set-text', 'delete-element', 'resize-artboard']
   );
 });
+
+// ── comments (B5) — one store, both surfaces ───────────────────────────────
+
+test('the comment slug is the DESKTOP slug, character for character', async () => {
+  const { commentSlug } = await import('../src/canvas/comments.mjs');
+  // The rule is `apps/studio/canvas-slug.ts` — spaces become underscores,
+  // slashes become hyphens, extension goes, lowercase. If these ever diverge,
+  // the browser and the desktop write two files and the conversation splits.
+  assert.equal(commentSlug('ui/Cloud Self Service.tsx'), 'ui-cloud_self_service');
+  assert.equal(commentSlug('.design/ui/Home.tsx'), 'ui-home');
+  assert.equal(commentSlug('system/maude/preview/buttons.tsx'), 'system-maude-preview-buttons');
+  assert.equal(commentSlug('ui/Legacy.html'), 'ui-legacy');
+});
+
+test('a comment carries the SESSION as its author and no invented anchor', async () => {
+  const { addComment, readComments, replyToComment, setCommentStatus } = await import(
+    '../src/canvas/comments.mjs'
+  );
+  const f = fixture();
+  try {
+    const added = addComment(f.designRoot, 'ui/Home.tsx', {
+      text: 'the hero is too tight',
+      selector: '[data-cd-id="abc"]',
+      index: 0,
+      tag: 'h1',
+      // Even if a client sends one, the route passes the session's address —
+      // this asserts the record shape the route relies on.
+      author: 'viewer@example.com',
+    });
+    assert.equal(added.ok, true);
+    assert.equal(added.comment.author, 'viewer@example.com');
+    assert.equal(added.comment.status, 'open');
+    // Absent rather than guessed: a browser has no measured box or DOM path,
+    // and a wrong anchor is worse than none.
+    assert.equal(added.comment.bounds, null);
+    assert.deepEqual(added.comment.dom_path, []);
+
+    const list = readComments(f.designRoot, 'ui/Home.tsx');
+    assert.equal(list.length, 1);
+
+    assert.equal(replyToComment(f.designRoot, 'ui/Home.tsx', added.comment.id, { body: 'agreed', author: 'o@e.com' }).ok, true);
+    assert.equal(readComments(f.designRoot, 'ui/Home.tsx')[0].thread.length, 1);
+
+    assert.equal(setCommentStatus(f.designRoot, 'ui/Home.tsx', added.comment.id, 'resolved').ok, true);
+    assert.equal(readComments(f.designRoot, 'ui/Home.tsx')[0].status, 'resolved');
+    // An unknown status is refused rather than written.
+    assert.equal(setCommentStatus(f.designRoot, 'ui/Home.tsx', added.comment.id, 'deleted').ok, false);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('empty and oversized comments are refused', async () => {
+  const { addComment } = await import('../src/canvas/comments.mjs');
+  const f = fixture();
+  try {
+    assert.equal(addComment(f.designRoot, 'ui/Home.tsx', { text: '   ' }).ok, false);
+    assert.equal(addComment(f.designRoot, 'ui/Home.tsx', { text: 'x'.repeat(5000) }).ok, false);
+  } finally {
+    f.cleanup();
+  }
+});

@@ -59,11 +59,7 @@ import {
 } from './auth-routes.mjs';
 import { scheduleBackups, targetFromConfig, targetFromEnv } from './backup.mjs';
 import { maybeIssueOnBoot, verifyAndConsume } from './bootstrap.mjs';
-import {
-  BROWSER_SESSION_COOKIE,
-  cookieValue,
-  handleBrowserAuth,
-} from './canvas/browser-auth.mjs';
+import { BROWSER_SESSION_COOKIE, cookieValue, handleBrowserAuth } from './canvas/browser-auth.mjs';
 import { designRootFor } from './canvas/project.mjs';
 import { handleCanvasRoutes, renderDisabled } from './canvas/routes.mjs';
 import { handleExportRoute, scheduleMirror, scheduleRevocationSweep } from './cell-ops.mjs';
@@ -175,7 +171,21 @@ const READ_ONLY_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  * Comments join this list when they exist (Phase 25 C3).
  */
 function readOnlyAllowedPath(path) {
-  return path === '/auth/logout' || path === '/api/export';
+  return (
+    path === '/auth/logout' ||
+    path === '/api/export' ||
+    // Cloud Phase 25 B5 — comments. THE ONE WRITE A VIEWER HOLDS, promised in
+    // those words on the People page and stated in the role matrix
+    // (`src/role-matrix.mjs`: viewer.comment === true, viewer.annotate ===
+    // false). It is exactly where a scope bug turns "may leave a note" into
+    // "may edit the project", so it is ONE exact path, never a prefix — the
+    // handler behind it touches `_comments/` and nothing else, and it offers
+    // no delete.
+    path === '/api/studio/comments' ||
+    // Signing out of the browser door is ending your own session, same as
+    // /auth/logout is for the desktop's.
+    path === '/auth/browser/signout'
+  );
 }
 
 export function createHub(config = {}) {
@@ -519,7 +529,11 @@ export function createHub(config = {}) {
           secret,
           projectName: readSettings(dataDir)?.name,
           session: match?.owner
-            ? { email: match.owner, role: match.readOnly ? 'viewer' : 'member', readOnly: !!match.readOnly }
+            ? {
+                email: match.owner,
+                role: match.readOnly ? 'viewer' : 'member',
+                readOnly: !!match.readOnly,
+              }
             : null,
         });
         if (handled) bailFromOnRequest();

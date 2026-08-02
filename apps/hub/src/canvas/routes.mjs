@@ -20,6 +20,13 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, resolve, sep } from 'node:path';
 
 import { buildCanvas, buildStats } from './build.mjs';
+import {
+  addComment,
+  commentCounts,
+  readComments,
+  replyToComment,
+  setCommentStatus,
+} from './comments.mjs';
 import { applyEditOp, checkEditOp } from './edits.mjs';
 import {
   canvasMeta,
@@ -382,7 +389,62 @@ export async function handleCanvasRoutes(ctx) {
   }
 
   if (pathname === '/api/studio/canvases' && method === 'GET') {
-    json(response, 200, { canvases: listCanvases(designRoot) });
+    json(response, 200, {
+      canvases: listCanvases(designRoot),
+      comments: commentCounts(designRoot),
+    });
+    return true;
+  }
+
+  // ---- comments (B5) — the one write a viewer holds --------------------
+  if (pathname === '/api/studio/comments') {
+    const url = new URL(request.url, 'http://cell.invalid');
+    if (method === 'GET') {
+      const target = relFromQuery(designRoot, url.searchParams.get('canvas'));
+      if (!target) {
+        json(response, 400, { error: 'that canvas is not in this project' });
+        return true;
+      }
+      json(response, 200, { comments: readComments(designRoot, target.rel) });
+      return true;
+    }
+    if (method === 'POST') {
+      let body = null;
+      try {
+        body = await readJsonBody(request);
+      } catch {
+        json(response, 400, { error: 'that request could not be read' });
+        return true;
+      }
+      const target = relFromQuery(designRoot, body?.canvas);
+      if (!target) {
+        json(response, 400, { error: 'that canvas is not in this project' });
+        return true;
+      }
+      // The AUTHOR is the session, never the payload. A comment that can claim
+      // to be from someone else is worse than no comment.
+      const author = session.email;
+      let result;
+      if (body.action === 'reply') {
+        result = replyToComment(designRoot, target.rel, String(body.id ?? ''), {
+          body: body.body,
+          author,
+        });
+      } else if (body.action === 'status') {
+        result = setCommentStatus(designRoot, target.rel, String(body.id ?? ''), body.status);
+      } else {
+        result = addComment(designRoot, target.rel, {
+          text: body.text,
+          selector: body.selector,
+          index: body.index,
+          tag: body.tag,
+          author,
+        });
+      }
+      json(response, result.ok ? 200 : 400, result);
+      return true;
+    }
+    json(response, 405, { error: 'method not allowed' });
     return true;
   }
 

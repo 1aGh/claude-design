@@ -9,109 +9,26 @@
 //
 //   <project>.cloud.maude.sh       the workspace. Members only. Proxied to the
 //                                  project's own container.
-//   view-<project>.cloud.maude.sh  the read-only share view. Reachable by
-//                                  anyone holding the link — so it never
-//                                  touches the container at all, and serves
-//                                  only inert bytes straight from storage.
+//   canvas.cloud.maude.sh/<id>/…   the segregated CANVAS origin (Cloud Phase 25
+//                                  A4): the tenant's own built module and the
+//                                  runtime it needs, read-only, capability-
+//                                  authenticated, and never able to change
+//                                  anything. Same container, different origin —
+//                                  which is the point (DDR-054).
 //
-// The share view NOT reaching the cell is the strongest form of the
-// containment claim (DDR-193 §2, narrowed by DDR-197): the surface anyone can
-// reach has no path to the surface that holds the project's data.
+// THE READ-ONLY GALLERY IS GONE (Cloud Phase 25 C5). `view-<project>` served
+// published snapshots to anyone with the link; it was deleted because the
+// browser door replaced the need for it with something honest — the real
+// project, for people who actually have access. A surface that stays
+// half-alive is worse than one that never shipped.
 
 import { MaudeCell, routeToCell, tenantFromHostname } from './cell-do.mjs';
-import {
-  buildGallery,
-  SHARE_HEADERS,
-  snapshotContentType,
-  snapshotObjectKey,
-  snapshotPrefix,
-  viewTenantFromHostname,
-} from './share.mjs';
-import { htmlResponse, renderGallery, renderNotShared } from './share-pages.mjs';
 
 export { MaudeCell };
-
-/**
- * Is this project shared, and under what name?
- *
- * OFF UNLESS SAID OTHERWISE. The absence of the marker object means not
- * shared — so a storage read that fails, a bucket that is unreachable, or a
- * project nobody has configured all land on "not shared". Every failure mode
- * defaults closed.
- */
-async function shareSettings(bucket, tenant) {
-  try {
-    const obj = await bucket.get(`tenants/${tenant}/share.json`);
-    if (!obj) return null;
-    const parsed = JSON.parse(await obj.text());
-    return parsed?.enabled === true ? { name: String(parsed.name ?? tenant).slice(0, 80) } : null;
-  } catch {
-    return null;
-  }
-}
-
-async function serveShareView(request, env, tenant) {
-  const url = new URL(request.url);
-  const bucket = env.SNAPSHOTS;
-  if (!bucket) return htmlResponse(renderNotShared(), 404);
-
-  const settings = await shareSettings(bucket, tenant);
-  // Identical response whether sharing is off or the project does not exist.
-  // Distinguishing them would turn this into a directory of every customer.
-  if (!settings) return htmlResponse(renderNotShared(), 404);
-
-  if (url.pathname === '/' || url.pathname === '') {
-    const listed = await bucket.list({ prefix: snapshotPrefix(tenant), limit: 500 });
-    const gallery = buildGallery(
-      listed.objects.map((o) => ({
-        key: o.key,
-        size: o.size,
-        lastModified: o.uploaded?.toISOString?.() ?? null,
-      })),
-      tenant,
-      Date.now()
-    );
-    return htmlResponse(renderGallery(gallery, settings.name));
-  }
-
-  if (url.pathname.startsWith('/s/')) {
-    const name = decodeURIComponent(url.pathname.slice(3));
-    const key = snapshotObjectKey(tenant, name);
-    // A key this refuses is a key that is not a snapshot. The refusal happens
-    // before any storage call, so a hostile path never becomes a lookup.
-    if (!key) return new Response('not found\n', { status: 404, headers: SHARE_HEADERS });
-    const obj = await bucket.get(key);
-    if (!obj) return new Response('not found\n', { status: 404, headers: SHARE_HEADERS });
-    return new Response(obj.body, {
-      headers: {
-        ...SHARE_HEADERS,
-        'content-type': snapshotContentType(name),
-        'content-disposition': 'inline',
-        // Snapshots are republished under the same name when a design changes,
-        // so they are NOT immutable. Revalidate rather than serve a stale
-        // picture of a design that has since moved on.
-        'cache-control': 'no-cache',
-      },
-    });
-  }
-
-  return htmlResponse(renderNotShared(), 404);
-}
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-
-    // Share view first: `view-<project>` is a longer, more specific label than
-    // `<project>`, so it must be tested before the workspace match or a shared
-    // project would be routed to a container named `view-<project>`.
-    const viewing = viewTenantFromHostname(url.hostname, env.CELL_ZONE);
-    if (viewing) {
-      if (request.method !== 'GET' && request.method !== 'HEAD') {
-        return new Response('this view is read-only\n', { status: 405, headers: SHARE_HEADERS });
-      }
-      return serveShareView(request, env, viewing);
-    }
 
     const tenant = tenantFromHostname(url.hostname, env.CELL_ZONE);
     if (!tenant) {

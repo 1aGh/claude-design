@@ -29,6 +29,7 @@ import {
   revokeInvite,
 } from './invites.mjs';
 import { isRevoked } from './revocations.mjs';
+import { isReadOnlyRole } from './role-matrix.mjs';
 
 import {
   addToken,
@@ -171,7 +172,7 @@ export async function handleAuthRoutes(ctx) {
       // Cloud Phase 25 C1. The capability is decided HERE, once, from the role
       // the control plane vouched for — not re-derived at each write surface,
       // where one forgotten branch is a viewer with an editor's session.
-      readOnly: user.role === 'viewer',
+      readOnly: isReadOnlyRole(user.role),
     });
     ctx.pushActivity?.({ type: 'login', user: user.email, doc: minted.label });
     respondJson(200, {
