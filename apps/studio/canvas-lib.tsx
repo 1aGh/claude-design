@@ -128,6 +128,7 @@ import { scopedCdSelector, selectorIndex, shortText } from './dom-selection.ts';
 // (photo/pipeline.ts, which imports pixi.js) is loaded via a DYNAMIC import
 // inside <PhotoLayer> only when an edited photo actually mounts — see there.
 import { isDefaultEdit, type PhotoEdit } from './photo/schema.ts';
+import { isReadOnlyCanvas } from './read-only-mode.ts';
 import { AgentPresenceProvider, useAgentPresence } from './use-agent-presence.tsx';
 import { type DragState, useArtboardDrag } from './use-artboard-drag.tsx';
 import {
@@ -757,6 +758,14 @@ function patchCanvasMeta(patch: {
   layout?: { artboards: ArtboardRect[] };
 }): void {
   if (typeof window === 'undefined' || typeof fetch === 'undefined') return;
+  // Cloud Phase 25 C2 — a read-only session persists its CAMERA (per-user
+  // `_canvas-state/` view, DDR-115) but never the LAYOUT lane (versioned
+  // `.meta.json`). The dev-server refuses the layout lane too (http.ts);
+  // dropping it here keeps the UI from even trying.
+  if (patch.layout && isReadOnlyCanvas()) {
+    if (!patch.viewport) return;
+    patch = { viewport: patch.viewport };
+  }
   const file = readCanvasMetaFile();
   if (!file) return;
   const sanitized: {
@@ -2096,7 +2105,9 @@ export function DCArtboard({
     rectFor: (rid) => (ctx ? ctx.rectFor(rid) : null),
     allRects: ctx?.artboards ?? [],
     viewport: ctx?.viewport ?? null,
-    enabled: !!ctx && (toolMode?.tool ?? 'move') === 'move',
+    // Cloud Phase 25 C2 — a read-only canvas keeps the Move tool for
+    // selection, but artboards don't drag (editing is absent, not hidden).
+    enabled: !!ctx && (toolMode?.tool ?? 'move') === 'move' && !isReadOnlyCanvas(),
     onCommit: (moved) => {
       if (dragBus) dragBus.commitPositions(moved);
     },

@@ -28,6 +28,7 @@ import { useEffect, useRef } from 'react';
 import { useArtboardsContext, useDragStateContext } from './canvas-lib.tsx';
 import { resolveSelectionEl, scopedCdSelector, selectorIndex } from './dom-selection.ts';
 import { isEditableTarget } from './input-router.tsx';
+import { isReadOnlyCanvas } from './read-only-mode.ts';
 import { type Selection, useSelectionSet } from './use-selection-set.tsx';
 import { useToolModeOptional } from './use-tool-mode.tsx';
 
@@ -127,6 +128,7 @@ export function useKeyboardDiscipline(): void {
       // write, so post to the parent shell (pinned to the active canvas + undo).
       // preventDefault so the browser doesn't bookmark the page.
       if (isMeta && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'd') {
+        if (isReadOnlyCanvas()) return; // Cloud Phase 25 C2 — duplicate is a write
         const one = selSet.selected.length === 1 ? selSet.selected[0] : null;
         if (one?.id) {
           e.preventDefault();
@@ -146,6 +148,8 @@ export function useKeyboardDiscipline(): void {
       // selection's authored appearance (shell-side); paste applies it to the
       // currently selected element. The shell holds the clipboard + does the write.
       if (isMeta && e.altKey && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'v')) {
+        // Cloud Phase 25 C2 — copy-style is a read and stays; paste-style writes.
+        if (e.key.toLowerCase() === 'v' && isReadOnlyCanvas()) return;
         const one = selSet.selected.length === 1 ? selSet.selected[0] : null;
         if (one?.id) {
           e.preventDefault();
@@ -224,6 +228,7 @@ export function useKeyboardDiscipline(): void {
       // against text-editing focus above; skip modifier combos + non-single /
       // artboard-only selections (whole-artboard delete is out of scope here).
       if ((e.key === 'Delete' || e.key === 'Backspace') && !isMeta && !e.altKey) {
+        if (isReadOnlyCanvas()) return; // Cloud Phase 25 C2 — delete is a write
         const one = selSet.selected.length === 1 ? selSet.selected[0] : null;
         if (one?.id) {
           e.preventDefault();
@@ -257,6 +262,7 @@ export function useKeyboardDiscipline(): void {
       const delta = nudgeDelta({ key: e.key, shift: e.shiftKey });
       if (!delta) return;
       if (isMeta || e.altKey) return; // modifier combos reserved for future
+      if (isReadOnlyCanvas()) return; // Cloud Phase 25 C2 — nudge commits a write
 
       // Arrow nudge — a single OUT-OF-FLOW element (position:absolute/fixed).
       // In-flow elements are a no-op (nudging a flow element is ambiguous — it has

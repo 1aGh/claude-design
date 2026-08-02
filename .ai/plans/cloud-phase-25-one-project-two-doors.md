@@ -207,11 +207,20 @@ weaker one would become the way in.
   at the cell: a read-only session cannot write files, cannot commit, cannot
   mutate Yjs. `readOnlyAllowedPath` is pinned by a test so the allowlist cannot
   grow by accident.
-- [ ] **C2 — the desktop honours the model in its UI.** Server-side refusal
-  landed with C1 and the client learns its role at boot, but a viewer still sees
-  editing affordances the server will reject. Editing must be **absent, not
-  hidden**, across the write surface (~42 endpoints). No A0 dependency — can
-  start immediately.
+- [x] **C2 — the desktop honours the model in its UI.** *(Landed 2026-08-02.)*
+  Two halves: (1) the **local dev-server now refuses** project-mutating writes
+  for a viewer session — default-deny wrapper over the whole route table +
+  fetch fall-through with a short C1-style allowlist (`READ_ONLY_ALLOWED_WRITES`
+  in `http.ts`; canvas-meta splits its viewport/layout lanes in-handler), so a
+  viewer's clone can never silently diverge from the cell; (2) the **UI makes
+  editing absent, not hidden** — `/_config.readOnly` → shell (menus, sidebar
+  create/delete/move, Inspector/Layers/Assistant panels + dock tabs + shortcuts,
+  GitPanel, comments actions, VIEW ONLY stamp with the why) and `?ro=1` → canvas
+  iframe (tool palette filtered to browse/move/hand, context-menu allowlist,
+  drag/resize/reorder chrome unmounted, inline edit + keyboard edit ops dead,
+  meta layout-lane dropped). Comment writes stay absent until C3 puts them on
+  the cell's allowlist. Tests: `test/read-only-gate.test.ts`,
+  `test/use-tool-mode.test.tsx` (filter), `test/canvas-url.test.ts` (ro=1).
 - [ ] **C3 — the browser honours the same model.** Same role, same absences,
   same server refusals. Written once against the cell's answer, not twice
   against two clients' guesses.

@@ -291,6 +291,55 @@ export function sameOriginRead(req: Request): boolean {
   return site === 'same-origin' || site === 'none';
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Cloud Phase 25 C2 — the local half of the read-only gate.
+//
+// When the project is linked to a hub that vouched a `viewer` role at sign-in
+// (isHubReadOnly), the LOCAL dev-server refuses project-mutating writes too.
+// The cell is the authority (Phase 25 C1 — it refuses whatever a patched
+// client sends); this gate exists so a viewer's local clone never DIVERGES
+// from the hub: a local write the cell would refuse to sync is a silent fork,
+// which is worse than a refusal. Mirrors C1's posture — writes are
+// default-denied with a short, explicit allowlist.
+//
+// What a read-only session may still write (per-user runtime state per
+// DDR-115, plus the two role-granted verbs the cell itself allows —
+// export ≈ `/api/export`, session management ≈ `/auth/logout`):
+const READ_ONLY_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+export const READ_ONLY_ALLOWED_WRITES = new Set([
+  '/_hmr', // build-watch rebuild hint — dev plumbing, not project state
+  '/_canvas-state', // per-user camera / view state (DDR-115: never versioned)
+  '/_api/canvas-meta', // viewport lane only — the layout lane is refused in-handler
+  '/_api/ui-prefs', // per-user UI preferences
+  '/_api/timeline-media', // per-user runtime media cache (scrub read path)
+  '/_api/export', // "look, comment and download" — the cell allows /api/export too
+  '/_api/export-jobs',
+  '/_api/export-jobs/download',
+  '/_api/report', // bug reports are about Maude, not the project
+  '/_api/report-fallback',
+  '/_api/hub/link', // link/unlink ≈ session management (cell allows /auth/logout)
+  '/_api/workspace/sign-in', // signing in is how the role is (re)learned
+  '/_api/workspace/disclosure',
+  '/_api/cloud/signin/start', // account session, not project state
+  '/_api/cloud/signin/poll',
+  '/_api/cloud/signout',
+  '/_api/git/fetch', // syncing the project DOWN is a read of the project
+  '/_api/git/pull',
+  '/_api/git/checkout', // viewing another branch, not changing one
+]);
+
+/** The refusal a read-only session gets for a project-mutating write. */
+export function readOnlyRefusalResponse(): Response {
+  return Response.json(
+    {
+      error: 'read-only',
+      reason: 'read-only',
+      message: 'Your role in this project is viewer — editing is disabled.',
+    },
+    { status: 403, headers: { 'Cache-Control': 'no-store' } }
+  );
+}
+
 function safePathUnderRoot(reqUrl: string, repoRoot: string): string | null {
   let pathname: string;
   try {
@@ -1173,7 +1222,7 @@ export function createHttp(
       Response.json({
         ...ctx.cfg,
         canvasOrigin: ctx.canvasOrigin,
-        readOnly: ctx.cfg.linkedHub ? isHubReadOnly(ctx.cfg.linkedHub.url) : false,
+        readOnly: projectReadOnly(),
       }),
 
     // What's New feed (DDR-A) — read-only product-update list surfaced in the
@@ -1310,6 +1359,14 @@ export function createHttp(
         }
         if (!body.patch || typeof body.patch !== 'object') {
           return new Response('body.patch must be an object', { status: 400 });
+        }
+        // Cloud Phase 25 C2 — this route is on READ_ONLY_ALLOWED_WRITES for its
+        // VIEWPORT lane only (per-user camera, split into `_canvas-state/` by
+        // the api layer — DDR-115). The layout lane mutates the versioned
+        // `.meta.json`, so a read-only session is refused here, in-handler,
+        // where the two lanes are distinguishable.
+        if (projectReadOnly() && 'layout' in body.patch) {
+          return readOnlyRefusalResponse();
         }
         const next = await api.patchCanvasMeta(body.file, body.patch);
         if (!next) return new Response('Not found or rejected', { status: 404 });
@@ -4254,5 +4311,39 @@ export function createHttp(
     return false;
   }
 
-  return { routes, fetch, serveCanvasShell, isCanvasSafeRoute };
+  // Cloud Phase 25 C2 — read-only gate over every write surface (~42 mutating
+  // routes). Computed per-request so a role change lands on the next write
+  // (workspace sign-in rewrites hubs.json; no restart needed). Wrapping here
+  // covers all three doors at once: the main-origin `routes` table, the
+  // canvas-origin `routes` allowlist in server.ts (it references these same
+  // handlers), and the dynamic-path `fetch` fall-through (comment replies).
+  function projectReadOnly(): boolean {
+    return ctx.cfg.linkedHub ? isHubReadOnly(ctx.cfg.linkedHub.url) : false;
+  }
+
+  function readOnlyRefusal(req: Request): Response | null {
+    if (READ_ONLY_SAFE_METHODS.has(req.method)) return null;
+    if (!projectReadOnly()) return null;
+    let pathname: string;
+    try {
+      pathname = new URL(req.url).pathname;
+    } catch {
+      return readOnlyRefusalResponse();
+    }
+    if (READ_ONLY_ALLOWED_WRITES.has(pathname)) return null;
+    return readOnlyRefusalResponse();
+  }
+
+  const guardedRoutes = Object.fromEntries(
+    Object.entries(routes).map(([path, handler]) => [
+      path,
+      (req: Request) => readOnlyRefusal(req) ?? handler(req),
+    ])
+  ) as typeof routes;
+
+  async function guardedFetch(req: Request): Promise<Response> {
+    return readOnlyRefusal(req) ?? fetch(req);
+  }
+
+  return { routes: guardedRoutes, fetch: guardedFetch, serveCanvasShell, isCanvasSafeRoute };
 }

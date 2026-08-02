@@ -50,6 +50,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { resolveByDomPath } from './dom-selection.ts';
+import { isReadOnlyCanvas } from './read-only-mode.ts';
 import { useCollab } from './use-collab.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 
@@ -1182,58 +1183,65 @@ function CommentThread({
         </div>
       ))}
 
-      <div className="cm-thread__reply-form">
-        <MentionAwareTextarea
-          textareaRef={replyRef}
-          className="cm-thread__reply-textarea"
-          value={reply}
-          placeholder="Reply… ⌘↵ to send · @name to tag"
-          onChange={setReply}
-          onKeyDown={onReplyKeyDown}
-          rows={2}
-          ariaLabel="Reply"
-          disabled={sending}
-        />
-        <div className="cm-thread__reply-actions">
-          <button
-            type="button"
-            className="cm-btn cm-btn--primary"
-            disabled={!reply.trim() || sending}
-            onClick={() => void trySendReply()}
-          >
-            Send
-          </button>
-        </div>
-      </div>
+      {/* Cloud Phase 25 C2 — a read-only session VIEWS threads; reply /
+          resolve / delete are absent until C3 puts comments on the cell's
+          read-only allowlist (the cell refuses them today). */}
+      {!isReadOnlyCanvas() && (
+        <>
+          <div className="cm-thread__reply-form">
+            <MentionAwareTextarea
+              textareaRef={replyRef}
+              className="cm-thread__reply-textarea"
+              value={reply}
+              placeholder="Reply… ⌘↵ to send · @name to tag"
+              onChange={setReply}
+              onKeyDown={onReplyKeyDown}
+              rows={2}
+              ariaLabel="Reply"
+              disabled={sending}
+            />
+            <div className="cm-thread__reply-actions">
+              <button
+                type="button"
+                className="cm-btn cm-btn--primary"
+                disabled={!reply.trim() || sending}
+                onClick={() => void trySendReply()}
+              >
+                Send
+              </button>
+            </div>
+          </div>
 
-      <div className="cm-thread__actions">
-        {comment.status === 'resolved' ? (
-          <button type="button" className="cm-btn" onClick={() => onPatch({ status: 'open' })}>
-            ↺ Reopen
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="cm-btn cm-btn--primary"
-            onClick={() => {
-              onPatch({ status: 'resolved' });
-              onClose();
-            }}
-          >
-            ✓ Resolve
-          </button>
-        )}
-        <button
-          type="button"
-          className="cm-btn cm-btn--danger"
-          onClick={() => {
-            onDelete();
-            onClose();
-          }}
-        >
-          Delete
-        </button>
-      </div>
+          <div className="cm-thread__actions">
+            {comment.status === 'resolved' ? (
+              <button type="button" className="cm-btn" onClick={() => onPatch({ status: 'open' })}>
+                ↺ Reopen
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="cm-btn cm-btn--primary"
+                onClick={() => {
+                  onPatch({ status: 'resolved' });
+                  onClose();
+                }}
+              >
+                ✓ Resolve
+              </button>
+            )}
+            <button
+              type="button"
+              className="cm-btn cm-btn--danger"
+              onClick={() => {
+                onDelete();
+                onClose();
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

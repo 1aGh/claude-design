@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
   DEFAULT_TOOLS,
+  filterToolsForReadOnly,
   ToolProvider,
   useToolMode,
   useToolModeOptional,
@@ -129,5 +130,27 @@ describe('use-tool-mode / SSR render', () => {
     expect(() => renderToStaticMarkup(<BareConsumer />)).toThrow(
       /useToolMode must be used inside <ToolProvider>/
     );
+  });
+});
+
+// Cloud Phase 25 C2 — read-only tool filtering. The provider applies this to
+// its `tools` when the canvas booted with ?ro=1; the pure function is what the
+// contract pins: navigate/inspect only, every write tool absent.
+describe('use-tool-mode / read-only filter', () => {
+  test('read-only keeps exactly browse + move + hand, in order', () => {
+    expect(filterToolsForReadOnly(DEFAULT_TOOLS, true).map((t) => t.id)).toEqual([
+      'browse',
+      'move',
+      'hand',
+    ]);
+  });
+
+  test('comment is filtered too — the cell refuses viewer comments until C3', () => {
+    const ids = filterToolsForReadOnly(DEFAULT_TOOLS, true).map((t) => t.id);
+    expect(ids).not.toContain('comment');
+  });
+
+  test('readOnly=false is identity', () => {
+    expect(filterToolsForReadOnly(DEFAULT_TOOLS, false)).toEqual([...DEFAULT_TOOLS]);
   });
 });

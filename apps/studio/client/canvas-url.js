@@ -35,6 +35,12 @@ export function canvasUrl(p, cfg, opts) {
   // Phase 27 (E2) — DiffView renders a CLEAN canvas (no editor chrome: toolbar,
   // world minimap, devtools) so the before/after is just the design.
   if (opts?.hideChrome) params.set('hide-chrome', '1');
+  // Cloud Phase 25 C2 — the linked hub vouched a viewer role at sign-in
+  // (`/_config.readOnly`), so the canvas boots read-only: edit tools and
+  // mutating interactions are ABSENT from the iframe chrome (read-only-mode.ts
+  // reads this flag). Boot-static on purpose — a role is per-session, and a
+  // query param can't race the way a post-load message could.
+  if (cfg?.readOnly) params.set('ro', '1');
   const ds0 = cfg?.designSystems?.[0];
   // Specimen detection: anything under `system/<ds>/preview/` belongs to that
   // specific DS, so it must render with *that* DS's tokens — not always the

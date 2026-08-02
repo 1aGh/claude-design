@@ -325,7 +325,7 @@ function shellToast(message, ok = false, action) {
 // pressed. Surface that ONCE, gated by a localStorage marker (same family as
 // `mdcc-whatsnew-seen`). Auto-dismisses; a V press (learned) clears it early.
 const BROWSE_HINT_SEEN = 'maude-browse-hint-seen';
-function browseFirstRunHint() {
+function browseFirstRunHint(readOnly = false) {
   if (typeof document === 'undefined' || typeof localStorage === 'undefined') return;
   try {
     if (localStorage.getItem(BROWSE_HINT_SEEN) === '1') return;
@@ -346,7 +346,9 @@ function browseFirstRunHint() {
     '<span>Your mock is <strong>live</strong> — click things to try it. ' +
     'Press <kbd style="padding:1px 6px;border-radius:5px;border:1px solid var(--border-1,#333a45);' +
     'background:var(--surface-3,#262b33);font-family:var(--font-mono,monospace)">V</kbd> ' +
-    'to select &amp; edit like Figma.</span>' +
+    // Cloud Phase 25 C2 — a viewer selects to inspect, never to edit; the
+    // hint must not promise an editor the role doesn't have.
+    (readOnly ? 'to select &amp; inspect.</span>' : 'to select &amp; edit like Figma.</span>') +
     '<button type="button" aria-label="Dismiss" style="background:none;border:none;color:inherit;' +
     'cursor:pointer;font-size:15px;line-height:1;opacity:.65;padding:2px">×</button>';
   const dismiss = () => {
@@ -2424,6 +2426,9 @@ function sectionMetaFor(g) {
 }
 
 function Sidebar({
+  // Cloud Phase 25 C2 — viewer role: create / delete / move / rename
+  // affordances are absent (buttons, composer, row menus, drag & drop).
+  readOnly = false,
   groups,
   activePath,
   activeDsName,
@@ -2588,21 +2593,23 @@ function Sidebar({
       <div className="st-sb-hd">
         <span className="st-sb-title">Files</span>
         <div className="st-sb-hd-actions">
-          <button
-            type="button"
-            className="st-iconbtn"
-            data-tip="New blank brief board"
-            aria-label="New blank brief board"
-            aria-expanded={creating && composerMode === 'board'}
-            onClick={() => {
-              setNewErr('');
-              setComposerMode('board');
-              setCreating((v) => (composerMode === 'board' ? !v : true));
-            }}
-          >
-            <StIcon name="plus" size={15} />
-          </button>
-          {defaultFolderParent && (
+          {!readOnly && (
+            <button
+              type="button"
+              className="st-iconbtn"
+              data-tip="New blank brief board"
+              aria-label="New blank brief board"
+              aria-expanded={creating && composerMode === 'board'}
+              onClick={() => {
+                setNewErr('');
+                setComposerMode('board');
+                setCreating((v) => (composerMode === 'board' ? !v : true));
+              }}
+            >
+              <StIcon name="plus" size={15} />
+            </button>
+          )}
+          {!readOnly && defaultFolderParent && (
             <button
               type="button"
               className="st-iconbtn"
@@ -2758,7 +2765,7 @@ function Sidebar({
           // root". Without this a canvas inside a folder could never return
           // to the top level via drag & drop — DirRow only covers actual
           // subfolders, never the group root itself.
-          const canDropOnRoot = !isDs && g.kind === 'canvas';
+          const canDropOnRoot = !isDs && g.kind === 'canvas' && !readOnly;
           const rootDropHandlers = canDropOnRoot ? treeDrag.dropProps(g.fullPath, true) : {};
           const isRootOver = treeDrag.overDir === g.fullPath;
           return (
@@ -2790,12 +2797,12 @@ function Sidebar({
                     dsFolders={g.dsFolders}
                     activeDsName={activeDsName}
                     onOpenSystem={isDs ? onOpenSystem : undefined}
-                    onDelete={isDs ? undefined : onDeleteBoard}
+                    onDelete={isDs || readOnly ? undefined : onDeleteBoard}
                     dirtyByPath={dirtyByPath}
                     canvasKinds={canvasKinds}
                     dirPath={g.fullPath}
-                    drag={!isDs && g.kind === 'canvas' ? treeDrag : undefined}
-                    menu={!isDs && g.kind === 'canvas' ? rowMenu : undefined}
+                    drag={!isDs && g.kind === 'canvas' && !readOnly ? treeDrag : undefined}
+                    menu={!isDs && g.kind === 'canvas' && !readOnly ? rowMenu : undefined}
                   />
                 ) : (
                   <div className="st-tree-empty">{search ? 'No matches.' : 'Empty.'}</div>
@@ -3460,7 +3467,7 @@ function HelpDropdown({ onAction, onClose }) {
   );
 }
 
-function SelectionDropdown({ onAction, onClose }) {
+function SelectionDropdown({ onAction, onClose, readOnly = false }) {
   return (
     <DropdownMenu
       label="Selection"
@@ -3469,16 +3476,40 @@ function SelectionDropdown({ onAction, onClose }) {
       onClose={onClose}
       items={[
         { id: 'deselect-all', label: 'Deselect all', shortcut: 'Esc' },
-        { id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⌘ ⇧ A' },
+        // Cloud Phase 25 C2 — annotation selection exists to edit/delete
+        // annotations; absent for a viewer.
+        ...(readOnly
+          ? []
+          : [{ id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⌘ ⇧ A' }]),
       ]}
     />
   );
 }
 
-function ToolsDropdown({ onAction, onClose }) {
+function ToolsDropdown({ onAction, onClose, readOnly = false }) {
   // Mirrors DEFAULT_TOOLS in apps/studio/use-tool-mode.tsx — kept in sync by
   // hand because the menubar lives in the dev-server shell (no shared bundle
-  // with the canvas iframes).
+  // with the canvas iframes). Cloud Phase 25 C2 — a viewer keeps only the
+  // navigate/inspect tools (same READ_ONLY_TOOL_IDS the canvas enforces).
+  const items = [
+    // feature-4 (browse/move split) — Browse is the boot default (mock is
+    // alive); Move (V) is the select tool.
+    { id: 'browse', label: 'Browse (interact)', shortcut: '' },
+    { id: 'move', label: 'Select', shortcut: 'V' },
+    { id: 'hand', label: 'Hand', shortcut: 'H' },
+    ...(readOnly
+      ? []
+      : [
+          { id: 'comment', label: 'Comment', shortcut: 'C' },
+          { id: 'pen', label: 'Pen', shortcut: 'B' },
+          { id: 'rect', label: 'Rect', shortcut: 'R' },
+          { id: 'ellipse', label: 'Ellipse', shortcut: 'O' },
+          { id: 'sticky', label: 'Sticky', shortcut: 'N' },
+          { id: 'arrow', label: 'Arrow', shortcut: 'A' },
+          { id: 'text', label: 'Text', shortcut: 'T' },
+          { id: 'eraser', label: 'Eraser', shortcut: 'E' },
+        ]),
+  ];
   return (
     <DropdownMenu
       label="Tools"
@@ -3486,35 +3517,25 @@ function ToolsDropdown({ onAction, onClose }) {
       header="Tool palette"
       onAction={onAction}
       onClose={onClose}
-      items={[
-        // feature-4 (browse/move split) — Browse is the boot default (mock is
-        // alive); Move (V) is the select tool.
-        { id: 'browse', label: 'Browse (interact)', shortcut: '' },
-        { id: 'move', label: 'Select', shortcut: 'V' },
-        { id: 'hand', label: 'Hand', shortcut: 'H' },
-        { id: 'comment', label: 'Comment', shortcut: 'C' },
-        { id: 'pen', label: 'Pen', shortcut: 'B' },
-        { id: 'rect', label: 'Rect', shortcut: 'R' },
-        { id: 'ellipse', label: 'Ellipse', shortcut: 'O' },
-        { id: 'sticky', label: 'Sticky', shortcut: 'N' },
-        { id: 'arrow', label: 'Arrow', shortcut: 'A' },
-        { id: 'text', label: 'Text', shortcut: 'T' },
-        { id: 'eraser', label: 'Eraser', shortcut: 'E' },
-      ]}
+      items={items}
     />
   );
 }
 
 // Plan C follow-up — File + Edit menus, previously inert. Both dispatch to real
 // shell flows (File) or the in-canvas undo stack / selection bridges (Edit).
-function FileDropdown({ onAction, onClose, hasCanvas }) {
-  return (
-    <DropdownMenu
-      label="File"
-      left={40}
-      onAction={onAction}
-      onClose={onClose}
-      items={[
+function FileDropdown({ onAction, onClose, hasCanvas, readOnly = false }) {
+  // Cloud Phase 25 C2 — a viewer keeps the reads (export, handoff, reload,
+  // close); create / assemble / generate / settings are absent.
+  const items = readOnly
+    ? [
+        { id: 'export', label: 'Export…', shortcut: '⇧⌘E' },
+        { id: 'handoff', label: 'Handoff to production', shortcut: '⇧⌘H' },
+        { sep: true },
+        { id: 'reload', label: 'Reload canvas', shortcut: '⌘R', disabled: !hasCanvas },
+        { id: 'close', label: 'Close canvas', disabled: !hasCanvas },
+      ]
+    : [
         // Bare N — the browser reserves ⌘N (New Window) and never delivers it.
         { id: 'new', label: 'New canvas…', shortcut: 'N' },
         // DDR-150 P4 Task 12 — one-click "udělej z toho video" from the clips
@@ -3529,12 +3550,24 @@ function FileDropdown({ onAction, onClose, hasCanvas }) {
         { sep: true },
         { id: 'reload', label: 'Reload canvas', shortcut: '⌘R', disabled: !hasCanvas },
         { id: 'close', label: 'Close canvas', disabled: !hasCanvas },
-      ]}
-    />
-  );
+      ];
+  return <DropdownMenu label="File" left={40} onAction={onAction} onClose={onClose} items={items} />;
 }
 
-function EditDropdown({ onAction, onClose, hasCanvas }) {
+function EditDropdown({ onAction, onClose, hasCanvas, readOnly = false }) {
+  // Cloud Phase 25 C2 — a viewer's Edit menu is selection only; undo/redo,
+  // artboard insert and annotation ops are writes.
+  if (readOnly) {
+    return (
+      <DropdownMenu
+        label="Edit"
+        left={90}
+        onAction={onAction}
+        onClose={onClose}
+        items={[{ id: 'deselect-all', label: 'Deselect all', shortcut: 'Esc' }]}
+      />
+    );
+  }
   return (
     <DropdownMenu
       label="Edit"
@@ -3629,6 +3662,9 @@ function Menubar({
   onReload,
   onCloseCanvas,
   onInsertArtboard,
+  // Cloud Phase 25 C2 — viewer role: editing entries are absent from every
+  // menu, and the stamp says VIEW ONLY so the absence is legible.
+  readOnly = false,
 }) {
   const isSystem = activePath === SYSTEM_TAB;
   const stamp = isSystem ? 'SYSTEM' : activePath ? 'CANVAS' : 'IDLE';
@@ -3642,6 +3678,8 @@ function Menubar({
     <span style={{ color: 'var(--u-fg-3)' }}>no canvas open</span>
   );
 
+  // Cloud Phase 25 C2 — panels a viewer's session doesn't have (edit chrome).
+  const viewerHiddenPanels = new Set(['assistant', 'inspector', 'layers', 'autoopen']);
   const panels = [
     { id: 'tree', label: 'Project Tree', shortcut: 'T', checked: sidebarOpen, disabled: false },
     {
@@ -3748,7 +3786,7 @@ function Menubar({
       checked: printGuidesVisible,
       disabled: !activePath || isSystem,
     },
-  ];
+  ].filter((p) => !readOnly || !viewerHiddenPanels.has(p.id));
 
   const DROPDOWN_MENUS = ['file', 'edit', 'view', 'selection', 'tools', 'help'];
   function onMenuClick(key) {
@@ -3839,6 +3877,7 @@ function Menubar({
       </nav>
       {openMenu === 'file' && (
         <FileDropdown
+          readOnly={readOnly}
           hasCanvas={!!activePath}
           onAction={(id) => {
             if (id === 'new') onNewCanvas?.();
@@ -3855,6 +3894,7 @@ function Menubar({
       )}
       {openMenu === 'edit' && (
         <EditDropdown
+          readOnly={readOnly}
           hasCanvas={!!activePath && !isSystem}
           onAction={(id) => {
             if (id === 'undo') postToActiveCanvas({ dgn: 'undo' });
@@ -3894,6 +3934,7 @@ function Menubar({
       )}
       {openMenu === 'selection' && (
         <SelectionDropdown
+          readOnly={readOnly}
           onAction={(id) => {
             if (id === 'deselect-all') postToActiveCanvas({ dgn: 'selection-clear' });
             else if (id === 'select-all-annotations')
@@ -3904,6 +3945,7 @@ function Menubar({
       )}
       {openMenu === 'tools' && (
         <ToolsDropdown
+          readOnly={readOnly}
           onAction={(tool) => postToActiveCanvas({ dgn: 'tool-set', tool })}
           onClose={() => setOpenMenu(null)}
         />
@@ -3926,7 +3968,16 @@ function Menubar({
       )}
       <div className="st-mb-right" data-tour="status">
         {presence ? <div className="st-presence">{presence}</div> : null}
-        {isNativeApp() && (
+        {readOnly && (
+          <span
+            className="st-stamp st-stamp--viewonly"
+            data-testid="view-only-stamp"
+            data-tip="Your role in this project is viewer — you can browse, comment when available, and export. Ask a project owner for edit access."
+          >
+            VIEW ONLY
+          </span>
+        )}
+        {isNativeApp() && !readOnly && (
           <button
             type="button"
             className="st-assistant"
@@ -4607,44 +4658,48 @@ function CommentsPanel({
                     <span className="st-comment-sel" title={(c.dom_path || []).join(' > ')}>
                       {c.selector || '—'}
                     </span>
-                    <span className="st-mini-act">
-                      {c.status === 'resolved' ? (
+                    {/* Cloud Phase 25 C2 — absent handlers (viewer) ⇒ no
+                        mutating actions; the thread stays readable. */}
+                    {onResolve && onReopen && onDelete ? (
+                      <span className="st-mini-act">
+                        {c.status === 'resolved' ? (
+                          <button
+                            type="button"
+                            className="st-iconbtn"
+                            aria-label="Reopen"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onReopen(c.id);
+                            }}
+                          >
+                            <StIcon name="reopen" size={14} />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="st-iconbtn"
+                            aria-label="Resolve"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onResolve(c.id);
+                            }}
+                          >
+                            <StIcon name="resolve" size={14} />
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="st-iconbtn"
-                          aria-label="Reopen"
+                          aria-label="Delete"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onReopen(c.id);
+                            onDelete(c.id);
                           }}
                         >
-                          <StIcon name="reopen" size={14} />
+                          <StIcon name="x" size={14} />
                         </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="st-iconbtn"
-                          aria-label="Resolve"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onResolve(c.id);
-                          }}
-                        >
-                          <StIcon name="resolve" size={14} />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="st-iconbtn"
-                        aria-label="Delete"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDelete(c.id);
-                        }}
-                      >
-                        <StIcon name="x" size={14} />
-                      </button>
-                    </span>
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -9110,6 +9165,9 @@ function App() {
   // it mid-session) — informs canvasUrl() so TSX iframes can pass the right
   // ?designRel + ?tokens query to the canvas mount shell.
   const [cfg, setCfg] = useState({ designRel: '.design' });
+  // Cloud Phase 25 C2 — viewer role, known at boot from /_config. Every
+  // editing affordance in the shell gates on this (absent, not hidden).
+  const viewerMode = !!cfg.readOnly;
   const loadServerConfig = useCallback(() => {
     fetch('/_config')
       .then((r) => r.json())
@@ -9132,6 +9190,12 @@ function App() {
           // from the main origin's /_api). Absent on older servers → relative
           // URL fallback keeps same-origin behavior.
           canvasOrigin: data.canvasOrigin,
+          // Cloud Phase 25 C2 — the linked hub vouched a `viewer` role at
+          // sign-in. Known at BOOT (before anything draws), so editing
+          // affordances are ABSENT rather than shown-then-refused. This flag
+          // decides what the UI offers; the cell (C1) and the dev-server's
+          // read-only gate (http.ts) are what actually stop a write.
+          readOnly: !!data.readOnly,
         }));
       })
       .catch(() => {});
@@ -9468,12 +9532,13 @@ function App() {
   const maybeAutoOpenInspectorOnSelect = useCallback(
     (sel) => {
       if (!autoOpenInspectorRef.current) return;
+      if (viewerMode) return; // Cloud Phase 25 C2 — inspector is edit chrome
       if (!sel || !sel.id) return; // need a stable element id to inspect
       if (anyRightPanelOpenRef.current) return; // don't steal from an open panel
       openRightPanel('inspector');
       setInspectorTab('css');
     },
-    [openRightPanel]
+    [openRightPanel, viewerMode]
   );
   // DDR-148 — the Timeline is a BOTTOM dock, independent of the right rail: it
   // toggles on its own and coexists with Inspector/Changes/Comments/Chat.
@@ -11334,7 +11399,7 @@ function App() {
           document.body.style.cursor = '';
           const el = document.getElementById('dc-app-cursor');
           if (el) el.textContent = '';
-          browseFirstRunHint();
+          browseFirstRunHint(viewerMode);
           return;
         }
         const cursor = resolveToolCursor(m.tool);
@@ -13321,15 +13386,17 @@ function App() {
       }
       // Cmd+Shift+I — toggle Inspector. Was bare "I", which collided with the
       // canvas highlighter tool (same letter, different action by focus).
+      // Cloud Phase 25 C2 — absent for a viewer (the panel is edit chrome).
       if (meta && e.shiftKey && (e.key === 'i' || e.key === 'I')) {
         e.preventDefault();
-        toggleRightPanel('inspector');
+        if (!viewerMode) toggleRightPanel('inspector');
         return;
       }
       // Phase 31 (DDR-123) — Cmd+Shift+A opens the native ACP chat sidepanel.
+      // Cloud Phase 25 C2 — the agent edits; absent for a viewer.
       if (meta && e.shiftKey && (e.key === 'a' || e.key === 'A') && isNativeApp()) {
         e.preventDefault();
-        toggleRightPanel('assistant');
+        if (!viewerMode) toggleRightPanel('assistant');
         return;
       }
       // Cmd+Shift+E / Cmd+Shift+H — the File-menu chords, previously
@@ -13346,9 +13413,10 @@ function App() {
       }
       // Cmd+, — open Settings (AI generation keys). The platform convention for
       // a settings/preferences surface (feature-ai-media-generation, DDR-16x).
+      // Cloud Phase 25 C2 — settings mutate project config; absent for a viewer.
       if (meta && !e.shiftKey && !e.altKey && e.key === ',') {
         e.preventDefault();
-        setSettingsOpen(true);
+        if (!viewerMode) setSettingsOpen(true);
         return;
       }
       // Cmd+Shift+T — toggle the Timeline (video-comp scrub) dock.
@@ -13475,6 +13543,7 @@ function App() {
     toggleTimeline,
     inspectorTab,
     performPhotoUndo,
+    viewerMode,
   ]);
 
   const registerIframe = useCallback((path, el) => {
@@ -13648,8 +13717,12 @@ function App() {
   // feature-configurable-panel-docking — resolve, for each slot, the panels
   // assigned to it and which one is active (the open one). Layers is only a
   // dockable panel in `separate` mode; Assistant is native-only.
-  const panelAvailable = (id) =>
-    id === 'assistant' ? isNativeApp() : id === 'layers' ? layersMode === 'separate' : true;
+  const panelAvailable = (id) => {
+    // Cloud Phase 25 C2 — edit-chrome panels don't exist for a viewer: no
+    // dock tab, no shortcut, no empty slot.
+    if (viewerMode && (id === 'assistant' || id === 'inspector' || id === 'layers')) return false;
+    return id === 'assistant' ? isNativeApp() : id === 'layers' ? layersMode === 'separate' : true;
+  };
   const idsForSide = (side) =>
     DOCK_PANELS.filter(
       (p) => panelAvailable(p.id) && (panelSide[p.id] || PANEL_SIDES_DEFAULTS[p.id]) === side
@@ -13666,8 +13739,11 @@ function App() {
   const rightIds = idsForSide('right');
   const leftActive = leftIds.find((id) => panelIsOpen[id]) || null;
   const rightActive = rightIds.find((id) => panelIsOpen[id]) || null;
-  const leftHostsAssistant = isNativeApp() && (panelSide.assistant || 'right') === 'left';
-  const rightHostsAssistant = isNativeApp() && (panelSide.assistant || 'right') === 'right';
+  // Cloud Phase 25 C2 — the Assistant edits; a viewer's session never mounts it.
+  const leftHostsAssistant =
+    isNativeApp() && !viewerMode && (panelSide.assistant || 'right') === 'left';
+  const rightHostsAssistant =
+    isNativeApp() && !viewerMode && (panelSide.assistant || 'right') === 'right';
   const resizingFor = (id) =>
     (panelSide[id] || PANEL_SIDES_DEFAULTS[id]) === 'left' ? dragSide === 'sb' : dragSide === 'rp';
   const activeCanvasFile =
@@ -13677,9 +13753,13 @@ function App() {
   // which owns the resizable width). Assistant is handled separately below as an
   // always-mounted ChatPanel so its stream survives a tab switch.
   const renderPanelBody = (id) => {
+    // Cloud Phase 25 C2 — the Inspector/Layers panels are edit chrome; a
+    // viewer's session never mounts them (absent, not hidden).
+    if (viewerMode && (id === 'inspector' || id === 'layers')) return null;
     if (id === 'tree')
       return (
         <Sidebar
+          readOnly={viewerMode}
           groups={groups}
           activePath={activePath}
           activeDsName={activePath === SYSTEM_TAB ? (systemData?.ds?.name ?? null) : null}
@@ -13715,7 +13795,7 @@ function App() {
         <GitPanel
           status={gitStatus && remoteSync ? { ...gitStatus, ...remoteSync } : gitStatus}
           project={project}
-          readOnly={!isNativeApp()}
+          readOnly={!isNativeApp() || viewerMode}
           resizing={resizingFor('changes')}
           onClose={() => setChangesOpen(false)}
           onCommit={gitCommit}
@@ -13795,9 +13875,11 @@ function App() {
           activePath={activePath}
           focusedId={focusedCommentId}
           onJump={jumpToComment}
-          onResolve={resolveComment}
-          onReopen={reopenComment}
-          onDelete={deleteComment}
+          // Cloud Phase 25 C2 — a viewer READS threads; the mutating actions
+          // are absent until C3 lands comments on the cell's allowlist.
+          onResolve={viewerMode ? undefined : resolveComment}
+          onReopen={viewerMode ? undefined : reopenComment}
+          onDelete={viewerMode ? undefined : deleteComment}
           resizing={resizingFor('comments')}
         />
       );
@@ -13837,6 +13919,7 @@ function App() {
       )}
       <div className="st-shell">
         <Menubar
+          readOnly={viewerMode}
           activePath={activePath}
           project={project}
           tabsCount={tabs.length}
@@ -13994,7 +14077,9 @@ function App() {
               cfg={cfg}
               loadingPath={loadingPath}
               onIframeLoad={onIframeLoad}
-              showQuickSetup={isNativeApp() && !!setupReadiness && !setupReadiness.ready}
+              showQuickSetup={
+                isNativeApp() && !viewerMode && !!setupReadiness && !setupReadiness.ready
+              }
               onStartQuickSetup={() => setQuickSetupOpen(true)}
             />
           </div>

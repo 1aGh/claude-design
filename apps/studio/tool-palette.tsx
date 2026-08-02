@@ -22,6 +22,7 @@ import {
   SHAPE_KIND_ICONS,
   TOOL_ICONS,
 } from './canvas-icons.tsx';
+import { isReadOnlyCanvas } from './read-only-mode.ts';
 import { useChromeVisibility } from './use-chrome-visibility.tsx';
 import { type ShapeKind, useToolMode } from './use-tool-mode.tsx';
 
@@ -395,6 +396,11 @@ export function ToolPalette() {
   const byId = new Map(tools.map((t) => [t.id, t]));
   const navList = NAV_TOOLS.map((id) => byId.get(id)).filter(Boolean);
   const drawList = DRAW_TOOLS.map((id) => byId.get(id)).filter(Boolean);
+  // Cloud Phase 25 C2 — read-only canvas: the draw group is already empty
+  // (ToolProvider filters `tools`), and the hardcoded write affordances
+  // (Insert +, Stickers) must be ABSENT too. Export + Presentation stay —
+  // both are reads of the project.
+  const readOnly = isReadOnlyCanvas();
 
   const renderToolButton = (id: string, label: string, shortcut: string) => {
     const Icon = TOOL_ICONS[id];
@@ -483,66 +489,74 @@ export function ToolPalette() {
       <div className="dc-tp-group">
         {navList.map((t) => (t ? renderToolButton(t.id, t.label, t.shortcut) : null))}
       </div>
+      {drawList.length > 0 ? (
+        <>
+          <div className="dc-tp-sep" />
+          <div className="dc-tp-group">
+            {drawList.map((t) =>
+              t
+                ? t.id === 'shape'
+                  ? renderShapeButton()
+                  : renderToolButton(t.id, t.label, t.shortcut)
+                : null
+            )}
+          </div>
+        </>
+      ) : null}
       <div className="dc-tp-sep" />
       <div className="dc-tp-group">
-        {drawList.map((t) =>
-          t
-            ? t.id === 'shape'
-              ? renderShapeButton()
-              : renderToolButton(t.id, t.label, t.shortcut)
-            : null
+        {!readOnly && (
+          <span className="dc-tp-insert">
+            <button
+              type="button"
+              aria-label="Insert element — Div, Text, or Image"
+              aria-haspopup="menu"
+              aria-expanded={insertOpen}
+              title="Insert element (appends to the active artboard)"
+              onClick={() => setInsertOpen((o) => !o)}
+            >
+              <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>
+                +
+              </span>
+            </button>
+            {insertOpen ? (
+              <div className="dc-tp-insert-popover" role="menu" aria-label="Insert element">
+                <button type="button" role="menuitem" onClick={() => insertViaPalette('div')}>
+                  <IconSquare />
+                  <span className="dc-tp-insert-label">Div</span>
+                </button>
+                <button type="button" role="menuitem" onClick={() => insertViaPalette('text')}>
+                  <IconLetterA />
+                  <span className="dc-tp-insert-label">Text</span>
+                </button>
+                <button type="button" role="menuitem" onClick={() => insertViaPalette('image')}>
+                  <span aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>
+                    ▧
+                  </span>
+                  <span className="dc-tp-insert-label">Image</span>
+                </button>
+              </div>
+            ) : null}
+          </span>
         )}
-      </div>
-      <div className="dc-tp-sep" />
-      <div className="dc-tp-group">
-        <span className="dc-tp-insert">
+        {!readOnly && (
           <button
             type="button"
-            aria-label="Insert element — Div, Text, or Image"
-            aria-haspopup="menu"
-            aria-expanded={insertOpen}
-            title="Insert element (appends to the active artboard)"
-            onClick={() => setInsertOpen((o) => !o)}
+            aria-label="Stickers"
+            title="Stickers — searchable sticker picker"
+            onClick={() => {
+              try {
+                window.parent.postMessage({ dgn: 'open-sticker-picker' }, '*');
+              } catch {
+                /* detached / cross-origin teardown */
+              }
+            }}
           >
             <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>
-              +
+              🙂
             </span>
           </button>
-          {insertOpen ? (
-            <div className="dc-tp-insert-popover" role="menu" aria-label="Insert element">
-              <button type="button" role="menuitem" onClick={() => insertViaPalette('div')}>
-                <IconSquare />
-                <span className="dc-tp-insert-label">Div</span>
-              </button>
-              <button type="button" role="menuitem" onClick={() => insertViaPalette('text')}>
-                <IconLetterA />
-                <span className="dc-tp-insert-label">Text</span>
-              </button>
-              <button type="button" role="menuitem" onClick={() => insertViaPalette('image')}>
-                <span aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>
-                  ▧
-                </span>
-                <span className="dc-tp-insert-label">Image</span>
-              </button>
-            </div>
-          ) : null}
-        </span>
-        <button
-          type="button"
-          aria-label="Stickers"
-          title="Stickers — searchable sticker picker"
-          onClick={() => {
-            try {
-              window.parent.postMessage({ dgn: 'open-sticker-picker' }, '*');
-            } catch {
-              /* detached / cross-origin teardown */
-            }
-          }}
-        >
-          <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>
-            🙂
-          </span>
-        </button>
+        )}
         <button
           type="button"
           aria-label="Export (⌘E)"

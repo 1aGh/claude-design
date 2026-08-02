@@ -23,6 +23,7 @@ import {
 
 import { TOOL_CURSORS } from './canvas-cursors.ts';
 import type { Tool } from './input-router.tsx';
+import { isReadOnlyCanvas } from './read-only-mode.ts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -69,6 +70,23 @@ export const DEFAULT_TOOLS: readonly ToolDescriptor[] = Object.freeze([
   { id: 'eraser', label: 'Eraser', shortcut: 'E', cursor: TOOL_CURSORS.eraser },
 ]);
 
+/**
+ * Cloud Phase 25 C2 — the tools a READ-ONLY session keeps: navigate and
+ * inspect, nothing that writes. Everything else (comment included — the cell
+ * refuses viewer comments until Phase 25 C3 lands them on its allowlist) is
+ * ABSENT from the palette, its letter shortcut dead, and `setTool` refuses it
+ * (which also covers the shell's `tool-set` postMessage lane).
+ */
+const READ_ONLY_TOOL_IDS: ReadonlySet<Tool> = new Set<Tool>(['browse', 'move', 'hand']);
+
+/** Pure filter — exported for unit tests. */
+export function filterToolsForReadOnly(
+  tools: readonly ToolDescriptor[],
+  readOnly: boolean
+): readonly ToolDescriptor[] {
+  return readOnly ? tools.filter((t) => READ_ONLY_TOOL_IDS.has(t.id)) : tools;
+}
+
 interface ToolContextValue {
   tool: Tool;
   setTool: (t: Tool) => void;
@@ -92,7 +110,7 @@ const ToolContext = createContext<ToolContextValue | null>(null);
 
 export function ToolProvider({
   children,
-  tools = DEFAULT_TOOLS,
+  tools: toolsProp = DEFAULT_TOOLS,
   // feature-4 (browse/move split, DDR-187) — boot into `browse` so a freshly
   // opened mock is ALIVE (native pass-through). V flips to the Move (select)
   // tool. This is the user-decided boot posture (2026-07-15), zero regression
@@ -103,17 +121,29 @@ export function ToolProvider({
   tools?: readonly ToolDescriptor[];
   initial?: Tool;
 }) {
+  // Cloud Phase 25 C2 — a read-only canvas keeps only navigate/inspect tools.
+  // Filtering HERE covers every consumer at once: the palette renders from
+  // `tools`, the input router's letter shortcuts resolve against `tools`, and
+  // `setTool` below refuses anything outside the list (the shell `tool-set`
+  // postMessage lane included).
+  const tools = useMemo(() => filterToolsForReadOnly(toolsProp, isReadOnlyCanvas()), [toolsProp]);
   const [tool, setToolState] = useState<Tool>(initial);
   const [sticky, setSticky] = useState<{ tool: Tool | null; locked: boolean }>(() => ({
     tool: null,
     locked: false,
   }));
-  const setTool = useCallback((t: Tool) => {
-    setToolState(t);
-    // Single-click on a different tool clears any sticky lock — sticky is
-    // a per-tool flag, not global.
-    setSticky((prev) => (prev.locked && prev.tool === t ? prev : { tool: null, locked: false }));
-  }, []);
+  const setTool = useCallback(
+    (t: Tool) => {
+      // Refuse tools that aren't offered (read-only filtering above) — a
+      // shortcut or postMessage can't arm a tool the palette doesn't show.
+      if (!tools.some((d) => d.id === t)) return;
+      setToolState(t);
+      // Single-click on a different tool clears any sticky lock — sticky is
+      // a per-tool flag, not global.
+      setSticky((prev) => (prev.locked && prev.tool === t ? prev : { tool: null, locked: false }));
+    },
+    [tools]
+  );
   const toggleSticky = useCallback((t: Tool) => {
     setSticky((prev) => {
       if (prev.locked && prev.tool === t) return { tool: null, locked: false };

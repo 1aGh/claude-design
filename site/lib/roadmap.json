@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-02T17:44:47.971Z",
+  "generated": "2026-08-02T18:38:54.590Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1814,6 +1814,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is the extracted Phase 5 of feature-ai-media-generation (closed at Phase 4, 2026-...",
       "planPath": ".ai/plans/feature-local-media-generation.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-figma-import",
+      "title": "Feature: Figma / FigJam import",
+      "status": "icebox",
+      "shipTarget": "ICEBOX",
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-figma-import.md",
       "archived": false,
       "phaseKey": null
     }

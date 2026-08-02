@@ -96,4 +96,17 @@ describe('canvasUrl — per-canvas design-system token resolution', () => {
   test('non-tsx paths bypass the shell and return a direct URL', () => {
     expect(canvasUrl('.design/ui/legacy.html', cfg)).toBe(urlOf('.design/ui/legacy.html'));
   });
+
+  // Cloud Phase 25 C2 — the viewer role rides into the canvas as ?ro=1 so the
+  // iframe chrome is read-only from its very first paint (boot-static, no
+  // postMessage race).
+  test('cfg.readOnly stamps ro=1; absent/false omits it', () => {
+    expect(paramsOf(canvasUrl('.design/ui/Studio.tsx', { ...cfg, readOnly: true })).get('ro')).toBe(
+      '1'
+    );
+    expect(paramsOf(canvasUrl('.design/ui/Studio.tsx', cfg)).get('ro')).toBeNull();
+    expect(
+      paramsOf(canvasUrl('.design/ui/Studio.tsx', { ...cfg, readOnly: false })).get('ro')
+    ).toBeNull();
+  });
 });

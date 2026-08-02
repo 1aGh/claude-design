@@ -89,6 +89,7 @@ import {
 import { ElementMarqueeOverlay } from './marquee-overlay.tsx';
 import { MeasureOverlay } from './measure-overlay.tsx';
 import { ParticipantsChrome } from './participants-chrome.tsx';
+import { isReadOnlyCanvas } from './read-only-mode.ts';
 import { mountCaret, placeCaretAt } from './text-caret.ts';
 import { ToolPalette } from './tool-palette.tsx';
 import { UndoHud } from './undo-hud.tsx';
@@ -1872,7 +1873,7 @@ function buildRegistry(deps: {
     window as unknown as { __maudeConvertArtboard?: typeof postConvertArtboardToAbsolute }
   ).__maudeConvertArtboard = postConvertArtboardToAbsolute;
 
-  return {
+  const registry: ContextRegistry = {
     element: [
       [
         {
@@ -2280,6 +2281,43 @@ function buildRegistry(deps: {
     ],
     overlay: [],
   };
+  return filterRegistryForReadOnly(registry);
+}
+
+/**
+ * Cloud Phase 25 C2 — a read-only canvas keeps only the context-menu items
+ * that READ the project (navigate, inspect, copy, export). Everything else is
+ * ABSENT, not disabled. Deliberately an ALLOWLIST: a future item defaults to
+ * absent for viewers (the C1 posture), rather than leaking in by omission.
+ * `add-comment` joins when Phase 25 C3 lands comments on the cell's read-only
+ * allowlist.
+ */
+const READ_ONLY_MENU_IDS = new Set([
+  'fit-view',
+  'reset-view',
+  'fit-one',
+  'open-timeline',
+  'copy-css',
+  'copy-id',
+  'copy-style',
+  'inspect',
+  'select-layer',
+  'deselect',
+  'export-selection',
+  'export-artboard',
+  'export-canvas',
+  'export-project',
+]);
+
+function filterRegistryForReadOnly(registry: ContextRegistry): ContextRegistry {
+  if (!isReadOnlyCanvas()) return registry;
+  const out = {} as ContextRegistry;
+  for (const key of Object.keys(registry) as (keyof ContextRegistry)[]) {
+    out[key] = registry[key]
+      .map((section) => section.filter((item) => READ_ONLY_MENU_IDS.has(item.id)))
+      .filter((section) => section.length > 0);
+  }
+  return out;
 }
 
 function boundsOf(el: HTMLElement) {
@@ -3003,6 +3041,10 @@ function CanvasRouter({
       opts?: { selectAll?: boolean }
     ): void {
       if (editing) return;
+      // Cloud Phase 25 C2 — inline text edit is a source write; a read-only
+      // canvas never enters edit mode (one gate for BOTH entry points: the
+      // dblclick drill and the annotation Text-tool click-through).
+      if (isReadOnlyCanvas()) return;
       editing = stamped;
       original = stamped.textContent ?? '';
       stamped.setAttribute('contenteditable', 'plaintext-only');
@@ -3248,6 +3290,11 @@ function CanvasRouter({
     },
   });
 
+  // Cloud Phase 25 C2 — a read-only canvas mounts no EDIT chrome (resize /
+  // spacing / grid handles, reorder drag, contextual + multi-artboard
+  // toolbars). Editing is absent, not disabled. Selection, halos, measure,
+  // annotations DISPLAY, cursors and presence all stay — they read.
+  const readOnly = isReadOnlyCanvas();
   return (
     <>
       {children}
@@ -3259,19 +3306,21 @@ function CanvasRouter({
       <ElementMarqueeOverlay />
       <HoverHalo el={hoverEl} />
       <SelectionHalos />
-      <ElementResizeOverlay />
-      <SpacingHandlesOverlay />
-      <GridTrackHandlesOverlay />
-      <ReorderDrag />
+      {!readOnly && <ElementResizeOverlay />}
+      {!readOnly && <SpacingHandlesOverlay />}
+      {!readOnly && <GridTrackHandlesOverlay />}
+      {!readOnly && <ReorderDrag />}
       <LayersLiveSync />
       <GroupBbox />
-      <EqualSpacingHandles />
+      {!readOnly && <EqualSpacingHandles />}
       <MeasureOverlay />
-      <ContextualToolbar />
-      <MultiArtboardToolbar
-        distributeArtboards={distributeArtboards}
-        alignArtboards={alignArtboards}
-      />
+      {!readOnly && <ContextualToolbar />}
+      {!readOnly && (
+        <MultiArtboardToolbar
+          distributeArtboards={distributeArtboards}
+          alignArtboards={alignArtboards}
+        />
+      )}
       <SnapGuideOverlay />
       <PhotoPreviewBridge />
       <UndoHud />
