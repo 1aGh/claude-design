@@ -3,7 +3,7 @@
   "entries": [
     {
       "id": "desktop-opens-again",
-      "version": "0.52.0",
+      "version": "0.52.2",
       "date": "2026-08-02",
       "kind": "fix",
       "title": "The desktop app opens again",
