@@ -74,6 +74,14 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Install the data plane's dependencies
+        working-directory: apps/cells
+        # `wrangler deploy` BUNDLES the Worker, so `@cloudflare/containers`
+        # has to be on disk — the deploy is a build, not an upload. Missing
+        # this failed with "Could not resolve" only AFTER the image had been
+        # built and pushed, which is the expensive half.
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
       - name: Test the data plane
         working-directory: apps/cells
         # The tenant mapping is where a mistake means one tenant reading
