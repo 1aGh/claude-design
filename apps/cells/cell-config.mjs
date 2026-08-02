@@ -97,6 +97,15 @@ export function tenantFromHostname(hostname, zone) {
   const suffix = `.${String(zone ?? '').toLowerCase()}`;
   if (!zone || !h.endsWith(suffix)) return null;
   const label = h.slice(0, -suffix.length);
+  // THE GALLERY IS GONE (Cloud Phase 25 C5) — and deleting its ROUTES is not
+  // the same as deleting its ADDRESS. `view-<project>` is a valid tenant-id
+  // shape, so a leftover custom domain would resolve here and start a cell
+  // literally named "view-alligators": a brand new empty project, at a URL
+  // that used to be a real page, with autosave ready to commit over it. This
+  // is not hypothetical — the hostname was still live in production after C5
+  // shipped, because a Worker route and a Worker custom domain are different
+  // objects and only one of them is in the repo.
+  if (label.startsWith('view-')) return null;
   return isValidTenantId(label) ? label : null;
 }
 

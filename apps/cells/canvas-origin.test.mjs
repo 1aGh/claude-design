@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { canvasOriginTenant } from './cell-config.mjs';
+import { canvasOriginTenant, tenantFromHostname } from './cell-config.mjs';
 
 test('canvas.<zone>/<project>/… resolves to the project, tenant stripped from the path', () => {
   const out = canvasOriginTenant(
@@ -53,4 +53,16 @@ test('a hostname that merely starts with canvas is not the origin either', () =>
 
 test('no zone configured means no canvas origin — never a guess', () => {
   assert.equal(canvasOriginTenant(new URL('https://canvas.cloud.maude.sh/x'), ''), null);
+});
+
+// ── the gallery's namespace stays dead (Cloud Phase 25 C5) ──────────────────
+
+test('a leftover view-<project> hostname resolves to no tenant at all', () => {
+  // Deleting the routes did not delete the addresses: `view-alligators` was
+  // still live in production after C5. Left unguarded it is not a 404 — it is
+  // a NEW empty cell at an old URL, with autosave ready to commit over it.
+  assert.equal(tenantFromHostname('view-alligators.cloud.maude.sh', 'cloud.maude.sh'), null);
+  assert.equal(tenantFromHostname('view-anything.cloud.maude.sh', 'cloud.maude.sh'), null);
+  // A project whose own name merely contains the word is untouched.
+  assert.equal(tenantFromHostname('viewfinder.cloud.maude.sh', 'cloud.maude.sh'), 'viewfinder');
 });

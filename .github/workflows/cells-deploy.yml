@@ -17,6 +17,17 @@ name: Cell image + data plane
 #
 # The cell image derives FROM the hub image, so this waits for `hub-image.yml`
 # to publish the tag it is built from.
+#
+# TOKEN SCOPE — the first run failed here, so it is written down. The shared
+# `CLOUDFLARE_API_TOKEN` needs, on top of what deploying a Worker already
+# requires (Account → Workers Scripts: Edit):
+#
+#   Account → Workers Containers: Write     ← pushing to registry.cloudflare.com
+#   Account → Cloudchamber: Write           ← rolling the container config
+#
+# Without them `wrangler containers push` returns a bare `Forbidden` with no
+# indication of which permission is missing, and the image builds perfectly
+# first — so the failure reads like a registry outage rather than a token.
 
 on:
   push:
