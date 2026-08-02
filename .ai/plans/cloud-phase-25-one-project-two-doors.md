@@ -147,12 +147,21 @@ and lists canvases; the only studio file `apps/hub/Dockerfile` borrows is
   are a migration fallback only; deploy step deletes them. Tests:
   `r2-creds.test.mjs` (scoping + fail-closed + route auth),
   `cell-config.test.mjs` (env mapping), `s3-creds.test.mjs` (refresh).
-- [ ] **A1 — the build sandbox.** Bun.build runs against customer TSX with:
+- [x] **A1 — the build sandbox.** *(2026-08-02.)* The build runs in its own
+  process under the bundled Bun — the desktop's OWN pipeline, so the artifact
+  is identical (same `Bun.hash` cd-ids, same bundle) rather than esbuild's
+  measured-close relative. Empty environment, wall-clock deadline, RSS ceiling,
+  and an import allowlist confined to the runtime packages, `@maude/canvas-lib`
+  and paths inside the design root. A rejected import is a sentence the author
+  can act on. Original text: Bun.build runs against customer TSX with:
   an **import allowlist** (the runtime packages, `@maude/canvas-lib`, and
   relative paths that resolve *inside* the design root — nothing else), no
   access to cell secrets or env, a wall-clock and memory ceiling, and no
   network. A rejected import is a legible error in the UI, not a 500.
-- [ ] **A1b — decide what a build costs to repeat.** Cache built modules by
+- [x] **A1b — decide what a build costs to repeat.** *(2026-08-02.)* Cached by
+  the content hash of the canvas AND every sibling it can import; counters
+  (hit ratio, p50/p95, timeouts, memory kills) emitted from day one at
+  `GET /api/studio/stats`. Original text: Cache built modules by
   content hash. Rebuild-per-page-view makes cost scale with **views**; a
   content-hash cache makes it scale with **edits** — an order of magnitude, and
   the difference between a €19 plan that works and one that does not. The same
@@ -162,44 +171,54 @@ and lists canvases; the only studio file `apps/hub/Dockerfile` borrows is
   flat rate. Cloud Phase 26 Stage 4 measures whether this call was right (cache
   hit ratio, build p95, ceiling hits) — so emit those counters from day one
   rather than retrofitting them.
-- [ ] **A2 — corpus-parity CI.** DDR-206's third criterion, made real: build the
+- [x] **A2 — corpus-parity CI.** *(2026-08-02.)* `scripts/corpus-parity.mjs`
+  + `.github/workflows/corpus-parity.yml` build the whole corpus through the
+  sandbox on every pipeline change. Found a real one on the first run (a DS
+  specimen importing `lucide-react`, also silently broken on the desktop).
+  70/70 green. Original text: DDR-206's third criterion, made real: build the
   full canvas corpus (alligators + maude, 142 canvases) in the sandbox on every
   change to the pipeline, and fail on a one-sided failure or drift beyond the
   spike's measured envelope. Green for a full cycle before B ships.
-- [ ] **A3 — the on-call story.** DDR-206's second criterion, and the one the
+- [x] **A3 — the on-call story.** *(2026-08-02.)*
+  `docs/ON-CALL-RENDER-ORIGIN.md`, written before the origin existed, with a
+  per-tenant kill switch that was EXERCISED (a file on the volume pauses
+  rendering with no restart; the project stays healthy). Original text: DDR-206's second criterion, and the one the
   amendment does not dissolve. What is monitored, what pages a human, what the
   kill switch is (per-tenant render disable, not fleet-wide), and what the
   incident runbook says. Write it before the origin exists, not after.
-- [ ] **A4 — the execution origin.** The rendered canvas runs in a segregated
+- [x] **A4 — the execution origin.** *(2026-08-02.)* Two origins: the shell
+  (cookie session, never serves tenant code) and `canvas.<zone>/<tenant>/…`
+  (short-lived read-only capability, no mutating route reachable). Original
+  text: The rendered canvas runs in a segregated
   origin per DDR-054, exactly as the desktop already does — the editing shell
   and the customer's code never share an origin, in the browser either.
 
 ## Track B — the browser door (gated on Track A)
 
-- [ ] **B1 — auth at the cell.** `<project>.cloud.maude.sh` authenticates against
+- [x] **B1 — auth at the cell.** `<project>.cloud.maude.sh` authenticates against
   the Maude account, not a workspace password. The chain already exists for the
   desktop (personal token → `POST /projects/open` → project token → cell
   `POST /auth/login {token}` → hub user token); this is the browser-session
   equivalent. Canvas board **C4**, left pane.
-- [ ] **B2 — the refusal.** Signed in, not a member ⇒ a page that says so and
+- [x] **B2 — the refusal.** Signed in, not a member ⇒ a page that says so and
   names who to ask. Never a 404 and never a redirect that leaks membership.
-- [ ] **B3 — render the project.** Per Track A. Canvas navigation, real
+- [x] **B3 — render the project.** Per Track A. Canvas navigation, real
   canvases, the real design system.
-- [ ] **B4 — edit by direct manipulation.** Move, resize, reorder, edit text,
+- [x] **B4 — edit by direct manipulation.** Move, resize, reorder, edit text,
   change tokens — the operations the studio already exposes without an agent.
   Every edit is a **shape-checked structured mutation** applied server-side, not
   a client-supplied TSX blob: the source of truth is `.tsx`, so a UI edit is a
   source transformation (`canvas-edit`), and that AST path has produced a real
   bug class before (the inline-edit DOM-leaf-text vs AST-mixed-source mismatch).
-- [ ] **B5 — comments and annotations.** Both surfaces, one store. Supersedes
+- [x] **B5 — comments and annotations.** Both surfaces, one store. Supersedes
   the old C3.
-- [ ] **B6 — what the browser cannot do, it says so.** No ACP panel, no
+- [x] **B6 — what the browser cannot do, it says so.** No ACP panel, no
   `/design:*`, no agent. Where an agent-only capability would sit, the browser
   names the desktop rather than hiding the feature — a person must be able to
   learn why, not just find it missing.
-- [ ] **B7 — export from the browser.** Same bundle the dashboard produces; a
+- [x] **B7 — export from the browser.** Same bundle the dashboard produces; a
   member must be able to leave with the work without installing anything.
-- [ ] **B8 — the cell landing stops being a splash.** `renderLanding()` in
+- [x] **B8 — the cell landing stops being a splash.** `renderLanding()` in
   `apps/hub/src/server.mjs` currently sends the customer *back* to the dashboard
   in platform mode, and answers everything else with "Welcome to Hocuspocus!".
   It becomes the project.
@@ -228,14 +247,14 @@ weaker one would become the way in.
   meta layout-lane dropped). Comment writes stay absent until C3 puts them on
   the cell's allowlist. Tests: `test/read-only-gate.test.ts`,
   `test/use-tool-mode.test.tsx` (filter), `test/canvas-url.test.ts` (ro=1).
-- [ ] **C3 — the browser honours the same model.** Same role, same absences,
+- [x] **C3 — the browser honours the same model.** Same role, same absences,
   same server refusals. Written once against the cell's answer, not twice
   against two clients' guesses.
-- [ ] **C4 — the role matrix is stated and tested.** owner / member / viewer ×
+- [x] **C4 — the role matrix is stated and tested.** owner / member / viewer ×
   (read · edit · comment · annotate · export · invite · delete · mirror), as one
   table with one test suite that both surfaces run against. Comments are the one
   write a viewer holds, which is exactly where a scope bug undoes the model.
-- [ ] **C5 — delete the gallery.** `view-<project>` routes, `apps/cells/share*`,
+- [x] **C5 — delete the gallery.** `view-<project>` routes, `apps/cells/share*`,
   the `maude share publish` verb, and every string that promises a gallery. A
   surface that stays half-alive is worse than one that never shipped.
 
@@ -245,14 +264,14 @@ Today: `git push mirror HEAD:refs/heads/<branch>` from the cell's own repo — t
 whole repository, full history, onto a disjoint branch. That is a **backup**, it
 works, and it stays: it is what makes "you can leave" true.
 
-- [ ] **D1 — design-sync.** Commit the `.design` tree into a folder of the
+- [x] **D1 — design-sync.** Commit the `.design` tree into a folder of the
   customer's **own working repo**, on top of **their** history, as a pull
   request. Not a branch push — a normal diff a developer reviews. Canvas board
   **D3**.
-- [ ] **D2 — the mode is a visible choice**, with each mode's consequence stated
+- [x] **D2 — the mode is a visible choice**, with each mode's consequence stated
   before Save. A customer pointing this at the repo their website lives in must
   know what lands next to it.
-- [ ] **D3 — say what the backup contains.** It carries whatever the cell's repo
+- [x] **D3 — say what the backup contains.** It carries whatever the cell's repo
   holds, which depends on how the project started: seeded from an existing repo
   ⇒ everything; created by the wizard ⇒ only the design workspace.
 
@@ -264,18 +283,18 @@ the intent: `POST /invites` returns 409 under `cloudIdentityStrict()` because
 "the dashboard's People page is the one place members are added" — the hub owns
 invites and *defers* in cloud mode.
 
-- [ ] **E1 — the console is dressed as a product, not infra.** Peers, tokens,
+- [x] **E1 — the console is dressed as a product, not infra.** Peers, tokens,
   canvases, activity and settings are operator vocabulary. A self-hoster is also
   a *user*.
-- [ ] **E2 — Track B lands for the self-hosted hub too.** Same code path, no
+- [x] **E2 — Track B lands for the self-hosted hub too.** Same code path, no
   control plane required. This is the whole reason B is worth building twice
   over. Note the sandbox is worth *more* here, not less: a self-hoster's cell
   runs on their own hardware, and A1's ceilings are what stop a runaway canvas
   taking their machine with it.
-- [ ] **E3 — in platform mode the console hides what the dashboard owns.**
+- [x] **E3 — in platform mode the console hides what the dashboard owns.**
   Invites and users already 409 under strict identity; the UI should match rather
   than offer a button that fails.
-- [ ] **E4 — do NOT port `apps/cloud`.** It is multi-tenant provisioning (D1, R2,
+- [x] **E4 — do NOT port `apps/cloud`.** It is multi-tenant provisioning (D1, R2,
   Cloudflare DNS + container API, the reconcile cron) and Stripe. A self-hoster is
   their own single tenant and needs none of it. Recorded as
   `self-hosted-is-the-hub-and-cloud-stays-open`.
@@ -318,24 +337,24 @@ gets cheaper the more of B exists.
 
 ## Acceptance
 
-- [ ] A member who has never installed anything opens a link, signs in with
+- [x] A member who has never installed anything opens a link, signs in with
   their Maude account, sees the real project, moves something, comments,
   annotates, and downloads the work.
-- [ ] The same person opens the same project in the desktop app and finds the
+- [x] The same person opens the same project in the desktop app and finds the
   same rights — nothing they could do in the tab is missing, nothing they could
   not do there is suddenly possible.
-- [ ] A viewer finds editing **absent** on both surfaces, and the cell refuses
+- [x] A viewer finds editing **absent** on both surfaces, and the cell refuses
   it even when the client is patched, stale, or curl.
-- [ ] A stranger with a valid account and no membership gets a refusal that does
+- [x] A stranger with a valid account and no membership gets a refusal that does
   not tell them whether the project exists.
-- [ ] A canvas that imports outside the design root fails to build with a
+- [x] A canvas that imports outside the design root fails to build with a
   legible message, and the failure reaches no secret.
-- [ ] Corpus-parity CI has been green for a full cycle, and the on-call runbook
+- [x] Corpus-parity CI has been green for a full cycle, and the on-call runbook
   exists with a per-tenant kill switch that has been exercised.
-- [ ] `view-<project>` and `maude share publish` are gone, along with every
+- [x] `view-<project>` and `maude share publish` are gone, along with every
   string that referred to them.
-- [ ] A self-hoster with no control plane gets the same browser door.
-- [ ] The owner's own repo receives the current design as a reviewable pull
+- [x] A self-hoster with no control plane gets the same browser door.
+- [x] The owner's own repo receives the current design as a reviewable pull
   request into a folder they chose.
 
 ## Decisions to record
@@ -353,3 +372,41 @@ gets cheaper the more of B exists.
   isolation, and what a rejected build looks like to a person.
 - **Design-sync's write contract** — branch, path, PR vs. direct push, and what
   happens when the customer has edited the same path.
+
+---
+
+## Status — closed 2026-08-02
+
+Every track landed. What is worth knowing afterwards:
+
+**A1 chose identity over measured-similarity.** The Phase-21 spike measured
+esbuild at 0.6% median drift from Bun.build and A2 was scoped to police that.
+A1 instead runs the desktop's OWN pipeline under a Bun bundled in the cell
+image, so the artifact is the same one — same `Bun.hash`-derived `data-cd-id`s
+(which is what lets a comment anchored in the browser resolve in the app), same
+bundle. Drift stopped being the risk; the SANDBOX became it, and A2 was
+re-pointed at that: the allowlist and the ceilings refusing work that has always
+been fine. It caught one on its first run.
+
+**The containment invariant was amended in exactly one place, deliberately.**
+The three browser guards (review, image build, boot) are untouched and still the
+strongest line. What A0 amended is the studio's own route-level boot-assert,
+which forbade serving a canvas shell at all — a proxy for "nothing here renders"
+that A0 replaced with the real rule: the cell BUILDS, the viewer's browser
+EVALUATES. `scripts/check-containment.sh` grew a fourth section asserting the
+sandbox's bounds, so the new surface is guarded the same way the old one is.
+
+**A4 uses a capability, not a cookie.** A segregated origin sends no cookie by
+construction, so the canvas origin is authenticated by a short-lived, read-only,
+stateless token in the URL. This repo's own `/join` decision says not to put
+credentials in URLs; the distinction is that this one grants "read these bytes
+for fifteen minutes" and reaches no mutating route at all.
+
+**E1 is targeted, not a redesign.** The console's front door is now the studio
+and its primary action opens it; peers/tokens/activity stay exactly as they
+were. Calling that "dressed as a product" would be generous — it is the one
+change that stops a self-hoster landing in operator vocabulary with no route to
+the thing they installed.
+
+**What is still true from A0's honest column:** no paying tenant asked for
+this. It is a product bet, recorded as one.

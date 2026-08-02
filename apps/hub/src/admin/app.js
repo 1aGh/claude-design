@@ -184,7 +184,35 @@ async function refresh() {
   }
 }
 
+/**
+ * Cloud Phase 25 E3 — in PLATFORM mode the console hides what the dashboard
+ * owns.
+ *
+ * `POST /invites` already answers 409 under strict cloud identity, because the
+ * dashboard's People page is the one place members are added. A button that
+ * fails is worse than no button: it teaches the operator that the console is
+ * unreliable, when in fact it is deferring correctly. So the button goes, and
+ * a sentence says where invites actually live.
+ */
+function applyPlatformPosture(s) {
+  const platform = s?.identity?.mode === 'strict';
+  const invite = $('topbar-invite');
+  if (!platform || !invite) return;
+  invite.hidden = true;
+  const form = $('invite-form');
+  if (form && !form.dataset.platformNoted) {
+    form.dataset.platformNoted = '1';
+    form.hidden = true;
+    const note = document.createElement('p');
+    note.className = 'quiet';
+    note.textContent =
+      'People are added on your Maude dashboard — this project takes its members from your account, so an invite made here would not be one.';
+    form.parentElement?.insertBefore(note, form);
+  }
+}
+
 function renderStatus(s, peers) {
+  applyPlatformPosture(s);
   $('s-uptime').textContent = formatDuration(s.uptimeMs);
   $('s-version').textContent = s.version;
   $('s-port').textContent = s.port;

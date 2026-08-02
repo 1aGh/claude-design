@@ -115,6 +115,15 @@
               <span class="nav-brand-url" id="nav-hub-url">self-hosted sync</span>
             </span>
           </div>
+          <!-- Cloud Phase 25 E1 — a self-hoster is also a USER. The console used
+               to open on operator vocabulary (peers, tokens, activity) with no
+               route to the thing they actually installed this for. The project
+               is now the first item and the primary action; Operate is still
+               everything it was, one section down. -->
+          <div class="nav-sect">Design</div>
+          <div class="nav-list">
+            <a class="nav-item" id="nav-studio" href="/studio"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-canvases"/></svg></span><span class="nav-label">Open the studio</span></a>
+          </div>
           <div class="nav-sect">Operate</div>
           <div class="nav-list" id="nav-list">
             <button type="button" class="nav-item" data-view="overview" aria-current="page"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-overview"/></svg></span><span class="nav-label">Overview</span></button>
@@ -147,7 +156,11 @@
               <input id="search" type="text" placeholder="Search peers, tokens…" aria-label="Search">
               <span class="kbd" aria-hidden="true">/</span>
             </label>
-            <button id="topbar-invite" type="button" class="btn btn--primary"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Generate invite</button>
+            <a id="topbar-studio" class="btn btn--primary" href="/studio"><svg class="ic" aria-hidden="true"><use href="#i-canvases"/></svg> Open the studio</a>
+            <!-- E3 — in PLATFORM mode the dashboard owns invites (POST /invites
+                 409s under strict identity), so the console must not offer a
+                 button that fails. app.js hides this and says where they live. -->
+            <button id="topbar-invite" type="button" class="btn btn--ghost" style="margin-left:var(--space-3)"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Generate invite</button>
           </div>
 
           <div class="content dotted">
