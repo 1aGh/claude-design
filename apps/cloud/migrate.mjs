@@ -237,6 +237,19 @@ export const MIGRATIONS = [
       'ALTER TABLE projects ADD COLUMN adverse_since INTEGER;',
     ],
   },
+  {
+    version: 14, // Cloud Phase 25 B1 — the browser door has its own handoff lane
+    statements: [
+      // WHICH SURFACE a code was minted for. The desktop lane refuses viewers
+      // (an app session is an editing credential); the BROWSER lane must not,
+      // because "look, comment and download" is exactly what a viewer's role
+      // means and the browser is where they do it. Recording the surface at
+      // mint time is what lets the exchange apply the right rule instead of
+      // one rule pretending to fit both. NULL reads as 'app' — every code
+      // that exists today was minted for the app.
+      'ALTER TABLE handoff_codes ADD COLUMN surface TEXT;',
+    ],
+  },
 ];
 
 /** Apply baseline + pending versioned migrations. Safe to run repeatedly. */

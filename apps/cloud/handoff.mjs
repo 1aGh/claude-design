@@ -49,7 +49,10 @@ function json(body, status = 200) {
  * viewer could trade for an editing credential would be the silent escalation
  * the debate ruled out.
  */
-export async function mintHandoffCode(env, { account, projectId, now = Date.now() }) {
+export async function mintHandoffCode(
+  env,
+  { account, projectId, now = Date.now(), surface = 'app' }
+) {
   let project = null;
   let members = [];
   try {
@@ -65,14 +68,31 @@ export async function mintHandoffCode(env, { account, projectId, now = Date.now(
   }
   const verdict = decideAccess({ accountId: account?.id ?? null, project, members });
   if (!verdict.ok) return { ok: false, reason: verdict.reason };
-  if (verdict.role === 'viewer') return { ok: false, reason: 'viewer-not-supported' };
+  // The APP lane still refuses viewers — a desktop session is an editing
+  // credential, and handing one to a viewer would be the silent escalation the
+  // debate ruled out. The BROWSER lane (Cloud Phase 25 B1) does not: looking,
+  // commenting and downloading is what the role means, and the browser is
+  // where a viewer does it. The cell then holds them read-only (C1/C3), so the
+  // rule is enforced where it cannot be argued with rather than by withholding
+  // the door.
+  if (surface !== 'browser' && verdict.role === 'viewer') {
+    return { ok: false, reason: 'viewer-not-supported' };
+  }
 
   const code = `mhc_${b64hex(crypto.getRandomValues(new Uint8Array(32)))}`;
   await env.DB.prepare(
-    `INSERT INTO handoff_codes (id, project_id, account_id, role, created_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO handoff_codes (id, project_id, account_id, role, created_at, expires_at, surface)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   )
-    .bind(await sha256Hex(code), projectId, account.id, verdict.role, now, now + CODE_TTL_MS)
+    .bind(
+      await sha256Hex(code),
+      projectId,
+      account.id,
+      verdict.role,
+      now,
+      now + CODE_TTL_MS,
+      surface
+    )
     .run();
   return { ok: true, code, role: verdict.role, expiresIn: CODE_TTL_MS / 1000 };
 }
@@ -89,6 +109,58 @@ export async function handleHandoff(request, env, { account }) {
   const url = new URL(request.url);
   const { pathname } = url;
   const now = Date.now();
+
+  // ---- the BROWSER door (Cloud Phase 25 B1/B2) ---------------------------
+  //
+  // A GET, because it is a navigation: the member's browser lands here from
+  // the cell, we authenticate the Maude account, decide access, and bounce
+  // back with a claim ticket. Every refusal answers the SAME way (B2): what to
+  // do next, and never whether the project exists.
+  const browserMatch =
+    request.method === 'GET' && /^\/projects\/([a-z0-9]+(?:-[a-z0-9]+)*)\/browser$/.exec(pathname);
+  if (browserMatch) {
+    const projectId = browserMatch[1];
+    const zone = env.CELL_ZONE ?? 'cloud.maude.sh';
+    // The return address is NOT taken from the query string — a redirect
+    // target a stranger can set is an open redirect with a live code attached.
+    // It is derived from the project id, which is the only cell that could
+    // legitimately have sent this person here.
+    const back = `https://${projectId}.${zone}/auth/browser`;
+    if (!account) account = await personalTokenAccount(env, request, { now });
+    if (!account) {
+      // Sign in first, then come straight back to this same URL.
+      const next = encodeURIComponent(`${url.pathname}${url.search}`);
+      return new Response(null, {
+        status: 302,
+        headers: { location: `/auth/login?next=${next}`, 'cache-control': 'no-store' },
+      });
+    }
+    const minted = await mintHandoffCode(env, { account, projectId, now, surface: 'browser' });
+    if (!minted.ok) {
+      // ONE answer for "no access" and "no such project" — a distinct 404
+      // would be a project-existence oracle for anyone with an account.
+      return new Response(null, {
+        status: 302,
+        headers: { location: `${back}?denied=1`, 'cache-control': 'no-store' },
+      });
+    }
+    await audit(env.DB, {
+      accountId: account.id,
+      projectId,
+      actor: `customer:${account.email}`,
+      action: 'browser.open',
+    });
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: `${back}?code=${encodeURIComponent(minted.code)}`,
+        'cache-control': 'no-store',
+        // The code is live for two minutes and single-use; keep it out of the
+        // next hop's Referer.
+        'referrer-policy': 'no-referrer',
+      },
+    });
+  }
 
   const mintMatch =
     request.method === 'POST' && /^\/projects\/([a-z0-9]+(?:-[a-z0-9]+)*)\/handoff$/.exec(pathname);
@@ -189,7 +261,12 @@ export async function handleHandoff(request, env, { account }) {
       /* unreadable membership is not access */
     }
     const verdict = decideAccess({ accountId: row.account_id, project, members });
-    if (!verdict.ok || verdict.role === 'viewer' || !who) {
+    // Re-decided at exchange, and the surface decides the viewer rule (Phase
+    // 25 B1) — the same asymmetry as the mint, applied to a code that may have
+    // been minted two minutes ago and to a membership that may have changed
+    // since. NULL surface = a code from before this lane existed = 'app'.
+    const browserLane = row.surface === 'browser';
+    if (!verdict.ok || (!browserLane && verdict.role === 'viewer') || !who) {
       return json({ error: 'that code is not valid or has expired' }, 400);
     }
 

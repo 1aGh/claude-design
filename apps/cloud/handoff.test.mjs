@@ -292,3 +292,90 @@ test('F4 — an unset CELL_SECRET_MASTER refuses to mint rather than signing wit
   );
   assert.equal(open.status, 503);
 });
+
+// ── the browser door (Cloud Phase 25 B1/B2) ────────────────────────────────
+
+test('the browser lane admits a VIEWER; the app lane still refuses one', async () => {
+  const { env, sqlite } = await freshEnv();
+  const owner = await signedIn(env, 'owner@example.com');
+  const viewer = await signedIn(env, 'viewer@example.com');
+  const ownerId = sqlite.prepare("SELECT id FROM accounts WHERE email='owner@example.com'").get().id;
+  const viewerId = sqlite.prepare("SELECT id FROM accounts WHERE email='viewer@example.com'").get().id;
+  sqlite
+    .prepare(
+      "INSERT INTO projects (id, account_id, name, state, state_since, created_at) VALUES ('alligators', ?, 'A', 'active', 1, 1)"
+    )
+    .run(ownerId);
+  sqlite
+    .prepare(
+      "INSERT INTO project_members (project_id, account_id, role, added_at) VALUES ('alligators', ?, 'viewer', 1)"
+    )
+    .run(viewerId);
+
+  // App lane: refused, in words.
+  const app = await worker.fetch(
+    new Request('https://cloud.test/projects/alligators/handoff', {
+      method: 'POST',
+      headers: { cookie: `maude_session=${viewer}`, accept: 'application/json' },
+    }),
+    env
+  );
+  assert.equal(app.status, 403);
+
+  // Browser lane: a redirect back to the cell WITH a code.
+  const browser = await worker.fetch(
+    new Request('https://cloud.test/projects/alligators/browser', {
+      headers: { cookie: `maude_session=${viewer}` },
+    }),
+    env
+  );
+  assert.equal(browser.status, 302);
+  const location = browser.headers.get('location');
+  assert.match(location, /^https:\/\/alligators\.cloud\.maude\.sh\/auth\/browser\?code=mhc_/);
+
+  // And the exchange mints a token whose role is viewer — the cell turns that
+  // into a read-only session (C1), which is where the rule is enforced.
+  const code = new URL(location).searchParams.get('code');
+  const exchanged = await worker.fetch(
+    new Request('https://cloud.test/auth/handoff/exchange', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code }),
+    }),
+    env
+  );
+  assert.equal(exchanged.status, 200);
+  assert.equal((await exchanged.json()).role, 'viewer');
+  void owner;
+});
+
+test('a stranger and a non-existent project are refused IDENTICALLY (no oracle)', async () => {
+  const { env, sqlite } = await freshEnv();
+  const ownerId = (await signedIn(env, 'owner@example.com')) && sqlite.prepare("SELECT id FROM accounts WHERE email='owner@example.com'").get().id;
+  sqlite
+    .prepare(
+      "INSERT INTO projects (id, account_id, name, state, state_since, created_at) VALUES ('real-one', ?, 'R', 'active', 1, 1)"
+    )
+    .run(ownerId);
+  const stranger = await signedIn(env, 'stranger@example.com');
+  const call = (id) =>
+    worker.fetch(
+      new Request(`https://cloud.test/projects/${id}/browser`, {
+        headers: { cookie: `maude_session=${stranger}` },
+      }),
+      env
+    );
+  const existing = await call('real-one');
+  const ghost = await call('not-a-project');
+  assert.equal(existing.status, 302);
+  assert.equal(ghost.status, 302);
+  assert.match(existing.headers.get('location'), /\?denied=1$/);
+  assert.match(ghost.headers.get('location'), /\?denied=1$/);
+});
+
+test('the browser lane sends a signed-OUT visitor to sign in, never to a code', async () => {
+  const { env } = await freshEnv();
+  const res = await worker.fetch(new Request('https://cloud.test/projects/x/browser'), env);
+  assert.equal(res.status, 302);
+  assert.match(res.headers.get('location'), /^\/auth\/login\?next=/);
+});

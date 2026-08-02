@@ -79,6 +79,19 @@ export interface BuildCanvasOptions {
    * detected.
    */
   designRoot?: string;
+  /**
+   * Cloud Phase 25 A1 — the SANDBOX's import allowlist.
+   *
+   * On a laptop an unrestricted resolver is correct and harmless: your code,
+   * your machine, your files. In a CELL the same resolver is a build-time read
+   * primitive pointed at a container that holds this tenant's credentials, so
+   * a tenant's own source may reach ONLY the runtime packages,
+   * `@maude/canvas-lib`, and relative paths that resolve INSIDE the design
+   * root. Anything else is a legible build error, never a silent read.
+   *
+   * Set to the absolute design root to arm it. Absent (desktop) ⇒ unchanged.
+   */
+  restrictImportsTo?: string;
 }
 
 /**
@@ -115,6 +128,7 @@ export async function buildCanvasModule(
   // in the bundle). The flatMap legacy alias for `react-dom` is no longer
   // needed; RUNTIME_PACKAGES already lists every specifier the importmap covers.
   const externalSpecifiers = new Set<string>(RUNTIME_PACKAGES);
+  const denials: Array<{ specifier: string; reason: string }> = [];
 
   const built = await Bun.build({
     entrypoints: [canvasAbsPath],
@@ -122,6 +136,12 @@ export async function buildCanvasModule(
     format: 'esm',
     minify: false,
     splitting: false,
+    // Bun.build THROWS by default (an AggregateError whose message is the
+    // useless string "Bundle failed"), which made the `built.success` branch
+    // below dead code and hid every real diagnostic — including, once the
+    // sandbox arrived, the allowlist's own explanation of what it refused.
+    // Take the result, report it ourselves.
+    throw: false,
     define: {
       // Match runtime-bundle.ts: production React. Without this the canvas's
       // `import { jsxDEV } from "react/jsx-dev-runtime"` resolves against a
@@ -154,10 +174,20 @@ export async function buildCanvasModule(
           });
         },
       },
+      // LAST on purpose: by the time a specifier reaches this plugin, the
+      // runtime packages are external and `@maude/canvas-lib` is resolved, so
+      // what is left is exactly "everything else" — which, from a tenant's
+      // own file, must stay inside the design root.
+      ...(options.restrictImportsTo ? [importAllowlist(options.restrictImportsTo, denials)] : []),
     ],
   });
 
   if (!built.success) {
+    // A DENIED IMPORT IS THE MESSAGE. Bun collapses a plugin throw into a bare
+    // "Bundle failed" log, so the allowlist records its own reasons and they
+    // win here — the person who wrote the canvas has to be able to act on it,
+    // and "Bundle failed" tells them nothing.
+    if (denials.length > 0) throw new Error(denials.map((d) => d.reason).join('\n'));
     const msg = built.logs.map((l) => l.message).join('\n');
     throw new Error(`Bun.build failed on ${canvasAbsPath}:\n${msg}`);
   }
@@ -199,6 +229,67 @@ function buildCssInjector(slug: string, css: string): string {
   const enc = JSON.stringify(css);
   const id = `canvas-css-${slug.replace(/[^a-zA-Z0-9-]/g, '_')}`;
   return `// canvas-build: inject bundled sibling CSS so the canvas is self-contained.\n(function(){if(typeof document==="undefined")return;if(document.getElementById(${JSON.stringify(id)}))return;var s=document.createElement("style");s.id=${JSON.stringify(id)};s.dataset.canvasCss="bundled";s.textContent=${enc};document.head.appendChild(s);})();\n`;
+}
+
+/**
+ * The sandbox's import allowlist (Cloud Phase 25 A1).
+ *
+ * The rule is stated by IMPORTER, not by target, because the two trees have
+ * different rights: canvas-lib and its siblings are OUR code and import each
+ * other freely; a tenant's canvas may only reach inside the design root. A
+ * target-only rule would let a tenant's `../../../app/...` traversal land in
+ * the maude install and be waved through as "our" file.
+ *
+ * Denials THROW with the specifier and the reason — a rejected import must
+ * reach the person as a legible build error, never a 500 and never a silent
+ * read of something they should not have.
+ */
+function importAllowlist(
+  designRoot: string,
+  denials: Array<{ specifier: string; reason: string }>
+): {
+  name: string;
+  setup: (builder: {
+    onResolve: (
+      opts: { filter: RegExp },
+      cb: (args: { path: string; importer: string }) => unknown
+    ) => void;
+  }) => void;
+} {
+  const root = path.resolve(designRoot);
+  const inRoot = (p: string) => p === root || p.startsWith(root + path.sep);
+  const deny = (specifier: string, reason: string): never => {
+    denials.push({ specifier, reason });
+    throw new Error(reason);
+  };
+  return {
+    name: 'maude-import-allowlist',
+    setup(builder) {
+      builder.onResolve({ filter: /.*/ }, (args: { path: string; importer: string }) => {
+        const importer = args.importer ? path.resolve(args.importer) : '';
+        // Our own modules (canvas-lib and its graph) resolve normally.
+        if (importer && !inRoot(importer)) return null;
+        if (!args.path.startsWith('.') && !path.isAbsolute(args.path)) {
+          deny(
+            args.path,
+            `This canvas imports "${args.path}", which is not available when it renders in a browser. ` +
+              `A canvas here can use the Maude runtime (react, motion, @maude/canvas-lib) and its own ` +
+              `project files — npm packages are not installed. Open the project in Maude Desktop if you ` +
+              `need one.`
+          );
+        }
+        const resolved = path.resolve(path.dirname(importer || root), args.path);
+        if (!inRoot(resolved)) {
+          deny(
+            args.path,
+            `This canvas imports "${args.path}", which is outside the project (${path.relative(root, resolved)}). ` +
+              `A canvas may only import files inside its own design.`
+          );
+        }
+        return null; // inside the root — let Bun's resolver finish the job
+      });
+    },
+  };
 }
 
 function filterForExactPath(absPath: string): RegExp {

@@ -1,0 +1,80 @@
+// The canvas origin's capability — Cloud Phase 25 A4.
+//
+// The rendered canvas runs in a SEGREGATED ORIGIN (DDR-054): the editing shell
+// and the tenant's own code never share one, in the browser either. A separate
+// origin means no cookies, which means the canvas origin cannot borrow the
+// member's session — so the shell hands the iframe an explicit, short-lived,
+// READ-ONLY capability instead.
+//
+// Why a token in a URL, when this repo's own /join decision says not to. The
+// objection there was a token that grants ACCOUNT access travelling somewhere
+// it can be logged and replayed. This one grants exactly "read the bytes of
+// this project's canvases, for the next few minutes" — no mutation surface is
+// reachable from the canvas origin at all — and it is the only mechanism that
+// works: an opaque/foreign origin sends no cookie by construction.
+//
+// Stateless: HMAC over (project, subject, expiry) with the cell's own secret.
+// No table, so no revocation — which is why the lifetime is minutes, and why
+// the kill switch (A3) works at the ROUTE level rather than by invalidating
+// tokens.
+
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+/** How long a render capability lives. Short: it cannot be revoked. */
+export const RENDER_TOKEN_TTL_MS = 15 * 60 * 1000;
+
+function sign(secret, payload) {
+  return createHmac('sha256', secret).update(payload).digest('base64url');
+}
+
+/**
+ * Mint a capability for one member's canvas session.
+ * `subject` is the member's email — it makes an audit line possible and binds
+ * the token to a person rather than to "anyone who saw the page".
+ */
+export function mintRenderToken({
+  secret,
+  project,
+  subject,
+  now = Date.now(),
+  ttlMs = RENDER_TOKEN_TTL_MS,
+}) {
+  if (!secret) throw new Error('a hub secret is required to mint a render token');
+  // JSON, not a delimiter-joined string: the subject is an EMAIL ADDRESS and
+  // addresses contain dots, so a `a.b.c` payload split back into the wrong
+  // three fields and every token read as expired. Structured in, structured
+  // out — no parsing rule to get subtly wrong.
+  const payload = JSON.stringify({ p: project, s: subject, e: now + ttlMs });
+  return `${Buffer.from(payload).toString('base64url')}.${sign(secret, payload)}`;
+}
+
+/** Verify a capability. Returns `{ok, project, subject}` or `{ok:false, reason}`. */
+export function verifyRenderToken({ secret, token, project, now = Date.now() }) {
+  if (!secret || typeof token !== 'string' || !token.includes('.')) {
+    return { ok: false, reason: 'missing' };
+  }
+  const cut = token.lastIndexOf('.');
+  const body = token.slice(0, cut);
+  const mac = token.slice(cut + 1);
+  let payload;
+  try {
+    payload = Buffer.from(body, 'base64url').toString('utf8');
+  } catch {
+    return { ok: false, reason: 'malformed' };
+  }
+  const expected = sign(secret, payload);
+  const a = Buffer.from(mac);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b))
+    return { ok: false, reason: 'bad-signature' };
+  let claims;
+  try {
+    claims = JSON.parse(payload);
+  } catch {
+    return { ok: false, reason: 'malformed' };
+  }
+  const exp = Number(claims?.e);
+  if (!Number.isFinite(exp) || exp < now) return { ok: false, reason: 'expired' };
+  if (project && claims?.p !== project) return { ok: false, reason: 'wrong-project' };
+  return { ok: true, project: claims.p, subject: claims.s };
+}

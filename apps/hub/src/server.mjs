@@ -59,6 +59,13 @@ import {
 } from './auth-routes.mjs';
 import { scheduleBackups, targetFromConfig, targetFromEnv } from './backup.mjs';
 import { maybeIssueOnBoot, verifyAndConsume } from './bootstrap.mjs';
+import {
+  BROWSER_SESSION_COOKIE,
+  cookieValue,
+  handleBrowserAuth,
+} from './canvas/browser-auth.mjs';
+import { designRootFor } from './canvas/project.mjs';
+import { handleCanvasRoutes, renderDisabled } from './canvas/routes.mjs';
 import { handleExportRoute, scheduleMirror, scheduleRevocationSweep } from './cell-ops.mjs';
 import { clientIpFor, parseTrustedProxies } from './client-ip.mjs';
 import { groupCanvases } from './doc-namespace.mjs';
@@ -422,6 +429,18 @@ export function createHub(config = {}) {
         bailFromOnRequest();
       }
       if (method === 'GET' && (url === '/' || url === '' || url.startsWith('/?'))) {
+        // Cloud Phase 25 B8 — the cell's front door IS the project.
+        //
+        // It used to be a signpost: in platform mode it sent the customer BACK
+        // to the dashboard they had just come from, and everywhere else it
+        // offered the operator console. Both were honest when a cell could not
+        // render anything. Now that it can, the address of the project is the
+        // project, and the operator console goes back to being a footnote.
+        if (canvasDoorAvailable()) {
+          response.writeHead(302, { location: '/studio', 'cache-control': 'no-store' });
+          response.end();
+          bailFromOnRequest();
+        }
         // Minimal landing — replaces Hocuspocus' default "Welcome to Hocuspocus!"
         // with a sensible signpost into the admin console. Self-hosted operator
         // surface, deliberately NOT a marketing page (DDR-097). Server-rendered
@@ -461,6 +480,49 @@ export function createHub(config = {}) {
           });
           bailFromOnRequest();
         }
+      }
+
+      // ---- THE BROWSER DOOR (Cloud Phase 25 B1–B4, A1/A3/A4) --------------
+      //
+      // A member who has installed nothing opens the project here. The session
+      // is a COOKIE over the same peer token the desktop holds as a bearer:
+      // one token store, one expiry, one read-only capability (C1) — a second
+      // session type would be a second place for the role model to drift.
+      if (
+        authPath === '/auth/browser' ||
+        authPath === '/auth/browser/signout' ||
+        authPath === '/studio/signin'
+      ) {
+        const handled = await handleBrowserAuth({
+          request,
+          response,
+          path: authPath,
+          method,
+          dataDir,
+          secret,
+        });
+        if (handled) bailFromOnRequest();
+      }
+      if (
+        authPath === '/studio' ||
+        authPath.startsWith('/studio/') ||
+        authPath.startsWith('/api/studio/') ||
+        authPath.startsWith('/_canvas/')
+      ) {
+        const cookieToken = cookieValue(request, BROWSER_SESSION_COOKIE);
+        const match = cookieToken ? verifyToken(dataDir, cookieToken, secret) : null;
+        const handled = await handleCanvasRoutes({
+          request,
+          response,
+          pathname: authPath,
+          method,
+          secret,
+          projectName: readSettings(dataDir)?.name,
+          session: match?.owner
+            ? { email: match.owner, role: match.readOnly ? 'viewer' : 'member', readOnly: !!match.readOnly }
+            : null,
+        });
+        if (handled) bailFromOnRequest();
       }
 
       // Cloud Phase 3 — authenticated asset proxy. Peer-token gated, GET/HEAD
@@ -1080,6 +1142,20 @@ function nameFromSlug(slug) {
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
+}
+
+/**
+ * Can this hub open a project in a browser? (Cloud Phase 25 B3/B8)
+ *
+ * Two conditions, both structural rather than configured: there is a checkout
+ * with a design root in it, and rendering is not paused (A3's kill switch).
+ * A hub that is only a sync relay — no workspace, no checkout — keeps the
+ * operator landing it always had, which is also the honest answer for it.
+ */
+function canvasDoorAvailable(env = process.env) {
+  if (renderDisabled(env)) return false;
+  const root = designRootFor(env);
+  return Boolean(root && existsSync(root));
 }
 
 function renderLanding(
