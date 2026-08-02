@@ -3,7 +3,7 @@
   "entries": [
     {
       "id": "open-your-project-in-a-browser",
-      "version": null,
+      "version": "0.53.0",
       "date": "2026-08-02",
       "kind": "feature",
       "title": "Open your project in a browser — nothing to install",
@@ -12,7 +12,7 @@
     },
     {
       "id": "viewer-means-viewer",
-      "version": null,
+      "version": "0.53.0",
       "date": "2026-08-02",
       "kind": "feature",
       "title": "A viewer sees no editing tools at all",
@@ -21,7 +21,7 @@
     },
     {
       "id": "design-sync-pull-request",
-      "version": null,
+      "version": "0.53.0",
       "date": "2026-08-02",
       "kind": "feature",
       "title": "Sync your designs into your own repo as a pull request",
