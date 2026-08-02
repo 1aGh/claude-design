@@ -17,7 +17,8 @@
  *   Home/End · Page), select-all-on-focus, the sliders, the token popover, and
  *   the angle dial all actually work — grab a handle, or focus a field and press
  *   the arrows.
- * ICONS: lucide-react (bundled inline by the canvas build; react stays external).
+ * ICONS: ./_inspector-icons (lucide geometry, vendored local — an npm import
+ * cannot resolve in a browser-rendered canvas; Cloud Phase 25 A1).
  * COPY VOICE: real studio labels — Font size, Opacity, Corner radius, Border
  *   style, Fill, Line height, Rotation — never "Enter text" / "Label".
  * WHEN SCAFFOLDED: platform-desktop. This is the Inspector's own control map.
@@ -36,7 +37,7 @@ import {
   AlignRight, Baseline, Bold, Braces, Check, ChevronDown, Columns3, Diamond, Eye, EyeOff,
   Italic, Link, MoveHorizontal, Pipette, RotateCcw, RotateCw, Rows3, Scissors,
   ScrollText, Search, Spline, Square, SquareDashed, Underline, Unlink, Wand2, WrapText, X,
-} from "lucide-react";
+} from "./_inspector-icons";
 
 /* ══════════════════════════════════════════════════════════════════════════
  * Interaction core — ported from apps/studio/client/inspector-controls.jsx so
@@ -137,7 +138,7 @@ function ColorPicker({ seed, onApply }: { seed: string; onApply: (hex: string) =
   );
 }
 
-// lucide wrapper — hairline stroke to match the maude icon weight
+// icon wrapper — hairline stroke to match the maude icon weight
 type LC = typeof Bold;
 const Ic = ({ as: C, size = 14 }: { as: LC; size?: number }) => <C className="icp-i" size={size} strokeWidth={1.75} />;
 
@@ -666,7 +667,7 @@ export default function ComponentsInspectorControls() {
             Every control here is live and follows the real inspector&apos;s rules: the
             scrub handle is the leading icon, box-model cells take Alt / Alt+Shift
             multi-side drags, each row carries a provenance dot, and colours open a
-            token popover with a Variables tab. Icons are lucide-react.
+            token popover with a Variables tab. Icons are the vendored lucide geometry.
           </p>
         </section>
 
@@ -743,7 +744,7 @@ export default function ComponentsInspectorControls() {
           <Field label="Opacity" help="0…100 %, integer step."><SliderField value={opacity} min={0} max={100} step={1} unit="%" ariaLabel="opacity" onChange={setOpacity} /></Field>
         </div>
 
-        <h2 data-no>Icon button groups <span className="h2-aside">≤5 options, lucide icon cells</span></h2>
+        <h2 data-no>Icon button groups <span className="h2-aside">≤5 options, icon cells</span></h2>
         <p>
           When the options have an obvious glyph (direction, distribution, text style),
           an icon segmented reads faster than a dropdown and keeps every choice visible.

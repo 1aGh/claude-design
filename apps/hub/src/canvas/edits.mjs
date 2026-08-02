@@ -16,10 +16,10 @@
 // The engine itself runs in the Bun worker (`edit-worker.ts`).
 
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+
 import { dirname, join, resolve, sep } from 'node:path';
 
-import { resolveBunPath } from './build.mjs';
+import { resolveBunPath, workerEnv, workerScript } from './build.mjs';
 
 /** Wall clock one mutation may take. Generous: it is one AST pass + a rename. */
 export const EDIT_TIMEOUT_MS = Number(process.env.MAUDE_CANVAS_EDIT_TIMEOUT_MS ?? 15_000);
@@ -116,23 +116,20 @@ export function checkEditOp(raw, { designRoot }) {
   return { ok: true, op };
 }
 
-function workerPath() {
-  const here = dirname(new URL(import.meta.url).pathname);
-  const sibling = join(here, 'edit-worker.ts');
-  if (existsSync(sibling)) return sibling;
-  return join(process.cwd(), 'src', 'canvas', 'edit-worker.ts');
-}
-
 /** Apply one CHECKED operation. Same process posture as the build worker. */
 export function applyEditOp(op, { env = process.env } = {}) {
   return new Promise((resolveP) => {
     let child;
     try {
-      child = spawn(resolveBunPath(env), [workerPath(), JSON.stringify(op)], {
-        env: { PATH: env.PATH ?? '/usr/local/bin:/usr/bin:/bin', HOME: env.HOME ?? '/tmp' },
-        cwd: dirname(op.canvasAbs),
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
+      child = spawn(
+        resolveBunPath(env),
+        [workerScript('edit-worker.ts', env), JSON.stringify(op)],
+        {
+          env: workerEnv(env),
+          cwd: dirname(op.canvasAbs),
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }
+      );
     } catch (err) {
       resolveP({ ok: false, error: `could not start the editor: ${err.message}` });
       return;

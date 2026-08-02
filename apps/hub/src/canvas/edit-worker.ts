@@ -19,12 +19,20 @@
 //
 // Protocol: argv[2] is a JSON operation; stdout is one JSON result.
 
-import {
-  deleteElement,
-  editAttribute,
-  editText,
-  resizeArtboard,
-} from '../../../studio/canvas-edit.ts';
+import { dirname, join } from 'node:path';
+
+/** Same two-layout resolution as the build worker — a path, not a secret. */
+function studioDir(): string {
+  if (process.env.MAUDE_STUDIO_SRC) return process.env.MAUDE_STUDIO_SRC;
+  return join(dirname(dirname(dirname(import.meta.dir))), 'studio');
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: the engine is loaded by path.
+let engine: any = null;
+async function loadEngine() {
+  engine ??= await import(join(studioDir(), 'canvas-edit.ts'));
+  return engine;
+}
 
 interface Op {
   kind: string;
@@ -47,6 +55,7 @@ function camel(prop: string): string {
 }
 
 async function apply(op: Op): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { deleteElement, editAttribute, editText, resizeArtboard } = await loadEngine();
   switch (op.kind) {
     case 'set-style': {
       if (!op.id || !op.property) return { ok: false, error: 'id and property are required' };

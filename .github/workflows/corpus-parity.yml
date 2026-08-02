@@ -1,0 +1,97 @@
+name: Corpus parity (cell sandbox)
+
+# Cloud Phase 25 A2 — DDR-206's third re-open condition, made real.
+#
+# The cell BUILDS a tenant's canvas now (Phase 25 A0/A1). The risk that
+# introduces is not bundler drift — the cell runs the desktop's own Bun
+# pipeline, so the artifact is identical — it is the SANDBOX: an import
+# allowlist and resource ceilings that exist only there, and whose failure mode
+# is refusing a canvas that has always worked. Invisible on a laptop; obvious
+# to a customer.
+#
+# So every change to the pipeline rebuilds the whole corpus THROUGH the
+# sandbox and fails on any one-sided failure. It found its first one on the
+# first run (a DS specimen importing lucide-react — broken on the desktop too,
+# silently, for weeks).
+#
+# "Green for a full cycle before B ships" is a human judgement about this
+# workflow's history, not something a job can assert about itself.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/hub/src/canvas/**'
+      - 'apps/studio/canvas-build.ts'
+      - 'apps/studio/canvas-pipeline.ts'
+      - 'apps/studio/canvas-lib.tsx'
+      - 'apps/studio/canvas-lib-resolver.ts'
+      - 'apps/studio/runtime-bundle.ts'
+      - 'scripts/corpus-parity.mjs'
+      - '.design/**'
+      - '.github/workflows/corpus-parity.yml'
+  pull_request:
+    paths:
+      - 'apps/hub/src/canvas/**'
+      - 'apps/studio/canvas-build.ts'
+      - 'apps/studio/canvas-pipeline.ts'
+      - 'apps/studio/canvas-lib.tsx'
+      - 'scripts/corpus-parity.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: corpus-parity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parity:
+    name: Build every canvas in the sandbox
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # The sandbox runs the studio's engine under Bun; pinning matters for
+          # the same reason the release pins it (its minifier output is not
+          # stable across patches).
+          bun-version: 1.3.3
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install the studio's parser dependencies
+        working-directory: apps/studio
+        # The identity pass (data-cd-id injection) needs oxc-parser +
+        # magic-string; canvas-lib's npm imports are EXTERNAL in the canvas
+        # build, so nothing else has to resolve.
+        run: bun install --frozen-lockfile
+
+      - name: Build the corpus through the cell's sandbox
+        env:
+          MAUDE_BUN_PATH: bun
+        run: node scripts/corpus-parity.mjs
+
+      - name: Report
+        if: always()
+        env:
+          MAUDE_BUN_PATH: bun
+        run: |
+          node scripts/corpus-parity.mjs --json > corpus-parity.json || true
+          node -e "
+            const r = require('./corpus-parity.json');
+            console.log('| canvases | built | failed | p50 | p95 |');
+            console.log('|---|---|---|---|---|');
+            const s = r.summary;
+            console.log(\`| \${s.mountable} | \${s.built} | \${s.failed} | \${s.p50Ms}ms | \${s.p95Ms}ms |\`);
+          " >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: corpus-parity
+          path: corpus-parity.json

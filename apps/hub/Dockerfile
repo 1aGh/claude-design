@@ -67,6 +67,25 @@ COPY --from=bundler /build/apps/hub/node_modules ./node_modules
 COPY --from=bundler /build/apps/hub/package.json ./package.json
 RUN npm rebuild better-sqlite3 --build-from-source
 
+# ---- Stage 2.5: the canvas build sandbox's own dependencies ----
+#
+# Cloud Phase 25 A1. The cell BUILDS a tenant's canvas (the viewer's browser
+# evaluates it — that is the line DDR-193 §2 draws, and it is unmoved: no
+# browser enters this image). The build runs the studio's OWN engine under Bun
+# so the artifact is identical to the desktop's, which needs three things here:
+# the engine's source, the two npm packages it parses with, and a Bun to run
+# them. Nothing from this stage is on the server's own module path — the
+# sandbox is a separate process with an empty environment.
+FROM oven/bun:1 AS canvas-deps
+WORKDIR /canvas
+# oxc-parser + magic-string are the identity pass (data-cd-id injection); the
+# rest of the engine's imports are the studio's own files, copied below.
+# EXACT versions, matching apps/studio/package.json — the sandbox's parser is
+# the desktop's parser, or the two produce different `data-cd-id`s and a
+# comment anchored in the browser stops resolving in the app.
+RUN echo '{"name":"maude-canvas-sandbox","private":true,"dependencies":{"magic-string":"0.30.21","oxc-parser":"0.139.0"}}' > package.json \
+  && bun install --no-save
+
 # ---- Stage 3: runtime ----
 FROM node:20-bookworm-slim AS runtime
 # git is load-bearing since Cloud Phase 16: in a workspace deployment autosave
@@ -86,6 +105,31 @@ WORKDIR /app
 # better-sqlite3 binding); the JS bundle + admin assets come from the bundler.
 COPY --from=native /build/node_modules ./node_modules
 COPY --from=bundler /build/apps/hub/dist ./dist
+
+# ---- the canvas build sandbox (Cloud Phase 25 A1) ----
+#
+# A Bun to run the studio's engine with, the engine itself as SOURCE (Bun reads
+# TypeScript natively — there is nothing to compile), its two parser deps, the
+# workers that drive it, and the pre-built browser runtime bundles the shell's
+# importmap points at. Staged under /canvas so the sandbox's file surface is
+# one obvious directory rather than scattered through /app.
+#
+# CONTAINMENT IS UNTOUCHED: no browser enters this image, and the boot-time,
+# build-time and CI assertions that say so are unmodified. A bundler is not a
+# renderer — the cell parses and transforms; the viewer's browser is what
+# evaluates (DDR-193 §2 / Phase 25 A0).
+COPY --from=bundler /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=canvas-deps /canvas/node_modules /canvas/node_modules
+COPY apps/studio /canvas/studio
+COPY apps/hub/src/canvas/build-worker.ts apps/hub/src/canvas/edit-worker.ts /canvas/workers/
+COPY apps/studio/dist/runtime /app/dist/canvas-runtime
+# The engine resolves `magic-string` / `oxc-parser` from the nearest
+# node_modules; /canvas/studio sits directly under /canvas, so the staged
+# modules are on its resolution path without a second install.
+ENV MAUDE_BUN_PATH=/usr/local/bin/bun \
+    MAUDE_STUDIO_SRC=/canvas/studio \
+    MAUDE_CANVAS_WORKERS=/canvas/workers \
+    MAUDE_CANVAS_RUNTIME_DIR=/app/dist/canvas-runtime
 # The container runs as the unprivileged `node` user, but a fresh named volume
 # mounted at /data is initialized from the image's /data ownership. Create it
 # node-owned BEFORE declaring VOLUME (post-VOLUME filesystem changes are

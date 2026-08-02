@@ -15,6 +15,7 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** Wall clock a single canvas build may take. */
 export const BUILD_TIMEOUT_MS = Number(process.env.MAUDE_CANVAS_BUILD_TIMEOUT_MS ?? 20_000);
@@ -149,12 +150,44 @@ export function resolveBunPath(env = process.env) {
   return env.MAUDE_BUN_PATH || 'bun';
 }
 
-function workerPath() {
-  // Shipped alongside the hub bundle in the image; a dev checkout runs the TS
-  // straight out of the tree (Bun reads TS natively — that is the point).
-  const dist = join(dirname(new URL(import.meta.url).pathname), 'build-worker.ts');
-  if (existsSync(dist)) return dist;
-  return join(process.cwd(), 'src', 'canvas', 'build-worker.ts');
+/**
+ * Find a worker script across the two layouts it lives in.
+ *
+ * A dev checkout runs it out of `src/canvas/`; the cell image runs it out of
+ * wherever the Dockerfile staged it next to the bundle. Bun reads TypeScript
+ * natively, so there is nothing to compile in either case — which is why the
+ * worker is shipped as SOURCE rather than being bundled into the hub (bundling
+ * it would inline the whole studio engine into a Node bundle that cannot run
+ * it).
+ */
+export function workerScript(name, env = process.env) {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    env.MAUDE_CANVAS_WORKERS ? join(env.MAUDE_CANVAS_WORKERS, name) : null,
+    join(here, name),
+    join(here, 'canvas', name),
+    join(process.cwd(), 'src', 'canvas', name),
+    join(process.cwd(), 'dist', 'canvas', name),
+  ].filter(Boolean);
+  for (const c of candidates) if (existsSync(c)) return c;
+  return candidates[candidates.length - 1];
+}
+
+/**
+ * The child's environment: a PATH to exec with, a HOME for Bun's cache, and
+ * the two PATHS that tell it where our own code lives. Nothing else — every
+ * secret in a cell is an env var, and a build that cannot read them cannot
+ * leak them, whatever a tenant's source manages to import.
+ */
+export function workerEnv(env = process.env) {
+  return {
+    PATH: env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
+    HOME: env.HOME ?? '/tmp',
+    ...(env.MAUDE_STUDIO_SRC ? { MAUDE_STUDIO_SRC: env.MAUDE_STUDIO_SRC } : {}),
+    ...(env.NAPI_RS_NATIVE_LIBRARY_PATH
+      ? { NAPI_RS_NATIVE_LIBRARY_PATH: env.NAPI_RS_NATIVE_LIBRARY_PATH }
+      : {}),
+  };
 }
 
 /**
@@ -195,13 +228,9 @@ function runWorker({ designRoot, canvasAbs, env }) {
     const bun = resolveBunPath(env);
     let child;
     try {
-      child = spawn(bun, [workerPath(), designRoot, canvasAbs], {
-        // THE EMPTY ENVIRONMENT IS THE POINT. Everything secret in a cell is
-        // an env var: HUB_SECRET, MAUDE_PROJECT_TOKEN_KEY, the tenant's S3
-        // credentials. A build that cannot read them cannot leak them, whatever
-        // it manages to import. PATH is passed because spawning needs it;
-        // HOME because Bun writes its cache somewhere.
-        env: { PATH: env.PATH ?? '/usr/local/bin:/usr/bin:/bin', HOME: env.HOME ?? '/tmp' },
+      child = spawn(bun, [workerScript('build-worker.ts', env), designRoot, canvasAbs], {
+        // THE EMPTY ENVIRONMENT IS THE POINT — see workerEnv().
+        env: workerEnv(env),
         cwd: designRoot,
         stdio: ['ignore', 'pipe', 'pipe'],
       });

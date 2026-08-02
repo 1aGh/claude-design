@@ -26,15 +26,30 @@
 // JSON object. Nothing else is printed on the happy path, so the parent parses
 // stdout wholesale.
 
-import { buildCanvasModule } from '../../../studio/canvas-build.ts';
+import { dirname, join } from 'node:path';
 
 const [, , designRoot, canvasAbs] = process.argv;
+
+/**
+ * Where the studio's build engine lives.
+ *
+ * A DYNAMIC import, not a static one, because this file runs from two very
+ * different layouts: a dev checkout (`apps/hub/src/canvas` → `apps/studio`)
+ * and the cell image, where the workers and the engine are staged wherever the
+ * Dockerfile put them. `MAUDE_STUDIO_SRC` is passed through the sandbox's
+ * otherwise-empty environment on purpose — it is a path, not a secret.
+ */
+function studioDir(): string {
+  if (process.env.MAUDE_STUDIO_SRC) return process.env.MAUDE_STUDIO_SRC;
+  return join(dirname(dirname(dirname(import.meta.dir))), 'studio');
+}
 
 async function main() {
   if (!designRoot || !canvasAbs) {
     process.stdout.write(JSON.stringify({ ok: false, error: 'usage: <designRoot> <canvasAbs>' }));
     process.exit(2);
   }
+  const { buildCanvasModule } = await import(join(studioDir(), 'canvas-build.ts'));
   const source = await Bun.file(canvasAbs).text();
   const built = await buildCanvasModule(canvasAbs, source, {
     designRoot,

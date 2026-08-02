@@ -155,10 +155,62 @@ if [ -f "$CELL_DOCKERFILE" ]; then
   fi
 fi
 
+# ---- 4. the BUILD SANDBOX keeps its bounds (Cloud Phase 25 A1) ------------
+#
+# A0 amended what a cell may do — it BUILDS a tenant's canvas now — and left
+# the invariant it may not: nothing here evaluates tenant code, and no browser
+# enters the image (checks 2 and 3 above are unchanged and still the strongest
+# line). What is NEW is that a bundler touches the filesystem on our compute,
+# so the properties that make that safe are asserted here rather than trusted:
+# an import allowlist, ceilings, and an empty child environment.
+#
+# The failure mode this exists for is not an argument — it is a refactor that
+# drops `restrictImportsTo` while every test stays green, because the desktop
+# (which passes no such option) would not notice.
+SANDBOX_HOST="apps/hub/src/canvas/build.mjs"
+SANDBOX_ENGINE="apps/studio/canvas-build.ts"
+if [ -f "$SANDBOX_HOST" ]; then
+  for needle in "BUILD_TIMEOUT_MS" "BUILD_RSS_LIMIT_MB" "workerEnv"; do
+    if ! grep -qF "$needle" "$SANDBOX_HOST"; then
+      echo "FAIL: $SANDBOX_HOST no longer references '$needle'." >&2
+      echo "      The cell's build sandbox must keep its import allowlist, its" >&2
+      echo "      wall-clock and memory ceilings, and its empty child environment" >&2
+      echo "      (Cloud Phase 25 A1)." >&2
+      fail=1
+    fi
+  done
+  # The child must NOT inherit the parent environment: every secret in a cell
+  # is an env var, and `...env` here would hand them to a process that parses
+  # tenant-authored source.
+  if grep -qE '^\s*env: \{ \.\.\.(process\.)?env' "$SANDBOX_HOST"; then
+    echo "FAIL: $SANDBOX_HOST spreads the parent environment into the build child." >&2
+    echo "      HUB_SECRET, MAUDE_PROJECT_TOKEN_KEY and the tenant's storage" >&2
+    echo "      credentials all live there (Cloud Phase 25 A1)." >&2
+    fail=1
+  fi
+fi
+if [ -f "$SANDBOX_ENGINE" ] && ! grep -qF "importAllowlist" "$SANDBOX_ENGINE"; then
+  echo "FAIL: $SANDBOX_ENGINE no longer implements the import allowlist." >&2
+  fail=1
+fi
+# …and the worker must still ARM it. An allowlist nobody passes is a comment.
+SANDBOX_WORKER="apps/hub/src/canvas/build-worker.ts"
+if [ -f "$SANDBOX_WORKER" ] && ! grep -qF "restrictImportsTo" "$SANDBOX_WORKER"; then
+  echo "FAIL: $SANDBOX_WORKER no longer arms the import allowlist." >&2
+  echo "      Without it the cell's bundler resolves anything on this disk" >&2
+  echo "      (Cloud Phase 25 A1)." >&2
+  fail=1
+fi
+# The kill switch is the on-call story's only actual control (A3).
+if [ -f "apps/hub/src/canvas/routes.mjs" ] && ! grep -qF "renderDisabled" "apps/hub/src/canvas/routes.mjs"; then
+  echo "FAIL: the per-tenant render kill switch is gone (Cloud Phase 25 A3)." >&2
+  fail=1
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo "" >&2
   echo "containment gate FAILED" >&2
   exit 1
 fi
 
-echo "containment gate OK — forbidden surfaces named, asserts wired (studio + cell image), no runtime browser dep"
+echo "containment gate OK — forbidden surfaces named, asserts wired (studio + cell image), no runtime browser dep, sandbox bounded"
