@@ -18,16 +18,24 @@ name: Cell image + data plane
 # The cell image derives FROM the hub image, so this waits for `hub-image.yml`
 # to publish the tag it is built from.
 #
-# TOKEN SCOPE — the first run failed here, so it is written down. The shared
-# `CLOUDFLARE_API_TOKEN` needs, on top of what deploying a Worker already
-# requires (Account → Workers Scripts: Edit):
+# TOKEN SCOPE — the first run failed here, so it is written down. Rolling the
+# fleet needs MORE than deploying a Worker does:
 #
+#   Account → Workers Scripts: Edit         ← deploying the Worker (shared token has this)
 #   Account → Workers Containers: Write     ← pushing to registry.cloudflare.com
-#   Account → Cloudchamber: Write           ← rolling the container config
+#   Account → Cloudchamber: Write           ← rolling the container configuration
 #
-# Without them `wrangler containers push` returns a bare `Forbidden` with no
-# indication of which permission is missing, and the image builds perfectly
-# first — so the failure reads like a registry outage rather than a token.
+# Without the last two, `wrangler containers push` returns a bare `Forbidden`
+# with no indication of which permission is missing — AFTER the image has built
+# perfectly — so the failure reads like a registry outage rather than a token.
+#
+# `MAUDE_CONTAINERS_TOKEN` is a SEPARATE secret holding exactly those three
+# permissions on one account, rather than widening the shared
+# `CLOUDFLARE_API_TOKEN` that every other workflow also uses: a token that can
+# push images and start containers is a bigger thing to leak than one that can
+# deploy a Worker, and there is no reason for the control-plane deploy to carry
+# it. The fallback keeps this workflow runnable on a repo that has only the
+# shared token — it will fail at the push step, and now it says why.
 
 on:
   push:
@@ -129,7 +137,7 @@ jobs:
 
       - name: Push it to the Cloudflare registry
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.MAUDE_CONTAINERS_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         # NOT `docker login registry.cloudflare.com` — that registry does not
         # take an account id and an API token as a username/password pair, and
@@ -141,7 +149,7 @@ jobs:
       - name: Deploy the data plane
         working-directory: apps/cells
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.MAUDE_CONTAINERS_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         # `wrangler deploy` reconciles ROUTES, and tenant hostnames are created
         # per project at provision time — which is why this config declares
