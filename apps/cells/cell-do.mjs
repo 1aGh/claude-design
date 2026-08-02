@@ -115,7 +115,22 @@ export class MaudeCell extends Container {
       // full clone of the tenant's project — before anything listens. The
       // default turns that normal path into a 500; 120 s was still not enough
       // for a ~280 MB seed on a quarter of a vCPU.
-      cancellationOptions: { portReadyTimeoutMS: 600_000 },
+      // 30 MINUTES, and the number is evidence rather than taste.
+      //
+      // The entrypoint rehydrates the whole working set from R2 BEFORE the hub
+      // binds its port, so this deadline is really "how big may a project be".
+      // At 1.1 GiB on a half vCPU, alligators does not finish inside 600 s —
+      // and the failure mode is vicious: the deadline fires, the DO starts
+      // over on an empty disk, and every retry re-downloads from zero. The
+      // project had been fine for weeks only because its disk stayed warm; the
+      // first instance migration turned a working project into a permanent
+      // restart loop, with the platform reporting the container as `running`
+      // throughout (2026-08-03 incident).
+      //
+      // THE REAL FIX IS TO BIND FIRST AND RESTORE BEHIND a "restoring" page,
+      // so availability stops being a function of project size. Until that
+      // exists this number must stay ahead of the largest tenant.
+      cancellationOptions: { portReadyTimeoutMS: 1_800_000 },
     });
     return this.containerFetch(request);
   }
