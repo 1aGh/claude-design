@@ -83,7 +83,20 @@ test('/health reports D1 reachability truthfully', async () => {
   const res = await worker.fetch(new Request('https://x/health'), env);
   const body = await res.json();
   assert.equal(res.status, 200);
-  assert.deepEqual(body, { ok: true, version: 'phase-13', d1: 'ok' });
+  // Cloud Phase 25 A-1 — the storage posture is part of health, because
+  // shipping the per-tenant path is not the same as being in it: unconfigured
+  // means every cell is still on the fleet-wide key, and that must be readable
+  // rather than assumed.
+  assert.deepEqual(body, { ok: true, version: 'phase-13', d1: 'ok', r2Creds: 'legacy-shared' });
+
+  const configured = await worker.fetch(new Request('https://x/health'), {
+    ...freshEnv().env,
+    CF_ACCOUNT_ID: 'acct',
+    R2_CREDS_TOKEN: 't',
+    R2_PARENT_ACCESS_KEY_ID: 'k',
+    MAUDE_R2_BUCKET: 'b',
+  });
+  assert.equal((await configured.json()).r2Creds, 'per-tenant');
 
   const broken = await worker.fetch(new Request('https://x/health'), {
     DB: { prepare: () => ({ first: () => Promise.reject(new Error('down')) }) },
