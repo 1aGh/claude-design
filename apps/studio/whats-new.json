@@ -2,6 +2,33 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "open-your-project-in-a-browser",
+      "version": null,
+      "date": "2026-08-02",
+      "kind": "feature",
+      "title": "Open your project in a browser — nothing to install",
+      "summary": "Send a teammate a link and they open the real project in their browser: the actual canvases, the actual design system. They can move things, edit text and colours, leave notes, and download the whole thing — signed in with their Maude account, with the same rights they have in the app.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "viewer-means-viewer",
+      "version": null,
+      "date": "2026-08-02",
+      "kind": "feature",
+      "title": "A viewer sees no editing tools at all",
+      "summary": "Invite someone as a viewer and the editing simply is not there — not greyed out, not hidden, absent — in the browser and in the app alike. They can look, comment and download, which is what the role has always promised.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "design-sync-pull-request",
+      "version": null,
+      "date": "2026-08-02",
+      "kind": "feature",
+      "title": "Sync your designs into your own repo as a pull request",
+      "summary": "Point Maude at a GitHub repository and choose what lands: the whole workspace as a backup on its own branch, or your design folder inside your working repo — as a normal pull request you review and merge. Each choice says what it will do before you save it.",
+      "surface": "design-ui"
+    },
+    {
       "id": "desktop-opens-again",
       "version": "0.52.2",
       "date": "2026-08-02",
