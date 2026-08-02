@@ -186,3 +186,38 @@ will never idle out — which reads exactly like a stuck rollout.
 roll pulls a much larger image and can exceed a 45 s client timeout. A `000`
 from curl during that window is a cold start, not an outage; a `000` that
 persists past a few minutes is not.
+
+---
+
+## Incident, 2026-08-02: A-1 was switched on ahead of the fleet
+
+**What happened.** Per-tenant R2 minting was enabled on the control plane while
+every cell was still running the pre-Phase-25 image. Temporary credentials
+carry a **session token**, and `MAUDE_S3_SESSION_TOKEN` is a variable that
+image has never heard of — so it signed every S3 call with two thirds of a
+credential, the rehydrate could not complete, and the cell never bound its
+port. The project was unreachable.
+
+**The ordering rule this produces, and it is not optional:**
+
+1. Roll the fleet onto an image that understands session tokens **first**.
+2. Verify a real cell serves on that image.
+3. **Then** put `R2_CREDS_TOKEN` + `R2_PARENT_ACCESS_KEY_ID` on the control
+   plane, and confirm `/health` says `per-tenant`.
+4. Only then delete the fleet-wide `MAUDE_R2_*` secrets.
+
+Doing 3 before 1 is what this incident was. The fallback that was supposed to
+make A-1 safe — "no credentials ⇒ use the legacy key" — does not cover it,
+because minting **succeeded**; what failed was the consumer.
+
+**Two things that made it much harder to diagnose than it should have been:**
+
+- **Every intervention restarted the clock.** A rollout, a `wrangler deploy`
+  and a scale change each move the instance, and a moved instance has an empty
+  disk and pays a full rehydrate (~280 MB here) under a 600 s port deadline.
+  Impatient probing on top of that reads as "still broken" when it is "started
+  again from zero". Change ONE thing, then wait the full deadline.
+- **`mintingConfigured()` accepts `CF_PROVISION_TOKEN` as a fallback for
+  `R2_CREDS_TOKEN`.** Deleting `R2_CREDS_TOKEN` therefore did NOT turn minting
+  off, and `/health` kept saying `per-tenant` — correctly, and confusingly.
+  To disable minting you must also delete `R2_PARENT_ACCESS_KEY_ID`.
