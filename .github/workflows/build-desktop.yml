@@ -146,6 +146,11 @@ jobs:
           MAUDE_SKIP_RUNTIME_BUILD: '1'
         run: |
           cd apps/studio
+          # bun.lock IS committed (2026-08-02). Not --frozen-lockfile on purpose:
+          # a lockfile written on one host records only that host's optional
+          # platform bindings, and a frozen install on a cross-compile runner
+          # would pull the wrong arch of @oxc-parser/binding-*. A plain install
+          # honours the committed resolutions and adds this host's own.
           bun install
           if [ "${{ matrix.os }}" = "macos-14" ]; then
             bun run build.ts --release --target=bun-darwin-arm64

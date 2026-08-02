@@ -129,11 +129,17 @@ jobs:
           MAUDE_SKIP_RUNTIME_BUILD: '1'
         run: |
           cd apps/studio
-          # Drop --frozen-lockfile: bun.lock is gitignored and gets generated
-          # on whatever host first ran it. Under --frozen, bun installs only
-          # the bindings the original host saw matching its OS/CPU filter —
-          # which on a cross-compile runner is the WRONG arch. Resolve fresh
-          # per host so each matrix cell gets its matching @oxc-parser/binding-*.
+          # bun.lock IS committed now (2026-08-02) — before that this install
+          # re-resolved the whole graph from semver ranges, so the UI that
+          # shipped was built against whatever npm served that day. That is the
+          # cause the 2026-07-15 runtime-bundle RCA named, and the hole the
+          # blank desktop app came through.
+          #
+          # Still no --frozen-lockfile, for the original reason: a lockfile
+          # written on one host records only the optional platform bindings
+          # that host saw, so a frozen install on a cross-compile runner pulls
+          # the WRONG arch of @oxc-parser/binding-*. A plain install honours the
+          # committed resolutions and adds this host's own bindings.
           bun install
           bun run build.ts --release --target=${{ matrix.target }}
           ls -la dist/

@@ -95,7 +95,20 @@ apps/studio/dist/*
 # so npm-installed users don't need node_modules/react on disk to render TSX.
 !apps/studio/dist/runtime/
 !apps/studio/dist/runtime/*.js
-apps/studio/bun.lock
+# apps/studio/bun.lock is VERSIONED (2026-08-02). It was ignored, so every CI
+# release build re-resolved the whole dependency graph from the semver ranges in
+# apps/studio/package.json — the shipped UI was built against whatever npm served
+# that day. `.ai/archive/logs/rca/issue-bun-build-runtime-bundle-nondeterminism.md`
+# (2026-07-15) named this as the real cause behind "Bun.build is environment-
+# sensitive" and asked for the lockfile to be committed; that fix went unlanded and
+# the blank desktop app in v0.51.1 / v0.52.0 came through the same hole (the RCA's
+# "current state: safe" only covered dist/runtime/*.js, which is committed and
+# skipped in CI — client.bundle.js is regenerated every build and was never
+# protected). NOTE: CI deliberately does NOT pass --frozen-lockfile; a lockfile
+# written on one host records only the optional platform bindings that host saw
+# (@oxc-parser/binding-*), so a frozen install on a cross-compile runner installs
+# the wrong arch. An ordinary `bun install` honours the committed resolutions and
+# adds the host's own bindings.
 
 # Stub .keep written by dev-server before the inspect.ts fix landed (Phase 3.4)
 .design/.keep
