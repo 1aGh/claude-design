@@ -144,6 +144,14 @@ jobs:
         shell: bash
         env:
           MAUDE_SKIP_RUNTIME_BUILD: '1'
+          # Windows packages the COMMITTED client bundle rather than its own.
+          # With Bun pinned, bun.lock committed and sources LF-normalised, macOS
+          # and Linux both emit 1,977,006 B — identical to the reviewed artifact.
+          # Bun on Windows emits 1,976,621 B from those same inputs. The bundle
+          # is platform-independent JavaScript, so a per-OS rebuild can only
+          # differ, never improve, and a differently-emitted bundle is precisely
+          # what opened a blank window in v0.51.1 and v0.52.0.
+          MAUDE_SKIP_CLIENT_BUILD: ${{ matrix.os == 'windows-2022' && '1' || '' }}
         run: |
           cd apps/studio
           # bun.lock IS committed (2026-08-02). Not --frozen-lockfile on purpose:

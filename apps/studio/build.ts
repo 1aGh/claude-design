@@ -15,7 +15,7 @@
 //
 // Per DDR-009 (Bun runtime authoritative) + DDR-012 (React 19 unified) + DDR-014 (Lightning CSS).
 
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -457,12 +457,37 @@ async function main() {
 
   console.log(`[build] mode=${MODE}`);
 
+  // MAUDE_SKIP_CLIENT_BUILD=1 — ship the committed dist/client.bundle.js
+  // instead of regenerating it. Same contract as MAUDE_SKIP_RUNTIME_BUILD
+  // above, for the same reason: the bundle is PLATFORM-INDEPENDENT JavaScript,
+  // so there is nothing a per-OS rebuild can add — and measurably something it
+  // can take away. With Bun pinned exactly, apps/studio/bun.lock committed and
+  // sources normalised to LF, macOS and Linux both emit 1,977,006 B, identical
+  // to the reviewed artifact; Bun on Windows emits 1,976,621 B from the same
+  // inputs. 385 bytes nobody chose, in the file that decides whether the app
+  // draws anything — and a differently-emitted bundle is exactly what opened a
+  // blank window in v0.51.1 and v0.52.0. So the Windows job skips the rebuild
+  // and packages the same bundle every other platform ships.
+  const skipClient = process.env.MAUDE_SKIP_CLIENT_BUILD === '1';
   const t0 = performance.now();
-  const client = await buildClient();
+  const client = skipClient ? null : await buildClient();
   const t1 = performance.now();
-  console.log(
-    `[build] client.bundle.js  ${client.outBytes.toLocaleString()} B  (${(t1 - t0).toFixed(0)} ms)`
-  );
+  if (client) {
+    console.log(
+      `[build] client.bundle.js  ${client.outBytes.toLocaleString()} B  (${(t1 - t0).toFixed(0)} ms)`
+    );
+  } else {
+    const committed = join(DIST, 'client.bundle.js');
+    if (!existsSync(committed)) {
+      console.error(
+        '[build] MAUDE_SKIP_CLIENT_BUILD=1 but dist/client.bundle.js is absent — nothing to ship.'
+      );
+      process.exit(1);
+    }
+    console.log(
+      `[build] client.bundle.js  SKIPPED (MAUDE_SKIP_CLIENT_BUILD=1 — shipping the committed ${statSync(committed).size.toLocaleString()} B artifact)`
+    );
+  }
 
   const commentMount = await buildCommentMount();
   const t1b = performance.now();
