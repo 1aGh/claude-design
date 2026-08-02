@@ -326,6 +326,22 @@ jobs:
           echo "Gate target: $APP"
           node apps/desktop/scripts/check-bundle-completeness.mjs "$APP" --smoke
 
+      # A complete bundle can still open to a blank window. v0.51.1 shipped
+      # exactly that: no crash, no log, just an empty webview — because the fault
+      # only appears when `window.__TAURI__` is present (so every browser check
+      # is green) and only in the MINIFIED bundle (so `tauri dev` is green, and
+      # so is the committed dist/, since client.bundle.js is REGENERATED here at
+      # package time with no gate on the result). This boots the bundled sidecar
+      # and asserts the UI actually mounts.
+      - name: Verify the packaged UI renders (macOS)
+        if: matrix.os == 'macos-14'
+        shell: bash
+        run: |
+          set -eu
+          APP=$(ls -d apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app 2>/dev/null | head -1 || true)
+          if [ -z "$APP" ]; then echo "::error::no .app found for the client-boot gate"; exit 1; fi
+          node apps/desktop/scripts/check-client-boots.mjs "$APP"
+
       # ── Windows: build + Authenticode sign (when WINDOWS_CERTIFICATE present) ────
       - name: Build Tauri app (.msi)
         if: matrix.os == 'windows-2022'
