@@ -33,6 +33,13 @@ crons = ["0 * * * *"]   # hourly reconcile sweep — the source of truth pass
 CF_ACCOUNT_ID = "b5b596efe65abb732777c7171dc18145"
 CF_ZONE_ID = "b27eb712a0031253edf58c0e31c57b7b"
 CELL_ZONE = "cloud.maude.sh"
+# The one bucket every tenant's objects live in, under their own
+# `tenants/<id>/` prefix (Cloud Phase 25 A-1). Declared rather than defaulted:
+# a hidden default for "which bucket" is a hidden default for whose data, and
+# it made `mintingConfigured()` and `mintTenantCredentials()` disagree about
+# whether the platform was ready — /health said not-configured while the code
+# that does the work would have been happy.
+MAUDE_R2_BUCKET = "maude-cloud-assets"
 
 [[d1_databases]]
 binding = "DB"
@@ -63,7 +70,7 @@ bucket_name = "maude-cloud-assets"
 #   R2_PARENT_ACCESS_KEY_ID   the parent R2 access key id the temp creds are
 #                             signed against (its secret never leaves CF)
 #   CF_ACCOUNT_ID             already required by provisioning
-#   MAUDE_R2_BUCKET           var; defaults to maude-cloud-assets in code
+#   MAUDE_R2_BUCKET           var, declared in [vars] above (NOT defaulted)
 
 # The MaudeCell class briefly lived here before the split. Deleting it is safe
 # and deliberate: no cell ever completed a start under this script, so the
