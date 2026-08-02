@@ -20,6 +20,12 @@ import { appShell, DESKTOP_DOWNLOAD_URL } from './brand.mjs';
 import { mintProjectToken } from './cell-token.mjs';
 import { STATE_COPY } from './dashboard.mjs';
 import { audit } from './db.mjs';
+import {
+  backupContents,
+  DEFAULT_DESIGN_FOLDER,
+  modeConsequence,
+  validateDesignSync,
+} from './design-sync.mjs';
 import { validateTarget } from './mirror.mjs';
 import { ACCESS_MESSAGES, can, decideAccess } from './project-access.mjs';
 import { removeCellDomain } from './provision.mjs';
@@ -306,10 +312,20 @@ export function mirrorPage({
   project,
   repository,
   branch,
+  mode = 'backup',
+  folder = null,
   isOwner,
   error = null,
   notice = null,
 }) {
+  // D2 — THE MODE IS A VISIBLE CHOICE, and each option states its consequence
+  // BEFORE Save. A person pointing this at the repository their website
+  // deploys from has to be able to predict what lands next to it; "mirror"
+  // alone does not tell them, and finding out afterwards is the wrong moment.
+  const repoLabel = repository || 'your repository';
+  const backup = modeConsequence('backup', { repo: repoLabel });
+  const sync = modeConsequence('design-sync', { repo: repoLabel, folder: folder || 'design' });
+  const contents = backupContents({ seededFrom: project.seed_repo ?? null });
   const form = isOwner
     ? `<form method="post" action="/projects/${esc(project.id)}/mirror">
          <label for="repository">GitHub repository</label>
@@ -317,13 +333,31 @@ export function mirrorPage({
                 value="${esc(repository ?? '')}" pattern="[^/]+/[^/]+">
          <label for="branch">Branch</label>
          <input type="text" id="branch" name="branch" value="${esc(branch ?? 'main')}">
+
+         <fieldset style="margin-top:var(--space-5);border:0;padding:0">
+           <legend class="quiet">What gets copied</legend>
+           <label style="display:block;margin-top:var(--space-3)">
+             <input type="radio" name="mode" value="backup" ${mode !== 'design-sync' ? 'checked' : ''}>
+             <strong>${esc(backup.label)}</strong>
+           </label>
+           <p class="quiet" style="margin-left:1.6rem">${esc(backup.what)} ${esc(backup.touches)}<br>
+             <em>${esc(contents.summary)}</em> ${esc(contents.detail)}</p>
+           <label style="display:block;margin-top:var(--space-4)">
+             <input type="radio" name="mode" value="design-sync" ${mode === 'design-sync' ? 'checked' : ''}>
+             <strong>${esc(sync.label)}</strong>
+           </label>
+           <p class="quiet" style="margin-left:1.6rem">${esc(sync.what)} ${esc(sync.touches)}</p>
+           <label for="folder" style="margin-left:1.6rem">Folder</label>
+           <input type="text" id="folder" name="folder" style="margin-left:1.6rem"
+                  placeholder="${esc(DEFAULT_DESIGN_FOLDER)}" value="${esc(folder ?? '')}">
+         </fieldset>
+
          <p style="margin-top:var(--space-4)">
            <button type="submit" name="do" value="save">Save</button>
            ${repository ? '<button type="submit" name="do" value="disconnect" class="ghost" style="margin-left:var(--space-4)">Disconnect</button>' : ''}
          </p>
        </form>
-       <p class="quiet">Your project pushes itself to this repository about once an hour —
-         additions only, never overwriting anything already there. First
+       <p class="quiet">Either way, this runs about once an hour. First
          <a href="https://github.com/apps/maude-mirror">give the Maude Mirror app access</a>
          to the repository on GitHub — that page opens on GitHub; come back here and save
          when it's done.</p>`
@@ -339,7 +373,9 @@ export function mirrorPage({
       isOwner,
       active: 'mirror',
       lede: repository
-        ? `This project keeps a copy of its history at ${repository} on the “${branch ?? 'main'}” branch.`
+        ? mode === 'design-sync'
+          ? `This project opens a pull request on ${repository} that keeps ${folder || 'design'}/ up to date.`
+          : `This project keeps a copy of its history at ${repository} on the “${branch ?? 'main'}” branch.`
         : 'Keep an automatic copy of this project’s history in a GitHub repository you own.',
     }
   );
@@ -658,6 +694,8 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
       project,
       repository: project.mirror_repo,
       branch: project.mirror_branch ?? 'main',
+      mode: project.mirror_mode === 'design-sync' ? 'design-sync' : 'backup',
+      folder: project.mirror_folder ?? null,
       isOwner: can(verdict.role, 'mirror'),
     };
     if (request.method === 'GET') return html(mirrorPage(view));
@@ -667,7 +705,7 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
     const form = await request.formData();
     if (form.get('do') === 'disconnect') {
       await env.DB.prepare(
-        'UPDATE projects SET mirror_repo = NULL, mirror_branch = NULL WHERE id = ?'
+        'UPDATE projects SET mirror_repo = NULL, mirror_branch = NULL, mirror_mode = NULL, mirror_folder = NULL WHERE id = ?'
       )
         .bind(projectId)
         .run();
@@ -694,22 +732,47 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
     if (!checked.ok) {
       return html(mirrorPage({ ...view, error: checked.errors.join(' ') }), 400);
     }
-    await env.DB.prepare('UPDATE projects SET mirror_repo = ?, mirror_branch = ? WHERE id = ?')
-      .bind(checked.target.full, checked.target.branch, projectId)
+    // D1/D2 — the MODE is saved with the target, and design-sync's folder is
+    // validated by the same module the cell performs it with: a folder the
+    // dashboard accepts and the cell then refuses would be a promise broken
+    // an hour later, out of sight.
+    const mode = String(form.get('mode') ?? 'backup') === 'design-sync' ? 'design-sync' : 'backup';
+    let folder = null;
+    if (mode === 'design-sync') {
+      const syncCheck = validateDesignSync({
+        folder: String(form.get('folder') ?? '') || undefined,
+        baseBranch: checked.target.branch,
+      });
+      if (!syncCheck.ok) {
+        return html(mirrorPage({ ...view, mode, error: syncCheck.errors.join(' ') }), 400);
+      }
+      folder = syncCheck.target.folder;
+    }
+    await env.DB.prepare(
+      'UPDATE projects SET mirror_repo = ?, mirror_branch = ?, mirror_mode = ?, mirror_folder = ? WHERE id = ?'
+    )
+      .bind(checked.target.full, checked.target.branch, mode, folder, projectId)
       .run();
     await audit(env.DB, {
       accountId: account.id,
       projectId,
       actor: `customer:${account.email}`,
       action: 'mirror.configured',
-      detail: `${checked.target.full}#${checked.target.branch}`,
+      detail: `${checked.target.full}#${checked.target.branch} (${mode}${folder ? `:${folder}` : ''})`,
     });
     return html(
       mirrorPage({
         ...view,
         repository: checked.target.full,
         branch: checked.target.branch,
-        notice: 'Saved. The first push happens within the hour.',
+        mode,
+        folder,
+        // The confirmation names the CONSEQUENCE, not just the fact — the
+        // person just chose between two shapes and should see which one took.
+        notice:
+          mode === 'design-sync'
+            ? `Saved. Within the hour Maude opens a pull request putting your designs in ${folder}/.`
+            : 'Saved. The first push happens within the hour.',
       })
     );
   }

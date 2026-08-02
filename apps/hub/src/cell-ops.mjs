@@ -21,10 +21,13 @@
 // Both report rather than throw: they run inside a serving hub, and a failed
 // export or push must cost exactly that operation, never the workspace.
 
+import { join } from 'node:path';
 import { projectTokenKey, verifyAccessToken } from './cloud-identity.mjs';
+import { runDesignSync } from './design-sync.mjs';
 import { buildExport } from './export.mjs';
 import { pushMirror } from './mirror-push.mjs';
 import { recordRevocations } from './revocations.mjs';
+
 import { putObject } from './s3.mjs';
 import { s3SourceFor } from './s3-creds.mjs';
 
@@ -119,7 +122,16 @@ export async function fetchMirrorConfig(
     );
     if (!res.ok) return { repository: null, reason: `HTTP ${res.status}` };
     const body = await res.json();
-    return { repository: body?.repository ?? null, branch: body?.branch ?? 'main' };
+    return {
+      repository: body?.repository ?? null,
+      branch: body?.branch ?? 'main',
+      // Cloud Phase 25 D1 — the SHAPE this mirror has. Absent means the
+      // backup that every mirror was before design-sync existed.
+      mode: body?.mode === 'design-sync' ? 'design-sync' : 'backup',
+      folder: body?.folder ?? null,
+      projectName: body?.projectName ?? null,
+      seededFrom: body?.seededFrom ?? null,
+    };
   } catch (err) {
     return { repository: null, reason: err.message };
   }
@@ -158,6 +170,30 @@ export function scheduleMirror({
         { fetchImpl }
       );
       if (!config.repository) return null;
+      // Cloud Phase 25 D1 — TWO MODES, two shapes. Backup pushes this cell's
+      // own repository onto a disjoint branch (their history is never
+      // involved); design-sync writes the .design tree into a folder of THEIR
+      // working repo and opens a pull request (their history is, so nothing
+      // lands without review). The mode arrives with the config so the cell
+      // never has to infer which one it was asked for.
+      if (config.mode === 'design-sync') {
+        const designRoot = join(repoDir, env.MAUDE_DESIGN_ROOT ?? '.design');
+        return await runDesignSync(
+          {
+            designRoot,
+            repository: config.repository,
+            folder: config.folder ?? undefined,
+            baseBranch: config.branch,
+            projectName: config.projectName ?? env.MAUDE_PROJECT_NAME ?? tenantId,
+            controlPlaneUrl,
+            tenantId,
+            cellSecret,
+            run,
+            log,
+          },
+          { fetchImpl }
+        );
+      }
       return await pushMirror(
         {
           repoDir,

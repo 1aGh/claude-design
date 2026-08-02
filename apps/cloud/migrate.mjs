@@ -250,6 +250,19 @@ export const MIGRATIONS = [
       'ALTER TABLE handoff_codes ADD COLUMN surface TEXT;',
     ],
   },
+  {
+    version: 15, // Cloud Phase 25 D1/D2 — the mirror grows a second MODE
+    statements: [
+      // WHICH SHAPE this project's mirror has. NULL reads as 'backup' — every
+      // mirror that exists today pushes the cell's whole repository onto a
+      // disjoint branch, and that stays exactly as it is. 'design-sync' is the
+      // new shape: the .design tree into a folder of the customer's own repo,
+      // on top of their history, as a pull request.
+      "ALTER TABLE projects ADD COLUMN mirror_mode TEXT;",
+      // Only design-sync uses these; backup ignores them.
+      "ALTER TABLE projects ADD COLUMN mirror_folder TEXT;",
+    ],
+  },
 ];
 
 /** Apply baseline + pending versioned migrations. Safe to run repeatedly. */

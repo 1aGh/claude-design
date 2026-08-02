@@ -375,13 +375,28 @@ export default {
       }
       let row = null;
       try {
-        row = await env.DB.prepare('SELECT mirror_repo, mirror_branch FROM projects WHERE id = ?')
+        row = await env.DB.prepare(
+          'SELECT mirror_repo, mirror_branch, mirror_mode, mirror_folder, seed_repo, name FROM projects WHERE id = ?'
+        )
           .bind(tenant)
           .first();
       } catch {
         /* an unreadable row is "no mirror", not an error the clock can act on */
       }
-      return json({ repository: row?.mirror_repo ?? null, branch: row?.mirror_branch ?? 'main' });
+      // Cloud Phase 25 D1/D2 — the MODE travels with the config, because the
+      // two modes are different shapes rather than two flags on one push, and
+      // the cell must not have to infer which one it was asked for. NULL is
+      // 'backup': every mirror that existed before this is one.
+      return json({
+        repository: row?.mirror_repo ?? null,
+        branch: row?.mirror_branch ?? 'main',
+        mode: row?.mirror_mode === 'design-sync' ? 'design-sync' : 'backup',
+        folder: row?.mirror_folder ?? null,
+        projectName: row?.name ?? null,
+        // D3 — what the BACKUP actually contains depends on how the project
+        // started, and the settings page has no other way to know.
+        seededFrom: row?.seed_repo ?? null,
+      });
     }
 
     // A cell asking whose live sessions must die (Phase 23 B2). Same derived-

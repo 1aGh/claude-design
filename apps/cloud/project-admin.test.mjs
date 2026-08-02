@@ -383,7 +383,17 @@ test('the mirror settings save a validated target and the cell can then read it'
     }),
     env
   );
-  assert.deepEqual(await config.json(), { repository: '1aGh/alligators-mirror', branch: 'main' });
+  // Cloud Phase 25 D1/D2 — the config now carries the MODE (and what the
+  // settings page needs to describe it). NULL mode reads as 'backup', which is
+  // every mirror that existed before design-sync.
+  assert.deepEqual(await config.json(), {
+    repository: '1aGh/alligators-mirror',
+    branch: 'main',
+    mode: 'backup',
+    folder: null,
+    projectName: 'Brno Alligators',
+    seededFrom: null,
+  });
 
   // A wrong secret learns nothing.
   const refused = await worker.fetch(
