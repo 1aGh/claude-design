@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-01T19:37:33.988Z",
+  "generated": "2026-08-02T17:25:32.091Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1768,7 +1768,7 @@
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "1. The read-only gallery is dropped. view-<project>.cloud.maude.sh, the published-snapshot surface, and the maude share publish CLI verb all go. 2. Read-only becomes a permission on the real projec...",
+      "summary": "1. The read-only gallery is dropped. view-<project>.cloud.maude.sh, the published-snapshot surface, and the maude share publish CLI verb all go. 2. Roles become real, once. A member's rights are th...",
       "planPath": ".ai/plans/cloud-phase-25-one-project-two-doors.md",
       "archived": false,
       "phaseKey": null
