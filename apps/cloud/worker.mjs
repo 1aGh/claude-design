@@ -42,7 +42,7 @@ import { handleProjectAdminRoutes } from './project-admin.mjs';
 import { handleProjectRoutes } from './project-routes.mjs';
 import { ensureCanvasDomain, ensureCellDomain, removeCellDomain } from './provision.mjs';
 import { purgeTenantObjects } from './purge.mjs';
-import { mintTenantCredentials } from './r2-creds.mjs';
+import { mintingConfigured, mintTenantCredentials } from './r2-creds.mjs';
 import { SUSPEND_RETENTION_DAYS, settle } from './reconcile.mjs';
 import { handleReport } from './report.mjs';
 import { SCHEMA_SQL } from './schema.mjs';
@@ -443,7 +443,21 @@ export default {
       } catch {
         /* reported below — health never throws */
       }
-      return json({ ok: d1 === 'ok', version: WORKER_VERSION, d1 });
+      // Cloud Phase 25 A-1 — WHICH STORAGE POSTURE THE FLEET IS ACTUALLY IN.
+      //
+      // Shipping the per-tenant credential path is not the same as being in
+      // it: without the two secrets, minting refuses and every cell falls back
+      // to the fleet-wide key it already has. That is the intended migration
+      // path (fail to legacy, never to no storage) and it is also exactly how
+      // a security improvement stays un-deployed for weeks with nothing to
+      // show for it — the same failure the identity posture was made visible
+      // to end (2026-07-30). So the posture is a fact you can read.
+      return json({
+        ok: d1 === 'ok',
+        version: WORKER_VERSION,
+        d1,
+        r2Creds: mintingConfigured(env) ? 'per-tenant' : 'legacy-shared',
+      });
     }
 
     if (request.method === 'POST' && url.pathname === '/webhooks/stripe') {
