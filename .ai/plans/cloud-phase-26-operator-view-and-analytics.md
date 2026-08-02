@@ -9,6 +9,7 @@ Maude Cloud has no operator surface. The owner runs the fleet from `wrangler d1 
 1. **`/operator` — a superadmin board** on `cloud.maude.sh`: every project + account, fleet health, cost-model alarms, revenue (MRR as-the-plane-believes), and one safe management action (reconcile nudge). Read-mostly by design.
 2. **Product analytics events across the whole cloud app** — Workers Analytics Engine, emitted server-side (pages ship no script, so the edge IS the only place events can come from), with active-users metrics on the operator board.
 3. **Tenant content stats** (canvases / artboards / design systems / storage) — pushed by the cell's own `/health` body, captured by the hourly reconcile sweep, stored in Analytics Engine (never in control-plane D1).
+4. **Render-sandbox economics** (Stage 4, added 2026-08-02) — build counts, cache hit ratio, durations, ceiling hits and cold-start times, so Cloud Phase 25's build sandbox is *measured* rather than predicted. The €3/cell model has never been given real figures; this is where that ends.
 
 **Decisive prior-art found during planning:** `fleet.mjs` already contains `fleetBoard()` (rows + interpreted problems: unhealthy / never-drilled / stale-checkpoint / version-spread / config-drift) and `costAlarms()` (€3/cell model, R2-egress-must-be-zero rule) — both fully tested, **zero non-test callers**. The operator board is largely a route over logic that is already green.
 
@@ -225,6 +226,60 @@ Execute in order. Stage boundaries are shippable checkpoints.
 - **Do**: per-project columns on `/operator/projects` + totals tile on the overview, sourced from the latest `tenant_stats` AE rows; render `—` (unknown) for cells that never reported, NEVER `0`.
 - **Validate**: `node --test operator-pages.test.mjs`
 
+### Stage 4 — the render sandbox's economics (measures Cloud Phase 25 A0)
+
+Phase 25 puts a **build sandbox in the cell** so the browser can show and edit a
+project. The cost review said it should not move pricing — a canvas build is a
+sub-second Active-CPU burst, and Cloudflare bills cycles rather than wall-clock,
+so an open-but-idle tab costs nothing. But that verdict rests on the same €3/cell
+model this plan already describes as *"never given real figures"* — the Phase-5
+measurement gate did not run. **This stage is how that stops being a guess.**
+
+Three things decide whether the sandbox stays cheap, and all three are
+measurable rather than arguable:
+
+1. **Cache hit ratio.** Rebuild per page-view ⇒ cost scales with VIEWS. Cache by
+   content hash ⇒ cost scales with EDITS. That is an order-of-magnitude
+   difference and the single biggest lever; it is also the number that says
+   whether Phase 25 A1 picked the right caching strategy.
+2. **Pathological builds.** A canvas with a huge import graph burns Active-CPU
+   on OUR bill while the tenant pays a flat €19. Per-tenant blast radius, but
+   the money lands here — which is why A1's wall-clock and memory ceilings are
+   economically load-bearing, not only a security control. Ceiling hits are the
+   signal, and they are the same signal as abuse.
+3. **Cold start.** The studio runtime makes the cell image bigger. A cold start
+   measured ~8 s before the sandbox existed; the 0.5 vCPU ceiling means the
+   first render is a UX cost long before it is a money cost.
+
+**Gated on Phase 25 A1 existing** — there is nothing to measure before the
+sandbox does. The board columns may land earlier and render `—`; per this
+plan's own rule, unknown is never `0`.
+
+#### Task 13: UPDATE `apps/hub` `/health` — render-sandbox counters
+
+- **Do**: extend the Stage-3 `stats` payload with `render: { builds, cacheHits, cacheMisses, rejectedImports, timeouts, memoryKills, durationMsP50, durationMsP95, durationMsMax, cpuMsTotal, largestGraphBytes }`, aggregated over a rolling 1 h window in memory. Counts and durations only — never a canvas name, never a path, never the rejected specifier's text (the specifier is tenant-authored content; a count of rejections is the operational fact, the string is not).
+- **Pattern**: same channel and shape discipline as Task 10 — the cell already computes `stats`; this is another key beside it, not a second endpoint.
+- **Gotcha**: the window is in memory, so a cell restart resets it. Report `windowStartedAt` alongside so the sweep can tell "quiet hour" from "just rebooted" — a zero that means "no data" must not be read as a zero that means "no builds". Rides the normal canary rollout; older images omit `render` entirely.
+- **Validate**: hub test suite.
+
+#### Task 14: UPDATE the sweep — capture render counters → AE
+
+- **Do**: in the same `probeCell` pass Task 11 extends, parse `body.stats.render`; when present emit a `tenant_render` datapoint (blobs: projectId; doubles: the counters above). Absent ⇒ emit nothing.
+- **Gotcha**: do NOT derive a cache-hit RATIO in the cell or the sweep — store the two counts and divide at read time. A ratio computed over a window that reset is a confident lie; two counts and a window start can be judged.
+- **Validate**: `node --test reconcile.test.mjs analytics.test.mjs`
+
+#### Task 15: The cost tile learns to say WHY
+
+- **Do**: `costAlarms()` today reports one number per cell against `modelPerCellEur: 3`. Split the operator overview's presentation into **sync** vs **build** so an over-model cell is attributable, and add a per-project render column set (builds, cache-hit %, p95 duration, ceiling hits) to `/operator/projects`. Add an alarm for ceiling hits above a threshold — that is the pathological-canvas signal and it is worth a page, not a chart nobody opens.
+- **Gotcha**: keep the DDR-level framing this plan already committed to — the number is a **model-vs-actual ratio, never an invoice**. `modelPerCellEur: 3` is a Phase-0 estimate; once real figures exist for a full cycle, revisit the constant deliberately and record the change, rather than quietly tuning it until the alarm stops.
+- **Validate**: `node --test operator-pages.test.mjs fleet.test.mjs`
+
+#### Task 16: Cold start is a tracked number, not an anecdote
+
+- **Do**: the sweep already knows when it woke a sleeping cell. Record wake events with their time-to-`/health`-ok as a `tenant_wake` datapoint (blobs: projectId; doubles: coldStartMs), and put p95 on the overview. Baseline it BEFORE the sandbox ships so the image-growth regression has something to be a regression against.
+- **Gotcha**: this is the one metric worth capturing even if Phase 25 slips — it is the cheapest early warning that the cell image is getting heavy, and today the only figure anyone has is a single ~8 s observation.
+- **Validate**: `node --test reconcile.test.mjs`
+
 ---
 
 ## Validation
@@ -248,5 +303,9 @@ Execute in order. Stage boundaries are shippable checkpoints.
 - [ ] Events vocabulary pure + tested; `track()` never blocks or fails a request; ~14 product moments instrumented
 - [ ] DAU/WAU on the board via AE SQL API; graceful "not connected" state
 - [ ] Stage 3: content stats flow cell → health → AE; unknown renders as `—`, never `0`
+- [ ] Stage 4: cache-hit ratio, build p95, ceiling hits and cold-start p95 are visible per project; the cost tile attributes an over-model cell to sync or to builds
+- [ ] Stage 4: no tenant-authored string reaches AE from the render counters — counts and durations only, rejected specifiers never quoted
+- [ ] Stage 4: a cell that restarted mid-window is distinguishable from a cell that simply built nothing (`windowStartedAt` reported, zero never read as "no builds")
+- [ ] Cold-start p95 has a pre-sandbox baseline recorded, so the image-growth regression has something to be measured against
 - [ ] All security-invariant tests listed in Validation §5 exist and pass
-- [ ] No DDR-worthy decision left unrecorded (candidates: operator gating model; AE-not-D1 storage; privacy-claim guard mechanism)
+- [ ] No DDR-worthy decision left unrecorded (candidates: operator gating model; AE-not-D1 storage; privacy-claim guard mechanism; revisiting `modelPerCellEur` once real figures exist)

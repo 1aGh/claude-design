@@ -87,6 +87,32 @@ than the surface DDR-206 priced, and it is the honest basis for amending it.
 code-execution host at two-person headcount is unrecoverable. A3 exists because
 that warning survives the amendment.
 
+### The containment invariant is NOT repealed — and that is checkable
+
+DDR-193 §2 says *"no tenant-authored TSX is ever evaluated by vendor-operated
+compute"*, and unlike most invariants here it is **enforced in three places**:
+`scripts/check-containment.sh` at review time, `infra/cell/assert-containment.sh`
+at image build, `infra/cell/entrypoint.sh` at boot. What they actually forbid is
+a **browser** in the cell (playwright / puppeteer / chromium), because rendering
+means running one.
+
+**This sandbox needs no browser.** The split is exact:
+
+- the **cell builds** — Bun.build parses and transforms source into a module;
+- the **viewer's browser evaluates** — in a segregated origin, exactly as the
+  desktop already does under DDR-054.
+
+Build is not evaluation, and that is precisely the line DDR-193 §2 draws. So all
+three guards stay **in force and unmodified**, and A1 must be designed to keep
+them that way. `assert-containment.sh` says it best about itself: *"a guard you
+had to loosen to keep your build green is a guard that will be loosened again."*
+**If a future task needs one of them relaxed, the design has drifted — treat it
+as a stop, not a chore.**
+
+What DDR-193 §2 did not contemplate is that a *bundler* also touches the
+filesystem. That is a genuinely new adjacent surface, and it is what A1 exists
+to close.
+
 ### Rejected, and why
 
 - **(b) Render on the desktop, publish the output.** The gallery we just deleted
@@ -119,6 +145,16 @@ and lists canvases; the only studio file `apps/hub/Dockerfile` borrows is
   relative paths that resolve *inside* the design root — nothing else), no
   access to cell secrets or env, a wall-clock and memory ceiling, and no
   network. A rejected import is a legible error in the UI, not a 500.
+- [ ] **A1b — decide what a build costs to repeat.** Cache built modules by
+  content hash. Rebuild-per-page-view makes cost scale with **views**; a
+  content-hash cache makes it scale with **edits** — an order of magnitude, and
+  the difference between a €19 plan that works and one that does not. The same
+  choice sets the ceilings' job: A1's wall-clock and memory limits are
+  **economically** load-bearing, not only a security control, because a
+  pathological import graph burns Active-CPU on our bill while the tenant pays a
+  flat rate. Cloud Phase 26 Stage 4 measures whether this call was right (cache
+  hit ratio, build p95, ceiling hits) — so emit those counters from day one
+  rather than retrofitting them.
 - [ ] **A2 — corpus-parity CI.** DDR-206's third criterion, made real: build the
   full canvas corpus (alligators + maude, 142 canvases) in the sandbox on every
   change to the pipeline, and fail on a one-sided failure or drift beyond the
