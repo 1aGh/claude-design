@@ -33,9 +33,15 @@ function fixture() {
   writeFileSync(join(designRoot, 'system', 'maude', 'colors_and_type.css'), ':root{}');
   writeFileSync(join(designRoot, 'system', 'maude', 'preview', '_components.css'), '.x{}');
   writeFileSync(join(designRoot, 'system', 'maude', 'preview', '_layout.css'), '.y{}');
-  writeFileSync(join(designRoot, 'system', 'maude', 'preview', 'buttons.tsx'), 'export default () => null;');
+  writeFileSync(
+    join(designRoot, 'system', 'maude', 'preview', 'buttons.tsx'),
+    'export default () => null;'
+  );
   writeFileSync(join(designRoot, 'ui', 'Home.tsx'), 'export default () => null;');
-  writeFileSync(join(designRoot, 'ui', 'Home.meta.json'), JSON.stringify({ designSystem: 'maude' }));
+  writeFileSync(
+    join(designRoot, 'ui', 'Home.meta.json'),
+    JSON.stringify({ designSystem: 'maude' })
+  );
   // Runtime state must never be listed or served (DDR-115).
   mkdirSync(join(designRoot, '_history'), { recursive: true });
   writeFileSync(join(designRoot, '_history', 'Old.tsx'), 'export default () => null;');
@@ -76,10 +82,7 @@ test('a render capability is bound to its project and expires', () => {
   // Another tenant's cell cannot accept it…
   assert.equal(verifyRenderToken({ secret, token, project: 'other' }).ok, false);
   // …nor can a forged signature…
-  assert.equal(
-    verifyRenderToken({ secret: 'different', token, project: 'alligators' }).ok,
-    false
-  );
+  assert.equal(verifyRenderToken({ secret: 'different', token, project: 'alligators' }).ok, false);
   // …nor can it outlive its window.
   const stale = mintRenderToken({ secret, project: 'alligators', subject: 'a@b.c', ttlMs: 1 });
   assert.equal(
@@ -118,7 +121,10 @@ test('a mutation must name a known operation and stay inside the project', () =>
   const f = fixture();
   try {
     const root = f.designRoot;
-    assert.equal(checkEditOp({ kind: 'nope', canvas: 'ui/Home.tsx' }, { designRoot: root }).ok, false);
+    assert.equal(
+      checkEditOp({ kind: 'nope', canvas: 'ui/Home.tsx' }, { designRoot: root }).ok,
+      false
+    );
     // Traversal out of the design root is refused, exactly like an import.
     const escaped = checkEditOp(
       { kind: 'set-text', canvas: '../../etc/passwd.tsx', id: 'a', text: 'x' },
@@ -128,12 +134,21 @@ test('a mutation must name a known operation and stay inside the project', () =>
     assert.match(escaped.error, /outside this project/);
     // Only canvases.
     assert.equal(
-      checkEditOp({ kind: 'set-text', canvas: 'config.json', id: 'a', text: 'x' }, { designRoot: root }).ok,
+      checkEditOp(
+        { kind: 'set-text', canvas: 'config.json', id: 'a', text: 'x' },
+        { designRoot: root }
+      ).ok,
       false
     );
     // A good one resolves to an absolute path inside the root.
     const ok = checkEditOp(
-      { kind: 'set-style', canvas: 'ui/Home.tsx', id: 'abc123', property: 'background', value: '#111' },
+      {
+        kind: 'set-style',
+        canvas: 'ui/Home.tsx',
+        id: 'abc123',
+        property: 'background',
+        value: '#111',
+      },
       { designRoot: root }
     );
     assert.equal(ok.ok, true);
@@ -154,8 +169,10 @@ test('a mutation must name a known operation and stay inside the project', () =>
       false
     );
     assert.equal(
-      checkEditOp({ kind: 'set-text', canvas: 'ui/Home.tsx', id: 'a', text: 'x'.repeat(20000) }, { designRoot: root })
-        .ok,
+      checkEditOp(
+        { kind: 'set-text', canvas: 'ui/Home.tsx', id: 'a', text: 'x'.repeat(20000) },
+        { designRoot: root }
+      ).ok,
       false
     );
   } finally {
@@ -209,13 +226,25 @@ test('a comment carries the SESSION as its author and no invented anchor', async
     const list = readComments(f.designRoot, 'ui/Home.tsx');
     assert.equal(list.length, 1);
 
-    assert.equal(replyToComment(f.designRoot, 'ui/Home.tsx', added.comment.id, { body: 'agreed', author: 'o@e.com' }).ok, true);
+    assert.equal(
+      replyToComment(f.designRoot, 'ui/Home.tsx', added.comment.id, {
+        body: 'agreed',
+        author: 'o@e.com',
+      }).ok,
+      true
+    );
     assert.equal(readComments(f.designRoot, 'ui/Home.tsx')[0].thread.length, 1);
 
-    assert.equal(setCommentStatus(f.designRoot, 'ui/Home.tsx', added.comment.id, 'resolved').ok, true);
+    assert.equal(
+      setCommentStatus(f.designRoot, 'ui/Home.tsx', added.comment.id, 'resolved').ok,
+      true
+    );
     assert.equal(readComments(f.designRoot, 'ui/Home.tsx')[0].status, 'resolved');
     // An unknown status is refused rather than written.
-    assert.equal(setCommentStatus(f.designRoot, 'ui/Home.tsx', added.comment.id, 'deleted').ok, false);
+    assert.equal(
+      setCommentStatus(f.designRoot, 'ui/Home.tsx', added.comment.id, 'deleted').ok,
+      false
+    );
   } finally {
     f.cleanup();
   }

@@ -258,9 +258,9 @@ export const MIGRATIONS = [
       // disjoint branch, and that stays exactly as it is. 'design-sync' is the
       // new shape: the .design tree into a folder of the customer's own repo,
       // on top of their history, as a pull request.
-      "ALTER TABLE projects ADD COLUMN mirror_mode TEXT;",
+      'ALTER TABLE projects ADD COLUMN mirror_mode TEXT;',
       // Only design-sync uses these; backup ignores them.
-      "ALTER TABLE projects ADD COLUMN mirror_folder TEXT;",
+      'ALTER TABLE projects ADD COLUMN mirror_folder TEXT;',
     ],
   },
 ];

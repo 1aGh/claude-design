@@ -47,7 +47,10 @@ test('minting scopes to the tenant prefix, one bucket, object-read-write', async
     now: 1_000_000,
   });
   assert.equal(out.ok, true);
-  assert.equal(seen.url, 'https://api.cloudflare.com/client/v4/accounts/acct123/r2/temp-access-credentials');
+  assert.equal(
+    seen.url,
+    'https://api.cloudflare.com/client/v4/accounts/acct123/r2/temp-access-credentials'
+  );
   assert.equal(seen.auth, 'Bearer cf-api-token');
   assert.equal(seen.body.bucket, 'maude-cloud-assets');
   assert.equal(seen.body.parentAccessKeyId, 'parent-key-id');
@@ -154,11 +157,7 @@ test('route: a known tenant with the right secret gets scoped credentials', asyn
     return realFetch(url, init);
   };
   try {
-    const res = await callRoute(
-      env,
-      'alligators',
-      await deriveCellSecret('master', 'alligators')
-    );
+    const res = await callRoute(env, 'alligators', await deriveCellSecret('master', 'alligators'));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.accessKeyId, 'id1');

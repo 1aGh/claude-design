@@ -299,8 +299,12 @@ test('the browser lane admits a VIEWER; the app lane still refuses one', async (
   const { env, sqlite } = await freshEnv();
   const owner = await signedIn(env, 'owner@example.com');
   const viewer = await signedIn(env, 'viewer@example.com');
-  const ownerId = sqlite.prepare("SELECT id FROM accounts WHERE email='owner@example.com'").get().id;
-  const viewerId = sqlite.prepare("SELECT id FROM accounts WHERE email='viewer@example.com'").get().id;
+  const ownerId = sqlite
+    .prepare("SELECT id FROM accounts WHERE email='owner@example.com'")
+    .get().id;
+  const viewerId = sqlite
+    .prepare("SELECT id FROM accounts WHERE email='viewer@example.com'")
+    .get().id;
   sqlite
     .prepare(
       "INSERT INTO projects (id, account_id, name, state, state_since, created_at) VALUES ('alligators', ?, 'A', 'active', 1, 1)"
@@ -351,7 +355,9 @@ test('the browser lane admits a VIEWER; the app lane still refuses one', async (
 
 test('a stranger and a non-existent project are refused IDENTICALLY (no oracle)', async () => {
   const { env, sqlite } = await freshEnv();
-  const ownerId = (await signedIn(env, 'owner@example.com')) && sqlite.prepare("SELECT id FROM accounts WHERE email='owner@example.com'").get().id;
+  const ownerId =
+    (await signedIn(env, 'owner@example.com')) &&
+    sqlite.prepare("SELECT id FROM accounts WHERE email='owner@example.com'").get().id;
   sqlite
     .prepare(
       "INSERT INTO projects (id, account_id, name, state, state_since, created_at) VALUES ('real-one', ?, 'R', 'active', 1, 1)"
