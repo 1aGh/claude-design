@@ -97,7 +97,18 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.3.x'
+          # EXACT, not '1.3.x'. Bun's minifier output is not stable across patch
+          # releases, and one of those outputs does not run: 1.3.14 built a
+          # client bundle whose React dispatcher is null by the time a hook
+          # runs, so the packaged app opened to a blank window (v0.51.1, and
+          # again on the first v0.52.0 build — caught by check-client-boots).
+          # 1.3.3 produces a bundle that is byte-identical to the committed
+          # dist/client.bundle.js and renders. Same class as the environment-
+          # sensitive dist/runtime/*.js output CLAUDE.md warns about; here the
+          # cheap answer is a fixed toolchain rather than a committed artifact,
+          # because unlike the runtime bundles this one changes with source.
+          # Bumping it is fine — the client-boot gate will say if it is not.
+          bun-version: '1.3.3'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
@@ -145,6 +156,34 @@ jobs:
             bun run build.ts --release --target=${{ matrix.target }}
             test -f "${{ matrix.sidecar_dist }}" || { echo "::error::dev-server binary not produced at apps/studio/${{ matrix.sidecar_dist }}"; ls -la dist; exit 1; }
           fi
+
+      # The client bundle that just got REBUILT must be the one that was
+      # reviewed. Bun's minifier output is not stable across patch releases —
+      # 1.3.14 produced a bundle whose React dispatcher is null by the time a
+      # hook runs, so the packaged app opened to a blank window. On macOS the
+      # client-boot gate below catches that by actually rendering; Windows and
+      # Linux have no such gate and shipped a blank .msi/.deb for v0.52.0 before
+      # this step existed.
+      #
+      # With Bun pinned exactly, this build is reproducible: the output equals
+      # the committed dist/. A difference means the toolchain moved (or somebody
+      # changed client source without running the release-minified rebuild
+      # CLAUDE.md requires) — either way a human must look before it ships.
+      - name: Built client bundle matches the committed one
+        shell: bash
+        run: |
+          if ! git diff --quiet -- apps/studio/dist/client.bundle.js apps/studio/dist/styles.css; then
+            echo "::error::the client bundle CI just built differs from the committed one"
+            git diff --stat -- apps/studio/dist/client.bundle.js apps/studio/dist/styles.css
+            echo "Either the Bun pin moved (this build is no longer reproducible) or a"
+            echo "client source change was committed without the release-minified rebuild:"
+            echo "  cd apps/studio && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release"
+            echo "  git add dist/client.bundle.js dist/styles.css"
+            echo "Do not paper over this by deleting the check — v0.51.1 and v0.52.0 both"
+            echo "shipped a blank desktop app through exactly this gap."
+            exit 1
+          fi
+          echo "client bundle is byte-identical to the committed artifact"
 
       # ── macOS: build + notarize (when APPLE_* present) ──────────────────────────
       - name: Build Tauri app (.dmg)

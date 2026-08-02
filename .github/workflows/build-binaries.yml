@@ -103,7 +103,11 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.3.x'
+          # EXACT, not '1.3.x' — Bun's minifier output is not stable across
+          # patch releases and 1.3.14's client bundle does not run (blank
+          # desktop app; see build-desktop.yml for the full note). This job
+          # builds the same apps/studio dist that ships to npm.
+          bun-version: '1.3.3'
 
       - name: Verify runtime bundle sizes
         # Same guard as publish-main, run here too because the matrix
@@ -222,7 +226,11 @@ jobs:
         # fails with `sh: 1: bun: not found`.
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.3.x'
+          # EXACT, not '1.3.x' — Bun's minifier output is not stable across
+          # patch releases and 1.3.14's client bundle does not run (blank
+          # desktop app; see build-desktop.yml for the full note). This job
+          # builds the same apps/studio dist that ships to npm.
+          bun-version: '1.3.3'
 
       - name: Install
         # --no-frozen-lockfile: optionalDependencies on the freshly-published
