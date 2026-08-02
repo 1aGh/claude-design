@@ -144,3 +144,45 @@ Step 3 is the one that actually removes the credential from every container. A
 cell whose mint fails after that refuses to start rather than running without
 storage — which is the correct, loud failure, and the reason to do step 2's
 check first.
+
+---
+
+## Operator: rolling the fleet onto a new cell image
+
+`cells-deploy.yml` builds, pushes and deploys. Two things about it are worth
+knowing before you trust a green run.
+
+**The image tag in `apps/cells/wrangler.toml` IS the instruction.** The
+workflow reads the tag from there and builds THAT tag. Leaving it unchanged is
+not "deploy the same thing" — it pushes new content to an existing tag, the
+container configuration comes out byte-identical, and the deploy prints
+`no changes maude-cells-maudecell` while every instance keeps running the old
+digest. A green deploy that changed nothing. **Bump the tag.**
+
+**A deployed image is not a running image.** A cell is a Durable Object
+container: it keeps serving the old image until it stops (idle `sleepAfter`,
+20 m) and starts again. So after a deploy:
+
+```sh
+# What the APPLICATION is configured with:
+npx wrangler containers info <APPLICATION_ID> | grep '"image"'
+
+# What is actually RUNNING — the column that matters:
+npx wrangler containers instances <APPLICATION_ID>
+```
+
+An `inactive` instance is good news: the next request starts it on the new
+image. To force the roll rather than wait for the idle timeout, create a
+rollout against the target configuration (`POST
+/accounts/{id}/containers/applications/{app}/rollouts`, `strategy: rolling`,
+`step_percentage: 100`, and a full `target_configuration` — the field is
+required and the error if you omit it names it).
+
+**Do not probe the cell while you wait.** A poll loop keeps it awake and it
+will never idle out — which reads exactly like a stuck rollout.
+
+**Expect a slow first boot.** The Phase-25 image carries the build sandbox
+(Bun, the studio engine, the runtime bundles), so the first cold start after a
+roll pulls a much larger image and can exceed a 45 s client timeout. A `000`
+from curl during that window is a cold start, not an outage; a `000` that
+persists past a few minutes is not.
