@@ -1,0 +1,149 @@
+name: Cell image + data plane
+
+# Builds the tenant cell image and deploys the data-plane Worker.
+#
+# WHY THIS EXISTS (Cloud Phase 25). Until now both halves were manual: someone
+# built `infra/cell/Dockerfile` on a laptop, pushed it to the Cloudflare
+# registry, bumped the tag in `apps/cells/wrangler.toml` and ran `wrangler
+# deploy`. That was survivable while a cell was a sync relay. It is not now:
+# the image carries the build sandbox (Phase 25 A1), so "the code is on main"
+# and "the code is in the cells" can differ by a step someone forgot — and the
+# difference would be invisible until a customer opened their project.
+#
+# THE TAG IN wrangler.toml IS THE INSTRUCTION. This workflow reads it, builds
+# THAT tag, and deploys. Rolling the fleet is therefore a reviewable one-line
+# diff rather than a command someone ran, and re-running this workflow on the
+# same commit is a no-op rather than a surprise.
+#
+# The cell image derives FROM the hub image, so this waits for `hub-image.yml`
+# to publish the tag it is built from.
+
+on:
+  push:
+    tags: ['v*.*.*']
+    branches: [main]
+    paths:
+      - 'apps/cells/**'
+      - 'infra/cell/**'
+      - 'apps/hub/**'
+      - '.github/workflows/cells-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      hub_image:
+        description: 'Hub image to derive from (default: :latest)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  # One fleet, one deploy at a time. A superseded run is cancelled — only the
+  # newest commit matters, and two overlapping image pushes to the same tag is
+  # exactly the ambiguity this workflow exists to remove.
+  group: cells-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build cell image + deploy maude-cells
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Test the data plane
+        working-directory: apps/cells
+        # The tenant mapping is where a mistake means one tenant reading
+        # another's data; it gates the deploy in the same job for the same
+        # reason the control plane's tests do.
+        run: node --test "*.test.mjs"
+
+      - name: Read the image tag from wrangler.toml
+        id: image
+        run: |
+          IMAGE=$(grep -m1 '^image = ' apps/cells/wrangler.toml | sed 's/.*"\(.*\)".*/\1/')
+          if [ -z "$IMAGE" ]; then
+            echo "::error::no image line in apps/cells/wrangler.toml"
+            exit 1
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Declared cell image: $IMAGE"
+
+      - name: Resolve the hub image to derive from
+        id: hub
+        run: |
+          if [ -n "${{ inputs.hub_image }}" ]; then
+            HUB="${{ inputs.hub_image }}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            HUB="ghcr.io/1agh/maude-hub:${{ github.ref_name }}"
+          else
+            HUB="ghcr.io/1agh/maude-hub:latest"
+          fi
+          echo "hub=$HUB" >> "$GITHUB_OUTPUT"
+          echo "Deriving from: $HUB"
+
+      - name: Wait for the hub image to exist
+        # hub-image.yml runs on the same tag; the cell image is FROM it, so a
+        # race here would fail with an unhelpful "manifest unknown".
+        run: |
+          for i in $(seq 1 40); do
+            if docker manifest inspect "${{ steps.hub.outputs.hub }}" >/dev/null 2>&1; then
+              echo "hub image is available"; exit 0
+            fi
+            echo "attempt $i: not yet"; sleep 15
+          done
+          echo "::error::the hub image never appeared — cannot build the cell image"
+          exit 1
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Cloudflare registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.cloudflare.com
+          username: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          password: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Build and push the cell image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/cell/Dockerfile
+          build-args: HUB_IMAGE=${{ steps.hub.outputs.hub }}
+          # The container platform runs amd64; building arm64 as well doubles
+          # the time for an image nothing pulls on that architecture.
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.image.outputs.image }}
+
+      - name: Deploy the data plane
+        working-directory: apps/cells
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # `wrangler deploy` reconciles ROUTES, and tenant hostnames are created
+        # per project at provision time — which is why this config declares
+        # none (see apps/cells/wrangler.toml's own header). Nothing here may
+        # add one.
+        run: npx --yes wrangler@4 deploy
+
+      - name: Verify a cell answers
+        # A deploy that returns 0 has uploaded a script. This asks the one
+        # question that matters: does a real tenant's cell still serve?
+        run: |
+          URL="${{ vars.CELL_HEALTH_URL || 'https://alligators.cloud.maude.sh/health' }}"
+          for i in $(seq 1 20); do
+            BODY=$(curl -fsS --max-time 15 "$URL" || true)
+            echo "attempt $i: ${BODY:-<no response>}"
+            case "$BODY" in
+              *'"ok":true'*) echo "verified"; exit 0 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::no cell answered /health after the deploy"
+          exit 1

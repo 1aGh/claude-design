@@ -360,12 +360,7 @@ export function sanitizeSvgAllowlist(svgText) {
   const window = new Window();
   const doc = new window.DOMParser().parseFromString(svgText, 'image/svg+xml');
   const root = doc.documentElement;
-  if (
-    !root ||
-    root.tagName !== 'svg' ||
-    root.namespaceURI !== SVG_NS ||
-    doc.querySelector('parsererror')
-  ) {
+  if (root?.tagName !== 'svg' || root.namespaceURI !== SVG_NS || doc.querySelector('parsererror')) {
     throw new ImportAssetError(3, 'SVG failed to parse');
   }
   walkAllowlist(root);

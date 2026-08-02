@@ -355,7 +355,7 @@ export function hardenBrandLogoSvg(sanitizedSvgText) {
   const window = new Window();
   const doc = new window.DOMParser().parseFromString(sanitizedSvgText, 'image/svg+xml');
   const root = doc.documentElement;
-  if (!root || root.tagName !== 'svg' || root.namespaceURI !== SVG_NS) {
+  if (root?.tagName !== 'svg' || root.namespaceURI !== SVG_NS) {
     throw new ImportBrandError(3, 'input is not a valid sanitized SVG document');
   }
 

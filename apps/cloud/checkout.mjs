@@ -42,6 +42,11 @@ export const RESERVED_IDS = new Set([
   'login',
   'signup',
   'maude',
+  // Cloud Phase 25 A4 — the segregated canvas origin lives at
+  // `canvas.cloud.maude.sh`. A project allocated this name would take over the
+  // hostname every project's canvases are served from, which is the largest
+  // possible version of this class of bug.
+  'canvas',
 ]);
 
 /**

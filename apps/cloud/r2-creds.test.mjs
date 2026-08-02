@@ -13,8 +13,8 @@ import { d1FromSqlite } from './db.mjs';
 import { applySchema } from './migrate.mjs';
 import {
   DEFAULT_TTL_SECONDS,
-  mintTenantCredentials,
   mintingConfigured,
+  mintTenantCredentials,
   tenantPrefix,
 } from './r2-creds.mjs';
 import { SCHEMA_SQL } from './schema.mjs';

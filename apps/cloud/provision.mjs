@@ -11,6 +11,57 @@
 // master secret and the GitHub App key — the control plane is already the
 // blast radius (DDR-193); a cell never sees it.
 
+/** The ONE shared hostname the segregated canvas origin lives on (Phase 25 A4). */
+export const CANVAS_HOST_LABEL = 'canvas';
+
+/**
+ * Ensure `canvas.cloud.maude.sh` routes to the cells Worker (Cloud Phase 25 A4).
+ *
+ * The canvas origin is where a tenant's own built module is EVALUATED, by the
+ * viewer's browser, deliberately not sharing an origin with the editing shell
+ * (DDR-054). One hostname for the whole fleet with the tenant in the path —
+ * a per-tenant canvas domain would be a second custom domain to provision,
+ * delete and reconcile for every project, for the same origin boundary.
+ *
+ * Called from the hourly sweep rather than from a deploy step, and idempotent,
+ * so the address self-heals: an operator never has to remember it, and a
+ * hostname deleted by accident comes back within the hour. `canvas` is not a
+ * valid tenant id shape... except that it IS — so the reconcile that would
+ * hand it to a project is what a name collision would look like, and the
+ * signup path must never allocate it.
+ */
+export async function ensureCanvasDomain(env, { fetchImpl = fetch } = {}) {
+  if (!env.CF_PROVISION_TOKEN || !env.CF_ACCOUNT_ID || !env.CF_ZONE_ID) {
+    return { ok: false, error: 'provisioning is not configured' };
+  }
+  const hostname = `${CANVAS_HOST_LABEL}.${env.CELL_ZONE ?? 'cloud.maude.sh'}`;
+  try {
+    const res = await fetchImpl(
+      `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/domains`,
+      {
+        method: 'PUT',
+        headers: {
+          authorization: `Bearer ${env.CF_PROVISION_TOKEN}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          zone_id: env.CF_ZONE_ID,
+          hostname,
+          service: 'maude-cells',
+          environment: 'production',
+        }),
+      }
+    );
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body?.success === false) {
+      return { ok: false, hostname, error: body?.errors?.[0]?.message ?? `HTTP ${res.status}` };
+    }
+    return { ok: true, hostname };
+  } catch (err) {
+    return { ok: false, hostname, error: err.message };
+  }
+}
+
 /**
  * Ensure `<projectId>.cloud.maude.sh` routes to the cells Worker.
  * Idempotent: an already-attached hostname reports ok.

@@ -50,6 +50,11 @@ COPY apps/studio/sync/autocommit.ts /build/apps/studio/sync/autocommit.ts
 # exactly what a later edit adds with nothing noticing — so a second copy here
 # would be a copy without that guarantee.
 COPY apps/cloud/mirror.mjs /build/apps/cloud/mirror.mjs
+# Same rule, second file (Cloud Phase 25 D1): the design-sync decision module —
+# which folder, which branch, the argv, and the tests that assert their base
+# branch is never a push target. Re-typing it here would be re-typing exactly
+# the guarantees those tests exist to hold.
+COPY apps/cloud/design-sync.mjs /build/apps/cloud/design-sync.mjs
 RUN bun run build.ts --release
 
 # ---- Stage 2: compile the native better-sqlite3 binding for the node:20 ABI ----

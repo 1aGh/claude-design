@@ -38,11 +38,11 @@ import { handleHandoff } from './handoff.mjs';
 import { handleInviteRoutes } from './invites.mjs';
 import { applySchema } from './migrate.mjs';
 import { ACCESS_MESSAGES, decideAccess } from './project-access.mjs';
-import { mintTenantCredentials } from './r2-creds.mjs';
 import { handleProjectAdminRoutes } from './project-admin.mjs';
 import { handleProjectRoutes } from './project-routes.mjs';
-import { ensureCellDomain, removeCellDomain } from './provision.mjs';
+import { ensureCanvasDomain, ensureCellDomain, removeCellDomain } from './provision.mjs';
 import { purgeTenantObjects } from './purge.mjs';
+import { mintTenantCredentials } from './r2-creds.mjs';
 import { SUSPEND_RETENTION_DAYS, settle } from './reconcile.mjs';
 import { handleReport } from './report.mjs';
 import { SCHEMA_SQL } from './schema.mjs';
@@ -501,6 +501,20 @@ export default {
     } catch (err) {
       console.error(`[migrate] failed: ${err.message}`);
       return; // never reconcile against a schema we could not establish
+    }
+    // Cloud Phase 25 A4 — the segregated canvas origin's hostname, ensured
+    // hourly rather than at deploy time. It is idempotent and it self-heals:
+    // an operator never has to remember it exists, and a route deleted by
+    // accident is back within the hour instead of on the next release.
+    try {
+      const canvas = await ensureCanvasDomain(env);
+      if (!canvas.ok && canvas.error !== 'provisioning is not configured') {
+        console.error(`[provision] canvas origin: ${canvas.error}`);
+      }
+    } catch (err) {
+      // Never let the address of one surface stop the sweep that keeps
+      // everybody's subscription honest.
+      console.error(`[provision] canvas origin: ${err.message}`);
     }
     await reconcileSweep(env);
   },

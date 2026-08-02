@@ -354,7 +354,11 @@ async function frameStepCapture({
     });
   }
 
-  const dump = dumpDir ? (mkdirSync(dumpDir, { recursive: true }), dumpDir) : null;
+  // A comma operator hid the side effect here; the directory has to exist
+  // before anything writes a frame into it, so the effect is the point and
+  // deserves its own line.
+  if (dumpDir) mkdirSync(dumpDir, { recursive: true });
+  const dump = dumpDir ?? null;
   const framePaths = [];
   const t0 = Date.now();
 

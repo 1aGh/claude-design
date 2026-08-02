@@ -17,7 +17,7 @@
 
 import { spawn } from 'node:child_process';
 
-import { dirname, join, resolve, sep } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
 
 import { resolveBunPath, workerEnv, workerScript } from './build.mjs';
 

@@ -122,3 +122,11 @@ describe('checkoutSessionParams', () => {
     assert.match(params.cancel_url, /\/projects\/new$/);
   });
 });
+
+describe('Cloud Phase 25 A4 — the canvas origin is not a project', () => {
+  it('refuses `canvas`, which is the hostname every project renders through', () => {
+    assert.equal(validProjectId('canvas'), false);
+    // The reservation is exact — a club actually called this is still fine.
+    assert.equal(validProjectId('canvas-club'), true);
+  });
+});
