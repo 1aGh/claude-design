@@ -138,7 +138,9 @@ node "$ROOT/scripts/stamp-whats-new.mjs" "$NEW"
 # Release-minified deliberately (never a dev build — 14 MB vs 2 MB), and
 # MAUDE_SKIP_RUNTIME_BUILD=1 so the committed dist/runtime/*.js stay untouched.
 if command -v bun >/dev/null 2>&1; then
-  echo "[bump] rebuilding the client bundle at $NEW…"
+  # Braces are load-bearing: a multibyte character straight after `$NEW` gets
+  # swallowed into the variable name and `set -u` kills the release mid-bump.
+  echo "[bump] rebuilding the client bundle at ${NEW}..."
   (cd "$ROOT/apps/studio" && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release >/dev/null)
   echo "[bump] dist/client.bundle.js + dist/styles.css rebuilt — commit them with the bump"
 else
