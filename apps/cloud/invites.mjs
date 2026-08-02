@@ -66,10 +66,29 @@ export function invitePage({
   inviteId,
   error = null,
   googleEnabled = false,
+  signedInAs = null,
 }) {
   const meaning = ROLE_MEANING[role] ?? '';
   const action = `/invite/${esc(inviteId)}`;
   const next = `/invite/${inviteId}`;
+  // Signed in, but as somebody else. Before this said so, the Google button on
+  // this page read as broken: one click authenticated you as your OWN Google
+  // address, came back here, found no account for the INVITED address, and
+  // rendered the identical screen — no message, no hint that a session had just
+  // been swapped underneath you. Saying it plainly is the whole fix; the sign-out
+  // link is the way out, because you cannot accept this invitation as this person.
+  const wrongPerson =
+    signedInAs && email && signedInAs.toLowerCase() !== email.toLowerCase() ? signedInAs : null;
+  const mismatch = wrongPerson
+    ? `<p class="error">You are signed in as <strong>${esc(wrongPerson)}</strong>, but this
+         invitation is for <strong>${esc(email)}</strong>. Accepting it needs that address.</p>
+       <form method="post" action="/auth/logout" style="margin:0 0 var(--space-5)">
+         <input type="hidden" name="next" value="${esc(next)}">
+         <button type="submit">Sign out and continue as ${esc(email)}</button>
+       </form>
+       <p class="quiet">Or ask whoever invited you to send a new invitation
+         to ${esc(wrongPerson)}.</p>`
+    : '';
   let body = '';
   if (mode === 'join') {
     body = `<form method="post" action="${action}"><button type="submit">Join the project</button></form>`;
@@ -104,6 +123,7 @@ export function invitePage({
     `Join ${projectName}`,
     `<h1>Join ${esc(projectName)}</h1>
      <p class="quiet">This invitation is for <strong>${esc(email)}</strong>. ${esc(meaning)}</p>
+     ${mismatch}
      ${error ? `<p class="error">${esc(error)}</p>` : ''}
      <div class="card">${body}</div>`
   );
@@ -122,6 +142,25 @@ async function liveInvite(env, inviteId, { now = Date.now() } = {}) {
   if (!row) return null;
   if (row.redeemed_at || row.revoked_at || row.expires_at < now) return null;
   return row;
+}
+
+/**
+ * The address a `next=/invite/<id>` hand-off is FOR, or null.
+ *
+ * Read by the Google leg so the account chooser opens on the right person.
+ * Deliberately derived from the invitation rather than accepted as a query
+ * parameter: a `?hint=` anyone can set is a small phishing surface for no gain,
+ * and this is the one address the link is actually about. A dead or spent
+ * invitation yields null — the sign-in still works, it just does not preselect.
+ */
+export async function inviteHintFor(env, next) {
+  const m = /^\/invite\/([0-9a-f-]{36})$/.exec(next ?? '');
+  if (!m) return null;
+  try {
+    return (await liveInvite(env, m[1]))?.email ?? null;
+  } catch {
+    return null; // a hint is a nicety; never fail sign-in over one
+  }
 }
 
 /** Add the membership, mark the invite spent, and write the audit line. */
@@ -164,6 +203,7 @@ export async function handleInviteRoutes(request, env, { account }) {
     email: invite.email,
     inviteId: invite.id,
     googleEnabled: googleConfigured(env),
+    signedInAs: account?.email ?? null,
   };
   const existing = await getAccountByEmail(env.DB, invite.email);
   const signedInAsInvitee = account && existing && account.id === existing.id;

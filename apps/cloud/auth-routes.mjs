@@ -20,6 +20,7 @@ import {
 import { dashboardPage } from './dashboard.mjs';
 import { audit, getProject } from './db.mjs';
 import { mintGrant } from './grants.mjs';
+import { inviteHintFor } from './invites.mjs';
 import {
   authorizationUrl,
   exchangeCode,
@@ -223,7 +224,19 @@ export async function handleAuth(request, env) {
   if (method === 'POST' && pathname === '/auth/logout') {
     const token = cookieValue(request, SESSION_COOKIE);
     if (token) await revokeSession(env.DB, token);
-    return redirect('/', { 'set-cookie': clearCookie(SESSION_COOKIE) });
+    // Sign-out can be a step rather than an exit: an invitation addressed to
+    // somebody else needs you to leave THIS session and come straight back to
+    // the same link. Same-origin paths only — `safeNext`'s rules, applied to a
+    // form field instead of a query string, because logout is a POST.
+    let back = null;
+    try {
+      const form = await request.formData();
+      const asked = String(form.get('next') ?? '');
+      if (isSameOriginPath(asked)) back = asked;
+    } catch {
+      /* no body — the ordinary sign-out button */
+    }
+    return redirect(back ?? '/', { 'set-cookie': clearCookie(SESSION_COOKIE) });
   }
 
   if (method === 'GET' && pathname === '/auth/session') {
@@ -245,16 +258,17 @@ export async function handleAuth(request, env) {
       );
     }
     const { verifier, challenge, state } = await pkcePair();
+    // Verifier+state (+ the optional return path, URI-encoded so it cannot
+    // collide with the dot separators) ride a short-lived HttpOnly cookie —
+    // the only place the browser can hold them without script access.
+    const next = safeNext(url);
     const location = authorizationUrl({
       clientId: env.GOOGLE_CLIENT_ID,
       redirectUri: `${url.origin}/auth/google/callback`,
       challenge,
       state,
+      hint: await inviteHintFor(env, next),
     });
-    // Verifier+state (+ the optional return path, URI-encoded so it cannot
-    // collide with the dot separators) ride a short-lived HttpOnly cookie —
-    // the only place the browser can hold them without script access.
-    const next = safeNext(url);
     const jar = `${state}.${verifier}${next ? `.${encodeURIComponent(next)}` : ''}`;
     return redirect(location, {
       'set-cookie': setCookie(OAUTH_COOKIE, jar, { maxAge: 600 }),

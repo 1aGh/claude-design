@@ -10,7 +10,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 
 import { d1FromSqlite } from './db.mjs';
-import { costOf, harden, isHtml, sameSiteGate, spend } from './edge.mjs';
+import { costOf, formActionPermits, harden, isHtml, sameSiteGate, spend } from './edge.mjs';
 import { applySchema } from './migrate.mjs';
 import { SCHEMA_SQL } from './schema.mjs';
 import worker from './worker.mjs';
@@ -51,6 +51,39 @@ test('a route may TIGHTEN the floor and its value survives', () => {
   const out = harden(strict, { url: new URL('https://cloud.test/'), html: true });
   assert.equal(out.headers.get('content-security-policy'), "default-src 'none'");
   assert.equal(out.headers.get('x-frame-options'), 'DENY', 'and still gains what it omitted');
+});
+
+// The whole funnel ends at a form that hands off to Stripe. `form-action 'self'`
+// blocked that hand-off in the browser while every server-side test stayed
+// green — nobody could buy anything, and the page reported nothing. These pin
+// both halves: the hand-off is possible, and the door is still narrow.
+test('a form may hand off to Stripe — the redirect is part of form-action', () => {
+  const csp = harden(new Response('<p>hi</p>', { headers: { 'content-type': 'text/html' } }), {
+    url: new URL('https://cloud.test/'),
+    html: true,
+  }).headers.get('content-security-policy');
+
+  assert.match(csp, /form-action [^;]*https:\/\/checkout\.stripe\.com/);
+  assert.match(csp, /form-action [^;]*https:\/\/billing\.stripe\.com/);
+  assert.ok(formActionPermits('https://checkout.stripe.com/c/pay/cs_test_1'));
+  assert.ok(formActionPermits('https://billing.stripe.com/p/session/x'));
+  assert.ok(formActionPermits('/projects/acme/setup'), 'our own paths, always');
+});
+
+test('form-action stays a narrow allowlist, not a hole', () => {
+  const csp = harden(new Response('<p>hi</p>', { headers: { 'content-type': 'text/html' } }), {
+    url: new URL('https://cloud.test/'),
+    html: true,
+  }).headers.get('content-security-policy');
+  const directive = csp.match(/form-action ([^;]*)/)[1];
+
+  assert.doesNotMatch(directive, /\*/, 'no wildcard host — the point is that the list is short');
+  assert.doesNotMatch(directive, /unsafe/, 'nothing unsafe belongs in a form target');
+  // The attack this directive exists to stop: an injected form posting the
+  // session cookie somewhere we never chose.
+  assert.equal(formActionPermits('https://evil.example/collect'), false);
+  assert.equal(formActionPermits('https://checkout.stripe.com.evil.example/'), false);
+  assert.equal(formActionPermits('//evil.example/collect'), false, 'protocol-relative is not ours');
 });
 
 test('HSTS is stamped on https and withheld on http', () => {

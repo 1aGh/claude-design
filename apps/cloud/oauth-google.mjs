@@ -36,7 +36,7 @@ export async function pkcePair() {
   };
 }
 
-export function authorizationUrl({ clientId, redirectUri, challenge, state }) {
+export function authorizationUrl({ clientId, redirectUri, challenge, state, hint = null }) {
   const u = new URL(AUTH_URL);
   u.searchParams.set('client_id', clientId);
   u.searchParams.set('redirect_uri', redirectUri);
@@ -47,6 +47,16 @@ export function authorizationUrl({ clientId, redirectUri, challenge, state }) {
   u.searchParams.set('code_challenge', challenge);
   u.searchParams.set('code_challenge_method', 'S256');
   u.searchParams.set('state', state);
+  // An invitation knows which address it is for, and Google will preselect it
+  // (or offer to add it) when told. Without the hint, somebody with one Google
+  // account signed in gets silently authenticated as THAT person and returned
+  // to an unchanged invitation — the button reads as broken.
+  //
+  // A hint is a SUGGESTION, never a constraint: Google is free to ignore it and
+  // the person is free to pick another account, so nothing downstream may
+  // assume the claims match. `accountForGoogle` still decides identity, and the
+  // invitation still checks the address it got back.
+  if (hint) u.searchParams.set('login_hint', hint);
   return u.toString();
 }
 

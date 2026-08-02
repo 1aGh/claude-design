@@ -538,6 +538,30 @@ test('the export page says what the file IS and who can open it', () => {
   assert.match(html, /anyone who writes software/i);
 });
 
+test('a member is not shown download links the server will refuse', () => {
+  // Reported from the live plane: a member saw "Only the project's owner can
+  // prepare and download the full copy" AND, directly underneath, a table of
+  // MANIFEST.md / assets.json / repo.bundle links — each of which `/download/file`
+  // answers 404 to. The refusal and the offer have to agree.
+  const generations = [
+    { stamp: '20260730T073354Z', bytes: 80_300_000, files: [{ name: 'repo.bundle' }] },
+  ];
+  const base = {
+    account: { email: 'member@example.com' },
+    project: { id: 'alligators', name: 'Brno Alligators' },
+    generations,
+  };
+
+  const member = downloadPage({ ...base, isOwner: false });
+  assert.match(member, /Only the project’s owner/);
+  assert.doesNotMatch(member, /download\/file/, 'no link to a route that answers 404');
+  assert.doesNotMatch(member, /repo\.bundle/);
+
+  const owner = downloadPage({ ...base, isOwner: true });
+  assert.match(owner, /download\/file/, 'the owner still gets the copy they prepared');
+  assert.match(owner, /repo\.bundle/);
+});
+
 test('the delete gate carries the button it demands, not directions to it', () => {
   const html = deletePage({
     account: { email: 'a@example.com' },

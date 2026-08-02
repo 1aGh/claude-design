@@ -163,6 +163,53 @@ export function sameSiteGate(request, url) {
  * test origin would pin a developer's browser to a scheme the dev server does
  * not speak.
  */
+
+/**
+ * Where a form on our pages is allowed to end up.
+ *
+ * `'self'` alone was wrong, and wrong in the one place it costs money: the
+ * wizard POSTs to `/projects/new`, which answers 303 to a Stripe-hosted
+ * Checkout URL. Browsers apply `form-action` to the REDIRECT as well as the
+ * initial action, so the submission was blocked before it left the page —
+ * "Continue to payment details" did nothing at all, with no error the customer
+ * could see. Every route that hands off to Stripe has the same shape:
+ * `/projects/<id>/billing/portal` and `/billing/resume` both 303 to the portal.
+ *
+ * Deliberately two exact hosts, not `https://*.stripe.com` and not a relaxed
+ * directive: the point of `form-action` here is that an injected form cannot
+ * post a session cookie to somewhere we did not choose, and that guarantee is
+ * only worth what the list is narrow.
+ *
+ * Not covered on purpose: Stripe's own pages redirect onward (3-D Secure, bank
+ * hand-offs). Those happen on Stripe's origin under Stripe's CSP — once the
+ * browser has left us, our policy no longer applies.
+ */
+export const FORM_ACTION = "'self' https://checkout.stripe.com https://billing.stripe.com";
+
+/**
+ * Would a browser let a form on our page end up at `location`?
+ *
+ * The bug this exists to keep dead is invisible from the server: the route
+ * answers a perfectly good 303 and the test asserting that 303 stays green,
+ * while the browser refuses to send the form in the first place. So the route
+ * tests that assert an off-origin hand-off assert THIS too — add a payment
+ * provider without adding its host here and the checkout test goes red, not
+ * production.
+ *
+ * A relative Location is always same-origin, hence always fine.
+ */
+export function formActionPermits(location) {
+  if (!location) return false;
+  if (location.startsWith('/') && !location.startsWith('//')) return true;
+  let origin;
+  try {
+    origin = new URL(location).origin;
+  } catch {
+    return false;
+  }
+  return FORM_ACTION.split(/\s+/).includes(origin);
+}
+
 export function harden(response, { url, html = false } = {}) {
   const h = new Headers(response.headers);
   const floor = {
@@ -171,8 +218,7 @@ export function harden(response, { url, html = false } = {}) {
     'x-frame-options': 'DENY',
     ...(html
       ? {
-          'content-security-policy':
-            "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+          'content-security-policy': `default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; form-action ${FORM_ACTION}; frame-ancestors 'none'; base-uri 'none'`,
         }
       : {}),
     ...(url?.protocol === 'https:'

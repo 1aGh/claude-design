@@ -234,6 +234,104 @@ test('signed in as the invitee, one button joins', async () => {
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM project_members').get().n, 1);
 });
 
+// The Google button on this page was reported as "does nothing". It did
+// something: it signed the person in as their OWN Google address, returned
+// here, found no account for the INVITED address, and re-rendered the same
+// screen. A swapped session and an unchanged page is the worst possible answer.
+test('signed in as the wrong person, the page says so instead of pretending', async () => {
+  const { env, sqlite } = await freshEnv();
+  const { session } = await ownerWithProject(env, sqlite);
+  await inviteSomeone(env, session);
+  const invite = sqlite.prepare('SELECT * FROM project_invites').get();
+  const strangerSession = await signup(env, { email: 'someone.else@example.com' });
+
+  const res = await worker.fetch(
+    new Request(`https://cloud.test/invite/${invite.id}`, {
+      headers: { cookie: `maude_session=${strangerSession}` },
+    }),
+    env
+  );
+  const body = await res.text();
+  assert.match(body, /someone\.else@example\.com/, 'names who you actually are');
+  assert.match(body, /teammate@example\.com/, 'and who the invitation is for');
+  assert.match(body, /action="\/auth\/logout"/, 'and offers the one way out');
+  assert.match(body, new RegExp(`value="/invite/${invite.id}"`), 'that comes back here');
+});
+
+test('the owner opening their own invitation link is not accused of anything', async () => {
+  // The mismatch notice must key on the ADDRESS, not on "somebody is signed in".
+  const { env, sqlite } = await freshEnv();
+  const { session } = await ownerWithProject(env, sqlite);
+  await inviteSomeone(env, session);
+  const invite = sqlite.prepare('SELECT * FROM project_invites').get();
+  const inviteeSession = await signup(env, { email: 'teammate@example.com' });
+
+  const res = await worker.fetch(
+    new Request(`https://cloud.test/invite/${invite.id}`, {
+      headers: { cookie: `maude_session=${inviteeSession}` },
+    }),
+    env
+  );
+  assert.doesNotMatch(await res.text(), /You are signed in as/);
+});
+
+test('the Google door opens on the invited address, not on whoever is logged in', async () => {
+  const { env, sqlite } = await freshEnv({
+    GOOGLE_CLIENT_ID: 'client-1',
+    GOOGLE_CLIENT_SECRET: 'secret-1',
+  });
+  const { session } = await ownerWithProject(env, sqlite);
+  await inviteSomeone(env, session);
+  const invite = sqlite.prepare('SELECT * FROM project_invites').get();
+
+  const res = await worker.fetch(
+    new Request(
+      `https://cloud.test/auth/google?next=${encodeURIComponent(`/invite/${invite.id}`)}`
+    ),
+    env
+  );
+  assert.equal(res.status, 303);
+  const to = new URL(res.headers.get('location'));
+  assert.equal(to.searchParams.get('login_hint'), 'teammate@example.com');
+
+  // An ordinary sign-in has nobody to preselect, and must not invent one.
+  const plain = await worker.fetch(new Request('https://cloud.test/auth/google'), env);
+  assert.equal(new URL(plain.headers.get('location')).searchParams.get('login_hint'), null);
+});
+
+test('signing out from an invitation comes back to it', async () => {
+  const { env, sqlite } = await freshEnv();
+  const { session } = await ownerWithProject(env, sqlite);
+  await inviteSomeone(env, session);
+  const invite = sqlite.prepare('SELECT * FROM project_invites').get();
+  const strangerSession = await signup(env, { email: 'someone.else@example.com' });
+
+  const out = await worker.fetch(
+    new Request('https://cloud.test/auth/logout', {
+      method: 'POST',
+      headers: {
+        cookie: `maude_session=${strangerSession}`,
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: form({ next: `/invite/${invite.id}` }),
+    }),
+    env
+  );
+  assert.equal(out.status, 303);
+  assert.equal(out.headers.get('location'), `/invite/${invite.id}`);
+
+  // …and the same field cannot be used to bounce someone off the site.
+  const away = await worker.fetch(
+    new Request('https://cloud.test/auth/logout', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: form({ next: 'https://evil.example/' }),
+    }),
+    env
+  );
+  assert.equal(away.headers.get('location'), '/');
+});
+
 test('declining the disclosure creates neither account nor membership', async () => {
   const { env, sqlite } = await freshEnv();
   const { session } = await ownerWithProject(env, sqlite);

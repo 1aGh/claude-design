@@ -12,6 +12,7 @@ import { after, before, beforeEach, test } from 'node:test';
 
 import { allCheckoutHtml, newProjectPage } from './checkout-pages.mjs';
 import { d1FromSqlite } from './db.mjs';
+import { formActionPermits } from './edge.mjs';
 import { applySchema } from './migrate.mjs';
 import { loadPricing } from './pricing.mjs';
 import { SCHEMA_SQL } from './schema.mjs';
@@ -229,6 +230,13 @@ test('submitting the wizard creates NO project row — only a Checkout redirect'
   );
   assert.equal(res.status, 303);
   assert.match(res.headers.get('location'), /checkout\.stripe\.com/);
+  // A 303 the browser refuses to follow is not a hand-off. This route is
+  // reached by SUBMITTING A FORM, so the page's `form-action` decides whether
+  // the submission leaves at all — and for two releases it did not.
+  assert.ok(
+    formActionPermits(res.headers.get('location')),
+    'the wizard is a form POST: its Stripe destination must be in the CSP form-action'
+  );
   // An abandoned checkout must not squat the address.
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM projects').get().n, 0);
   // The session asked Stripe for a TRIAL — nothing chargeable today.
@@ -390,6 +398,10 @@ test('billing shows the situation and hands the owner to the portal', async () =
   );
   assert.equal(portal.status, 303);
   assert.match(portal.headers.get('location'), /billing\.stripe\.com/);
+  assert.ok(
+    formActionPermits(portal.headers.get('location')),
+    'the portal button is a form POST too — same gate, same failure if forgotten'
+  );
   const created = stripeCalls.find((c) => c.url.includes('billing_portal'));
   assert.equal(created.body.customer, 'cus_1');
 });

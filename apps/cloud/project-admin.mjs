@@ -133,9 +133,17 @@ export function downloadPage({
          : '<p class="quiet">Only the project’s owner can prepare and download the full copy.</p>'
 }
      ${
-       generations.length
-         ? `<table><thead><tr><th>Taken</th><th>Files</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
-         : '<p class="quiet" style="margin-top:var(--space-5)">No copy has been prepared yet.</p>'
+       // The table is OWNER-ONLY, like the button above it and like the file
+       // route below it (`/download/file` answers 404 to anyone else). It used
+       // to render for every member: a list of live-looking links that the
+       // server had already decided to refuse. Offering a door you know is
+       // locked is worse than not drawing it — the member reads "broken", the
+       // owner reads nothing at all.
+       !isOwner
+         ? ''
+         : generations.length
+           ? `<table><thead><tr><th>Taken</th><th>Files</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+           : '<p class="quiet" style="margin-top:var(--space-5)">No copy has been prepared yet.</p>'
 }
      <div class="card" style="margin-top:var(--space-6)">
        <h2>What you are downloading</h2>
