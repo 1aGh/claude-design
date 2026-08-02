@@ -25,7 +25,8 @@ import { projectTokenKey, verifyAccessToken } from './cloud-identity.mjs';
 import { buildExport } from './export.mjs';
 import { pushMirror } from './mirror-push.mjs';
 import { recordRevocations } from './revocations.mjs';
-import { putObject, s3ConfigFromEnv } from './s3.mjs';
+import { putObject } from './s3.mjs';
+import { s3SourceFor } from './s3-creds.mjs';
 
 /**
  * Handle `POST /api/export`. Returns true when the route was ours.
@@ -77,11 +78,11 @@ export async function handleExportRoute(ctx) {
     return true;
   }
 
-  let cfg;
-  try {
-    cfg = s3ConfigFromEnv(env);
-  } catch (err) {
-    respondJson(502, { error: `the export was built but has nowhere to go: ${err.message}` });
+  // A-1: resolved per operation — in a platform cell the credentials are
+  // temporary and the source refreshes them before expiry.
+  const cfg = await s3SourceFor(env).config();
+  if (!cfg) {
+    respondJson(502, { error: 'the export was built but has nowhere to go: no object storage' });
     return true;
   }
 

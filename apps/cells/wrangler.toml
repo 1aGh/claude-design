@@ -98,4 +98,10 @@ MAUDE_R2_BUCKET = "maude-cloud-assets"
 
 # Secrets (wrangler secret put):
 #   CELL_SECRET_MASTER          per-cell HUB_SECRETs are derived from this
+#
+# Cloud Phase 25 A-1: the bucket-wide R2 key no longer belongs here. Cells
+# mint per-tenant TEMPORARY credentials from the control plane at container
+# start (cell-do.mjs → /internal/cell-r2-credentials), scoped to
+# `tenants/<id>/` and TTL-bounded. The legacy secrets below are a migration
+# fallback only — DELETE them once the control plane mints successfully:
 #   MAUDE_R2_ENDPOINT / MAUDE_R2_ACCESS_KEY_ID / MAUDE_R2_SECRET_ACCESS_KEY

@@ -38,6 +38,7 @@ import { handleHandoff } from './handoff.mjs';
 import { handleInviteRoutes } from './invites.mjs';
 import { applySchema } from './migrate.mjs';
 import { ACCESS_MESSAGES, decideAccess } from './project-access.mjs';
+import { mintTenantCredentials } from './r2-creds.mjs';
 import { handleProjectAdminRoutes } from './project-admin.mjs';
 import { handleProjectRoutes } from './project-routes.mjs';
 import { ensureCellDomain, removeCellDomain } from './provision.mjs';
@@ -323,6 +324,40 @@ export default {
         seedRepo: row?.seed_repo ?? null,
         adminEmail: row?.owner_email ?? null,
       });
+    }
+
+    // A cell asking for ITS OWN object-storage credentials (Cloud Phase 25
+    // A-1). The bucket-wide R2 key never enters a container: the control plane
+    // mints TEMPORARY credentials scoped to `tenants/<id>/`, TTL-bounded, per
+    // request. Same gate as /internal/cell-config — the secret a cell offers
+    // is derived from the tenant it asks about, so it can ask about itself and
+    // about nothing else. Called by the cells Worker at container start and by
+    // the hub itself to refresh before expiry.
+    if (request.method === 'GET' && url.pathname === '/internal/cell-r2-credentials') {
+      const tenant = String(url.searchParams.get('tenant') ?? '');
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tenant)) return json({ error: 'unauthorized' }, 401);
+      const offered = (request.headers.get('authorization') ?? '')
+        .replace(/^Bearer\s+/i, '')
+        .trim();
+      const expected = await deriveCellSecret(env.CELL_SECRET_MASTER ?? '', tenant);
+      if (!env.CELL_SECRET_MASTER || !secretsMatch(offered, expected)) {
+        return json({ error: 'unauthorized' }, 401);
+      }
+      // A purged or unknown tenant gets no credentials — same posture as
+      // cell-config describing purged tenants to nobody.
+      let state = null;
+      try {
+        const row = await env.DB.prepare('SELECT state FROM projects WHERE id = ?')
+          .bind(tenant)
+          .first();
+        state = row?.state ?? null;
+      } catch {
+        /* unreadable row ⇒ unknown ⇒ refuse below */
+      }
+      if (!state || state === 'purged') return json({ error: 'unknown tenant' }, 404);
+      const minted = await mintTenantCredentials({ env, tenantId: tenant });
+      if (!minted.ok) return json({ error: minted.error }, minted.status ?? 502);
+      return json(minted.credentials);
     }
 
     // A cell asking which repository it mirrors to (Cloud Phase 19). The cell

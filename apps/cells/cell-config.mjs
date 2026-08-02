@@ -159,6 +159,40 @@ export async function fetchTenantConfig({ tenantId, env, storage = null, fetchIm
 }
 
 /**
+ * This tenant's OWN object-storage credentials (Cloud Phase 25 A-1).
+ *
+ * Minted by the control plane as R2 TEMPORARY credentials scoped to
+ * `tenants/<id>/`, TTL-bounded. The bucket-wide key that used to ride in as a
+ * fleet-wide Worker secret never enters a container again — in a cell that
+ * BUILDS tenant-authored source (Phase 25 A1), a build-time file read must
+ * reach at most this tenant's own objects, for a bounded time.
+ *
+ * FAIL CLOSED — but loudly, in the caller. `null` here means "no storage",
+ * and a cell that boots without storage on a cold start comes up EMPTY, which
+ * autosave would then commit over real work. So cell-do treats null as a
+ * refusal to start (unless the legacy shared-key fallback is still configured
+ * during the migration window), never as "run local-only".
+ */
+export async function fetchTenantS3Credentials({ tenantId, env, fetchImpl = fetch }) {
+  if (!env.CELL_SECRET_MASTER) return null;
+  const controlPlane = env.CONTROL_PLANE_URL ?? 'https://cloud.maude.sh';
+  try {
+    const secret = await deriveSecret(env.CELL_SECRET_MASTER, tenantId);
+    const res = await fetchImpl(
+      `${controlPlane}/internal/cell-r2-credentials?tenant=${encodeURIComponent(tenantId)}`,
+      { headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(15_000) }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = await res.json();
+    if (!body?.accessKeyId || !body?.secretAccessKey) throw new Error('malformed credentials');
+    return body;
+  } catch (err) {
+    console.error(`[cell] ${tenantId} could not mint R2 credentials: ${err.message}`);
+    return null;
+  }
+}
+
+/**
  * Environment for one tenant's cell.
  *
  * PURE and exported, because this mapping is where a mistake means one tenant
@@ -167,7 +201,7 @@ export async function fetchTenantConfig({ tenantId, env, storage = null, fetchIm
  * resolved by `fetchTenantConfig`; nothing tenant-specific is read from `env`,
  * which is shared by the whole fleet.
  */
-export async function cellEnv({ tenantId, env, hostname, config = NO_CONFIG }) {
+export async function cellEnv({ tenantId, env, hostname, config = NO_CONFIG, s3Creds = null }) {
   if (!isValidTenantId(tenantId)) throw new Error(`invalid tenant id: ${tenantId}`);
   return {
     // EVERYTHING THE CELL NEEDS, EXPLICITLY.
@@ -214,12 +248,35 @@ export async function cellEnv({ tenantId, env, hostname, config = NO_CONFIG }) {
     // operator placeholder a customer should never meet, and (since B1) never
     // to another tenant's name.
     ...(config.projectName ? { MAUDE_PROJECT_NAME: config.projectName } : {}),
-    // Object storage. The entrypoint derives per-tenant key prefixes from
-    // MAUDE_TENANT_ID — one bucket, one prefix per tenant.
-    MAUDE_S3_ENDPOINT: env.MAUDE_R2_ENDPOINT ?? '',
-    MAUDE_S3_BUCKET: env.MAUDE_R2_BUCKET ?? 'maude-cloud-assets',
-    MAUDE_S3_ACCESS_KEY_ID: env.MAUDE_R2_ACCESS_KEY_ID ?? '',
-    MAUDE_S3_SECRET_ACCESS_KEY: env.MAUDE_R2_SECRET_ACCESS_KEY ?? '',
+    // Object storage — PER-TENANT credentials (Cloud Phase 25 A-1).
+    //
+    // `s3Creds` are temporary credentials the control plane minted for THIS
+    // tenant, scoped to `tenants/<id>/` and TTL-bounded. The legacy branch —
+    // the fleet-wide MAUDE_R2_* Worker secrets — exists only for the
+    // migration window and logs its own retirement; once the secrets are
+    // deleted from the Worker it is dead code. The entrypoint still derives
+    // the per-tenant key prefix from MAUDE_TENANT_ID either way (belt AND
+    // braces: scoped credentials fail hard on a prefix bug that the
+    // app-level prefix would have papered over).
+    ...(s3Creds
+      ? {
+          MAUDE_S3_ENDPOINT: s3Creds.endpoint ?? env.MAUDE_R2_ENDPOINT ?? '',
+          MAUDE_S3_BUCKET: s3Creds.bucket ?? env.MAUDE_R2_BUCKET ?? 'maude-cloud-assets',
+          MAUDE_S3_ACCESS_KEY_ID: s3Creds.accessKeyId,
+          MAUDE_S3_SECRET_ACCESS_KEY: s3Creds.secretAccessKey,
+          ...(s3Creds.sessionToken ? { MAUDE_S3_SESSION_TOKEN: s3Creds.sessionToken } : {}),
+          ...(s3Creds.expiresAt ? { MAUDE_S3_CREDS_EXPIRES_AT: String(s3Creds.expiresAt) } : {}),
+          // The hub refreshes its own credentials before they expire, with
+          // the SAME derived secret it already holds (HUB_SECRET authorizes
+          // /internal/cell-r2-credentials — it is the same derivation).
+          MAUDE_S3_CREDS_URL: `${env.CONTROL_PLANE_URL ?? 'https://cloud.maude.sh'}/internal/cell-r2-credentials?tenant=${encodeURIComponent(tenantId)}`,
+        }
+      : {
+          MAUDE_S3_ENDPOINT: env.MAUDE_R2_ENDPOINT ?? '',
+          MAUDE_S3_BUCKET: env.MAUDE_R2_BUCKET ?? 'maude-cloud-assets',
+          MAUDE_S3_ACCESS_KEY_ID: env.MAUDE_R2_ACCESS_KEY_ID ?? '',
+          MAUDE_S3_SECRET_ACCESS_KEY: env.MAUDE_R2_SECRET_ACCESS_KEY ?? '',
+        }),
     MAUDE_S3_REGION: 'auto',
     // Checkpoint cadence. A cell's disk is ephemeral and the platform migrates
     // instances freely, so the gap between checkpoints IS the window of

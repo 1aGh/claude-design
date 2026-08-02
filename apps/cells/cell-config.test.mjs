@@ -218,3 +218,84 @@ test('storage is scoped to the tenant and the checkpoint cadence is explicit', a
   assert.equal(vars.MAUDE_REPO_DIR, '/repo');
   assert.equal(vars.HUB_WORKSPACE_MODE, '1');
 });
+
+// ---------------------------------------------- per-tenant R2 creds (25 A-1)
+
+test('minted credentials replace the fleet-wide key, session token included', async () => {
+  const vars = await cellEnv({
+    tenantId: 'alligators',
+    // The legacy fleet-wide key is STILL in env — the point is that minted
+    // credentials win, so deleting the legacy secrets is a no-op later.
+    env: { ...baseEnv, MAUDE_R2_ACCESS_KEY_ID: 'shared', MAUDE_R2_SECRET_ACCESS_KEY: 'shared' },
+    hostname: 'alligators.cloud.maude.sh',
+    s3Creds: {
+      endpoint: 'https://acct.r2.cloudflarestorage.com',
+      bucket: 'maude-cloud-assets',
+      accessKeyId: 'tmp-id',
+      secretAccessKey: 'tmp-secret',
+      sessionToken: 'tok',
+      expiresAt: 1234567890,
+    },
+  });
+  assert.equal(vars.MAUDE_S3_ACCESS_KEY_ID, 'tmp-id');
+  assert.equal(vars.MAUDE_S3_SECRET_ACCESS_KEY, 'tmp-secret');
+  assert.equal(vars.MAUDE_S3_SESSION_TOKEN, 'tok');
+  assert.equal(vars.MAUDE_S3_ENDPOINT, 'https://acct.r2.cloudflarestorage.com');
+  assert.equal(vars.MAUDE_S3_CREDS_EXPIRES_AT, '1234567890');
+  // The hub can refresh itself: the URL carries THIS tenant, nobody else's.
+  assert.equal(
+    vars.MAUDE_S3_CREDS_URL,
+    'https://cloud.test/internal/cell-r2-credentials?tenant=alligators'
+  );
+});
+
+test('without minted credentials the legacy branch still works (migration window)', async () => {
+  const vars = await cellEnv({
+    tenantId: 'alligators',
+    env: {
+      ...baseEnv,
+      MAUDE_R2_ENDPOINT: 'https://acct.r2.cloudflarestorage.com',
+      MAUDE_R2_ACCESS_KEY_ID: 'shared-id',
+      MAUDE_R2_SECRET_ACCESS_KEY: 'shared-secret',
+    },
+    hostname: 'alligators.cloud.maude.sh',
+  });
+  assert.equal(vars.MAUDE_S3_ACCESS_KEY_ID, 'shared-id');
+  assert.equal(vars.MAUDE_S3_SESSION_TOKEN, undefined);
+  assert.equal(vars.MAUDE_S3_CREDS_URL, undefined);
+});
+
+test('fetchTenantS3Credentials asks with the tenant-derived secret and fails closed', async () => {
+  const { fetchTenantS3Credentials } = await import('./cell-config.mjs');
+  let seen = null;
+  const good = {
+    endpoint: 'https://acct.r2.cloudflarestorage.com',
+    bucket: 'maude-cloud-assets',
+    accessKeyId: 'tmp',
+    secretAccessKey: 's',
+    sessionToken: 't',
+    expiresAt: Date.now() + 1000,
+  };
+  const creds = await fetchTenantS3Credentials({
+    tenantId: 'alligators',
+    env: baseEnv,
+    fetchImpl: async (url, init) => {
+      seen = { url: String(url), auth: init.headers.authorization };
+      return new Response(JSON.stringify(good), {
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+  assert.equal(seen.url, 'https://cloud.test/internal/cell-r2-credentials?tenant=alligators');
+  assert.equal(seen.auth, `Bearer ${await deriveSecret(MASTER, 'alligators')}`);
+  assert.equal(creds.accessKeyId, 'tmp');
+
+  // A refusal (or outage) is null — the CALLER decides that a cell without
+  // storage must not start; there is no cached fallback for credentials.
+  const refused = await fetchTenantS3Credentials({
+    tenantId: 'alligators',
+    env: baseEnv,
+    fetchImpl: async () => new Response('no', { status: 503 }),
+  });
+  assert.equal(refused, null);
+});

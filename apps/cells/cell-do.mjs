@@ -22,6 +22,7 @@ import {
   cellEnv,
   deriveSecret,
   fetchTenantConfig,
+  fetchTenantS3Credentials,
   isValidTenantId,
   RESTART_PATH,
   secretsMatch,
@@ -33,6 +34,7 @@ export {
   cellEnv,
   deriveSecret,
   fetchTenantConfig,
+  fetchTenantS3Credentials,
   isValidTenantId,
   RESTART_PATH,
   secretsMatch,
@@ -93,8 +95,22 @@ export class MaudeCell extends Container {
       env: this.env,
       storage: this.ctx.storage,
     });
+    // This tenant's OWN storage credentials (Phase 25 A-1) — minted fresh on
+    // every container start, so a wake always carries a full TTL. FAIL CLOSED:
+    // a cell that cannot get credentials AND has no legacy shared key must not
+    // start, because a cold start without storage rehydrates nothing and comes
+    // up as an empty project — indistinguishable from a deleted one.
+    const s3Creds = await fetchTenantS3Credentials({ tenantId, env: this.env });
+    if (!s3Creds && !this.env.MAUDE_R2_ACCESS_KEY_ID) {
+      return new Response(
+        'this cell could not obtain storage credentials — refusing to start empty\n',
+        { status: 503 }
+      );
+    }
     await this.startAndWaitForPorts({
-      startOptions: { envVars: await cellEnv({ tenantId, env: this.env, hostname, config }) },
+      startOptions: {
+        envVars: await cellEnv({ tenantId, env: this.env, hostname, config, s3Creds }),
+      },
       // A cold start pays a rehydrate from R2 — and a FIRST start also pays a
       // full clone of the tenant's project — before anything listens. The
       // default turns that normal path into a 500; 120 s was still not enough

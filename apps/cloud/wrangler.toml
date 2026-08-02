@@ -53,6 +53,17 @@ bucket_name = "maude-cloud-assets"
 # queue = "maude-reconcile"
 
 # Secrets (wrangler secret put): STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
+#
+# Cloud Phase 25 A-1 — per-tenant R2 credentials. The control plane is now the
+# ONLY holder of a bucket-reaching credential; cells mint temporary, prefix-
+# scoped credentials through /internal/cell-r2-credentials. Required for that:
+#   R2_CREDS_TOKEN            Cloudflare API token with Account → R2 write
+#                             (falls back to CF_PROVISION_TOKEN if that token
+#                             carries the permission)
+#   R2_PARENT_ACCESS_KEY_ID   the parent R2 access key id the temp creds are
+#                             signed against (its secret never leaves CF)
+#   CF_ACCOUNT_ID             already required by provisioning
+#   MAUDE_R2_BUCKET           var; defaults to maude-cloud-assets in code
 
 # The MaudeCell class briefly lived here before the split. Deleting it is safe
 # and deliberate: no cell ever completed a start under this script, so the

@@ -143,13 +143,18 @@ export function prefixedTarget(target, prefix) {
  * `MAUDE_BACKUP_PREFIX` scopes it to one tenant (see prefixedTarget).
  */
 export function targetFromEnv(env = process.env) {
+  return targetFromConfig(env, s3ConfigFromEnv(env));
+}
+
+/**
+ * Same resolution, but with the S3 credentials supplied by the caller —
+ * Cloud Phase 25 A-1. In a platform cell the credentials are temporary and
+ * refreshed by `s3-creds.mjs`, so the scheduler resolves its target per tick
+ * through this instead of pinning boot-time values.
+ */
+export function targetFromConfig(env = process.env, s3 = null) {
   const explicit = env.MAUDE_BACKUP_TARGET;
-  const base = explicit?.startsWith('file://')
-    ? fileTarget(explicit)
-    : (() => {
-        const s3 = s3ConfigFromEnv(env);
-        return s3 ? s3Target(s3) : null;
-      })();
+  const base = explicit?.startsWith('file://') ? fileTarget(explicit) : s3 ? s3Target(s3) : null;
   if (!base) return null;
   return env.MAUDE_BACKUP_PREFIX ? prefixedTarget(base, env.MAUDE_BACKUP_PREFIX) : base;
 }
@@ -419,8 +424,19 @@ export function scheduleBackups({
   run = null,
 }) {
   if (!target || !intervalMs || intervalMs <= 0) return () => {};
-  const timer = setInterval(() => {
-    runBackup({ dataDir, target, keep, repoDir, run })
+  const timer = setInterval(async () => {
+    // A-1: `target` may be an async FACTORY — in a platform cell the storage
+    // credentials are temporary, so each tick resolves the target against the
+    // credentials that are valid NOW rather than the ones from boot.
+    let resolved;
+    try {
+      resolved = typeof target === 'function' ? await target() : target;
+    } catch (err) {
+      log.error?.(`[hub] backup target unavailable: ${err.message}`);
+      return;
+    }
+    if (!resolved) return;
+    runBackup({ dataDir, target: resolved, keep, repoDir, run })
       .then((r) =>
         log.log?.(
           `[hub] backup ${r.prefix} (${r.files.length} file(s)${r.repo ? ' + checkout' : ''})`

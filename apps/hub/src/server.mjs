@@ -57,7 +57,7 @@ import {
   handleUserAdminRoutes,
   permissiveDevAuthDisabled,
 } from './auth-routes.mjs';
-import { scheduleBackups, targetFromEnv } from './backup.mjs';
+import { scheduleBackups, targetFromConfig, targetFromEnv } from './backup.mjs';
 import { maybeIssueOnBoot, verifyAndConsume } from './bootstrap.mjs';
 import { handleExportRoute, scheduleMirror, scheduleRevocationSweep } from './cell-ops.mjs';
 import { clientIpFor, parseTrustedProxies } from './client-ip.mjs';
@@ -65,7 +65,7 @@ import { groupCanvases } from './doc-namespace.mjs';
 import { seedFirstUserOnBoot } from './first-user.mjs';
 import { createGitRunner } from './git-runner.mjs';
 import { createRateStore } from './rate-store.mjs';
-import { s3ConfigFromEnv } from './s3.mjs';
+import { defaultS3Source } from './s3-creds.mjs';
 import { seedRepo } from './seed-repo.mjs';
 import { DEFAULT_HUB_NAME, readSettings, writeSettings } from './settings.mjs';
 import {
@@ -233,8 +233,19 @@ export function createHub(config = {}) {
   // `maude hub restore-drill` — a backup nobody has restored is a hypothesis.
   // The bucket the asset proxy reads from. Same env set as backups — one
   // storage configuration per hub, not two.
-  const assetStore = s3ConfigFromEnv();
-  const backupTarget = targetFromEnv();
+  // A-1: in a platform cell the credentials are TEMPORARY and self-refresh
+  // through the control plane; on a self-hosted hub the source is the same
+  // static env config as ever. Everything below asks the source per
+  // operation instead of pinning boot-time values.
+  const s3Source = defaultS3Source();
+  // Boot-time snapshot — answers "is a backup destination configured" and
+  // provides the describe string. In BOTH credential modes the env carries a
+  // valid initial config at boot (static keys, or the fresh mint the DO
+  // injected), so this is safe to resolve once.
+  const bootTarget = targetFromEnv();
+  const backupTarget = bootTarget
+    ? async () => targetFromConfig(process.env, await s3Source.config())
+    : null;
   const backupIntervalMs = Number(process.env.MAUDE_BACKUP_INTERVAL_MS ?? 6 * 3600_000);
   const stopBackups = scheduleBackups({
     dataDir,
@@ -253,7 +264,7 @@ export function createHub(config = {}) {
       backupIntervalMs < 60_000
         ? `${Math.round(backupIntervalMs / 1000)} s`
         : `${Math.round(backupIntervalMs / 60000)} min`;
-    console.log(`[hub] backups → ${backupTarget.describe} every ${every}`);
+    console.log(`[hub] backups → ${bootTarget.describe} every ${every}`);
   }
 
   /** Per-IP rate limit buckets (admin API): ip → { count, windowStart } */
@@ -464,7 +475,7 @@ export function createHub(config = {}) {
           method,
           dataDir,
           secret,
-          s3: assetStore,
+          s3: await s3Source.config(),
           checkRateLimit: rateLimit
             ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
             : undefined,
@@ -652,7 +663,7 @@ export function createHub(config = {}) {
     peers,
     activity,
     backupTarget,
-    assetStore,
+    s3Source,
     workspaceMode,
     repoDir,
     /** The live agent, once started. Null outside workspace mode. */
@@ -1542,7 +1553,7 @@ async function runAsMain() {
     console.error('[hub] config error:', err.message);
     process.exit(1);
   }
-  const { server, sqlitePath, workspaceMode, repoDir, assetStore } = built;
+  const { server, sqlitePath, workspaceMode, repoDir, s3Source } = built;
 
   try {
     await server.listen();
@@ -1574,12 +1585,14 @@ async function runAsMain() {
           'but this workspace will keep no git history and cannot mirror to GitHub.'
       );
     }
-    if (assetStore && repoDir) {
+    if (s3Source.configured && repoDir) {
       // Sweep once at boot rather than on a timer: assets arrive with a commit,
       // and a cell wakes on every migration, so boot is already the frequent
       // event. A timer would mostly re-HEAD objects that have not changed.
       const designRoot = join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design');
-      sweepAssets({ designRoot, s3: assetStore })
+      s3Source
+        .config()
+        .then((s3) => sweepAssets({ designRoot, s3 }))
         .then((r) => {
           built.recordAssetSweep({
             uploaded: r.uploaded.length,

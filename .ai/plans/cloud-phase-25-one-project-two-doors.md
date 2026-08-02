@@ -134,12 +134,19 @@ The cell has never rendered a canvas. It holds files, syncs Yjs, serves assets
 and lists canvases; the only studio file `apps/hub/Dockerfile` borrows is
 `apps/studio/sync/autocommit.ts`. This is net-new infrastructure, not a flag.
 
-- [ ] **A-1 — per-tenant R2 credentials. PREREQUISITE, not a task in this
-  track.** Every cell holds a shared bucket-wide R2 key; isolation is app code
-  only. That is already a blocker for a second paying customer; in a cell that
-  builds untrusted source it is the first thing a build-time file read reaches.
-  Either per-tenant credentials or presigned URLs minted by the control plane.
-  **Nothing in Track A or B ships before this does.**
+- [x] **A-1 — per-tenant R2 credentials. PREREQUISITE, not a task in this
+  track.** *(Code-complete 2026-08-02.)* The control plane mints **R2
+  temporary access credentials** per tenant (`/internal/cell-r2-credentials`,
+  authed by the tenant-derived cell secret; `apps/cloud/r2-creds.mjs`) —
+  scoped to one bucket + `tenants/<id>/` prefix, TTL 12 h. The cells Worker
+  fetches them at container start and FAILS CLOSED (no creds + no legacy key
+  ⇒ the cell refuses to start rather than boot empty); the hub refreshes its
+  own credentials before expiry with its HUB_SECRET
+  (`apps/hub/src/s3-creds.mjs` — backups, asset proxy, asset sweep and export
+  all resolve per-operation now). The fleet-wide `MAUDE_R2_*` Worker secrets
+  are a migration fallback only; deploy step deletes them. Tests:
+  `r2-creds.test.mjs` (scoping + fail-closed + route auth),
+  `cell-config.test.mjs` (env mapping), `s3-creds.test.mjs` (refresh).
 - [ ] **A1 — the build sandbox.** Bun.build runs against customer TSX with:
   an **import allowlist** (the runtime packages, `@maude/canvas-lib`, and
   relative paths that resolve *inside* the design root — nothing else), no
