@@ -35,7 +35,15 @@ workers_dev = true
 
 [[containers]]
 class_name = "MaudeCell"
-image = "registry.cloudflare.com/b5b596efe65abb732777c7171dc18145/maude-cell:v11"
+# v12 (Cloud Phase 25): the first image carrying the canvas build sandbox.
+#
+# THIS LINE IS THE ROLLOUT INSTRUCTION — `cells-deploy.yml` reads the tag from
+# here, builds THAT tag and deploys it. Leaving it unchanged is not a no-op
+# with a new image behind it: pushing new content to an existing tag leaves the
+# container configuration byte-identical, so the deploy prints
+# `no changes maude-cells-maudecell` and every instance keeps running the old
+# digest. It looks like a successful deploy. It is not one. Bump the tag.
+image = "registry.cloudflare.com/b5b596efe65abb732777c7171dc18145/maude-cell:v12"
 # THE FLEET CEILING — Cloud Phase 24 B2.
 #
 # It was 1: "the tenant-of-one pilot". That is not a scaling nicety, it is a
