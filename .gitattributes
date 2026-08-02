@@ -1,0 +1,39 @@
+# Line endings are part of the build output.
+#
+# `apps/studio/dist/client.bundle.js` is built on macOS, Linux AND Windows
+# runners, and the release asserts all three produce the artifact that was
+# reviewed. With no policy here, Git for Windows checks sources out as CRLF
+# (core.autocrlf defaults to true there), so the Windows runner bundles
+# different bytes than everyone else — measured at 385 bytes on 2026-08-02,
+# after pinning Bun and committing apps/studio/bun.lock had made macOS and
+# Linux agree exactly.
+#
+# Normalizing to LF in the working tree on every platform removes the last
+# input that varies by who is building.
+* text=auto eol=lf
+
+# Binary, or byte-exact by contract — never touch these.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.mp4 binary
+*.mov binary
+*.webm binary
+*.mp3 binary
+*.wav binary
+*.zip binary
+*.gz binary
+*.bundle binary
+*.kuzu binary
+
+# The committed build outputs. They are compared byte-for-byte against what CI
+# builds, so any conversion at all would break the comparison it exists for.
+apps/studio/dist/** -text

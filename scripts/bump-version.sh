@@ -125,6 +125,28 @@ fi
 # Stamp any pending What's New entries (version:null) with the new version + date.
 node "$ROOT/scripts/stamp-whats-new.mjs" "$NEW"
 
+# Rebuild the committed client bundle at the NEW version.
+#
+# `build.ts` compiles the version in (`__MDCC_VERSION__` from package.json), so
+# the moment the version moves, the committed dist/client.bundle.js is stale by
+# exactly that string — and CI's release build, which regenerates it, would ship
+# an artifact nobody reviewed. That is not hypothetical: the desktop app opened
+# to a blank window in v0.51.1 and v0.52.0 because the shipped bundle was never
+# the committed one. Rebuilding here keeps them the same object, which is what
+# the "built client bundle matches the committed one" CI gate asserts.
+#
+# Release-minified deliberately (never a dev build — 14 MB vs 2 MB), and
+# MAUDE_SKIP_RUNTIME_BUILD=1 so the committed dist/runtime/*.js stay untouched.
+if command -v bun >/dev/null 2>&1; then
+  echo "[bump] rebuilding the client bundle at $NEW…"
+  (cd "$ROOT/apps/studio" && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release >/dev/null)
+  echo "[bump] dist/client.bundle.js + dist/styles.css rebuilt — commit them with the bump"
+else
+  echo "[bump] WARNING: bun not on PATH — dist/client.bundle.js still carries the OLD version." >&2
+  echo "[bump]          Run this before committing, or CI will refuse the release:" >&2
+  echo "[bump]            cd apps/studio && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release" >&2
+fi
+
 "$ROOT/scripts/check-version-parity.sh"
 
 # Every relative import in a tracked file must have a tracked target. In a
