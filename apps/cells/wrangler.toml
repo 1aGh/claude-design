@@ -76,7 +76,16 @@ image = "registry.cloudflare.com/b5b596efe65abb732777c7171dc18145/maude-cell:v12
 # again — check the Containers dashboard for instances stuck in `scheduling`
 # after the next rollout, and check the first month's invoice against the
 # arithmetic above.
-max_instances = 5
+# RAISED TO 12 DURING THE 2026-08-03 INCIDENT. The comment above already
+# warned that this platform keeps instances SCHEDULED rather than merely
+# available, so the ceiling is a capacity floor as much as a cost ceiling —
+# and a fleet whose ceiling is full has no slot left for the one cell a
+# customer is actually asking for. Whether that was this incident's cause is
+# NOT established; the ceiling was raised while diagnosing and is left raised
+# because 5 is demonstrably too close to the edge for a fleet that also holds
+# retired test tenants. Re-check the first invoice against the arithmetic
+# above.
+max_instances = 12
 # `basic` is 1/4 vCPU and 4 GB disk. A first-boot seed clone of a real design
 # project (alligators: ~280 MB working tree) could not finish checking out
 # before the platform gave up waiting for the port, so the container was killed
