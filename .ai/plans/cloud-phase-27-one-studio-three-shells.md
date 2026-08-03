@@ -317,10 +317,26 @@ map the route table); all nine D1 surfaces refuse; and the segregated canvas
 origin answers on its own hostname, 401 without a capability, for this tenant
 and for a foreign one alike.
 
-**Still owner-gated:** signing in through the dashboard and looking at it — the
-acceptance criterion is that a teammate sees Files, Layers, Inspector, search
-and branch/LIVE status, and that the alligators project's real photographs and
-webfont render. Only a browser with a Maude account can answer that.
+**It shipped blank first.** `Uncaught ReferenceError: cfg is not defined` — the
+C1/C2/C4 edits referenced `cfg` inside `Menubar`, which never receives it, so
+React mounted nothing in EVERY shell. And the client's `/_config` handler is an
+explicit projection rather than a spread (deliberately — it races
+`/_index-data`), so the two fields the phase added arrived nowhere: `cloud` (no
+chrome) and `canvasToken` (every canvas iframe would have hit the cookieless
+origin with no capability — that one had not been found at all).
+
+One cause: **the client was changed and never rendered.** Every check was HTTP,
+and a route table says nothing about whether React mounts.
+`test/config-projection.test.ts` now reads both sides out of source and demands
+they agree; removing `cloud` reds two of its four tests.
+
+Fixed, rolled to v21, and verified by booting the PUBLISHED image
+(`ghcr.io/1agh/maude-hub:latest`, bundle `0cf90c6202c5`) signed in, in a real
+browser: Files, Layers, search, the full menubar, IDLE/ARTBOARDS/LIVE status,
+and "← Dashboard  Alligators" in the chrome.
+
+**Still owner-gated:** opening the real domain with a Maude account, and looking
+at whether the alligators project's photographs and webfont render.
 
 Two wiring bugs the data plane surfaced before the roll, both of which would
 have 404'd every canvas: the cell was never told its public canvas origin, and
