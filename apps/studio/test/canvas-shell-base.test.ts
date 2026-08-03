@@ -68,4 +68,37 @@ describe('the canvas shell hangs off the path it was served from', () => {
     expect(withCap('/_api/canvas-meta?file=x')).toBe('/alligators/_api/canvas-meta?file=x&t=cap-1');
     expect(SHELL).toContain("const abs = u.startsWith('/') ? base + u : u;");
   });
+
+  test('EVERY absolute URL the shell requests goes through the base', () => {
+    // The systematic version of the three separate bugs this file records. Each
+    // was one absolute path that nobody had thought about: the module, then the
+    // importmap, then `comment-mount.js` — and the last one aborted the mount
+    // outright, because it is imported in the same `Promise.all` as the canvas.
+    //
+    // So this asserts the SHAPE rather than a list: nothing in the shell may
+    // form a request from an origin-absolute literal.
+    const offenders: string[] = [];
+    for (const re of [
+      /import\(\s*['"`]\//g, //  import('/…')
+      /fetch\(\s*['"`]\//g, //   fetch('/…')
+      /\.href\s*=\s*['"`]\//g, // el.href = '/…'
+      /\.src\s*=\s*['"`]\//g, //  el.src  = '/…'
+      /location\.host\s*\+\s*['"`]\//g, // ws://host + '/…'
+    ]) {
+      for (const m of SHELL.matchAll(re)) offenders.push(m[0].trim());
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test('the URLs that DO appear are the ones withCap builds', () => {
+    // Belt to the brace above: the four paths the shell legitimately names must
+    // each be reachable only through `withCap`.
+    for (const path of ['/_client/comment-mount.js', '/_api/canvas-meta']) {
+      const at = SHELL.indexOf(path);
+      expect(at).toBeGreaterThan(0);
+      // `withCap(` appears within the same expression, before the literal.
+      const before = SHELL.slice(Math.max(0, at - 120), at);
+      expect(before).toContain('withCap(');
+    }
+  });
 });
