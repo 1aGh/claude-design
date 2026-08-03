@@ -149,6 +149,26 @@ else
   echo "[bump]            cd apps/studio && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release" >&2
 fi
 
+# Regenerate the site's generated content at the NEW version.
+#
+# Same class of staleness as the client bundle above: `site/lib/stats.json` bakes
+# `"version": "vX.Y.Z"`, so the bump alone makes it stale and quality.yml's
+# "Site generated content drift" step — which regenerates and diffs — goes red on
+# the release commit itself. (An older fix made `publishedDate` stable; it never
+# covered the version field, and a memory summarising it as "permanently fixed"
+# is exactly how v0.53.2 shipped with a red gate and needed a follow-up commit.)
+# Regenerating here makes the release commit self-consistent.
+if command -v pnpm >/dev/null 2>&1; then
+  echo "[bump] regenerating site reference + stats at ${NEW}..."
+  (cd "$ROOT" && pnpm --filter @maude/site gen:reference >/dev/null 2>&1 || true)
+  (cd "$ROOT" && pnpm --filter @maude/site gen:stats >/dev/null 2>&1 || true)
+  echo "[bump] site/lib/stats.json regenerated — commit it with the bump"
+else
+  echo "[bump] WARNING: pnpm not on PATH — site/lib/stats.json still carries the OLD version." >&2
+  echo "[bump]          Run before committing or quality.yml reds on the release commit:" >&2
+  echo "[bump]            pnpm --filter @maude/site gen:reference && pnpm --filter @maude/site gen:stats" >&2
+fi
+
 "$ROOT/scripts/check-version-parity.sh"
 
 # Every relative import in a tracked file must have a tracked target. In a

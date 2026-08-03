@@ -195,21 +195,32 @@ function verbDoctor(state) {
 async function verbCheckUpstream(state) {
   const pinned = state.engineVersion;
   process.stdout.write(`maude kg check-upstream\n\n  pinned (engineVersion): ${pinned}\n`);
-  let latest = null;
-  let assets = [];
-  try {
-    const res = await fetch(`https://api.github.com/repos/${KGAI_REPO}/releases/latest`, {
-      headers: { 'user-agent': 'maude-kg', accept: 'application/vnd.github+json' },
-      signal: AbortSignal.timeout(15000),
-    });
-    if (res.ok) {
+  const ghHeaders = { 'user-agent': 'maude-kg', accept: 'application/vnd.github+json' };
+  /** Asset names for one release ref, or null when the fetch itself failed. */
+  const assetsFor = async (path) => {
+    try {
+      const res = await fetch(`https://api.github.com/repos/${KGAI_REPO}/releases/${path}`, {
+        headers: ghHeaders,
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) return { ok: false, tag: null, assets: [] };
       const rel = await res.json();
-      latest = rel.tag_name;
-      assets = (rel.assets ?? []).map((a) => a.name);
+      return { ok: true, tag: rel.tag_name, assets: (rel.assets ?? []).map((a) => a.name) };
+    } catch {
+      return null; // offline — best-effort
     }
-  } catch {
-    /* offline — best-effort */
-  }
+  };
+
+  const latestRel = await assetsFor('latest');
+  const latest = latestRel?.tag ?? null;
+  // The PINNED release is the one that matters: sync-kg.mjs downloads the
+  // desktop sidecars from `releases/download/<pinned>`. Reporting `latest`'s
+  // assets here said "✓" while the pinned release had been stripped of every
+  // asset upstream, so this check stayed green through a desktop build that was
+  // failing on exactly what it claims to verify (v0.53.2, kgai v0.1.9). A tag is
+  // a name, not a content hash — upstream can rewrite what it points at.
+  const pinnedRel = await assetsFor(`tags/${encodeURIComponent(pinned)}`);
+  const assets = pinnedRel?.assets ?? [];
   if (!latest) {
     process.stdout.write('  latest: unknown (offline) — using pinned.\n');
     return 0;
@@ -218,12 +229,31 @@ async function verbCheckUpstream(state) {
   process.stdout.write(
     `  status:                 ${latest === pinned ? '✓ up to date' : `⚠ upstream moved ${pinned} → ${latest}`}\n`
   );
-  // Capability diff — flags/commands the plan's assumptions hinge on.
+  // Prebuilt assets ON THE PIN — what the desktop build actually downloads.
   const hasDarwin = assets.some((a) => /kg-darwin/.test(a));
   const hasKuzu = assets.some((a) => /libkuzu/.test(a));
-  process.stdout.write('\n  prebuilt assets:\n');
-  process.stdout.write(`    macOS kg binary:      ${hasDarwin ? '✓' : '✗'}\n`);
-  process.stdout.write(`    libkuzu dylib/so:     ${hasKuzu ? '✓' : '✗'}\n`);
+  const hasLinux = assets.some((a) => /kg-linux/.test(a));
+  process.stdout.write(`\n  prebuilt assets on the PIN (${pinned}):\n`);
+  if (pinnedRel === null) {
+    process.stdout.write('    (offline — not checked)\n');
+  } else if (!pinnedRel.ok) {
+    process.stdout.write(`    ✗ release ${pinned} not found upstream\n`);
+  } else {
+    process.stdout.write(`    macOS kg binary:      ${hasDarwin ? '✓' : '✗'}\n`);
+    process.stdout.write(`    linux kg binary:      ${hasLinux ? '✓' : '✗'}\n`);
+    process.stdout.write(`    libkuzu dylib/so:     ${hasKuzu ? '✓' : '✗'}\n`);
+  }
+  // A pin whose assets are gone breaks `sync-kg.mjs`, which fails the desktop
+  // build for macOS and Linux. Exit non-zero so this can gate a release.
+  const pinBroken = pinnedRel !== null && (!pinnedRel.ok || !hasDarwin || !hasKuzu || !hasLinux);
+  if (pinBroken) {
+    process.stdout.write(
+      `\n  ✗ the pinned release cannot build the desktop app — sync-kg.mjs downloads from\n` +
+        `    releases/download/${pinned}, and those assets are missing. Upstream deleted or\n` +
+        `    rewrote the release. Bump the pin to one that still carries them (verify\n` +
+        `    compatibility first: CLI surface diff + a canonical-export comparison).\n`
+    );
+  }
   if (latest !== pinned) {
     process.stdout.write(
       '\n  → Re-scan the capability surface (native --scope filter? kg import? Stop-hook/guessActor changes?),\n' +
@@ -231,7 +261,7 @@ async function verbCheckUpstream(state) {
         '    config.knowledgeGraph.engineVersion deliberately (never float — supply-chain surface, DDR-054/056).\n'
     );
   }
-  return 0;
+  return pinBroken ? 1 : 0;
 }
 
 // ── verb: session-sync (SessionStart hook — non-blocking pull) ──────────────

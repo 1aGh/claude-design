@@ -292,6 +292,27 @@ pw_screenshot() {
 # iframe to appear. Every leg is best-effort — chrome is the point of this mode,
 # so a missing row or a slow mount degrades to "chrome, nothing open" rather
 # than failing the capture.
+# A reachable port is not a mounted app: the server can answer while the client
+# bundle is still parsing, or React can fail to mount and leave an empty #root
+# (the exact shape of the v0.51.1 blank-window bug). Wait for the studio's own
+# file list before capturing, so a broken shell fails loud instead of shipping a
+# blank PNG that looks like a real screenshot.
+await_studio_shell() {
+  [ "$ENGINE" = "agent-browser" ] || return 0
+  local poll=0
+  while [ $poll -lt "$TIMEOUT" ]; do
+    local n
+    n=$("$AB" eval "document.querySelectorAll('[data-testid^=\"canvas-row-\"]').length" 2>/dev/null | tr -d '[:space:]')
+    case "$n" in
+      ''|*[!0-9]*|0) ;;
+      *) return 0 ;;
+    esac
+    sleep 1
+    poll=$((poll + 1))
+  done
+  return 1
+}
+
 open_active_in_shell() {
   [ "$ENGINE" = "agent-browser" ] || return 0
   [ -n "$ACTIVE" ] || { echo "→ shell: no active canvas — capturing chrome as-is" >&2; return 0; }
@@ -332,11 +353,22 @@ open_active_in_shell() {
 
 navigate_once() {
   if [ "$ENGINE" = "agent-browser" ]; then
-    "$AB" open "$URL" >&2
+    # A failed navigation MUST propagate. agent-browser leaves the session on a
+    # blank page and `screenshot` then happily writes a ~4 kB white PNG, so
+    # ignoring this exit code turns "the server is down" into "here is your
+    # screenshot" — which for the Report-a-Bug shell shot means a blank image
+    # labelled "Maude window" lands in someone's bug report.
+    if ! "$AB" open "$URL" >&2; then
+      echo "✗ navigation failed: $URL" >&2
+      return 1
+    fi
     # Shell mode lands on the studio root, which has no DC mount to poll for —
     # the canvas arrives only after we click a row.
     if [ "$MODE" = "shell" ]; then
-      sleep 1
+      if ! await_studio_shell; then
+        echo "✗ the studio shell never mounted at $URL" >&2
+        return 1
+      fi
       open_active_in_shell
       apply_theme_override
       return 0
@@ -503,7 +535,15 @@ if [ $ALL_SCREENS -eq 1 ]; then
 fi
 
 # ---------- single-shot ----------
-navigate_once
+# A failed navigation is exactly the port-bounce case (DDR-094), so give
+# relive_url its one shot before giving up rather than capturing a blank page.
+if ! navigate_once; then
+  if ! relive_url || ! navigate_once; then
+    echo "✗ could not load $URL — no screenshot written" >&2
+    rm -f "$OUT"
+    exit 3
+  fi
+fi
 if capture_resilient "$CSS_SEL" "$OUT"; then
   echo "$OUT"
   exit 0
