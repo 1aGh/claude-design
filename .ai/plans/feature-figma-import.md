@@ -172,7 +172,7 @@ Editability and pixel-fidelity are in genuine tension, and this decision picks a
 - **App/Package**: `apps/studio` (server + client), `plugins/design`, `cli`, `apps/desktop` (Settings surface only)
 - **Affected Systems**: HTTP route table + canvas-origin allowlists, BYOK key custody (`generation/keys.ts`), asset ingestion (`import-asset` / `fetch-asset`), annotation model, canvas creation + `canvasKinds` badge plumbing, design-system token import, `/design:import` + `/design:board`
 - **Dependencies**: reuses `generation/keys.ts` (BYOK custody), `bin/_import-asset.mjs` (`--kind raster`), `bin/_fetch-asset.mjs` (URL ingestion), `bin/_import-tokens.mjs` (DDR-172 mapping contract), `annotations-model.ts` (canonical serializer/sanitizer), `annotate.mjs` (the write discipline), `api.ts` `canvasKinds` (the DDR-174 badge plumbing)
-- **New runtime deps**: **none in Phases 0–5** (Figma REST is plain `fetch`). Phase 6 needs a kiwi/zstd decode stack (`kiwi-schema` + `fzstd` + `pako`, or `@open-pencil/fig` / `fig-kiwi`) — each gets its own DDR + security review before adding, per this repo's standing rule (DDR-071 precedent).
+- **New runtime deps**: **none in Phases 0–5** (Figma REST is plain `fetch`). **Phase 6 targets zero as well** — the Kiwi decoder is written **in-house** (user decision 2026-08-03: don't depend on `fig-kiwi`/`@open-pencil/fig`, port from the documented reference instead), deflate is `zlib.inflateSync`, and zstd is `zlib.zstdDecompressSync` (built into Node since **23.8.0** — verify Bun's `node:zlib` exposes it, since the dev server is Bun-authoritative per DDR-009). `fzstd` is the single fallback dep if that verification fails, and gets the normal DDR + security review per this repo's standing rule (DDR-071 precedent).
 
 ## Out of scope (explicit)
 
@@ -390,15 +390,40 @@ Execute in order. Each task is atomic and testable.
 - **Gotcha**: `import.md`'s existing text is dominated by DDR-174's orchestrator discipline for `--reconstruct`. State plainly at the top of the new section that **`--figma` is deterministic and shares none of that architecture**, so a future reader doesn't cargo-cult the agent split into a code path that has no agent in it. `cli/lib/plugin-cli-reachability.test.mjs` bans raw bin paths in plugin markdown.
 - **Validate**: `bun test cli/lib/plugin-cli-reachability.test.mjs`; `/design:help` renders both.
 
-### Phase 6 — Local `.fig` / `.jam` (deferred, gated)
+### Phase 6 — Local `.fig` / `.jam` — **our own decoder** (user decision 2026-08-03)
 
-**T13: RECORD the `.fig` decoding DDR** — its own decision, own dep review, own security round.
-- **Do**: justify the dep stack (`kiwi-schema` + `fzstd` + `pako`, or a bundled parser), state the format-instability risk and the version-detection/fail-loud posture, and specify decompression-bomb caps (compressed:uncompressed ratio, absolute output bytes, node count, tree depth).
-- **Gotcha**: this is a **reverse-engineered, undocumented, vendor-can-break-it-any-time** format. The honest framing is "best-effort, fails loud on an unrecognized prelude/version" — not a supported guarantee.
+**Decision: write the decoder ourselves, taking inspiration from the existing libraries rather than depending on them — and back it with a serious smoke suite.** Two verified facts make this the *lower*-risk option, not the braver one:
 
-**T14: CREATE `figma/fig-decode.ts`**
-- **Do**: 8-byte prelude (`fig-kiwi` / `fig-jam.` / `fig-deck`) → LE u32 version → decompress the schema chunk → decompress the data chunk → decode → **emit the same normalized node tree as `figma/client.ts`**, so Phases 2–4 apply unchanged.
-- **Validate**: fixture `.fig` + `.jam` round-trip to the same translator output the API path produces for the same document; a malformed/bomb-input rejection table.
+1. **Kiwi is a documented open format, not a reverse-engineered one.** [`evanw/kiwi`](https://github.com/evanw/kiwi) ships a spec, a `.sk` schema language, and a reference JS implementation (`js/schema.ts`, `js/binary.ts`, `js/kiwi.ts`) we can port from. Decisively: Kiwi advertises *"forwards compatibility — old versions can optionally read new data **if a copy of the new schema is bundled with the data**"*, which is **exactly** what a `.fig` does (chunk 1 *is* the schema). The format was designed for this read.
+2. **The schema is embedded, so we never hardcode Figma's.** A Figma *schema* change cannot break us — only a *container-framing* change could, and that is a handful of bytes, not a data model. This is the single biggest argument against depending on `fig-kiwi` (v0.0.1, ~4 years stale): a stale library pins a stale schema; our decoder reads whatever the file brings.
+
+**Dependency posture — plausibly zero new runtime deps.** Deflate is `zlib.inflateSync`, present everywhere. Zstd is `zlib.zstdDecompressSync`, built into Node since **23.8.0**; **verify Bun's `node:zlib` exposes it at implementation time** (the dev server is Bun-authoritative per DDR-009, and `dependencies.json` currently floors Node at 20). If it's absent, `fzstd` (small, pure-JS) is the single fallback dep and gets the normal review. The Kiwi decoder itself is ours, ~300–500 lines.
+
+**Only the container framing is genuinely undocumented**: 8-byte ASCII prelude (`fig-kiwi` design / `fig-jam.` FigJam / `fig-deck` slides), LE `u32` version, then length-prefixed compressed chunks. Small surface, community-documented, and the part the smoke suite watches hardest.
+
+**T13: RECORD the `.fig` decoding DDR** — own decision, own security round.
+- **Do**: state the write-our-own rationale above (embedded schema = no pinned schema to rot); the **fail-loud posture** — an unrecognised prelude or an unknown container version **refuses**, and must never best-effort-decode into plausible-but-wrong geometry (silent wrongness is far worse than a clean error for a design importer); decompression-bomb caps (compressed:uncompressed ratio, absolute output bytes, node count, tree depth); and the smoke architecture below as a *requirement*, not a test plan.
+- **Also check (one line, don't over-lawyer)**: Figma's ToS reverse-engineering clause. The honest framing is that this reads a file the user already owns, entirely locally, touching no Figma service — but confirm rather than assume.
+- **Validate**: `security-auditor` + `ethical-hacker` over the binary-parser threat model. A parser on untrusted attacker-supplied bytes is the highest-risk code in this whole plan.
+
+**T14: CREATE `figma/fig-decode.ts`** — container reader → decompressor → Kiwi schema parser → Kiwi data decoder → **the same normalized node tree `figma/client.ts` emits**, so Phases 2–4 apply unchanged. Build it in that order; each layer is independently testable.
+
+**T15: BUILD the smoke suite — the load-bearing deliverable of this phase**
+
+> A binary decoder that doesn't crash is not a decoder that's *correct*. The suite below is what separates the two, and it is the reason this phase is worth doing at all.
+
+**Tier 1 — container smoke** (fast, offline, every CI run): all three preludes recognised; garbage/truncated/empty rejected cleanly (no crash, no OOM); a **known** version decodes, an **unknown** version *refuses loudly*; both compression paths exercised; every bomb cap demonstrably trips.
+
+**Tier 2 — differential smoke — the correctness oracle.** ⭐ **The same document, through both doors, must produce the same normalized tree.** Export `X.fig` *and* fetch `GET /v1/files/<X>` for the same file, then diff: node count, ids, types, geometry, text content. **This is only possible because REST was built first** — it retroactively justifies the phase ordering, and it is the only oracle that proves the decoder is *right* rather than merely *quiet*. Known-lossy fields are listed explicitly and asserted as lossy; nothing degrades silently.
+
+**Tier 3 — translator smoke** (end-to-end): `.fig` → decoder → `to-strokes` / `to-artboard` → canvas must equal the REST-sourced import of the same document (or differ only by a documented delta) — **and clear the same `design-system-keeper` A.10 editability gate** the governing principle imposes on every import.
+
+**Tier 4 — format-drift alarm** (the thing that catches Figma breaking us): a small committed corpus of `.fig`/`.jam` exports taken at *different dates*, plus a documented ritual of re-exporting the same source document periodically. A fresh export that fails to decode **is the alarm** — it should fail with the observed container version in the message, so the diagnosis is one line long instead of an afternoon.
+
+**Plus a fuzz corpus.** Cheap under `bun test`; mandatory for a parser fed untrusted bytes.
+
+- **Gotcha**: fixtures must be **small, purpose-built, and ours** — not a real 449 KB working file. Binary fixtures are repo weight and real client files carry licensing/privacy baggage. Author a deliberately minimal board and a minimal frame that between them exercise every mapped node type.
+- **Validate**: all four tiers green; Tier 2 is the gate — no `.fig` import ships without a passing differential run.
 
 ---
 
@@ -430,7 +455,7 @@ Execute in order. Each task is atomic and testable.
 ## Open forks (decide before Phase 6 starts — not blocking Phases 0–5)
 
 0. ~~Is an imported frame a canvas you edit, or a reference you build next to?~~ **Resolved 2026-08-03 — a canvas you edit, always.** See § Governing principle. Kept here so a later reader sees the fork existed and was decided, not overlooked.
-1. **Is `.fig` / `.jam` in scope at all?** (Weakened further by measurement: `fig-kiwi` on npm is `0.0.1`, last published ~4 years ago; its `kiwi-schema` dependency ~3 years. The blocker is decoder health, not sample availability — don't collect `.fig` samples until the vendor-vs-write-our-own call is made.) It is the only door that works with no Figma seat and no network, and the user asked for it by name. It is also a reverse-engineered format that Figma can silently break, plus a new dependency in a repo that reviews every dep individually. The plan's position: **build it, but last and behind its own DDR**, so the translators are already proven against the documented API before a fragile decoder is layered underneath. If the answer is "skip it", Phases 0–5 stand alone with nothing to unpick.
+1. ~~Is `.fig` / `.jam` in scope, and do we vendor a decoder or write one?~~ **Resolved 2026-08-03 — in scope, and we write our own.** `fig-kiwi` on npm is `0.0.1`, ~4 years stale, and pins a stale schema; a `.fig` *carries its own schema*, so an in-house decoder reads whatever the file brings and cannot rot the same way. Kiwi itself is documented with a reference implementation. See Phase 6. **Now `.fig`/`.jam` samples ARE wanted** — small, purpose-built, ours (T15's fixture note). It is the only door that works with no Figma seat and no network, and the user asked for it by name. It is also a reverse-engineered format that Figma can silently break, plus a new dependency in a repo that reviews every dep individually. The plan's position: **build it, but last and behind its own DDR**, so the translators are already proven against the documented API before a fragile decoder is layered underneath. If the answer is "skip it", Phases 0–5 stand alone with nothing to unpick.
 2. **A published Figma plugin (push-from-Figma).** Out of scope here; genuinely the highest-fidelity door and the one that needs no token. Worth its own plan if the REST path's fidelity turns out to disappoint in dogfooding.
 3. **PAT vs OAuth.** This plan assumes a personal access token — one paste, no callback server, no app registration. OAuth would be nicer for a multi-user hub/cloud deployment and is the only sane option if this ever runs server-side for other people. Deferred deliberately; `keys.ts` custody is identical either way.
 
@@ -444,5 +469,6 @@ Execute in order. Each task is atomic and testable.
 - [ ] `design-system-keeper` + critic panel + `a11y-auditor`: 0 blockers on the new UI
 - [ ] **Editability gate (the governing principle):** every imported canvas clears `design-system-keeper` Pass A.10 with no untagged-absolute findings; the imported whiteboard's connectors are live and re-routable (not frozen); the Layers panel shows readable names, not `Group NNNN` × N; `/design:edit` can load and edit an imported canvas end-to-end
 - [ ] Per-import summary names every node that took an editability-over-fidelity degradation
+- [ ] **(Phase 6) All four smoke tiers green — Tier 2 (differential `.fig` vs REST on the same document) is the gate.** No `.fig` import ships without a passing differential run; an unknown container version refuses loudly rather than decoding approximately
 - [ ] `desktop-e2e` scenarios green against the built `.app`
 - [ ] DDR recorded and ingested into kgai; What's-New entry appended via the `whats-new-entry` skill
