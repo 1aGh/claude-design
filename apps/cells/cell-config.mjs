@@ -274,6 +274,21 @@ export async function cellEnv({ tenantId, env, hostname, config = NO_CONFIG, s3C
     // The return leg for the cell's own pages (B5). A NEW variable, so it can
     // never re-trip the identity switch.
     HUB_DASHBOARD_URL: env.DASHBOARD_URL ?? 'https://cloud.maude.sh',
+    // WHERE THE CANVAS IFRAME LOADS FROM (Cloud Phase 27 / DDR-209).
+    //
+    // The cell now runs the real studio, and the studio's client builds every
+    // canvas iframe URL from this value. It must be the address the MEMBER'S
+    // BROWSER can reach — the fleet's shared canvas hostname with this tenant
+    // in the path — never the loopback port the studio happens to have bound.
+    // Deriving it from a request Host is what sent a member to an address that
+    // was not their project, twice, in production (D4).
+    //
+    // The tenant segment is here because the BROWSER needs it: `worker.mjs`
+    // routes `canvas.<zone>/<tenant>/…` and strips the segment before the cell
+    // sees the path, so the cell itself must never strip it again.
+    ...(env.CELL_ZONE
+      ? { MAUDE_PUBLIC_CANVAS_ORIGIN: `https://${CANVAS_LABEL}.${env.CELL_ZONE}/${tenantId}` }
+      : {}),
     // The customer-facing landing shows THIS, not a generic default. Absent,
     // the cell prettifies its own tenant slug — it never falls back to the
     // operator placeholder a customer should never meet, and (since B1) never

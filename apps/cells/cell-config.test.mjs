@@ -16,7 +16,13 @@ import { test } from 'node:test';
 // From `cell-config.mjs`, not `cell-do.mjs`: the latter imports
 // `@cloudflare/containers`, which does not resolve under plain Node. Splitting
 // the decidable half out is what makes this file possible at all.
-import { cellEnv, deriveSecret, fetchTenantConfig, isValidTenantId } from './cell-config.mjs';
+import {
+  canvasOriginTenant,
+  cellEnv,
+  deriveSecret,
+  fetchTenantConfig,
+  isValidTenantId,
+} from './cell-config.mjs';
 
 const MASTER = 'a-platform-master-secret';
 const baseEnv = { CELL_SECRET_MASTER: MASTER, CONTROL_PLANE_URL: 'https://cloud.test' };
@@ -298,4 +304,50 @@ test('fetchTenantS3Credentials asks with the tenant-derived secret and fails clo
     fetchImpl: async () => new Response('no', { status: 503 }),
   });
   assert.equal(refused, null);
+});
+
+// Cloud Phase 27 (DDR-209) — the cell runs the real studio, and the studio's
+// client builds every canvas iframe URL from what it is TOLD its canvas origin
+// is. Getting this wrong is not a subtle degradation: every canvas 404s.
+
+test('a cell is told the browser-reachable canvas origin, with its tenant in the path', async () => {
+  const vars = await cellEnv({
+    tenantId: 'alligators',
+    env: { ...baseEnv, CELL_ZONE: 'cloud.maude.sh' },
+    hostname: 'alligators.cloud.maude.sh',
+  });
+  assert.equal(vars.MAUDE_PUBLIC_CANVAS_ORIGIN, 'https://canvas.cloud.maude.sh/alligators');
+  // NOT the project hostname — the whole point of DDR-054 is that canvas
+  // content executes on an origin the shell's cookie cannot reach.
+  assert.ok(!vars.MAUDE_PUBLIC_CANVAS_ORIGIN.startsWith('https://alligators.'));
+});
+
+test('the tenant segment the WORKER strips is the one the BROWSER needs', async () => {
+  // worker.mjs rewrites `canvas.<zone>/<tenant>/x` to `/x` before the cell sees
+  // it, so these two must stay in agreement: the segment appears in the URL the
+  // client builds and is gone from the path the cell parses. This test and
+  // `canvas-origin.test.mjs` are the two halves of that contract.
+  const vars = await cellEnv({
+    tenantId: 'second-customer',
+    env: { ...baseEnv, CELL_ZONE: 'cloud.maude.sh' },
+    hostname: 'second-customer.cloud.maude.sh',
+  });
+  const { pathname } = new URL(vars.MAUDE_PUBLIC_CANVAS_ORIGIN);
+  assert.equal(pathname, '/second-customer');
+  assert.deepEqual(
+    canvasOriginTenant(
+      new URL(`${vars.MAUDE_PUBLIC_CANVAS_ORIGIN}/_canvas-shell.html?c=1`),
+      'cloud.maude.sh'
+    ),
+    { tenant: 'second-customer', rest: '/_canvas-shell.html' }
+  );
+});
+
+test('a hub with no zone gets no canvas origin rather than a wrong one', async () => {
+  const vars = await cellEnv({
+    tenantId: 'alligators',
+    env: baseEnv,
+    hostname: 'alligators.cloud.maude.sh',
+  });
+  assert.equal(vars.MAUDE_PUBLIC_CANVAS_ORIGIN, undefined);
 });

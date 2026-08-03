@@ -79,7 +79,6 @@ import { seedRepo } from './seed-repo.mjs';
 import { DEFAULT_HUB_NAME, readSettings, writeSettings } from './settings.mjs';
 import { createStudioChild } from './studio-child.mjs';
 import {
-  canvasOriginFor,
   doorVerdict,
   isCanvasHost,
   isHubOwned,
@@ -557,10 +556,17 @@ export function createHub(config = {}) {
           response,
           pathname: authPath,
           method,
-          // The prefix belongs to the ORIGIN, so it comes from the function that
-          // decides the origin — `/tenant` on the fleet's shared canvas
-          // hostname, empty when this tenant has one of its own.
-          pathPrefix: canvasOriginFor(request).prefix,
+          // NO PREFIX — the data plane already stripped it.
+          //
+          // `apps/cells/worker.mjs` routes `canvas.<zone>/<tenant>/…` and
+          // rewrites the request WITHOUT the tenant segment, precisely so that
+          // "a cell serving a self-hoster and a cell serving a Cloud tenant
+          // handle byte-identical requests". Stripping it a second time here
+          // would 404 the shell, the module, the runtime and every asset — the
+          // grey boxes, again, from the opposite direction. The prefix belongs
+          // to the URL the CLIENT builds (MAUDE_PUBLIC_CANVAS_ORIGIN), not to
+          // the path this process parses.
+          pathPrefix: '',
           verifyToken: (token) =>
             verifyRenderToken({ secret, token, project: process.env.MAUDE_TENANT_ID ?? null }),
         });
