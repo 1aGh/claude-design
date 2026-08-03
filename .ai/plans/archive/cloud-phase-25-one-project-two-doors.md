@@ -515,3 +515,54 @@ outside every gate the repo has. The night's worst detour came from trusting a
 "rollback" to a tag whose contents had been overwritten, and the last one from a
 monitor that reported "up on v18" having checked only that something answered
 200. Verify the thing, not that something replied.
+
+---
+
+## Honest close (2026-08-03): what landed, what was wrong, what Phase 26 takes over
+
+The phase is closed as **partially superseded**. Marking it simply "done" would
+repeat the mistake it ended on.
+
+### Landed and verified in production (9/9, `scripts/verify-cloud-production.sh`)
+
+| | |
+| --- | --- |
+| A-1 | per-tenant temporary R2 credentials — `/health` reports `per-tenant` |
+| A1 · A1b · A2 | the build sandbox, its content-hash cache, corpus-parity CI |
+| A3 | the on-call runbook + a per-tenant kill switch, exercised |
+| A4 | the segregated canvas origin — refuses an absent project and a bad token |
+| B1 · B2 | auth at the cell; a stranger and a ghost refused identically |
+| C4 | one role matrix, both surfaces held to it |
+| C5 | the read-only gallery deleted — routes, worker modules, CLI verb, **and its address** |
+| D1–D3 | mirror design-sync as a pull request, with each mode stating its consequence |
+| E1–E4 | the self-hosted console; the hub image ships the full door for self-hosters |
+| — | **outbound tunnel ingress** — the cell dials out; the broken DO→port link is off the request path |
+
+### SUPERSEDED by Phase 27 — the browser door's UI layer
+
+**B3 · B4 · B5 · B6 · B7 and the client half of C3 shipped a hand-written
+469-line studio instead of hosting the real one** (`apps/studio`, 15,073-line
+client). The result was a different, poorer application — no Files/Layers/
+Inspector, no menu bar, no search, no branch/LIVE status — and no project assets
+at all, so every photograph rendered as a grey box.
+
+These items are **not "done"**. They are replaced wholesale by
+[Phase 27](./cloud-phase-27-one-studio-three-shells.md), which deletes
+`apps/hub/src/canvas/studio-page.mjs` and runs the real studio server in the
+cell behind an authenticating proxy.
+
+**Why it happened, recorded so the shape is recognisable next time:** the plan
+said "Maude Studio in the browser" and it was read as *build a browser studio*
+rather than *host the studio in a browser* — even though `workspace-mode.ts`
+already existed to make a cell run the studio's own code path precisely because
+"a second implementation would drift", and this phase's own C2 had already built
+the role-vouching contract the reimplementation walked past. **Two prior
+decisions pointed at the right answer and neither was consulted before
+building.**
+
+### The release notes over-promised
+
+`whats-new.json`'s "Open your project in a browser — nothing to install" shipped
+in v0.53.0 describing a door that does not yet show the product it claims. The
+entry is corrected in the same change as this close; the honest version says
+what actually works today.

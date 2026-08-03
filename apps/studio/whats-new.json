@@ -6,8 +6,8 @@
       "version": "0.53.0",
       "date": "2026-08-02",
       "kind": "feature",
-      "title": "Open your project in a browser — nothing to install",
-      "summary": "Send a teammate a link and they open the real project in their browser: the actual canvases, the actual design system. They can move things, edit text and colours, leave notes, and download the whole thing — signed in with their Maude account, with the same rights they have in the app.",
+      "title": "Open your project in a browser — early access",
+      "summary": "Send a teammate a link and they open the project in their browser, signed in with their Maude account and with the rights their role gives them. This first release shows a simplified view: the full Maude Studio — Files, Layers, Inspector, search — and your project's own images and fonts are coming next.",
       "surface": "design-ui"
     },
     {

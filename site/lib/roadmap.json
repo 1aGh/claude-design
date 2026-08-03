@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-03T12:35:39.232Z",
+  "generated": "2026-08-03T12:51:30.994Z",
   "currentPhase": null,
   "phases": [
     {
@@ -241,6 +241,17 @@
       "date": null,
       "summary": "The fork this plan opened — \"is there an online Maude Studio in the browser?\" — was answered in the owner review of .design/ui/Cloud Self Service.tsx: yes, read-only, and the gallery is dropped ent...",
       "planPath": ".ai/plans/archive/cloud-phase-24-self-service-ready.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-25-one-project-two-doors",
+      "title": "Cloud Phase 25 — One project, two doors",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "1. The read-only gallery is dropped. view-<project>.cloud.maude.sh, the published-snapshot surface, and the maude share publish CLI verb all go. 2. Roles become real, once. A member's rights are th...",
+      "planPath": ".ai/plans/archive/cloud-phase-25-one-project-two-doors.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1763,28 +1774,6 @@
       "phaseKey": null
     },
     {
-      "id": "cloud-phase-25-one-project-two-doors",
-      "title": "Cloud Phase 25 — One project, two doors",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "1. The read-only gallery is dropped. view-<project>.cloud.maude.sh, the published-snapshot surface, and the maude share publish CLI verb all go. 2. Roles become real, once. A member's rights are th...",
-      "planPath": ".ai/plans/cloud-phase-25-one-project-two-doors.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-26-one-studio-three-shells",
-      "title": "Cloud Phase 26 — One studio, three shells",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Phase 25's B3 shipped apps/hub/src/canvas/studio-page.mjs — 469 lines re-implementing a studio whose real client is 15,073 lines (apps/studio/client/app.jsx → dist/client.bundle.js). The expectatio...",
-      "planPath": ".ai/plans/cloud-phase-26-one-studio-three-shells.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
       "id": "cloud-phase-26-operator-view-and-analytics",
       "title": "Cloud Phase 26 — Operator view (superadmin) + product analytics",
       "status": "planned",
@@ -1792,6 +1781,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — apps/cloud has a strong house style (pure logic vs route effects, DDR-196 §1; colocat...",
       "planPath": ".ai/plans/cloud-phase-26-operator-view-and-analytics.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-27-one-studio-three-shells",
+      "title": "Cloud Phase 27 — One studio, three shells",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Phase 25's B3 shipped apps/hub/src/canvas/studio-page.mjs — 469 lines re-implementing a studio whose real client is 15,073 lines (apps/studio/client/app.jsx → dist/client.bundle.js). The expectatio...",
+      "planPath": ".ai/plans/cloud-phase-27-one-studio-three-shells.md",
       "archived": false,
       "phaseKey": null
     },
