@@ -113,6 +113,18 @@ export function tenantFromHostname(hostname, zone) {
 const CANVAS_LABEL = 'canvas';
 
 /**
+ * How the Worker tells a cell that a request arrived on the CANVAS origin.
+ *
+ * Not the Host header: by the time a request has crossed the Durable Object and
+ * the container proxy, `Host` is no longer the name the browser typed. Inferring
+ * the origin from it made every canvas request fall through to the shell lane,
+ * which answered "sign in to open this project" — to an iframe that has no
+ * cookie and never will, because a cookie that could reach this origin is
+ * exactly what DDR-054 exists to prevent.
+ */
+export const CANVAS_ORIGIN_HEADER = 'x-maude-canvas-origin';
+
+/**
  * Is this a canvas-origin request, and if so which project is it for?
  *
  * Returns `null` when the hostname is not the canvas origin (so the caller

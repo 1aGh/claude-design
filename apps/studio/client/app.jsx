@@ -2429,6 +2429,8 @@ function Sidebar({
   // Cloud Phase 25 C2 — viewer role: create / delete / move / rename
   // affordances are absent (buttons, composer, row menus, drag & drop).
   readOnly = false,
+  /** `{ dashboardUrl, projectName }` when this is a cloud tab, else null. */
+  cloud = null,
   groups,
   activePath,
   activeDsName,
@@ -2825,7 +2827,12 @@ function Sidebar({
       {/* Cloud Phase 23 C3 — Maude Cloud sign-in + remote-project attach, docked
           above the GitHub identity. Dev-server-backed, so it works in the desktop
           shell AND a plain browser. */}
-      <CloudBar />
+      {/* Cloud Phase 27 — "Sign in to Maude Cloud" is an offer to do the thing
+          you have already done: you reached this tab THROUGH a Maude account.
+          Absent rather than disabled, because unlike the agent chat there is
+          nothing here to explain — the capability is not missing, it is
+          already satisfied. */}
+      {cloud ? null : <CloudBar />}
       {/* Phase 28 (E3) — GitHub identity as a compact avatar docked at the BOTTOM:
           sign in, connected account + New/Pull/Share, sign out. Self-contained
           (owns its device-code + CreateProject dialogs). Renders nothing in browser. */}
@@ -13841,6 +13848,7 @@ function App() {
     if (id === 'tree')
       return (
         <Sidebar
+          cloud={cfg?.cloud ?? null}
           readOnly={viewerMode}
           groups={groups}
           activePath={activePath}
@@ -15005,6 +15013,7 @@ function App() {
       )}
       {settingsOpen && (
         <SettingsPanel
+          cloud={cfg?.cloud ?? null}
           onClose={() => setSettingsOpen(false)}
           initialTab={typeof settingsOpen === 'string' ? settingsOpen : undefined}
           theme={theme}

@@ -237,6 +237,9 @@ describe('the vocabulary itself', () => {
       '/_api/github',
       '/_api/hub',
       '/_api/photo-edit',
+      // Spawns a headless browser against the studio — same evaluation as
+      // `/_api/export`, and there is no browser in a cell image.
+      '/_api/shell-shot',
       '/_ws/acp',
     ]);
     // …and the two that a cell SERVES, under an asserted contract (DDR-209 A′1).

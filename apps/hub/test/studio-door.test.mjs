@@ -27,6 +27,7 @@ const HERE = join(import.meta.dirname, '..');
 import { mintRenderToken, verifyRenderToken } from '../src/render-token.mjs';
 import { ROLES } from '../src/role-matrix.mjs';
 import {
+  CANVAS_ORIGIN_HEADER,
   canvasOriginFor,
   doorVerdict,
   isCanvasHost,
@@ -180,4 +181,23 @@ test('the two vocabularies do not overlap, which is what makes the check safe', 
   for (const r of accountRoles) {
     assert.ok(!ROLES.includes(r), `'${r}' is an account role and must not be a project role`);
   }
+});
+
+test('the data plane TELLS the cell which origin a request arrived on', () => {
+  // The bug this replaces: inferring it from `Host`, which is no longer the
+  // name the browser typed once a request has crossed a Durable Object and a
+  // container proxy. Every canvas request fell through to the shell lane and
+  // was answered "sign in to open this project" — to a cookieless iframe.
+  const marked = { headers: { [CANVAS_ORIGIN_HEADER]: '1', host: 'whatever-the-proxy-says' } };
+  assert.equal(isCanvasHost(marked, {}), true);
+
+  // Only the exact value. A truthy-string check would let `0` through.
+  assert.equal(isCanvasHost({ headers: { [CANVAS_ORIGIN_HEADER]: '0' } }, {}), false);
+  assert.equal(isCanvasHost({ headers: {} }, {}), false);
+});
+
+test('the Host fallback still serves a hub with no Worker in front', () => {
+  const env = { MAUDE_PUBLIC_CANVAS_ORIGIN: 'https://canvas.acme.internal/proj' };
+  assert.equal(isCanvasHost({ headers: { host: 'canvas.acme.internal' } }, env), true);
+  assert.equal(isCanvasHost({ headers: { host: 'design.acme.internal' } }, env), false);
 });

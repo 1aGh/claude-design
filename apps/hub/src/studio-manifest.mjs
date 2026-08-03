@@ -169,6 +169,9 @@ export const STUDIO_ROUTES = Object.freeze({
   '/_api/export-jobs': REFUSED,
   '/_api/export-jobs/download': REFUSED,
   '/_api/photo-edit': REFUSED,
+  // Spawns a headless browser against the studio — the same evaluation
+  // `/_api/export` is forbidden for, and there is no browser in a cell image.
+  '/_api/shell-shot': REFUSED,
   '/_api/generate-jobs': REFUSED,
   '/_api/generate/audio-reuse': REFUSED,
   '/_api/generate/audio-search': REFUSED,

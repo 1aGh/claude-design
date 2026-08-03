@@ -11,7 +11,7 @@
 // (st-scrim / st-dialog). Icons are local Lucide-line paths (IdentityBar
 // precedent); colors are theme tokens only (no hardcoded hex).
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 function Icon({ name, size = 16 }) {
   const p = {
@@ -588,9 +588,21 @@ const TABS = [
   { id: 'appearance', label: 'Appearance' },
   { id: 'canvas-view', label: 'Canvas & View' },
   { id: 'layout', label: 'Layout' },
-  { id: 'ai-generation', label: 'AI generation' },
-  { id: 'subtitles', label: 'Subtitles' },
-  { id: 'video', label: 'Video' },
+  // Cloud Phase 27 — `local: true` means "this tab configures something that
+  // runs on the machine Maude is installed on". A browser tab has no ffmpeg, no
+  // mlx-vlm, no HuggingFace cache and no provider key of yours, and the routes
+  // behind these panes are refused in a cell by design (DDR-209 D1) — so in the
+  // cloud they rendered as a wall of `HTTP 404`.
+  //
+  // ABSENT, not disabled. C2 says state an absence where the thing would be,
+  // and that rule earns its keep for the agent chat: the feature exists, you
+  // just need the desktop app. These are settings for machinery that is not
+  // missing so much as inapplicable — a preference pane for hardware this shell
+  // does not have. There is nothing for the reader to act on, so a whole tab of
+  // dead controls is worse than no tab.
+  { id: 'ai-generation', label: 'AI generation', local: true },
+  { id: 'subtitles', label: 'Subtitles', local: true },
+  { id: 'video', label: 'Video', local: true },
 ];
 const SETTINGS_TAB_STORE = 'mdcc-settings-tab';
 
@@ -789,6 +801,8 @@ function AppearanceTab({ theme, onSetTheme, cpMode, onSetCpMode }) {
 }
 
 export default function SettingsPanel({
+  /** `{ dashboardUrl, projectName }` when this is a cloud tab, else null. */
+  cloud = null,
   onClose,
   initialTab,
   theme,
@@ -811,11 +825,17 @@ export default function SettingsPanel({
 }) {
   const [providers, setProviders] = useState(null); // null = loading
   const [error, setError] = useState(null);
+  // The tabs THIS shell can honour. See TABS for why the local-machine ones are
+  // absent in a browser tab rather than disabled.
+  const tabs = useMemo(() => TABS.filter((t) => !(cloud && t.local)), [cloud]);
   const [tab, setTab] = useState(() => {
-    if (initialTab && TABS.some((t) => t.id === initialTab)) return initialTab;
+    // A remembered tab that this shell does not have (you opened Video on the
+    // desktop, then opened Settings in the cloud) must not select nothing.
+    const has = (id) => TABS.some((t) => t.id === id && !(cloud && t.local));
+    if (initialTab && has(initialTab)) return initialTab;
     try {
       const v = localStorage.getItem(SETTINGS_TAB_STORE);
-      if (v && TABS.some((t) => t.id === v)) return v;
+      if (v && has(v)) return v;
     } catch {}
     return 'appearance';
   });
@@ -853,19 +873,19 @@ export default function SettingsPanel({
 
   // Vertical roving focus over the tab rail (native-menu parity).
   function onRailKey(e) {
-    const idx = TABS.findIndex((t) => t.id === tab);
+    const idx = tabs.findIndex((t) => t.id === tab);
     if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
       e.preventDefault();
-      setTab(TABS[(idx + 1) % TABS.length].id);
+      setTab(tabs[(idx + 1) % tabs.length].id);
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
       e.preventDefault();
-      setTab(TABS[(idx - 1 + TABS.length) % TABS.length].id);
+      setTab(tabs[(idx - 1 + tabs.length) % tabs.length].id);
     } else if (e.key === 'Home') {
       e.preventDefault();
-      setTab(TABS[0].id);
+      setTab(tabs[0].id);
     } else if (e.key === 'End') {
       e.preventDefault();
-      setTab(TABS[TABS.length - 1].id);
+      setTab(tabs[tabs.length - 1].id);
     }
   }
 
@@ -896,7 +916,7 @@ export default function SettingsPanel({
             aria-label="Settings categories"
             onKeyDown={onRailKey}
           >
-            {TABS.map((t) => (
+            {tabs.map((t) => (
               <button
                 key={t.id}
                 type="button"

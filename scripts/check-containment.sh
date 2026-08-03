@@ -42,6 +42,7 @@ REQUIRED_PREFIXES=(
   "/_api/export"
   "/_api/photo-edit"
   "/_api/generate"
+  "/_api/shell-shot"
   "/_ws/acp"
   # The secret-bearing surfaces, named by Cloud Phase 27 D1. DDR-123's "claude
   # never on our infra" is a fact only while these are unreachable in a cell.

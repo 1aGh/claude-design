@@ -67,6 +67,10 @@ export const FORBIDDEN_ROUTE_PREFIXES: ReadonlyArray<{ prefix: string; why: stri
       why: 'media generation runs tenant-authored prompts against a provider key held here',
     },
     {
+      prefix: '/_api/shell-shot',
+      why: 'the shell screenshot spawns a headless browser against the studio — the same evaluation `/_api/export` is forbidden for',
+    },
+    {
       prefix: '/_ws/acp',
       why: 'the ACP bridge spawns the user’s own `claude` and can drive file edits (DDR-123 is desktop-only)',
     },

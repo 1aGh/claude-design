@@ -22,7 +22,7 @@
 // project, for people who actually have access. A surface that stays
 // half-alive is worse than one that never shipped.
 
-import { canvasOriginTenant } from './cell-config.mjs';
+import { CANVAS_ORIGIN_HEADER, canvasOriginTenant } from './cell-config.mjs';
 import { MaudeCell, routeToCell, tenantFromHostname } from './cell-do.mjs';
 
 export { MaudeCell };
@@ -74,10 +74,25 @@ export default {
       // The cell answers its own canvas routes; the path it sees is the one
       // WITHOUT the tenant prefix, so a cell serving a self-hoster and a cell
       // serving a Cloud tenant handle byte-identical requests.
-      const inner = new Request(
-        new URL(canvasTenant.rest + url.search, url.origin).toString(),
-        request
-      );
+      //
+      // AND THE CELL IS TOLD WHICH ORIGIN THIS IS, rather than left to infer it
+      // from the Host header. Cloud Phase 27 shipped that inference and it was
+      // wrong: by the time a request has crossed the Durable Object and the
+      // container proxy, `Host` is not the name the browser typed, so every
+      // canvas request fell through to the SHELL lane and answered "sign in to
+      // open this project" — to an iframe that has no cookie and never will,
+      // because the whole point of DDR-054 is that this origin is cookieless.
+      //
+      // The header is STRIPPED on the tenant branch below, so it cannot be
+      // forged into existence from outside; and the lane it opens is read-only
+      // and capability-gated regardless.
+      const headers = new Headers(request.headers);
+      headers.delete(CANVAS_ORIGIN_HEADER);
+      headers.set(CANVAS_ORIGIN_HEADER, '1');
+      const inner = new Request(new URL(canvasTenant.rest + url.search, url.origin).toString(), {
+        ...request,
+        headers,
+      });
       return routeToCell(inner, env, canvasTenant.tenant);
     }
 
@@ -93,7 +108,15 @@ export default {
     }
 
     try {
-      return await routeToCell(request, env, tenant);
+      // Strip the canvas-origin marker on the way IN. Nothing outside this
+      // Worker may assert which origin a request arrived on.
+      const stripped = new Headers(request.headers);
+      let inbound = request;
+      if (stripped.has(CANVAS_ORIGIN_HEADER)) {
+        stripped.delete(CANVAS_ORIGIN_HEADER);
+        inbound = new Request(request.url, { ...request, headers: stripped });
+      }
+      return await routeToCell(inbound, env, tenant);
     } catch (err) {
       // A project that cannot start is an operational fact the operator needs
       // and the visitor does not. Cloudflare's bare 1101 says only "the Worker

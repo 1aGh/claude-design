@@ -21,7 +21,7 @@
 
 import { authenticateForMode } from './cloud-identity.mjs';
 import { isRevoked } from './revocations.mjs';
-import { isReadOnlyRole } from './role-matrix.mjs';
+import { isReadOnlyRole, projectRoleForAccount } from './role-matrix.mjs';
 import { servicePage } from './studio-door.mjs';
 import { addToken, removeToken, verifyToken } from './tokens.mjs';
 import { authenticate as localAuthenticate } from './users.mjs';
@@ -134,10 +134,20 @@ export async function handleBrowserAuth({
         scope: user.scope ?? '*',
         owner: user.email,
         expiresAt: Date.now() + ttlMs,
-        readOnly: isReadOnlyRole(user.role),
+        // TRANSLATED, not passed through — `user.role` is an ACCOUNT role and
+        // `isReadOnlyRole` speaks PROJECT roles. Untranslated, an 'admin' is an
+        // unknown role, gets nothing, and reads as read-only: the owner opens
+        // his own project and cannot edit it. Same fix as `/auth/login`; this
+        // door was missed the first time.
+        readOnly: isReadOnlyRole(projectRoleForAccount(user.role)),
       });
       setSessionCookie(response, minted.value, ttlMs / 1000);
-      redirect(response, '/studio');
+      // THE STUDIO IS `/`. It used to be `/studio`, a page this hub rendered
+      // itself; DDR-209 deleted that and the cell now proxies the real studio at
+      // the root. Signing in still sent people to `/studio`, which the proxy
+      // correctly refuses as an unclassified route — so a member completed
+      // sign-in and landed on `{"error":"not found"}`.
+      redirect(response, '/');
       return true;
     }
     page(response, 405, 'Not here', 'Open the project from the start page.');
@@ -219,11 +229,12 @@ export async function handleBrowserAuth({
     owner: user.email,
     expiresAt: Date.now() + ttlMs,
     // The capability is decided ONCE, from the role the control plane vouched
-    // for — the same line as /auth/login (C1).
-    readOnly: isReadOnlyRole(user.role),
+    // for — the same line as /auth/login (C1), including its translation from
+    // the ACCOUNT role vocabulary into the PROJECT role one.
+    readOnly: isReadOnlyRole(projectRoleForAccount(user.role)),
   });
   setSessionCookie(response, minted.value, ttlMs / 1000);
-  redirect(response, '/studio');
+  redirect(response, '/');
   return true;
 }
 

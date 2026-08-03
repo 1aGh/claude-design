@@ -61,8 +61,30 @@ export function canvasOriginFor(request, env = process.env) {
   return { origin: '', separate: false, prefix: '' };
 }
 
-/** True when a request arrived on the segregated canvas hostname. */
+/**
+ * Did this request arrive on the segregated canvas origin?
+ *
+ * TOLD FIRST, INFERRED SECOND. The data plane knows the answer — it routed the
+ * request — and says so with `x-maude-canvas-origin`, which it also strips from
+ * every request on the project hostname so it cannot be forged from outside.
+ *
+ * The Host fallback exists for the deployment with no Worker in front (a
+ * self-hoster who has pointed a second hostname at their hub). It is a FALLBACK
+ * because it is the thing that was wrong: after a request has crossed a Durable
+ * Object and a container proxy, `Host` is not the name the browser typed, so
+ * every canvas request fell through to the shell lane and was answered with
+ * "sign in to open this project" — to an iframe that has no cookie and never
+ * will, since a cookie able to reach this origin is precisely what DDR-054
+ * exists to prevent.
+ *
+ * Both signals are honoured rather than one replacing the other: they are true
+ * in different deployments, and a check that needs to know which one it is in
+ * is a check that gets it wrong in the third.
+ */
+export const CANVAS_ORIGIN_HEADER = 'x-maude-canvas-origin';
+
 export function isCanvasHost(request, env = process.env) {
+  if (request?.headers?.[CANVAS_ORIGIN_HEADER] === '1') return true;
   const host = (request?.headers?.host ?? '').toLowerCase();
   const zone = env.CELL_ZONE;
   if (zone && host === `canvas.${zone}`) return true;
