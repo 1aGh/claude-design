@@ -43,7 +43,7 @@ class_name = "MaudeCellB"
 # container configuration byte-identical, so the deploy prints
 # `no changes maude-cells-maudecell` and every instance keeps running the old
 # digest. It looks like a successful deploy. It is not one. Bump the tag.
-image = "registry.cloudflare.com/b5b596efe65abb732777c7171dc18145/maude-cell:v13"
+image = "registry.cloudflare.com/b5b596efe65abb732777c7171dc18145/maude-cell:v16"
 # THE FLEET CEILING — Cloud Phase 24 B2.
 #
 # It was 1: "the tenant-of-one pilot". That is not a scaling nicety, it is a
@@ -115,6 +115,11 @@ new_sqlite_classes = ["MaudeCellB"]
 # The zone whose subdomains are projects: `<tenant>.cloud.maude.sh`.
 CELL_ZONE = "cloud.maude.sh"
 MAUDE_R2_BUCKET = "maude-cloud-assets"
+# Outbound-ingress tunnel (Phase 25, 2026-08-03): which tenant rides it and on
+# which hostname. The token itself is a secret (MAUDE_TUNNEL_TOKEN). One
+# tenant for now — the control plane learns to mint these per tenant next.
+MAUDE_TUNNEL_TENANT = "alligators"
+MAUDE_TUNNEL_HOST = "t-alligators.cloud.maude.sh"
 
 # Secrets (wrangler secret put):
 #   CELL_SECRET_MASTER          per-cell HUB_SECRETs are derived from this

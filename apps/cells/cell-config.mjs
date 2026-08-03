@@ -308,6 +308,13 @@ export async function cellEnv({ tenantId, env, hostname, config = NO_CONFIG, s3C
           MAUDE_S3_ACCESS_KEY_ID: env.MAUDE_R2_ACCESS_KEY_ID ?? '',
           MAUDE_S3_SECRET_ACCESS_KEY: env.MAUDE_R2_SECRET_ACCESS_KEY ?? '',
         }),
+    // Outbound-ingress tunnel (Phase 25): with this set, the entrypoint runs
+    // cloudflared alongside the hub and the cell dials OUT to the edge. Only
+    // ever set for the tenant it belongs to — a token is one tunnel, and one
+    // tunnel is one tenant's hostname.
+    ...(env.MAUDE_TUNNEL_TOKEN && tenantId === env.MAUDE_TUNNEL_TENANT
+      ? { MAUDE_TUNNEL_TOKEN: env.MAUDE_TUNNEL_TOKEN }
+      : {}),
     MAUDE_S3_REGION: 'auto',
     // Checkpoint cadence. A cell's disk is ephemeral and the platform migrates
     // instances freely, so the gap between checkpoints IS the window of

@@ -383,5 +383,8 @@ test('the browser lane sends a signed-OUT visitor to sign in, never to a code', 
   const { env } = await freshEnv();
   const res = await worker.fetch(new Request('https://cloud.test/projects/x/browser'), env);
   assert.equal(res.status, 302);
-  assert.match(res.headers.get('location'), /^\/auth\/login\?next=/);
+  // `/login` — the sign-in PAGE. This assertion used to pin `/auth/login`,
+  // which is the form's POST target and 404s on GET; the test passed and the
+  // browser door dead-ended at its last step in production (2026-08-03).
+  assert.match(res.headers.get('location'), /^\/login\?next=/);
 });

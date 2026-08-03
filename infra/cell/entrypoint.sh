@@ -99,5 +99,21 @@ fi
 # Defaulted so the script is runnable (and its guards testable) outside the
 # image, where the Dockerfile ENV is not in scope.
 PORT="${PORT:-1234}"
+# ---------------------------------------------------- 3a. outbound ingress
+#
+# With MAUDE_TUNNEL_TOKEN set, requests reach this cell through a named
+# Cloudflare Tunnel the control plane provisioned — the cell dials OUT, so
+# the platform's DO→port link is not on the user-facing path. The tunnel is
+# supervision-light on purpose: if cloudflared dies the hub keeps running,
+# and the router's health probe (over the tunnel) is what notices.
+if [ -n "${MAUDE_TUNNEL_TOKEN:-}" ]; then
+  log "starting cloudflared tunnel (outbound ingress)"
+  (while :; do
+     cloudflared tunnel --no-autoupdate run --token "$MAUDE_TUNNEL_TOKEN" 2>&1 | sed 's/^/[tunnel] /'
+     echo "[cell] cloudflared exited; restarting in 3s"
+     sleep 3
+   done) &
+fi
+
 log "starting hub on :${PORT}"
 exec node /app/dist/hub.bundle.mjs

@@ -348,7 +348,14 @@ export async function handleCanvasRoutes(ctx) {
       // cloud mode (DDR-204).
       const dashboard = env.HUB_DASHBOARD_URL ?? 'https://cloud.maude.sh';
       const tenant = env.MAUDE_TENANT_ID;
-      const back = `https://${request.headers?.host ?? ''}/auth/browser`;
+      // The address the CUSTOMER is at — never the Host header. Behind the
+      // outbound tunnel (Phase 25, 2026-08-03) the Host is the tunnel's
+      // internal hostname, so a Host-derived return URL sent the member to an
+      // address that is not their project's. HUB_PUBLIC_URL is what cellEnv
+      // sets to the customer-facing name; the header is only a fallback for a
+      // hub that has none.
+      const publicBase = (env.HUB_PUBLIC_URL ?? '').replace(/\/+$/, '');
+      const back = `${publicBase || `https://${request.headers?.host ?? ''}`}/auth/browser`;
       response.writeHead(302, {
         // Platform: the Maude account, at the control plane. Self-hosted (E2):
         // this hub's own users, at its own sign-in — one door each, one studio.

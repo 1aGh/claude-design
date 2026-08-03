@@ -51,6 +51,19 @@ RUN chmod +x /app/entrypoint.sh
 # Ownership before VOLUME: post-VOLUME filesystem changes are discarded, and a
 # fresh named volume inherits the image's ownership. Getting this wrong for
 # /repo crash-looped the hub on `EACCES` during Phase 16.
+# cloudflared — the cell's OUTBOUND ingress (Cloud Phase 25, 2026-08-03).
+#
+# The Durable-Object → container port link proved to be the platform's single
+# point of failure: it broke account-wide while every container it had started
+# kept running healthily (RCA in .ai/archive/logs/rca/). cloudflared inverts
+# the direction — the cell dials OUT to the Cloudflare edge and traffic
+# reaches the hub through the tunnel, so nothing user-facing depends on that
+# link again. It runs ONLY when MAUDE_TUNNEL_TOKEN is set (a platform cell);
+# a self-hosted hub never starts it. It is not a browser; the containment
+# guards are unaffected.
+ADD https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 /usr/local/bin/cloudflared
+RUN chmod 755 /usr/local/bin/cloudflared
+
 RUN mkdir -p /data /repo && chown -R node:node /data /repo
 VOLUME ["/data", "/repo"]
 

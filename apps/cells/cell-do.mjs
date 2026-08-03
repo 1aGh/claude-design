@@ -95,6 +95,36 @@ export class MaudeCell extends Container {
       env: this.env,
       storage: this.ctx.storage,
     });
+    // OUTBOUND INGRESS (Cloud Phase 25, 2026-08-03). When this tenant has a
+    // named Cloudflare Tunnel, the request path avoids the DO→container port
+    // link entirely: we START the container (the half of the machinery that
+    // kept working through the outage) and then reach the hub over the tunnel
+    // the container itself dialled out. The DO stays in the path on purpose —
+    // it is what wakes the cell on demand and what lets sleepAfter idle it.
+    if (this.env.MAUDE_TUNNEL_TOKEN && this.env.MAUDE_TUNNEL_HOST && tenantId === this.env.MAUDE_TUNNEL_TENANT) {
+      const config = await fetchTenantConfig({ tenantId, env: this.env, storage: this.ctx.storage });
+      const s3Creds = await fetchTenantS3Credentials({ tenantId, env: this.env });
+      if (!s3Creds && !this.env.MAUDE_R2_ACCESS_KEY_ID) {
+        return new Response(
+          'this cell could not obtain storage credentials — refusing to start empty\n',
+          { status: 503 }
+        );
+      }
+      try {
+        // Idempotent when already running; never waits for the port.
+        await this.start({
+          envVars: await cellEnv({ tenantId, env: this.env, hostname, config, s3Creds }),
+        });
+      } catch (err) {
+        console.error(`[cell] ${tenantId} tunnel-mode start: ${err?.message ?? err}`);
+      }
+      this.renewActivityTimeout?.();
+      const target = new URL(request.url);
+      target.protocol = 'https:';
+      target.host = this.env.MAUDE_TUNNEL_HOST;
+      return fetch(new Request(target, request));
+    }
+
     // This tenant's OWN storage credentials (Phase 25 A-1) — minted fresh on
     // every container start, so a wake always carries a full TTL. FAIL CLOSED:
     // a cell that cannot get credentials AND has no legacy shared key must not

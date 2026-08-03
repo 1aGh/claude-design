@@ -132,7 +132,10 @@ export async function handleHandoff(request, env, { account }) {
       const next = encodeURIComponent(`${url.pathname}${url.search}`);
       return new Response(null, {
         status: 302,
-        headers: { location: `/auth/login?next=${next}`, 'cache-control': 'no-store' },
+        // `/login` is the sign-in PAGE (GET); `/auth/login` is the form's
+        // POST target and 404s on GET. Sending a signed-out member to the
+        // latter dead-ended the whole browser door at the last step.
+        headers: { location: `/login?next=${next}`, 'cache-control': 'no-store' },
       });
     }
     const minted = await mintHandoffCode(env, { account, projectId, now, surface: 'browser' });
