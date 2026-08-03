@@ -1263,7 +1263,13 @@ export function createHttp(
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const endpoint = process.env.MAUDE_REPORT_URL || 'https://cloud.maude.sh/report';
       try {
-        const upstream = await fetch(endpoint, {
+        // `globalThis.fetch` — NOT bare `fetch`: this module declares its own
+        // `async function fetch(req: Request)` (the server fall-through handler)
+        // in the same scope, which shadows the global. A bare call re-entered the
+        // fall-through with a URL string, so `new URL(req.url)` threw
+        // `"undefined" cannot be parsed as a URL` and every report died with a
+        // plain-text HTTP 500 without ever leaving the machine.
+        const upstream = await globalThis.fetch(endpoint, {
           method: 'POST',
           body: await req.formData(),
           signal: AbortSignal.timeout(30_000),
@@ -3948,7 +3954,11 @@ export function createHttp(
     '/index.html': () => serveFile(join(CLIENT_DIR, 'index.html')),
   } satisfies Record<string, (req: Request) => Response | Promise<Response>>;
 
-  async function fetch(req: Request): Promise<Response> {
+  // Named `handleFallthrough`, not `fetch` — a same-named local function shadows
+  // the global `fetch` for every call site in this module's scope, which is how
+  // the `/_api/report` route ended up calling itself instead of the network (see
+  // the `globalThis.fetch` comment on that route; RCA issue-report-a-bug-http-500).
+  async function handleFallthrough(req: Request): Promise<Response> {
     try {
       const url = new URL(req.url);
       const pathname = url.pathname;
@@ -4342,7 +4352,7 @@ export function createHttp(
   ) as typeof routes;
 
   async function guardedFetch(req: Request): Promise<Response> {
-    return readOnlyRefusal(req) ?? fetch(req);
+    return readOnlyRefusal(req) ?? handleFallthrough(req);
   }
 
   return { routes: guardedRoutes, fetch: guardedFetch, serveCanvasShell, isCanvasSafeRoute };
