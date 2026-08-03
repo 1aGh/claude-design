@@ -64,9 +64,7 @@ function isMountable(abs) {
 }
 
 // The cell's sandbox, imported from where the cell itself imports it.
-const { buildCanvasSandboxed } = await import(
-  join(REPO, 'apps/studio/canvas-build-sandbox.ts')
-);
+const { buildCanvasSandboxed } = await import(join(REPO, 'apps/studio/canvas-build-sandbox.ts'));
 
 const all = canvases(DESIGN_ROOT).sort();
 const targets = all.filter(isMountable);
