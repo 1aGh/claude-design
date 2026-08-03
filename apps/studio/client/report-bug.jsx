@@ -16,13 +16,16 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { invoke, isNativeApp, openGitHubUrl, pickMediaFile } from './github.js';
 
-const MAX_SHOTS = 3;
+// Two of these are auto-captured (window + artboard), so the ceiling leaves
+// room for the user to still attach their own.
+const MAX_SHOTS = 4;
 const PUBLIC_ISSUES_URL = 'https://github.com/1aGh/maude/issues/new';
 
 /** How each attached shot got here — shown per tile so the user can tell the
  * auto-captured artboard (which never contains Maude's own chrome) apart from
  * one they attached themselves. */
 const SHOT_LABEL = {
+  shell: 'Maude window (auto)',
   artboard: 'Active artboard (auto)',
   attached: 'Attached by you',
 };
@@ -167,6 +170,7 @@ export function ReportBugDialog({ open, onClose }) {
     projectName: false,
     crashLogs: true,
   });
+  const [shellPending, setShellPending] = useState(false);
   const [redacting, setRedacting] = useState(false);
   const [result, setResult] = useState(null); // {issueUrl, issueNumber} | {fallbackDir}
   const [error, setError] = useState(null);
@@ -178,6 +182,7 @@ export function ReportBugDialog({ open, onClose }) {
     setBundle(null);
     setShots([]);
     setCrashLogs([]);
+    setShellPending(false);
     setRedacting(false);
     setResult(null);
     setError(null);
@@ -241,6 +246,18 @@ export function ReportBugDialog({ open, onClose }) {
       .then((r) => (r.ok ? r.blob() : null))
       .then((blob) => alive && blob && addShotBlob(blob, 'artboard'))
       .catch(() => {});
+    // The window shot — Maude's own chrome, which the artboard capture above
+    // structurally cannot see. Slow (boots a headless browser, opens the active
+    // canvas), so it lands second and shows a pending row meanwhile.
+    setShellPending(true);
+    fetch('/_api/shell-shot', { method: 'POST' })
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((blob) => {
+        if (!alive) return;
+        if (blob) addShotBlob(blob, 'shell');
+        setShellPending(false);
+      })
+      .catch(() => alive && setShellPending(false));
     if (isNativeApp()) {
       invoke('list_crash_logs')
         .then((logs) => alive && setCrashLogs(Array.isArray(logs) ? logs.slice(0, 3) : []))
@@ -456,11 +473,17 @@ export function ReportBugDialog({ open, onClose }) {
                   </span>
                 </div>
                 <p className="rb-hint">
-                  The auto-capture only shows the artboard — it can't see Maude's own window.{' '}
-                  <strong>If the bug is in Maude's UI</strong>, grab the whole window (
-                  {windowShotHint(bundle?.app?.platform)}) and attach or paste (⌘V) it here.
+                  Maude captures its own window and the active artboard for you. The window shot is
+                  a fresh render, so anything mid-flight — an open menu, a stuck spinner — won't be
+                  in it: grab that yourself ({windowShotHint(bundle?.app?.platform)}) and attach or
+                  paste (⌘V) it here.
                 </p>
-                {shots.length === 0 ? (
+                {shellPending && (
+                  <p className="rb-hint" data-testid="report-bug-shell-pending">
+                    Capturing the Maude window…
+                  </p>
+                )}
+                {shots.length === 0 && !shellPending ? (
                   <p className="rb-hint">No screenshot attached yet — up to {MAX_SHOTS}.</p>
                 ) : (
                   <>

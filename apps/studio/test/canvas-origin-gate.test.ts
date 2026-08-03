@@ -156,6 +156,11 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/debug-bundle',
         '/_api/report',
         '/_api/report-fallback',
+        // …and the shell capture SPAWNS A PROCESS (screenshot.sh → a headless
+        // browser) and renders the whole project. Reachable from the canvas
+        // origin it would be a resource-exhaustion lever driven by untrusted
+        // canvas code, so it carries the same main-origin-only posture.
+        '/_api/shell-shot',
         // Stage F1 — the AssetPicker's asset-listing GET is a shell (main-origin)
         // concern; the untrusted canvas iframe must not enumerate project media.
         '/_api/assets',

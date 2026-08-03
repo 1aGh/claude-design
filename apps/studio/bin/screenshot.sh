@@ -6,14 +6,23 @@
 #
 # Usage:
 #   screenshot.sh [--port N | --url URL]
-#                 [--screen <id> | --element <id> | --selector <css> | --full]
+#                 [--screen <id> | --element <id> | --selector <css> | --full | --shell]
 #                 [--all-screens] [--out <path>] [--out-dir <dir>]
 #                 [--timeout 8] [--engine auto|agent-browser|playwright]
 #                 [--theme <name>] [--root <repo>]
 #
 # Notes:
-#   - Exactly one of --screen / --element / --selector / --full is required
-#     (or --all-screens which loops over every [data-dc-screen]/[data-dc-slot]).
+#   - Exactly one of --screen / --element / --selector / --full / --shell is
+#     required (or --all-screens, which loops over every
+#     [data-dc-screen]/[data-dc-slot]).
+#   - --shell captures the STUDIO ITSELF, not a canvas: it points at the server
+#     root (`/`) instead of `_canvas-shell.html`, so Maude's own chrome —
+#     menubar, sidebar, status bar, toasts — is in frame. That chrome is where
+#     most reported UI bugs actually live, and no canvas-scoped capture can ever
+#     show it. Open tabs are `useState([])` in the client (never restored from
+#     `_active.json` or localStorage), so a bare load lands on "Nothing open
+#     yet"; shell mode therefore clicks the active canvas's file-tree row first
+#     to bring the shot back in line with what the user is looking at.
 #   - --out required for single-shot modes; --out-dir required for --all-screens.
 #   - --theme <name> forces every `[data-theme]` element (DS artboard wrappers)
 #     to that value BEFORE capture, via a DOM eval — does not touch the actual
@@ -44,6 +53,7 @@ while [ $# -gt 0 ]; do
     --element)  MODE="element";  SEL="$2"; shift 2 ;;
     --selector) MODE="selector"; SEL="$2"; shift 2 ;;
     --full)     MODE="full"; shift ;;
+    --shell)    MODE="shell"; shift ;;
     --all-screens) ALL_SCREENS=1; shift ;;
     --url)      URL="$2"; shift 2 ;;
     --port)     PORT="$2"; shift 2 ;;
@@ -82,7 +92,7 @@ fi
 if [ $ALL_SCREENS -eq 1 ]; then
   [ -z "$OUT_DIR" ] && { echo "screenshot.sh: --all-screens needs --out-dir" >&2; exit 2; }
 else
-  [ -z "$MODE" ]    && { echo "screenshot.sh: pick one of --full/--screen/--element/--selector or --all-screens" >&2; exit 2; }
+  [ -z "$MODE" ]    && { echo "screenshot.sh: pick one of --full/--shell/--screen/--element/--selector or --all-screens" >&2; exit 2; }
   [ -z "$OUT" ]     && { echo "screenshot.sh: --out required for single-shot modes" >&2; exit 2; }
 fi
 
@@ -128,23 +138,55 @@ if [ -z "$URL" ]; then
   if [ -f "$ACTIVE_JSON" ] && command -v jq >/dev/null 2>&1; then
     ACTIVE=$(jq -r '.active // empty' "$ACTIVE_JSON" 2>/dev/null)
   fi
-  [ -z "$ACTIVE" ] && { echo "screenshot.sh: no active canvas in _active.json (open one in browser first)" >&2; exit 1; }
 
-  # URL-encode spaces (rough); leave other chars alone.
-  ACTIVE_ENC=$(printf '%s' "$ACTIVE" | sed 's/ /%20/g')
-  # Canvases mount through the canvas shell. The bare `/<rel>` route 404s when
-  # the canvas-origin sandbox is on (default since phase-9.1); only
-  # `/_canvas-shell.html?canvas=<rel>` renders the canvas (valid in both
-  # split-on and legacy same-origin modes).
-  URL="http://localhost:${PORT}/_canvas-shell.html?canvas=${ACTIVE_ENC}"
+  # Shell mode targets the studio root, and an active canvas is a NICE-TO-HAVE
+  # (it decides which file-tree row we click) rather than a precondition — a
+  # chrome bug is worth capturing even with nothing open.
+  if [ "$MODE" = "shell" ]; then
+    URL="http://localhost:${PORT}/"
+  else
+    [ -z "$ACTIVE" ] && { echo "screenshot.sh: no active canvas in _active.json (open one in browser first)" >&2; exit 1; }
+
+    # URL-encode spaces (rough); leave other chars alone.
+    ACTIVE_ENC=$(printf '%s' "$ACTIVE" | sed 's/ /%20/g')
+    # Canvases mount through the canvas shell. The bare `/<rel>` route 404s when
+    # the canvas-origin sandbox is on (default since phase-9.1); only
+    # `/_canvas-shell.html?canvas=<rel>` renders the canvas (valid in both
+    # split-on and legacy same-origin modes).
+    URL="http://localhost:${PORT}/_canvas-shell.html?canvas=${ACTIVE_ENC}"
+  fi
 fi
+
+# Shell mode still wants the active canvas even when the caller passed --url
+# outright (the URL says WHERE to look; the active canvas says WHAT to open).
+if [ "$MODE" = "shell" ] && [ -z "$ACTIVE" ]; then
+  SHELL_REPO="${ROOT:-${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}}"
+  if [ -f "$SHELL_REPO/.design/_active.json" ] && command -v jq >/dev/null 2>&1; then
+    ACTIVE=$(jq -r '.active // empty' "$SHELL_REPO/.design/_active.json" 2>/dev/null)
+  fi
+fi
+
+# The file-tree row testid the client stamps (app.jsx `pathTestIdSlug`):
+# designRoot dot-folder stripped, extension stripped, non-alphanumerics folded
+# to single dashes, lowercased, dashes trimmed. Lowercasing happens BEFORE the
+# extension strip so we don't need sed's non-portable `I` flag for `.TSX`.
+# Output is [a-z0-9-] only, which is what makes it safe to splice into the JS
+# selector string eval'd below.
+shell_row_testid() {
+  printf '%s' "$1" \
+    | sed -E 's#^\.[^/]+/##' \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/\.(tsx|html?)$//' \
+    | sed -E 's/[^a-z0-9]+/-/g' \
+    | sed -E 's/^-+//; s/-+$//'
+}
 
 # ---------- selector mapping ----------
 case "$MODE" in
   screen)   CSS_SEL="[data-dc-screen=\"$SEL\"], [data-dc-slot=\"$SEL\"]" ;;
   element)  CSS_SEL="[data-dc-element=\"$SEL\"]" ;;
   selector) CSS_SEL="$SEL" ;;
-  full|"")  CSS_SEL="" ;;
+  full|shell|"")  CSS_SEL="" ;;
 esac
 
 # ---------- engine resolution ----------
@@ -153,6 +195,15 @@ esac
 # would let a same-user attacker shadow node/chrome in the app dir), else the one
 # on PATH.
 AB="${MAUDE_AGENT_BROWSER:-agent-browser}"
+
+# agent-browser sessions are SHARED by name (default: "default"). Shell mode is
+# fired automatically by the Report-a-Bug dialog, so on the shared session it
+# would navigate whatever browser an agent has mid-task out from under it. Pin
+# it to its own session; the canvas modes keep the shared one deliberately, so
+# an agent's `/design:*` captures stay in the session it is already driving.
+if [ "$MODE" = "shell" ] && [ -z "$AGENT_BROWSER_SESSION" ]; then
+  export AGENT_BROWSER_SESSION="maude-shell-shot"
+fi
 if [ "$ENGINE" = "auto" ]; then
   if command -v "$AB" >/dev/null 2>&1; then
     ENGINE="agent-browser"
@@ -222,9 +273,62 @@ pw_screenshot() {
   return 0
 }
 
+# ---------- shell mode: open the active canvas in the studio ----------
+# The studio root always boots to "Nothing open yet" (tabs are `useState([])`,
+# never rehydrated), so a bare shell shot would show chrome over an empty
+# canvas area. Click the active canvas's file-tree row and wait for the canvas
+# iframe to appear. Every leg is best-effort — chrome is the point of this mode,
+# so a missing row or a slow mount degrades to "chrome, nothing open" rather
+# than failing the capture.
+open_active_in_shell() {
+  [ "$ENGINE" = "agent-browser" ] || return 0
+  [ -n "$ACTIVE" ] || { echo "→ shell: no active canvas — capturing chrome as-is" >&2; return 0; }
+  local slug
+  slug=$(shell_row_testid "$ACTIVE")
+  [ -n "$slug" ] || return 0
+  # The file tree is React-rendered, so the row does not exist at load — poll
+  # for it (a single probe 1 s after navigate reliably misses) and click the
+  # moment it appears.
+  local clicked=""
+  local wait=0
+  while [ $wait -lt "$TIMEOUT" ]; do
+    clicked=$("$AB" eval "(function(){var r=document.querySelector('[data-testid=\"canvas-row-$slug\"]');if(!r)return 'miss';r.click();return 'hit'})()" 2>/dev/null | tr -d '[:space:]"')
+    [ "$clicked" = "hit" ] && break
+    sleep 1
+    wait=$((wait + 1))
+  done
+  if [ "$clicked" != "hit" ]; then
+    echo "→ shell: no file-tree row for '$slug' after ${TIMEOUT}s — capturing chrome as-is" >&2
+    return 0
+  fi
+  # Wait for the canvas iframe to attach; it renders cross-origin, so the parent
+  # can only observe the element, never its contents. A short settle follows so
+  # the iframe has painted before we capture.
+  local poll=0
+  while [ $poll -lt "$TIMEOUT" ]; do
+    sleep 1
+    poll=$((poll + 1))
+    local n
+    n=$("$AB" eval "document.querySelectorAll('iframe').length" 2>/dev/null | tr -d '[:space:]')
+    case "$n" in
+      ''|*[!0-9]*|0) continue ;;
+      *) sleep 2; echo "→ shell: opened '$ACTIVE'" >&2; return 0 ;;
+    esac
+  done
+  echo "→ shell: canvas iframe never attached after ${TIMEOUT}s — capturing chrome as-is" >&2
+}
+
 navigate_once() {
   if [ "$ENGINE" = "agent-browser" ]; then
     "$AB" open "$URL" >&2
+    # Shell mode lands on the studio root, which has no DC mount to poll for —
+    # the canvas arrives only after we click a row.
+    if [ "$MODE" = "shell" ]; then
+      sleep 1
+      open_active_in_shell
+      apply_theme_override
+      return 0
+    fi
     # Wait for canvas to mount — Babel/React canvases take 2–4s to settle.
     # Poll for [data-dc-screen] or [data-dc-slot] up to $TIMEOUT seconds; fall
     # through to a fixed sleep when the page isn't a DC canvas.

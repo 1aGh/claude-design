@@ -49,6 +49,14 @@ export const CLIENT_DIR: string = join(DEV_SERVER_ROOT, 'client');
 export const RUNTIME_BUNDLES_DIR: string = join(DIST_DIR, 'runtime');
 
 /**
+ * `<DEV_SERVER_ROOT>/bin/` — the shell helpers behind `maude design <verb>`.
+ * Resolved here rather than locally per DDR-045: inside a `bun --compile`
+ * binary a local `dirname(fileURLToPath(import.meta.url))` yields the virtual
+ * `/$bunfs/root`, and every `existsSync` against it silently returns false.
+ */
+export const BIN_DIR: string = join(DEV_SERVER_ROOT, 'bin');
+
+/**
  * `<DEV_SERVER_ROOT>/stickers/` — bundled whiteboard sticker packs
  * (feature-whiteboard-annotation-improvements, Phase 4). Ships with the
  * `@1agh/maude` tarball (a subdir of `apps/studio`, already covered by the

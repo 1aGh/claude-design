@@ -5,7 +5,7 @@
 // top-level fall-through for paths Bun's `routes` field doesn't cover.
 
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, watch } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, watch } from 'node:fs';
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 
 import {
@@ -83,7 +83,7 @@ import { gitShowFile } from './git/service.ts';
 import { createGitHubEndpoints } from './github/endpoints.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
-import { DEV_SERVER_ROOT, MEDIA_DIR, STICKERS_DIR } from './paths.ts';
+import { BIN_DIR, DEV_SERVER_ROOT, MEDIA_DIR, STICKERS_DIR } from './paths.ts';
 import { createPhotoStore, PHOTO_EDIT_MAX_BYTES } from './photo-store.ts';
 import { probeReadiness } from './readiness.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
@@ -1371,6 +1371,80 @@ export function createHttp(
         }),
         { headers: { 'Cache-Control': 'no-store' } }
       );
+    },
+
+    // feature-bug-report-button — capture the STUDIO SHELL (menubar, sidebar,
+    // status bar, toasts) as a PNG. `/_api/export` can only ever render a canvas
+    // headlessly, so Maude's own chrome — where most reported UI bugs actually
+    // live — has never been capturable from inside the app. This shells out to
+    // the same `screenshot.sh` spine every `/design:*` capture uses, in its
+    // `--shell` mode, so it inherits engine resolution (the desktop bundle's
+    // agent-browser via MAUDE_AGENT_BROWSER, DDR-144), one-time browser
+    // provisioning, and the playwright fallback.
+    //
+    // The capture is a SEPARATE headless session, not a mirror of the user's
+    // window: it reproduces the app's chrome and the active canvas, but not
+    // transient state (an open dropdown, a stuck spinner). That's why the
+    // dialog keeps the manual attach/paste lane alongside this.
+    //
+    // PRIVILEGED: main-origin only + double gate — it spawns a process and
+    // renders the project, so the untrusted canvas origin must never reach it
+    // (absent from CANVAS_SAFE_API + startCanvasServer routes, per DDR-088).
+    '/_api/shell-shot': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      // Target the very server handling this request — no _server.json read, so
+      // a stale/absent state file can't point the capture at another instance.
+      const port = new URL(req.url).port;
+      if (!/^\d+$/.test(port)) {
+        return Response.json({ error: 'no port on the request URL' }, { status: 500 });
+      }
+      const out = join(ctx.paths.designRoot, '_reports', `shell-${Date.now()}.png`);
+      try {
+        const proc = Bun.spawn(
+          [
+            'bash',
+            join(BIN_DIR, 'screenshot.sh'),
+            '--shell',
+            '--port',
+            port,
+            '--out',
+            out,
+            '--root',
+            ctx.paths.repoRoot,
+          ],
+          { stdout: 'ignore', stderr: 'pipe' }
+        );
+        // Booting a browser, loading the studio, opening the active canvas and
+        // painting it runs well past a default fetch timeout on a cold cache;
+        // the dialog shows a pending row meanwhile. Kill rather than hang.
+        const timer = setTimeout(() => proc.kill(), 60_000);
+        const code = await proc.exited;
+        clearTimeout(timer);
+        if (code !== 0 || !existsSync(out)) {
+          const why = (await new Response(proc.stderr).text())
+            .trim()
+            .split('\n')
+            .slice(-3)
+            .join(' ');
+          return Response.json({ error: `shell capture failed: ${why}` }, { status: 502 });
+        }
+        const png = await Bun.file(out).arrayBuffer();
+        // The PNG is handed to the client and never needed again — leaving it on
+        // disk would quietly grow `_reports/` on every dialog open.
+        try {
+          unlinkSync(out);
+        } catch {
+          /* already gone — nothing to clean up */
+        }
+        return new Response(png, {
+          headers: { 'content-type': 'image/png', 'Cache-Control': 'no-store' },
+        });
+      } catch (e) {
+        return Response.json({ error: `shell capture failed: ${String(e)}` }, { status: 502 });
+      }
     },
 
     // feature-bug-report-button — submit proxy. The client never talks to
