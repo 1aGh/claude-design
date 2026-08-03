@@ -304,11 +304,7 @@
       // The WS connection retries on close (dev-server restart resilience).
       function connectHmr() {
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-        // `base` for the same reason every other URL here carries it: on the
-        // fleet's canvas origin the project is in the path. (A cell's HMR socket
-        // is a separate matter — it has no cookie to authenticate with, so it
-        // simply does not connect there; a canvas still renders.)
-        const ws = new WebSocket(proto + '://' + location.host + base + '/_ws');
+        const ws = new WebSocket(proto + '://' + location.host + '/_ws');
         ws.addEventListener('message', (ev) => {
           try {
             const msg = JSON.parse(ev.data);
@@ -518,7 +514,7 @@
           // the importmap so the canvas module and the comment layer share one
           // React singleton (inlining a second React would break hooks).
           const [{ mountCanvas }, mod] = await Promise.all([
-            import(withCap('/_client/comment-mount.js')),
+            import('/_client/comment-mount.js'),
             import(canvasUrl),
             metaFetch,
           ]);
