@@ -276,49 +276,50 @@ landed.
 
 ## Status — 2026-08-03
 
-**Landed (17 items):** the whole of Track A′, Track A, E1–E3, B1/B2, C1/C2/C4, D4.
-Decision recorded as **[DDR-209](../archive/decisions/DDR-209-one-studio-three-shells-the-cell-serves-the-studio.md)**.
+**Landed:** Track A′ in full, Track A in full, B1/B2, C1/C2/C4, D4, D5 (child
+liveness + content-addressed client identity), E1/E2/E3, the cost gate, and the
+cell image that makes all of it real. Decision: **[DDR-209](../archive/decisions/DDR-209-one-studio-three-shells-the-cell-serves-the-studio.md)**.
 
-The shape now in the tree: `apps/hub` no longer renders anything. It supervises
-the real `apps/studio` server on loopback (`studio-child.mjs`), terminates the
-session, resolves the role, checks a checked-in deny-by-default `(method, path)
-× role` manifest covering reads (`studio-manifest.mjs`, 121 routes classified),
-and forwards (`studio-proxy.mjs`) — HTTP, WebSocket upgrades, and the segregated
-canvas origin. `studio-page.mjs` and the five modules around it are deleted, and
-two CI gates now make bringing them back a red build.
+Verified in a RUNNING cell on both arches — the real 1.98 MB `client.bundle.js`
+over the proxy, a canvas built by the in-cell sandbox, flat `/assets/<sha8>`
+served immutable, all seven D1 surfaces 404, a viewer refused every write and
+allowed to comment, header forgery refused, `/health` 503 with the killing
+signal while the child is down, and E1 refusing to boot on a substituted bundle.
 
-**NOT landed — and each is a real gap, not a rounding error:**
+**Running it found four bugs no test had:** every admin's session was read-only
+(pre-existing, shipped in Phase 25 — an account role reaching a project-role
+matrix); a read-only bypass over WebSocket (`comments-patch`/`comments-delete`
+ungated, while every HTTP equivalent was refused); a viewer could not comment
+(the second gate stricter than the authority); and the canvas lane 404'd on a
+per-tenant origin (the prefix derived from the tenant id, which exists in both
+deployment shapes) — which was the grey boxes, again.
 
-- [ ] **The cell IMAGE does not yet ship the studio.** `infra/cell/Dockerfile`
-  still stages only the build engine's source; nothing starts the real server in
-  a built cell. **Until this lands the phase is inert in production** — every
-  test above passes against a dev checkout. The blocker is not mechanical: the
-  studio's full production closure (pixi, onnxruntime, remotion, react) is
-  enormous next to a 157 MB image whose size an unresolved RCA already lists as
-  a suspect, so the honest route is the pre-compiled `maude-server` binary the
-  cost gate itself names as the fallback — which is the same artifact D1 wants
-  in order to ELIMINATE rather than un-route.
-- [ ] **D1 — elimination, not un-routing.** The seven secret-bearing surfaces
-  (`/_api/{cloud,github,hub,claude,acp,debug-bundle,design}`) are now named in
-  `FORBIDDEN_ROUTE_PREFIXES`, pruned at boot, and refused by the manifest — so
-  they are unreachable. They are still IN THE CODE. DDR-123's "claude never on
-  our infra" holds only when the module is not in the image, and that needs the
-  build above plus a CI grep of the built bundle.
-- [ ] **B3 — cold-start asset materialisation.** Git-tracked assets already come
-  back with the rehydrated checkout, so the grey boxes are fixed by B1/B2. What
-  is missing is the sweep that puts a browser-uploaded `/_api/asset` into the S3
-  lane without waiting for the next boot.
-- [ ] **C3 — first open lands on a rendered canvas.**
-- [ ] **D2 — one writer on `/repo`.** Untouched, and it is the phase's preserved
-  dissent. Two writers (hub git + studio TSX) still share the tree with no lock
-  on either side. BREAKER's 3 a.m. event is still available.
+### Not landed — and NOT deployable until at least the first two close
+
+- [ ] **D2 — one writer on `/repo`.** UNTOUCHED, and it is this phase's preserved
+  dissent. `workspace-agent`, `design-sync`, `repo-checkpoint` and `backup` write
+  the tree and run git while the studio writes TSX, `_history/` and
+  `.design/_*.json`, with no lock on either side. BREAKER's words still apply:
+  "the 3 a.m. event is not a 500 — it is a tenant's canvas lost to a half-staged
+  commit or a checkout under a live writer, in a cell whose /health still says
+  200 because the hub process is fine." Shipping this to a live customer cell is
+  taking that bet on their data.
+- [ ] **Acceptance is unmet on its own terms: "verified against a real customer
+  project, not a synthetic fixture."** Every verification above used a two-file
+  fixture repo. The alligators project is 266 MB / 793 files with real
+  photographs and a real webfont, which is the case the grey boxes came from.
+- [ ] **D1 — elimination, not un-routing.** The seven secret-bearing surfaces are
+  pruned at boot, refused by the manifest, and 404 in a running cell. The code is
+  still inside the compiled binary. DDR-123's "claude never on our infra" holds
+  operationally; it does not yet hold structurally.
 - [ ] **D3 — per-session runtime state, studio half.** The proxy issues a stable
-  `x-maude-session` key per member (tested), but the studio does not yet
-  partition `_active.json` / `_canvas-state/<slug>.view.json` by it, so two
-  members in one cell still clobber each other's selection and camera.
-- [ ] **D5 — deep health, remaining half.** Child liveness and the served
-  bundle's sha256 are in `/health` (and a mismatch refuses to boot). The
-  expected-project assertion and the stale-`index.lock` check are not.
+  `x-maude-session` per member (tested); the studio does not partition
+  `_active.json` / `_canvas-state/<slug>.view.json` by it, so two members in one
+  cell still clobber each other's selection and camera.
+- [ ] **D5 — remaining half.** The expected-project assertion and the stale
+  `index.lock` check.
+- [ ] **B3 — the sweep that lands a browser-uploaded asset in the S3 lane without
+  waiting for the next boot.** (Git-tracked assets already return with the
+  rehydrated checkout, which is what fixed the grey boxes.)
+- [ ] **C3 — first open lands on a rendered canvas.**
 - [ ] **E4 — cloud/desktop parity in E2E.**
-- [ ] **The cost gate.** No cold start measured, before or after; no image-size
-  ceiling asserted in CI. Blocked on the image work above.
