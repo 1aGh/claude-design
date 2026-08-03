@@ -126,16 +126,14 @@ COPY --from=bundler /build/apps/hub/dist ./dist
 # evaluates (DDR-193 §2 / Phase 25 A0).
 COPY --from=bundler /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=canvas-deps /canvas/node_modules /canvas/node_modules
-# ONLY the engine's own source. The whole tree was staged here first, and the
-# resulting image could not COLD-START on Cloudflare Containers at all: the
-# Durable Object reported the container crashed ~13 s before the hub bound its
-# port and never re-checked, so a project whose disk had merely been moved
-# became permanently unreachable (2026-08-03, three hours down).
+# ONLY the engine's own source — 679 MB down to 157 MB.
 #
-# What is excluded is everything the sandbox never reads: pre-built bundles
-# (dist/runtime is staged separately below), sample media, sticker packs, the
-# browser client, tests and e2e. A cell parses canvases; it does not ship the
-# studio.
+# This is worth doing on its own merits (a cell parses canvases; it does not
+# need pre-built bundles, sample media, sticker packs, the browser client or
+# the tests). It is NOT established as the fix for the 2026-08-03 outage: a
+# 116 MB image appeared to restore the cell once and then did not reproduce,
+# so image size is a SUSPECT, not a cause. Do not read this comment as a
+# solved problem — see the RCA.
 COPY --exclude=dist --exclude=media --exclude=stickers --exclude=test \
      --exclude=e2e --exclude=client --exclude=node_modules \
      apps/studio /canvas/studio
