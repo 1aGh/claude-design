@@ -15089,7 +15089,16 @@ function App() {
           startTour(USAGE_TOUR);
         }}
       />
-      <ReportBugDialog open={reportBugOpen} onClose={() => setReportBugOpen(false)} />
+      {/* `activeCanvas` is THIS window's truth. The server's `_active.json` is
+          global and sticky — it survives closing every tab and is written by any
+          other session (an agent driving a headless browser, a second window),
+          so a report built from it can claim a canvas the user does not have
+          open, and capture it. Pass what this client actually shows. */}
+      <ReportBugDialog
+        open={reportBugOpen}
+        activeCanvas={activePath}
+        onClose={() => setReportBugOpen(false)}
+      />
       <WhatsNewPanel wn={whatsNew} onStartTour={startTour} />
       <ExportPanel center={exportCenter} />
       <ReadinessDialog open={readinessOpen} onClose={() => setReadinessOpen(false)} />

@@ -158,7 +158,7 @@ function ShotTile({ shot, redacting, onRects, onRemove }) {
   );
 }
 
-export function ReportBugDialog({ open, onClose }) {
+export function ReportBugDialog({ open, onClose, activeCanvas = null }) {
   const [step, setStep] = useState('describe'); // describe | preview | sending | done | fallback
   const [description, setDescription] = useState('');
   const [bundle, setBundle] = useState(null);
@@ -238,19 +238,30 @@ export function ReportBugDialog({ open, onClose }) {
       .then((r) => (r.ok ? r.json() : null))
       .then((b) => alive && setBundle(b))
       .catch(() => {});
-    fetch('/_api/export', {
+    // Artboard shot only when THIS window actually has a canvas open. The
+    // export resolves its target from the server's `_active.json`, so with
+    // nothing open it would attach a stale canvas from another session.
+    if (activeCanvas) {
+      fetch('/_api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format: 'png', scope: 'artboard' }),
+      })
+        .then((r) => (r.ok ? r.blob() : null))
+        .then((blob) => alive && blob && addShotBlob(blob, 'artboard'))
+        .catch(() => {});
+    }
+    // The window shot — Maude's own chrome, which the artboard capture above
+    // structurally cannot see. Slow (boots a headless browser, opens the canvas),
+    // so it lands second and shows a pending row meanwhile. `canvas` is sent
+    // explicitly — including as null, which means "open nothing", so an empty
+    // window is reported as an empty window.
+    setShellPending(true);
+    fetch('/_api/shell-shot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ format: 'png', scope: 'artboard' }),
+      body: JSON.stringify({ canvas: activeCanvas }),
     })
-      .then((r) => (r.ok ? r.blob() : null))
-      .then((blob) => alive && blob && addShotBlob(blob, 'artboard'))
-      .catch(() => {});
-    // The window shot — Maude's own chrome, which the artboard capture above
-    // structurally cannot see. Slow (boots a headless browser, opens the active
-    // canvas), so it lands second and shows a pending row meanwhile.
-    setShellPending(true);
-    fetch('/_api/shell-shot', { method: 'POST' })
       .then((r) => (r.ok ? r.blob() : null))
       .then((blob) => {
         if (!alive) return;
@@ -267,7 +278,7 @@ export function ReportBugDialog({ open, onClose }) {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, activeCanvas]);
 
   // Paste-to-attach — the lane that covers native-shell bugs the canvas
   // capture can't see (user screenshots the window, pastes here).
@@ -302,7 +313,9 @@ export function ReportBugDialog({ open, onClose }) {
       },
       context: {
         projectName: consent.projectName ? (bundle?.context?.projectName ?? null) : null,
-        activeCanvas: consent.activeCanvas ? (bundle?.context?.activeCanvas ?? null) : null,
+        // This window's canvas, never the server's sticky `_active.json` — the
+        // report must not name a file the reporter does not have open.
+        activeCanvas: consent.activeCanvas ? activeCanvas : null,
       },
       description: description.trim(),
       attachments: {
@@ -521,7 +534,7 @@ export function ReportBugDialog({ open, onClose }) {
                     {bundle?.app?.arch ?? ''} · {isNativeApp() ? 'desktop app' : 'browser'}
                   </span>
                 </label>
-                {bundle?.context?.activeCanvas && (
+                {activeCanvas && (
                   <label className="rb-check">
                     <input
                       type="checkbox"
@@ -529,7 +542,7 @@ export function ReportBugDialog({ open, onClose }) {
                       onChange={(e) => setConsent({ ...consent, activeCanvas: e.target.checked })}
                     />
                     <span>
-                      Active canvas path — <code>{bundle.context.activeCanvas}</code>
+                      Active canvas path — <code>{activeCanvas}</code>
                     </span>
                   </label>
                 )}

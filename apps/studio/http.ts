@@ -1401,6 +1401,12 @@ export function createHttp(
       if (!/^\d+$/.test(port)) {
         return Response.json({ error: 'no port on the request URL' }, { status: 500 });
       }
+      // Which canvas to open is the CLIENT's call, always sent explicitly —
+      // `null` means "open nothing". The server's `_active.json` is global and
+      // sticky (it outlives every closed tab and any session may write it), so
+      // resolving it here would photograph a canvas the reporter never had open.
+      const body = await readJson<{ canvas?: unknown }>(req);
+      const canvas = typeof body?.canvas === 'string' ? body.canvas : '';
       const out = join(ctx.paths.designRoot, '_reports', `shell-${Date.now()}.png`);
       try {
         const proc = Bun.spawn(
@@ -1414,6 +1420,8 @@ export function createHttp(
             out,
             '--root',
             ctx.paths.repoRoot,
+            '--canvas',
+            canvas,
           ],
           { stdout: 'ignore', stderr: 'pipe' }
         );

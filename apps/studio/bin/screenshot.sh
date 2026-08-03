@@ -9,7 +9,7 @@
 #                 [--screen <id> | --element <id> | --selector <css> | --full | --shell]
 #                 [--all-screens] [--out <path>] [--out-dir <dir>]
 #                 [--timeout 8] [--engine auto|agent-browser|playwright]
-#                 [--theme <name>] [--root <repo>]
+#                 [--theme <name>] [--root <repo>] [--canvas <rel|"">]
 #
 # Notes:
 #   - Exactly one of --screen / --element / --selector / --full / --shell is
@@ -23,6 +23,12 @@
 #     `_active.json` or localStorage), so a bare load lands on "Nothing open
 #     yet"; shell mode therefore clicks the active canvas's file-tree row first
 #     to bring the shot back in line with what the user is looking at.
+#   - --canvas says WHICH canvas shell mode opens, overriding `_active.json`.
+#     Passing it EMPTY means "open nothing" — that's not the same as omitting
+#     it. `_active.json` is global and sticky (it outlives every closed tab and
+#     any session can write it), so a caller that knows the truth — the studio
+#     client knows its own open tab — must be able to say "nothing is open"
+#     instead of having a stale path resolved behind its back.
 #   - --out required for single-shot modes; --out-dir required for --all-screens.
 #   - --theme <name> forces every `[data-theme]` element (DS artboard wrappers)
 #     to that value BEFORE capture, via a DOM eval — does not touch the actual
@@ -46,6 +52,11 @@ ENGINE="auto"
 ALL_SCREENS=0
 ROOT=""
 THEME=""
+ACTIVE=""
+# Tri-state for --canvas: unset → resolve from _active.json (the CLI default);
+# set to a path → open that; set to "" → open nothing. The empty case is
+# load-bearing, so it can't collapse into "unset".
+CANVAS_SET=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -54,6 +65,7 @@ while [ $# -gt 0 ]; do
     --selector) MODE="selector"; SEL="$2"; shift 2 ;;
     --full)     MODE="full"; shift ;;
     --shell)    MODE="shell"; shift ;;
+    --canvas)   CANVAS_SET=1; ACTIVE="$2"; shift 2 ;;
     --all-screens) ALL_SCREENS=1; shift ;;
     --url)      URL="$2"; shift 2 ;;
     --port)     PORT="$2"; shift 2 ;;
@@ -135,7 +147,7 @@ if [ -z "$URL" ]; then
   fi
   [ -z "$PORT" ] && { echo "screenshot.sh: no --url/--port given and _server.json not found (run server-up.sh)" >&2; exit 1; }
 
-  if [ -f "$ACTIVE_JSON" ] && command -v jq >/dev/null 2>&1; then
+  if [ $CANVAS_SET -eq 0 ] && [ -f "$ACTIVE_JSON" ] && command -v jq >/dev/null 2>&1; then
     ACTIVE=$(jq -r '.active // empty' "$ACTIVE_JSON" 2>/dev/null)
   fi
 
@@ -159,7 +171,7 @@ fi
 
 # Shell mode still wants the active canvas even when the caller passed --url
 # outright (the URL says WHERE to look; the active canvas says WHAT to open).
-if [ "$MODE" = "shell" ] && [ -z "$ACTIVE" ]; then
+if [ "$MODE" = "shell" ] && [ $CANVAS_SET -eq 0 ] && [ -z "$ACTIVE" ]; then
   SHELL_REPO="${ROOT:-${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}}"
   if [ -f "$SHELL_REPO/.design/_active.json" ] && command -v jq >/dev/null 2>&1; then
     ACTIVE=$(jq -r '.active // empty' "$SHELL_REPO/.design/_active.json" 2>/dev/null)
