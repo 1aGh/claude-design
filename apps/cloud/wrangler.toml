@@ -84,3 +84,15 @@ deleted_classes = ["MaudeCell"]
 # and tenant hostnames are created per project at provision time, so they can
 # never be in a committed config. Keeping them here would mean every
 # control-plane deploy silently unrouted every customer.
+
+# LOGS. Absent this block a Worker keeps NOTHING: `wrangler tail` shows only
+# what is happening while you happen to be watching, and every historical
+# query comes back empty. That is how the 2026-08-03 outage was diagnosed —
+# by guessing, repeatedly and wrongly, because the reason the control plane refused to
+# start was written to a stream nobody was recording.
+#
+# A3's on-call runbook assumes an operator can answer "what happened"; this is
+# the cheapest thing that makes that true.
+[observability]
+enabled = true
+head_sampling_rate = 1

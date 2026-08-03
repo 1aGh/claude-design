@@ -76,16 +76,12 @@ image = "registry.cloudflare.com/b5b596efe65abb732777c7171dc18145/maude-cell:v12
 # again — check the Containers dashboard for instances stuck in `scheduling`
 # after the next rollout, and check the first month's invoice against the
 # arithmetic above.
-# RAISED TO 12 DURING THE 2026-08-03 INCIDENT. The comment above already
-# warned that this platform keeps instances SCHEDULED rather than merely
-# available, so the ceiling is a capacity floor as much as a cost ceiling —
-# and a fleet whose ceiling is full has no slot left for the one cell a
-# customer is actually asking for. Whether that was this incident's cause is
-# NOT established; the ceiling was raised while diagnosing and is left raised
-# because 5 is demonstrably too close to the edge for a fleet that also holds
-# retired test tenants. Re-check the first invoice against the arithmetic
-# above.
-max_instances = 12
+# LEFT AT 5 — raising it was tried during the 2026-08-03 incident and REVERTED.
+# It did not restore the cell, and it cost immediately: at 12 the platform
+# scaled to 7 instances within seconds, which by the arithmetic above is
+# ~$370/month for containers nobody asked for. The ceiling is a cost control
+# first; treat raising it as a billing decision, not a debugging step.
+max_instances = 5
 # `basic` is 1/4 vCPU and 4 GB disk. A first-boot seed clone of a real design
 # project (alligators: ~280 MB working tree) could not finish checking out
 # before the platform gave up waiting for the port, so the container was killed
@@ -120,3 +116,15 @@ MAUDE_R2_BUCKET = "maude-cloud-assets"
 # `tenants/<id>/` and TTL-bounded. The legacy secrets below are a migration
 # fallback only — DELETE them once the control plane mints successfully:
 #   MAUDE_R2_ENDPOINT / MAUDE_R2_ACCESS_KEY_ID / MAUDE_R2_SECRET_ACCESS_KEY
+
+# LOGS. Absent this block a Worker keeps NOTHING: `wrangler tail` shows only
+# what is happening while you happen to be watching, and every historical
+# query comes back empty. That is how the 2026-08-03 outage was diagnosed —
+# by guessing, repeatedly and wrongly, because the reason a cell refused to
+# start was written to a stream nobody was recording.
+#
+# A3's on-call runbook assumes an operator can answer "what happened"; this is
+# the cheapest thing that makes that true.
+[observability]
+enabled = true
+head_sampling_rate = 1
