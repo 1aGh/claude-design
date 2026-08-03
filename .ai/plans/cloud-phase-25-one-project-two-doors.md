@@ -466,3 +466,52 @@ The lesson is the same one this phase kept re-learning and did not apply to
 itself: **an object outside the repo — a hostname, a route, a token scope, a
 container's port readiness — is outside every gate the repo has.** A phase is
 closed when a customer's project answers, not when the tests do.
+
+---
+
+## Closed for real (2026-08-03): the cell dials out
+
+The earlier "Correction" section said the code shipped and the product did not.
+That is now resolved, and the resolution changed the architecture.
+
+**The Durable-Object → container port link was the platform's single point of
+failure**, and no configuration on our side could reach past it: a 15-line
+Worker with a stock `Container` class and a stock `nginx:alpine` failed
+identically. It broke account-wide while every container it had started kept
+running, indexing, mirroring and checkpointing.
+
+**So the cell stopped waiting to be reached and started dialling out.**
+`cloudflared` runs inside the cell image (gated on `MAUDE_TUNNEL_TOKEN`, so a
+self-hosted hub never starts it), the Worker proxies to the tunnel hostname,
+and the Durable Object keeps the job it is good at — waking the cell on demand,
+idling it after `sleepAfter` — while leaving the user-facing request path
+entirely. Everything stays on Cloudflare; Tunnel is free; the idle economics
+are unchanged.
+
+**Verified live on alligators, 9/9** (`scripts/verify-cloud-production.sh`):
+control plane, cell, per-tenant R2 credentials, the gallery's address gone, the
+canvas origin refusing both an absent project and a bad capability token, and a
+signed-out visitor landing on the Maude sign-in at the customer's own hostname.
+Cold start through the tunnel: 2.4 s, then 0.5 s warm.
+
+**Three defects that only traffic could find**, all now fixed:
+
+1. The cell advertised its PROXY host in the sign-in return URL. Behind a
+   tunnel that is an internal name, so a member signing in was sent to an
+   address that is not their project. It reads `HUB_PUBLIC_URL` now; the Host
+   header is a fallback for a hub that has none.
+2. The browser lane redirected signed-out members to `/auth/login` — the form's
+   POST target, which 404s on GET. **The browser door dead-ended at its last
+   step, and the test pinning that path passed the whole time.** Corrected, with
+   the reason written into the assertion.
+3. A woken cell needs seconds for cloudflared to re-register; proxying inside
+   that window returns Cloudflare's own 530, which reads to a customer exactly
+   like the outage this seam exists to escape. The readiness wait moved onto the
+   path that works: poll `/health` over the tunnel, then forward.
+
+**The lesson this phase kept writing about itself, now paid in full:** an object
+outside the repo — a hostname, a tag's CONTENTS, a container's readiness — is
+outside every gate the repo has. The night's worst detour came from trusting a
+"rollback" to a tag whose contents had been overwritten, and the last one from a
+monitor that reported "up on v18" having checked only that something answered
+200. Verify the thing, not that something replied.
