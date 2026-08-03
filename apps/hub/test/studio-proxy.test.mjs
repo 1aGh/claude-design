@@ -319,3 +319,32 @@ test('an authenticated upgrade carries the role', () => {
   assert.equal(forwarded.length, 1);
   assert.equal(forwarded[0].headers[`${INJECTED_HEADER_PREFIX}role`], 'member');
 });
+
+test('vendor runtime bundles need no capability; tenant content always does', async () => {
+  // The importmap that names them is static and must precede any module load,
+  // so there is no moment at which a token could be appended. They are our own
+  // React/motion builds, identical for every tenant.
+  const { proxy, forwarded } = makeProxy();
+  const ok = fakeResponse();
+  await proxy.handleCanvas({
+    request: { headers: {}, url: '/_canvas-runtime/react.js' },
+    response: ok,
+    pathname: '/_canvas-runtime/react.js',
+    method: 'GET',
+    verifyToken: () => ({ ok: false }),
+  });
+  assert.equal(forwarded.length, 1, 'a vendor bundle must serve without a capability');
+
+  // …and nothing else gets that exemption.
+  for (const p of ['/_canvas-shell.html', '/.design/ui/Home.tsx', '/assets/deadbeef.png']) {
+    const r = fakeResponse();
+    await proxy.handleCanvas({
+      request: { headers: {}, url: p },
+      response: r,
+      pathname: p,
+      method: 'GET',
+      verifyToken: () => ({ ok: false }),
+    });
+    assert.equal(r.statusCode, 401, `${p} must require a capability`);
+  }
+});

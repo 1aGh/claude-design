@@ -238,7 +238,19 @@ export function createStudioProxy({
         return true;
       }
     }
-    const verdict = verifyToken(url.searchParams.get('t'));
+    // The VENDOR runtime bundles need no capability.
+    //
+    // They are our own React/motion builds, byte-identical for every tenant, and
+    // they are named in a STATIC `<script type="importmap">` that has to be in
+    // the document before any module loads — so there is no moment at which the
+    // shell could append a token to them. Requiring one would mean rewriting the
+    // importmap server-side and re-deriving the CSP script hashes over it, to
+    // protect bytes that reveal nothing about anybody's project.
+    //
+    // Everything tenant-specific — the shell, the built module, the design
+    // system's CSS, every asset — still requires the capability below.
+    const isVendorRuntime = rest.startsWith('/_canvas-runtime/');
+    const verdict = isVendorRuntime ? { ok: true } : verifyToken(url.searchParams.get('t'));
     if (!verdict?.ok) {
       refuse(response, 401, { error: 'this canvas link has expired — reload the project' });
       return true;

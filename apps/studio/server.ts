@@ -483,7 +483,23 @@ let server: BunServer;
 // listed: the server binds 127.0.0.1, so a user who opens the printed URL as
 // `127.0.0.1:<port>` is the same legit embedder — with only `localhost` allowed
 // the canvas iframe was silently refused (blank sad-page, no error anywhere).
-ctx.mainOrigin = `http://localhost:${server.port} http://127.0.0.1:${server.port}`;
+//
+// D4 AGAIN — the PUBLIC name, not the bound one. In a cell the parent frame is
+// `https://<project>.cloud.maude.sh`; listing only the loopback origins made the
+// browser refuse to render the canvas iframe at all ("refused to connect"),
+// which looks like a network failure and is a CSP one. The loopback spellings
+// stay for local tooling (screenshots, smoke) — a cell simply has one more legit
+// embedder, and naming it is configuration, never a Host header.
+const publicShellOrigin = (() => {
+  const url = process.env.HUB_PUBLIC_URL;
+  if (!url) return '';
+  try {
+    return ` ${new URL(url).origin}`;
+  } catch {
+    return '';
+  }
+})();
+ctx.mainOrigin = `http://localhost:${server.port} http://127.0.0.1:${server.port}${publicShellOrigin}`;
 
 // T2 (9.1-A) — segregated canvas-content origin. ON BY DEFAULT (opt-OUT) since
 // phase-9.1: a second listener binds an OS-assigned free port, advertised as
