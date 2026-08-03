@@ -82,6 +82,39 @@ positive proof.**
 - [ ] **A5 — delete `studio-page.mjs`** in the same PR that lands the proxy. The
   reimplementation must not survive as a fallback.
 
+### Track A′ — the conflict this phase must resolve first
+
+**`pruneForWorkspace()` currently forbids the very routes the cloud studio
+needs.** `FORBIDDEN_ROUTE_PREFIXES` blocks `/_canvas-shell` ("the surface that
+mounts and executes a canvas module") and `/_canvas-runtime` ("serving the
+canvas runtime only makes sense if something here renders a canvas") — written
+under DDR-193 §2 when a cell was a sync relay that must never render.
+
+**Phase 25 A0 amended that invariant**: the cell BUILDS, the viewer's browser
+EVALUATES, in a segregated origin. The prune list has not caught up. Boot the
+real studio in workspace mode today and it refuses exactly the routes the
+browser door is made of.
+
+- [ ] **A′1 — reconcile the prune list with A0.** Either the studio serves the
+  canvas surfaces in workspace mode (and the boot-assert's reasoning is updated
+  to A0's build-vs-evaluate line), or it does not and the hub keeps serving
+  them. **Decide once, in writing, before any code.** The one outcome that is
+  not allowed is loosening the guard to make a build green — `assert-containment.sh`
+  says it best about itself: "a guard you had to loosen to keep your build green
+  is a guard that will be loosened again."
+- [ ] **A′2 — resolve who serves a canvas.** The debate split here and the plan
+  must not: SHIPPER would delete `apps/hub/src/canvas/{build,build-worker}` as
+  redundant once the studio builds its own; BUILDER would keep the hub's canvas
+  origin (`shell`, `build`, `render-token`) untouched and merely point
+  `ctx.canvasOrigin` at it. **Two canvas builders in one container is the same
+  class of duplication this phase exists to delete.** Pick one; whichever loses,
+  its modules are deleted in the same PR, not left dormant.
+- [ ] **A′3 — the hub's now-redundant canvas modules.** `comments.mjs` writes
+  the SAME `<designRoot>/_comments/<slug>.json` the studio does (Phase 25 B5's
+  "one store, both surfaces"), so there is no data migration — but the module
+  becomes a second implementation of a read/write path the studio already owns,
+  and goes. Same question for `project.mjs`, `edits.mjs`, `shell.mjs`.
+
 ### Track B — the design is made of its assets
 
 The grey boxes have a precise cause: canvases reference flat `/assets/<sha8>`
@@ -114,6 +147,12 @@ comments, export, history.
   silence.
 - [ ] **C3 — first open lands on a rendered canvas**, not a chooser, with one
   dismissible line naming what this role can do.
+- [ ] **C4 — the way back out.** A cloud instance carries a "Back to dashboard"
+  affordance in the chrome (and the project's name), because a browser tab has
+  no window title and no app switcher to tell a teammate where they are or how
+  to leave. This is a cloud-only ADDITION to the shared client, expressed
+  through the same cloud flag as C2's agent notice — never a fork of the
+  component.
 
 ### Track D — safety of exposing a locally-designed server
 
@@ -134,7 +173,14 @@ comments, export, history.
   design (DDR-115). Two members in one cell clobber each other's selection and
   pan/zoom, silently, reading as flakiness. The session dimension lands **with**
   the proxy, not after it.
-- [ ] **D4 — deep, content-addressed health.** Child alive, its `/_health`
+- [ ] **D4 — public identity behind the proxy.** The studio generates absolute
+  URLs (`_server.json`, redirects, the canvas origin). Behind the tunnel the
+  `Host` header is an internal name, and Phase 25 shipped exactly that bug into
+  production twice — a member signing in was sent to an address that was not
+  their project. The studio must take its public identity from configuration
+  (`HUB_PUBLIC_URL`), never from the request, and a test must assert it with a
+  foreign `Host` header set.
+- [ ] **D5 — deep, content-addressed health.** Child alive, its `/_health`
   reports the expected project, the served bundle's sha256 equals the sha
   recorded at image build, no stale `index.lock`. **A tag is not an identity; a
   hash is** — the last outage featured a monitor that checked only that
@@ -185,6 +231,15 @@ here is `dist/client.bundle.js` (1.9 MB) + `styles.css` (272 KB) + `client/`;
 - [ ] The cell refuses to boot when its bundle's hash does not match the image's.
 - [ ] CI fails on a studio reimplementation, on an unclassified studio route,
   and on a cloud/desktop testid divergence.
+- [ ] **A teammate can find their way back** to the dashboard, and knows which
+  project they are in, without a window title.
+- [ ] **The desktop still honours the role too**: connecting Maude Desktop to a
+  cloud project as a viewer yields a read-only studio. This already works
+  (`isHubReadOnly()` per hub URL) and must not regress — the per-session change
+  is the CELL's, not the desktop's.
+- [ ] **No route is served by two implementations.** A canvas is built by one
+  builder, a comment is written by one writer, and the loser's modules are gone
+  from the tree — not dormant behind a flag.
 
 ## Preserved dissent
 
