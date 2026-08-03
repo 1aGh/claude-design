@@ -410,14 +410,41 @@ Execute in order. Each task is atomic and testable.
 
 **Dependency posture — plausibly zero new runtime deps.** Deflate is `zlib.inflateSync`, present everywhere. Zstd is `zlib.zstdDecompressSync`, built into Node since **23.8.0**; **verify Bun's `node:zlib` exposes it at implementation time** (the dev server is Bun-authoritative per DDR-009, and `dependencies.json` currently floors Node at 20). If it's absent, `fzstd` (small, pure-JS) is the single fallback dep and gets the normal review. The Kiwi decoder itself is ours, ~300–500 lines.
 
-**Only the container framing is genuinely undocumented**: 8-byte ASCII prelude (`fig-kiwi` design / `fig-jam.` FigJam / `fig-deck` slides), LE `u32` version, then length-prefixed compressed chunks. Small surface, community-documented, and the part the smoke suite watches hardest.
+### ✅ Container format — MEASURED on real exports, 2026-08-03 (this corrects the plan's earlier description, which was wrong)
+
+Both fixture files were exported and dissected end-to-end. **The whole pipeline is proven without a line of decoder written**: ZIP → `canvas.fig` → prelude/version → raw-deflate schema → zstd data → the exact strings authored into the fixtures (`AL Horizontal (-> flex row)`, `bar-short`, `accent-dot`, `"test" / <b> & 'x'`, every `shapeType`).
+
+```
+.fig / .jam   = ZIP archive           ← NOT a bare kiwi file; the earlier plan text was wrong
+  ├── canvas.fig     the kiwi payload
+  ├── thumbnail.png
+  ├── meta.json      file name, background colour, render coordinates, exported_at
+  └── images/        image assets, INSIDE the file
+
+canvas.fig    = "fig-kiwi" | "fig-jam."   (8-byte ASCII prelude — the editor discriminator)
+                u32 LE version            (observed: 106)
+                u32 LE len + chunk[0]     SCHEMA — raw DEFLATE (no zlib header)
+                u32 LE len + chunk[1]     DATA   — ZSTD (magic 28 B5 2F FD)
+```
+
+Five findings that change the implementation:
+
+1. **Mixed compression — one codec per chunk, always both.** The schema is **raw deflate** (`windowBits: -15` / `inflateRaw`); a plain `zlib.inflateSync` **fails on it** because there is no zlib header. The data is **zstd**. The earlier "deflate *or* zstd" reading was wrong — you need both codecs, every time.
+2. **The schema chunk is byte-identical across editor types** (`sha256:c22712ff…`, 28 766 B compressed → 71 777 B, in *both* the design and the FigJam export). One schema, one decoder; the prelude is the only editor discriminator.
+3. **The decompressed schema is fully self-describing** — 3 468 readable identifiers, including `NodeType` with `DOCUMENT, CANVAS, GROUP, FRAME, BOOLEAN_OPERATION, VECTOR, STAR, LINE, ELLIPSE, RECTANGLE, REGULAR_POLYGON, ROUNDED_RECTANGLE, TEXT, SLICE, SYMBOL, INSTANCE, STICKY, SHAPE_WITH_TEXT, CONNECTOR, CODE_BLOCK, WIDGET, STAMP, MEDIA`, plus `WindingRule`, `Axis`, `NodePhase`. **Nothing is guessed.** This is the in-house-decoder thesis confirmed in the strongest possible way.
+4. **Images ship INSIDE the archive** (`images/`). This is *strictly better than the REST door*: no 7-day URL expiry, no `IMAGE_COST` rate limit, no SSRF surface at all. The local door has a genuine advantage the plan hadn't credited.
+5. **A schema hash is a better drift alarm than decode-failure.** Because chunk[0] is stable and shared, `sha256(schema chunk)` changing is an **early warning that fires before anything breaks** — strictly better than Tier 4's "a fresh export failed to decode". Add it to the Tier-4 alarm; keep decode-failure as the backstop.
+
+`meta.json`'s `exported_at` timestamp makes the dated Tier-4 corpus self-labelling. Committed baseline: **`.ai/fixtures/figma/2026-08-03/`** (116 KB, outside the npm-published tree — `.ai` is not in `package.json` `files`).
 
 **T13: RECORD the `.fig` decoding DDR** — own decision, own security round.
 - **Do**: state the write-our-own rationale above (embedded schema = no pinned schema to rot); the **fail-loud posture** — an unrecognised prelude or an unknown container version **refuses**, and must never best-effort-decode into plausible-but-wrong geometry (silent wrongness is far worse than a clean error for a design importer); decompression-bomb caps (compressed:uncompressed ratio, absolute output bytes, node count, tree depth); and the smoke architecture below as a *requirement*, not a test plan.
 - **Also check (one line, don't over-lawyer)**: Figma's ToS reverse-engineering clause. The honest framing is that this reads a file the user already owns, entirely locally, touching no Figma service — but confirm rather than assume.
 - **Validate**: `security-auditor` + `ethical-hacker` over the binary-parser threat model. A parser on untrusted attacker-supplied bytes is the highest-risk code in this whole plan.
 
-**T14: CREATE `figma/fig-decode.ts`** — container reader → decompressor → Kiwi schema parser → Kiwi data decoder → **the same normalized node tree `figma/client.ts` emits**, so Phases 2–4 apply unchanged. Build it in that order; each layer is independently testable.
+**T14: CREATE `figma/fig-decode.ts`** — **ZIP reader → `canvas.fig` → container reader → the two decompressors → Kiwi schema parser → Kiwi data decoder** → **the same normalized node tree `figma/client.ts` emits**, so Phases 2–4 apply unchanged. Build it in that order; each layer is independently testable, and layers 1–4 are already **proven against the committed fixtures** (§ Container format).
+- **Gotcha**: the schema chunk is **raw deflate** — `inflateRawSync` / `windowBits: -15`. A plain `zlib.inflateSync` throws on it. The data chunk is zstd. Both, every file.
+- **Also**: resolve image fills from the archive's own `images/` directory, not through `/v1/images` — no expiry, no rate limit, no SSRF. This path is *better* than the REST one and should not simply mirror it.
 
 **T15: BUILD the smoke suite — the load-bearing deliverable of this phase**
 
@@ -429,7 +456,7 @@ Execute in order. Each task is atomic and testable.
 
 **Tier 3 — translator smoke** (end-to-end): `.fig` → decoder → `to-strokes` / `to-artboard` → canvas must equal the REST-sourced import of the same document (or differ only by a documented delta) — **and clear the same `design-system-keeper` A.10 editability gate** the governing principle imposes on every import.
 
-**Tier 4 — format-drift alarm** (the thing that catches Figma breaking us): a small committed corpus of `.fig`/`.jam` exports taken at *different dates*, plus a documented ritual of re-exporting the same source document periodically. A fresh export that fails to decode **is the alarm** — it should fail with the observed container version in the message, so the diagnosis is one line long instead of an afternoon.
+**Tier 4 — format-drift alarm** (the thing that catches Figma breaking us): a small committed corpus of `.fig`/`.jam` exports taken at *different dates* (**baseline landed: `.ai/fixtures/figma/2026-08-03/`**, version `106`, schema `sha256:c22712ff…`), plus a documented ritual of re-exporting the same source document periodically. **Two alarms, not one:** (a) **the schema hash** — chunk[0] is stable and shared across editor types, so a changed `sha256` is an *early warning that fires before anything breaks*; (b) a fresh export failing to decode, the backstop, which must name the observed container version so diagnosis is one line rather than an afternoon.
 
 **Plus a fuzz corpus.** Cheap under `bun test`; mandatory for a parser fed untrusted bytes.
 

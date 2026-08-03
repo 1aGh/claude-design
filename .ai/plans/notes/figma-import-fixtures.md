@@ -105,3 +105,36 @@ In Figma: **File → Save local copy** (design → `.fig`, FigJam → `.jam`).
 **Export each file twice, with a gap between exports**, and keep both. Two exports of the same unchanged document are the seed corpus for the **Tier-4 format-drift alarm** — the mechanism that catches Figma changing the container framing. A later re-export that fails to decode *is* the alarm, and must fail loud with the observed container version rather than best-effort-decoding into plausible-but-wrong geometry.
 
 Commit them small and ours — never a real client file (repo weight + licensing/privacy).
+
+---
+
+## Exported + dissected 2026-08-03 — committed baseline
+
+`.ai/fixtures/figma/2026-08-03/{design.fig, figjam.jam}` (116 KB total; `.ai` is not in `package.json` `files`, so nothing ships to npm).
+
+Container measured end-to-end — **the whole pipeline is proven without a decoder written**:
+
+```
+.fig / .jam  = ZIP { canvas.fig, thumbnail.png, meta.json, images/ }
+canvas.fig   = "fig-kiwi" | "fig-jam."   8-byte prelude (the editor discriminator)
+               u32 LE version            observed: 106
+               u32 LE len + SCHEMA       raw DEFLATE — 28 766 B -> 71 777 B
+               u32 LE len + DATA         ZSTD
+```
+
+| | design.fig | figjam.jam |
+|---|---|---|
+| prelude | `fig-kiwi` | `fig-jam.` |
+| version | 106 | 106 |
+| schema chunk | 28 766 B · `sha256:c22712ff…` | 28 766 B · `sha256:c22712ff…` — **identical** |
+| data chunk | 13 252 B → 31 866 B | 25 700 B → 67 207 B |
+
+**Schema chunk is byte-identical across editor types** — one schema, one decoder, prelude is the only discriminator. Decompressed it yields **3 468 readable identifiers** including the full `NodeType` enum (`DOCUMENT, CANVAS, GROUP, FRAME, BOOLEAN_OPERATION, VECTOR, STAR, LINE, ELLIPSE, RECTANGLE, REGULAR_POLYGON, ROUNDED_RECTANGLE, TEXT, SLICE, SYMBOL, INSTANCE, STICKY, SHAPE_WITH_TEXT, CONNECTOR, CODE_BLOCK, WIDGET, STAMP, MEDIA`). Nothing is guessed.
+
+The zstd data chunk decodes to the exact authored content — `AL Horizontal (-> flex row)`, `Chip One`, `Abs box 1`, `bar-short`, `bar-tall`, `bar-mid`, `accent-dot`, `Sekce vnitřní (nested)`, `"test" / <b> & 'x'`, every `shapeType`.
+
+**Implementation gotchas found here, not in docs:**
+- The schema is **raw deflate** (no zlib header) — needs `inflateRawSync` / `windowBits: -15`. A plain `zlib.inflateSync` **throws**. The data is zstd. **Both codecs, every file** — not either/or.
+- **Images live in the archive's `images/`**, so the local door needs no `/v1/images` call: no 7-day expiry, no `IMAGE_COST` limit, no SSRF surface. Better than the REST path.
+- `meta.json` gives file name, background colour, render coordinates and an `exported_at` timestamp for free — the drift corpus is self-labelling.
+- **Watch `sha256(schema chunk)` as the primary drift alarm** — it changes *before* decoding breaks.
