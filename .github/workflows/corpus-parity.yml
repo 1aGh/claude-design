@@ -74,14 +74,14 @@ jobs:
       - name: Build the corpus through the cell's sandbox
         env:
           MAUDE_BUN_PATH: bun
-        run: node scripts/corpus-parity.mjs
+        run: bun scripts/corpus-parity.mjs
 
       - name: Report
         if: always()
         env:
           MAUDE_BUN_PATH: bun
         run: |
-          node scripts/corpus-parity.mjs --json > corpus-parity.json || true
+          bun scripts/corpus-parity.mjs --json > corpus-parity.json || true
           node -e "
             const r = require('./corpus-parity.json');
             console.log('| canvases | built | failed | p50 | p95 |');

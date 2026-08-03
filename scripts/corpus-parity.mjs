@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Corpus parity — Cloud Phase 25 A2, and DDR-206's third re-open condition.
 //
 // WHAT IS ACTUALLY AT RISK, given A1's design. The Phase 21 spike measured
@@ -13,7 +13,13 @@
 // every canvas the desktop can build, the cell can build too. A one-sided
 // failure is the failure — and its message is the diagnosis.
 //
-//   node scripts/corpus-parity.mjs [--root <repo>] [--design .design] [--json]
+//   bun scripts/corpus-parity.mjs [--root <repo>] [--design .design] [--json]
+//
+// BUN, NOT NODE. The sandbox host moved into the studio with Cloud Phase 27
+// (DDR-209 A′2) — one engine, one host, in the process that serves the route it
+// protects — and it is TypeScript, which only Bun reads directly. Running this
+// under node is what the cell does NOT do, so matching the cell is also the
+// simpler option.
 //
 // Exits non-zero on any one-sided failure. Prints a per-canvas line either way,
 // because a silent pass tells an operator nothing about coverage.
@@ -57,7 +63,10 @@ function isMountable(abs) {
   }
 }
 
-const { buildCanvas } = await import(join(REPO, 'apps/hub/src/canvas/build.mjs'));
+// The cell's sandbox, imported from where the cell itself imports it.
+const { buildCanvasSandboxed } = await import(
+  join(REPO, 'apps/studio/canvas-build-sandbox.ts')
+);
 
 const all = canvases(DESIGN_ROOT).sort();
 const targets = all.filter(isMountable);
@@ -67,7 +76,7 @@ let failed = 0;
 for (const abs of targets) {
   const rel = relative(DESIGN_ROOT, abs).split(sep).join('/');
   const started = Date.now();
-  const built = await buildCanvas({ designRoot: DESIGN_ROOT, canvasAbs: abs });
+  const built = await buildCanvasSandboxed({ designRoot: DESIGN_ROOT, canvasAbs: abs });
   const ms = Date.now() - started;
   results.push({
     rel,
