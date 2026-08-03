@@ -101,8 +101,16 @@ export class MaudeCell extends Container {
     // kept working through the outage) and then reach the hub over the tunnel
     // the container itself dialled out. The DO stays in the path on purpose —
     // it is what wakes the cell on demand and what lets sleepAfter idle it.
-    if (this.env.MAUDE_TUNNEL_TOKEN && this.env.MAUDE_TUNNEL_HOST && tenantId === this.env.MAUDE_TUNNEL_TENANT) {
-      const config = await fetchTenantConfig({ tenantId, env: this.env, storage: this.ctx.storage });
+    if (
+      this.env.MAUDE_TUNNEL_TOKEN &&
+      this.env.MAUDE_TUNNEL_HOST &&
+      tenantId === this.env.MAUDE_TUNNEL_TENANT
+    ) {
+      const config = await fetchTenantConfig({
+        tenantId,
+        env: this.env,
+        storage: this.ctx.storage,
+      });
       const s3Creds = await fetchTenantS3Credentials({ tenantId, env: this.env });
       if (!s3Creds && !this.env.MAUDE_R2_ACCESS_KEY_ID) {
         return new Response(

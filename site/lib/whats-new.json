@@ -1,11 +1,47 @@
 {
-  "generated": "2026-07-31T14:30:04.835Z",
-  "version": "0.51.1",
+  "generated": "2026-08-03T11:02:39.276Z",
+  "version": "0.53.0",
   "entries": [
     {
+      "id": "open-your-project-in-a-browser",
+      "version": "0.53.0",
+      "date": "2026-08-02",
+      "kind": "feature",
+      "title": "Open your project in a browser — nothing to install",
+      "summary": "Send a teammate a link and they open the real project in their browser: the actual canvases, the actual design system. They can move things, edit text and colours, leave notes, and download the whole thing — signed in with their Maude account, with the same rights they have in the app.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "viewer-means-viewer",
+      "version": "0.53.0",
+      "date": "2026-08-02",
+      "kind": "feature",
+      "title": "A viewer sees no editing tools at all",
+      "summary": "Invite someone as a viewer and the editing simply is not there — not greyed out, not hidden, absent — in the browser and in the app alike. They can look, comment and download, which is what the role has always promised.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "design-sync-pull-request",
+      "version": "0.53.0",
+      "date": "2026-08-02",
+      "kind": "feature",
+      "title": "Sync your designs into your own repo as a pull request",
+      "summary": "Point Maude at a GitHub repository and choose what lands: the whole workspace as a backup on its own branch, or your design folder inside your working repo — as a normal pull request you review and merge. Each choice says what it will do before you save it.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "desktop-opens-again",
+      "version": "0.52.2",
+      "date": "2026-08-02",
+      "kind": "fix",
+      "title": "The desktop app opens again",
+      "summary": "0.51.1 launched to an empty window on every project — the app booted fine and the interface simply never drew. It only broke inside the desktop shell, which is why a browser and a dev build both looked healthy. Fixed, and the release now refuses to ship an app whose interface does not come up.",
+      "surface": "desktop"
+    },
+    {
       "id": "manual-timeline-editor",
-      "version": null,
-      "date": null,
+      "version": "0.52.0",
+      "date": "2026-08-02",
       "kind": "feature",
       "title": "Edit video on the timeline, like iMovie",
       "summary": "Split, trim, retime, crop, grade, and lay clips across stacked layers right on the timeline — drag to reorder, drop to make a new layer, add transitions, drop AI placeholder clips, and pin comments to an exact frame with the C tool.",
@@ -13,8 +49,8 @@
     },
     {
       "id": "report-a-bug-from-the-app",
-      "version": null,
-      "date": null,
+      "version": "0.52.0",
+      "date": "2026-08-02",
       "kind": "feature",
       "title": "Report a bug without leaving Maude",
       "summary": "Hit a problem? Help › Report a Bug… files it for you — with a screenshot of your canvas you can black-out before sending, and a review screen where you choose exactly what gets attached. The report lands on the public Maude issue tracker; screenshots and logs stay in a private space only maintainers can open.",
