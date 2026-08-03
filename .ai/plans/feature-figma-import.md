@@ -255,6 +255,17 @@ Editability and pixel-fidelity are in genuine tension, and this decision picks a
 - `.ai/archive/decisions/DDR-2NN-figma-ingestion-architecture-and-trust-boundary.md`
 - `plugins/design/commands/import.md` — new `--figma` mode section.
 
+### Test fixtures — built, and they ARE the contract
+
+**[`.ai/plans/notes/figma-import-fixtures.md`](notes/figma-import-fixtures.md)** — two purpose-built Figma files authored 2026-08-03, in which **every node exists to exercise one named behaviour**. Node ids are stable and enumerated there, so T5/T7 tests assert against specific ids rather than against "a board".
+
+| | File key | Covers |
+|---|---|---|
+| FigJam | `Em6NOwaOFTYV7NlQT4NK8l` | nested sections · the 4 sticky/geometry cases · 6 mappable + **2 deliberately unmappable** shape types · groups · rotation · **6 connectors incl. the `isBindable` widening case (→TEXT) and the must-degrade case (→GROUP)** · a hostile layer name |
+| Design | `dGNzRC2kmrmGnOxaBa0RI7` | horizontal + vertical auto-layout vs. absolute fallback · **3 nested styleless group wrappers** (the flatten case) · **4 vector leaves forming one mark** (the collapse case) · component + 2 instances · gradient · drop shadow · type ramp · a JSX-hostile name incl. `{curly}` and `<script>` |
+
+Both doors read the same two documents — which is what makes the Phase-6 **Tier-2 differential smoke** possible at all.
+
 ### Documentation
 
 - [Figma REST API — Authentication](https://developers.figma.com/docs/rest-api/authentication/) — Why: `X-Figma-Token` header for PATs vs `Authorization: Bearer` for OAuth; scope model.
