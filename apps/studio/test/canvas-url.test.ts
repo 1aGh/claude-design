@@ -110,3 +110,29 @@ describe('canvasUrl — per-canvas design-system token resolution', () => {
     ).toBeNull();
   });
 });
+
+// Cloud Phase 27 (DDR-209) — the canvas origin's capability.
+//
+// In the cloud the canvas origin is a cookieless, cross-site hostname: a cookie
+// scoped widely enough to cover it would be readable by the untrusted canvas
+// content itself, which is the one thing the DDR-054 split exists to prevent.
+// So the capability rides in the URL. It reaches `cfg` through the `/_config`
+// projection — which silently dropped it once, and would have 401'd every
+// canvas iframe in production (see `config-projection.test.ts`).
+
+test('a canvas URL carries the capability when the server minted one', () => {
+  const url = canvasUrl('.design/ui/Home.tsx', {
+    designRel: '.design',
+    canvasOrigin: 'https://canvas.cloud.maude.sh/alligators',
+    canvasToken: 'cap-abc123',
+  });
+  expect(url.startsWith('https://canvas.cloud.maude.sh/alligators/_canvas-shell.html?')).toBe(true);
+  expect(new URL(url).searchParams.get('t')).toBe('cap-abc123');
+});
+
+test('a desktop URL is byte-identical to before — no capability, no query', () => {
+  // The loopback canvas origin needs none, so this must not change for the
+  // shell that has always worked.
+  const url = canvasUrl('.design/ui/Home.tsx', { designRel: '.design' });
+  expect(new URL(url, 'http://x').searchParams.has('t')).toBe(false);
+});

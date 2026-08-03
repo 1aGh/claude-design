@@ -3614,6 +3614,8 @@ function EditDropdown({ onAction, onClose, hasCanvas, readOnly = false }) {
 function Menubar({
   activePath,
   project,
+  /** `{ dashboardUrl, projectName }` when this is a cloud tab, else null. */
+  cloud = null,
   tabsCount,
   openMenu,
   setOpenMenu,
@@ -3700,7 +3702,7 @@ function Menubar({
   // In the cloud the `assistant` row is the stated-absence row above, so it must
   // NOT be filtered away here — a viewer would then get silence, which is the
   // exact thing C2 forbids.
-  const viewerHiddenPanels = new Set(cfg?.cloud ? ['autoopen'] : ['assistant', 'autoopen']);
+  const viewerHiddenPanels = new Set(cloud ? ['autoopen'] : ['assistant', 'autoopen']);
   const panels = [
     { id: 'tree', label: 'Project Tree', shortcut: 'T', checked: sidebarOpen, disabled: false },
     {
@@ -3773,7 +3775,7 @@ function Menubar({
         // user has seen on the desktop reads as "the cloud one is broken", so
         // the row stays, disabled, saying where to find it. Never a hidden
         // item, never a dead button, never silence.
-        cfg?.cloud
+        cloud
         ? [
             {
               id: 'assistant',
@@ -3895,18 +3897,18 @@ function Menubar({
           cloud has to say them. This is an ADDITION to the shared client behind
           the same `cloud` flag as C2's agent notice — never a fork of the
           component, which is how the two shells started diverging last time. */}
-      {cfg?.cloud ? (
+      {cloud ? (
         <span className="st-cloudback" data-testid="cloud-back">
           <a
             className="st-cloudback-link"
-            href={cfg.cloud.dashboardUrl || 'https://cloud.maude.sh'}
+            href={cloud.dashboardUrl || 'https://cloud.maude.sh'}
             title="Back to your projects"
           >
             ← Dashboard
           </a>
-          {cfg.cloud.projectName ? (
+          {cloud.projectName ? (
             <span className="st-cloudback-project" data-testid="cloud-project-name">
-              {cfg.cloud.projectName}
+              {cloud.projectName}
             </span>
           ) : null}
         </span>
@@ -9259,6 +9261,23 @@ function App() {
           // decides what the UI offers; the cell (C1) and the dev-server's
           // read-only gate (http.ts) are what actually stop a write.
           readOnly: !!data.readOnly,
+          // Cloud Phase 27 (DDR-209) — the capability that opens the cookieless
+          // canvas origin. `canvasUrl()` appends it to every iframe URL. Absent
+          // on a desktop, where the canvas origin is loopback and needs none.
+          //
+          // NOTE FOR WHOEVER ADDS THE NEXT FIELD: this is an explicit
+          // projection, not a spread of `data`. A field the server starts
+          // returning does NOT arrive here until it is named — which is how
+          // both of these went missing and the cloud studio rendered without
+          // its chrome and with every canvas iframe unauthenticated.
+          canvasToken: data.canvasToken,
+          // C2/C4 — `{ dashboardUrl, projectName }` when this is a cloud tab.
+          // Its presence is what tells the shared client it is in a browser tab
+          // on somebody else's machine.
+          cloud: data.cloud ?? null,
+          // C2/C4 — `{ dashboardUrl, projectName }` when this is a cloud tab.
+          // Its presence is what tells the shared client it is in a browser tab
+          // on somebody else's machine.
         }));
       })
       .catch(() => {});
@@ -13983,6 +14002,10 @@ function App() {
       <div className="st-shell">
         <Menubar
           readOnly={viewerMode}
+          // Cloud Phase 27 C2/C4 — the ONE cloud-only input the shared chrome
+          // takes. A prop, not the whole `cfg`: the Menubar needs to know it is
+          // in a browser tab on somebody else's machine, and nothing else.
+          cloud={cfg?.cloud ?? null}
           activePath={activePath}
           project={project}
           tabsCount={tabs.length}
