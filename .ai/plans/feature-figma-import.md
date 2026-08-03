@@ -76,7 +76,7 @@ That is 2/2 connectors degraded on the only real board measured. Two things make
 1. **The degradation is already implemented and honest.** `recomputeBoundArrows` strips an unbindable host and *"the arrow survives unbound"* with the endpoint frozen in place — geometry is preserved, only live re-routing is lost.
 2. **Widening `isBindable` to include `text` (and possibly `section`) is a small, self-contained change** that needs no new geometry: both carry `x/y/w/h`, and `anchorPoint`/`bindCandidate` operate purely on `strokeBBox` + `strokeRotation`, which already handle them.
 
-**Decision required in T1's DDR:** accept degradation-with-reporting, or widen `isBindable`. Widening is recommended — it improves the *native* whiteboard (today you cannot attach an arrow to a text label or a section, which is a plain product gap independent of import) and it is the difference between "the flagship mapping is 1:1" and "the flagship mapping loses the thing FigJam users care about". **Groups remain unbindable by construction** — Maude groups are a flat `groupIds[]` tag array, not addressable objects, so a group-targeted endpoint must fall back to the group's geometric bbox or degrade. Do not try to invent a group stroke for this.
+**Decided (§ Governing principle, user 2026-08-03): widen `isBindable`.** "Always editable" means a connector imported onto a text label stays a live, re-routable arrow, not a frozen line. The reasoning that made it the recommendation anyway — it improves the *native* whiteboard (today you cannot attach an arrow to a text label or a section, which is a plain product gap independent of import) and it is the difference between "the flagship mapping is 1:1" and "the flagship mapping loses the thing FigJam users care about". **Groups remain unbindable by construction** — Maude groups are a flat `groupIds[]` tag array, not addressable objects, so a group-targeted endpoint must fall back to the group's geometric bbox or degrade. Do not try to invent a group stroke for this.
 
 ### ✅ Confirmed — mappings that hold
 
@@ -93,9 +93,75 @@ That is 2/2 connectors degraded on the only real board measured. Two things make
 - **Sticky sizes differ.** FigJam default is **240×240**; Maude's `STICKY_DEFAULT_W` is **200**. Resized stickies also occur (815×470 observed). **Preserve absolute geometry** — do not normalise to Maude's default, or every layout collapses.
 - **Text content doubles as the layer name.** MCP returns text in the `name` attribute (`name="Lorem ipsum dolor sit amet…"`); in Figma a TEXT node's layer name defaults to its content. This is attacker-controlled string data that Phase 3 would otherwise interpolate into JSX identifiers — **the sanitization requirement in T7 is load-bearing, not boilerplate**.
 
+### 📐 Phase 3 measured — a real design file (`Z2gcfNtlVWIWvucbPJLtKB` "data.Brno")
+
+**Scale of one page** — and it is brutal:
+
+| Metric | Value |
+|---|---|
+| Metadata dump for ONE page | **449 KB** — *exceeded the MCP tool's own token ceiling* |
+| Nodes | **4 125** |
+| Max nesting depth | **13** |
+| Top-level children of the canvas | **73** (frames, but also loose text, loose vectors, stray `Group`s) |
+| Largest frames | `design` 3799×14000 · `Html → Body` 1280×6054 · `V4 — Airy / light` 1440×4677 |
+
+**Node-type mix** — `rounded-rectangle` 41 % · `text` 30 % · `frame` 21 % · `ellipse` 3.6 % · `vector` 1.7 % · `symbol` (component) 1.2 %. **92 % of a real file is rects, text and frames** — the three easiest things to translate. Only ~1.7 % needs rasterisation. That is the good news.
+
+**The bad news is structure, not fidelity.** Figma's own first-party translator was run on the small `Mini styleguide` frame (990×648 — visually just 3 swatches, 2 font names, 2 logo cards, 10 icons). It produced **~250 lines of JSX and 22 separate image assets**. Specifically:
+
+- **Mixed layout model, confirmed.** Auto-layout *does* translate cleanly (`content-stretch flex flex-col items-start`, `flex flex-wrap gap-[82px]`) — but the frame's own children are **absolutely positioned** (`absolute left-[293.59px] top-[48px]`). Real files are an **absolute shell with flex leaves**. Plan T7's "flex where auto-layout exists, absolute otherwise" is the right model.
+- **A single logo exploded into ~14 separate vector `<img>` exports**, wrapped in seven levels of `contents` divs positioned with `left-[calc(50%-43.42px)] top-[46.94%]`.
+- **Figma's own output reaches for contortions** — `containerType: "size"`, `h-[100cqh] w-[100cqw]`, `-rotate-180 -scale-x-100`, `inline-grid` with `grid-cols-[max-content]` — to reproduce ordinary flipped vectors.
+- **Asset URLs expire in ~7 days**, confirming download-first is mandatory, not an optimisation.
+
+### 🔴 The real Phase-3 risk: a blob, not a canvas
+
+Visual fidelity is *achievable* — Figma's own output proves the data suffices. **The risk is that the result is not a Maude canvas.** Maude canvases exist to be **edited**, by hand and by `/design:edit`. A 13-deep tree of styleless `contents` wrappers positioned by `calc(50% − 43.42px)`, with one `<img>` per vector, is hostile to exactly that — it would be visually right and practically inert.
+
+Three mitigations — **all now mandatory acceptance criteria, not options** (§ Governing principle):
+
+1. **Flatten aggressively.** Figma `Group` nodes carrying no styling are pure noise — hoist their children and drop the wrapper. Precedent exists in this very repo: DDR-187's addendum hoists engine chrome wrappers rather than emitting synthetic group rows, for the same readability reason.
+2. **Collapse vector clusters into ONE asset.** Export the *logo parent node* as a single SVG (`/v1/images?ids=<parent>&format=svg`) instead of its 14 leaves. Fewer assets, far below the `IMAGE_COST` ceiling, and it matches how a human thinks about a logo — one object, not fourteen. **This is the single highest-leverage decision in Phase 3.**
+3. **Prefer flex wherever auto-layout exists** — measured as genuinely clean.
+
 ### 🎯 The architecture decision, re-confirmed by data
 
 The MCP response is **structurally lossy in exactly the ways the translators need**: `color="CUSTOM"` carries no actual colour, image-filled shapes are identifiable only by a human-typed layer name (`"image 1"`, `"PXL_20210309_203454756 1"`), and no `fills` / `strokes` / `effects` appear at all. The REST API's `GET /v1/files/:key` returns all of it. **This is independent confirmation that REST is the correct door** — not merely the one that clears the rate-limit and allowlist hurdles.
+
+---
+
+---
+
+## Governing principle — editability is the acceptance bar, fidelity is subordinate
+
+**User decision, 2026-08-03:** *"chci určitě vždy editovatelný annotations i canvas artboards."* Both outputs — the whiteboard annotation layer AND the `DCArtboard` canvas — must land **editable**, always. This resolves the open question the measurement exposed (is an imported frame *a canvas you edit* or *a reference you build next to*?) in favour of the first, and it converts the three Phase-3 mitigations from recommendations into **acceptance criteria**.
+
+### What "editable" means in Maude — testable, not a feeling
+
+Maude already owns the editing surfaces, so the bar is concrete:
+
+| Surface | What it needs from an imported canvas |
+|---|---|
+| **Selection ladder** (DDR-187: bare click = top-level, Cmd = deepest, dblclick drills one level) | meaningful objects at every level. Styleless `Group` wrappers poison the drill ladder — each dblclick descends into nothing. |
+| **Spacing / resize / grid-track handles** (`use-spacing-handles`, `use-element-resize`, `use-grid-track-handles`) | **flex or grid**. A sea of absolute positioning offers no handles at all — the canvas becomes drag-only. |
+| **Layers panel** (DDR-187 addendum) | readable names. 883 nodes called `Group 13900` is an unusable tree. |
+| **`/design:edit`** (the agent reads the `.tsx`) | a file it can hold. ~250 lines for a *trivial* 990×648 frame extrapolates to five figures for a 1440×4677 page — agent-hostile. Flattening is a token-budget requirement, not only a readability one. |
+| **Direct manipulation of a logo** | one object. 14 separate `<img>` leaves cannot be edited *as a logo*. |
+
+### The acceptance gate — already built
+
+**An imported canvas must pass `design-system-keeper` — specifically Pass A.10 (web-kind flow discipline) — on the same terms as a hand-authored one.** A.10 flags untagged `position: absolute` inside a `kind="web"` artboard precisely because it *"produces broken flex/handoff code"*. That is this feature's blob-detector, and it exists today. **If an import can't clear A.10, the import isn't finished** — do not ship it behind a "well, it's imported" exemption.
+
+### The cost, named honestly
+
+Editability and pixel-fidelity are in genuine tension, and this decision picks a side. Some Figma constructs have **no editable CSS equivalent**: text auto-resize modes, `constraints: SCALE`, blend modes, masks, boolean operations. Editability-first means each degrades to something **editable-but-different** rather than **faithful-but-inert** — so **an import will sometimes look less exactly like Figma than a flattened screenshot would.** That is the chosen trade, not a defect; the per-import summary must say which nodes took it.
+
+### Consequences that are now decided, not open
+
+1. **Widen `isBindable`** to include `text` (and `section`). Degrade-and-report is no longer sufficient for the annotation layer — "always editable" means a connector imported onto a text label stays a *live, re-routable* arrow. (Groups stay unbindable by construction; they fall back to the group bbox.)
+2. **Flatten styleless `Group` wrappers** — mandatory, not advisory.
+3. **Collapse vector clusters to one parent-node SVG export** — mandatory. It is simultaneously the editability fix, the `IMAGE_COST` rate-limit fix, and the file-size fix.
+4. **Preserve auto-layout as flex wherever it exists** — this is what makes the handle surfaces work at all.
 
 ---
 
@@ -261,7 +327,7 @@ Execute in order. Each task is atomic and testable.
 
 **T3: CREATE `figma/client.ts`**
 - **Do**: `getFile(key, opts)`, `getFileNodes(key, ids[])`, `getImages(key, ids[], format)`, `getStyles(key)`, `getLocalVariables(key)`. `X-Figma-Token` header from `getProviderKey('figma')`, injected at call time. Typed 403/404/429 handling; honour `Retry-After` on 429 with bounded backoff.
-- **Gotcha**: prefer `getFileNodes` over `getFile` when a `node-id` is present — a whole enterprise file can be tens of MB and blows both memory and the response cap. Enforce a hard response-byte cap and a node-count cap; fail with a clear "file too large, import a specific frame instead" rather than OOMing. `getLocalVariables` is **plan-gated (Enterprise)** — a 403 there is a normal, expected outcome that must degrade to the styles path, never surface as an error.
+- **Gotcha**: prefer `getFileNodes` over `getFile` when a `node-id` is present — a whole enterprise file can be tens of MB and blows both memory and the response cap. **Measured, not extrapolated: a single page of a real Slant file is 449 KB / 4 125 nodes / depth 13 in the *metadata-only* projection — it exceeded the Figma MCP's own token ceiling on the first try.** The full REST payload (which additionally carries fills, strokes, effects and typeStyle per node) is materially larger. Whole-file import is not a viable default; frame-scoped is. Enforce a hard response-byte cap and a node-count cap; fail with a clear "file too large, import a specific frame instead" rather than OOMing. `getLocalVariables` is **plan-gated (Enterprise)** — a 403 there is a normal, expected outcome that must degrade to the styles path, never surface as an error.
 - **Validate**: `bun test apps/studio/figma/client.test.ts` with a stubbed `fetch` — asserts the base URL is never influenced by input, the token never appears in any thrown error or log line, 429 backoff is bounded, and caps trip.
 
 **T4: ADD the `figma` provider + privileged routes**
@@ -291,12 +357,13 @@ Execute in order. Each task is atomic and testable.
 
 **T7: CREATE `figma/to-artboard.ts` + `figma/style-map.ts`**
 - **Do**: one selected `FRAME`/`COMPONENT` → one `DCArtboard` (JSX `width`/`height` size-authoritative per DDR-027; position into `layout.artboards[]` per the meta schema). `layoutMode: HORIZONTAL|VERTICAL` → flex with the corresponding `itemSpacing`/padding/alignment; everything else → absolute positioning from `absoluteBoundingBox` (the DDR-188 vocabulary). `style-map.ts` translates fills/strokes/effects/`typeStyle` → CSS with nearest-token resolution.
-- **Gotcha**: **generated JSX is executed.** Layer names become identifiers and `data-dc-element` values — sanitize to a strict charset before interpolation, never pass through raw. Text content is emitted as JSX **text children**, never as markup or `dangerouslySetInnerHTML`. Every numeric style value is validated against a grammar before it reaches the emitted string. Also: a `kind="web"` artboard should not be a sea of absolute positioning (`design-system-keeper` check A.10) — prefer flex wherever auto-layout gives it to us, and pick the artboard `kind` per DDR-181.
-- **Validate**: `bun test apps/studio/figma/to-artboard.test.ts` (auto-layout → flex; absolute fallback; an injection-attempt layer-name table) + `maude design smoke` on the generated canvas.
+- **Do (added after measurement)**: **flatten styleless `Group` wrappers** (hoist children, drop the node) and **collapse vector clusters to one parent-node SVG export** — see § Verified findings "a blob, not a canvas". Without these two, the output is visually correct and practically uneditable, which fails the point of a Maude canvas.
+- **Gotcha**: **generated JSX is executed.** Layer names become identifiers and `data-dc-element` values — sanitize to a strict charset before interpolation, never pass through raw. **Measured: real layer names carry spaces, em-dashes, arrows and diacritics** (`V4 — Airy / light`, `Html → Body`, `Úprava 3d modelu…`, `Property 1=Cisty-a-zeleny-kraj 1`), so this is a live hazard on the very first real file, not a theoretical one. Text content is emitted as JSX **text children**, never as markup or `dangerouslySetInnerHTML`. Every numeric style value is validated against a grammar before it reaches the emitted string. Also: a `kind="web"` artboard should not be a sea of absolute positioning (`design-system-keeper` check A.10) — prefer flex wherever auto-layout gives it to us, and pick the artboard `kind` per DDR-181.
+- **Validate**: `bun test apps/studio/figma/to-artboard.test.ts` (auto-layout → flex; absolute fallback; a flatten-styleless-wrapper case; a vector-cluster-collapse case; an injection-attempt layer-name table) + `maude design smoke` on the generated canvas + **the editability gate: `design-system-keeper` must pass Pass A.10 on the imported canvas with no untagged-absolute findings, on the same terms as a hand-authored one.** A deliberate overlay carries its one-line justification comment like any other canvas. **A canvas that cannot clear A.10 is not a finished import** — no "but it's imported" exemption.
 
 **T8: ADD image + vector fill resolution**
 - **Do**: collect nodes needing rasterization (image fills, `VECTOR`/boolean ops that CSS can't express) → **one batched** `GET /v1/images` call per format → download each returned URL → `fetch-asset` → reference the flat content-addressed `/assets/<sha8>` path.
-- **Gotcha**: `IMAGE_COST = 200` ≈ **30 req/min** — batch ids into as few calls as the endpoint allows, never one call per node. The returned S3 URLs are **response-controlled**, so the download must go through `fetch-asset`'s gate with a host allowlist (`*.figma.com`, the Figma image S3 bucket) and a hard refusal for loopback/link-local/private ranges. And per memory `reference_canvas_images_download_first`, a hotlinked `<img>` is CSP-blocked in the canvas — download-first is mandatory, not an optimization.
+- **Gotcha**: `IMAGE_COST = 200` ≈ **30 req/min** — batch ids into as few calls as the endpoint allows, never one call per node. **Measured: Figma's own translator emitted 22 asset exports for one 990×648 frame** (a logo alone became 14). Extrapolated to a 1440×4677 page that is hundreds of assets — which is precisely why T7's "collapse vector clusters to one parent SVG" is a rate-limit mitigation, not only a readability one. Figma's asset URLs also **expire in ~7 days**, so download-first is mandatory. The returned S3 URLs are **response-controlled**, so the download must go through `fetch-asset`'s gate with a host allowlist (`*.figma.com`, the Figma image S3 bucket) and a hard refusal for loopback/link-local/private ranges. And per memory `reference_canvas_images_download_first`, a hotlinked `<img>` is CSP-blocked in the canvas — download-first is mandatory, not an optimization.
 - **Validate**: `bun test` on the batching + allowlist logic; live import of a frame containing a photo and a vector icon, screenshotted.
 
 **T9: STAMP provenance + surface it**
@@ -362,7 +429,8 @@ Execute in order. Each task is atomic and testable.
 
 ## Open forks (decide before Phase 6 starts — not blocking Phases 0–5)
 
-1. **Is `.fig` / `.jam` in scope at all?** It is the only door that works with no Figma seat and no network, and the user asked for it by name. It is also a reverse-engineered format that Figma can silently break, plus a new dependency in a repo that reviews every dep individually. The plan's position: **build it, but last and behind its own DDR**, so the translators are already proven against the documented API before a fragile decoder is layered underneath. If the answer is "skip it", Phases 0–5 stand alone with nothing to unpick.
+0. ~~Is an imported frame a canvas you edit, or a reference you build next to?~~ **Resolved 2026-08-03 — a canvas you edit, always.** See § Governing principle. Kept here so a later reader sees the fork existed and was decided, not overlooked.
+1. **Is `.fig` / `.jam` in scope at all?** (Weakened further by measurement: `fig-kiwi` on npm is `0.0.1`, last published ~4 years ago; its `kiwi-schema` dependency ~3 years. The blocker is decoder health, not sample availability — don't collect `.fig` samples until the vendor-vs-write-our-own call is made.) It is the only door that works with no Figma seat and no network, and the user asked for it by name. It is also a reverse-engineered format that Figma can silently break, plus a new dependency in a repo that reviews every dep individually. The plan's position: **build it, but last and behind its own DDR**, so the translators are already proven against the documented API before a fragile decoder is layered underneath. If the answer is "skip it", Phases 0–5 stand alone with nothing to unpick.
 2. **A published Figma plugin (push-from-Figma).** Out of scope here; genuinely the highest-fidelity door and the one that needs no token. Worth its own plan if the REST path's fidelity turns out to disappoint in dogfooding.
 3. **PAT vs OAuth.** This plan assumes a personal access token — one paste, no callback server, no app registration. OAuth would be nicer for a multi-user hub/cloud deployment and is the only sane option if this ever runs server-side for other people. Deferred deliberately; `keys.ts` custody is identical either way.
 
@@ -374,5 +442,7 @@ Execute in order. Each task is atomic and testable.
 - [ ] `security-auditor` + `ethical-hacker`: 0 findings at/above `security.severityFloor` — **both at DDR stage (T1) and post-implementation**
 - [ ] New routes asserted `405` from the canvas origin
 - [ ] `design-system-keeper` + critic panel + `a11y-auditor`: 0 blockers on the new UI
+- [ ] **Editability gate (the governing principle):** every imported canvas clears `design-system-keeper` Pass A.10 with no untagged-absolute findings; the imported whiteboard's connectors are live and re-routable (not frozen); the Layers panel shows readable names, not `Group NNNN` × N; `/design:edit` can load and edit an imported canvas end-to-end
+- [ ] Per-import summary names every node that took an editability-over-fidelity degradation
 - [ ] `desktop-e2e` scenarios green against the built `.app`
 - [ ] DDR recorded and ingested into kgai; What's-New entry appended via the `whats-new-entry` skill
