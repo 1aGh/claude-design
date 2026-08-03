@@ -4381,10 +4381,27 @@ export function createHttp(
         return serveMediaFile(fp, req, { 'X-Content-Type-Options': 'nosniff' });
       }
       // Bun.file streams transparently for binary content.
+      //
+      // B2 — THIS is the lane a design system's own photographs and webfonts
+      // come down (`system/<ds>/assets/graphics/camo-bg.png`, 446 kB;
+      // `…/fonts/*.woff2`). `no-store` here meant a teammate re-downloaded all
+      // of it on every pan, across the internet, on a project whose media is
+      // 266 MB. Verified against the real one after the first cloud deploy said
+      // `no-store` on exactly these files.
+      //
+      // `cacheControlFor` gives content-addressed names a year and everything
+      // else a revalidation — so a designer editing `hero.png` in place still
+      // sees the edit, at the cost of a 304 rather than the file.
+      const policy = cacheControlFor(fp);
       return new Response(file, {
         headers: {
           'Content-Type': MIME[e] || 'application/octet-stream',
-          'Cache-Control': 'no-store',
+          'Cache-Control': policy.cacheControl,
+          ...(policy.addEtag
+            ? {
+                ETag: `W/"${file.size.toString(16)}-${Math.trunc(file.lastModified).toString(16)}"`,
+              }
+            : {}),
           // DDR-088 follow-up — never let a browser MIME-sniff a served file
           // (e.g. an uploaded GIF/WEBP polyglot) into a richer type. Assets are
           // only referenced via <image href> + the canvas CSP blocks script, so
