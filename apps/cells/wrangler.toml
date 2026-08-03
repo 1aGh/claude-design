@@ -34,7 +34,7 @@ preview_urls = false
 workers_dev = true
 
 [[containers]]
-class_name = "MaudeCell"
+class_name = "MaudeCellB"
 # v12 (Cloud Phase 25): the first image carrying the canvas build sandbox.
 #
 # THIS LINE IS THE ROLLOUT INSTRUCTION — `cells-deploy.yml` reads the tag from
@@ -91,11 +91,20 @@ instance_type = "standard-1"
 
 [[durable_objects.bindings]]
 name = "MAUDE_CELL"
-class_name = "MaudeCell"
+class_name = "MaudeCellB"
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["MaudeCell"]
+
+# v2 — a fresh namespace for every cell (2026-08-03). See worker.mjs's note on
+# MaudeCellB: a Durable Object that has lost its container will not release the
+# handle for a redeploy, an image rollback, or a container-application rebuild.
+# The old objects are abandoned deliberately; they held only a tenant id and a
+# cached config, both re-derived on the next request.
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["MaudeCellB"]
 
 # The SNAPSHOTS binding is gone with the gallery it served (Cloud Phase 25 C5).
 # Nothing in this Worker reads object storage any more: a cell's own storage

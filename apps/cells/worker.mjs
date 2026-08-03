@@ -27,6 +27,27 @@ import { MaudeCell, routeToCell, tenantFromHostname } from './cell-do.mjs';
 
 export { MaudeCell };
 
+/**
+ * A SECOND name for the same class, bound to a FRESH Durable Object namespace
+ * (Cloud Phase 25, 2026-08-03 incident).
+ *
+ * A DO that has lost its container cannot be talked out of it: it holds the
+ * handle, `startAndWaitForPorts` never returns, and neither redeploying the
+ * Worker, rolling the image back, nor DELETING AND RECREATING the container
+ * application makes it let go — all three were tried while a customer's
+ * project was down, and the container it had already started sat healthy and
+ * unreachable through every one of them.
+ *
+ * Migrating to a new class name is the one lever that gives every tenant a
+ * Durable Object with no memory of that handle. It is safe HERE specifically
+ * because a cell's DO storage holds nothing that cannot be re-derived: the
+ * tenant id (which arrives on every routed request anyway) and a cached copy
+ * of the tenant config (re-fetched from the control plane on each start). The
+ * project itself lives in R2 and in the container's disk, neither of which a
+ * DO migration touches.
+ */
+export class MaudeCellB extends MaudeCell {}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
