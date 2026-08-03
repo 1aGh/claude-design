@@ -133,8 +133,13 @@ RUN rm -f dist/maude-* \
  && chmod +x /build/maude-server
 # E1 — seal the client artifacts. The cell refuses to boot when what is on disk
 # is not what came out of this stage. A tag is not an identity; a hash is.
+# The list is the CONTRACT, not a description: an artifact named here that the
+# runtime stage forgot to COPY makes the cell refuse to boot with "MISSING",
+# naming the file. That is how `comment-mount.js` gets to stay staged — it went
+# unstaged once, and because it is imported in the same `Promise.all` as the
+# canvas module, the pane simply went blank.
 RUN node -e "const{createHash}=require('crypto'),{readFileSync,writeFileSync}=require('fs');\
-const a={};for(const r of ['dist/client.bundle.js','dist/styles.css'])\
+const a={};for(const r of ['dist/client.bundle.js','dist/styles.css','dist/comment-mount.js'])\
 a[r]=createHash('sha256').update(readFileSync(r)).digest('hex');\
 writeFileSync('/build/bundle-manifest.json',JSON.stringify({artifacts:a},null,2));"
 
@@ -217,7 +222,8 @@ COPY --exclude=dist --exclude=media --exclude=stickers --exclude=test \
 # CLAUDE.md — so the committed copy and the staged copy genuinely can differ,
 # and v0.51.1 shipped a blank window exactly that way.)
 COPY --from=studio-build /build/apps/studio/dist/client.bundle.js \
-     /build/apps/studio/dist/styles.css /maude/apps/studio/dist/
+     /build/apps/studio/dist/styles.css \
+     /build/apps/studio/dist/comment-mount.js /maude/apps/studio/dist/
 COPY --from=studio-build /build/apps/studio/dist/runtime /maude/apps/studio/dist/runtime
 COPY plugins/design/templates /maude/plugins/design/templates
 # The runtime bundles are ALSO reachable at the legacy path the hub's asset
