@@ -51,7 +51,7 @@ The resolver is available as `maude kg resolve --json` (prints `{active, mode, s
 
 Plugin markdown calls `maude kg <verb>`, **never** a raw `kg` binary path — `maude kg` resolves the bundled/pinned `kg`, exports the resolved `KGAI_STORE`/scope env, and (in the desktop bundle) points at the staged sidecar + `libkuzu`. The recipes below are the contract; the resolved store/scope are injected for you.
 
-> **The recipes below match the real kgai v0.1.9 CLI surface (verified live 2026-07-22).** `kg version`/`--help` is the source of truth; the command set is `init · ingest · context · history · as-of · search · resolve · query · conflicts · sync · rebuild · export · doctor`.
+> **The recipes below match the real kgai v1.0.0 CLI surface (verified live 2026-08-03).** `kg version`/`--help` is the source of truth; the command set is `init · ingest · context · history · as-of · search · resolve · query · conflicts · sync · rebuild · export · doctor`, plus `status` (alias `info`, added 0.1.10) and `remote` (added 1.0.0). Nothing was removed across 0.1.9 → 1.0.0 — the major bump declares stability, it does not break the surface — so every recipe here is unchanged from the v0.1.9 wording it replaces.
 
 ### READ — `kg context` (+ scope-bias via Cypher)
 

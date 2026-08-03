@@ -324,7 +324,7 @@
         },
         "engineVersion": {
           "type": "string",
-          "default": "v0.1.9",
+          "default": "v1.0.0",
           "description": "PINNED kgai release the CLI + desktop bundle target. Advance deliberately (harness-verified via `maude kg check-upstream`), never float — auto-tracking `latest` would let an upstream change silently alter behavior mid-rollout and is a supply-chain surface (DDR-054/056 reasoning: the bundled `kg` is third-party)."
         },
         "store": {

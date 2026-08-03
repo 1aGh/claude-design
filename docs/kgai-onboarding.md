@@ -4,14 +4,14 @@ kgai is Maude's **opt-in, capability-gated** knowledge-graph memory backend. Whe
 
 **Nothing here is required to use Maude.** With `kg` absent (the default), every flow/design command runs its classic `.ai/` file path, unchanged. This guide is only for joining the company graph.
 
-> Version is **pinned**, never floating (supply-chain surface — the `kg` binary is third-party; see [DDR-189](../.ai/archive/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md)). The pin lives in `config.knowledgeGraph.engineVersion` (currently `v0.1.9`). Check drift anytime with `maude kg check-upstream`.
+> Version is **pinned**, never floating (supply-chain surface — the `kg` binary is third-party; see [DDR-189](../.ai/archive/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md)). The pin lives in `config.knowledgeGraph.engineVersion` (currently `v1.0.0`). Check drift anytime with `maude kg check-upstream`.
 
 ## 1. Install the `kg` CLI
 
 Download the pinned release binary + its native library for your platform from [kgai releases](https://github.com/kgaidev/kgai/releases):
 
 ```bash
-KGVER=v0.1.9
+KGVER=v1.0.0
 DEST="$HOME/.local/kgai/$KGVER"; mkdir -p "$DEST"
 # macOS arm64 (swap the asset names for your platform):
 curl -fL "https://github.com/kgaidev/kgai/releases/download/$KGVER/kg-darwin-arm64" -o "$DEST/kg"

@@ -18,7 +18,7 @@ import { basename, join, resolve } from 'node:path';
 import { parseArgs } from '../lib/argv.mjs';
 
 const CONFIG_PATH = '.ai/workflows.config.json';
-const DEFAULT_ENGINE_VERSION = 'v0.1.9';
+const DEFAULT_ENGINE_VERSION = 'v1.0.0';
 const KGAI_REPO = 'kgaidev/kgai';
 
 const VERBS = new Set([

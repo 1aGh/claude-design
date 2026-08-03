@@ -105,7 +105,7 @@
       },
       "install": {
         "preferred": "See docs/kgai-onboarding.md — download the pinned kgai release binary (kgai is capability-gated + opt-out; nothing to install to use classic .ai/ mode)",
-        "darwin": "curl -fsSL https://github.com/kgaidev/kgai/releases/download/v0.1.9/kg-darwin-arm64 -o /usr/local/bin/kg && chmod +x /usr/local/bin/kg"
+        "darwin": "curl -fsSL https://github.com/kgaidev/kgai/releases/download/v1.0.0/kg-darwin-arm64 -o /usr/local/bin/kg && chmod +x /usr/local/bin/kg"
       },
       "autoInstall": false,
       "fallbackBehavior": "flow/design fall back to the classic .ai/decisions/ + STATE.md file path (no regression). The kgai knowledge-graph backend (kg context/ingest/sync, cross-repo company memory) is inactive.",
