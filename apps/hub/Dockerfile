@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7-labs
 # Maude Hub — production image.
 #
 # Phase 9 Task 7; build context widened to the REPO ROOT in Cloud Phase 16:
@@ -125,7 +126,19 @@ COPY --from=bundler /build/apps/hub/dist ./dist
 # evaluates (DDR-193 §2 / Phase 25 A0).
 COPY --from=bundler /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=canvas-deps /canvas/node_modules /canvas/node_modules
-COPY apps/studio /canvas/studio
+# ONLY the engine's own source. The whole tree was staged here first, and the
+# resulting image could not COLD-START on Cloudflare Containers at all: the
+# Durable Object reported the container crashed ~13 s before the hub bound its
+# port and never re-checked, so a project whose disk had merely been moved
+# became permanently unreachable (2026-08-03, three hours down).
+#
+# What is excluded is everything the sandbox never reads: pre-built bundles
+# (dist/runtime is staged separately below), sample media, sticker packs, the
+# browser client, tests and e2e. A cell parses canvases; it does not ship the
+# studio.
+COPY --exclude=dist --exclude=media --exclude=stickers --exclude=test \
+     --exclude=e2e --exclude=client --exclude=node_modules \
+     apps/studio /canvas/studio
 COPY apps/hub/src/canvas/build-worker.ts apps/hub/src/canvas/edit-worker.ts /canvas/workers/
 COPY apps/studio/dist/runtime /app/dist/canvas-runtime
 # The engine resolves `magic-string` / `oxc-parser` from the nearest
