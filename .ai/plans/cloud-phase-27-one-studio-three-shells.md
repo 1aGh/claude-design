@@ -294,20 +294,55 @@ ungated, while every HTTP equivalent was refused); a viewer could not comment
 per-tenant origin (the prefix derived from the tenant id, which exists in both
 deployment shapes) — which was the grey boxes, again.
 
-### Not landed — and NOT deployable until at least the first two close
+### Deployed — 2026-08-03
+
+`alligators.cloud.maude.sh` is running it. Cell image `maude-cell:v19`, built
+from `ghcr.io/1agh/maude-hub:latest`, rolled through `cells-deploy`.
+
+```
+ok      : true
+studio  : { ok: true, state: "ready", port: 4399, restarts: 0, lastExit: null }
+client  : { ok: true, dist/client.bundle.js: 0c807a5c7939, dist/styles.css: 6f42c9fca879 }
+canvases: 65
+```
+
+That client hash is **the same one the local build produced** — E1's seal
+verifying, in production, that the bytes a member downloads are the bytes the
+image was built from.
+
+Verified live and unauthenticated: `/` now sends a member to the real sign-in
+instead of the hand-rolled `/studio`; every studio route 401s without a session
+(the session gate runs BEFORE the manifest, so an unauthenticated caller cannot
+map the route table); all nine D1 surfaces refuse; and the segregated canvas
+origin answers on its own hostname, 401 without a capability, for this tenant
+and for a foreign one alike.
+
+**Still owner-gated:** signing in through the dashboard and looking at it — the
+acceptance criterion is that a teammate sees Files, Layers, Inspector, search
+and branch/LIVE status, and that the alligators project's real photographs and
+webfont render. Only a browser with a Maude account can answer that.
+
+Two wiring bugs the data plane surfaced before the roll, both of which would
+have 404'd every canvas: the cell was never told its public canvas origin, and
+the proxy would have stripped a tenant segment `worker.mjs` had already
+removed.
+
+### Not landed — none of it blocks the testing environment, all of it blocks a customer
 
 - [ ] **D2 — one writer on `/repo`.** UNTOUCHED, and it is this phase's preserved
-  dissent. `workspace-agent`, `design-sync`, `repo-checkpoint` and `backup` write
+  dissent. Deployed anyway on 2026-08-03 because the platform currently carries
+  no customer data — a deliberate, recorded choice, not an oversight, and one
+  that stops being available the moment somebody real signs up. `workspace-agent`, `design-sync`, `repo-checkpoint` and `backup` write
   the tree and run git while the studio writes TSX, `_history/` and
   `.design/_*.json`, with no lock on either side. BREAKER's words still apply:
   "the 3 a.m. event is not a 500 — it is a tenant's canvas lost to a half-staged
   commit or a checkout under a live writer, in a cell whose /health still says
   200 because the hub process is fine." Shipping this to a live customer cell is
   taking that bet on their data.
-- [ ] **Acceptance is unmet on its own terms: "verified against a real customer
-  project, not a synthetic fixture."** Every verification above used a two-file
-  fixture repo. The alligators project is 266 MB / 793 files with real
-  photographs and a real webfont, which is the case the grey boxes came from.
+- [ ] **Acceptance's "verified against a real customer project" is half-done.**
+  The cell now serves the real 65-canvas alligators checkout and reports it
+  healthy, but nobody has SIGNED IN and looked. The photographs and the webfont
+  are the specific thing to look at.
 - [ ] **D1 — elimination, not un-routing.** The seven secret-bearing surfaces are
   pruned at boot, refused by the manifest, and 404 in a running cell. The code is
   still inside the compiled binary. DDR-123's "claude never on our infra" holds
