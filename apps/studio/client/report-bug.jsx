@@ -14,10 +14,26 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { invoke, isNativeApp, openGitHubUrl } from './github.js';
+import { invoke, isNativeApp, openGitHubUrl, pickMediaFile } from './github.js';
 
 const MAX_SHOTS = 3;
 const PUBLIC_ISSUES_URL = 'https://github.com/1aGh/maude/issues/new';
+
+/** How each attached shot got here — shown per tile so the user can tell the
+ * auto-captured artboard (which never contains Maude's own chrome) apart from
+ * one they attached themselves. */
+const SHOT_LABEL = {
+  artboard: 'Active artboard (auto)',
+  attached: 'Attached by you',
+};
+
+/** The OS window-capture shortcut, for the "a Maude UI bug needs the chrome"
+ * hint. `platform` is the node `process.platform` string from the bundle. */
+function windowShotHint(platform) {
+  if (platform === 'darwin') return '⇧⌘4 then Space';
+  if (platform === 'win32') return 'Win+Shift+S';
+  return 'your screenshot tool';
+}
 
 function randHex(n) {
   const bytes = new Uint8Array(n / 2);
@@ -124,6 +140,7 @@ function ShotTile({ shot, redacting, onRects, onRemove }) {
           />
         ))}
       </div>
+      <div className="rb-shot-src">{SHOT_LABEL[shot.source] ?? SHOT_LABEL.attached}</div>
       <div className="rb-shot-actions">
         {shot.rects.length > 0 && (
           <button type="button" className="rb-link" onClick={() => onRects([])}>
@@ -142,7 +159,7 @@ export function ReportBugDialog({ open, onClose }) {
   const [step, setStep] = useState('describe'); // describe | preview | sending | done | fallback
   const [description, setDescription] = useState('');
   const [bundle, setBundle] = useState(null);
-  const [shots, setShots] = useState([]); // {url, blob, rects:[{x,y,w,h} normalized]}
+  const [shots, setShots] = useState([]); // {url, blob, source, rects:[{x,y,w,h} normalized]}
   const [crashLogs, setCrashLogs] = useState([]); // native only: {name, firstLine}
   const [consent, setConsent] = useState({
     logTail: true,
@@ -167,14 +184,44 @@ export function ReportBugDialog({ open, onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shots]);
 
-  const addShotBlob = useCallback((blob) => {
+  const addShotBlob = useCallback((blob, source = 'attached') => {
     if (!blob) return;
     setShots((prev) =>
       prev.length >= MAX_SHOTS
         ? prev
-        : [...prev, { url: URL.createObjectURL(blob), blob, rects: [] }]
+        : [...prev, { url: URL.createObjectURL(blob), blob, source, rects: [] }]
     );
   }, []);
+
+  // Attach a screenshot the user took themselves — the ONLY lane that can carry
+  // Maude's own chrome (menubar, sidebar, dialogs), since the auto-capture
+  // renders the canvas headlessly and the shell is never in frame. Native
+  // WKWebView won't present a panel for an HTML <input type=file> at all, so it
+  // routes through the same Rust open-dialog the AssetPicker uses.
+  const attachScreenshot = useCallback(async () => {
+    if (isNativeApp()) {
+      try {
+        const picked = await pickMediaFile();
+        if (picked?.bytes) addShotBlob(new Blob([new Uint8Array(picked.bytes)]), 'attached');
+      } catch {
+        /* cancelled or dialog failure — paste (⌘V) still works */
+      }
+      return;
+    }
+    // Browser — imperative off-screen <input>, clicked inside the gesture
+    // (mirrors app.jsx's openFilePicker; display:none inputs don't lay out).
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.style.cssText = 'position:fixed;left:-9999px;top:0';
+    document.body.appendChild(input);
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      if (file) addShotBlob(file, 'attached');
+      input.remove();
+    });
+    input.click();
+  }, [addShotBlob]);
 
   // On open: pull the scrubbed bundle, capture the active artboard, list
   // native crash logs. Every leg fails soft — a report with fewer attachments
@@ -192,7 +239,7 @@ export function ReportBugDialog({ open, onClose }) {
       body: JSON.stringify({ format: 'png', scope: 'artboard' }),
     })
       .then((r) => (r.ok ? r.blob() : null))
-      .then((blob) => alive && blob && addShotBlob(blob))
+      .then((blob) => alive && blob && addShotBlob(blob, 'artboard'))
       .catch(() => {});
     if (isNativeApp()) {
       invoke('list_crash_logs')
@@ -385,21 +432,36 @@ export function ReportBugDialog({ open, onClose }) {
               <div className="rb-section">
                 <div className="rb-section-hd">
                   <span>Screenshots ({shots.length})</span>
-                  {shots.length > 0 && (
-                    <button
-                      type="button"
-                      className={`rb-link${redacting ? ' is-on' : ''}`}
-                      data-testid="report-bug-redact"
-                      onClick={() => setRedacting((v) => !v)}
-                    >
-                      {redacting ? 'Done redacting' : 'Redact…'}
-                    </button>
-                  )}
+                  <span className="rb-hd-actions">
+                    {shots.length < MAX_SHOTS && (
+                      <button
+                        type="button"
+                        className="rb-link"
+                        data-testid="report-bug-attach"
+                        onClick={attachScreenshot}
+                      >
+                        Attach screenshot…
+                      </button>
+                    )}
+                    {shots.length > 0 && (
+                      <button
+                        type="button"
+                        className={`rb-link${redacting ? ' is-on' : ''}`}
+                        data-testid="report-bug-redact"
+                        onClick={() => setRedacting((v) => !v)}
+                      >
+                        {redacting ? 'Done redacting' : 'Redact…'}
+                      </button>
+                    )}
+                  </span>
                 </div>
+                <p className="rb-hint">
+                  The auto-capture only shows the artboard — it can't see Maude's own window.{' '}
+                  <strong>If the bug is in Maude's UI</strong>, grab the whole window (
+                  {windowShotHint(bundle?.app?.platform)}) and attach or paste (⌘V) it here.
+                </p>
                 {shots.length === 0 ? (
-                  <p className="rb-hint">
-                    No screenshot attached. Paste one (⌘V) to add it — up to {MAX_SHOTS}.
-                  </p>
+                  <p className="rb-hint">No screenshot attached yet — up to {MAX_SHOTS}.</p>
                 ) : (
                   <>
                     {redacting && (
@@ -421,9 +483,6 @@ export function ReportBugDialog({ open, onClose }) {
                         />
                       ))}
                     </div>
-                    {shots.length < MAX_SHOTS && (
-                      <p className="rb-hint">Paste (⌘V) to attach another screenshot.</p>
-                    )}
                   </>
                 )}
               </div>

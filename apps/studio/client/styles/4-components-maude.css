@@ -113,6 +113,11 @@
 .rb-dialog .rb-shot-box.is-redacting img { pointer-events: none; }
 .rb-dialog .rb-redact-rect { position: absolute; background: #000; pointer-events: none; }
 .rb-dialog .rb-shot-actions { display: flex; gap: var(--space-3); }
+.rb-dialog .rb-hd-actions { display: flex; gap: var(--space-3); align-items: center; }
+.rb-dialog .rb-shot-src {
+  font-family: var(--font-mono); font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide); color: var(--fg-2); max-width: 260px;
+}
 .rb-dialog .rb-link {
   appearance: none; background: transparent; border: 0; padding: 0; cursor: pointer;
   font-size: var(--type-xs); font-family: var(--font-body);
