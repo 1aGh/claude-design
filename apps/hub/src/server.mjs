@@ -73,12 +73,13 @@ import { seedFirstUserOnBoot } from './first-user.mjs';
 import { createGitRunner } from './git-runner.mjs';
 import { createRateStore } from './rate-store.mjs';
 import { mintRenderToken, verifyRenderToken } from './render-token.mjs';
-import { isReadOnlyRole } from './role-matrix.mjs';
+import { isReadOnlyRole, ROLES } from './role-matrix.mjs';
 import { defaultS3Source } from './s3-creds.mjs';
 import { seedRepo } from './seed-repo.mjs';
 import { DEFAULT_HUB_NAME, readSettings, writeSettings } from './settings.mjs';
 import { createStudioChild } from './studio-child.mjs';
 import {
+  canvasOriginFor,
   doorVerdict,
   isCanvasHost,
   isHubOwned,
@@ -556,6 +557,10 @@ export function createHub(config = {}) {
           response,
           pathname: authPath,
           method,
+          // The prefix belongs to the ORIGIN, so it comes from the function that
+          // decides the origin — `/tenant` on the fleet's shared canvas
+          // hostname, empty when this tenant has one of its own.
+          pathPrefix: canvasOriginFor(request).prefix,
           verifyToken: (token) =>
             verifyRenderToken({ secret, token, project: process.env.MAUDE_TENANT_ID ?? null }),
         });
@@ -1473,11 +1478,21 @@ function browserSession(dataDir, secret, request) {
     return null;
   }
   if (!match?.owner) return null;
-  // `role` on the token when the control plane vouched one; otherwise derive it
-  // from the read-only flag the same way `isReadOnlyRole` does in reverse. An
-  // unrecognised role string is NOT coerced — `capabilitiesFor` gives it
-  // nothing, which is what a typo should be worth.
-  const role = match.role ?? (match.readOnly ? 'viewer' : 'member');
+  // TWO ROLE VOCABULARIES MEET HERE, AND THEY ARE NOT THE SAME ONE.
+  //
+  // A token can carry an ACCOUNT role (`admin`, from `/auth/login`) while this
+  // function must produce a PROJECT role (`owner` / `member` / `viewer`, the
+  // role matrix's). Taking `match.role` on trust made an admin's own session
+  // read-only — `isReadOnlyRole('admin')` is true, because an unknown role gets
+  // nothing — so the owner opened his project and could not edit it. Found by
+  // running a real cell, not by reading this.
+  //
+  // So: a vouched role counts only if it IS one of the project roles. Anything
+  // else falls back to the read-only flag, which every token carries. The
+  // fallback is deliberately not "assume owner": an unrecognised role must
+  // never be an escalation, and it is not one here.
+  const vouched = ROLES.includes(match.role) ? match.role : null;
+  const role = vouched ?? (match.readOnly ? 'viewer' : 'member');
   return {
     email: match.owner,
     role,

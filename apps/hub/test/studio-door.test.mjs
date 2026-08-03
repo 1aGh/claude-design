@@ -17,12 +17,15 @@
 // what) and `studio-proxy.test.mjs` (who may reach them).
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
+const HERE = join(import.meta.dirname, '..');
+
 import { mintRenderToken, verifyRenderToken } from '../src/render-token.mjs';
+import { ROLES } from '../src/role-matrix.mjs';
 import {
   canvasOriginFor,
   doorVerdict,
@@ -145,4 +148,36 @@ test('the service page carries no inline style — the CSP would drop it silentl
   assert.ok(html.includes('<link rel="stylesheet" href="/admin/style.css">'));
   // And it escapes.
   assert.ok(servicePage('<script>', 'x').includes('&lt;script&gt;'));
+});
+
+// ---------------------------------------------------------------------------
+// The account-role / project-role collision. Found by running a real cell in a
+// container, not by reading the code: `/auth/login` mints a token carrying
+// `role: 'admin'` (an ACCOUNT role), the session resolver took it on trust, and
+// `isReadOnlyRole('admin')` is true because an unknown role gets nothing — so
+// the OWNER opened his own project and could not edit it.
+
+test('only a PROJECT role is accepted as a project role', () => {
+  const source = readFileSync(join(HERE, 'src', 'server.mjs'), 'utf8');
+  const fn = /function browserSession\([\s\S]*?\n\}/.exec(source)?.[0] ?? '';
+  assert.ok(fn, 'browserSession must exist');
+  assert.match(
+    fn,
+    /ROLES\.includes\(match\.role\)/,
+    'a token role must be validated against the role matrix before it is believed'
+  );
+  assert.ok(
+    !/const role = match\.role \?\?/.test(fn),
+    'match.role must not be taken on trust — account roles and project roles are different vocabularies'
+  );
+});
+
+test('the two vocabularies do not overlap, which is what makes the check safe', () => {
+  // If an account role were ever named `member`, the validation above would
+  // silently start granting edit. This asserts the assumption rather than
+  // relying on nobody ever doing it.
+  const accountRoles = ['admin', 'user', 'operator'];
+  for (const r of accountRoles) {
+    assert.ok(!ROLES.includes(r), `'${r}' is an account role and must not be a project role`);
+  }
 });

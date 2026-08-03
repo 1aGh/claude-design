@@ -16,11 +16,13 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import {
+  ACCOUNT_ROLES,
   CAPABILITIES,
   can,
   capabilitiesFor,
   isReadOnlyRole,
   matrixRows,
+  projectRoleForAccount,
   ROLES,
 } from '../src/role-matrix.mjs';
 
@@ -121,4 +123,48 @@ test('the matrix renders as rows for a docs table', () => {
   assert.equal(rows.length, 3);
   assert.equal(rows[0].role, 'owner');
   assert.equal(rows[2].edit, false);
+});
+
+// ---------------------------------------------------------------------------
+// The vocabulary boundary — Cloud Phase 27.
+//
+// This suite's own opening comment says the failure it exists to prevent is
+// "the table being right and one client quietly disagreeing with it". That is
+// exactly what happened, and no test here caught it: `auth-routes.mjs` minted
+// every session with `readOnly: isReadOnlyRole(user.role)` where `user.role` is
+// an ACCOUNT role. For 'member' that is right by accident; for 'admin' it is an
+// unknown role, which gets nothing, which reads as read-only. Every admin's
+// session was read-only. Found by logging into a real cell.
+
+test('an account role is TRANSLATED, never passed through', () => {
+  assert.equal(projectRoleForAccount('admin'), 'owner');
+  assert.equal(projectRoleForAccount('member'), 'member');
+  // Unknown in, nothing out — and `null` is not an escalation downstream.
+  assert.equal(projectRoleForAccount('wat'), null);
+  assert.equal(projectRoleForAccount(undefined), null);
+  assert.equal(isReadOnlyRole(projectRoleForAccount('wat')), true);
+});
+
+test('every account role maps to a real project role', () => {
+  for (const account of ACCOUNT_ROLES) {
+    const project = projectRoleForAccount(account);
+    assert.ok(ROLES.includes(project), `account role '${account}' maps nowhere`);
+  }
+});
+
+test('an admin gets an EDITING session — the bug this replaces', () => {
+  assert.equal(isReadOnlyRole(projectRoleForAccount('admin')), false);
+  assert.equal(isReadOnlyRole(projectRoleForAccount('member')), false);
+  // And the untranslated form is still wrong, which is why the translation
+  // exists rather than a special case for 'admin'.
+  assert.equal(isReadOnlyRole('admin'), true);
+});
+
+test('the mint site translates rather than passing the account role through', () => {
+  const src = readFileSync(join(HERE, 'src/auth-routes.mjs'), 'utf8');
+  assert.match(src, /isReadOnlyRole\(projectRoleForAccount\(user\.role\)\)/);
+  assert.ok(
+    !/isReadOnlyRole\(user\.role\)/.test(src),
+    'user.role is an account role and must not reach the project-role matrix raw'
+  );
 });

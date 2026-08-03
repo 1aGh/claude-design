@@ -207,22 +207,36 @@ export function createStudioProxy({
    * lives in the URL (`?t=<render token>`), it is READ ONLY, and it reaches the
    * studio's segregated canvas listener rather than its main one.
    */
-  async function handleCanvas({ request, response, pathname, method, verifyToken }) {
+  async function handleCanvas({
+    request,
+    response,
+    pathname,
+    method,
+    verifyToken,
+    /** The path prefix THIS deployment's canvas origin carries, from
+     *  `canvasOriginFor()` — `/alligators` on the fleet's shared
+     *  `canvas.<zone>` hostname, and `''` when the tenant has an origin of its
+     *  own. Passed in rather than derived from MAUDE_TENANT_ID: the tenant id
+     *  exists in BOTH shapes, so assuming it meant a path prefix made every
+     *  canvas request 404 on a per-tenant origin. The prefix belongs to the
+     *  ORIGIN, so it comes from whatever decided the origin. */
+    pathPrefix = '',
+  }) {
     if (method !== 'GET' && method !== 'HEAD') {
       refuse(response, 405, { error: 'method not allowed' });
       return true;
     }
     const url = new URL(request.url, 'http://cell.invalid');
-    const tenant = env.MAUDE_TENANT_ID ?? null;
-    // One shared canvas hostname for the fleet, tenant in the path. Strip it
-    // before forwarding — the studio serves one project and knows nothing about
-    // tenants.
+    // Strip the prefix before forwarding — the studio serves one project and
+    // knows nothing about tenants.
     let rest = pathname;
-    if (tenant && (rest === `/${tenant}` || rest.startsWith(`/${tenant}/`))) {
-      rest = rest.slice(tenant.length + 1) || '/';
-    } else if (tenant) {
-      refuse(response, 404, { error: 'not found' });
-      return true;
+    if (pathPrefix) {
+      if (rest === pathPrefix || rest.startsWith(`${pathPrefix}/`)) {
+        rest = rest.slice(pathPrefix.length) || '/';
+      } else {
+        refuse(response, 404, { error: 'not found' });
+        return true;
+      }
     }
     const verdict = verifyToken(url.searchParams.get('t'));
     if (!verdict?.ok) {

@@ -21,6 +21,14 @@ export type WsData =
       id: string;
       remote: string;
       kind: 'inspector';
+      /** Cloud Phase 27 — the role this socket was opened under, stamped at
+       *  upgrade time from the proxy's injected header. `true` outside a cell
+       *  only when the linked hub vouched `viewer`.
+       *
+       *  It has to live on the SOCKET, not be re-read per message: a role is
+       *  per session, and a handshake is the one moment the session is
+       *  unambiguous. */
+      readOnly: boolean;
     }
   | {
       id: string;
@@ -347,6 +355,28 @@ export function createWs(
       }
       if (!msg || typeof msg !== 'object') return;
       try {
+        // Cloud Phase 27 — THE ROLE REACHES THE SOCKET TOO.
+        //
+        // The HTTP gate (http.ts `readOnlyRefusal`) does not see WebSocket
+        // frames, and comment creation is WS-driven — so without this a
+        // read-only session reached `comments-delete` and `comments-patch` over
+        // a socket while every equivalent HTTP write was refused. Found by
+        // reading what this channel actually accepts, after a live cell showed
+        // the HTTP `/_comments` route is GET-only.
+        //
+        // `comments-add` is deliberately NOT here: comment is the one write a
+        // viewer holds (role matrix, `viewer.comment === true`). Patch and
+        // delete are not — they change or remove somebody else's note.
+        const readOnlySocket = ws.data.kind === 'inspector' && ws.data.readOnly === true;
+        const MUTATES_OTHERS = new Set(['comments-patch', 'comments-delete']);
+        if (readOnlySocket && MUTATES_OTHERS.has(msg.type)) {
+          send(ws, {
+            type: 'refused',
+            reason: 'read-only',
+            message: 'Your role in this project is viewer — that change was not applied.',
+          });
+          return;
+        }
         if (msg.type === 'active' && typeof msg.file === 'string') inspect.setActive(msg.file);
         else if (msg.type === 'tabs' && Array.isArray(msg.tabs)) inspect.setOpenTabs(msg.tabs);
         else if (msg.type === 'select' && msg.selection) inspect.setSelected(msg.selection);

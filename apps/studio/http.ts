@@ -319,6 +319,14 @@ export const READ_ONLY_ALLOWED_WRITES = new Set([
   '/_api/export-jobs/download',
   '/_api/report', // bug reports are about Maude, not the project
   '/_api/report-fallback',
+  // Cloud Phase 27 — COMMENT IS THE ONE WRITE A VIEWER HOLDS. The role matrix
+  // has said so since Phase 25 C4 (`viewer.comment === true`), the People page
+  // promises it in those words, and the cell's proxy allows it — but this list
+  // did not, so a viewer's comment was accepted by the authority and then
+  // refused by the defence-in-depth layer behind it. Found by commenting as a
+  // viewer against a real cell. A second gate that is STRICTER than the first is
+  // still a gate that is wrong.
+  '/_comments',
   '/_api/hub/link', // link/unlink ≈ session management (cell allows /auth/logout)
   '/_api/workspace/sign-in', // signing in is how the role is (re)learned
   '/_api/workspace/disclosure',
@@ -329,6 +337,18 @@ export const READ_ONLY_ALLOWED_WRITES = new Set([
   '/_api/git/pull',
   '/_api/git/checkout', // viewing another branch, not changing one
 ]);
+
+/**
+ * Write paths a read-only session may use whose members are GENERATED rather
+ * than declared, so an exact-match set cannot name them.
+ *
+ * Deliberately one entry. Every regex here is a hole nobody can see by reading
+ * the list above, so the bar for adding one is that an exact path genuinely
+ * cannot express it.
+ */
+export const READ_ONLY_ALLOWED_WRITE_PATTERNS: RegExp[] = [
+  /^\/_api\/comments\/[A-Za-z0-9_-]+\/reply$/,
+];
 
 /** The refusal a read-only session gets for a project-mutating write. */
 export function readOnlyRefusalResponse(): Response {
@@ -4174,17 +4194,13 @@ export function createHttp(
           if (RANGE_MEDIA_EXTS.has(ext(name))) {
             return serveMediaFile(abs, req, { 'X-Content-Type-Options': 'nosniff' });
           }
-          const f = Bun.file(abs);
-          if (await f.exists()) {
-            return new Response(f, {
-              headers: {
-                'Content-Type': MIME[ext(name)] || 'application/octet-stream',
-                'Cache-Control': 'no-store',
-                'X-Content-Type-Options': 'nosniff',
-              },
-            });
-          }
-          return new Response('Not found', { status: 404 });
+          // B2 — the SAME caching policy as every other static lane. This
+          // route is the one a canvas's photographs actually come down, so
+          // `no-store` here is the difference between a teammate re-fetching
+          // 266 MB of media on every pan and re-fetching none of it. Content-
+          // addressed names (`<sha8>.<ext>`, which is what every writer emits)
+          // are immutable by construction; anything else revalidates.
+          return serveFile(abs, { 'X-Content-Type-Options': 'nosniff' });
         }
       }
 
@@ -4458,6 +4474,10 @@ export function createHttp(
       return readOnlyRefusalResponse();
     }
     if (READ_ONLY_ALLOWED_WRITES.has(pathname)) return null;
+    // The dynamic half of the comment lane. An exact-match set cannot express
+    // it, and leaving it out would mean a viewer may leave a comment but not
+    // reply to one — a distinction nobody promised and nobody wants.
+    if (READ_ONLY_ALLOWED_WRITE_PATTERNS.some((re) => re.test(pathname))) return null;
     return readOnlyRefusalResponse();
   }
 

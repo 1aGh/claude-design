@@ -199,13 +199,29 @@ export function workerEnv(env: NodeJS.ProcessEnv = process.env): Record<string, 
     // that stages the studio somewhere unusual still resolves it, and a dev
     // checkout needs no configuration at all.
     MAUDE_STUDIO_SRC: env.MAUDE_STUDIO_SRC ?? DEV_SERVER_ROOT,
-    ...(env.NAPI_RS_NATIVE_LIBRARY_PATH
+    // NAPI_RS_NATIVE_LIBRARY_PATH is forwarded ONLY when it names a real file.
+    //
+    // Inside a `bun --compile` binary this variable is set at runtime by the
+    // DDR-042 compile entry, to a path in that binary's OWN virtual filesystem
+    // (`/$bunfs/root/…`). Handing that to a child is handing it an address that
+    // exists in a different process's imagination: the child resolves
+    // oxc-parser, finds the override, cannot open it, and reports "Cannot find
+    // native binding" — while the very same command run by hand with a clean
+    // environment works, because it then finds the real binding on disk.
+    // (Which is exactly how this was diagnosed.)
+    ...(env.NAPI_RS_NATIVE_LIBRARY_PATH && !isVirtualPath(env.NAPI_RS_NATIVE_LIBRARY_PATH)
       ? { NAPI_RS_NATIVE_LIBRARY_PATH: env.NAPI_RS_NATIVE_LIBRARY_PATH }
       : {}),
     // DDR-177 — when the "bun" we spawn is the compiled sidecar itself, this is
     // what makes it behave as a JS runtime instead of re-launching the server.
     ...(env.MAUDE_BUN_PATH && env.MAUDE_BUN_PATH === process.execPath ? { BUN_BE_BUN: '1' } : {}),
   };
+}
+
+/** A path inside a compiled binary's embedded filesystem — real to that process
+ *  and to nothing else. Mirrors `paths.ts`'s own bunfs test. */
+function isVirtualPath(p: string): boolean {
+  return p.startsWith('/$bunfs') || p.startsWith('B:/~BUN');
 }
 
 /**

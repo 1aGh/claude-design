@@ -36,12 +36,32 @@ export const READY_TIMEOUT_MS = Number(process.env.MAUDE_STUDIO_READY_MS ?? 60_0
 export const DEFAULT_STUDIO_PORT = 4399;
 
 /**
- * Where the studio's entry lives, across the layouts it runs in.
+ * How to launch the studio, across the two shapes it ships in.
  *
- * The cell image stages the source under `/canvas/studio` (`MAUDE_STUDIO_SRC`);
- * a dev checkout has it as a sibling of `apps/hub`. Bun reads TypeScript
- * natively, so there is nothing to compile in either case.
+ * A DEV CHECKOUT runs it from source under whatever `bun` is on PATH — Bun reads
+ * TypeScript natively, so there is nothing to compile and editing a file is the
+ * whole edit-test loop.
+ *
+ * THE CELL IMAGE runs the COMPILED binary (`MAUDE_STUDIO_BIN`). That is not an
+ * optimisation: running from source in a cell would mean shipping the studio's
+ * entire production dependency closure — remotion, pixi, onnxruntime, react-dom
+ * — into an image whose SIZE an unresolved outage RCA already lists as a
+ * suspect. `bun build --compile` bakes the server's own graph and tree-shakes
+ * the rest, and it is the fallback the phase's cost gate names by hand.
+ *
+ * A compiled binary takes NO entry argument — it is its own entry. Passing one
+ * would hand `server.ts` to the embedded program as a positional arg, which is
+ * the kind of mistake that boots, looks fine, and serves the wrong root.
  */
+export function studioLaunch(env = process.env) {
+  const bin = env.MAUDE_STUDIO_BIN;
+  if (bin && existsSync(bin)) return { cmd: bin, args: [], kind: 'binary' };
+  const entry = studioEntry(env);
+  if (!entry || !existsSync(entry)) return null;
+  return { cmd: env.MAUDE_BUN_PATH || 'bun', args: [entry], kind: 'source' };
+}
+
+/** Where the studio's SOURCE entry lives, for the dev-checkout shape. */
 export function studioEntry(env = process.env) {
   const candidates = [
     env.MAUDE_STUDIO_SRC ? join(env.MAUDE_STUDIO_SRC, 'server.ts') : null,
@@ -80,6 +100,7 @@ export function childEnv(env = process.env, { port }) {
     ...(env.MAUDE_STUDIO_SRC ? { MAUDE_STUDIO_SRC: env.MAUDE_STUDIO_SRC } : {}),
     ...(env.MAUDE_CANVAS_WORKERS ? { MAUDE_CANVAS_WORKERS: env.MAUDE_CANVAS_WORKERS } : {}),
     ...(env.MAUDE_BUN_PATH ? { MAUDE_BUN_PATH: env.MAUDE_BUN_PATH } : {}),
+    ...(env.MAUDE_STUDIO_BIN ? { MAUDE_STUDIO_BIN: env.MAUDE_STUDIO_BIN } : {}),
     ...(env.MAUDE_DEV_SERVER_ROOT ? { MAUDE_DEV_SERVER_ROOT: env.MAUDE_DEV_SERVER_ROOT } : {}),
     // D4 — public identity from configuration, never from the request.
     ...(env.MAUDE_PUBLIC_CANVAS_ORIGIN
@@ -134,21 +155,17 @@ export function createStudioChild({
   let readyAt = null;
   let timer = null;
 
-  function bunPath() {
-    return env.MAUDE_BUN_PATH || 'bun';
-  }
-
   function launch() {
     if (stopped) return;
-    const entry = studioEntry(env);
-    if (!entry || !existsSync(entry)) {
-      // A missing entry is a packaging bug, not a transient one. Keep retrying
-      // anyway — an operator can bind-mount the source into a running cell, and
-      // a supervisor that gives up turns a fixable mistake into a cold restart.
+    const plan = studioLaunch(env);
+    if (!plan) {
+      // A missing studio is a packaging bug, not a transient one. Keep retrying
+      // anyway — an operator can bind-mount one into a running cell, and a
+      // supervisor that gives up turns a fixable mistake into a cold restart.
       lastExit = {
         code: null,
         signal: null,
-        reason: `studio entry not found (looked for ${entry})`,
+        reason: `no studio to launch (neither MAUDE_STUDIO_BIN nor a source entry resolved)`,
       };
       scheduleRestart();
       return;
@@ -157,7 +174,7 @@ export function createStudioChild({
     ready = false;
     let proc;
     try {
-      proc = spawn(bunPath(), [entry, '--root', env.MAUDE_REPO_DIR ?? process.cwd()], {
+      proc = spawn(plan.cmd, [...plan.args, '--root', env.MAUDE_REPO_DIR ?? process.cwd()], {
         env: childEnv(env, { port }),
         cwd: env.MAUDE_REPO_DIR ?? process.cwd(),
         stdio: ['ignore', 'pipe', 'pipe'],

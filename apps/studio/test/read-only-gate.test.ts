@@ -128,3 +128,53 @@ describe('read-only gate — viewer role refuses project writes locally', () => 
     expect(r.status).not.toBe(403);
   }, 30000);
 });
+
+// ---------------------------------------------------------------------------
+// Cloud Phase 27 — the one write a viewer holds.
+//
+// The role matrix has said `viewer.comment === true` since Phase 25 C4 and the
+// People page promises it in those words. This list did not have it, so a
+// viewer's comment was allowed by the authority (the cell's proxy) and then
+// refused by the defence-in-depth layer behind it. Found by commenting as a
+// viewer against a real cell, not by reading either file.
+
+describe('a viewer may comment — the matrix says so, and so must this gate', () => {
+  test('comment + reply pass; annotate still does not', async () => {
+    const { base } = await boot('viewer');
+
+    const comment = await fetch(`${base}/_comments`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ file: 'ui/Sample.tsx', text: 'looks off to me' }),
+    });
+    expect(comment.status).not.toBe(403);
+
+    const reply = await fetch(`${base}/_api/comments/abc123/reply`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'agreed' }),
+    });
+    expect(reply.status).not.toBe(403);
+
+    // An annotation is drawn ON the design and versioned with it — the matrix
+    // files it with `edit`, and that distinction has to survive this change.
+    const annotate = await fetch(`${base}/_api/annotations`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ file: 'ui/Sample.tsx', svg: '<svg/>' }),
+    });
+    expect(annotate.status).toBe(403);
+  });
+
+  test('the reply pattern does not open the whole comment namespace', async () => {
+    const { base } = await boot('viewer');
+    for (const path of [
+      '/_api/comments/abc/delete',
+      '/_api/comments/abc/reply/../../edit-text',
+      '/_api/comments//reply',
+    ]) {
+      const res = await fetch(`${base}${path}`, { method: 'POST' });
+      expect(res.status).not.toBe(200);
+    }
+  });
+});

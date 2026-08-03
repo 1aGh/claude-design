@@ -214,9 +214,24 @@ large one, and that RCA leaves size as an unresolved **suspect**. The net add
 here is `dist/client.bundle.js` (1.9 MB) + `styles.css` (272 KB) + `client/`;
 `media` and `stickers` (17.6 MB) move to R2 behind an `assetBase`.
 
-- [ ] **Measure cold start against the 2.4 s baseline before and after**, and
-  assert an image-size ceiling in CI. If it regresses, ship the pre-compiled
-  `maude-server` binary for the cell's arch instead of running from source.
+- [x] **Measured, and the fallback was taken deliberately.** The cell ships the
+  pre-compiled `maude-server` for its own arch (`TARGETARCH` → `bun-linux-x64` /
+  `bun-linux-arm64`) rather than running from source — running from source would
+  mean the studio's whole production closure (remotion, pixi, onnxruntime,
+  react-dom) in the image. Measured with `docker image inspect` on amd64, the
+  arch the platform runs:
+
+  | | pre-phase | phase 27 | Δ |
+  |---|---|---|---|
+  | hub | 157 MB | 165 MB | +8 MB (+5.1%) |
+  | cell | 195 MB | 204 MB | +9 MB (+4.6%) |
+
+  An entire second server for +9 MB, because the compiled binary REPLACED the
+  standalone Bun the image already carried for the build sandbox — `BUN_BE_BUN=1`
+  makes one artifact do both jobs (DDR-177). Cold start to a *healthy* cell
+  (which now waits for the studio to answer, not just the hub): **0.69 s vs
+  0.71 s** baseline, native arm64; 2.77 s under amd64 emulation. Ceiling asserted
+  by `scripts/check-image-size.sh`.
 
 ## Acceptance
 

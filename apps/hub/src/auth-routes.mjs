@@ -29,7 +29,7 @@ import {
   revokeInvite,
 } from './invites.mjs';
 import { isRevoked } from './revocations.mjs';
-import { isReadOnlyRole } from './role-matrix.mjs';
+import { isReadOnlyRole, projectRoleForAccount } from './role-matrix.mjs';
 
 import {
   addToken,
@@ -172,7 +172,12 @@ export async function handleAuthRoutes(ctx) {
       // Cloud Phase 25 C1. The capability is decided HERE, once, from the role
       // the control plane vouched for — not re-derived at each write surface,
       // where one forgotten branch is a viewer with an editor's session.
-      readOnly: isReadOnlyRole(user.role),
+      //
+      // Cloud Phase 27: TRANSLATED first. `user.role` is an ACCOUNT role
+      // ('admin' | 'member'); `isReadOnlyRole` speaks PROJECT roles. Passing one
+      // to the other made every admin's session read-only — right for 'member'
+      // by coincidence, wrong for 'admin' because an unknown role gets nothing.
+      readOnly: isReadOnlyRole(projectRoleForAccount(user.role)),
     });
     ctx.pushActivity?.({ type: 'login', user: user.email, doc: minted.label });
     respondJson(200, {

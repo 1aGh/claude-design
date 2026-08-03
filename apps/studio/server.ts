@@ -14,20 +14,17 @@
 // else binds to a port. The orchestrator (slash commands) reads _server.json
 // to detect a live instance and avoid duplicate boots.
 
-import { spawn } from 'node:child_process';
-
 import { createAcp } from './acp/index.ts';
 import { cancelInstall, cancelSignin } from './acp/login-state.ts';
 import { createActivity } from './activity.ts';
 import { ASSET_MAX_VIDEO_BYTES, createApi } from './api.ts';
 import { bootSelfHeal } from './boot-self-heal.ts';
+import { isSandboxArmed } from './canvas-build-sandbox.ts';
 import { createCanvasListWatch } from './canvas-list-watch.ts';
-
 import { type AiActivityEntry, createAiActivity } from './collab/ai-activity.ts';
 import { createGitLifecycle } from './collab/git-lifecycle.ts';
 import { createCollab } from './collab/index.ts';
 import { createContext, reloadConfig } from './context.ts';
-import { isSandboxArmed } from './canvas-build-sandbox.ts';
 import { installLogRing } from './debug-bundle.ts';
 import { createExportJobQueue } from './exporters/jobs.ts';
 import { createFsWatch } from './fs-watch.ts';
@@ -322,6 +319,12 @@ function startServer(port: number): BunServer {
             id: crypto.randomUUID(),
             remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
             kind: 'inspector',
+            // Cloud Phase 27 — stamp the role onto the socket at the handshake,
+            // the one moment the session is unambiguous. Fails CLOSED in a cell
+            // for the same reason the HTTP gate does: an absent header is an
+            // unproven session, and this channel can delete other people's
+            // comments.
+            readOnly: WORKSPACE ? req.headers.get('x-maude-readonly') !== '0' : false,
           },
         });
         if (ok) return undefined as unknown as Response;
@@ -599,11 +602,28 @@ console.log(`  Design:    ${ctx.paths.designRoot}`);
 console.log(`  Active:    ${ctx.paths.activeFile}`);
 console.log('  Press Ctrl+C to stop.\n');
 
-if (!process.env.NO_OPEN) {
-  if (process.platform === 'darwin')
-    spawn('open', [url], { stdio: 'ignore', detached: true }).unref();
-  else if (process.platform === 'linux')
-    spawn('xdg-open', [url], { stdio: 'ignore', detached: true }).unref();
+// A workspace cell has nobody at the keyboard, and no browser to open — the
+// member is already looking at this project through the proxy in front of it.
+// Attempting it there was not merely pointless: the spawn threw ENOENT on a
+// headless image and took the whole server down with it, which the supervisor
+// then dutifully restarted into the same crash. Two fixes, because they are two
+// separate mistakes: do not TRY in a cell, and do not DIE when it fails.
+if (!process.env.NO_OPEN && !WORKSPACE) {
+  const opener =
+    process.platform === 'darwin' ? 'open' : process.platform === 'linux' ? 'xdg-open' : null;
+  if (opener) {
+    // `Bun.spawn`, not `node:child_process.spawn` — it reports a missing
+    // executable SYNCHRONOUSLY, so one try/catch genuinely covers it. The node
+    // shim signals ENOENT through an async 'error' event, which a try/catch
+    // does not catch and an unhandled listener turns into a process-level
+    // throw. That is precisely how a headless image with no `xdg-open` took the
+    // whole server down. (DDR-009 also prefers Bun.* here.)
+    try {
+      Bun.spawn([opener, url], { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' }).unref();
+    } catch {
+      console.log(`  (could not open a browser automatically — visit ${url})`);
+    }
+  }
 }
 
 async function shutdown() {

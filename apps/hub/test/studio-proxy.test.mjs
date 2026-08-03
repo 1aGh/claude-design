@@ -255,13 +255,15 @@ test('the canvas lane is read-only and capability-gated', async () => {
   assert.equal(forwarded[0].headers[`${INJECTED_HEADER_PREFIX}role`], 'viewer');
 });
 
-test('the canvas lane strips its own tenant prefix and refuses another one', async () => {
-  const { proxy, forwarded } = makeProxy({ env: { MAUDE_TENANT_ID: 'alligators' } });
+test('the canvas lane strips the prefix its ORIGIN carries, and refuses another', async () => {
+  // The fleet's shared `canvas.<zone>` hostname puts the tenant in the path.
+  const { proxy, forwarded } = makeProxy();
   await proxy.handleCanvas({
     request: { headers: {}, url: '/alligators/_canvas-runtime/react.js?t=x' },
     response: fakeResponse(),
     pathname: '/alligators/_canvas-runtime/react.js',
     method: 'GET',
+    pathPrefix: '/alligators',
     verifyToken: () => ({ ok: true }),
   });
   assert.equal(forwarded.at(-1).path, '/_canvas-runtime/react.js?t=x');
@@ -272,9 +274,27 @@ test('the canvas lane strips its own tenant prefix and refuses another one', asy
     response: foreign,
     pathname: '/someone-else/_canvas-shell.html',
     method: 'GET',
+    pathPrefix: '/alligators',
     verifyToken: () => ({ ok: true }),
   });
   assert.equal(foreign.statusCode, 404);
+});
+
+test('a per-tenant canvas origin has NO path prefix, and is not made to have one', async () => {
+  // The regression this pins: deriving the prefix from MAUDE_TENANT_ID, which
+  // exists in BOTH deployment shapes. It made every canvas request 404 on a
+  // per-tenant origin — the shell, the module, the runtime and every asset —
+  // i.e. exactly the grey boxes this phase exists to fix.
+  const { proxy, forwarded } = makeProxy({ env: { MAUDE_TENANT_ID: 'alligators' } });
+  await proxy.handleCanvas({
+    request: { headers: {}, url: '/_canvas-shell.html?t=x' },
+    response: fakeResponse(),
+    pathname: '/_canvas-shell.html',
+    method: 'GET',
+    pathPrefix: '',
+    verifyToken: () => ({ ok: true }),
+  });
+  assert.equal(forwarded.at(-1).path, '/_canvas-shell.html?t=x');
 });
 
 // ------------------------------------------------------------- WS upgrades

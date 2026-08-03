@@ -5,9 +5,10 @@
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 
-import { BACKOFF_MS, childEnv, createStudioChild } from '../src/studio-child.mjs';
+import { BACKOFF_MS, childEnv, createStudioChild, studioLaunch } from '../src/studio-child.mjs';
 
 class FakeChild extends EventEmitter {
   constructor(pid) {
@@ -134,6 +135,32 @@ test('stop() asks politely first', async () => {
   const before = spawned.length;
   for (const t of timers) t.fn?.();
   assert.equal(spawned.length, before);
+});
+
+test('a compiled studio takes NO entry argument', () => {
+  // The mistake this rules out: handing `server.ts` to a `bun build --compile`
+  // binary, which treats it as a positional arg rather than an entry. It boots,
+  // it looks fine, and it serves the wrong root.
+  const plan = studioLaunch({ MAUDE_STUDIO_BIN: __filename });
+  assert.equal(plan.kind, 'binary');
+  assert.equal(plan.cmd, __filename);
+  assert.deepEqual(plan.args, []);
+});
+
+test('a dev checkout runs the SOURCE entry under bun', () => {
+  const studioSrc = join(dirname(dirname(dirname(__filename))), 'studio');
+  const plan = studioLaunch({ MAUDE_STUDIO_SRC: studioSrc, MAUDE_BUN_PATH: '/bin/bun' });
+  assert.equal(plan.kind, 'source');
+  assert.equal(plan.cmd, '/bin/bun');
+  assert.deepEqual(plan.args, [join(studioSrc, 'server.ts')]);
+});
+
+test('a MAUDE_STUDIO_BIN that is not there is never launched', () => {
+  // The failure this rules out: a typo'd or unstaged binary path being spawned
+  // anyway, so the supervisor crash-loops on ENOENT instead of falling back to
+  // the source shape that is sitting right there.
+  const plan = studioLaunch({ MAUDE_STUDIO_BIN: '/nope/maude-server' });
+  assert.notEqual(plan?.cmd, '/nope/maude-server');
 });
 
 test('status() names the port a proxy should forward to', () => {

@@ -112,3 +112,36 @@ export function isReadOnlyRole(role) {
 export function matrixRows() {
   return ROLES.map((role) => ({ role, ...capabilitiesFor(role) }));
 }
+
+// ---------------------------------------------------------------------------
+// TWO VOCABULARIES, ONE BRIDGE — Cloud Phase 27.
+//
+// A hub has ACCOUNT roles (`users.mjs`: 'admin' | 'member') and this file has
+// PROJECT roles ('owner' | 'member' | 'viewer'). They overlap on exactly one
+// string, and that coincidence hid a shipped bug for a whole phase:
+//
+//   auth-routes.mjs minted every session with `readOnly: isReadOnlyRole(user.role)`.
+//   For a 'member' that is right by accident. For an 'admin' it is
+//   `can('admin', 'edit')` → an unknown role → nothing → readOnly TRUE, so every
+//   ADMIN's session was read-only. Found by logging into a real cell and being
+//   unable to edit the project one owns.
+//
+// The lesson is not "add a case for admin". It is that a string crossing a
+// vocabulary boundary must be TRANSLATED at the boundary, in one place, or the
+// next role added on either side re-opens this.
+
+/** Account roles a hub's user table can hold (mirrors `users.mjs`). */
+export const ACCOUNT_ROLES = Object.freeze(['admin', 'member']);
+
+/**
+ * Translate an account role into the project role it implies.
+ *
+ * An `admin` on a hub administers that hub's project, so `owner`. A `member` is
+ * a member. Anything unrecognised yields `null` — and every caller treats null
+ * as "no capabilities", because an unknown role must never be an escalation.
+ */
+export function projectRoleForAccount(accountRole) {
+  if (accountRole === 'admin') return 'owner';
+  if (accountRole === 'member') return 'member';
+  return null;
+}

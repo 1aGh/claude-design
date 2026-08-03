@@ -73,6 +73,71 @@ COPY --from=bundler /build/apps/hub/node_modules ./node_modules
 COPY --from=bundler /build/apps/hub/package.json ./package.json
 RUN npm rebuild better-sqlite3 --build-from-source
 
+# ---- Stage 2.4: the studio server binary (Cloud Phase 27 / DDR-209) ----
+#
+# THE CELL RUNS THE REAL STUDIO. Not a re-implementation of one — that was
+# Phase 25 B3, and the owner found out by opening his own project and seeing a
+# poorer application than his desktop's. The hub is now a proxy in front of
+# this binary.
+#
+# WHY A COMPILED BINARY AND NOT THE SOURCE. Running from source means shipping
+# the studio's entire production closure — remotion, pixi, onnxruntime,
+# react-dom — into an image whose SIZE an unresolved outage RCA already lists
+# as a suspect. `bun build --compile` bakes the server's own graph and drops
+# the rest. The phase's cost gate names this fallback by hand; it is taken
+# deliberately, not discovered.
+#
+# It also REPLACES the standalone Bun this image used to carry for the build
+# sandbox: a compiled Bun binary re-entered with `BUN_BE_BUN=1` IS a JS runtime
+# (DDR-177), so one artifact serves both jobs instead of two serving one each.
+FROM oven/bun:1 AS studio-build
+WORKDIR /build/apps/studio
+COPY apps/studio/package.json apps/studio/bun.lock ./
+# DDR-176 — `apps/studio` registers its OWN `patchedDependencies` (the
+# css-tree/csso bun-compile-compat patches), and they resolve RELATIVE to this
+# package. Copying them is not optional plumbing: skipping the equivalent step
+# once already shipped two releases whose compiled sidecar crash-looped on boot.
+COPY patches /build/patches
+# Frozen, for the same supply-chain reason as the hub's own install above.
+RUN bun install --frozen-lockfile --ignore-scripts
+COPY apps/studio ./
+COPY plugins/design/templates /build/plugins/design/templates
+# The client bundle + stylesheet are COMMITTED artifacts (see CLAUDE.md: what
+# you commit is what ships) — MAUDE_SKIP_RUNTIME_BUILD keeps the runtime bundles
+# verbatim for the same reason. The E1 seal below records what came out of here.
+# TARGETARCH is buildx's own — hardcoding an arch here produced a cell whose
+# studio crash-looped under Rosetta with `failed to open elf at
+# /lib64/ld-linux-x86-64.so.2`, on an image that otherwise built and started
+# perfectly. The multi-arch release (`hub-image.yml` builds amd64 + arm64) would
+# have shipped one good arch and one broken one.
+ARG TARGETARCH
+# `rm -f dist/maude-*` FIRST, and then take the binary by its EXACT name.
+#
+# `dist/` has to be copied in (the committed runtime bundles + the client are
+# read from it), and a developer's tree routinely carries binaries for whatever
+# platforms they last built. Globbing for `maude-*` picked one of THOSE — the
+# image built cleanly, started cleanly, and crash-looped with `rosetta error:
+# failed to open elf at /lib64/ld-linux-x86-64.so.2` because the staged binary
+# was a stale x86-64 artifact from the build context rather than the arm64 one
+# this stage had just produced.
+RUN rm -f dist/maude-* \
+ && case "${TARGETARCH:-amd64}" in \
+      amd64) STUDIO_TARGET=bun-linux-x64; STUDIO_SLUG=linux-x64 ;; \
+      arm64) STUDIO_TARGET=bun-linux-arm64; STUDIO_SLUG=linux-arm64 ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+ && echo "[cell] studio target: ${STUDIO_TARGET}" \
+ && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release --target=${STUDIO_TARGET} \
+ && test -f "dist/maude-${STUDIO_SLUG}" \
+ && mv "dist/maude-${STUDIO_SLUG}" /build/maude-server \
+ && chmod +x /build/maude-server
+# E1 — seal the client artifacts. The cell refuses to boot when what is on disk
+# is not what came out of this stage. A tag is not an identity; a hash is.
+RUN node -e "const{createHash}=require('crypto'),{readFileSync,writeFileSync}=require('fs');\
+const a={};for(const r of ['dist/client.bundle.js','dist/styles.css'])\
+a[r]=createHash('sha256').update(readFileSync(r)).digest('hex');\
+writeFileSync('/build/bundle-manifest.json',JSON.stringify({artifacts:a},null,2));"
+
 # ---- Stage 2.5: the canvas build sandbox's own dependencies ----
 #
 # Cloud Phase 25 A1. The cell BUILDS a tenant's canvas (the viewer's browser
@@ -124,28 +189,52 @@ COPY --from=bundler /build/apps/hub/dist ./dist
 # build-time and CI assertions that say so are unmodified. A bundler is not a
 # renderer — the cell parses and transforms; the viewer's browser is what
 # evaluates (DDR-193 §2 / Phase 25 A0).
-COPY --from=bundler /usr/local/bin/bun /usr/local/bin/bun
-COPY --from=canvas-deps /canvas/node_modules /canvas/node_modules
-# ONLY the engine's own source — 679 MB down to 157 MB.
+# THE STUDIO (Cloud Phase 27 / DDR-209). One compiled binary, and beside it the
+# files it reads from disk rather than carries: the client the browser loads,
+# the pre-built runtime bundles, the canvas shell template, and the engine
+# SOURCE the build sandbox runs in a child process.
 #
-# This is worth doing on its own merits (a cell parses canvases; it does not
-# need pre-built bundles, sample media, sticker packs, the browser client or
-# the tests). It is NOT established as the fix for the 2026-08-03 outage: a
-# 116 MB image appeared to restore the cell once and then did not reproduce,
-# so image size is a SUSPECT, not a cause. Do not read this comment as a
-# solved problem — see the RCA.
+# The standalone `bun` this image used to carry is GONE. `maude-server` is a
+# compiled Bun binary, so `BUN_BE_BUN=1` re-enters it as a JS runtime (DDR-177)
+# — one artifact for the server and the sandbox instead of two.
+#
+# Repo-shaped under /maude, because the studio resolves its canvas-shell
+# template as `<root>/../../plugins/design/templates`. A flat layout would put
+# that at `/plugins`, which works right up until someone moves the root.
+COPY --from=studio-build /build/maude-server /app/maude-server
+COPY --from=studio-build /build/bundle-manifest.json /app/bundle-manifest.json
+COPY --from=canvas-deps /canvas/node_modules /maude/node_modules
+# The engine's own source — the sandbox runs it as SOURCE (Bun reads TypeScript
+# natively). No pre-built bundles, no sample media, no sticker packs, no tests.
 COPY --exclude=dist --exclude=media --exclude=stickers --exclude=test \
-     --exclude=e2e --exclude=client --exclude=node_modules \
-     apps/studio /canvas/studio
-COPY apps/hub/src/canvas/build-worker.ts apps/hub/src/canvas/edit-worker.ts /canvas/workers/
-COPY apps/studio/dist/runtime /app/dist/canvas-runtime
+     --exclude=e2e --exclude=node_modules \
+     apps/studio /maude/apps/studio
+# What the SERVER reads off disk, taken FROM THE BUILD STAGE — not from the
+# build context. This is E1 being taken seriously rather than described: the
+# bytes that were hashed into `bundle-manifest.json` and the bytes that get
+# served have to be the same object, or the seal is checking a file nobody
+# reads. (`dist/client.bundle.js` is REBUILT by every release build — see
+# CLAUDE.md — so the committed copy and the staged copy genuinely can differ,
+# and v0.51.1 shipped a blank window exactly that way.)
+COPY --from=studio-build /build/apps/studio/dist/client.bundle.js \
+     /build/apps/studio/dist/styles.css /maude/apps/studio/dist/
+COPY --from=studio-build /build/apps/studio/dist/runtime /maude/apps/studio/dist/runtime
+COPY plugins/design/templates /maude/plugins/design/templates
+# The runtime bundles are ALSO reachable at the legacy path the hub's asset
+# lane looked them up under, so nothing that used it has to learn a new one.
+COPY --from=studio-build /build/apps/studio/dist/runtime /app/dist/canvas-runtime
 # The engine resolves `magic-string` / `oxc-parser` from the nearest
-# node_modules; /canvas/studio sits directly under /canvas, so the staged
-# modules are on its resolution path without a second install.
-ENV MAUDE_BUN_PATH=/usr/local/bin/bun \
-    MAUDE_STUDIO_SRC=/canvas/studio \
-    MAUDE_CANVAS_WORKERS=/canvas/workers \
-    MAUDE_CANVAS_RUNTIME_DIR=/app/dist/canvas-runtime
+# node_modules; /maude/apps/studio sits under /maude, so the staged modules are
+# on its resolution path without a second install.
+ENV MAUDE_STUDIO_BIN=/app/maude-server \
+    MAUDE_BUN_PATH=/app/maude-server \
+    MAUDE_STUDIO_SRC=/maude/apps/studio \
+    MAUDE_DEV_SERVER_ROOT=/maude/apps/studio \
+    MAUDE_CANVAS_WORKERS=/maude/apps/studio \
+    MAUDE_CANVAS_RUNTIME_DIR=/app/dist/canvas-runtime \
+    MAUDE_IMAGE_MANIFEST_DIR=/app \
+    MAUDE_IMAGE_SEALED=1 \
+    MAUDE_STUDIO_PORT=4399
 # The container runs as the unprivileged `node` user, but a fresh named volume
 # mounted at /data is initialized from the image's /data ownership. Create it
 # node-owned BEFORE declaring VOLUME (post-VOLUME filesystem changes are
