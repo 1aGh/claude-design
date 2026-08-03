@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "bug-reports-see-the-maude-window",
+      "version": "0.53.2",
+      "kind": "improvement",
+      "title": "Bug reports now show the Maude window",
+      "summary": "Report a bug used to attach only the artboard, so anything wrong with Maude itself — the menus, the sidebar, a panel — was never in the picture. It now captures the whole window too, and you can attach your own screenshot for whatever a fresh capture can't show, like an open menu or a stuck spinner.",
+      "surface": "design-ui",
+      "date": "2026-08-03"
+    },
+    {
       "id": "open-your-project-in-a-browser",
       "version": "0.53.0",
       "date": "2026-08-02",
