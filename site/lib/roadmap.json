@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-03T12:11:57.794Z",
+  "generated": "2026-08-03T12:35:39.232Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1770,6 +1770,17 @@
       "date": null,
       "summary": "1. The read-only gallery is dropped. view-<project>.cloud.maude.sh, the published-snapshot surface, and the maude share publish CLI verb all go. 2. Roles become real, once. A member's rights are th...",
       "planPath": ".ai/plans/cloud-phase-25-one-project-two-doors.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-26-one-studio-three-shells",
+      "title": "Cloud Phase 26 — One studio, three shells",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Phase 25's B3 shipped apps/hub/src/canvas/studio-page.mjs — 469 lines re-implementing a studio whose real client is 15,073 lines (apps/studio/client/app.jsx → dist/client.bundle.js). The expectatio...",
+      "planPath": ".ai/plans/cloud-phase-26-one-studio-three-shells.md",
       "archived": false,
       "phaseKey": null
     },
