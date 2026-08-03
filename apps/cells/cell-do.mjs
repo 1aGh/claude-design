@@ -122,6 +122,35 @@ export class MaudeCell extends Container {
       const target = new URL(request.url);
       target.protocol = 'https:';
       target.host = this.env.MAUDE_TUNNEL_HOST;
+
+      // WAIT FOR THE TUNNEL, not for the port.
+      //
+      // A woken cell needs a few seconds to boot AND for cloudflared to
+      // re-register with the edge; a request proxied in that window gets
+      // Cloudflare's own 530 (origin unreachable) — which reads to a customer
+      // exactly like the outage this seam was built to escape. This is the
+      // readiness wait that `startAndWaitForPorts` used to do, moved onto the
+      // path that actually works: poll the tunnel until the hub answers.
+      //
+      // GET /health is the probe because it is the one route that is cheap,
+      // unauthenticated and meaningful. 530/502/523 mean "tunnel not ready
+      // yet"; anything else means the cell is answering and the real request
+      // can go through.
+      const deadline = Date.now() + 120_000;
+      for (;;) {
+        const probe = await fetch(`https://${this.env.MAUDE_TUNNEL_HOST}/health`, {
+          method: 'GET',
+          cf: { cacheTtl: 0 },
+        }).catch(() => null);
+        if (probe && ![530, 502, 523, 521].includes(probe.status)) break;
+        if (Date.now() > deadline) {
+          return new Response(
+            'This project is starting up and did not answer in time. Refresh in a moment.\n',
+            { status: 503, headers: { 'retry-after': '10' } }
+          );
+        }
+        await scheduler.wait(1_000);
+      }
       return fetch(new Request(target, request));
     }
 
