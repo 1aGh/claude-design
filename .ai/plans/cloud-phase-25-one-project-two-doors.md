@@ -438,3 +438,31 @@ staged, and a registry that does not take a docker login.
 The pattern in all three: **the repo cannot tell you about an object that is
 not in it.** A hostname, a route, a token scope. `cells-deploy.yml` exists so
 that at least the deploy is one of the things the repo knows.
+
+---
+
+## Correction (2026-08-03): "closed" was premature
+
+The Status section above says every track landed. That is true of the CODE and
+false of the PRODUCT, and the difference cost a customer-facing outage.
+
+**What is genuinely shipped and verified:** the npm package, the desktop app,
+the hub image (so self-hosters have all of Track B), the control plane, and the
+whole phase's behaviour verified against a locally-run v12 cell holding the
+real alligators data — studio redirects a signed-out visitor, the canvas origin
+refuses a bad capability token with a 401, the project renders.
+
+**What is NOT verified in production:** the browser door, on the platform. The
+fleet was rolled to v12 and `alligators.cloud.maude.sh` has been unreachable
+since — container healthy, Durable Object unable to reach it, root cause
+unestablished. See `.ai/archive/logs/rca/2026-08-03-alligators-cell-unreachable.md`.
+
+**The acceptance list above must therefore be read as: passing locally against
+real data, unproven on the platform.** Five of its production checks did pass
+(the control plane, the storage posture, the gallery's address, the canvas
+origin's refusal with no project); the ones that need a live cell did not run.
+
+The lesson is the same one this phase kept re-learning and did not apply to
+itself: **an object outside the repo — a hostname, a route, a token scope, a
+container's port readiness — is outside every gate the repo has.** A phase is
+closed when a customer's project answers, not when the tests do.
