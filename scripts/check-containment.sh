@@ -31,23 +31,68 @@ if [ ! -f "$MODULE" ]; then
 fi
 
 # ---- 1. the vocabulary must still name every forbidden surface --------------
+#
+# DDR-209 A'1 split this in two. FORBIDDEN entries are absent from a cell.
+# SANDBOXED entries are PRESENT AND ATTESTED — a cell serves the canvas shell
+# and the vendor runtime bundles, because the member's BROWSER is what evaluates
+# — but only while the out-of-process build sandbox is armed. Both lists are
+# asserted here, and so is the arming, because "moved to the other list" must
+# never be a way to quietly stop checking something.
 REQUIRED_PREFIXES=(
   "/_api/export"
   "/_api/photo-edit"
   "/_api/generate"
-  "/_canvas-shell"
-  "/_canvas-runtime"
   "/_ws/acp"
+  # The secret-bearing surfaces, named by Cloud Phase 27 D1. DDR-123's "claude
+  # never on our infra" is a fact only while these are unreachable in a cell.
+  "/_api/acp"
+  "/_api/claude"
+  "/_api/cloud"
+  "/_api/github"
+  "/_api/hub"
+  "/_api/debug-bundle"
+  "/_api/design"
 )
 for prefix in "${REQUIRED_PREFIXES[@]}"; do
   if ! grep -qF "'$prefix'" "$MODULE"; then
     echo "FAIL: '$prefix' is no longer in FORBIDDEN_ROUTE_PREFIXES ($MODULE)." >&2
-    echo "      A workspace cell must not expose it — see DDR-193 §2." >&2
+    echo "      A workspace cell must not expose it — see DDR-193 §2 / DDR-209." >&2
     echo "      If a feature genuinely needs it, Direction B is its hard prerequisite," >&2
     echo "      not a deletion here." >&2
     fail=1
   fi
 done
+
+REQUIRED_SANDBOXED=(
+  "/_canvas-shell"
+  "/_canvas-runtime"
+)
+for prefix in "${REQUIRED_SANDBOXED[@]}"; do
+  if ! grep -qF "'$prefix'" "$MODULE"; then
+    echo "FAIL: '$prefix' is in NEITHER containment list ($MODULE)." >&2
+    echo "      DDR-209 A'1 permits a cell to serve it only under an asserted" >&2
+    echo "      contract. Dropping it from SANDBOXED_ROUTE_PREFIXES makes it" >&2
+    echo "      unconditionally reachable, which is strictly weaker than before." >&2
+    fail=1
+  fi
+done
+
+# The sandboxed list is worth nothing without the contract it is conditional on.
+if ! grep -qF "SANDBOXED_ROUTE_PREFIXES" "$MODULE"; then
+  echo "FAIL: SANDBOXED_ROUTE_PREFIXES is gone from $MODULE (DDR-209 A'1)." >&2
+  fail=1
+fi
+if ! grep -qF "sandboxArmed" "$MODULE"; then
+  echo "FAIL: $MODULE no longer takes the sandboxArmed attestation." >&2
+  echo "      The canvas surfaces would then be permitted unconditionally." >&2
+  fail=1
+fi
+if ! grep -qF "sandboxArmed: SANDBOX_ARMED" apps/studio/server.ts; then
+  echo "FAIL: apps/studio/server.ts no longer PASSES the sandbox attestation." >&2
+  echo "      An attestation nobody supplies defaults to false and would refuse" >&2
+  echo "      every cell boot — or, worse, gets 'fixed' by hardcoding true." >&2
+  fail=1
+fi
 
 REQUIRED_MODULES=(playwright playwright-core puppeteer puppeteer-core)
 for mod in "${REQUIRED_MODULES[@]}"; do
@@ -167,7 +212,7 @@ fi
 # The failure mode this exists for is not an argument — it is a refactor that
 # drops `restrictImportsTo` while every test stays green, because the desktop
 # (which passes no such option) would not notice.
-SANDBOX_HOST="apps/hub/src/canvas/build.mjs"
+SANDBOX_HOST="apps/studio/canvas-build-sandbox.ts"
 SANDBOX_ENGINE="apps/studio/canvas-build.ts"
 if [ -f "$SANDBOX_HOST" ]; then
   for needle in "BUILD_TIMEOUT_MS" "BUILD_RSS_LIMIT_MB" "workerEnv"; do
@@ -194,7 +239,7 @@ if [ -f "$SANDBOX_ENGINE" ] && ! grep -qF "importAllowlist" "$SANDBOX_ENGINE"; t
   fail=1
 fi
 # …and the worker must still ARM it. An allowlist nobody passes is a comment.
-SANDBOX_WORKER="apps/hub/src/canvas/build-worker.ts"
+SANDBOX_WORKER="apps/studio/canvas-build-worker.ts"
 if [ -f "$SANDBOX_WORKER" ] && ! grep -qF "restrictImportsTo" "$SANDBOX_WORKER"; then
   echo "FAIL: $SANDBOX_WORKER no longer arms the import allowlist." >&2
   echo "      Without it the cell's bundler resolves anything on this disk" >&2

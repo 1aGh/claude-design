@@ -35,7 +35,7 @@
 //   - All log lines that interpolate user data go through sanitizeForLog.
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 
@@ -59,18 +59,33 @@ import {
 } from './auth-routes.mjs';
 import { scheduleBackups, targetFromConfig, targetFromEnv } from './backup.mjs';
 import { maybeIssueOnBoot, verifyAndConsume } from './bootstrap.mjs';
-import { BROWSER_SESSION_COOKIE, cookieValue, handleBrowserAuth } from './canvas/browser-auth.mjs';
-import { designRootFor } from './canvas/project.mjs';
-import { handleCanvasRoutes, renderDisabled } from './canvas/routes.mjs';
+import { BROWSER_SESSION_COOKIE, cookieValue, handleBrowserAuth } from './browser-auth.mjs';
+import {
+  checkBundleIdentity,
+  formatIdentityFailure,
+  identityForHealth,
+} from './bundle-identity.mjs';
 import { handleExportRoute, scheduleMirror, scheduleRevocationSweep } from './cell-ops.mjs';
 import { clientIpFor, parseTrustedProxies } from './client-ip.mjs';
+import { designRootFor } from './design-root.mjs';
 import { groupCanvases } from './doc-namespace.mjs';
 import { seedFirstUserOnBoot } from './first-user.mjs';
 import { createGitRunner } from './git-runner.mjs';
 import { createRateStore } from './rate-store.mjs';
+import { mintRenderToken, verifyRenderToken } from './render-token.mjs';
+import { isReadOnlyRole } from './role-matrix.mjs';
 import { defaultS3Source } from './s3-creds.mjs';
 import { seedRepo } from './seed-repo.mjs';
 import { DEFAULT_HUB_NAME, readSettings, writeSettings } from './settings.mjs';
+import { createStudioChild } from './studio-child.mjs';
+import {
+  doorVerdict,
+  isCanvasHost,
+  isHubOwned,
+  PAUSED_MESSAGE,
+  servicePage,
+} from './studio-door.mjs';
+import { createStudioProxy, sessionKeyFor } from './studio-proxy.mjs';
 import {
   addToken,
   assertValidLabel,
@@ -305,6 +320,30 @@ export function createHub(config = {}) {
   const repoDir = config.repoDir ?? process.env.MAUDE_REPO_DIR ?? '';
   /** @type {ReturnType<typeof createWorkspaceAgent>|null} */
   let workspace = null;
+
+  // Cloud Phase 27 A1/A2 (DDR-209) — THE STUDIO IS A CHILD, THE HUB IS A DOOR.
+  //
+  // A cell runs the real `apps/studio` server on loopback and proxies to it, so
+  // a member's browser loads the byte-identical client the desktop loads. A
+  // self-hosted hub sits beside somebody's desktop and has no studio to
+  // supervise, so this is workspace-mode-only — the same restriction, and the
+  // same reason, as the autosave agent above.
+  const studioEnabled = workspaceMode && process.env.MAUDE_STUDIO_CHILD !== '0';
+  const studio = studioEnabled ? createStudioChild() : null;
+  const studioProxy = studioEnabled
+    ? createStudioProxy({
+        upstream: () => studio.status(),
+        canvasUpstream: () => canvasUpstreamStatus(studio),
+        publicUrl: process.env.HUB_PUBLIC_URL ?? null,
+        hash: (input) => createHash('sha256').update(input).digest('hex'),
+        mintCanvasToken: (session) =>
+          mintRenderToken({
+            secret,
+            project: process.env.MAUDE_TENANT_ID ?? 'local',
+            subject: session.email,
+          }),
+      })
+    : null;
   /** @type {ReturnType<typeof scheduleMirror>|null} */
   let mirror = null;
   /** @type {ReturnType<typeof scheduleRevocationSweep>|null} */
@@ -424,33 +463,26 @@ export function createHub(config = {}) {
         // Omit `dataDir` (a server filesystem path) from the public payload —
         // it's a recon over-share. The authenticated /admin/api/status keeps
         // the full payload (operator already has admin access there).
-        respondJson(
-          response,
-          200,
-          buildStatusPayload({
-            dataDir,
-            secret,
-            port,
-            startedAt,
-            peersCount: peers.size,
-            exposeDataDir: false,
-          })
-        );
+        const health = buildStatusPayload({
+          dataDir,
+          secret,
+          port,
+          startedAt,
+          peersCount: peers.size,
+          exposeDataDir: false,
+          studio,
+        });
+        // 503, not 200-with-ok-false. A router reads the STATUS; a payload it
+        // has to parse to learn the truth is a payload it will not parse.
+        respondJson(response, health.ok ? 200 : 503, health);
         bailFromOnRequest();
       }
-      if (method === 'GET' && (url === '/' || url === '' || url.startsWith('/?'))) {
-        // Cloud Phase 25 B8 — the cell's front door IS the project.
-        //
-        // It used to be a signpost: in platform mode it sent the customer BACK
-        // to the dashboard they had just come from, and everywhere else it
-        // offered the operator console. Both were honest when a cell could not
-        // render anything. Now that it can, the address of the project is the
-        // project, and the operator console goes back to being a footnote.
-        if (canvasDoorAvailable()) {
-          response.writeHead(302, { location: '/studio', 'cache-control': 'no-store' });
-          response.end();
-          bailFromOnRequest();
-        }
+      if (!studioProxy && method === 'GET' && (url === '/' || url === '' || url.startsWith('/?'))) {
+        // Cloud Phase 25 B8 — the cell's front door IS the project. Cloud Phase
+        // 27 finishes the thought: it no longer REDIRECTS to a studio, it IS
+        // one. `/` falls through to the proxy whenever a studio child exists,
+        // and this landing is what a hub with no project to serve shows —
+        // a self-hosted sync hub, or a cell whose checkout has not arrived.
         // Minimal landing — replaces Hocuspocus' default "Welcome to Hocuspocus!"
         // with a sensible signpost into the admin console. Self-hosted operator
         // surface, deliberately NOT a marketing page (DDR-097). Server-rendered
@@ -513,28 +545,19 @@ export function createHub(config = {}) {
         });
         if (handled) bailFromOnRequest();
       }
-      if (
-        authPath === '/studio' ||
-        authPath.startsWith('/studio/') ||
-        authPath.startsWith('/api/studio/') ||
-        authPath.startsWith('/_canvas/')
-      ) {
-        const cookieToken = cookieValue(request, BROWSER_SESSION_COOKIE);
-        const match = cookieToken ? verifyToken(dataDir, cookieToken, secret) : null;
-        const handled = await handleCanvasRoutes({
+      // ---- THE CANVAS ORIGIN (DDR-054) ------------------------------------
+      //
+      // A different hostname, no cookie, and that is the point: a cookie scoped
+      // widely enough to cover it would be readable by the untrusted canvas
+      // origin. The capability lives in the URL and the lane is read-only.
+      if (studioProxy && isCanvasHost(request)) {
+        const handled = await studioProxy.handleCanvas({
           request,
           response,
           pathname: authPath,
           method,
-          secret,
-          projectName: readSettings(dataDir)?.name,
-          session: match?.owner
-            ? {
-                email: match.owner,
-                role: match.readOnly ? 'viewer' : 'member',
-                readOnly: !!match.readOnly,
-              }
-            : null,
+          verifyToken: (token) =>
+            verifyRenderToken({ secret, token, project: process.env.MAUDE_TENANT_ID ?? null }),
         });
         if (handled) bailFromOnRequest();
       }
@@ -643,6 +666,55 @@ export function createHub(config = {}) {
         });
         bailFromOnRequest();
       }
+      // ---- THE STUDIO (Cloud Phase 27 A2 / DDR-209) -----------------------
+      //
+      // Everything the hub does not own itself belongs to the real studio. The
+      // direction is deliberate: the studio's route table grows every phase and
+      // the hub's does not, so an allowlist of HUB paths keeps new studio
+      // features working in the cloud without anyone remembering this file.
+      if (studioProxy && !isHubOwned(authPath)) {
+        const verdict = doorVerdict({
+          request,
+          pathname: authPath,
+          session: browserSession(dataDir, secret, request),
+        });
+        if (verdict?.kind === 'paused') {
+          respondAsset(
+            response,
+            servicePage('Paused', PAUSED_MESSAGE),
+            'text/html; charset=utf-8',
+            {
+              hardenAdminOrigin: true,
+            }
+          );
+          bailFromOnRequest();
+        }
+        if (verdict?.kind === 'no-project') {
+          respondJson(response, 503, { error: 'this workspace has no design project yet' });
+          bailFromOnRequest();
+        }
+        if (verdict?.kind === 'sign-in') {
+          // An HTML navigation gets a redirect it can follow; an API call gets
+          // a 401 it can read. Sending a fetch() to the control plane's sign-in
+          // page produces a CORS error in the console and nothing on screen.
+          if ((request.headers?.accept ?? '').includes('text/html')) {
+            response.writeHead(302, { location: verdict.to, 'cache-control': 'no-store' });
+            response.end();
+          } else {
+            respondJson(response, 401, { error: 'sign in to open this project' });
+          }
+          bailFromOnRequest();
+        }
+        const handled = await studioProxy.handle({
+          request,
+          response,
+          pathname: authPath,
+          method,
+          session: browserSession(dataDir, secret, request),
+        });
+        if (handled) bailFromOnRequest();
+      }
+
       // Fall through — Hocuspocus' default handler responds to unknown routes.
     },
 
@@ -742,9 +814,48 @@ export function createHub(config = {}) {
     s3Source,
     workspaceMode,
     repoDir,
+    /** The supervised studio child. Null outside workspace mode. */
+    studio,
     /** The live agent, once started. Null outside workspace mode. */
     get workspace() {
       return workspace;
+    },
+
+    /**
+     * Take over WebSocket upgrades for the studio's live surfaces.
+     *
+     * The studio's panels are WebSockets — the inspector feed and the
+     * per-canvas collab rooms — so a proxy that only speaks HTTP delivers a
+     * studio whose Layers panel never updates and whose presence cursors never
+     * appear. That is precisely the class of "it looks like the desktop but
+     * behaves worse" this phase exists to end.
+     *
+     * Hocuspocus installs its own `upgrade` listener and treats the path as a
+     * document name, so both cannot simply co-exist: an unclaimed `/_ws` would
+     * become a Yjs document called `_ws`. We take the listeners off, put ours in
+     * front, and delegate everything that is not the studio's back to them —
+     * rather than `prependListener`, which would leave Hocuspocus running on the
+     * same socket after we had already spliced it.
+     */
+    attachStudioUpgrades() {
+      if (!studioProxy) return;
+      const httpServer = server.httpServer;
+      if (!httpServer) return;
+      const existing = httpServer.listeners('upgrade');
+      httpServer.removeAllListeners('upgrade');
+      httpServer.on('upgrade', (request, socket, head) => {
+        const path = (request.url ?? '').split('?')[0];
+        if (!path.startsWith('/_ws')) {
+          for (const listener of existing) listener.call(httpServer, request, socket, head);
+          return;
+        }
+        studioProxy.handleUpgrade({
+          request,
+          socket,
+          head,
+          session: browserSession(dataDir, secret, request),
+        });
+      });
     },
     /**
      * Boot the server-side history agent. Separate from createHub() because it
@@ -1158,20 +1269,6 @@ function nameFromSlug(slug) {
     .join(' ');
 }
 
-/**
- * Can this hub open a project in a browser? (Cloud Phase 25 B3/B8)
- *
- * Two conditions, both structural rather than configured: there is a checkout
- * with a design root in it, and rendering is not paused (A3's kill switch).
- * A hub that is only a sync relay — no workspace, no checkout — keeps the
- * operator landing it always had, which is also the honest answer for it.
- */
-function canvasDoorAvailable(env = process.env) {
-  if (renderDisabled(env)) return false;
-  const root = designRootFor(env);
-  return Boolean(root && existsSync(root));
-}
-
 function renderLanding(
   settings,
   {
@@ -1290,11 +1387,23 @@ function buildStatusPayload({
   startedAt,
   peersCount,
   exposeDataDir = true,
+  studio = null,
 }) {
   const { tokens } = readTokens(dataDir);
   const workspace = workspaceStatus();
+  // Cloud Phase 27 A1/D5 — A CONTAINER THAT ANSWERS 200 WHILE HALF-DEAD IS
+  // WORSE THAN ONE THAT IS DOWN. The hub process being fine says nothing about
+  // the studio the customer actually opens, so `ok` is the AND of both. The
+  // router then stops sending here, which is the entire point of a health probe
+  // and exactly what the last outage's monitor failed to do.
+  const studioStatus = studio ? studio.status() : null;
+  // D5 — DEEP, CONTENT-ADDRESSED HEALTH. "Something answered 200" is what the
+  // last outage's monitor checked, and the rollback that followed went to a tag
+  // whose contents CI had overwritten. So health names the BYTES: is the client
+  // this cell would serve the client this image was built with.
+  const identity = studioStatus ? identityForHealth(studioIdentityPaths()) : null;
   return {
-    ok: true,
+    ok: studioStatus ? studioStatus.ok && identity?.ok !== false : true,
     version: HUB_VERSION,
     uptimeMs: Date.now() - startedAt,
     port,
@@ -1306,7 +1415,95 @@ function buildStatusPayload({
     identity: identityPosture(),
     peersCount: peersCount ?? 0,
     ...(workspace ? { workspace } : {}),
+    ...(studioStatus
+      ? {
+          studio: {
+            ok: studioStatus.ok,
+            state: studioStatus.state,
+            port: studioStatus.port,
+            restarts: studioStatus.restarts,
+            // The exit code is what an operator reads first, and omitting it
+            // turns "why did it die" into a log hunt.
+            lastExit: studioStatus.lastExit,
+          },
+          ...(identity ? { client: identity } : {}),
+        }
+      : {}),
   };
+}
+
+/**
+ * Where the client artifacts and the image's record of them live.
+ *
+ * `MAUDE_STUDIO_SRC` is what the image sets when it stages the studio;
+ * `MAUDE_IMAGE_MANIFEST_DIR` is where it wrote the seal. Both default to
+ * layouts a dev checkout has, so this is inspectable locally.
+ */
+function studioIdentityPaths(env = process.env) {
+  const studioRoot = env.MAUDE_STUDIO_SRC ?? resolve(process.cwd(), '..', 'studio');
+  return { studioRoot, manifestDir: env.MAUDE_IMAGE_MANIFEST_DIR ?? '/app' };
+}
+
+// --------------------------------------------------------- the browser session
+
+/**
+ * Who is asking, and what they may do — Cloud Phase 27 A3.
+ *
+ * The session is a COOKIE over the same peer token the desktop holds as a
+ * bearer: one token store, one expiry, one read-only capability, because a
+ * second session type would be a second place for the role model to drift.
+ *
+ * The ROLE is derived here and travels with every proxied request. That is the
+ * change Phase 27 makes: the studio's own gate reads a per-PROCESS file, which
+ * is one role per hub URL — correct for a desktop with one user, wrong for one
+ * cell serving an owner and a viewer at the same time.
+ *
+ * Returns `null` for anything it cannot positively verify. Every branch here
+ * fails closed on purpose (A4): the local gate this replaces returns `false`
+ * (i.e. writable) from its own `catch`, which is correct for a local tool and is
+ * the whole ballgame on the internet.
+ */
+function browserSession(dataDir, secret, request) {
+  const cookieToken = cookieValue(request, BROWSER_SESSION_COOKIE);
+  if (!cookieToken) return null;
+  let match;
+  try {
+    match = verifyToken(dataDir, cookieToken, secret);
+  } catch {
+    return null;
+  }
+  if (!match?.owner) return null;
+  // `role` on the token when the control plane vouched one; otherwise derive it
+  // from the read-only flag the same way `isReadOnlyRole` does in reverse. An
+  // unrecognised role string is NOT coerced — `capabilitiesFor` gives it
+  // nothing, which is what a typo should be worth.
+  const role = match.role ?? (match.readOnly ? 'viewer' : 'member');
+  return {
+    email: match.owner,
+    role,
+    readOnly: isReadOnlyRole(role),
+    sessionKey: sessionKeyFor(process.env.MAUDE_TENANT_ID ?? 'local', match.owner, (input) =>
+      createHash('sha256').update(input).digest('hex')
+    ),
+  };
+}
+
+/**
+ * The studio's SEGREGATED canvas listener, which binds an OS-assigned port and
+ * publishes it in `_server.json`. Read per call rather than cached: the child
+ * restarts, and a cached port after a restart is a proxy pointing at nothing.
+ */
+function canvasUpstreamStatus(studio) {
+  const status = studio?.status();
+  if (!status?.ok) return { ok: false, port: null };
+  const designRoot = designRootFor();
+  if (!designRoot) return { ok: false, port: null };
+  try {
+    const info = JSON.parse(readFileSync(join(designRoot, '_server.json'), 'utf8'));
+    return info?.canvasPort ? { ok: true, port: info.canvasPort } : { ok: false, port: null };
+  } catch {
+    return { ok: false, port: null };
+  }
 }
 
 // ------------------------------------------------------------ session kicker
@@ -1643,7 +1840,7 @@ async function runAsMain() {
     console.error('[hub] config error:', err.message);
     process.exit(1);
   }
-  const { server, sqlitePath, workspaceMode, repoDir, s3Source } = built;
+  const { server, sqlitePath, workspaceMode, repoDir, s3Source, studio } = built;
 
   try {
     await server.listen();
@@ -1661,6 +1858,29 @@ async function runAsMain() {
     console.warn(
       '[hub] admin assets missing — /admin will serve empty page. Run `bun run build` in apps/hub.'
     );
+  }
+
+  // Cloud Phase 27 A1 — the studio child, and the upgrade splice that makes its
+  // live panels work. Started BEFORE the workspace agent so the two are racing
+  // for the same working tree for as short a time as possible (D2's residue —
+  // see the plan's preserved dissent).
+  if (studio) {
+    // E1 — THE BYTE-IDENTITY GATE, before anything is served.
+    //
+    // Sealed only when the image says it sealed something; a dev checkout has no
+    // manifest and is deliberately allowed through, because a guard that makes
+    // the cloud path untestable locally is a guard that gets disabled.
+    const identity = checkBundleIdentity({
+      ...studioIdentityPaths(),
+      required: process.env.MAUDE_IMAGE_SEALED === '1',
+    });
+    if (!identity.ok) {
+      console.error(`\n${formatIdentityFailure(identity)}\n`);
+      process.exit(1);
+    }
+    built.attachStudioUpgrades();
+    studio.start();
+    console.log(`[hub] studio child supervised on 127.0.0.1:${studio.port}`);
   }
 
   seedFirstUserOnBoot(dataDir);
@@ -1734,6 +1954,11 @@ async function runAsMain() {
     built
       .stopWorkspaceAgent()
       .catch((err) => console.error('[hub] workspace flush error:', err))
+      // The studio owns `_server.json` and a couple of pending writes; stopping
+      // it politely is what keeps the next boot from reading stale state as a
+      // live instance.
+      .then(() => studio?.stop())
+      .catch((err) => console.error('[hub] studio stop error:', err))
       .then(() => server.destroy())
       .catch((err) => {
         console.error('[hub] shutdown error:', err);

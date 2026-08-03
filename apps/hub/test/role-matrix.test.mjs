@@ -34,9 +34,14 @@ test('the matrix is complete — every role answers every capability', () => {
     }
   }
   assert.deepEqual([...ROLES], ['owner', 'member', 'viewer']);
+  // `session` joined the list in Cloud Phase 27 D3: keeping your own place in a
+  // project (which canvas is open, where your camera is) is per-user runtime
+  // state, never versioned, and every role holds it — a reviewer who cannot pan
+  // is not reviewing. Naming it as a capability is what lets the studio route
+  // manifest classify those paths instead of waving them through.
   assert.deepEqual(
     [...CAPABILITIES],
-    ['read', 'edit', 'comment', 'annotate', 'export', 'invite', 'delete', 'mirror']
+    ['read', 'session', 'edit', 'comment', 'annotate', 'export', 'invite', 'delete', 'mirror']
   );
 });
 
@@ -44,6 +49,7 @@ test('a viewer may look, comment and download — and nothing else', () => {
   assert.equal(can('viewer', 'read'), true);
   assert.equal(can('viewer', 'comment'), true);
   assert.equal(can('viewer', 'export'), true);
+  assert.equal(can('viewer', 'session'), true);
   for (const cap of ['edit', 'annotate', 'invite', 'delete', 'mirror']) {
     assert.equal(can('viewer', cap), false, `viewer must not ${cap}`);
   }
@@ -82,7 +88,9 @@ test('read-only is DERIVED from the table, not asserted beside it', () => {
 test('BOTH session doors derive the capability from the matrix', () => {
   // The regression this catches: someone adds a third door (or a fourth role)
   // and writes `role === 'viewer'` again, which is right until it is not.
-  for (const file of ['src/auth-routes.mjs', 'src/canvas/browser-auth.mjs']) {
+  // `canvas/browser-auth.mjs` moved to `src/` when DDR-209 A'3 emptied the
+  // canvas directory — the door itself is unchanged.
+  for (const file of ['src/auth-routes.mjs', 'src/browser-auth.mjs']) {
     const src = readFileSync(join(HERE, file), 'utf8');
     assert.ok(
       src.includes('isReadOnlyRole('),

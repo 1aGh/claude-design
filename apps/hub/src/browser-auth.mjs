@@ -19,12 +19,12 @@
 // for both surfaces. A separate browser session type would be a second place
 // for the role model to drift, which is exactly what Track C exists to stop.
 
-import { authenticateForMode } from './../cloud-identity.mjs';
-import { isRevoked } from './../revocations.mjs';
-import { isReadOnlyRole } from './../role-matrix.mjs';
-import { addToken, removeToken, verifyToken } from './../tokens.mjs';
-import { authenticate as localAuthenticate } from './../users.mjs';
-import { servicePage } from './routes.mjs';
+import { authenticateForMode } from './cloud-identity.mjs';
+import { isRevoked } from './revocations.mjs';
+import { isReadOnlyRole } from './role-matrix.mjs';
+import { servicePage } from './studio-door.mjs';
+import { addToken, removeToken, verifyToken } from './tokens.mjs';
+import { authenticate as localAuthenticate } from './users.mjs';
 
 export const BROWSER_SESSION_COOKIE = 'maude_studio';
 

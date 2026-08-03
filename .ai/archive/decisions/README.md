@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-209: One studio, three shells — the cell serves the studio, and the prune list is reclassified rather than loosened](DDR-209-one-studio-three-shells-the-cell-serves-the-studio.md) — 2026-08-03, cloud/cell/containment/studio/canvas/proxy/role/amends-ddr-193
 - [DDR-208: Bug-report pipeline — cloud-brokered intake, public issue + private media, consent-first](DDR-208-bug-report-pipeline-cloud-brokered-intake-public-issue-private-media.md) — 2026-07-31, studio/cloud/desktop/bug-report/privacy/consent/quota/github-app
 - [DDR-207: Four missing layers, not eleven bugs](DDR-207-the-plane-needs-an-edge-and-other-layers-that-were-missing.md) — 2026-07-30, cloud/security/edge/rate-limit/csrf/revocation/credential-grammar/consent
 - [DDR-206: Browser editing — decline again, with the path priced](DDR-206-browser-editing-decided-decline-again-with-a-priced-path.md) — 2026-07-30, cloud/containment/browser-editing/spike/esbuild/corpus-census/on-call

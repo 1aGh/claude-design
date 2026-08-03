@@ -41,6 +41,13 @@ export function canvasUrl(p, cfg, opts) {
   // reads this flag). Boot-static on purpose — a role is per-session, and a
   // query param can't race the way a post-load message could.
   if (cfg?.readOnly) params.set('ro', '1');
+  // Cloud Phase 27 (DDR-209) — the canvas origin's capability. On a desktop the
+  // canvas origin is loopback and needs none, so this is absent and the URL is
+  // byte-identical to before. In the cloud it is a cookieless, cross-site
+  // origin: a cookie scoped widely enough to cover it would be readable by the
+  // untrusted canvas content itself, which is the one thing the DDR-054 split
+  // exists to prevent — so the capability lives in the URL instead.
+  if (cfg?.canvasToken) params.set('t', cfg.canvasToken);
   const ds0 = cfg?.designSystems?.[0];
   // Specimen detection: anything under `system/<ds>/preview/` belongs to that
   // specific DS, so it must render with *that* DS's tokens — not always the

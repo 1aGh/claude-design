@@ -1,24 +1,30 @@
 // Workspace mode + the containment invariant's first enforcement point.
 //
-// DDR-193 states the invariant:
+// DDR-193 stated the invariant, and Cloud Phase 25 A0 amended what a cell does
+// under it. The current wording (DDR-209 A′1) is:
 //
-//   > No tenant-authored TSX is ever evaluated by vendor-operated compute.
-//   > A cell runs sync + git + asset storage — nothing else. It never renders a
-//   > canvas, never builds a bundle, never executes a canvas module, never runs
-//   > a headless browser against tenant content.
+//   > No tenant-authored TSX is ever EVALUATED by vendor-operated compute.
+//   > A cell syncs, keeps git history, stores assets, and BUILDS a member's own
+//   > canvas in a bounded sandbox. The member's browser is what evaluates.
+//   > Nothing here renders, and no browser enters the image.
 //
 // and states how it is kept: "enforced, not asserted — a boot-assert in the cell
 // image plus a CI grep gate." This module is the boot-assert. The grep gate is
 // `scripts/check-containment.sh`.
+//
+// THE TEST IS EVALUATION, NOT THE SERVING OF BYTES. That distinction is the
+// whole of DDR-209 A′1, and it is load-bearing in both directions. It still
+// catches the thumbnail endpoint someone adds in 2027 (which would evaluate). It
+// stops mis-catching a static HTML harness with a strict CSP (which does not) —
+// and mis-catching it is what forced Phase 25 to hand-roll a second, poorer
+// studio rather than serve the real one.
 //
 // WHY A BOOT-ASSERT AND NOT A CODE REVIEW RULE. Every canvas is code the tenant
 // wrote. The moment vendor compute evaluates it, an anonymous signup has
 // arbitrary code execution inside our perimeter, next to other tenants' designs
 // and the control plane's credentials. A convention protects that for exactly as
 // long as everyone remembers it; a process that refuses to start does not
-// forget. The failure mode this prevents is not "someone adds a bad route on
-// purpose" — it is "someone adds a thumbnail endpoint in 2027 without knowing
-// this line exists."
+// forget.
 //
 // It fails CLOSED and LOUD: the cell refuses to boot, naming the exact surfaces
 // that broke it. A cell that will not start is a page; a cell that quietly
@@ -36,6 +42,15 @@ export function isWorkspaceMode(env: NodeJS.ProcessEnv = process.env): boolean {
  *
  * These are prefixes: `/_api/export-jobs` is caught by `/_api/export` and that
  * is intended — a variant of a forbidden surface is still forbidden.
+ *
+ * TWO KINDS OF ENTRY LIVE HERE, and both belong:
+ *
+ *   1. surfaces that EVALUATE tenant content on our compute (export, photo-edit);
+ *   2. surfaces that hold, spend or reveal a SECRET on our compute — a provider
+ *      key, the operator's GitHub token, the user's own `claude` session, the
+ *      process log. DDR-123's "claude never on our infra" is only a fact while
+ *      these are unreachable, and Cloud Phase 27 D1 is where they stop being in
+ *      the image at all. Until then, unreachable is the floor, not the ceiling.
  */
 export const FORBIDDEN_ROUTE_PREFIXES: ReadonlyArray<{ prefix: string; why: string }> =
   Object.freeze([
@@ -52,16 +67,79 @@ export const FORBIDDEN_ROUTE_PREFIXES: ReadonlyArray<{ prefix: string; why: stri
       why: 'media generation runs tenant-authored prompts against a provider key held here',
     },
     {
+      prefix: '/_ws/acp',
+      why: 'the ACP bridge spawns the user’s own `claude` and can drive file edits (DDR-123 is desktop-only)',
+    },
+    // ---- Cloud Phase 27 D1 — the secret-bearing surfaces, named at last ----
+    {
+      prefix: '/_api/acp',
+      why: 'the ACP surface drives the user’s own `claude` session; a cell must not hold one (DDR-123)',
+    },
+    {
+      prefix: '/_api/claude',
+      why: 'installing or signing in to `claude` from a cell would put a user’s subscription on our infra (DDR-123)',
+    },
+    {
+      prefix: '/_api/cloud',
+      why: 'cloud sign-in mints and stores an account session — a cell IS the cloud, it must not be a client of it',
+    },
+    {
+      prefix: '/_api/github',
+      why: 'the GitHub lane spends an operator credential; a cell asks the control plane, it never holds one (DDR-201)',
+    },
+    {
+      prefix: '/_api/hub',
+      why: 'hub linking rewrites which server owns this project — a cell must not repoint itself',
+    },
+    {
+      prefix: '/_api/debug-bundle',
+      why: 'the diagnostic bundle reads this process’s logs, where every cell secret has had a chance to appear',
+    },
+    {
+      prefix: '/_api/design',
+      why: 'design-system init shells out to the CLI on our compute against tenant-chosen input',
+    },
+  ]);
+
+/**
+ * Routes a cell MAY serve, but only while the contract that makes them safe is
+ * armed. DDR-209 A′1.
+ *
+ * These are NOT a softer forbidden list. A forbidden route is absent; a
+ * sandboxed route is PRESENT AND ATTESTED — the boot-assert refuses to start
+ * when one of them is reachable and `sandboxArmed` is false, which is a check
+ * the old list could not make because the route never existed to check.
+ *
+ * What they are, precisely:
+ *
+ *   `/_canvas-shell`    a static HTML harness with a strict CSP. The cell emits
+ *                       a string; the MEMBER'S BROWSER mounts and executes. The
+ *                       old entry's reason ("the surface that mounts and
+ *                       executes a canvas module") described the browser's job,
+ *                       not ours.
+ *   `/_canvas-runtime`  pre-built VENDOR bundles (React, motion) compiled from
+ *                       our own source at image build. Not one tenant byte, and
+ *                       serving them evaluates nothing. The old entry's reason
+ *                       ("only makes sense if something here renders") is the
+ *                       premise Phase 25 A0 replaced: it makes sense because the
+ *                       browser renders.
+ *
+ * THE CONTRACT (Cloud Phase 25 A1, unchanged and still CI-asserted): the build
+ * that turns a canvas into that module runs in its OWN process, with an EMPTY
+ * environment, an import allowlist, a wall-clock deadline and an RSS ceiling.
+ * Serving the shell without that armed would mean building tenant source in the
+ * cell's main process, next to HUB_SECRET — so the assert treats an unarmed
+ * sandbox exactly like a forbidden route.
+ */
+export const SANDBOXED_ROUTE_PREFIXES: ReadonlyArray<{ prefix: string; why: string }> =
+  Object.freeze([
+    {
       prefix: '/_canvas-shell',
-      why: 'the canvas shell is the surface that mounts and executes a canvas module',
+      why: 'the canvas shell is a static harness the BROWSER evaluates — permitted only while the build sandbox is armed',
     },
     {
       prefix: '/_canvas-runtime',
-      why: 'serving the canvas runtime only makes sense if something here renders a canvas',
-    },
-    {
-      prefix: '/_ws/acp',
-      why: 'the ACP bridge spawns the user’s own `claude` and can drive file edits (DDR-123 is desktop-only)',
+      why: 'the runtime bundles are vendor code — permitted only while the build sandbox is armed',
     },
   ]);
 
@@ -78,9 +156,18 @@ export const FORBIDDEN_MODULES: ReadonlyArray<string> = Object.freeze([
   'puppeteer-core',
 ]);
 
+function matches(route: string, prefix: string): boolean {
+  return route === prefix || route.startsWith(prefix);
+}
+
 /** True when `route` is (or starts with) a forbidden prefix. */
 export function isForbiddenRoute(route: string): boolean {
-  return FORBIDDEN_ROUTE_PREFIXES.some((f) => route === f.prefix || route.startsWith(f.prefix));
+  return FORBIDDEN_ROUTE_PREFIXES.some((f) => matches(route, f.prefix));
+}
+
+/** True when `route` is one a cell may serve only while the sandbox is armed. */
+export function isSandboxedRoute(route: string): boolean {
+  return SANDBOXED_ROUTE_PREFIXES.some((f) => matches(route, f.prefix));
 }
 
 /**
@@ -115,25 +202,38 @@ export interface ContainmentReport {
   routes: Array<{ route: string; prefix: string; why: string }>;
   /** Forbidden modules that resolve in this process. */
   modules: string[];
+  /** Sandboxed routes that are reachable while the sandbox is NOT armed. */
+  unattested: Array<{ route: string; prefix: string; why: string }>;
 }
 
 /**
  * Check a route table against the invariant. Pure — takes the route names so it
  * can be unit-tested without booting a server, and so the caller decides what
  * "reachable" means for its own dispatch shape.
+ *
+ * `sandboxArmed` is the A′1 contract, passed in rather than detected here: this
+ * module has no business importing the build host, and the caller is the only
+ * one who knows whether it wired it. Default `false` is deliberate — an unstated
+ * contract is an unmet one.
  */
 export function checkContainment(
   routeNames: Iterable<string>,
-  { resolveModule }: { resolveModule?: (specifier: string) => boolean } = {}
+  {
+    resolveModule,
+    sandboxArmed = false,
+  }: { resolveModule?: (specifier: string) => boolean; sandboxArmed?: boolean } = {}
 ): ContainmentReport {
   const routes: ContainmentReport['routes'] = [];
+  const unattested: ContainmentReport['unattested'] = [];
   for (const route of routeNames) {
-    for (const { prefix, why } of FORBIDDEN_ROUTE_PREFIXES) {
-      if (route === prefix || route.startsWith(prefix)) {
-        routes.push({ route, prefix, why });
-        break;
-      }
+    const forbidden = FORBIDDEN_ROUTE_PREFIXES.find((f) => matches(route, f.prefix));
+    if (forbidden) {
+      routes.push({ route, prefix: forbidden.prefix, why: forbidden.why });
+      continue;
     }
+    if (sandboxArmed) continue;
+    const sandboxed = SANDBOXED_ROUTE_PREFIXES.find((f) => matches(route, f.prefix));
+    if (sandboxed) unattested.push({ route, prefix: sandboxed.prefix, why: sandboxed.why });
   }
 
   const modules: string[] = [];
@@ -143,7 +243,12 @@ export function checkContainment(
     }
   }
 
-  return { ok: routes.length === 0 && modules.length === 0, routes, modules };
+  return {
+    ok: routes.length === 0 && modules.length === 0 && unattested.length === 0,
+    routes,
+    modules,
+    unattested,
+  };
 }
 
 /** Render a report as the message the operator sees when a cell refuses to boot. */
@@ -163,17 +268,36 @@ export function formatContainmentFailure(report: ContainmentReport): string {
     }
     lines.push('');
   }
+  if (report.unattested.length > 0) {
+    lines.push(
+      'Canvas surfaces are reachable but the BUILD SANDBOX is not armed:',
+      ...report.unattested.flatMap(({ route, prefix, why }) => [
+        `  ${route}`,
+        `      matches ${prefix} — ${why}`,
+      ]),
+      '',
+      'These routes are permitted in a cell (DDR-209 A′1) — but only together',
+      'with the Phase 25 A1 contract: the canvas build runs in its OWN process,',
+      'with an EMPTY environment, an import allowlist and wall-clock + RSS',
+      'ceilings. Serving the shell without it means parsing tenant source in the',
+      'process that holds HUB_SECRET. Pass sandboxArmed once that host is wired.',
+      ''
+    );
+  }
   if (report.modules.length > 0) {
     lines.push('Modules that resolve in this process and must not:');
     for (const m of report.modules) lines.push(`  ${m}`);
     lines.push('');
   }
   lines.push(
-    'A cell runs sync + git + asset storage. Rendering happens on a member’s own',
-    'machine, in Maude Desktop, where DDR-063/DDR-054 already contain it.',
+    'A cell syncs, keeps history, stores assets and BUILDS a member’s own canvas',
+    'in a bounded sandbox. Evaluation happens in the member’s own browser, in a',
+    'segregated origin, where DDR-063/DDR-054 already contain it. Nothing here',
+    'renders, and no browser enters the image.',
     '',
-    'If a feature genuinely needs one of these, Direction B (a structured,',
-    'non-executable synced unit) is its HARD PREREQUISITE — not a flag to add here.'
+    'If a feature genuinely needs one of the FORBIDDEN surfaces, Direction B (a',
+    'structured, non-executable synced unit) is its HARD PREREQUISITE — not a',
+    'flag to add here.'
   );
   if (report.modules.length > 0) {
     lines.push(
@@ -201,10 +325,15 @@ export function assertContainment(
   {
     env = process.env,
     resolveModule,
-  }: { env?: NodeJS.ProcessEnv; resolveModule?: (specifier: string) => boolean } = {}
+    sandboxArmed = false,
+  }: {
+    env?: NodeJS.ProcessEnv;
+    resolveModule?: (specifier: string) => boolean;
+    sandboxArmed?: boolean;
+  } = {}
 ): void {
   if (!isWorkspaceMode(env)) return;
-  const report = checkContainment(routeNames, { resolveModule });
+  const report = checkContainment(routeNames, { resolveModule, sandboxArmed });
   if (report.ok) return;
   throw new Error(formatContainmentFailure(report));
 }

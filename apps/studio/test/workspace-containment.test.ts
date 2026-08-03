@@ -18,8 +18,10 @@ import {
   FORBIDDEN_ROUTE_PREFIXES,
   formatContainmentFailure,
   isForbiddenRoute,
+  isSandboxedRoute,
   isWorkspaceMode,
   pruneForWorkspace,
+  SANDBOXED_ROUTE_PREFIXES,
 } from '../workspace-mode.ts';
 
 const CELL = { MAUDE_WORKSPACE_MODE: '1' } as NodeJS.ProcessEnv;
@@ -73,8 +75,8 @@ describe('checkContainment — what a cell may serve', () => {
     for (const route of [
       '/_api/export-jobs',
       '/_api/export/png',
-      '/_canvas-shell.html',
-      '/_canvas-runtime/react.js',
+      '/_api/github/repos',
+      '/_api/claude/signin',
       '/_ws/acp',
     ]) {
       const report = checkContainment([...ALLOWED_ROUTES, route]);
@@ -145,16 +147,65 @@ describe('assertContainment — the boot gate', () => {
   test('the failure message names the surface, the reason, and the way out', () => {
     let message = '';
     try {
-      assertContainment([...ALLOWED_ROUTES, '/_canvas-shell.html'], { env: CELL });
+      assertContainment([...ALLOWED_ROUTES, '/_api/export'], { env: CELL });
     } catch (err) {
       message = (err as Error).message;
     }
-    expect(message).toContain('/_canvas-shell.html');
+    expect(message).toContain('/_api/export');
     expect(message).toContain('DDR-193');
-    expect(message).toContain('executes a canvas module');
+    expect(message).toContain('headless browser');
     // The escape hatch is named so the next engineer doesn't invent a flag.
     expect(message).toContain('Direction B');
     expect(message).toContain('HARD PREREQUISITE');
+  });
+
+  // ---- DDR-209 A′1: the sandboxed lane -----------------------------------
+  //
+  // `/_canvas-shell` and `/_canvas-runtime` used to be on the forbidden list.
+  // They are not forbidden and they are not free: a cell may serve them ONLY
+  // while the out-of-process build sandbox is armed. These three tests are the
+  // difference between a reclassification and a loosening.
+
+  test('a canvas surface is REFUSED when the build sandbox is not armed', () => {
+    const report = checkContainment([...ALLOWED_ROUTES, '/_canvas-shell.html'], {
+      sandboxArmed: false,
+    });
+    expect(report.ok).toBe(false);
+    expect(report.unattested[0]?.route).toBe('/_canvas-shell.html');
+    // And it is NOT reported as forbidden — the two failures have different
+    // fixes, and collapsing them would send someone to delete a route that is
+    // supposed to be there.
+    expect(report.routes).toEqual([]);
+  });
+
+  test('a canvas surface is PERMITTED once the sandbox is armed', () => {
+    const report = checkContainment(
+      [...ALLOWED_ROUTES, '/_canvas-shell.html', '/_canvas-runtime/react.js'],
+      { sandboxArmed: true }
+    );
+    expect(report.ok).toBe(true);
+  });
+
+  test('the attestation defaults to UNMET — an unstated contract is not a contract', () => {
+    expect(checkContainment(['/_canvas-shell.html']).ok).toBe(false);
+  });
+
+  test('arming the sandbox does not permit anything on the FORBIDDEN list', () => {
+    // The failure this rules out: `sandboxArmed: true` becoming a master key.
+    const report = checkContainment([...ALLOWED_ROUTES, '/_api/export', '/_ws/acp'], {
+      sandboxArmed: true,
+    });
+    expect(report.ok).toBe(false);
+    expect(report.routes.map((r) => r.route).sort()).toEqual(['/_api/export', '/_ws/acp']);
+  });
+
+  test('the unattested message explains the contract rather than just refusing', () => {
+    const message = formatContainmentFailure(
+      checkContainment(['/_canvas-shell.html'], { sandboxArmed: false })
+    );
+    expect(message).toContain('BUILD SANDBOX is not armed');
+    expect(message).toContain('EMPTY environment');
+    expect(message).toContain('DDR-209');
   });
 
   test('formatContainmentFailure reports routes and modules together', () => {
@@ -175,13 +226,31 @@ describe('the vocabulary itself', () => {
     // quietly dropping an entry while every other test stays green. Changing
     // this list should require changing this test, on purpose.
     expect(FORBIDDEN_ROUTE_PREFIXES.map((f) => f.prefix).sort()).toEqual([
+      // Surfaces that EVALUATE tenant content on our compute…
+      '/_api/acp',
+      '/_api/claude',
+      '/_api/cloud',
+      '/_api/debug-bundle',
+      '/_api/design',
       '/_api/export',
       '/_api/generate',
+      '/_api/github',
+      '/_api/hub',
       '/_api/photo-edit',
-      '/_canvas-runtime',
-      '/_canvas-shell',
       '/_ws/acp',
     ]);
+    // …and the two that a cell SERVES, under an asserted contract (DDR-209 A′1).
+    // They moved lists; they did not stop being checked. See the sandbox tests
+    // above for what "under contract" is worth.
+    expect(SANDBOXED_ROUTE_PREFIXES.map((f) => f.prefix).sort()).toEqual([
+      '/_canvas-runtime',
+      '/_canvas-shell',
+    ]);
+    // Nothing may be on both lists — that would make the weaker one decorative.
+    const forbidden = new Set(FORBIDDEN_ROUTE_PREFIXES.map((f) => f.prefix));
+    for (const { prefix } of SANDBOXED_ROUTE_PREFIXES) {
+      expect(forbidden.has(prefix)).toBe(false);
+    }
     expect([...FORBIDDEN_MODULES].sort()).toEqual([
       'playwright',
       'playwright-core',
@@ -245,14 +314,21 @@ describe('pruneForWorkspace — how a cell can boot at all', () => {
   });
 
   test('isForbiddenRoute is the single predicate both the table and fetch use', () => {
-    // The `fetch` fall-through owns paths that are not in the route table
-    // (/_ws/acp, /_canvas-shell.html, /_canvas-runtime/*), so it gates on this
-    // same function. One predicate, so the two gates cannot disagree.
-    expect(isForbiddenRoute('/_canvas-shell.html')).toBe(true);
-    expect(isForbiddenRoute('/_canvas-runtime/react.js')).toBe(true);
+    // The `fetch` fall-through owns `/_ws/acp`, which is not in the route table,
+    // so it gates on this same function. One predicate, so the two gates cannot
+    // disagree.
     expect(isForbiddenRoute('/_ws/acp')).toBe(true);
+    expect(isForbiddenRoute('/_api/github/repos')).toBe(true);
     expect(isForbiddenRoute('/_ws')).toBe(false);
     expect(isForbiddenRoute('/_health')).toBe(false);
     expect(isForbiddenRoute('/_api/asset')).toBe(false);
+    // DDR-209 A′1 — the canvas surfaces are NOT forbidden, which is exactly why
+    // the fall-through stopped 404-ing them. `isSandboxedRoute` is where they
+    // are now accounted for.
+    expect(isForbiddenRoute('/_canvas-shell.html')).toBe(false);
+    expect(isForbiddenRoute('/_canvas-runtime/react.js')).toBe(false);
+    expect(isSandboxedRoute('/_canvas-shell.html')).toBe(true);
+    expect(isSandboxedRoute('/_canvas-runtime/react.js')).toBe(true);
+    expect(isSandboxedRoute('/_health')).toBe(false);
   });
 });

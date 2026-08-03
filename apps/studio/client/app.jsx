@@ -3353,11 +3353,21 @@ function ViewDropdown({ panels, onToggle, onClose, onZoom, hasCanvas }) {
           role="menuitem"
           className={'st-dd-item' + (p.checked ? ' is-on' : '')}
           aria-disabled={p.disabled ? 'true' : undefined}
+          title={p.hint || undefined}
           onClick={() => {
-            if (!p.disabled) {
-              onToggle(p.id);
-              onClose();
+            // Cloud Phase 27 C2 — a row that states an absence still has
+            // somewhere to send you. A disabled item with a `href` opens it
+            // instead of doing nothing, which is the difference between "this
+            // is not available here" and a dead button.
+            if (p.disabled) {
+              if (p.href) {
+                window.open(p.href, '_blank', 'noopener,noreferrer');
+                onClose();
+              }
+              return;
             }
+            onToggle(p.id);
+            onClose();
           }}
         >
           <span className="st-dd-lead">
@@ -3678,8 +3688,19 @@ function Menubar({
     <span style={{ color: 'var(--u-fg-3)' }}>no canvas open</span>
   );
 
-  // Cloud Phase 25 C2 — panels a viewer's session doesn't have (edit chrome).
-  const viewerHiddenPanels = new Set(['assistant', 'inspector', 'layers', 'autoopen']);
+  // Cloud Phase 27 C1 — ROLE SHAPES WHAT IS OFFERED, NEVER WHAT IS VISIBLE.
+  //
+  // `inspector` and `layers` used to be on this list and should never have been.
+  // Read-only means cannot CHANGE, not cannot SEE: a reviewer needs the
+  // structure and the measured values to say anything useful, and hiding them
+  // is how a viewer's Maude became a worse Maude rather than a narrower one.
+  // What stays hidden is only what genuinely does not exist for this session —
+  // the agent chat (`assistant`, which needs a `claude` on the machine the app
+  // is running on) and auto-open (a preference for a surface you cannot edit).
+  // In the cloud the `assistant` row is the stated-absence row above, so it must
+  // NOT be filtered away here — a viewer would then get silence, which is the
+  // exact thing C2 forbids.
+  const viewerHiddenPanels = new Set(cfg?.cloud ? ['autoopen'] : ['assistant', 'autoopen']);
   const panels = [
     { id: 'tree', label: 'Project Tree', shortcut: 'T', checked: sidebarOpen, disabled: false },
     {
@@ -3745,7 +3766,26 @@ function Menubar({
             disabled: false,
           },
         ]
-      : []),
+      : // Cloud Phase 27 C2 — THE AGENT'S ABSENCE IS STATED WHERE THE AGENT
+        // WOULD BE. It runs on YOUR `claude` subscription, on YOUR machine
+        // (DDR-123), so a browser tab genuinely cannot have it. That is a
+        // legitimate difference — but a menu that silently lacks an item its
+        // user has seen on the desktop reads as "the cloud one is broken", so
+        // the row stays, disabled, saying where to find it. Never a hidden
+        // item, never a dead button, never silence.
+        cfg?.cloud
+        ? [
+            {
+              id: 'assistant',
+              label: 'Assistant — in the desktop app',
+              shortcut: '',
+              checked: false,
+              disabled: true,
+              href: 'https://maude.sh/download',
+              hint: 'The agent runs on your own Claude subscription, on your own machine.',
+            },
+          ]
+        : []),
     {
       id: 'annotate',
       label: 'Annotations',
@@ -3848,6 +3888,29 @@ function Menubar({
         </span>
         <span className="st-brand-name">maude</span>
       </span>
+      {/* Cloud Phase 27 C4 — THE WAY BACK OUT.
+          A browser tab has no window title and no app switcher, so a teammate
+          who followed a link has nothing telling them which project they are in
+          or how to leave it. The desktop gets both for free from the OS; the
+          cloud has to say them. This is an ADDITION to the shared client behind
+          the same `cloud` flag as C2's agent notice — never a fork of the
+          component, which is how the two shells started diverging last time. */}
+      {cfg?.cloud ? (
+        <span className="st-cloudback" data-testid="cloud-back">
+          <a
+            className="st-cloudback-link"
+            href={cfg.cloud.dashboardUrl || 'https://cloud.maude.sh'}
+            title="Back to your projects"
+          >
+            ← Dashboard
+          </a>
+          {cfg.cloud.projectName ? (
+            <span className="st-cloudback-project" data-testid="cloud-project-name">
+              {cfg.cloud.projectName}
+            </span>
+          ) : null}
+        </span>
+      ) : null}
       <nav className="st-menus" aria-label="Application menus" data-tour="menus">
         {MENU_NAMES.map((name) => {
           const key = name.toLowerCase();

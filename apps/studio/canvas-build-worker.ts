@@ -1,8 +1,9 @@
-// The cell's canvas build, in its own process — Cloud Phase 25 A1.
+// The cell's canvas build, in its own process — Cloud Phase 25 A1, moved to the
+// studio by Cloud Phase 27 / DDR-209 A′2.
 //
 // WHY A SEPARATE PROCESS, AND WHY BUN.
 //
-// A0 decided the cell BUILDS a tenant's canvas and the viewer's browser
+// Phase 25 A0 decided the cell BUILDS a tenant's canvas and the member's browser
 // EVALUATES it. "Build is not evaluation" is only true if the build cannot be
 // made to do anything else, so the build runs where it can be bounded:
 //
@@ -15,6 +16,13 @@
 //     source can reach the runtime packages, `@maude/canvas-lib`, and its own
 //     files — and nothing else on this disk.
 //
+// WHY IT MOVED. It used to live at `apps/hub/src/canvas/build-worker.ts` and
+// import this engine across the repo. DDR-209 A′2 deletes the hub's canvas
+// implementation and runs the REAL studio in the cell, so the host has to live
+// where the route it protects lives. Nothing about the contract changed — the
+// empty env, the allowlist and the ceilings are the same ones, and
+// `scripts/check-containment.sh` still asserts every one of them.
+//
 // It runs under BUN rather than the hub's Node so the output is the SAME
 // artifact the desktop produces: same `Bun.hash`-derived `data-cd-id`s (so a
 // comment anchored in the browser resolves in the desktop and back), and the
@@ -26,22 +34,27 @@
 // JSON object. Nothing else is printed on the happy path, so the parent parses
 // stdout wholesale.
 
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
 const [, , designRoot, canvasAbs] = process.argv;
 
 /**
- * Where the studio's build engine lives.
+ * Where the build engine lives.
  *
  * A DYNAMIC import, not a static one, because this file runs from two very
- * different layouts: a dev checkout (`apps/hub/src/canvas` → `apps/studio`)
- * and the cell image, where the workers and the engine are staged wherever the
- * Dockerfile put them. `MAUDE_STUDIO_SRC` is passed through the sandbox's
- * otherwise-empty environment on purpose — it is a path, not a secret.
+ * different layouts: a dev checkout (a sibling of `canvas-build.ts`) and the
+ * cell image, where the Dockerfile stages the studio source wherever it likes.
+ * `MAUDE_STUDIO_SRC` is passed through the sandbox's otherwise-empty environment
+ * on purpose — it is a path, not a secret.
+ *
+ * `import.meta.dir`, NOT `paths.ts`: this file is deliberately dependency-free
+ * so the sandboxed child imports the engine and nothing else. DDR-045's rule is
+ * about the SERVER's disk paths under `bun --compile`; the worker is never
+ * compiled — it is always run as source by an explicit `bun <path>` the parent
+ * resolved through `paths.ts` already.
  */
 function studioDir(): string {
-  if (process.env.MAUDE_STUDIO_SRC) return process.env.MAUDE_STUDIO_SRC;
-  return join(dirname(dirname(dirname(import.meta.dir))), 'studio');
+  return process.env.MAUDE_STUDIO_SRC || import.meta.dir;
 }
 
 async function main() {

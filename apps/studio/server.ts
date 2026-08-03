@@ -22,10 +22,12 @@ import { createActivity } from './activity.ts';
 import { ASSET_MAX_VIDEO_BYTES, createApi } from './api.ts';
 import { bootSelfHeal } from './boot-self-heal.ts';
 import { createCanvasListWatch } from './canvas-list-watch.ts';
+
 import { type AiActivityEntry, createAiActivity } from './collab/ai-activity.ts';
 import { createGitLifecycle } from './collab/git-lifecycle.ts';
 import { createCollab } from './collab/index.ts';
 import { createContext, reloadConfig } from './context.ts';
+import { isSandboxArmed } from './canvas-build-sandbox.ts';
 import { installLogRing } from './debug-bundle.ts';
 import { createExportJobQueue } from './exporters/jobs.ts';
 import { createFsWatch } from './fs-watch.ts';
@@ -177,8 +179,22 @@ const MAX_REQUEST_BODY = ASSET_MAX_VIDEO_BYTES + 8 * 1024 * 1024;
 // Checked against the ACTUAL route table (`http.routes` keys plus the paths the
 // `fetch` fall-through owns), not a hand-maintained list, so a future route can
 // only escape it by being invisible to both.
-const WORKSPACE_FETCH_ROUTES = ['/_ws/acp', '/_canvas-shell.html', '/_canvas-runtime/'];
+//
+// Split by verdict (DDR-209 A′1), because the two halves are asserted
+// differently. `/_ws/acp` is FORBIDDEN and the fall-through 404s it in a cell,
+// so it is only asserted outside workspace mode (where it is genuinely
+// reachable). The canvas surfaces are SANDBOXED — a cell serves them — so they
+// are asserted ALWAYS, which is what makes the sandbox attestation load-bearing
+// rather than decorative.
+const FETCH_ROUTES_FORBIDDEN_IN_WORKSPACE = ['/_ws/acp'];
+const FETCH_ROUTES_SANDBOXED = ['/_canvas-shell.html', '/_canvas-runtime/'];
 const WORKSPACE = isWorkspaceMode();
+// DDR-209 A′1 — the contract that lets a cell serve `/_canvas-shell` +
+// `/_canvas-runtime` at all: the canvas build runs out of process, with an empty
+// environment, an import allowlist and ceilings. Computed here rather than
+// inside workspace-mode.ts, which has no business importing the build host —
+// and passed in, so an unstated contract reads as an unmet one.
+const SANDBOX_ARMED = isSandboxArmed();
 // PRUNE first, then assert over what survived — so the assert is a
 // post-condition on the pruning rather than a second, driftable opinion. A
 // prefix added to the vocabulary then both prunes and is verified, together.
@@ -191,24 +207,32 @@ if (WORKSPACE && pruned.removed.length > 0) {
   );
 }
 try {
-  assertContainment([...Object.keys(SERVER_ROUTES), ...(WORKSPACE ? [] : WORKSPACE_FETCH_ROUTES)], {
-    // Presence of the dependency is the signal: a cell image that ships
-    // Playwright is one import() away from rendering tenant content. Skippable
-    // in a dev checkout, where Playwright is a legitimate devDependency of the
-    // E2E harness and would otherwise make workspace mode untestable locally.
-    // A BUILT cell image has no such escape — scripts/check-containment.sh
-    // enforces the runtime-dependency half at build time.
-    resolveModule:
-      process.env.MAUDE_WORKSPACE_ALLOW_DEV_MODULES === '1'
-        ? undefined
-        : (specifier) => {
-            try {
-              return !!import.meta.resolveSync?.(specifier);
-            } catch {
-              return false;
-            }
-          },
-  });
+  assertContainment(
+    [
+      ...Object.keys(SERVER_ROUTES),
+      ...FETCH_ROUTES_SANDBOXED,
+      ...(WORKSPACE ? [] : FETCH_ROUTES_FORBIDDEN_IN_WORKSPACE),
+    ],
+    {
+      sandboxArmed: SANDBOX_ARMED,
+      // Presence of the dependency is the signal: a cell image that ships
+      // Playwright is one import() away from rendering tenant content. Skippable
+      // in a dev checkout, where Playwright is a legitimate devDependency of the
+      // E2E harness and would otherwise make workspace mode untestable locally.
+      // A BUILT cell image has no such escape — scripts/check-containment.sh
+      // enforces the runtime-dependency half at build time.
+      resolveModule:
+        process.env.MAUDE_WORKSPACE_ALLOW_DEV_MODULES === '1'
+          ? undefined
+          : (specifier) => {
+              try {
+                return !!import.meta.resolveSync?.(specifier);
+              } catch {
+                return false;
+              }
+            },
+    }
+  );
 } catch (err) {
   console.error(`\n${(err as Error).message}\n`);
   process.exit(1);
@@ -228,10 +252,15 @@ function startServer(port: number): BunServer {
       const pathname = new URL(req.url).pathname;
 
       // Containment (DDR-193 §2) — the `fetch` fall-through owns paths that are
-      // not in the route table (`/_ws/acp`, `/_canvas-shell.html`,
-      // `/_canvas-runtime/*`), so pruning the table alone would leave them
-      // reachable. 404, not 403: a cell should look like it never had the
-      // feature, rather than like it is refusing one.
+      // not in the route table (`/_ws/acp`), so pruning the table alone would
+      // leave them reachable. 404, not 403: a cell should look like it never had
+      // the feature, rather than like it is refusing one.
+      //
+      // `/_canvas-shell.html` and `/_canvas-runtime/*` used to be caught here
+      // too. DDR-209 A′1 reclassified them: a cell SERVES them (the browser is
+      // what evaluates), attested by the build sandbox at boot. They are not in
+      // `isForbiddenRoute` any more, so they fall through to `http.fetch` — on
+      // purpose, and the boot-assert is what keeps that honest.
       if (WORKSPACE && isForbiddenRoute(pathname)) {
         return new Response('not found', { status: 404 });
       }
@@ -468,12 +497,25 @@ ctx.mainOrigin = `http://localhost:${server.port} http://127.0.0.1:${server.port
 const CANVAS_ORIGIN_SPLIT = !/^(0|false|off|no)$/i.test(
   process.env.MAUDE_CANVAS_ORIGIN_SPLIT ?? ''
 );
-// The canvas origin exists to SERVE AND RENDER canvases (DDR-063). A workspace
-// cell has no business starting it — that second origin is the surface the
-// containment invariant is about. Not started here rather than started-and-
-// pruned: there would be nothing left to serve.
-const canvasServer = CANVAS_ORIGIN_SPLIT && !WORKSPACE ? startCanvasServer(0) : null;
-const canvasOrigin = canvasServer ? `http://localhost:${canvasServer.port}` : undefined;
+// The canvas origin exists to SERVE canvases into a segregated origin (DDR-063
+// / DDR-054). A workspace cell used to skip it, back when a cell was forbidden
+// to serve them at all. DDR-209 A′1 reverses that, and in a cell the split is
+// not merely protective — it is the boundary between one tenant's executing
+// canvas and everything else on that host, which is the strongest reason any
+// deployment has ever had to keep it on.
+const canvasServer = CANVAS_ORIGIN_SPLIT ? startCanvasServer(0) : null;
+// D4 — PUBLIC IDENTITY COMES FROM CONFIGURATION, NEVER FROM THE REQUEST.
+//
+// The loopback origin is what this process BINDS; behind a reverse proxy it is
+// not the address the member's browser can reach, and deriving it from the Host
+// header is exactly the bug Cloud Phase 25 shipped into production twice (a
+// member signing in was sent to an address that was not their project). So a
+// cell states its canvas origin explicitly and we use it verbatim.
+const canvasOrigin = process.env.MAUDE_PUBLIC_CANVAS_ORIGIN?.replace(/\/+$/, '')
+  ? process.env.MAUDE_PUBLIC_CANVAS_ORIGIN.replace(/\/+$/, '')
+  : canvasServer
+    ? `http://localhost:${canvasServer.port}`
+    : undefined;
 if (canvasOrigin) ctx.canvasOrigin = canvasOrigin;
 
 await Bun.write(
@@ -484,6 +526,10 @@ await Bun.write(
       port: server.port,
       url: `http://localhost:${server.port}`,
       ...(canvasOrigin ? { canvasOrigin } : {}),
+      // The port the canvas listener actually BOUND, as distinct from the
+      // public `canvasOrigin` name above. A co-located reverse proxy (the cell's
+      // hub) forwards canvas-origin traffic here; nothing else needs it.
+      ...(canvasServer ? { canvasPort: canvasServer.port } : {}),
       started: new Date().toISOString(),
       project: ctx.cfg.name,
       config_source: ctx.cfg._source,

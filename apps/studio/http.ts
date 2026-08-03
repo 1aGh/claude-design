@@ -22,6 +22,7 @@ import { type Api, ASSET_MAX_BYTES, ASSET_MAX_VIDEO_BYTES } from './api.ts';
 import { ImportAssetError, importSvg, SVG_MAX_BYTES } from './bin/_import-asset.mjs';
 import { ImportBrandError, importBrand } from './bin/_import-brand.mjs';
 import { buildCanvasModule } from './canvas-build.ts';
+import { buildCanvasSandboxed } from './canvas-build-sandbox.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
 import { createCloudEndpoints } from './cloud/endpoints.ts';
@@ -91,6 +92,7 @@ import { isHubReadOnly } from './sync/hubs-config.ts';
 import { signInToWorkspace, workspaceDisclosure } from './sync/workspace-signin.ts';
 import { readUiPrefs, type UiPrefs, writeUiPrefs } from './ui-prefs.ts';
 import { loadWhatsNew, resolveMaudeVersion } from './whats-new.ts';
+import { isWorkspaceMode } from './workspace-mode.ts';
 import { isLoopbackHost } from './ws.ts';
 
 // Real disk install root — never the virtual `/$bunfs/root` of compiled bins.
@@ -502,6 +504,40 @@ async function serveCanvasTsx(
     const source = await file.text();
     const deps = localDepsFromSource(source, absPath, ctx.paths.designRoot);
     let result: Awaited<ReturnType<typeof buildCanvasModule>>;
+    // DDR-209 A′2 — SAME ENGINE, DIFFERENT HOST. On a desktop the process that
+    // parses your canvas is the process you own, so an in-process build costs
+    // nothing. In a cell it holds HUB_SECRET and the tenant's storage
+    // credentials, and the source is written by somebody who is not us — so the
+    // build goes out of process, with an empty environment, an import allowlist
+    // and wall-clock + RSS ceilings (Cloud Phase 25 A1's contract, unchanged).
+    // This branch is also what `sandboxArmed` in the containment boot-assert
+    // attests: the cell may serve the canvas surfaces BECAUSE this exists.
+    if (isWorkspaceMode()) {
+      const built = await buildCanvasSandboxed({
+        designRoot: ctx.paths.designRoot,
+        canvasAbs: absPath,
+      });
+      if (!built.ok) {
+        return new Response(`Canvas build error: ${built.error}`, {
+          status: built.kind === 'build' ? 422 : 500,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        });
+      }
+      result = {
+        js: built.js,
+        locator: built.locator,
+        etag: built.etag,
+      } as Awaited<ReturnType<typeof buildCanvasModule>>;
+      cached = {
+        sig: canvasFreshnessSig(absPath, deps),
+        etag: `${result.etag}-${RUNTIME_BOOT_ID}-${CHROME_EPOCH}`,
+        js: result.js,
+        deps,
+      };
+      canvasCache.set(absPath, cached);
+      await writeLocator(locatorAbsPath, canvasSlug(absPath, ctx.paths.designRoot), result.locator);
+      return respondWithCanvasModule(req, cached);
+    }
     try {
       result = await buildCanvasModule(absPath, source, {
         designRoot: ctx.paths.designRoot,
@@ -538,6 +574,13 @@ async function serveCanvasTsx(
     await writeLocator(locatorAbsPath, canvasSlug(absPath, ctx.paths.designRoot), result.locator);
   }
 
+  return respondWithCanvasModule(req, cached);
+}
+
+/** The conditional-GET half of serving a built canvas module. Shared by the
+ *  in-process (desktop) and sandboxed (cell) build paths so the two cannot
+ *  disagree about caching semantics. */
+function respondWithCanvasModule(req: Request, cached: { js: string; etag: string }): Response {
   const ifNoneMatch = req.headers.get('if-none-match');
   if (ifNoneMatch === cached.etag) {
     return new Response(null, {
@@ -650,14 +693,50 @@ async function serveHistoricalCanvas(
   });
 }
 
+/**
+ * How long a served file may be reused — Cloud Phase 27 B2.
+ *
+ * `no-store` on everything is correct on a laptop, where the round trip is a
+ * memcpy and the designer is editing the file you just served. Over the
+ * internet it means a teammate re-downloads every photograph on every pan, on
+ * a project whose media is 266 MB. So:
+ *
+ *   content-addressed name  →  immutable, a year. The name IS the content
+ *                              (sha8), so a changed file is a changed URL and
+ *                              a stale answer is impossible by construction.
+ *   everything else         →  revalidate (`no-cache` + ETag). A designer
+ *                              editing `hero.png` in place still sees their
+ *                              edit; the wire cost of not having changed it is
+ *                              a 304, not the file.
+ *
+ * Universal, not cloud-only: the rule is true on all three shells, and a
+ * caching policy that differs per shell is a bug report nobody can reproduce.
+ */
+export function cacheControlFor(absPath: string): { cacheControl: string; addEtag: boolean } {
+  const name = absPath.slice(absPath.lastIndexOf('/') + 1);
+  // The shape every writer emits — timeline insert/replace/assemble, the asset
+  // upload route, `maude design fetch-asset`: <sha8>.<ext>, lowercase hex.
+  if (/^[0-9a-f]{8,64}\.[A-Za-z0-9]+$/.test(name)) {
+    return { cacheControl: 'public, max-age=31536000, immutable', addEtag: false };
+  }
+  return { cacheControl: 'no-cache', addEtag: true };
+}
+
+/** A weak validator from the file's own metadata — no read, no hash. */
+function etagFor(file: { size: number; lastModified: number }): string {
+  return `W/"${file.size.toString(16)}-${Math.trunc(file.lastModified).toString(16)}"`;
+}
+
 async function serveFile(absPath: string, headers: Record<string, string> = {}): Promise<Response> {
   const file = Bun.file(absPath);
   if (!(await file.exists())) return new Response('Not found', { status: 404 });
   const e = ext(absPath);
+  const policy = cacheControlFor(absPath);
   return new Response(file, {
     headers: {
       'Content-Type': MIME[e] || 'application/octet-stream',
-      'Cache-Control': 'no-store',
+      'Cache-Control': policy.cacheControl,
+      ...(policy.addEtag ? { ETag: etagFor(file) } : {}),
       ...headers,
     },
   });
@@ -685,7 +764,9 @@ async function serveMediaFile(
   const size = file.size;
   const base = {
     'Content-Type': MIME[ext(absPath)] || 'application/octet-stream',
-    'Cache-Control': 'no-store',
+    // B2 — same policy as serveFile. Media is the heaviest thing a member
+    // fetches, so the content-addressed case matters most here.
+    'Cache-Control': cacheControlFor(absPath).cacheControl,
     'Accept-Ranges': 'bytes',
     ...headers,
   };
@@ -1218,11 +1299,32 @@ export function createHttp(
     // knows before it draws anything. It decides what the UI OFFERS and is
     // never what stops a write — the cell enforces that (Phase 25 C1),
     // whatever a patched client believes.
-    '/_config': () =>
+    '/_config': (req: Request) =>
       Response.json({
         ...ctx.cfg,
         canvasOrigin: ctx.canvasOrigin,
-        readOnly: projectReadOnly(),
+        readOnly: projectReadOnly(req),
+        // Cloud Phase 27 (DDR-209) — the capability that opens the cookieless
+        // canvas origin, minted per session by the proxy. Absent on a desktop,
+        // where the canvas origin is loopback and needs none. `canvasUrl()`
+        // appends it exactly the way it already appends `readOnly`, which is
+        // what keeps this a FLAG on the shared client rather than a fork of it.
+        ...(req.headers.get('x-maude-canvas-token')
+          ? { canvasToken: req.headers.get('x-maude-canvas-token') }
+          : {}),
+        // Cloud Phase 27 C2/C4 — the ONE cloud-only input the shared client
+        // takes. Its presence says "you are in a browser tab, on somebody
+        // else's machine", which is what lets the client state the agent's
+        // absence and offer a way back to the dashboard. A flag, not a fork:
+        // every other difference between the three shells stays zero.
+        ...(isWorkspaceMode()
+          ? {
+              cloud: {
+                dashboardUrl: process.env.HUB_DASHBOARD_URL ?? 'https://cloud.maude.sh',
+                projectName: process.env.MAUDE_PROJECT_NAME ?? ctx.cfg.name ?? null,
+              },
+            }
+          : {}),
       }),
 
     // What's New feed (DDR-A) — read-only product-update list surfaced in the
@@ -1371,7 +1473,7 @@ export function createHttp(
         // the api layer — DDR-115). The layout lane mutates the versioned
         // `.meta.json`, so a read-only session is refused here, in-handler,
         // where the two lanes are distinguishable.
-        if (projectReadOnly() && 'layout' in body.patch) {
+        if (projectReadOnly(req) && 'layout' in body.patch) {
           return readOnlyRefusalResponse();
         }
         const next = await api.patchCanvasMeta(body.file, body.patch);
@@ -4327,13 +4429,28 @@ export function createHttp(
   // covers all three doors at once: the main-origin `routes` table, the
   // canvas-origin `routes` allowlist in server.ts (it references these same
   // handlers), and the dynamic-path `fetch` fall-through (comment replies).
-  function projectReadOnly(): boolean {
+  function projectReadOnly(req?: Request): boolean {
+    // ---- Cloud Phase 27 A3/A4 (DDR-209): the role is PER SESSION ----------
+    //
+    // In a cell this process serves an owner and a viewer at the same time, so
+    // the on-disk answer below — one role per hub URL — is not merely stale, it
+    // is the wrong SHAPE. The proxy in front vouches a role per request and
+    // injects the capability it derived from the one role table.
+    //
+    // AND IT DEFAULTS CLOSED. The local path fails OPEN by design: `catch`
+    // returns false, an unset `linkedHub` returns false, and a fully writable
+    // studio is the correct answer for a tool running on your own laptop. On
+    // the internet it is the whole ballgame — so in a cloud build read-only is
+    // the default and an edit role requires positive proof.
+    if (isWorkspaceMode()) {
+      return req?.headers.get('x-maude-readonly') !== '0';
+    }
     return ctx.cfg.linkedHub ? isHubReadOnly(ctx.cfg.linkedHub.url) : false;
   }
 
   function readOnlyRefusal(req: Request): Response | null {
     if (READ_ONLY_SAFE_METHODS.has(req.method)) return null;
-    if (!projectReadOnly()) return null;
+    if (!projectReadOnly(req)) return null;
     let pathname: string;
     try {
       pathname = new URL(req.url).pathname;

@@ -64,22 +64,22 @@ positive proof.**
 
 ### Track A — the studio serves the studio
 
-- [ ] **A1 — spawn the real server as a supervised child.**
+- [x] **A1 — spawn the real server as a supervised child.**
   `bun apps/studio/server.ts --root /repo` with `MAUDE_WORKSPACE_MODE=1`, bound
   to 127.0.0.1, own uid, empty env, restart-with-backoff. A dead child makes the
   CELL unhealthy — two processes under tini with no supervisor is how you get a
   container that answers 200 while half-dead.
-- [ ] **A2 — the hub becomes a default-deny proxy.** Session termination,
+- [x] **A2 — the hub becomes a default-deny proxy.** Session termination,
   role → capability from `role-matrix.mjs`, a checked-in DENY-by-default
   `(method, path) × role` manifest covering reads too, and WebSocket upgrade
   proxying. The studio's `readOnlyRefusal` is the second layer.
-- [ ] **A3 — per-request role.** The proxy injects the vouched role; in
+- [x] **A3 — per-request role.** The proxy injects the vouched role; in
   workspace mode `projectReadOnly()` reads it instead of the on-disk file.
   `/_config` keeps returning `{...cfg, canvasOrigin, readOnly}` — **the client
   is not touched.**
-- [ ] **A4 — fail closed.** Boot with no hub config ⇒ every mutating route 403s.
+- [x] **A4 — fail closed.** Boot with no hub config ⇒ every mutating route 403s.
   A test asserts exactly that.
-- [ ] **A5 — delete `studio-page.mjs`** in the same PR that lands the proxy. The
+- [x] **A5 — delete `studio-page.mjs`** in the same PR that lands the proxy. The
   reimplementation must not survive as a fallback.
 
 ### Track A′ — the conflict this phase must resolve first
@@ -95,21 +95,21 @@ EVALUATES, in a segregated origin. The prune list has not caught up. Boot the
 real studio in workspace mode today and it refuses exactly the routes the
 browser door is made of.
 
-- [ ] **A′1 — reconcile the prune list with A0.** Either the studio serves the
+- [x] **A′1 — reconcile the prune list with A0.** Either the studio serves the
   canvas surfaces in workspace mode (and the boot-assert's reasoning is updated
   to A0's build-vs-evaluate line), or it does not and the hub keeps serving
   them. **Decide once, in writing, before any code.** The one outcome that is
   not allowed is loosening the guard to make a build green — `assert-containment.sh`
   says it best about itself: "a guard you had to loosen to keep your build green
   is a guard that will be loosened again."
-- [ ] **A′2 — resolve who serves a canvas.** The debate split here and the plan
+- [x] **A′2 — resolve who serves a canvas.** The debate split here and the plan
   must not: SHIPPER would delete `apps/hub/src/canvas/{build,build-worker}` as
   redundant once the studio builds its own; BUILDER would keep the hub's canvas
   origin (`shell`, `build`, `render-token`) untouched and merely point
   `ctx.canvasOrigin` at it. **Two canvas builders in one container is the same
   class of duplication this phase exists to delete.** Pick one; whichever loses,
   its modules are deleted in the same PR, not left dormant.
-- [ ] **A′3 — the hub's now-redundant canvas modules.** `comments.mjs` writes
+- [x] **A′3 — the hub's now-redundant canvas modules.** `comments.mjs` writes
   the SAME `<designRoot>/_comments/<slug>.json` the studio does (Phase 25 B5's
   "one store, both surfaces"), so there is no data migration — but the module
   becomes a second implementation of a read/write path the studio already owns,
@@ -123,9 +123,9 @@ origin offers only `/_canvas/asset?path=…` and pins `img-src 'self'`. **Every
 photo and every `@font-face` 404s with no fallback.** 266 MB, 793 files, tracked
 in git.
 
-- [ ] **B1 — serve them the way localhost does**, off the `/repo` working tree,
+- [x] **B1 — serve them the way localhost does**, off the `/repo` working tree,
   through the real server's existing routes. No new asset server.
-- [ ] **B2 — widen `img-src`/`font-src` to the canvas origin**, and replace
+- [x] **B2 — widen `img-src`/`font-src` to the canvas origin**, and replace
   `cache-control: no-store` with immutable content-addressed caching so a
   teammate is not refetching photographs on every pan.
 - [ ] **B3 — cold start materializes assets from R2** via the existing
@@ -139,15 +139,15 @@ bar and native shortcuts, local-filesystem project switching, auto-update.
 viewer: images, fonts, Files, Layers, Inspector, search, branch/LIVE status,
 comments, export, history.
 
-- [ ] **C1 — role shapes what is OFFERED, never what is VISIBLE.** Remove
+- [x] **C1 — role shapes what is OFFERED, never what is VISIBLE.** Remove
   `inspector` and `layers` from `viewerHiddenPanels`. Read-only means cannot
   change, not cannot see — a reviewer needs structure and measured values.
-- [ ] **C2 — the agent's absence is stated where the agent would be**, with a
+- [x] **C2 — the agent's absence is stated where the agent would be**, with a
   link to the desktop app. Never a hidden item, never a dead button, never
   silence.
 - [ ] **C3 — first open lands on a rendered canvas**, not a chooser, with one
   dismissible line naming what this role can do.
-- [ ] **C4 — the way back out.** A cloud instance carries a "Back to dashboard"
+- [x] **C4 — the way back out.** A cloud instance carries a "Back to dashboard"
   affordance in the chrome (and the project's name), because a browser tab has
   no window title and no app switcher to tell a teammate where they are or how
   to leave. This is a cloud-only ADDITION to the shared client, expressed
@@ -173,7 +173,7 @@ comments, export, history.
   design (DDR-115). Two members in one cell clobber each other's selection and
   pan/zoom, silently, reading as flakiness. The session dimension lands **with**
   the proxy, not after it.
-- [ ] **D4 — public identity behind the proxy.** The studio generates absolute
+- [x] **D4 — public identity behind the proxy.** The studio generates absolute
   URLs (`_server.json`, redirects, the canvas origin). Behind the tunnel the
   `Host` header is an internal name, and Phase 25 shipped exactly that bug into
   production twice — a member signing in was sent to an address that was not
@@ -192,14 +192,14 @@ comments, export, history.
 Enforced structurally, never by discipline. Divergence must be a gate someone
 deliberately deletes, not a decision someone quietly makes under deadline.
 
-- [ ] **E1 — byte-identity gate.** The cell may serve only the
+- [x] **E1 — byte-identity gate.** The cell may serve only the
   `client.bundle.js` + `styles.css` copied from `apps/studio` at image build,
   and it **refuses to boot** when the running bundle's sha256 does not match the
   sha recorded in the image.
-- [ ] **E2 — `scripts/check-no-studio-reimpl.sh`** beside `check-containment.sh`:
+- [x] **E2 — `scripts/check-no-studio-reimpl.sh`** beside `check-containment.sh`:
   fails CI on any studio HTML shell or studio route re-declared under
   `apps/hub/src/`.
-- [ ] **E3 — route-manifest test.** Every route surviving `pruneForWorkspace()`
+- [x] **E3 — route-manifest test.** Every route surviving `pruneForWorkspace()`
   must map to a capability in `role-matrix.mjs`. A new studio route is red until
   classified — which doubles as the proxy's security guard.
 - [ ] **E4 — cloud/desktop parity in E2E.** The `apps/desktop/e2e` specs run a
@@ -256,3 +256,54 @@ deferred behind the auth work and the hand-written page survives "just for this
 release"** — so the first thing every invited teammate sees is still grey boxes.
 Track B is therefore not a follow-up; it ships with Track A or the phase has not
 landed.
+
+---
+
+## Status — 2026-08-03
+
+**Landed (17 items):** the whole of Track A′, Track A, E1–E3, B1/B2, C1/C2/C4, D4.
+Decision recorded as **[DDR-209](../archive/decisions/DDR-209-one-studio-three-shells-the-cell-serves-the-studio.md)**.
+
+The shape now in the tree: `apps/hub` no longer renders anything. It supervises
+the real `apps/studio` server on loopback (`studio-child.mjs`), terminates the
+session, resolves the role, checks a checked-in deny-by-default `(method, path)
+× role` manifest covering reads (`studio-manifest.mjs`, 121 routes classified),
+and forwards (`studio-proxy.mjs`) — HTTP, WebSocket upgrades, and the segregated
+canvas origin. `studio-page.mjs` and the five modules around it are deleted, and
+two CI gates now make bringing them back a red build.
+
+**NOT landed — and each is a real gap, not a rounding error:**
+
+- [ ] **The cell IMAGE does not yet ship the studio.** `infra/cell/Dockerfile`
+  still stages only the build engine's source; nothing starts the real server in
+  a built cell. **Until this lands the phase is inert in production** — every
+  test above passes against a dev checkout. The blocker is not mechanical: the
+  studio's full production closure (pixi, onnxruntime, remotion, react) is
+  enormous next to a 157 MB image whose size an unresolved RCA already lists as
+  a suspect, so the honest route is the pre-compiled `maude-server` binary the
+  cost gate itself names as the fallback — which is the same artifact D1 wants
+  in order to ELIMINATE rather than un-route.
+- [ ] **D1 — elimination, not un-routing.** The seven secret-bearing surfaces
+  (`/_api/{cloud,github,hub,claude,acp,debug-bundle,design}`) are now named in
+  `FORBIDDEN_ROUTE_PREFIXES`, pruned at boot, and refused by the manifest — so
+  they are unreachable. They are still IN THE CODE. DDR-123's "claude never on
+  our infra" holds only when the module is not in the image, and that needs the
+  build above plus a CI grep of the built bundle.
+- [ ] **B3 — cold-start asset materialisation.** Git-tracked assets already come
+  back with the rehydrated checkout, so the grey boxes are fixed by B1/B2. What
+  is missing is the sweep that puts a browser-uploaded `/_api/asset` into the S3
+  lane without waiting for the next boot.
+- [ ] **C3 — first open lands on a rendered canvas.**
+- [ ] **D2 — one writer on `/repo`.** Untouched, and it is the phase's preserved
+  dissent. Two writers (hub git + studio TSX) still share the tree with no lock
+  on either side. BREAKER's 3 a.m. event is still available.
+- [ ] **D3 — per-session runtime state, studio half.** The proxy issues a stable
+  `x-maude-session` key per member (tested), but the studio does not yet
+  partition `_active.json` / `_canvas-state/<slug>.view.json` by it, so two
+  members in one cell still clobber each other's selection and camera.
+- [ ] **D5 — deep health, remaining half.** Child liveness and the served
+  bundle's sha256 are in `/health` (and a mismatch refuses to boot). The
+  expected-project assertion and the stale-`index.lock` check are not.
+- [ ] **E4 — cloud/desktop parity in E2E.**
+- [ ] **The cost gate.** No cold start measured, before or after; no image-size
+  ceiling asserted in CI. Blocked on the image work above.

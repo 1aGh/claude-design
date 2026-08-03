@@ -18,6 +18,14 @@ export const ROLES = Object.freeze(['owner', 'member', 'viewer']);
 /** Every capability the product actually distinguishes. */
 export const CAPABILITIES = Object.freeze([
   'read',
+  // Keeping your own place in a project you are allowed to read: which canvas
+  // is open, where your camera is, your UI preferences. Cloud Phase 27 D3 —
+  // per-user runtime state (DDR-115) that is never versioned and never reaches
+  // another member. Every role holds it, INCLUDING viewer, because a reviewer
+  // who cannot pan is not reviewing. It is listed as a capability rather than
+  // waved through as "not really a write" so the route manifest can name it and
+  // the E3 gate can check it, instead of it becoming an unexplained exception.
+  'session',
   'edit',
   'comment',
   'annotate',
@@ -44,6 +52,7 @@ export const CAPABILITIES = Object.freeze([
 const MATRIX = Object.freeze({
   owner: Object.freeze({
     read: true,
+    session: true,
     edit: true,
     comment: true,
     annotate: true,
@@ -54,6 +63,7 @@ const MATRIX = Object.freeze({
   }),
   member: Object.freeze({
     read: true,
+    session: true,
     edit: true,
     comment: true,
     annotate: true,
@@ -64,6 +74,7 @@ const MATRIX = Object.freeze({
   }),
   viewer: Object.freeze({
     read: true,
+    session: true,
     edit: false,
     comment: true,
     annotate: false,
