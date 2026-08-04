@@ -41,6 +41,18 @@ export interface RoomConn extends CollabConn {
    * default can't silently swallow a future canvas path.
    */
   realm?: 'main' | 'canvas';
+  /**
+   * Cloud collab lane (RCA issue-cloud-live-collaboration-dead) — true when
+   * this socket was opened under a read-only role (a cell's `viewer`, or a
+   * cell socket the proxy did not vouch). A read-only conn still receives every
+   * broadcast and publishes awareness — presence for viewers is the point of
+   * the channel — but its SYNC writes are gated to the comment lane, mirroring
+   * the role matrix (`viewer.comment === true`) the same way the inspector
+   * channel's `comments-patch`/`comments-delete` gate does. Absent defaults to
+   * writable ON PURPOSE, for the same reason `realm` defaults to trusted:
+   * every pre-existing caller is a loopback desktop peer.
+   */
+  readOnly?: boolean;
 }
 
 export interface RoomCallbacks {
@@ -194,8 +206,30 @@ export function createRoom(slug: string, callbacks: RoomCallbacks): Room {
   }
 
   /**
-   * Canvas-realm frame path. Awareness frames are unchanged (cursors/presence
-   * are ephemeral and already server-attributed). Sync frames are gated.
+   * Which lanes this conn's sync writes may not touch.
+   *
+   * Two independent dimensions, both fail-closed on `<unresolved>`:
+   *   - realm 'canvas' (DDR-122): body lanes are never writable from the
+   *     untrusted canvas origin, whoever is connected.
+   *   - readOnly (cloud collab lane): only the comment lane is writable — the
+   *     WS mirror of the role matrix's viewer capability.
+   */
+  function refusedLanes(conn: RoomConn, roots: ReadonlySet<string>): string[] {
+    const refused: string[] = [];
+    for (const r of roots) {
+      if (conn.realm === 'canvas' && (isBodyLane(r) || r === '<unresolved>')) {
+        refused.push(r);
+        continue;
+      }
+      if (conn.readOnly === true && r !== 'comments') refused.push(r);
+    }
+    return refused;
+  }
+
+  /**
+   * Gated frame path — canvas-realm and/or read-only conns. Awareness frames
+   * are unchanged (cursors/presence are ephemeral and already
+   * server-attributed). Sync frames are gated.
    */
   function receiveGated(conn: RoomConn, payload: Uint8Array): void {
     if (readMessageType(payload) !== MESSAGE_SYNC) {
@@ -216,14 +250,16 @@ export function createRoom(slug: string, callbacks: RoomCallbacks): Room {
     // Fail closed on anything we could not positively classify — a probe that
     // threw, or a root type we could not resolve to a name.
     const roots = probeRoots ?? new Set<string>();
-    const refused = [...roots].filter((r) => isBodyLane(r) || r === '<unresolved>');
+    const refused = refusedLanes(conn, roots);
     if (probeThrew || refused.length > 0) {
       gateRefusalCount += 1;
       discardMirror();
       console.warn(
-        `[collab/${slug}] origin gate REFUSED a canvas-realm sync frame ` +
-          `(lanes: ${refused.join(', ') || 'unclassifiable'}). Untrusted canvas script may ` +
-          `not write canvas source — see DDR-122 follow-up / collab/origins.ts.`
+        `[collab/${slug}] origin gate REFUSED a ${conn.readOnly ? 'read-only' : 'canvas-realm'} ` +
+          `sync frame (lanes: ${refused.join(', ') || 'unclassifiable'}). ` +
+          (conn.readOnly
+            ? 'A viewer-role socket may only write comments — role matrix, cloud collab lane.'
+            : 'Untrusted canvas script may not write canvas source — see DDR-122 follow-up / collab/origins.ts.')
       );
       // Re-assert server truth to that peer so it converges on the authoritative
       // state instead of silently diverging. Their locally-authored body items
@@ -315,7 +351,7 @@ export function createRoom(slug: string, callbacks: RoomCallbacks): Room {
   }
 
   function receive(conn: RoomConn, payload: Uint8Array): void {
-    if (conn.realm === 'canvas') {
+    if (conn.realm === 'canvas' || conn.readOnly === true) {
       receiveGated(conn, payload);
       return;
     }

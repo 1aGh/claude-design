@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 
+import { mintRenderToken, verifyRenderToken } from '../src/render-token.mjs';
 import {
   createStudioProxy,
   INJECTED_HEADER_PREFIX,
@@ -425,6 +426,183 @@ test('only the shell document mints the cookie', async () => {
     verifyToken: () => ({ ok: true }),
   });
   assert.equal(asset.preset['set-cookie'], undefined);
+});
+
+// -------------------------------------- the canvas origin's live sockets
+// (RCA issue-cloud-live-collaboration-dead — the lane whose absence kept
+// cloud cursors, annotations and live sync dead.)
+
+function fakeSocket() {
+  const written = [];
+  return {
+    written,
+    destroyed: false,
+    write: (s) => written.push(s),
+    destroy() {
+      this.destroyed = true;
+    },
+    on() {},
+  };
+}
+
+test('a canvas upgrade without a capability is closed 401, never forwarded', () => {
+  const { proxy, forwarded } = makeProxy();
+  const socket = fakeSocket();
+  proxy.handleCanvasUpgrade({
+    request: { headers: { upgrade: 'websocket' }, url: '/_ws/collab/ui-home' },
+    socket,
+    head: null,
+    verifyToken: () => ({ ok: false, reason: 'missing' }),
+  });
+  assert.match(socket.written.join(''), /401/);
+  assert.equal(socket.destroyed, true);
+  assert.equal(forwarded.length, 0);
+});
+
+test('a capability in the URL opens the collab socket at the token role, canvas realm', () => {
+  const { proxy, forwarded } = makeProxy();
+  proxy.handleCanvasUpgrade({
+    request: { headers: { upgrade: 'websocket' }, url: '/_ws/collab/ui-home?t=cap' },
+    socket: fakeSocket(),
+    head: null,
+    verifyToken: (t) =>
+      t === 'cap' ? { ok: true, subject: 'o@b.c', role: 'owner' } : { ok: false },
+  });
+  assert.equal(forwarded.length, 1);
+  const f = forwarded[0];
+  assert.equal(f.upgrade, true);
+  // Forwarded to the CANVAS upstream, not the main studio listener.
+  assert.equal(f.port, 4400);
+  assert.equal(f.path, '/_ws/collab/ui-home?t=cap');
+  assert.equal(f.headers[`${INJECTED_HEADER_PREFIX}role`], 'owner');
+  // An owner's collab socket is writable — annotations are the point…
+  assert.equal(f.headers[`${INJECTED_HEADER_PREFIX}readonly`], '0');
+  assert.equal(f.headers[`${INJECTED_HEADER_PREFIX}user`], 'o@b.c');
+  // …but it is still marked canvas-realm, so body lanes stay unwritable.
+  assert.equal(f.headers[`${INJECTED_HEADER_PREFIX}collab-realm`], 'canvas');
+});
+
+test('the HttpOnly capability cookie opens the socket too — the WS URL carries no token', () => {
+  // use-collab.tsx builds `wss://<canvas-origin>/_ws/collab/<slug>` with no
+  // query string; the same-site WS connect carries the cookie the shell
+  // document planted. This is the vehicle production actually rides.
+  const { proxy, forwarded } = makeProxy();
+  proxy.handleCanvasUpgrade({
+    request: {
+      headers: { upgrade: 'websocket', cookie: 'maude_canvas=cap' },
+      url: '/_ws/collab/ui-home',
+    },
+    socket: fakeSocket(),
+    head: null,
+    verifyToken: (t) =>
+      t === 'cap' ? { ok: true, subject: 'v@b.c', role: 'viewer' } : { ok: false },
+  });
+  assert.equal(forwarded.length, 1);
+  assert.equal(forwarded[0].headers[`${INJECTED_HEADER_PREFIX}role`], 'viewer');
+  assert.equal(forwarded[0].headers[`${INJECTED_HEADER_PREFIX}readonly`], '1');
+});
+
+test('a token without a role claim opens at the viewer floor', () => {
+  const { proxy, forwarded } = makeProxy();
+  proxy.handleCanvasUpgrade({
+    request: { headers: { upgrade: 'websocket' }, url: '/_ws/collab/ui-home?t=old' },
+    socket: fakeSocket(),
+    head: null,
+    // An older token — verifyRenderToken yields role: null for it.
+    verifyToken: () => ({ ok: true, subject: 'm@b.c', role: null }),
+  });
+  assert.equal(forwarded[0].headers[`${INJECTED_HEADER_PREFIX}role`], 'viewer');
+  assert.equal(forwarded[0].headers[`${INJECTED_HEADER_PREFIX}readonly`], '1');
+});
+
+test('the HMR socket (/_ws) rides the same lane; anything else on the origin is 404', () => {
+  const { proxy, forwarded } = makeProxy();
+  proxy.handleCanvasUpgrade({
+    request: { headers: { upgrade: 'websocket', cookie: 'maude_canvas=cap' }, url: '/_ws' },
+    socket: fakeSocket(),
+    head: null,
+    verifyToken: (t) =>
+      t === 'cap' ? { ok: true, subject: 'v@b.c', role: 'viewer' } : { ok: false },
+  });
+  assert.equal(forwarded.length, 1);
+
+  const socket = fakeSocket();
+  proxy.handleCanvasUpgrade({
+    request: { headers: { upgrade: 'websocket', cookie: 'maude_canvas=cap' }, url: '/_api/asset' },
+    socket,
+    head: null,
+    verifyToken: () => ({ ok: true }),
+  });
+  assert.match(socket.written.join(''), /404/);
+  assert.equal(forwarded.length, 1);
+});
+
+test('the upgrade lane strips the shared-origin prefix, and refuses another tenant´s', () => {
+  const { proxy, forwarded } = makeProxy();
+  proxy.handleCanvasUpgrade({
+    request: { headers: { upgrade: 'websocket' }, url: '/alligators/_ws/collab/ui-home?t=cap' },
+    socket: fakeSocket(),
+    head: null,
+    pathPrefix: '/alligators',
+    verifyToken: () => ({ ok: true, subject: 'o@b.c', role: 'owner' }),
+  });
+  assert.equal(forwarded.at(-1).path, '/_ws/collab/ui-home?t=cap');
+
+  const socket = fakeSocket();
+  proxy.handleCanvasUpgrade({
+    request: { headers: { upgrade: 'websocket' }, url: '/someone-else/_ws/collab/x?t=cap' },
+    socket,
+    head: null,
+    pathPrefix: '/alligators',
+    verifyToken: () => ({ ok: true }),
+  });
+  assert.match(socket.written.join(''), /404/);
+});
+
+test('a dead canvas upstream closes the upgrade 503', () => {
+  const { proxy } = makeProxy({ canvasUpstream: () => ({ ok: false, port: null }) });
+  const socket = fakeSocket();
+  proxy.handleCanvasUpgrade({
+    request: { headers: { upgrade: 'websocket' }, url: '/_ws/collab/x?t=cap' },
+    socket,
+    head: null,
+    verifyToken: () => ({ ok: true, subject: 'o@b.c', role: 'owner' }),
+  });
+  assert.match(socket.written.join(''), /503/);
+});
+
+test('the canvas HTTP lane vouches the member for presence, at the viewer floor', async () => {
+  // /_api/git-user on the canvas listener answers with x-maude-user in a cell —
+  // without this every cloud peer introduced itself as `anonymous-…`.
+  const { proxy, forwarded } = makeProxy();
+  await proxy.handleCanvas({
+    request: { headers: {}, url: '/_api/git-user?t=cap' },
+    response: fakeResponse(),
+    pathname: '/_api/git-user',
+    method: 'GET',
+    verifyToken: (t) =>
+      t === 'cap' ? { ok: true, subject: 'm@b.c', role: 'member' } : { ok: false },
+  });
+  assert.equal(forwarded.length, 1);
+  assert.equal(forwarded[0].headers[`${INJECTED_HEADER_PREFIX}user`], 'm@b.c');
+  // The HTTP lane ignores the role claim — read-only by construction.
+  assert.equal(forwarded[0].headers[`${INJECTED_HEADER_PREFIX}role`], 'viewer');
+});
+
+// ------------------------------------------------- the role claim round-trip
+
+test('the render token carries the role; an older token verifies to role null', () => {
+  const secret = 'test-secret';
+  const withRole = mintRenderToken({ secret, project: 'p', subject: 'o@b.c', role: 'owner' });
+  const verdict = verifyRenderToken({ secret, token: withRole, project: 'p' });
+  assert.equal(verdict.ok, true);
+  assert.equal(verdict.role, 'owner');
+  assert.equal(verdict.subject, 'o@b.c');
+
+  const without = mintRenderToken({ secret, project: 'p', subject: 'v@b.c' });
+  const old = verifyRenderToken({ secret, token: without, project: 'p' });
+  assert.equal(old.ok, true);
+  assert.equal(old.role, null);
 });
 
 test('the cookie is Secure wherever the origin is https', async () => {

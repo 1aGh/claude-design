@@ -1,14 +1,32 @@
 {
-  "generated": "2026-08-03T11:02:39.276Z",
-  "version": "0.53.0",
+  "generated": "2026-08-04T11:03:26.790Z",
+  "version": "0.53.2",
   "entries": [
+    {
+      "id": "cloud-live-collaboration-connects",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Live collaboration works in the browser",
+      "summary": "Opening a cloud project in two browsers now actually collaborates: you see each other's cursors with names, annotations and comments appear live for everyone, and every change is saved to the project. Before, the live channel never connected — selections crossed over anonymously and annotations silently stayed on the machine that drew them.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "bug-reports-see-the-maude-window",
+      "version": "0.53.2",
+      "kind": "improvement",
+      "title": "Bug reports now show the Maude window",
+      "summary": "Report a bug used to attach only the artboard, so anything wrong with Maude itself — the menus, the sidebar, a panel — was never in the picture. It now captures the whole window too, and you can attach your own screenshot for whatever a fresh capture can't show, like an open menu or a stuck spinner.",
+      "surface": "design-ui",
+      "date": "2026-08-03"
+    },
     {
       "id": "open-your-project-in-a-browser",
       "version": "0.53.0",
       "date": "2026-08-02",
       "kind": "feature",
-      "title": "Open your project in a browser — nothing to install",
-      "summary": "Send a teammate a link and they open the real project in their browser: the actual canvases, the actual design system. They can move things, edit text and colours, leave notes, and download the whole thing — signed in with their Maude account, with the same rights they have in the app.",
+      "title": "Open your project in a browser — early access",
+      "summary": "Send a teammate a link and they open the project in their browser, signed in with their Maude account and with the rights their role gives them. This first release shows a simplified view: the full Maude Studio — Files, Layers, Inspector, search — and your project's own images and fonts are coming next.",
       "surface": "design-ui"
     },
     {

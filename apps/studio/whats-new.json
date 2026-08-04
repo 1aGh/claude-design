@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "cloud-live-collaboration-connects",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Live collaboration works in the browser",
+      "summary": "Opening a cloud project in two browsers now actually collaborates: you see each other's cursors with names, annotations and comments appear live for everyone, and every change is saved to the project. Before, the live channel never connected — selections crossed over anonymously and annotations silently stayed on the machine that drew them.",
+      "surface": "design-ui"
+    },
+    {
       "id": "bug-reports-see-the-maude-window",
       "version": "0.53.2",
       "kind": "improvement",

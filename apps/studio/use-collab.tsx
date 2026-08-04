@@ -592,6 +592,13 @@ function createSession(slug: string): CollabSession {
   let cancelled = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let wsRef: WebSocket | null = null;
+  // Consecutive failed connects. A server that refuses the upgrade (403/401 —
+  // e.g. a deployment whose proxy does not carry the collab lane) used to be
+  // retried every second, forever, silently — which is indistinguishable from
+  // "nobody else is here" (the cloud-collab RCA shipped invisible exactly this
+  // way). Back off exponentially and say so once.
+  let failedConnects = 0;
+  let failureWarned = false;
 
   function sendFrame(ws: WebSocket, payload: Uint8Array) {
     try {
@@ -624,6 +631,8 @@ function createSession(slug: string): CollabSession {
     wsRef = ws;
 
     ws.addEventListener('open', () => {
+      failedConnects = 0;
+      failureWarned = false;
       session.connected = true;
       notifySession(session);
       // Sync step 1 — announce our state vector so the server can send the
@@ -637,11 +646,22 @@ function createSession(slug: string): CollabSession {
     });
 
     ws.addEventListener('close', () => {
+      const hadConnected = session.connected;
       session.connected = false;
       notifySession(session);
       wsRef = null;
       if (cancelled) return;
-      reconnectTimer = setTimeout(connect, 1000);
+      failedConnects = hadConnected ? 0 : failedConnects + 1;
+      if (failedConnects >= 5 && !failureWarned) {
+        failureWarned = true;
+        console.warn(
+          '[collab] live sync unavailable — the collab socket keeps being refused. ' +
+            'Presence, live annotations and cross-peer updates are off until it connects.'
+        );
+      }
+      // 1s → 2s → 4s → … capped at 15s; a healthy drop (was connected) retries fast.
+      const delay = Math.min(1000 * 2 ** Math.min(failedConnects, 4), 15000);
+      reconnectTimer = setTimeout(connect, delay);
     });
 
     ws.addEventListener('error', () => {

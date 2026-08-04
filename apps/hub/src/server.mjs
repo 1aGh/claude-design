@@ -341,6 +341,11 @@ export function createHub(config = {}) {
             secret,
             project: process.env.MAUDE_TENANT_ID ?? 'local',
             subject: session.email,
+            // The member's real role rides the capability so the canvas
+            // origin's collab socket opens at it (annotations need an editor).
+            // The HTTP canvas lane keeps the viewer floor regardless — see
+            // render-token.mjs for why this widens nothing over HTTP.
+            role: session.role,
           }),
       })
     : null;
@@ -855,6 +860,25 @@ export function createHub(config = {}) {
       const existing = httpServer.listeners('upgrade');
       httpServer.removeAllListeners('upgrade');
       httpServer.on('upgrade', (request, socket, head) => {
+        // The CANVAS origin's live sockets — collab rooms + HMR — first, and by
+        // capability, not by session: the canvas origin is cookieless by design
+        // (DDR-054), so `browserSession` can never say yes there, and routing
+        // these through the session gate is exactly the 401 that kept cloud
+        // collaboration dead (RCA issue-cloud-live-collaboration-dead). Checked
+        // before the `/_ws` prefix test because the HMR socket's path IS `/_ws`.
+        if (isCanvasHost(request)) {
+          studioProxy.handleCanvasUpgrade({
+            request,
+            socket,
+            head,
+            // NO PREFIX — the data plane already stripped it (same contract as
+            // the HTTP canvas lane above).
+            pathPrefix: '',
+            verifyToken: (token) =>
+              verifyRenderToken({ secret, token, project: process.env.MAUDE_TENANT_ID ?? null }),
+          });
+          return;
+        }
         const path = (request.url ?? '').split('?')[0];
         if (!path.startsWith('/_ws')) {
           for (const listener of existing) listener.call(httpServer, request, socket, head);

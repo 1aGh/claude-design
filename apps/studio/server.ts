@@ -265,9 +265,20 @@ function startServer(port: number): BunServer {
       // Phase 8 — collab WS, binary y-websocket protocol. Loopback-only;
       // DDR-047 makes cross-machine collab a Phase 9 hub-deploy story, not
       // a `--bind 0.0.0.0` flag on this server.
+      //
+      // IN A CELL the loopback gate can never pass — the hub's authenticating
+      // proxy rewrites Host to the public URL (D4) on purpose — and it must not
+      // have to: the proxy already terminated the session and vouches the role
+      // per request with injected `x-maude-*` headers (stripped-then-injected,
+      // the Cloud Phase 27 model the inspector branch below already trusts).
+      // Without this vouched path every cloud collab upgrade 403'd here and
+      // cursors/annotations/live-sync were dead in the browser door — RCA
+      // issue-cloud-live-collaboration-dead. Outside workspace mode the DDR-047
+      // gate is verbatim unchanged.
       const collabSlug = parseCollabSlug(pathname);
       if (collabSlug !== null) {
-        if (!isLoopbackHost(req.headers.get('host'))) {
+        const vouchedRole = WORKSPACE ? req.headers.get('x-maude-role') : null;
+        if (!isLoopbackHost(req.headers.get('host')) && !vouchedRole) {
           return new Response('cross-machine collab requires Phase 9 hub deploy', {
             status: 403,
           });
@@ -278,8 +289,15 @@ function startServer(port: number): BunServer {
             remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
             kind: 'collab',
             slug: collabSlug,
-            // Privileged shell origin — ungated (see collab/origins.ts).
-            realm: 'main',
+            // Privileged shell origin — ungated (see collab/origins.ts) —
+            // UNLESS the proxy marked this socket as canvas-realm (a cell's
+            // canvas lane forwards here when the canvas listener is the same
+            // process; defense in depth either way).
+            realm:
+              WORKSPACE && req.headers.get('x-maude-collab-realm') === 'canvas' ? 'canvas' : 'main',
+            // Same fail-closed posture as the inspector branch: in a cell an
+            // absent header is an unproven session.
+            readOnly: WORKSPACE ? req.headers.get('x-maude-readonly') !== '0' : false,
           },
         });
         if (ok) return undefined as unknown as Response;
@@ -382,10 +400,15 @@ function startCanvasServer(port: number): BunServer {
     async fetch(req, srv) {
       const pathname = new URL(req.url).pathname;
 
-      // Collab WS — shared registry, loopback-only (same gate as the main origin).
+      // Collab WS — shared registry, loopback-only (same gate as the main
+      // origin), with the same workspace-mode vouched path: in a cell the hub's
+      // canvas lane forwards the iframe's collab socket HERE, capability-
+      // authenticated, with Host rewritten to the public canvas origin (D4) —
+      // RCA issue-cloud-live-collaboration-dead.
       const collabSlug = parseCollabSlug(pathname);
       if (collabSlug !== null) {
-        if (!isLoopbackHost(req.headers.get('host'))) {
+        const vouchedRole = WORKSPACE ? req.headers.get('x-maude-role') : null;
+        if (!isLoopbackHost(req.headers.get('host')) && !vouchedRole) {
           return new Response('cross-machine collab requires Phase 9 hub deploy', { status: 403 });
         }
         const ok = srv.upgrade(req, {
@@ -396,8 +419,13 @@ function startCanvasServer(port: number): BunServer {
             slug: collabSlug,
             // UNTRUSTED canvas iframe origin (DDR-063 split). Every sync frame
             // from here goes through the origin gate and may never write a
-            // body lane — DDR-122 follow-up, collab/origins.ts.
+            // body lane — DDR-122 follow-up, collab/origins.ts. ALWAYS
+            // 'canvas' on this listener — the proxy's realm marker is not
+            // consulted, so a forged header cannot promote the socket.
             realm: 'canvas',
+            // Fail closed in a cell (absent header = unproven session);
+            // loopback desktop keeps full capability as before.
+            readOnly: WORKSPACE ? req.headers.get('x-maude-readonly') !== '0' : false,
           },
         });
         if (ok) return undefined as unknown as Response;

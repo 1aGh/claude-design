@@ -31,11 +31,22 @@ function sign(secret, payload) {
  * Mint a capability for one member's canvas session.
  * `subject` is the member's email — it makes an audit line possible and binds
  * the token to a person rather than to "anyone who saw the page".
+ *
+ * `role` is the member's PROJECT role (role-matrix vocabulary), carried so the
+ * canvas origin's one live surface — the per-canvas collab WebSocket — can be
+ * opened at the member's real capability instead of the viewer floor. The HTTP
+ * lane ignores it on purpose: canvas-origin *requests* stay read-only by
+ * construction (`handleCanvas` forwards `role: 'viewer'` regardless), so an
+ * exfiltrated token still opens nothing that writes over HTTP. What the role
+ * claim changes is only which collab lanes the room accepts (annotations /
+ * comments — never a body lane; that is the DDR-122 realm gate and it does not
+ * read roles). Absent (older tokens) → verifiers fall back to `viewer`.
  */
 export function mintRenderToken({
   secret,
   project,
   subject,
+  role = null,
   now = Date.now(),
   ttlMs = RENDER_TOKEN_TTL_MS,
 }) {
@@ -44,11 +55,15 @@ export function mintRenderToken({
   // addresses contain dots, so a `a.b.c` payload split back into the wrong
   // three fields and every token read as expired. Structured in, structured
   // out — no parsing rule to get subtly wrong.
-  const payload = JSON.stringify({ p: project, s: subject, e: now + ttlMs });
+  const payload = JSON.stringify(
+    role
+      ? { p: project, s: subject, r: role, e: now + ttlMs }
+      : { p: project, s: subject, e: now + ttlMs }
+  );
   return `${Buffer.from(payload).toString('base64url')}.${sign(secret, payload)}`;
 }
 
-/** Verify a capability. Returns `{ok, project, subject}` or `{ok:false, reason}`. */
+/** Verify a capability. Returns `{ok, project, subject, role}` or `{ok:false, reason}`. */
 export function verifyRenderToken({ secret, token, project, now = Date.now() }) {
   if (!secret || typeof token !== 'string' || !token.includes('.')) {
     return { ok: false, reason: 'missing' };
@@ -76,5 +91,11 @@ export function verifyRenderToken({ secret, token, project, now = Date.now() }) 
   const exp = Number(claims?.e);
   if (!Number.isFinite(exp) || exp < now) return { ok: false, reason: 'expired' };
   if (project && claims?.p !== project) return { ok: false, reason: 'wrong-project' };
-  return { ok: true, project: claims.p, subject: claims.s };
+  return {
+    ok: true,
+    project: claims.p,
+    subject: claims.s,
+    // Fail toward the floor: a token without a role claim is a viewer's.
+    role: typeof claims.r === 'string' ? claims.r : null,
+  };
 }

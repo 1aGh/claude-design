@@ -125,7 +125,10 @@ const HOP_BY_HOP = new Set([
  * The headers we send upstream: the client's, minus anything hop-by-hop, minus
  * anything it could have used to impersonate the proxy — plus the truth.
  */
-export function upstreamHeaders(incoming, { role, user, sessionKey, publicUrl, canvasToken }) {
+export function upstreamHeaders(
+  incoming,
+  { role, user, sessionKey, publicUrl, canvasToken, collabRealm }
+) {
   const out = {};
   for (const [k, v] of Object.entries(incoming ?? {})) {
     const key = k.toLowerCase();
@@ -154,6 +157,12 @@ export function upstreamHeaders(incoming, { role, user, sessionKey, publicUrl, c
   // reads as flakiness rather than as a bug. The studio partitions its runtime
   // state by this key.
   if (sessionKey) out[`${INJECTED_HEADER_PREFIX}session`] = sessionKey;
+  // Which realm a collab WebSocket was upgraded on. `canvas` marks the
+  // untrusted canvas iframe origin — the studio stamps it onto the socket and
+  // the room's DDR-122 origin gate applies. Injected (never trusted inbound —
+  // the prefix strip above already removed any client-supplied value), so a
+  // canvas-origin socket cannot claim the privileged shell realm.
+  if (collabRealm) out[`${INJECTED_HEADER_PREFIX}collab-realm`] = collabRealm;
   return out;
 }
 
@@ -369,9 +378,82 @@ export function createStudioProxy({
         // role travels anyway so the studio's gate has the same answer at both
         // doors; `viewer` is the floor, whoever is looking.
         role: 'viewer',
-        user: null,
+        // The MEMBER, not null: the capability names its subject, and
+        // `/_api/git-user` on the canvas listener is where collab presence gets
+        // its display name. Without this every cloud peer is `anonymous-…` (the
+        // attribution half of the live-collaboration RCA). Read-only-ness is
+        // unchanged — the role above stays the floor.
+        user: (verdict?.ok ? verdict.subject : cookieVerdict?.subject) ?? null,
         sessionKey: null,
         publicUrl: env.MAUDE_PUBLIC_CANVAS_ORIGIN ?? null,
+      }),
+    });
+    return true;
+  }
+
+  /**
+   * The CANVAS origin's live surfaces — Cloud collab lane
+   * (RCA issue-cloud-live-collaboration-dead).
+   *
+   * The per-canvas collab room (`/_ws/collab/:slug` — cursors, presence,
+   * annotations, comment live-sync) and the HMR reload socket (`/_ws`) are
+   * opened from INSIDE the canvas iframe, i.e. on the cookieless canvas origin.
+   * `handleUpgrade` cannot serve them: it authenticates by browser session
+   * cookie, which this origin never carries — by design (DDR-054). So this lane
+   * authenticates the same way the rest of the canvas origin does: with the
+   * render capability, from the URL (`?t=`) or the host-scoped HttpOnly cookie
+   * the shell document planted (`CANVAS_CAPABILITY_COOKIE` — a same-site WS
+   * connect sends it automatically).
+   *
+   * The socket is opened at the member's REAL role (the token's `r` claim,
+   * viewer floor when absent) — an owner drawing an annotation is the point of
+   * the channel — while the DDR-122 realm gate ('canvas', injected below) keeps
+   * body lanes unwritable whoever is connected. HTTP on this origin stays
+   * viewer-floor read-only; the role claim changes nothing there.
+   */
+  function handleCanvasUpgrade({ request, socket, head, verifyToken, pathPrefix = '' }) {
+    const url = new URL(request.url, 'http://cell.invalid');
+    let rest = url.pathname;
+    if (pathPrefix) {
+      if (rest === pathPrefix || rest.startsWith(`${pathPrefix}/`)) {
+        rest = rest.slice(pathPrefix.length) || '/';
+      } else {
+        socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return true;
+      }
+    }
+    // Only the studio's live surfaces are upgradable on this origin.
+    if (!rest.startsWith('/_ws')) {
+      socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return true;
+    }
+    const token = url.searchParams.get('t') ?? cookieFrom(request, CANVAS_CAPABILITY_COOKIE);
+    const verdict = verifyToken(token) ?? { ok: false };
+    if (!verdict.ok) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return true;
+    }
+    const up = canvasUpstream?.();
+    if (!up?.ok || !up.port) {
+      socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return true;
+    }
+    forwardUpgrade({
+      request,
+      socket,
+      head,
+      port: up.port,
+      path: `${rest}${url.search}`,
+      headers: upstreamHeaders(request.headers, {
+        role: verdict.role ?? 'viewer',
+        user: verdict.subject ?? null,
+        sessionKey: null,
+        publicUrl: env.MAUDE_PUBLIC_CANVAS_ORIGIN ?? null,
+        collabRealm: 'canvas',
       }),
     });
     return true;
@@ -411,7 +493,7 @@ export function createStudioProxy({
     return true;
   }
 
-  return { handle, handleCanvas, handleUpgrade };
+  return { handle, handleCanvas, handleUpgrade, handleCanvasUpgrade };
 }
 
 /** Straight byte pipe to loopback. Streams both ways — the asset lane moves
@@ -466,10 +548,11 @@ function filterResponseHeaders(headers) {
   return out;
 }
 
-/** Raw socket splice for the WS handshake. */
-function defaultForwardUpgrade({ request, socket, head, port, headers }) {
+/** Raw socket splice for the WS handshake. `path` overrides `request.url`
+ *  (the canvas lane strips its tenant prefix before forwarding). */
+function defaultForwardUpgrade({ request, socket, head, port, path, headers }) {
   const upstreamSocket = netConnect(port, '127.0.0.1', () => {
-    const lines = [`GET ${request.url} HTTP/1.1`];
+    const lines = [`GET ${path ?? request.url} HTTP/1.1`];
     for (const [k, v] of Object.entries(headers)) lines.push(`${k}: ${v}`);
     // Re-add the hop-by-hop headers the handshake IS.
     lines.push('Connection: Upgrade');

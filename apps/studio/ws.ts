@@ -39,6 +39,14 @@ export type WsData =
        *  canvas iframe origin, whose sync frames go through the DDR-122
        *  origin gate in collab/room.ts. Set at upgrade time in server.ts. */
       realm: 'main' | 'canvas';
+      /** Cloud collab lane (RCA issue-cloud-live-collaboration-dead) — the
+       *  role this socket was opened under, stamped at upgrade time from the
+       *  proxy's injected header (fail-closed in a cell, always false on a
+       *  loopback desktop). A read-only collab socket receives everything and
+       *  publishes awareness (presence is the point), but its sync writes are
+       *  gated to the comment lane in collab/room.ts — the WS mirror of the
+       *  role matrix's `viewer.comment === true`. */
+      readOnly?: boolean;
     }
   | {
       // T2 (9.1-A) — HMR-only socket for the segregated canvas origin. Receives
@@ -259,11 +267,13 @@ export function createWs(
   function bindCollab(
     ws: ServerWebSocket<WsData>,
     slug: string,
-    realm: 'main' | 'canvas'
+    realm: 'main' | 'canvas',
+    readOnly: boolean
   ): RoomConn {
     const conn: RoomConn = {
       id: ws.data.id,
       realm,
+      readOnly,
       send(payload: Uint8Array) {
         try {
           // Bun's ws.send accepts Uint8Array directly as binary.
@@ -281,7 +291,12 @@ export function createWs(
     async open(ws) {
       if (ws.data.kind === 'collab') {
         const room = collab.registry.get(ws.data.slug);
-        const conn = bindCollab(ws, ws.data.slug, ws.data.realm ?? 'main');
+        const conn = bindCollab(
+          ws,
+          ws.data.slug,
+          ws.data.realm ?? 'main',
+          ws.data.readOnly === true
+        );
         await room.connect(conn);
         return;
       }
