@@ -36,6 +36,24 @@ const COST_RULES = [
     windowMs: 60_000,
     cost: 'signup',
   },
+  // Choosing a new password derives the same 6×100k as a login, and does it
+  // for a caller holding only a link — so it needs its own budget, not the
+  // login one.
+  {
+    test: (p, m) => m === 'POST' && p === '/auth/reset',
+    limit: 10,
+    windowMs: 60_000,
+    cost: 'reset',
+  },
+  // Asking for a reset link is cheap to answer but SENDS MAIL to an address
+  // the caller names. Unbudgeted, that is a mail cannon pointed at any
+  // customer, paid for out of our sending reputation.
+  {
+    test: (p, m) => m === 'POST' && p === '/auth/forgot',
+    limit: 5,
+    windowMs: 60_000,
+    cost: 'forgot',
+  },
   // Device + handoff codes are cheap to answer but mint credentials, so the
   // budget is about minting volume rather than CPU.
   {

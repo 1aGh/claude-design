@@ -89,10 +89,14 @@ test('inviting an unknown address writes an invite and dispatches the email', as
 
     const row = sqlite.prepare('SELECT * FROM project_invites').get();
     assert.equal(row.email, 'teammate@example.com');
-    assert.equal(sends.length, 1);
-    assert.deepEqual(sends[0].to, ['teammate@example.com']);
-    assert.match(sends[0].text, new RegExp(`/invite/${row.id}`));
-    assert.match(sends[0].subject, /owner@example\.com invited you to Brno Alligators/);
+    // Selected by recipient rather than counted: the OWNER's own signup, a few
+    // lines up, now also sends mail (the address-confirmation link added by the
+    // RCA of 2026-08-04), so a bare `sends.length` here would be asserting how
+    // many emails the whole fixture happens to produce.
+    const invite = sends.filter((m) => m.to.includes('teammate@example.com'));
+    assert.equal(invite.length, 1);
+    assert.match(invite[0].text, new RegExp(`/invite/${row.id}`));
+    assert.match(invite[0].subject, /owner@example\.com invited you to Brno Alligators/);
   } finally {
     globalThis.fetch = realFetch;
   }

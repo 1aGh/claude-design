@@ -28,6 +28,21 @@ const BASE_CSS =
   .cta { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
 `;
 
+/**
+ * Escape a value bound for an HTML attribute.
+ *
+ * Only the reset link needs this today, and it arrives already narrowed —
+ * `peekEmailToken` refuses anything that is not a live `mer_<hex>` value, so
+ * nothing hostile can reach the template. Escaping anyway, because "the caller
+ * validates it" is a property of today's caller, not of this function.
+ */
+function esc(s) {
+  return String(s).replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+  );
+}
+
 function page(title, body) {
   // The home page's title IS the product name — suffixing it again would read
   // "Maude Cloud — Maude Cloud" in the tab (Cloud Phase 23 A4).
@@ -117,7 +132,93 @@ export function loginPage({ googleEnabled = false, error = null, next = null } =
       <input id="password" name="password" type="password" autocomplete="current-password" required>
       <button type="submit">Sign in</button>
     </form>
+    <p class="quiet"><a href="/forgot">Forgot your password?</a></p>
     <p class="quiet">New here? <a href="/signup">Create an account</a>.</p>`
+  );
+}
+
+/**
+ * "Send me a link" — the door out of a forgotten password (RCA 2026-08-04).
+ *
+ * Its absence was half of a total lockout: an account whose password was gone
+ * could not be recovered by any means the product offered, and the other half
+ * (Google sign-in) refused the same account because its address had never been
+ * confirmed. Neither door had a handle.
+ */
+export function forgotPage({ error = null, next = null } = {}) {
+  const action = next ? `/auth/forgot?next=${encodeURIComponent(next)}` : '/auth/forgot';
+  return page(
+    'Forgot your password',
+    `
+    <h1>Forgot your password</h1>
+    <p class="quiet">Tell us the address you signed up with and we’ll email you a link to
+      choose a new password.</p>
+    ${error ? `<p class="error">${error}</p>` : ''}
+    <form method="post" action="${action}">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="email" required>
+      <button type="submit">Email me a link</button>
+    </form>
+    <p class="quiet">Remembered it? <a href="/login">Sign in</a>.</p>`
+  );
+}
+
+/**
+ * The answer to "email me a link", for every address.
+ *
+ * SAME PAGE whether or not an account exists. The neutral sentence is the whole
+ * point — a form that says "no account with that address" is a free membership
+ * oracle, and this one sits unauthenticated in front of the entire customer
+ * list.
+ */
+export function checkInboxPage({ heading = 'Check your email' } = {}) {
+  return page(
+    heading,
+    `<h1>${heading}</h1>
+     <p>If that address has a Maude account, a link is on its way. It works once and
+       expires, so use the most recent mail if you asked more than once.</p>
+     <p class="quiet">Nothing arrived after a few minutes? Check the spam folder, then
+       <a href="/forgot">try again</a>.</p>
+     <p><a href="/login">Back to sign in</a></p>`
+  );
+}
+
+/** Choose a new password, reached only by following the emailed link. */
+export function resetPage({ token, error = null } = {}) {
+  return page(
+    'Choose a new password',
+    `
+    <h1>Choose a new password</h1>
+    ${error ? `<p class="error">${error}</p>` : ''}
+    <form method="post" action="/auth/reset">
+      <input type="hidden" name="t" value="${esc(token)}">
+      <label for="password">New password</label>
+      <input id="password" name="password" type="password" autocomplete="new-password"
+             minlength="12" required>
+      <p class="quiet">At least 12 characters. Saving it signs out anything already signed
+        in as you, everywhere.</p>
+      <button type="submit">Save and sign in</button>
+    </form>`
+  );
+}
+
+/**
+ * The address is confirmed — now say what that just unlocked.
+ *
+ * Ending on "you can now continue with Google" matters: confirming the address
+ * is never the thing anybody wanted, it is the thing standing between them and
+ * the button that refused them.
+ */
+export function verifiedPage({ googleEnabled = false } = {}) {
+  return page(
+    'Address confirmed',
+    `<h1>Address confirmed</h1>
+     <p>Thank you — we know this address is yours.</p>
+     <p class="quiet">You can now sign in with Google as well as with your password.</p>
+     <div class="cta">
+       ${googleEnabled ? googleButton() : ''}
+       <a class="btn" href="/login">Sign in</a>
+     </div>`
   );
 }
 
@@ -163,6 +264,10 @@ export function allCustomerFacingHtml() {
     allPeopleHtml(),
     signupPage({ googleEnabled: true }),
     loginPage({ googleEnabled: true, error: 'That email and password don’t match.' }),
+    forgotPage(),
+    checkInboxPage(),
+    resetPage({ token: 'x'.repeat(48), error: 'That link has expired.' }),
+    verifiedPage({ googleEnabled: true }),
     homePage(),
     homePage({ googleEnabled: true }),
     homePage({ account: { email: 'a@example.com' } }),

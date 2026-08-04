@@ -235,6 +235,12 @@ export async function handleInviteRoutes(request, env, { account }) {
     created = await createAccount(env.DB, {
       email: invite.email,
       password: String(form.get('password') ?? ''),
+      // The invitation was mailed to THIS address and is single-use, so
+      // redeeming it proves the same thing a verification link proves. Not
+      // recording that (RCA 2026-08-04) barred every invited teammate from
+      // Google sign-in forever — `accountForGoogle` refuses an unverified
+      // password account, and nothing else here could ever clear the flag.
+      emailVerified: true,
     });
   } catch {
     return html(

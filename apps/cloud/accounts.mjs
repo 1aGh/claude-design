@@ -23,12 +23,15 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const encoder = new TextEncoder();
 
-async function sha256Hex(value) {
+// Exported because email-tokens.mjs stores its links the same way sessions are
+// stored — random value out, SHA-256 in the row. Two copies of "how we mint and
+// hash a credential" is how one of them ends up with 8 bytes of entropy.
+export async function sha256Hex(value) {
   const d = await crypto.subtle.digest('SHA-256', encoder.encode(value));
   return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function randomToken(prefix) {
+export function randomToken(prefix) {
   const bytes = crypto.getRandomValues(new Uint8Array(24));
   const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   return `${prefix}_${hex}`;
@@ -103,6 +106,53 @@ export async function authenticate(db, email, password) {
     return { ok: false, reason: 'bad-password' };
   }
   return { ok: true, account: { id: row.id, email: row.email, name: row.name } };
+}
+
+/**
+ * Record that this address was proven to belong to whoever holds the account.
+ *
+ * THE WRITE THAT WAS MISSING (RCA 2026-08-04). `accountForGoogle`'s
+ * no-silent-merge rule refuses a Google sign-in until `email_verified_at` is
+ * set — and for two phases nothing in the product could set it. The only
+ * caller that ever produced the state was a test fixture reaching around the
+ * app with raw SQL, which is exactly what an unreachable state looks like from
+ * the inside. Every password account was therefore barred from Google
+ * permanently, with no reset to fall back on: a lockout wearing a policy's
+ * clothes.
+ *
+ * Callers must have PROOF of mailbox control — a consumed verification link or
+ * a consumed reset link. Nothing here checks that; the token is the proof and
+ * email-tokens.mjs is where it is verified.
+ *
+ * COALESCE, so re-verifying keeps the FIRST proof's timestamp — the date this
+ * address became trusted is a fact about the past, not about the last click.
+ */
+export async function markEmailVerified(db, accountId, { now = Date.now() } = {}) {
+  await db
+    .prepare('UPDATE accounts SET email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ?')
+    .bind(now, accountId)
+    .run();
+}
+
+/**
+ * Set (or replace) an account's password — the tail of a reset.
+ *
+ * Verifies the address as a side effect, and deliberately so: the only way to
+ * reach this is by holding a link we mailed to that address, which is the same
+ * proof a verification link carries. Making the caller remember to also call
+ * `markEmailVerified` is how one path forgets.
+ *
+ * Live sessions are NOT revoked here — that is the caller's decision, because
+ * "reset my password" and "an admin set one for me" want opposite answers.
+ */
+export async function setPassword(db, accountId, password, { now = Date.now() } = {}) {
+  assertValidPassword(password);
+  await db
+    .prepare(
+      'UPDATE accounts SET password_hash = ?, email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ?'
+    )
+    .bind(await hashPassword(password), now, accountId)
+    .run();
 }
 
 /**

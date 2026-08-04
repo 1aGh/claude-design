@@ -14,11 +14,16 @@ import {
   createAccount,
   createSession,
   getAccountByEmail,
+  markEmailVerified,
+  revokeAccountSessions,
   revokeSession,
   sessionAccount,
+  setPassword,
 } from './accounts.mjs';
 import { dashboardPage } from './dashboard.mjs';
 import { audit, getProject } from './db.mjs';
+import { passwordResetEmail, sendEmail, verifyEmail } from './email.mjs';
+import { consumeEmailToken, mintEmailToken, peekEmailToken } from './email-tokens.mjs';
 import { mintGrant } from './grants.mjs';
 import { inviteHintFor } from './invites.mjs';
 import {
@@ -28,7 +33,16 @@ import {
   pkcePair,
   validateCallback,
 } from './oauth-google.mjs';
-import { homePage, loginPage, messagePage, signupPage } from './pages.mjs';
+import {
+  checkInboxPage,
+  forgotPage,
+  homePage,
+  loginPage,
+  messagePage,
+  resetPage,
+  signupPage,
+  verifiedPage,
+} from './pages.mjs';
 import { can } from './project-access.mjs';
 
 const SESSION_COOKIE = 'maude_session';
@@ -137,6 +151,23 @@ async function projectsFor(env, accountId) {
 }
 
 /**
+ * Mail somebody the link that confirms their address. Best-effort by design.
+ *
+ * `sendEmail` never throws and reports rather than raises, so a provider
+ * outage cannot turn a signup into a 500 — the account exists either way and
+ * the person can ask for another link. Silence here is the correct failure:
+ * telling a visitor "we could not send mail" invites them to retry a thing
+ * that is not theirs to fix.
+ */
+async function sendVerifyLink(env, origin, account) {
+  const { token } = await mintEmailToken(env.DB, { accountId: account.id, purpose: 'verify' });
+  await sendEmail(env, {
+    to: account.email,
+    ...verifyEmail({ verifyUrl: `${origin}/auth/verify?t=${token}` }),
+  });
+}
+
+/**
  * Route the identity surface. Returns a Response, or null when the path is
  * not ours (worker.mjs falls through to its own routes).
  */
@@ -189,6 +220,11 @@ export async function handleAuth(request, env) {
         actor: `customer:${account.email}`,
         action: 'signup',
       });
+      // The address is unconfirmed until somebody follows a link we mailed to
+      // it, and unconfirmed is what makes `accountForGoogle` refuse this
+      // account later. Sending it HERE is what turns that refusal from a dead
+      // end into a step (RCA 2026-08-04).
+      await sendVerifyLink(env, url.origin, account);
       const session = await createSession(env.DB, account.id);
       return redirect('/', { 'set-cookie': setCookie(SESSION_COOKIE, session.token) });
     } catch (err) {
@@ -219,6 +255,129 @@ export async function handleAuth(request, env) {
     }
     const session = await createSession(env.DB, verdict.account.id);
     return redirect(next ?? '/', { 'set-cookie': setCookie(SESSION_COOKIE, session.token) });
+  }
+
+  // ------------------------------------------- confirming an address / reset
+  //
+  // Both flows hang off email-tokens.mjs: a link, mailed to the address,
+  // single-use and expiring. Together they are the two doors the RCA of
+  // 2026-08-04 found missing — without the first, a password account could
+  // never link Google; without the second, a forgotten password was the end of
+  // the account.
+
+  if (method === 'GET' && pathname === '/forgot') {
+    return html(forgotPage({ next: safeNext(url) }));
+  }
+
+  if (method === 'POST' && pathname === '/auth/forgot') {
+    const form = await request.formData();
+    const account = await getAccountByEmail(env.DB, String(form.get('email') ?? ''));
+    if (account) {
+      const { token } = await mintEmailToken(env.DB, {
+        accountId: account.id,
+        purpose: 'reset',
+      });
+      await sendEmail(env, {
+        to: account.email,
+        ...passwordResetEmail({ resetUrl: `${url.origin}/auth/reset?t=${token}` }),
+      });
+      await audit(env.DB, {
+        accountId: account.id,
+        actor: `customer:${account.email}`,
+        action: 'password-reset-requested',
+      });
+    }
+    // ONE answer for both branches, and no branch that is cheaper than the
+    // other in any way a stranger can observe. An unauthenticated form that
+    // says "no account with that address" is a membership oracle over the
+    // entire customer list.
+    return html(checkInboxPage());
+  }
+
+  if (method === 'GET' && pathname === '/auth/reset') {
+    const token = url.searchParams.get('t') ?? '';
+    // PEEK, not consume: a mail client's link preview, a safe-browsing
+    // prefetch, or a plain refresh would otherwise spend the link before the
+    // person has typed anything, and the flow would appear broken to exactly
+    // the people whose mail provider is most careful.
+    const seen = await peekEmailToken(env.DB, token, 'reset');
+    if (!seen.ok) {
+      return html(
+        messagePage(
+          'That link has expired',
+          'Password links work once and expire after an hour. <a href="/forgot">Ask for a new one</a>.'
+        ),
+        410
+      );
+    }
+    return html(resetPage({ token }));
+  }
+
+  if (method === 'POST' && pathname === '/auth/reset') {
+    const form = await request.formData();
+    const token = String(form.get('t') ?? '');
+    const password = String(form.get('password') ?? '');
+    const spent = await consumeEmailToken(env.DB, token, 'reset');
+    if (!spent.ok) {
+      return html(
+        messagePage(
+          'That link has expired',
+          'Password links work once and expire after an hour. <a href="/forgot">Ask for a new one</a>.'
+        ),
+        410
+      );
+    }
+    try {
+      // Sets the password AND confirms the address: reaching this line
+      // required holding a link we mailed there, which is the same proof the
+      // verification flow collects.
+      await setPassword(env.DB, spent.accountId, password);
+    } catch {
+      // The link is already spent, so re-rendering the form would hand back a
+      // dead one. Sending them round again is the honest answer for a rule
+      // ("12 characters") the form already stated.
+      return html(
+        messagePage(
+          'That password is too short',
+          'Passwords need at least 12 characters. <a href="/forgot">Ask for a new link</a> and try again.'
+        ),
+        400
+      );
+    }
+    // A reset is what somebody does when they suspect they lost control of the
+    // account. Leaving existing sessions alive would make it a password change
+    // and nothing more.
+    await revokeAccountSessions(env.DB, spent.accountId);
+    await audit(env.DB, {
+      accountId: spent.accountId,
+      actor: `customer:${spent.accountId}`,
+      action: 'password-reset',
+    });
+    const session = await createSession(env.DB, spent.accountId);
+    return redirect('/', { 'set-cookie': setCookie(SESSION_COOKIE, session.token) });
+  }
+
+  if (method === 'GET' && pathname === '/auth/verify') {
+    const spent = await consumeEmailToken(env.DB, url.searchParams.get('t') ?? '', 'verify');
+    if (!spent.ok) {
+      return html(
+        messagePage(
+          'That link has expired',
+          'Confirmation links work once and expire after a day. Sign in and we’ll send another.'
+        ),
+        410
+      );
+    }
+    await markEmailVerified(env.DB, spent.accountId);
+    await audit(env.DB, {
+      accountId: spent.accountId,
+      actor: `customer:${spent.accountId}`,
+      action: 'email-verified',
+    });
+    // Deliberately NOT a sign-in. A confirmation link is long-lived and sits in
+    // an inbox; making it also a session would quietly turn every old mail into
+    // a credential. Confirming is all it claims to do.
+    return html(verifiedPage({ googleEnabled: google }));
   }
 
   if (method === 'POST' && pathname === '/auth/logout') {
@@ -320,13 +479,40 @@ export async function handleAuth(request, env) {
     }
     const resolved = await accountForGoogle(env.DB, exchange.claims);
     if (resolved.action === 'refused') {
-      const why =
-        resolved.reason === 'unverified-password-account'
-          ? 'An account with this address already exists. Sign in with its password first — then you can connect Google from settings.'
-          : 'Google didn’t vouch for this address, so it can’t be used to sign in.';
-      return html(messagePage('Sign-in didn’t complete', why), 409, {
-        'set-cookie': clearCookie(OAUTH_COOKIE),
-      });
+      if (resolved.reason === 'unverified-password-account') {
+        // The refusal itself is right — an unconfirmed password account must
+        // not capture a Google sign-in. What was wrong (RCA 2026-08-04) was the
+        // instruction it gave: it told people to sign in with their password
+        // "and then connect Google from settings", and neither half existed.
+        // Signing in changed nothing, there was no settings surface, and there
+        // was no way at all to confirm the address — so this screen was a wall
+        // with directions painted on it.
+        //
+        // Google has just vouched for this address (`emailVerified` is checked
+        // upstream), so the person standing here is its owner. Mailing them the
+        // confirmation link makes the next sentence true. It is also why this
+        // needs no rate limit of its own: reaching this line costs a completed
+        // Google sign-in for the address being mailed.
+        const existing = await getAccountByEmail(env.DB, exchange.claims.email);
+        if (existing) await sendVerifyLink(env, url.origin, existing);
+        return html(
+          messagePage(
+            'One more step',
+            'An account with this address already exists, and we haven’t confirmed the address yet. ' +
+              'We’ve just emailed you a link — follow it and Google will work here.'
+          ),
+          409,
+          { 'set-cookie': clearCookie(OAUTH_COOKIE) }
+        );
+      }
+      return html(
+        messagePage(
+          'Sign-in didn’t complete',
+          'Google didn’t vouch for this address, so it can’t be used to sign in.'
+        ),
+        409,
+        { 'set-cookie': clearCookie(OAUTH_COOKIE) }
+      );
     }
     if (resolved.action === 'created') {
       await audit(env.DB, {

@@ -263,6 +263,53 @@ export const MIGRATIONS = [
       'ALTER TABLE projects ADD COLUMN mirror_folder TEXT;',
     ],
   },
+  {
+    version: 16, // RCA 2026-08-04 — the address can finally be proven
+    statements: [
+      // Links we mail to prove somebody reads an address: 'verify' (unblocks
+      // Google linking) and 'reset' (chooses a new password). Stored hashed and
+      // single-use, like sessions and handoff codes. Until this table existed,
+      // `accounts.email_verified_at` was writable by nothing in the product,
+      // so every password account was permanently barred from Google sign-in
+      // and, with no reset flow, unrecoverable once its password was forgotten.
+      `CREATE TABLE IF NOT EXISTS email_tokens (
+        id         TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+        purpose    TEXT NOT NULL CHECK (purpose IN ('verify','reset')),
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        used_at    INTEGER
+      );`,
+      'CREATE INDEX IF NOT EXISTS email_tokens_account ON email_tokens (account_id, purpose);',
+      // BACKFILL — invite-created accounts only.
+      //
+      // An invitation is delivered TO the address and is single-use; redeeming
+      // one is the same proof a verification link carries, and invites.mjs
+      // simply never recorded it. The predicate below is the 'create' mode's
+      // signature: the account did not exist when the invitation was minted
+      // (`accounts.created_at >= i.created_at`), so redemption is what created
+      // it.
+      //
+      // Password-SIGNUP accounts are deliberately NOT backfilled. Verifying
+      // those wholesale is precisely the silent merge the no-silent-merge rule
+      // exists to prevent — an attacker who pre-registered victim@gmail.com
+      // would be handed the victim's Google sign-in. They go through the new
+      // verification email like anyone else.
+      //
+      // `email_verified_at` is set to the account's own creation time, not to
+      // now: the address was proven then, and a migration should not claim
+      // today's date for a fact that is months old.
+      `UPDATE accounts SET email_verified_at = created_at
+        WHERE email_verified_at IS NULL
+          AND google_sub IS NULL
+          AND EXISTS (
+            SELECT 1 FROM project_invites i
+             WHERE i.email = accounts.email
+               AND i.redeemed_at IS NOT NULL
+               AND accounts.created_at >= i.created_at
+          );`,
+    ],
+  },
 ];
 
 /** Apply baseline + pending versioned migrations. Safe to run repeatedly. */

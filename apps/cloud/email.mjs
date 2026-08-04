@@ -76,6 +76,60 @@ export function inviteEmail({ projectName, role, inviteUrl, invitedBy }) {
 }
 
 /**
+ * "Confirm this is your address" — RCA 2026-08-04.
+ *
+ * Says WHY rather than just asking: a confirmation mail that gives no reason
+ * reads like the ones people have learned to ignore. The reason here is
+ * concrete and immediate — until the address is confirmed, the Google button
+ * refuses this account, which is the exact wall the recipient just hit.
+ */
+export function verifyEmail({ verifyUrl }) {
+  return {
+    subject: 'Confirm your email address',
+    text: [
+      'Somebody — we think you — asked to confirm this address for Maude Cloud.',
+      '',
+      'Confirm it here:',
+      '',
+      `  ${verifyUrl}`,
+      '',
+      'Once it is confirmed you can also sign in with Google, using this same',
+      'address, instead of typing a password.',
+      '',
+      'The link is yours alone and stops working after a day. If you were not',
+      'expecting this, you can ignore it — nothing changes until you follow it.',
+    ].join('\n'),
+  };
+}
+
+/**
+ * "Choose a new password."
+ *
+ * Deliberately does NOT confirm whether an account exists — the mail only ever
+ * reaches an address that has one, and the PAGE says the same neutral sentence
+ * either way (auth-routes.mjs). The pair is what closes the oracle; either one
+ * alone leaks.
+ */
+export function passwordResetEmail({ resetUrl }) {
+  return {
+    subject: 'Choose a new password',
+    text: [
+      'Somebody asked to reset the password for your Maude Cloud account.',
+      '',
+      'Choose a new one here:',
+      '',
+      `  ${resetUrl}`,
+      '',
+      'The link works once and stops working after an hour. Using it also signs',
+      'out anything already signed in as you, on every device.',
+      '',
+      'If this was not you, ignore this mail — your password has not changed,',
+      'and whoever asked cannot see this message.',
+    ].join('\n'),
+  };
+}
+
+/**
  * `1753...` ms → `28 August 2026`. The same format the billing pages use; a
  * date that reads one way on screen and another in the inbox is a date nobody
  * trusts.
