@@ -58,13 +58,27 @@ jobs:
           bash scripts/check-containment.sh
           sh -n infra/cell/entrypoint.sh
 
+      - name: Install Bun (cloud-binary gate)
+        # The gate below compiles apps/studio twice with Bun — which this job
+        # otherwise never needs (its first run failed with `bun: command not
+        # found`, exit 127). Same EXACT pin as build-binaries/build-desktop:
+        # Bun's minifier output is not stable across patch releases (see the
+        # rationale on build-desktop.yml's Install Bun step).
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.3'
+
       - name: Cloud binary elimination (Phase 27 D1)
         # Containment says a cell REFUSES these surfaces; this says the code is
         # not in the image, which is the claim DDR-123 actually makes. Two
         # compiles for the host arch (~1 min), and the assertion is a PAIR:
         # each sentinel present in the desktop binary, absent from the cloud
         # one — because absence alone is also what a typo'd sentinel looks like.
-        run: bash scripts/check-cloud-binary.sh
+        # `bun install` first: apps/studio resolves its own bun.lock (DDR-009),
+        # independent of the root pnpm install above.
+        run: |
+          (cd apps/studio && bun install --frozen-lockfile)
+          bash scripts/check-cloud-binary.sh
 
       - name: Hub backup restore drill
         # The exit gate for Cloud Phase 2 Task 3. A backup nobody has restored
