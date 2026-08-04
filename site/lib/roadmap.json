@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-04T15:36:28.355Z",
+  "generated": "2026-08-04T17:15:29.403Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1803,6 +1803,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-bug-autofix-agent.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-cloud-connect-ux",
+      "title": "Feature: Cloud→desktop connect UX — native sign-in browser open + deep-link decision modal",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-cloud-connect-ux.md",
       "archived": false,
       "phaseKey": null
     },
