@@ -3,9 +3,25 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** done — Cloud Phase 27 closed 2026-08-04
+**Status:** done — Cloud Phase 26 closed 2026-08-04
 **Active plan:** —
 **Active task:** —
+
+_2026-08-04:_ **Cloud Phase 26 CLOSED — the operator view, and figures instead of an estimate.**
+`/operator` is live behind an allowlist that is empty by default; it is mostly a
+route over `fleetBoard`/`costAlarms`, which had been tested and callerless since
+Phase 9. Product analytics go to Analytics Engine and never to D1, on a CLOSED
+vocabulary — every property an enum, an account id shape-validated — so the
+privacy revision that shipped in the same change is a property of the code
+rather than a promise. Each project now counts its own designs and build
+sandbox, so the €3/cell model finally has real numbers. **The review earned its
+keep**: four of the seven stated security invariants turned out weaker than
+their comments (none was a broken control), and the counts had been put on the
+hub's UNAUTHENTICATED `/health` — a correct disclosure argument about the
+studio's endpoint, carried onto one with a different audience. All fixed and now
+tested. Customers get one thing directly: the activity page says *why* we
+looked, including the platform-wide reads that were previously the only ones
+they could not see.
 
 _2026-08-04:_ **Cloud Phase 27 CLOSED + archived — one studio, three shells.**
 Every track landed. Today closed the shell-origin `/_ws` CSWSH gate, D5's second

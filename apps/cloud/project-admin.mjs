@@ -16,6 +16,7 @@
 //                             T3). Config lives HERE; the cell asks for it on
 //                             every tick, so saving needs no restart.
 
+import { track } from './analytics.mjs';
 import { appShell, DESKTOP_DOWNLOAD_URL } from './brand.mjs';
 import { mintProjectToken } from './cell-token.mjs';
 import { STATE_COPY } from './dashboard.mjs';
@@ -287,6 +288,15 @@ export const AUDIT_COPY = {
   'project.deleted': 'The project was deleted',
   'mirror.configured': 'GitHub copy connected',
   'mirror.disconnected': 'GitHub copy disconnected',
+  // Cloud Phase 26 — the platform's own operator, in the customer's words. A
+  // raw action key on this page would tell somebody that we looked without
+  // telling them what we did, which is the wrong half.
+  'operator.board.viewed': 'Maude looked at the platform-wide project list',
+  'operator.projects.viewed': 'Maude looked at the platform-wide project list',
+  'operator.accounts.viewed': 'Maude looked at the platform-wide account list',
+  'operator.events.viewed': 'Maude looked at platform-wide usage figures',
+  'operator.project.viewed': 'Maude opened this project’s record',
+  'operator.reconcile.nudged': 'Maude asked the platform to re-check this project',
 };
 
 export function auditPage({ account, project, isOwner, entries }) {
@@ -295,6 +305,7 @@ export function auditPage({ account, project, isOwner, entries }) {
       (e) => `<tr>
         <td>${esc(AUDIT_COPY[e.action] ?? e.action)}</td>
         <td class="quiet">${esc(String(e.actor).replace(/^customer:/, ''))}</td>
+        <td>${e.reason ? esc(e.reason) : '<span class="quiet">—</span>'}</td>
         <td class="right"><time>${when(e.at)}</time></td>
       </tr>`
     )
@@ -302,14 +313,14 @@ export function auditPage({ account, project, isOwner, entries }) {
   return page(
     'Activity',
     entries.length
-      ? `<table><thead><tr><th>What</th><th>Who</th><th>When</th></tr></thead><tbody>${rows}</tbody></table>`
+      ? `<table><thead><tr><th>What</th><th>Who</th><th>Why</th><th>When</th></tr></thead><tbody>${rows}</tbody></table>`
       : '<p class="quiet">Nothing yet.</p>',
     {
       account,
       project,
       isOwner,
       active: 'audit',
-      lede: 'Everything that happened to this project — by you, by people you invited, and by the platform itself. If we ever touch your project, it shows up here.',
+      lede: 'Everything that happened to this project — by you, by people you invited, and by the platform itself. If we ever touch your project, it shows up here, with the reason we gave at the time.',
     }
   );
 }
@@ -464,7 +475,7 @@ async function cellHasNothingToExport(env, projectId, account) {
 /**
  * Route the per-project admin surfaces. Returns a Response, or null.
  */
-export async function handleProjectAdminRoutes(request, env, { account }) {
+export async function handleProjectAdminRoutes(request, env, { account, ctx = null } = {}) {
   const url = new URL(request.url);
   const m = url.pathname.match(
     /^\/projects\/([a-z0-9-]+)\/(connect|download|delete|audit|mirror)(\/file)?$/
@@ -500,6 +511,15 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
     }
     const object = await env.EXPORTS.get(key);
     if (!object) return html(`<p>${ACCESS_MESSAGES['no-access']}</p>`, 404);
+    // The one moment that proves the portability promise is being used. The
+    // FILENAME is deliberately not recorded — it is the customer's own
+    // namespace, and the operational fact is that a copy left, not which one.
+    track(env, ctx, {
+      name: 'export_downloaded',
+      accountId: account.id,
+      projectId,
+      props: { kind: 'file' },
+    });
     return new Response(object.body, {
       headers: {
         'content-type': 'application/octet-stream',
@@ -590,6 +610,12 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
       action: 'export.prepared',
       detail: outcome.body.prefix,
     });
+    track(env, ctx, {
+      name: 'export_downloaded',
+      accountId: account.id,
+      projectId,
+      props: { kind: 'generation' },
+    });
     return html(
       downloadPage({
         account,
@@ -666,6 +692,7 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
       actor: `customer:${account.email}`,
       action: 'project.deleted',
     });
+    track(env, ctx, { name: 'delete_requested', accountId: account.id, projectId });
     // The bytes, not just the row (Cloud Phase 24 B4). Until this line, delete
     // stopped billing and left `tenants/<id>/` in storage forever — the one
     // thing that must not be true for a product whose pitch is "you can
@@ -688,8 +715,24 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
 
   // ------------------------------------------------------------------- audit
   if (surface === 'audit' && request.method === 'GET') {
+    // Cloud Phase 26 — `reason` joins the select. The column has existed since
+    // Phase 7 ("an access with no stated reason is the one worth noticing")
+    // and was never displayed, which made it a field nobody had a reason to
+    // fill in honestly. Now that an operator surface writes to it, the page
+    // that promises "you can see that we looked" has to show WHY we looked.
+    //
+    // AND THE FLEET-WIDE READS TOO. The operator board's list views span every
+    // tenant, so they are recorded with no project_id — which meant the reads
+    // that touch EVERYONE were exactly the ones no customer could ever see,
+    // inverting the promise (attacker review, 2026-08-04). They are unioned in
+    // here: a cross-tenant read is a read of this project, whatever column it
+    // happened to be filed under.
     const rows = await env.DB.prepare(
-      'SELECT at, actor, action FROM audit_log WHERE project_id = ? ORDER BY at DESC LIMIT 200'
+      `SELECT at, actor, action, reason FROM audit_log WHERE project_id = ?
+       UNION ALL
+       SELECT at, actor, action, reason FROM audit_log
+        WHERE project_id IS NULL AND actor LIKE 'operator:%'
+       ORDER BY at DESC LIMIT 200`
     )
       .bind(projectId)
       .all();

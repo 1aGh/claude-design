@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-
+import { probeCellBody } from './provision.mjs';
 import {
   chargeIsPermitted,
   decideCheckout,
@@ -135,5 +135,87 @@ describe('the customer-facing wording', () => {
     ]) {
       assert.ok(!new RegExp(jargon, 'i').test(said), `"${jargon}" leaked into a customer message`);
     }
+  });
+});
+
+// ------------------------------------- probing a cell we do not trust (Phase 26)
+
+describe('probeCellBody treats the cell as the untrusted peer it is', () => {
+  const env = { CELL_ZONE: 'cloud.maude.sh' };
+  const answer = (body, { headers = {} } = {}) => {
+    const text = typeof body === 'string' ? body : JSON.stringify(body);
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: (k) => headers[k] ?? (k === 'content-length' ? String(text.length) : null) },
+      text: async () => text,
+    };
+  };
+
+  it('refuses to follow a redirect', async () => {
+    // `fetch` follows by default, so a compromised cell answering 302 would
+    // steer a call made from the control plane's own network position.
+    let init = null;
+    await probeCellBody(env, 'alligators', {
+      fetchImpl: async (_url, opts) => {
+        init = opts;
+        return answer({ ok: true });
+      },
+    });
+    assert.equal(init.redirect, 'manual');
+  });
+
+  it('presents the tenant’s secret when given one, and nothing when not', async () => {
+    let withSecret = null;
+    let without = null;
+    await probeCellBody(env, 'x', {
+      secret: 's3cret',
+      fetchImpl: async (_u, o) => {
+        withSecret = o;
+        return answer({ ok: true });
+      },
+    });
+    await probeCellBody(env, 'x', {
+      fetchImpl: async (_u, o) => {
+        without = o;
+        return answer({ ok: true });
+      },
+    });
+    assert.equal(withSecret.headers.authorization, 'Bearer s3cret');
+    assert.equal(without.headers, undefined);
+  });
+
+  it('refuses an oversized body rather than buffering it', async () => {
+    // A health probe answerable with a gigabyte is a health probe that can
+    // take the hourly sweep down.
+    const huge = `{"ok":true,"pad":"${'x'.repeat(200)}"}`;
+    const res = await probeCellBody(env, 'x', {
+      maxBytes: 64,
+      fetchImpl: async () => answer(huge),
+    });
+    assert.equal(res.body, null);
+    assert.equal(res.state, 'pending');
+  });
+
+  it('refuses on a LYING content-length as well as a real overrun', async () => {
+    const res = await probeCellBody(env, 'x', {
+      maxBytes: 64,
+      fetchImpl: async () => answer({ ok: true }, { headers: { 'content-length': '999999' } }),
+    });
+    assert.equal(res.body, null);
+  });
+
+  it('unparseable JSON is "we do not know", never a throw', async () => {
+    const res = await probeCellBody(env, 'x', { fetchImpl: async () => answer('not json at all') });
+    assert.equal(res.state, 'pending');
+    assert.equal(res.body, null);
+  });
+
+  it('keeps the answer when the cell behaves', async () => {
+    const res = await probeCellBody(env, 'x', {
+      fetchImpl: async () => answer({ ok: true, stats: { canvases: 3 } }),
+    });
+    assert.equal(res.state, 'healthy');
+    assert.equal(res.body.stats.canvases, 3);
   });
 });

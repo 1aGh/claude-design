@@ -497,3 +497,117 @@ test('a failed migration STOPS the sweep — never reconcile on an unknown schem
   }
   assert.ok(errors.some((e) => /\[migrate\] failed/.test(e)));
 });
+
+// ------------------------------------------------------ tenant stats (Phase 26)
+
+/**
+ * A cell's `/health` answer, in the shape `probeCellBody` actually reads.
+ *
+ * It reads `.text()` rather than `.json()` — the body comes from a process we
+ * do not trust to its peers, so it is size-bounded before it is parsed.
+ */
+function cellHealth(body) {
+  const text = JSON.stringify(body);
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: (k) => (k === 'content-length' ? String(text.length) : null) },
+    text: async () => text,
+  };
+}
+//
+// The cell counts what it holds; the sweep that already asks it `/health`
+// carries the answer to Analytics Engine. Never into D1 — schema.sql earns
+// "a total loss of this database costs a customer nothing" by holding no
+// design content, and a counts table would be the first crack in that.
+
+test('the sweep carries a cell’s own counts to analytics, and never to D1', async () => {
+  const written = [];
+  const { env, sqlite } = freshEnv();
+  env.EVENTS = { writeDataPoint: (dp) => written.push(dp) };
+  seedProject(sqlite, { id: 'alligators', subscription: 'sub_1' });
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/health')) {
+      return cellHealth({
+        ok: true,
+        stats: {
+          canvases: 12,
+          artboards: 40,
+          designSystems: 2,
+          assetsBytes: 900,
+          render: { builds: 6, cacheHits: 5, cacheMisses: 1, windowStartedAt: 7 },
+        },
+      });
+    }
+    return stubStripe({ sub_1: { status: 'active' } })(url);
+  };
+  try {
+    await reconcileSweep(env, { now: NOW });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
+  const stats = written.find((dp) => dp.indexes[0] === 'tenant_stats');
+  assert.ok(stats, 'the counts reached analytics');
+  assert.equal(stats.blobs[1], 'alligators');
+  assert.deepEqual(stats.doubles, [12, 40, 2, 900]);
+
+  const render = written.find((dp) => dp.indexes[0] === 'tenant_render');
+  assert.ok(render, 'the build counters reached analytics');
+  // Two counts travel; the ratio is divided at read time.
+  assert.equal(render.doubles[1], 5);
+  assert.equal(render.doubles[2], 1);
+
+  // And nothing about the customer's content landed in the control plane.
+  const columns = sqlite
+    .prepare('PRAGMA table_info(projects)')
+    .all()
+    .map((c) => c.name);
+  for (const forbidden of ['canvases', 'artboards', 'assets_bytes', 'builds']) {
+    assert.ok(!columns.includes(forbidden), `projects grew a "${forbidden}" column`);
+  }
+});
+
+test('a cell that reports no stats contributes NOTHING — unknown is never zero', async () => {
+  // An older image, mid-canary. The board must render an em-dash for it, and
+  // the only way that stays true is if the sweep emits no datapoint at all.
+  const written = [];
+  const { env, sqlite } = freshEnv();
+  env.EVENTS = { writeDataPoint: (dp) => written.push(dp) };
+  seedProject(sqlite, { id: 'oldimage', subscription: 'sub_1' });
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/health')) return cellHealth({ ok: true, version: 'phase-24' });
+    return stubStripe({ sub_1: { status: 'active' } })(url);
+  };
+  try {
+    await reconcileSweep(env, { now: NOW });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.equal(written.filter((dp) => dp.indexes[0].startsWith('tenant_')).length, 0);
+});
+
+test('an unreachable cell does not stop the sweep, and reports no figures', async () => {
+  const written = [];
+  const { env, sqlite } = freshEnv();
+  env.EVENTS = { writeDataPoint: (dp) => written.push(dp) };
+  seedProject(sqlite, { id: 'alligators', subscription: 'sub_1' });
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/health')) throw new Error('connect ETIMEDOUT');
+    return stubStripe({ sub_1: { status: 'active' } })(url);
+  };
+  let outcomes;
+  try {
+    outcomes = await reconcileSweep(env, { now: NOW });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.equal(outcomes[0].outcome, 'ok', 'the subscription pass still ran');
+  assert.equal(written.filter((dp) => dp.indexes[0].startsWith('tenant_')).length, 0);
+});

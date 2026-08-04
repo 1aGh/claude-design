@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-04T17:15:29.403Z",
+  "generated": "2026-08-04T18:07:32.514Z",
   "currentPhase": null,
   "phases": [
     {
@@ -252,6 +252,17 @@
       "date": null,
       "summary": "1. The read-only gallery is dropped. view-<project>.cloud.maude.sh, the published-snapshot surface, and the maude share publish CLI verb all go. 2. Roles become real, once. A member's rights are th...",
       "planPath": ".ai/plans/archive/cloud-phase-25-one-project-two-doors.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "cloud-phase-26-operator-view-and-analytics",
+      "title": "Cloud Phase 26 — Operator view (superadmin) + product analytics",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — apps/cloud has a strong house style (pure logic vs route effects, DDR-196 §1; colocat...",
+      "planPath": ".ai/plans/archive/cloud-phase-26-operator-view-and-analytics.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1782,17 +1793,6 @@
       "summary": "The moodboard direction gates catch a disliked direction before the scaffold. They do not catch a scaffold that ran but produced silently-broken output — empty files trusted as written, a transpile...",
       "planPath": ".ai/plans/archive/setup-ds-round2-scaffold-integrity-and-devserver-fixes.md",
       "archived": true,
-      "phaseKey": null
-    },
-    {
-      "id": "cloud-phase-26-operator-view-and-analytics",
-      "title": "Cloud Phase 26 — Operator view (superadmin) + product analytics",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — apps/cloud has a strong house style (pure logic vs route effects, DDR-196 §1; colocat...",
-      "planPath": ".ai/plans/cloud-phase-26-operator-view-and-analytics.md",
-      "archived": false,
       "phaseKey": null
     },
     {

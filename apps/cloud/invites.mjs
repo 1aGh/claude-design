@@ -12,6 +12,7 @@
 // a guessed UUID must learn nothing at all.
 
 import { createAccount, createSession, getAccountByEmail } from './accounts.mjs';
+import { track } from './analytics.mjs';
 import { GOOGLE_BUTTON_CSS, googleButton, lockup, PAGE_CSS } from './brand.mjs';
 import { audit } from './db.mjs';
 import { googleConfigured } from './oauth-google.mjs';
@@ -164,7 +165,7 @@ export async function inviteHintFor(env, next) {
 }
 
 /** Add the membership, mark the invite spent, and write the audit line. */
-async function redeem(env, invite, accountId, { now = Date.now() } = {}) {
+async function redeem(env, invite, accountId, { now = Date.now(), ctx = null } = {}) {
   await env.DB.prepare(
     `INSERT INTO project_members (project_id, account_id, role, added_at) VALUES (?, ?, ?, ?)
        ON CONFLICT (project_id, account_id) DO UPDATE SET role = excluded.role`
@@ -181,6 +182,9 @@ async function redeem(env, invite, accountId, { now = Date.now() } = {}) {
     action: 'invite.redeem',
     detail: JSON.stringify({ invite: invite.id, role: invite.role }),
   });
+  // The invite is the product's core action (DDR-193 §5) — worth knowing how
+  // often the link actually gets followed, which is the half nobody sees.
+  track(env, ctx, { name: 'invite_redeemed', accountId, projectId: invite.project_id });
 }
 
 /**
@@ -189,7 +193,7 @@ async function redeem(env, invite, accountId, { now = Date.now() } = {}) {
  * @param {{ account: {id: string, email: string} | null }} ctx  the signed-in
  *   account, resolved by the caller the same way every surface resolves it.
  */
-export async function handleInviteRoutes(request, env, { account }) {
+export async function handleInviteRoutes(request, env, { account, ctx = null } = {}) {
   const url = new URL(request.url);
   const m = url.pathname.match(/^\/invite\/([^/]+)$/);
   if (!m) return null;
@@ -213,7 +217,7 @@ export async function handleInviteRoutes(request, env, { account }) {
   if (request.method !== 'POST') return html('<p>Not allowed.</p>', 405);
 
   if (mode === 'join') {
-    await redeem(env, invite, account.id);
+    await redeem(env, invite, account.id, { ctx });
     return new Response(null, { status: 303, headers: { location: '/' } });
   }
 
@@ -251,7 +255,8 @@ export async function handleInviteRoutes(request, env, { account }) {
   await env.DB.prepare('UPDATE accounts SET disclosure_accepted_at = ? WHERE id = ?')
     .bind(Date.now(), created.id)
     .run();
-  await redeem(env, invite, created.id);
+  track(env, ctx, { name: 'signup', accountId: created.id, props: { method: 'invite' } });
+  await redeem(env, invite, created.id, { ctx });
   const session = await createSession(env.DB, created.id);
   return new Response(null, {
     status: 303,

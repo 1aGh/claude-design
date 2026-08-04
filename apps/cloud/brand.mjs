@@ -411,9 +411,13 @@ function navItem({ href, label, glyph, active = false, danger = false }) {
  * @param {string} args.body             main-column HTML (already escaped)
  * @param {object|null} [args.project]   {id, name} — adds the project section
  * @param {boolean} [args.isOwner]       owner-only nav entries
- * @param {string} [args.active]         nav key: projects|new|connect|people|billing|mirror|audit|download|delete
+ * @param {string} [args.active]         nav key: projects|new|connect|people|billing|mirror|audit|download|delete|operator
  * @param {{tone: string, label: string}|null} [args.pill]  state pill next to the h1
  * @param {string|null} [args.lede]      one quiet sentence under the h1
+ * @param {boolean} [args.isOperator]    Cloud Phase 26 — the fleet section, for
+ *   the allowlisted operator ONLY. Default false, so a customer's shell is
+ *   byte-identical to what it was; the surface must not exist in a page a
+ *   tenant can render (project-admin.test.mjs guards the phrasing).
  */
 export function appShell({
   account,
@@ -421,6 +425,7 @@ export function appShell({
   body,
   project = null,
   isOwner = false,
+  isOperator = false,
   active = '',
   pill = null,
   lede = null,
@@ -438,6 +443,18 @@ export function appShell({
        ${navItem({ href: `${p}/download`, label: 'Download everything', glyph: 'down', active: active === 'download' })}
        ${isOwner ? navItem({ href: `${p}/delete`, label: 'Delete project…', glyph: 'trash', active: active === 'delete', danger: true }) : ''}`
     : '';
+  // Cloud Phase 26 — the fleet, for the one person allowed to see all of it.
+  // Gated at the SHELL as well as at the route: a nav entry a customer can see
+  // but not open is an invitation to try, and this section's existence is
+  // itself information they have no reason to hold.
+  const operatorNav = isOperator
+    ? `<div class="nav-sep"></div>
+       <div class="nav-hd">Fleet</div>
+       ${navItem({ href: '/operator', label: 'Overview', glyph: 'grid', active: active === 'operator' })}
+       ${navItem({ href: '/operator/projects', label: 'All projects', glyph: 'open', active: active === 'operator-projects' })}
+       ${navItem({ href: '/operator/accounts', label: 'All accounts', glyph: 'people', active: active === 'operator-accounts' })}
+       ${navItem({ href: '/operator/events', label: 'Usage', glyph: 'clock', active: active === 'operator-events' })}`
+    : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escAttr(title)} — Maude</title><style>${TOKENS}${CHROME}${LOCKUP_CSS}${SHELL_CSS}${extraCss}</style></head><body>
 <div class="shell">
   <header class="top">
@@ -452,6 +469,7 @@ export function appShell({
     ${navItem({ href: '/projects/new', label: 'Start a project', glyph: 'plus', active: active === 'new' })}
     ${navItem({ href: '/account', label: 'Account', glyph: 'people', active: active === 'account' })}
     ${projectNav}
+    ${operatorNav}
   </nav>
   <main class="main"><div class="main-inner">
     <div class="page-hd"><h1>${escAttr(title)}</h1>${pill ? `<span class="state ${escAttr(pill.tone)}">${escAttr(pill.label)}</span>` : ''}</div>

@@ -16,6 +16,7 @@
 // backstop for the person who closed the tab, and there is no third machine
 // to go wrong.
 
+import { track } from './analytics.mjs';
 import {
   cancelSchedule,
   currentVatId,
@@ -100,7 +101,7 @@ async function latestAttempt(env, projectId) {
 /**
  * Route the checkout + billing surfaces. Returns a Response or null.
  */
-export async function handleCheckoutRoutes(request, env, { account }) {
+export async function handleCheckoutRoutes(request, env, { account, ctx = null } = {}) {
   const url = new URL(request.url);
   const { pathname } = url;
   const pricing = pricingCatalog;
@@ -185,6 +186,15 @@ export async function handleCheckoutRoutes(request, env, { account }) {
           502
         );
       }
+      // The top of the funnel: somebody chose a plan and left for Stripe. The
+      // matching `checkout_completed` fires only when the workspace actually
+      // came up, so the gap between the two IS the abandonment rate.
+      track(env, ctx, {
+        name: 'checkout_started',
+        accountId: account.id,
+        projectId: verdict.id,
+        props: { plan: verdict.plan, interval: verdict.interval },
+      });
       return redirect(session.body.url);
     } catch (err) {
       console.error(`[checkout] ${err.message}`);
@@ -313,6 +323,18 @@ export async function handleCheckoutRoutes(request, env, { account }) {
         action: 'checkout.settled',
         detail: 'workspace healthy — subscription kept',
       });
+      // Settlement is provision-FIRST, so these two are the same moment: the
+      // subscription is kept precisely because the workspace answered.
+      // No `interval` here, deliberately: `projects` records a plan and not a
+      // billing interval, so naming one would be inventing it. The interval is
+      // on `checkout_started`, where the form actually said which it was.
+      track(env, ctx, {
+        name: 'checkout_completed',
+        accountId: account.id,
+        projectId,
+        props: { plan: project.plan === 'dedicated' ? 'dedicated' : 'project' },
+      });
+      track(env, ctx, { name: 'project_provisioned', accountId: account.id, projectId });
     } else if (decision.outcome === 'void') {
       // The workspace did not come up in time: the subscription is cancelled
       // while it has cost nothing. That IS the void.
@@ -408,6 +430,7 @@ export async function handleCheckoutRoutes(request, env, { account }) {
         console.error(`[billing] portal create failed (${portal.status})`);
         return html('<p>Billing could not be opened right now. Try again in a minute.</p>', 502);
       }
+      track(env, ctx, { name: 'billing_portal_opened', accountId: account.id, projectId });
       return redirect(portal.body.url);
     }
 
@@ -468,6 +491,8 @@ export async function handleCheckoutRoutes(request, env, { account }) {
         action: 'billing.cancelled',
         detail: `ends ${new Date(schedule.pausesOn).toISOString()}`,
       });
+      // Worth measuring precisely because it is the uncomfortable number.
+      track(env, ctx, { name: 'cancel_requested', accountId: account.id, projectId });
       return redirect(`/projects/${projectId}/billing`);
     }
 

@@ -20,6 +20,7 @@ import {
   sessionAccount,
   setPassword,
 } from './accounts.mjs';
+import { track } from './analytics.mjs';
 import { dashboardPage } from './dashboard.mjs';
 import { audit, getProject } from './db.mjs';
 import { passwordResetEmail, sendEmail, verifyEmail } from './email.mjs';
@@ -45,7 +46,10 @@ import {
 } from './pages.mjs';
 import { can } from './project-access.mjs';
 
-const SESSION_COOKIE = 'maude_session';
+// Exported since Cloud Phase 26: the operator surface derives its CSRF token
+// from the session this names, so the two must agree on the cookie by
+// reference rather than by a second string literal.
+export const SESSION_COOKIE = 'maude_session';
 const OAUTH_COOKIE = 'maude_oauth';
 
 function html(body, status = 200, extraHeaders = {}) {
@@ -171,7 +175,11 @@ async function sendVerifyLink(env, origin, account) {
  * Route the identity surface. Returns a Response, or null when the path is
  * not ours (worker.mjs falls through to its own routes).
  */
-export async function handleAuth(request, env) {
+export async function handleAuth(request, env, { ctx = null, account: given } = {}) {
+  // The caller has already read the session (worker.mjs reads it once, above
+  // the router, so the page-view lane can see it). `undefined` means "not
+  // provided"; `null` is a real answer and means signed out.
+  const session = async () => (given === undefined ? currentAccount(request, env) : given);
   const url = new URL(request.url);
   const { pathname } = url;
   const method = request.method;
@@ -182,7 +190,7 @@ export async function handleAuth(request, env) {
     // Signed in? Then "/" IS the dashboard (Cloud Phase 22 / DDR-204). A
     // signed-in person landing on a marketing page and having to find a link
     // to their own work is the shape this phase exists to remove.
-    const account = await currentAccount(request, env);
+    const account = await session();
     if (!account) return html(homePage({ account: null, googleEnabled: google }));
     return html(dashboardPage({ account, projects: await projectsFor(env, account.id), can }));
   }
@@ -226,6 +234,7 @@ export async function handleAuth(request, env) {
       // end into a step (RCA 2026-08-04).
       await sendVerifyLink(env, url.origin, account);
       const session = await createSession(env.DB, account.id);
+      track(env, ctx, { name: 'signup', accountId: account.id, props: { method: 'password' } });
       return redirect('/', { 'set-cookie': setCookie(SESSION_COOKIE, session.token) });
     } catch (err) {
       // One neutral sentence for both "exists" and validation shapes the user
@@ -248,12 +257,20 @@ export async function handleAuth(request, env) {
       String(form.get('password') ?? '')
     );
     if (!verdict.ok) {
+      // No account id, because there may be no account — and the reason is one
+      // of three declared values, never the address that was tried.
+      track(env, ctx, { name: 'login_failed', props: { reason: 'bad-password' } });
       return html(
         loginPage({ googleEnabled: google, error: 'That email and password don’t match.', next }),
         401
       );
     }
     const session = await createSession(env.DB, verdict.account.id);
+    track(env, ctx, {
+      name: 'login',
+      accountId: verdict.account.id,
+      props: { method: 'password' },
+    });
     return redirect(next ?? '/', { 'set-cookie': setCookie(SESSION_COOKIE, session.token) });
   }
 
@@ -399,7 +416,7 @@ export async function handleAuth(request, env) {
   }
 
   if (method === 'GET' && pathname === '/auth/session') {
-    const account = await currentAccount(request, env);
+    const account = await session();
     return account
       ? json({ ok: true, account: { email: account.email, name: account.name } })
       : json({ ok: false }, 401);
@@ -522,6 +539,13 @@ export async function handleAuth(request, env) {
       });
     }
     const session = await createSession(env.DB, resolved.account.id);
+    // A first Google sign-in is a signup AND a login; recorded as whichever it
+    // was, so the funnel does not double-count the same moment.
+    track(env, ctx, {
+      name: resolved.action === 'created' ? 'signup' : 'login',
+      accountId: resolved.account.id,
+      props: { method: 'google' },
+    });
     // Two cookies = two Set-Cookie HEADERS. Joining them with ", " into one
     // header made the browser read the whole string as ONE cookie whose later
     // `Max-Age=0` (from the oauth clear) overrode the session's — the session
@@ -535,7 +559,7 @@ export async function handleAuth(request, env) {
 
   // ------------------------------------------------- project grant minting
   if (method === 'POST' && /^\/api\/projects\/[a-z0-9-]+\/token$/.test(pathname)) {
-    const account = await currentAccount(request, env);
+    const account = await session();
     if (!account) return json({ ok: false }, 401);
     const projectId = pathname.split('/')[3];
     const project = await getProject(env.DB, projectId);

@@ -309,3 +309,22 @@ plan's own rule, unknown is never `0`.
 - [ ] Cold-start p95 has a pre-sandbox baseline recorded, so the image-growth regression has something to be measured against
 - [ ] All security-invariant tests listed in Validation §5 exist and pass
 - [ ] No DDR-worthy decision left unrecorded (candidates: operator gating model; AE-not-D1 storage; privacy-claim guard mechanism; revisiting `modelPerCellEur` once real figures exist)
+
+---
+
+## Retro
+
+- **The prior-art note was right, and it was the best part of the plan.** `fleetBoard()` and `costAlarms()` had been sitting in `fleet.mjs` since Phase 9, tested and with zero callers. Stage 1 was mostly a translation layer plus a route, and the plan's "Decisive prior-art found during planning" line is why. **Keep doing that pass** — the question "what did we already build and never call" paid for itself here.
+- **The legal gate worked, and then the review found it had worked only halfway.** Shipping the privacy revision in the same change as the first `writeDataPoint` was the right rule and it held. But the revision I wrote enumerated "account id, action, timestamp" while every datapoint also carries the **project id** — a slug the customer typed, which can be a person's name — and `tenant_stats` carries project size figures. The claim-guard test passed because I had written it to assert the claims I made, not the payload the code sends. **A claim-guard has to be derived from the code's actual output, or it only guards the author's own reading.**
+- **Four of the phase's seven stated security invariants were weaker than their comments.** Not one was a broken control — every access check held — but the 404 was distinguishable by content-type, an empty allowlist still redirected a signed-out caller, the CSRF rationale named the wrong attacker, and the fleet-wide audit rows were the only ones a customer could never see. **A security property asserted in a comment and not in a test is a property nobody re-checks.** Every one is now a test. Worth making that the rule for any future `## Security invariants` block: the plan should require the test, not the sentence.
+- **I carried a correct judgement across an endpoint boundary and it became a wrong one.** Putting build counters on the STUDIO's `/_health` is fine — one cell is one tenant, so it discloses to the reader's own tenant. I then put project size counts on the HUB's `/health`, which is unauthenticated and internet-reachable, and whose hostnames are in Certificate Transparency. Same word, different endpoint, different audience. **When reusing a disclosure argument, re-state who the audience is** rather than reusing the conclusion.
+- **`--changed-only` did not escalate when it should have.** Its escalation list still names the pre-rename `dev-server/**`; the tree is `apps/studio/**`. The gate reported "nothing to screenshot" on a diff that touched the dev server. Fixing that is a real follow-up, not a footnote — the whole point of DDR-021 is that the gate fires whether or not the author remembered.
+- **The one BLANK in the full smoke was a timing flake**, proven by loading the specimen directly rather than by assuming. Worth keeping that habit: a smoke failure is a hypothesis, not a verdict.
+
+### Follow-ups this phase did not close
+
+- `maude design smoke --changed-only` escalation list is stale (`dev-server/**` → `apps/studio/**`).
+- Cold-start p95 has no pre-sandbox baseline yet — it needs a deployed cycle. That acceptance line is deliberately unticked.
+- `modelPerCellEur: 3` is still a Phase-0 estimate. The instrument to replace it now exists; the revision is a deliberate, recorded act once a full cycle of real figures lands.
+- The operator walkthrough on a preview deploy (Validation §6) needs `OPERATOR_ACCOUNT_IDS` set — owner-only, not automatable from here.
+- Defender's note: the sweep's `audit()` ids use `Math.random()` (`db.mjs`). A row id rather than a token, but the operator surface writes there often now.

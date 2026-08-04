@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "activity-says-why-we-looked",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "title": "Your project's activity says why we looked",
+      "summary": "The activity page for a cloud project used to show that the platform touched it. Now it shows the reason given at the time, in plain words — and it includes the platform-wide checks that sweep every project, which were previously the only ones you could not see.",
+      "surface": "design-ui"
+    },
+    {
       "id": "your-own-place-in-a-shared-project",
       "version": "0.54.0",
       "date": "2026-08-04",

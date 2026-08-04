@@ -16,6 +16,7 @@
 // Queues (Phase 11 unlock) will drain the same jobs table faster; the table —
 // not the queue — is the durable record either way.
 
+import { track } from './analytics.mjs';
 import { currentAccount, handleAuth } from './auth-routes.mjs';
 import { deriveCellSecret, mintProjectToken, secretsMatch } from './cell-token.mjs';
 import { handleCheckoutRoutes } from './checkout-routes.mjs';
@@ -33,10 +34,13 @@ import {
 import { handleDeviceAuth, personalTokenAccount } from './device-auth.mjs';
 import { costOf, harden, isHtml, sameSiteGate, spend } from './edge.mjs';
 import { deletionWarningEmail, projectPausedEmail, sendEmail } from './email.mjs';
+import { normalizeRoute } from './events.mjs';
 import { mintInstallationToken } from './github-app.mjs';
 import { handleHandoff } from './handoff.mjs';
 import { handleInviteRoutes } from './invites.mjs';
 import { applySchema } from './migrate.mjs';
+import { statsDatapoints } from './operator.mjs';
+import { handleOperatorRoutes } from './operator-routes.mjs';
 import { ACCESS_MESSAGES, decideAccess } from './project-access.mjs';
 import { handleProjectAdminRoutes } from './project-admin.mjs';
 import { handleProjectRoutes } from './project-routes.mjs';
@@ -44,6 +48,7 @@ import {
   ensureCanvasDomain,
   ensureCellDomain,
   ensureProjectCanvasDomain,
+  probeCellBody,
   removeCellDomain,
 } from './provision.mjs';
 import { purgeTenantObjects } from './purge.mjs';
@@ -65,7 +70,7 @@ export const WORKER_VERSION = 'phase-13';
  * (DDR-199 §6), so no new secret has to exist or be distributed — and the cell
  * can verify without asking anyone.
  */
-async function openProject(request, env) {
+async function openProject(request, env, ctx) {
   let body;
   try {
     body = await request.json();
@@ -115,6 +120,16 @@ async function openProject(request, env) {
     project: projectId,
     email: account.email,
     role: verdict.role,
+  });
+
+  // Which DOOR somebody came through is the one thing the open path knows that
+  // nothing else does — a device token means the desktop app, a cookie means
+  // the browser. Neither carries who they are beyond the account id.
+  track(env, ctx, {
+    name: 'project_opened',
+    accountId: account.id,
+    projectId,
+    props: { surface: request.headers.get('authorization') ? 'desktop' : 'browser' },
   });
 
   return json({
@@ -195,7 +210,11 @@ function json(body, status = 200) {
 }
 
 export default {
-  async fetch(request, env) {
+  // `ctx` is threaded from here rather than reached for through a global
+  // (Cloud Phase 26): the operator surface's audit writes and the analytics
+  // datapoints both belong in `waitUntil`, so that recording what happened
+  // never delays answering.
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     // Every answer leaves through the same door (edge.mjs) — the gates run
     // before the router, the header floor is stamped after it. A route can
@@ -213,21 +232,45 @@ export default {
       }
     }
 
-    const response = await this.route(request, env, url);
+    const response = await this.route(request, env, url, ctx);
     return harden(response, { url, html: isHtml(response) });
   },
 
-  async route(request, env, url) {
-    // Identity surface (pages, signup/login, Google, grant mint) — Phase 13.
-    const auth = await handleAuth(request, env);
-    if (auth) return auth;
-
-    // One session read for every signed-in surface below.
+  async route(request, env, url, ctx) {
+    // The session, read ONCE for every surface below — including the identity
+    // surface, which used to read it again for the three of its pages that
+    // need it. Above the router rather than inside it, because the page-view
+    // lane has to see the same answer every route sees.
     const account = await currentAccount(request, env);
+
+    // Page views, at the ONE place the session is known — no per-route edits,
+    // which is what keeps this from decaying into fourteen call sites that
+    // disagree (Cloud Phase 26).
+    //
+    // `Accept: text/html` is the honest "this was a navigation" signal: the
+    // Bearer client API and the cell's `/internal/*` calls carry no cookie and
+    // ask for JSON, so neither becomes a page view. The route is a TEMPLATE
+    // (`/projects/:id`), never a URL — a pathname is where a token or a search
+    // term eventually turns up (events.mjs).
+    if (
+      request.method === 'GET' &&
+      account &&
+      (request.headers.get('accept') ?? '').includes('text/html')
+    ) {
+      track(env, ctx, {
+        name: 'page_view',
+        accountId: account.id,
+        props: { route: normalizeRoute(url.pathname) },
+      });
+    }
+
+    // Identity surface (pages, signup/login, Google, grant mint) — Phase 13.
+    const auth = await handleAuth(request, env, { ctx, account });
+    if (auth) return auth;
 
     // The desktop's lane (Phase 23 C): device sign-in, the Account page, and
     // the Bearer client API.
-    const deviceSurface = await handleDeviceAuth(request, env, { account });
+    const deviceSurface = await handleDeviceAuth(request, env, { account, ctx });
     if (deviceSurface) return deviceSurface;
 
     // The one-time browser→app handoff (Phase 23 B3 / Phase 17): a code in a
@@ -237,24 +280,34 @@ export default {
 
     // Per-project control surfaces (Cloud Phase 22 / DDR-204). Before the
     // control-plane routes, because `/projects/...` is theirs.
-    const projectSurface = await handleProjectRoutes(request, env, { account });
+    const projectSurface = await handleProjectRoutes(request, env, { account, ctx });
     if (projectSurface) return projectSurface;
 
     // Self-administration (Cloud Phase 20 + the Phase 19 settings half):
     // download everything, delete-through-export, the customer-visible
     // activity record, and where the history mirrors to.
-    const adminSurface = await handleProjectAdminRoutes(request, env, { account });
+    const adminSurface = await handleProjectAdminRoutes(request, env, { account, ctx });
     if (adminSurface) return adminSurface;
+
+    // The fleet, for the one person allowed to see all of it (Cloud Phase 26).
+    //
+    // AFTER the single session read at the top of this function and reached
+    // with the COOKIE-derived account only — never the two-door
+    // `personalTokenAccount(...) ?? currentAccount(...)` shape openProject
+    // uses, because a leaked device token must not become a fleet key. The
+    // module itself does not import device-auth, and a test asserts it.
+    const operatorSurface = await handleOperatorRoutes(request, env, { account, ctx });
+    if (operatorSurface) return operatorSurface;
 
     // Accepting an invitation (Cloud Phase 22). The invite is the account:
     // one link signs somebody up AND lands them in the project.
-    const inviteSurface = await handleInviteRoutes(request, env, { account });
+    const inviteSurface = await handleInviteRoutes(request, env, { account, ctx });
     if (inviteSurface) return inviteSurface;
 
     // Starting a project + billing (Cloud Phase 14 / DDR-203): the wizard,
     // the Checkout return, the waiting room that settles provision-first,
     // and the Stripe-hosted billing portal handoff.
-    const checkoutSurface = await handleCheckoutRoutes(request, env, { account });
+    const checkoutSurface = await handleCheckoutRoutes(request, env, { account, ctx });
     if (checkoutSurface) return checkoutSurface;
 
     // Opening a project (Cloud Phase 22 / DDR-204).
@@ -265,7 +318,7 @@ export default {
     // control-plane outage never locks anyone out of a token they already
     // hold — only out of getting a new one.
     if (request.method === 'POST' && url.pathname === '/projects/open') {
-      return openProject(request, env);
+      return openProject(request, env, ctx);
     }
 
     // The mirror credential boundary (Cloud Phase 19).
@@ -437,7 +490,7 @@ export default {
     // signed-in surface check — reporters need no account. report.mjs owns
     // validation, quotas, and the kill switch; the issue lands in the private
     // intake repo, never here.
-    const reportSurface = await handleReport(request, env);
+    const reportSurface = await handleReport(request, env, { ctx });
     if (reportSurface) return reportSurface;
 
     if (request.method === 'GET' && url.pathname === '/health') {
@@ -539,6 +592,9 @@ export default {
   },
 };
 
+/** Total time one sweep may spend on cell-reported telemetry. */
+export const TELEMETRY_BUDGET_MS = 60_000;
+
 /**
  * The hourly truth pass: drain named jobs first, then sweep every project —
  * so a missed webhook costs at most one hour, never correctness (DDR-196).
@@ -551,6 +607,10 @@ export default {
 export async function reconcileSweep(env, { now = Date.now() } = {}) {
   const outcomes = [];
   const seen = new Set();
+  // How long this pass may spend asking cells about themselves, in total.
+  // Telemetry is the sweep's least important job and the only one whose cost
+  // is set by somebody else.
+  const telemetryDeadline = Date.now() + TELEMETRY_BUDGET_MS;
 
   const jobs = await pendingJobs(env.DB);
   for (const job of jobs) {
@@ -576,6 +636,33 @@ export async function reconcileSweep(env, { now = Date.now() } = {}) {
         // Never let one project's address stop the sweep that keeps
         // everybody's subscription honest.
         console.error(`[provision] canvas origin for ${row.id}: ${err.message}`);
+      }
+      // Cloud Phase 26 Stage 3/4 — what this cell HOLDS and how hard its
+      // canvases are to build, straight from its own `/health`. One extra
+      // fetch per live project per hour, and it is the only place the control
+      // plane can learn either figure without storing design content in D1.
+      //
+      // Best-effort in every direction: a cell that does not answer, answers
+      // badly, or runs an image that predates the counters simply contributes
+      // nothing, and `statsDatapoints` emits an empty array. Unknown stays
+      // unknown; the board renders an em-dash rather than a zero.
+      //
+      // BUDGETED FOR THE WHOLE PASS, not per cell. The latency of each probe is
+      // chosen by the cell being probed, and this loop is the pass that applies
+      // suspensions and sends deletion warnings — a handful of deliberately
+      // slow cells must not be able to push the honest work off the end of the
+      // cron. When the budget is gone the telemetry simply stops for this
+      // hour; it is the most expendable thing the sweep does.
+      if (Date.now() < telemetryDeadline) {
+        try {
+          const secret = env.CELL_SECRET_MASTER
+            ? await deriveCellSecret(env.CELL_SECRET_MASTER, row.id)
+            : null;
+          const probed = await probeCellBody(env, row.id, { timeoutMs: 5000, secret });
+          for (const event of statsDatapoints(row.id, probed.body)) track(env, null, event);
+        } catch (err) {
+          console.warn(`[stats] ${row.id}: ${err.message}`);
+        }
       }
     }
     if (!seen.has(row.id)) outcomes.push(await runOne(env, row.id, { now }));
@@ -704,8 +791,38 @@ async function performActions(env, projectId, row, actions, { now }) {
 
   // 3. Compute. `resume` and `provision` both mean "this address must answer".
   if (kinds.has('resume-cell') || kinds.has('provision-cell')) {
+    const wokeAt = Date.now();
     const routed = await ensureCellDomain(env, projectId);
     await record('resume-cell', routed.ok ? 'ok' : 'failed', routed.error);
+    // Cloud Phase 26 Stage 4 — COLD START AS A NUMBER RATHER THAN AN ANECDOTE.
+    //
+    // The sweep is the one place that knows it just woke a sleeping cell, so
+    // it is the only place that can time the wake honestly. Worth capturing
+    // even if nothing else in Stage 4 ships: the studio runtime makes the cell
+    // image bigger, and today the only figure anyone has for a cold start is a
+    // single ~8 s observation. Baselining it BEFORE the image grows is what
+    // gives the eventual regression something to be a regression against.
+    //
+    // A cell that never comes up records NOTHING. A timeout is not a slow cold
+    // start, and folding one into the p95 would quietly turn an outage into a
+    // performance figure.
+    if (routed.ok) {
+      const woke = await awaitCellHealthy(env, projectId, {
+        since: wokeAt,
+        // Same reasoning as the telemetry budget: several cells resuming in
+        // one sweep would otherwise serialize into minutes of waiting, on the
+        // pass that keeps everybody's subscription honest. A measurement must
+        // never be able to cost the thing it measures.
+        budgetMs: Math.min(30_000, Math.max(0, now + TELEMETRY_BUDGET_MS - Date.now())),
+      });
+      if (woke !== null) {
+        track(env, null, {
+          name: 'tenant_wake',
+          projectId,
+          measures: { coldStartMs: woke },
+        });
+      }
+    }
     // Cloud Phase 27 — the project's own canvas origin. Its own step, and its
     // own record: a project whose shell answers but whose canvases do not is a
     // distinct, and much more confusing, kind of broken than one that is down.
@@ -752,6 +869,25 @@ async function performActions(env, projectId, row, actions, { now }) {
   }
 
   return performed;
+}
+
+/**
+ * Time from waking a cell to its first healthy answer, or `null`.
+ *
+ * `null` means it never answered inside the budget — which is an OUTAGE, not a
+ * slow start, and must not be recorded as one. The budget is deliberately
+ * shorter than the sweep's own patience: this is a measurement, and a
+ * measurement is never allowed to hold up the pass that keeps everybody's
+ * subscription honest.
+ */
+async function awaitCellHealthy(env, projectId, { since, budgetMs = 30_000, everyMs = 1500 }) {
+  const deadline = since + budgetMs;
+  while (Date.now() < deadline) {
+    const probed = await probeCellBody(env, projectId, { timeoutMs: 4000 });
+    if (probed.state === 'healthy') return Date.now() - since;
+    await new Promise((r) => setTimeout(r, everyMs));
+  }
+  return null;
 }
 
 /**

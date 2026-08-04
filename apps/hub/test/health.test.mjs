@@ -87,3 +87,56 @@ test('a stale index.lock is reported as a fact, and does not take the cell down'
     rmSync(repo, { recursive: true, force: true });
   }
 });
+
+// Cloud Phase 26 — WHAT /health MAY SAY TO A STRANGER.
+//
+// This endpoint is unauthenticated and internet-reachable: every cell is a
+// Worker custom domain, so `<project>.cloud.maude.sh` is in Certificate
+// Transparency and the ids are not secret. The first cut of the tenant-stats
+// work put a customer's canvas count, asset bytes and live build counters
+// here — a larger over-share than the `dataDir` this same handler already
+// drops for being one, and a recursive filesystem walk anybody could trigger.
+// The counts now need the tenant's own derived secret.
+
+test('an anonymous /health carries no tenant counts, and does not walk the disk', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'maude-hub-health-gate-'));
+  const built = createHub({ port: PORT + 1, dataDir: dir, secret: 'cell-secret', verbose: false });
+  await built.server.listen();
+  try {
+    const body = await (await fetch(`http://127.0.0.1:${PORT + 1}/health`)).json();
+    assert.equal(body.stats, undefined, 'a stranger learns nothing about what is stored here');
+    // The posture half is unchanged — a router still gets what it probes for.
+    assert.equal(typeof body.ok, 'boolean');
+    assert.equal(typeof body.version, 'string');
+    assert.equal(body.dataDir, undefined);
+  } finally {
+    await built.server.destroy();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a WRONG secret is no better than none', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'maude-hub-health-wrong-'));
+  const built = createHub({ port: PORT + 2, dataDir: dir, secret: 'cell-secret', verbose: false });
+  await built.server.listen();
+  try {
+    for (const auth of ['Bearer wrong', 'Bearer ', 'cell-secret', 'Bearer cell-secre']) {
+      const res = await fetch(`http://127.0.0.1:${PORT + 2}/health`, {
+        headers: { authorization: auth },
+      });
+      assert.equal((await res.json()).stats, undefined, `admitted with "${auth}"`);
+    }
+  } finally {
+    await built.server.destroy();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a hub with NO secret configured admits nobody to the counts', async () => {
+  // Fail closed: a self-hosted hub that never set HUB_SECRET must not treat
+  // every caller as its control plane.
+  const res = await fetch(`http://127.0.0.1:${PORT}/health`, {
+    headers: { authorization: 'Bearer ' },
+  });
+  assert.equal((await res.json()).stats, undefined);
+});

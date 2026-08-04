@@ -189,7 +189,14 @@ function listAssets(dir, prefix = '', out = []) {
   return out;
 }
 
-function countCanvases(designRoot, depth = 0) {
+/**
+ * How many canvases a design root holds.
+ *
+ * Exported since Cloud Phase 26: the tenant-stats payload counts the same
+ * things this export describes, and two implementations of "what is a canvas"
+ * would eventually disagree about the number a customer is shown.
+ */
+export function countCanvases(designRoot, depth = 0) {
   if (depth > 3) return 0;
   let n = 0;
   try {

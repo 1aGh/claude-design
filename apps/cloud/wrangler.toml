@@ -40,6 +40,22 @@ CELL_ZONE = "cloud.maude.sh"
 # whether the platform was ready — /health said not-configured while the code
 # that does the work would have been happy.
 MAUDE_R2_BUCKET = "maude-cloud-assets"
+# Who may open `/operator` — Cloud Phase 26. A comma-separated list of ACCOUNT
+# IDS (`acct_…`), not emails: an email claim varies with the identity provider
+# (`.` insertion, `+` aliases, case) and none of that variance belongs in an
+# authorisation decision. Not a column on `accounts`, either — that table's
+# whole design is "a total loss of this database costs a customer nothing", and
+# an env var is revocable in seconds without touching it.
+#
+# EMPTY IS THE DEFAULT, AND IT DISABLES THE SURFACE COMPLETELY: with no value,
+# every `/operator` request 404s, including for the owner's own account.
+# Turning it on is a deploy-time act, deliberately — this is the one surface
+# that reads across tenants, and it should not be reachable because somebody
+# once signed in.
+#
+# Not a secret. The ids are not credentials, and `wrangler secret` would hide
+# the one fact worth reviewing in a diff: who can see the whole fleet.
+OPERATOR_ACCOUNT_IDS = ""
 
 [[d1_databases]]
 binding = "DB"
@@ -52,6 +68,19 @@ database_id = "cf2b8fdc-6c3f-42f9-9305-0040e01391eb"  # live; schema v1 applied 
 [[r2_buckets]]
 binding = "EXPORTS"
 bucket_name = "maude-cloud-assets"
+
+# Product analytics — Cloud Phase 26. Deliberately NOT a D1 table: schema.sql
+# promises "a total loss of this database costs a customer nothing", and a
+# per-request events table would put a behavioural record of every customer
+# inside that blast radius AND put an INSERT on the login path, contending with
+# edge.mjs `spend()` on the most expensive request the plane answers.
+#
+# Analytics Engine is Cloudflare, already a named subprocessor, so this needed
+# no DPA change — only an honest privacy notice, which shipped in the same
+# change (apps/cloud/privacy-claims.test.mjs keeps the two from drifting).
+[[analytics_engine_datasets]]
+binding = "EVENTS"
+dataset = "maude_cloud_events"
 
 # [[queues.producers]]
 # binding = "RECONCILE_QUEUE"
@@ -71,6 +100,15 @@ bucket_name = "maude-cloud-assets"
 #                             signed against (its secret never leaves CF)
 #   CF_ACCOUNT_ID             already required by provisioning
 #   MAUDE_R2_BUCKET           var, declared in [vars] above (NOT defaulted)
+#
+# Cloud Phase 26 — READING the events back (the operator board's usage page).
+# Writing needs only the binding above; reading goes over the REST SQL API and
+# therefore needs a token:
+#   CF_ANALYTICS_TOKEN        Cloudflare API token, scope = Account Analytics
+#                             Read AND NOTHING ELSE. Optional on purpose: unset
+#                             renders "analytics is not connected" rather than
+#                             an error, because a board that 500s when one tile
+#                             has no data cannot report the outage it exists for.
 
 # The MaudeCell class briefly lived here before the split. Deleting it is safe
 # and deliberate: no cell ever completed a start under this script, so the

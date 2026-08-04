@@ -302,6 +302,40 @@ test('the activity page shows entries in the customer’s language', async () =>
   assert.ok(!/checkout\.settled/.test(body), 'internal action names stay internal');
 });
 
+// Cloud Phase 26. `audit_log.reason` has existed since Phase 7 — "an access
+// with no stated reason is the one worth noticing" — and was never displayed.
+// A column nobody sees is a column nobody fills in honestly, and now that an
+// operator surface writes to it, the page that promises "you can see that we
+// looked" has to show why we looked.
+test('the activity page renders the REASON an operator gave', async () => {
+  const { env, sqlite } = await freshEnv();
+  const { session } = await ownerWithProject(env, sqlite);
+  sqlite
+    .prepare(
+      `INSERT INTO audit_log (id, project_id, at, actor, action, reason) VALUES
+       ('a1', 'alligators', 1753872000000, 'operator:op@maude.sh', 'operator.reconcile.nudged', 'you reported it stuck in setup'),
+       ('a2', 'alligators', 1753872100000, 'operator:op@maude.sh', 'operator.project.viewed', 'checking the stall you reported'),
+       ('a3', 'alligators', 1753872200000, 'system', 'reconcile', NULL)`
+    )
+    .run();
+  const body = await (await worker.fetch(get('/projects/alligators/audit', session), env)).text();
+
+  assert.match(body, /<th>Why<\/th>/);
+  assert.match(body, /you reported it stuck in setup/);
+  assert.match(body, /checking the stall you reported/);
+  // The operator's actions read as sentences, not as keys — a customer told
+  // "operator.project.viewed" has been told that we looked and nothing else.
+  assert.match(body, /Maude asked the platform to re-check this project/);
+  assert.match(body, /Maude opened this project’s record/);
+  assert.ok(!/operator\.reconcile\.nudged/.test(body), 'internal action names stay internal');
+  assert.ok(!/operator\.project\.viewed/.test(body), 'internal action names stay internal');
+  // A system action has no reason to give, and an em-dash says so rather than
+  // an empty cell that reads like a rendering bug.
+  assert.match(body, /—/);
+  // And the operator vocabulary still never leaks onto a customer surface.
+  assert.doesNotMatch(body, /operator console/i);
+});
+
 // ------------------------------------------------------------- cell identity
 
 // Cloud Phase 24 B1. The control-plane half of "per-tenant config stops being

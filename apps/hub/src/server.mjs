@@ -34,7 +34,8 @@
 //   - readJsonBody enforces Content-Type, body timeout, proto-pollution guard.
 //   - All log lines that interpolate user data go through sanitizeForLog.
 
-import { createHash } from 'node:crypto';
+import { Buffer } from 'node:buffer';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
@@ -86,6 +87,7 @@ import {
   servicePage,
 } from './studio-door.mjs';
 import { createStudioProxy, sessionKeyFor } from './studio-proxy.mjs';
+import { tenantStats } from './tenant-stats.mjs';
 import {
   addToken,
   assertValidLabel,
@@ -481,6 +483,25 @@ export function createHub(config = {}) {
         // Omit `dataDir` (a server filesystem path) from the public payload —
         // it's a recon over-share. The authenticated /admin/api/status keeps
         // the full payload (operator already has admin access there).
+        // Cloud Phase 26 Stage 3/4 — what this cell HOLDS and how hard its
+        // canvases are to build, for the control plane's hourly reconcile.
+        //
+        // GATED, and that gate is the whole design. `/health` is
+        // UNAUTHENTICATED and internet-reachable — every cell is a Worker
+        // CUSTOM DOMAIN, so `<project>.cloud.maude.sh` is in Certificate
+        // Transparency and the ids are not secret. Publishing a customer's
+        // canvas count, asset bytes and live build counters there would be a
+        // far larger over-share than the `dataDir` this same handler already
+        // drops for being "a recon over-share" — and computing them would put
+        // a recursive filesystem walk on an endpoint anyone can poll, on the
+        // single loop that also serves collab sync.
+        //
+        // So the counts require the tenant's own derived secret — the one the
+        // control plane already holds and already presents to `/internal/*`
+        // (cell-ops.mjs uses HUB_SECRET as the bearer for exactly this
+        // relationship). Public callers get the posture payload unchanged, and
+        // pay nothing for it.
+        const privileged = presentsCellSecret(request, secret);
         const health = buildStatusPayload({
           dataDir,
           secret,
@@ -489,6 +510,8 @@ export function createHub(config = {}) {
           peersCount: peers.size,
           exposeDataDir: false,
           studio,
+          stats: privileged ? tenantStats({ designRoot: designRootFor() }) : null,
+          render: privileged && studio ? await studio.renderStats() : null,
         });
         // 503, not 200-with-ok-false. A router reads the STATUS; a payload it
         // has to parse to learn the truth is a payload it will not parse.
@@ -1474,6 +1497,27 @@ function workspaceStatus() {
   return out;
 }
 
+/**
+ * Does this caller hold the cell's own secret?
+ *
+ * Constant-time, and false whenever no secret is configured — a self-hosted
+ * hub with no HUB_SECRET must not accidentally treat every caller as the
+ * control plane. The same value `cell-ops.mjs` presents OUTBOUND to
+ * `/internal/*`, used inbound here.
+ */
+function presentsCellSecret(request, secret) {
+  if (!secret) return false;
+  const offered = String(request?.headers?.authorization ?? '')
+    .replace(/^Bearer\s+/i, '')
+    .trim();
+  if (offered.length === 0 || offered.length !== secret.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(offered), Buffer.from(secret));
+  } catch {
+    return false;
+  }
+}
+
 function buildStatusPayload({
   dataDir,
   secret,
@@ -1482,6 +1526,8 @@ function buildStatusPayload({
   peersCount,
   exposeDataDir = true,
   studio = null,
+  stats = null,
+  render = null,
 }) {
   const { tokens } = readTokens(dataDir);
   const workspace = workspaceStatus();
@@ -1508,6 +1554,11 @@ function buildStatusPayload({
     authMode: tokens.length > 0 ? 'tokens' : secret ? 'env-secret' : 'dev',
     identity: identityPosture(),
     peersCount: peersCount ?? 0,
+    // OMITTED when unknown, never zeroed. A cell on an older image, or one
+    // whose studio is not up, must stay distinguishable from a project with no
+    // canvases in it — the operator board renders `—` for the first and `0`
+    // for the second (Cloud Phase 26).
+    ...(stats || render ? { stats: { ...(stats ?? {}), ...(render ? { render } : {}) } } : {}),
     ...(workspace ? { workspace } : {}),
     ...(studioStatus
       ? {

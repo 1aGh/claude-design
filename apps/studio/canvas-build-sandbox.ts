@@ -43,8 +43,20 @@ export interface SandboxBuildFail {
   ok: false;
   error: string;
   kind: 'build' | 'timeout' | 'memory' | 'runtime';
+  /** How many imports the allowlist refused. A COUNT — never the specifiers. */
+  rejectedImports?: number;
 }
 export type SandboxBuildResult = SandboxBuildOk | SandboxBuildFail;
+
+/**
+ * How much history the counters hold — Cloud Phase 26 Stage 4.
+ *
+ * A ROLLING WINDOW, not a lifetime total: the sweep reads this hourly, and a
+ * monotonic counter read at intervals turns every "how busy was the last hour"
+ * question into a subtraction the reader has to get right. An hour of history
+ * answers it directly.
+ */
+export const STATS_WINDOW_MS = Number(process.env.MAUDE_CANVAS_STATS_WINDOW_MS ?? 3_600_000);
 
 const counters = {
   builds: 0,
@@ -53,12 +65,58 @@ const counters = {
   failures: 0,
   timeouts: 0,
   memoryKills: 0,
+  /** Imports the allowlist refused. The COUNT only — see buildStats(). */
+  rejectedImports: 0,
+  /** Summed wall-clock of completed builds, the closest thing to Active-CPU
+   *  this side of the boundary can honestly report. */
+  cpuMsTotal: 0,
+  /** The biggest import graph any build had to read, in bytes. */
+  largestGraphBytes: 0,
   /** Every completed build's wall-clock, newest last, capped. */
   durationsMs: [] as number[],
+  /** When this window started. THE FIELD THAT MAKES A ZERO READABLE. */
+  windowStartedAt: Date.now(),
 };
 
-/** A snapshot for the operator surface + the cost lane. */
+/** Start a fresh window, keeping the cache (which is not a counter). */
+function rollWindow(now: number): void {
+  counters.builds = 0;
+  counters.cacheHits = 0;
+  counters.cacheMisses = 0;
+  counters.failures = 0;
+  counters.timeouts = 0;
+  counters.memoryKills = 0;
+  counters.rejectedImports = 0;
+  counters.cpuMsTotal = 0;
+  counters.largestGraphBytes = 0;
+  counters.durationsMs = [];
+  counters.windowStartedAt = now;
+}
+
+function maybeRoll(now = Date.now()): void {
+  if (now - counters.windowStartedAt >= STATS_WINDOW_MS) rollWindow(now);
+}
+
+/**
+ * A snapshot for the operator surface + the cost lane.
+ *
+ * COUNTS AND DURATIONS ONLY. Never a canvas name, never a path, and never the
+ * text of a rejected import specifier — that specifier is written by the
+ * tenant, so it is their content; the operational fact is that a rejection
+ * happened, not what it said.
+ *
+ * `windowStartedAt` travels with the counters and is load-bearing. The window
+ * lives in memory, so a cell restart resets it — and without the start time a
+ * row of zeroes from a cell that rebooted a minute ago is indistinguishable
+ * from a genuinely quiet hour. One of those is nothing to do; the other is a
+ * crash loop.
+ *
+ * `cacheHitRatio` is offered for a human reading this payload directly, but
+ * the two COUNTS are what travel to the operator board, which divides at read
+ * time. A ratio computed over a window that reset is a confident lie.
+ */
 export function buildStats() {
+  maybeRoll();
   const d = [...counters.durationsMs].sort((a, b) => a - b);
   const p = (q: number) =>
     d.length === 0 ? null : d[Math.min(d.length - 1, Math.floor(d.length * q))];
@@ -71,20 +129,26 @@ export function buildStats() {
     failures: counters.failures,
     timeouts: counters.timeouts,
     memoryKills: counters.memoryKills,
+    rejectedImports: counters.rejectedImports,
+    cpuMsTotal: counters.cpuMsTotal,
+    largestGraphBytes: counters.largestGraphBytes,
     p50Ms: p(0.5),
     p95Ms: p(0.95),
+    maxMs: d.length === 0 ? null : d[d.length - 1],
+    windowMs: STATS_WINDOW_MS,
+    windowStartedAt: counters.windowStartedAt,
   };
+}
+
+/** Record one import the allowlist refused. The specifier is NOT passed in. */
+export function noteRejectedImport(): void {
+  maybeRoll();
+  counters.rejectedImports++;
 }
 
 /** Test seam. */
 export function _resetBuildStats(): void {
-  counters.builds = 0;
-  counters.cacheHits = 0;
-  counters.cacheMisses = 0;
-  counters.failures = 0;
-  counters.timeouts = 0;
-  counters.memoryKills = 0;
-  counters.durationsMs = [];
+  rollWindow(Date.now());
   cache.clear();
 }
 
@@ -152,6 +216,19 @@ function resolveCandidates(fromDir: string, spec: string): string[] {
     join(base, 'index.tsx'),
     join(base, 'index.ts'),
   ];
+}
+
+/** Total bytes of every source a build could have to read. Sizes only. */
+function graphBytes(designRoot: string, canvasAbs: string): number {
+  let total = 0;
+  for (const file of relevantSources(designRoot, canvasAbs)) {
+    try {
+      total += statSync(file).size;
+    } catch {
+      /* a file that vanished contributes nothing rather than failing a build */
+    }
+  }
+  return total;
 }
 
 function remember(key: string, value: { js: string; locator: unknown; etag: string }): void {
@@ -258,6 +335,7 @@ export async function buildCanvasSandboxed({
   canvasAbs: string;
   env?: NodeJS.ProcessEnv;
 }): Promise<SandboxBuildResult> {
+  maybeRoll();
   const key = cacheKeyFor(designRoot, canvasAbs);
   const hit = cache.get(key);
   if (hit) {
@@ -265,10 +343,18 @@ export async function buildCanvasSandboxed({
     return { ...hit, ok: true, cached: true };
   }
   counters.cacheMisses++;
+  // The pathological-canvas signal, measured rather than argued: a huge import
+  // graph burns our Active-CPU while the tenant pays a flat rate. Bytes, never
+  // filenames.
+  counters.largestGraphBytes = Math.max(
+    counters.largestGraphBytes,
+    graphBytes(designRoot, canvasAbs)
+  );
 
   const started = Date.now();
   const result = await runWorker({ designRoot, canvasAbs, env });
   const elapsed = Date.now() - started;
+  counters.cpuMsTotal += elapsed;
   counters.durationsMs.push(elapsed);
   if (counters.durationsMs.length > 200) counters.durationsMs.shift();
 
@@ -281,6 +367,7 @@ export async function buildCanvasSandboxed({
   counters.failures++;
   if (result.kind === 'timeout') counters.timeouts++;
   if (result.kind === 'memory') counters.memoryKills++;
+  counters.rejectedImports += result.rejectedImports ?? 0;
   return result;
 }
 
@@ -362,7 +449,12 @@ async function runWorker({
     if (parsed.ok) {
       return { ok: true, js: parsed.js, locator: parsed.locator, etag: parsed.etag, cached: false };
     }
-    return { ok: false, kind: 'build', error: String(parsed.error) };
+    return {
+      ok: false,
+      kind: 'build',
+      error: String(parsed.error),
+      rejectedImports: Number(parsed.rejectedImports ?? 0) || 0,
+    };
   } catch {
     return {
       ok: false,

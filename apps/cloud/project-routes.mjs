@@ -6,6 +6,7 @@
 // is left here is reading rows, writing rows, and turning a verdict into a
 // response — which is the whole point of the split (DDR-196 §1).
 
+import { track } from './analytics.mjs';
 import { emailConfigured, inviteEmail, sendEmail } from './email.mjs';
 import { decideMembershipChange } from './membership.mjs';
 import { peoplePage, removeConfirmPage } from './people-page.mjs';
@@ -77,7 +78,7 @@ async function peopleList(env, project, members) {
  * Route the per-project surfaces. Returns a Response, or null when the path is
  * not ours.
  */
-export async function handleProjectRoutes(request, env, { account }) {
+export async function handleProjectRoutes(request, env, { account, ctx = null } = {}) {
   const url = new URL(request.url);
   const m = url.pathname.match(/^\/projects\/([^/]+)\/people(\/remove)?$/);
   if (!m) return null;
@@ -173,6 +174,11 @@ export async function handleProjectRoutes(request, env, { account }) {
       .run();
 
     const inviteUrl = `${url.origin}/invite/${inviteId}`;
+    // The counterpart to `invite_redeemed`: how many invitations go out
+    // against how many are followed. The invitee's ADDRESS is not recorded —
+    // it is somebody else's personal data and the operational fact is the
+    // count.
+    track(env, ctx, { name: 'invite_created', accountId: account.id, projectId });
     const sent = emailConfigured(env)
       ? await sendEmail(env, {
           to: email,

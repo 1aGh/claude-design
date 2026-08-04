@@ -187,7 +187,15 @@ export async function buildCanvasModule(
     // "Bundle failed" log, so the allowlist records its own reasons and they
     // win here — the person who wrote the canvas has to be able to act on it,
     // and "Bundle failed" tells them nothing.
-    if (denials.length > 0) throw new Error(denials.map((d) => d.reason).join('\n'));
+    if (denials.length > 0) {
+      // The COUNT of denials travels with the error, so the cost lane can
+      // record that imports were refused without ever seeing the specifier —
+      // that string is tenant-authored content (Cloud Phase 26 Stage 4). The
+      // reasons still go to the person who wrote the canvas, unchanged.
+      const err = new Error(denials.map((d) => d.reason).join('\n'));
+      (err as Error & { rejectedImports?: number }).rejectedImports = denials.length;
+      throw err;
+    }
     const msg = built.logs.map((l) => l.message).join('\n');
     throw new Error(`Bun.build failed on ${canvasAbsPath}:\n${msg}`);
   }

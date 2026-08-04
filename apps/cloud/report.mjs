@@ -20,6 +20,7 @@
 // in D1, a PRIVATE landing repo (spam has no audience), and the
 // REPORTS_DISABLED kill switch.
 
+import { track } from './analytics.mjs';
 import { mintInstallationToken } from './github-app.mjs';
 
 export const REPORT_JSON_MAX = 256 * 1024;
@@ -157,7 +158,11 @@ async function githubPut(fetchImpl, token, repo, path, bytes, message) {
  * Handle POST /report. Returns a Response, or null when the request is not
  * this surface's (so worker.mjs can keep falling through).
  */
-export async function handleReport(request, env, { fetchImpl = fetch, nowMs = Date.now() } = {}) {
+export async function handleReport(
+  request,
+  env,
+  { fetchImpl = fetch, nowMs = Date.now(), ctx = null } = {}
+) {
   const url = new URL(request.url);
   if (url.pathname !== '/report') return null;
   if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
@@ -294,6 +299,10 @@ export async function handleReport(request, env, { fetchImpl = fetch, nowMs = Da
     });
     if (!res.ok) throw new Error(`issue create failed (HTTP ${res.status})`);
     const issue = await res.json();
+    // Cloud Phase 26 — the COUNT of filed reports, and nothing about them. No
+    // account id either: a reporter needs no account (this route runs before
+    // any signed-in surface), and the description is the customer's own words.
+    track(env, ctx, { name: 'report_submitted' });
     return json({ ok: true, issueNumber: issue.number, issueUrl: issue.html_url });
   } catch (err) {
     console.error(`[report] ${report.reportId}: ${err.message}`);

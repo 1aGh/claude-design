@@ -22,7 +22,7 @@ import { type Api, ASSET_MAX_BYTES, ASSET_MAX_VIDEO_BYTES } from './api.ts';
 import { ImportAssetError, importSvg, SVG_MAX_BYTES } from './bin/_import-asset.mjs';
 import { ImportBrandError, importBrand } from './bin/_import-brand.mjs';
 import { buildCanvasModule } from './canvas-build.ts';
-import { buildCanvasSandboxed } from './canvas-build-sandbox.ts';
+import { buildCanvasSandboxed, buildStats } from './canvas-build-sandbox.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
 import { createCloudEndpoints } from './cloud/endpoints.ts';
@@ -1108,6 +1108,19 @@ export function createHttp(
         // supervisor hashes its own expected root and compares.
         rootId: rootIdentity(ctx.paths.repoRoot),
         pid: process.pid,
+        // Cloud Phase 26 Stage 4 — the build sandbox's own counters, so the
+        // €3/cell model finally has figures instead of a prediction. Counts and
+        // durations ONLY: never a canvas name, never a path, and never the text
+        // of a rejected import specifier (that specifier is tenant-authored
+        // content — the operational fact is that a rejection happened, not what
+        // it said).
+        //
+        // On `/_health`, which the untrusted canvas origin may read, and that
+        // is deliberate: every figure here is about the reader's OWN cell, so
+        // it discloses nothing across a tenant boundary. Inventing a privileged
+        // route would have meant inventing an auth path for the supervisor's
+        // loopback probe, for data the tenant already has.
+        render: buildStats(),
       }),
 
     '/_active': () => Response.json(inspect().state),

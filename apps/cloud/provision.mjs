@@ -182,15 +182,66 @@ export async function removeCellDomain(env, projectId, { fetchImpl = fetch } = {
  * signal that cannot be a cold start, and no such signal exists at this layer.
  */
 export async function probeCell(env, projectId, { fetchImpl = fetch, timeoutMs = 8000 } = {}) {
+  return (await probeCellBody(env, projectId, { fetchImpl, timeoutMs })).state;
+}
+
+/**
+ * The same probe, keeping the ANSWER — Cloud Phase 26 Stage 3.
+ *
+ * `probeCell` threw the body away after reading `ok`, so the cell's own count
+ * of what it holds had nowhere to go. This returns both, and `probeCell` stays
+ * exactly what its callers expect. One fetch either way: the point of riding
+ * the existing hourly probe is that no cell is asked twice.
+ *
+ * `body` is null whenever the cell did not answer, answered badly, or answered
+ * with something unparseable — all three are "we do not know", which the
+ * caller must not turn into a zero.
+ */
+export async function probeCellBody(
+  env,
+  projectId,
+  { fetchImpl = fetch, timeoutMs = 8000, secret = null, maxBytes = 64 * 1024 } = {}
+) {
   const hostname = `${projectId}.${env.CELL_ZONE ?? 'cloud.maude.sh'}`;
   try {
     const res = await fetchImpl(`https://${hostname}/health`, {
       signal: AbortSignal.timeout(timeoutMs),
+      // THE CELL IS UNTRUSTED TO ITS PEERS (DDR-054), AND WE ARE ITS PEER.
+      // `fetch` follows redirects by default, so a compromised cell answering
+      // 302 would steer this call — made from the control plane, with the
+      // control plane's network position — wherever it liked. Refusing to
+      // follow costs nothing: a health probe has exactly one right answer and
+      // it is not "look over there".
+      redirect: 'manual',
+      // The counts are privileged (they describe what a customer holds), so
+      // the tenant's own derived secret goes with the ask. Without it the cell
+      // answers the public posture and the sweep records nothing — the same
+      // "unknown" an older image produces.
+      ...(secret ? { headers: { authorization: `Bearer ${secret}` } } : {}),
     });
-    if (!res.ok) return 'pending';
-    const body = await res.json().catch(() => null);
-    return body?.ok === true || body?.status === 'ok' ? 'healthy' : 'pending';
+    if (!res.ok) return { state: 'pending', body: null };
+    // BOUNDED. `res.json()` will happily buffer whatever a cell sends, and a
+    // cell is somebody else's process; a health probe that can be answered
+    // with a gigabyte is a health probe that can take the sweep down.
+    const text = await readBounded(res, maxBytes);
+    if (text === null) return { state: 'pending', body: null };
+    let body = null;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return { state: 'pending', body: null };
+    }
+    const healthy = body?.ok === true || body?.status === 'ok';
+    return { state: healthy ? 'healthy' : 'pending', body };
   } catch {
-    return 'pending';
+    return { state: 'pending', body: null };
   }
+}
+
+/** Read at most `maxBytes` of a response, or null when it exceeds that. */
+async function readBounded(res, maxBytes) {
+  const declared = Number(res.headers?.get?.('content-length') ?? Number.NaN);
+  if (Number.isFinite(declared) && declared > maxBytes) return null;
+  const text = await res.text();
+  return text.length > maxBytes ? null : text;
 }

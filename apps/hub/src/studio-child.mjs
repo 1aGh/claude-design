@@ -30,6 +30,9 @@ import { join } from 'node:path';
  *  short enough that a transient failure is invisible to whoever is waiting. */
 export const BACKOFF_MS = Object.freeze([250, 500, 1000, 2000, 5000, 10_000, 30_000]);
 
+/** How long the build counters are reused before `/health` re-probes for them. */
+const RENDER_STATS_TTL_MS = 60_000;
+
 /** How long a fresh child gets to answer `/_health` before we call it stuck. */
 export const READY_TIMEOUT_MS = Number(process.env.MAUDE_STUDIO_READY_MS ?? 60_000);
 
@@ -195,6 +198,8 @@ export function createStudioChild({
   let launched = false;
   let restarts = 0;
   let consecutiveFailures = 0;
+  /** Last-seen build counters + when, so a polled /health does not re-probe. */
+  let renderCache = null;
   let lastExit = null;
   let startedAt = null;
   let ready = false;
@@ -365,6 +370,30 @@ export function createStudioChild({
       return port;
     },
     /** What `/health` reports (D5). `ok` is the ONE field a probe should read. */
+    /**
+     * The build sandbox's counters, fetched on demand — Cloud Phase 26 Stage 4.
+     *
+     * Its own short cache rather than a background timer: `/health` is polled
+     * by several things at different rates, and a cell should not run a clock
+     * whose only job is to keep a number warm. `null` whenever the studio is
+     * not up, is an older image that does not report them, or simply cannot be
+     * reached — all three are honestly "we do not know", which the operator
+     * board renders as an em-dash rather than a zero.
+     */
+    async renderStats() {
+      if (!ready || child === null) return null;
+      const at = now();
+      if (renderCache && at - renderCache.at < RENDER_STATS_TTL_MS) return renderCache.value;
+      let value = null;
+      try {
+        value = normalizeProbe(await probe(port)).render ?? null;
+      } catch {
+        /* a probe that failed is not a health failure — see the doc above */
+      }
+      renderCache = { at, value };
+      return value;
+    },
+
     status() {
       return {
         ok: ready && child !== null,
@@ -409,7 +438,16 @@ async function defaultProbe(port) {
     if (!res.ok) return { ok: false };
     try {
       const body = await res.json();
-      return { ok: true, rootId: body?.rootId ?? null, project: body?.project ?? null };
+      return {
+        ok: true,
+        rootId: body?.rootId ?? null,
+        project: body?.project ?? null,
+        // Cloud Phase 26 Stage 4 — the build sandbox's counters ride the probe
+        // that already runs, rather than a second endpoint and a second auth
+        // story. Absent on an older studio, which is a real answer: the
+        // operator board renders an em-dash, never a zero.
+        render: body?.render ?? null,
+      };
     } catch {
       return { ok: true };
     }
@@ -422,7 +460,11 @@ async function defaultProbe(port) {
  *  one does. One shape downstream. */
 function normalizeProbe(verdict) {
   if (verdict && typeof verdict === 'object') {
-    return { ok: Boolean(verdict.ok), rootId: verdict.rootId ?? null };
+    return {
+      ok: Boolean(verdict.ok),
+      rootId: verdict.rootId ?? null,
+      render: verdict.render ?? null,
+    };
   }
   return { ok: Boolean(verdict), rootId: null };
 }

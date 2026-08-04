@@ -79,7 +79,13 @@ main().catch((err) => {
   // the one who has to act on it. Bun collapses plugin throws into the build
   // log, so the allowlist's own wording survives in `err.message`.
   process.stdout.write(
-    JSON.stringify({ ok: false, error: String(err?.message ?? err).slice(0, 4000) })
+    JSON.stringify({
+      ok: false,
+      error: String(err?.message ?? err).slice(0, 4000),
+      // A NUMBER, never the specifiers. The host counts these; the strings
+      // stay between the canvas and the person who wrote it.
+      rejectedImports: Number(err?.rejectedImports ?? 0) || 0,
+    })
   );
   process.exit(1);
 });

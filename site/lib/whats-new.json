@@ -1,11 +1,20 @@
 {
-  "generated": "2026-08-04T14:49:48.099Z",
-  "version": "0.53.2",
+  "generated": "2026-08-04T18:06:44.601Z",
+  "version": "0.54.0",
   "entries": [
     {
-      "id": "your-own-place-in-a-shared-project",
+      "id": "activity-says-why-we-looked",
       "version": null,
       "date": null,
+      "kind": "improvement",
+      "title": "Your project's activity says why we looked",
+      "summary": "The activity page for a cloud project used to show that the platform touched it. Now it shows the reason given at the time, in plain words — and it includes the platform-wide checks that sweep every project, which were previously the only ones you could not see.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "your-own-place-in-a-shared-project",
+      "version": "0.54.0",
+      "date": "2026-08-04",
       "kind": "improvement",
       "title": "A shared project keeps your place",
       "summary": "Open a cloud project and you land on a canvas, not an empty pane, with one line telling you what you can do there. Your open canvas and your pan and zoom are now yours alone — a teammate moving around no longer moves you. And reading a project no longer means reading it blind: reviewers can open the Inspector and Layers panels, which quietly refused to appear before.",
@@ -13,8 +22,8 @@
     },
     {
       "id": "the-real-studio-in-your-browser",
-      "version": null,
-      "date": null,
+      "version": "0.54.0",
+      "date": "2026-08-04",
       "kind": "feature",
       "title": "The full studio, in your browser",
       "summary": "A cloud project opened in a browser now gives you the same application as the desktop — Files, Layers, Inspector, search, the toolbar and the live status — and your designs look like your designs: photographs, logos and webfonts load on the canvas. The browser tab also names the account you are signed in as, and lets you sign out.",
@@ -22,8 +31,8 @@
     },
     {
       "id": "design-system-component-styles-load",
-      "version": null,
-      "date": null,
+      "version": "0.54.0",
+      "date": "2026-08-04",
       "kind": "fix",
       "title": "Design-system styles render on canvases",
       "summary": "Canvases in a project with a bootstrapped design system were drawing without their component styles — buttons, cards, inputs and the rest fell back to unstyled defaults. They render correctly again, on the desktop as well as in the browser.",
@@ -31,8 +40,8 @@
     },
     {
       "id": "cloud-live-collaboration-connects",
-      "version": null,
-      "date": null,
+      "version": "0.54.0",
+      "date": "2026-08-04",
       "kind": "fix",
       "title": "Live collaboration works in the browser",
       "summary": "Opening a cloud project in two browsers now actually collaborates: you see each other's cursors with names, annotations and comments appear live for everyone, and every change is saved to the project. Before, the live channel never connected — selections crossed over anonymously and annotations silently stayed on the machine that drew them.",
