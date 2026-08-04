@@ -228,8 +228,10 @@ test('the session key is stable, per-member, and says nothing', () => {
 
 // -------------------------------------------------------- the canvas lane
 
-test('the canvas lane is read-only and capability-gated', async () => {
+test('the canvas lane is capability-gated, and a bare write is refused', async () => {
   const { proxy, forwarded } = makeProxy();
+  // A write with no Origin and no explicit `?t=` never reaches auth — an
+  // ambient cookie is not proof of intent (the CSRF gate's non-browser rule).
   const post = fakeResponse();
   await proxy.handleCanvas({
     request: { headers: {}, url: '/_canvas-shell.html' },
@@ -238,7 +240,7 @@ test('the canvas lane is read-only and capability-gated', async () => {
     method: 'POST',
     verifyToken: () => ({ ok: true }),
   });
-  assert.equal(post.statusCode, 405);
+  assert.equal(post.statusCode, 401);
 
   const bad = fakeResponse();
   await proxy.handleCanvas({
@@ -303,6 +305,206 @@ test('a per-tenant canvas origin has NO path prefix, and is not made to have one
     verifyToken: () => ({ ok: true }),
   });
   assert.equal(forwarded.at(-1).path, '/_canvas-shell.html?t=x');
+});
+
+// ------------------------------------------------- the canvas WRITE lane
+// (RCA: cloud canvas edits never synced — the iframe's only persistence path
+// for annotations / artboard layout / media / comment replies is HTTP on this
+// origin, and a blanket 405 killed every one of those writes silently while
+// the collab WS kept cursors crossing.)
+
+const CANVAS_ORIGIN = 'https://canvas-alligators.cloud.maude.sh';
+
+function makeWriteProxy() {
+  return makeProxy({
+    env: { MAUDE_PUBLIC_CANVAS_ORIGIN: CANVAS_ORIGIN },
+  });
+}
+
+/** owner-role capability under `own`, roleless legacy capability under `cap`. */
+function writeVerify(t) {
+  if (t === 'own') return { ok: true, role: 'owner', subject: 'o@b.c' };
+  if (t === 'cap') return { ok: true, subject: 'legacy@b.c' };
+  return { ok: false };
+}
+
+test('an owner capability writes the canvas-authored lanes at its own role', async () => {
+  const { proxy, forwarded } = makeWriteProxy();
+  for (const [method, path] of [
+    ['PUT', '/_api/annotations'],
+    ['PATCH', '/_api/canvas-meta'],
+    ['POST', '/_api/asset'],
+    ['POST', '/_api/comments/abc123/reply'],
+  ]) {
+    const r = fakeResponse();
+    await proxy.handleCanvas({
+      request: {
+        headers: { origin: CANVAS_ORIGIN, cookie: 'maude_canvas=own' },
+        url: path,
+      },
+      response: r,
+      pathname: path,
+      method,
+      verifyToken: writeVerify,
+    });
+    assert.equal(r.statusCode, 200, `${method} ${path} must be forwarded`);
+    const h = forwarded.at(-1).headers;
+    assert.equal(h[`${INJECTED_HEADER_PREFIX}role`], 'owner');
+    assert.equal(h[`${INJECTED_HEADER_PREFIX}readonly`], '0');
+    assert.equal(h[`${INJECTED_HEADER_PREFIX}user`], 'o@b.c');
+  }
+});
+
+test('a roleless capability stays on the viewer floor: comment yes, annotate no', async () => {
+  const { proxy, forwarded } = makeWriteProxy();
+  // The single write a viewer holds — a comment reply — passes, read-only.
+  const reply = fakeResponse();
+  await proxy.handleCanvas({
+    request: {
+      headers: { origin: CANVAS_ORIGIN, cookie: 'maude_canvas=cap' },
+      url: '/_api/comments/abc123/reply',
+    },
+    response: reply,
+    pathname: '/_api/comments/abc123/reply',
+    method: 'POST',
+    verifyToken: writeVerify,
+  });
+  assert.equal(reply.statusCode, 200);
+  assert.equal(forwarded.at(-1).headers[`${INJECTED_HEADER_PREFIX}readonly`], '1');
+
+  // An annotation is versioned with the design — the role matrix files it with
+  // edit, and this door gives the same 403 sentence the shell door does.
+  const annotate = fakeResponse();
+  await proxy.handleCanvas({
+    request: {
+      headers: { origin: CANVAS_ORIGIN, cookie: 'maude_canvas=cap' },
+      url: '/_api/annotations',
+    },
+    response: annotate,
+    pathname: '/_api/annotations',
+    method: 'PUT',
+    verifyToken: writeVerify,
+  });
+  assert.equal(annotate.statusCode, 403);
+  assert.match(JSON.parse(annotate.body).error, /look at this project, comment and download/);
+});
+
+test('a foreign Origin cannot ride the ambient capability cookie into a write', async () => {
+  // The CSWSH gate's HTTP twin: every origin on the zone is same-SITE, so
+  // SameSite never expresses this boundary — the proxy must.
+  const { proxy, forwarded } = makeWriteProxy();
+  const r = fakeResponse();
+  await proxy.handleCanvas({
+    request: {
+      headers: { origin: 'https://evil.cloud.maude.sh', cookie: 'maude_canvas=own' },
+      url: '/_api/annotations',
+    },
+    response: r,
+    pathname: '/_api/annotations',
+    method: 'PUT',
+    verifyToken: writeVerify,
+  });
+  assert.equal(r.statusCode, 403);
+  assert.equal(forwarded.length, 0);
+});
+
+test('the project shell is the other legitimate writer', async () => {
+  const { proxy, forwarded } = makeWriteProxy();
+  const r = fakeResponse();
+  await proxy.handleCanvas({
+    request: {
+      // publicUrl in makeProxy — the tenant's own shell origin.
+      headers: { origin: 'https://alligators.cloud.maude.sh', cookie: 'maude_canvas=own' },
+      url: '/_api/annotations',
+    },
+    response: r,
+    pathname: '/_api/annotations',
+    method: 'PUT',
+    verifyToken: writeVerify,
+  });
+  assert.equal(r.statusCode, 200);
+  assert.equal(forwarded.at(-1).headers[`${INJECTED_HEADER_PREFIX}readonly`], '0');
+});
+
+test('a non-browser write needs the explicit URL capability, and then passes', async () => {
+  const { proxy, forwarded } = makeWriteProxy();
+  // Cookie alone, no Origin → refused before auth (ambient ≠ intent).
+  const ambient = fakeResponse();
+  await proxy.handleCanvas({
+    request: { headers: { cookie: 'maude_canvas=own' }, url: '/_api/annotations' },
+    response: ambient,
+    pathname: '/_api/annotations',
+    method: 'PUT',
+    verifyToken: writeVerify,
+  });
+  assert.equal(ambient.statusCode, 401);
+  assert.equal(forwarded.length, 0);
+
+  // Explicit `?t=` → proof of intent, forwarded at the token's role.
+  const explicit = fakeResponse();
+  await proxy.handleCanvas({
+    request: { headers: {}, url: '/_api/annotations?t=own' },
+    response: explicit,
+    pathname: '/_api/annotations',
+    method: 'PUT',
+    verifyToken: writeVerify,
+  });
+  assert.equal(explicit.statusCode, 200);
+  assert.equal(forwarded.at(-1).headers[`${INJECTED_HEADER_PREFIX}readonly`], '0');
+});
+
+test('a write never gets the vendor-runtime exemption', async () => {
+  const { proxy, forwarded } = makeWriteProxy();
+  const r = fakeResponse();
+  await proxy.handleCanvas({
+    request: { headers: { origin: CANVAS_ORIGIN }, url: '/_canvas-runtime/react.js' },
+    response: r,
+    pathname: '/_canvas-runtime/react.js',
+    method: 'PUT',
+    verifyToken: () => ({ ok: false }),
+  });
+  assert.equal(r.statusCode, 401);
+  assert.equal(forwarded.length, 0);
+});
+
+test('an asset landing through the canvas door is mirrored like the shell door', async () => {
+  const fired = [];
+  const { proxy } = makeProxy({
+    env: { MAUDE_PUBLIC_CANVAS_ORIGIN: CANVAS_ORIGIN },
+    onAssetWritten: () => fired.push('asset'),
+  });
+  const r = fakeResponse();
+  await proxy.handleCanvas({
+    request: {
+      headers: { origin: CANVAS_ORIGIN, cookie: 'maude_canvas=own' },
+      url: '/_api/asset',
+    },
+    response: r,
+    pathname: '/_api/asset',
+    method: 'POST',
+    verifyToken: writeVerify,
+  });
+  assert.equal(r.statusCode, 200);
+  assert.equal(fired.length, 1, 'the object-storage mirror must fire for a canvas-door upload');
+});
+
+test('a write the manifest refuses outright is 404 at this door too', async () => {
+  // `/_api/photo-edit` is REFUSED at the shell door; the canvas door must not
+  // become the weaker one.
+  const { proxy, forwarded } = makeWriteProxy();
+  const r = fakeResponse();
+  await proxy.handleCanvas({
+    request: {
+      headers: { origin: CANVAS_ORIGIN, cookie: 'maude_canvas=own' },
+      url: '/_api/photo-edit',
+    },
+    response: r,
+    pathname: '/_api/photo-edit',
+    method: 'PUT',
+    verifyToken: writeVerify,
+  });
+  assert.equal(r.statusCode, 404);
+  assert.equal(forwarded.length, 0);
 });
 
 // ------------------------------------------------------------- WS upgrades
@@ -737,9 +939,12 @@ test('a dead canvas upstream closes the upgrade 503', () => {
   assert.match(socket.written.join(''), /503/);
 });
 
-test('the canvas HTTP lane vouches the member for presence, at the viewer floor', async () => {
+test('the canvas HTTP lane vouches the member for presence, at the claimed role', async () => {
   // /_api/git-user on the canvas listener answers with x-maude-user in a cell —
-  // without this every cloud peer introduced itself as `anonymous-…`.
+  // without this every cloud peer introduced itself as `anonymous-…`. The role
+  // rides too (canvas-writes RCA): the readonly header the studio's gate reads
+  // is derived from it, and a hard-coded viewer here is what kept every cloud
+  // canvas edit at 403.
   const { proxy, forwarded } = makeProxy();
   await proxy.handleCanvas({
     request: { headers: {}, url: '/_api/git-user?t=cap' },
@@ -751,8 +956,8 @@ test('the canvas HTTP lane vouches the member for presence, at the viewer floor'
   });
   assert.equal(forwarded.length, 1);
   assert.equal(forwarded[0].headers[`${INJECTED_HEADER_PREFIX}user`], 'm@b.c');
-  // The HTTP lane ignores the role claim — read-only by construction.
-  assert.equal(forwarded[0].headers[`${INJECTED_HEADER_PREFIX}role`], 'viewer');
+  assert.equal(forwarded[0].headers[`${INJECTED_HEADER_PREFIX}role`], 'member');
+  assert.equal(forwarded[0].headers[`${INJECTED_HEADER_PREFIX}readonly`], '0');
 });
 
 // ------------------------------------------------- the role claim round-trip

@@ -383,11 +383,29 @@ export function createStudioProxy({
   /**
    * The CANVAS origin lane.
    *
-   * A different hostname, no cookie, and that is deliberate: a cookie scoped
-   * widely enough to cover `canvas.<zone>` would be readable by the untrusted
-   * canvas origin, which defeats the DDR-054 split entirely. So the capability
-   * lives in the URL (`?t=<render token>`), it is READ ONLY, and it reaches the
-   * studio's segregated canvas listener rather than its main one.
+   * A different hostname, no browser session cookie, and that is deliberate: a
+   * cookie scoped widely enough to cover `canvas.<zone>` would be readable by
+   * the untrusted canvas origin, which defeats the DDR-054 split entirely. So
+   * the capability lives in the URL (`?t=<render token>`) or the host-scoped
+   * HttpOnly cookie the shell document planted, and it reaches the studio's
+   * segregated canvas listener rather than its main one.
+   *
+   * NOT read-only any more (RCA: cloud canvas writes never reached disk). The
+   * canvas iframe's ONLY persistence path for the lanes it legitimately
+   * co-authors — annotation strokes (`PUT /_api/annotations`), artboard layout
+   * (`PATCH /_api/canvas-meta`), media drops (`POST /_api/asset`), comment
+   * replies — is plain HTTP on this origin; the collab WS only mirrors what
+   * the studio wrote to disk. A blanket 405 here meant every one of those
+   * writes died at this door (silently — the client swallows the failure), so
+   * cursors crossed while the actual edits never synced, and a reload showed
+   * nothing. Writes now pass at the capability's OWN role claim under two
+   * gates: the browser-facing Origin check below (the CSWSH gate's HTTP twin —
+   * the capability cookie is ambient, and SameSite cannot express this
+   * boundary because every tenant origin on the zone is same-site), and the
+   * same one-table `decide()` authority the shell door runs, so a viewer's
+   * capability still writes nothing but the comment lane. What stays
+   * canvas-reachable at all is bounded by the studio's own canvas-origin
+   * allowlist (DDR-088 inert collab surface — no source, no export, no config).
    */
   async function handleCanvas({
     request,
@@ -404,10 +422,7 @@ export function createStudioProxy({
      *  ORIGIN, so it comes from whatever decided the origin. */
     pathPrefix = '',
   }) {
-    if (method !== 'GET' && method !== 'HEAD') {
-      refuse(response, 405, { error: 'method not allowed' });
-      return true;
-    }
+    const unsafeMethod = method !== 'GET' && method !== 'HEAD';
     const url = new URL(request.url, 'http://cell.invalid');
     // Strip the prefix before forwarding — the studio serves one project and
     // knows nothing about tenants.
@@ -431,12 +446,39 @@ export function createStudioProxy({
     //
     // Everything tenant-specific — the shell, the built module, the design
     // system's CSS, every asset — still requires the capability below.
-    const isVendorRuntime = rest.startsWith('/_canvas-runtime/');
+    // The vendor bypass is for STATIC READS only — an unsafe method never gets
+    // a free pass, whatever path it names.
+    const isVendorRuntime = !unsafeMethod && rest.startsWith('/_canvas-runtime/');
     // The capability, from the URL the shell wrote or — for the URLs the shell
     // did NOT write, which is every asset the tenant's own canvas references —
     // from the host-scoped cookie the shell document planted. See
     // CANVAS_CAPABILITY_COOKIE for why the second one exists.
     const urlToken = url.searchParams.get('t');
+    // ---- CROSS-SITE REQUEST FORGERY, the cookie lane's HTTP half -----------
+    //
+    // The mirror of handleCanvasUpgrade's CSWSH gate, for the same reason: the
+    // capability cookie rides ambiently, and "site" is the registrable domain,
+    // so script on ANY origin of the zone — another tenant's shell, the
+    // marketing site — could fire a state-changing fetch at this door with the
+    // victim's cookie attached. Two legitimate writers: the canvas origin
+    // itself (the iframe's own fetches) and the project's shell. A missing
+    // Origin is a non-browser client, which must then present an explicit
+    // `?t=` — a URL token is proof of intent in a way an ambient cookie never
+    // is. Reads stay ungated: images and module loads carry no Origin and
+    // change nothing.
+    if (unsafeMethod) {
+      const origin = request.headers?.origin ?? null;
+      if (origin) {
+        const allowed = [env.MAUDE_PUBLIC_CANVAS_ORIGIN, publicUrl].filter(Boolean).map(originOf);
+        if (!allowed.includes(originOf(origin))) {
+          refuse(response, 403, { error: 'cross-origin canvas write refused' });
+          return true;
+        }
+      } else if (!urlToken) {
+        refuse(response, 401, { error: 'a canvas write requires an explicit capability' });
+        return true;
+      }
+    }
     const verdict = isVendorRuntime ? { ok: true } : (verifyToken(urlToken) ?? { ok: false });
     const cookieVerdict =
       !isVendorRuntime && !verdict?.ok
@@ -445,6 +487,38 @@ export function createStudioProxy({
     if (!verdict?.ok && !cookieVerdict?.ok) {
       refuse(response, 401, { error: 'this canvas link has expired — reload the project' });
       return true;
+    }
+    // The capability that actually authenticated this request, and the role it
+    // vouches. Older tokens carry no claim — the floor is `viewer`.
+    const auth = verdict?.ok ? verdict : cookieVerdict;
+    const role = auth?.role ?? 'viewer';
+    // ---- One table, one authority (Cloud Phase 25 C4) ----------------------
+    //
+    // The same `decide()` the shell door runs, at the role the capability
+    // vouches — so a viewer's capability gets the same 403 sentence at both
+    // doors, `/_api/photo-edit` stays refused at both, and a write path the
+    // manifest never classified fails closed here before it reaches the
+    // studio. The studio's own gates (readOnlyRefusal + the canvas-origin
+    // allowlist) still run behind this; two enforcement points that share one
+    // table cannot drift.
+    if (unsafeMethod) {
+      const writeVerdict = decide(method, rest, role);
+      if (!writeVerdict.allow) {
+        if (writeVerdict.reason === 'method') {
+          refuse(response, 405, { error: 'method not allowed' });
+          return true;
+        }
+        if (writeVerdict.reason === 'unclassified' || writeVerdict.reason === 'refused') {
+          refuse(response, 404, { error: 'not found' });
+          return true;
+        }
+        refuse(response, 403, {
+          error: READ_ONLY_MESSAGE,
+          reason: 'read-only',
+          capability: writeVerdict.capability,
+        });
+        return true;
+      }
     }
     // Plant it on the shell document, and only there. Every other response on
     // this origin is a subresource of a shell that already carries one, so a
@@ -465,21 +539,40 @@ export function createStudioProxy({
       port: up.port,
       path: `${rest}${url.search}`,
       headers: upstreamHeaders(request.headers, {
-        // The canvas origin is READ ONLY by construction — the studio's own
-        // canvas listener serves a hard allowlist and nothing on it writes. The
-        // role travels anyway so the studio's gate has the same answer at both
-        // doors; `viewer` is the floor, whoever is looking.
-        role: 'viewer',
+        // The role the CAPABILITY vouches, not an unconditional viewer floor.
+        // The canvas iframe's writes to its co-authored lanes (annotations,
+        // artboard layout, media, comment replies) arrive on THIS lane, and the
+        // studio's readOnlyRefusal gate reads the readonly header derived from
+        // this role — a hard-coded `viewer` here is exactly how cloud canvas
+        // edits died at 403 while cursors kept crossing. What such a role can
+        // REACH is still bounded twice over: `decide()` above (one table) and
+        // the studio's own canvas-origin allowlist (DDR-088 — no source
+        // routes, no export, no config exist on this origin at any role).
+        role,
         // The MEMBER, not null: the capability names its subject, and
         // `/_api/git-user` on the canvas listener is where collab presence gets
         // its display name. Without this every cloud peer is `anonymous-…` (the
-        // attribution half of the live-collaboration RCA). Read-only-ness is
-        // unchanged — the role above stays the floor.
-        user: (verdict?.ok ? verdict.subject : cookieVerdict?.subject) ?? null,
+        // attribution half of the live-collaboration RCA).
+        user: auth?.subject ?? null,
         sessionKey: null,
         publicUrl: env.MAUDE_PUBLIC_CANVAS_ORIGIN ?? null,
       }),
     });
+    // B3 parity with the shell door: an asset that landed THROUGH THIS DOOR
+    // (the iframe's media drop arrives here, not at the shell) must reach
+    // object storage too, or it survives only until the container restarts.
+    if (
+      method === 'POST' &&
+      rest === '/_api/asset' &&
+      response.statusCode >= 200 &&
+      response.statusCode < 300
+    ) {
+      try {
+        onAssetWritten?.();
+      } catch {
+        /* the upload succeeded; a mirror failure must not un-succeed it */
+      }
+    }
     return true;
   }
 

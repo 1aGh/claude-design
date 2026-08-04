@@ -1252,7 +1252,17 @@ export function AnnotationsLayer() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ file, svg }),
         })
-          .then(() => undefined)
+          .then((r) => {
+            // A refused save (403 read-only, 405 at a proxy door) previously
+            // dissolved here without a trace — the user kept drawing on state
+            // that never reached disk, a peer, or a reload (the cloud
+            // canvas-writes RCA). Optimistic local state is still the right
+            // UX; a persistence failure being INVISIBLE is not.
+            if (!r.ok) {
+              console.warn(`[annotations] save refused (${r.status}) — strokes are local-only`);
+            }
+            return undefined;
+          })
           .catch(() => {
             /* swallow — user sees uncommitted state until the next stroke */
           });

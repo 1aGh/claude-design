@@ -33,14 +33,17 @@ function sign(secret, payload) {
  * the token to a person rather than to "anyone who saw the page".
  *
  * `role` is the member's PROJECT role (role-matrix vocabulary), carried so the
- * canvas origin's one live surface — the per-canvas collab WebSocket — can be
- * opened at the member's real capability instead of the viewer floor. The HTTP
- * lane ignores it on purpose: canvas-origin *requests* stay read-only by
- * construction (`handleCanvas` forwards `role: 'viewer'` regardless), so an
- * exfiltrated token still opens nothing that writes over HTTP. What the role
- * claim changes is only which collab lanes the room accepts (annotations /
- * comments — never a body lane; that is the DDR-122 realm gate and it does not
- * read roles). Absent (older tokens) → verifiers fall back to `viewer`.
+ * canvas origin's live surfaces open at the member's real capability instead
+ * of the viewer floor — the per-canvas collab WebSocket, and (since the
+ * cloud-canvas-writes RCA) the HTTP writes to the lanes the iframe legitimately
+ * co-authors (annotations, artboard layout, media, comment replies), which are
+ * the iframe's ONLY persistence path. Both doors run the claim through the one
+ * `decide()`/role-matrix authority, and the canvas origin still exposes no
+ * source-write, export, or config route at any role (DDR-088 allowlist +
+ * DDR-122 realm gate for the WS body lanes). An exfiltrated token is therefore
+ * worth exactly the subject's own role on the inert collab surface, for the
+ * TTL — the same grant the WS lane already made. Absent (older tokens) →
+ * verifiers fall back to `viewer`.
  */
 export function mintRenderToken({
   secret,
