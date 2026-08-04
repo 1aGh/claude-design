@@ -122,6 +122,29 @@ if [ -f "$CARGO_LOCK_PATH" ]; then
   "
 fi
 
+# The cloud fleet ships the same release line. The cell image tag in
+# apps/cells/wrangler.toml IS the fleet instruction (cells-deploy builds and
+# deploys exactly what it names, deriving from ghcr maude-hub:vX.Y.Z on a tag),
+# so the bump rewrites it to maude-cell:v$NEW. The release tag then carries the
+# WHOLE rollout — and because env is applied at container START and Cloudflare
+# only rolls instances on a CONFIG change, the tag change is precisely what
+# restarts every cell onto the new image (the v30/v31 lesson: a re-pushed image
+# under an unchanged tag looks deployed and isn't running anywhere).
+WRANGLER_TOML_PATH="$ROOT/apps/cells/wrangler.toml"
+if [ -f "$WRANGLER_TOML_PATH" ]; then
+  NEW="$NEW" node -e "
+    const fs = require('fs');
+    const p = '$WRANGLER_TOML_PATH';
+    const s = fs.readFileSync(p, 'utf8');
+    const out = s.replace(/(\/maude-cell:)v[0-9A-Za-z.-]+\"/, '\$1v' + process.env.NEW + '\"');
+    if (out === s && !s.includes('/maude-cell:v' + process.env.NEW + '\"')) {
+      console.error('[bump] WARNING: no maude-cell image tag found in apps/cells/wrangler.toml');
+    }
+    fs.writeFileSync(p, out);
+  "
+  echo "[bump] apps/cells/wrangler.toml → maude-cell:v${NEW} (the release tag rolls the fleet)"
+fi
+
 # Stamp any pending What's New entries (version:null) with the new version + date.
 node "$ROOT/scripts/stamp-whats-new.mjs" "$NEW"
 

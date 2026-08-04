@@ -100,6 +100,21 @@ jobs:
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
           echo "Declared cell image: $IMAGE"
 
+      - name: On a release tag, the declared cell image must BE the release
+        # The fleet rollout is part of the release since the v30 cycle:
+        # `bump-version.sh` rewrites the tag to maude-cell:vX.Y.Z, and this is
+        # the loud stop for a hand-rolled release that skipped the bump — a
+        # stale tag here would rebuild and re-push the PREVIOUS image name
+        # under the new hub, which deploys nothing anywhere (a byte-identical
+        # container config never restarts an instance).
+        if: github.ref_type == 'tag'
+        run: |
+          IMAGE="${{ steps.image.outputs.image }}"
+          case "$IMAGE" in
+            *:"${{ github.ref_name }}") echo "cell tag matches release ${{ github.ref_name }}";;
+            *) echo "::error::apps/cells/wrangler.toml declares '$IMAGE' but the release is '${{ github.ref_name }}' — run scripts/bump-version.sh (it rewrites the cell tag) and re-tag"; exit 1;;
+          esac
+
       - name: Resolve the hub image to derive from
         id: hub
         run: |

@@ -6,13 +6,14 @@
 >
 > **Provider:** changesets · **Package:** `@1agh/maude`
 >
-> **Ten manifests + seven `optionalDependencies` pins move in lockstep.** `package.json`, both `plugins/*/.claude-plugin/plugin.json` files, and all seven `packages/maude-*/package.json` files must always share the same `version`. The root's `optionalDependencies` map pins each sub-package at the same version. `scripts/bump-version.sh` writes all ten + the pins; `scripts/check-version-parity.sh` enforces. `scripts/changesets-version.sh` delegates to `bump-version.sh`, so the changeset flow gets parity for free.
+> **Ten manifests + seven `optionalDependencies` pins + the cell image tag move in lockstep.** `package.json`, both `plugins/*/.claude-plugin/plugin.json` files, and all seven `packages/maude-*/package.json` files must always share the same `version`. The root's `optionalDependencies` map pins each sub-package at the same version, and `apps/cells/wrangler.toml` names the cell image at `maude-cell:vX.Y.Z` — that tag IS the fleet-rollout instruction (see "Push"). `scripts/bump-version.sh` writes all of them; `scripts/check-version-parity.sh` enforces (the cell tag strictly once it is semver-shaped). `scripts/changesets-version.sh` delegates to `bump-version.sh`, so the changeset flow gets parity for free.
 >
 > **What publishes how:**
 > - **npm — root `@1agh/maude`** (CLI + dev-server source + ai-skeleton templates). Published by `build-binaries.yml > publish-main` after every per-platform sub-package lands.
 > - **npm — `@1agh/maude-<slug>` × 7** (per-platform Bun standalone binaries: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, `linux-x64-musl`, `linux-arm64-musl`, `win32-x64`). Published in parallel by `build-binaries.yml > build-binaries` matrix. Pulled in at install time via root's `optionalDependencies`.
 > - **GitHub Release** — created empty by `build-binaries.yml > create-release` (so matrix `gh release upload` has a target), then `publish-main` populates the body from `CHANGELOG.md` (auto-generated notes if the section is missing).
 > - **Claude Code marketplace** — both plugins (`design`, `flow`) ship via `marketplace.json` read directly from `main`. The moment the release commit is on `main`, end users can `/plugin marketplace update maude`. No separate publish step.
+> - **Maude Cloud fleet** — the same `v*` tag triggers `hub-image.yml` (multi-arch `ghcr.io/1agh/maude-hub:vX.Y.Z` + `:latest`) and `cells-deploy.yml`, which waits for that hub image, builds the cell image at the tag `apps/cells/wrangler.toml` declares (`maude-cell:vX.Y.Z`, written by the bump), pushes it to the Cloudflare registry, and `wrangler deploy`s the data plane. **The tag change is what restarts every cell** — env is applied at container START and Cloudflare only rolls instances on a config change; a re-pushed image under an unchanged tag deploys nothing anywhere (the v30/v31 lesson). Rollout verification is part of the Push step below.
 
 ## Pre-flight
 
@@ -127,9 +128,11 @@ Stage everything the bump and the smoke step touched, then commit and tag.
 ```bash
 VER=$(node -p "require('./package.json').version")
 git add package.json \
+        pnpm-lock.yaml \
         plugins/design/.claude-plugin/plugin.json \
         plugins/flow/.claude-plugin/plugin.json \
         packages/maude-*/package.json \
+        apps/cells/wrangler.toml \
         apps/desktop/src-tauri/tauri.conf.json \
         apps/desktop/src-tauri/Cargo.toml \
         apps/desktop/src-tauri/Cargo.lock \
@@ -139,7 +142,7 @@ git add package.json \
         .changeset/ \
         site/lib/stats.json \
         site/lib/roadmap.json \
-        site/content/docs/reference/
+        site/content/docs/config-schema.mdx
 git status                                           # eyeball — no surprise additions
 git commit -m "chore: release v${VER}"
 git tag -a "v${VER}" -m "v${VER}"
@@ -161,10 +164,15 @@ The `v*.*.*` tag triggers `.github/workflows/build-binaries.yml`, which:
 2. **`build-binaries`** (7-platform matrix) — `bun build --compile --target=<platform>` produces a Bun standalone binary; smoke-tests it; `npm publish --access public --provenance` the matching `@1agh/maude-<slug>` sub-package (idempotent — 409 "already published" is treated as success); uploads the binary to the GitHub Release as an asset.
 3. **`publish-main`** (after the full matrix succeeds) — installs with `--no-frozen-lockfile` (the lockfile cannot enumerate per-platform sub-packages that don't exist on npm until the matrix publishes them); verifies parity; `pnpm build`; verifies tarball shape; `npm publish` the root tarball (idempotent); populates the GitHub Release body from CHANGELOG.md.
 
-Watch the run:
+The same tag also fires the **cloud rollout chain**: `hub-image.yml` (ghcr hub image) → `cells-deploy.yml` (cell image at the wrangler.toml tag, data-plane deploy, instance restart). And `build-desktop.yml` for the native app.
+
+Watch all of them — a release is not done while any is red or running:
 
 ```bash
 gh run list --workflow=build-binaries.yml --limit 1
+gh run list --workflow=hub-image.yml --limit 1
+gh run list --workflow=cells-deploy.yml --limit 1
+gh run list --workflow=build-desktop.yml --limit 1
 gh run view --web                                    # or open https://github.com/1aGh/maude/actions
 ```
 
@@ -173,6 +181,22 @@ After `publish-main` is green:
 ```bash
 gh release view "v$(node -p "require('./package.json').version")"
 npm view @1agh/maude version                     # confirm npm sees the new root
+```
+
+### Verify the fleet actually rolled
+
+`cells-deploy` green means "image pushed + Worker deployed", not "your project answers on the new image" — the first request after the roll pays a cold start (rehydrate from R2; **minutes** for a GB-scale project), and a botched env derivation has already once produced a fleet that was green in CI and unusable in a browser (v30, `frame-ancestors` from the waking request's Host). So finish with the live checks:
+
+```bash
+# The cell answers (repeat until 200 — cold start can take minutes):
+curl -s -o /dev/null -w "%{http_code}\n" https://alligators.cloud.maude.sh/health
+
+# The canvas origin answers as itself (401 JSON without a capability is CORRECT):
+curl -s -o /dev/null -w "%{http_code}\n" https://canvas-alligators.cloud.maude.sh/
+
+# The one thing curl cannot prove: open the project in a BROWSER and confirm a
+# canvas iframe renders (not "refused to connect") — that exercises the render
+# token, the capability cookie, and frame-ancestors in one look.
 ```
 
 If the GitHub Release shows `draft: true` (happens when the tag was force-moved during a retry cycle), publish it:
@@ -197,6 +221,24 @@ Common failures + recovery:
 - **`win32-x64` binary not produced (`maude-windows-x64.exe` vs `maude-win32-x64.exe`)** — slug mismatch between `bun --target` naming and Node's `process.platform`. Already fixed in `build.ts` `platformSlug()`. Should not recur.
 - **Alpine container fails "JavaScript Actions in Alpine containers only supported on x64 Linux runners"** — JS actions can't run inside alpine on arm64. Already fixed by cross-compiling musl from regular ubuntu runners. Should not recur.
 - **Network flake on `npm publish`** — re-run the failed job from the Actions UI; the matrix step is idempotent (409 conflict treated as success).
+
+### `hub-image.yml` or `cells-deploy.yml` failed — the fleet stayed on the previous release
+
+This is the FAIL-SAFE shape: `cells-deploy` waits for the hub image and asserts the
+wrangler.toml tag matches the release, so a broken half never rolls anything — the
+fleet keeps serving the previous image. npm/marketplace users are unaffected (their
+channels published independently). Recovery:
+
+```bash
+gh run view <RUN_ID> --log-failed | tail -60         # find the real error
+# land the fix on main, then force-move the tag (see below) — the re-fired
+# chain absorbs the already-published npm halves via 409-idempotence and
+# rebuilds the images from the fixed commit.
+```
+
+Known instances of this class: the v0.54.0 hub image failed on a studio file the
+Dockerfile's bundler stage didn't copy (`repo-lock.ts` — the stage copies studio
+files one by one; when a borrowed file grows an import, copy the import too).
 
 ### `publish-main` failed after the matrix succeeded
 

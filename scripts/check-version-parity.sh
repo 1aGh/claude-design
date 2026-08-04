@@ -88,6 +88,27 @@ if [ -f "$CARGO_TOML_PATH" ]; then
   fi
 fi
 
+# Cloud fleet — the cell image tag in apps/cells/wrangler.toml rides the same
+# release line since the fleet rollout became part of the release (the v30
+# 'refused to connect' + manual-restart cycle). A semver tag must equal the
+# package version; a legacy counter tag (v29, v31…) predates the convention and
+# only warns — the next `bump-version.sh` converts it, and from then on this
+# asserts. May be absent on older branches.
+WRANGLER_TOML_PATH="$ROOT/apps/cells/wrangler.toml"
+if [ -f "$WRANGLER_TOML_PATH" ]; then
+  CELL_TAG=$(grep -m1 '^image = ' "$WRANGLER_TOML_PATH" | sed -E 's/.*maude-cell:([^"]+)".*/\1/')
+  if [[ "$CELL_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    if [ "v$PKG_VER" != "$CELL_TAG" ]; then
+      echo "error: version mismatch" >&2
+      printf "  %-50s %s\n" "package.json:" "$PKG_VER" >&2
+      printf "  %-50s %s\n" "apps/cells/wrangler.toml (maude-cell tag):" "$CELL_TAG" >&2
+      mismatches=$((mismatches + 1))
+    fi
+  else
+    echo "note: apps/cells/wrangler.toml still carries a legacy cell tag ($CELL_TAG) — the next bump converts it to v$PKG_VER" >&2
+  fi
+fi
+
 # optionalDependencies pin parity — every @1agh/maude-* entry must equal PKG_VER.
 mismatches=$((mismatches + $(node -e "
   const j = require('$PKG_PATH');
