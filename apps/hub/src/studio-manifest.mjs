@@ -144,11 +144,25 @@ export const STUDIO_ROUTES = Object.freeze({
   '/_api/git/log': { safe: 'read', unsafe: 'read' },
   '/_api/git/diff': { safe: 'read', unsafe: 'read' },
   '/_api/git/branches': { safe: 'read', unsafe: 'read' },
+  // Fetching moves remote-tracking refs and nothing else — no working tree, no
+  // index. It stays a read.
   '/_api/git/fetch': { safe: null, unsafe: 'read' },
-  '/_api/git/pull': { safe: null, unsafe: 'read' },
-  // Looking at another branch is not changing one — the desktop's own read-only
-  // allowlist reaches the same conclusion for the same reason.
-  '/_api/git/checkout': { safe: null, unsafe: 'read' },
+  // PULL AND CHECKOUT REWRITE THE WORKING TREE, AND IN A CELL THERE IS ONE OF
+  // IT — Cloud Phase 27 D2.
+  //
+  // Both were `read`, on the reasoning that "looking at another branch is not
+  // changing one", which the desktop's own read-only allowlist reaches for the
+  // same reason. That reasoning is TRUE FOR ONE USER AT ONE CHECKOUT and false
+  // here: this tree is shared by everyone in the project, so a viewer switching
+  // branches replaces the files under an owner who is mid-edit, and a viewer
+  // pulling merges into them. That is not reading — it is the most destructive
+  // write in the product, performed by the role that is supposed to hold none.
+  //
+  // The desktop is unaffected: it never consults this manifest (it is the
+  // cell's proxy table), and there the reasoning that made `read` right still
+  // holds.
+  '/_api/git/pull': { safe: null, unsafe: 'edit' },
+  '/_api/git/checkout': { safe: null, unsafe: 'edit' },
   '/_api/git/branch': { safe: null, unsafe: 'edit' },
   '/_api/git/commit': { safe: null, unsafe: 'edit' },
   '/_api/git/discard': { safe: null, unsafe: 'edit' },

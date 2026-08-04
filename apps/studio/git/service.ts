@@ -31,7 +31,16 @@ import { isAbsolute, join, relative, sep } from 'node:path';
 import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 
-const USE_SYSTEM_GIT = /^(1|true|on|yes)$/i.test(process.env.MAUDE_USE_SYSTEM_GIT ?? '');
+import { withRepoLock } from './repo-lock.ts';
+
+// Read LIVE, not as a module-load const — the same reason `noSystemGit()` below
+// is a function, and a sharper one since Cloud Phase 27 D2: a CELL now runs with
+// this forced on (studio-child.mjs), so the system-git write paths stopped being
+// an opt-in escape hatch and became what every cloud tenant's saves go through.
+// A module-load const cannot be scoped around a test, which is how those paths
+// came to have no coverage at all while the iso ones had plenty.
+const systemGitForced = (): boolean =>
+  /^(1|true|on|yes)$/i.test(process.env.MAUDE_USE_SYSTEM_GIT ?? '');
 // DDR-133 (DDR-107 end-state): auto-prefer a detected system `git` for the NETWORK
 // paths (gitFetchRemote / remoteAheadBehind — native fetch is instant + uses the
 // user's own credential helper / SSH agent) AND the READ paths (status / list-
@@ -54,7 +63,7 @@ let systemGitProbe: Promise<boolean> | undefined;
  *  and cheap. The probe NEVER relaxes the DDR-131 transport gate: callers classify
  *  the remote URL first; this only picks which engine runs an already-vetted op. */
 function systemGitAvailable(): Promise<boolean> {
-  if (USE_SYSTEM_GIT) return Promise.resolve(true);
+  if (systemGitForced()) return Promise.resolve(true);
   if (noSystemGit()) return Promise.resolve(false);
   if (!systemGitProbe) {
     systemGitProbe = runGit(process.cwd(), ['--version'], undefined, 4000)
@@ -62,6 +71,33 @@ function systemGitAvailable(): Promise<boolean> {
       .catch(() => false);
   }
   return systemGitProbe;
+}
+
+// ── one writer at a time (Cloud Phase 27 D2) ─────────────────────────────────
+//
+// In a CELL this process shares the checkout with the hub, which commits
+// autosaves on its own clock. Every verb below either rewrites the working tree
+// or the index, so each one runs under the cross-process advisory lock — held
+// for the WHOLE verb, not per git invocation, because the dangerous unit is a
+// sequence (`checkout main` → `merge` → `branch -D` in a fold, `add` → `commit`
+// in the autocommit). On a desktop the lock is uncontended and costs a file
+// create.
+//
+// A verb that cannot get the lock REFUSES in its own shape rather than throwing:
+// these results reach a panel, and "somebody else is saving" is a sentence a
+// designer can act on, where a 500 is not.
+const REPO_BUSY = 'Somebody else is saving this project right now — try again in a moment.';
+
+function underRepoLock<T>(
+  dir: string,
+  op: string,
+  fn: () => Promise<T>,
+  busy: () => T
+): Promise<T> {
+  return withRepoLock(dir, `studio:${op}`, fn).catch((err) => {
+    console.warn(`[git] ${op} could not take the repo lock: ${(err as Error).message}`);
+    return busy();
+  });
 }
 
 const TIMED_OUT = Symbol('maude-git-timeout');
@@ -402,7 +438,24 @@ function classifyPorcelain(xy: string): GitFileState | null {
  *  checked; an empty/undefined list means "Save all" (every changed file under
  *  `designPrefix`). Each file is staged add-or-remove based on its workdir
  *  presence, then one commit lands. Returns the new sha. */
-export async function gitCommit(
+export function gitCommit(
+  dir: string,
+  message: string,
+  files?: string[],
+  opts: { designPrefix?: string } = {}
+): Promise<GitCommitResult> {
+  return underRepoLock(
+    dir,
+    'commit',
+    () => commitLocked(dir, message, files, opts),
+    () => ({
+      ok: false,
+      error: REPO_BUSY,
+    })
+  );
+}
+
+async function commitLocked(
   dir: string,
   message: string,
   files?: string[],
@@ -426,7 +479,7 @@ export async function gitCommit(
     selected = status.files;
   }
 
-  return USE_SYSTEM_GIT ? commitSystem(dir, msg, selected) : commitIso(dir, msg, selected);
+  return systemGitForced() ? commitSystem(dir, msg, selected) : commitIso(dir, msg, selected);
 }
 
 async function commitIso(
@@ -479,7 +532,23 @@ export interface GitDiscardResult {
  *  A tracked file (modified/deleted) is restored from HEAD; an untracked file is
  *  deleted (it has no HEAD version to restore). Destructive by intent; the UI
  *  confirms first. Each path is the endpoint-validated repo-relative form. */
-export async function gitDiscard(
+export function gitDiscard(
+  dir: string,
+  files: string[],
+  opts: { designPrefix?: string } = {}
+): Promise<GitDiscardResult> {
+  return underRepoLock(
+    dir,
+    'discard',
+    () => discardLocked(dir, files, opts),
+    () => ({
+      ok: false,
+      error: REPO_BUSY,
+    })
+  );
+}
+
+async function discardLocked(
   dir: string,
   files: string[],
   opts: { designPrefix?: string } = {}
@@ -496,7 +565,7 @@ export async function gitDiscard(
     for (const f of targets) {
       if (byPath.get(f) === 'untracked') {
         await fs.promises.rm(join(dir, f), { force: true });
-      } else if (USE_SYSTEM_GIT) {
+      } else if (systemGitForced()) {
         const r = await runGit(dir, ['checkout', 'HEAD', '--', f]);
         if (r.code !== 0) return { ok: false, error: r.stderr.trim() || 'discard failed' };
       } else {
@@ -731,7 +800,19 @@ export interface GitBranchResult {
 
 /** Create a new draft off HEAD and switch to it. The name is validated against the
  *  same dash-led / charset guard as every other positional (defense-in-depth). */
-export async function gitCreateBranch(dir: string, name: string): Promise<GitBranchResult> {
+export function gitCreateBranch(dir: string, name: string): Promise<GitBranchResult> {
+  return underRepoLock(
+    dir,
+    'branch',
+    () => createBranchLocked(dir, name),
+    () => ({
+      ok: false,
+      error: REPO_BUSY,
+    })
+  );
+}
+
+async function createBranchLocked(dir: string, name: string): Promise<GitBranchResult> {
   if (!isRepo(dir)) return { ok: false, error: 'This project is not versioned yet.' };
   if (!isSafeGitPositional(name))
     return { ok: false, error: "That draft name has characters we can't use." };
@@ -739,7 +820,7 @@ export async function gitCreateBranch(dir: string, name: string): Promise<GitBra
     const existing = await gitListBranches(dir);
     if (existing.some((b) => b.name === name))
       return { ok: false, error: 'A draft with that name already exists.' };
-    if (USE_SYSTEM_GIT) {
+    if (systemGitForced()) {
       const r = await runGit(dir, ['checkout', '-b', name]);
       if (r.code !== 0)
         return { ok: false, error: r.stderr.trim() || 'Could not create the draft.' };
@@ -755,11 +836,23 @@ export async function gitCreateBranch(dir: string, name: string): Promise<GitBra
 /** Switch to an existing draft (or back to the Shared version). A dirty tree that
  *  would be clobbered surfaces a plain "Save your changes first" rather than a
  *  raw git error. */
-export async function gitCheckout(dir: string, name: string): Promise<GitBranchResult> {
+export function gitCheckout(dir: string, name: string): Promise<GitBranchResult> {
+  return underRepoLock(
+    dir,
+    'checkout',
+    () => checkoutLocked(dir, name),
+    () => ({
+      ok: false,
+      error: REPO_BUSY,
+    })
+  );
+}
+
+async function checkoutLocked(dir: string, name: string): Promise<GitBranchResult> {
   if (!isRepo(dir)) return { ok: false, error: 'This project is not versioned yet.' };
   if (!isSafeGitPositional(name)) return { ok: false, error: 'Invalid draft name.' };
   try {
-    if (USE_SYSTEM_GIT) {
+    if (systemGitForced()) {
       // System git DWIMs `git checkout <name>` into a tracking branch when <name>
       // exists on exactly one remote, so the local + remote-only cases share a path.
       const r = await runGit(dir, ['checkout', name]);
@@ -826,7 +919,24 @@ export interface GitFoldResult {
  *  the draft. A content conflict or a rejected publish surfaces the plain "Get latest
  *  first" path (no 3-way merge UI). The local draft is removed ONLY after a clean
  *  publish, so a rejected publish leaves a recoverable state. */
-export async function gitFoldDraft(
+export function gitFoldDraft(
+  dir: string,
+  draftName: string,
+  token: string | undefined,
+  opts: { remote?: string } = {}
+): Promise<GitFoldResult> {
+  return underRepoLock(
+    dir,
+    'fold',
+    () => foldLocked(dir, draftName, token, opts),
+    () => ({
+      ok: false,
+      error: REPO_BUSY,
+    })
+  );
+}
+
+async function foldLocked(
   dir: string,
   draftName: string,
   token: string | undefined,
@@ -868,7 +978,7 @@ export async function gitFoldDraft(
   // locally; there's no PR host. Unchanged pre-PR-flow behavior.
   // Merge the draft into the Shared version (FF when possible, else a merge commit).
   try {
-    if (USE_SYSTEM_GIT) {
+    if (systemGitForced()) {
       const co = await runGit(dir, ['checkout', shared]);
       if (co.code !== 0) return { ok: false, error: 'Save your changes before adding the draft.' };
       const mg = await runGit(dir, ['merge', draftName]);
@@ -896,7 +1006,7 @@ export async function gitFoldDraft(
       await git.checkout({ fs, dir, ref: shared, force: true });
     }
   } catch (e) {
-    if (!USE_SYSTEM_GIT) {
+    if (!systemGitForced()) {
       try {
         await git.checkout({ fs, dir, ref: draftName, force: true });
       } catch {
@@ -928,7 +1038,7 @@ export async function gitFoldDraft(
 
   // The draft's work is now in the Shared version — remove the draft (local only).
   try {
-    if (USE_SYSTEM_GIT) await runGit(dir, ['branch', '-D', draftName]);
+    if (systemGitForced()) await runGit(dir, ['branch', '-D', draftName]);
     else await git.deleteBranch({ fs, dir, ref: draftName });
   } catch {
     /* non-fatal: the fold + publish succeeded; a leftover draft ref is harmless */
@@ -1011,7 +1121,7 @@ export async function gitPush(
     case 'iso':
       return pushIso(dir, token, remote, opts.ref);
     case 'legacy':
-      return USE_SYSTEM_GIT
+      return systemGitForced()
         ? pushSystem(dir, token, remote, opts.ref)
         : pushIso(dir, token, remote, opts.ref);
   }
@@ -1141,7 +1251,23 @@ function isTransportError(blob: string): boolean {
 // ── pull (Get latest) ─────────────────────────────────────────────────────
 
 /** Get latest. Same optional-token model as gitPush (see its doc comment). */
-export async function gitPull(
+export function gitPull(
+  dir: string,
+  token: string | undefined,
+  opts: { remote?: string; ref?: string } = {}
+): Promise<GitPullResult> {
+  return underRepoLock(
+    dir,
+    'pull',
+    () => pullLocked(dir, token, opts),
+    () => ({
+      ok: false,
+      error: REPO_BUSY,
+    })
+  );
+}
+
+async function pullLocked(
   dir: string,
   token: string | undefined,
   opts: { remote?: string; ref?: string } = {}
@@ -1160,7 +1286,7 @@ export async function gitPull(
     case 'iso':
       return pullIso(dir, token, remote, opts.ref);
     case 'legacy':
-      return USE_SYSTEM_GIT
+      return systemGitForced()
         ? pullSystem(dir, token, remote, opts.ref)
         : pullIso(dir, token, remote, opts.ref);
   }
@@ -1351,7 +1477,24 @@ export async function gitFetchRemote(
  *   • `both`   — take theirs AND save ours as a "<name> (mine)<ext>" copy (the
  *                DiffView zero-data-loss default).
  *  Produces the two-parent merge commit so a subsequent Publish fast-forwards. */
-export async function gitResolve(
+export function gitResolve(
+  dir: string,
+  choice: ResolveChoice,
+  token: string | undefined,
+  opts: { remote?: string; ref?: string } = {}
+): Promise<GitResolveResult> {
+  return underRepoLock(
+    dir,
+    'resolve',
+    () => resolveLocked(dir, choice, token, opts),
+    () => ({
+      ok: false,
+      error: REPO_BUSY,
+    })
+  );
+}
+
+async function resolveLocked(
   dir: string,
   choice: ResolveChoice,
   token: string | undefined,
@@ -1360,7 +1503,7 @@ export async function gitResolve(
   if (!isRepo(dir)) return { ok: false, error: 'This project is not versioned yet.' };
   if (choice !== 'mine' && choice !== 'theirs' && choice !== 'both')
     return { ok: false, error: 'Pick how to resolve: keep mine, theirs, or both.' };
-  return USE_SYSTEM_GIT
+  return systemGitForced()
     ? resolveSystem(dir, choice, opts.remote || 'origin', opts.ref)
     : resolveIso(dir, choice, token, opts.remote || 'origin', opts.ref);
 }

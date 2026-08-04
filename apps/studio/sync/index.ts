@@ -222,6 +222,26 @@ export function createSyncRuntime(
   if (!linked) return null;
   const linkedHub = linked;
 
+  // A CELL'S HISTORY BELONGS TO THE CELL — Cloud Phase 27 D2.
+  //
+  // `.design/config.json` is the TENANT's file, versioned in their repo, and
+  // `linkedHub` is whatever hub their desktop was linked to when they committed
+  // it. Honouring that inside a cell would do two things nobody asked for: dial
+  // OUT from the cell to a third-party hub carrying the project's canvases, and
+  // start a SECOND autocommit over the working tree the hub is already
+  // committing — the exact duplication this phase exists to delete.
+  //
+  // Today this is unreachable by accident: the token lookup below reads
+  // `~/.config/maude/hubs.json`, which does not exist in a cell (HOME=/tmp), so
+  // it returns null a few lines further down. An accident is not an invariant,
+  // and the fix for "it happens to be fine" is to say so out loud.
+  if (process.env.MAUDE_WORKSPACE_MODE === '1') {
+    console.warn(
+      `[sync] ignoring linkedHub ${linkedHub.url} — in a workspace cell the hub owns history and sync. (DDR-209 / Phase 27 D2)`
+    );
+    return null;
+  }
+
   // DDR-054 §2a — CI environment gate. Closes the supply-chain side-door
   // where a future CI workflow runs `maude design serve` and a PR-controlled
   // linkedHub.url silently grants a remote actor write access in an

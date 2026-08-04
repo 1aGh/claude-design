@@ -115,6 +115,24 @@ export function childEnv(env = process.env, { port }) {
     NODE_ENV: env.NODE_ENV ?? 'production',
     // The invariant, stated to the process that enforces it.
     MAUDE_WORKSPACE_MODE: '1',
+    // ONE GIT ENGINE IN A CELL — Cloud Phase 27 D2, and the prerequisite for
+    // every lock in this container meaning anything.
+    //
+    // The studio's WRITE paths default to isomorphic-git, which keeps an
+    // in-PROCESS lock and writes `.git/index` directly — it never takes
+    // `.git/index.lock` and never notices one. The hub shells out to system
+    // git, which does. Two engines over one index, neither able to see the
+    // other, is not a race that a careful caller can avoid: it is two programs
+    // writing the same file. Forcing the studio onto the same engine makes
+    // git's own lock a real boundary between the two processes, and the
+    // advisory lock in `apps/studio/git/repo-lock.ts` covers what `index.lock`
+    // cannot (a SEQUENCE — `add` then `commit`, `checkout` then `merge`).
+    //
+    // Unconditional, not passed through: a cell is exactly the deployment this
+    // is right for, and leaving it to an operator to remember is leaving the
+    // tenant's history to chance. The cell image asserts `git` is present
+    // (infra/cell/Dockerfile), so there is no fallback to be lost.
+    MAUDE_USE_SYSTEM_GIT: '1',
     PORT: String(port),
     ...(env.MAUDE_REPO_DIR ? { MAUDE_REPO_DIR: env.MAUDE_REPO_DIR } : {}),
     ...(env.MAUDE_DESIGN_ROOT ? { MAUDE_DESIGN_ROOT: env.MAUDE_DESIGN_ROOT } : {}),

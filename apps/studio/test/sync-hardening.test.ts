@@ -137,6 +137,81 @@ describe('DDR-054 §2a — CI environment gate', () => {
   });
 });
 
+/* ------------------------------------------- Phase 27 D2 — a cell owns its history */
+
+describe('Cloud Phase 27 D2 — a workspace cell ignores the tenant´s linkedHub', () => {
+  let saved: string | undefined;
+
+  beforeEach(() => {
+    saved = process.env.MAUDE_WORKSPACE_MODE;
+  });
+  afterEach(() => {
+    if (saved === undefined) {
+      delete process.env.MAUDE_WORKSPACE_MODE;
+    } else process.env.MAUDE_WORKSPACE_MODE = saved;
+  });
+
+  function linkedCtx() {
+    const designRoot = join(dir, 'design');
+    mkdirSync(join(designRoot, 'ui'), { recursive: true });
+    return {
+      cfg: {
+        name: 't',
+        projectLabel: null,
+        designRoot: 'design',
+        canvasGroups: [{ label: 'Canvases', path: 'ui' }],
+        rootClass: 'app',
+        themeDefault: 'dark' as const,
+        tokensCssRel: 'system/x.css',
+        teamAccentDefault: null,
+        handoffTargets: [],
+        newCanvasDir: 'ui',
+        newComponentDir: 'ui/components',
+        // The TENANT's committed config, carrying whatever hub their desktop
+        // was linked to. It is versioned, so it arrives in the cell with the
+        // checkout.
+        linkedHub: { url: 'https://someone-elses-hub.example.com', linkedAt: 1 },
+        _source: 'defaults' as const,
+      },
+      projectLabel: 't',
+      paths: {
+        repoRoot: dir,
+        designRel: 'design',
+        designRoot,
+        serverInfoFile: '',
+        activeFile: '',
+        commentsDir: join(designRoot, '_comments'),
+        canvasStateDir: '',
+        historyDir: '',
+        tokensUrlRel: '',
+        systemDirRel: 'system',
+      },
+      // biome-ignore lint/suspicious/noExplicitAny: minimal bus stub
+      bus: { on: () => () => {}, emit: () => {} } as any,
+    };
+  }
+
+  test('in a cell it refuses, and says which authority won', () => {
+    // Honouring the tenant's `linkedHub` inside a cell would dial OUT to a
+    // third-party hub carrying their canvases, and start a SECOND autocommit
+    // over the tree the hub is already committing. Both were unreachable by
+    // accident (no `~/.config/maude/hubs.json` in a cell), and an accident is
+    // not an invariant.
+    const warned: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => warned.push(args.map(String).join(' '));
+    process.env.MAUDE_WORKSPACE_MODE = '1';
+    try {
+      expect(createSyncRuntime(linkedCtx())).toBeNull();
+      // Not just null — null for THIS reason. Without the message this test
+      // would pass on the missing-token path it is meant to precede.
+      expect(warned.join(' ')).toContain('the hub owns history');
+    } finally {
+      console.warn = original;
+    }
+  });
+});
+
 /* ---------------------------------------------------------------- §2b .tsx refusal */
 
 // Coverage moved to sync-runtime.test.ts > discoverCanvases >

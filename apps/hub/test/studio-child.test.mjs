@@ -81,6 +81,17 @@ test('the child environment is minimal and carries no hub secret', () => {
   assert.equal(env.HUB_PUBLIC_URL, 'https://alligators.cloud.maude.sh');
 });
 
+test('the cell pins the studio to the same git engine the hub uses', () => {
+  // Cloud Phase 27 D2, and the prerequisite for every lock in the container
+  // meaning anything: the studio's write paths default to isomorphic-git, which
+  // keeps an in-PROCESS lock and writes `.git/index` directly — it never takes
+  // `.git/index.lock` and never notices one. The hub shells out to system git,
+  // which does. Two engines over one index is not a race a careful caller can
+  // avoid; it is two programs writing the same file.
+  const env = childEnv({ PATH: '/bin' }, { port: 4399 });
+  assert.equal(env.MAUDE_USE_SYSTEM_GIT, '1');
+});
+
 test('the child environment never grows a wildcard', () => {
   // The whole guarantee is "an allowlist, not a spread". A future edit adding
   // `...env` would pass every other test in this file.

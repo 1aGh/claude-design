@@ -162,12 +162,15 @@ comments, export, history.
   and `/_api/{cloud,github,hub,claude,acp,debug-bundle,design}`. **DDR-123's
   "claude never on our infra" only holds if the code is not in the image.**
   CI greps the built bundle for their absence.
-- [ ] **D2 — one writer on `/repo`.** Today `workspace-agent`, `design-sync`,
+- [x] **D2 — one writer on `/repo`.** Today `workspace-agent`, `design-sync`,
   `repo-checkpoint` and `backup` write the tree and run git while the studio
   writes TSX, `_history/` and `.design/_*.json`, with **no lock on either
   side**. Route hub git through the studio's own `sync/autocommit.ts`; if that
   is too large for one phase, one advisory lock both honour plus a quiesce RPC,
   and a concurrency test that runs an autocommit against a live canvas write.
+  **Landed 2026-08-04 as the fallback, deliberately** — see the D2 section under
+  "Interim close" for what was found and why routing through autocommit was the
+  wrong half of the problem.
 - [ ] **D3 — per-session runtime state.** `_active.json` (selection, open tabs)
   and `_canvas-state/<slug>.view.json` (camera) are per-machine singletons by
   design (DDR-115). Two members in one cell clobber each other's selection and
@@ -266,6 +269,13 @@ fine." D2 exists because of it. If D2 cannot be made single-writer within this
 phase, the honest move is the advisory lock plus the concurrency test, and to
 say so rather than to hope.
 
+**Answered 2026-08-04, by the second route and on the record.** Single-writer
+was not the right target: routing hub git through the studio would have merged
+two writers out of six while making history depend on a supervised child. The
+lock and the concurrency test landed instead — and looking closely enough to
+choose found that the two processes were not even taking the same lock, because
+they were not running the same git. See D2 above.
+
 USER-ADVOCATE's reservation is different and equally worth keeping: **assets get
 deferred behind the auth work and the hand-written page survives "just for this
 release"** — so the first thing every invited teammate sees is still grey boxes.
@@ -345,16 +355,76 @@ removed.
 
 ### Not landed — none of it blocks the testing environment, all of it blocks a customer
 
-- [ ] **D2 — one writer on `/repo`.** UNTOUCHED, and it is this phase's preserved
-  dissent. Deployed anyway on 2026-08-03 because the platform currently carries
-  no customer data — a deliberate, recorded choice, not an oversight, and one
-  that stops being available the moment somebody real signs up. `workspace-agent`, `design-sync`, `repo-checkpoint` and `backup` write
-  the tree and run git while the studio writes TSX, `_history/` and
-  `.design/_*.json`, with no lock on either side. BREAKER's words still apply:
-  "the 3 a.m. event is not a 500 — it is a tenant's canvas lost to a half-staged
-  commit or a checkout under a live writer, in a cell whose /health still says
-  200 because the hub process is fine." Shipping this to a live customer cell is
-  taking that bet on their data.
+- [x] **D2 — one writer on `/repo`. LANDED 2026-08-04**, as the plan's own
+  fallback (advisory lock + concurrency test) and deliberately not as
+  "route hub git through autocommit" — because reading the two processes side
+  by side found something that makes the preferred option the wrong half of the
+  problem, and one thing nobody had written down at all.
+
+  **The two processes were not racing on a lock. They were using different
+  git engines.** The studio's WRITE paths default to isomorphic-git, which keeps
+  an in-PROCESS async lock and writes `.git/index` directly — it never takes
+  `.git/index.lock` and never notices one. The hub shells out to system git,
+  which does. That is not a race a careful caller can avoid; it is two programs
+  writing one file, and no lock either of them takes could have helped. So the
+  first change is one line — `MAUDE_USE_SYSTEM_GIT=1` in the cell's child env —
+  and everything else rests on it.
+
+  **Routing hub git through `sync/autocommit.ts` would have merged two writers
+  out of six.** `gitCheckout` / `gitFoldDraft` / `gitPull` / `gitDiscard` (the
+  browser's own verbs, in the studio) and `bundleRepo` / `seedRepo` /
+  `restoreRepo` (the hub) would still have collided with each other and with
+  autocommit — and `git checkout <branch>` under a live `git add` is exactly the
+  3 a.m. event, not a lesser one. It would also have made the tenant's history
+  depend on the studio child being ready, turning "the child restarted" into
+  "those edits were never committed".
+
+  **What landed instead:** one advisory lock (`apps/studio/git/repo-lock.ts`,
+  imported by both processes — the hub already reaches across that boundary for
+  `autocommit.ts`) held across the whole SEQUENCE rather than per git
+  invocation, because `add`-then-`commit` is two invocations and the thing that
+  must not land between them is the other side's checkout. Stale holders are
+  stolen (age, or a pid that is gone), so a cell that crashed mid-commit
+  unwedges itself. A studio verb that cannot take the lock refuses in its own
+  shape — "somebody else is saving right now" — rather than throwing a 500 at a
+  panel.
+
+  **No quiesce RPC, and that is a finding rather than a shortcut.** Every
+  hub-side operation that REWRITES the tree — `seedRepo`, `restoreRepo`,
+  rehydrate — is cold-start: `restoreLatest` is called only from
+  `rehydrate.mjs`, which the cell entrypoint runs as its own process before the
+  hub starts, and `seedRepo` runs once against an empty directory. There is no
+  live hub operation for the studio to be quiesced FOR. The comment at the top
+  of `repo-lock.ts` is where the next person adding one will notice they need
+  the RPC too.
+
+  **Two writers nobody had counted:**
+  - **A viewer could `checkout` and `pull`.** Both were classified `read` in the
+    route manifest, on the reasoning that "looking at another branch is not
+    changing one" — true for one user at one checkout, false in a cell where the
+    tree is shared. A viewer switching branches replaces the files under an
+    owner who is mid-edit. Both are now `edit`.
+  - **The tenant's own `.design/config.json` could start a third committer.**
+    `linkedHub` is versioned, so it arrives with the checkout; honouring it in a
+    cell would dial OUT to a third-party hub with the project's canvases and run
+    a second autocommit over the tree. Unreachable by accident today (no
+    `~/.config/maude/hubs.json` in a cell), which is not an invariant. Workspace
+    mode now refuses it and says which authority won.
+
+  BREAKER's words are answered, not dismissed: "a tenant's canvas lost to a
+  half-staged commit or a checkout under a live writer" is now a test —
+  `test/repo-concurrency.test.ts`, real git, real files — and it FAILS without
+  the lock (verified by removing it: `one:add two:add two:commit one:commit`).
+
+  **One thing the flip cost, paid rather than deferred.** `MAUDE_USE_SYSTEM_GIT`
+  had been an escape hatch nobody set, so `commitSystem` and the system-git
+  halves of checkout / branch / discard had **no test coverage at all** while
+  their iso twins had plenty — and D2 routes every cloud tenant's save through
+  exactly those halves. Shipping that would have traded a known bug for an
+  unmeasured one. The flag is now read live rather than at module load (the
+  reason its neighbour `noSystemGit()` already was), and
+  `test/git-system-engine.test.ts` runs the same assertions the iso engine gets
+  against the engine the cloud runs.
 - [ ] **Acceptance's "verified against a real customer project" is half-done.**
   The cell now serves the real 65-canvas alligators checkout and reports it
   healthy, but nobody has SIGNED IN and looked. The photographs and the webfont

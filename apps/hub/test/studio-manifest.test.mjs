@@ -101,6 +101,21 @@ test('a viewer may read, comment and keep their own place — and nothing else',
   assert.equal(decide('POST', '/_api/git/commit', 'viewer').allow, false);
 });
 
+test('a viewer may not switch the branch everyone else is looking at', () => {
+  // Cloud Phase 27 D2. Both of these were `read`, on the reasoning that
+  // "looking at another branch is not changing one" — true for ONE user at ONE
+  // checkout, and false in a cell, where the tree is shared: a viewer switching
+  // branches replaces the files under an owner who is mid-edit, and a viewer
+  // pulling merges into them. It is the most destructive write in the product,
+  // performed by the role that is supposed to hold none.
+  assert.equal(decide('POST', '/_api/git/checkout', 'viewer').allow, false);
+  assert.equal(decide('POST', '/_api/git/pull', 'viewer').allow, false);
+  assert.equal(decide('POST', '/_api/git/checkout', 'member').allow, true);
+  assert.equal(decide('POST', '/_api/git/pull', 'member').allow, true);
+  // Fetching moves remote-tracking refs and nothing else — still a read.
+  assert.equal(decide('POST', '/_api/git/fetch', 'viewer').allow, true);
+});
+
 test('a member may edit but may not push this project somewhere else', () => {
   assert.equal(decide('POST', '/_api/edit-text', 'member').allow, true);
   assert.equal(decide('PUT', '/_api/annotations', 'member').allow, true);

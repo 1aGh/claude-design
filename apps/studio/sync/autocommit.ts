@@ -27,6 +27,8 @@
 
 import path from 'node:path';
 
+import { withRepoLock } from '../git/repo-lock.ts';
+
 /** How long the tree must be quiet before a commit fires. */
 const DEFAULT_DEBOUNCE_MS = 3000;
 
@@ -192,57 +194,72 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
 
     inFlight = (async (): Promise<CommitOutcome> => {
       try {
-        // Stage ONLY what changed. `git add -A` in a workspace would sweep in
-        // whatever else is in the tree — including files a future feature drops
-        // there — and the cell must never commit something it wasn't told about.
-        const add = await run(['add', '--', ...files], { cwd: repoRoot });
-        if (add.code !== 0) {
-          log.warn?.(`[autocommit] git add failed: ${add.stderr.trim()}`);
-          return { ok: false, reason: 'git-failed', detail: add.stderr.trim(), files };
-        }
-
-        // Nothing staged ⇒ the write was a no-op (an echo, or identical bytes).
-        // Not an error, and committing an empty change would be noise.
-        const staged = await run(['diff', '--cached', '--name-only'], { cwd: repoRoot });
-        if (staged.code === 0 && staged.stdout.trim() === '') {
-          return { ok: false, reason: 'nothing-to-commit', files };
-        }
-
-        const commit = await run(
-          [
-            '-c',
-            `user.name=${bot.name}`,
-            '-c',
-            `user.email=${bot.email}`,
-            'commit',
-            '--author',
-            formatAuthor(who),
-            '--only',
-            '--message',
-            commitMessage(files, who),
-            '--',
-            ...files,
-          ],
-          { cwd: repoRoot }
-        );
-        if (commit.code !== 0) {
-          log.warn?.(`[autocommit] git commit failed: ${commit.stderr.trim()}`);
-          // The bytes are on disk. Re-queue so the next quiescence retries
-          // rather than silently dropping the change from history.
-          for (const f of files) touched.add(f);
-          return { ok: false, reason: 'git-failed', detail: commit.stderr.trim(), files };
-        }
-
-        const head = await run(['rev-parse', 'HEAD'], { cwd: repoRoot });
-        const sha = head.stdout.trim();
-        log.log?.(`[autocommit] ${sha.slice(0, 8)} ${files.length} file(s) by ${who.name}`);
-        return { ok: true, sha, files, author: who };
+        // Cloud Phase 27 D2 — HOLD THE LOCK ACROSS THE WHOLE SEQUENCE, not per
+        // git invocation. `add` and `commit` are two invocations, and the thing
+        // that must not land between them is another process's `checkout` or
+        // `commit`: that is the half-staged commit the phase's preserved
+        // dissent names. `index.lock` cannot express this — it is released the
+        // moment `add` returns.
+        //
+        // The `inFlight` guard above is the in-process half of the same rule
+        // and stays: this lock is CROSS-process, and one AutoCommit racing
+        // itself would still be a bug.
+        return await withRepoLock(repoRoot, 'autocommit', () => commitCycle(files, who));
       } finally {
         inFlight = null;
       }
     })();
 
     return inFlight;
+  }
+
+  /** The critical section: stage exactly these files, commit them, report. */
+  async function commitCycle(files: string[], who: EditAttribution): Promise<CommitOutcome> {
+    // Stage ONLY what changed. `git add -A` in a workspace would sweep in
+    // whatever else is in the tree — including files a future feature drops
+    // there — and the cell must never commit something it wasn't told about.
+    const add = await run(['add', '--', ...files], { cwd: repoRoot });
+    if (add.code !== 0) {
+      log.warn?.(`[autocommit] git add failed: ${add.stderr.trim()}`);
+      return { ok: false, reason: 'git-failed', detail: add.stderr.trim(), files };
+    }
+
+    // Nothing staged ⇒ the write was a no-op (an echo, or identical bytes).
+    // Not an error, and committing an empty change would be noise.
+    const staged = await run(['diff', '--cached', '--name-only'], { cwd: repoRoot });
+    if (staged.code === 0 && staged.stdout.trim() === '') {
+      return { ok: false, reason: 'nothing-to-commit', files };
+    }
+
+    const commit = await run(
+      [
+        '-c',
+        `user.name=${bot.name}`,
+        '-c',
+        `user.email=${bot.email}`,
+        'commit',
+        '--author',
+        formatAuthor(who),
+        '--only',
+        '--message',
+        commitMessage(files, who),
+        '--',
+        ...files,
+      ],
+      { cwd: repoRoot }
+    );
+    if (commit.code !== 0) {
+      log.warn?.(`[autocommit] git commit failed: ${commit.stderr.trim()}`);
+      // The bytes are on disk. Re-queue so the next quiescence retries
+      // rather than silently dropping the change from history.
+      for (const f of files) touched.add(f);
+      return { ok: false, reason: 'git-failed', detail: commit.stderr.trim(), files };
+    }
+
+    const head = await run(['rev-parse', 'HEAD'], { cwd: repoRoot });
+    const sha = head.stdout.trim();
+    log.log?.(`[autocommit] ${sha.slice(0, 8)} ${files.length} file(s) by ${who.name}`);
+    return { ok: true, sha, files, author: who };
   }
 
   return {

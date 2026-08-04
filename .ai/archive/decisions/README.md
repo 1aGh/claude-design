@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-211: Two git engines over one index, and the lock that was the second problem](DDR-211-two-git-engines-one-index-and-the-advisory-lock.md) — 2026-08-04, cloud/cell/git/concurrency/lock/role/amends-ddr-209
 - [DDR-210: The canvas carries its own capability, and the session carries a role rather than a bit](DDR-210-canvas-capability-cookie-and-the-role-on-the-session.md) — 2026-08-04, cloud/cell/canvas/capability/cookie/role/session/amends-ddr-054/amends-ddr-209
 - [DDR-209: One studio, three shells — the cell serves the studio, and the prune list is reclassified rather than loosened](DDR-209-one-studio-three-shells-the-cell-serves-the-studio.md) — 2026-08-03, cloud/cell/containment/studio/canvas/proxy/role/amends-ddr-193
 - [DDR-208: Bug-report pipeline — cloud-brokered intake, public issue + private media, consent-first](DDR-208-bug-report-pipeline-cloud-brokered-intake-public-issue-private-media.md) — 2026-07-31, studio/cloud/desktop/bug-report/privacy/consent/quota/github-app
