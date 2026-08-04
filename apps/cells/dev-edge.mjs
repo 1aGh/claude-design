@@ -75,11 +75,17 @@ function upgradeToCell(req, socket, head, { canvasOrigin }) {
     headers[k] = v;
   }
   if (canvasOrigin) headers[CANVAS_ORIGIN_HEADER] = '1';
-  const up = httpRequest({ host: '127.0.0.1', port: CELL, method: req.method, path: req.url, headers });
+  const up = httpRequest({
+    host: '127.0.0.1',
+    port: CELL,
+    method: req.method,
+    path: req.url,
+    headers,
+  });
   up.on('upgrade', (upRes, upSocket, upHead) => {
     const status = `HTTP/1.1 ${upRes.statusCode} ${upRes.statusMessage}\r\n`;
     const lines = Object.entries(upRes.headers).map(([k, v]) => `${k}: ${v}\r\n`);
-    socket.write(status + lines.join('') + '\r\n');
+    socket.write(`${status}${lines.join('')}\r\n`);
     if (upHead?.length) socket.write(upHead);
     upSocket.pipe(socket);
     socket.pipe(upSocket);
@@ -99,8 +105,12 @@ function upgradeToCell(req, socket, head, { canvasOrigin }) {
 const shell = createServer((req, res) =>
   pipeToCell(req, res, { path: req.url, canvasOrigin: false })
 );
-shell.on('upgrade', (req, socket, head) => upgradeToCell(req, socket, head, { canvasOrigin: false }));
-shell.listen(SHELL_PORT, () => console.log(`[edge] shell  origin → http://localhost:${SHELL_PORT}`));
+shell.on('upgrade', (req, socket, head) =>
+  upgradeToCell(req, socket, head, { canvasOrigin: false })
+);
+shell.listen(SHELL_PORT, () =>
+  console.log(`[edge] shell  origin → http://localhost:${SHELL_PORT}`)
+);
 
 // The per-project canvas origin (Cloud Phase 27): the origin root IS the
 // project, so the path is passed through untouched. That is the whole reason
@@ -109,7 +119,9 @@ shell.listen(SHELL_PORT, () => console.log(`[edge] shell  origin → http://loca
 const canvas = createServer((req, res) =>
   pipeToCell(req, res, { path: req.url, canvasOrigin: true })
 );
-canvas.on('upgrade', (req, socket, head) => upgradeToCell(req, socket, head, { canvasOrigin: true }));
+canvas.on('upgrade', (req, socket, head) =>
+  upgradeToCell(req, socket, head, { canvasOrigin: true })
+);
 canvas.listen(CANVAS_PORT, () =>
   console.log(`[edge] canvas origin (project ${TENANT}) → http://localhost:${CANVAS_PORT}`)
 );

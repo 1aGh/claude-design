@@ -80,6 +80,16 @@ export async function handleBrowserAuth({
   fetchImpl = fetch,
 }) {
   if (path === '/auth/browser/signout') {
+    // POST ONLY. This is not a cookie clear — it calls `removeToken`, which
+    // revokes the credential server-side and permanently. As a GET it was a
+    // state-mutating navigation any page could force on a signed-in member
+    // with one `<img>` or link, and `SameSite=Lax` does not stop that (it is
+    // sent on cross-site top-level navigations, and every `*.<zone>` origin is
+    // same-site anyway). Cheap to force, annoying to receive, trivial to close.
+    if (method !== 'POST') {
+      page(response, 405, 'Not here', 'Use the Sign out button in the project.');
+      return true;
+    }
     const existing = cookieValue(request, BROWSER_SESSION_COOKIE);
     const match = existing ? verifyToken(dataDir, existing, secret) : null;
     if (match?.label) {

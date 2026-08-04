@@ -1,7 +1,25 @@
 {
-  "generated": "2026-08-04T11:03:26.790Z",
+  "generated": "2026-08-04T11:22:03.357Z",
   "version": "0.53.2",
   "entries": [
+    {
+      "id": "the-real-studio-in-your-browser",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "The full studio, in your browser",
+      "summary": "A cloud project opened in a browser now gives you the same application as the desktop — Files, Layers, Inspector, search, the toolbar and the live status — and your designs look like your designs: photographs, logos and webfonts load on the canvas. The browser tab also names the account you are signed in as, and lets you sign out.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "design-system-component-styles-load",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Design-system styles render on canvases",
+      "summary": "Canvases in a project with a bootstrapped design system were drawing without their component styles — buttons, cards, inputs and the rest fell back to unstyled defaults. They render correctly again, on the desktop as well as in the browser.",
+      "surface": "design-ui"
+    },
     {
       "id": "cloud-live-collaboration-connects",
       "version": null,

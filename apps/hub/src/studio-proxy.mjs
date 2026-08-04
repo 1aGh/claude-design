@@ -68,13 +68,52 @@ export const INJECTED_HEADER_PREFIX = 'x-maude-';
  *   · `HttpOnly`, so the canvas's own scripts cannot read it — the canvas is
  *     untrusted code and must not be able to exfiltrate its own capability.
  *
- * `SameSite=Lax` is deliberate and sufficient: the shell and the canvas origin
- * are the same SITE (both under the registrable domain), so the iframe's
- * subresource requests are same-site and carry it, while a genuinely foreign
- * page gets nothing. The `Secure` flag is set unless the deployment is plain
- * HTTP on loopback, which is the local harness.
+ * `SameSite=Strict`, and the reasoning that first said `Lax` is written down
+ * here because it was WRONG in a way that reads as right.
+ *
+ * The shell and the canvas origin are the same SITE — both under the
+ * registrable domain — so the iframe's subresource requests carry the cookie
+ * under either value. `Lax` was chosen on the strength of "a genuinely foreign
+ * page gets nothing", which is true and is not the threat. Two things it
+ * missed, both found by an adversarial pass rather than by reasoning:
+ *
+ *   · `Lax` IS sent on a cross-site top-level GET navigation. Any page
+ *     anywhere can `window.open` a canvas-origin URL and the capability rides.
+ *     That is precisely the request class this origin serves.
+ *   · "Same site" is computed at the REGISTRABLE DOMAIN, so on a multi-tenant
+ *     `*.<zone>` platform every tenant's canvas origin, every tenant's shell,
+ *     the control plane and the marketing site are all same-site with each
+ *     other. `SameSite` never expressed the tenant boundary the cell
+ *     architecture exists to enforce; it is coarser than the origin, and the
+ *     isolation that actually holds is the cookie's HOST scope plus the
+ *     route allowlist.
+ *
+ * `Strict` costs nothing here — the legitimate flow is an iframe inside a
+ * top-level document on the project's own shell origin, which is same-site —
+ * and it removes the drive-by-navigation leg. It does NOT fix same-site script
+ * execution; nothing a cookie attribute can say does.
  */
 export const CANVAS_CAPABILITY_COOKIE = 'maude_canvas';
+
+/**
+ * Serialize it, with `Secure` DEFAULTED ON.
+ *
+ * The first version derived `Secure` from `MAUDE_PUBLIC_CANVAS_ORIGIN`
+ * starting with `https://`, which means a missing, empty, scheme-less or
+ * misspelled value silently drops the flag — a fail-OPEN on exactly the input
+ * whose absence should fail closed, on a deployment that is otherwise https.
+ * The flag now comes off only for a deployment that has positively declared
+ * itself plaintext, which is the same signal the hub already refuses to serve
+ * a public host without.
+ */
+export function canvasCapabilityCookie(token, env = process.env) {
+  const plaintext =
+    env.HUB_INSECURE_HTTP === '1' || (env.MAUDE_PUBLIC_CANVAS_ORIGIN ?? '').startsWith('http://');
+  return (
+    `${CANVAS_CAPABILITY_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; ` +
+    `SameSite=Strict; Max-Age=${canvasCookieMaxAge}${plaintext ? '' : '; Secure'}`
+  );
+}
 
 /**
  * The cookie outlives the token by design, and that grants nothing.
@@ -109,6 +148,16 @@ function isCanvasShellPath(rest) {
   return rest === '/_canvas-shell.html' || rest === '/_canvas-shell';
 }
 
+/** Normalize to a bare origin, or `null` for anything that is not a URL —
+ *  including the literal `Origin: null` a sandboxed frame sends. */
+function originOf(value) {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
 /** Hop-by-hop headers — meaningless to forward, actively harmful to copy. */
 const HOP_BY_HOP = new Set([
   'connection',
@@ -139,7 +188,19 @@ export function upstreamHeaders(
   }
   // D4 again: the studio must not learn its own address from a header a tunnel
   // rewrote. It is told, once, what it is.
-  if (publicUrl) out.host = new URL(publicUrl).host;
+  //
+  // A malformed configured URL omits the Host rather than throwing. Throwing
+  // here fails the REQUEST, not the boot — so one scheme-less environment
+  // variable turns every canvas load into a 502 with an `ERR_INVALID_URL`
+  // buried in the cell's logs, which is a far worse way to learn about a typo
+  // than the missing-Host path the next line already handles.
+  if (publicUrl) {
+    try {
+      out.host = new URL(publicUrl).host;
+    } catch {
+      /* not a URL — leave the Host unset, which the studio already tolerates */
+    }
+  }
   out[`${INJECTED_HEADER_PREFIX}role`] = role;
   // The DERIVED capability, not just the label. The studio must not re-derive
   // what `viewer` means — that would be a second copy of the role model, in
@@ -355,11 +416,7 @@ export function createStudioProxy({
     // Set-Cookie on any of them would be noise — and the narrower the surface
     // that mints an ambient credential, the easier it is to reason about.
     if (!isVendorRuntime && verdict?.ok && urlToken && isCanvasShellPath(rest)) {
-      const secure = (env.MAUDE_PUBLIC_CANVAS_ORIGIN ?? '').startsWith('https://');
-      response.setHeader('set-cookie', [
-        `${CANVAS_CAPABILITY_COOKIE}=${encodeURIComponent(urlToken)}; Path=/; HttpOnly; ` +
-          `SameSite=Lax; Max-Age=${canvasCookieMaxAge}${secure ? '; Secure' : ''}`,
-      ]);
+      response.setHeader('set-cookie', [canvasCapabilityCookie(urlToken, env)]);
     }
     const up = canvasUpstream?.();
     if (!up?.ok || !up.port) {
@@ -429,7 +486,41 @@ export function createStudioProxy({
       socket.destroy();
       return true;
     }
-    const token = url.searchParams.get('t') ?? cookieFrom(request, CANVAS_CAPABILITY_COOKIE);
+    // ---- CROSS-SITE WEBSOCKET HIJACKING (found by an adversarial pass) -----
+    //
+    // A WS handshake is exempt from the same-origin policy and carries cookies
+    // anyway, so the moment this lane accepts the ambient capability cookie it
+    // stops being protected by an unguessable URL. `SameSite` does not save it:
+    // "site" is the REGISTRABLE DOMAIN, so every tenant's origins, the control
+    // plane and the marketing site are mutually same-site — script on any one
+    // of them could open `wss://canvas-<victim>.<zone>/_ws/collab/<slug>`, ride
+    // the victim's cookie, and read the room's whole Y.Doc (and write the
+    // annotation/comment lanes at the victim's role). Frames are fully readable
+    // cross-origin; slug guessing is cheap and silent.
+    //
+    // `apps/studio/ws.ts` already has this primitive (`isSameOriginWs`) and
+    // applies it only to the ACP socket. This is its mirror for the lane the
+    // capability cookie reaches.
+    //
+    // Two legitimate origins: the canvas origin itself, and the project's own
+    // shell (the tab the iframe lives in). A missing Origin is a non-browser
+    // client, which must then present an explicit `?t=` — a URL token is proof
+    // of intent in a way an ambient cookie never is.
+    const urlToken = url.searchParams.get('t');
+    const origin = request.headers?.origin ?? null;
+    if (origin) {
+      const allowed = [env.MAUDE_PUBLIC_CANVAS_ORIGIN, publicUrl].filter(Boolean).map(originOf);
+      if (!allowed.includes(originOf(origin))) {
+        socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return true;
+      }
+    } else if (!urlToken) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return true;
+    }
+    const token = urlToken ?? cookieFrom(request, CANVAS_CAPABILITY_COOKIE);
     const verdict = verifyToken(token) ?? { ok: false };
     if (!verdict.ok) {
       socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');

@@ -36,6 +36,21 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
       join(designRoot, 'ui', 'Gate.tsx'),
       'export default function G(){return <main/>}\n'
     );
+    // DDR-210 — RUNTIME STATE, AT DEPTH.
+    //
+    // The underscore rule narrowed from "any path segment" to "the first path
+    // segment", because a design system's `preview/_components.css` is
+    // versioned, shipped, and was 403ing. The narrowing is sound only while
+    // DDR-115's taxonomy stays first-segment — which it is today, and which
+    // nothing was asserting. `git/service.ts`'s `isMaudeRuntimeState` matches
+    // those names at ANY depth, so the two lists now encode different shapes:
+    // a future nested runtime dir would be correctly gitignored, correctly
+    // hidden from the Changes list, and SERVED TO THE UNTRUSTED CANVAS.
+    // These two files are the tripwire.
+    mkdirSync(join(designRoot, '_history', 'gate'), { recursive: true });
+    writeFileSync(join(designRoot, '_history', 'gate', 'snap.tsx'), 'export default 1\n');
+    mkdirSync(join(designRoot, 'system', 'ds', 'preview'), { recursive: true });
+    writeFileSync(join(designRoot, 'system', 'ds', 'preview', '_components.css'), '.a{}\n');
 
     const port = nextPort();
     const proc = await bootServer(root, port, { MAUDE_CANVAS_ORIGIN_SPLIT: '1' });
@@ -272,6 +287,13 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
       expect(await code('/_canvas-shell.html')).toBe(200);
       // A real .tsx canvas under designRoot transpiles + serves (200).
       expect(await code('/.design/ui/Gate.tsx')).toBe(200);
+      // DDR-210 — the two halves of the narrowed underscore rule, pinned.
+      // First-segment runtime state stays refused AT DEPTH…
+      expect(await code('/.design/_history/gate/snap.tsx')).toBe(403);
+      // …and a NESTED underscore that is versioned design-system content is
+      // served. This one is the reason the rule was narrowed: it 403'd, so
+      // every canvas in every project rendered without its component styles.
+      expect(await code('/.design/system/ds/preview/_components.css')).toBe(200);
       // Phase 23 — the capped image-upload route IS reachable from the canvas
       // origin (it must be — drag-drop/paste/picker run inside the iframe). A GET
       // returns 405 (method-not-allowed) which proves the route is REACHED via

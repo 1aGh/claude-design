@@ -4078,14 +4078,19 @@ function Menubar({
             >
               {cloud.user}
             </span>
-            <a
-              className="st-cloudwho-out"
-              href="/auth/browser/signout"
-              data-testid="cloud-signout"
-              title="Sign out of this project"
-            >
-              Sign out
-            </a>
+            {/* A FORM, not a link. Signing out revokes the token server-side,
+                so it is a write — and a write behind a GET is one any page can
+                force on you from across the internet. */}
+            <form method="post" action="/auth/browser/signout" className="st-cloudwho-form">
+              <button
+                type="submit"
+                className="st-cloudwho-out"
+                data-testid="cloud-signout"
+                title="Sign out of this project"
+              >
+                Sign out
+              </button>
+            </form>
           </span>
         ) : null}
         {isNativeApp() && !readOnly && (

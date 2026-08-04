@@ -69,7 +69,7 @@ describe('the cloud shell offers nothing it cannot honour', () => {
   });
 
   test('the local export queue does not hydrate before the shell is known', () => {
-    expect(APP).toContain("useExportCenter({ enabled: cfg.cloud === null })");
+    expect(APP).toContain('useExportCenter({ enabled: cfg.cloud === null })');
   });
 
   test('every component that gates on the shell is actually GIVEN the flag', () => {

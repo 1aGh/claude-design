@@ -25,11 +25,11 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { after, describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-import { addToken, rotateToken, verifyToken } from '../src/tokens.mjs';
 import { can, isReadOnlyRole } from '../src/role-matrix.mjs';
+import { addToken, rotateToken, verifyToken } from '../src/tokens.mjs';
 
 const SERVER_SRC = readFileSync(
   fileURLToPath(new URL('../src/server.mjs', import.meta.url)),

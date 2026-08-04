@@ -80,14 +80,63 @@ direction and a different credential:
   ends a session.
 - **`HttpOnly`**, so the untrusted canvas cannot read and exfiltrate its own
   capability.
-- **`SameSite=Lax` is sufficient, not a compromise.** The shell and the canvas
-  origin share a registrable domain, so the iframe's subresource requests are
-  same-site and carry it; a genuinely foreign page's are not and do not.
-  `frame-ancestors` already refuses to be framed from anywhere else.
+- **`SameSite=Strict`** — see the correction below.
 
-`Secure` is set whenever the deployment's canvas origin is `https://`. The local
-harness runs plain `http://localhost`, where a `Secure` cookie is silently never
-stored — which would have reverted the whole lane to the 401s above, invisibly.
+`Secure` defaults **on**, and comes off only for a deployment that has
+positively declared itself plaintext (`HUB_INSECURE_HTTP=1`, or an
+`http://` canvas origin — the local harness, where a `Secure` cookie is
+silently never stored and the whole lane would revert to the 401s above).
+
+### Correction, same day: `SameSite` was the wrong instrument
+
+This shipped as `SameSite=Lax`, on the reasoning that "a genuinely foreign page
+gets nothing." Two independent security passes killed it within hours, and both
+found the same thing, so it is written down rather than quietly edited:
+
+- **`Lax` IS sent on a cross-site top-level GET navigation** — which is exactly
+  the request class this origin serves. Any page anywhere could `window.open` a
+  canvas-origin URL and the capability rode along.
+- **"Same site" is computed at the REGISTRABLE DOMAIN.** On a multi-tenant
+  `*.<zone>` platform, every tenant's canvas origin, every tenant's shell, the
+  control plane and the marketing site are all same-site with one another.
+  `SameSite` never expressed the tenant boundary the cell architecture exists to
+  enforce — it is coarser than the origin.
+
+The attribute is now `Strict`, which costs nothing (the legitimate flow is an
+iframe inside a top-level document on the project's own shell origin, which is
+same-site) and removes the drive-by-navigation leg.
+
+**What `Strict` does not fix, and what actually holds the boundary.** Neither
+value protects against script executing on a *sibling* `*.<zone>` origin. The
+isolation that holds is the cookie's HOST scope plus the route allowlist plus
+the per-tenant signing secret — not the `SameSite` attribute. Two consequences
+are tracked as open work rather than claimed here:
+
+1. **The canvas collab WebSocket now checks `Origin` — FIXED.** A WS handshake
+   is exempt from the same-origin policy and carries cookies, so an ambient
+   credential turned an unguessable-URL channel into one reachable from any
+   same-site script: `wss://canvas-<victim>.<zone>/_ws/collab/<slug>` would
+   have handed over the room's whole Y.Doc, plus writes to the annotation and
+   comment lanes at the victim's role. `handleCanvasUpgrade` now admits only
+   the project's own canvas and shell origins; a request with no `Origin` (a
+   non-browser client) must present an explicit `?t=`, because a URL token is
+   proof of intent in a way an ambient cookie is not. The same gap remains on
+   the pre-existing shell-origin `/_ws` lane, where `realm: 'main'` makes it
+   worse — **open**.
+2. **A stored `.svg` on the canvas origin is a scripting document — open.**
+   Static canvas-origin responses carry `nosniff` but no CSP; only the shell
+   HTML gets one, so a top-level navigation to a stored SVG executes script on
+   that origin. It should be served `default-src 'none'; sandbox`. This is the
+   step that gives an attacker a *same-site* foothold in the first place, so it
+   is the cheapest single place to break the chain.
+3. **Capability fixation — open, integrity only.** The mint checks that the
+   token is valid, not *whose* it is, so a link with someone else's `?t=`
+   overwrites a victim's cookie and their subsequent requests are attributed to
+   the link's author. No privilege gain; the fix is to bind the capability to
+   the shell session.
+
+None of the three is created by this decision; all are made cheaper to exploit
+by it, which is reason enough to name them here rather than in a ticket.
 
 ## 2. The runtime-state guard rejected versioned design-system files
 
@@ -157,9 +206,19 @@ and destroyed one layer further in, invisibly. A test now bans the default.
   harness artefact that reads exactly like a product bug, on the one surface the
   harness exists to tell the truth about.
 
+- **The browser sign-out is a POST.** It calls `removeToken` — a server-side
+  revocation, not a cookie clear — so as a `GET` anchor it was a state-mutating
+  navigation any page could force on a signed-in member. Found in the same
+  review, on code added by this change.
+
 ## How this was found
 
 By running the cell against a real project and reading the network log, not by
 reading the code. Fifty-one failures on one canvas before, one after — a sponsor
 SVG the project genuinely does not contain. Every one of these four faults was
 invisible to the test suite, to `tauri dev`, and to a screenshot.
+
+And then the `SameSite` correction above was found by an adversarial pass, not by
+running it — the `Lax` cookie *worked* in every test and every browser session.
+Both methods were necessary and neither would have found the other's bug: one
+answers "does it do the thing", the other "what else does it now permit".

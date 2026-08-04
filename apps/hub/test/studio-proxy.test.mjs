@@ -385,7 +385,7 @@ test('the capability survives a URL the shell did not write', async () => {
   const cookie = String(shell.preset['set-cookie']);
   assert.match(cookie, /maude_canvas=cap/);
   assert.match(cookie, /HttpOnly/, 'the untrusted canvas must not be able to read it');
-  assert.match(cookie, /SameSite=Lax/);
+  assert.match(cookie, /SameSite=Strict/); // see the dedicated test below for why not Lax
 
   // 2. An asset with NO query string is served on the strength of that cookie.
   const asset = fakeResponse();
@@ -486,10 +486,19 @@ test('the HttpOnly capability cookie opens the socket too — the WS URL carries
   // use-collab.tsx builds `wss://<canvas-origin>/_ws/collab/<slug>` with no
   // query string; the same-site WS connect carries the cookie the shell
   // document planted. This is the vehicle production actually rides.
+  //
+  // The `Origin` is now part of that vehicle, not decoration: a cookie-only
+  // handshake with no Origin is refused (see the CSWSH tests below), because
+  // a WS handshake bypasses the same-origin policy and carries cookies anyway.
+  // A real browser always sends it, so the production path is unchanged.
   const { proxy, forwarded } = makeProxy();
   proxy.handleCanvasUpgrade({
     request: {
-      headers: { upgrade: 'websocket', cookie: 'maude_canvas=cap' },
+      headers: {
+        upgrade: 'websocket',
+        cookie: 'maude_canvas=cap',
+        origin: 'https://alligators.cloud.maude.sh',
+      },
       url: '/_ws/collab/ui-home',
     },
     socket: fakeSocket(),
@@ -518,7 +527,14 @@ test('a token without a role claim opens at the viewer floor', () => {
 test('the HMR socket (/_ws) rides the same lane; anything else on the origin is 404', () => {
   const { proxy, forwarded } = makeProxy();
   proxy.handleCanvasUpgrade({
-    request: { headers: { upgrade: 'websocket', cookie: 'maude_canvas=cap' }, url: '/_ws' },
+    request: {
+      headers: {
+        upgrade: 'websocket',
+        cookie: 'maude_canvas=cap',
+        origin: 'https://alligators.cloud.maude.sh',
+      },
+      url: '/_ws',
+    },
     socket: fakeSocket(),
     head: null,
     verifyToken: (t) =>
@@ -605,15 +621,23 @@ test('the render token carries the role; an older token verifies to role null', 
   assert.equal(old.role, null);
 });
 
-test('the cookie is Secure wherever the origin is https', async () => {
-  // Local harnesses run the canvas origin on plain http://localhost, where a
-  // Secure cookie is simply never stored and the whole lane silently reverts
-  // to the 401s above.
-  for (const [origin, expected] of [
-    ['https://canvas-alligators.cloud.maude.sh', true],
-    ['http://localhost:18501', false],
+test('Secure comes OFF only for a deployment that declared itself plaintext', async () => {
+  // The first version derived Secure from `MAUDE_PUBLIC_CANVAS_ORIGIN`
+  // starting with `https://`, so a missing / empty / scheme-less / misspelled
+  // value silently dropped the flag — fail-OPEN on exactly the input whose
+  // absence should fail closed. The default is now ON, and it comes off only
+  // for a positively-declared plaintext deployment (the local harness, which
+  // would otherwise never store the cookie and revert the whole lane to 401s).
+  for (const [env, expected] of [
+    [{ MAUDE_PUBLIC_CANVAS_ORIGIN: 'https://canvas-alligators.cloud.maude.sh' }, true],
+    [{ MAUDE_PUBLIC_CANVAS_ORIGIN: 'http://localhost:18501' }, false],
+    [{ HUB_INSECURE_HTTP: '1' }, false],
+    // The fail-open cases: nothing configured, empty, or scheme-less.
+    [{}, true],
+    [{ MAUDE_PUBLIC_CANVAS_ORIGIN: '' }, true],
+    [{ MAUDE_PUBLIC_CANVAS_ORIGIN: 'canvas-alligators.cloud.maude.sh' }, true],
   ]) {
-    const { proxy } = makeProxy({ env: { MAUDE_PUBLIC_CANVAS_ORIGIN: origin } });
+    const { proxy } = makeProxy({ env });
     const r = fakeResponse();
     await proxy.handleCanvas({
       request: { headers: {}, url: '/_canvas-shell.html?t=cap' },
@@ -622,6 +646,104 @@ test('the cookie is Secure wherever the origin is https', async () => {
       method: 'GET',
       verifyToken: () => ({ ok: true }),
     });
-    assert.equal(/; Secure/.test(String(r.preset['set-cookie'])), expected, origin);
+    assert.equal(/; Secure/.test(String(r.preset['set-cookie'])), expected, JSON.stringify(env));
   }
+});
+
+test('the capability cookie is SameSite=Strict, and Lax is a regression', async () => {
+  // WHY THIS TEST EXISTS. `Lax` shipped on the reasoning that "a genuinely
+  // foreign page gets nothing" — true, and not the threat. `Lax` IS sent on a
+  // cross-site top-level GET navigation, which is precisely the request class
+  // the canvas origin serves, so any page anywhere could `window.open` a
+  // canvas URL and the capability rode along. And "same site" is computed at
+  // the REGISTRABLE DOMAIN, so on a multi-tenant `*.<zone>` platform every
+  // tenant's origins, the control plane and the marketing site are all
+  // same-site with each other — `SameSite` never expressed the tenant boundary
+  // at all. `Strict` costs nothing: the legitimate flow is an iframe inside a
+  // top-level document on the project's own shell origin, which is same-site.
+  const { proxy } = makeProxy({
+    env: { MAUDE_PUBLIC_CANVAS_ORIGIN: 'https://canvas-alligators.cloud.maude.sh' },
+  });
+  const r = fakeResponse();
+  await proxy.handleCanvas({
+    request: { headers: {}, url: '/_canvas-shell.html?t=cap' },
+    response: r,
+    pathname: '/_canvas-shell.html',
+    method: 'GET',
+    verifyToken: () => ({ ok: true }),
+  });
+  const cookie = String(r.preset['set-cookie']);
+  assert.match(cookie, /SameSite=Strict/);
+  assert.doesNotMatch(cookie, /SameSite=Lax/);
+  assert.match(cookie, /HttpOnly/);
+  assert.match(cookie, /Path=\//);
+});
+
+test('the canvas collab socket refuses a foreign origin', async () => {
+  // CROSS-SITE WEBSOCKET HIJACKING. A WS handshake bypasses the same-origin
+  // policy and carries cookies, so the moment this lane accepts the ambient
+  // capability cookie, "you cannot guess the URL" stops being the protection.
+  // `SameSite` cannot express the tenant boundary — "site" is the registrable
+  // domain, so every tenant, the control plane and the marketing site are
+  // mutually same-site. Only an Origin check separates them.
+  const env = {
+    MAUDE_PUBLIC_CANVAS_ORIGIN: 'https://canvas-alligators.cloud.maude.sh',
+  };
+  const cases = [
+    // The two legitimate origins: the canvas origin, and the tab it lives in.
+    ['https://canvas-alligators.cloud.maude.sh', true],
+    ['https://alligators.cloud.maude.sh', true],
+    // A DIFFERENT TENANT — same site under `maude.sh`, and the whole point.
+    ['https://canvas-someone-else.cloud.maude.sh', false],
+    ['https://someone-else.cloud.maude.sh', false],
+    // The control plane and the marketing site are same-site too.
+    ['https://cloud.maude.sh', false],
+    ['https://maude.sh', false],
+    // Plainly foreign, and a sandboxed frame's opaque origin.
+    ['https://evil.example', false],
+    ['null', false],
+  ];
+  for (const [origin, allowed] of cases) {
+    const { proxy, forwarded } = makeProxy({ env });
+    const writes = [];
+    const socket = { write: (s) => writes.push(String(s)), destroy() {} };
+    proxy.handleCanvasUpgrade({
+      request: { headers: { origin, cookie: 'maude_canvas=cap' }, url: '/_ws/collab/x' },
+      socket,
+      head: null,
+      verifyToken: () => ({ ok: true, subject: 'v@b.c' }),
+    });
+    if (allowed) {
+      assert.equal(forwarded.length, 1, `${origin} should have been forwarded`);
+    } else {
+      assert.equal(forwarded.length, 0, `${origin} must NOT reach the studio`);
+      assert.match(writes.join(''), /403 Forbidden/, origin);
+    }
+  }
+});
+
+test('a non-browser client may omit Origin, but must then present ?t=', async () => {
+  // Browsers always send Origin on a WS handshake; a CLI does not. Letting a
+  // missing Origin through on the strength of a COOKIE would reopen the hole
+  // by omission — a URL token is proof of intent in a way an ambient cookie
+  // never is.
+  const { proxy, forwarded } = makeProxy();
+  const writes = [];
+  proxy.handleCanvasUpgrade({
+    request: { headers: { cookie: 'maude_canvas=cap' }, url: '/_ws/collab/x' },
+    socket: { write: (s) => writes.push(String(s)), destroy() {} },
+    head: null,
+    verifyToken: () => ({ ok: true }),
+  });
+  assert.equal(forwarded.length, 0, 'cookie-only, no Origin: must be refused');
+  assert.match(writes.join(''), /401 Unauthorized/);
+
+  const ok = makeProxy();
+  ok.proxy.handleCanvasUpgrade({
+    request: { headers: {}, url: '/_ws/collab/x?t=cap' },
+    socket: { write() {}, destroy() {} },
+    head: null,
+    verifyToken: () => ({ ok: true }),
+  });
+  assert.equal(ok.forwarded.length, 1, 'explicit ?t= with no Origin: allowed');
 });
