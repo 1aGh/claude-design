@@ -57,7 +57,12 @@ describe('two members, one cell', () => {
       expect(bob.status).toBe(200);
 
       // Each member's camera is its own FILE — the whole point.
-      const aliceView = join(designRoot, '_canvas-state', 'aaaaaaaaaaaaaaaa', 'ui-fixture.view.json');
+      const aliceView = join(
+        designRoot,
+        '_canvas-state',
+        'aaaaaaaaaaaaaaaa',
+        'ui-fixture.view.json'
+      );
       const bobView = join(designRoot, '_canvas-state', 'bbbbbbbbbbbbbbbb', 'ui-fixture.view.json');
       expect(existsSync(aliceView)).toBe(true);
       expect(existsSync(bobView)).toBe(true);
@@ -171,9 +176,7 @@ describe('two members, one cell', () => {
       await openAs('bbbbbbbbbbbbbbbb', '.design/ui/bob.tsx');
       await Bun.sleep(300);
 
-      const aliceState = await Bun.file(
-        join(designRoot, '_active.aaaaaaaaaaaaaaaa.json')
-      ).json();
+      const aliceState = await Bun.file(join(designRoot, '_active.aaaaaaaaaaaaaaaa.json')).json();
       const bobState = await Bun.file(join(designRoot, '_active.bbbbbbbbbbbbbbbb.json')).json();
       expect(aliceState.active).toBe('.design/ui/alice.tsx');
       expect(bobState.active).toBe('.design/ui/bob.tsx');

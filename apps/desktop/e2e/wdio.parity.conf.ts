@@ -75,14 +75,17 @@ async function startStandIn(): Promise<{ url: string; close: () => void }> {
   // parity regression (C1 — a reviewer who cannot inspect).
   const proxyPort = 4895;
   const proxy = createServer((req, res) => {
+    // Everything the browser sent EXCEPT `host` (the real data plane drops it
+    // too — the cell takes its public identity from configuration, D4), plus
+    // the headers a real cell's proxy vouches.
+    const { host: _dropped, ...forwarded } = req.headers;
     const headers = {
-      ...req.headers,
+      ...forwarded,
       'x-maude-role': 'viewer',
       'x-maude-readonly': '1',
       'x-maude-session': 'parityviewer0001',
       'x-maude-user': 'viewer@example.com',
     };
-    delete headers.host;
     const up = httpRequest(
       { host: '127.0.0.1', port: studioPort, method: req.method, path: req.url, headers },
       (r) => {
