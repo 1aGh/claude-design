@@ -26,19 +26,20 @@ class FakeChild extends EventEmitter {
 }
 
 /** A harness with a controllable clock and spawn. */
-function harness({ ready = true, entry = __filename } = {}) {
+function harness({ ready = true, entry = __filename, probe, ...rest } = {}) {
   const spawned = [];
   const timers = [];
   let pid = 100;
   const child = createStudioChild({
     env: { MAUDE_STUDIO_SRC: null, MAUDE_REPO_DIR: '/repo', PATH: '/bin' },
     port: 4399,
+    ...rest,
     spawn: (bin, args, opts) => {
       const proc = new FakeChild(pid++);
       spawned.push({ bin, args, opts, proc });
       return proc;
     },
-    probe: async () => ready,
+    probe: probe ?? (async () => ready),
     setTimer: (fn, ms) => {
       const t = { fn, ms, unref: () => t };
       timers.push(t);
@@ -167,4 +168,72 @@ test('status() names the port a proxy should forward to', () => {
   const { child } = harness();
   assert.equal(child.port, 4399);
   assert.equal(child.status().port, 4399);
+});
+
+// ------------------------------------------------- D5: healthy, wrong project
+
+const tick = () => new Promise((r) => setImmediate(r));
+
+test('a child answering about the WRONG tree is never marked ready', async () => {
+  // The one failure a liveness probe cannot see, and the one a customer would
+  // notice first: something answers 200, and it is not their project. "Boots,
+  // looks fine, serves the wrong root" is the mistake `studioLaunch` warns
+  // about; this is the check that makes it visible instead of served.
+  const { child, spawned } = harness({
+    expectedRootId: 'aaaaaaaaaaaa',
+    probe: async () => ({ ok: true, rootId: 'bbbbbbbbbbbb', project: 'someone else' }),
+  });
+  child.start();
+  await tick();
+  const status = child.status();
+  assert.equal(status.ok, false, 'the cell must not report healthy');
+  assert.equal(status.state, 'wrong-project');
+  assert.deepEqual(
+    { expected: status.wrongProject.expected, actual: status.wrongProject.actual },
+    { expected: 'aaaaaaaaaaaa', actual: 'bbbbbbbbbbbb' }
+  );
+  // Killed, not accepted — and the exit handler owns the retry, because the
+  // tree can still become the right one (a rehydrate finishing late).
+  assert.deepEqual(spawned[0].proc.killed, ['SIGKILL']);
+});
+
+test('the matching tree is ready, and clears a previous mismatch', async () => {
+  let rootId = 'bbbbbbbbbbbb';
+  const { child, spawned, timers } = harness({
+    expectedRootId: 'aaaaaaaaaaaa',
+    probe: async () => ({ ok: true, rootId }),
+  });
+  child.start();
+  await tick();
+  assert.equal(child.status().state, 'wrong-project');
+
+  // The rehydrate lands; the restart brings up a studio on the right tree.
+  rootId = 'aaaaaaaaaaaa';
+  spawned[0].proc.emit('exit', null, 'SIGKILL');
+  timers
+    .filter((t) => BACKOFF_MS.includes(t.ms))
+    .at(-1)
+    .fn();
+  await tick();
+  const status = child.status();
+  assert.equal(status.ok, true);
+  assert.equal(status.state, 'ready');
+  assert.equal(status.wrongProject, undefined);
+});
+
+test('no expectation, or a studio too old to answer with one, still boots', async () => {
+  // Two shapes that must not fail closed: a dev checkout with nothing
+  // meaningful to compare against, and a studio whose /_health predates the
+  // field. Refusing either would take a cell down over a check that never
+  // ran.
+  for (const [expectedRootId, verdict] of [
+    [null, { ok: true, rootId: 'bbbbbbbbbbbb' }],
+    ['aaaaaaaaaaaa', { ok: true }],
+    ['aaaaaaaaaaaa', true],
+  ]) {
+    const { child } = harness({ expectedRootId, probe: async () => verdict });
+    child.start();
+    await tick();
+    assert.equal(child.status().ok, true, JSON.stringify({ expectedRootId, verdict }));
+  }
 });

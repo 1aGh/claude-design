@@ -22,6 +22,15 @@
 //   node apps/cells/dev-edge.mjs --cell 1234 --shell 18500 --canvas 18501 --tenant alligators
 //
 // Development only. It authenticates nothing; the cell behind it does.
+//
+// WHAT IT DOES NOT EMULATE, and what that costs you. Like the real data plane
+// it drops the browser's `Host` — so the cell behind it must be told its public
+// identity the same way a real cell is (D4), or it will not recognise its own
+// front door. Boot it with `HUB_PUBLIC_URL=http://localhost:18500` and
+// `MAUDE_PUBLIC_CANVAS_ORIGIN=http://localhost:18501`; without the first, the
+// shell's live socket is refused by the CSWSH Origin gate in `studio-proxy.mjs`
+// and the status bar sits on "reconnecting" — which is what this harness's own
+// missing upgrade handler used to look like, and is not the same bug.
 
 import { createServer, request as httpRequest } from 'node:http';
 

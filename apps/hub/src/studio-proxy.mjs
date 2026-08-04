@@ -158,6 +158,15 @@ function originOf(value) {
   }
 }
 
+/** The same, down to `host[:port]` — what survives a tunnel that terminates TLS. */
+function hostOf(value) {
+  try {
+    return new URL(value).host || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Hop-by-hop headers — meaningless to forward, actively harmful to copy. */
 const HOP_BY_HOP = new Set([
   'connection',
@@ -551,6 +560,29 @@ export function createStudioProxy({
   }
 
   /**
+   * The origins allowed to open a socket on the SHELL door.
+   *
+   * Exactly one: the project's own shell. NOT the canvas origin — that origin
+   * exists to run the tenant's untrusted code (DDR-054), and this lane is the
+   * privileged one.
+   *
+   * A deployment that declared its public identity (D4 — every cell does) is
+   * held to it. One that did not — a cell booted by hand, the local data-plane
+   * stand-in — falls back to the classic same-origin comparison against the
+   * request's own `Host`, which is safe for the same reason the check works at
+   * all: a browser sets `Host` from the URL it is connecting to, so an
+   * attacker's page can never make the two agree.
+   */
+  function isOwnShellOrigin(request) {
+    // Hosts, not full origins: TLS terminates at the tunnel, so the browser's
+    // `https://` Origin reaches a hub that is speaking plaintext to it.
+    const from = hostOf(request?.headers?.origin ?? '');
+    if (!from) return false; // absent, or the opaque `null` of a sandboxed frame
+    const allowed = publicUrl ? hostOf(publicUrl) : (request?.headers?.host ?? null);
+    return Boolean(allowed) && from === allowed;
+  }
+
+  /**
    * WebSocket upgrades.
    *
    * The studio's live surfaces — the inspector feed and the per-canvas collab
@@ -560,6 +592,29 @@ export function createStudioProxy({
   function handleUpgrade({ request, socket, head, session }) {
     if (!session?.role) {
       socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return true;
+    }
+    // ---- CROSS-SITE WEBSOCKET HIJACKING, on the lane that matters most -----
+    //
+    // The twin of the canvas lane's gate above, and the WORSE of the two: this
+    // socket is upgraded at `realm: 'main'`, which the DDR-122 origin gate
+    // leaves ungated, so it reaches the body lanes — a canvas's source, its
+    // CSS, its meta — at the member's real role.
+    //
+    // The credential here is the browser SESSION cookie, and `SameSite=Lax`
+    // does not express the boundary: "site" is the registrable domain, so
+    // every tenant's shell, every tenant's canvas origin, the control plane
+    // and the marketing site are mutually same-site. Script anywhere on
+    // `*.<zone>` — a stored SVG on a canvas origin is the cheap way to get it
+    // — could open `wss://<victim-shell>/_ws/collab/<slug>` and have the
+    // victim's cookie ride along. WS handshakes are exempt from the
+    // same-origin policy, and the frames are fully readable to the opener.
+    //
+    // Unlike the canvas lane there is no `?t=` here, so a missing Origin has
+    // no way to prove intent and is simply refused. Browsers always send it.
+    if (!isOwnShellOrigin(request)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return true;
     }

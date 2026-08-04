@@ -1,12 +1,12 @@
 // /health endpoint returns the documented JSON shape.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 
-import { createHub } from '../src/server.mjs';
+import { createHub, gitLockState, STALE_GIT_LOCK_MS } from '../src/server.mjs';
 import { addToken } from '../src/tokens.mjs';
 
 const PORT = Number.parseInt(process.env.HUB_TEST_PORT ?? '14392', 10);
@@ -60,4 +60,30 @@ test('uptimeMs grows monotonically across two probes', async () => {
   await new Promise((r) => setTimeout(r, 25));
   const b = await (await fetch(`http://127.0.0.1:${PORT}/health`)).json();
   assert.ok(b.uptimeMs > a.uptimeMs, `expected ${b.uptimeMs} > ${a.uptimeMs}`);
+});
+
+// ------------------------------------------------ D5: the stuck git lock
+
+test('a stale index.lock is reported as a fact, and does not take the cell down', () => {
+  // `index.lock` left behind by a killed git process means every subsequent
+  // commit fails: the cell keeps serving, the customer keeps working, and
+  // nothing is being SAVED. The tell is age — a lock a second old is a commit
+  // happening, a lock ten minutes old is a commit that never will.
+  const repo = mkdtempSync(join(tmpdir(), 'maude-hub-lock-'));
+  try {
+    assert.deepEqual(gitLockState(repo), { present: false });
+
+    mkdirSync(join(repo, '.git'), { recursive: true });
+    writeFileSync(join(repo, '.git', 'index.lock'), '');
+
+    const fresh = gitLockState(repo);
+    assert.equal(fresh.present, true);
+    assert.equal(fresh.stale, false, 'a lock written just now is an operation in flight');
+
+    const old = gitLockState(repo, { now: () => Date.now() + STALE_GIT_LOCK_MS + 1000 });
+    assert.equal(old.stale, true);
+    assert.ok(old.ageMs > STALE_GIT_LOCK_MS);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
 });

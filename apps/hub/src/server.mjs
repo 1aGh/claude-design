@@ -35,7 +35,7 @@
 //   - All log lines that interpolate user data go through sanitizeForLog.
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 
@@ -1381,6 +1381,26 @@ function formatInviteResponse(record, publicUrl) {
  * credentials. Safe on the unauthenticated /health, which is the whole point —
  * the moment you need it, authenticating is the thing that is broken.
  */
+/** Past this, a lock is not an operation in flight — it is a corpse. */
+export const STALE_GIT_LOCK_MS = 60_000;
+
+/**
+ * Is a git operation in flight, stuck, or absent — as a fact, not a guess.
+ *
+ * `mtime` rather than `ctime` because git touches the lock as it works, so a
+ * long-but-live operation keeps looking live; and the age is reported next to
+ * the verdict so a reader can disagree with the threshold.
+ */
+export function gitLockState(repoDir, { now = Date.now, stat = statSync } = {}) {
+  try {
+    const st = stat(join(repoDir, '.git', 'index.lock'));
+    const ageMs = Math.max(0, Math.round(now() - st.mtimeMs));
+    return { present: true, ageMs, stale: ageMs > STALE_GIT_LOCK_MS };
+  } catch {
+    return { present: false };
+  }
+}
+
 function workspaceStatus() {
   const repoDir = process.env.MAUDE_REPO_DIR;
   if (!repoDir) return null;
@@ -1396,6 +1416,19 @@ function workspaceStatus() {
     ...(bootReport.seed ? { seed: bootReport.seed } : {}),
     ...(bootReport.history ? { history: bootReport.history } : {}),
     ...(bootReport.assets ? { assets: bootReport.assets } : {}),
+    // D5 — A STUCK GIT LOCK IS INVISIBLE UNTIL THE HISTORY IS ALREADY GONE.
+    // `index.lock` is how git says "an operation is in flight"; left behind by
+    // a killed process it means every subsequent commit fails, so the cell
+    // keeps serving, the customer keeps working, and nothing is being SAVED.
+    // The tell is age: a lock a second old is a commit happening, a lock ten
+    // minutes old is a commit that never will.
+    //
+    // Reported, and deliberately NOT part of `ok`. Failing health here would
+    // take the cell out of rotation and make an unreachable project out of one
+    // whose history is merely stuck — worse for the tenant on every axis. This
+    // is for whoever is looking, and for the alert that should page rather than
+    // reroute.
+    gitLock: gitLockState(repoDir),
   };
   try {
     const walk = (dir, depth = 0) => {

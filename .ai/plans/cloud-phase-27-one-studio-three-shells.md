@@ -180,7 +180,7 @@ comments, export, history.
   their project. The studio must take its public identity from configuration
   (`HUB_PUBLIC_URL`), never from the request, and a test must assert it with a
   foreign `Host` header set.
-- [ ] **D5 — deep, content-addressed health.** Child alive, its `/_health`
+- [x] **D5 — deep, content-addressed health.** Child alive, its `/_health`
   reports the expected project, the served bundle's sha256 equals the sha
   recorded at image build, no stale `index.lock`. **A tag is not an identity; a
   hash is** — the last outage featured a monitor that checked only that
@@ -367,8 +367,19 @@ removed.
   `x-maude-session` per member (tested); the studio does not partition
   `_active.json` / `_canvas-state/<slug>.view.json` by it, so two members in one
   cell still clobber each other's selection and camera.
-- [ ] **D5 — remaining half.** The expected-project assertion and the stale
-  `index.lock` check.
+- [x] **D5 — remaining half, landed 2026-08-04.** The studio's `/_health` now
+  reports a `rootId` — a short sha of the `realpath`'d tree it resolved, a hash
+  and not a path because that route is on the untrusted canvas origin's
+  allowlist — and the supervisor compares it against the root it handed over. A
+  child that answers healthily about ANOTHER tree is killed rather than served:
+  `state: 'wrong-project'`, `/health` says no, the router stops sending. It is
+  retried rather than given up on, because the tree can still become the right
+  one — a rehydrate finishing after the studio started is exactly how this
+  happens. The stale `index.lock` check ships as a REPORTED fact
+  (`workspace.gitLock: { present, ageMs, stale }`) and deliberately not as part
+  of `ok`: a lock left by a killed git process means history is stuck while
+  serving is fine, and failing health there would make an unreachable project
+  out of one whose only problem is that nothing is being saved.
 - [ ] **B3 — the sweep that lands a browser-uploaded asset in the S3 lane without
   waiting for the next boot.** (Git-tracked assets already return with the
   rehydrated checkout, which is what fixed the grey boxes.)
@@ -403,11 +414,17 @@ list above is unchanged. The plan stays active.
 **What the security fan-out changed.** Six blockers, four of them ours. Three
 HIGHs formed one chain — a stored SVG gives script on a same-site origin, the
 `SameSite=Lax` cookie is sent there, and the canvas collab WebSocket had no
-`Origin` check to stop it being used. All three are closed. Two mediums remain
-open and are named in DDR-210: capability fixation on the cookie mint
-(attribution, not access), and the shell-origin `/_ws` twin of the socket fix,
-which is worse than the one that was fixed because `realm: 'main'` reaches the
-body lanes. **The `/_ws` one should be the next thing anyone picks up.**
+`Origin` check to stop it being used. All three are closed.
+
+**The shell-origin `/_ws` twin is closed too (2026-08-04).** It was the worse of
+the two sockets — upgraded at `realm: 'main'`, which the DDR-122 origin gate
+leaves ungated, so it reached a canvas's source, CSS and meta at the victim's
+real role, on the strength of an ambient session cookie. `handleUpgrade` now
+admits only the project's own shell origin: not another tenant's, and not the
+project's OWN canvas origin, which is where the untrusted code runs. No `?t=`
+exists on this lane, so a missing `Origin` is refused rather than trusted. One
+medium remains open and is named in DDR-210: capability fixation on the cookie
+mint (attribution, not access).
 
 ### Interim retro
 

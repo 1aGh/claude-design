@@ -319,13 +319,104 @@ test('an unauthenticated upgrade is closed, not upgraded', () => {
 test('an authenticated upgrade carries the role', () => {
   const { proxy, forwarded } = makeProxy();
   proxy.handleUpgrade({
-    request: { headers: { upgrade: 'websocket' }, url: '/_ws' },
+    request: {
+      // The Origin is part of the handshake now, not decoration — see the
+      // CSWSH tests below. A real browser always sends it.
+      headers: { upgrade: 'websocket', origin: 'https://alligators.cloud.maude.sh' },
+      url: '/_ws',
+    },
     socket: { write() {}, destroy() {}, on() {} },
     head: null,
     session: { email: 'm@b.c', role: 'member', sessionKey: 'k' },
   });
   assert.equal(forwarded.length, 1);
   assert.equal(forwarded[0].headers[`${INJECTED_HEADER_PREFIX}role`], 'member');
+});
+
+test('the SHELL socket refuses a foreign origin — including the project´s own canvas', () => {
+  // The twin of the canvas lane's gate, and the worse of the two: this socket
+  // is upgraded at `realm: 'main'`, which the DDR-122 origin gate leaves
+  // ungated, so it reaches the body lanes at the member's real role. The
+  // credential is the browser SESSION cookie, and `SameSite=Lax` cannot
+  // express the boundary — "site" is the registrable domain, so every tenant's
+  // shell, every tenant's canvas origin, the control plane and the marketing
+  // site are mutually same-site. Only an Origin check separates them.
+  const cases = [
+    ['https://alligators.cloud.maude.sh', true],
+    // THE PROJECT'S OWN CANVAS ORIGIN. Same project, and still refused: that
+    // origin exists to run the tenant's untrusted code, and a stored SVG on it
+    // is the cheapest same-site foothold there is (DDR-210).
+    ['https://canvas-alligators.cloud.maude.sh', false],
+    // Another tenant, the control plane, the marketing site — all same-site.
+    ['https://someone-else.cloud.maude.sh', false],
+    ['https://canvas-someone-else.cloud.maude.sh', false],
+    ['https://cloud.maude.sh', false],
+    ['https://maude.sh', false],
+    // Plainly foreign, and a sandboxed frame's opaque origin.
+    ['https://evil.example', false],
+    ['null', false],
+  ];
+  for (const [origin, allowed] of cases) {
+    const { proxy, forwarded } = makeProxy();
+    const written = [];
+    proxy.handleUpgrade({
+      request: { headers: { upgrade: 'websocket', origin }, url: '/_ws/collab/ui-home' },
+      socket: { write: (s) => written.push(String(s)), destroy() {}, on() {} },
+      head: null,
+      session: { email: 'o@b.c', role: 'owner', sessionKey: 'k' },
+    });
+    if (allowed) {
+      assert.equal(forwarded.length, 1, `${origin} should have been forwarded`);
+    } else {
+      assert.equal(forwarded.length, 0, `${origin} must NOT reach the studio`);
+      assert.match(written.join(''), /403 Forbidden/, origin);
+    }
+  }
+});
+
+test('the shell socket refuses a handshake with no Origin at all', () => {
+  // Unlike the canvas lane there is no `?t=` here — the only credential is an
+  // ambient session cookie, so a missing Origin has no way to prove intent.
+  const { proxy, forwarded } = makeProxy();
+  const written = [];
+  proxy.handleUpgrade({
+    request: { headers: { upgrade: 'websocket' }, url: '/_ws' },
+    socket: { write: (s) => written.push(String(s)), destroy() {}, on() {} },
+    head: null,
+    session: { email: 'o@b.c', role: 'owner', sessionKey: 'k' },
+  });
+  assert.equal(forwarded.length, 0);
+  assert.match(written.join(''), /403 Forbidden/);
+});
+
+test('a hub that never declared its public URL falls back to same-origin', () => {
+  // A cell booted by hand, or the local data-plane stand-in: no HUB_PUBLIC_URL,
+  // so the comparison is against the request's own Host. Safe for the reason
+  // the check works at all — a browser sets Host from the URL it dials, so an
+  // attacker's page can never make the two agree.
+  const { proxy, forwarded } = makeProxy({ publicUrl: null });
+  proxy.handleUpgrade({
+    request: {
+      headers: { upgrade: 'websocket', origin: 'http://localhost:18500', host: 'localhost:18500' },
+      url: '/_ws',
+    },
+    socket: { write() {}, destroy() {}, on() {} },
+    head: null,
+    session: { email: 'o@b.c', role: 'owner', sessionKey: 'k' },
+  });
+  assert.equal(forwarded.length, 1);
+
+  const written = [];
+  proxy.handleUpgrade({
+    request: {
+      headers: { upgrade: 'websocket', origin: 'http://localhost:18501', host: 'localhost:18500' },
+      url: '/_ws',
+    },
+    socket: { write: (s) => written.push(String(s)), destroy() {}, on() {} },
+    head: null,
+    session: { email: 'o@b.c', role: 'owner', sessionKey: 'k' },
+  });
+  assert.match(written.join(''), /403 Forbidden/);
 });
 
 test('vendor runtime bundles need no capability; tenant content always does', async () => {

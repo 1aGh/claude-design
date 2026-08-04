@@ -5,7 +5,7 @@
 // top-level fall-through for paths Bun's `routes` field doesn't cover.
 
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, unlinkSync, watch } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, unlinkSync, watch } from 'node:fs';
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 
 import {
@@ -180,6 +180,25 @@ function ext(p: string): string {
  * do not read it as precedent for adding further hosts without the same
  * scrutiny (exact hostname, no wildcard subdomain, a DDR record).
  */
+/**
+ * A stable, non-revealing name for the tree this process is serving.
+ *
+ * `realpath` first, so a bind-mount and a symlink to the same checkout are the
+ * same identity rather than two — the supervisor computes it from its own
+ * configured path and the two must agree. Falls back to the path as given when
+ * it cannot be resolved: an unresolvable root is a difference worth reporting,
+ * not one worth hiding behind a throw.
+ */
+export function rootIdentity(root: string): string {
+  let resolved = root;
+  try {
+    resolved = realpathSync(root);
+  } catch {
+    /* not on disk (yet) — hash what we were told */
+  }
+  return createHash('sha256').update(resolved, 'utf8').digest('hex').slice(0, 12);
+}
+
 export function cspForCanvasShell(html: string, mainOrigin?: string): string {
   const hashes: string[] = [];
   // Match inline <script> blocks only (no src=). `[^>]*` excludes any with src.
@@ -1056,6 +1075,19 @@ export function createHttp(
         ok: true,
         app: 'design',
         project: ctx.cfg.name,
+        // WHICH TREE THIS PROCESS IS ACTUALLY SERVING — Cloud Phase 27 D5.
+        //
+        // A supervisor that only asks "did something answer" cannot tell a
+        // studio serving the tenant's checkout from one serving whatever was
+        // left in the working directory, and "boots, looks fine, serves the
+        // wrong root" is exactly the mistake `studioLaunch` warns about one
+        // process up. A tag is not an identity; a hash is.
+        //
+        // The HASH and not the path: this route is on the canvas origin's
+        // allowlist, so the tenant's own untrusted code can read it, and a
+        // server filesystem path is not something it should learn. The
+        // supervisor hashes its own expected root and compares.
+        rootId: rootIdentity(ctx.paths.repoRoot),
         pid: process.pid,
       }),
 

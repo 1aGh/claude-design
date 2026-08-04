@@ -22,7 +22,8 @@
 // at `/health` the whole time.
 
 import { spawn as nodeSpawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** Backoff ladder, ms. Long enough that a crash-loop does not spin a CPU;
@@ -34,6 +35,26 @@ export const READY_TIMEOUT_MS = Number(process.env.MAUDE_STUDIO_READY_MS ?? 60_0
 
 /** The loopback port the studio binds inside the container. */
 export const DEFAULT_STUDIO_PORT = 4399;
+
+/**
+ * The identity of a checkout, computed the same way at both ends — D5.
+ *
+ * The studio reports one for the tree it resolved; the supervisor computes one
+ * for the tree it MEANT to hand it, and a mismatch means the customer is being
+ * served something other than their project. `realpath` first so a bind-mount
+ * and a symlink to the same checkout are one identity; the hash rather than the
+ * path because the studio's `/_health` is reachable from the untrusted canvas
+ * origin and a server path is not something tenant code should learn.
+ */
+export function rootIdentity(root) {
+  let resolved = root;
+  try {
+    resolved = realpathSync(root);
+  } catch {
+    /* not on disk (yet) — hash what we were told, and let the two disagree */
+  }
+  return createHash('sha256').update(String(resolved), 'utf8').digest('hex').slice(0, 12);
+}
 
 /**
  * How to launch the studio, across the two shapes it ships in.
@@ -136,6 +157,13 @@ export function createStudioChild({
   port = Number(env.MAUDE_STUDIO_PORT ?? DEFAULT_STUDIO_PORT),
   spawn = nodeSpawn,
   probe = defaultProbe,
+  /**
+   * The tree this child is SUPPOSED to serve (D5). Null disables the check —
+   * a dev checkout run from the repo root has nothing meaningful to compare
+   * against, and inventing an expectation there would fail closed on a shape
+   * that was never at risk.
+   */
+  expectedRootId = env.MAUDE_REPO_DIR ? rootIdentity(env.MAUDE_REPO_DIR) : null,
   now = () => Date.now(),
   setTimer = setTimeout,
   clearTimer = clearTimeout,
@@ -154,6 +182,8 @@ export function createStudioChild({
   let ready = false;
   let readyAt = null;
   let timer = null;
+  /** Set when a child answered, healthily, about the WRONG tree. */
+  let wrongProject = null;
 
   function launch() {
     if (stopped) return;
@@ -217,7 +247,29 @@ export function createStudioChild({
   async function pollReady(proc) {
     const deadline = now() + READY_TIMEOUT_MS;
     while (!stopped && child === proc && now() < deadline) {
-      if (await probe(port)) {
+      const verdict = normalizeProbe(await probe(port));
+      if (verdict.ok) {
+        // D5 — HEALTHY BUT WRONG PROJECT. A child that answers about another
+        // tree is the one failure a liveness probe cannot see and the one a
+        // customer would notice first, so it is refused rather than served:
+        // not ready, `/health` says no, the router stops sending. Killed and
+        // retried rather than accepted, because the tree can still become the
+        // right one (a rehydrate finishing after the studio started is exactly
+        // how this happens); the reason is kept so /health can name it instead
+        // of reporting a timeout that did not occur.
+        if (expectedRootId && verdict.rootId && verdict.rootId !== expectedRootId) {
+          wrongProject = { expected: expectedRootId, actual: verdict.rootId, at: now() };
+          log.error?.(
+            `[studio] answered about the WRONG tree (expected ${expectedRootId}, got ${verdict.rootId}) — restarting`
+          );
+          try {
+            proc.kill('SIGKILL'); // the exit handler owns the restart
+          } catch {
+            /* already gone */
+          }
+          return;
+        }
+        wrongProject = null;
         ready = true;
         readyAt = now();
         consecutiveFailures = 0;
@@ -302,31 +354,57 @@ export function createStudioChild({
           ? 'idle'
           : stopped
             ? 'stopped'
-            : child === null
-              ? 'restarting'
-              : ready
-                ? 'ready'
-                : 'starting',
+            : wrongProject
+              ? 'wrong-project'
+              : child === null
+                ? 'restarting'
+                : ready
+                  ? 'ready'
+                  : 'starting',
         pid: child?.pid ?? null,
         port,
         restarts,
         startedAt,
         readyAt,
         lastExit,
+        // Only when it happened. A null field on every healthy cell is noise
+        // an operator learns to skip past, which is the last thing this one
+        // should be.
+        ...(wrongProject ? { wrongProject } : {}),
       };
     },
   };
 }
 
 /** Loopback `/_health` probe. Kept tiny and dependency-free — it runs every
- *  250 ms during boot and must not itself be a source of failure. */
+ *  250 ms during boot and must not itself be a source of failure.
+ *
+ *  Returns the ANSWER, not just the fact that there was one: D5's check is
+ *  whether the studio is serving the tree we handed it, and only the body can
+ *  say. A malformed or unreadable body is still "alive" — a studio that serves
+ *  the project but describes itself badly should not take the cell down. */
 async function defaultProbe(port) {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/_health`, {
       signal: AbortSignal.timeout(2000),
     });
-    return res.ok;
+    if (!res.ok) return { ok: false };
+    try {
+      const body = await res.json();
+      return { ok: true, rootId: body?.rootId ?? null, project: body?.project ?? null };
+    } catch {
+      return { ok: true };
+    }
   } catch {
-    return false;
+    return { ok: false };
   }
+}
+
+/** Accept the boolean an injected probe may return, and the object the real
+ *  one does. One shape downstream. */
+function normalizeProbe(verdict) {
+  if (verdict && typeof verdict === 'object') {
+    return { ok: Boolean(verdict.ok), rootId: verdict.rootId ?? null };
+  }
+  return { ok: Boolean(verdict), rootId: null };
 }

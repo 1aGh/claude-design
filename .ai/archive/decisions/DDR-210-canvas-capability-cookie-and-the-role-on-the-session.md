@@ -109,26 +109,40 @@ same-site) and removes the drive-by-navigation leg.
 **What `Strict` does not fix, and what actually holds the boundary.** Neither
 value protects against script executing on a *sibling* `*.<zone>` origin. The
 isolation that holds is the cookie's HOST scope plus the route allowlist plus
-the per-tenant signing secret — not the `SameSite` attribute. Two consequences
-are tracked as open work rather than claimed here:
+the per-tenant signing secret — not the `SameSite` attribute. Three consequences
+were tracked here rather than in a ticket; two are now closed:
 
-1. **The canvas collab WebSocket now checks `Origin` — FIXED.** A WS handshake
-   is exempt from the same-origin policy and carries cookies, so an ambient
+1. **Both collab WebSocket lanes check `Origin` — FIXED.** A WS handshake is
+   exempt from the same-origin policy and carries cookies, so an ambient
    credential turned an unguessable-URL channel into one reachable from any
    same-site script: `wss://canvas-<victim>.<zone>/_ws/collab/<slug>` would
    have handed over the room's whole Y.Doc, plus writes to the annotation and
    comment lanes at the victim's role. `handleCanvasUpgrade` now admits only
    the project's own canvas and shell origins; a request with no `Origin` (a
    non-browser client) must present an explicit `?t=`, because a URL token is
-   proof of intent in a way an ambient cookie is not. The same gap remains on
-   the pre-existing shell-origin `/_ws` lane, where `realm: 'main'` makes it
-   worse — **open**.
-2. **A stored `.svg` on the canvas origin is a scripting document — open.**
-   Static canvas-origin responses carry `nosniff` but no CSP; only the shell
-   HTML gets one, so a top-level navigation to a stored SVG executes script on
-   that origin. It should be served `default-src 'none'; sandbox`. This is the
-   step that gives an attacker a *same-site* foothold in the first place, so it
-   is the cheapest single place to break the chain.
+   proof of intent in a way an ambient cookie is not.
+
+   The **shell-origin `/_ws` twin closed the same way, one commit later**, and
+   it was the worse of the two: that socket is upgraded at `realm: 'main'`,
+   which the DDR-122 origin gate leaves ungated, so it reaches the body lanes —
+   a canvas's source, its CSS, its meta — at the victim's real role, and its
+   credential is the browser session cookie rather than a fifteen-minute
+   capability. `handleUpgrade` now admits **only the project's own shell**: not
+   another tenant's, and not the project's OWN canvas origin, which is the
+   origin that exists to run untrusted code and therefore the likely place the
+   attacker is standing. There is no `?t=` on this lane, so a missing `Origin`
+   has no way to prove intent and is refused outright; a deployment that never
+   declared `HUB_PUBLIC_URL` falls back to comparing the request's own `Host`,
+   which a browser sets from the URL it dials and an attacker's page therefore
+   cannot make agree.
+2. **A stored `.svg` on the canvas origin is a scripting document — FIXED.**
+   Static canvas-origin responses carried `nosniff` but no CSP; only the shell
+   HTML got one, so a top-level navigation to a stored SVG executed script on
+   that origin. They are now served `default-src 'none'; sandbox`, which costs
+   the legitimate uses nothing (the policy never applies to an `<img>`, a CSS
+   `url()` or a `<use>` target). This was the step that gave an attacker a
+   *same-site* foothold in the first place — the cheapest of the three links to
+   break, and with 1 closed the chain is broken at both ends.
 3. **Capability fixation — open, integrity only.** The mint checks that the
    token is valid, not *whose* it is, so a link with someone else's `?t=`
    overwrites a victim's cookie and their subsequent requests are attributed to
@@ -136,7 +150,8 @@ are tracked as open work rather than claimed here:
    the shell session.
 
 None of the three is created by this decision; all are made cheaper to exploit
-by it, which is reason enough to name them here rather than in a ticket.
+by it, which is reason enough to name them here rather than in a ticket. What
+remains is 3 — and it is the one that grants nothing.
 
 ## 2. The runtime-state guard rejected versioned design-system files
 
