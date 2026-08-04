@@ -3,9 +3,24 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** done — Cloud Phase 24 closed 2026-08-01
-**Active plan:** — (Phase 25 open, not started as a unit; Phase 26 drafted)
+**Status:** done — Cloud Phase 27 closed 2026-08-04
+**Active plan:** —
 **Active task:** —
+
+_2026-08-04:_ **Cloud Phase 27 CLOSED + archived — one studio, three shells.**
+Every track landed. Today closed the shell-origin `/_ws` CSWSH gate, D5's second
+half (a `/_health` `rootId` the supervisor compares — a child serving another
+tree is killed rather than served), **D2, the preserved dissent** (the two
+processes were not racing on a lock, they were running different git engines —
+DDR-211), then D1 (a `--cloud` build that ELIMINATES the agent, the shell probes
+and the BYOK keys from the binary), D3, B3, C3 and E4 (DDR-212). Two acceptance
+lines deliberately NOT ticked and named where they are: desktop E2E has no CI
+job at all, and a desktop attached to a real cloud project as a viewer is
+owner-gated. **Three bugs, three different instruments** — a browser found a
+banner that never rendered, the linter found a cross-scope assignment that would
+have crashed every cell boot with storage configured, and writing the parity
+spec found C1 was never actually landed (a viewer could not open the Inspector,
+so an acceptance line had been false in production).
 
 _2026-08-01:_ **Cloud Phase 24 CLOSED — tracks A + B, plus D2/D5 and D4's code half.**
 The funnel now states the bill of materials (a computer, the free app, **your own

@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "your-own-place-in-a-shared-project",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "title": "A shared project keeps your place",
+      "summary": "Open a cloud project and you land on a canvas, not an empty pane, with one line telling you what you can do there. Your open canvas and your pan and zoom are now yours alone — a teammate moving around no longer moves you. And reading a project no longer means reading it blind: reviewers can open the Inspector and Layers panels, which quietly refused to appear before.",
+      "surface": "design-ui"
+    },
+    {
       "id": "the-real-studio-in-your-browser",
       "version": null,
       "date": null,
