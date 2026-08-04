@@ -48,8 +48,10 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  renameSync,
   statSync,
   unlinkSync,
+  utimesSync,
   writeSync,
 } from 'node:fs';
 import path from 'node:path';
@@ -71,6 +73,10 @@ export const STALE_LOCK_MS = 30_000;
  *  or checkout, short enough that a wedged holder surfaces as an error rather
  *  than a hang. */
 export const DEFAULT_WAIT_MS = 15_000;
+
+/** How often a holder refreshes its lock's mtime. Comfortably inside
+ *  STALE_LOCK_MS, so a live holder is never mistaken for a dead one. */
+export const HEARTBEAT_MS = 5_000;
 
 export interface RepoLockOptions {
   /** Milliseconds to wait for the lock before throwing. */
@@ -167,14 +173,36 @@ export async function withRepoLock<T>(
     // it past every plausible operation. A cell that crashed mid-commit must
     // not need a human to unwedge it.
     if (age !== null && (age > STALE_LOCK_MS || !holderAlive(current))) {
+      // STEAL BY RENAME, NOT BY UNLINK — the steal has to be a
+      // compare-and-swap or it is a second way to lose mutual exclusion.
+      //
+      // An unconditional `unlink` here loses it outright: two waiters both see
+      // A as stale, the first unlinks and acquires, and the second — still
+      // acting on its read of A — unlinks the FIRST's fresh lock and acquires
+      // too. Both then run their critical section over one git index, which is
+      // precisely the half-staged commit this lock exists to prevent,
+      // reintroduced by its own recovery path.
+      //
+      // `rename` is the fix because it FAILS when the source is already gone:
+      // exactly one waiter can move the stale file aside, and every other gets
+      // ENOENT and goes back around the loop. Comparing the holder's token
+      // before an unlink was tried first and rejected — it narrows the window
+      // rather than closing it, and no honest test could tell it apart from the
+      // unfixed version, which is how the weakness came to light.
+      const sidecar = `${file}.stale-${token}`;
+      try {
+        renameSync(file, sidecar);
+      } catch {
+        continue; // another waiter won the steal; re-read and try again
+      }
       log.warn?.(
-        `[repo-lock] stealing a ${Math.round(age / 1000)}s lock from ${current?.holder ?? 'an unreadable holder'}` +
+        `[repo-lock] stole a ${Math.round(age / 1000)}s lock from ${safeLabel(current?.holder)}` +
           `${holderAlive(current) ? '' : ' (process gone)'}`
       );
       try {
-        unlinkSync(file);
+        unlinkSync(sidecar);
       } catch {
-        /* somebody else got there first — the next attempt sorts it out */
+        /* already gone — the lock path is free either way */
       }
       continue;
     }
@@ -189,11 +217,41 @@ export async function withRepoLock<T>(
     delay = Math.min(delay * 2, 250);
   }
 
+  // KEEP THE LOCK LOOKING ALIVE WHILE IT IS.
+  //
+  // The staleness test is the file's mtime, stamped once at acquisition, so
+  // "held for 30 s" and "the holder died 30 s ago" were the same observation.
+  // That was defensible when everything under this lock was a local `commit`;
+  // D2 put `pull`, `fold` and `resolve` under it too, and those do NETWORK I/O
+  // on a container's cold connection. Without this, the next waiter steals the
+  // lock out from under a running merge.
+  const beat = setInterval(() => {
+    try {
+      const held = readHolder(file);
+      if (held?.token !== token) return; // not ours any more — nothing to refresh
+      const stamp = new Date();
+      utimesSync(file, stamp, stamp);
+    } catch {
+      /* the file is gone or unreadable; the release below is still correct */
+    }
+  }, HEARTBEAT_MS);
+  beat.unref?.();
+
   try {
     return await fn();
   } finally {
+    clearInterval(beat);
     release(file, token);
   }
+}
+
+/** Bound a holder label before it reaches a log line. `readHolder` parses
+ *  attacker-plantable JSON, and an unescaped newline in a log is a forged log
+ *  entry. */
+function safeLabel(holder: string | undefined): string {
+  if (!holder) return 'an unreadable holder';
+  const clean = holder.replace(/[^\w:.-]/g, '').slice(0, 64);
+  return clean || 'an unreadable holder';
 }
 
 /** `wx` is the whole mechanism: create-or-fail is atomic on every filesystem

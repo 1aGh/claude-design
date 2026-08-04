@@ -28,7 +28,7 @@
 // nobody can see. Reading the real file's exports means a module that grows a
 // function still stubs cleanly.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -165,6 +165,22 @@ export function stubSource(original: string): string {
 export function cloudStubPlugin(studioRoot: string): import('bun').BunPlugin {
   const targets = new Set(CLOUD_ELIMINATED.map((rel) => path.join(studioRoot, rel)));
   const applied = new Set<string>();
+
+  // A LISTED PATH THAT DOES NOT EXIST IS A BUILD FAILURE, NOT A LOG LINE.
+  //
+  // The plugin matches by exact resolved path, so a rename, a move to `.tsx` or
+  // a typo silently stops eliminating that module — and the "never imported"
+  // notice below reads as ordinary, because it IS ordinary when a leaf leaves
+  // the graph with its stubbed importer. The two cases are indistinguishable at
+  // the end of a build, so they are distinguished HERE, where one of them is
+  // simply a path that is not on disk.
+  const missing = CLOUD_ELIMINATED.filter((rel) => !existsSync(path.join(studioRoot, rel)));
+  if (missing.length) {
+    throw new Error(
+      `cloud build: ${missing.length} module(s) in CLOUD_ELIMINATED do not exist — ` +
+        `a rename or a typo means they are NOT being eliminated: ${missing.join(', ')}`
+    );
+  }
   return {
     name: 'maude-cloud-eliminate',
     setup(build) {

@@ -353,9 +353,20 @@ export const READ_ONLY_ALLOWED_WRITES = new Set([
   '/_api/cloud/signin/start', // account session, not project state
   '/_api/cloud/signin/poll',
   '/_api/cloud/signout',
-  '/_api/git/fetch', // syncing the project DOWN is a read of the project
-  '/_api/git/pull',
-  '/_api/git/checkout', // viewing another branch, not changing one
+  // Fetch moves remote-tracking refs and nothing else — no working tree, no
+  // index. It stays a read.
+  '/_api/git/fetch',
+  // `pull` and `checkout` USED TO BE HERE, on the reasoning that "viewing
+  // another branch is not changing one". Cloud Phase 27 D2 retired that: both
+  // rewrite the working tree, and the tree is SHARED — in a cell by every
+  // member, and on a hub-linked desktop by whoever else has that project open.
+  // A viewer switching branches replaces the files under someone mid-edit.
+  //
+  // The proxy's manifest already refuses them, but this gate is the one the
+  // hub-linked desktop and self-host path consult (`isHubReadOnly`), where no
+  // manifest runs at all — so leaving them here would have left the hole open
+  // exactly where the proxy cannot reach. Two gates, and neither is trusted to
+  // be the last word.
 ]);
 
 /**

@@ -34,6 +34,9 @@ export function buildBlock(designRel = '.design', { s3Assets = false } = {}) {
     `${root}/_server.log`,
     `${root}/_server.lock`,
     `${root}/_active.json`,
+    // Per-member siblings in a cloud cell (Phase 27 D3) — same runtime state,
+    // one file per person, and no more committable than the singleton.
+    `${root}/_active.*.json`,
     `${root}/_sync.json`, // linked-mode offline/sync status (Task 8)
     `${root}/_preflight.json`,
     `${root}/_locator.json`, // regenerable slug→path index

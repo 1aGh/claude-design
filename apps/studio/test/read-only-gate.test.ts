@@ -76,6 +76,14 @@ describe('read-only gate — viewer role refuses project writes locally', () => 
       ['/_api/fs-mkdir', 'POST'],
       ['/_api/annotations', 'PUT'],
       ['/_api/acp/chat', 'POST'],
+      // Cloud Phase 27 D2 — both USED to be on READ_ONLY_ALLOWED_WRITES, on the
+      // reasoning that "viewing another branch is not changing one". Both
+      // rewrite the working TREE, and the tree is shared: a viewer switching
+      // branches replaces the files under whoever is mid-edit. The cell's proxy
+      // refuses them too, but this is the gate the hub-linked desktop and the
+      // self-host path consult, where no manifest runs at all.
+      ['/_api/git/checkout', 'POST'],
+      ['/_api/git/pull', 'POST'],
     ] as const) {
       const r = await fetch(base + path, { method, body: '{}' });
       expect(`${path} ${r.status}`).toBe(`${path} 403`);

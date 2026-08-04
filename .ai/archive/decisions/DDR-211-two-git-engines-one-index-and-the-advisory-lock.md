@@ -74,7 +74,8 @@ on top of it rather than instead of it:
   The half-staged commit lives in those gaps.
 
 A stale holder is stolen — by age (30 s) or by a pid that is gone — so a cell
-that crashed mid-commit unwedges itself without a human. Release only unlinks
+that crashed mid-commit unwedges itself without a human. (**Corrected below**:
+the steal was an `unlink` and had to become a `rename`.) Release only unlinks
 **our** token, because a lock that can be pulled out from under a live holder is
 worse than no lock. A studio verb that cannot acquire refuses in its own shape
 ("somebody else is saving this project right now") rather than throwing a 500 at
@@ -129,3 +130,45 @@ need the RPC too.
   the lock is advisory — a future writer that does not take it is not stopped by
   anything. The invariant is stated in one module and honoured in two; nothing
   enforces it structurally the way `check-no-studio-reimpl.sh` enforces E2.
+
+## Correction, same day: the recovery path was a second way to lose the lock
+
+An adversarial pass over this diff found two defects in the lock itself, and
+both are written here rather than quietly edited because the reasoning that
+produced them reads as sound.
+
+**The stale-steal was an `unlink`, which cannot say no.** Two waiters both judge
+holder A stale; the first unlinks and acquires; the second — still acting on its
+read of A — unlinks the FIRST's fresh lock and acquires too. Both then run their
+critical section over one git index: exactly the half-staged commit this lock
+exists to prevent, reintroduced by its own recovery path.
+
+The first fix was to re-read the holder and compare tokens immediately before
+the unlink. **That was rejected after trying to test it.** It narrows the window
+instead of closing it, and — measured, not assumed — no test in this harness can
+tell it apart from the unfixed version: the race is between the hub PROCESS and
+the studio PROCESS, and inside one bun test the read → steal → acquire sequence
+runs synchronously. A fix whose presence and absence look identical is not a fix
+anybody can maintain.
+
+The steal is now a `rename` to a per-waiter sidecar. `rename` FAILS with ENOENT
+when the source is already gone, so exactly one waiter can move a given file
+aside and every other goes back around the loop. That is a compare-and-swap, and
+its correctness argument is the atomicity of the primitive rather than the
+narrowness of a window.
+
+**A live holder could look dead.** The staleness test is the lock file's mtime,
+stamped once at acquisition, so "held for 30 s" and "the holder died 30 s ago"
+were the same observation. That was defensible when everything under this lock
+was a local `commit` — and this decision then put `pull`, `fold` and `resolve`
+under it, which do network I/O on a container's cold connection. A holder now
+refreshes its own mtime every 5 s while it works, so the steal path is reached
+only for a holder that really is gone.
+
+**And the lock's failure had nowhere to go.** `withRepoLock` throws on timeout;
+every caller routed through `underRepoLock` catches it into a refusal — except
+the autocommit, which called it directly. Since `flush()` clears its queue
+BEFORE committing, a contended autosave dropped the file list silently (bytes on
+disk, uncommitted, nothing to retry them) and rejected a promise the debounce
+timer discards, which on Node ≥ 15 takes the process down with it. Both halves
+are now handled: re-queue on failure, and a `.catch` on the unattended timer.

@@ -141,3 +141,30 @@ is a local lane like every other scenario — the acceptance line that wanted "C
 fails on a cloud/desktop testid divergence" is two-thirds met and says so.
 Verifying a desktop attached to a real cloud project as a viewer remains
 owner-gated.
+
+## Correction, same day: the sibling was not covered by the matchers it claimed
+
+Section 2 above says a `_active.<session>.json` SIBLING was chosen over a
+subdirectory because "the gitignore, the runtime-state taxonomy (DDR-115) and
+`isMaudeRuntimeState` all match by name, and a sibling with the same stem keeps
+every one of those matchers correct without a fourth list to update."
+
+**That was wrong, and it was checked only in prose.** All three match
+`_active.json` by NAME — `.gitignore` has the literal path, the CLI's ignore
+block has the literal path, and the studio's regex requires `\.json$` to follow
+`active` immediately. None of them matched the sibling.
+
+The consequence was not cosmetic. Every member's `_active.<key>.json` showed as
+untracked to EVERYONE in the Changes panel, a "Save all" staged them, and a push
+published one person's open tabs, active canvas, selection and comment context
+into the tenant's remote — keyed by a hash of their email. All three matchers
+now accept an optional `.<session>` segment, and a test asserts all three
+together, because the failure was precisely that they disagreed while a comment
+said they did not.
+
+**A second gate had been left behind too.** The route manifest moved
+`/_api/git/{checkout,pull}` to `edit`, but the studio's own
+`READ_ONLY_ALLOWED_WRITES` still exempted them with the reasoning the manifest
+had just refuted. That is not merely redundant defence: the hub-linked desktop
+and self-host path consult this gate and never see the manifest at all, so a
+viewer there could still rewrite the shared working tree. Removed.

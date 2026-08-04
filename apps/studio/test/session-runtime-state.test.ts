@@ -9,9 +9,10 @@
 // session header the server writes exactly the paths it always wrote.
 
 import { describe, expect, test } from 'bun:test';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { isMaudeRuntimeState } from '../git/service.ts';
 import { bootServer, killProc, makeSandbox, nextPort } from './_helpers.ts';
 
 /** The proxy's vouched headers for one member (studio-proxy.mjs injects these). */
@@ -187,4 +188,39 @@ describe('two members, one cell', () => {
       await killProc(proc);
     }
   }, 30_000);
+});
+
+describe('per-member runtime state is runtime state to git', () => {
+  test('all three matchers agree that `_active.<session>.json` is not a commit', () => {
+    // The comment in session-scope.ts CLAIMED a sibling kept every matcher
+    // correct. It did not: `.gitignore`, the CLI's ignore block and the
+    // studio's own `isMaudeRuntimeState` all matched `_active.json` by NAME, so
+    // each member's file showed as untracked to EVERYONE, "Save all" staged it,
+    // and a push published one person's open tabs, active canvas and selection
+    // into the tenant's remote.
+    const key = 'a1b2c3d4e5f60718';
+
+    // 1. the studio's own matcher — what the Changes panel filters by
+    expect(isMaudeRuntimeState(`.design/_active.${key}.json`)).toBe(true);
+    expect(isMaudeRuntimeState('.design/_active.json')).toBe(true);
+    expect(isMaudeRuntimeState(`.design/_canvas-state/${key}/ui-home.view.json`)).toBe(true);
+    // …and it must not have widened into ordinary files on the way.
+    expect(isMaudeRuntimeState('.design/ui/Home.tsx')).toBe(false);
+    expect(isMaudeRuntimeState('.design/ui/Home.meta.json')).toBe(false);
+    expect(isMaudeRuntimeState('.design/_activeXjson')).toBe(false);
+
+    // 2. this repo's own .gitignore
+    const ignored = (rel: string) =>
+      Bun.spawnSync(['git', 'check-ignore', '-q', rel], {
+        cwd: join(import.meta.dir, '..', '..', '..'),
+      }).exitCode === 0;
+    expect(ignored(`.design/_active.${key}.json`)).toBe(true);
+
+    // 3. the block the CLI writes into a downstream project
+    const block = readFileSync(
+      join(import.meta.dir, '..', '..', '..', 'cli', 'lib', 'gitignore-block.mjs'),
+      'utf8'
+    );
+    expect(block).toContain('_active.*.json');
+  });
 });

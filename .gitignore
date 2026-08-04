@@ -14,6 +14,8 @@ dev-server/.cache/
 .design/_server.log
 .design/_server.lock
 .design/_active.json
+# …and the per-member siblings a cell writes (Phase 27 D3).
+.design/_active.*.json
 .design/_sync.json
 .design/_preflight.json
 .design/_locator.json

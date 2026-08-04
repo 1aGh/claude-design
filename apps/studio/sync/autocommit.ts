@@ -175,7 +175,11 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
-      void flush();
+      // `.catch` and not just `void`: a discarded rejection here is an
+      // unhandled-rejection process exit, and this timer fires unattended.
+      flush().catch((err) => {
+        log.warn?.(`[autocommit] flush failed: ${err instanceof Error ? err.message : err}`);
+      });
     }, debounceMs);
   }
 
@@ -205,6 +209,23 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
         // and stays: this lock is CROSS-process, and one AutoCommit racing
         // itself would still be a bug.
         return await withRepoLock(repoRoot, 'autocommit', () => commitCycle(files, who));
+      } catch (err) {
+        // A LOCK TIMEOUT MUST NOT LOSE THE QUEUE, AND MUST NOT KILL THE PROCESS.
+        //
+        // `withRepoLock` THROWS when it cannot acquire, and `touched` was
+        // already cleared above — so without this catch a contended autosave
+        // dropped its file list silently (the bytes stay on disk, uncommitted,
+        // with nothing to retry them) and rejected a promise the debounce timer
+        // discards, which on Node ≥15 takes the process down with it. The
+        // trigger is ordinary now, not pathological: post-D2 `pull` and
+        // `checkout` hold this lock across a NETWORK operation.
+        //
+        // Re-queue and report, exactly like a failed `git commit` does. The
+        // next quiescence tries again.
+        for (const f of files) touched.add(f);
+        const detail = err instanceof Error ? err.message : String(err);
+        log.warn?.(`[autocommit] could not take the repo lock: ${detail}`);
+        return { ok: false, reason: 'git-failed', detail, files };
       } finally {
         inFlight = null;
       }

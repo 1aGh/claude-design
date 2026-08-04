@@ -12,6 +12,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import { REPO_LOCK_FILE } from '../git/repo-lock.ts';
 import {
   commitMessage,
   createAutoCommit,
@@ -332,3 +333,78 @@ describe('mirror push — never rewrites someone else’s work', () => {
 function silent() {
   return { warn: () => {}, error: () => {}, log: () => {} };
 }
+
+describe('a contended lock must not lose the queue or the process (Phase 27 D2)', () => {
+  test('a lock timeout re-queues the files instead of dropping them', async () => {
+    // `flush()` clears `touched` BEFORE it commits, and `withRepoLock` THROWS
+    // when it cannot acquire. Without a catch, a contended autosave dropped its
+    // file list silently — the bytes stay on disk, uncommitted, with nothing to
+    // retry them — and rejected a promise the debounce timer discards, which on
+    // Node >= 15 takes the process down with it. Post-D2 the trigger is
+    // ordinary: `pull` and `checkout` hold this lock across a NETWORK call.
+    const dir = mkdtempSync(path.join(tmpdir(), 'autocommit-lock-'));
+    try {
+      mkdirSync(path.join(dir, '.git'), { recursive: true });
+      // A live holder that is not stale — every acquire attempt will time out.
+      writeFileSync(
+        path.join(dir, '.git', REPO_LOCK_FILE),
+        JSON.stringify({ pid: process.pid, holder: 'studio:pull', at: Date.now(), token: 'held' })
+      );
+
+      const ran: string[][] = [];
+      const auto = createAutoCommit({
+        repoRoot: dir,
+        debounceMs: 5,
+        log: { warn() {}, error() {}, log() {} },
+        run: async (args) => {
+          ran.push(args);
+          return { code: 0, stdout: '', stderr: '' };
+        },
+      });
+
+      auto.note('.design/ui/Home.tsx', { name: 'A', email: 'a@b.c' });
+      const outcome = await auto.flush();
+
+      expect(outcome?.ok).toBe(false);
+      // Nothing reached git — the lock was never acquired.
+      expect(ran).toEqual([]);
+      // THE POINT: the file is still queued, so the next quiescence retries it.
+      expect(auto.pending()).toEqual(['.design/ui/Home.tsx']);
+      auto.stop();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test('the debounce timer never surfaces an unhandled rejection', async () => {
+    // The timer fires unattended; a rejection it discards is a process exit.
+    const dir = mkdtempSync(path.join(tmpdir(), 'autocommit-timer-'));
+    try {
+      mkdirSync(path.join(dir, '.git'), { recursive: true });
+      writeFileSync(
+        path.join(dir, '.git', REPO_LOCK_FILE),
+        JSON.stringify({ pid: process.pid, holder: 'studio:fold', at: Date.now(), token: 'held' })
+      );
+      const rejections: unknown[] = [];
+      const onUnhandled = (err: unknown) => rejections.push(err);
+      process.on('unhandledRejection', onUnhandled);
+      try {
+        const auto = createAutoCommit({
+          repoRoot: dir,
+          debounceMs: 5,
+          log: { warn() {}, error() {}, log() {} },
+          run: async () => ({ code: 0, stdout: '', stderr: '' }),
+        });
+        auto.note('.design/ui/Home.tsx', { name: 'A', email: 'a@b.c' });
+        // Long enough for the debounce to fire AND the lock wait to expire.
+        await new Promise((r) => setTimeout(r, 1000));
+        auto.stop();
+      } finally {
+        process.off('unhandledRejection', onUnhandled);
+      }
+      expect(rejections).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+});

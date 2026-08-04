@@ -6,11 +6,19 @@
 // release on throw, and a stale holder that unwedges itself without a human.
 
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { REPO_LOCK_FILE, STALE_LOCK_MS, withRepoLock } from '../git/repo-lock.ts';
+import { HEARTBEAT_MS, REPO_LOCK_FILE, STALE_LOCK_MS, withRepoLock } from '../git/repo-lock.ts';
 
 function makeRepo({ git = true } = {}): string {
   const root = mkdtempSync(join(tmpdir(), 'maude-repo-lock-'));
@@ -185,4 +193,158 @@ describe('repo lock', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+  test("a lost steal race does not unlink the winner's fresh lock", async () => {
+    // THE MUTUAL-EXCLUSION FAILURE THIS LOCK EXISTS TO PREVENT, REINTRODUCED BY
+    // ITS OWN RECOVERY PATH. Two waiters both see holder A as stale; the first
+    // unlinks and acquires; the second — still acting on its read of A —
+    // unlinks the FIRST's fresh lock and acquires too. Both then run their
+    // critical section over one git index.
+    //
+    // The fixture is aged through its MTIME rather than through a fake clock,
+    // and that distinction is the test: a fake `now` makes every lock look
+    // ancient, including the winner's brand-new one, which is not a state the
+    // real world can produce and would assert something nobody needs.
+    const root = makeRepo();
+    try {
+      writeFileSync(
+        lockFile(root),
+        JSON.stringify({ pid: process.pid, holder: 'hub:autocommit', at: 0, token: 'stale' })
+      );
+      const long_ago = new Date(Date.now() - STALE_LOCK_MS * 4);
+      utimesSync(lockFile(root), long_ago, long_ago);
+
+      let concurrent = 0;
+      let maxConcurrent = 0;
+      const contend = (name: string) =>
+        withRepoLock(
+          root,
+          name,
+          async () => {
+            concurrent += 1;
+            maxConcurrent = Math.max(maxConcurrent, concurrent);
+            await sleep(60);
+            concurrent -= 1;
+          },
+          { waitMs: 5000, log: { warn() {}, log() {} } }
+        );
+
+      await Promise.all([contend('one'), contend('two'), contend('three')]);
+      expect(maxConcurrent).toBe(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  test('a long-but-live holder is not stolen from — the heartbeat says it is alive', async () => {
+    // `pull`, `fold` and `resolve` came under this lock in D2, and they do
+    // NETWORK I/O. Without a heartbeat the staleness test cannot tell "held for
+    // 30 s" from "the holder died 30 s ago", so the next waiter steals the lock
+    // out from under a running merge.
+    const root = makeRepo();
+    try {
+      const order: string[] = [];
+      const slow = withRepoLock(root, 'studio:pull', async () => {
+        order.push('slow:in');
+        await sleep(HEARTBEAT_MS + 400);
+        order.push('slow:out');
+      });
+      await sleep(50);
+      // A waiter whose clock is PAST the staleness window. The heartbeat has
+      // refreshed the mtime, so the lock is not stale by age and the holder is
+      // alive — it must wait, not steal.
+      const waiter = withRepoLock(
+        root,
+        'hub:autocommit',
+        async () => {
+          order.push('waiter:in');
+        },
+        { waitMs: 20_000, log: { warn() {}, log() {} } }
+      );
+      await Promise.all([slow, waiter]);
+      expect(order).toEqual(['slow:in', 'slow:out', 'waiter:in']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test('a hostile holder label cannot forge a log line', async () => {
+    const root = makeRepo();
+    try {
+      writeFileSync(
+        lockFile(root),
+        JSON.stringify({
+          pid: process.pid,
+          holder: 'evil\n[repo-lock] PASS: nothing to see here',
+          at: 0,
+          token: 'x',
+        })
+      );
+      const long_ago = new Date(Date.now() - STALE_LOCK_MS * 4);
+      utimesSync(lockFile(root), long_ago, long_ago);
+      const warned: string[] = [];
+      await withRepoLock(root, 'hub:autocommit', async () => undefined, {
+        waitMs: 2000,
+        log: { warn: (m: string) => warned.push(m), log() {} },
+      });
+      expect(warned.join(' ')).not.toContain('\n');
+      expect(warned.join(' ')).not.toContain('nothing to see here');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('exactly ONE waiter can steal a dead lock — the steal is a compare-and-swap', async () => {
+    // The `unlink` this replaced could not say no: two waiters both judged the
+    // holder stale, the first unlinked and acquired, and the second unlinked
+    // the FIRST's fresh lock. `rename` fails with ENOENT when the source is
+    // already gone, so only one waiter moves the file aside and the rest go
+    // back around the loop.
+    //
+    // WHAT THIS TEST DOES AND DOES NOT PROVE, because the difference matters.
+    // It asserts the OBSERVABLE contract — one steal, no leftover sidecar,
+    // never two holders. It does NOT reproduce the interleaving that made the
+    // unlink unsafe: that race is between the hub PROCESS and the studio
+    // PROCESS, and inside one bun test the whole read → steal → acquire
+    // sequence runs synchronously, so a single-process harness reaches the same
+    // verdict with either implementation (measured, not assumed). The
+    // correctness argument for `rename` is its atomicity — exactly one caller
+    // can move a given file — and this test guards the contract around it.
+    const root = makeRepo();
+    try {
+      writeFileSync(
+        lockFile(root),
+        JSON.stringify({ pid: 4194304, holder: 'hub:autocommit', at: 0, token: 'dead' })
+      );
+      const long_ago = new Date(Date.now() - STALE_LOCK_MS * 4);
+      utimesSync(lockFile(root), long_ago, long_ago);
+
+      const steals: string[] = [];
+      let concurrent = 0;
+      let maxConcurrent = 0;
+      const contend = (name: string) =>
+        withRepoLock(
+          root,
+          name,
+          async () => {
+            concurrent += 1;
+            maxConcurrent = Math.max(maxConcurrent, concurrent);
+            await sleep(40);
+            concurrent -= 1;
+          },
+          {
+            waitMs: 5000,
+            log: { warn: (m: string) => steals.push(m), log() {} },
+          }
+        );
+
+      await Promise.all([contend('a'), contend('b'), contend('c'), contend('d')]);
+
+      expect(maxConcurrent).toBe(1);
+      // One steal, not four: the other three found the file already gone.
+      expect(steals.filter((m) => m.includes('stole a')).length).toBe(1);
+      // And no sidecar left behind.
+      expect(readdirSync(join(root, '.git')).filter((f) => f.includes('.stale-'))).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 20_000);
 });

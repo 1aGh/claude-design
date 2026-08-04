@@ -243,9 +243,16 @@ function underPrefix(filepath: string, prefix: string): boolean {
  *      transport) → NOT hidden here.
  *    - `_comments/`        → hub-sync-only (DDR-102 CRDT) → HIDDEN, so it never
  *      double-transports through git. */
-function isMaudeRuntimeState(p: string): boolean {
+/** Exported for the test that guards the D3 per-member sibling: three separate
+ *  lists have to agree on what runtime state IS, and they silently did not. */
+export function isMaudeRuntimeState(p: string): boolean {
   return (
-    /(^|\/)_(?:server|active|sync|preflight|locator|export-history|generate-history)\.json$/.test(
+    // The optional `.<session>` segment is Cloud Phase 27 D3: `_active.json`
+    // becomes `_active.<sessionKey>.json` per member in a cell. Without it each
+    // member's open tabs and selection showed as untracked to EVERYONE, a
+    // "Save all" staged them, and a push published them — one person's place in
+    // the project, in the tenant's remote.
+    /(^|\/)_(?:server|active|sync|preflight|locator|export-history|generate-history)(?:\.[A-Za-z0-9_-]{1,64})?\.json$/.test(
       p
     ) ||
     /(^|\/)_server\.(?:lock|log)$/.test(p) ||
