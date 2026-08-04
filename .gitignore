@@ -139,3 +139,8 @@ apps/cloud/.dev.vars*
 
 # Cloud deploy credentials — live tokens, never committed (Cloud Phase 15).
 apps/*/.dev.vars.deploy
+
+# Desktop E2E evidence — screenshots + reports from a local scenario run.
+# `helpers/evidence.ts` falls back here when MAUDE_E2E_RUN_DIR is unset (the
+# parity lane, which has no per-scenario run dir of its own).
+apps/desktop/e2e/_e2e-evidence/
