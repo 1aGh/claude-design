@@ -558,6 +558,26 @@ export async function reconcileSweep(env, { now = Date.now() } = {}) {
     seen.add(job.project_id);
   }
   for (const row of await listProjects(env.DB)) {
+    // Cloud Phase 27 — every live project's OWN canvas origin, self-healed on
+    // the same clock as its hostname. A project provisioned before this address
+    // existed has none, and the symptom is the confusing kind: the studio
+    // opens, the file tree is right, and every canvas is empty.
+    //
+    // On the sweep's EXISTING iteration rather than a query of its own —
+    // the sweep already knows every project, and a second `SELECT` here bought
+    // nothing but a different answer for anyone counting round trips.
+    if (row.state === 'active' || row.state === 'pending') {
+      try {
+        const r = await ensureProjectCanvasDomain(env, row.id);
+        if (!r.ok && r.error !== 'provisioning is not configured') {
+          console.error(`[provision] canvas origin for ${row.id}: ${r.error}`);
+        }
+      } catch (err) {
+        // Never let one project's address stop the sweep that keeps
+        // everybody's subscription honest.
+        console.error(`[provision] canvas origin for ${row.id}: ${err.message}`);
+      }
+    }
     if (!seen.has(row.id)) outcomes.push(await runOne(env, row.id, { now }));
   }
   return outcomes;
