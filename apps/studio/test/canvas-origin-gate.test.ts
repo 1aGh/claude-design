@@ -331,3 +331,42 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
     }
   });
 });
+
+describe('an SVG served from the canvas origin is not a scripting document', () => {
+  test('.svg carries an inert CSP; other static types are untouched', async () => {
+    // The canvas origin serves the TENANT's own SVGs. `image/svg+xml` is inert
+    // as an <img>, a CSS url() or a <use> target — none of those are browsing
+    // contexts — but navigate to one and it is a page, with <script> in it,
+    // running on this origin. Only the shell HTML ever got a CSP, so that was a
+    // stored-XSS primitive on a `*.<zone>` origin: step one of a three-link
+    // cross-tenant chain (an adversarial pass found it; DDR-210 names the other
+    // two links). `default-src 'none'; sandbox` costs the legitimate uses
+    // nothing, because the policy never applies to them.
+    const { root, designRoot } = makeSandbox();
+    mkdirSync(join(designRoot, 'system', 'ds', 'assets'), { recursive: true });
+    writeFileSync(
+      join(designRoot, 'system', 'ds', 'assets', 'mark.svg'),
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>\n'
+    );
+    writeFileSync(join(designRoot, 'system', 'ds', 'assets', 'tokens.css'), ':root{}\n');
+
+    const port = nextPort();
+    const proc = await bootServer(root, port, { MAUDE_CANVAS_ORIGIN_SPLIT: '1' });
+    try {
+      const canvas = await readCanvasOrigin(designRoot);
+      const head = async (p: string) =>
+        (await fetch(canvas + p, { signal: AbortSignal.timeout(2000) })).headers;
+
+      const svg = await head('/.design/system/ds/assets/mark.svg');
+      expect(svg.get('content-type')).toContain('image/svg+xml');
+      expect(svg.get('content-security-policy')).toBe("default-src 'none'; sandbox");
+
+      // …and only SVG. A stylesheet under a CSP that forbids everything is a
+      // stylesheet that does not apply.
+      const css = await head('/.design/system/ds/assets/tokens.css');
+      expect(css.get('content-security-policy')).toBeNull();
+    } finally {
+      killProc(proc);
+    }
+  });
+});

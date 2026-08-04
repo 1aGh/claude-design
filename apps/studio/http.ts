@@ -747,6 +747,25 @@ function etagFor(file: { size: number; lastModified: number }): string {
   return `W/"${file.size.toString(16)}-${Math.trunc(file.lastModified).toString(16)}"`;
 }
 
+/**
+ * An SVG is a DOCUMENT, and a document runs script.
+ *
+ * `image/svg+xml` is inert as an `<img>`, a CSS `url()` or a `<use>` target —
+ * none of those are browsing contexts. Navigate to one directly and it is a
+ * page, with `<script>` in it, executing on whatever origin served it. On the
+ * canvas origin that is a stored-XSS primitive: canvases carry the tenant's own
+ * SVGs, only the shell HTML gets a CSP, and every other static response here
+ * has carried `nosniff` and nothing else.
+ *
+ * `default-src 'none'; sandbox` costs the legitimate uses nothing (an image is
+ * not a document, so the policy never applies to them) and makes the
+ * navigate-to-it case a blank page instead of a foothold. Found by an
+ * adversarial pass as step one of a three-link cross-tenant chain; the other
+ * two links are closed in the same change, and this is the cheapest of the
+ * three to break.
+ */
+const INERT_DOCUMENT_CSP = "default-src 'none'; sandbox";
+
 async function serveFile(absPath: string, headers: Record<string, string> = {}): Promise<Response> {
   const file = Bun.file(absPath);
   if (!(await file.exists())) return new Response('Not found', { status: 404 });
@@ -757,6 +776,7 @@ async function serveFile(absPath: string, headers: Record<string, string> = {}):
       'Content-Type': MIME[e] || 'application/octet-stream',
       'Cache-Control': policy.cacheControl,
       ...(policy.addEtag ? { ETag: etagFor(file) } : {}),
+      ...(e === '.svg' ? { 'Content-Security-Policy': INERT_DOCUMENT_CSP } : {}),
       ...headers,
     },
   });
@@ -4431,6 +4451,12 @@ export function createHttp(
           // only referenced via <image href> + the canvas CSP blocks script, so
           // this is defense-in-depth on the static lane.
           'X-Content-Type-Options': 'nosniff',
+          // …and `nosniff` is not enough for the one type that is a DOCUMENT
+          // whether you sniff it or not. See INERT_DOCUMENT_CSP: an SVG
+          // NAVIGATED TO is a page with `<script>` in it, executing on this
+          // origin, and "the canvas CSP blocks script" above is true only of
+          // the shell — not of the asset served on its own.
+          ...(e === '.svg' ? { 'Content-Security-Policy': INERT_DOCUMENT_CSP } : {}),
         },
       });
     } catch (err) {
