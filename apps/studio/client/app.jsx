@@ -2714,6 +2714,7 @@ function Sidebar({
           <StIcon name="search" size={13} />
           <input
             type="search"
+            data-testid="canvas-search"
             placeholder="Search canvases…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -3900,7 +3901,12 @@ function Menubar({
   }, [openMenu, setOpenMenu]);
 
   return (
-    <header className="st-menubar" role="menubar" aria-label="Application menubar">
+    <header
+      className="st-menubar"
+      role="menubar"
+      aria-label="Application menubar"
+      data-testid="menubar"
+    >
       <span className="st-brand" data-tour="brand">
         <span className="st-brand-mark">
           <svg viewBox="0 0 32 32" width="100%" height="100%" fill="none" aria-hidden="true"><path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z" fill="currentColor" /></svg>
@@ -4558,7 +4564,7 @@ function StatusBar({
   })();
 
   return (
-    <footer className="st-statusbar" role="contentinfo">
+    <footer className="st-statusbar" role="contentinfo" data-testid="statusbar">
       <span className="st-sb-slot st-sb-active" role="group" aria-label="Active file">
         <span className="lead" aria-hidden="true" />
         <span className="lbl">active</span>
@@ -8411,6 +8417,9 @@ function photoAssetOfSelection(el) {
 }
 
 function InspectorPanel({
+  /** E4 — `inspector-panel` / `layers-panel`, so one parity spec can assert
+   *  both shells show them. Undefined elsewhere; the attribute simply absent. */
+  testId,
   selected,
   onClose,
   layersTree,
@@ -8880,6 +8889,7 @@ function InspectorPanel({
       style={width ? { width, flexBasis: width } : undefined}
       aria-label="Inspector"
       data-tour="inspector"
+      data-testid={testId}
     >
       <div
         className="st-rp-tabs"
@@ -13629,10 +13639,17 @@ function App() {
       }
       // Cmd+Shift+I — toggle Inspector. Was bare "I", which collided with the
       // canvas highlighter tool (same letter, different action by focus).
-      // Cloud Phase 25 C2 — absent for a viewer (the panel is edit chrome).
+      //
+      // Cloud Phase 27 C1 — a VIEWER GETS THIS TOO, and the line above used to
+      // say the opposite ("the panel is edit chrome"). C1 reversed that on
+      // purpose: read-only means cannot CHANGE, not cannot SEE, and a reviewer
+      // needs structure and measured values as much as anyone. The View menu
+      // already offers it (`viewerHiddenPanels` no longer hides it); the
+      // shortcut had been left behind, so the menu said yes and the keyboard
+      // said no. Found by writing the parity spec that runs in both shells.
       if (meta && e.shiftKey && (e.key === 'i' || e.key === 'I')) {
         e.preventDefault();
-        if (!viewerMode) toggleRightPanel('inspector');
+        toggleRightPanel('inspector');
         return;
       }
       // Phase 31 (DDR-123) — Cmd+Shift+A opens the native ACP chat sidepanel.
@@ -13961,9 +13978,15 @@ function App() {
   // assigned to it and which one is active (the open one). Layers is only a
   // dockable panel in `separate` mode; Assistant is native-only.
   const panelAvailable = (id) => {
-    // Cloud Phase 25 C2 — edit-chrome panels don't exist for a viewer: no
-    // dock tab, no shortcut, no empty slot.
-    if (viewerMode && (id === 'assistant' || id === 'inspector' || id === 'layers')) return false;
+    // The AGENT is genuinely absent for a viewer (it edits; Phase 25 C2).
+    //
+    // Inspector and Layers are NOT — Cloud Phase 27 C1 reversed that, and this
+    // line had been left behind: `viewerHiddenPanels` stopped hiding them in
+    // the View menu while this still refused to give them a dock slot, so the
+    // menu offered a panel that could never appear. Read-only means cannot
+    // CHANGE, not cannot SEE: a reviewer needs structure and measured values,
+    // which is the whole reason C1 exists.
+    if (viewerMode && id === 'assistant') return false;
     return id === 'assistant' ? isNativeApp() : id === 'layers' ? layersMode === 'separate' : true;
   };
   const idsForSide = (side) =>
@@ -13996,9 +14019,11 @@ function App() {
   // which owns the resizable width). Assistant is handled separately below as an
   // always-mounted ChatPanel so its stream survives a tab switch.
   const renderPanelBody = (id) => {
-    // Cloud Phase 25 C2 — the Inspector/Layers panels are edit chrome; a
-    // viewer's session never mounts them (absent, not hidden).
-    if (viewerMode && (id === 'inspector' || id === 'layers')) return null;
+    // C1 again, the second half of the same gate. The panels MOUNT for a
+    // viewer; what they must not do is offer an edit, and that is already
+    // handled inside them (`readOnly` is threaded through every control).
+    // Refusing to mount was a blunter instrument than the role model asks for.
+    
     if (id === 'tree')
       return (
         <Sidebar
@@ -14057,6 +14082,9 @@ function App() {
     if (id === 'inspector' || id === 'layers')
       return (
         <InspectorPanel
+          // Cloud Phase 27 E4 — the parity spec asserts these two panels exist
+          // in BOTH shells, so each needs a name a spec can ask for.
+          testId={id === 'layers' ? 'layers-panel' : 'inspector-panel'}
           layersOnly={id === 'layers'}
           hideLayersTab={layersMode === 'separate'}
           cpMode={cpMode}

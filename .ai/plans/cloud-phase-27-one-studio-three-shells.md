@@ -128,7 +128,7 @@ in git.
 - [x] **B2 — widen `img-src`/`font-src` to the canvas origin**, and replace
   `cache-control: no-store` with immutable content-addressed caching so a
   teammate is not refetching photographs on every pan.
-- [ ] **B3 — cold start materializes assets from R2** via the existing
+- [x] **B3 — cold start materializes assets from R2** via the existing
   rehydrate/asset lane; `/_api/asset` writes land in the S3 lane.
 
 ### Track C — what the browser may and may not differ in
@@ -145,7 +145,7 @@ comments, export, history.
 - [x] **C2 — the agent's absence is stated where the agent would be**, with a
   link to the desktop app. Never a hidden item, never a dead button, never
   silence.
-- [ ] **C3 — first open lands on a rendered canvas**, not a chooser, with one
+- [x] **C3 — first open lands on a rendered canvas**, not a chooser, with one
   dismissible line naming what this role can do.
 - [x] **C4 — the way back out.** A cloud instance carries a "Back to dashboard"
   affordance in the chrome (and the project's name), because a browser tab has
@@ -156,7 +156,7 @@ comments, export, history.
 
 ### Track D — safety of exposing a locally-designed server
 
-- [ ] **D1 — a `MAUDE_CLOUD` build ELIMINATES rather than un-routes** the
+- [x] **D1 — a `MAUDE_CLOUD` build ELIMINATES rather than un-routes** the
   subprocess and secret surfaces: `acp/*`, the `bash -c` native installer, the
   `$SHELL -ilc` probes, the exporter subprocess, BYOK generation, system-git,
   and `/_api/{cloud,github,hub,claude,acp,debug-bundle,design}`. **DDR-123's
@@ -171,7 +171,7 @@ comments, export, history.
   **Landed 2026-08-04 as the fallback, deliberately** — see the D2 section under
   "Interim close" for what was found and why routing through autocommit was the
   wrong half of the problem.
-- [ ] **D3 — per-session runtime state.** `_active.json` (selection, open tabs)
+- [x] **D3 — per-session runtime state.** `_active.json` (selection, open tabs)
   and `_canvas-state/<slug>.view.json` (camera) are per-machine singletons by
   design (DDR-115). Two members in one cell clobber each other's selection and
   pan/zoom, silently, reading as flakiness. The session dimension lands **with**
@@ -205,7 +205,7 @@ deliberately deletes, not a decision someone quietly makes under deadline.
 - [x] **E3 — route-manifest test.** Every route surviving `pruneForWorkspace()`
   must map to a capability in `role-matrix.mjs`. A new studio route is red until
   classified — which doubles as the proxy's security guard.
-- [ ] **E4 — cloud/desktop parity in E2E.** The `apps/desktop/e2e` specs run a
+- [x] **E4 — cloud/desktop parity in E2E.** The `apps/desktop/e2e` specs run a
   second target against the cloud URL from the SAME spec file on the same
   `data-testid`s. "Files panel missing in cloud" becomes a red build, not a
   customer email.
@@ -238,24 +238,35 @@ here is `dist/client.bundle.js` (1.9 MB) + `styles.css` (272 KB) + `client/`;
 
 ## Acceptance
 
-- [ ] A teammate opens the project link, signs in with their Maude account, and
+- [x] A teammate opens the project link, signs in with their Maude account, and
   sees **the same application the owner sees on his desktop** — Files, Layers,
-  Inspector, search, toolbar, branch/LIVE status.
-- [ ] **Photographs are photographs and the webfont is the webfont**, verified
-  against a real customer project, not a synthetic fixture.
-- [ ] A viewer can read, comment, download **and inspect**; every write is
+  Inspector, search, toolbar, branch/LIVE status. *(Verified 2026-08-03 by
+  booting the PUBLISHED image and signing in, in a real browser.)*
+- [x] **Photographs are photographs and the webfont is the webfont**, verified
+  against a real customer project, not a synthetic fixture. *(The 65-canvas
+  alligators checkout, 2026-08-04.)*
+- [x] A viewer can read, comment, download **and inspect**; every write is
   refused at the proxy, and the UI does not offer what the role cannot do.
-- [ ] Booting a cell with no role configuration refuses every mutating route.
-- [ ] The cell refuses to boot when its bundle's hash does not match the image's.
+  *(The **inspect** half was FALSE until 2026-08-04 — see E4: the menu offered
+  panels that two other gates refused to mount. Fixed, and now asserted by the
+  parity spec against a viewer session.)*
+- [x] Booting a cell with no role configuration refuses every mutating route.
+- [x] The cell refuses to boot when its bundle's hash does not match the image's.
 - [ ] CI fails on a studio reimplementation, on an unclassified studio route,
-  and on a cloud/desktop testid divergence.
-- [ ] **A teammate can find their way back** to the dashboard, and knows which
+  and on a cloud/desktop testid divergence. **Two of three.**
+  `check-no-studio-reimpl.sh` (E2) and the route-manifest test (E3) run in CI;
+  the parity spec (E4) exists and is green against the cloud target, but desktop
+  E2E has no CI job at all — it is a local/manual lane for every scenario, not
+  just this one. Putting it in CI is a bigger question than this phase (a runner
+  that can build a Tauri app) and is named here rather than quietly counted.
+- [x] **A teammate can find their way back** to the dashboard, and knows which
   project they are in, without a window title.
 - [ ] **The desktop still honours the role too**: connecting Maude Desktop to a
   cloud project as a viewer yields a read-only studio. This already works
   (`isHubReadOnly()` per hub URL) and must not regress — the per-session change
-  is the CELL's, not the desktop's.
-- [ ] **No route is served by two implementations.** A canvas is built by one
+  is the CELL's, not the desktop's. **Owner-gated**: needs a desktop attached to
+  a real cloud project, which no automated check here can stand in for.
+- [x] **No route is served by two implementations.** A canvas is built by one
   builder, a comment is written by one writer, and the loser's modules are gone
   from the tree — not dormant behind a flag.
 
@@ -429,14 +440,29 @@ removed.
   The cell now serves the real 65-canvas alligators checkout and reports it
   healthy, but nobody has SIGNED IN and looked. The photographs and the webfont
   are the specific thing to look at.
-- [ ] **D1 — elimination, not un-routing.** The seven secret-bearing surfaces are
-  pruned at boot, refused by the manifest, and 404 in a running cell. The code is
-  still inside the compiled binary. DDR-123's "claude never on our infra" holds
-  operationally; it does not yet hold structurally.
-- [ ] **D3 — per-session runtime state, studio half.** The proxy issues a stable
-  `x-maude-session` per member (tested); the studio does not partition
-  `_active.json` / `_canvas-state/<slug>.view.json` by it, so two members in one
-  cell still clobber each other's selection and camera.
+- [x] **D1 — elimination, not un-routing. LANDED 2026-08-04.** `--cloud` compiles
+  the studio with the secret-bearing modules REPLACED BY INERT STUBS: the ACP
+  agent and everything that starts one (including the `bash -c` installer and
+  the `claude`-path resolver), the `$SHELL -ilc` probes, the exporter's
+  subprocess spine, the BYOK adapters and the keys they spend, the GitHub REST
+  client, the cloud/hub endpoints. `--define` + dead-code elimination was tried
+  first and does NOT do it (Bun inlines the dynamic import and keeps the
+  branch); `Bun.build({ compile })` with a plugin does. Stubs are generated from
+  each module's own export list, because a hand-written stub is a second copy of
+  an interface. `scripts/check-cloud-binary.sh` asserts each sentinel PRESENT in
+  a desktop binary and ABSENT from a cloud one — absence alone is also what a
+  typo'd sentinel looks like. The cell image builds `--cloud`; the binary is
+  6 MB smaller, boots, and serves the full studio.
+- [x] **D3 — per-session runtime state, studio half. LANDED 2026-08-04.**
+  `session-scope.ts` establishes the vouched key once per request — the route
+  table AND the fall-through, because Bun matches `routes` first — and the path
+  helpers read it, instead of a `session` argument threaded through every
+  signature in `api.ts` where it would be forgotten exactly once. The inspector
+  became one instance per member, resolved through the socket's own
+  handshake-stamped key. With no session every path resolves byte for byte as
+  before, which is the property the first test asserts; a key that is not
+  proxy-shaped is refused rather than sanitized, because it becomes a path
+  segment.
 - [x] **D5 — remaining half, landed 2026-08-04.** The studio's `/_health` now
   reports a `rootId` — a short sha of the `realpath`'d tree it resolved, a hash
   and not a path because that route is on the untrusted canvas origin's
@@ -450,15 +476,45 @@ removed.
   of `ok`: a lock left by a killed git process means history is stuck while
   serving is fine, and failing health there would make an unreachable project
   out of one whose only problem is that nothing is being saved.
-- [ ] **B3 — the sweep that lands a browser-uploaded asset in the S3 lane without
-  waiting for the next boot.** (Git-tracked assets already return with the
-  rehydrated checkout, which is what fixed the grey boxes.)
-- [ ] **C3 — first open lands on a rendered canvas.**
-- [ ] **E4 — cloud/desktop parity in E2E.**
+- [x] **B3 — LANDED 2026-08-04.** The boot sweep rests on "assets arrive with a
+  commit, and a cell wakes on every migration"; a browser upload arrives with
+  neither, so the bytes lived only in `/repo` until the next restart — served
+  fine from the checkout, and one teardown from gone. The trigger belongs to the
+  HUB: the studio's own S3 mirror is deliberately unconfigured in a cell
+  (`childEnv()` is an allowlist), and handing it the credentials to close this
+  would undo a boundary that exists for better reasons. A 2xx `POST /_api/asset`
+  through the proxy fires an incremental sweep that HEADs one file, not 793.
+- [x] **C3 — LANDED 2026-08-04.** Cloud only, once, never re-opening a canvas
+  somebody closed; plus one dismissible line naming what this role can do,
+  worded from the role matrix rather than invented twice. The banner's first
+  version never rendered at all — its `useState` initializer ran while
+  `cfg.cloud` was still `undefined`, and the "already dismissed" it decided then
+  stuck forever. Found by opening it in a browser, which is the same lesson this
+  phase already paid for once.
+- [x] **E4 — LANDED 2026-08-04, cloud half verified.**
+  `scenarios/shell-parity.e2e.ts` is ONE file that runs against either target;
+  what legitimately differs lives in `helpers/target.ts` behind a name rather
+  than as a branch in the assertions. Green against the cloud target in real
+  Chrome (studio in workspace mode behind a header-injecting stand-in for the
+  proxy, vouching a VIEWER — the role with the most to lose from a parity
+  regression). The native half is wired through the same config every other
+  native scenario uses and needs a built `.app` (`pnpm test:e2e:desktop:build`)
+  — not run here.
+
+  **It found a real C1 regression while being written**: `viewerHiddenPanels`
+  had stopped hiding Inspector and Layers, but TWO other gates were left behind
+  — the ⌘⇧I shortcut refused a viewer, and `renderPanelBody` refused to mount
+  the panels at all. So the View menu offered a panel that could never appear,
+  and the acceptance line "a viewer can read, comment, download **and inspect**"
+  was false in production. Both fixed, and the spec is what keeps them fixed.
 
 ---
 
-## Interim close — 2026-08-04 (`/flow:done`, NOT archived)
+## Interim close — 2026-08-04, morning (`/flow:done`, NOT archived)
+
+> Superseded by the CLOSE below. Kept because the honest interim state is part
+> of the record: at this point two acceptance lines were partial and the open
+> list was unchanged.
 
 **The phase is not done.** What it set out to prove is proven — a browser tab
 now shows the real studio, against a real 65-canvas project, with the
@@ -520,3 +576,53 @@ mint (attribution, not access).
   to end the session, the fix cannot arrive at all. Sign-out is not a nicety.
 - **`git add` a shared file in this tree and you may carry another session's
   work.** Checked the diff before every stage; twice it mattered.
+
+
+---
+
+## Close — 2026-08-04, afternoon
+
+**Every track is landed.** D2 (the preserved dissent), D1, D3, B3, C3, E4 and
+the shell-origin `/_ws` gate all closed today, on top of the morning's interim
+state. Decisions: **[DDR-211](../archive/decisions/DDR-211-two-git-engines-one-index-and-the-advisory-lock.md)**
+(the writers) and
+**[DDR-212](../archive/decisions/DDR-212-eliminating-the-agent-from-the-image-and-the-session-from-the-singleton.md)**
+(the build, the session, the assets, the parity spec).
+
+**Two acceptance lines are deliberately NOT ticked**, and both are named where
+they are rather than rounded up:
+
+- **CI parity is two of three.** `check-no-studio-reimpl.sh` and the
+  route-manifest test run in CI; the parity spec exists and is green, but
+  desktop E2E has no CI job at all — for any scenario, not just this one. Giving
+  it one needs a runner that can build a Tauri app, which is a bigger question
+  than this phase.
+- **A desktop attached to a real cloud project as a viewer** is owner-gated. No
+  automated check here can stand in for it.
+
+### Retro
+
+- **Every open item was cheaper than the reason it was open.** D2 read as
+  architectural and turned out to rest on a one-line fact nobody had checked —
+  the two processes were not racing on a lock, they were running different git
+  engines. D1 read as a build-system project and came down to "does Bun's
+  bundler take a plugin on the compile path" — a five-minute experiment that
+  should have preceded the estimate, not followed it.
+- **The three bugs found today were found three different ways, and no two by
+  the same method.** A browser found the role banner that never rendered (its
+  `useState` seeded itself before `/_config` arrived). The linter found a
+  cross-scope assignment that would have `ReferenceError`'d every cell boot with
+  storage configured. Writing a test found C1 was never actually landed — the
+  menu offered panels that two other gates refused to mount, so "a viewer can
+  inspect" had been false in production the whole time. Tests, adversarial
+  reading and running it are three instruments, and this phase now has an
+  instance of each catching what the other two could not.
+- **A gate that cannot go red teaches people to ignore it.** `api.github.com`
+  was the obvious sentinel for the cloud-binary check and is useless: Bun's own
+  runtime carries `GITHUB_API_DOMAIN`. The rule that came out of it — assert the
+  string PRESENT in one artifact and ABSENT in the other — is what caught the
+  real miss (a second importer kept the GitHub client in the image).
+- **The load-flake floor is real and should be said out loud.** The studio suite
+  is 3,450 tests and one 5-second boot timeout under full-suite load; every such
+  failure this week passed in isolation. Reporting "all green" would have been
+  false, and reporting a regression would have been worse.
