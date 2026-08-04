@@ -111,6 +111,15 @@ COPY plugins/design/templates /build/plugins/design/templates
 # perfectly. The multi-arch release (`hub-image.yml` builds amd64 + arm64) would
 # have shipped one good arch and one broken one.
 ARG TARGETARCH
+# THE CLOUD VARIANT — Cloud Phase 27 D1. `--cloud` compiles the studio with the
+# secret-bearing surfaces REPLACED BY INERT STUBS rather than merely pruned from
+# the route table: the ACP agent and its `bash -c` installer, the `$SHELL -ilc`
+# probes, the exporter subprocess, the BYOK provider adapters, the GitHub REST
+# client, the cloud/hub endpoints. They were unreachable in a cell before this;
+# now they are not in the image, which is what DDR-123's "claude never runs on
+# our infrastructure" actually claims. `scripts/check-cloud-binary.sh` asserts
+# it against the built artifact — present in a desktop binary, absent here.
+#
 # `rm -f dist/maude-*` FIRST, and then take the binary by its EXACT name.
 #
 # `dist/` has to be copied in (the committed runtime bundles + the client are
@@ -126,10 +135,10 @@ RUN rm -f dist/maude-* \
       arm64) STUDIO_TARGET=bun-linux-arm64; STUDIO_SLUG=linux-arm64 ;; \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
- && echo "[cell] studio target: ${STUDIO_TARGET}" \
- && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release --target=${STUDIO_TARGET} \
- && test -f "dist/maude-${STUDIO_SLUG}" \
- && mv "dist/maude-${STUDIO_SLUG}" /build/maude-server \
+ && echo "[cell] studio target: ${STUDIO_TARGET} (cloud variant)" \
+ && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release --cloud --target=${STUDIO_TARGET} \
+ && test -f "dist/maude-cloud-${STUDIO_SLUG}" \
+ && mv "dist/maude-cloud-${STUDIO_SLUG}" /build/maude-server \
  && chmod +x /build/maude-server
 # E1 — seal the client artifacts. The cell refuses to boot when what is on disk
 # is not what came out of this stage. A tag is not an identity; a hash is.

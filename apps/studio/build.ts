@@ -21,6 +21,8 @@ import { fileURLToPath } from 'node:url';
 
 import { browserslistToTargets, bundle as lcssBundle } from 'lightningcss';
 
+import { cloudStubPlugin } from './cloud-build.ts';
+
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const DIST = join(ROOT, 'dist');
 
@@ -32,6 +34,9 @@ const MODE: 'dev' | 'release' | 'dry' = ARGS.has('--dry-run')
     ? 'release'
     : 'dev';
 const WATCH = ARGS.has('--watch');
+/** Cloud Phase 27 D1 — build the CELL's variant (secret-bearing surfaces
+ *  removed from the binary, not merely un-routed). `--cloud` with `--release`. */
+const CLOUD = ARGS.has('--cloud');
 
 const PLATFORM_MATRIX = [
   'bun-darwin-arm64',
@@ -336,11 +341,20 @@ import ${JSON.stringify(realServerRel)};
   return entryPath;
 }
 
-async function buildServerBinary(target: PlatformTarget): Promise<{ outPath: string }> {
+async function buildServerBinary(
+  target: PlatformTarget,
+  /**
+   * Cloud Phase 27 D1 — the variant a CELL runs, with the secret-bearing
+   * surfaces removed from the binary rather than merely un-routed. Named
+   * separately (`maude-cloud-<slug>`) so a desktop release can never pick one
+   * up by accident, and so both can be built from one checkout.
+   */
+  { cloud = false }: { cloud?: boolean } = {}
+): Promise<{ outPath: string }> {
   ensureDist();
   const slug = platformSlug(target);
   const ext = slug.startsWith('win32') ? '.exe' : '';
-  const outPath = join(DIST, `maude-${slug}${ext}`);
+  const outPath = join(DIST, `maude-${cloud ? 'cloud-' : ''}${slug}${ext}`);
   const realEntry = join(ROOT, 'server.ts');
   if (!existsSync(realEntry)) {
     // Legacy fallback — pre-DDR-009 .mjs path. Doesn't use oxc-parser, so the
@@ -369,6 +383,26 @@ async function buildServerBinary(target: PlatformTarget): Promise<{ outPath: str
   // filter skipped it (cross-compile case — see ensureBindingForTarget docs).
   await ensureBindingForTarget(oxcBindingSlug(slug));
   const entry = writeCompileEntry(target);
+
+  // The CLOUD variant goes through the Bun.build API rather than the CLI,
+  // because that is the only path that takes a plugin — and a plugin is what
+  // makes D1 elimination rather than un-routing. `--define` + dead-code
+  // elimination was tried first and does not do it: Bun inlines the
+  // dynamically-imported module and keeps the branch, so the bytes stay.
+  if (cloud) {
+    const result = await Bun.build({
+      entrypoints: [entry],
+      target: 'bun',
+      minify: true,
+      plugins: [cloudStubPlugin(ROOT)],
+      compile: { target, outfile: outPath },
+    } as Parameters<typeof Bun.build>[0]);
+    if (!result.success) {
+      throw new Error(`cloud compile failed for ${target}:\n${result.logs.map(String).join('\n')}`);
+    }
+    return { outPath };
+  }
+
   const proc = Bun.spawn(
     [
       'bun',
@@ -538,7 +572,7 @@ async function main() {
       : [currentTarget()];
     for (const target of targets) {
       const t = performance.now();
-      const bin = await buildServerBinary(target);
+      const bin = await buildServerBinary(target, { cloud: CLOUD });
       console.log(`[build] ${bin.outPath}  (${(performance.now() - t).toFixed(0)} ms)`);
     }
   }

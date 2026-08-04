@@ -58,6 +58,14 @@ jobs:
           bash scripts/check-containment.sh
           sh -n infra/cell/entrypoint.sh
 
+      - name: Cloud binary elimination (Phase 27 D1)
+        # Containment says a cell REFUSES these surfaces; this says the code is
+        # not in the image, which is the claim DDR-123 actually makes. Two
+        # compiles for the host arch (~1 min), and the assertion is a PAIR:
+        # each sentinel present in the desktop binary, absent from the cloud
+        # one — because absence alone is also what a typo'd sentinel looks like.
+        run: bash scripts/check-cloud-binary.sh
+
       - name: Hub backup restore drill
         # The exit gate for Cloud Phase 2 Task 3. A backup nobody has restored
         # is a hypothesis: a database that restores readable-but-EMPTY looks
