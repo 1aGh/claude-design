@@ -240,6 +240,31 @@ Known instances of this class: the v0.54.0 hub image failed on a studio file the
 Dockerfile's bundler stage didn't copy (`repo-lock.ts` — the stage copies studio
 files one by one; when a borrowed file grows an import, copy the import too).
 
+### The fleet rolled but a cell still behaves like the OLD release (env-shaped symptoms)
+
+A container-config rollout (the image-tag change) replaces the instance with the
+new IMAGE but **replays the stored env spec** from whenever the Durable Object
+last `start()`ed it — it does not recompute `cellEnv`. So a release reliably
+ships new *code*, while a change to the env *derivation* (Worker-side
+`cell-config.mjs`) only takes effect after a full stop → request-driven start.
+Learned the hard way on v0.54.0: the `HUB_PUBLIC_URL` fix was deployed, the v31
+restart-roll "succeeded", and the fresh instance still served `frame-ancestors`
+from the poisoned value.
+
+To force a clean env recompute, in order of preference:
+
+```bash
+# 1. The sanctioned restart (needs CELL_SECRET_MASTER):
+#    POST https://<tenant>.<zone>/_cell/restart  with  Authorization: Bearer <deriveSecret(master, tenant)>
+# 2. Zero-credential fallback: let it idle-sleep (sleepAfter=20m) — close every
+#    tab (canvas tabs count!), stop probing /health, wait ~25 min, then ONE
+#    request wakes it through the current Worker and env is recomputed.
+```
+
+`wrangler containers` has no instance-level kill (only application delete — do
+NOT), and `wrangler cloudchamber *` needs a scope the OAuth login doesn't carry.
+Follow-up on file: an env-hash drift-restart in the DO would close this class.
+
 ### `publish-main` failed after the matrix succeeded
 
 The 7 per-platform sub-packages are already on npm at the new version. Re-run `publish-main` only:
