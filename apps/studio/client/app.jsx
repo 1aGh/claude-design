@@ -628,6 +628,14 @@ const STICONS = {
       <path d="M4.3 9.5v2.3a1.2 1.2 0 0 0 2.4 0v-1.7" />
     </>
   ),
+  bug: (
+    <>
+      <circle cx="8" cy="9" r="3.6" />
+      <circle cx="8" cy="4.4" r="1.3" />
+      <path d="M6.2 3.4 5.2 2M9.8 3.4l1-1.4" />
+      <path d="M4.6 7.6H2.2M4.6 9H2.2M4.6 10.6H2.5M11.4 7.6h2.4M11.4 9h2.4M11.4 10.6h2.3" />
+    </>
+  ),
   'panel-left': (
     <>
       <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
@@ -4115,6 +4123,16 @@ function Menubar({
           </button>
         )}
         {exportCenter && <ExportBadge center={exportCenter} />}
+        <button
+          type="button"
+          className="st-reportbug"
+          data-testid="report-bug-toggle"
+          aria-label="Report a bug"
+          data-tip="Report a bug"
+          onClick={onReportBug}
+        >
+          <StIcon name="bug" size={15} />
+        </button>
         <button
           type="button"
           className="st-whatsnew"
