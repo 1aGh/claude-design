@@ -40,7 +40,12 @@ import { applySchema } from './migrate.mjs';
 import { ACCESS_MESSAGES, decideAccess } from './project-access.mjs';
 import { handleProjectAdminRoutes } from './project-admin.mjs';
 import { handleProjectRoutes } from './project-routes.mjs';
-import { ensureCanvasDomain, ensureCellDomain, removeCellDomain } from './provision.mjs';
+import {
+  ensureCanvasDomain,
+  ensureCellDomain,
+  ensureProjectCanvasDomain,
+  removeCellDomain,
+} from './provision.mjs';
 import { purgeTenantObjects } from './purge.mjs';
 import { mintingConfigured, mintTenantCredentials } from './r2-creds.mjs';
 import { SUSPEND_RETENTION_DAYS, settle } from './reconcile.mjs';
@@ -681,6 +686,11 @@ async function performActions(env, projectId, row, actions, { now }) {
   if (kinds.has('resume-cell') || kinds.has('provision-cell')) {
     const routed = await ensureCellDomain(env, projectId);
     await record('resume-cell', routed.ok ? 'ok' : 'failed', routed.error);
+    // Cloud Phase 27 — the project's own canvas origin. Its own step, and its
+    // own record: a project whose shell answers but whose canvases do not is a
+    // distinct, and much more confusing, kind of broken than one that is down.
+    const canvasDomain = await ensureProjectCanvasDomain(env, projectId);
+    await record('provision-canvas-origin', canvasDomain.ok ? 'ok' : 'failed', canvasDomain.error);
   }
 
   // 4. Teardown, last.

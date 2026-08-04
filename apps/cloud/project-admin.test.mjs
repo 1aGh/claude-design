@@ -600,8 +600,14 @@ test('Open leads to the connect page, which offers only doors that exist', async
   // footnote pointed at an operator console behind the same credential. Both
   // are gone — an impossible instruction is worse than one door.
   assert.doesNotMatch(body, /workspace email and password/);
-  assert.doesNotMatch(body, /alligators\.cloud\.maude\.sh/);
   assert.doesNotMatch(body, /operator console/i);
+  // Cloud Phase 27. The cell URL used to be BANNED here, and that was right at
+  // the time: it led to a door that asked for a credential no customer is ever
+  // issued. The door works now — it is the real studio, behind this account —
+  // so the rule flips from "must not appear" to "must, and must not come with
+  // an impossible instruction".
+  assert.match(body, /href="https:\/\/alligators\.cloud\.maude\.sh"/);
+  assert.match(body, /Open in the browser/);
   // A7: one download address, everywhere in the product.
   assert.match(body, /maude\.sh\/desktop/);
 

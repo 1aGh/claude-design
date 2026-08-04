@@ -1708,6 +1708,17 @@ export function createHttp(
       // identity. Color-hash derives from this; falls back to anonymous-<pid>
       // client-side when empty.
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      // Cloud Phase 27 — IN A CELL, `git config user.name` IS THE MACHINE.
+      //
+      // It is "Maude Workspace", the committer the autosave agent signs with
+      // (sync/autocommit.ts), and it is the right answer for a commit and the
+      // wrong one for a person: a member opened their project and the presence
+      // chip introduced them as the server. The proxy already vouches who this
+      // is per request, so in a cell that is who it is.
+      const vouched = req.headers.get('x-maude-user');
+      if (isWorkspaceMode() && vouched) {
+        return Response.json({ name: vouched }, { headers: { 'Cache-Control': 'no-store' } });
+      }
       const name = await api.gitCurrentUser();
       return Response.json({ name }, { headers: { 'Cache-Control': 'no-store' } });
     },

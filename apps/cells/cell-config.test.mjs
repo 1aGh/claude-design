@@ -310,37 +310,32 @@ test('fetchTenantS3Credentials asks with the tenant-derived secret and fails clo
 // client builds every canvas iframe URL from what it is TOLD its canvas origin
 // is. Getting this wrong is not a subtle degradation: every canvas 404s.
 
-test('a cell is told the browser-reachable canvas origin, with its tenant in the path', async () => {
+test('a cell is told its own canvas origin — a hostname, with no path', async () => {
   const vars = await cellEnv({
     tenantId: 'alligators',
     env: { ...baseEnv, CELL_ZONE: 'cloud.maude.sh' },
     hostname: 'alligators.cloud.maude.sh',
   });
-  assert.equal(vars.MAUDE_PUBLIC_CANVAS_ORIGIN, 'https://canvas.cloud.maude.sh/alligators');
+  assert.equal(vars.MAUDE_PUBLIC_CANVAS_ORIGIN, 'https://canvas-alligators.cloud.maude.sh');
   // NOT the project hostname — the whole point of DDR-054 is that canvas
   // content executes on an origin the shell's cookie cannot reach.
   assert.ok(!vars.MAUDE_PUBLIC_CANVAS_ORIGIN.startsWith('https://alligators.'));
+  // And NO path: an absolute URL inside canvas code resolves against the
+  // origin, so a path here would be dropped by the browser and the project
+  // would be lost. That is the bug this shape exists to remove.
+  assert.equal(new URL(vars.MAUDE_PUBLIC_CANVAS_ORIGIN).pathname, '/');
 });
 
-test('the tenant segment the WORKER strips is the one the BROWSER needs', async () => {
-  // worker.mjs rewrites `canvas.<zone>/<tenant>/x` to `/x` before the cell sees
-  // it, so these two must stay in agreement: the segment appears in the URL the
-  // client builds and is gone from the path the cell parses. This test and
-  // `canvas-origin.test.mjs` are the two halves of that contract.
-  const vars = await cellEnv({
-    tenantId: 'second-customer',
-    env: { ...baseEnv, CELL_ZONE: 'cloud.maude.sh' },
-    hostname: 'second-customer.cloud.maude.sh',
+test('an absolute asset URL from canvas code lands in the right project', () => {
+  // The failure this shape removes, stated as the browser sees it: canvas code
+  // holds `/.design/system/<ds>/assets/x.svg`, the browser resolves it against
+  // the canvas ORIGIN, and on a per-project origin that is still this project.
+  const origin = 'https://canvas-alligators.cloud.maude.sh';
+  const resolved = new URL('/.design/system/alligators/assets/sponsors/x.svg', origin);
+  assert.deepEqual(canvasOriginTenant(resolved, 'cloud.maude.sh'), {
+    tenant: 'alligators',
+    rest: '/.design/system/alligators/assets/sponsors/x.svg',
   });
-  const { pathname } = new URL(vars.MAUDE_PUBLIC_CANVAS_ORIGIN);
-  assert.equal(pathname, '/second-customer');
-  assert.deepEqual(
-    canvasOriginTenant(
-      new URL(`${vars.MAUDE_PUBLIC_CANVAS_ORIGIN}/_canvas-shell.html?c=1`),
-      'cloud.maude.sh'
-    ),
-    { tenant: 'second-customer', rest: '/_canvas-shell.html' }
-  );
 });
 
 test('a hub with no zone gets no canvas origin rather than a wrong one', async () => {

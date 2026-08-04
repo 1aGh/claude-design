@@ -66,6 +66,55 @@ export async function ensureCanvasDomain(env, { fetchImpl = fetch } = {}) {
  * Ensure `<projectId>.cloud.maude.sh` routes to the cells Worker.
  * Idempotent: an already-attached hostname reports ok.
  */
+/**
+ * The project's own canvas origin — `canvas-<id>.<zone>` (Cloud Phase 27).
+ *
+ * A SECOND custom domain per project, which the original design explicitly
+ * avoided. It was avoided for a reason that turned out to be wrong: the shared
+ * `canvas.<zone>` host put the project in the PATH, and canvas code contains
+ * ABSOLUTE asset URLs (`/.design/system/<ds>/assets/…` — what every design
+ * system emits), which resolve against the origin and silently drop the
+ * project. Nothing in the shell can fix that; those URLs are inside the
+ * tenant's own compiled module.
+ *
+ * It is also a stronger boundary than the thing it replaces: on the shared
+ * host, every tenant's executing canvas shared one origin.
+ *
+ * Idempotent, and called from the same hourly reconcile as the project's own
+ * hostname, so the address self-heals the same way.
+ */
+export async function ensureProjectCanvasDomain(env, projectId, { fetchImpl = fetch } = {}) {
+  if (!env.CF_PROVISION_TOKEN || !env.CF_ACCOUNT_ID || !env.CF_ZONE_ID) {
+    return { ok: false, error: 'provisioning is not configured' };
+  }
+  const hostname = `${CANVAS_HOST_LABEL}-${projectId}.${env.CELL_ZONE ?? 'cloud.maude.sh'}`;
+  try {
+    const res = await fetchImpl(
+      `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/domains`,
+      {
+        method: 'PUT',
+        headers: {
+          authorization: `Bearer ${env.CF_PROVISION_TOKEN}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          zone_id: env.CF_ZONE_ID,
+          hostname,
+          service: 'maude-cells',
+          environment: 'production',
+        }),
+      }
+    );
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body?.success === false) {
+      return { ok: false, hostname, error: body?.errors?.[0]?.message ?? `HTTP ${res.status}` };
+    }
+    return { ok: true, hostname };
+  } catch (err) {
+    return { ok: false, hostname, error: err.message };
+  }
+}
+
 export async function ensureCellDomain(env, projectId, { fetchImpl = fetch } = {}) {
   if (!env.CF_PROVISION_TOKEN || !env.CF_ACCOUNT_ID || !env.CF_ZONE_ID) {
     return { ok: false, error: 'provisioning is not configured' };

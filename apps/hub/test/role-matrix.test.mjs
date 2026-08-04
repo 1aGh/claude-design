@@ -136,6 +136,14 @@ test('the matrix renders as rows for a docs table', () => {
 // unknown role, which gets nothing, which reads as read-only. Every admin's
 // session was read-only. Found by logging into a real cell.
 
+test('a PROJECT role passes through — the regression that made an owner VIEW ONLY', () => {
+  // The control plane vouches project roles directly on a project token. A
+  // translator that only knew ACCOUNT roles returned null for `owner`, and null
+  // has no capabilities — so the project's own owner opened it read-only.
+  for (const r of ROLES) assert.equal(projectRoleForAccount(r), r);
+  assert.equal(isReadOnlyRole(projectRoleForAccount('owner')), false);
+});
+
 test('an account role is TRANSLATED, never passed through', () => {
   assert.equal(projectRoleForAccount('admin'), 'owner');
   assert.equal(projectRoleForAccount('member'), 'member');

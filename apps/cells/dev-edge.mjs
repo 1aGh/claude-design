@@ -45,10 +45,13 @@ function pipeToCell(req, res, { path, canvasOrigin }) {
     headers[k] = v;
   }
   if (canvasOrigin) headers[CANVAS_ORIGIN_HEADER] = '1';
-  const up = httpRequest({ host: '127.0.0.1', port: CELL, method: req.method, path, headers }, (r) => {
-    res.writeHead(r.statusCode ?? 502, r.headers);
-    r.pipe(res);
-  });
+  const up = httpRequest(
+    { host: '127.0.0.1', port: CELL, method: req.method, path, headers },
+    (r) => {
+      res.writeHead(r.statusCode ?? 502, r.headers);
+      r.pipe(res);
+    }
+  );
   up.on('error', (e) => {
     res.writeHead(502, { 'content-type': 'text/plain' });
     res.end(`edge: cell unreachable — ${e.message}\n`);
@@ -61,17 +64,11 @@ createServer((req, res) => pipeToCell(req, res, { path: req.url, canvasOrigin: f
   () => console.log(`[edge] shell  origin → http://localhost:${SHELL_PORT}`)
 );
 
-createServer((req, res) => {
-  const url = new URL(req.url, 'http://x');
-  const [, first, ...rest] = url.pathname.split('/');
-  if (first !== TENANT) {
-    res.writeHead(404, { 'content-type': 'text/plain' });
-    res.end('the canvas origin needs a project in the path\n');
-    return;
-  }
-  // Exactly worker.mjs: the cell sees the path WITHOUT the project segment.
-  const path = `/${rest.join('/')}${url.search}`;
-  pipeToCell(req, res, { path, canvasOrigin: true });
-}).listen(CANVAS_PORT, () =>
-  console.log(`[edge] canvas origin → http://localhost:${CANVAS_PORT}/${TENANT}`)
+// The per-project canvas origin (Cloud Phase 27): the origin root IS the
+// project, so the path is passed through untouched. That is the whole reason
+// this shape exists — canvas code holds ABSOLUTE asset URLs, and an absolute
+// URL resolves against the origin.
+createServer((req, res) => pipeToCell(req, res, { path: req.url, canvasOrigin: true })).listen(
+  CANVAS_PORT,
+  () => console.log(`[edge] canvas origin (project ${TENANT}) → http://localhost:${CANVAS_PORT}`)
 );

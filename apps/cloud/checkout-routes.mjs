@@ -38,7 +38,7 @@ import { audit } from './db.mjs';
 import pricingCatalog from './pricing.json' with { type: 'json' };
 import { priceIdFor, publicPricing, stripeMode } from './pricing-core.mjs';
 import { ACCESS_MESSAGES, can, decideAccess } from './project-access.mjs';
-import { ensureCellDomain, probeCell } from './provision.mjs';
+import { ensureCellDomain, ensureProjectCanvasDomain, probeCell } from './provision.mjs';
 import { decideCheckout, waitingRoom } from './provisioning.mjs';
 
 export { allCheckoutHtml, pricingCatalog };
@@ -258,6 +258,9 @@ export async function handleCheckoutRoutes(request, env, { account }) {
     // person watches the waiting room. Failure is not fatal here — the waiting
     // room retries it, and the timeout tells the truth if it never lands.
     await ensureCellDomain(env, projectId);
+    // The canvases need their own origin (Cloud Phase 27) — provisioned with
+    // the project, not discovered missing when somebody opens a design.
+    await ensureProjectCanvasDomain(env, projectId);
 
     return redirect(`/projects/${projectId}/setup`);
   }
@@ -335,6 +338,9 @@ export async function handleCheckoutRoutes(request, env, { account }) {
       // But keep retrying the route itself — a missing domain is our fault,
       // not theirs, and a later visit may find the infrastructure repaired.
       await ensureCellDomain(env, projectId);
+      // The canvases need their own origin (Cloud Phase 27) — provisioned with
+      // the project, not discovered missing when somebody opens a design.
+      await ensureProjectCanvasDomain(env, projectId);
     }
 
     // Render from THIS visit's decision. Re-deciding after the settlement

@@ -106,6 +106,12 @@ export function tenantFromHostname(hostname, zone) {
   // shipped, because a Worker route and a Worker custom domain are different
   // objects and only one of them is in the repo.
   if (label.startsWith('view-')) return null;
+  // Same reasoning, second reserved prefix: `canvas-<project>` is that project's
+  // segregated canvas origin (Cloud Phase 27), and it is also a valid tenant-id
+  // shape. Without this, `canvas-alligators.cloud.maude.sh` would start a cell
+  // for a brand-new empty project called "canvas-alligators" — at the very
+  // address alligators' own canvases load from.
+  if (label.startsWith('canvas-')) return null;
   return isValidTenantId(label) ? label : null;
 }
 
@@ -135,9 +141,36 @@ export const CANVAS_ORIGIN_HEADER = 'x-maude-canvas-origin';
  */
 export function canvasOriginTenant(url, zone) {
   if (!zone) return null;
-  if (String(url.hostname).toLowerCase() !== `${CANVAS_LABEL}.${String(zone).toLowerCase()}`) {
-    return null;
+  const host = String(url.hostname).toLowerCase();
+  const z = String(zone).toLowerCase();
+
+  // PER-PROJECT CANVAS ORIGIN — `canvas-<project>.<zone>` (Cloud Phase 27).
+  //
+  // The path form below put the project in the PATH, and that turned out to be
+  // incompatible with how a canvas references its own assets: canvas code
+  // contains absolute URLs (`/.design/system/<ds>/assets/…`, which is what every
+  // design system emits), and an absolute URL resolves against the ORIGIN. On a
+  // shared canvas host that silently drops the project — the browser asks for
+  // `canvas.<zone>/.design/…` and the data plane reads `.design` as a project
+  // name. Nothing in the shell can fix it: those URLs are inside the tenant's
+  // own compiled module, not in anything we generate.
+  //
+  // A per-project hostname makes the origin root the project, so absolute URLs
+  // mean exactly what they mean on a desktop. The cost the original design
+  // avoided was one more custom domain per project; the thing it did not know
+  // was that the cheaper option does not work. It is also a STRONGER boundary:
+  // on the shared host, one tenant's executing canvas shared an origin with
+  // every other tenant's.
+  if (host.startsWith(`${CANVAS_LABEL}-`) && host.endsWith(`.${z}`)) {
+    const tenant = host.slice(CANVAS_LABEL.length + 1, -(z.length + 1));
+    // The path is NOT rewritten — there is nothing to strip.
+    return isValidTenantId(tenant) ? { tenant, rest: url.pathname } : null;
   }
+
+  // LEGACY shared canvas host, project in the path. Kept so a cell mid-rollout
+  // (and any link already in a browser tab) keeps working; new sessions get the
+  // per-project origin from `cellEnv`.
+  if (host !== `${CANVAS_LABEL}.${z}`) return null;
   const [, first, ...rest] = url.pathname.split('/');
   if (!first) return { tenant: null, rest: '/' };
   return { tenant: first, rest: `/${rest.join('/')}` };
@@ -298,8 +331,10 @@ export async function cellEnv({ tenantId, env, hostname, config = NO_CONFIG, s3C
     // The tenant segment is here because the BROWSER needs it: `worker.mjs`
     // routes `canvas.<zone>/<tenant>/…` and strips the segment before the cell
     // sees the path, so the cell itself must never strip it again.
+    // Per-project, and with NO path — see `canvasOriginTenant` for why the
+    // shared-host-with-a-path form could not work.
     ...(env.CELL_ZONE
-      ? { MAUDE_PUBLIC_CANVAS_ORIGIN: `https://${CANVAS_LABEL}.${env.CELL_ZONE}/${tenantId}` }
+      ? { MAUDE_PUBLIC_CANVAS_ORIGIN: `https://${CANVAS_LABEL}-${tenantId}.${env.CELL_ZONE}` }
       : {}),
     // The customer-facing landing shows THIS, not a generic default. Absent,
     // the cell prettifies its own tenant slug — it never falls back to the

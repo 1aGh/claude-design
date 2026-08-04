@@ -45,11 +45,56 @@ test('an ordinary project hostname is NOT the canvas origin', () => {
   );
 });
 
-test('a hostname that merely starts with canvas is not the origin either', () => {
-  assert.equal(
-    canvasOriginTenant(new URL('https://canvas-club.cloud.maude.sh/studio'), 'cloud.maude.sh'),
-    null
+// Cloud Phase 27 — `canvas-<project>.<zone>` IS the origin now, one per project.
+//
+// The shared host with the project in the PATH could not work: canvas code
+// contains ABSOLUTE asset URLs (`/.design/system/<ds>/assets/…`), and an
+// absolute URL resolves against the origin, silently dropping the project.
+// Nothing in the shell reaches inside a tenant's compiled module to fix that.
+
+test('canvas-<project>.<zone> is that project’s origin, and the path is untouched', () => {
+  assert.deepEqual(
+    canvasOriginTenant(
+      new URL('https://canvas-alligators.cloud.maude.sh/.design/system/x/assets/a.png'),
+      'cloud.maude.sh'
+    ),
+    { tenant: 'alligators', rest: '/.design/system/x/assets/a.png' }
   );
+  // No stripping — the origin root IS the project, which is the whole point.
+  assert.equal(
+    canvasOriginTenant(new URL('https://canvas-club.cloud.maude.sh/studio'), 'cloud.maude.sh')
+      .tenant,
+    'club'
+  );
+});
+
+test('a canvas hostname whose project id is malformed resolves to nothing', () => {
+  // Never a guess, and never a cell for a project that cannot exist.
+  for (const h of [
+    'canvas-.cloud.maude.sh',
+    'canvas-a_b.cloud.maude.sh',
+    'canvas-x..cloud.maude.sh',
+  ]) {
+    assert.equal(canvasOriginTenant(new URL(`https://${h}/x`), 'cloud.maude.sh'), null, h);
+  }
+});
+
+test('hostname case is normalised, not rejected — DNS is case-insensitive', () => {
+  // `canvas-Alligators` and `canvas-alligators` are the SAME host; treating the
+  // first as malformed would 404 a project because of how somebody typed it.
+  assert.equal(
+    canvasOriginTenant(new URL('https://canvas-Alligators.cloud.maude.sh/x'), 'cloud.maude.sh')
+      .tenant,
+    'alligators'
+  );
+});
+
+test('the canvas hostname never starts a cell of its own name', () => {
+  // `canvas-alligators` is a valid tenant-id shape, so without the reserved
+  // prefix it would start a brand-new empty project at the very address
+  // alligators' canvases load from — the `view-` lesson, second time.
+  assert.equal(tenantFromHostname('canvas-alligators.cloud.maude.sh', 'cloud.maude.sh'), null);
+  assert.equal(tenantFromHostname('alligators.cloud.maude.sh', 'cloud.maude.sh'), 'alligators');
 });
 
 test('no zone configured means no canvas origin — never a guess', () => {

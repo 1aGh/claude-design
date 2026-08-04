@@ -191,7 +191,11 @@ export function downloadPage({
  * The second door comes back in Cloud Phase 25 (B5) as Maude Studio in the
  * browser, behind THIS account — canvas board C2 draws the finished state.
  */
-export function connectPage({ account, project, isOwner }) {
+export function connectPage({ account, project, isOwner, cellZone }) {
+  // Defaulted HERE rather than in the signature: a caller that passes an
+  // explicit `undefined` (an unset Worker var) would otherwise sail past a
+  // parameter default and render `https://<id>.undefined`.
+  const zone = cellZone || 'cloud.maude.sh';
   return page(
     `Open ${project.name}`,
     `<div class="card">
@@ -205,8 +209,13 @@ export function connectPage({ account, project, isOwner }) {
          <a href="${DESKTOP_DOWNLOAD_URL}">Get it at maude.sh/desktop</a>, then come back and
          press the button.</p>
      </div>
-     <p class="quiet">Opening ${esc(project.name)} in a browser tab is coming — for now the app
-       is the way in.</p>`,
+     <div class="card">
+       <h2>In your browser</h2>
+       <p class="quiet">The same Maude, in a tab — the canvases, the design system, comments
+         and history. No install. The agent stays in the app, because it runs on your own
+         machine.</p>
+       <a class="button" href="https://${esc(project.id)}.${esc(zone)}">Open in the browser</a>
+     </div>`,
     { account, project, isOwner, active: 'connect' }
   );
 }
@@ -475,7 +484,7 @@ export async function handleProjectAdminRoutes(request, env, { account }) {
 
   // ----------------------------------------------------------------- connect
   if (surface === 'connect' && request.method === 'GET') {
-    return html(connectPage({ account, project, isOwner }));
+    return html(connectPage({ account, project, isOwner, cellZone: env.CELL_ZONE }));
   }
 
   // ---------------------------------------------------------------- download

@@ -179,7 +179,16 @@ function cloudflareOk() {
   network.push([
     'api.cloudflare.com',
     async (url, init) => {
-      calls.push({ url, method: init.method });
+      // The HOSTNAME is in the body, not the URL — every workers/domains PUT
+      // goes to the same endpoint. Recording only the URL made "which addresses
+      // did we route" unaskable, which is exactly what a caller wants to know.
+      let hostname = null;
+      try {
+        hostname = JSON.parse(init.body ?? '{}').hostname ?? null;
+      } catch {
+        /* not a JSON body — leave it null */
+      }
+      calls.push({ url, method: init.method, hostname });
       return Response.json({ success: true, result: {} });
     },
   ]);
@@ -281,7 +290,14 @@ test('the return writes the project + attempt and routes the address', async () 
   assert.equal(project.subscription_id, 'sub_1');
   const attempt = sqlite.prepare('SELECT * FROM checkout_attempts').get();
   assert.equal(attempt.payment, 'authorized');
-  assert.equal(cf.length, 1, 'the hostname was routed');
+  // TWO hostnames now (Cloud Phase 27): the project's, and its own canvas
+  // origin. The canvas origin has to be a real address before anybody opens a
+  // design, not something discovered missing at that moment.
+  assert.equal(cf.length, 2, 'both the project and its canvas origin were routed');
+  assert.deepEqual(cf.map((c) => c.hostname).sort(), [
+    'canvas-zkusebni-tym.cloud.maude.sh',
+    'zkusebni-tym.cloud.maude.sh',
+  ]);
 });
 
 test("a session that is not this customer's writes nothing", async () => {

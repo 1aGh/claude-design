@@ -134,14 +134,25 @@ export function matrixRows() {
 export const ACCOUNT_ROLES = Object.freeze(['admin', 'member']);
 
 /**
- * Translate an account role into the project role it implies.
+ * Translate a role from EITHER vocabulary into the project role it implies.
  *
- * An `admin` on a hub administers that hub's project, so `owner`. A `member` is
- * a member. Anything unrecognised yields `null` — and every caller treats null
- * as "no capabilities", because an unknown role must never be an escalation.
+ * A PROJECT role passes through: the control plane vouches `owner` / `member` /
+ * `viewer` directly on a project token, and translating those was a regression
+ * that made the project's own owner "VIEW ONLY" — `owner` is not an account
+ * role, so a translator that only knew account roles returned null, and null
+ * has no capabilities at all.
+ *
+ * An ACCOUNT role maps: an `admin` on a hub administers that hub's project, so
+ * `owner`; a `member` is a member.
+ *
+ * Anything unrecognised still yields `null`, and every caller treats null as
+ * "no capabilities" — an unknown role must never be an escalation. Accepting
+ * both vocabularies here is safe precisely because the accepted set is
+ * enumerated; it is `role === 'viewer'`-style guessing at the call sites that
+ * this function exists to prevent.
  */
-export function projectRoleForAccount(accountRole) {
-  if (accountRole === 'admin') return 'owner';
-  if (accountRole === 'member') return 'member';
+export function projectRoleForAccount(role) {
+  if (ROLES.includes(role)) return role;
+  if (role === 'admin') return 'owner';
   return null;
 }
