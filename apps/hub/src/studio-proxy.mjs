@@ -282,6 +282,17 @@ export function createStudioProxy({
   mintCanvasToken = null,
   forward = defaultForward,
   forwardUpgrade = defaultForwardUpgrade,
+  /**
+   * Cloud Phase 27 B3 — called after a browser upload has actually landed.
+   *
+   * The asset write itself belongs to the studio (it owns the tree, the sniff,
+   * the caps and the content-addressed name); what the studio cannot do in a
+   * cell is reach object storage, because its credentials are deliberately not
+   * in `childEnv()`. So the hub watches for the one request that creates an
+   * asset and mirrors it — no fs watcher, no polling, and no widening of the
+   * child's environment.
+   */
+  onAssetWritten = null,
 } = {}) {
   /**
    * Handle one HTTP request destined for the studio.
@@ -351,6 +362,21 @@ export function createStudioProxy({
         canvasToken: mintCanvasToken?.(session) ?? null,
       }),
     });
+    // B3 — only on a write that SUCCEEDED. The studio's own caps and sniff have
+    // already run by the time it answered 2xx, so mirroring here inherits every
+    // one of them rather than re-deciding what an asset is.
+    if (
+      method === 'POST' &&
+      pathname === '/_api/asset' &&
+      response.statusCode >= 200 &&
+      response.statusCode < 300
+    ) {
+      try {
+        onAssetWritten?.();
+      } catch {
+        /* the upload succeeded; a mirror failure must not un-succeed it */
+      }
+    }
     return true;
   }
 

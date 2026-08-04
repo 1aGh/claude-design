@@ -419,6 +419,65 @@ test('a hub that never declared its public URL falls back to same-origin', () =>
   assert.match(written.join(''), /403 Forbidden/);
 });
 
+test('a successful asset upload tells the hub to mirror it — and only then', async () => {
+  // Cloud Phase 27 B3. The studio owns the write (tree, sniff, caps,
+  // content-addressed name) and in a cell cannot reach object storage: its
+  // credentials are deliberately absent from childEnv(). The hub has both, and
+  // already sees the request.
+  const fired = [];
+  const { proxy } = makeProxy({ onAssetWritten: () => fired.push('asset') });
+
+  const ok = fakeResponse();
+  await proxy.handle({
+    request: { headers: {}, url: '/_api/asset' },
+    response: ok,
+    pathname: '/_api/asset',
+    method: 'POST',
+    session: { email: 'o@b.c', role: 'owner', sessionKey: 'k' },
+  });
+  assert.equal(fired.length, 1, 'a 2xx upload must be mirrored');
+
+  // A read of the same route is not a write.
+  await proxy.handle({
+    request: { headers: {}, url: '/_api/asset' },
+    response: fakeResponse(),
+    pathname: '/_api/asset',
+    method: 'GET',
+    session: { email: 'o@b.c', role: 'owner', sessionKey: 'k' },
+  });
+  assert.equal(fired.length, 1);
+
+  // Neither is a refusal: a viewer never reaches the studio, so there is
+  // nothing on disk to mirror.
+  await proxy.handle({
+    request: { headers: {}, url: '/_api/asset' },
+    response: fakeResponse(),
+    pathname: '/_api/asset',
+    method: 'POST',
+    session: { email: 'v@b.c', role: 'viewer', sessionKey: 'k' },
+  });
+  assert.equal(fired.length, 1);
+});
+
+test('a failed upload is not mirrored', async () => {
+  const fired = [];
+  const { proxy } = makeProxy({
+    onAssetWritten: () => fired.push('asset'),
+    forward: async ({ response }) => {
+      response.writeHead(413, {});
+      response.end('too big');
+    },
+  });
+  await proxy.handle({
+    request: { headers: {}, url: '/_api/asset' },
+    response: fakeResponse(),
+    pathname: '/_api/asset',
+    method: 'POST',
+    session: { email: 'o@b.c', role: 'owner', sessionKey: 'k' },
+  });
+  assert.equal(fired.length, 0);
+});
+
 test('vendor runtime bundles need no capability; tenant content always does', async () => {
   // The importmap that names them is static and must precede any module load,
   // so there is no moment at which a token could be appended. They are our own

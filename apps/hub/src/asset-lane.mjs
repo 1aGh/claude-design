@@ -89,7 +89,7 @@ function listRecursive(dir, prefix = '', out = []) {
  *
  * @returns {Promise<{ uploaded: string[], skipped: number, failed: {key:string,reason:string}[] }>}
  */
-export async function sweepAssets({ designRoot, s3, log = console, deps = {}, prefix }) {
+export async function sweepAssets({ designRoot, s3, log = console, deps = {}, prefix, only }) {
   // Tenant scope. Resolved ONCE here and passed down, so the reader and the
   // writer cannot end up computing it differently.
   const scope = prefix ?? assetPrefixFromEnv();
@@ -102,7 +102,9 @@ export async function sweepAssets({ designRoot, s3, log = console, deps = {}, pr
   const all = listRecursive(dir);
   if (all.length === 0) return result; // no assets — the common case for a fresh project
 
-  const eligible = pendingAssets(all);
+  // `only` narrows a sweep to a named set (the B3 incremental lane). Absent =
+  // everything, which is the boot sweep and every pre-existing caller.
+  const eligible = pendingAssets(all).filter((n) => !only || only.has(n));
   const skipped = all.filter((n) => !servable(n));
   if (skipped.length > 0) {
     // Named loudly rather than dropped. A silently skipped asset is a broken
@@ -141,4 +143,87 @@ export async function sweepAssets({ designRoot, s3, log = console, deps = {}, pr
     );
   }
   return result;
+}
+
+/**
+ * The lane a BROWSER upload takes — Cloud Phase 27 B3.
+ *
+ * The boot sweep above rests on "assets arrive with a commit, and a cell wakes
+ * on every migration". A browser upload breaks both halves of that: it lands on
+ * the working tree through `POST /_api/asset` in the studio, with no commit and
+ * no boot, so the bytes sat in `/repo` and reached object storage only whenever
+ * the cell next restarted. Until then the asset served fine from the checkout
+ * and was one teardown away from being gone.
+ *
+ * WHY THE HUB AND NOT THE STUDIO. The studio has its own S3 mirror
+ * (`assets-s3.ts`) and in a cell it is deliberately unconfigured: `childEnv()`
+ * is an allowlist and the tenant's storage credentials are not on it. Handing
+ * them over to close this gap would undo a boundary that exists for better
+ * reasons than this one. The hub already holds the credentials and already sees
+ * the request, so the trigger belongs here.
+ *
+ * WHY NOT RE-SWEEP. A full sweep is one HEAD per file — 793 of them on a real
+ * project — for an upload that added exactly one. This keeps the names it has
+ * already mirrored and looks only at what is new, so the steady-state cost of
+ * an upload is one HEAD and one PUT.
+ */
+export function createAssetSweeper({ designRoot, s3, prefix, log = console, deps = {} }) {
+  /** Names this process has already put (or found) in the bucket. */
+  const mirrored = new Set();
+  let running = null;
+  let again = false;
+
+  function remember(result) {
+    for (const name of result.uploaded) mirrored.add(name);
+    return result;
+  }
+
+  /** The boot sweep — everything, and remember what was there. */
+  async function sweepAll() {
+    const result = await sweepAssets({ designRoot, s3, log, deps, prefix });
+    // `skipped` counts files already in the bucket; they are equally "done", but
+    // sweepAssets does not name them. Re-listing is cheap and local, and it
+    // means a second boot does not re-HEAD them.
+    for (const name of listRecursive(join(designRoot, 'assets'))) mirrored.add(name);
+    return remember(result);
+  }
+
+  /**
+   * The incremental sweep — only what this process has not mirrored yet.
+   *
+   * Single-flight with a trailing re-run: a burst of uploads (dragging six
+   * images onto a canvas) collapses into one pass, and an upload that lands
+   * DURING a pass is not dropped — it triggers exactly one more.
+   */
+  function sweepNew() {
+    if (running) {
+      again = true;
+      return running;
+    }
+    running = (async () => {
+      try {
+        const dir = join(designRoot, 'assets');
+        const fresh = listRecursive(dir).filter((n) => !mirrored.has(n));
+        if (fresh.length === 0) return { uploaded: [], skipped: 0, failed: [] };
+        const result = await sweepAssets({
+          designRoot,
+          s3,
+          log,
+          deps,
+          prefix,
+          only: new Set(fresh),
+        });
+        return remember(result);
+      } finally {
+        running = null;
+        if (again) {
+          again = false;
+          void sweepNew();
+        }
+      }
+    })();
+    return running;
+  }
+
+  return { sweepAll, sweepNew, mirroredCount: () => mirrored.size };
 }

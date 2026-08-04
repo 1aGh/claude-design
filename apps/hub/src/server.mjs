@@ -50,7 +50,7 @@ import {
   verifyAdminAuth,
   writeAdminSecret,
 } from './admin-auth.mjs';
-import { sweepAssets } from './asset-lane.mjs';
+import { createAssetSweeper } from './asset-lane.mjs';
 import { handleAssetRoute } from './assets.mjs';
 import {
   handleAuthRoutes,
@@ -328,6 +328,10 @@ export function createHub(config = {}) {
   // self-hosted hub sits beside somebody's desktop and has no studio to
   // supervise, so this is workspace-mode-only — the same restriction, and the
   // same reason, as the autosave agent above.
+  // Cloud Phase 27 B3 — built once the storage credentials resolve (below), and
+  // read by the proxy's post-upload hook. Null until then, and null forever on
+  // a hub with no object storage, which is every self-hosted one.
+  let assetSweeper = null;
   const studioEnabled = workspaceMode && process.env.MAUDE_STUDIO_CHILD !== '0';
   const studio = studioEnabled ? createStudioChild() : null;
   const studioProxy = studioEnabled
@@ -336,6 +340,15 @@ export function createHub(config = {}) {
         canvasUpstream: () => canvasUpstreamStatus(studio),
         publicUrl: process.env.HUB_PUBLIC_URL ?? null,
         hash: (input) => createHash('sha256').update(input).digest('hex'),
+        // B3 — a browser upload reaches object storage now, not at the next
+        // boot. Fire-and-forget: the upload has already succeeded, and a mirror
+        // failure must not un-succeed it (the bytes are still in the checkout,
+        // and the next boot sweep is the backstop it always was).
+        onAssetWritten: () => {
+          assetSweeper?.sweepNew().catch((err) => {
+            console.error(`[assets] post-upload mirror failed: ${err.message}`);
+          });
+        },
         mintCanvasToken: (session) =>
           mintRenderToken({
             secret,
@@ -953,6 +966,19 @@ export function createHub(config = {}) {
     /** Record the asset sweep's result for /health (see bootReport). */
     recordAssetSweep(summary) {
       bootReport.assets = summary;
+    },
+    /**
+     * Hand the boot sequence's sweeper to the proxy's post-upload hook (B3).
+     *
+     * It is built in `runAsMain()`, where the storage credentials resolve, and
+     * consumed by a closure created here in `createHub()` — two different
+     * function scopes, so this crosses the boundary explicitly. The first
+     * attempt assigned straight across it, which in an ES module is not a
+     * closure write but a `ReferenceError` on every cell boot with storage
+     * configured. Caught by the linter, not by a test, and worth the sentence.
+     */
+    setAssetSweeper(sweeper) {
+      assetSweeper = sweeper;
     },
     /** Flush the pending commit and detach. The SIGTERM path depends on this. */
     async stopWorkspaceAgent() {
@@ -1983,13 +2009,23 @@ async function runAsMain() {
       );
     }
     if (s3Source.configured && repoDir) {
-      // Sweep once at boot rather than on a timer: assets arrive with a commit,
-      // and a cell wakes on every migration, so boot is already the frequent
-      // event. A timer would mostly re-HEAD objects that have not changed.
+      // Sweep at boot: assets arrive with a commit, and a cell wakes on every
+      // migration, so boot is already the frequent event. A timer would mostly
+      // re-HEAD objects that have not changed.
+      //
+      // Cloud Phase 27 B3 — that reasoning has one hole, and it is the one a
+      // customer meets first. A BROWSER upload arrives with no commit and no
+      // boot, so those bytes lived only in `/repo` until the cell next
+      // restarted — served fine from the checkout the whole time, and one
+      // teardown from gone. `sweepNew()` below closes it per upload.
       const designRoot = join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design');
       s3Source
         .config()
-        .then((s3) => sweepAssets({ designRoot, s3 }))
+        .then((s3) => {
+          const sweeper = createAssetSweeper({ designRoot, s3 });
+          built.setAssetSweeper(sweeper);
+          return sweeper.sweepAll();
+        })
         .then((r) => {
           built.recordAssetSweep({
             uploaded: r.uploaded.length,

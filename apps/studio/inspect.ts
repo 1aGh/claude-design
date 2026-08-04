@@ -4,6 +4,7 @@
 import path from 'node:path';
 
 import type { Context } from './context.ts';
+import { normalizeSessionKey, sessionFile } from './session-scope.ts';
 
 export interface SelectedElement {
   file: string;
@@ -96,6 +97,8 @@ type SetSelectedInput =
   | null;
 
 export interface Inspect {
+  /** Whose state this is — `''` for the shared singleton (D3). */
+  sessionKey: string;
   state: ActiveState;
   load(): Promise<void>;
   setActive(file: string): void;
@@ -126,9 +129,16 @@ const NEW = (): ActiveState => ({
 
 export function createInspect(
   ctx: Context,
-  loadActiveComments: (file: string) => Promise<unknown[]>
+  loadActiveComments: (file: string) => Promise<unknown[]>,
+  /**
+   * Whose state this is — Cloud Phase 27 D3. `''` is the shared singleton every
+   * desktop has always had; a non-empty key gives one member of a cell their
+   * own selection, their own open tab, and their own `_active.<key>.json`.
+   */
+  sessionKey = ''
 ): Inspect {
   const state: ActiveState = NEW();
+  const activeFile = sessionFile(ctx.paths.activeFile, sessionKey);
   let saveQueued = false;
 
   async function save() {
@@ -144,7 +154,7 @@ export function createInspect(
         }
       }
       const enriched = { ...state, active_comments };
-      await Bun.write(ctx.paths.activeFile, JSON.stringify(enriched, null, 2));
+      await Bun.write(activeFile, JSON.stringify(enriched, null, 2));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('  warn: failed to save _active.json:', msg);
@@ -159,7 +169,7 @@ export function createInspect(
 
   async function load() {
     try {
-      const raw = await Bun.file(ctx.paths.activeFile).text();
+      const raw = await Bun.file(activeFile).text();
       const prev = JSON.parse(raw);
       Object.assign(state, prev, { session_started: new Date().toISOString() });
       // Pre-selections _active.json (or a hand-edited one) → keep the invariant.
@@ -222,10 +232,10 @@ export function createInspect(
     state.selected = file ? restoreFor(file) : null;
     state.last_change = new Date().toISOString();
     scheduleSave();
-    ctx.bus.emit('active', state.active);
+    ctx.bus.emit('active', state.active, { session: sessionKey });
     // Clients (StatusBar, shell halo, chat context chip) must see the restored
     // selection, not assume the pre-switch null.
-    ctx.bus.emit('selected', state.selected);
+    ctx.bus.emit('selected', state.selected, { session: sessionKey });
   }
 
   function setOpenTabs(tabs: string[]) {
@@ -320,7 +330,7 @@ export function createInspect(
     }
     state.last_change = new Date().toISOString();
     scheduleSave();
-    ctx.bus.emit('selected', state.selected);
+    ctx.bus.emit('selected', state.selected, { session: sessionKey });
   }
 
   function retarget(fromFile: string, toFile: string): boolean {
@@ -379,6 +389,7 @@ export function createInspect(
   }
 
   return {
+    sessionKey,
     state,
     load,
     setActive,
@@ -387,6 +398,55 @@ export function createInspect(
     retarget,
     save,
     injectInspector,
+  };
+}
+
+/**
+ * One `Inspect` per member — Cloud Phase 27 D3.
+ *
+ * A desktop asks for `for('')` forever and gets the single instance it always
+ * had. A cell asks with the proxy's vouched session key and gets one per
+ * member, so an owner and a viewer stop overwriting each other's open tab and
+ * selection.
+ *
+ * Instances are created on demand and kept: they are small (one state object),
+ * a member reconnects to the same key across reloads, and evicting one would
+ * lose exactly the state this exists to preserve. The key space is bounded by
+ * the project's membership, not by anything a client can invent —
+ * `normalizeSessionKey` rejects a value that is not proxy-shaped, and the proxy
+ * strips inbound `x-maude-*` before injecting its own.
+ */
+export interface InspectRegistry {
+  /** The instance for this session key, created on first use. */
+  for(sessionKey?: string | null): Inspect;
+  /** Every live instance. */
+  all(): Inspect[];
+}
+
+export function createInspectRegistry(
+  ctx: Context,
+  loadActiveComments: (file: string) => Promise<unknown[]>
+): InspectRegistry {
+  const instances = new Map<string, Inspect>();
+
+  function get(sessionKey?: string | null): Inspect {
+    const key = normalizeSessionKey(sessionKey);
+    let found = instances.get(key);
+    if (!found) {
+      found = createInspect(ctx, loadActiveComments, key);
+      instances.set(key, found);
+      // A member returning after a reload picks their own place back up. Fire
+      // and forget: `load()` is a best-effort read of a file that usually does
+      // not exist yet, and blocking a request on it would trade a correctness
+      // nicety for latency on every first touch.
+      if (key) void found.load();
+    }
+    return found;
+  }
+
+  return {
+    for: get,
+    all: () => [...instances.values()],
   };
 }
 

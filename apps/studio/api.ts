@@ -98,6 +98,7 @@ import { createHistory } from './history.ts';
 import { clearLocatorSlug, readLocator, writeLocator } from './locator.ts';
 import { STICKERS_DIR } from './paths.ts';
 import { getPaperPreset, MAX_PRINT_MM } from './print/units.ts';
+import { sessionDir } from './session-scope.ts';
 
 // Directories that never hold user-facing canvases. Exported so the
 // external-canvas watcher (`canvas-list-watch.ts`) shares one source instead of
@@ -1324,8 +1325,11 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
 
   // ---------- Canvas state ----------
 
+  // Cloud Phase 27 D3 — one member's place in the project is not another's.
+  // `sessionDir` is a no-op without an ambient session, so a desktop resolves
+  // the identical path it always did.
   function canvasStatePath(file: string): string {
-    return path.join(paths.canvasStateDir, `${fileSlug(file)}.json`);
+    return path.join(sessionDir(paths.canvasStateDir), `${fileSlug(file)}.json`);
   }
 
   async function loadCanvasState(file: string) {
@@ -1468,7 +1472,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
    *  canvas-ext). Returns null when `file` is not a valid canvas path. */
   function canvasViewPath(file: string): string | null {
     if (!canvasMetaPath(file)) return null; // reuse the containment + ext gate
-    return path.join(paths.canvasStateDir, `${fileSlug(file)}.view.json`);
+    // D3 again — the camera is the other per-machine singleton two members in
+    // one cell were silently sharing.
+    return path.join(sessionDir(paths.canvasStateDir), `${fileSlug(file)}.view.json`);
   }
 
   const MAX_OVERLAY_KEYS = 32;
@@ -1572,7 +1578,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const vp = normalizeViewport(viewport);
     if (!vp) return null;
     try {
-      await mkdir(paths.canvasStateDir, { recursive: true });
+      await mkdir(sessionDir(paths.canvasStateDir), { recursive: true });
       const current = await readCanvasViewRaw(file);
       await Bun.write(viewAbs, `${JSON.stringify({ ...current, viewport: vp }, null, 2)}\n`);
       return vp;
@@ -1597,7 +1603,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const ov = normalizeOverlays(overlays);
     if (ov === null) return null;
     try {
-      await mkdir(paths.canvasStateDir, { recursive: true });
+      await mkdir(sessionDir(paths.canvasStateDir), { recursive: true });
       const current = await readCanvasViewRaw(file);
       const prevOverlays =
         current.overlays && typeof current.overlays === 'object' && !Array.isArray(current.overlays)
@@ -1710,7 +1716,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
           try {
             const current = await readCanvasViewRaw(file);
             const { overlays: _drop, ...rest } = current;
-            await mkdir(paths.canvasStateDir, { recursive: true });
+            await mkdir(sessionDir(paths.canvasStateDir), { recursive: true });
             await Bun.write(viewAbs, `${JSON.stringify(rest, null, 2)}\n`);
           } catch {
             /* best-effort clear */
@@ -1732,12 +1738,12 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
           const current = await readCanvasViewRaw(file);
           if (patch.locked === null) {
             const { locked: _drop, ...rest } = current;
-            await mkdir(paths.canvasStateDir, { recursive: true });
+            await mkdir(sessionDir(paths.canvasStateDir), { recursive: true });
             await Bun.write(viewAbs, `${JSON.stringify(rest, null, 2)}\n`);
           } else {
             const lk = normalizeLocked(patch.locked);
             if (lk !== null) {
-              await mkdir(paths.canvasStateDir, { recursive: true });
+              await mkdir(sessionDir(paths.canvasStateDir), { recursive: true });
               await Bun.write(viewAbs, `${JSON.stringify({ ...current, locked: lk }, null, 2)}\n`);
             }
           }

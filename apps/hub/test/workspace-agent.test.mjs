@@ -14,7 +14,7 @@ import { after, describe, it } from 'node:test';
 
 import * as Y from 'yjs';
 
-import { pendingAssets, sweepAssets } from '../src/asset-lane.mjs';
+import { createAssetSweeper, pendingAssets, sweepAssets } from '../src/asset-lane.mjs';
 import { createGitRunner } from '../src/git-runner.mjs';
 import { mergeSharedMetaIntoLocal } from '../src/meta-merge.mjs';
 import { safeUrl, seedRepo } from '../src/seed-repo.mjs';
@@ -362,6 +362,80 @@ describe('asset lane', () => {
     });
     assert.deepEqual(r.uploaded, ['bbbbbbbb.png']);
     assert.equal(r.failed.length, 1);
+  });
+
+  it('a browser upload is mirrored without waiting for the next boot', async () => {
+    // Cloud Phase 27 B3. The boot sweep rests on "assets arrive with a commit,
+    // and a cell wakes on every migration" — a browser upload arrives with
+    // neither, so those bytes lived only in /repo until the cell restarted:
+    // served fine from the checkout the whole time, and one teardown from gone.
+    const dir = tmp();
+    const assets = join(dir, 'assets');
+    mkdirSync(assets);
+    writeFileSync(join(assets, 'aaaaaaaa.png'), 'committed');
+    const put = [];
+    const heads = [];
+    const sweeper = createAssetSweeper({
+      designRoot: dir,
+      s3: { bucket: 'x' },
+      log: silent(),
+      deps: {
+        headObject: async (_c, key) => {
+          heads.push(key);
+          return null;
+        },
+        putObject: async (_c, key) => put.push(key),
+      },
+    });
+
+    await sweeper.sweepAll();
+    assert.deepEqual(put, ['assets/aaaaaaaa.png']);
+
+    // The upload lands on the tree the way `POST /_api/asset` leaves it.
+    writeFileSync(join(assets, 'bbbbbbbb.png'), 'uploaded in a browser');
+    const headsBefore = heads.length;
+    await sweeper.sweepNew();
+
+    assert.deepEqual(put, ['assets/aaaaaaaa.png', 'assets/bbbbbbbb.png']);
+    // ONE head, not one per file in the project. A full re-sweep would be 793
+    // HEADs on a real project for an upload that added exactly one.
+    assert.equal(heads.length - headsBefore, 1);
+  });
+
+  it('a burst of uploads collapses into one pass, and none is dropped', async () => {
+    const dir = tmp();
+    const assets = join(dir, 'assets');
+    mkdirSync(assets);
+    const put = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const sweeper = createAssetSweeper({
+      designRoot: dir,
+      s3: { bucket: 'x' },
+      log: silent(),
+      deps: {
+        headObject: async () => null,
+        putObject: async (_c, key) => {
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          await new Promise((r) => setTimeout(r, 5));
+          put.push(key);
+          inFlight -= 1;
+        },
+      },
+    });
+    await sweeper.sweepAll();
+
+    // Six images dragged onto a canvas: each POST fires the hook, and one of
+    // them lands mid-pass — the case a naive single-flight guard drops.
+    for (let i = 0; i < 6; i++) {
+      writeFileSync(join(assets, `${'abcdef'[i].repeat(8)}.png`), `n${i}`);
+      void sweeper.sweepNew();
+    }
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert.equal(put.length, 6, `every upload reached the bucket: ${put.join(', ')}`);
+    assert.equal(new Set(put).size, 6, 'and none of them twice');
   });
 
   it('does nothing when the hub has no bucket', async () => {

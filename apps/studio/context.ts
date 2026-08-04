@@ -115,16 +115,23 @@ export interface Paths {
 
 // Tiny pub-sub bus. Lazy — modules subscribe with on('selected', fn) and emit
 // the matching event. Avoids cycling imports between inspect.ts <-> ws.ts.
+/** Who an event is about, when that matters — Cloud Phase 27 D3. A `session`
+ *  scopes a broadcast to one member of a cell; absent means everyone, which is
+ *  every event this bus carried before and every event on a desktop. */
+export interface BusMeta {
+  session?: string;
+}
+
 export interface Bus {
   // biome-ignore lint/suspicious/noExplicitAny: heterogeneous pubsub — subscribers annotate their own payload shape.
-  on(evt: string, fn: (payload: any) => void): () => void;
+  on(evt: string, fn: (payload: any, meta?: BusMeta) => void): () => void;
   // biome-ignore lint/suspicious/noExplicitAny: heterogeneous pubsub — emitters supply their own payload shape.
-  emit(evt: string, payload?: any): void;
+  emit(evt: string, payload?: any, meta?: BusMeta): void;
 }
 
 export function createBus(): Bus {
   // biome-ignore lint/suspicious/noExplicitAny: subscribers are typed at the call site; the bus stores the erased type.
-  const subs = new Map<string, Set<(p: any) => void>>();
+  const subs = new Map<string, Set<(p: any, meta?: BusMeta) => void>>();
   return {
     on(evt, fn) {
       const set = subs.get(evt) ?? new Set();
@@ -132,12 +139,12 @@ export function createBus(): Bus {
       subs.set(evt, set);
       return () => set.delete(fn);
     },
-    emit(evt, payload) {
+    emit(evt, payload, meta) {
       const set = subs.get(evt);
       if (!set) return;
       for (const fn of set) {
         try {
-          fn(payload);
+          fn(payload, meta);
         } catch (err) {
           console.error(`[bus] subscriber for ${evt} threw:`, err);
         }

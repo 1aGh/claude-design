@@ -31,8 +31,9 @@ import { createFsWatch } from './fs-watch.ts';
 import { createGenerationJobQueue } from './generation/jobs.ts';
 import { createGitWatch } from './git/watch.ts';
 import { createHttp } from './http.ts';
-import { createInspect } from './inspect.ts';
+import { createInspectRegistry } from './inspect.ts';
 import { startHeapWatch } from './mem.ts';
+import { normalizeSessionKey, runInSession, SESSION_HEADER } from './session-scope.ts';
 import { createSyncRuntime } from './sync/index.ts';
 import {
   assertContainment,
@@ -71,7 +72,7 @@ let collab: ReturnType<typeof createCollab> | null = null;
 // Forward-declared for the same reason — moveCanvas (feature-file-tree-
 // drag-drop-folders, Task 3) retargets `_active.json` through the live
 // Inspect instance, which is constructed after `api`.
-let inspectHandle: ReturnType<typeof createInspect> | null = null;
+let inspectHandle: ReturnType<typeof createInspectRegistry> | null = null;
 
 const api = createApi(ctx, {
   onCommentsChanged: async (file) => {
@@ -100,13 +101,17 @@ const api = createApi(ctx, {
     if (collab) await collab.registry.forceDrop(slug);
   },
   retargetActive: (fromFile, toFile) => {
-    inspectHandle?.retarget(fromFile, toFile);
+    // D3 — a canvas moved on disk moved for EVERY member, so every member's
+    // state is retargeted, not just the one whose request did it.
+    for (const one of inspectHandle?.all() ?? []) one.retarget(fromFile, toFile);
   },
 });
 
-const inspect = createInspect(ctx, (file) => api.loadCommentsForFile(file));
-inspectHandle = inspect;
-await inspect.load();
+const inspects = createInspectRegistry(ctx, (file) => api.loadCommentsForFile(file));
+inspectHandle = inspects;
+// The shared instance is the desktop's, and a cell's fallback for anything that
+// arrives without a vouched session.
+await inspects.for('').load();
 
 collab = createCollab(ctx, api);
 const aiActivity = createAiActivity(ctx);
@@ -134,11 +139,11 @@ const activity = createActivity(ctx);
 // editing" banner + presence as /design:edit (RC5,
 // rca/issue-canvas-hmr-optimistic-update-consistency).
 const acp = createAcp(ctx, aiActivity);
-const ws = createWs(ctx, api, inspect, collab, activity, acp);
+const ws = createWs(ctx, api, inspects, collab, activity, acp);
 const exportJobs = createExportJobQueue(ctx.bus, ctx.paths.designRoot);
 // feature-ai-media-generation (DDR-16x) — background AI-media generation queue.
 const generateJobs = createGenerationJobQueue(ctx.bus, ctx.paths.designRoot);
-const http = createHttp(ctx, api, inspect, aiActivity, exportJobs, generateJobs);
+const http = createHttp(ctx, api, inspects, aiActivity, exportJobs, generateJobs);
 const fsWatch = createFsWatch(ctx);
 
 // Port: --port arg > $PORT > $MDCC_DEV_PORT > 4399.
@@ -196,7 +201,51 @@ const SANDBOX_ARMED = isSandboxArmed();
 // post-condition on the pruning rather than a second, driftable opinion. A
 // prefix added to the vocabulary then both prunes and is verified, together.
 const pruned = WORKSPACE ? pruneForWorkspace(http.routes) : { routes: http.routes, removed: [] };
-const SERVER_ROUTES = pruned.routes as typeof http.routes;
+/**
+ * Establish WHOSE request this is, once, at the only place every request passes
+ * through — Cloud Phase 27 D3.
+ *
+ * Bun matches `routes` BEFORE `fetch`, so a wrapper on the fall-through alone
+ * would miss the entire route table (the same asymmetry that made a
+ * canvas-origin route 404 in Phase 23). Wrapping here covers both halves, and
+ * the leaves — `canvasViewPath`, `canvasStatePath` — read the ambient key
+ * instead of every function between here and there growing a parameter.
+ *
+ * Outside workspace mode this resolves to `''` on every request, which
+ * `runInSession` treats as "no scope at all" and skips.
+ */
+function withSession<T extends unknown[]>(
+  handler: (req: Request, ...rest: T) => Response | Promise<Response>
+): (req: Request, ...rest: T) => Response | Promise<Response> {
+  return (req, ...rest) =>
+    runInSession(WORKSPACE ? normalizeSessionKey(req.headers.get(SESSION_HEADER)) : '', () =>
+      handler(req, ...rest)
+    );
+}
+
+/** Bun route entries are either a handler or a `{ GET, POST, … }` map. */
+function scopeRoutes<R extends Record<string, unknown>>(routes: R): R {
+  const out: Record<string, unknown> = {};
+  for (const [path, entry] of Object.entries(routes)) {
+    if (typeof entry === 'function') {
+      out[path] = withSession(entry as (req: Request) => Response | Promise<Response>);
+    } else if (entry && typeof entry === 'object') {
+      const byMethod: Record<string, unknown> = {};
+      for (const [method, fn] of Object.entries(entry as Record<string, unknown>)) {
+        byMethod[method] =
+          typeof fn === 'function'
+            ? withSession(fn as (req: Request) => Response | Promise<Response>)
+            : fn;
+      }
+      out[path] = byMethod;
+    } else {
+      out[path] = entry;
+    }
+  }
+  return out as R;
+}
+
+const SERVER_ROUTES = scopeRoutes(pruned.routes) as typeof http.routes;
 if (WORKSPACE && pruned.removed.length > 0) {
   console.log(
     `[studio] workspace mode — withheld ${pruned.removed.length} route(s) that would evaluate ` +
@@ -337,6 +386,9 @@ function startServer(port: number): BunServer {
             id: crypto.randomUUID(),
             remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
             kind: 'inspector',
+            // D3 — whose socket this is, from the proxy's vouched header. Same
+            // handshake-time reasoning as `readOnly` below; `''` on a desktop.
+            session: WORKSPACE ? normalizeSessionKey(req.headers.get(SESSION_HEADER)) : '',
             // Cloud Phase 27 — stamp the role onto the socket at the handshake,
             // the one moment the session is unambiguous. Fails CLOSED in a cell
             // for the same reason the HTTP gate does: an absent header is an
@@ -348,7 +400,8 @@ function startServer(port: number): BunServer {
         if (ok) return undefined as unknown as Response;
         return new Response('Upgrade failed', { status: 400 });
       }
-      return http.fetch(req);
+      // D3 — the fall-through half of the same scope the route table gets above.
+      return withSession(http.fetch)(req);
     },
     websocket: ws.handler,
     error(e) {

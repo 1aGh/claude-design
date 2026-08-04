@@ -4836,6 +4836,69 @@ function CommentsPanel({
 // Phase 32 (Task 1) — auto-update notice. Shown after the shell has downloaded +
 // staged a newer build in the background. Non-blocking: "Restart now" applies it,
 // "Later" dismisses (the next focus/4h check re-stages and re-surfaces it).
+/**
+ * What this role can do, said once, where a teammate lands — Cloud Phase 27 C3.
+ *
+ * A browser tab arrives with none of the context a desktop has: no window
+ * title, no app the person chose to install, and — for a viewer — a set of
+ * controls that will refuse them without explaining why. One line, dismissible,
+ * remembered per role. It re-appears if the role CHANGES, because "you can edit
+ * this now" is worth saying exactly as much as the first sentence was.
+ *
+ * Copy comes from the role the cell vouched (`role-matrix.mjs` is the authority
+ * on what each one means; this is its sentence, not a second opinion).
+ */
+const ROLE_LINE = {
+  owner: 'You own this project — edit, invite and export.',
+  member: 'You can edit this project, comment and export.',
+  viewer: 'You can look at this project, comment and download it, but not change it.',
+};
+
+function CloudRoleBanner({ cloud }) {
+  const role = cloud?.role || null;
+  // Dismissal is READ AT RENDER, not seeded into state. `cfg.cloud` is
+  // `undefined` until `/_config` lands, so a `useState` initializer runs while
+  // there is no role yet — and whatever it decided then would stick forever,
+  // which on the first attempt meant the banner never appeared at all. Found by
+  // opening it in a browser; no test in this repo would have said a word.
+  const [dismissedNow, setDismissedNow] = useState(false);
+  if (!role || dismissedNow) return null;
+  const storageKey = `maude-cloud-role-seen:${role}`;
+  let alreadySeen = false;
+  try {
+    alreadySeen = localStorage.getItem(storageKey) === '1';
+  } catch {
+    /* private mode / storage disabled — show it, saying it twice beats never */
+  }
+  if (alreadySeen) return null;
+  const line = ROLE_LINE[role];
+  if (!line) return null;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="st-banner st-banner--info"
+      data-testid="cloud-role-banner"
+    >
+      <span className="st-banner-dot" aria-hidden="true" />
+      <span>{line}</span>
+      <button
+        type="button"
+        className="btn btn--ghost btn--sm"
+        data-testid="cloud-role-banner-dismiss"
+        onClick={() => {
+          setDismissedNow(true);
+          try {
+            localStorage.setItem(storageKey, '1');
+          } catch {}
+        }}
+      >
+        Got it
+      </button>
+    </div>
+  );
+}
+
 function UpdateBanner({ update, onDismiss }) {
   const [restarting, setRestarting] = useState(false);
   if (!update) return null;
@@ -11062,6 +11125,41 @@ function App() {
     if (path !== SYSTEM_TAB) setLoadingPath(path);
   }, []);
 
+  /**
+   * First open lands on a rendered canvas — Cloud Phase 27 C3.
+   *
+   * A desktop user chose this project, installed the app and knows what is in
+   * it; the empty state is a helpful "pick a screen". A teammate following a
+   * link has done none of that, and an empty pane with an arrow pointing at a
+   * list is the browser saying "the thing you came for is somewhere else".
+   *
+   * CLOUD ONLY, and once. The desktop's empty state is deliberately unchanged —
+   * it earns its keep there (the ⌘-hover lesson, quick setup) — and re-opening
+   * a canvas the person deliberately closed would be a UI arguing with them.
+   */
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (autoOpened.current) return;
+    if (!cfg.cloud) return; // desktop / unknown-yet
+    if (tabs.length > 0) return;
+    if (!groups.length) return; // tree not loaded
+    // The first canvas that is somebody's WORK — a design-system specimen is a
+    // rendered canvas too, and not what a teammate followed a link to see.
+    let first = null;
+    for (const g of groups) {
+      for (const p of g.paths || []) {
+        if (!CANVAS_EXT_RE.test(p)) continue;
+        if (/(^|\/)system\//.test(p)) continue;
+        first = p;
+        break;
+      }
+      if (first) break;
+    }
+    if (!first) return;
+    autoOpened.current = true;
+    openTab(first);
+  }, [cfg.cloud, groups, tabs.length, openTab]);
+
   const openSystem = useCallback(
     (dsName) => {
       // DsFolderRow passes the clicked DS name → scope the System view to it so
@@ -14039,6 +14137,7 @@ function App() {
       onContextMenu={onShellContextMenu}
     >
       {firstRun && <OnboardingWizard />}
+      <CloudRoleBanner cloud={cfg.cloud} />
       <UpdateBanner update={updateReady} onDismiss={() => setUpdateReady(null)} />
       <SyncBanner status={syncStatus} />
       {!usageNudge && !tourSteps && <WhatsNewToast wn={whatsNew} />}

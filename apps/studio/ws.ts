@@ -9,7 +9,7 @@ import type { Api } from './api.ts';
 import type { Collab, RoomConn } from './collab/index.ts';
 import type { Context } from './context.ts';
 import { createHmrBroadcaster } from './hmr-broadcast.ts';
-import type { Inspect } from './inspect.ts';
+import type { InspectRegistry } from './inspect.ts';
 
 /**
  * Per-connection state. `kind` discriminates between the legacy JSON
@@ -29,6 +29,11 @@ export type WsData =
        *  per session, and a handshake is the one moment the session is
        *  unambiguous. */
       readOnly: boolean;
+      /** WHOSE socket this is — Cloud Phase 27 D3. Same reasoning as `readOnly`
+       *  one line up, for the other thing a cell has more than one of. `''` on
+       *  a desktop, which is what makes every broadcast below reach everybody
+       *  exactly as it always did. */
+      session: string;
     }
   | {
       id: string;
@@ -147,7 +152,10 @@ export interface Ws {
 export function createWs(
   ctx: Context,
   api: Api,
-  inspect: Inspect,
+  /** Cloud Phase 27 D3 — one inspector per member, not one per process. Every
+   *  read/write below resolves through the socket's own session key, so a
+   *  desktop (key `''`) keeps hitting the single instance it always had. */
+  inspects: InspectRegistry,
   collab: Collab,
   activity: Activity,
   acp: Acp
@@ -164,10 +172,16 @@ export function createWs(
 
   // Privileged inspector feed — comments, selection, ai-activity, git-lifecycle,
   // sync:status, fs:*. ONLY the same-origin inspector clients (the shell) get it.
-  function broadcast(payload: unknown) {
+  function broadcast(payload: unknown, session?: string) {
     const msg = typeof payload === 'string' ? payload : JSON.stringify(payload);
     for (const ws of clients) {
       if (ws.data.kind !== 'inspector') continue;
+      // D3 — an event ABOUT one member goes only to that member. `session` is
+      // set by the emitter (inspect.ts stamps its own key); everything else —
+      // fs changes, comments, git lifecycle, sync status — is about the
+      // PROJECT and reaches everyone, which is why the audience is opt-in
+      // rather than the default.
+      if (session && ws.data.session !== session) continue;
       send(ws, msg);
     }
   }
@@ -185,8 +199,10 @@ export function createWs(
 
   // Wire bus -> WS broadcasts. inspect.ts emits 'selected' / 'active' after every
   // state write; fs-watch.ts emits 'fs:*' on every save.
-  ctx.bus.on('selected', (sel) => broadcast({ type: 'selected', selected: sel }));
-  ctx.bus.on('active', (file) => broadcast({ type: 'active', file }));
+  ctx.bus.on('selected', (sel, meta) =>
+    broadcast({ type: 'selected', selected: sel }, meta?.session)
+  );
+  ctx.bus.on('active', (file, meta) => broadcast({ type: 'active', file }, meta?.session));
   ctx.bus.on('fs:html', (file) => broadcast({ type: 'fs:html', file }));
   ctx.bus.on('fs:css', (file) => broadcast({ type: 'fs:css', file }));
   ctx.bus.on('fs:json', (file) => broadcast({ type: 'fs:json', file }));
@@ -314,7 +330,11 @@ export function createWs(
       // opening mid-edit seeds its overlay state (Phase 13). Inspector-origin
       // sockets only — `canvas-hmr` sockets get no snapshot by design and rely
       // on live `activity` broadcasts.
-      send(ws, { type: 'snapshot', state: inspect.state, activity: activity.state });
+      send(ws, {
+        type: 'snapshot',
+        state: inspects.for(ws.data.kind === 'inspector' ? ws.data.session : '').state,
+        activity: activity.state,
+      });
     },
     async close(ws) {
       if (ws.data.kind === 'acp') {
@@ -392,6 +412,7 @@ export function createWs(
           });
           return;
         }
+        const inspect = inspects.for(ws.data.kind === 'inspector' ? ws.data.session : '');
         if (msg.type === 'active' && typeof msg.file === 'string') inspect.setActive(msg.file);
         else if (msg.type === 'tabs' && Array.isArray(msg.tabs)) inspect.setOpenTabs(msg.tabs);
         else if (msg.type === 'select' && msg.selection) inspect.setSelected(msg.selection);

@@ -81,12 +81,13 @@ import {
 import { createGitEndpoints } from './git/endpoints.ts';
 import { gitShowFile } from './git/service.ts';
 import { createGitHubEndpoints } from './github/endpoints.ts';
-import type { Inspect } from './inspect.ts';
+import type { InspectRegistry } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
 import { BIN_DIR, DEV_SERVER_ROOT, MEDIA_DIR, STICKERS_DIR } from './paths.ts';
 import { createPhotoStore, PHOTO_EDIT_MAX_BYTES } from './photo-store.ts';
 import { probeReadiness } from './readiness.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
+import { currentSession } from './session-scope.ts';
 import { linkHub } from './sync/hub-link.ts';
 import { isHubReadOnly } from './sync/hubs-config.ts';
 import { signInToWorkspace, workspaceDisclosure } from './sync/workspace-signin.ts';
@@ -878,11 +879,18 @@ export interface Http {
 export function createHttp(
   ctx: Context,
   api: Api,
-  inspect: Inspect,
+  /** D3 — one inspector per member. `inspect()` resolves the ambient session's
+   *  instance, which on a desktop is the single one this used to be. */
+  inspects: InspectRegistry,
   ai: AiActivity,
   exportJobs: ExportJobQueue,
   generateJobs: GenerationJobQueue
 ): Http {
+  /** The current request's inspector state (Cloud Phase 27 D3). Resolved per
+   *  call rather than captured, because "whose" changes per request and a
+   *  captured instance would hand one member another's open canvas. */
+  const inspect = () => inspects.for(currentSession());
+
   // Task 2.7 (approach A) — in-flight whisper-model download state (one at a
   // time), polled by the Settings "Download model" card via GET
   // /_api/generate/whisper-model. Closure-scoped: one server, one download.
@@ -1045,7 +1053,7 @@ export function createHttp(
     req: Request,
     body: { format: Format; scope: Scope; options?: Record<string, unknown> }
   ) {
-    const activeJson = inspect.state as unknown as ActiveJsonShape;
+    const activeJson = inspect().state as unknown as ActiveJsonShape;
     return {
       format: body.format,
       scope: body.scope,
@@ -1091,7 +1099,7 @@ export function createHttp(
         pid: process.pid,
       }),
 
-    '/_active': () => Response.json(inspect.state),
+    '/_active': () => Response.json(inspect().state),
 
     // Phase 31 (DDR-123) — ACP chat readiness. Cheap, side-effect-free probe
     // (is the adapter present + is `claude` on PATH); no subprocess spawned.
@@ -1431,7 +1439,7 @@ export function createHttp(
         buildDebugBundle({
           maudeVersion: resolveMaudeVersion(),
           projectName: ctx.cfg.name ?? null,
-          activeCanvas: (inspect.state as { active?: string | null }).active ?? null,
+          activeCanvas: (inspect().state as { active?: string | null }).active ?? null,
           repoRoot: ctx.paths.repoRoot,
         }),
         { headers: { 'Cache-Control': 'no-store' } }
@@ -4500,7 +4508,7 @@ export function createHttp(
   async function serveCanvasShell(applyCsp: boolean, capture = false): Promise<Response> {
     const shellHtml = await Bun.file(join(TEMPLATES_DIR, '_shell.html')).text();
     // Inject inspector overlay — Cmd+Click selection + add-comment flow.
-    const injected = inspect.injectInspector(shellHtml);
+    const injected = inspect().injectInspector(shellHtml);
     const headers: Record<string, string> = {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
