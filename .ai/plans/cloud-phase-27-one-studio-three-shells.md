@@ -374,3 +374,62 @@ removed.
   rehydrated checkout, which is what fixed the grey boxes.)
 - [ ] **C3 — first open lands on a rendered canvas.**
 - [ ] **E4 — cloud/desktop parity in E2E.**
+
+---
+
+## Interim close — 2026-08-04 (`/flow:done`, NOT archived)
+
+**The phase is not done.** What it set out to prove is proven — a browser tab
+now shows the real studio, against a real 65-canvas project, with the
+photographs and the webfont — but two acceptance lines are partial and the open
+list above is unchanged. The plan stays active.
+
+**Landed since the plan was written** (v29 in production, then four fixes on top):
+
+- The per-project canvas origin (`canvas-<id>.<zone>`). Not in the plan, and it
+  turned out to be load-bearing twice: canvas code holds ABSOLUTE asset URLs, so
+  the project has to be the origin ROOT rather than a path segment — and having
+  an origin per tenant is what later made a host-scoped capability cookie
+  defensible at all.
+- The capability cookie itself (DDR-210): the shell can only append `?t=` to the
+  URLs it writes, and a tenant's own `<img src="/.design/…">` is not one of them.
+- The session stores a ROLE, not a bit projected from one. A one-bit projection
+  computed at mint could not be re-computed by fixing the function that produced
+  it — the owner stayed VIEW ONLY across three deploys.
+- The narrowed underscore rule on the canvas gate; `preview/_components.css` had
+  been 403ing for every project with a bootstrapped design system, on the desktop
+  too.
+
+**What the security fan-out changed.** Six blockers, four of them ours. Three
+HIGHs formed one chain — a stored SVG gives script on a same-site origin, the
+`SameSite=Lax` cookie is sent there, and the canvas collab WebSocket had no
+`Origin` check to stop it being used. All three are closed. Two mediums remain
+open and are named in DDR-210: capability fixation on the cookie mint
+(attribution, not access), and the shell-origin `/_ws` twin of the socket fix,
+which is worse than the one that was fixed because `realm: 'main'` reaches the
+body lanes. **The `/_ws` one should be the next thing anyone picks up.**
+
+### Interim retro
+
+- **Running it found what reading it could not, and vice versa — neither was
+  optional.** Fifty-one asset failures on one canvas were invisible to 3,400
+  passing tests and to every screenshot; the `SameSite` mistake was invisible to
+  the browser, the harness and production, and took an adversarial reading. Two
+  methods, two disjoint bug classes.
+- **A local stand-in for the data plane paid for itself immediately, and lied
+  once.** Six production round-trips at ~20 minutes each preceded it; after it,
+  every remaining fault was found in one. But it did not forward WebSocket
+  upgrades, so the status bar sat on "reconnecting" — a harness artefact that
+  reads exactly like a product bug, on the surface the harness exists to tell the
+  truth about. **A stand-in has to be honest about what it does NOT emulate.**
+- **A green deploy is not a running deploy.** `cells-deploy` reported success
+  while the old container kept serving for another 20 minutes; the only tell was
+  comparing the client-artifact hashes in `/health` against the built image. The
+  workflow's verify step checks that *a* cell answers, not that the *new* one
+  does. Worth fixing before the next roll.
+- **Fixing a frozen value does not reach the people holding it.** The lesson
+  generalises past this bug: any capability computed once and stored is a
+  capability that outlives its own correction, and if the product offers no way
+  to end the session, the fix cannot arrive at all. Sign-out is not a nicety.
+- **`git add` a shared file in this tree and you may carry another session's
+  work.** Checked the diff before every stage; twice it mattered.
