@@ -1,5 +1,149 @@
 # @1agh/maude
 
+## 0.54.0
+
+### Minor Changes
+
+- 8f19eb5: **Maude Cloud control plane is live.** The tested decision layers (reconciler, billing lifecycle, webhook handling) now run as a deployed Cloudflare Worker with a real D1 database behind them — `/health`, a Stripe webhook endpoint that verifies signatures and never trusts an event's payload (it only names a project to re-derive), and an hourly reconcile sweep so a missed webhook costs at most an hour, never correctness. Deployed on the Free tier a phase ahead of schedule; the custom domain follows with the DNS zone.
+- 33e61f8: **Maude Cloud accounts.** You can now create an account and sign in at the control plane: email and password today, "Continue with Google" the moment its credentials are configured — both land on the _same_ account, so nobody signs in twice. What Maude Cloud stores (and what it never does) is stated inside the signup form itself, and the consent is only recorded if you actually ticked it. Signing out ends the session on the server, not just in your browser. A signed-in owner can mint a short-lived, project-scoped pass for attaching a project — an expiring artifact of your account, never a credential to paste around.
+- 5595d69: **A hosted Maude project now runs as its own isolated cell.** Each project gets its own container, its own hostname, its own operator credential, and its own slice of storage — nothing is shared between projects but the platform itself. A cell wakes on demand, sleeps when idle, and checkpoints itself to object storage.
+
+  The durability question is settled: a cell was killed outright with its disks deleted, and a fresh one came back with the documents, the users, the git history and the work intact. The checkout and the documents are always saved together, so a restore can never produce a project whose files and canvases disagree.
+
+  `/health` on a hosted project now reports what its workspace actually did at boot — whether it has a checkout, whether storage and a starting project are configured, and how many canvases it holds — because a hosted cell has no console to read.
+
+- d3f957c: **Your hosted workspace now keeps its own history.** Until now, autosave-to-git ran only on a desktop — so a project you opened from a phone, from a browser, or simply with no computer attached kept no history at all: its only record was its current bytes. The workspace itself now commits, using the same append-only engine the desktop uses, so a commit made for you is indistinguishable from one you made. Your name is on the commit; the workspace is only the committer. History is never rewritten.
+
+  Alongside it: media in your workspace is mirrored to your object storage without needing a desktop online, `MAUDE_SEED_REPO` actually clones your existing project on first boot (it had been rendered into every deployment and read by nothing), and a workspace that is shut down or moved mid-session flushes its pending commit first instead of losing the last few seconds of your work.
+
+  `maude hub workspace-up` now proves six of its eight checks for real rather than two — including "autosave produced a commit" and "media reaches the bucket" — and a fresh workspace with nothing in it yet is reported as _not yet proven_, not as a failure.
+
+- 936033b: **You can take your project and go.** A hosted project can produce a complete export: every commit and branch of its history as a git bundle you open with `git clone`, a manifest of every media file with its size, and a README in plain language.
+
+  The README says what the export does _not_ contain as prominently as what it does — the media bytes are listed rather than enclosed, because an export big enough to be expensive is one nobody takes. It also tells you how to tell a bad download from a bad archive.
+
+  This is what makes deleting a project safe: Maude has always refused to erase a project that has not been exported, and now there is something real behind that refusal.
+
+- ed28686: **Open a design project in a browser — and a viewer finally means viewer.** Send a teammate a link and they open the real project: the actual canvases, the actual design system, rendered from your project's own source. They can move things, change text and colours, leave notes anchored to what they clicked, and download everything — signed in with their Maude account, with exactly the rights they already have. Someone invited as a viewer finds no editing at all: absent, not greyed out, in the browser and in the app alike.
+
+  Asking Claude for a change still happens in Maude Desktop, on your own machine with your own subscription — the browser says so where the agent would sit rather than leaving a gap.
+
+  Mirroring grows the mode people expected: as well as backing up the whole workspace to its own branch, Maude can sync your design folder into your working repository as a **pull request** you review and merge. Each option says what it will do before you save it.
+
+  The read-only share gallery and `maude share publish` are gone — the browser door replaced them with the real project, for people who actually have access.
+
+- 4bc964f: **File tree drag & drop + folders.** The file tree is a real file explorer now. Create folders from the header or right-click a canvas/folder for Move to… / New folder here / Delete folder — or just drag a canvas (or a whole folder) onto another folder, including back out to the top level. Every history, comment, annotation, and camera position moves with the canvas automatically, and each move shows an Undo toast.
+- bf6bb46: Make the video-comp Timeline a genuinely manual, iMovie-simple editor.
+
+  The bottom Timeline panel gains direct-manipulation editing on top of the
+  existing scrub/preview surface — every gesture is a named AST op on the comp
+  TSX (the single source of truth), addressed by stableId + content-hash with
+  ripple and undo, and reachable headlessly through the same `/_api/clip-edit`
+  door that `/design:edit` uses.
+
+  - **Manual cut vocabulary** — split, in-point trim, speed, crop, colour grade,
+    per-clip audio (mute / volume / detach), and transitions (add / edit / remove
+    via the seam chips), each a parametric verb.
+  - **Three-band iMovie layout** for media cuts (overlay lanes · one storyline ·
+    audio), with magnetic drag-reorder and drop-to-new-layer. A purely digital
+    comp (every beat a hand-authored JSX scene) keeps the stacked
+    row-per-sequence projection with layer expansion.
+  - **Layers you can rearrange** — drag a clip between the storyline and its own
+    overlay layer, and reorder overlay layers vertically (`layer-order` verb;
+    document order = paint order).
+  - **AI placeholder clips** — drop a slate that occupies real timeline space with
+    an inline-editable prompt, then resolve it into generated media in place (the
+    clip's identity survives).
+  - **In-place text** — Title overlays and AI-slate prompts are editable directly
+    in the artboard (double-click), not through a modal.
+  - **Frame-anchored comments** — a Timeline comment tool (press `C`, click) pins
+    feedback to an exact frame + clip + lane, surfaced as first-class agent
+    context via `/_comments`.
+
+  Real per-clip visuals (filmstrips for video, the still itself for images,
+  waveforms for audio) render behind the blocks, and long comps get an
+  export-tier notice.
+
+  Also: debug/`tauri dev` desktop builds no longer auto-update in the background —
+  the silent updater was replacing a dev build with the released version
+  mid-dogfood.
+
+### Patch Changes
+
+- f34c3de: **Live collaboration connects in the cloud browser door.** The per-canvas collab socket — cursors, presence names, live annotations, comment sync — could never reach a cloud cell: the studio's loopback-only gate refused every proxied upgrade, and the hub's session gate refused the cookieless canvas origin. The hub now carries a capability-authenticated WebSocket lane on the canvas origin (the same render token the canvas already rides, so a same-site connect just works), the studio accepts proxy-vouched collab upgrades in workspace mode, and the collab room enforces roles at the socket: a viewer's cursor and comments cross, but only editors and owners write annotations — and nobody writes canvas source from the canvas realm, same as always. Presence now introduces members by name instead of `anonymous-…`, and a collab socket that keeps being refused backs off and says so instead of retrying silently forever.
+- bf25423: **Maude Cloud stops promising things it cannot do, and can hold more than one customer.** A production-readiness audit found the funnel honest page by page and dishonest end to end: somebody authorised payment for "a home for your design projects" and then discovered, one door at a time, that they needed a desktop computer, an install, and a **second paid subscription with Anthropic** — the word "Claude" appeared on zero customer-facing cloud pages. The landing and the wizard now state the whole bill of materials before the card, framed as the reason the work stays private, and Terms, a Privacy notice and a DPA exist and are linked above the payment button.
+
+  Underneath, three things that were computed but never performed now happen. A tenant who stops paying gets their complete copy built and emailed **before** anything is torn down. A deleted project's bytes are actually deleted. And a cell no longer reads its project name, seed repository and first admin address out of a variable shared by the whole fleet — which meant customer number two's first boot could have cloned customer number one's repository. The instance ceiling moves off one, with the cost per instance written down next to the number.
+
+  Also: cancelling now happens on Maude's own billing page with every date on screen before the click, invoices and billing details live there instead of two hops inside Stripe's portal, VAT is charged automatically, and there is a public pricing page — you no longer have to start a checkout to find out what it costs.
+
+- f43e358: **The browser door is early access, and the release note now says so.** The
+  first cloud release described a browser door that shows the full Maude Studio.
+  What shipped is a simplified view — your project opens, roles and comments work,
+  but Files, Layers, Inspector and search are the desktop's for now, and a
+  project's own images and fonts are not served yet. The next release hosts the
+  real studio in the cloud rather than a browser-shaped stand-in.
+
+  Everything under it is real and verified in production: per-tenant storage
+  credentials, the segregated render origin, the role model enforced at the cell,
+  mirror-as-pull-request, and a cell that now reaches the internet by dialling out
+  — so a broken platform link between the router and a project can no longer take
+  that project offline.
+
+- fc2ab54: **Open a cloud project in a browser and you now get the real Maude Studio.** The
+  simplified view is gone. Files, Layers, Inspector, search, the toolbar and the
+  branch/LIVE status are the same code the desktop runs — because it _is_ the same
+  code: a cell now serves the actual studio behind an authenticating proxy rather
+  than a hand-written stand-in.
+
+  Your designs look like your designs. Photographs, club logos, sponsor marks and
+  webfonts load on a rendered canvas — a canvas references its assets by absolute
+  path, and until now every one of those came back unauthorized, so the page
+  rendered with everything that makes it a design missing.
+
+  **A design system's component styles load again — on the desktop too.** Any
+  canvas whose design system ships a `preview/_components.css` was rendering
+  without it. That was every project with a bootstrapped design system.
+
+  **You are told which account you are signed in as, and can sign out.** A browser
+  tab carries no window title and no app switcher, so a project that said VIEW ONLY
+  gave no way to tell whether the role was wrong or the account was — and no way to
+  change either.
+
+  Also: the owner of a project is an owner again (a session used to store a
+  one-bit projection of its role, computed once and frozen for twelve hours), and
+  opening a cloud project no longer asks the server for two things it refuses by
+  design.
+
+- 09f061e: **A shared cloud project now keeps your place, and lets you look properly.**
+
+  Open a project and you land on a canvas instead of an empty pane, with one line
+  telling you what you can do there — and it goes away when you have read it.
+
+  Your open canvas and your pan and zoom are yours alone. Two people in one
+  project used to share a single record of "which canvas is open" and "where the
+  camera is", so a colleague moving around moved you too — silently, which read as
+  the app being flaky rather than as two people sharing one file.
+
+  **Reading a project no longer means reading it blind.** A reviewer can open the
+  Inspector and Layers panels. They were offered in the View menu and then quietly
+  refused to appear, so "you can look at this project" meant looking without
+  structure or measured values. Read-only means you cannot change it, not that you
+  cannot see how it is built.
+
+  Media you upload from a browser reaches storage immediately rather than at the
+  project's next restart, and a project that is saving while somebody else is
+  saving now waits its turn instead of racing — two people editing at once can no
+  longer land a half-saved version in the history.
+
+- d763f9f: **Inviting someone as a "viewer" now does what the word says.** The role has existed since the People page shipped, and it enforced nothing — so the workspace refused those sign-ins outright rather than hand somebody a session it could not restrain. A viewer could be invited and then could not get in at all, while the invitation email promised they could look and comment.
+
+  They get in now, and genuinely cannot change anything: the session carries a read-only capability, the sync protocol drops their document edits rather than trusting the app to hide the buttons, and every route that changes something refuses. Signing out and downloading the work still do exactly what a viewer would expect. The editing UI itself is still on screen for them — that half is next, and until it lands a viewer will see buttons the server declines.
+
+  Alongside it, four defects found by walking the paid signup as a stranger rather than by testing it: every outbound email had been silently failing for two days (invitations, and the new pause and deletion notices), the pricing page promised €19 while the payment screen charged €22.99 including VAT, a project created by mistake could never be deleted because deleting requires a copy and an empty project has nothing to copy, and the deletion-warning email would have sent roughly fifty times instead of once.
+
+- 26d0f04: **The Report-a-Bug dialog now speaks the studio's design language.** The first dogfood report filed through the new button caught its own dialog off-brand — legacy hard-edge mono styling instead of the shell's dialog vocabulary. It now rides the same surface as every other studio dialog (soft radii, accent focus rings, accent-filled primary action), in both light and dark themes, with the consent checklist and screenshot redaction unchanged.
+
 ## 0.49.2
 
 ### Patch Changes
