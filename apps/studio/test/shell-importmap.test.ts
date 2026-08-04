@@ -43,7 +43,14 @@ describe('_shell.html importmap agrees with RUNTIME_PACKAGES', () => {
 
   for (const pkg of RUNTIME_PACKAGES) {
     test(`"${pkg}" resolves to its /_canvas-runtime/ bundle`, () => {
-      expect(imports[pkg]).toBe(`/_canvas-runtime/${slugFor(pkg)}.js`);
+      // RELATIVE (`./`), and that leading dot is load-bearing (Cloud Phase 27).
+      // An importmap value resolves against the DOCUMENT's base URL, so a
+      // root-absolute `/_canvas-runtime/…` is correct only where the shell is
+      // served from the origin root. On the fleet's shared canvas host the
+      // shell lives under `/<project>/`, and every bundle 404'd there — the
+      // grey-canvas failure the per-project origin was introduced to end.
+      // Relative is right in BOTH shapes, so it is the one form to hold.
+      expect(imports[pkg]).toBe(`./_canvas-runtime/${slugFor(pkg)}.js`);
     });
   }
 });

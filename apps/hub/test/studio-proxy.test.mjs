@@ -19,6 +19,13 @@ function fakeResponse() {
     headers: null,
     body: '',
     headersSent: false,
+    // Set BEFORE writeHead and merged by Node at write time — how the canvas
+    // origin plants its capability cookie on the shell document without
+    // reaching into the forwarder.
+    preset: {},
+    setHeader(name, value) {
+      this.preset[String(name).toLowerCase()] = value;
+    },
     writeHead(status, headers) {
       this.statusCode = status;
       this.headers = headers;
@@ -346,5 +353,97 @@ test('vendor runtime bundles need no capability; tenant content always does', as
       verifyToken: () => ({ ok: false }),
     });
     assert.equal(r.statusCode, 401, `${p} must require a capability`);
+  }
+});
+
+test('the capability survives a URL the shell did not write', async () => {
+  // THE BUG. Canvas code is the TENANT's source, and it says
+  // `<img src="/.design/system/x/assets/logo.svg">`. That request leaves the
+  // browser with no query string, because nothing in its path passes through
+  // code we wrote — so every asset, font and photograph on a rendered canvas
+  // came back 401 and the design was a page of empty boxes. The shell cannot
+  // fix it: appending a token to an arbitrary tenant's runtime-computed URLs
+  // is not a thing that can be done.
+  //
+  // So the shell DOCUMENT plants the same capability as a host-scoped cookie,
+  // and the assets ride it. Same token, same expiry, same read-only grant —
+  // the only thing that changes is which part of the request carries it.
+  const valid = (t) => (t === 'cap' ? { ok: true } : { ok: false });
+
+  // 1. The shell document, reached with a token in the URL, sets the cookie.
+  const { proxy, forwarded } = makeProxy();
+  const shell = fakeResponse();
+  await proxy.handleCanvas({
+    request: { headers: {}, url: '/_canvas-shell.html?t=cap' },
+    response: shell,
+    pathname: '/_canvas-shell.html',
+    method: 'GET',
+    verifyToken: valid,
+  });
+  assert.equal(forwarded.length, 1);
+  const cookie = String(shell.preset['set-cookie']);
+  assert.match(cookie, /maude_canvas=cap/);
+  assert.match(cookie, /HttpOnly/, 'the untrusted canvas must not be able to read it');
+  assert.match(cookie, /SameSite=Lax/);
+
+  // 2. An asset with NO query string is served on the strength of that cookie.
+  const asset = fakeResponse();
+  await proxy.handleCanvas({
+    request: { headers: { cookie: 'maude_canvas=cap' }, url: '/.design/system/x/assets/logo.svg' },
+    response: asset,
+    pathname: '/.design/system/x/assets/logo.svg',
+    method: 'GET',
+    verifyToken: valid,
+  });
+  assert.equal(forwarded.length, 2, 'the asset must be forwarded, not refused');
+  assert.equal(asset.statusCode, 200);
+
+  // 3. …and a WRONG cookie is still a refusal. The cookie is not an exemption,
+  //    it is a second place to present the same signed capability.
+  const forged = fakeResponse();
+  await proxy.handleCanvas({
+    request: { headers: { cookie: 'maude_canvas=nope' }, url: '/.design/ui/Home.tsx' },
+    response: forged,
+    pathname: '/.design/ui/Home.tsx',
+    method: 'GET',
+    verifyToken: valid,
+  });
+  assert.equal(forged.statusCode, 401);
+});
+
+test('only the shell document mints the cookie', async () => {
+  // The narrower the surface that hands out an ambient credential, the easier
+  // it is to say what holds it. Every other response on this origin is a
+  // subresource of a shell that already planted one.
+  const { proxy } = makeProxy();
+  const asset = fakeResponse();
+  await proxy.handleCanvas({
+    request: { headers: {}, url: '/.design/ui/Home.tsx?t=cap' },
+    response: asset,
+    pathname: '/.design/ui/Home.tsx',
+    method: 'GET',
+    verifyToken: () => ({ ok: true }),
+  });
+  assert.equal(asset.preset['set-cookie'], undefined);
+});
+
+test('the cookie is Secure wherever the origin is https', async () => {
+  // Local harnesses run the canvas origin on plain http://localhost, where a
+  // Secure cookie is simply never stored and the whole lane silently reverts
+  // to the 401s above.
+  for (const [origin, expected] of [
+    ['https://canvas-alligators.cloud.maude.sh', true],
+    ['http://localhost:18501', false],
+  ]) {
+    const { proxy } = makeProxy({ env: { MAUDE_PUBLIC_CANVAS_ORIGIN: origin } });
+    const r = fakeResponse();
+    await proxy.handleCanvas({
+      request: { headers: {}, url: '/_canvas-shell.html?t=cap' },
+      response: r,
+      pathname: '/_canvas-shell.html',
+      method: 'GET',
+      verifyToken: () => ({ ok: true }),
+    });
+    assert.equal(/; Secure/.test(String(r.preset['set-cookie'])), expected, origin);
   }
 });

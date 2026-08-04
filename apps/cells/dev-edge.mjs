@@ -27,6 +27,13 @@ import { createServer, request as httpRequest } from 'node:http';
 
 import { CANVAS_ORIGIN_HEADER } from './cell-config.mjs';
 
+// The real data plane is a Worker, and a Worker forwards a WebSocket upgrade
+// as a matter of course. `http.request` does not — it pipes bodies, and a 101
+// arrives as a response nobody hijacks. Without the upgrade handler below, the
+// studio's live socket never completes here and the status bar sits on
+// "reconnecting" forever: a harness artefact that reads exactly like a product
+// bug, on the one surface this harness exists to tell the truth about.
+
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
@@ -59,16 +66,50 @@ function pipeToCell(req, res, { path, canvasOrigin }) {
   req.pipe(up);
 }
 
-createServer((req, res) => pipeToCell(req, res, { path: req.url, canvasOrigin: false })).listen(
-  SHELL_PORT,
-  () => console.log(`[edge] shell  origin → http://localhost:${SHELL_PORT}`)
+/** Forward a WebSocket upgrade by hand: same headers, then two raw pipes. */
+function upgradeToCell(req, socket, head, { canvasOrigin }) {
+  const headers = {};
+  for (const [k, v] of Object.entries(req.headers)) {
+    if (k.toLowerCase() === CANVAS_ORIGIN_HEADER) continue;
+    if (k.toLowerCase() === 'host') continue;
+    headers[k] = v;
+  }
+  if (canvasOrigin) headers[CANVAS_ORIGIN_HEADER] = '1';
+  const up = httpRequest({ host: '127.0.0.1', port: CELL, method: req.method, path: req.url, headers });
+  up.on('upgrade', (upRes, upSocket, upHead) => {
+    const status = `HTTP/1.1 ${upRes.statusCode} ${upRes.statusMessage}\r\n`;
+    const lines = Object.entries(upRes.headers).map(([k, v]) => `${k}: ${v}\r\n`);
+    socket.write(status + lines.join('') + '\r\n');
+    if (upHead?.length) socket.write(upHead);
+    upSocket.pipe(socket);
+    socket.pipe(upSocket);
+    for (const s of [socket, upSocket]) s.on('error', () => s.destroy());
+  });
+  up.on('response', (upRes) => {
+    // A refusal (401/404) comes back as an ordinary response — pass the status
+    // through so the browser reports it rather than a bare disconnect.
+    socket.write(`HTTP/1.1 ${upRes.statusCode} ${upRes.statusMessage}\r\n\r\n`);
+    socket.destroy();
+  });
+  up.on('error', () => socket.destroy());
+  if (head?.length) up.write(head);
+  up.end();
+}
+
+const shell = createServer((req, res) =>
+  pipeToCell(req, res, { path: req.url, canvasOrigin: false })
 );
+shell.on('upgrade', (req, socket, head) => upgradeToCell(req, socket, head, { canvasOrigin: false }));
+shell.listen(SHELL_PORT, () => console.log(`[edge] shell  origin → http://localhost:${SHELL_PORT}`));
 
 // The per-project canvas origin (Cloud Phase 27): the origin root IS the
 // project, so the path is passed through untouched. That is the whole reason
 // this shape exists — canvas code holds ABSOLUTE asset URLs, and an absolute
 // URL resolves against the origin.
-createServer((req, res) => pipeToCell(req, res, { path: req.url, canvasOrigin: true })).listen(
-  CANVAS_PORT,
-  () => console.log(`[edge] canvas origin (project ${TENANT}) → http://localhost:${CANVAS_PORT}`)
+const canvas = createServer((req, res) =>
+  pipeToCell(req, res, { path: req.url, canvasOrigin: true })
+);
+canvas.on('upgrade', (req, socket, head) => upgradeToCell(req, socket, head, { canvasOrigin: true }));
+canvas.listen(CANVAS_PORT, () =>
+  console.log(`[edge] canvas origin (project ${TENANT}) → http://localhost:${CANVAS_PORT}`)
 );

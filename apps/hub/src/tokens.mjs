@@ -97,6 +97,23 @@ function db(dataDir) {
     ['expires_at', 'ALTER TABLE tokens ADD COLUMN expires_at INTEGER'],
     ['owner', 'ALTER TABLE tokens ADD COLUMN owner TEXT'],
     ['read_only', 'ALTER TABLE tokens ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0'],
+    // Cloud Phase 27 — the VOUCHED PROJECT ROLE, stored rather than reduced.
+    //
+    // `read_only` is a one-bit projection of a three-value role, and the bit is
+    // computed once, at mint. Two things went wrong with that. A role change
+    // could not reach a live session — the boolean was frozen into the token,
+    // so an owner whose session predated a fix stayed VIEW ONLY for the whole
+    // 12-hour lifetime with no way to clear it from inside the app. And the
+    // distinction between `owner` and `member` was destroyed at the door, so
+    // the cell reconstructed every writer as `member` and no browser session
+    // could ever hold `invite` / `delete` / `mirror`.
+    //
+    // Storing the role keeps the projection derivable, which is the property
+    // the role matrix was built for: ONE table decides what a role means, and
+    // everyone else asks it. NULL means "minted before this shipped" — see the
+    // stale-session branch in `browserSession`, which refuses rather than
+    // guesses.
+    ['role', 'ALTER TABLE tokens ADD COLUMN role TEXT'],
   ]) {
     const present = handle
       .prepare('SELECT COUNT(*) AS n FROM pragma_table_info(?) WHERE name = ?')
@@ -281,7 +298,7 @@ export function matchesScope(scope, documentName) {
  */
 export function addToken(
   dataDir,
-  { label, dev = false, scope, expiresAt, owner, readOnly = false } = {}
+  { label, dev = false, scope, expiresAt, owner, readOnly = false, role } = {}
 ) {
   assertValidLabel(label);
   assertValidScope(scope);
@@ -295,10 +312,11 @@ export function addToken(
   const storedExpiry =
     typeof expiresAt === 'number' && Number.isFinite(expiresAt) ? Math.floor(expiresAt) : null;
   const storedOwner = typeof owner === 'string' && owner.length > 0 ? owner : null;
+  const storedRole = typeof role === 'string' && role.length > 0 ? role : null;
 
   handle
     .prepare(
-      'INSERT OR REPLACE INTO tokens (label, hash, scope, dev, created_at, last_used_at, expires_at, owner, read_only) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)'
+      'INSERT OR REPLACE INTO tokens (label, hash, scope, dev, created_at, last_used_at, expires_at, owner, read_only, role) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)'
     )
     .run(
       label,
@@ -308,7 +326,8 @@ export function addToken(
       createdAt,
       storedExpiry,
       storedOwner,
-      readOnly ? 1 : 0
+      readOnly ? 1 : 0,
+      storedRole
     );
 
   return {
@@ -317,6 +336,7 @@ export function addToken(
     createdAt,
     expiresAt: storedExpiry,
     ...(storedOwner ? { owner: storedOwner } : {}),
+    ...(storedRole ? { role: storedRole } : {}),
     ...(readOnly ? { readOnly: true } : {}),
     ...(dev ? { dev: true } : {}),
     ...(storedScope ? { scope: storedScope } : {}),
@@ -352,6 +372,8 @@ export function rotateToken(dataDir, label) {
     // this would make "rotate" a silent promotion from viewer to editor, which
     // is the escalation the read-only token exists to prevent.
     readOnly: !!prior.read_only,
+    // Same reasoning one level up: rotation replaces a secret, never a role.
+    role: prior.role ?? undefined,
   });
 }
 
@@ -529,6 +551,9 @@ export function verifyToken(dataDir, candidate, secret) {
         // Absent column (a store older than Phase 25) reads as write-capable,
         // which is what those tokens have always been.
         readOnly: !!row.read_only,
+        // NULL for every token minted before the role column existed, and for
+        // every machine-to-machine token that has no project role at all.
+        ...(row.role ? { role: row.role } : {}),
         ...(row.owner ? { owner: row.owner } : {}),
         ...(row.dev ? { dev: true } : {}),
       };

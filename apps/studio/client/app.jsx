@@ -2430,7 +2430,12 @@ function Sidebar({
   // affordances are absent (buttons, composer, row menus, drag & drop).
   readOnly = false,
   /** `{ dashboardUrl, projectName }` when this is a cloud tab, else null. */
-  cloud = null,
+  // Tri-state (see the note where this value is created): `undefined` until
+  // the server config answers, `null` for the desktop, an object for a cloud
+  // tab. Defaulting it to `null` here is what re-broke the boot 404 after the
+  // call sites were fixed — a default fires on `undefined`, so "not known yet"
+  // became "not cloud" one layer further in, invisibly.
+  cloud,
   groups,
   activePath,
   activeDsName,
@@ -2832,7 +2837,7 @@ function Sidebar({
           Absent rather than disabled, because unlike the agent chat there is
           nothing here to explain — the capability is not missing, it is
           already satisfied. */}
-      {cloud ? null : <CloudBar />}
+      {cloud === null ? <CloudBar /> : null}
       {/* Phase 28 (E3) — GitHub identity as a compact avatar docked at the BOTTOM:
           sign in, connected account + New/Pull/Share, sign out. Self-contained
           (owns its device-code + CreateProject dialogs). Renders nothing in browser. */}
@@ -3622,7 +3627,12 @@ function Menubar({
   activePath,
   project,
   /** `{ dashboardUrl, projectName }` when this is a cloud tab, else null. */
-  cloud = null,
+  // Tri-state (see the note where this value is created): `undefined` until
+  // the server config answers, `null` for the desktop, an object for a cloud
+  // tab. Defaulting it to `null` here is what re-broke the boot 404 after the
+  // call sites were fixed — a default fires on `undefined`, so "not known yet"
+  // became "not cloud" one layer further in, invisibly.
+  cloud,
   tabsCount,
   openMenu,
   setOpenMenu,
@@ -4044,11 +4054,40 @@ function Menubar({
           <span
             className="st-stamp st-stamp--viewonly"
             data-testid="view-only-stamp"
-            data-tip="Your role in this project is viewer — you can browse, comment when available, and export. Ask a project owner for edit access."
+            data-tip={
+              cloud?.user
+                ? `${cloud.user} is a viewer on this project — you can browse, comment and export. Ask a project owner for edit access, or sign out if that is not the account you meant to use.`
+                : 'Your role in this project is viewer — you can browse, comment when available, and export. Ask a project owner for edit access.'
+            }
           >
             VIEW ONLY
           </span>
         )}
+        {/* Cloud Phase 27 C4 — WHO YOU ARE, AND HOW TO STOP BEING THEM.
+            A browser tab carries no account identity of its own: the cookie is
+            invisible, and the only thing on screen that reflected it was a
+            three-word stamp. An owner who read VIEW ONLY had no way to tell
+            whether the role was wrong or the ACCOUNT was, and no way to change
+            either — the session outlived any fix by up to twelve hours because
+            nothing in the studio could end it. This ends it. */}
+        {cloud?.user ? (
+          <span className="st-cloudwho" data-testid="cloud-account">
+            <span
+              className="st-cloudwho-email"
+              title={cloud.role ? `Signed in as ${cloud.user} — ${cloud.role}` : cloud.user}
+            >
+              {cloud.user}
+            </span>
+            <a
+              className="st-cloudwho-out"
+              href="/auth/browser/signout"
+              data-testid="cloud-signout"
+              title="Sign out of this project"
+            >
+              Sign out
+            </a>
+          </span>
+        ) : null}
         {isNativeApp() && !readOnly && (
           <button
             type="button"
@@ -9236,7 +9275,18 @@ function App() {
   // `config-updated` push (config.json hot-reload — /design:setup-ds rewrites
   // it mid-session) — informs canvasUrl() so TSX iframes can pass the right
   // ?designRel + ?tokens query to the canvas mount shell.
-  const [cfg, setCfg] = useState({ designRel: '.design' });
+  // `cloud` is deliberately TRI-STATE, and the third state is the useful one:
+  //   undefined — `/_config` has not answered yet; which shell this is is
+  //               UNKNOWN, and anything that would behave differently in the
+  //               two shells must wait rather than assume the desktop.
+  //   null      — desktop or plain local browser.
+  //   object    — a cloud tab (`{ dashboardUrl, projectName, user, role }`).
+  //
+  // Collapsing unknown into "not cloud" is what made the cloud studio open with
+  // two console 404s every time: the sign-in bar and the export centre mounted
+  // for one frame, each fired the request its shell exists to refuse, and then
+  // unmounted. Nothing was broken and everything looked broken.
+  const [cfg, setCfg] = useState({ designRel: '.design', cloud: undefined });
   // Cloud Phase 25 C2 — viewer role, known at boot from /_config. Every
   // editing affordance in the shell gates on this (absent, not hidden).
   const viewerMode = !!cfg.readOnly;
@@ -9278,13 +9328,11 @@ function App() {
           // both of these went missing and the cloud studio rendered without
           // its chrome and with every canvas iframe unauthenticated.
           canvasToken: data.canvasToken,
-          // C2/C4 — `{ dashboardUrl, projectName }` when this is a cloud tab.
-          // Its presence is what tells the shared client it is in a browser tab
-          // on somebody else's machine.
+          // C2/C4 — `{ dashboardUrl, projectName, user, role }` when this is a
+          // cloud tab. Its presence is what tells the shared client it is in a
+          // browser tab on somebody else's machine; `user`/`role` are what let
+          // it say WHICH account that tab is, and offer the way out.
           cloud: data.cloud ?? null,
-          // C2/C4 — `{ dashboardUrl, projectName }` when this is a cloud tab.
-          // Its presence is what tells the shared client it is in a browser tab
-          // on somebody else's machine.
         }));
       })
       .catch(() => {});
@@ -9633,7 +9681,10 @@ function App() {
   // toggles on its own and coexists with Inspector/Changes/Comments/Chat.
   const toggleTimeline = useCallback(() => setTimelineOpen((v) => !v), []);
   const whatsNew = useWhatsNew(MDCC_VERSION);
-  const exportCenter = useExportCenter();
+  // Same tri-state rule as the sign-in bar: the export queue is a LOCAL job
+  // runner, `/_api/export-jobs` is one of the routes a cell refuses outright
+  // (DDR-209 D1), and hydrating before the shell is known 404s every boot.
+  const exportCenter = useExportCenter({ enabled: cfg.cloud === null });
   // Phase 29 (E4) — first-run onboarding wizard. The native shell boots a minimal
   // "welcome" project on first launch; we ask it whether this is a first run and, if
   // so, show the wizard OVER the (empty) canvas browser. Completing any door switches
@@ -13848,7 +13899,7 @@ function App() {
     if (id === 'tree')
       return (
         <Sidebar
-          cloud={cfg?.cloud ?? null}
+          cloud={cfg.cloud}
           readOnly={viewerMode}
           groups={groups}
           activePath={activePath}
@@ -14013,7 +14064,7 @@ function App() {
           // Cloud Phase 27 C2/C4 — the ONE cloud-only input the shared chrome
           // takes. A prop, not the whole `cfg`: the Menubar needs to know it is
           // in a browser tab on somebody else's machine, and nothing else.
-          cloud={cfg?.cloud ?? null}
+          cloud={cfg.cloud}
           activePath={activePath}
           project={project}
           tabsCount={tabs.length}
@@ -15013,7 +15064,7 @@ function App() {
       )}
       {settingsOpen && (
         <SettingsPanel
-          cloud={cfg?.cloud ?? null}
+          cloud={cfg.cloud}
           onClose={() => setSettingsOpen(false)}
           initialTab={typeof settingsOpen === 'string' ? settingsOpen : undefined}
           theme={theme}

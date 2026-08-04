@@ -26,11 +26,88 @@
 import { request as httpRequest } from 'node:http';
 import { connect as netConnect } from 'node:net';
 
+import { RENDER_TOKEN_TTL_MS } from './render-token.mjs';
 import { isReadOnlyRole } from './role-matrix.mjs';
 import { decide } from './studio-manifest.mjs';
 
 /** Headers a client must never be able to speak. See property 2 above. */
 export const INJECTED_HEADER_PREFIX = 'x-maude-';
+
+/**
+ * The canvas origin's capability, as a cookie ON THE CANVAS ORIGIN.
+ *
+ * WHY A COOKIE AFTER ALL, HAVING SAID NO TO ONE.
+ *
+ * The capability travels in the URL because the canvas origin is separate and
+ * a separate origin sends no cookie. That is true of the URLs the SHELL builds
+ * — the iframe, the module, the design system's CSS — and it is exactly false
+ * of the ones it does not build. Canvas code is the tenant's own source, and
+ * the tenant's own source says `<img src="/.design/system/x/assets/logo.svg">`.
+ * That URL is emitted by the browser with no query string, because nothing in
+ * the request path ever passes through code we wrote. Every asset, every font,
+ * every photograph: 401. The page rendered and was empty of everything that
+ * makes it a design.
+ *
+ * The shell cannot fix this. Rewriting the tenant's source to append a token
+ * to every URL means parsing and rewriting arbitrary JSX, CSS `url()`, inline
+ * styles and anything computed at runtime — the last of which is not solvable
+ * at all. So the capability has to be ambient on that origin, which means a
+ * cookie, which is the thing DDR-054 refused.
+ *
+ * WHAT MAKES IT DIFFERENT FROM THE ONE DDR-054 REFUSED. That objection was
+ * about the SHELL's session cookie being scoped wide enough to reach the
+ * canvas origin — the untrusted origin borrowing the trusted one's identity.
+ * This is the opposite direction and a different credential:
+ *
+ *   · It is host-scoped to `canvas-<project>.<zone>`, an origin that exists per
+ *     project (Phase 27) and serves one read-only allowlist. It is not sent to
+ *     the shell, to another tenant, or to the control plane.
+ *   · It IS the render token — same HMAC, same fifteen-minute life, same
+ *     read-only grant. Nothing new is authorised; the same capability simply
+ *     survives a URL the shell did not write.
+ *   · `HttpOnly`, so the canvas's own scripts cannot read it — the canvas is
+ *     untrusted code and must not be able to exfiltrate its own capability.
+ *
+ * `SameSite=Lax` is deliberate and sufficient: the shell and the canvas origin
+ * are the same SITE (both under the registrable domain), so the iframe's
+ * subresource requests are same-site and carry it, while a genuinely foreign
+ * page gets nothing. The `Secure` flag is set unless the deployment is plain
+ * HTTP on loopback, which is the local harness.
+ */
+export const CANVAS_CAPABILITY_COOKIE = 'maude_canvas';
+
+/**
+ * The cookie outlives the token by design, and that grants nothing.
+ *
+ * The signature carries its own expiry, so a stale cookie fails verification
+ * exactly when a stale URL would. The extra window only avoids the browser
+ * dropping a cookie moments before the shell reloads and replaces it — a
+ * refresh is what re-mints, and a canvas left open all afternoon should meet
+ * one clean 401 rather than an intermittent one.
+ */
+const canvasCookieMaxAge = Math.floor((RENDER_TOKEN_TTL_MS * 2) / 1000);
+
+/** Read one cookie from a Node request without pulling in a parser. */
+function cookieFrom(request, name) {
+  const raw = request?.headers?.cookie;
+  if (!raw) return null;
+  for (const part of String(raw).split(';')) {
+    const eq = part.indexOf('=');
+    if (eq < 0) continue;
+    if (part.slice(0, eq).trim() !== name) continue;
+    try {
+      return decodeURIComponent(part.slice(eq + 1).trim());
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/** The shell document — the one response allowed to plant the cookie. */
+function isCanvasShellPath(rest) {
+  return rest === '/_canvas-shell.html' || rest === '/_canvas-shell';
+}
 
 /** Hop-by-hop headers — meaningless to forward, actively harmful to copy. */
 const HOP_BY_HOP = new Set([
@@ -250,10 +327,30 @@ export function createStudioProxy({
     // Everything tenant-specific — the shell, the built module, the design
     // system's CSS, every asset — still requires the capability below.
     const isVendorRuntime = rest.startsWith('/_canvas-runtime/');
-    const verdict = isVendorRuntime ? { ok: true } : verifyToken(url.searchParams.get('t'));
-    if (!verdict?.ok) {
+    // The capability, from the URL the shell wrote or — for the URLs the shell
+    // did NOT write, which is every asset the tenant's own canvas references —
+    // from the host-scoped cookie the shell document planted. See
+    // CANVAS_CAPABILITY_COOKIE for why the second one exists.
+    const urlToken = url.searchParams.get('t');
+    const verdict = isVendorRuntime ? { ok: true } : (verifyToken(urlToken) ?? { ok: false });
+    const cookieVerdict =
+      !isVendorRuntime && !verdict?.ok
+        ? verifyToken(cookieFrom(request, CANVAS_CAPABILITY_COOKIE))
+        : null;
+    if (!verdict?.ok && !cookieVerdict?.ok) {
       refuse(response, 401, { error: 'this canvas link has expired — reload the project' });
       return true;
+    }
+    // Plant it on the shell document, and only there. Every other response on
+    // this origin is a subresource of a shell that already carries one, so a
+    // Set-Cookie on any of them would be noise — and the narrower the surface
+    // that mints an ambient credential, the easier it is to reason about.
+    if (!isVendorRuntime && verdict?.ok && urlToken && isCanvasShellPath(rest)) {
+      const secure = (env.MAUDE_PUBLIC_CANVAS_ORIGIN ?? '').startsWith('https://');
+      response.setHeader('set-cookie', [
+        `${CANVAS_CAPABILITY_COOKIE}=${encodeURIComponent(urlToken)}; Path=/; HttpOnly; ` +
+          `SameSite=Lax; Max-Age=${canvasCookieMaxAge}${secure ? '; Secure' : ''}`,
+      ]);
     }
     const up = canvasUpstream?.();
     if (!up?.ok || !up.port) {

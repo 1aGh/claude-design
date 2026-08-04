@@ -1911,3 +1911,35 @@
   white-space: nowrap;
   max-width: 22ch;
 }
+
+/* …and its counterpart on the right: WHICH ACCOUNT this tab is, and the way to
+   stop being it. The email is quiet (it is context, not a control); the sign-out
+   only resolves on hover, because the common case is reading it and the rare
+   case is needing it. */
+.st-cloudwho {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.st-cloudwho-email {
+  font-size: 12px;
+  color: var(--u-fg-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 24ch;
+}
+.st-cloudwho-out {
+  font-size: 12px;
+  color: var(--u-fg-3);
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+.st-cloudwho-out:hover,
+.st-cloudwho-out:focus-visible {
+  color: var(--u-fg-0);
+  background: var(--u-bg-2);
+}

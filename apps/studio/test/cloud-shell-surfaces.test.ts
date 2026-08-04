@@ -61,7 +61,15 @@ describe('the cloud shell offers nothing it cannot honour', () => {
   });
 
   test('the cloud sign-in is not offered inside the cloud', () => {
-    expect(APP).toContain('{cloud ? null : <CloudBar />}');
+    // `=== null`, not falsiness. `cloud` is undefined until `/_config` answers,
+    // and treating unknown as "not cloud" mounted this bar for one frame in
+    // every cloud tab — long enough to fire the one request the cell refuses.
+    expect(APP).toContain('{cloud === null ? <CloudBar /> : null}');
+    expect(APP).not.toContain('{cloud ? null : <CloudBar />}');
+  });
+
+  test('the local export queue does not hydrate before the shell is known', () => {
+    expect(APP).toContain("useExportCenter({ enabled: cfg.cloud === null })");
   });
 
   test('every component that gates on the shell is actually GIVEN the flag', () => {
@@ -71,7 +79,9 @@ describe('the cloud shell offers nothing it cannot honour', () => {
       const at = APP.indexOf(call);
       expect(at).toBeGreaterThan(0);
       const props = APP.slice(at, at + 900);
-      expect(props).toContain('cloud={cfg?.cloud ?? null}');
+      // Passed RAW — a `?? null` here would erase the "not known yet" state
+      // before any component could see it.
+      expect(props).toContain('cloud={cfg.cloud}');
     }
   });
 
@@ -85,6 +95,25 @@ describe('the cloud shell offers nothing it cannot honour', () => {
       const body = APP.slice(start, APP.indexOf('\nfunction ', start + 10));
       expect(body).not.toMatch(/\bcfg\?\./);
       expect(body).not.toMatch(/\bcfg\./);
+    }
+  });
+});
+
+describe('"not known yet" survives every layer between /_config and the DOM', () => {
+  // The three-line bug: the call sites were fixed to pass `cfg.cloud` raw, and
+  // the components still declared `cloud = null` as a default parameter. A
+  // default fires on `undefined` — so "we have not asked yet" turned back into
+  // "this is not the cloud" one layer further in, the sign-in bar mounted for a
+  // frame, and the boot 404 came back looking exactly like the one just fixed.
+  const APP_SRC = readFileSync(join(STUDIO, 'client', 'app.jsx'), 'utf8');
+  const SETTINGS_SRC = readFileSync(join(STUDIO, 'client', 'panels', 'SettingsPanel.jsx'), 'utf8');
+
+  test('no component defaults the shell flag', () => {
+    for (const [label, src] of [
+      ['app.jsx', APP_SRC],
+      ['SettingsPanel.jsx', SETTINGS_SRC],
+    ] as const) {
+      expect(src, label).not.toMatch(/^\s*cloud = (null|false|\{\}),$/m);
     }
   });
 });

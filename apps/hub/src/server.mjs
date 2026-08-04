@@ -1486,19 +1486,28 @@ function browserSession(dataDir, secret, request) {
   if (!match?.owner) return null;
   // TWO ROLE VOCABULARIES MEET HERE, AND THEY ARE NOT THE SAME ONE.
   //
-  // A token can carry an ACCOUNT role (`admin`, from `/auth/login`) while this
-  // function must produce a PROJECT role (`owner` / `member` / `viewer`, the
-  // role matrix's). Taking `match.role` on trust made an admin's own session
-  // read-only — `isReadOnlyRole('admin')` is true, because an unknown role gets
-  // nothing — so the owner opened his project and could not edit it. Found by
-  // running a real cell, not by reading this.
+  // A token can carry an ACCOUNT role (`admin`) while this function must
+  // produce a PROJECT role (`owner` / `member` / `viewer`, the role matrix's).
+  // The translation happens at the DOOR (`browser-auth.mjs`), which is the only
+  // place that knows which vocabulary it was handed; what is stored on the
+  // token is therefore already a project role, and anything else is not one.
   //
-  // So: a vouched role counts only if it IS one of the project roles. Anything
-  // else falls back to the read-only flag, which every token carries. The
-  // fallback is deliberately not "assume owner": an unrecognised role must
-  // never be an escalation, and it is not one here.
-  const vouched = ROLES.includes(match.role) ? match.role : null;
-  const role = vouched ?? (match.readOnly ? 'viewer' : 'member');
+  // A SESSION WITHOUT A STORED ROLE IS STALE, NOT A GUESS TO BE MADE.
+  //
+  // The role column shipped after these cookies did, so an older session has
+  // only the one-bit `read_only` projection — and if that bit was computed by
+  // the buggy translation it says `viewer` for a project's owner, permanently:
+  // the capability was frozen at mint, the cookie lives 12 hours, `/data` is a
+  // volume that survives every deploy, and the studio offers no way out. That
+  // is exactly what happened, and re-deriving `member` from `read_only = 0`
+  // would ALSO have been a guess — a quieter one, in the escalating direction.
+  //
+  // So an unrecognised role on a browser session is treated as no session at
+  // all. The person is sent back through the door they came in by and gets a
+  // correctly-minted one. Refusing costs a sign-in; guessing costs either the
+  // owner's own project or somebody else's write access.
+  const role = ROLES.includes(match.role) ? match.role : null;
+  if (!role) return null;
   return {
     email: match.owner,
     role,

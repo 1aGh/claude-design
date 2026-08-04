@@ -65,7 +65,14 @@ async function saveNative(id, filename) {
   return saveExport(filename || 'export', id);
 }
 
-export function useExportCenter() {
+/**
+ * @param {{ enabled?: boolean }} [opts] — `enabled` false suppresses the
+ *   hydration fetch. The cloud shell passes false: `/_api/export-jobs` is
+ *   refused there by design, so asking is guaranteed noise. It stays UNDEFINED
+ *   until `/_config` answers, and undefined is not "false" here — see the
+ *   tri-state note on `cfg.cloud`.
+ */
+export function useExportCenter({ enabled = true } = {}) {
   const [jobs, setJobs] = useState(() => new Map());
   const [panelOpen, setPanelOpen] = useState(false);
   const [toastQueue, setToastQueue] = useState([]);
@@ -77,6 +84,7 @@ export function useExportCenter() {
   const startToastShownRef = useRef(new Set()); // "Exporting…" toast fires at most once per job
 
   useEffect(() => {
+    if (!enabled) return undefined;
     let alive = true;
     fetch('/_api/export-jobs')
       .then((r) => r.json())
@@ -99,7 +107,7 @@ export function useExportCenter() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [enabled]);
 
   const upsert = useCallback((job) => {
     if (!job || typeof job.id !== 'string') return;

@@ -129,17 +129,23 @@ export async function handleBrowserAuth({
       }
       const user = result.user;
       const ttlMs = 12 * 3600_000;
+      // TRANSLATED, not passed through — `user.role` is an ACCOUNT role and
+      // the role matrix speaks PROJECT roles. Untranslated, an 'admin' is an
+      // unknown role, gets nothing, and reads as read-only: the owner opens
+      // his own project and cannot edit it. Same fix as `/auth/login`; this
+      // door was missed the first time.
+      const projectRole = projectRoleForAccount(user.role);
       const minted = addToken(dataDir, {
         label: `studio-${Math.random().toString(36).slice(2, 10)}`,
         scope: user.scope ?? '*',
         owner: user.email,
         expiresAt: Date.now() + ttlMs,
-        // TRANSLATED, not passed through — `user.role` is an ACCOUNT role and
-        // `isReadOnlyRole` speaks PROJECT roles. Untranslated, an 'admin' is an
-        // unknown role, gets nothing, and reads as read-only: the owner opens
-        // his own project and cannot edit it. Same fix as `/auth/login`; this
-        // door was missed the first time.
-        readOnly: isReadOnlyRole(projectRoleForAccount(user.role)),
+        // The ROLE is what the session carries; `readOnly` is stored alongside
+        // it only because every other token type has the column. The cell
+        // re-derives the capability from the role on every request, so a role
+        // that changes reaches a live session instead of waiting out its TTL.
+        role: projectRole,
+        readOnly: isReadOnlyRole(projectRole),
       });
       setSessionCookie(response, minted.value, ttlMs / 1000);
       // THE STUDIO IS `/`. It used to be `/studio`, a page this hub rendered
@@ -223,15 +229,16 @@ export async function handleBrowserAuth({
     Math.min(result.expiresAt ?? Date.now() + 12 * 3600_000, Date.now() + 12 * 3600_000) -
       Date.now()
   );
+  // The role the control plane vouched for, in the PROJECT vocabulary — the
+  // same translation /auth/login makes (C1).
+  const projectRole = projectRoleForAccount(user.role);
   const minted = addToken(dataDir, {
     label: `studio-${Math.random().toString(36).slice(2, 10)}`,
     scope: user.scope ?? '*',
     owner: user.email,
     expiresAt: Date.now() + ttlMs,
-    // The capability is decided ONCE, from the role the control plane vouched
-    // for — the same line as /auth/login (C1), including its translation from
-    // the ACCOUNT role vocabulary into the PROJECT role one.
-    readOnly: isReadOnlyRole(projectRoleForAccount(user.role)),
+    role: projectRole,
+    readOnly: isReadOnlyRole(projectRole),
   });
   setSessionCookie(response, minted.value, ttlMs / 1000);
   redirect(response, '/');

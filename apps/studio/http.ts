@@ -1342,6 +1342,19 @@ export function createHttp(
               cloud: {
                 dashboardUrl: process.env.HUB_DASHBOARD_URL ?? 'https://cloud.maude.sh',
                 projectName: process.env.MAUDE_PROJECT_NAME ?? ctx.cfg.name ?? null,
+                // WHO the tab is signed in as, and WHAT that makes them —
+                // per REQUEST, from the proxy's injected headers, never from
+                // this process's environment (one cell serves an owner and a
+                // viewer at the same time).
+                //
+                // The owner who could not edit his own project could not see
+                // why: the stamp said VIEW ONLY and nothing on screen said
+                // which account that verdict was about. Naming the account and
+                // the role turns "this is broken" into "I am signed in as the
+                // wrong person", which is a thing someone can act on — and the
+                // sign-out beside it is how they act on it.
+                user: req.headers.get('x-maude-user') || null,
+                role: req.headers.get('x-maude-role') || null,
               },
             }
           : {}),
@@ -4532,7 +4545,22 @@ export function createHttp(
     if (safe.startsWith(designPrefix)) {
       const rest = safe.slice(designPrefix.length);
       // Reject runtime/state dirs+files (_comments, _sync.json, _history, …).
-      if (rest.split('/').some((seg) => seg.startsWith('_'))) return false;
+      //
+      // FIRST SEGMENT ONLY, and that is the taxonomy rather than a relaxation.
+      // Every runtime-state path DDR-115 names lives at the top level of the
+      // designRoot — `_history/`, `_canvas-state/`, `_state/`, `_chat/`,
+      // `_comments/`, `_untrusted/`, `_trash/`, `_draw/`, `_smoke/`,
+      // `_server.json`, `_active.json` — so a first-segment test rejects the
+      // whole of it, including everything nested underneath.
+      //
+      // Testing EVERY segment additionally rejected files that are versioned,
+      // shipped, and required: a design system's `system/<ds>/preview/
+      // _components.css` is the stylesheet the shell itself names in the
+      // iframe URL, and the underscore there is the DS's own convention for
+      // "aggregate, not a specimen". It 403'd, so every canvas rendered with
+      // its component styles missing and looked broken in a way that pointed
+      // nowhere near this line.
+      if (rest.split('/')[0].startsWith('_')) return false;
       return CANVAS_ASSET_EXTS.has(ext(safe));
     }
     // DDR-150 dogfood — `/assets/<file>`: the canvas-RELATIVE form every writer

@@ -50,11 +50,14 @@ describe('the canvas shell hangs off the path it was served from', () => {
   test('a relative importmap address resolves under the project, and at the root', () => {
     // The actual browser rule, exercised rather than asserted.
     expect(
-      new URL('./_canvas-runtime/react.js', 'https://canvas.cloud.maude.sh/alligators/_canvas-shell.html?t=x').href
+      new URL(
+        './_canvas-runtime/react.js',
+        'https://canvas.cloud.maude.sh/alligators/_canvas-shell.html?t=x'
+      ).href
     ).toBe('https://canvas.cloud.maude.sh/alligators/_canvas-runtime/react.js');
-    expect(new URL('./_canvas-runtime/react.js', 'http://localhost:4399/_canvas-shell.html').href).toBe(
-      'http://localhost:4399/_canvas-runtime/react.js'
-    );
+    expect(
+      new URL('./_canvas-runtime/react.js', 'http://localhost:4399/_canvas-shell.html').href
+    ).toBe('http://localhost:4399/_canvas-runtime/react.js');
   });
 
   test('withCap prefixes the base AND carries the capability', () => {
