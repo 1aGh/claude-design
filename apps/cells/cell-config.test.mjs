@@ -112,6 +112,31 @@ test('with its own config, a cell gets exactly its own values', async () => {
   assert.equal(vars.HUB_PUBLIC_URL, 'https://alligators.cloud.maude.sh');
 });
 
+test('HUB_PUBLIC_URL comes from configuration, never from the waking request (D4)', async () => {
+  // The regression this pins: env applies at container START, and the request
+  // that wakes a cell is not always a member opening the shell. A lone canvas
+  // tab (or an operator probe) wakes it on `canvas-<tenant>.<zone>` — and a
+  // HUB_PUBLIC_URL derived from that Host made the studio's frame-ancestors
+  // name the CANVAS origin as the legit embedder, so every shell iframe read
+  // "refused to connect" (the v30 roll).
+  const vars = await cellEnv({
+    tenantId: 'alligators',
+    env: { ...baseEnv, CELL_ZONE: 'cloud.maude.sh' },
+    hostname: 'canvas-alligators.cloud.maude.sh', // the WRONG teacher
+    config: { projectName: null, seedRepo: null, adminEmail: null },
+  });
+  assert.equal(vars.HUB_PUBLIC_URL, 'https://alligators.cloud.maude.sh');
+  // Without a zone there is nothing to derive from — the hostname fallback
+  // keeps a zoneless (self-hosted/harness) cell working as before.
+  const zoneless = await cellEnv({
+    tenantId: 'alligators',
+    env: baseEnv,
+    hostname: 'alligators.example.dev',
+    config: { projectName: null, seedRepo: null, adminEmail: null },
+  });
+  assert.equal(zoneless.HUB_PUBLIC_URL, 'https://alligators.example.dev');
+});
+
 test('under strict identity no local admin is seeded, config or not', async () => {
   const vars = await cellEnv({
     tenantId: 'alligators',

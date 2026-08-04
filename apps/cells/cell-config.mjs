@@ -297,7 +297,17 @@ export async function cellEnv({ tenantId, env, hostname, config = NO_CONFIG, s3C
     PORT: String(CELL_PORT),
     // The cell terminates TLS at the edge, so it sees http:// and must be told
     // the https:// name it actually answers as.
-    HUB_PUBLIC_URL: `https://${hostname}`,
+    //
+    // FROM CONFIGURATION, NOT FROM THE WAKING REQUEST (D4, same lesson as
+    // MAUDE_PUBLIC_CANVAS_ORIGIN below). Env applies at container START, and
+    // the request that happens to wake a cell is not always a member opening
+    // the shell — a lone canvas tab retrying an asset (or an operator probe)
+    // wakes it on `canvas-<tenant>.<zone>`, and a HUB_PUBLIC_URL derived from
+    // that Host makes the studio's `frame-ancestors` name the CANVAS origin as
+    // the legit embedder. Every shell iframe then reads "refused to connect"
+    // until the next restart happens to be woken by the right hostname —
+    // which is how the v30 roll shipped a working fleet that looked down.
+    HUB_PUBLIC_URL: env.CELL_ZONE ? `https://${tenantId}.${env.CELL_ZONE}` : `https://${hostname}`,
     HUB_SECRET: await deriveSecret(env.CELL_SECRET_MASTER, tenantId),
     // Behind Cloudflare every request arrives from the edge. Without this the
     // per-client rate limiter buckets the entire internet as one client.
