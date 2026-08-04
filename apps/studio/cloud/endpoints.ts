@@ -17,10 +17,10 @@
 
 import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import { saveHubCredential } from '../sync/hub-link.ts';
-import { normalizeUrl } from '../sync/hubs-config.ts';
+import { getHubToken, normalizeUrl } from '../sync/hubs-config.ts';
 
 /**
  * Where Maude Cloud lives, resolved PER CALL rather than at module load.
@@ -113,14 +113,28 @@ interface Ctx {
 
 export function createCloudEndpoints(ctx: Ctx) {
   return {
-    /** Signed in? Who? Cheap — reads the file, never the network. */
+    /**
+     * Signed in? Who? And WHICH folder is asking? Cheap — reads two files,
+     * never the network.
+     *
+     * `project` + `linkedHub` are the local half of the answer, and they exist
+     * for one reason: a maude:// link names a CLOUD project, and the person
+     * confirming it deserves to see which LOCAL folder is about to be attached
+     * to it. Both are already-public facts (a directory name, and the
+     * token-free `linkedHub` this same module writes into a committed
+     * config.json) — no credential material widens by being reported here.
+     */
     status(): CloudEndpointResult {
       const file = readCloudFile();
       return {
         status: 200,
-        json: file
-          ? { connected: true, email: file.email ?? null, url: file.url }
-          : { connected: false, url: cloudUrl() },
+        json: {
+          connected: !!file,
+          email: file?.email ?? null,
+          url: file ? file.url : cloudUrl(),
+          project: basename(ctx.paths.repoRoot),
+          linkedHub: readLinkedHub(),
+        },
       };
     },
 
@@ -291,6 +305,34 @@ export function createCloudEndpoints(ctx: Ctx) {
       });
     },
   };
+
+  /**
+   * The workspace this folder already answers to, if any. Address only.
+   *
+   * `credentialed` is the half that can be trusted. `config.json` is COMMITTED
+   * and travels with the repo, so a `linkedHub` in it is attacker-authorable:
+   * publish a template pointing at your own cell and the connect dialog would
+   * cheerfully print "this folder is already linked to <you>" — the strongest
+   * reassurance it can give, produced entirely by content the person merely
+   * opened (attacker pass 2026-08-04, B2). A stored hub credential for that
+   * address is the corroboration, because only a real sign-in writes one.
+   */
+  function readLinkedHub(): { url: string; credentialed: boolean } | null {
+    try {
+      const cfg = JSON.parse(readFileSync(join(ctx.paths.designRoot, 'config.json'), 'utf8'));
+      const url = cfg?.linkedHub?.url;
+      if (typeof url !== 'string' || !url) return null;
+      let credentialed = false;
+      try {
+        credentialed = !!getHubToken(normalizeUrl(url));
+      } catch {
+        /* unreadable credential store → treat as uncorroborated */
+      }
+      return { url, credentialed };
+    } catch {
+      return null; // absent/malformed → simply not linked
+    }
+  }
 
   /** The shared tail of every attach: cell exchange → credential + linkedHub. */
   async function linkToWorkspace({

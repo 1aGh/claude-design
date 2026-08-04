@@ -10,6 +10,7 @@ fn main() {
                 "github_sign_in",
                 "github_open_verification",
                 "open_github_url",
+                "open_cloud_url",
                 "github_is_signed_in",
                 "github_sign_out",
                 "pick_directory",

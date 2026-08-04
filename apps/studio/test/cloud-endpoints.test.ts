@@ -9,7 +9,12 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { parseDeepLink, shareViewUrl } from '../client/panels/CloudBar.jsx';
+import {
+  isDisplayableUrl,
+  localIdentityHint,
+  parseDeepLink,
+  shareViewUrl,
+} from '../client/panels/CloudBar.jsx';
 
 let stub: ReturnType<typeof Bun.serve> | null = null;
 let scratch = '';
@@ -78,20 +83,242 @@ describe('parseDeepLink — untrusted input, strict shape', () => {
       'maude://open/x?code=nothex', // bad code
       'https://evil.example/?code=mhc_' + 'a'.repeat(64), // not maude://
       'maude://join/x/y', // join is not the open shape
+      // Over the platform's 40-char project-id cap — a drive-by link never
+      // passes through the server-side bound, so arbitrary attacker text would
+      // otherwise render in the dialog heading, prose and aria-label.
+      `maude://open/${'a'.repeat(41)}?code=mhc_${'a'.repeat(64)}`,
     ]) {
       expect(parseDeepLink(bad)).toBeNull();
     }
+    // …and exactly 40 is still a real project id.
+    expect(
+      parseDeepLink(`maude://open/${'a'.repeat(40)}?code=mhc_${'a'.repeat(64)}`)
+    ).not.toBeNull();
   });
 });
 
 describe('shareViewUrl — the viewer’s browser home', () => {
-  test('derives view-<host> from the project url', () => {
+  test('is the project’s OWN address — the view- gallery is gone (Phase 25 C5)', () => {
+    // `view-*` is hard-refused by tenantFromHostname, so the old derivation
+    // produced a guaranteed 404 — invisible only because window.open was a no-op
+    // in the shell. Making the opener work would have made it a dead menu item.
     expect(shareViewUrl('https://alligators.cloud.maude.sh', 'alligators')).toBe(
-      'https://view-alligators.cloud.maude.sh'
+      'https://alligators.cloud.maude.sh'
     );
+    expect(shareViewUrl('https://alligators.cloud.maude.sh', 'alligators')).not.toContain('view-');
   });
   test('falls back to the platform zone on garbage', () => {
-    expect(shareViewUrl('nonsense', 'p1')).toBe('https://view-p1.cloud.maude.sh');
+    expect(shareViewUrl('nonsense', 'p1')).toBe('https://p1.cloud.maude.sh');
+  });
+});
+
+describe('isDisplayableUrl — what may be rendered as a clickable address', () => {
+  const CLOUD = 'https://cloud.maude.sh';
+
+  test('the configured origin and the cloud zone’s front doors pass', () => {
+    expect(isDisplayableUrl('https://cloud.maude.sh/activate?code=ABCD', CLOUD)).toBe(true);
+    expect(isDisplayableUrl('https://alligators.cloud.maude.sh/', CLOUD)).toBe(true);
+    // A self-host origin is legitimate for its OWN addresses.
+    expect(isDisplayableUrl('http://127.0.0.1:8788/activate', 'http://127.0.0.1:8788')).toBe(true);
+  });
+
+  test('an off-zone address is never rendered — a scheme check was not enough', () => {
+    // The bug this closes: `https://evil.example/activate?code=…` from a hostile
+    // or MITM'd control plane passed a protocol-only check and still rendered as
+    // a live href with a Copy button, and middle-click never reaches the click
+    // handler, let alone the Rust zone lock.
+    for (const bad of [
+      'https://evil.example/activate?code=x',
+      'https://cloud.maude.sh.attacker.example/',
+      'javascript:alert(1)',
+      'file:///etc/passwd',
+      'not a url',
+    ]) {
+      expect(isDisplayableUrl(bad, CLOUD)).toBe(false);
+    }
+    // Deep paths on a TENANT host are refused here too — same rule as the opener.
+    expect(isDisplayableUrl('https://canvas-evil.cloud.maude.sh/stored.svg', CLOUD)).toBe(false);
+  });
+});
+
+describe('status — names the LOCAL half so a deep link can be read', () => {
+  test('reports the open folder and its workspace, and never a credential', async () => {
+    const { createCloudEndpoints } = await import('../cloud/endpoints.ts');
+    const { mkdirSync } = await import('node:fs');
+    const repoRoot = join(scratch, 'alligators-web');
+    const designRoot = join(repoRoot, '.design');
+    mkdirSync(designRoot, { recursive: true });
+    writeFileSync(
+      join(designRoot, 'config.json'),
+      JSON.stringify({ linkedHub: { url: 'https://alligators.cloud.maude.sh', linkedAt: 1 } })
+    );
+
+    const r = createCloudEndpoints({ paths: { repoRoot, designRoot } }).status();
+    expect(r.status).toBe(200);
+    const json = r.json as Record<string, unknown>;
+    expect(json.project).toBe('alligators-web');
+    // No hub credential was stored in this scratch dir, so the link is reported
+    // but explicitly UNCORROBORATED — the dialog may not vouch for it.
+    expect(json.linkedHub).toEqual({
+      url: 'https://alligators.cloud.maude.sh',
+      credentialed: false,
+    });
+    // Signed out here — and the payload must stay free of token material
+    // whatever the state (this response reaches the browser surface too).
+    expect(json.connected).toBe(false);
+    expect(JSON.stringify(json)).not.toContain('token');
+  });
+
+  test('an unlinked (or malformed-config) folder reports linkedHub: null, not an error', async () => {
+    const { createCloudEndpoints } = await import('../cloud/endpoints.ts');
+    const { mkdirSync } = await import('node:fs');
+    const repoRoot = join(scratch, 'fresh-thing');
+    const designRoot = join(repoRoot, '.design');
+    mkdirSync(designRoot, { recursive: true });
+    writeFileSync(join(designRoot, 'config.json'), '{ not json');
+
+    const json = createCloudEndpoints({ paths: { repoRoot, designRoot } }).status().json as Record<
+      string,
+      unknown
+    >;
+    expect(json.linkedHub).toBeNull();
+    expect(json.project).toBe('fresh-thing');
+  });
+});
+
+describe('localIdentityHint — only an exact, corroborated agreement is silent', () => {
+  const CLOUD = 'https://cloud.maude.sh';
+
+  test('the reported case warns: one project open, the link naming another', () => {
+    // StudyFi open, "Open in Maude" pressed on alligators — one click from
+    // syncing StudyFi's designs into somebody else's workspace.
+    expect(
+      localIdentityHint({ localProject: 'AI-StudyMate', cloudUrl: CLOUD, claimed: 'alligators' })
+    ).toBe('mismatch');
+  });
+
+  test('a name an ATTACKER chose to look like yours does not buy silence', () => {
+    // The whole point (attacker pass B1). The cloud project id is registerable by
+    // anyone, so treating "contains your folder name" as agreement handed the
+    // attacker the off-switch for the warning. And the server's 409 cannot help:
+    // the claim and the actual project agree — it IS their project.
+    for (const claimed of [
+      'alligators-design-sync',
+      'alligators-backup',
+      'shared-alligators',
+      'web-design-studio-app',
+    ]) {
+      expect(localIdentityHint({ localProject: 'alligators', cloudUrl: CLOUD, claimed })).not.toBe(
+        'match'
+      );
+      expect(
+        ['similar', 'mismatch'].includes(
+          localIdentityHint({ localProject: 'alligators', cloudUrl: CLOUD, claimed })
+        )
+      ).toBe(true);
+    }
+  });
+
+  test('an exact name is the only silent name-based verdict', () => {
+    expect(
+      localIdentityHint({ localProject: 'alligators', cloudUrl: CLOUD, claimed: 'alligators' })
+    ).toBe('match');
+    // Normalization still applies — casing and separators are not a difference.
+    expect(
+      localIdentityHint({ localProject: 'Alligators', cloudUrl: CLOUD, claimed: 'alligators' })
+    ).toBe('match');
+    // A near-match is its own state: alike, and still NOT the same workspace.
+    expect(
+      localIdentityHint({ localProject: 'alligators-web', cloudUrl: CLOUD, claimed: 'alligators' })
+    ).toBe('similar');
+  });
+
+  test('a CREDENTIALED link to that project reads as linked', () => {
+    expect(
+      localIdentityHint({
+        localProject: 'anything',
+        linkedHubUrl: 'https://alligators.cloud.maude.sh',
+        linkedHubCredentialed: true,
+        cloudUrl: CLOUD,
+        claimed: 'alligators',
+      })
+    ).toBe('linked');
+  });
+
+  test('an UNCREDENTIALED linkedHub cannot vouch for anyone', () => {
+    // config.json is committed and travels with the repo, so a hostile template
+    // could otherwise make the dialog say "already linked to <attacker>" — the
+    // strongest reassurance it can give (attacker pass B2). Without a stored
+    // credential it is ignored and the folder name decides.
+    expect(
+      localIdentityHint({
+        localProject: 'my-thing',
+        linkedHubUrl: 'https://attacker.cloud.maude.sh',
+        linkedHubCredentialed: false,
+        cloudUrl: CLOUD,
+        claimed: 'attacker',
+      })
+    ).toBe('mismatch');
+  });
+
+  test('a folder credentialed to a DIFFERENT workspace warns', () => {
+    expect(
+      localIdentityHint({
+        localProject: 'alligators',
+        linkedHubUrl: 'https://someone-else.cloud.maude.sh',
+        linkedHubCredentialed: true,
+        cloudUrl: CLOUD,
+        claimed: 'alligators',
+      })
+    ).toBe('mismatch');
+  });
+
+  test('a short generic folder name does not buy agreement by containment', () => {
+    for (const localProject of ['web', 'app', 'src']) {
+      expect(
+        localIdentityHint({ localProject, cloudUrl: CLOUD, claimed: 'webshop-frontend' })
+      ).toBe('mismatch');
+    }
+  });
+
+  test('an accented or over-long folder name still matches its own workspace', () => {
+    // The fold must mirror the platform's deriveProjectId (NFKD + strip + 40-cap)
+    // or the warning fires on every LEGITIMATE connect for a whole class of
+    // names — which is how a consent warning dies (attacker re-review).
+    expect(
+      localIdentityHint({ localProject: 'Zkušební tým', cloudUrl: CLOUD, claimed: 'zkusebni-tym' })
+    ).toBe('match');
+    expect(
+      localIdentityHint({ localProject: 'Přátelé', cloudUrl: CLOUD, claimed: 'pratele' })
+    ).toBe('match');
+    // >40 chars: the platform truncates the id, so the fold must truncate too.
+    const long = 'a-very-long-project-name-that-the-platform-truncates-at-forty';
+    expect(
+      localIdentityHint({ localProject: long, cloudUrl: CLOUD, claimed: long.slice(0, 40) })
+    ).toBe('match');
+  });
+
+  test('no signal is "unknown", which warns — it must never read as agreement', () => {
+    // Every stub and self-hoster is http://127.0.0.1:<port>, carrying no project
+    // name. Before, that produced a reassuring neutral with a primary Connect;
+    // on the launch path an unresolved status did the same (attacker pass B3).
+    expect(
+      localIdentityHint({
+        localProject: '',
+        linkedHubUrl: 'http://127.0.0.1:4599',
+        cloudUrl: 'http://127.0.0.1:4599',
+        claimed: 'stub-project',
+      })
+    ).toBe('unknown');
+    // Status not yet resolved → unknown, whatever else is on hand.
+    expect(
+      localIdentityHint({
+        localProject: 'alligators',
+        cloudUrl: CLOUD,
+        claimed: 'alligators',
+        resolved: false,
+      })
+    ).toBe('unknown');
   });
 });
 

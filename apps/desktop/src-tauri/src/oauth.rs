@@ -275,15 +275,334 @@ pub fn open_github_url(url: String) -> Result<(), String> {
     // the authority (`@`, `\`) or that Rust std's Windows launcher has historically
     // mishandled as cmd-metacharacters (CVE-2024-24576). The only caller passes a
     // github.com PR html_url. (F3)
-    let ok = url.starts_with("https://github.com/")
-        && url.len() <= 2048
-        && !url.contains(|c: char| {
-            c.is_whitespace()
-                || c.is_control()
-                || matches!(c, '@' | '\\' | '&' | '|' | '^' | '<' | '>' | '"' | '\'' | '`')
-        });
+    let ok = url.starts_with("https://github.com/") && url.len() <= 2048 && !has_unsafe_bytes(&url);
     if !ok {
         return Err("Refusing to open a non-GitHub URL.".to_string());
     }
     open::that(&url).map_err(|e| format!("Couldn't open the browser: {e}"))
+}
+
+// ── Maude Cloud opener (feature-cloud-connect-ux) ─────────────────────────────
+//
+// The webview's `window.open` is a silent no-op in WKWebView, so the cloud lane
+// (device sign-in, share view, dashboard) had no path to the OS browser at all:
+// the person was left holding a code with nowhere to type it. This is that path,
+// and it is deliberately NOT a general opener — DDR-054 treats the webview as
+// untrusted, so an `opener` plugin (arbitrary URL) is out of the question. Same
+// posture as `open_github_url`, one zone wider.
+
+/// Where Maude Cloud lives when nothing overrides it.
+const DEFAULT_CLOUD_URL: &str = "https://cloud.maude.sh";
+/// The one host whose SUBDOMAINS are in the zone. Compiled in on purpose — see
+/// `cloud_url_allowed` arm 2.
+const DEFAULT_CLOUD_HOST: &str = "cloud.maude.sh";
+
+/// Bytes that must never reach the OS launcher: anything that could re-open the
+/// URL authority (`@`, `\`) and the cmd-metacharacters Rust std's Windows
+/// launcher has historically mishandled (CVE-2024-24576).
+///
+/// `%` is in the set for a reason that is NOT percent-encoding hygiene: the
+/// `open` crate launches Windows URLs as `cmd /c start "" <url>` via `raw_arg`,
+/// which splices the string into a cmd command line unescaped — and cmd expands
+/// `%VAR%` *inside* double quotes, with the result re-entering parsing. Without
+/// this, any in-zone host (a self-serve cell, a `view-*` share view) could ask
+/// for `https://view-x.cloud.maude.sh/?d=%GITHUB_TOKEN%` and read the expansion
+/// out of its own access log. Defender pass 2026-08-04, F1.
+///
+/// The cost is that a legitimately percent-encoded URL is refused rather than
+/// opened. That is the safe direction here: both callers pass unencoded shapes
+/// (a PR `html_url`, an `/activate?code=<alnum-dash>`), and a refusal falls back
+/// to the link the person can click by hand.
+///
+/// ORDERING IS LOAD-BEARING: this runs BEFORE the URL parse, which is what stops
+/// the WHATWG "strip tab/newline, then parse" trick from smuggling a different
+/// host past the checks below.
+///
+/// Do NOT relax the whitespace rule "for a legitimate space": on Linux `open`
+/// shells out to `xdg-open`, a POSIX shell script whose `$BROWSER`-with-`%s` path
+/// word-splits and glob-expands the URL. The whitespace rule is the only thing
+/// standing between that and argv injection.
+fn has_unsafe_bytes(url: &str) -> bool {
+    url.contains(|c: char| {
+        c.is_whitespace()
+            || c.is_control()
+            || matches!(c, '@' | '\\' | '&' | '|' | '^' | '<' | '>' | '"' | '\'' | '`' | '%')
+    })
+}
+
+/// Resolve the Maude Cloud address **per call**, never once at boot.
+///
+/// The sidecar resolves it per call too (`apps/studio/cloud/endpoints.ts`
+/// `cloudUrl()`), and for the same reason: a self-hoster's `MAUDE_CLOUD_URL` can
+/// be set after this process's module graph is warm, and a boot-time snapshot
+/// would leave Rust locked to a different origin than the one the sidecar is
+/// actually talking to — the opener would then refuse the very URL the dialog is
+/// showing. Falls back to the default on anything unparseable.
+fn cloud_base() -> reqwest::Url {
+    if let Ok(raw) = std::env::var("MAUDE_CLOUD_URL") {
+        if let Ok(u) = reqwest::Url::parse(raw.trim()) {
+            // A bare single-label host (`https://sh`, `https://com`) is a typo, not
+            // an address — refuse it rather than let it become an origin the
+            // opener honors (attacker pass A3). Loopback + `localhost` are the
+            // legitimate no-dot shapes every self-host and e2e stub uses.
+            // (IPv4 carries dots; IPv6 arrives bracketed as `[::1]`.)
+            let plausible = u
+                .host_str()
+                .is_some_and(|h| h.contains('.') || h == "localhost" || h.starts_with('['));
+            if matches!(u.scheme(), "http" | "https") && plausible {
+                return u;
+            }
+        }
+    }
+    reqwest::Url::parse(DEFAULT_CLOUD_URL).expect("the default cloud address parses")
+}
+
+/// Is `url` inside the configured cloud zone? Returns the PARSED url so the
+/// caller launches exactly what was validated rather than the original string —
+/// `https:cloud.maude.sh/x` and `https:/cloud.maude.sh/x` both validate, and
+/// handing the raw form to the OS is the classic validate-vs-use gap (defender
+/// pass 2026-08-04, F2). Split out from the command so the policy is
+/// unit-testable without env or a browser.
+fn cloud_url_allowed(url: &str, base: &reqwest::Url) -> Option<reqwest::Url> {
+    if url.len() > 2048 || has_unsafe_bytes(url) {
+        return None;
+    }
+    let u = reqwest::Url::parse(url).ok()?;
+    if !matches!(u.scheme(), "http" | "https") {
+        return None;
+    }
+    // The filter above ran on the CALLER's string, but what gets LAUNCHED is this
+    // serialization — and `Url` re-introduces `%`: every non-ASCII byte is
+    // percent-encoded, so `…/Ͱ` (U+0370) comes back out as `…/%CD%B0`, and `%CD%`
+    // is a cmd dynamic pseudo-variable (the current directory). Validating the
+    // input while launching the output is exactly how the F1 class returned;
+    // both strings have to pass. (Attacker re-review 2026-08-04, NEW-1.)
+    if has_unsafe_bytes(u.as_str()) {
+        return None;
+    }
+
+    let (host, base_host) = (u.host_str()?, base.host_str()?);
+
+    // Arm 1 — the exact configured origin (scheme + host + port). This is the arm
+    // a self-hosted / stubbed control plane matches (`http://127.0.0.1:8788`).
+    if u.scheme() == base.scheme()
+        && host == base_host
+        && u.port_or_known_default() == base.port_or_known_default()
+    {
+        return Some(u);
+    }
+
+    // Arm 2 — a host inside the cloud zone: the per-project cells
+    // (`<project>.cloud.maude.sh`) and the share views (`view-*.cloud.maude.sh`).
+    //
+    // Attacker pass 2026-08-04 (A1) reframed what this zone actually IS: it is
+    // not "Maude", it is "Maude and every customer's cell, share view and canvas
+    // origin" — hosts OTHER TENANTS control and can serve script from. So this
+    // arm is deliberately the narrowest thing that still serves its two callers:
+    //
+    //   • pinned to the COMPILED-IN host, never to `base`. A poisoned or typo'd
+    //     `MAUDE_CLOUD_URL` therefore cannot mint a wildcard (`https://sh` would
+    //     otherwise have made `*.sh` the zone — A3); at worst it moves arm 1,
+    //     which is one exact origin, not a family.
+    //   • ROOT PATH ONLY. Both callers want a host's front door (a share view
+    //     home, a cell home). Refusing deep paths is what stops a tenant-hosted
+    //     asset — e.g. a stored `.svg` served from a canvas origin — from being
+    //     the target, which was the entry hop of the reported chain.
+    //   • https, port-less, and the suffix test carries its own dot: a bare
+    //     `ends_with` would accept `evilcloud.maude.sh`, and no suffix test at
+    //     all would accept `cloud.maude.sh.attacker.com`.
+    let at_root = matches!(u.path(), "" | "/") && u.query().is_none() && u.fragment().is_none();
+    let in_zone = host == DEFAULT_CLOUD_HOST
+        || (host.len() > DEFAULT_CLOUD_HOST.len()
+            && host.ends_with(DEFAULT_CLOUD_HOST)
+            && host.as_bytes()[host.len() - DEFAULT_CLOUD_HOST.len() - 1] == b'.');
+    if u.scheme() == "https" && u.port().is_none() && at_root && in_zone {
+        return Some(u);
+    }
+    None
+}
+
+/// `#[tauri::command]` — open a Maude Cloud URL (device-activation page, share
+/// view, dashboard) in the OS browser. Zone-locked in Rust against the address
+/// resolved at call time; the webview's argument never widens what is allowed.
+#[tauri::command]
+pub fn open_cloud_url(url: String) -> Result<(), String> {
+    // Launch the PARSED url, never the caller's string — see cloud_url_allowed.
+    let validated = cloud_url_allowed(&url, &cloud_base())
+        .ok_or_else(|| "Refusing to open a URL outside Maude Cloud.".to_string())?;
+    open::that(validated.as_str()).map_err(|e| format!("Couldn't open the browser: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cloud_base, cloud_url_allowed, DEFAULT_CLOUD_URL};
+
+    fn base(s: &str) -> reqwest::Url {
+        reqwest::Url::parse(s).unwrap()
+    }
+
+    /// The policy as a boolean, for the many cases that only care about verdict.
+    fn allowed(url: &str, b: &reqwest::Url) -> bool {
+        cloud_url_allowed(url, b).is_some()
+    }
+
+    #[test]
+    fn accepts_the_cloud_zone_on_the_default_origin() {
+        let b = base(DEFAULT_CLOUD_URL);
+        for ok in [
+            "https://cloud.maude.sh/activate?code=ABCD-1234", // arm 1 — the control plane
+            "https://cloud.maude.sh",
+            "https://alligators.cloud.maude.sh/", // arm 2 — a cell's front door
+            "https://view-alligators.cloud.maude.sh",
+        ] {
+            assert!(allowed(ok, &b), "should allow {ok}");
+        }
+    }
+
+    #[test]
+    fn the_zone_arm_reaches_front_doors_only_never_tenant_hosted_assets() {
+        // `*.cloud.maude.sh` is every customer's cell / share view / canvas origin,
+        // i.e. hosts other tenants can serve script from. Allowing a deep path
+        // there made a stored asset a valid target, which was the entry hop of the
+        // reported chain (attacker pass A1). Front doors only.
+        let b = base(DEFAULT_CLOUD_URL);
+        for bad in [
+            "https://canvas-evil.cloud.maude.sh/stored.svg",
+            "https://view-evil.cloud.maude.sh/?next=x",
+            "https://evil.cloud.maude.sh/#/x",
+        ] {
+            assert!(!allowed(bad, &b), "should refuse {bad}");
+        }
+        // The control plane itself still takes paths — it is arm 1, and it is ours.
+        assert!(allowed("https://cloud.maude.sh/activate?code=X", &b));
+    }
+
+    #[test]
+    fn a_moved_base_cannot_mint_a_wildcard_zone() {
+        // Arm 2 is pinned to the compiled-in host, so even a poisoned or typo'd
+        // MAUDE_CLOUD_URL buys exactly one origin (arm 1), never a family (A2/A3).
+        let b = base("https://evil.tld");
+        assert!(allowed("https://evil.tld/x", &b)); // arm 1: the configured origin
+        assert!(!allowed("https://sub.evil.tld/", &b)); // no wildcard came with it
+        assert!(!allowed("https://sub.evil.tld/asset.svg", &b));
+        // The compiled zone stays reachable and does NOT track the base — those are
+        // real Maude front doors, and opening one gains a base-poisoner nothing.
+        assert!(allowed("https://alligators.cloud.maude.sh/", &b));
+    }
+
+
+    #[test]
+    fn refuses_percent_so_the_windows_launcher_cannot_expand_env_vars() {
+        // `open` runs `cmd /c start "" <url>` through raw_arg on Windows, and cmd
+        // expands %VAR% inside quotes. An in-zone host asking for this would read
+        // the expansion out of its own access log (defender pass F1).
+        let b = base(DEFAULT_CLOUD_URL);
+        for bad in [
+            "https://view-attacker.cloud.maude.sh/?d=%GITHUB_TOKEN%",
+            "https://cloud.maude.sh/%TEMP%",
+            "https://cloud.maude.sh/a%40b",
+            // Non-ASCII survives the input filter and comes BACK as `%CD%B0` from
+            // Url serialization — `%CD%` is cmd's current-directory pseudo-var.
+            "https://cloud.maude.sh/\u{0370}",
+            "https://cloud.maude.sh/?x=\u{0370}",
+        ] {
+            assert!(!allowed(bad, &b), "should refuse {bad}");
+        }
+    }
+
+    #[test]
+    fn the_launched_url_is_the_parsed_one_not_the_callers_string() {
+        // Validate-vs-use (defender pass F2): these validate, and what goes to the
+        // OS must be the normalized form rather than the odd input spelling.
+        let b = base(DEFAULT_CLOUD_URL);
+        let got = cloud_url_allowed("https:cloud.maude.sh/activate", &b).expect("validates");
+        assert_eq!(got.as_str(), "https://cloud.maude.sh/activate");
+    }
+
+    #[test]
+    fn refuses_everything_outside_the_zone() {
+        let b = base(DEFAULT_CLOUD_URL);
+        for bad in [
+            // Not the cloud at all.
+            "https://evil.example/activate",
+            // Suffix-without-dot and zone-as-prefix — the two host-smuggle shapes
+            // a naive `ends_with` / `contains` would wave through.
+            "https://evilcloud.maude.sh/",
+            "https://cloud.maude.sh.attacker.example/",
+            // Authority re-opened by userinfo.
+            "https://cloud.maude.sh@evil.example/",
+            "https://evil.example/?next=cloud.maude.sh",
+            // Non-http schemes are never a browser target.
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "maude://open/x",
+            // Downgrade + odd-port lookalikes must not ride the subdomain arm.
+            "http://alligators.cloud.maude.sh/",
+            "https://alligators.cloud.maude.sh:8443/",
+            // Windows cmd-metacharacter / whitespace shapes (CVE-2024-24576).
+            "https://cloud.maude.sh/a&calc",
+            "https://cloud.maude.sh/a b",
+            "not a url",
+        ] {
+            assert!(!allowed(bad, &b), "should refuse {bad}");
+        }
+    }
+
+    #[test]
+    fn refuses_an_over_long_url() {
+        let b = base(DEFAULT_CLOUD_URL);
+        let long = format!("https://cloud.maude.sh/{}", "a".repeat(2100));
+        assert!(!allowed(&long, &b));
+    }
+
+    #[test]
+    fn a_self_hosted_origin_matches_only_on_the_exact_arm() {
+        // What every e2e stub and self-hoster looks like: loopback with a port.
+        let b = base("http://127.0.0.1:8788");
+        assert!(allowed("http://127.0.0.1:8788/activate?code=X", &b));
+        // A different port is a different origin; the https zone is not implied.
+        assert!(!allowed("http://127.0.0.1:9999/activate", &b));
+        assert!(!allowed("https://cloud.maude.sh/activate", &b));
+        // The subdomain arm must not fire for a loopback/plaintext base at all —
+        // it once implied https://127.0.0.1/ from this very base (defender F3).
+        assert!(!allowed("https://127.0.0.1/activate", &b));
+        assert!(!allowed("https://x.127.0.0.1/activate", &b));
+    }
+
+    #[test]
+    fn a_port_bearing_self_host_does_not_imply_its_default_port_or_subdomains() {
+        // `https://cloud.internal.corp:8443` is one service; port 443 on the same
+        // name is usually a different one, and the subdomains are not its zone.
+        let b = base("https://cloud.internal.corp:8443");
+        assert!(allowed("https://cloud.internal.corp:8443/activate", &b));
+        assert!(!allowed("https://cloud.internal.corp/activate", &b));
+        assert!(!allowed("https://cell.cloud.internal.corp/", &b));
+    }
+
+    #[test]
+    fn the_base_comes_from_the_env_at_call_time() {
+        // ONE test owns MAUDE_CLOUD_URL for every env-dependent assertion. Rust
+        // runs tests on parallel threads against a shared process environment, so
+        // a second test touching this var races this one and fails whichever
+        // loses — split them and you get an intermittent red that has nothing to
+        // do with the policy under test.
+        std::env::remove_var("MAUDE_CLOUD_URL");
+        assert_eq!(cloud_base().as_str(), "https://cloud.maude.sh/");
+
+        std::env::set_var("MAUDE_CLOUD_URL", "http://127.0.0.1:4599/");
+        assert_eq!(cloud_base().host_str(), Some("127.0.0.1"));
+        assert!(allowed("http://127.0.0.1:4599/activate", &cloud_base()));
+
+        // Garbage falls back to the default rather than opening the zone up.
+        std::env::set_var("MAUDE_CLOUD_URL", "not a url");
+        assert_eq!(cloud_base().as_str(), "https://cloud.maude.sh/");
+
+        // A bare single-label host is a typo, not an address — same fallback, so
+        // `https://sh` can never turn `*.sh` into the zone.
+        std::env::set_var("MAUDE_CLOUD_URL", "https://sh");
+        assert_eq!(cloud_base().as_str(), "https://cloud.maude.sh/");
+        assert!(!allowed("https://evil.sh/x", &cloud_base()));
+
+        std::env::remove_var("MAUDE_CLOUD_URL");
+    }
 }

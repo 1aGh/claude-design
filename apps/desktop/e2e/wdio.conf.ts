@@ -25,6 +25,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // must exercise the split-origin path).
 process.env.MAUDE_PROJECT_ROOT = resolve(HERE, 'fixtures/project');
 process.env.NO_OPEN = '1';
+// Keep macOS's keychain prompt out of the run: a debug build is re-signed every
+// time, so "Always Allow" never persists and each rebuild pops a modal that
+// freezes the WKWebView — every WebDriver call then times out and the suite
+// fails looking exactly like a broken bundle. Honored only under
+// `debug_assertions` (keychain.rs), so no shipped build is affected.
+process.env.MAUDE_E2E_NO_KEYCHAIN = '1';
 if (process.env.MAUDE_CANVAS_ORIGIN_SPLIT === undefined) {
   process.env.MAUDE_CANVAS_ORIGIN_SPLIT = '0';
 }

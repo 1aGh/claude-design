@@ -172,6 +172,18 @@ fn respond(req: tiny_http::Request, status: u16, body: String) {
 /// state on launch. Returns only a boolean — never the token.
 #[tauri::command]
 pub fn github_is_signed_in() -> bool {
+    // E2E (debug builds only): reading the keychain here makes macOS raise a
+    // "Maude wants to use your confidential information" prompt, and because a
+    // debug build is re-signed on every `tauri build --debug`, "Always Allow"
+    // never sticks — so EVERY rebuild puts a modal in front of the app. That
+    // modal blocks the main thread, which freezes the WKWebView, which makes
+    // every WebDriver script time out: a scenario suite that looks like a code
+    // failure and isn't. A test run has no keychain token to find anyway.
+    // Gated on `debug_assertions`, so the shipped `.app` always reads for real.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("MAUDE_E2E_NO_KEYCHAIN").is_some() {
+        return false;
+    }
     get_token().is_some()
 }
 

@@ -19,9 +19,21 @@ import { waitForSidecar } from '../helpers/sidecar';
  *      "View in the browser" (Phase 17 T4 — no dead menus);
  *   3. Connect writes `linkedHub` into the fixture project's config — the
  *      exact state `maude design link` writes;
- *   4. a maude:// deep link surfaces the explicit CONFIRM strip and the
- *      one-time code attach completes (the same `maude://deep-link` event the
- *      Rust handler emits; OS scheme registration is DDR-177 smoke).
+ *   4. a maude:// deep link surfaces the explicit DECISION MODAL — naming both
+ *      sides and what syncs — and the one-time code attach completes (the same
+ *      `maude://deep-link` event the Rust handler emits; OS scheme registration
+ *      is DDR-177 smoke);
+ *   5. a name that merely RESEMBLES the folder still warns — after the attacker
+ *      pass, containment no longer buys silence (the project id is registerable
+ *      by anyone, so "contains your folder name" was the attacker's off-switch);
+ *   6. a link naming an unrelated project warns, demotes connecting to "Connect
+ *      anyway", and is still refused server-side by the claimed↔actual check.
+ *
+ * Note what makes scenario 4 quiet: the stub's handoff exchange returns the
+ * fixture folder's own name, an EXACT match. That is the only name-based verdict
+ * allowed to pass without a warning — every stub address is
+ * `http://127.0.0.1:<port>` and carries no project name, so the linkedHub half
+ * never speaks here.
  */
 const tid = (s: string) => `[data-testid="${s}"]`;
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -35,7 +47,7 @@ interface TauriGlobal {
 
 let originalConfig: string | null = null;
 
-describe('cloud-attach — sign-in, picker, attach, deep-link confirm (stubbed)', () => {
+describe('cloud-attach — sign-in, picker, attach, deep-link decision (stubbed)', () => {
   before(async function () {
     startReport('cloud-attach — Maude Cloud sign-in + attach, control plane stubbed');
     if (!process.env.MAUDE_E2E_CLOUD_STUB) this.skip();
@@ -90,24 +102,105 @@ describe('cloud-attach — sign-in, picker, attach, deep-link confirm (stubbed)'
     await capture('attached via picker');
   });
 
-  it('4 · a maude:// deep link asks first, then the one-time code attaches', async () => {
-    await browser.execute((code: string) => {
-      // The same event the Rust deep-link handler emits — the UI cannot tell
-      // the difference, which is the point.
-      const tauri = (window as unknown as { __TAURI__: TauriGlobal }).__TAURI__;
-      tauri.event.emit('maude://deep-link', `maude://open/stub-project?code=${code}`);
-    }, STUB_CODE);
+  /** Let the dialog's entry animation finish before an evidence shot. The
+   *  `gi-dialog` family pops over `--dur-route` (280ms), and a capture fired the
+   *  instant `waitForDisplayed` resolves catches it half-transparent — the
+   *  assertions were green but the screenshots were unreadable. */
+  const settled = () => browser.pause(450);
 
-    const confirm = await $(tid('cloud-deeplink'));
-    await confirm.waitForDisplayed({ timeout: 15_000 });
-    expect(await confirm.getText()).toContain('Connect this project to stub-project?');
-    await capture('deep-link confirm strip');
+  /** Emit the same event the Rust deep-link handler emits — the UI cannot tell
+   *  the difference, which is the point. */
+  const arrive = (project: string) =>
+    browser.execute(
+      (p: string, code: string) => {
+        const tauri = (window as unknown as { __TAURI__: TauriGlobal }).__TAURI__;
+        tauri.event.emit('maude://deep-link', `maude://open/${p}?code=${code}`);
+      },
+      project,
+      STUB_CODE
+    );
 
-    await (await $(tid('cloud-deeplink-connect'))).click();
+  it('4 · a maude:// deep link explains both sides, then the one-time code attaches', async () => {
+    // The fixture folder IS `project` — an exact identity match, the only
+    // name-based verdict allowed to pass without a warning.
+    await arrive('project');
+
+    const dialog = await $(tid('cloud-deeplink-dialog'));
+    await dialog.waitForDisplayed({ timeout: 15_000 });
+    const text = await dialog.getText();
+    // Both sides named, and what actually syncs said in plain words — the strip
+    // this replaced said "Connect this project to X?" without ever saying which
+    // project "this" was.
+    expect(text).toContain('Connect to project?');
+    expect(text).toContain('This folder');
+    expect(text).toContain('Nothing else in this repo is uploaded');
+    expect(await (await $(tid('cloud-deeplink-mismatch'))).isExisting()).toBe(false);
+    const connect = await $(tid('cloud-deeplink-connect'));
+    expect(await connect.getText()).toContain('Connect');
+    expect(await connect.getText()).not.toContain('anyway');
+    await settled();
+    await capture('deep-link decision modal');
+
+    await connect.click();
     await browser.waitUntil(
-      async () => (await (await $(tid('cloud-bar'))).getText()).includes('Linked to stub-project'),
+      async () => (await (await $(tid('cloud-bar'))).getText()).includes('Linked to project'),
       { timeout: 20_000, timeoutMsg: 'the deep-link attach note never appeared' }
     );
     await capture('attached via deep link');
+  });
+
+  it('5 · a name that merely RESEMBLES this folder still warns — silence is exact-match only', async () => {
+    // The attacker-chosen-name case (B1): `project-archive` contains the folder
+    // name, which used to buy silence. Two similar names are two workspaces.
+    await arrive('project-archive');
+
+    const warn = await $(tid('cloud-deeplink-mismatch'));
+    await warn.waitForDisplayed({ timeout: 15_000 });
+    expect(await warn.getText()).toContain('different workspaces');
+    expect(await (await $(tid('cloud-deeplink-connect'))).getText()).toContain('Connect anyway');
+    await settled();
+    await capture('near-match still warns');
+
+    // Declining is the cheap move and must leave nothing behind.
+    await (await $(tid('cloud-deeplink-dismiss'))).click();
+    await browser.waitUntil(
+      async () => !(await (await $(tid('cloud-deeplink-dialog'))).isExisting()),
+      {
+        timeout: 10_000,
+        timeoutMsg: 'the dialog outlived "Not now"',
+      }
+    );
+  });
+
+  it('6 · a link naming a project this folder is not warns, and connecting anyway is refused', async () => {
+    // The reported near-miss: one project open, "Open in Maude" pressed on
+    // another. The modal must say so BEFORE the click — and the server's
+    // claimed↔actual check must still be there behind it, because the hint is
+    // only a hint. Here both fire: the stub exchange opens `stub-project`, so
+    // the 409 refuses a consent given for a different name.
+    await arrive('other-workspace');
+
+    const dialog = await $(tid('cloud-deeplink-dialog'));
+    await dialog.waitForDisplayed({ timeout: 15_000 });
+    const warn = await $(tid('cloud-deeplink-mismatch'));
+    await warn.waitForDisplayed({ timeout: 10_000 });
+    expect(await warn.getText()).toContain('not other-workspace');
+
+    const connect = await $(tid('cloud-deeplink-connect'));
+    // Connecting is demoted to the deliberate move, and says as much.
+    expect(await connect.getText()).toContain('Connect anyway');
+    await settled();
+    await capture('deep-link mismatch warning');
+
+    await connect.click();
+    await browser.waitUntil(
+      async () => (await (await $(tid('cloud-bar'))).getText()).includes('Nothing was connected'),
+      { timeout: 20_000, timeoutMsg: 'the claimed↔actual refusal never surfaced' }
+    );
+    // The link that was already there is untouched — a refused attach writes
+    // nothing.
+    const cfg = JSON.parse(readFileSync(FIXTURE_CONFIG, 'utf8'));
+    expect(cfg.linkedHub?.url).toContain('127.0.0.1');
+    await capture('mismatched claim refused');
   });
 });

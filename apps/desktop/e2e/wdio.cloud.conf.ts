@@ -94,7 +94,11 @@ function startStub(): Promise<{ port: number; close: () => void }> {
           return send(200, {
             token: 'x.y',
             role: 'owner',
-            project: 'stub-project',
+            // Deliberately the FIXTURE FOLDER's own name (e2e/fixtures/project),
+            // so the deep-link scenario exercises the one verdict that is allowed
+            // to be silent: an exact identity match. Anything else — including a
+            // near-match — now warns, by design (attacker pass B1).
+            project: 'project',
             url: origin,
             expiresAt: Date.now() + 3600_000,
           });

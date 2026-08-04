@@ -39,6 +39,13 @@ export const openVerification = () =>
  *  Rust side host-locks it to github.com. Throws on an older desktop build without
  *  the command — callers fall back to copy-to-clipboard. */
 export const openGitHubUrl = (url) => invoke('open_github_url', { url });
+/** Open a Maude Cloud URL (device activation, share view, dashboard) in the OS
+ *  browser. Native only — `window.open` is a silent no-op in WKWebView, which is
+ *  what stranded people mid-sign-in. The Rust side zone-locks it against the
+ *  address it resolves per call, so this argument can't widen where it goes.
+ *  Throws on an older desktop build without the command — every caller must keep
+ *  a visible link the person can use by hand. */
+export const openCloudUrl = (url) => invoke('open_cloud_url', { url });
 /** Show the device code as soon as the shell has it. Returns an unlisten promise. */
 export const onDeviceCode = (cb) => listen('github://device-code', cb);
 /** Fire when sign-in completes (any surface) so other surfaces can flip live. cb(login). */
