@@ -43,9 +43,13 @@ WORKDIR /build/apps/hub
 COPY apps/hub/package.json apps/hub/bun.lock ./
 RUN bun install --frozen-lockfile --ignore-scripts
 COPY apps/hub ./
-# The ONLY file the hub borrows from the studio: the append-only commit engine.
-# Bun strips its types at bundle time, so the Node runtime stage never sees TS.
+# The files the hub borrows from the studio: the append-only commit engine and
+# the repo lock it serializes the checkout with (Cloud Phase 27 D2 — autocommit
+# imports `../git/repo-lock.ts`; omitting it fails `bun run build.ts` right
+# below with "Could not resolve", which is what broke the v0.54.0 image build).
+# Bun strips their types at bundle time, so the Node runtime stage never sees TS.
 COPY apps/studio/sync/autocommit.ts /build/apps/studio/sync/autocommit.ts
+COPY apps/studio/git/repo-lock.ts /build/apps/studio/git/repo-lock.ts
 # The mirror argv + push classifier, imported (never re-typed) by the cell's
 # mirror lane. Its tests assert the ABSENCE of any force flag — absence being
 # exactly what a later edit adds with nothing noticing — so a second copy here
