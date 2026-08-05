@@ -7,8 +7,10 @@ import {
   classify,
   crossedDragThreshold,
   DRAG_THRESHOLD_PX,
+  isArtboardDragChrome,
   isEditableTarget,
   type Tool,
+  yieldsToArtboardDrag,
 } from '../input-router.tsx';
 
 const base = (over: Partial<ClassifyInput>): ClassifyInput => ({
@@ -454,6 +456,99 @@ describe('input-router / isEditableTarget', () => {
       getAttribute: () => null,
     } as unknown as HTMLElement;
     expect(isEditableTarget(el)).toBe(false);
+  });
+});
+
+// issue-71 — a bare (no-modifier) pointerdown/mousedown on an artboard's own
+// drag chrome (the label strip + border, OUTSIDE `.dc-artboard-body`) must
+// still be identified so useInputRouter can skip stopImmediatePropagation and
+// let use-artboard-drag.tsx's own bubble-phase onPointerDown arm its
+// pending→dragging state machine — otherwise no artboard could ever be
+// repositioned by dragging its header (the router's capture-phase claim
+// killed the event before it reached that listener).
+describe('input-router / isArtboardDragChrome', () => {
+  // `closest(sel)` here mimics Element.closest: return a truthy stub for any
+  // selector this fake node "matches" (is, or is a descendant of), null else.
+  const fakeTarget = (memberOf: string[]): EventTarget =>
+    ({
+      closest: (sel: string) => (memberOf.includes(sel) ? {} : null),
+    }) as unknown as EventTarget;
+
+  test('null target → false', () => {
+    expect(isArtboardDragChrome(null)).toBe(false);
+  });
+
+  test('target with no closest() (non-Element) → false', () => {
+    expect(isArtboardDragChrome({} as EventTarget)).toBe(false);
+  });
+
+  test('outside any artboard → false', () => {
+    expect(isArtboardDragChrome(fakeTarget([]))).toBe(false);
+  });
+
+  test('the label strip / border chrome (inside an artboard, not its body) → true', () => {
+    expect(isArtboardDragChrome(fakeTarget(['[data-dc-screen]']))).toBe(true);
+  });
+
+  test('inside .dc-artboard-body (the canvas content, not chrome) → false', () => {
+    expect(isArtboardDragChrome(fakeTarget(['[data-dc-screen]', '.dc-artboard-body']))).toBe(false);
+  });
+});
+
+// issue-71 — the actual regression: before this fix, useInputRouter's
+// pointerdown/mousedown handlers called `stopImmediatePropagation()` on EVERY
+// claimed action, including a bare click on an artboard's own drag chrome —
+// which killed the event before use-artboard-drag.tsx's bubble-phase
+// onPointerDown (bound to that same artboard) ever saw it, so dragging an
+// artboard by its header did nothing in either the Move or the (former)
+// always-select tool state. `yieldsToArtboardDrag` is the exact decision the
+// handlers now gate `stopImmediatePropagation` on.
+describe('input-router / yieldsToArtboardDrag', () => {
+  const chrome = (): EventTarget =>
+    ({
+      closest: (sel: string) => (sel === '[data-dc-screen]' ? {} : null),
+    }) as unknown as EventTarget;
+  const body = (): EventTarget => ({ closest: () => ({}) }) as unknown as EventTarget; // matches every selector, incl. .dc-artboard-body
+
+  test('bare click on artboard chrome (the reported bug) → true (let the drag hook see it)', () => {
+    const action = classify({ type: 'pointerdown', activeTool: 'move', button: 0 });
+    expect(yieldsToArtboardDrag(action, chrome(), { metaKey: false, ctrlKey: false })).toBe(true);
+  });
+
+  test('shift+click on artboard chrome (multi-select-and-drag) → true', () => {
+    const action = classify({
+      type: 'pointerdown',
+      activeTool: 'move',
+      button: 0,
+      shiftKey: true,
+    });
+    expect(yieldsToArtboardDrag(action, chrome(), { metaKey: false, ctrlKey: false })).toBe(true);
+  });
+
+  test('cmd+click on artboard chrome (deep-select, not a drag) → false', () => {
+    const action = classify({
+      type: 'pointerdown',
+      activeTool: 'move',
+      button: 0,
+      metaKey: true,
+    });
+    expect(yieldsToArtboardDrag(action, chrome(), { metaKey: true, ctrlKey: false })).toBe(false);
+  });
+
+  test('bare click on .dc-artboard-body content (not chrome) → false', () => {
+    const action = classify({ type: 'pointerdown', activeTool: 'move', button: 0 });
+    expect(yieldsToArtboardDrag(action, body(), { metaKey: false, ctrlKey: false })).toBe(false);
+  });
+
+  test('bare click outside any artboard → false (nothing to yield to)', () => {
+    const action = classify({ type: 'pointerdown', activeTool: 'move', button: 0 });
+    const outside = { closest: () => null } as unknown as EventTarget;
+    expect(yieldsToArtboardDrag(action, outside, { metaKey: false, ctrlKey: false })).toBe(false);
+  });
+
+  test('right-click (context-menu) on chrome → false — not a select at all', () => {
+    const action = classify({ type: 'pointerdown', activeTool: 'move', button: 2 });
+    expect(yieldsToArtboardDrag(action, chrome(), { metaKey: false, ctrlKey: false })).toBe(false);
   });
 });
 
