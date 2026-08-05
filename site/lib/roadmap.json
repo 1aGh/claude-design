@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-04T21:46:10.050Z",
+  "generated": "2026-08-05T03:54:59.271Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1804,6 +1804,17 @@
       "summary": "The moodboard direction gates catch a disliked direction before the scaffold. They do not catch a scaffold that ran but produced silently-broken output — empty files trusted as written, a transpile...",
       "planPath": ".ai/plans/archive/setup-ds-round2-scaffold-integrity-and-devserver-fixes.md",
       "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-acp-write-path-scope",
+      "title": "Feature: ACP writes are project-scoped — every write outside the project asks",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-acp-write-path-scope.md",
+      "archived": false,
       "phaseKey": null
     },
     {
