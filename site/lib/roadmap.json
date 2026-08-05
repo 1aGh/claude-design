@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-05T04:28:17.267Z",
+  "generated": "2026-08-05T20:15:47.593Z",
   "currentPhase": null,
   "phases": [
     {
@@ -593,6 +593,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-background-export-notification-center.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-bug-autofix-agent",
+      "title": "Feature: Autonomous bug-fix agent (Mac Mini)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-bug-autofix-agent.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1818,17 +1829,6 @@
       "phaseKey": null
     },
     {
-      "id": "feature-bug-autofix-agent",
-      "title": "Feature: Autonomous bug-fix agent (Mac Mini)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-bug-autofix-agent.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
       "id": "feature-goal-unattended-pipelines",
       "title": "Feature: /goal-aware unattended pipelines for flow + design commands",
       "status": "planned",
@@ -1847,6 +1847,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is the extracted Phase 5 of feature-ai-media-generation (closed at Phase 4, 2026-...",
       "planPath": ".ai/plans/feature-local-media-generation.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-production-grade-hardening",
+      "title": "Feature: Production-grade hardening & decomposition (the stack stays)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-production-grade-hardening.md",
       "archived": false,
       "phaseKey": null
     },
