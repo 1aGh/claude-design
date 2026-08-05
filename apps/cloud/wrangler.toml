@@ -55,7 +55,8 @@ MAUDE_R2_BUCKET = "maude-cloud-assets"
 #
 # Not a secret. The ids are not credentials, and `wrangler secret` would hide
 # the one fact worth reviewing in a diff: who can see the whole fleet.
-OPERATOR_ACCOUNT_IDS = ""
+# acct_ms73cs9w_kc8grl — m.dovrtel@gmail.com (owner)
+OPERATOR_ACCOUNT_IDS = "acct_ms73cs9w_kc8grl"
 
 [[d1_databases]]
 binding = "DB"
