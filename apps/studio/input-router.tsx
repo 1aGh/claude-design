@@ -407,6 +407,45 @@ export function isOverlayTarget(t: EventTarget | null): boolean {
   );
 }
 
+/**
+ * Artboard "chrome" — inside an artboard (`[data-dc-screen]`) but OUTSIDE its
+ * `.dc-artboard-body` content box, i.e. the label strip + border that
+ * `use-artboard-drag.tsx` binds its own bubble-phase `onPointerDown` to
+ * (`bindHandle()`, spread directly on the `.dc-artboard` article). The router
+ * runs in the CAPTURE phase ahead of that handler; claiming a bare press here
+ * — same as any other chrome hit, the router still selects the artboard —
+ * used to `stopImmediatePropagation` the native event before it ever reached
+ * the drag hook's listener, so no artboard could be repositioned by its
+ * header at all (issue-71). A modifier-held press is not exempted: the drag
+ * hook itself ignores Cmd/Ctrl (reserved for deep-select), so nothing
+ * downstream needs the raw event in that case.
+ */
+export function isArtboardDragChrome(t: EventTarget | null): boolean {
+  if (!t || typeof (t as Element).closest !== 'function') return false;
+  const el = t as Element;
+  return !!el.closest('[data-dc-screen]') && !el.closest('.dc-artboard-body');
+}
+
+/**
+ * Should the router's pointerdown/mousedown handler skip
+ * `stopImmediatePropagation` so the event still reaches use-artboard-drag.tsx?
+ * Pulled out of the two near-identical handlers below so the decision itself
+ * — not just `isArtboardDragChrome`'s target test — is covered by a DOM-free
+ * unit test (issue-71).
+ */
+export function yieldsToArtboardDrag(
+  action: RouterAction,
+  target: EventTarget | null,
+  modifiers: { metaKey: boolean; ctrlKey: boolean }
+): boolean {
+  return (
+    action.kind === 'select' &&
+    !modifiers.metaKey &&
+    !modifiers.ctrlKey &&
+    isArtboardDragChrome(target)
+  );
+}
+
 export function useInputRouter(opts: UseInputRouterOptions): void {
   const { hostRef, getActiveTool, isSpaceHeld, callbacks, enabled = true, claimableActions } = opts;
 
@@ -496,13 +535,22 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
           activeTool: getActiveTool(),
         })
       );
+      // issue-71 — a bare press on an artboard's own drag chrome must still
+      // reach that artboard's `onPointerDown` (use-artboard-drag.tsx) so its
+      // pending→dragging state machine can arm, or no artboard can ever be
+      // repositioned by its header. The router still SELECTS (dispatch below
+      // is unconditional) and still preventDefaults the browser's native
+      // click-drag text-selection — it only skips stopImmediatePropagation,
+      // which is the one call that would keep the event from ever reaching
+      // the bubble-phase listener bound to the very element it targeted.
+      const yields = yieldsToArtboardDrag(action, e.target, e);
       if (action.kind !== 'no-op') {
         // Suppress native behavior on every event the router claims —
         // button presses don't fire, inputs don't focus, the canvas
         // content's own click handlers don't run. The router lives in
         // capture phase so this fires before descendants.
         e.preventDefault();
-        e.stopImmediatePropagation();
+        if (!yields) e.stopImmediatePropagation();
       }
       dispatch(action);
     };
@@ -531,9 +579,14 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
           activeTool: getActiveTool(),
         })
       );
+      // issue-71 — same exemption as onPointerDown above: preventDefault still
+      // runs (blocks the native click-drag text-selection an un-prevented
+      // mousedown would start), but stopImmediatePropagation is skipped so the
+      // paired pointerdown reaching use-artboard-drag.tsx isn't undone here.
+      const yields = yieldsToArtboardDrag(action, e.target, e);
       if (action.kind !== 'no-op') {
         e.preventDefault();
-        e.stopImmediatePropagation();
+        if (!yields) e.stopImmediatePropagation();
         // preventDefault above stops mousedown's default FOCUS, so a Cmd-click
         // select would leave the iframe unfocused and every in-canvas keyboard
         // shortcut (arrow-nudge, Cmd+D, copy/paste-style, Delete) dead until a
