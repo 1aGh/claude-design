@@ -206,8 +206,13 @@ function projectCard(project, { can }) {
  * @param {{email: string}} args.account
  * @param {object[]} args.projects  each with `role`, so actions can be filtered
  * @param {(role: string, capability: string) => boolean} args.can
+ * @param {boolean} [args.isOperator]  Cloud Phase 26. The shell can render the
+ *   Fleet section, but only `operator-pages.mjs` ever asked it to — so the
+ *   surface had no way IN except typing the URL. This is the way in, and the
+ *   only customer-facing page that gets one: the dashboard is where a signed-in
+ *   person starts. Default false keeps every other caller's shell unchanged.
  */
-export function dashboardPage({ account, projects = [], can }) {
+export function dashboardPage({ account, projects = [], can, isOperator = false }) {
   const body =
     projects.length === 0
       ? `<div class="empty">
@@ -226,6 +231,7 @@ export function dashboardPage({ account, projects = [], can }) {
     active: 'projects',
     extraCss: CSS,
     body,
+    isOperator,
   });
 }
 

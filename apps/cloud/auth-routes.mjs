@@ -34,6 +34,7 @@ import {
   pkcePair,
   validateCallback,
 } from './oauth-google.mjs';
+import { isOperator } from './operator.mjs';
 import {
   checkInboxPage,
   forgotPage,
@@ -192,7 +193,17 @@ export async function handleAuth(request, env, { ctx = null, account: given } = 
     // to their own work is the shape this phase exists to remove.
     const account = await session();
     if (!account) return html(homePage({ account: null, googleEnabled: google }));
-    return html(dashboardPage({ account, projects: await projectsFor(env, account.id), can }));
+    // The Fleet nav is gated at the shell as well as at the route, so an
+    // allowlisted operator needs ONE page that offers the way in. This is it —
+    // for anyone else `isOperator` is false and the shell is what it was.
+    return html(
+      dashboardPage({
+        account,
+        projects: await projectsFor(env, account.id),
+        can,
+        isOperator: isOperator(env, account),
+      })
+    );
   }
   if (method === 'GET' && pathname === '/signup') {
     return html(signupPage({ googleEnabled: google }));

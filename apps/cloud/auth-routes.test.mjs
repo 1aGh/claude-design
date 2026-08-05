@@ -375,3 +375,41 @@ test('F3 — the login redirect never leaves the origin', async () => {
   assert.equal(res.status, 303);
   assert.equal(res.headers.get('location'), '/', 'a hostile next falls back to the dashboard');
 });
+
+// Cloud Phase 26 follow-up — the shell gate needs a caller.
+//
+// `appShell` will render the Fleet nav when told to, and for a while only
+// `operator-pages.mjs` ever told it: the operator surface could be reached
+// only by typing its URL. These two assert the door exists on the dashboard
+// and that it is still the allowlist, not the session, that opens it.
+test('a signed-in operator gets the way into the fleet from the dashboard', async () => {
+  const { env, sqlite } = await freshEnv();
+  const { session } = await signup(env);
+  const { id } = sqlite.prepare('SELECT id FROM accounts').get();
+  env.OPERATOR_ACCOUNT_IDS = id;
+
+  const res = await worker.fetch(
+    new Request('https://cloud.test/', { headers: { cookie: `maude_session=${session}` } }),
+    env
+  );
+  const body = await res.text();
+  assert.equal(res.status, 200);
+  assert.match(body, /href="\/operator"/);
+  assert.match(body, /Fleet/);
+});
+
+test('a signed-in customer gets no hint the fleet exists', async () => {
+  // The default is an EMPTY allowlist, which is also the deployed default —
+  // so this is the same page every customer renders.
+  const { env } = await freshEnv();
+  const { session } = await signup(env);
+
+  const res = await worker.fetch(
+    new Request('https://cloud.test/', { headers: { cookie: `maude_session=${session}` } }),
+    env
+  );
+  const body = await res.text();
+  assert.equal(res.status, 200);
+  assert.doesNotMatch(body, /\/operator/);
+  assert.doesNotMatch(body, /Fleet/);
+});

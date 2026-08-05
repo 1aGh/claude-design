@@ -127,3 +127,33 @@ describe('copy discipline', () => {
     assert.match(html, /&lt;img/);
   });
 });
+
+// Cloud Phase 26 follow-up — the fleet had no door.
+//
+// `appShell` grew an `isOperator` flag, and for a while `operator-pages.mjs`
+// was the only module that ever set it: the Fleet nav appeared once you were
+// already inside /operator, which meant the only way in was typing the URL.
+// The dashboard is where a signed-in person starts, so this is where the way
+// in belongs — and nowhere else on a customer surface.
+describe('the fleet has exactly one door, on the dashboard', () => {
+  it('offers the operator the way in', () => {
+    const html = dashboardPage({ account, projects: [], can, isOperator: true });
+    assert.match(html, /href="\/operator"/);
+    assert.match(html, /Fleet/);
+  });
+
+  it('is absent by default, so every other caller is unchanged', () => {
+    // project-admin, people-page, checkout and device-auth all render the
+    // shell without the flag. Defaulting to false is what keeps their pages
+    // byte-identical, and a customer's dashboard identical to a customer's.
+    const html = dashboardPage({ account, projects: [], can });
+    assert.doesNotMatch(html, /\/operator/);
+    assert.doesNotMatch(html, /Fleet/);
+  });
+
+  it('shows a customer nothing, even one holding a project', () => {
+    const html = render([project()]);
+    assert.doesNotMatch(html, /\/operator/);
+    assert.doesNotMatch(html, /Fleet/);
+  });
+});
