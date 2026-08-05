@@ -1,5 +1,27 @@
 # @1agh/maude
 
+## 0.55.0
+
+### Minor Changes
+
+- b406a42: Cloud: signing in from the desktop app actually opens your browser, and "Open in Maude" now says what it is about to connect.
+
+  **Sign-in no longer dead-ends.** In the desktop app the button that was supposed to open your dashboard did nothing at all — WKWebView drops `window.open` silently — while the dialog claimed a browser had opened. You were left holding a short code with nowhere to type it. The app now reaches the OS browser through a narrow, host-locked command, the dialog says what to do rather than what supposedly already happened, and the activation address is always shown as something you can click or copy. That address already carries the code, so confirming is one click. The same fix covers the two other buttons on that path — "View in the browser" and "Open the dashboard" — which were equally inert in the app.
+
+  **"Open in Maude" is now a decision, not a one-line strip.** The old prompt asked "Connect this project to X?" without ever saying which project "this" was — the one thing the answer depends on. It now names both sides, states in one sentence what syncs (this folder's `.design/` canvases, and nothing else in the repo), and checks whether the folder you have open actually looks like the workspace the link names. If it doesn't, connecting is demoted behind an explicit "Connect anyway" with an explanation and a way out. Only an exact match, or a folder already signed in to that workspace, passes without comment — a name that merely resembles yours is called out, because a project name is something anyone can choose. Declining stays free: the dashboard mints a fresh link whenever you press the button again.
+
+  Everything that made the old flow safe is unchanged: a link is parked and asked about rather than acted on, a second link never replaces the one you are reading, the code is only ever exchanged against the address the app is configured for, and a link that names one project but opens another is still refused outright.
+
+- 3960647: Cloud: an operator board, server-side product analytics, and figures for what a project actually costs to run.
+
+  **`/operator`** — one signed-in surface showing every project and account, fleet health, the €3/cell model as a ratio rather than an invoice, and MRR as the plane believes it (Stripe stays the authority, and the tile says so). Read-mostly: the only write is a reconcile nudge that requires a reason, and that reason is recorded where the customer can read it. Gated by an `OPERATOR_ACCOUNT_IDS` allowlist that is empty by default, so the surface does not exist until somebody deploys it on.
+
+  **Usage events**, emitted server-side into Workers Analytics Engine — never into the control-plane database, whose whole design is that losing it costs a customer nothing. The vocabulary is closed: every event is declared, every property is an enum, and an account id is shape-validated, so an email address has no path into a datapoint. The privacy notice was revised in the same change as the first event, and a test now checks the page against the code in both directions.
+
+  **Project size and build figures** — each project counts its own designs and reports the totals hourly, so the cost model finally has real numbers instead of an estimate. Counts and durations only; the counts need the project's own credential, and a project that has not reported renders an em-dash rather than a zero.
+
+  Customers also get one thing directly: the project activity page now shows _why_ we looked, not only that we did — including the platform-wide reads that touch every project.
+
 ## 0.54.0
 
 ### Minor Changes

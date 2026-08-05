@@ -1,7 +1,16 @@
 {
-  "generated": "2026-08-04T18:06:44.601Z",
+  "generated": "2026-08-05T04:11:20.143Z",
   "version": "0.54.0",
   "entries": [
+    {
+      "id": "cloud-connect-browser-open-and-decision-modal",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Signing in opens your browser again",
+      "summary": "Signing in to Maude Cloud from the app used to go nowhere — the browser never opened, the dialog claimed it had, and you were left holding a code. It opens now, straight to the page with your code already filled in, and the address is always there to click or copy if it doesn't. \"Open in Maude\" also asks a clearer question: it names the folder you have open and the cloud project it would connect it to, says exactly what syncs, and warns you if the two don't look like the same thing.",
+      "surface": "design-ui"
+    },
     {
       "id": "activity-says-why-we-looked",
       "version": null,
