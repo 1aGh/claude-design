@@ -72,6 +72,46 @@ test('every route a cell serves is classified', () => {
   );
 });
 
+test('a write-classified route is never a GET-only handler (the edit-scope inversion)', () => {
+  // The class that shipped: `/_api/edit-scope` was filed `{safe:null,
+  // unsafe:'edit'}` — write-only — but its handler is `if (req.method !== 'GET')
+  // 405`, a pure read. The hub then refused the shell's GET with 405 for every
+  // role, owner included, and the Local/Shared badge (plus, by the same shape,
+  // any other inverted route) was dead in the cloud. The manifest's `safe` side
+  // must not be null when the handler answers ONLY GET.
+  //
+  // Source-scrape, same trade the rest of this file makes: `http.ts` is Bun-only
+  // TS and this suite is node --test. The shape matched — a handler whose FIRST
+  // guard is `req.method !== 'GET') ... 'Method not allowed'` — is GET-only.
+  const src = readFileSync(HTTP_TS, 'utf8');
+  const starts = [...src.matchAll(/^ {4}'(\/[^']*)': (?:async )?\(req/gm)].map((m) => ({
+    path: m[1],
+    at: m.index,
+  }));
+  const bodyOf = (path) => {
+    const i = starts.findIndex((s) => s.path === path);
+    if (i === -1) return null;
+    return src.slice(starts[i].at, starts[i + 1]?.at ?? src.length);
+  };
+  const getOnly = (b) =>
+    /req\.method !== 'GET'\)?\s*return new Response\('Method not allowed'/.test(b);
+
+  const inverted = [];
+  for (const [path, cls] of Object.entries(STUDIO_ROUTES)) {
+    if (cls === null || cls === undefined) continue;
+    const body = bodyOf(path);
+    if (!body) continue; // dynamic / fetch-served — not an exact route literal
+    if (cls.unsafe && cls.safe === null && getOnly(body)) inverted.push(path);
+  }
+  assert.deepEqual(
+    inverted,
+    [],
+    `these routes are classified write-only but their handler answers only GET ` +
+      `(the edit-scope inversion — the shell's GET gets 405 for every role):\n` +
+      inverted.map((r) => `  ${r} → should be { safe: 'read', unsafe: null }`).join('\n')
+  );
+});
+
 test('the manifest names no capability the matrix does not have', () => {
   for (const capability of capabilitiesUsed()) {
     assert.ok(

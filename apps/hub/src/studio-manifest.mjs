@@ -104,7 +104,12 @@ export const STUDIO_ROUTES = Object.freeze({
   '/_api/edit-css': { safe: null, unsafe: 'edit' },
   '/_api/edit-text': { safe: null, unsafe: 'edit' },
   '/_api/edit-array-src': { safe: null, unsafe: 'edit' },
-  '/_api/edit-scope': { safe: null, unsafe: 'edit' },
+  // GET-only, READ-only in the studio: it parses the selection to render the
+  // Local/Shared badge (http.ts — `if (req.method !== 'GET') 405`). It was filed
+  // `{safe:null, unsafe:'edit'}`, the exact inverse of its handler, so the shell's
+  // GET was refused 405 for every role, owner included. `read` on the safe side,
+  // nothing on the unsafe side — it writes nothing (inspector-edits RCA).
+  '/_api/edit-scope': { safe: 'read', unsafe: null },
   '/_api/insert-artboard': { safe: null, unsafe: 'edit' },
   '/_api/insert-element': { safe: null, unsafe: 'edit' },
   '/_api/insert-sequence': { safe: null, unsafe: 'edit' },

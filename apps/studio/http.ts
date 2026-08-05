@@ -305,6 +305,37 @@ export function sameOriginWrite(req: Request): boolean {
 }
 
 /**
+ * The DNS-rebind guard, mode-aware — Cloud Phase 27, the inspector-edits RCA
+ * (`issue-cloud-inspector-edits-refused-by-loopback-guard`).
+ *
+ * `isLoopbackHost(req.headers.get('host'))` is right on a laptop: a malicious
+ * page that resolves `evil.com` → 127.0.0.1 makes the browser send a FOREIGN
+ * Host to the locally-bound dev server, and the guard rejects it. In a CELL that
+ * same check can NEVER pass — the hub's authenticating proxy rewrites Host to the
+ * project's public name (D4, `upstreamHeaders`) on purpose — so every shell edit
+ * (Inspector CSS, artboard ops, insert/delete/reorder, edit-attr/text) 403'd
+ * with "local request required (DNS-rebinding guard)". Annotations and comments
+ * were spared only because their handlers carry no such guard; that split of
+ * which routes worked was exactly the fingerprint of this bug.
+ *
+ * The cell doesn't NEED the Host check: the proxy already terminated the session,
+ * authorized it against the one role table (studio-manifest's `decide()`), and
+ * injects `x-maude-role` after stripping every inbound `x-maude-*` — so the
+ * header's PRESENCE is unforgeable proof the request came through the hub. Same
+ * `WORKSPACE ? x-maude-role` vouch the collab-WS upgrade already trusts
+ * (server.ts, RCA issue-cloud-live-collaboration-dead). Outside workspace mode
+ * this is the loopback check, verbatim.
+ *
+ * Safe against secret leakage by construction: a cell PRUNES every secret-bearing
+ * route family out of its table (`pruneForWorkspace` + the boot-assert), so the
+ * vouched path can only ever reach the project-editing surfaces that survive.
+ */
+export function isTrustedRequestHost(req: Request): boolean {
+  if (isLoopbackHost(req.headers.get('host'))) return true;
+  return isWorkspaceMode() && !!req.headers.get('x-maude-role');
+}
+
+/**
  * CSRF guard for a key-bearing / side-effecting GET (Task 2.5 audio-search —
  * ethical-hacker F1). A cross-site page can issue a `no-cors` GET to
  * `127.0.0.1:<port>` that passes the `isLoopbackHost` DNS-rebind guard AND may
@@ -1146,7 +1177,7 @@ export function createHttp(
     // but newly worth closing given what this diff makes it able to reveal.
     '/_api/acp/status': async (req: Request) => {
       if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       return Response.json(await probeAcpAvailabilityAuthed(), {
         headers: { 'Cache-Control': 'no-store' },
@@ -1164,7 +1195,7 @@ export function createHttp(
     // ChatPanel not-connected explainer + the Help-menu modal read this.
     '/_api/preflight': async (req: Request) => {
       if (!sameOriginWrite(req)) return new Response('cross-origin rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       return Response.json(await probeReadiness(), { headers: { 'Cache-Control': 'no-store' } });
     },
@@ -1178,7 +1209,7 @@ export function createHttp(
     // (SetupChecklist.jsx) polls this.
     '/_api/setup-readiness': async (req: Request) => {
       if (!sameOriginWrite(req)) return new Response('cross-origin rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       return Response.json(await probeSetupReadiness(ctx), {
         headers: { 'Cache-Control': 'no-store' },
@@ -1194,7 +1225,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       // Fire-and-forget — the install can run past Bun's default 10s idle
       // timeout on a slow network, so this returns as soon as the spawn is
@@ -1215,7 +1246,7 @@ export function createHttp(
     // two routes, which used the wrong guard.
     '/_api/claude/install-status': (req: Request) => {
       if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       return Response.json(getInstallState(), { headers: { 'Cache-Control': 'no-store' } });
     },
@@ -1232,7 +1263,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const result = startSignin();
       return Response.json(result, {
@@ -1244,7 +1275,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       cancelSignin();
       return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
@@ -1254,7 +1285,7 @@ export function createHttp(
     // Narrowed fields only (never email/orgId/orgName — see login-state.ts).
     '/_api/claude/signin-status': async (req: Request) => {
       if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const status = await getClaudeAuthStatus();
       return Response.json(
@@ -1272,7 +1303,7 @@ export function createHttp(
       // chat-open` driver omits Origin (allowed); a browser drive-by can't forge it.
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       ctx.bus.emit('acp-focus', {});
       return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
@@ -1298,7 +1329,7 @@ export function createHttp(
       if (req.method === 'PATCH') {
         if (!sameOriginWrite(req))
           return new Response('cross-origin write rejected', { status: 403 });
-        if (!isLoopbackHost(req.headers.get('host')))
+        if (!isTrustedRequestHost(req))
           return new Response('local request required (DNS-rebinding guard)', { status: 403 });
         if (!id) return new Response('missing id', { status: 400 });
         let body: unknown;
@@ -1359,7 +1390,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const declared = Number(req.headers.get('content-length') || '0');
       if (Number.isFinite(declared) && declared > ASSET_MAX_BYTES) {
@@ -1466,7 +1497,7 @@ export function createHttp(
     // /_api/acp/status (a drive-by page must not read logs via DNS rebinding).
     '/_api/debug-bundle': (req: Request) => {
       if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       return Response.json(
         buildDebugBundle({
@@ -1499,7 +1530,7 @@ export function createHttp(
     '/_api/shell-shot': async (req: Request) => {
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req)) return new Response('cross-origin rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       // Target the very server handling this request — no _server.json read, so
       // a stale/absent state file can't point the capture at another instance.
@@ -1569,7 +1600,7 @@ export function createHttp(
     '/_api/report': async (req: Request) => {
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req)) return new Response('cross-origin rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const endpoint = process.env.MAUDE_REPORT_URL || 'https://cloud.maude.sh/report';
       try {
@@ -1602,7 +1633,7 @@ export function createHttp(
     '/_api/report-fallback': async (req: Request) => {
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req)) return new Response('cross-origin rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{ report?: unknown; screenshots?: unknown }>(req);
       if (!body || typeof body.report !== 'object' || body.report === null) {
@@ -1703,7 +1734,7 @@ export function createHttp(
       // the photo-store cap stack (sha8 validate + containment + validatePhotoEdit
       // + size cap) is the load-bearing mitigation. loopback-Host gates DNS-
       // rebinding on every method.
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const asset = new URL(req.url).searchParams.get('asset');
       if (req.method === 'GET') {
@@ -1741,7 +1772,7 @@ export function createHttp(
       // DNS-rebinding on every method; the footage-store cap stack (sha8/slug
       // validate + containment + validate{FootageAnalysis,Edl} + size cap) is the
       // load-bearing mitigation for the caller-derived write path.
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const params = new URL(req.url).searchParams;
       const asset = params.get('asset');
@@ -1784,7 +1815,7 @@ export function createHttp(
       // a rebound page shares this origin; the dev-server always binds 127.0.0.1,
       // so a real browser (Host: localhost:<port>) passes and only a rebound
       // foreign hostname 403s. (No sameOriginWrite here — GET.)
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const file = new URL(req.url).searchParams.get('file');
       const r = await api.loadCanvasSource(file);
@@ -1849,7 +1880,7 @@ export function createHttp(
       // slash-command driver omits Origin (→ allowed); a browser drive-by can't.
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{ file?: string; author?: string }>(req);
       if (!body || typeof body.file !== 'string' || !body.file.trim()) {
@@ -1869,7 +1900,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{ file?: string }>(req);
       if (!body || typeof body.file !== 'string' || !body.file.trim()) {
@@ -1885,7 +1916,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{ file?: string }>(req);
       if (!body || typeof body.file !== 'string' || !body.file.trim()) {
@@ -1946,7 +1977,7 @@ export function createHttp(
       if (req.method === 'DELETE' || req.method === 'POST') {
         if (!sameOriginWrite(req))
           return new Response('cross-origin write rejected', { status: 403 });
-        if (!isLoopbackHost(req.headers.get('host')))
+        if (!isTrustedRequestHost(req))
           return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       }
       if (req.method === 'DELETE') {
@@ -2009,7 +2040,7 @@ export function createHttp(
     '/_api/fs-move': async (req: Request) => {
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       const body = await readJson<{ file?: unknown; toDir?: unknown }>(req, 4 * 1024);
@@ -2040,7 +2071,7 @@ export function createHttp(
     '/_api/fs-mkdir': async (req: Request) => {
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       const body = await readJson<{ parent?: unknown; name?: unknown }>(req, 4 * 1024);
@@ -2101,7 +2132,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await gitApi.createBranch(body));
@@ -2111,7 +2142,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await gitApi.checkout(body));
@@ -2123,7 +2154,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('adding a draft requires a local request', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await gitApi.fold(body));
@@ -2135,7 +2166,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('refresh requires a local request', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await gitApi.fetchRemote(body));
@@ -2145,7 +2176,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<unknown>(req, 256 * 1024);
       return gitJson(await gitApi.commit(body));
@@ -2155,7 +2186,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<unknown>(req, 256 * 1024);
       return gitJson(await gitApi.discard(body));
@@ -2165,11 +2196,11 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       // Token-bearing: refuse anything not from a loopback Host (the server binds
       // 127.0.0.1, so this is belt-and-suspenders against a forwarded/rebound Host).
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('publish requires a local request', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await gitApi.push(body));
@@ -2179,7 +2210,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('get latest requires a local request', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await gitApi.pull(body));
@@ -2193,7 +2224,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('resolve requires a local request', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await gitApi.resolve(body));
@@ -2214,7 +2245,7 @@ export function createHttp(
       // whose 401 DELETES the stored credential — a confused deputy worth
       // closing (validate 2026-07-30, defender F6).
       if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       return gitJson(cloudApi.status());
     },
@@ -2222,7 +2253,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       return gitJson(await cloudApi.signinStart());
     },
@@ -2230,7 +2261,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       const body = (await req.json().catch(() => ({}))) as { deviceCode?: string };
       return gitJson(await cloudApi.signinPoll(String(body.deviceCode ?? '')));
@@ -2239,14 +2270,14 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       return gitJson(cloudApi.signout());
     },
     '/_api/cloud/projects': async (req: Request) => {
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       return gitJson(await cloudApi.projects());
     },
@@ -2254,7 +2285,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       const body = (await req.json().catch(() => ({}))) as { project?: string };
       return gitJson(await cloudApi.attach(String(body.project ?? '')));
@@ -2266,7 +2297,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       const body = (await req.json().catch(() => ({}))) as { code?: string; project?: string };
       return gitJson(
@@ -2279,14 +2310,14 @@ export function createHttp(
 
     '/_api/github/identity': async (req: Request) => {
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       return gitJson(await githubApi.identity());
     },
 
     '/_api/github/repos': async (req: Request) => {
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       return gitJson(await githubApi.repos());
     },
@@ -2295,7 +2326,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await githubApi.createRepo(body));
@@ -2305,7 +2336,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await githubApi.invite(body));
@@ -2315,7 +2346,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await githubApi.clone(body));
@@ -2325,7 +2356,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await githubApi.createProject(body));
@@ -2340,7 +2371,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await githubApi.createLocalProject(body));
@@ -2353,7 +2384,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await githubApi.initDesign(body));
@@ -2368,7 +2399,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await linkHub(body));
@@ -2383,7 +2414,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       const result = await signInToWorkspace((body ?? {}) as Record<string, unknown>);
@@ -2399,7 +2430,7 @@ export function createHttp(
     // for, and every route the canvas can reach is one more thing to reason about.
     '/_api/workspace/disclosure': async (req: Request) => {
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       const url = new URL(req.url);
       const linked = ctx.cfg.linkedHub?.url ?? null;
@@ -2429,7 +2460,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -2462,7 +2493,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -2495,7 +2526,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -2531,7 +2562,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -2571,7 +2602,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -2607,7 +2638,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -2652,7 +2683,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -2682,7 +2713,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -2719,7 +2750,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -2752,7 +2783,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -2783,7 +2814,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -2817,7 +2848,7 @@ export function createHttp(
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
       // DNS-rebinding guard — this GET echoes project source structure; loopback-
       // only Host (real browser passes, rebound hostname 403s). No sameOriginWrite (GET).
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const u = new URL(req.url);
       const result = await api.compClips({
@@ -2843,7 +2874,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{ canvas?: unknown; seq?: unknown; dir?: unknown }>(
         req,
@@ -2874,7 +2905,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{ canvas?: unknown; id?: unknown; idIndex?: unknown }>(
         req,
@@ -2906,7 +2937,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -2941,7 +2972,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -2975,7 +3006,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{ canvas?: unknown; id?: unknown; idIndex?: unknown }>(
         req,
@@ -3002,7 +3033,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{ canvas?: unknown; id?: unknown; idIndex?: unknown }>(
         req,
@@ -3031,7 +3062,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -3065,7 +3096,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -3094,7 +3125,7 @@ export function createHttp(
       // + startCanvasServer routes (dual-allowlist, DDR-054). Loopback-Host gated
       // (DNS-rebinding); read-only, so no sameOriginWrite (GET).
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const r = await api.listAssets();
       return Response.json(
@@ -3112,7 +3143,7 @@ export function createHttp(
       // routes (dual-allowlist, DDR-054). Loopback-Host gated (DNS-rebinding);
       // read-only, so no sameOriginWrite (GET).
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const r = await api.listStickers();
       return Response.json(
@@ -3129,7 +3160,7 @@ export function createHttp(
       // from CANVAS_SAFE_API + startCanvasServer routes (dual-allowlist, DDR-054);
       // loopback-Host gated (DNS-rebinding); no sameOriginWrite (GET).
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const url = new URL(req.url);
       const result = await api.editScopeOp({
@@ -3153,7 +3184,7 @@ export function createHttp(
       // CANVAS_SAFE_API + startCanvasServer routes (DDR-054); loopback-Host
       // gated; no sameOriginWrite (GET).
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const url = new URL(req.url);
       const result = await api.componentMapOp({
@@ -3177,7 +3208,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -3209,7 +3240,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -3240,7 +3271,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -3274,7 +3305,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -3304,7 +3335,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -3335,7 +3366,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         canvas?: unknown;
@@ -3364,7 +3395,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{ canvas?: unknown; artboardId?: unknown }>(req, 8 * 1024);
       if (!body) return new Response('body required', { status: 400 });
@@ -3432,7 +3463,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const kind = (req.headers.get('x-import-kind') || 'svg').toLowerCase();
       if (kind !== 'svg') {
@@ -3499,7 +3530,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       let body: { assetPath?: unknown };
       try {
@@ -3573,7 +3604,7 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const body = await readJson<{
         format?: unknown;
@@ -3617,7 +3648,7 @@ export function createHttp(
       // /_api/export today — DDR-060). loopback-Host gated on every method;
       // the mutating POST is additionally sameOriginWrite CSRF gated (same
       // /flow:done security fan-out fix as /_api/export above).
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       if (req.method === 'GET') {
         return Response.json(
@@ -3665,7 +3696,7 @@ export function createHttp(
       // unguessable job-scoped UUID plus this guard closes the DNS-rebinding
       // angle the /flow:done security fan-out checked for).
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const id = new URL(req.url).searchParams.get('id');
       if (!id) return new Response('id query param required', { status: 400 });
@@ -3693,7 +3724,7 @@ export function createHttp(
     // loopback-Host gated on every method; the mutating POST is additionally
     // sameOriginWrite CSRF-gated. See DDR-16x + the canvas-origin-gate test.
     '/_api/generate-jobs': async (req: Request) => {
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       if (req.method === 'GET') {
         return Response.json(
@@ -3812,7 +3843,7 @@ export function createHttp(
     // keyUrl) + presence-only `configured` flags. NO secret ever crosses here.
     // MAIN-ORIGIN ONLY, loopback-gated.
     '/_api/generate/providers': async (req: Request) => {
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
       const configured = new Set(configuredProviders());
@@ -3829,7 +3860,7 @@ export function createHttp(
     // ({configured:[...]}) — a key value is NEVER echoed back (mirrors
     // github_is_signed_in). MAIN-ORIGIN ONLY, loopback + sameOriginWrite gated.
     '/_api/generate/keys': async (req: Request) => {
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       if (req.method === 'GET') {
         return Response.json(
@@ -3873,7 +3904,7 @@ export function createHttp(
     // ONLY, loopback + sameOriginWrite gated. NEVER touches a key — that's the
     // separate /_api/generate/keys route.
     '/_api/generate/prefs': async (req: Request) => {
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       if (req.method === 'GET') {
         return Response.json(
@@ -3928,7 +3959,7 @@ export function createHttp(
     // prefs; POST merge-patches only the provided keys. MAIN-ORIGIN ONLY, loopback
     // + sameOriginWrite gated (never reachable from the untrusted canvas origin).
     '/_api/ui-prefs': async (req: Request) => {
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       if (req.method === 'GET') {
         return Response.json(readUiPrefs(), { headers: { 'Cache-Control': 'no-store' } });
@@ -3985,7 +4016,7 @@ export function createHttp(
     // already paid), returning ranked reuse candidates. MAIN-ORIGIN ONLY,
     // loopback-gated (it resolves the provider key server-side).
     '/_api/generate/audio-search': async (req: Request) => {
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
       // F1 (ethical-hacker) — this GET resolves the user's key + fans out to the
@@ -4033,7 +4064,7 @@ export function createHttp(
     // reused track is itself searchable. MAIN-ORIGIN ONLY, loopback +
     // sameOriginWrite gated.
     '/_api/generate/audio-reuse': async (req: Request) => {
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
@@ -4073,7 +4104,7 @@ export function createHttp(
     // `maude design transcribe --provider whisper` auto-resolves it. MAIN-ORIGIN
     // ONLY, loopback + sameOriginWrite gated.
     '/_api/generate/whisper-model': async (req: Request) => {
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       if (req.method === 'GET') {
         // `setup` tells the card whether the ENGINE is actually installed and
@@ -4146,7 +4177,7 @@ export function createHttp(
     // which tier will run; POST {id} downloads one via huggingface_hub (gated on
     // mlx-vlm being installed — the model is useless without it). MAIN-ORIGIN ONLY.
     '/_api/generate/keyframe-model': async (req: Request) => {
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       if (req.method === 'GET') {
         // The GET builds availability by spawning subprocesses (import mlx_vlm is
@@ -4204,10 +4235,9 @@ export function createHttp(
       if (isOllama) {
         const status = await ollamaStatus();
         if (!status.available)
-          return new Response(
-            'Ollama is not running — start it (`ollama serve`) and try again.',
-            { status: 400 }
-          );
+          return new Response('Ollama is not running — start it (`ollama serve`) and try again.', {
+            status: 400,
+          });
       } else if (!mlxVlmAvailable())
         return new Response(
           'mlx-vlm not installed — run the install command shown in Settings → Video. (Ollama users don’t need this download: `ollama pull` fetches its own models.)',
@@ -4259,7 +4289,7 @@ export function createHttp(
       // dataURLs of local footage → disclosure) or WRITE arbitrary JSON later
       // rendered as <img src> in the trusted shell. The loopback-host check is
       // the same backstop every sibling privileged route carries.
-      if (!isLoopbackHost(req.headers.get('host')))
+      if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const url = new URL(req.url);
       const key = url.searchParams.get('key') ?? '';
