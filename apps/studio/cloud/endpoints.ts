@@ -109,6 +109,19 @@ async function cloudFetch(
 
 interface Ctx {
   paths: { repoRoot: string; designRoot: string };
+  /**
+   * The live sync runtime's owner (server.ts → sync/supervisor.ts). Optional:
+   * unit tests and any non-serving embedder construct a Ctx without one, and a
+   * missing supervisor degrades to exactly the old behaviour — linked on disk,
+   * syncing after the next start.
+   */
+  syncControl?: {
+    restart(linkedHub?: {
+      url: string;
+      linkedAt: number;
+      syncTsx?: boolean;
+    }): Promise<{ syncing: boolean; canvases: number; reason?: string; detail?: string }>;
+  };
 }
 
 export function createCloudEndpoints(ctx: Ctx) {
@@ -225,7 +238,9 @@ export function createCloudEndpoints(ctx: Ctx) {
     /**
      * Attach THIS project to a cloud workspace: open → exchange at the cell →
      * store the hub credential + linkedHub, exactly as `maude design link`
-     * would. The sync agent picks the link up on the next server start.
+     * would — and then START SYNCING (linkToWorkspace cycles the live runtime
+     * through ctx.syncControl). Connecting is the whole gesture; there is no
+     * second step for the person to discover.
      */
     async attach(projectId: string): Promise<CloudEndpointResult> {
       const file = readCloudFile();
@@ -380,8 +395,41 @@ export function createCloudEndpoints(ctx: Ctx) {
     } catch {
       /* absent/malformed → start minimal */
     }
-    cfg.linkedHub = { url: norm, linkedAt: Date.now() };
+    const linkedHub: { url: string; linkedAt: number; syncTsx?: boolean } = {
+      url: norm,
+      linkedAt: Date.now(),
+    };
+    // Carry a project-wide TSX opt-out across the re-link. Only the RESTRICTIVE
+    // direction is carried (`false`, never `true`): somebody who turned canvas
+    // BODIES off (DDR-072/DDR-079) did so deliberately, and silently re-enabling
+    // them on the next Connect would start uploading source they opted out of.
+    // It never mattered while nothing synced until a restart; it does now.
+    const prior = (cfg as { linkedHub?: { syncTsx?: boolean } }).linkedHub;
+    if (prior?.syncTsx === false) linkedHub.syncTsx = false;
+    cfg.linkedHub = linkedHub;
     writeFileSync(cfgPath, `${JSON.stringify(cfg, null, 2)}\n`, 'utf8');
+
+    // START SYNCING — do not hand the person a "restart the server" note and
+    // call the job done. The runtime captures linkedHub once at boot, so this
+    // cycles it in place, with the value we JUST wrote (never re-read from the
+    // committed config file). Best-effort: a supervisor-less embedder, or a
+    // runtime that declines, still leaves a correctly linked project behind.
+    let sync: { syncing: boolean; canvases: number; reason?: string; detail?: string } = {
+      syncing: false,
+      canvases: 0,
+      reason: 'no-supervisor',
+      detail: 'Restart Maude to start syncing.',
+    };
+    try {
+      sync = (await ctx.syncControl?.restart(linkedHub)) ?? sync;
+    } catch (err) {
+      sync = {
+        syncing: false,
+        canvases: 0,
+        reason: 'error',
+        detail: `Linked, but syncing could not start: ${(err as Error).message}`,
+      };
+    }
 
     return {
       status: 200,
@@ -390,7 +438,12 @@ export function createCloudEndpoints(ctx: Ctx) {
         url: norm,
         role: role ?? null,
         project: project ?? null,
-        note: 'Linked. Restart the studio server to start syncing.',
+        sync,
+        // Kept for older clients (and the CLI) that read `note` — now it
+        // reports what actually happened instead of assigning homework.
+        note: sync.syncing
+          ? `Linked — syncing ${sync.canvases} canvas${sync.canvases === 1 ? '' : 'es'}.`
+          : `Linked. ${sync.detail ?? 'Restart Maude to start syncing.'}`,
       },
     };
   }

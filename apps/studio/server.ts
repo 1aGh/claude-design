@@ -34,7 +34,7 @@ import { createHttp } from './http.ts';
 import { createInspectRegistry } from './inspect.ts';
 import { startHeapWatch } from './mem.ts';
 import { normalizeSessionKey, runInSession, SESSION_HEADER } from './session-scope.ts';
-import { createSyncRuntime } from './sync/index.ts';
+import { createSyncSupervisor } from './sync/supervisor.ts';
 import {
   assertContainment,
   isForbiddenRoute,
@@ -680,13 +680,15 @@ ctx.bus.on('fs:json', (rel: string) => {
 // Phase 9 Task 4 — bidirectional sync agent. No-op when the project isn't
 // linked to a hub (`.design/config.json` has no `linkedHub` field). Kicked
 // off after fsWatch so the agent's bus subscription receives every fs event.
-const syncRuntime = createSyncRuntime(ctx, collab ? { registry: collab.registry } : {});
-if (syncRuntime) {
-  try {
-    await syncRuntime.start();
-  } catch (err) {
-    console.error('[sync] startup failed — continuing in solo mode:', err);
-  }
+// Owned by a supervisor rather than started inline: linking a project from the
+// cloud panel cycles the runtime in place (ctx.syncControl), so pressing
+// Connect starts syncing instead of printing "restart the studio server".
+const syncRuntime = createSyncSupervisor(ctx, collab ? { registry: collab.registry } : {});
+ctx.syncControl = syncRuntime;
+try {
+  await syncRuntime.start();
+} catch (err) {
+  console.error('[sync] startup failed — continuing in solo mode:', err);
 }
 
 const url = `http://localhost:${server.port}`;
@@ -750,7 +752,7 @@ async function shutdown() {
     /* timer cleanup is best-effort */
   }
   try {
-    if (syncRuntime) await syncRuntime.stop();
+    await syncRuntime.stop();
   } catch {
     /* best-effort — provider sockets will be closed by process exit anyway */
   }

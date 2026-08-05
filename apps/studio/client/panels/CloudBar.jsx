@@ -247,6 +247,41 @@ export function localIdentityHint({
   return related ? 'similar' : 'mismatch';
 }
 
+/**
+ * What to say after a successful Connect.
+ *
+ * The old copy said "Linked to <X> — restart the studio server to start
+ * syncing", which was three problems in one line: it named a thing the person
+ * cannot see (there is no visible server in the desktop app), gave them a task
+ * instead of a result, and never explained what connecting had achieved. The
+ * server now cycles the sync runtime itself, so this reports an OUTCOME —
+ * and on the paths where syncing genuinely didn't start, it says which one and
+ * what to do, rather than prescribing a restart for every cause.
+ *
+ * Returns `{ text, title }` — `text` is the rail's one line, `title` the full
+ * sentence on hover (the rail truncates).
+ */
+export function connectOutcomeNote(project, sync) {
+  const name = project || 'the workspace';
+  if (sync?.syncing) {
+    const n = sync.canvases ?? 0;
+    return {
+      text: `Syncing with ${name} — ${n} canvas${n === 1 ? '' : 'es'}.`,
+      title: `This project’s canvases now sync with the ${name} workspace. Live status is in the “hub sync” slot in the status bar.`,
+    };
+  }
+  if (sync?.reason === 'nothing-syncable') {
+    return {
+      text: `Connected to ${name} — nothing to sync yet.`,
+      title: sync.detail || 'No canvases in this project are syncable yet.',
+    };
+  }
+  return {
+    text: `Connected to ${name} — ${sync?.detail ?? 'restart Maude to start syncing.'}`,
+    title: sync?.detail || 'Restart Maude to start syncing.',
+  };
+}
+
 function Spark({ size = 15 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
@@ -308,7 +343,7 @@ export default function CloudBar() {
   const [device, setDevice] = useState(null); // { userCode, verificationUrl, deviceCode }
   const [projects, setProjects] = useState(null);
   const [busy, setBusy] = useState('');
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(null); // { text, title } — connectOutcomeNote
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -391,7 +426,7 @@ export default function CloudBar() {
     setBusy('');
     setPending(null);
     if (r.ok && r.json?.ok) {
-      setNote(`Linked to ${r.json.project ?? pending.project} — restart the studio server to start syncing.`);
+      setNote(connectOutcomeNote(r.json.project ?? pending.project, r.json.sync));
     } else {
       setError(r.json?.error || 'The workspace could not be connected.');
     }
@@ -468,7 +503,7 @@ export default function CloudBar() {
 
   async function connect(projectId) {
     setBusy(projectId);
-    setNote('');
+    setNote(null);
     setError('');
     const r = await api('/_api/cloud/attach', {
       method: 'POST',
@@ -477,7 +512,7 @@ export default function CloudBar() {
     });
     setBusy('');
     if (r.ok && r.json?.ok) {
-      setNote(`Linked to ${projectId} — restart the studio server to start syncing.`);
+      setNote(connectOutcomeNote(r.json.project ?? projectId, r.json.sync));
     } else {
       setError(r.json?.error || 'The workspace could not be connected.');
     }
@@ -670,7 +705,11 @@ export default function CloudBar() {
             <span className="gi-rail-login">{email ?? 'Maude Cloud'}</span>
             <span className="gi-rail-caret"><Icon name="chevron-up" size={13} /></span>
           </button>
-          {note && <span className="gi-rail-hint" title={note}>{note}</span>}
+          {note && (
+            <span className="gi-rail-hint" title={note.title} data-testid="cloud-connect-note">
+              {note.text}
+            </span>
+          )}
           {error && <span className="gi-rail-err" title={error}>{error}</span>}
           {menuOpen && (
             <div className="gi-menu" role="menu" aria-label="Maude Cloud">

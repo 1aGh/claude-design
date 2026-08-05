@@ -93,10 +93,15 @@ describe('cloud-attach — sign-in, picker, attach, deep-link decision (stubbed)
     await capture('picker with member + viewer rows');
     await member.click();
 
+    // The note reports an OUTCOME now (syncing / connected-but-…), never
+    // "restart the studio server" — a task naming something a desktop user
+    // cannot see. Which arm fires depends on what the fixture has to sync, so
+    // assert the shape: this project, and a state we told the truth about.
     await browser.waitUntil(
-      async () => (await (await $(tid('cloud-bar'))).getText()).includes('Linked to stub-project'),
+      async () => /Syncing with|Connected to/.test(await (await $(tid('cloud-bar'))).getText()),
       { timeout: 20_000, timeoutMsg: 'the attach note never appeared' }
     );
+    expect(await (await $(tid('cloud-bar'))).getText()).not.toContain('studio server');
     const cfg = JSON.parse(readFileSync(FIXTURE_CONFIG, 'utf8'));
     expect(cfg.linkedHub?.url).toContain('127.0.0.1');
     await capture('attached via picker');
@@ -143,7 +148,7 @@ describe('cloud-attach — sign-in, picker, attach, deep-link decision (stubbed)
 
     await connect.click();
     await browser.waitUntil(
-      async () => (await (await $(tid('cloud-bar'))).getText()).includes('Linked to project'),
+      async () => /Syncing with|Connected to/.test(await (await $(tid('cloud-bar'))).getText()),
       { timeout: 20_000, timeoutMsg: 'the deep-link attach note never appeared' }
     );
     await capture('attached via deep link');

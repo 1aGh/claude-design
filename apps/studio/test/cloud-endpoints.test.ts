@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  connectOutcomeNote,
   isDisplayableUrl,
   localIdentityHint,
   parseDeepLink,
@@ -322,6 +323,41 @@ describe('localIdentityHint — only an exact, corroborated agreement is silent'
   });
 });
 
+describe('connectOutcomeNote — what the rail says after Connect', () => {
+  test('syncing: a result, and where to watch it', () => {
+    const n = connectOutcomeNote('alligators', { syncing: true, canvases: 12 });
+    expect(n.text).toBe('Syncing with alligators — 12 canvases.');
+    expect(n.title).toContain('hub sync');
+    expect(connectOutcomeNote('alligators', { syncing: true, canvases: 1 }).text).toContain(
+      '1 canvas.'
+    );
+  });
+
+  test('linked but nothing syncable says so — and never claims a restart would help', () => {
+    const n = connectOutcomeNote('alligators', {
+      syncing: false,
+      canvases: 0,
+      reason: 'nothing-syncable',
+      detail: 'no canvases found under .design.',
+    });
+    expect(n.text).toBe('Connected to alligators — nothing to sync yet.');
+    expect(n.title).toContain('no canvases found');
+    expect(n.text).not.toMatch(/restart/i);
+  });
+
+  test('any other refusal repeats the server’s own reason', () => {
+    const n = connectOutcomeNote('alligators', {
+      syncing: false,
+      canvases: 0,
+      reason: 'no-credential',
+      detail: 'No sign-in for this workspace is stored on this machine yet.',
+    });
+    expect(n.text).toContain('No sign-in for this workspace');
+    // Never the old sentence: there is no studio server a person can see.
+    expect(n.text).not.toContain('studio server');
+  });
+});
+
 describe('attachCode — the maude:// lane end to end (stubbed)', () => {
   test('a valid code links: hub credential stored, linkedHub written token-free', async () => {
     const { createCloudEndpoints } = await import('../cloud/endpoints.ts');
@@ -373,6 +409,65 @@ describe('attachCode — the maude:// lane end to end (stubbed)', () => {
     const apiEndpoints = createCloudEndpoints({ paths: { repoRoot: scratch, designRoot } });
     const r = await apiEndpoints.attachCode(`mhc_${'a'.repeat(64)}`, 'stub-project');
     expect(r.status).toBe(200);
+  });
+
+  test('linking STARTS syncing — the outcome is reported, not homework', async () => {
+    // The bug this closes: the panel used to answer a successful Connect with
+    // "restart the studio server to start syncing" — a task, naming a thing
+    // the desktop user cannot see. The attach lane now cycles the runtime and
+    // reports what happened.
+    const { createCloudEndpoints } = await import('../cloud/endpoints.ts');
+    const designRoot = join(scratch, '.design-sync');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(designRoot, { recursive: true });
+    writeFileSync(join(designRoot, 'config.json'), '{}\n');
+
+    const handed: unknown[] = [];
+    const apiEndpoints = createCloudEndpoints({
+      paths: { repoRoot: scratch, designRoot },
+      syncControl: {
+        restart: async (linkedHub) => {
+          handed.push(linkedHub);
+          return { syncing: true, canvases: 4 };
+        },
+      },
+    });
+    const r = await apiEndpoints.attachCode(`mhc_${'a'.repeat(64)}`);
+    expect(r.status).toBe(200);
+    expect((r.json as any).sync).toEqual({ syncing: true, canvases: 4 });
+    expect((r.json as any).note).toBe('Linked — syncing 4 canvases.');
+
+    // The supervisor is handed the value BY VALUE — the same object written to
+    // config.json — so nothing that touches that committed file in between can
+    // steer the socket.
+    const cfg = JSON.parse(readFileSync(join(designRoot, 'config.json'), 'utf8'));
+    expect(handed).toEqual([cfg.linkedHub]);
+  });
+
+  test('a TSX opt-out survives a re-link — only the restrictive direction carries', async () => {
+    // `syncTsx: false` means "do not upload canvas bodies to this hub"
+    // (DDR-072/DDR-079). Re-linking used to overwrite linkedHub wholesale,
+    // which silently re-enabled it — harmless while nothing synced until a
+    // restart, a real disclosure now that Connect starts syncing immediately.
+    const { createCloudEndpoints } = await import('../cloud/endpoints.ts');
+    const designRoot = join(scratch, '.design-opt-out');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(designRoot, { recursive: true });
+    writeFileSync(
+      join(designRoot, 'config.json'),
+      JSON.stringify({ linkedHub: { url: 'https://old.example', linkedAt: 1, syncTsx: false } })
+    );
+
+    const apiEndpoints = createCloudEndpoints({ paths: { repoRoot: scratch, designRoot } });
+    const r = await apiEndpoints.attachCode(`mhc_${'a'.repeat(64)}`);
+    expect(r.status).toBe(200);
+    const cfg = JSON.parse(readFileSync(join(designRoot, 'config.json'), 'utf8'));
+    expect(cfg.linkedHub.syncTsx).toBe(false);
+    expect(cfg.linkedHub.url).toContain('127.0.0.1');
+    // No supervisor wired (a plain embedder): still linked, and the note says
+    // what is left to do instead of claiming success.
+    expect((r.json as any).sync.syncing).toBe(false);
+    expect((r.json as any).note).toMatch(/Restart Maude/);
   });
 
   test('a malformed or dead code never reaches the network', async () => {

@@ -182,6 +182,22 @@ export interface Context {
    * gates behavior starting in Phase B.
    */
   sharedDoc?: boolean;
+  /**
+   * The live sync runtime's owner, set by server.ts once it exists. Present so
+   * the cloud attach lane can START SYNCING the moment a person links a
+   * project, instead of leaving them holding a "restart the studio server"
+   * note with no button behind it. Structural type (not the SyncSupervisor
+   * import) so context.ts stays free of the sync module graph — tests and the
+   * non-serving entry points construct a Context without one.
+   */
+  syncControl?: {
+    restart(linkedHub?: LinkedHub): Promise<{
+      syncing: boolean;
+      canvases: number;
+      reason?: string;
+      detail?: string;
+    }>;
+  };
 }
 
 function resolveRepoRoot(): string {
@@ -364,6 +380,12 @@ export function reloadConfig(ctx: Context): boolean {
   // (syncTsx gating) drift out of step with the hub the socket is actually
   // attached to — and a poisoned config must never re-point sync without a
   // restart (DDR-149 fan-out review).
+  //
+  // This is a rule about the FILE, and it stays. The one path that may change
+  // the live link is `adoptLinkedHub` below: a person pressing Connect in
+  // trusted app chrome, whose hub credential this same process just stored.
+  // That path cycles the runtime itself (sync/supervisor.ts) instead of hoping
+  // a watcher notices.
   if (JSON.stringify(next.linkedHub) !== JSON.stringify(ctx.cfg.linkedHub)) {
     console.warn('  warn: linkedHub changed — not hot-reloadable, restart the server to apply.');
     if (ctx.cfg.linkedHub === undefined) delete next.linkedHub;
@@ -388,4 +410,23 @@ export function reloadConfig(ctx: Context): boolean {
   ctx.paths.systemDirRel =
     ctx.cfg.canvasGroups.find((g) => /system/i.test(g.path))?.path ?? 'system';
   return true;
+}
+
+/**
+ * Adopt a link the person just authorized — the ONE way `cfg.linkedHub` may
+ * change on a running server.
+ *
+ * The value is passed BY VALUE from the attach lane (cloud/endpoints.ts), which
+ * exchanged it against the configured cloud address and stored the matching hub
+ * credential moments earlier. It is deliberately NOT re-read from
+ * `.design/config.json`: that file is committed, shared, and writable by
+ * anything else on the machine, and re-reading it here would hand the
+ * file-watcher's refused capability (reloadConfig above) back through a side
+ * door. What the person consented to is what gets applied.
+ *
+ * Callers must cycle the sync runtime afterwards — `createSyncSupervisor`
+ * (sync/supervisor.ts) does both in one step, and is the only intended caller.
+ */
+export function adoptLinkedHub(ctx: Context, linkedHub: LinkedHub): void {
+  ctx.cfg.linkedHub = linkedHub;
 }
