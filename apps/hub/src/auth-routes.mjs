@@ -164,6 +164,11 @@ export async function handleAuthRoutes(ctx) {
     // A token-exchanged session dies WITH the project token that minted it
     // (Phase 23 B2) — never the default 30 days beyond the removal window.
     const expiresAt = Math.min(Date.now() + userTokenTtlMs(), result.expiresAt ?? Infinity);
+    // Cloud Phase 27: TRANSLATED first. `user.role` is an ACCOUNT role
+    // ('admin' | 'member'); the token stores a PROJECT role. Passing one to
+    // the other made every admin's session read-only — right for 'member' by
+    // coincidence, wrong for 'admin' because an unknown role gets nothing.
+    const projectRole = projectRoleForAccount(user.role);
     const minted = addToken(dataDir, {
       label: mintLabel(),
       scope: user.scope ?? '*',
@@ -173,11 +178,14 @@ export async function handleAuthRoutes(ctx) {
       // the control plane vouched for — not re-derived at each write surface,
       // where one forgotten branch is a viewer with an editor's session.
       //
-      // Cloud Phase 27: TRANSLATED first. `user.role` is an ACCOUNT role
-      // ('admin' | 'member'); `isReadOnlyRole` speaks PROJECT roles. Passing one
-      // to the other made every admin's session read-only — right for 'member'
-      // by coincidence, wrong for 'admin' because an unknown role gets nothing.
-      readOnly: isReadOnlyRole(projectRoleForAccount(user.role)),
+      // STORED, not only projected (the v0.55.0 lesson): `browserSession`
+      // treats a token without a stored role as no session at all, so a mint
+      // that sets only the one-bit `read_only` projection produces a session
+      // every HTTP write surface answers with 401. browser-auth.mjs stores the
+      // role; this door forgot to — desktop/API sessions hit the same wall the
+      // pre-roll stale cookies did.
+      role: projectRole,
+      readOnly: isReadOnlyRole(projectRole),
     });
     ctx.pushActivity?.({ type: 'login', user: user.email, doc: minted.label });
     respondJson(200, {

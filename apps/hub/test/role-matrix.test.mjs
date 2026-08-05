@@ -170,7 +170,14 @@ test('an admin gets an EDITING session — the bug this replaces', () => {
 
 test('the mint site translates rather than passing the account role through', () => {
   const src = readFileSync(join(HERE, 'src/auth-routes.mjs'), 'utf8');
-  assert.match(src, /isReadOnlyRole\(projectRoleForAccount\(user\.role\)\)/);
+  // The translation happens once, into a named value, and BOTH the stored
+  // role and its read_only projection derive from it (the v0.55.0 lesson:
+  // projecting without storing produced sessions browserSession refuses).
+  // Behaviour is pinned end-to-end in auth-login-role.test.mjs; this guard
+  // only keeps the raw account role out of the role matrix.
+  assert.match(src, /const projectRole = projectRoleForAccount\(user\.role\)/);
+  assert.match(src, /role: projectRole/);
+  assert.match(src, /isReadOnlyRole\(projectRole\)/);
   assert.ok(
     !/isReadOnlyRole\(user\.role\)/.test(src),
     'user.role is an account role and must not reach the project-role matrix raw'
