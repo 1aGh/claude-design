@@ -566,40 +566,39 @@ function GemmaModelCard() {
       </div>
       {state && !scoutReady && (
         <div className="st-provider-notes">
-          <strong>Option A — Ollama</strong> (simplest: one app, no Python).{' '}
-          {ollama?.available ? (
-            <>
-              Ollama is running — it just needs a vision model:
-              <CopyCommand command={ollama.pullCommand} label="Copy the ollama pull command" />
-            </>
-          ) : (
-            <>
-              With Homebrew:
-              <CopyCommand command={ollama?.installCommand || ''} label="Copy the Ollama install command" />
-              Or download the Ollama app from ollama.com, then run{' '}
-              <code>{ollama?.pullCommand}</code>.
-            </>
-          )}
+          <strong>Option A — Ollama</strong> (simplest: one app, no Python).
+          {(ollama?.setup || []).map((opt) => (
+            <span key={opt.id} className="st-setup-option">
+              {opt.label}:
+              {opt.kind === 'command' ? (
+                <CopyCommand command={opt.command} label={`Copy: ${opt.label}`} />
+              ) : (
+                // The desktop shell has no general URL opener by design
+                // (DDR-054), so an anchor is best-effort and Copy is the
+                // reliable path — same posture as the PR-review fallback.
+                <CopyCommand command={opt.url} label={`Copy the ${opt.label} link`} />
+              )}
+              {opt.note ? <span className="st-provider-notes">{opt.note}</span> : null}
+            </span>
+          ))}
         </div>
       )}
       {state && !scoutReady && (
         <div className="st-provider-notes">
-          <strong>Option B — mlx-vlm</strong> (fastest, Apple-Silicon Macs only):
-          {state.installCommand ? (
-            <CopyCommand
-              command={state.installCommand}
-              label="Copy the mlx-vlm install command"
-            />
+          <strong>Option B — mlx-vlm</strong> (fastest, Apple Silicon only):
+          {state.mlx?.supported ? (
+            <>
+              <CopyCommand
+                command={state.mlx.command}
+                label="Copy the mlx-vlm install command"
+              />
+              Then download a model below — that half is one click. Models live in your
+              HuggingFace cache, never committed.
+            </>
           ) : (
-            // Server refused to build a command (a control char in the resolved
-            // cache path) — never hand the user an unsafe paste.
-            <span className="st-provider-status">
-              Can’t build a safe install command for this machine’s cache path — install mlx-vlm
-              manually into a venv, or use Option A.
-            </span>
+            // Don't show a command that would fail on this machine — say why.
+            <span className="st-provider-status">{state.mlx?.reason}</span>
           )}
-          Then download a model below — that half is one click. Models live in your HuggingFace
-          cache, never committed.
         </div>
       )}
       {state && (

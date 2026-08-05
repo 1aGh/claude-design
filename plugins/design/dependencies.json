@@ -275,7 +275,7 @@
         "expectExit": 0
       },
       "install": {
-        "darwin": "brew install ollama && brew services start ollama && ollama pull gemma3:4b",
+        "darwin": "curl -fsSL https://ollama.com/install.sh | sh && ollama pull gemma3:4b",
         "linux": "curl -fsSL https://ollama.com/install.sh | sh && ollama pull gemma3:4b",
         "preferred": "https://ollama.com/download"
       },

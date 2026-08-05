@@ -212,6 +212,115 @@ export interface OllamaStatus {
   available: boolean;
   /** A usable vision-capable gemma tag ($MAUDE_OLLAMA_MODEL wins), or null. */
   model: string | null;
+  /** The `ollama` binary is on PATH. Installed-but-not-running is a DIFFERENT
+   *  state from not-installed, and it needs the opposite advice ("start it",
+   *  not "install it") — the card would otherwise tell you to reinstall
+   *  software you already have. */
+  installed: boolean;
+}
+
+/** One way to get a runtime onto THIS machine. `command` is copy/paste; `link`
+ *  is a URL (the desktop shell has no general URL opener by design — DDR-054 —
+ *  so the client renders a link + Copy rather than a button that can't work). */
+export interface SetupOption {
+  id: string;
+  kind: 'command' | 'link';
+  label: string;
+  command?: string;
+  url?: string;
+  note?: string;
+}
+
+/** Is a command on PATH? TTL-cached — these are spawns behind an un-authenticated
+ *  (same-origin, loopback) GET, same DoS reasoning as the other probes. */
+function hasCommandCached(cmd: string): boolean {
+  return cachedProbe(`has:${cmd}`, () => {
+    const finder = process.platform === 'win32' ? 'where' : 'which';
+    return spawnSync(finder, [cmd], { stdio: 'ignore' }).status === 0;
+  });
+}
+
+const OLLAMA_DOWNLOAD_URL = 'https://ollama.com/download';
+
+/**
+ * The install routes that actually work on THIS machine, best first.
+ *
+ * The point is to never show an impossible instruction: `brew install` is noise
+ * without Homebrew, and the venv one-liner is noise without python3. The
+ * universal fallback is Ollama's official install script, which handles macOS
+ * AND Linux (on macOS it fetches Ollama-darwin.zip into /Applications) and needs
+ * only curl — present on both by default, so it works where brew doesn't.
+ */
+export function ollamaSetupOptions(status: OllamaStatus): SetupOption[] {
+  const opts: SetupOption[] = [];
+  if (status.installed && !status.available) {
+    opts.push({
+      id: 'start',
+      kind: 'command',
+      label: 'Ollama is installed but not running — start it',
+      command: 'ollama serve',
+      note: 'Or just open the Ollama app; it runs in the menu bar.',
+    });
+    return opts;
+  }
+  if (status.available) {
+    opts.push({
+      id: 'pull',
+      kind: 'command',
+      label: 'Ollama is running — it just needs a vision model',
+      command: `ollama pull ${OLLAMA_RECOMMENDED_MODEL}`,
+    });
+    return opts;
+  }
+  const plat = process.platform;
+  if ((plat === 'darwin' || plat === 'linux') && hasCommandCached('curl'))
+    opts.push({
+      id: 'script',
+      kind: 'command',
+      label: 'Install Ollama (official script — no Homebrew needed)',
+      command: `curl -fsSL https://ollama.com/install.sh | sh && ollama pull ${OLLAMA_RECOMMENDED_MODEL}`,
+      note: 'Works on macOS and Linux; needs only curl.',
+    });
+  if (plat === 'darwin' && hasCommandCached('brew'))
+    opts.push({
+      id: 'brew',
+      kind: 'command',
+      label: 'Install with Homebrew',
+      command: `brew install ollama && brew services start ollama && ollama pull ${OLLAMA_RECOMMENDED_MODEL}`,
+    });
+  opts.push({
+    id: 'download',
+    kind: 'link',
+    label: 'Download the Ollama app',
+    url: OLLAMA_DOWNLOAD_URL,
+    note: `Then run \`ollama pull ${OLLAMA_RECOMMENDED_MODEL}\` in a terminal.`,
+  });
+  return opts;
+}
+
+/** The mlx-vlm half, which only exists on Apple Silicon and only when a python3
+ *  is around to build the venv with. Returns the reason when it can't run, so
+ *  the card can say why instead of showing a command that would fail. */
+export function mlxSetup(): { supported: boolean; reason?: string; command?: string } {
+  if (process.platform !== 'darwin')
+    return { supported: false, reason: 'mlx-vlm is Apple-Silicon only — use Ollama instead.' };
+  if (process.arch !== 'arm64')
+    return {
+      supported: false,
+      reason: 'mlx needs Apple Silicon (this Mac is Intel) — use Ollama instead.',
+    };
+  if (!hasCommandCached('python3'))
+    return {
+      supported: false,
+      reason: 'No python3 on PATH — install Python 3, or just use Ollama (no Python needed).',
+    };
+  const command = mlxInstallCommand();
+  if (!command)
+    return {
+      supported: false,
+      reason: 'Can’t build a safe install command for this machine’s cache path — use Ollama.',
+    };
+  return { supported: true, command };
 }
 
 /** Pick a vision-capable gemma tag from an /api/tags listing. gemma3:1b is
@@ -227,7 +336,11 @@ const ollamaCache = { at: 0, value: null as OllamaStatus | null };
 export async function ollamaStatus(): Promise<OllamaStatus> {
   const now = Date.now();
   if (ollamaCache.value && now - ollamaCache.at < PROBE_TTL_MS) return ollamaCache.value;
-  let value: OllamaStatus = { available: false, model: null };
+  let value: OllamaStatus = {
+    available: false,
+    model: null,
+    installed: hasCommandCached('ollama'),
+  };
   const host = ollamaHost(); // null = $OLLAMA_HOST steered off loopback — refused
   if (host) {
     try {
@@ -239,7 +352,7 @@ export async function ollamaStatus(): Promise<OllamaStatus> {
       if (res.ok && Number(res.headers.get('content-length') || 0) <= 1024 * 1024) {
         const body = (await res.json()) as { models?: Array<{ name?: string }> };
         const tags = (body.models ?? []).map((m) => m.name).filter(Boolean) as string[];
-        value = { available: true, model: pickOllamaGemmaTag(tags) };
+        value = { ...value, available: true, model: pickOllamaGemmaTag(tags) };
       }
     } catch {
       /* not running / not installed */

@@ -47,9 +47,10 @@ import {
   downloadGemmaModel,
   ffmpegAvailable,
   listGemmaModels,
-  mlxInstallCommand,
+  mlxSetup,
   mlxVlmAvailable,
   OLLAMA_RECOMMENDED_MODEL,
+  ollamaSetupOptions,
   ollamaStatus,
 } from './generation/gemma-models.ts';
 import { type GenerationJobQueue, GenerationQueueFullError } from './generation/jobs.ts';
@@ -4140,21 +4141,24 @@ export function createHttp(
         // are also TTL-cached in gemma-models.ts as defence-in-depth.
         if (!sameOriginRead(req))
           return new Response('cross-origin read rejected', { status: 403 });
+        const ollama = await ollamaStatus();
         return Response.json(
           {
             models: listGemmaModels(),
             downloading: keyframeDownload,
             mlxVlmAvailable: mlxVlmAvailable(),
             ffmpegAvailable: ffmpegAvailable(),
-            // Copy/paste install stories the card renders verbatim. The mlx
-            // command is computed from the SAME venv path the probe checks, so
-            // the shown command and the detection can't drift.
-            installCommand: mlxInstallCommand(),
+            // Setup routes that actually work on THIS machine, best first — no
+            // `brew install` without Homebrew, no venv one-liner without
+            // python3, and "start it" rather than "install it" when the binary
+            // is already there. Computed from the SAME paths the probes check,
+            // so the shown command and the detection can't drift.
+            mlx: mlxSetup(),
             ollama: {
-              ...(await ollamaStatus()),
+              ...ollama,
               recommendedModel: OLLAMA_RECOMMENDED_MODEL,
               pullCommand: `ollama pull ${OLLAMA_RECOMMENDED_MODEL}`,
-              installCommand: `brew install ollama && brew services start ollama && ollama pull ${OLLAMA_RECOMMENDED_MODEL}`,
+              setup: ollamaSetupOptions(ollama),
             },
           },
           { headers: { 'Cache-Control': 'no-store' } }

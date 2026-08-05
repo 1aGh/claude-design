@@ -8,8 +8,10 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import {
   isLoopbackHostname,
   mlxInstallCommand,
+  mlxSetup,
   mlxVenvDir,
   ollamaHost,
+  ollamaSetupOptions,
   pickOllamaGemmaTag,
 } from '../generation/gemma-models.ts';
 
@@ -102,6 +104,54 @@ describe('ollamaHost — loopback pin (DDR-183 egress-free)', () => {
 // its OWN copy of these helpers. That duplication is an accepted constraint, so
 // the drift it invites needs a guard: a review already caught the two copies
 // disagreeing about the bare `gemma3` tag.
+// The card must never show an instruction this machine can't follow — the whole
+// point of probing brew/python3/curl rather than hardcoding a install line.
+describe('ollamaSetupOptions', () => {
+  const notInstalled = { available: false, model: null, installed: false };
+
+  test('installed but not running → start it, never "install it" again', () => {
+    const opts = ollamaSetupOptions({ ...notInstalled, installed: true });
+    expect(opts.map((o) => o.id)).toEqual(['start']);
+    expect(opts[0].command).toBe('ollama serve');
+  });
+
+  test('running → the only thing missing is a model', () => {
+    const opts = ollamaSetupOptions({ available: true, model: null, installed: true });
+    expect(opts.map((o) => o.id)).toEqual(['pull']);
+    expect(opts[0].command).toContain('ollama pull');
+  });
+
+  test('not installed → always offers a route, and a download link as the floor', () => {
+    const opts = ollamaSetupOptions(notInstalled);
+    expect(opts.length).toBeGreaterThan(0);
+    const download = opts.find((o) => o.id === 'download');
+    expect(download?.kind).toBe('link');
+    expect(download?.url).toBe('https://ollama.com/download');
+    // Whatever routes are offered, each is actionable as-is.
+    for (const o of opts) expect(o.kind === 'command' ? o.command : o.url).toBeTruthy();
+  });
+
+  test('on macOS/Linux the brew-free script route comes before brew', () => {
+    if (process.platform !== 'darwin' && process.platform !== 'linux') return;
+    const ids = ollamaSetupOptions(notInstalled).map((o) => o.id);
+    if (ids.includes('script') && ids.includes('brew'))
+      expect(ids.indexOf('script')).toBeLessThan(ids.indexOf('brew'));
+  });
+});
+
+describe('mlxSetup', () => {
+  test('either a usable command or a stated reason — never a silent dead end', () => {
+    const s = mlxSetup();
+    if (s.supported) {
+      expect(s.command).toContain('mlx-vlm');
+      expect(s.reason).toBeUndefined();
+    } else {
+      expect(s.reason).toBeTruthy();
+      expect(s.command).toBeUndefined();
+    }
+  });
+});
+
 describe('CLI ↔ server helper parity', () => {
   test('pickOllamaGemmaTag agrees on every tag shape', async () => {
     const cli = await import('../bin/_smart-frames.mjs');
