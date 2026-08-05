@@ -12,8 +12,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** The transcription engines the selector offers (mirrors the config schema enum). */
-export const TRANSCRIPTION_PROVIDERS = ['whisper', 'elevenlabs', 'groq'] as const;
+/** The transcription engines the selector offers (mirrors the config schema enum).
+ *  `auto` picks the best engine the machine is equipped for — a cloud engine
+ *  when its key is set, else local whisper — and the UI states what it resolved
+ *  to. It is a SELECTED mode, not a silent fallback: DDR-164's rule (Maude never
+ *  switches to a paid/off-machine engine behind your back) survives because
+ *  choosing `auto` is itself the explicit act, and the resolution is shown. */
+export const TRANSCRIPTION_PROVIDERS = ['auto', 'whisper', 'elevenlabs', 'groq'] as const;
 export type TranscriptionProvider = (typeof TRANSCRIPTION_PROVIDERS)[number];
 
 export function isTranscriptionProvider(v: unknown): v is TranscriptionProvider {

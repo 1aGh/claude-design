@@ -123,7 +123,7 @@ function parseArgs(argv) {
 }
 
 const CLOUD_PROVIDERS = new Set(['elevenlabs', 'groq']);
-const KNOWN_PROVIDERS = new Set(['whisper', 'elevenlabs', 'groq']);
+const KNOWN_PROVIDERS = new Set(['auto', 'whisper', 'elevenlabs', 'groq']);
 
 /**
  * Resolve the transcription engine as an EXPLICIT choice (Task 2.6): the
@@ -136,7 +136,7 @@ export function resolveProvider(flag, repo) {
   if (flag) {
     if (!KNOWN_PROVIDERS.has(flag)) {
       process.stderr.write(
-        `transcribe: unknown --provider '${flag}' (use whisper | elevenlabs | groq)\n`
+        `transcribe: unknown --provider '${flag}' (use auto | whisper | elevenlabs | groq)\n`
       );
       process.exit(2);
     }
@@ -146,6 +146,39 @@ export function resolveProvider(flag, repo) {
   if (configured && KNOWN_PROVIDERS.has(configured))
     return { provider: configured, defaulted: false };
   return { provider: 'whisper', defaulted: true };
+}
+
+/**
+ * Settle an `auto` choice into a concrete engine. `auto` prefers a cloud engine
+ * whose key is set (ElevenLabs Scribe first), else local whisper — mirroring
+ * generation/whisper-models.ts `resolveAutoEngine`. Key presence lives
+ * server-side (the keychain), so this asks the local dev server; with no server
+ * reachable there is no key to use anyway, so it settles on local whisper.
+ *
+ * Still no SILENT cloud switch (DDR-164): `auto` is a chosen mode, and the
+ * caller prints which engine it resolved to before transcribing.
+ */
+export async function settleAutoProvider(provider, port) {
+  if (provider !== 'auto') return { provider, autoReason: null };
+  const base = `http://127.0.0.1:${port || process.env.MAUDE_PORT || 4399}`;
+  try {
+    const res = await fetch(`${base}/_api/generate/providers`, {
+      signal: AbortSignal.timeout(1500),
+    });
+    if (res.ok) {
+      const body = await res.json();
+      const keyed = new Set(
+        (body.providers || []).filter((p) => p && p.configured).map((p) => p.id)
+      );
+      if (keyed.has('elevenlabs'))
+        return { provider: 'elevenlabs', autoReason: 'auto → ElevenLabs Scribe (key is set)' };
+      if (keyed.has('groq'))
+        return { provider: 'groq', autoReason: 'auto → Groq Whisper (key is set)' };
+    }
+  } catch {
+    /* no server / no keys — local whisper is the honest answer */
+  }
+  return { provider: 'whisper', autoReason: 'auto → local whisper.cpp (no cloud key set)' };
 }
 
 /** Read `.design/config.json` → generation.transcription.provider, or null. */
@@ -303,7 +336,11 @@ async function main() {
   // Resolve the engine as an explicit choice (Task 2.6). A chosen cloud engine
   // routes through the dev server (key server-side); the local default stays
   // whisper. We NEVER auto-switch between them.
-  const { provider, defaulted } = resolveProvider(args.provider, repo);
+  const { provider: chosen, defaulted } = resolveProvider(args.provider, repo);
+  // `auto` settles into a concrete engine here, and we SAY which — the engine is
+  // never a mystery even when the user delegated the pick (DDR-164).
+  const { provider, autoReason } = await settleAutoProvider(chosen, args.port);
+  if (autoReason) process.stderr.write(`transcribe: ${autoReason}\n`);
   if (defaulted)
     process.stderr.write(
       'transcribe: no engine configured — using local whisper ' +

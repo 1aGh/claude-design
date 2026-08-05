@@ -84,6 +84,8 @@ import {
   getWhisperModel,
   listWhisperModels,
   removeWhisperModel,
+  resolveAutoEngine,
+  whisperSetup,
 } from './generation/whisper-models.ts';
 import { createGitEndpoints } from './git/endpoints.ts';
 import { gitShowFile } from './git/service.ts';
@@ -3904,7 +3906,7 @@ export function createHttp(
         }
         const provider = body?.transcriptionProvider;
         if (!isTranscriptionProvider(provider))
-          return new Response('transcriptionProvider must be whisper|elevenlabs|groq', {
+          return new Response('transcriptionProvider must be auto|whisper|elevenlabs|groq', {
             status: 400,
           });
         await writeTranscriptionProvider(ctx.paths.repoRoot, provider);
@@ -4074,8 +4076,18 @@ export function createHttp(
       if (!isLoopbackHost(req.headers.get('host')))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       if (req.method === 'GET') {
+        // `setup` tells the card whether the ENGINE is actually installed and
+        // how to get it on THIS machine (no `brew install` without Homebrew);
+        // `auto` reports what the automatic engine choice currently resolves
+        // to, so the card can state it out loud rather than switch silently.
+        const setup = whisperSetup();
         return Response.json(
-          { models: listWhisperModels(), downloading: whisperDownload },
+          {
+            models: listWhisperModels(),
+            downloading: whisperDownload,
+            setup,
+            auto: resolveAutoEngine(configuredProviders(), setup.installed),
+          },
           { headers: { 'Cache-Control': 'no-store' } }
         );
       }

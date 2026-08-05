@@ -13,10 +13,12 @@
 // The actual download (streamed, SSRF-hardened, progress-tracked) lives in the
 // http route so the egress discipline sits next to the other provider egress.
 
+import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { mkdir, rename, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { cachedProbe, hasCommandCached, type SetupOption } from './runtime-probe.ts';
 
 export interface WhisperModelDescriptor {
   /** Stable id used by the config + route (`base`, `base.en`, …). */
@@ -269,4 +271,126 @@ export async function removeWhisperModel(id: string): Promise<boolean> {
   if (!existsSync(p)) return false;
   await rm(p, { force: true });
   return true;
+}
+
+// ─── Runtime detection + setup routes ────────────────────────────────────────
+// The card used to print `brew install whisper-cpp` unconditionally and never
+// checked whether the binary was actually there — so a machine without Homebrew
+// got an instruction it couldn't follow, and nobody learned the engine was
+// missing until a transcription failed.
+//
+// Unlike Ollama there is NO universal one-liner here: whisper.cpp's releases
+// ship prebuilt binaries for Ubuntu and Windows but NOT macOS (the xcframework
+// is an Xcode library, not a CLI), so on a Mac without brew the honest routes
+// are a cloud engine (already supported, needs only a key) or a source build.
+
+/** Resolve the whisper.cpp CLI, or null.
+ *
+ *  MUST stay byte-identical to `bin/_transcribe.mjs` `resolveWhisper()` — the
+ *  card would otherwise claim an engine the transcriber can't find. That
+ *  includes the security rule it documents: the bare name `main` is
+ *  DELIBERATELY not probed (it's a common executable name and the probe
+ *  EXECUTES each candidate, so `.` on $PATH inside an untrusted repo could
+ *  auto-run a seeded `main`). */
+export function resolveWhisperCli(): string | null {
+  const candidates = [process.env.MAUDE_WHISPER_CLI, 'whisper-cli', 'whisper'].filter(
+    Boolean
+  ) as string[];
+  for (const c of candidates) {
+    const probe = spawnSync(c, ['--help'], { stdio: 'ignore' });
+    if (!probe.error) return c;
+  }
+  return null;
+}
+
+export function whisperCliAvailable(): boolean {
+  return cachedProbe('whisper-cli', () => resolveWhisperCli() !== null);
+}
+
+export interface WhisperSetup {
+  /** The binary resolves — local transcription can actually run. */
+  installed: boolean;
+  /** Routes to get it, best first. Empty when it's already installed. */
+  options: SetupOption[];
+}
+
+export function whisperSetup(): WhisperSetup {
+  if (whisperCliAvailable()) return { installed: true, options: [] };
+  const options: SetupOption[] = [];
+  if (hasCommandCached('brew'))
+    options.push({
+      id: 'brew',
+      kind: 'command',
+      label: 'Install whisper.cpp with Homebrew',
+      command: 'brew install whisper-cpp',
+    });
+  else
+    options.push({
+      id: 'cloud',
+      kind: 'link',
+      label: 'No Homebrew — a cloud engine needs no install at all',
+      url: 'https://elevenlabs.io/app/settings/api-keys',
+      note: 'Pick ElevenLabs Scribe or Groq above and paste a key. Audio is uploaded to that provider and billed to your account.',
+    });
+  options.push({
+    id: 'source',
+    kind: 'link',
+    label: 'Build from source',
+    url: 'https://github.com/ggml-org/whisper.cpp',
+    note: 'whisper.cpp ships prebuilt binaries for Linux and Windows, but not macOS — a Mac build needs cmake + Xcode command-line tools.',
+  });
+  return { installed: false, options };
+}
+
+// ─── Automatic engine choice ─────────────────────────────────────────────────
+// Task 2.6 / DDR-164 made the engine an EXPLICIT choice because a silent
+// fallback to a cloud engine has two consequences the user never asked for:
+// their audio leaves the machine, and their account is billed. That rule is
+// kept — what changes is that "auto" becomes a choice the user can MAKE, and
+// one that always SAYS what it currently resolves to (in this card and in the
+// transcriber's own output). Nothing switches behind your back; `auto` is a
+// selected mode, not a hidden default override.
+//
+// The bite worth knowing: one ElevenLabs key covers audio generation AND
+// Scribe, so a key added for music/TTS is enough to make `auto` route
+// transcription to the cloud. That's why the card states the resolution
+// out loud and pinning `whisper` stays one click away.
+
+export type TranscriptionEngine = 'auto' | 'whisper' | 'elevenlabs' | 'groq';
+
+export interface AutoEngineResolution {
+  /** What `auto` picks right now. */
+  engine: Exclude<TranscriptionEngine, 'auto'>;
+  /** Why — rendered verbatim so the choice is never a mystery. */
+  reason: string;
+  /** True when the resolved engine uploads audio and bills a provider. */
+  cloud: boolean;
+}
+
+/**
+ * Resolve `auto`: prefer the cloud engine whose key is present (ElevenLabs
+ * Scribe first — better accuracy than a local base model), else local
+ * whisper.cpp. `configured` is the set of providers holding a key, passed in so
+ * this stays a pure function (the keychain read is the caller's).
+ */
+export function resolveAutoEngine(
+  configured: Iterable<string>,
+  whisperInstalled: boolean
+): AutoEngineResolution {
+  const keys = new Set(configured);
+  if (keys.has('elevenlabs'))
+    return {
+      engine: 'elevenlabs',
+      reason: 'ElevenLabs key is set — Scribe is more accurate than a local base model.',
+      cloud: true,
+    };
+  if (keys.has('groq'))
+    return { engine: 'groq', reason: 'Groq key is set — fast cloud transcription.', cloud: true };
+  return {
+    engine: 'whisper',
+    reason: whisperInstalled
+      ? 'No cloud key set — using local whisper.cpp (free, offline, nothing leaves this machine).'
+      : 'No cloud key set — will use local whisper.cpp once its binary is installed.',
+    cloud: false,
+  };
 }

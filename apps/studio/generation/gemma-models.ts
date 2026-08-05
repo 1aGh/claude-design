@@ -21,6 +21,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { cachedProbe, hasCommandCached, type SetupOption } from './runtime-probe.ts';
 
 /** Maude-managed venv for the mlx-vlm runtime. Lives next to the identity cache
  *  (`$XDG_CACHE_HOME/maude` else `~/.maude`) — re-creatable with one command, so
@@ -159,17 +160,9 @@ export function resolveMlxPython(): string | null {
 // Memoize with a short TTL: DoS-bounded to at most one probe per PROBE_TTL_MS
 // regardless of request rate, while still picking up a mid-session `pip install` /
 // PATH change within the TTL.
+// The TTL cache + PATH probe live in runtime-probe.ts — shared with the whisper
+// stack, which has the same "never print an impossible instruction" problem.
 const PROBE_TTL_MS = 30_000;
-const probeCache = new Map<string, { at: number; value: boolean }>();
-
-function cachedProbe(key: string, compute: () => boolean): boolean {
-  const now = Date.now();
-  const hit = probeCache.get(key);
-  if (hit && now - hit.at < PROBE_TTL_MS) return hit.value;
-  const value = compute();
-  probeCache.set(key, { at: now, value });
-  return value;
-}
 
 export function mlxVlmAvailable(): boolean {
   return cachedProbe('mlx', () => resolveMlxPython() !== null);
@@ -317,27 +310,6 @@ export async function pullOllamaModel(
     }
   }
   if (!ok) throw new Error(lastErr || 'ollama pull did not report success');
-}
-
-/** One way to get a runtime onto THIS machine. `command` is copy/paste; `link`
- *  is a URL (the desktop shell has no general URL opener by design — DDR-054 —
- *  so the client renders a link + Copy rather than a button that can't work). */
-export interface SetupOption {
-  id: string;
-  kind: 'command' | 'link';
-  label: string;
-  command?: string;
-  url?: string;
-  note?: string;
-}
-
-/** Is a command on PATH? TTL-cached — these are spawns behind an un-authenticated
- *  (same-origin, loopback) GET, same DoS reasoning as the other probes. */
-function hasCommandCached(cmd: string): boolean {
-  return cachedProbe(`has:${cmd}`, () => {
-    const finder = process.platform === 'win32' ? 'where' : 'which';
-    return spawnSync(finder, [cmd], { stdio: 'ignore' }).status === 0;
-  });
 }
 
 const OLLAMA_DOWNLOAD_URL = 'https://ollama.com/download';

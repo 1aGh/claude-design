@@ -259,12 +259,12 @@
         },
         "transcription": {
           "type": "object",
-          "description": "Speech-to-text / subtitle engine preference (Task 2.6, DDR-164). The engine is an EXPLICIT user choice, never an automatic fallback: a chosen-but-unavailable engine errors clearly and Maude never silently switches to another. `maude design transcribe --provider` overrides this per-call.",
+          "description": "Speech-to-text / subtitle engine preference (Task 2.6, DDR-164). The engine is never switched behind your back: a chosen-but-unavailable engine errors clearly, and `auto` — a mode you SELECT — resolves to the best engine this machine is set up for while stating which one it picked. `maude design transcribe --provider` overrides this per-call.",
           "properties": {
             "provider": {
               "type": "string",
-              "enum": ["whisper", "elevenlabs", "groq"],
-              "description": "Which engine transcribes when no --provider flag is given. `whisper` = local whisper.cpp (free, offline, no key); `elevenlabs` = ElevenLabs Scribe (cloud, key); `groq` = Groq Whisper (cloud, key). Absent ⇒ whisper.",
+              "enum": ["auto", "whisper", "elevenlabs", "groq"],
+              "description": "Which engine transcribes when no --provider flag is given. `auto` = use the cloud engine whose key is set (ElevenLabs Scribe first), else local whisper — the UI and the CLI both state what it resolved to; `whisper` = local whisper.cpp (free, offline, no key); `elevenlabs` = ElevenLabs Scribe (cloud, key, audio leaves the machine); `groq` = Groq Whisper (cloud, key). Absent ⇒ whisper.",
               "default": "whisper"
             },
             "model": {

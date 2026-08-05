@@ -171,6 +171,11 @@ function ProviderCard({ provider, onChanged }) {
 // (managed in the provider cards above).
 const TRANSCRIPTION_ENGINES = [
   {
+    id: 'auto',
+    label: 'Auto',
+    note: 'Use the best engine this machine is set up for — the card says which.',
+  },
+  {
     id: 'whisper',
     label: 'Local whisper.cpp',
     note: 'Free · offline · no key · runs on your hardware',
@@ -183,16 +188,30 @@ const TRANSCRIPTION_ENGINES = [
   { id: 'groq', label: 'Groq Whisper', note: 'Cloud · fast · needs a Groq key' },
 ];
 
+const ENGINE_LABELS = Object.fromEntries(TRANSCRIPTION_ENGINES.map((e) => [e.id, e.label]));
+
 function TranscriptionEngineCard() {
   const [engine, setEngine] = useState(null); // null = loading
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null);
+  // What `auto` currently resolves to, from the server (key presence lives in
+  // the keychain). Shown verbatim so a delegated choice is still a visible one.
+  const [auto, setAuto] = useState(null);
 
   useEffect(() => {
     fetch('/_api/generate/prefs')
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d) => setEngine(d?.transcriptionProvider || 'whisper'))
       .catch(() => setEngine('whisper'));
+  }, []);
+
+  // Re-read on every selection change: adding a key elsewhere in Settings moves
+  // what Auto resolves to, and the user should see that immediately.
+  useEffect(() => {
+    fetch('/_api/generate/whisper-model')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setAuto(d?.auto || null))
+      .catch(() => {});
   }, []);
 
   async function choose(id) {
@@ -223,9 +242,16 @@ function TranscriptionEngineCard() {
         <span className="st-provider-name">Subtitles — transcription engine</span>
       </div>
       <div className="st-provider-notes">
-        Which engine turns audio into subtitles. This is an explicit choice — Maude never silently
-        switches engines; a chosen-but-unavailable engine tells you how to fix it.
+        Which engine turns audio into subtitles. Maude never switches engines behind your back — pin
+        one, or pick <strong>Auto</strong> and it uses the best you're set up for and says so.
       </div>
+      {engine === 'auto' && auto && (
+        <div className="st-provider-notes">
+          Right now Auto uses <strong>{ENGINE_LABELS[auto.engine] || auto.engine}</strong> —{' '}
+          {auto.reason}
+          {auto.cloud && ' Audio is uploaded to that provider and billed to your account.'}
+        </div>
+      )}
       <div className="st-engine-radios" role="radiogroup" aria-label="Transcription engine">
         {TRANSCRIPTION_ENGINES.map((e) => (
           <label key={e.id} className={'st-engine-radio' + (engine === e.id ? ' is-selected' : '')}>
@@ -314,6 +340,7 @@ function WhisperModelCard() {
 
   const dl = state?.downloading;
   const pctOf = (r, t) => (t > 0 ? Math.min(100, Math.round((r / t) * 100)) : 0);
+  const modelsReady = (state?.models || []).some((m) => m.downloaded);
 
   return (
     <div className="st-provider-card">
@@ -321,10 +348,58 @@ function WhisperModelCard() {
         <span className="st-provider-name">Local subtitle models (whisper.cpp)</span>
       </div>
       <div className="st-provider-notes">
-        Download a model once and local subtitles work offline, free, with no key. Requires the
-        whisper.cpp binary (<code>brew install whisper-cpp</code>). Models are stored on this machine
-        only and never committed.
+        Local subtitles need two things: the whisper.cpp engine and one model. Models are stored on
+        this machine only and never committed.
       </div>
+      {state && (
+        <div className="st-setup">
+          <div className={`st-step${state.setup?.installed ? ' is-done' : ''}`}>
+            <span className="st-step-n">{state.setup?.installed ? '✓' : '1'}</span>
+            <div className="st-step-body">
+              <span className="st-step-title">
+                {state.setup?.installed
+                  ? 'whisper.cpp engine is installed'
+                  : 'Install the whisper.cpp engine'}
+              </span>
+              {/* Only routes that work on THIS machine — no `brew install`
+                  without Homebrew. whisper.cpp ships no macOS prebuilt, so the
+                  brew-less answer is a cloud engine or a source build. */}
+              {(state.setup?.options || []).slice(0, 1).map((opt) =>
+                opt.kind === 'command' ? (
+                  <CopyCommand key={opt.id} command={opt.command} label={`Copy: ${opt.label}`} />
+                ) : (
+                  <span key={opt.id} className="st-provider-notes">
+                    {opt.note}
+                  </span>
+                )
+              )}
+            </div>
+          </div>
+          <div className={`st-step${modelsReady ? ' is-done' : ''}`}>
+            <span className="st-step-n">{modelsReady ? '✓' : '2'}</span>
+            <div className="st-step-body">
+              <span className="st-step-title">
+                {modelsReady ? 'Model ready' : 'Download a model (below)'}
+              </span>
+            </div>
+          </div>
+          {(state.setup?.options || []).length > 1 && (
+            <details className="st-setup-more">
+              <summary>Other ways to get the engine</summary>
+              {state.setup.options.slice(1).map((opt) => (
+                <div key={opt.id} className="st-setup-option">
+                  <span className="st-setup-option-label">{opt.label}</span>
+                  <CopyCommand
+                    command={opt.kind === 'command' ? opt.command : opt.url}
+                    label={`Copy: ${opt.label}`}
+                  />
+                  {opt.note ? <span className="st-provider-notes">{opt.note}</span> : null}
+                </div>
+              ))}
+            </details>
+          )}
+        </div>
+      )}
       {err && (
         <div className="st-provider-status" style={{ color: 'var(--danger, #e5484d)' }}>
           {err}
