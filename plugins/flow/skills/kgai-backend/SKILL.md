@@ -51,7 +51,11 @@ The resolver is available as `maude kg resolve --json` (prints `{active, mode, s
 
 Plugin markdown calls `maude kg <verb>`, **never** a raw `kg` binary path — `maude kg` resolves the bundled/pinned `kg`, exports the resolved `KGAI_STORE`/scope env, and (in the desktop bundle) points at the staged sidecar + `libkuzu`. The recipes below are the contract; the resolved store/scope are injected for you.
 
-> **The recipes below match the real kgai v1.0.0 CLI surface (verified live 2026-08-03).** `kg version`/`--help` is the source of truth; the command set is `init · ingest · context · history · as-of · search · resolve · query · conflicts · sync · rebuild · export · doctor`, plus `status` (alias `info`, added 0.1.10) and `remote` (added 1.0.0). Nothing was removed across 0.1.9 → 1.0.0 — the major bump declares stability, it does not break the surface — so every recipe here is unchanged from the v0.1.9 wording it replaces.
+> **The recipes below match the real kgai v1.4.0 CLI surface (verified live 2026-08-05).** `kg version`/`--help` is the source of truth; the command set is `init · ingest · context · history · as-of · search · resolve · query · conflicts · sync · remote · rotate · rebuild · export · status · doctor`, with `info` as a true alias of `status`. Nothing was removed since v1.0.0 (the stability-promise version) — v1.1.0–v1.4.0 were fixes and additive flags, not surface breaks — so every recipe here still applies; the additions below are new capability, not a rewrite.
+>
+> **Local engine footgun (hit while doing this update):** `kg`'s update mechanism has been broken on macOS since v0.1.x — a `sha256sum`-based install fingerprint (Linux-only tool) came out empty on every Mac, matched the empty file the prior run wrote, and the "already current" fast path then skipped every reinstall forever. Fixed upstream in v1.4.0. If `kg status`'s `"version"` field reads suspiciously old, don't trust the repo's pinned `engineVersion` as proof the running binary matches — re-run the installer (`curl -fsSL https://raw.githubusercontent.com/kgaidev/kgai/main/scripts/install.sh | bash`) and check `command -v kg` actually resolves to the fresh one (a stale `~/.local/bin/kg` symlink to an old side-install can shadow it).
+>
+> **`kg rotate` has no `--help`.** Passing `--help` to a subcommand that doesn't recognize it runs the subcommand for real instead of erroring — `kg rotate --help` actually rotated a local install identity during this update's own verification pass. Harmless when local-only (no remote configured), but don't probe an unfamiliar `kg` subcommand with `--help` to see what it does; read `kg --help`'s one-line summary first.
 
 ### READ — `kg context` (+ scope-bias via Cypher)
 
@@ -74,10 +78,27 @@ maude kg context --about "<subject>" [--paths a,b] [--max N]
 | Question shape | Use | Why |
 | --- | --- | --- |
 | "why is *this element* the way it is" | `kg context --about <element>` / `kg history "<kind:name>"` | returns the element + the decisions that shaped it |
-| **"what did we decide about \<topic\>"** | **`kg search "<topic>"`** | `context` on a broad AREA returns only its **head** decision (upstream ff2d97c) — and an area like `dev-server` is shaped by **42** decisions, so the head is just the latest, not the relevant one. `search` hits decision titles + topic elements directly. |
+| **"what did we decide about \<topic\>"** | **`kg search "<topic>"`** | `context` on a broad AREA returns only its **head** decision (upstream ff2d97c) — and an area like `dev-server` is shaped by **42** decisions, so the head is just the latest, not the relevant one. `search` is relevance-ranked and typo-tolerant (upgraded from plain substring matching) and hits decision titles + topic elements directly. |
 | "what supersedes/extends what" | `kg query` over `LINK` + `l.kind` | typed edges aren't exposed as flags |
 
 Reach for `search` FIRST on topical prior-art (the `/flow:plan` case); fall back to `context` when you already have a concrete element id.
+
+- **`kg context --paths` matches nested files (fixed v1.1.0)** — a stored `paths` prop ending in `/*` now compares as its directory prefix, so `src/billing/*` correctly overlaps `src/billing/invoice/sub/x.ts`. If a downstream repo is still pinned pre-1.1.0, `--paths` recall on nested trees silently under-matches — one more reason not to float an old `engineVersion`.
+- **`kg as-of <YYYY-MM-DD>` means the END of that day (fixed v1.1.0)** — a bare date used to parse as midnight UTC, so asking "as of today" silently dropped everything recorded today.
+
+### ADMIN — `kg status` / `info` / `remote` / `rotate` (troubleshooting, not part of the read/write/sync recipes)
+
+```
+maude kg doctor            # already wired — hash-chain + store health
+kg status                  # config + graph summary at a glance: version, remote, counts (info is an exact alias)
+kg remote                  # no args: shows local/global/effective sync remote and its source — read-only, does not mutate
+kg remote "s3://bucket/prefix" [--global]   # set this project's (or the machine-wide default) sync remote
+kg rotate                  # gives the LOCAL STORE a fresh install identity — mutating, not a query
+```
+
+- `status`/`info` and `remote` (no args) are **new since v1.0.0/v1.1.0** and safe to run directly (they don't create a store — v1.1.0 made every read command side-effect-free in an unrelated directory).
+- **`kg rotate` is NOT a read despite living in the same help block as `doctor`/`status` — it mutates.** It exists to fix a copied-store shard fork, not for routine use, and **it has no `--help` flag** — passing one runs the real command instead of erroring. Don't probe it speculatively.
+- `remote`/`rotate` aren't part of any flow/design command today (this repo has no configured remote — `store: ""` in `.ai/workflows.config.json`); they're documented here so a future SYNC-remote setup task doesn't have to rediscover the CLI surface.
 
 ### WRITE — `kg ingest` (decision + scope + cross-ref) — **JSON on stdin**
 
@@ -107,6 +128,8 @@ echo '{
 - **Link storage:** `SUPERSEDES` is its own Kuzu rel table; every other `link` (IN_REPO/IN_DEPT/REFERENCES/EXTENDS/…) lands in the generic `LINK` table with the kind in `l.kind` — hence the scope Cypher above. `context` returns them all under each element's `links[]`.
 - Cross-ref extraction (SUPERSEDES / OVERRIDES / REFERENCES / EXTENDS) follows the marker table in `cli/lib/ddr-to-kgai.mjs` (typed edges first, then bare `DDR-\d+` mentions as weak deduped `references`).
 - `--dry-run` prints the deterministic ids + `shapes` without writing — use it to preview a batch.
+- **`kg ingest` rejects unknown fields (since v1.3.0)** — a payload field that isn't one of the documented ones (most commonly a model inventing `"elements": [...]` by mirroring ingest's OUTPUT shape instead of its input) now fails loud with the valid-fields list, instead of silently recording a mutation-less decision that `kg context`/`kg history` could never find. The recipe above only uses `title`/`rationale`/`date`/`mutations` — verified with `--dry-run` against the live v1.4.0 engine — so it's unaffected; if you hand-build a new envelope, `--dry-run` it first.
+- **Analyses/reports are not decisions (kgai's own capture philosophy, v1.3.0)** — upstream's bundled auto-capture skill now explicitly excludes "analyses, research findings, cost or status reports, and recommendations nobody has acted on" from what gets recorded; volatile figures (prices, counts) belong in the report, not the log. We don't use kgai's own auto-capture Stop hook (we call `ingest`/`record-log` explicitly), but the same discipline already applies here: `kg record-log` attaches a verdict FILE as `EVIDENCE_FOR` a decision, it never records the analysis itself as if it were the decision — keep new recipes shaped the same way.
 
 ### WRITE — `kg record-log` (a verdict FILE becomes a node — one line)
 
@@ -130,11 +153,13 @@ Why a verb and not a JSON blob per command:
 ### SYNC — `kg sync`
 
 ```
-maude kg sync            # at /flow:done + /flow:pause (push); SessionStart hook (pull)
+maude kg sync             # at /flow:done + /flow:pause (push) — deliberate, always attempted
+maude kg session-sync     # SessionStart hook (pull) — runs `kg sync --auto` under the hood
 ```
 
 - **Sync at close only**, never per-edit — the projection rebuild grows with the log. `status`/`resume` read the flat `kg history`/`context` (fast) as the common path.
 - Sync failure ⇒ warn, keep local writes (the append-only log is intact), retry next session. **Never block the close.**
+- **`--auto` (kgai v1.2.0+) is the engine's own fire-and-forget sync mode** — silent no-op without a store/remote, honors a 60s cooldown, and skips (never blocks) when another sync/write holds the store lock; real attempts land in `<store>/last-autosync.json`. `session-sync` uses it (`kg sync --auto`) because it fires on every SessionStart and must stay cheap; the close-time push (`sync`, no `--auto`) stays a deliberate, uncooled attempt on purpose — a user explicitly ending a session should get a real attempt, not a skipped one. Upstream's OWN Claude Code plugin now fires `kg sync --auto` from both its SessionStart and Stop hooks for the same reason — but that's *their* plugin's hooks, not something a `maude`-integrated repo gets automatically; the bundled desktop kgai plugin (`apps/desktop/.../plugins/kgai/`) deliberately ships with the SessionStart hook stripped (it would run `install.sh`, which needs Go + network — dead weight when the engine is pre-staged as a signed sidecar) and keeps only the Stop hook, which now includes `auto-sync.sh` automatically once the pin is on v1.2.0+.
 
 ## 4. Element / link vocabulary (glossary — open-ended by design)
 

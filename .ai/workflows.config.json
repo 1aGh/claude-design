@@ -100,7 +100,7 @@
   },
   "knowledgeGraph": {
     "mode": "auto",
-    "engineVersion": "v1.0.0",
+    "engineVersion": "v1.4.0",
     "store": "",
     "scope": { "repo": "maude", "dept": "dev" }
   },

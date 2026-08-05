@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert this repo's .ai/decisions/DDR-*.md into a kgai batch-ingest payload.
+"""Convert this repo's .ai/archive/decisions/DDR-*.md into a kgai batch-ingest payload.
 
 Each DDR becomes one immutable kgai DECISION whose mutations:
   - shape an `area` element (the DDR's primary tag)   → few, stable elements
@@ -99,7 +99,7 @@ def build(ddr_dir, suffix):
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    default_ddr = os.path.normpath(os.path.join(here, "..", "..", ".ai", "decisions"))
+    default_ddr = os.path.normpath(os.path.join(here, "..", "..", ".ai", "archive", "decisions"))
     ap = argparse.ArgumentParser()
     ap.add_argument("--ddr-dir", default=default_ddr)
     ap.add_argument("--out", default=os.path.join(here, "ddr-batch.json"))

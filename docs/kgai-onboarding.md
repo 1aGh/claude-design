@@ -4,14 +4,16 @@ kgai is Maude's **opt-in, capability-gated** knowledge-graph memory backend. Whe
 
 **Nothing here is required to use Maude.** With `kg` absent (the default), every flow/design command runs its classic `.ai/` file path, unchanged. This guide is only for joining the company graph.
 
-> Version is **pinned**, never floating (supply-chain surface — the `kg` binary is third-party; see [DDR-189](../.ai/archive/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md)). The pin lives in `config.knowledgeGraph.engineVersion` (currently `v1.0.0`). Check drift anytime with `maude kg check-upstream`.
+> Version is **pinned**, never floating (supply-chain surface — the `kg` binary is third-party; see [DDR-189](../.ai/archive/decisions/DDR-189-kgai-cross-repo-shared-graph-trust-model.md)). The pin lives in `config.knowledgeGraph.engineVersion` (currently `v1.4.0`). Check drift anytime with `maude kg check-upstream`.
+>
+> **This manual download has no self-update.** Re-running step 1 with a bumped `KGVER` is on YOU whenever the pin moves — nothing does it for you. A stale `~/.local/kgai/<old-version>/kg` left on PATH (e.g. via a `~/.local/bin/kg` symlink) will keep being used silently forever otherwise; `kg status` prints a `"version"` field, so a quick `kg status` after any pin bump confirms you're actually running the new one, not just that a new one was downloaded somewhere. (The upstream Claude Code plugin's own installer self-updates on session start — but it was broken on macOS specifically until kgai v1.4.0, so don't assume it caught up for you either; verify with `kg status`.)
 
 ## 1. Install the `kg` CLI
 
 Download the pinned release binary + its native library for your platform from [kgai releases](https://github.com/kgaidev/kgai/releases):
 
 ```bash
-KGVER=v1.0.0
+KGVER=v1.4.0
 DEST="$HOME/.local/kgai/$KGVER"; mkdir -p "$DEST"
 # macOS arm64 (swap the asset names for your platform):
 curl -fL "https://github.com/kgaidev/kgai/releases/download/$KGVER/kg-darwin-arm64" -o "$DEST/kg"
@@ -98,3 +100,4 @@ The shared graph is an **attacker-writable surface**, not a trusted datastore ([
 | `kg version` → killed / dylib error | macOS: ad-hoc `codesign` (step 1). Or the download truncated — re-fetch, verify byte size. |
 | `kg sync` fails | Warned, never blocks — you keep working on the local cache; retry next session. Check `AWS_PROFILE` + bucket access. |
 | Want to check the pin | `maude kg check-upstream` — installed pin vs latest release + capability diff. |
+| `kg status`'s `"version"` doesn't match `engineVersion` | You're running a stale local binary (see the step-1 note above) — re-run step 1 with the current `KGVER`, and check `command -v kg` isn't resolving to a different, older install shadowing it on PATH. |

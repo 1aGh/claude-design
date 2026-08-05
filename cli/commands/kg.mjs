@@ -18,7 +18,7 @@ import { basename, join, resolve } from 'node:path';
 import { parseArgs } from '../lib/argv.mjs';
 
 const CONFIG_PATH = '.ai/workflows.config.json';
-const DEFAULT_ENGINE_VERSION = 'v1.0.0';
+const DEFAULT_ENGINE_VERSION = 'v1.4.0';
 const KGAI_REPO = 'kgaidev/kgai';
 
 const VERBS = new Set([
@@ -268,7 +268,14 @@ async function verbCheckUpstream(state) {
 function verbSessionSync(state, flags) {
   // Silent no-op unless active AND a remote store is set (a pull needs a remote).
   if (!state.active || !state.store) return 0;
-  const status = runKg(state, ['sync'], { timeoutMs: 20000 });
+  // `--auto` (kgai v1.2.0+) is the engine's own fire-and-forget mode: safe no-op
+  // without a store/remote, honors a 60s cooldown so rapid session restarts don't
+  // hammer the remote, and skips (never blocks) when another sync/write holds the
+  // store lock. That's a strict improvement over a plain blocking `kg sync` here —
+  // this call already runs backgrounded from the SessionStart hook (see
+  // plugins/flow/hooks/hooks.json), but the engine-level non-blocking guarantee is
+  // what actually prevents a queued/blocked spawn from piling up across sessions.
+  const status = runKg(state, ['sync', '--auto'], { timeoutMs: 20000 });
   if (status !== 0 && flags['warn-only']) {
     process.stderr.write('maude kg: session sync-pull failed — working on the local cache.\n');
     return 0; // never block session start

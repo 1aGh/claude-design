@@ -51,7 +51,7 @@ const BIN_DIR = resolve(SCRIPT_DIR, '..', 'src-tauri', 'binaries');
 const STAGE_DIR = resolve(SCRIPT_DIR, '..', '.kg-staging');
 
 /** PINNED kgai release — mirror of config.knowledgeGraph.engineVersion. */
-const KGAI_VERSION = 'v1.0.0';
+const KGAI_VERSION = 'v1.4.0';
 const KGAI_REPO = 'kgaidev/kgai';
 
 // api.github.com allows 60 requests/hour to UNAUTHENTICATED callers, counted per
@@ -106,7 +106,7 @@ const TRIPLE = {
 };
 
 // Maude slug → kgai release asset names. kgai publishes darwin + linux only
-// (v1.0.0); Windows has no prebuilt → the build ships without kgai there.
+// (v1.4.0); Windows has no prebuilt → the build ships without kgai there.
 const ASSETS = {
   'darwin-arm64': { kg: 'kg-darwin-arm64', lib: 'libkuzu-darwin-universal.dylib', libExt: 'dylib' },
   'darwin-x64': { kg: 'kg-darwin-x86_64', lib: 'libkuzu-darwin-universal.dylib', libExt: 'dylib' },
