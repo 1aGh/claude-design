@@ -19,7 +19,7 @@ frames → sharper analysis at lower cost.
 
 | Tier | How it picks frames | Needs | When |
 | ---- | ------------------- | ----- | ---- |
-| **`gemma`** | Gemma-4 MLX **scout** watches the video natively and flags action beats that are *not* hard cuts (a snap, a run, a reveal inside one continuous shot), merged with ffmpeg scene cuts. | ffmpeg **+** mlx-vlm + a Gemma-4 MLX model (Apple Silicon) | opt-in; richest — catches beats inside continuous shots |
+| **`gemma`** | Gemma **scout** watches the video and flags action beats that are *not* hard cuts (a snap, a run, a reveal inside one continuous shot), merged with ffmpeg scene cuts. Two interchangeable runtimes: **mlx-vlm** (preferred — native video input, Apple Silicon, the benchmarked path) or **Ollama** (simplest install — a gemma3 vision model; frames are sampled by ffmpeg and sent as timestamped images). | ffmpeg **+** (mlx-vlm + a Gemma-4 MLX model, *or* Ollama + `gemma3:4b`+) | opt-in; richest — catches beats inside continuous shots |
 | **`ffmpeg`** | ffmpeg content scene-detection + endpoints + long-shot midpoints. | ffmpeg | **the default** when ffmpeg is present; cross-platform, no model download |
 | **`blind`** | delegates to `probe-footage` (headless Chromium, even-spaced). | Chromium (already shipped) | the floor — so extraction always works even with neither ffmpeg nor Gemma |
 
@@ -51,6 +51,7 @@ maude design smart-frames <asset> [--root <repo>] [--out-dir DIR] [--frames N]
 ```jsonc
 { "asset": "assets/<sha8>.mp4", "durationSec": 8.0, "width": 1280, "height": 720,
   "method": "ffmpeg",                       // which tier actually ran
+  "scout": null,                            // "mlx" | "ollama" when the gemma scout contributed beats
   "sceneCuts": [0.233, 6.533],              // ffmpeg scene-detect (empty in blind)
   "scoutBeats": [{ "t": 6.9, "what": "run play" }],  // gemma only (empty otherwise)
   "outDir": "/tmp/smart-frames-…",
@@ -71,8 +72,10 @@ Consumers read `frames[]` (index + source-time `t` + PNG path) exactly as they r
 | `SCENE_THRESH` (`--scene-thresh`) | `0.3` | ffmpeg scene-cut sensitivity (lower = more cuts) |
 | `SCOUT_FPS` (`--scout-fps`) | `4` | Gemma scout native sampling density |
 | `--frames` / `--max-frames` | `12` | hard cap on extracted frames |
-| `MAUDE_MLX_PYTHON` | `python3` | a Python that can `import mlx_vlm` (gemma tier) |
-| `MAUDE_GEMMA_MODEL` | `mlx-community/gemma-4-e4b-it-4bit` | the scout model |
+| `MAUDE_MLX_PYTHON` | auto (Maude venv → PATH) | a Python that can `import mlx_vlm` (gemma tier, mlx runtime) |
+| `MAUDE_GEMMA_MODEL` | `mlx-community/gemma-4-e4b-it-4bit` | the scout model (mlx runtime) |
+| `OLLAMA_HOST` | `http://127.0.0.1:11434` | the Ollama server (gemma tier, ollama runtime). **Loopback-only** — a non-loopback value is refused, never uploaded to (the footage pipeline is egress-free by design, DDR-183) |
+| `MAUDE_OLLAMA_MODEL` | auto (first vision-capable `gemma3:*` tag) | the scout model (ollama runtime; `gemma3:1b` and `gemma3n` are text-only and skipped) |
 
 ## Two front doors, one engine
 

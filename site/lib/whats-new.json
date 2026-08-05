@@ -1,11 +1,20 @@
 {
-  "generated": "2026-08-05T04:11:20.143Z",
-  "version": "0.54.0",
+  "generated": "2026-08-05T11:00:46.092Z",
+  "version": "0.55.0",
   "entries": [
     {
-      "id": "cloud-connect-browser-open-and-decision-modal",
+      "id": "gemma-scout-ollama-easy-install",
       "version": null,
       "date": null,
+      "kind": "improvement",
+      "title": "Easier Gemma scout setup — Ollama supported",
+      "summary": "Scene-aware keyframes' Gemma scout now also runs on Ollama — one app and `ollama pull gemma3:4b`, no Python required. The Settings card hands you copy/paste install commands for both runtimes and unlocks itself automatically once one is installed.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "cloud-connect-browser-open-and-decision-modal",
+      "version": "0.55.0",
+      "date": "2026-08-05",
       "kind": "fix",
       "title": "Signing in opens your browser again",
       "summary": "Signing in to Maude Cloud from the app used to go nowhere — the browser never opened, the dialog claimed it had, and you were left holding a code. It opens now, straight to the page with your code already filled in, and the address is always there to click or copy if it doesn't. \"Open in Maude\" also asks a clearer question: it names the folder you have open and the cloud project it would connect it to, says exactly what syncs, and warns you if the two don't look like the same thing.",
@@ -13,8 +22,8 @@
     },
     {
       "id": "activity-says-why-we-looked",
-      "version": null,
-      "date": null,
+      "version": "0.55.0",
+      "date": "2026-08-05",
       "kind": "improvement",
       "title": "Your project's activity says why we looked",
       "summary": "The activity page for a cloud project used to show that the platform touched it. Now it shows the reason given at the time, in plain words — and it includes the platform-wide checks that sweep every project, which were previously the only ones you could not see.",

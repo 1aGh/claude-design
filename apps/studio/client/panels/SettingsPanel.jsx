@@ -389,7 +389,7 @@ function WhisperModelCard() {
 // sibling of the Subtitles section. Persists `keyframeEngine` to /_api/generate/prefs.
 const KEYFRAME_ENGINES = [
   { id: 'auto', label: 'Auto', note: 'Use the best available: Gemma scout → ffmpeg → blind.' },
-  { id: 'gemma', label: 'Gemma scout', note: 'Semantic action beats. Needs Apple Silicon + mlx-vlm + a model.' },
+  { id: 'gemma', label: 'Gemma scout', note: 'Semantic action beats. Needs Ollama (gemma3 vision) or mlx-vlm + a model.' },
   { id: 'ffmpeg', label: 'ffmpeg scene-detect', note: 'Scene cuts + endpoints. Needs ffmpeg. No model download.' },
   { id: 'blind', label: 'Blind (even-spaced)', note: 'Chromium fallback — works with neither ffmpeg nor Gemma.' },
 ];
@@ -468,11 +468,36 @@ function KeyframeEngineCard() {
   );
 }
 
+// A copy/paste terminal command with a Copy button (same look as the ACP
+// readiness rows — the rdy-* classes are global in the bundled stylesheet).
+function CopyCommand({ command, label }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard?.writeText(command).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      },
+      () => {}
+    );
+  };
+  return (
+    <span className="rdy-cmd">
+      <code className="rdy-cmd-tx">{command}</code>
+      <button type="button" className="rdy-copy" onClick={copy} aria-label={label || 'Copy command'}>
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </span>
+  );
+}
+
 // The MODEL half of the Gemma scout — one click, mirroring WhisperModelCard. The
-// RUNTIME (mlx-vlm) is a manual `pip install` the app can't do, so the download is
-// gated on mlxVlmAvailable and the card says which tier will actually run.
+// RUNTIME is a manual install the app can't do for you (DDR-183), but the card
+// hands you copy/paste commands for BOTH runtime paths — Ollama (simplest: one
+// app, `ollama pull`, no Python) and mlx-vlm (fastest, the benchmarked path) —
+// and re-probes on its own, so the card unlocks itself once you've run one.
 function GemmaModelCard() {
-  const [state, setState] = useState(null); // { models, downloading, mlxVlmAvailable, ffmpegAvailable }
+  const [state, setState] = useState(null); // { models, downloading, mlxVlmAvailable, ffmpegAvailable, installCommand, ollama }
   const [err, setErr] = useState(null);
 
   const load = useCallback(() => {
@@ -492,6 +517,16 @@ function GemmaModelCard() {
     return () => clearInterval(t);
   }, [state?.downloading, load]);
 
+  // No scout runtime yet → the user is likely running one of the install
+  // commands in a terminal right now. Re-probe every 10 s (server-side the
+  // probes are TTL-cached) so the card unlocks itself without a reopen.
+  const noRuntime = state ? !state.mlxVlmAvailable && !state.ollama?.model : false;
+  useEffect(() => {
+    if (!noRuntime) return undefined;
+    const t = setInterval(load, 10_000);
+    return () => clearInterval(t);
+  }, [noRuntime, load]);
+
   async function download(id) {
     setErr(null);
     try {
@@ -510,8 +545,14 @@ function GemmaModelCard() {
   const dl = state?.downloading;
   const mlx = state?.mlxVlmAvailable;
   const ff = state?.ffmpegAvailable;
+  const ollama = state?.ollama;
+  const scoutReady = Boolean(mlx || ollama?.model);
   const pctOf = (r, t) => (t > 0 ? Math.min(100, Math.round((r / t) * 100)) : 0);
-  const activeTier = mlx ? 'Gemma scout' : ff ? 'ffmpeg scene-detect' : 'blind (even-spaced)';
+  const activeTier = scoutReady
+    ? `Gemma scout${mlx ? '' : ` (Ollama · ${ollama.model})`}`
+    : ff
+      ? 'ffmpeg scene-detect'
+      : 'blind (even-spaced)';
 
   return (
     <div className="st-provider-card">
@@ -520,15 +561,43 @@ function GemmaModelCard() {
       </div>
       <div className="st-provider-notes">
         The <strong>Gemma</strong> tier adds semantic action-beat detection on top of scene cuts. It
-        needs an <strong>Apple-Silicon Mac</strong> and the <code>mlx-vlm</code> runtime
-        (<code>pip install mlx-vlm</code> — a manual step Maude can’t do for you). Downloading a model
-        below is the one-click half. Models live in your HuggingFace cache, never committed.
+        runs on either of two local runtimes — install one in a terminal and Maude picks it up
+        automatically (checked every few seconds):
       </div>
+      {state && !scoutReady && (
+        <div className="st-provider-notes">
+          <strong>Option A — Ollama</strong> (simplest: one app, no Python).{' '}
+          {ollama?.available ? (
+            <>
+              Ollama is running — it just needs a vision model:
+              <CopyCommand command={ollama.pullCommand} label="Copy the ollama pull command" />
+            </>
+          ) : (
+            <>
+              With Homebrew:
+              <CopyCommand command={ollama?.installCommand || ''} label="Copy the Ollama install command" />
+              Or download the Ollama app from ollama.com, then run{' '}
+              <code>{ollama?.pullCommand}</code>.
+            </>
+          )}
+        </div>
+      )}
+      {state && !scoutReady && (
+        <div className="st-provider-notes">
+          <strong>Option B — mlx-vlm</strong> (fastest, Apple-Silicon Macs only):
+          <CopyCommand command={state.installCommand || ''} label="Copy the mlx-vlm install command" />
+          Then download a model below — that half is one click. Models live in your HuggingFace
+          cache, never committed.
+        </div>
+      )}
       {state && (
         <div className="st-provider-notes">
           On this machine the active tier is <strong>{activeTier}</strong>
-          {!mlx && ff && ' — install mlx-vlm + download a model to unlock the Gemma scout.'}
-          {!mlx && !ff && ' — install ffmpeg for scene-aware frames, or mlx-vlm for the Gemma scout.'}
+          {!scoutReady && ff && ' — run one of the commands above to unlock the Gemma scout.'}
+          {!scoutReady &&
+            !ff &&
+            ' — install ffmpeg for scene-aware frames, plus one of the commands above for the Gemma scout.'}
+          {scoutReady && !mlx && ' — Ollama manages its own models, nothing to download below.'}
         </div>
       )}
       {err && (
@@ -567,7 +636,13 @@ function GemmaModelCard() {
                     type="button"
                     className="st-btn"
                     disabled={!mlx || !!(dl && !dl.error)}
-                    title={mlx ? '' : 'Install mlx-vlm first (pip install mlx-vlm)'}
+                    title={
+                      mlx
+                        ? ''
+                        : ollama?.model
+                          ? 'Only needed for the mlx-vlm runtime — Ollama pulls its own models'
+                          : 'Install mlx-vlm first — copy the Option B command above'
+                    }
                     onClick={() => download(m.id)}
                   >
                     {busy ? 'Downloading…' : mlx ? 'Download' : 'Needs mlx-vlm'}

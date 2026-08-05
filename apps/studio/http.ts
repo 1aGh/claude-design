@@ -47,7 +47,10 @@ import {
   downloadGemmaModel,
   ffmpegAvailable,
   listGemmaModels,
+  mlxInstallCommand,
   mlxVlmAvailable,
+  OLLAMA_RECOMMENDED_MODEL,
+  ollamaStatus,
 } from './generation/gemma-models.ts';
 import { type GenerationJobQueue, GenerationQueueFullError } from './generation/jobs.ts';
 import {
@@ -4143,6 +4146,16 @@ export function createHttp(
             downloading: keyframeDownload,
             mlxVlmAvailable: mlxVlmAvailable(),
             ffmpegAvailable: ffmpegAvailable(),
+            // Copy/paste install stories the card renders verbatim. The mlx
+            // command is computed from the SAME venv path the probe checks, so
+            // the shown command and the detection can't drift.
+            installCommand: mlxInstallCommand(),
+            ollama: {
+              ...(await ollamaStatus()),
+              recommendedModel: OLLAMA_RECOMMENDED_MODEL,
+              pullCommand: `ollama pull ${OLLAMA_RECOMMENDED_MODEL}`,
+              installCommand: `brew install ollama && brew services start ollama && ollama pull ${OLLAMA_RECOMMENDED_MODEL}`,
+            },
           },
           { headers: { 'Cache-Control': 'no-store' } }
         );
@@ -4160,7 +4173,7 @@ export function createHttp(
         return new Response('cross-origin write rejected', { status: 403 });
       if (!mlxVlmAvailable())
         return new Response(
-          'mlx-vlm not installed — the Gemma scout needs an Apple-Silicon Mac + `pip install mlx-vlm`.',
+          'mlx-vlm not installed — run the install command shown in Settings → Video. (Ollama users don’t need this download: `ollama pull` fetches its own models.)',
           {
             status: 400,
           }

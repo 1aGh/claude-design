@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "gemma-scout-ollama-easy-install",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "title": "Easier Gemma scout setup — Ollama supported",
+      "summary": "Scene-aware keyframes' Gemma scout now also runs on Ollama — one app and `ollama pull gemma3:4b`, no Python required. The Settings card hands you copy/paste install commands for both runtimes and unlocks itself automatically once one is installed.",
+      "surface": "design-ui"
+    },
+    {
       "id": "cloud-connect-browser-open-and-decision-modal",
       "version": "0.55.0",
       "date": "2026-08-05",

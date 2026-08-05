@@ -22,6 +22,26 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+/** Maude-managed venv for the mlx-vlm runtime. Lives next to the identity cache
+ *  (`$XDG_CACHE_HOME/maude` else `~/.maude`) — re-creatable with one command, so
+ *  cache-tier is fine. The install stays USER-RUN in a terminal (DDR-183: the
+ *  runtime is a manual step), but pointing the command at a dedicated venv makes
+ *  it PEP 668-proof (a bare `pip install` is refused by Homebrew/system Pythons)
+ *  and gives the probe a well-known place to look, so the app picks the install
+ *  up automatically. */
+export function mlxVenvDir(): string {
+  const xdg = process.env.XDG_CACHE_HOME;
+  const base = xdg && xdg.length > 0 ? join(xdg, 'maude') : join(homedir(), '.maude');
+  return join(base, 'mlx-venv');
+}
+
+/** The copy/paste one-liner the Settings card shows. Computed from the SAME path
+ *  the probe checks, so the two can never drift. Quoted against spaces. */
+export function mlxInstallCommand(): string {
+  const dir = mlxVenvDir();
+  return `python3 -m venv "${dir}" && "${join(dir, 'bin', 'pip')}" install -U mlx-vlm`;
+}
+
 export interface GemmaModelDescriptor {
   /** Stable id used by the pref + route. */
   id: string;
@@ -103,11 +123,16 @@ export function listGemmaModels(): GemmaModelStatus[] {
   return GEMMA_MODELS.map((m) => ({ ...m, downloaded: gemmaModelDownloaded(m) }));
 }
 
-/** Resolve a Python that can `import mlx_vlm` (honors $MAUDE_MLX_PYTHON), or null. */
+/** Resolve a Python that can `import mlx_vlm`, or null. Order: explicit
+ *  $MAUDE_MLX_PYTHON → the Maude-managed venv → PATH pythons. */
 export function resolveMlxPython(): string | null {
-  const candidates = [process.env.MAUDE_MLX_PYTHON, 'python3', 'python'].filter(
-    Boolean
-  ) as string[];
+  const venvPy = join(mlxVenvDir(), 'bin', 'python3');
+  const candidates = [
+    process.env.MAUDE_MLX_PYTHON,
+    existsSync(venvPy) ? venvPy : null,
+    'python3',
+    'python',
+  ].filter(Boolean) as string[];
   for (const py of candidates) {
     const r = spawnSync(py, ['-c', 'import mlx_vlm'], { stdio: 'ignore' });
     if (r.status === 0) return py;
@@ -136,6 +161,81 @@ function cachedProbe(key: string, compute: () => boolean): boolean {
 
 export function mlxVlmAvailable(): boolean {
   return cachedProbe('mlx', () => resolveMlxPython() !== null);
+}
+
+// ─── Ollama alternative runtime ──────────────────────────────────────────────
+// The scout can also run through a local Ollama server (gemma3 vision) — a far
+// simpler install story than mlx-vlm for most people: one app, `ollama pull`,
+// no Python. mlx stays preferred when both are present (it's the benchmarked
+// path, DDR-183); Ollama is the accessible alternative.
+
+/** The model the install/pull commands recommend (vision-capable, ~3.3 GB). */
+export const OLLAMA_RECOMMENDED_MODEL = 'gemma3:4b';
+
+/** Loopback-only literal hosts (mirrors the DDR-185 curl-local posture). No DNS
+ *  names besides `localhost` — a resolvable name could point anywhere. */
+export function isLoopbackHostname(hostname: string): boolean {
+  const h = (hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  return h === 'localhost' || h === '::1' || /^127(\.\d{1,3}){3}$/.test(h);
+}
+
+/** Local Ollama endpoint. Honors $OLLAMA_HOST (with or without scheme) but pins
+ *  it to loopback — the scout is egress-free by design (DDR-183): a remote/LAN
+ *  Ollama would silently upload the user's video frames, and on the server side
+ *  an unvalidated host would turn the probe route into an SSRF emitter. Returns
+ *  null when the value isn't loopback. */
+export function ollamaHost(): string | null {
+  const raw = (process.env.OLLAMA_HOST || '').trim();
+  if (!raw) return 'http://127.0.0.1:11434';
+  const url = /^https?:\/\//.test(raw) ? raw.replace(/\/$/, '') : `http://${raw}`;
+  try {
+    return isLoopbackHostname(new URL(url).hostname) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface OllamaStatus {
+  /** The server answered /api/tags. */
+  available: boolean;
+  /** A usable vision-capable gemma tag ($MAUDE_OLLAMA_MODEL wins), or null. */
+  model: string | null;
+}
+
+/** Pick a vision-capable gemma tag from an /api/tags listing. gemma3:1b is
+ *  text-only and gemma3n is not multimodal in Ollama — exclude both. */
+export function pickOllamaGemmaTag(tags: string[]): string | null {
+  const explicit = process.env.MAUDE_OLLAMA_MODEL;
+  if (explicit && explicit.length > 0) return explicit;
+  return tags.find((t) => /^gemma3:(?!1b)/.test(t) || t === 'gemma3') ?? null;
+}
+
+const ollamaCache = { at: 0, value: null as OllamaStatus | null };
+
+export async function ollamaStatus(): Promise<OllamaStatus> {
+  const now = Date.now();
+  if (ollamaCache.value && now - ollamaCache.at < PROBE_TTL_MS) return ollamaCache.value;
+  let value: OllamaStatus = { available: false, model: null };
+  const host = ollamaHost(); // null = $OLLAMA_HOST steered off loopback — refused
+  if (host) {
+    try {
+      // redirect: 'manual' — never follow a redirect off the pinned loopback host.
+      const res = await fetch(`${host}/api/tags`, {
+        signal: AbortSignal.timeout(1500),
+        redirect: 'manual',
+      });
+      if (res.ok && Number(res.headers.get('content-length') || 0) <= 1024 * 1024) {
+        const body = (await res.json()) as { models?: Array<{ name?: string }> };
+        const tags = (body.models ?? []).map((m) => m.name).filter(Boolean) as string[];
+        value = { available: true, model: pickOllamaGemmaTag(tags) };
+      }
+    } catch {
+      /* not running / not installed */
+    }
+  }
+  ollamaCache.at = now;
+  ollamaCache.value = value;
+  return value;
 }
 
 export function ffmpegAvailable(): boolean {

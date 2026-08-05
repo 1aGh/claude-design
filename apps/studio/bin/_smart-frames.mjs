@@ -22,7 +22,8 @@
 // are unit-tested in _smart-frames.test.mjs.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,9 +38,24 @@ export function hasCommand(cmd) {
   return r.status === 0;
 }
 
-/** Resolve a python that can `import mlx_vlm`, or null. Honors $MAUDE_MLX_PYTHON. */
+/** The Maude-managed mlx-vlm venv python (mirrors generation/gemma-models.ts —
+ *  the Settings install command creates this venv, so the CLI must look there). */
+export function mlxVenvPython(env = process.env) {
+  const xdg = env.XDG_CACHE_HOME;
+  const base = xdg && xdg.length > 0 ? join(xdg, 'maude') : join(homedir(), '.maude');
+  return join(base, 'mlx-venv', 'bin', 'python3');
+}
+
+/** Resolve a python that can `import mlx_vlm`, or null. Order: $MAUDE_MLX_PYTHON
+ *  → the Maude-managed venv → PATH pythons. */
 export function resolveMlxPython(env = process.env) {
-  const candidates = [env.MAUDE_MLX_PYTHON, 'python3', 'python'].filter(Boolean);
+  const venvPy = mlxVenvPython(env);
+  const candidates = [
+    env.MAUDE_MLX_PYTHON,
+    existsSync(venvPy) ? venvPy : null,
+    'python3',
+    'python',
+  ].filter(Boolean);
   for (const py of candidates) {
     const r = spawnSync(py, ['-c', 'import mlx_vlm'], { stdio: 'ignore' });
     if (r.status === 0) return py;
@@ -47,22 +63,79 @@ export function resolveMlxPython(env = process.env) {
   return null;
 }
 
-export function detectAvailability(env = process.env) {
+/** Loopback-only literal hosts (mirrors the DDR-185 curl-local posture). No DNS
+ *  names besides `localhost` — a resolvable name could point anywhere (and
+ *  rebind between probe and use). */
+export function isLoopbackHostname(hostname) {
+  const h = (hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  return h === 'localhost' || h === '::1' || /^127(\.\d{1,3}){3}$/.test(h);
+}
+
+/** Local Ollama endpoint. Honors $OLLAMA_HOST (with or without scheme) but pins
+ *  it to loopback: the footage pipeline is egress-free by design (DDR-183) —
+ *  frames must never leave this machine, so a remote/LAN Ollama is refused
+ *  rather than silently uploaded to. Returns null when the value isn't loopback. */
+export function ollamaHost(env = process.env) {
+  const raw = (env.OLLAMA_HOST || '').trim();
+  if (!raw) return 'http://127.0.0.1:11434';
+  const url = /^https?:\/\//.test(raw) ? raw.replace(/\/$/, '') : `http://${raw}`;
+  try {
+    return isLoopbackHostname(new URL(url).hostname) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Pick a vision-capable gemma tag from an /api/tags listing. gemma3:1b is
+ *  text-only and gemma3n is not multimodal in Ollama — exclude both.
+ *  $MAUDE_OLLAMA_MODEL wins verbatim. */
+export function pickOllamaGemmaTag(tags, env = process.env) {
+  const explicit = env.MAUDE_OLLAMA_MODEL;
+  if (explicit && explicit.length > 0) return explicit;
+  return tags.find((t) => /^gemma3:(?!1b)/.test(t)) ?? null;
+}
+
+/** Probe a running Ollama server for a usable gemma vision model.
+ *  Returns { host, model } or null. */
+export async function detectOllama(env = process.env) {
+  const host = ollamaHost(env);
+  if (!host) return null; // $OLLAMA_HOST steered off loopback — refused
+  try {
+    // redirect: 'manual' — a redirecting "Ollama" is not Ollama; following one
+    // could carry the request off loopback.
+    const res = await fetch(`${host}/api/tags`, {
+      signal: AbortSignal.timeout(1500),
+      redirect: 'manual',
+    });
+    if (!res.ok) return null;
+    if (Number(res.headers.get('content-length') || 0) > 1024 * 1024) return null;
+    const body = await res.json();
+    const tags = (body.models || []).map((m) => m?.name).filter(Boolean);
+    const model = pickOllamaGemmaTag(tags, env);
+    return model ? { host, model } : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function detectAvailability(env = process.env) {
   return {
     ffmpeg: hasCommand('ffmpeg') && hasCommand('ffprobe'),
     mlxPython: resolveMlxPython(env),
+    ollama: await detectOllama(env),
   };
 }
 
 /** Pick the tier to actually run. Explicit engine wins (and errors if its deps are
  *  missing — no silent downgrade when the user asked for one); `auto` degrades
- *  gemma → ffmpeg → blind based on what's installed. */
+ *  gemma → ffmpeg → blind based on what's installed. The gemma tier runs on
+ *  either scout runtime: mlx-vlm (preferred — the benchmarked path) or Ollama. */
 export function selectTier(engine, avail) {
-  const gemmaOk = Boolean(avail.ffmpeg && avail.mlxPython);
+  const gemmaOk = Boolean(avail.ffmpeg && (avail.mlxPython || avail.ollama));
   if (engine && engine !== 'auto') {
     if (engine === 'gemma' && !gemmaOk)
       throw new Error(
-        'engine "gemma" needs ffmpeg + mlx-vlm (Apple Silicon). Install both or use --engine ffmpeg|blind|auto.'
+        'engine "gemma" needs ffmpeg + a scout runtime — mlx-vlm (Apple Silicon) or Ollama with a gemma3 vision model. Install one or use --engine ffmpeg|blind|auto.'
       );
     if (engine === 'ffmpeg' && !avail.ffmpeg)
       throw new Error(
@@ -87,6 +160,17 @@ export function parseSceneCuts(stderr) {
   return out.filter((t) => Number.isFinite(t));
 }
 
+/** Model-authored free text that lands in the manifest (and later in agent
+ *  prompts): strip control chars, cap the length. Injection-hardening — the
+ *  scout text is untrusted model output (DDR-183). */
+function sanitizeWhat(s) {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control chars is the point.
+  return (s || '')
+    .replace(/[\x00-\x1f\x7f]/g, ' ')
+    .trim()
+    .slice(0, 120);
+}
+
 /** Parse a Gemma scout's text → beat timestamps. Accepts both `TIME=<sec>` and the
  *  `M:SS | what` shape the small model tends to emit. */
 export function parseBeats(text, durationSec) {
@@ -98,7 +182,7 @@ export function parseBeats(text, durationSec) {
   const reMS = /(?:^|\n)\s*(\d+):(\d{2}(?:\.\d+)?)\s*\|\s*([^\n]*)/g;
   // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop.
   while ((m = reMS.exec(text)))
-    beats.push({ t: Number(m[1]) * 60 + Number(m[2]), what: (m[3] || '').trim() });
+    beats.push({ t: Number(m[1]) * 60 + Number(m[2]), what: sanitizeWhat(m[3]) });
   return beats.filter((b) => Number.isFinite(b.t) && b.t >= 0 && b.t <= durationSec);
 }
 
@@ -193,6 +277,65 @@ function extractFrame(clip, t, outPath) {
 
 const SCOUT_PROMPT = (dur) =>
   `You are a shot-list scout watching a ${dur}-second video clip. List the KEY moments an editor must see: the start of each distinct shot AND any peak action beat (a snap, a catch, a big movement, a reveal) — even inside a continuous shot. Do NOT space them evenly; pick only moments where something meaningful happens or changes. Output ONE line per moment, formatted EXACTLY as: TIME=<seconds> | <a few words>. Seconds must be real numbers between 0 and ${dur}.`;
+
+/** Ollama scout — same job as the mlx scout, different transport. Ollama has no
+ *  --video input, so we sample ≤16 evenly-spaced frames ourselves (ffmpeg is
+ *  guaranteed present in this tier), tell the model each frame's timestamp, and
+ *  send them as images to /api/chat. Coarser than mlx's native video path, but
+ *  scout beats only ADD candidate frames — ffmpeg cuts stay the precise backbone
+ *  (DDR-183), so coarse is acceptable. */
+export function ollamaScoutPrompt(durationSec, times) {
+  const map = times.map((t, i) => `frame ${i + 1} = t=${t.toFixed(2)}s`).join(', ');
+  return (
+    `${SCOUT_PROMPT(durationSec)}\n` +
+    `You are given ${times.length} frames sampled from the clip: ${map}. ` +
+    `Use these timestamps (or values between adjacent ones) as your TIME= values.`
+  );
+}
+
+async function ollamaScout(clip, durationSec, { host, model, fps }) {
+  const n = Math.max(4, Math.min(16, Math.round(durationSec * fps)));
+  const times = [];
+  for (let k = 0; k < n; k++)
+    times.push(
+      +Math.min(Math.max(0.05, (k * durationSec) / Math.max(1, n - 1)), durationSec - 0.05).toFixed(
+        3
+      )
+    );
+  const dir = mkdtempSync(join(tmpdir(), 'smart-frames-scout-'));
+  try {
+    const images = [];
+    for (const [i, t] of times.entries()) {
+      const png = join(dir, `s_${String(i + 1).padStart(2, '0')}.png`);
+      if (extractFrame(clip, t, png)) images.push(readFileSync(png).toString('base64'));
+    }
+    if (!images.length) return { beats: [], ok: false, raw: 'no scout frames extracted' };
+    const res = await fetch(`${host}/api/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        messages: [{ role: 'user', content: ollamaScoutPrompt(durationSec, times), images }],
+        options: { num_predict: 300 },
+      }),
+      // big vision models on CPU are slow — generous, but bounded
+      signal: AbortSignal.timeout(300_000),
+      redirect: 'manual', // never follow a redirect off the pinned loopback host
+    });
+    if (!res.ok) return { beats: [], ok: false, raw: `ollama HTTP ${res.status}` };
+    if (Number(res.headers.get('content-length') || 0) > 4 * 1024 * 1024)
+      return { beats: [], ok: false, raw: 'ollama response too large' };
+    const body = await res.json();
+    // A 300-token completion is a few KB — cap what enters the parse/manifest.
+    const text = (body?.message?.content || '').slice(0, 64 * 1024);
+    return { beats: parseBeats(text, durationSec), ok: true, raw: text };
+  } catch (e) {
+    return { beats: [], ok: false, raw: e?.message ? e.message : 'ollama scout failed' };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 function gemmaScout(clip, durationSec, { python, model, fps }) {
   const r = spawnSync(
@@ -301,7 +444,7 @@ function parseArgs(argv) {
   return o;
 }
 
-function main() {
+async function main() {
   const o = parseArgs(process.argv.slice(2));
   if (o.help || !o.asset) {
     process.stdout.write(
@@ -318,7 +461,7 @@ function main() {
     if (pref) o.engine = pref;
   }
 
-  const avail = detectAvailability();
+  const avail = await detectAvailability();
   let tier;
   try {
     tier = selectTier(o.engine, avail);
@@ -362,17 +505,32 @@ function main() {
   const cuts = ffmpegSceneCuts(clip, o.sceneThresh);
   let beats = [];
   let method = 'ffmpeg';
+  let scoutKind = null;
   if (tier === 'gemma') {
-    const model = process.env.MAUDE_GEMMA_MODEL || 'mlx-community/gemma-4-e4b-it-4bit';
-    const scout = gemmaScout(clip, meta.durationSec, {
-      python: avail.mlxPython,
-      model,
-      fps: o.scoutFps,
-    });
+    // mlx-vlm preferred (benchmarked, native video input); Ollama is the
+    // accessible alternative runtime when mlx isn't installed.
+    let scout;
+    if (avail.mlxPython) {
+      scoutKind = 'mlx';
+      const model = process.env.MAUDE_GEMMA_MODEL || 'mlx-community/gemma-4-e4b-it-4bit';
+      scout = gemmaScout(clip, meta.durationSec, {
+        python: avail.mlxPython,
+        model,
+        fps: o.scoutFps,
+      });
+    } else {
+      scoutKind = 'ollama';
+      scout = await ollamaScout(clip, meta.durationSec, {
+        host: avail.ollama.host,
+        model: avail.ollama.model,
+        fps: o.scoutFps,
+      });
+    }
     if (scout.ok && scout.beats.length) {
       beats = scout.beats;
       method = 'gemma';
     } else {
+      scoutKind = null;
       process.stderr.write(
         'smart-frames: gemma scout produced no beats — falling back to ffmpeg tier\n'
       );
@@ -404,6 +562,7 @@ function main() {
     width: meta.width,
     height: meta.height,
     method,
+    scout: scoutKind,
     sceneCuts: cuts,
     scoutBeats: beats,
     outDir,
@@ -411,9 +570,9 @@ function main() {
   };
   process.stdout.write(`${JSON.stringify(manifest)}\n`);
   process.stderr.write(
-    `smart-frames: engine=${method} · ${frames.length} frames · ${cuts.length} scene cuts · ${beats.length} scout beats\n`
+    `smart-frames: engine=${method}${scoutKind ? ` (${scoutKind})` : ''} · ${frames.length} frames · ${cuts.length} scene cuts · ${beats.length} scout beats\n`
   );
 }
 
 // run only as a CLI, not when imported by the test
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) await main();

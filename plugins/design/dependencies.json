@@ -254,17 +254,35 @@
       "type": "cli",
       "hardness": "soft",
       "check": {
-        "command": "python3 -c \"import mlx_vlm\"",
+        "command": "\"$HOME/.maude/mlx-venv/bin/python3\" -c \"import mlx_vlm\" 2>/dev/null || python3 -c \"import mlx_vlm\"",
         "expectExit": 0
       },
       "install": {
-        "darwin": "pip install mlx-vlm",
+        "darwin": "python3 -m venv \"$HOME/.maude/mlx-venv\" && \"$HOME/.maude/mlx-venv/bin/pip\" install -U mlx-vlm",
         "preferred": "https://github.com/Blaizzy/mlx-vlm"
       },
       "autoInstall": false,
-      "fallbackBehavior": "feature-scene-aware-keyframes — OPT-IN. The `gemma` tier of `maude design smart-frames` runs a local Gemma-4 MLX scout (Apple Silicon only) to flag semantic action beats. Without it, smart-frames uses the ffmpeg or blind tier — no model download required. The scout also needs a Gemma-4 MLX model (--engine gemma / $MAUDE_GEMMA_MODEL, one-click in Studio Settings → Scene-aware keyframes).",
+      "fallbackBehavior": "feature-scene-aware-keyframes — OPT-IN. The `gemma` tier of `maude design smart-frames` runs a local Gemma-4 MLX scout (Apple Silicon only) to flag semantic action beats. Without it, smart-frames uses Ollama (if a gemma3 vision model is pulled), else the ffmpeg or blind tier — no model download required. The scout also needs a Gemma-4 MLX model (--engine gemma / $MAUDE_GEMMA_MODEL, one-click in Studio Settings → Video).",
       "usedBy": ["dev-server/bin/_smart-frames.mjs"],
       "docsUrl": "https://github.com/Blaizzy/mlx-vlm"
+    },
+    {
+      "id": "ollama",
+      "type": "cli",
+      "hardness": "soft",
+      "check": {
+        "command": "which ollama",
+        "expectExit": 0
+      },
+      "install": {
+        "darwin": "brew install ollama && brew services start ollama && ollama pull gemma3:4b",
+        "linux": "curl -fsSL https://ollama.com/install.sh | sh && ollama pull gemma3:4b",
+        "preferred": "https://ollama.com/download"
+      },
+      "autoInstall": false,
+      "fallbackBehavior": "feature-scene-aware-keyframes — OPT-IN alternative scout runtime. The `gemma` tier of `maude design smart-frames` can run its semantic-beat scout through a local Ollama server with a vision-capable gemma3 model (`ollama pull gemma3:4b`) instead of mlx-vlm — the simpler install story (one app, no Python; works beyond Apple Silicon). mlx-vlm is preferred when both are present. Without either, smart-frames uses the ffmpeg or blind tier.",
+      "usedBy": ["dev-server/bin/_smart-frames.mjs"],
+      "docsUrl": "https://ollama.com"
     }
   ]
 }
