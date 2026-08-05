@@ -8,8 +8,9 @@ import type { Activity } from './activity.ts';
 import type { Api } from './api.ts';
 import type { Collab, RoomConn } from './collab/index.ts';
 import type { Context } from './context.ts';
-import { createHmrBroadcaster } from './hmr-broadcast.ts';
+import { createContainerWriteBridge, createHmrBroadcaster } from './hmr-broadcast.ts';
 import type { InspectRegistry } from './inspect.ts';
+import { isWorkspaceMode } from './workspace-mode.ts';
 
 /**
  * Per-connection state. `kind` discriminates between the legacy JSON
@@ -267,6 +268,13 @@ export function createWs(
   // The iframe-side client (in _shell.html) decides reload strategy from `mode`.
   // Uses broadcastHmr so the segregated canvas origin's HMR-only sockets get it.
   createHmrBroadcaster(ctx, (msg) => broadcastHmr(msg));
+
+  // In a cell the container's recursive fs.watch misses our atomic tmp+rename
+  // writes, so the broadcaster above never sees an edit and a peer's canvas
+  // iframe stays stale until a manual reload (inspector-edits-live-render RCA).
+  // Synthesise the fs:any the watcher owes us from each write's activity:suppress
+  // arm. Workspace-mode only — locally fs.watch fires and this would double-load.
+  if (isWorkspaceMode()) createContainerWriteBridge(ctx);
 
   // Phase 13 / DDR-029 — canvas activity overlay. activity.ts emits
   // `activity:change` per file as edits land + go idle. The overlay renders

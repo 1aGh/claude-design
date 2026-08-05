@@ -171,3 +171,70 @@ export function classifyChange(
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Container write bridge — inspector-edits-live-render RCA.
+
+/**
+ * Delay before synthesising the `fs:any` a container's `fs.watch` failed to
+ * emit. The write is `await`ed inside the op before it returns, so a few hundred
+ * ms is ample; kept well under activity's 2.5 s `SUPPRESS_TTL_MS` so the
+ * user-write rim stays muted when the synthetic event lands.
+ */
+export const SYNTHETIC_FS_DELAY_MS = 250;
+
+/**
+ * In a CELL the recursive `fs.watch` (Linux inotify) does NOT fire for the
+ * atomic tmp+rename writes `canvas-edit.ts` makes into `designRoot` subdirs —
+ * verified live: after a `200` `edit-css` on a cell, a connected `canvas-hmr`
+ * socket received nothing. So `fs:any` never fires, the HMR broadcaster never
+ * runs, and a PEER's canvas iframe sits on the pre-edit module until a manual
+ * reload. (Annotations are spared: they cross via the collab room, not `fs:any`.)
+ *
+ * Every write path arms `activity:suppress(rel)` immediately before writing — a
+ * reliable, complete signal that a write to `rel` is imminent. Treat it as the
+ * `fs:any` the watcher owes us and synthesise one once the write has settled. A
+ * no-op or failed edit disarms via `activity:unsuppress`, which cancels the
+ * pending emit, so an equal-length or rejected edit never reloads peers.
+ *
+ * WORKSPACE-MODE ONLY (the caller gates it): locally `fs.watch` fires, and a
+ * second source would double-reload every canvas on every edit — the HMR
+ * broadcaster's 50 ms per-path debounce cannot coalesce two events ~250 ms apart.
+ */
+export function createContainerWriteBridge(ctx: Context): { stop(): void } {
+  const pending = new Map<string, ReturnType<typeof setTimeout>>();
+  const norm = (rel: string) => rel.replace(/\\/g, '/');
+
+  const offSuppress = ctx.bus.on('activity:suppress', (rel: string) => {
+    if (typeof rel !== 'string' || !rel) return;
+    const key = norm(rel);
+    const prev = pending.get(key);
+    if (prev) clearTimeout(prev);
+    pending.set(
+      key,
+      setTimeout(() => {
+        pending.delete(key);
+        ctx.bus.emit('fs:any', key);
+      }, SYNTHETIC_FS_DELAY_MS)
+    );
+  });
+
+  const cancel = (rel: string) => {
+    if (typeof rel !== 'string' || !rel) return;
+    const t = pending.get(norm(rel));
+    if (t) {
+      clearTimeout(t);
+      pending.delete(norm(rel));
+    }
+  };
+  const offUnsuppress = ctx.bus.on('activity:unsuppress', cancel);
+
+  return {
+    stop() {
+      offSuppress();
+      offUnsuppress();
+      for (const t of pending.values()) clearTimeout(t);
+      pending.clear();
+    },
+  };
+}

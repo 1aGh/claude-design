@@ -3,7 +3,13 @@
 import { describe, expect, test } from 'bun:test';
 
 import { type Context, createBus } from '../context.ts';
-import { createHmrBroadcaster, HMR_DEBOUNCE_MS, type HmrMessage } from '../hmr-broadcast.ts';
+import {
+  createContainerWriteBridge,
+  createHmrBroadcaster,
+  HMR_DEBOUNCE_MS,
+  type HmrMessage,
+  SYNTHETIC_FS_DELAY_MS,
+} from '../hmr-broadcast.ts';
 
 function mkCtx(): Context {
   const bus = createBus();
@@ -147,6 +153,56 @@ describe('hmr-broadcast / stop', () => {
     h.stop();
     ctx.bus.emit('fs:any', 'ui/X.tsx');
     await awaitNextFlush();
+    expect(got).toHaveLength(0);
+  });
+});
+
+describe('container write bridge — synthesises fs:any the container fs.watch misses', () => {
+  const collect = (ctx: Context) => {
+    const got: string[] = [];
+    ctx.bus.on('fs:any', (rel: string) => got.push(rel));
+    return got;
+  };
+
+  test('activity:suppress → a synthetic fs:any lands after the delay', async () => {
+    const ctx = mkCtx();
+    const got = collect(ctx);
+    const bridge = createContainerWriteBridge(ctx);
+    ctx.bus.emit('activity:suppress', 'ui/Home.tsx');
+    expect(got).toHaveLength(0); // not immediate — the write must settle first
+    await new Promise((r) => setTimeout(r, SYNTHETIC_FS_DELAY_MS + 30));
+    expect(got).toEqual(['ui/Home.tsx']);
+    bridge.stop();
+  });
+
+  test('a no-op / failed edit disarms via activity:unsuppress — no reload for peers', async () => {
+    const ctx = mkCtx();
+    const got = collect(ctx);
+    const bridge = createContainerWriteBridge(ctx);
+    ctx.bus.emit('activity:suppress', 'ui/Home.tsx');
+    ctx.bus.emit('activity:unsuppress', 'ui/Home.tsx'); // delta 0 / threw
+    await new Promise((r) => setTimeout(r, SYNTHETIC_FS_DELAY_MS + 30));
+    expect(got).toHaveLength(0);
+    bridge.stop();
+  });
+
+  test('backslash paths are normalised so they match the watcher/classifier shape', async () => {
+    const ctx = mkCtx();
+    const got = collect(ctx);
+    const bridge = createContainerWriteBridge(ctx);
+    ctx.bus.emit('activity:suppress', 'ui\\Home.tsx');
+    await new Promise((r) => setTimeout(r, SYNTHETIC_FS_DELAY_MS + 30));
+    expect(got).toEqual(['ui/Home.tsx']);
+    bridge.stop();
+  });
+
+  test('stop() cancels a pending emit', async () => {
+    const ctx = mkCtx();
+    const got = collect(ctx);
+    const bridge = createContainerWriteBridge(ctx);
+    ctx.bus.emit('activity:suppress', 'ui/Home.tsx');
+    bridge.stop();
+    await new Promise((r) => setTimeout(r, SYNTHETIC_FS_DELAY_MS + 30));
     expect(got).toHaveLength(0);
   });
 });
