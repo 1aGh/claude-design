@@ -36,12 +36,29 @@ describe('CSRF Origin guard — sameOriginWrite (DDR-105)', () => {
     expect(sameOriginWrite(post('http://localhost:4399.evil.example'))).toBe(false);
     // Right host, wrong port is still cross-origin.
     expect(sameOriginWrite(post('http://localhost:4400'))).toBe(false);
-    // Right host:port, wrong scheme is still cross-origin.
-    expect(sameOriginWrite(post('https://localhost:4399'))).toBe(false);
   });
 
   test('allows the legit same-origin shell Origin', () => {
     expect(sameOriginWrite(post(SELF))).toBe(true);
+  });
+
+  test('a matching host on a different SCHEME is same-origin — TLS terminates at the cell proxy', () => {
+    // The second half of the inspector-edits RCA. In a cell the browser sends
+    // `https://<host>` but the studio serves plaintext and computes `req.url` as
+    // `http://<host>`, so a scheme-strict compare 403'd every legitimate shell
+    // write. Host+port still pins it; a cross-site page has a different host.
+    const cell = 'https://alligators.cloud.maude.sh';
+    const cellReq = (origin?: string) =>
+      new Request('http://alligators.cloud.maude.sh/_api/edit-css', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) },
+        body: '{}',
+      });
+    expect(sameOriginWrite(cellReq(cell))).toBe(true); // https Origin ↔ http req.url, same host
+    // But a genuinely different host is still rejected, scheme notwithstanding.
+    expect(sameOriginWrite(cellReq('https://evil.cloud.maude.sh'))).toBe(false);
+    // And the port still discriminates when present.
+    expect(sameOriginWrite(post('https://localhost:4400'))).toBe(false);
   });
 
   test('allows a request with no Origin header (curl / programmatic / bun:test)', () => {

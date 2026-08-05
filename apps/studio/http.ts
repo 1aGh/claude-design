@@ -298,7 +298,17 @@ export function sameOriginWrite(req: Request): boolean {
   const origin = req.headers.get('origin');
   if (!origin) return true; // non-browser / same-origin omitting Origin → allow
   try {
-    return origin === new URL(req.url).origin;
+    // HOSTS, not full origins — the same reason isOwnShellOrigin (studio-proxy)
+    // compares host-only for the collab WS upgrade. In a cell, TLS terminates at
+    // the proxy, so the browser's `https://<host>` Origin reaches a studio that
+    // serves plaintext and computes `req.url` as `http://<host>`; a full-origin
+    // compare then rejects every legitimate shell write on the SCHEME alone
+    // (403 "cross-origin write rejected" — the second half of the inspector-edits
+    // RCA, found when the loopback fix uncovered it). Host+port still pins the
+    // origin: the port rides in `host`, and scheme was never the CSRF
+    // discriminator here — locally everything is http, and a real cross-site page
+    // has a different host.
+    return new URL(origin).host === new URL(req.url).host;
   } catch {
     return false;
   }
