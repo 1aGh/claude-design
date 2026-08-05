@@ -1,3 +1,39 @@
+> # SUPERSEDED — closed 2026-08-05, not built as specified here
+>
+> Replaced by **`productivity-stack/.ai/plans/phase-18-fixbot-cockpit.md`** (DDR-0038),
+> which builds the fix bot as a **hub scheduler kind** instead of a standalone runner in
+> this repo. Both repos live on the same box (`Mac-Mini-Hub`), so a second ops stack here
+> would have duplicated infrastructure the hub already has, tested and reachable from a
+> phone over the tailnet.
+>
+> **What survived from this plan, essentially unchanged:**
+> - the `bug-autofix` **skill** — it landed here, at `.claude/skills/bug-autofix/`, because
+>   codebase knowledge belongs in the codebase's own repo;
+> - the **deterministic guard** architecture (a guard that is only prompt text is not a
+>   guard) — now `apps/hub/server/src/fixbot/guard.ts`, pure and exhaustively tested;
+> - the **dedicated machine identity** (`maude-fixbot`, fine-grained PAT, two repos), and
+>   its corollary that the owner's own token never enters the loop;
+> - **PR-only, no auto-merge, forever** (this plan's DDR 3) — carried over verbatim;
+> - the **repro-first** rule and the no-PR-without-a-regression-test discipline;
+> - the **label state machine**, kept as the cross-restart claim mechanism.
+>
+> **What was replaced by hub infrastructure:**
+> - `scripts/fix-agent/` + its launchd plist → the `bug-autofix` scheduler kind
+>   (`scheduler/bugAutofix.ts`), scheduled by the hub's existing per-task launchd machinery;
+> - labels-as-the-only-state → labels for claiming **plus** a hub run store with duration,
+>   attempt counter, guard verdict and transcript, because labels make a poor dashboard;
+> - the bespoke dead-man alert / kill switch / log dir → the hub's `notify()`, a kill-switch
+>   file, and `~/.productivity-stack-hub/fixbot/`;
+> - "escalate with a transcript comment" → a **Remote Control session opened in that issue's
+>   worktree** plus an iMessage link, so a stuck fix is drivable from any device.
+>
+> **What changed on contact with reality** (verified against the installed CLI, 2.1.222):
+> `--max-turns` **does not exist** — the run cap is `--max-budget-usd`. `--tools` is a real
+> positive gate over the built-in set and is used alongside `--disallowedTools`.
+>
+> Read below for the original reasoning (the BREAKER verdict on the lethal-trifecta shape is
+> still the design constraint); read the Phase 18 plan for what was actually built.
+
 # Feature: Autonomous bug-fix agent (Mac Mini)
 
 > Resolved by a divergent debate (2026-07-30, reduce tier: BUILDER · SHIPPER ·
