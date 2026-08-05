@@ -422,3 +422,41 @@ export async function cellEnv({ tenantId, env, hostname, config = NO_CONFIG, s3C
       : {}),
   };
 }
+
+/**
+ * Rebuild a canvas-origin request for the cell: tenant prefix stripped from
+ * the path, the canvas-origin marker asserted by THIS Worker and nobody else.
+ *
+ * THE SECOND ARGUMENT TO `new Request` IS THE ORIGINAL REQUEST, and that is
+ * load-bearing. The previous shape — `new Request(url, { ...request, headers })`
+ * — copies NOTHING from the request: `method`, `body` and the rest are
+ * prototype getters, invisible to object spread, so every canvas-lane request
+ * left here as a bodyless GET. The studio then answered writes from its GET
+ * branches — 200, `image/svg+xml` — which the client read as "saved". That is
+ * how annotation strokes, artboard layout and media edits crossed as cursors
+ * and died as documents THROUGH the v0.55.0 hub fix: the method never
+ * survived long enough to reach the door that fix repaired.
+ *
+ * Headers are adjusted AFTER construction: a freshly constructed Request has
+ * mutable headers (fetch-spec guard "request"), and mutating them avoids a
+ * second lossy init object.
+ */
+export function canvasInnerRequest(request, url, rest) {
+  const inner = new Request(new URL(rest + url.search, url.origin).toString(), request);
+  inner.headers.delete(CANVAS_ORIGIN_HEADER);
+  inner.headers.set(CANVAS_ORIGIN_HEADER, '1');
+  return inner;
+}
+
+/**
+ * Strip the canvas-origin marker from an outside request on the tenant lane —
+ * nothing beyond this Worker may assert which origin a request arrived on.
+ * Same `new Request(request, …)` rule as above: the request rides as the
+ * init source so method and body survive the rebuild.
+ */
+export function stripCanvasOriginMarker(request) {
+  if (!request.headers.has(CANVAS_ORIGIN_HEADER)) return request;
+  const inbound = new Request(request);
+  inbound.headers.delete(CANVAS_ORIGIN_HEADER);
+  return inbound;
+}

@@ -22,7 +22,11 @@
 // project, for people who actually have access. A surface that stays
 // half-alive is worse than one that never shipped.
 
-import { CANVAS_ORIGIN_HEADER, canvasOriginTenant } from './cell-config.mjs';
+import {
+  canvasInnerRequest,
+  canvasOriginTenant,
+  stripCanvasOriginMarker,
+} from './cell-config.mjs';
 import { MaudeCell, routeToCell, tenantFromHostname } from './cell-do.mjs';
 
 export { MaudeCell };
@@ -86,14 +90,7 @@ export default {
       // The header is STRIPPED on the tenant branch below, so it cannot be
       // forged into existence from outside; and the lane it opens is read-only
       // and capability-gated regardless.
-      const headers = new Headers(request.headers);
-      headers.delete(CANVAS_ORIGIN_HEADER);
-      headers.set(CANVAS_ORIGIN_HEADER, '1');
-      const inner = new Request(new URL(canvasTenant.rest + url.search, url.origin).toString(), {
-        ...request,
-        headers,
-      });
-      return routeToCell(inner, env, canvasTenant.tenant);
+      return routeToCell(canvasInnerRequest(request, url, canvasTenant.rest), env, canvasTenant.tenant);
     }
 
     const tenant = tenantFromHostname(url.hostname, env.CELL_ZONE);
@@ -110,13 +107,7 @@ export default {
     try {
       // Strip the canvas-origin marker on the way IN. Nothing outside this
       // Worker may assert which origin a request arrived on.
-      const stripped = new Headers(request.headers);
-      let inbound = request;
-      if (stripped.has(CANVAS_ORIGIN_HEADER)) {
-        stripped.delete(CANVAS_ORIGIN_HEADER);
-        inbound = new Request(request.url, { ...request, headers: stripped });
-      }
-      return await routeToCell(inbound, env, tenant);
+      return await routeToCell(stripCanvasOriginMarker(request), env, tenant);
     } catch (err) {
       // A project that cannot start is an operational fact the operator needs
       // and the visitor does not. Cloudflare's bare 1101 says only "the Worker

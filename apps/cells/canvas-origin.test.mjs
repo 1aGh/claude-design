@@ -9,10 +9,15 @@
 // is how it reached production before these tests did.
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-import { canvasOriginTenant, tenantFromHostname } from './cell-config.mjs';
+import {
+  CANVAS_ORIGIN_HEADER,
+  canvasInnerRequest,
+  canvasOriginTenant,
+  stripCanvasOriginMarker,
+  tenantFromHostname,
+} from './cell-config.mjs';
 
 test('canvas.<zone>/<project>/… resolves to the project, tenant stripped from the path', () => {
   const out = canvasOriginTenant(
@@ -120,28 +125,28 @@ test('a leftover view-<project> hostname resolves to no tenant at all', () => {
 // typed. So the Worker says which it is. That is only safe while the Worker
 // also STRIPS the claim from every request on the project hostname.
 
-test('the canvas branch marks the request', async () => {
-  const src = readFileSync(new URL('./worker.mjs', import.meta.url), 'utf8');
-  const branch = src.slice(
-    src.indexOf('if (canvasTenant) {'),
-    src.indexOf('const tenant = tenantFromHostname')
-  );
-  assert.match(branch, /headers\.delete\(CANVAS_ORIGIN_HEADER\)/);
-  assert.match(branch, /headers\.set\(CANVAS_ORIGIN_HEADER, '1'\)/);
-  // Deleted BEFORE it is set — an inbound copy must not survive by ordering.
-  assert.ok(
-    branch.indexOf('headers.delete(CANVAS_ORIGIN_HEADER)') <
-      branch.indexOf("headers.set(CANVAS_ORIGIN_HEADER, '1')"),
-    'strip must precede set'
-  );
+// Since the write-loss fix (canvas-request.test.mjs) the rebuilds live in
+// cell-config.mjs as `canvasInnerRequest` / `stripCanvasOriginMarker`, so the
+// marker rules are held BEHAVIORALLY against those functions — a source regex
+// over worker.mjs would pin an inline shape that no longer exists (and could
+// not see a lossy rebuild anyway, which is how the GET-collapse shipped).
+
+test('the canvas branch marks the request — an inbound claim never survives', () => {
+  const forged = new Request('https://canvas-alligators.cloud.maude.sh/_api/annotations', {
+    method: 'PUT',
+    headers: { [CANVAS_ORIGIN_HEADER]: 'forged' },
+    body: '{}',
+  });
+  const inner = canvasInnerRequest(forged, new URL(forged.url), '/_api/annotations');
+  assert.equal(inner.headers.get(CANVAS_ORIGIN_HEADER), '1');
 });
 
 test('the project hostname strips any claim before the cell sees it', () => {
-  const src = readFileSync(new URL('./worker.mjs', import.meta.url), 'utf8');
-  const branch = src.slice(src.indexOf('const tenant = tenantFromHostname'));
-  assert.match(branch, /stripped\.delete\(CANVAS_ORIGIN_HEADER\)/);
-  assert.ok(
-    !/stripped\.set\(CANVAS_ORIGIN_HEADER/.test(branch),
-    'the project hostname must never assert the canvas origin'
-  );
+  const forged = new Request('https://alligators.cloud.maude.sh/studio', {
+    headers: { [CANVAS_ORIGIN_HEADER]: '1' },
+  });
+  const inbound = stripCanvasOriginMarker(forged);
+  // Stripped, and never re-asserted — the project hostname must not be able
+  // to open the canvas lane.
+  assert.equal(inbound.headers.has(CANVAS_ORIGIN_HEADER), false);
 });
