@@ -35,11 +35,23 @@ export function mlxVenvDir(): string {
   return join(base, 'mlx-venv');
 }
 
+/** POSIX single-quote a path for a command the USER will paste into a shell.
+ *  Double quotes would let `$(…)`, backticks and `"` inside $XDG_CACHE_HOME /
+ *  $HOME survive into a command run unread; single quotes disarm everything but
+ *  `'` itself, which is closed-escaped-reopened. */
+function shellQuote(s: string): string {
+  return `'${s.replaceAll("'", `'\\''`)}'`;
+}
+
 /** The copy/paste one-liner the Settings card shows. Computed from the SAME path
- *  the probe checks, so the two can never drift. Quoted against spaces. */
-export function mlxInstallCommand(): string {
+ *  the probe checks, so the two can never drift. Returns null when the resolved
+ *  path holds a newline or control char — no quoting makes a multi-line paste
+ *  safe, so the card shows no command rather than a dangerous one. */
+export function mlxInstallCommand(): string | null {
   const dir = mlxVenvDir();
-  return `python3 -m venv "${dir}" && "${join(dir, 'bin', 'pip')}" install -U mlx-vlm`;
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: refusing control chars is the point.
+  if (/[\x00-\x1f\x7f]/.test(dir)) return null;
+  return `python3 -m venv ${shellQuote(dir)} && ${shellQuote(join(dir, 'bin', 'pip'))} install -U mlx-vlm`;
 }
 
 export interface GemmaModelDescriptor {

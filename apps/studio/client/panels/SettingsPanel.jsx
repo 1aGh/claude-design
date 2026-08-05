@@ -585,7 +585,19 @@ function GemmaModelCard() {
       {state && !scoutReady && (
         <div className="st-provider-notes">
           <strong>Option B — mlx-vlm</strong> (fastest, Apple-Silicon Macs only):
-          <CopyCommand command={state.installCommand || ''} label="Copy the mlx-vlm install command" />
+          {state.installCommand ? (
+            <CopyCommand
+              command={state.installCommand}
+              label="Copy the mlx-vlm install command"
+            />
+          ) : (
+            // Server refused to build a command (a control char in the resolved
+            // cache path) — never hand the user an unsafe paste.
+            <span className="st-provider-status">
+              Can’t build a safe install command for this machine’s cache path — install mlx-vlm
+              manually into a venv, or use Option A.
+            </span>
+          )}
           Then download a model below — that half is one click. Models live in your HuggingFace
           cache, never committed.
         </div>

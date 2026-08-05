@@ -254,11 +254,11 @@
       "type": "cli",
       "hardness": "soft",
       "check": {
-        "command": "\"$HOME/.maude/mlx-venv/bin/python3\" -c \"import mlx_vlm\" 2>/dev/null || python3 -c \"import mlx_vlm\"",
+        "command": "MAUDE_VENV=\"${XDG_CACHE_HOME:+$XDG_CACHE_HOME/maude}\"; MAUDE_VENV=\"${MAUDE_VENV:-$HOME/.maude}/mlx-venv\"; \"$MAUDE_VENV/bin/python3\" -c \"import mlx_vlm\" 2>/dev/null || python3 -c \"import mlx_vlm\"",
         "expectExit": 0
       },
       "install": {
-        "darwin": "python3 -m venv \"$HOME/.maude/mlx-venv\" && \"$HOME/.maude/mlx-venv/bin/pip\" install -U mlx-vlm",
+        "darwin": "MAUDE_VENV=\"${XDG_CACHE_HOME:+$XDG_CACHE_HOME/maude}\"; MAUDE_VENV=\"${MAUDE_VENV:-$HOME/.maude}/mlx-venv\"; python3 -m venv \"$MAUDE_VENV\" && \"$MAUDE_VENV/bin/pip\" install -U mlx-vlm",
         "preferred": "https://github.com/Blaizzy/mlx-vlm"
       },
       "autoInstall": false,

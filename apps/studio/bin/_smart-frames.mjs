@@ -92,7 +92,8 @@ export function ollamaHost(env = process.env) {
 export function pickOllamaGemmaTag(tags, env = process.env) {
   const explicit = env.MAUDE_OLLAMA_MODEL;
   if (explicit && explicit.length > 0) return explicit;
-  return tags.find((t) => /^gemma3:(?!1b)/.test(t)) ?? null;
+  // Keep this predicate byte-identical to generation/gemma-models.ts's copy.
+  return tags.find((t) => /^gemma3:(?!1b)/.test(t) || t === 'gemma3') ?? null;
 }
 
 /** Probe a running Ollama server for a usable gemma vision model.
@@ -118,11 +119,19 @@ export async function detectOllama(env = process.env) {
   }
 }
 
-export async function detectAvailability(env = process.env) {
+/** Probe what's installed. `engine` lets us SKIP the Ollama network probe when it
+ *  can't change the outcome — an explicit `blind`/`ffmpeg` run, no ffmpeg at all,
+ *  or mlx-vlm already resolved (mlx wins anyway). A `--engine blind` run should
+ *  touch no sockets. */
+export async function detectAvailability(env = process.env, engine = 'auto') {
+  const ffmpeg = hasCommand('ffmpeg') && hasCommand('ffprobe');
+  const mlxPython = resolveMlxPython(env);
+  const ollamaCouldMatter =
+    ffmpeg && !mlxPython && (engine === 'auto' || engine === 'gemma' || !engine);
   return {
-    ffmpeg: hasCommand('ffmpeg') && hasCommand('ffprobe'),
-    mlxPython: resolveMlxPython(env),
-    ollama: await detectOllama(env),
+    ffmpeg,
+    mlxPython,
+    ollama: ollamaCouldMatter ? await detectOllama(env) : null,
   };
 }
 
@@ -163,12 +172,11 @@ export function parseSceneCuts(stderr) {
 /** Model-authored free text that lands in the manifest (and later in agent
  *  prompts): strip control chars, cap the length. Injection-hardening — the
  *  scout text is untrusted model output (DDR-183). */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control chars is the point.
+const CONTROL_CHARS = /[\x00-\x1f\x7f]/g;
+
 function sanitizeWhat(s) {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control chars is the point.
-  return (s || '')
-    .replace(/[\x00-\x1f\x7f]/g, ' ')
-    .trim()
-    .slice(0, 120);
+  return (s || '').replace(CONTROL_CHARS, ' ').trim().slice(0, 120);
 }
 
 /** Parse a Gemma scout's text → beat timestamps. Accepts both `TIME=<sec>` and the
@@ -461,7 +469,7 @@ async function main() {
     if (pref) o.engine = pref;
   }
 
-  const avail = await detectAvailability();
+  const avail = await detectAvailability(process.env, o.engine);
   let tier;
   try {
     tier = selectTier(o.engine, avail);
