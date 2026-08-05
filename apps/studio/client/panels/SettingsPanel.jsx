@@ -491,6 +491,85 @@ function CopyCommand({ command, label }) {
   );
 }
 
+// The setup path, as STEPS rather than a wall of options. Only the shortest
+// route is visible (install → pull); everything else — Homebrew, the download
+// link, the whole mlx-vlm alternative — sits folded behind one disclosure, so a
+// first-time reader sees two commands, not seven.
+function SetupSteps({ state }) {
+  const ollama = state.ollama || {};
+  const setup = ollama.setup || [];
+  // The server orders routes best-first, so the head is the one step to take now
+  // ("install", or "start" when the binary is already there). Everything after
+  // it is an alternative way to reach the same place.
+  const [primary, ...alternatives] = setup;
+  const step1Done = Boolean(ollama.available);
+  const step2Done = Boolean(ollama.model);
+  // Once Ollama is running, its own route list collapses to the pull command —
+  // which IS step 2, so it must not also render as step 1.
+  const step1 = step1Done || primary?.id === 'pull' ? null : primary;
+
+  return (
+    <div className="st-setup">
+      <div className={`st-step${step1Done ? ' is-done' : ''}`}>
+        <span className="st-step-n">{step1Done ? '✓' : '1'}</span>
+        <div className="st-step-body">
+          <span className="st-step-title">
+            {step1Done
+              ? 'Ollama is running'
+              : ollama.installed
+                ? 'Start Ollama'
+                : 'Install Ollama'}
+          </span>
+          {step1?.kind === 'command' ? (
+            <CopyCommand command={step1.command} label="Copy the install command" />
+          ) : null}
+        </div>
+      </div>
+      <div className={`st-step${step2Done ? ' is-done' : ''}`}>
+        <span className="st-step-n">{step2Done ? '✓' : '2'}</span>
+        <div className="st-step-body">
+          <span className="st-step-title">
+            {step2Done ? `Model ready (${ollama.model})` : 'Download the model'}
+          </span>
+          {step2Done ? null : (
+            <CopyCommand command={ollama.pullCommand} label="Copy the model pull command" />
+          )}
+        </div>
+      </div>
+      <details className="st-setup-more">
+        <summary>Other ways to install</summary>
+        {alternatives.map((opt) => (
+          <div key={opt.id} className="st-setup-option">
+            <span className="st-setup-option-label">{opt.label}</span>
+            {/* A link is rendered as a copyable URL, not a button: the desktop
+                shell has no general URL opener by design (DDR-054). */}
+            <CopyCommand
+              command={opt.kind === 'command' ? opt.command : opt.url}
+              label={`Copy: ${opt.label}`}
+            />
+          </div>
+        ))}
+        <div className="st-setup-option">
+          <span className="st-setup-option-label">
+            mlx-vlm instead of Ollama — faster, Apple Silicon only
+          </span>
+          {state.mlx?.supported ? (
+            <>
+              <CopyCommand command={state.mlx.command} label="Copy the mlx-vlm install command" />
+              <span className="st-provider-notes">
+                Then download a model below. Models live in your HuggingFace cache.
+              </span>
+            </>
+          ) : (
+            // Never show a command that would fail here — say why instead.
+            <span className="st-provider-notes">{state.mlx?.reason}</span>
+          )}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 // The MODEL half of the Gemma scout — one click, mirroring WhisperModelCard. The
 // RUNTIME is a manual install the app can't do for you (DDR-183), but the card
 // hands you copy/paste commands for BOTH runtime paths — Ollama (simplest: one
@@ -560,54 +639,13 @@ function GemmaModelCard() {
         <span className="st-provider-name">Gemma scout model (optional)</span>
       </div>
       <div className="st-provider-notes">
-        The <strong>Gemma</strong> tier adds semantic action-beat detection on top of scene cuts. It
-        runs on either of two local runtimes — install one in a terminal and Maude picks it up
-        automatically (checked every few seconds):
+        Adds semantic action-beat detection on top of scene cuts. Two short steps in a terminal —
+        Maude picks the result up on its own.
       </div>
-      {state && !scoutReady && (
-        <div className="st-provider-notes">
-          <strong>Option A — Ollama</strong> (simplest: one app, no Python).
-          {(ollama?.setup || []).map((opt) => (
-            <span key={opt.id} className="st-setup-option">
-              {opt.label}:
-              {opt.kind === 'command' ? (
-                <CopyCommand command={opt.command} label={`Copy: ${opt.label}`} />
-              ) : (
-                // The desktop shell has no general URL opener by design
-                // (DDR-054), so an anchor is best-effort and Copy is the
-                // reliable path — same posture as the PR-review fallback.
-                <CopyCommand command={opt.url} label={`Copy the ${opt.label} link`} />
-              )}
-              {opt.note ? <span className="st-provider-notes">{opt.note}</span> : null}
-            </span>
-          ))}
-        </div>
-      )}
-      {state && !scoutReady && (
-        <div className="st-provider-notes">
-          <strong>Option B — mlx-vlm</strong> (fastest, Apple Silicon only):
-          {state.mlx?.supported ? (
-            <>
-              <CopyCommand
-                command={state.mlx.command}
-                label="Copy the mlx-vlm install command"
-              />
-              Then download a model below — that half is one click. Models live in your
-              HuggingFace cache, never committed.
-            </>
-          ) : (
-            // Don't show a command that would fail on this machine — say why.
-            <span className="st-provider-status">{state.mlx?.reason}</span>
-          )}
-        </div>
-      )}
+      {state && !scoutReady && <SetupSteps state={state} />}
       {state && (
         <div className="st-provider-notes">
-          On this machine the active tier is <strong>{activeTier}</strong>
-          {!scoutReady && ff && ' — run one of the commands above to unlock the Gemma scout.'}
-          {!scoutReady &&
-            !ff &&
-            ' — install ffmpeg for scene-aware frames, plus one of the commands above for the Gemma scout.'}
+          Active tier on this machine: <strong>{activeTier}</strong>
           {scoutReady && !mlx && ' — Ollama manages its own models, nothing to download below.'}
         </div>
       )}
@@ -625,6 +663,13 @@ function GemmaModelCard() {
       <div className="st-model-list">
         {(state?.models || []).map((m) => {
           const busy = dl && !dl.error && dl.id === m.id;
+          const runtimeReady = m.runtime === 'ollama' ? Boolean(ollama?.available) : Boolean(mlx);
+          const blockedNote =
+            m.runtime === 'ollama'
+              ? ollama?.installed
+                ? 'start Ollama first'
+                : 'needs Ollama'
+              : 'needs mlx-vlm';
           return (
             <div key={m.id} className="st-model-row">
               <div className="st-model-info">
@@ -634,7 +679,10 @@ function GemmaModelCard() {
                 </span>
                 <span className="st-engine-radio-note">{m.note}</span>
                 {busy && (
-                  <span className="st-model-progress">Downloading… {pctOf(dl.received, dl.total)}%</span>
+                  <span className="st-model-progress">
+                    {m.runtime === 'ollama' ? 'Pulling' : 'Downloading'}…{' '}
+                    {pctOf(dl.received, dl.total)}%
+                  </span>
                 )}
               </div>
               <div className="st-model-actions">
@@ -643,21 +691,24 @@ function GemmaModelCard() {
                     <Icon name="check" size={12} /> ready
                   </span>
                 ) : (
-                  <button
-                    type="button"
-                    className="st-btn"
-                    disabled={!mlx || !!(dl && !dl.error)}
-                    title={
-                      mlx
-                        ? ''
-                        : ollama?.model
-                          ? 'Only needed for the mlx-vlm runtime — Ollama pulls its own models'
-                          : 'Install mlx-vlm first — copy the Option B command above'
-                    }
-                    onClick={() => download(m.id)}
-                  >
-                    {busy ? 'Downloading…' : mlx ? 'Download' : 'Needs mlx-vlm'}
-                  </button>
+                  // Each row is enabled by ITS OWN runtime — an Ollama model is
+                  // one click whenever Ollama is running (the server pulls it
+                  // through /api/pull); an mlx snapshot needs mlx-vlm. The
+                  // button keeps its label and just goes disabled, with the
+                  // reason in small type underneath.
+                  <span className="st-model-action">
+                    <button
+                      type="button"
+                      className="st-btn"
+                      disabled={!runtimeReady || !!(dl && !dl.error)}
+                      onClick={() => download(m.id)}
+                    >
+                      {busy ? 'Downloading…' : 'Download'}
+                    </button>
+                    {runtimeReady ? null : (
+                      <span className="st-model-action-note">{blockedNote}</span>
+                    )}
+                  </span>
                 )}
               </div>
             </div>

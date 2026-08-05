@@ -1725,11 +1725,64 @@
   line-height: 1.5;
   margin-top: 6px;
 }
-/* One machine-viable setup route in the scout card (feature-scene-aware-keyframes):
-   a label, its copy/paste command or link, and an optional note. */
+/* Scout setup (feature-scene-aware-keyframes) — the shortest path as numbered
+   steps; every alternative route folds behind one disclosure so the default
+   view is two commands, not seven. */
+.st-setup {
+  margin-top: 8px;
+}
+.st-step {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 8px;
+}
+.st-step-n {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border-subtle);
+  color: var(--fg-2);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+}
+.st-step.is-done .st-step-n {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.st-step-body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.st-step-title {
+  display: block;
+  font-size: 11px;
+  color: var(--fg-1);
+}
+.st-step.is-done .st-step-title {
+  color: var(--fg-3);
+}
+.st-setup-more {
+  margin-top: 10px;
+}
+.st-setup-more > summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+.st-setup-more > summary:hover {
+  color: var(--fg-1);
+}
 .st-setup-option {
   display: block;
   margin-top: 8px;
+}
+.st-setup-option-label {
+  display: block;
+  font-size: 11px;
+  color: var(--fg-2);
 }
 .st-provider-keylink {
   display: inline-flex;
@@ -1845,6 +1898,19 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+/* A disabled action plus the reason it's disabled, in small type underneath —
+   so the button label stays the action, not the explanation. */
+.st-model-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+.st-model-action-note {
+  font-size: 10px;
+  color: var(--fg-3);
+  text-align: right;
 }
 
 /* ── Generate dialog (feature-ai-media-generation, DDR-16x) ─────────────── */

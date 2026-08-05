@@ -212,11 +212,111 @@ export interface OllamaStatus {
   available: boolean;
   /** A usable vision-capable gemma tag ($MAUDE_OLLAMA_MODEL wins), or null. */
   model: string | null;
+  /** Every tag the local server has (drives the per-model "downloaded" state). */
+  tags: string[];
   /** The `ollama` binary is on PATH. Installed-but-not-running is a DIFFERENT
    *  state from not-installed, and it needs the opposite advice ("start it",
    *  not "install it") — the card would otherwise tell you to reinstall
    *  software you already have. */
   installed: boolean;
+}
+
+// Curated allowlist of Ollama scout models, mirroring GEMMA_MODELS for the mlx
+// runtime. The tag is the frozen pull target — NEVER user input, so the pull
+// can't be steered at an arbitrary repo. Ids are namespaced so one route can
+// serve both runtimes without ambiguity.
+export const OLLAMA_MODELS = [
+  {
+    id: 'ollama:gemma3:4b',
+    tag: 'gemma3:4b',
+    label: 'Gemma 3 4B (Ollama)',
+    sizeMB: 3300,
+    note: 'The recommended Ollama scout. ~3.3 GB. Pulled and managed by Ollama.',
+  },
+  {
+    id: 'ollama:gemma3:12b',
+    tag: 'gemma3:12b',
+    label: 'Gemma 3 12B (Ollama)',
+    sizeMB: 8100,
+    note: 'Sharper beats, needs more RAM. ~8.1 GB.',
+  },
+] as const;
+
+export function getOllamaModel(id: unknown): (typeof OLLAMA_MODELS)[number] | null {
+  return OLLAMA_MODELS.find((m) => m.id === id) ?? null;
+}
+
+/** The scout models offered for BOTH runtimes, each tagged with the runtime it
+ *  belongs to and whether it's already on disk — so one Settings list can show
+ *  "download" against whichever runtime the machine actually has. */
+export function listScoutModels(status: OllamaStatus) {
+  const mlx = listGemmaModels().map((m) => ({ ...m, runtime: 'mlx' as const }));
+  const ollama = OLLAMA_MODELS.map((m) => ({
+    ...m,
+    runtime: 'ollama' as const,
+    // An exact tag match; `gemma3:4b` and `gemma3:4b-it-q4_K_M` are different pulls.
+    downloaded: status.tags.includes(m.tag),
+  }));
+  // Ollama first when it's the runtime that can actually act on a click.
+  return status.available ? [...ollama, ...mlx] : [...mlx, ...ollama];
+}
+
+/**
+ * Pull a model through the local Ollama server (`POST /api/pull`, NDJSON
+ * progress stream). Same egress discipline as everything else here: the host is
+ * loopback-pinned, redirects are refused, and the tag comes from the frozen
+ * allowlist — never from the request body.
+ */
+export async function pullOllamaModel(
+  id: string,
+  onProgress: (received: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const m = getOllamaModel(id);
+  if (!m) throw new Error(`unknown ollama model: ${id}`);
+  const host = ollamaHost();
+  if (!host) throw new Error('OLLAMA_HOST is not a loopback address — refusing to pull');
+
+  const res = await fetch(`${host}/api/pull`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: m.tag, stream: true }),
+    redirect: 'manual',
+    signal,
+  });
+  if (!res.ok || !res.body) throw new Error(`ollama pull failed (HTTP ${res.status})`);
+
+  // NDJSON: {"status":"pulling …","total":N,"completed":M} … {"status":"success"}
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let ok = false;
+  let lastErr = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const ev = JSON.parse(line) as {
+          status?: string;
+          total?: number;
+          completed?: number;
+          error?: string;
+        };
+        if (ev.error) lastErr = ev.error;
+        if (typeof ev.total === 'number' && ev.total > 0)
+          onProgress(Math.min(ev.total, ev.completed ?? 0), ev.total);
+        if (ev.status === 'success') ok = true;
+      } catch {
+        /* a partial/garbage line — the next read completes it */
+      }
+    }
+  }
+  if (!ok) throw new Error(lastErr || 'ollama pull did not report success');
 }
 
 /** One way to get a runtime onto THIS machine. `command` is copy/paste; `link`
@@ -339,6 +439,7 @@ export async function ollamaStatus(): Promise<OllamaStatus> {
   let value: OllamaStatus = {
     available: false,
     model: null,
+    tags: [],
     installed: hasCommandCached('ollama'),
   };
   const host = ollamaHost(); // null = $OLLAMA_HOST steered off loopback — refused
@@ -352,7 +453,7 @@ export async function ollamaStatus(): Promise<OllamaStatus> {
       if (res.ok && Number(res.headers.get('content-length') || 0) <= 1024 * 1024) {
         const body = (await res.json()) as { models?: Array<{ name?: string }> };
         const tags = (body.models ?? []).map((m) => m.name).filter(Boolean) as string[];
-        value = { ...value, available: true, model: pickOllamaGemmaTag(tags) };
+        value = { ...value, available: true, tags, model: pickOllamaGemmaTag(tags) };
       }
     } catch {
       /* not running / not installed */

@@ -46,12 +46,15 @@ import { localizeGenAsset } from './generation/download.ts';
 import {
   downloadGemmaModel,
   ffmpegAvailable,
+  getOllamaModel,
   listGemmaModels,
+  listScoutModels,
   mlxSetup,
   mlxVlmAvailable,
   OLLAMA_RECOMMENDED_MODEL,
   ollamaSetupOptions,
   ollamaStatus,
+  pullOllamaModel,
 } from './generation/gemma-models.ts';
 import { type GenerationJobQueue, GenerationQueueFullError } from './generation/jobs.ts';
 import {
@@ -4144,7 +4147,10 @@ export function createHttp(
         const ollama = await ollamaStatus();
         return Response.json(
           {
-            models: listGemmaModels(),
+            // Both runtimes' models in one list, each tagged with the runtime
+            // it needs — the card enables the button for whichever runtime this
+            // machine actually has, instead of a dead "Needs mlx-vlm".
+            models: listScoutModels(ollama),
             downloading: keyframeDownload,
             mlxVlmAvailable: mlxVlmAvailable(),
             ffmpegAvailable: ffmpegAvailable(),
@@ -4175,23 +4181,35 @@ export function createHttp(
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
         return new Response('cross-origin write rejected', { status: 403 });
-      if (!mlxVlmAvailable())
+      const body = await readJson<{ id?: unknown }>(req, 4 * 1024);
+      const id = typeof body?.id === 'string' ? body.id : '';
+      // One route, two runtimes: an `ollama:` id pulls through the local Ollama
+      // server, anything else is an mlx HF snapshot. Each gates on ITS OWN
+      // runtime — an Ollama user must not be blocked by a missing mlx-vlm.
+      const isOllama = Boolean(getOllamaModel(id));
+      if (!isOllama && !listGemmaModels().some((m) => m.id === id))
+        return new Response('unknown model id', { status: 400 });
+      if (isOllama) {
+        const status = await ollamaStatus();
+        if (!status.available)
+          return new Response(
+            'Ollama is not running — start it (`ollama serve`) and try again.',
+            { status: 400 }
+          );
+      } else if (!mlxVlmAvailable())
         return new Response(
           'mlx-vlm not installed — run the install command shown in Settings → Video. (Ollama users don’t need this download: `ollama pull` fetches its own models.)',
           {
             status: 400,
           }
         );
-      const body = await readJson<{ id?: unknown }>(req, 4 * 1024);
-      const id = typeof body?.id === 'string' ? body.id : '';
-      if (!listGemmaModels().some((m) => m.id === id))
-        return new Response('unknown model id', { status: 400 });
       if (keyframeDownload && !keyframeDownload.error)
         return new Response(`a download is already in progress (${keyframeDownload.id})`, {
           status: 409,
         });
       keyframeDownload = { id, received: 0, total: 0 };
-      void downloadGemmaModel(
+      const run = isOllama ? pullOllamaModel : downloadGemmaModel;
+      void run(
         id,
         (received, total) => {
           if (keyframeDownload && keyframeDownload.id === id) {

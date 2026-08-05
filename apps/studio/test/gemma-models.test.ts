@@ -6,7 +6,9 @@
 
 import { afterEach, describe, expect, test } from 'bun:test';
 import {
+  getOllamaModel,
   isLoopbackHostname,
+  listScoutModels,
   mlxInstallCommand,
   mlxSetup,
   mlxVenvDir,
@@ -100,14 +102,10 @@ describe('ollamaHost — loopback pin (DDR-183 egress-free)', () => {
   });
 });
 
-// The CLI (bin/_smart-frames.mjs, pure JS — no .ts imports) deliberately carries
-// its OWN copy of these helpers. That duplication is an accepted constraint, so
-// the drift it invites needs a guard: a review already caught the two copies
-// disagreeing about the bare `gemma3` tag.
 // The card must never show an instruction this machine can't follow — the whole
-// point of probing brew/python3/curl rather than hardcoding a install line.
+// point of probing brew/python3/curl rather than hardcoding an install line.
 describe('ollamaSetupOptions', () => {
-  const notInstalled = { available: false, model: null, installed: false };
+  const notInstalled = { available: false, model: null, tags: [], installed: false };
 
   test('installed but not running → start it, never "install it" again', () => {
     const opts = ollamaSetupOptions({ ...notInstalled, installed: true });
@@ -116,7 +114,7 @@ describe('ollamaSetupOptions', () => {
   });
 
   test('running → the only thing missing is a model', () => {
-    const opts = ollamaSetupOptions({ available: true, model: null, installed: true });
+    const opts = ollamaSetupOptions({ available: true, model: null, tags: [], installed: true });
     expect(opts.map((o) => o.id)).toEqual(['pull']);
     expect(opts[0].command).toContain('ollama pull');
   });
@@ -139,6 +137,43 @@ describe('ollamaSetupOptions', () => {
   });
 });
 
+// The model list has to be actionable on whatever runtime the machine has —
+// a dead "Needs mlx-vlm" on an Ollama box was the bug this replaced.
+describe('listScoutModels', () => {
+  const offline = { available: false, model: null, tags: [], installed: false };
+  const running = {
+    available: true,
+    model: 'gemma3:4b',
+    tags: ['gemma3:4b', 'llama3:8b'],
+    installed: true,
+  };
+
+  test('every model declares the runtime that can download it', () => {
+    for (const m of listScoutModels(offline)) expect(['mlx', 'ollama']).toContain(m.runtime);
+  });
+
+  test('Ollama models sort first when Ollama is the runtime that can act', () => {
+    expect(listScoutModels(running)[0].runtime).toBe('ollama');
+    expect(listScoutModels(offline)[0].runtime).toBe('mlx');
+  });
+
+  test('an Ollama model counts as downloaded only on an EXACT tag match', () => {
+    const rows = listScoutModels(running).filter((m) => m.runtime === 'ollama');
+    expect(rows.find((m) => m.id === 'ollama:gemma3:4b')?.downloaded).toBe(true);
+    expect(rows.find((m) => m.id === 'ollama:gemma3:12b')?.downloaded).toBe(false);
+    // A near-miss tag is a different pull, not the same model.
+    const nearMiss = listScoutModels({ ...running, tags: ['gemma3:4b-it-q4_K_M'] });
+    expect(nearMiss.find((m) => m.id === 'ollama:gemma3:4b')?.downloaded).toBe(false);
+  });
+
+  test('getOllamaModel only resolves allowlisted ids (the pull target is frozen)', () => {
+    expect(getOllamaModel('ollama:gemma3:4b')?.tag).toBe('gemma3:4b');
+    expect(getOllamaModel('gemma-4-e4b-it-4bit')).toBe(null);
+    expect(getOllamaModel('ollama:../../evil')).toBe(null);
+    expect(getOllamaModel('ollama:llama3:8b')).toBe(null);
+  });
+});
+
 describe('mlxSetup', () => {
   test('either a usable command or a stated reason — never a silent dead end', () => {
     const s = mlxSetup();
@@ -152,6 +187,10 @@ describe('mlxSetup', () => {
   });
 });
 
+// The CLI (bin/_smart-frames.mjs, pure JS — no .ts imports) deliberately carries
+// its OWN copy of these helpers. That duplication is an accepted constraint, so
+// the drift it invites needs a guard: a review already caught the two copies
+// disagreeing about the bare `gemma3` tag.
 describe('CLI ↔ server helper parity', () => {
   test('pickOllamaGemmaTag agrees on every tag shape', async () => {
     const cli = await import('../bin/_smart-frames.mjs');
