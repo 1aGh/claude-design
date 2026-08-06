@@ -147,6 +147,7 @@ describe('ollama runtime helpers', () => {
     const beats = parseBeats(evil, 10);
     expect(beats).toHaveLength(1);
     expect(beats[0].what.length).toBeLessThanOrEqual(120);
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: asserting that control chars were stripped is the point.
     expect(beats[0].what).not.toMatch(/[\x00-\x1f]/);
   });
   test('ollamaScoutPrompt maps frames to timestamps', () => {

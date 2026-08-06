@@ -22,11 +22,7 @@
 // project, for people who actually have access. A surface that stays
 // half-alive is worse than one that never shipped.
 
-import {
-  canvasInnerRequest,
-  canvasOriginTenant,
-  stripCanvasOriginMarker,
-} from './cell-config.mjs';
+import { canvasInnerRequest, canvasOriginTenant, stripCanvasOriginMarker } from './cell-config.mjs';
 import { MaudeCell, routeToCell, tenantFromHostname } from './cell-do.mjs';
 
 export { MaudeCell };
@@ -90,7 +86,11 @@ export default {
       // The header is STRIPPED on the tenant branch below, so it cannot be
       // forged into existence from outside; and the lane it opens is read-only
       // and capability-gated regardless.
-      return routeToCell(canvasInnerRequest(request, url, canvasTenant.rest), env, canvasTenant.tenant);
+      return routeToCell(
+        canvasInnerRequest(request, url, canvasTenant.rest),
+        env,
+        canvasTenant.tenant
+      );
     }
 
     const tenant = tenantFromHostname(url.hostname, env.CELL_ZONE);
