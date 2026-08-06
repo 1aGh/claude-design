@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "cloud-projects-save-themselves",
-      "version": null,
-      "date": null,
+      "version": "0.56.0",
+      "date": "2026-08-06",
       "kind": "fix",
       "title": "Cloud projects save themselves",
       "summary": "A project open in Maude Cloud now records every edit as you make it — from a browser tab or from the app — so there is nothing to save by hand. The browser panel that used to ask you to Save and Publish is now simply History, showing what was already kept. Drawn annotations are stored where they are read from again, so they survive a reload.",
@@ -12,8 +12,8 @@
     },
     {
       "id": "desktop-cloud-live-pairing",
-      "version": null,
-      "date": null,
+      "version": "0.56.0",
+      "date": "2026-08-06",
       "kind": "feature",
       "title": "Desktop and browser now meet live in the cloud",
       "summary": "Open a Maude Cloud project in the app and in a browser tab at the same time, and you now see each other — cursors, edits, everything, live. Rolling out to pilot projects first.",
@@ -21,8 +21,8 @@
     },
     {
       "id": "gemma-scout-ollama-easy-install",
-      "version": null,
-      "date": null,
+      "version": "0.56.0",
+      "date": "2026-08-06",
       "kind": "improvement",
       "title": "Easier Gemma scout setup — Ollama supported",
       "summary": "Scene-aware keyframes' Gemma scout now also runs on Ollama — one app and `ollama pull gemma3:4b`, no Python required. The Settings card hands you copy/paste install commands for both runtimes and unlocks itself automatically once one is installed.",

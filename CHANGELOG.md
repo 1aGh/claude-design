@@ -1,5 +1,53 @@
 # @1agh/maude
 
+## 0.56.0
+
+### Minor Changes
+
+- 8621625: **Cloud: desktop and browser can now share live edits and cursors on the same project.**
+
+  Until now a Maude Cloud cell held two disconnected worlds — the hub's document store, which the desktop app syncs to, and the browser's own collab rooms, which never crossed the gap. A person editing in their browser and a person editing the same project in the desktop app couldn't see each other's cursors, and an edit made in one surface never reached the other live (both still saved to disk, so nothing was lost — the "live" part just didn't exist).
+
+  The cell's own studio process now pairs with its own hub over loopback — never dialing anywhere else — so the browser's editing buffer and the desktop's synced document become the same object. Presence and edits cross both ways; the hub remains the sole committer to the project's git history.
+
+  **Gated to a pilot project for now** (`CELL_LIVE_PAIRING`, currently `alligators` only) while the live cross-surface verification run — two real surfaces, cursors both ways, a reload losing nothing, exactly one committer — completes. No behavior changes for desktop, self-hosted hubs, or any other cloud project.
+
+- 0d8b321: Gemma scout is much easier to set up. The smart-frames `gemma` tier now runs on either of two local runtimes: **Ollama** (new — `ollama pull gemma3:4b`, no Python, vision-capable gemma3 tags auto-detected) or **mlx-vlm** (preferred when present — the benchmarked native-video path). The Settings → Video card shows copy/paste install commands for both (the mlx-vlm one now targets a Maude-managed venv, so it works on PEP 668 externally-managed Pythons) and re-probes automatically, unlocking itself once a runtime is installed. New env knobs: `OLLAMA_HOST`, `MAUDE_OLLAMA_MODEL`.
+
+### Patch Changes
+
+- 1ffba14: Cloud: signing in through the desktop/API door now yields a session that can actually write.
+
+  `/auth/login` (the token-exchange door the desktop app and API clients use) minted sessions with only the one-bit read-only projection of the member's role — never the role itself. The hub deliberately treats a role-less session as no session at all, so every HTTP write from such a session answered 401 "sign in to open this project" while reads and live cursors kept flowing — the same wall stale pre-v0.55.0 browser sessions hit. The door now stores the translated project role at mint, exactly as the browser sign-in door does, and a guard test holds both doors to the same contract.
+
+- aaf3e53: Cloud: drawing, artboard edits and media changes made inside a canvas actually save now.
+
+  Every write leaving the canvas iframe — annotation strokes, artboard layout, uploaded media — was silently converted to a bodyless GET at the platform's front door: the Worker rebuilt the request with an object spread, and a Request's method and body are invisible to spread, so nothing survived. The studio then answered the "write" from its read branches with a 200 the client took as "saved" — changes looked live, crossed as cursors, and vanished on reload. This is also why the v0.55.0 "canvas door refused every write" fix appeared not to work: the method never survived long enough to reach the door it repaired. The rebuild now carries the original request whole, the same rule is applied to the project-hostname marker strip, and both rebuilds are pinned by tests that assert a PUT crosses as a PUT, body intact.
+
+- 2969b00: Cloud: Inspector and artboard edits made in the browser now actually save.
+
+  Inside a cell the editing shell could annotate and comment but nothing else — every CSS-knob change, artboard resize/style/kind, insert, delete, reorder, and text/attribute edit was refused with "local request required (DNS-rebinding guard)". The guard on ~97 studio routes checks for a loopback `Host`, but the cloud proxy deliberately rewrites `Host` to the project's public name, so it could never pass in a cell; annotations and comments were spared only because their handlers carry no such guard. The check is now mode-aware — verbatim loopback locally, and in a cell it accepts the proxy's unforgeable role vouch instead (the same signal the collaboration sockets already trust). A separate one-line inversion is fixed too: the Local/Shared badge lookup was filed as a write and answered 405 for every role. Both are pinned by tests — a helper matrix and a manifest guard that fails the build if a write-classified route is ever a read-only handler again.
+
+- 481da7e: **Cloud: a project now records every edit it receives, and the browser stops asking you to save work that is already saved.**
+
+  The live cross-surface verification run that the previous release gated on has now been done against a real cell — a browser and the desktop app on one project, two accounts, both origins. It found two things that every unit test had passed over, because both live in the seam between the cell's two processes:
+
+  **Edits reached the disk and never reached the history.** In a paired cell the studio process and the hub write the same bytes from the same document, and the studio usually gets there first. The hub committed only files it had written itself, so it wrote nothing, committed nothing, and the project's history simply stopped — while the work sat safely on disk, looking fine. The invariant "exactly one committer" was technically satisfied by there being none. The hub now commits what the document carries, regardless of which process put it on disk, and lets git decide whether anything actually changed.
+
+  **Annotations were saved to a name nothing looked for.** The hub filed a canvas's drawn annotations next to the canvas; everything that reads them looks for them under the canvas's own slug at the top of the design folder. The result was a stray file in the project's history — and, for a project mirrored to GitHub, in the mirror — while the real one stayed untracked. The two now agree.
+
+  **The browser's Changes panel is now History.** A cloud project commits as you work, so a list of "unsaved changes", a Save button and a Publish button described work that was already kept — and the panel's advice to save from your terminal was addressed to people who have no terminal. Where the server owns the history, the panel now shows only what it can honestly offer: what was saved, and when. The desktop app is unchanged; it still owns its own checkout and its own Save and Publish.
+
+- 61f9e47: Cloud: a source edit (Inspector CSS, artboard resize/style, insert/reorder) now updates a collaborator's canvas live, instead of waiting for them to refresh.
+
+  Two people on one cloud project share one server. When one made a source edit, the change reached disk and the git history but the other person's canvas sat on the old version until they manually reloaded — annotations crossed live, structural edits didn't. The cause: the studio announces edits to peers through a filesystem watcher, and the container's recursive watch silently misses the atomic file writes the editor makes (it works on a local Mac, which is why this only showed up in the cloud). Verified against a live project: an edit that returned success delivered nothing to a connected peer socket. The fix announces each write directly from the edit path rather than depending on the watcher, so a peer's canvas hot-swaps within a fraction of a second; a no-op or rejected edit announces nothing. Local (non-cloud) behaviour is unchanged.
+
+- 976c66f: **The bundled knowledge-graph engine (kgai) is upgraded to v1.4.0**, from v1.0.0. If you've turned on the knowledge-graph memory backend (`knowledgeGraph.mode`), you pick up several fixes on top of four months of engine work: `kg context --paths` now matches nested files correctly, `kg as-of <date>` means the end of that day instead of silently excluding anything recorded today, and a bug that could mint a false conflict when re-touching an existing decision element is gone.
+
+  Session-start sync now uses the engine's own fire-and-forget `--auto` mode — it honors a cooldown and never blocks on a store lock, so it can no longer pile up across rapid session restarts. Closing a session (`/flow:done`, `/flow:pause`) still pushes with a deliberate, uncooled sync.
+
+  If you installed the `kg` CLI by hand for the shared company graph, the old install had no self-update — `kg status` now shows the exact version so you can confirm which engine you're actually running before assuming a pin bump reached you.
+
 ## 0.55.0
 
 ### Minor Changes
