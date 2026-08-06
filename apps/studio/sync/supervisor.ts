@@ -22,6 +22,7 @@
 // `.design/config.json` in between can steer the socket.
 
 import { adoptLinkedHub, type Context, type LinkedHub } from '../context.ts';
+import { resolveCellPairing } from './cell-pairing.ts';
 import { getHubToken } from './hubs-config.ts';
 import {
   type CreateSyncRuntimeOptions,
@@ -65,6 +66,24 @@ export interface SyncSupervisor {
  * deliberately — it mirrors the guard order in createSyncRuntime.
  */
 function diagnose(ctx: Context): { reason: SyncStartOutcome['reason']; detail: string } {
+  // Cell pairing supplies its own hub URL + credential from the environment, so
+  // "no linkedHub on disk" is not the diagnosis there — reporting "not linked to
+  // a workspace" for a cell that IS paired would send an operator looking for a
+  // config field that has nothing to do with it. Both pairing outcomes (refused
+  // to resolve, or resolved but the runtime still declined) return here — a
+  // successfully-resolved pairing always carries a non-empty `url`
+  // (`resolveCellPairing` refuses an empty one), so there is no "unlinked"
+  // state to fall through to on this path, unlike the plain linkedHub case below.
+  const { pairing, detail: pairingRefusal } = resolveCellPairing();
+  if (pairingRefusal) {
+    return { reason: 'refused', detail: pairingRefusal };
+  }
+  if (pairing) {
+    return {
+      reason: 'refused',
+      detail: 'Cell pairing is on but syncing did not start — see the server log for why.',
+    };
+  }
   const linked = ctx.cfg.linkedHub;
   if (!linked) {
     return { reason: 'unlinked', detail: 'This project is not linked to a workspace.' };

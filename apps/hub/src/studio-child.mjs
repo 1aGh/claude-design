@@ -25,6 +25,7 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
+import { isLoopbackUrl, sanitizeForLog } from './log-safety.mjs';
 
 /** Backoff ladder, ms. Long enough that a crash-loop does not spin a CPU;
  *  short enough that a transient failure is invisible to whoever is waiting. */
@@ -111,6 +112,56 @@ export function studioEntry(env = process.env) {
  * the `Host` header is an internal name, and Phase 25 shipped that bug into
  * production twice.
  */
+// The loopback check on `MAUDE_LOOPBACK_SYNC_URL` below (`isLoopbackUrl`,
+// imported from `./log-safety.mjs`) mirrors `apps/studio/sync/cell-pairing.ts`'s
+// OWN independent check, and that cross-app duplication is deliberate: the
+// studio refuses a non-loopback URL on the receiving end, this hub refuses to
+// EMIT one. Either check alone would be enough on a good day; the pair is what
+// makes "a cell never dials out" (DDR-209) true even if one side is edited by
+// somebody who has not read the other. `sanitizeForLog` is the SAME-app case —
+// shared with `server.mjs` via the leaf, not duplicated, because both live in
+// this one package with no cycle risk once factored out.
+
+/**
+ * DESKTOP ↔ CLOUD LIVE PAIRING — the block of variables that turns the studio
+ * child into a peer of its OWN hub (variant C2).
+ *
+ * The supervisor's env carries `MAUDE_LOOPBACK_SYNC_URL` + `_TOKEN` only when
+ * `server.mjs` decided to pair and minted a credential for it, so their presence
+ * IS the switch — there is no third place that could say yes independently.
+ *
+ * The other three are not passed through from anywhere; they are asserted HERE,
+ * because they are the conditions under which pairing is safe rather than
+ * settings anybody should be able to vary:
+ *
+ *   MAUDE_SHARED_DOC=1          pairing IS the one-shared-doc model (DDR-064)
+ *   MAUDE_SYNC_NO_AUTOCOMMIT=1  the hub stays the sole committer (DDR-209)
+ *   MAUDE_CELL_PAIRING=1        the studio's own opt-in gate
+ *
+ * `MAUDE_HUB_NAMESPACED` rides along when set, because the child must compute
+ * the SAME wire document name as the desktop peer it is meant to meet — a
+ * mismatch there is two people editing two documents and seeing nothing.
+ */
+function pairingEnv(env) {
+  const url = env.MAUDE_LOOPBACK_SYNC_URL;
+  const token = env.MAUDE_LOOPBACK_SYNC_TOKEN;
+  if (!url || !token) return {};
+  if (!isLoopbackUrl(url)) {
+    console.error(
+      `[studio] refusing to hand the child a non-loopback pairing URL (${sanitizeForLog(url)}) — a cell syncs to itself or to nothing (DDR-209). Pairing disabled.`
+    );
+    return {};
+  }
+  return {
+    MAUDE_CELL_PAIRING: '1',
+    MAUDE_LOOPBACK_SYNC_URL: url,
+    MAUDE_LOOPBACK_SYNC_TOKEN: token,
+    MAUDE_SHARED_DOC: '1',
+    MAUDE_SYNC_NO_AUTOCOMMIT: '1',
+    ...(env.MAUDE_HUB_NAMESPACED ? { MAUDE_HUB_NAMESPACED: env.MAUDE_HUB_NAMESPACED } : {}),
+  };
+}
+
 export function childEnv(env = process.env, { port }) {
   return {
     PATH: env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
@@ -162,6 +213,7 @@ export function childEnv(env = process.env, { port }) {
     ...(env.NAPI_RS_NATIVE_LIBRARY_PATH
       ? { NAPI_RS_NATIVE_LIBRARY_PATH: env.NAPI_RS_NATIVE_LIBRARY_PATH }
       : {}),
+    ...pairingEnv(env),
   };
 }
 

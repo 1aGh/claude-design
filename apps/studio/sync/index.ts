@@ -25,11 +25,13 @@ import type { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { Y_TYPES } from '../collab/persistence.ts';
-import type { Context } from '../context.ts';
+import type { Context, LinkedHub } from '../context.ts';
 import { createHistory } from '../history.ts';
+import { SYNTHETIC_FS_DELAY_MS } from '../hmr-broadcast.ts';
 import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
 import { atomicWrite } from './atomic-write.ts';
 import { createAutoCommit } from './autocommit.ts';
+import { type CellPairing, resolveCellPairing, sanitizeForLog } from './cell-pairing.ts';
 import {
   type ConnectionMonitor,
   createConnectionMonitor,
@@ -40,6 +42,7 @@ import { createEchoGuard } from './echo-guard.ts';
 import { createFsReader, type FsReader } from './fs-mirror.ts';
 import { getHubToken } from './hubs-config.ts';
 import { loadJournal, type SyncJournal } from './journal.ts';
+import { isLoopbackHost } from './loopback.ts';
 import { migrateSeed } from './migrate-seed.ts';
 import { createDocProjection, type DocProjection } from './projection.ts';
 import { createSyncStatusStore, type SyncStatusStore } from './status.ts';
@@ -218,28 +221,58 @@ export function createSyncRuntime(
   ctx: Context,
   opts: CreateSyncRuntimeOptions = {}
 ): SyncRuntime | null {
-  const linked = ctx.cfg.linkedHub;
-  if (!linked) return null;
-  const linkedHub = linked;
-
-  // A CELL'S HISTORY BELONGS TO THE CELL — Cloud Phase 27 D2.
+  // A CELL'S HISTORY BELONGS TO THE CELL — Cloud Phase 27 D2 — WITH EXACTLY ONE
+  // EXCEPTION, which is desktop↔cloud live pairing (variant C2).
   //
   // `.design/config.json` is the TENANT's file, versioned in their repo, and
   // `linkedHub` is whatever hub their desktop was linked to when they committed
   // it. Honouring that inside a cell would do two things nobody asked for: dial
   // OUT from the cell to a third-party hub carrying the project's canvases, and
   // start a SECOND autocommit over the working tree the hub is already
-  // committing — the exact duplication this phase exists to delete.
+  // committing — the exact duplication that phase exists to delete.
   //
-  // Today this is unreachable by accident: the token lookup below reads
-  // `~/.config/maude/hubs.json`, which does not exist in a cell (HOME=/tmp), so
-  // it returns null a few lines further down. An accident is not an invariant,
-  // and the fix for "it happens to be fine" is to say so out loud.
-  if (process.env.MAUDE_WORKSPACE_MODE === '1') {
+  // Both of those remain refused. What is now permitted is the cell talking to
+  // ITSELF: a loopback, commit-disabled, shared-doc provider to its own hub, so
+  // the browser's collab doc and the desktop's Hocuspocus doc become ONE doc and
+  // presence + edits cross. The conditions live in `cell-pairing.ts` and every
+  // one of them is a hard gate — see that file for why each exists.
+  //
+  // Note the ORDER: pairing is resolved from the ENVIRONMENT (which the hub owns
+  // and the tenant cannot write) BEFORE `ctx.cfg.linkedHub` is consulted, and it
+  // takes only the workspace id from the tenant's config. A cell with pairing on
+  // and no `linkedHub` in the tenant's file still pairs; a cell with pairing off
+  // and a `linkedHub` pointing anywhere still refuses.
+  const workspaceMode = process.env.MAUDE_WORKSPACE_MODE === '1';
+  const pairingVerdict = resolveCellPairing();
+  const cellPairing: CellPairing | null = pairingVerdict.pairing;
+  if (workspaceMode && !cellPairing) {
+    if (pairingVerdict.detail) {
+      // The operator asked for pairing and we refused — say why, loudly.
+      console.warn(`[sync] cell pairing refused — ${pairingVerdict.detail}`);
+    }
     console.warn(
-      `[sync] ignoring linkedHub ${linkedHub.url} — in a workspace cell the hub owns history and sync. (DDR-209 / Phase 27 D2)`
+      `[sync] ignoring linkedHub ${ctx.cfg.linkedHub?.url ?? '(none)'} — in a workspace cell the hub owns history and sync. (DDR-209 / Phase 27 D2)`
     );
     return null;
+  }
+
+  // The hub URL the providers dial. Under pairing it is the hub's own loopback
+  // address, NEVER the tenant's `linkedHub.url`. `workspaceId` is the one field
+  // taken from the tenant's config, because it decides the wire document name
+  // and the desktop resolves it the same way — see cell-pairing.ts.
+  const linked: LinkedHub | undefined = cellPairing
+    ? {
+        url: cellPairing.url,
+        linkedAt: 0,
+        ...(ctx.cfg.linkedHub?.workspaceId ? { workspaceId: ctx.cfg.linkedHub.workspaceId } : {}),
+      }
+    : ctx.cfg.linkedHub;
+  if (!linked) return null;
+  const linkedHub = linked;
+  if (cellPairing) {
+    console.log(
+      `[sync] cell pairing ON — loopback shared-doc provider to ${sanitizeForLog(linkedHub.url)}; autocommit disabled (the hub is the sole committer). DDR-209 threaded, not reversed.`
+    );
   }
 
   // DDR-054 §2a — CI environment gate. Closes the supply-chain side-door
@@ -285,8 +318,17 @@ export function createSyncRuntime(
   // save: nobody is at a keyboard to commit, so the cell does it. Off entirely
   // outside workspace mode, where the developer's own git IS the history and
   // committing under them would be an intrusion (DDR-119).
+  //
+  // AND OFF UNDER CELL PAIRING, which is the guard DDR-209's core fear asks for.
+  // The hub's `afterStoreDocument` already commits every stored document; a
+  // second committer inside the studio child would race it over one working
+  // tree and one `.git/index`. This is structural rather than conditional on
+  // purpose — under pairing the object is never CONSTRUCTED, so there is no
+  // later branch that could accidentally reach a commit. `cell-pairing.ts`
+  // refuses to pair at all unless MAUDE_SYNC_NO_AUTOCOMMIT says so out loud, so
+  // the two halves of this invariant can never disagree.
   const autoCommit =
-    process.env.MAUDE_WORKSPACE_MODE === '1'
+    workspaceMode && !cellPairing
       ? createAutoCommit({
           repoRoot: ctx.paths.repoRoot,
           run: async (args, { cwd }) => {
@@ -300,7 +342,11 @@ export function createSyncRuntime(
         })
       : null;
 
-  const resolvedToken = getHubToken(linkedHub.url);
+  // Under pairing the credential is the hub's own derived cell token, handed to
+  // this process in its environment. `~/.config/maude/hubs.json` is a PERSON's
+  // credential store and does not exist in a cell (HOME=/tmp) — which is exactly
+  // why the old guard was unreachable by accident rather than by design.
+  const resolvedToken = cellPairing ? cellPairing.token : getHubToken(linkedHub.url);
   if (!resolvedToken) {
     console.warn(
       `[sync] linked to ${linkedHub.url} but no token in ~/.config/maude/hubs.json. Re-run 'maude design link' on this machine. Solo mode for now.`
@@ -364,18 +410,33 @@ export function createSyncRuntime(
   let authWarnTimer: TimerHandle | null = null;
   let reprobeTimer: TimerHandle | null = null;
   const settleTimers = new Set<TimerHandle>();
+  /** Pending synthetic `fs:any` emissions (cell pairing only), keyed by the
+   *  design-root-relative path so a second write to the same file inside the
+   *  delay window replaces the pending timer instead of scheduling a second
+   *  one. Cleared on stop() so a teardown can't fire a reload for a runtime
+   *  that no longer exists. */
+  const announceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   async function start(): Promise<void> {
     if (started || stopped) return;
     started = true;
 
     const scan = opts.canvases ? { canvases: opts.canvases, tsxCount: 0 } : await scanCanvases(ctx);
-    const canvases = scan.canvases;
+    // DDR-064 pre-cutover A4 + A6 — two files must never share a document, and
+    // the pinned set must be bounded. See `admitCanvases`.
+    const canvases = admitCanvases(scan.canvases, useSharedDoc);
     // T4.5 (DDR-054 §3 F3) — every syncable canvas can receive hub-pushed
     // content, so the whole set is untrusted Claude-context. Mark it (writes
     // `_untrusted/INDEX.json` + a managed `.claudeignore` block; clears both
     // when the set is empty). Best-effort — never throws into boot.
-    writeUntrustedMarkers(ctx, canvases, linkedHub.url);
+    //
+    // NOT under cell pairing. The markers exist for Claude Code reading the
+    // checkout, and nothing runs Claude against a cell's tree. `.claudeignore`
+    // is a REPO-ROOT file, so writing it here would put a machine-authored file
+    // into the tenant's repository, which the hub would then commit and mirror
+    // to their GitHub — a change to somebody's repo that nobody asked for. The
+    // canvases are no less untrusted; the audience for the marker is absent.
+    if (!cellPairing) writeUntrustedMarkers(ctx, canvases, linkedHub.url);
     if (canvases.length === 0) {
       // DDR-060 / 9.1-D — the silent early-return made linked mode look healthy
       // while syncing nothing (TSX-only projects: discovery admits .html only,
@@ -399,6 +460,9 @@ export function createSyncRuntime(
         `[sync] ${tsxBodyCount} TSX canvas BODIES will sync to ${linkedHub.url} (TSX sync is ON by default — DDR-079). The sandbox contains execution, but a WebRTC/self-nav exfil residual applies to every synced canvas — link only hubs you operate or trust. Opt out: linkedHub.syncTsx=false (whole project) or a canvas .meta.json "syncable": false (one canvas).`
       );
     }
+
+    // DDR-064 pre-cutover A7 — one-time notice, before any doc is attached.
+    if (useSharedDoc) noticeSharedDocOnce(linkedHub.url, !!cellPairing);
 
     statusStore =
       opts.statusStore ??
@@ -447,6 +511,50 @@ export function createSyncRuntime(
     busUnsub = ctx.bus.on('fs:any', (rel: string) => {
       reader.notify(rel);
     });
+
+    /**
+     * Tell the rest of the server that a doc→file projection write landed.
+     *
+     * Only wired under cell pairing. In a container the recursive `fs.watch`
+     * misses our atomic tmp+rename writes, so a peer's edit reaches the doc and
+     * the disk and then stops: no `fs:any`, no `canvas-hmr`, and the other
+     * person's canvas iframe stays on the old render until they reload by hand.
+     * That is the same gap `createContainerWriteBridge` closes for API writes —
+     * it cannot close this one, because it triggers off `activity:suppress` and
+     * the projector never arms it.
+     *
+     * Delayed by the bridge's margin so a watcher that DOES fire gets there
+     * first; the HMR broadcaster coalesces per file within its own debounce, so
+     * both arriving is one reload, not two.
+     *
+     * Keyed by path, mirroring `createContainerWriteBridge`'s own
+     * clear-and-replace pattern rather than a flat timer bag — html/css/meta
+     * can each flush and re-flush across cold-start `reconcile()` plus the
+     * first real edit landing moments later, and two announcements for the
+     * SAME file inside the delay window would have been two `fs:any` events,
+     * i.e. two reloads for one edit. A per-path replace collapses that back
+     * to one, same as the sibling mechanism this is modeled on (not reused
+     * directly — that one lives in `ws.ts`/`hmr-broadcast.ts` and arms off
+     * `activity:suppress`, a server-boot-scoped bus the sync runtime doesn't
+     * otherwise depend on; duplicating the small delay-then-emit shape here
+     * keeps this runtime testable standalone, the way every test in
+     * `shared-doc-cell-pairing.test.ts` relies on).
+     */
+    const announceWrite = (abs: string): void => {
+      const rel = path.relative(ctx.paths.designRoot, abs).split(path.sep).join('/');
+      // Outside the design root there is nothing for the canvas layer to reload.
+      if (!rel || rel.startsWith('..')) return;
+      const prev = announceTimers.get(rel);
+      if (prev) clearTimeout(prev);
+      announceTimers.set(
+        rel,
+        setTimeout(() => {
+          announceTimers.delete(rel);
+          if (stopped) return;
+          ctx.bus.emit('fs:any', rel);
+        }, SYNTHETIC_FS_DELAY_MS)
+      );
+    };
 
     const adoptOnce = opts.adopt ?? !!linkedHub.adopt;
     let adoptReconciled = 0;
@@ -729,6 +837,13 @@ export function createSyncRuntime(
               paths: canvasPaths,
               echoGuard,
               journal: journal ?? undefined,
+              // Cell pairing only — see the DocProjectionOptions.onWrote doc.
+              // The synthetic event is delayed by the same margin the container
+              // write bridge uses, so a watcher that DOES fire wins the race and
+              // the HMR broadcaster's per-file coalescing collapses the pair
+              // into one `canvas-hmr`. The projector's own echo guard drops the
+              // resulting file→doc read, so this cannot loop.
+              ...(cellPairing ? { onWrote: announceWrite } : {}),
             });
             projection.start();
             projections.set(canvas.slug, projection);
@@ -924,6 +1039,8 @@ export function createSyncRuntime(
     }
     for (const h of settleTimers) authClearTimer(h);
     settleTimers.clear();
+    for (const h of announceTimers.values()) clearTimeout(h);
+    announceTimers.clear();
     rejectedPermanent.clear();
     busUnsub?.();
     busUnsub = null;
@@ -972,6 +1089,106 @@ export function createSyncRuntime(
     agentFor: (slug) => agents.get(slug),
     status: () => statusStore?.get() ?? null,
   };
+}
+
+/* ------------------------------------------------ DDR-064 pre-cutover gates */
+
+/**
+ * Upper bound on shared-doc canvases held live in one process — DDR-064
+ * pre-cutover A6.
+ *
+ * Every shared-doc canvas is a PINNED room: a `Y.Doc` plus its history, kept in
+ * memory for as long as a provider is attached, deliberately immune to the
+ * last-browser-leaves drop. That immunity is what makes the ceiling necessary —
+ * nothing else will ever reclaim them.
+ *
+ * Set well above any real project (the largest in-house one is 83 canvases) so
+ * that in practice this is a runaway guard, not a product limit. Raise it with
+ * `MAUDE_MAX_PINNED_ROOMS` if a real project ever meets it — and if one does,
+ * that is a signal worth reading rather than a number worth bumping.
+ */
+export const DEFAULT_MAX_PINNED_ROOMS = 500;
+
+function maxPinnedRooms(): number {
+  const raw = Number.parseInt(process.env.MAUDE_MAX_PINNED_ROOMS ?? '', 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_MAX_PINNED_ROOMS;
+}
+
+/**
+ * Filter the discovered set down to what may safely be synced.
+ *
+ * **A4 — slug collisions.** `slugFor` flattens `/` to `-`, so `ui/a/b.tsx` and
+ * `ui/a-b.tsx` produce the same slug. Two files on one document is not a
+ * degraded experience, it is silent cross-contamination: each would receive the
+ * other's body as a remote change and write it over itself, forever. Neither
+ * file is more correct than the other, so BOTH are excluded rather than one
+ * being picked — refusing to sync two canvases is recoverable by renaming a
+ * file; overwriting one with the other is not.
+ *
+ * **A6 — pinned-room ceiling.** Under shared-doc, admit at most
+ * `maxPinnedRooms()`. Named loudly, because the ones past the ceiling stop
+ * syncing and silence there would read as "sync is broken" with no cause.
+ *
+ * Exported for the pre-cutover tests.
+ */
+export function admitCanvases(
+  canvases: readonly CanvasDescriptor[],
+  sharedDoc: boolean
+): CanvasDescriptor[] {
+  const bySlug = new Map<string, CanvasDescriptor[]>();
+  for (const c of canvases) {
+    const group = bySlug.get(c.slug);
+    if (group) group.push(c);
+    else bySlug.set(c.slug, [c]);
+  }
+
+  const admitted: CanvasDescriptor[] = [];
+  const collisions: string[] = [];
+  for (const [slug, group] of bySlug) {
+    if (group.length > 1) {
+      collisions.push(`${slug} ← ${group.map((c) => c.html).join(' , ')}`);
+      continue;
+    }
+    admitted.push(group[0] as CanvasDescriptor);
+  }
+  if (collisions.length > 0) {
+    console.error(
+      `[sync] ${collisions.length} slug collision(s) — these canvases are NOT syncing, because two files sharing one document would overwrite each other (DDR-064 A4). Rename one of each pair:\n${collisions
+        .map((c) => `  ${c}`)
+        .join('\n')}`
+    );
+  }
+
+  if (!sharedDoc) return admitted;
+  const cap = maxPinnedRooms();
+  if (admitted.length <= cap) return admitted;
+  const dropped = admitted.length - cap;
+  console.error(
+    `[sync] ${admitted.length} syncable canvases exceeds the shared-doc pinned-room ceiling of ${cap} (DDR-064 A6) — ${dropped} will NOT sync. Raise MAUDE_MAX_PINNED_ROOMS if this project is genuinely this large.`
+  );
+  return admitted.slice(0, cap);
+}
+
+/**
+ * DDR-064 pre-cutover A7 — say, once, that a shared document is now crossing
+ * the network.
+ *
+ * Under shared-doc the browser's live editing buffer IS the object that syncs to
+ * the hub. That is a real change in what leaves this machine and when, and the
+ * checklist asks for it to be stated rather than inferred from a release note.
+ *
+ * A cell is the exception, and deliberately so: the operator turned pairing on
+ * per project, the hub is the cell's own loopback, and nothing leaves the
+ * container. Consent was given by configuration, and repeating it at every
+ * canvas boot would train an operator to skip the line that matters.
+ */
+let sharedDocNoticeShown = false;
+function noticeSharedDocOnce(url: string, cellPairing: boolean): void {
+  if (cellPairing || sharedDocNoticeShown) return;
+  sharedDocNoticeShown = true;
+  console.warn(
+    `[sync] shared-doc is ON for ${url} — your live editing buffer for each canvas is now the same object that syncs to the hub, not a copy reconciled through disk (DDR-064). Link only hubs you operate or trust.`
+  );
 }
 
 /* ---------------------------------------------------------------- discovery */
@@ -1409,11 +1626,8 @@ export function checkUrlScheme(url: string): string | null {
   }
   const isPlaintext = proto === 'http:' || proto === 'ws:';
   if (!isPlaintext) return null;
-  const host = u.hostname.toLowerCase();
-  const isLoopback =
-    host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
-  if (!isLoopback) {
-    return `plaintext URL (${proto}//) is only allowed for loopback hosts. Use wss:// for ${host} or change the host to localhost.`;
+  if (!isLoopbackHost(u.hostname)) {
+    return `plaintext URL (${proto}//) is only allowed for loopback hosts. Use wss:// for ${u.hostname.toLowerCase()} or change the host to localhost.`;
   }
   return null;
 }
@@ -1422,14 +1636,13 @@ export function checkUrlScheme(url: string): string | null {
  * DDR-072 — true when the hub URL points at a loopback host (localhost,
  * 127.0.0.1, ::1). Used to suppress the `syncTsx` boot banner for local dev
  * hubs (no remote exfil concern). Unparseable URL → treated as non-loopback
- * (fail loud / show the banner). Mirrors checkUrlScheme's loopback host set.
+ * (fail loud / show the banner). Mirrors checkUrlScheme's loopback host set —
+ * literally, both call `isLoopbackHost` (`sync/loopback.ts`).
  */
 export function isLoopbackHubUrl(url: string): boolean {
-  let host: string;
   try {
-    host = new URL(url).hostname.toLowerCase();
+    return isLoopbackHost(new URL(url).hostname);
   } catch {
     return false;
   }
-  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
 }

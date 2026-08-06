@@ -72,6 +72,7 @@ import { designRootFor } from './design-root.mjs';
 import { groupCanvases } from './doc-namespace.mjs';
 import { seedFirstUserOnBoot } from './first-user.mjs';
 import { createGitRunner } from './git-runner.mjs';
+import { LOOPBACK_HOSTS, sanitizeForLog } from './log-safety.mjs';
 import { createRateStore } from './rate-store.mjs';
 import { mintRenderToken, verifyRenderToken } from './render-token.mjs';
 import { isReadOnlyRole, ROLES } from './role-matrix.mjs';
@@ -133,7 +134,6 @@ const RATE_LIMIT_MAX = 5;
 //     control the old bucket was meant to be.
 export const CONN_RATE_LIMIT_MAX = 600;
 export const INVALID_CONN_RATE_LIMIT_MAX = 100;
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 // Activity feed (admin console): bounded in-memory ring buffer. Ephemeral —
 // lost on restart, NOT a persisted audit trail (DDR-097). Caps memory.
 export const ACTIVITY_CAP = 200;
@@ -335,7 +335,25 @@ export function createHub(config = {}) {
   // a hub with no object storage, which is every self-hosted one.
   let assetSweeper = null;
   const studioEnabled = workspaceMode && process.env.MAUDE_STUDIO_CHILD !== '0';
-  const studio = studioEnabled ? createStudioChild() : null;
+  // DESKTOP ↔ CLOUD LIVE PAIRING (variant C2) — mint the child's credential.
+  //
+  // Off unless asked for: this is the pilot switch, so a fleet that has not been
+  // rolled to it behaves exactly as before.
+  const studioPairingToken = studioEnabled ? mintLoopbackSyncToken(dataDir) : null;
+  // The child dials the hub it is already inside. `port` is this server's own
+  // listener, so there is no configuration to get wrong and no address that
+  // could ever leave the container. `undefined` when no token was minted, so
+  // `createStudioChild` falls through to its own `env = process.env` default —
+  // the LIVE object, not a snapshot copy — exactly as it did before pairing
+  // existed. Only pairing's own two variables justify a copy at all.
+  const studioEnv = studioPairingToken
+    ? {
+        ...process.env,
+        MAUDE_LOOPBACK_SYNC_URL: `http://127.0.0.1:${port}`,
+        MAUDE_LOOPBACK_SYNC_TOKEN: studioPairingToken,
+      }
+    : undefined;
+  const studio = studioEnabled ? createStudioChild(studioEnv ? { env: studioEnv } : {}) : null;
   const studioProxy = studioEnabled
     ? createStudioProxy({
         upstream: () => studio.status(),
@@ -1497,6 +1515,56 @@ function workspaceStatus() {
   return out;
 }
 
+/** The token label the loopback pairing credential is stored under. */
+export const LOOPBACK_SYNC_TOKEN_LABEL = 'cell-loopback-sync';
+
+/**
+ * Mint the credential the studio child uses to sync to THIS hub over loopback —
+ * desktop ↔ cloud live pairing (variant C2).
+ *
+ * Returns null (pairing simply does not engage) unless `MAUDE_CELL_PAIRING` is
+ * set. That is the pilot switch: it is a cell-config variable, so a fleet that
+ * has not been rolled to pairing behaves exactly as it did before, and rolling
+ * back is deleting a variable rather than shipping code.
+ *
+ * WHY A STORE TOKEN AND NOT `HUB_SECRET`. The child's environment is deliberately
+ * minimal (see `childEnv`) precisely so that a process which handles tenant-shaped
+ * requests does not hold the hub's admin bearer. `HUB_SECRET` unlocks `/internal/*`,
+ * the admin API and every document; this unlocks documents only. Handing over the
+ * admin secret to buy a Yjs connection would trade away the reason the minimal
+ * environment exists.
+ *
+ * WHY SCOPE `*`. Document scopes bind a token to one project (DDR-053 §3), and a
+ * cell hub holds exactly one tenant's project — the container boundary already
+ * IS the scope. Narrowing further would mean guessing the wire namespace
+ * (`ws/<workspace-id>/<branch>/…`, which depends on the tenant's own config and
+ * their current branch) and silently failing to sync whenever the guess was
+ * wrong, which is the failure this whole feature is fixing.
+ *
+ * Minted fresh on every boot: `addToken` is `INSERT OR REPLACE` by label, so the
+ * previous value is invalidated rather than accumulated, and the raw value exists
+ * only long enough to be handed to the child we are about to spawn.
+ */
+export function mintLoopbackSyncToken(dataDir, env = process.env) {
+  if (!/^(1|true|on|yes)$/i.test(env.MAUDE_CELL_PAIRING ?? '')) return null;
+  try {
+    const record = addToken(dataDir, {
+      label: LOOPBACK_SYNC_TOKEN_LABEL,
+      scope: '*',
+      // No `owner`. An owner address is what `afterStoreDocument` attributes a
+      // commit to, and inventing one here would sign the tenant's git history
+      // with a machine identity dressed up as a person.
+    });
+    console.log('[hub] live pairing ON — minted the studio child a loopback sync credential.');
+    return record.value;
+  } catch (err) {
+    // A cell that cannot mint still serves; it just does not pair. Failing the
+    // boot over a collaboration feature would trade a degraded cell for a dead one.
+    console.error(`[hub] could not mint the loopback sync token — pairing off: ${err.message}`);
+    return null;
+  }
+}
+
 /**
  * Does this caller hold the cell's own secret?
  *
@@ -1962,16 +2030,6 @@ async function readJsonBody(request, { maxBytes = 64 * 1024, timeoutMs = 15_000 
 
 /** Strip CR/LF/control chars and clamp length. Use for any user-controlled
  * value that lands in console.log lines (defends against log forging). */
-function sanitizeForLog(value) {
-  let out = '';
-  const s = String(value ?? '').slice(0, 256);
-  for (let i = 0; i < s.length; i++) {
-    const code = s.charCodeAt(i);
-    out += code < 0x20 || code === 0x7f ? '·' : s[i];
-  }
-  return out;
-}
-
 /**
  * Short-circuit Hocuspocus' default `200 Welcome to Hocuspocus!` writer.
  * Its requestHandler swallows falsy throws (`if (error) throw error;`) — this

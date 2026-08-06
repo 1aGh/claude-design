@@ -26,6 +26,13 @@ import { hostname } from 'node:os';
 import type * as Y from 'yjs';
 
 import { Y_TYPES } from '../collab/persistence.ts';
+import {
+  MAX_ANNOTATIONS_BYTES,
+  MAX_COMMENTS_BYTES,
+  MAX_CSS_BYTES,
+  MAX_HTML_BYTES,
+  MAX_META_BYTES,
+} from './limits.ts';
 
 /**
  * Y.Doc shared-type names introduced by Task 4. Distinct namespace from
@@ -59,12 +66,11 @@ export const Y_SYNC_TYPES = {
  * has no upstream-enforced size cap; the codec is the consumer's guard.
  * Mirrors the existing /_api/annotations 1 MB cap (api.ts) so the sync path
  * doesn't bypass the HTTP-layer guard.
+ *
+ * Defined in `limits.ts` (a leaf) and re-exported here so every existing
+ * importer is unchanged — see that file for why they had to move.
  */
-export const MAX_HTML_BYTES = 4 * 1024 * 1024;
-export const MAX_COMMENTS_BYTES = 1 * 1024 * 1024;
-export const MAX_ANNOTATIONS_BYTES = 1 * 1024 * 1024;
-export const MAX_META_BYTES = 1 * 1024 * 1024;
-export const MAX_CSS_BYTES = 4 * 1024 * 1024;
+export { MAX_ANNOTATIONS_BYTES, MAX_COMMENTS_BYTES, MAX_CSS_BYTES, MAX_HTML_BYTES, MAX_META_BYTES };
 
 function byteLengthUtf8(s: string): number {
   return Buffer.byteLength(s, 'utf8');

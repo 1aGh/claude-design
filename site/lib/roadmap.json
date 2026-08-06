@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-05T20:15:47.593Z",
+  "generated": "2026-08-06T05:48:37.507Z",
   "currentPhase": null,
   "phases": [
     {
@@ -637,6 +637,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-cloud-connect-ux.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-desktop-cloud-live-pairing",
+      "title": "Feature: desktop ↔ cloud live pairing",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This touches the CRDT sync layer — the highest data-loss-risk subsystem in the repo. T...",
+      "planPath": ".ai/plans/archive/feature-desktop-cloud-live-pairing.md",
       "archived": true,
       "phaseKey": null
     },

@@ -3,9 +3,30 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** done — Cloud Phase 26 closed 2026-08-04
+**Status:** done — desktop ↔ cloud live pairing closed 2026-08-06
 **Active plan:** —
 **Active task:** —
+
+_2026-08-06:_ **Desktop ↔ cloud live pairing (C2) CLOSED + archived — a cell pairs with itself.**
+The studio child now opens a loopback, commit-disabled, shared-doc provider to
+its own cell hub (DDR-213, extends DDR-064 + DDR-209), so a browser tab and the
+desktop app editing the same cloud project converge on one Y.Doc — presence and
+edits cross both ways, the hub stays the sole committer. All six tasks landed:
+the workspace-mode guard's one narrow exception, the loopback token minted
+per-boot into the child's env, the sole-committer assertion (tested against a
+real git repo), the DDR-064 pre-cutover checklist closed (slug collisions,
+pinned-room ceiling, consent notice, comments doc→disk cap), the cold-start
+seed verified for the cell topology, and — the one real bug the work turned
+up — a doc-originated edit produced no `fs:any` inside a container at all
+(not a double-fire, the opposite), fixed by having the projector announce its
+own writes. Security-reviewed (defender + attacker): a wildcard, non-expiring
+pairing token was flagged as a chain-promotable-to-High finding, evaluated
+against the already-accepted `HUB_SECRET` precedent in this exact hub and
+recorded as a residual with two explicit, reasoned-out follow-ups rather than
+patched under review pressure. **Gated**: `CELL_LIVE_PAIRING` is a per-tenant
+allowlist, `alligators` only — the live cross-surface run (real cell, real
+desktop, real browser, one committer in `git log`) is the one acceptance
+criterion left unchecked, and nothing widens past the pilot until it's green.
 
 _2026-08-04:_ **Cloud Phase 26 CLOSED — the operator view, and figures instead of an estimate.**
 `/operator` is live behind an allowlist that is empty by default; it is mostly a

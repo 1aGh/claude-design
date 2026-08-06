@@ -92,6 +92,57 @@ test('the cell pins the studio to the same git engine the hub uses', () => {
   assert.equal(env.MAUDE_USE_SYSTEM_GIT, '1');
 });
 
+test('live pairing is off unless the hub minted a credential for it', () => {
+  const env = childEnv({ PATH: '/bin', MAUDE_REPO_DIR: '/repo' }, { port: 4399 });
+  assert.equal(env.MAUDE_CELL_PAIRING, undefined);
+  assert.equal(env.MAUDE_LOOPBACK_SYNC_URL, undefined);
+  assert.equal(env.MAUDE_LOOPBACK_SYNC_TOKEN, undefined);
+  // And crucially not shared-doc / no-autocommit either: those are meaningless
+  // without a provider, and setting them anyway would make a later bug look
+  // like a configuration that had been asked for.
+  assert.equal(env.MAUDE_SHARED_DOC, undefined);
+  assert.equal(env.MAUDE_SYNC_NO_AUTOCOMMIT, undefined);
+});
+
+test('a minted loopback credential turns pairing on, with its conditions attached', () => {
+  const env = childEnv(
+    {
+      PATH: '/bin',
+      MAUDE_LOOPBACK_SYNC_URL: 'http://127.0.0.1:1234',
+      MAUDE_LOOPBACK_SYNC_TOKEN: 'minted',
+      MAUDE_HUB_NAMESPACED: '1',
+    },
+    { port: 4399 }
+  );
+  assert.equal(env.MAUDE_CELL_PAIRING, '1');
+  assert.equal(env.MAUDE_LOOPBACK_SYNC_URL, 'http://127.0.0.1:1234');
+  assert.equal(env.MAUDE_LOOPBACK_SYNC_TOKEN, 'minted');
+  // The two conditions that make pairing safe travel WITH it, asserted here
+  // rather than passed through — they are not settings anybody should vary.
+  assert.equal(env.MAUDE_SHARED_DOC, '1');
+  assert.equal(env.MAUDE_SYNC_NO_AUTOCOMMIT, '1');
+  // The child must compute the same wire document name as the desktop peer it
+  // is meant to meet; a mismatch is two people editing two documents.
+  assert.equal(env.MAUDE_HUB_NAMESPACED, '1');
+  // Still no secret — pairing does not widen the minimal environment.
+  assert.equal(env.HUB_SECRET, undefined);
+});
+
+test('a non-loopback pairing URL is refused at the EMITTING end too', () => {
+  // The studio refuses it on receipt. This refuses to hand it over. Either
+  // alone would do on a good day; the pair is what keeps "a cell never dials
+  // out" (DDR-209) true when one side is edited by somebody who has not read
+  // the other.
+  for (const url of ['https://hub.example.com', 'http://10.0.0.5:1234', 'not-a-url']) {
+    const env = childEnv(
+      { PATH: '/bin', MAUDE_LOOPBACK_SYNC_URL: url, MAUDE_LOOPBACK_SYNC_TOKEN: 'minted' },
+      { port: 4399 }
+    );
+    assert.equal(env.MAUDE_CELL_PAIRING, undefined, url);
+    assert.equal(env.MAUDE_LOOPBACK_SYNC_TOKEN, undefined, url);
+  }
+});
+
 test('the child environment never grows a wildcard', () => {
   // The whole guarantee is "an allowlist, not a spread". A future edit adding
   // `...env` would pass every other test in this file.

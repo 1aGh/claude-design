@@ -8,6 +8,9 @@ import * as Y from 'yjs';
 
 import type { Api } from '../api.ts';
 import type { Context } from '../context.ts';
+// From the LEAF, never from `sync/codec.ts` — codec imports `Y_TYPES` from this
+// file, so reaching for it here would close a cycle (see sync/limits.ts).
+import { MAX_ANNOTATIONS_BYTES, MAX_COMMENTS_BYTES, withinByteCap } from '../sync/limits.ts';
 import { ensureStateDir, type RoomCallbacks } from './room.ts';
 
 /**
@@ -55,6 +58,26 @@ export interface PersistenceDeps {
  * skipped when the Y type is empty / unset — the JSON file stays whatever
  * the prior legacy write produced.
  */
+/**
+ * DDR-064 pre-cutover checklist — cap the doc→disk lane for comments and
+ * annotations.
+ *
+ * The codec's `MAX_*_BYTES` guard the FILE→DOC direction. This is the other
+ * one, and until shared-doc it barely mattered: the room's doc was populated
+ * only by browsers on this machine. Under a shared doc it is populated by the
+ * hub, so an oversized array pushed by a peer (or by a hostile hub — DDR-054's
+ * threat model, §2d) would be materialized to this disk unbounded. Same ceiling
+ * as the import lane, so a value that could never be imported can never be
+ * written either.
+ *
+ * Refuses the WRITE, not the sync: the doc keeps the value and the peers keep
+ * converging. What is withheld is turning somebody else's blob into our disk.
+ * Shared with `sync/projection.ts`'s equivalent guard via `sync/limits.ts`.
+ */
+function withinCap(slug: string, lane: string, value: string, max: number): boolean {
+  return withinByteCap(`collab/${slug}`, lane, Buffer.byteLength(value, 'utf8'), max);
+}
+
 export function createPersistence(deps: PersistenceDeps): RoomCallbacks {
   const { ctx, api, fileForSlug } = deps;
   const stateDir = ensureStateDir(ctx.paths.designRoot);
@@ -135,14 +158,18 @@ export function createPersistence(deps: PersistenceDeps): RoomCallbacks {
     const list = arr.toArray() as Parameters<Api['saveCommentsForFile']>[1];
     if (list.length > 0) seenComments.add(slug);
     if (list.length > 0 || seenComments.has(slug)) {
-      await api.saveCommentsForFile(file, list);
+      if (withinCap(slug, 'comments', JSON.stringify(list), MAX_COMMENTS_BYTES)) {
+        await api.saveCommentsForFile(file, list);
+      }
     }
 
     // Annotations — Y.Map.svg → annotations.svg file. Task 5.
     const map = doc.getMap<unknown>(Y_TYPES.annotations);
     const svg = map.get('svg');
     if (typeof svg === 'string' && svg) {
-      await api.saveAnnotations(file, svg);
+      if (withinCap(slug, 'annotations', svg, MAX_ANNOTATIONS_BYTES)) {
+        await api.saveAnnotations(file, svg);
+      }
     }
   }
 

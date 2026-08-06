@@ -120,6 +120,17 @@ MAUDE_R2_BUCKET = "maude-cloud-assets"
 # tenant for now — the control plane learns to mint these per tenant next.
 MAUDE_TUNNEL_TENANT = "alligators"
 MAUDE_TUNNEL_HOST = "t-alligators.cloud.maude.sh"
+# DESKTOP ↔ CLOUD LIVE PAIRING — the pilot allowlist. Comma-separated tenant
+# ids, or `*` for the whole fleet. Empty/absent = off, which is how every cell
+# behaved before this shipped.
+#
+# This changes the CRDT layer, so it rolls one project at a time. Widening to
+# `*` is a deliberate edit, made only once the pilot has been watched.
+#
+# NB: env applies at CONTAINER START. Changing this value does not reach a
+# running instance — the cell has to stop and be woken again (idle timeout, or
+# an explicit /_cell/restart). A byte-identical config is a no-op roll.
+CELL_LIVE_PAIRING = "alligators"
 
 # Secrets (wrangler secret put):
 #   CELL_SECRET_MASTER          per-cell HUB_SECRETs are derived from this

@@ -157,7 +157,13 @@ if [ "$CHANGED_ONLY" = "1" ]; then
         git -C "$REPO" ls-files --others --exclude-standard -- .design/ui .design/system 2>/dev/null
       } | sort -u
     )
-    if printf '%s\n' "$CHANGED" | grep -qE 'dev-server/|canvas-lib\.tsx|canvas[^/]*\.tsx\.template'; then
+    # `apps/studio/` is the dev server. The pattern used to say `dev-server/`,
+    # which is where it lived before the move — so from the rename until
+    # 2026-08-06 the escalation silently never fired, and a dev-server change
+    # got the narrow "only canvases that changed" sweep instead of the full one.
+    # Kept alongside the old path rather than replaced: a --changed-only run in
+    # an older checkout should still escalate.
+    if printf '%s\n' "$CHANGED" | grep -qE 'apps/studio/|dev-server/|canvas-lib\.tsx|canvas[^/]*\.tsx\.template'; then
       echo "→ --changed-only: dev-server / canvas-lib / template changed — escalating to FULL set" >&2
     else
       # Keep only canvases whose repo-relative path is in the changed set.

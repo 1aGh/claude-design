@@ -1,7 +1,16 @@
 {
-  "generated": "2026-08-05T11:00:46.092Z",
+  "generated": "2026-08-06T05:47:50.911Z",
   "version": "0.55.0",
   "entries": [
+    {
+      "id": "desktop-cloud-live-pairing",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Desktop and browser now meet live in the cloud",
+      "summary": "Open a Maude Cloud project in the app and in a browser tab at the same time, and you now see each other — cursors, edits, everything, live. Rolling out to pilot projects first.",
+      "surface": "design-ui"
+    },
     {
       "id": "gemma-scout-ollama-easy-install",
       "version": null,

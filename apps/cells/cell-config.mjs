@@ -41,6 +41,28 @@ export function isValidTenantId(raw) {
 }
 
 /**
+ * Is desktop ↔ cloud live pairing on for this tenant?
+ *
+ * `CELL_LIVE_PAIRING` is a comma-separated tenant allowlist, or `*` for the
+ * whole fleet. A list rather than a boolean because this feature changes the
+ * CRDT layer, and the rollout it is written for is "one pilot project, watched,
+ * then widen" — a boolean makes the pilot step impossible to express.
+ *
+ * `*` is spelled out so that widening the fleet is a visible, deliberate edit
+ * and never something a stray truthy value can do by accident.
+ */
+export function livePairingEnabled(env, tenantId) {
+  const raw = (env.CELL_LIVE_PAIRING ?? '').trim();
+  if (!raw) return false;
+  if (raw === '*') return true;
+  return raw
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(String(tenantId).toLowerCase());
+}
+
+/**
  * Derive this tenant's operator credential from the platform master.
  *
  * Hex, 64 chars — the same shape `workspace-up` generates, so a cell cannot
@@ -387,6 +409,20 @@ export async function cellEnv({ tenantId, env, hostname, config = NO_CONFIG, s3C
     ...(env.MAUDE_TUNNEL_TOKEN && tenantId === env.MAUDE_TUNNEL_TENANT
       ? { MAUDE_TUNNEL_TOKEN: env.MAUDE_TUNNEL_TOKEN }
       : {}),
+    // DESKTOP ↔ CLOUD LIVE PAIRING — the pilot switch.
+    //
+    // With this on, the cell's studio child joins its OWN hub's documents over
+    // loopback, so a person in the desktop app and a person in a browser tab
+    // share one Y.Doc: cursors and edits cross both ways. Off, the cell behaves
+    // exactly as it did before — the two surfaces persist to the same disk and
+    // never meet live.
+    //
+    // PER-TENANT, and default OFF, because this is a change to the CRDT layer:
+    // it is rolled to one pilot project, watched, and only then widened. A
+    // fleet-wide boolean would make "try it on one project" impossible, which
+    // is the same reason the seed repo and the admin email stopped being
+    // Worker globals in B1.
+    ...(livePairingEnabled(env, tenantId) ? { MAUDE_CELL_PAIRING: '1' } : {}),
     MAUDE_S3_REGION: 'auto',
     // Checkpoint cadence. A cell's disk is ephemeral and the platform migrates
     // instances freely, so the gap between checkpoints IS the window of

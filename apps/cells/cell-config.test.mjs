@@ -22,6 +22,7 @@ import {
   deriveSecret,
   fetchTenantConfig,
   isValidTenantId,
+  livePairingEnabled,
 } from './cell-config.mjs';
 
 const MASTER = 'a-platform-master-secret';
@@ -370,4 +371,43 @@ test('a hub with no zone gets no canvas origin rather than a wrong one', async (
     hostname: 'alligators.cloud.maude.sh',
   });
   assert.equal(vars.MAUDE_PUBLIC_CANVAS_ORIGIN, undefined);
+});
+
+test('live pairing is a per-tenant pilot allowlist, default off', () => {
+  // Default off: a fleet that has not been rolled to pairing behaves exactly as
+  // it did before this shipped, and rolling back is deleting a variable.
+  assert.equal(livePairingEnabled({}, 'alligators'), false);
+  assert.equal(livePairingEnabled({ CELL_LIVE_PAIRING: '' }, 'alligators'), false);
+
+  // One project at a time — this changes the CRDT layer, so a fleet-wide
+  // boolean would make the pilot step impossible to express.
+  assert.equal(livePairingEnabled({ CELL_LIVE_PAIRING: 'alligators' }, 'alligators'), true);
+  assert.equal(livePairingEnabled({ CELL_LIVE_PAIRING: 'alligators' }, 'someone-else'), false);
+  assert.equal(
+    livePairingEnabled({ CELL_LIVE_PAIRING: 'alpha, alligators ,beta' }, 'alligators'),
+    true
+  );
+
+  // `*` is spelled out, so widening the fleet is a visible edit and never
+  // something a stray truthy value can do by accident.
+  assert.equal(livePairingEnabled({ CELL_LIVE_PAIRING: '*' }, 'anyone'), true);
+  assert.equal(livePairingEnabled({ CELL_LIVE_PAIRING: 'true' }, 'anyone'), false);
+  assert.equal(livePairingEnabled({ CELL_LIVE_PAIRING: '1' }, 'anyone'), false);
+});
+
+test('cellEnv carries the pairing switch only for an allowlisted tenant', async () => {
+  const env = { ...baseEnv, CELL_ZONE: 'cloud.maude.sh', CELL_LIVE_PAIRING: 'alligators' };
+  const pilot = await cellEnv({
+    tenantId: 'alligators',
+    env,
+    hostname: 'alligators.cloud.maude.sh',
+  });
+  assert.equal(pilot.MAUDE_CELL_PAIRING, '1');
+
+  const other = await cellEnv({
+    tenantId: 'someone-else',
+    env,
+    hostname: 'someone-else.cloud.maude.sh',
+  });
+  assert.equal(other.MAUDE_CELL_PAIRING, undefined);
 });

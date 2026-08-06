@@ -37,15 +37,13 @@ import {
   applyMetaToDoc,
   cssFromDoc,
   htmlFromDoc,
-  MAX_CSS_BYTES,
-  MAX_HTML_BYTES,
-  MAX_META_BYTES,
   mergeSharedMetaIntoLocal,
   metaFromDoc,
   stampBodyEdit,
 } from './codec.ts';
 import { type EchoGuard, hashBytes } from './echo-guard.ts';
 import type { SyncJournal } from './journal.ts';
+import { MAX_CSS_BYTES, MAX_HTML_BYTES, MAX_META_BYTES, withinByteCap } from './limits.ts';
 import { ORIGINS } from './origins.ts';
 
 export const PROJECT_FLUSH_MS = 800;
@@ -76,6 +74,20 @@ export interface DocProjectionOptions {
   echoGuard?: EchoGuard;
   /** Injected for tests — defaults to atomicWrite. */
   writer?: (path: string, bytes: string | Uint8Array) => void;
+  /**
+   * Called with the absolute path after a doc→file write LANDS.
+   *
+   * Exists for one environment: a cell, where the container's recursive
+   * `fs.watch` does not see our atomic tmp+rename writes. Locally the watcher
+   * fires and the runtime leaves this unset — the same "the watcher owes us this
+   * event" reasoning (and the same workspace-mode gate) as
+   * `createContainerWriteBridge`, which covers the API write path and cannot
+   * cover this one because the projector never arms `activity:suppress`.
+   *
+   * Without it a peer's edit reaches the doc, reaches disk, and the browser's
+   * canvas iframe still shows the old render until somebody reloads by hand.
+   */
+  onWrote?: (absPath: string) => void;
   /** Override the 800 ms debounce. Tests use 0 to flush on the next microtask. */
   flushMs?: number;
   /** Circuit-breaker threshold (consecutive parse failures per path). */
@@ -153,18 +165,41 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
     opts.echoGuard?.record(path, hashBytes(value));
   }
 
+  /**
+   * Write + announce. Every doc→file write goes through here rather than calling
+   * `writer` directly, so a future fourth projected type cannot silently skip
+   * the announcement — the bug class this whole hook exists to close.
+   *
+   * NO-OPS WHEN THE FILE ALREADY HOLDS THESE BYTES. The `last*` guards above
+   * compare against what THIS projector wrote, which is null on the first pass —
+   * so the cold-start `reconcile()` re-wrote every canvas with content identical
+   * to what was already there. Harmless while nobody was listening; once the
+   * write announces itself (below) it became a spurious reload of every open
+   * canvas at boot. A write that changes nothing should cost nothing, including
+   * downstream.
+   *
+   * `onWrote` is best-effort: it feeds a reload, and a reload that failed to
+   * fire must never cost the write that already succeeded.
+   */
+  function writeAndAnnounce(path: string, value: string): void {
+    if (readLocal(path) === value) return;
+    writer(path, value);
+    try {
+      opts.onWrote?.(path);
+    } catch (err) {
+      console.error(`[projection/${slug}] onWrote(${path}) failed:`, err);
+    }
+  }
+
   // Security re-audit (Phase D, finding A2 / DDR-054 §2d): the codec's
   // MAX_*_BYTES caps guard the file→doc *import* lane, but hub-pushed content
   // arrives as raw Yjs updates through the provider (NOT via applyXToDoc), so it
   // bypasses those caps. This doc→file lane is the consumer's guard on that
   // direction — refuse to materialize an oversized hub-pushed body to disk
-  // (disk-fill DoS). Returns true when the write is allowed.
+  // (disk-fill DoS). Returns true when the write is allowed. Shared with
+  // `collab/persistence.ts`'s equivalent guard via `limits.ts`.
   function withinCap(path: string, value: string, max: number): boolean {
-    if (Buffer.byteLength(value, 'utf8') <= max) return true;
-    console.warn(
-      `[projection/${slug}] refusing doc→file write of ${path} > ${max} bytes (hub-pushed oversize). DDR-054 §2d.`
-    );
-    return false;
+    return withinByteCap(`projection/${slug}`, path, Buffer.byteLength(value, 'utf8'), max);
   }
 
   // ----- doc → file (html / css / meta only; room owns comments/annotations)
@@ -180,7 +215,7 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
     }
     if (!withinCap(paths.html, next, MAX_HTML_BYTES)) return;
     recordEcho(paths.html, next);
-    writer(paths.html, next);
+    writeAndAnnounce(paths.html, next);
     lastHtml = next;
     opts.journal?.record(slug, { bodyHash: hashBytes(next) }); // DDR-102 checkpoint
   }
@@ -193,7 +228,7 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
     if (next === null) return; // doc carries no css yet — nothing to write
     if (!withinCap(paths.css, next, MAX_CSS_BYTES)) return;
     recordEcho(paths.css, next);
-    writer(paths.css, next);
+    writeAndAnnounce(paths.css, next);
     opts.journal?.record(slug, { cssHash: hashBytes(next) }); // DDR-102 checkpoint
   }
 
@@ -208,7 +243,7 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
     if (merged === null || merged === local) return; // unparseable / disk matches
     if (!withinCap(paths.meta, merged, MAX_META_BYTES)) return;
     recordEcho(paths.meta, merged);
-    writer(paths.meta, merged);
+    writeAndAnnounce(paths.meta, merged);
   }
 
   async function flush(): Promise<void> {
