@@ -25,6 +25,7 @@ import { createAutoCommit } from '../../studio/sync/autocommit.ts';
 import { createGitRunner, ensureRepo, gitAvailable } from './git-runner.mjs';
 import {
   attributionFor,
+  committableLanes,
   defaultBodyPath,
   filesForCanvas,
   indexCanvasPaths,
@@ -203,29 +204,49 @@ export function createWorkspaceAgent(opts) {
         }
       }
 
-      const writes = filesForCanvas({
-        bodyRel,
-        content: readDocContent(document),
-        onDisk: {
-          body: readIfPresent(abs(bodyRel)),
-          meta: readIfPresent(abs(sib.meta)),
-          css: readIfPresent(abs(sib.css)),
-          annotations: readIfPresent(abs(sib.annotations)),
-        },
-      });
-      if (writes.length === 0) return null;
+      const content = readDocContent(document);
+      const onDisk = {
+        body: readIfPresent(abs(bodyRel)),
+        meta: readIfPresent(abs(sib.meta)),
+        css: readIfPresent(abs(sib.css)),
+        annotations: readIfPresent(abs(sib.annotations)),
+      };
+      const writes = filesForCanvas({ bodyRel, content, onDisk });
+
+      // WHAT TO COMMIT IS NOT WHAT WE WROTE — desktop ↔ cloud live pairing.
+      //
+      // This used to `note` exactly the paths this function had just written,
+      // which was correct while the hub was the only writer. Under pairing
+      // (DDR-213) it is not: the studio child's doc→file projector writes the
+      // same bytes from the same doc, and usually WINS the race. The hub then
+      // reads disk, finds it already identical, writes nothing — and, noting
+      // nothing, never commits. The tenant's edits were safely on the cell's
+      // disk and permanently absent from its history, which is the one thing a
+      // cell owns on their behalf (`MAUDE_SYNC_NO_AUTOCOMMIT=1` disables the
+      // child's own autocommit precisely because the hub is meant to do this).
+      //
+      // `committableLanes` answers "which lanes may be staged", applying the
+      // SAME gates as the write path — see workspace-files.mjs for why the two
+      // are neighbours and why the meta lane in particular must not diverge.
+      const committable = committableLanes({ bodyRel, content, onDisk });
+
+      if (writes.length === 0 && committable.length === 0) return null;
 
       const who = attributionFor(user);
+      const toStage = new Set(committable);
       for (const w of writes) {
         atomicWrite(abs(w.relPath), w.text);
+        toStage.add(w.relPath);
+      }
+      for (const rel of toStage) {
         // autocommit stages paths relative to the REPO root, not the design root.
-        auto.note(relative(repoDir, abs(w.relPath)).split(sep).join('/'), who);
+        auto.note(relative(repoDir, abs(rel)).split(sep).join('/'), who);
       }
       // A brand-new canvas becomes indexable immediately, so a second event in
       // the same session does not re-derive the default flat path.
       if (!pathIndex.has(slug)) pathIndex.set(slug, bodyRel);
 
-      return { slug, bodyRel, written: writes.map((w) => w.relPath) };
+      return { slug, bodyRel, written: writes.map((w) => w.relPath), staged: [...toStage] };
     } catch (err) {
       log.error?.(`[workspace] projecting ${slug} failed: ${err.message}`);
       return null;

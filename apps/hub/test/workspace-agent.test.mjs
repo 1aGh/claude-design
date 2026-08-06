@@ -137,7 +137,9 @@ describe('workspace-files (pure)', () => {
     assert.deepEqual(siblingPaths('ui/Card.tsx'), {
       meta: 'ui/Card.meta.json',
       css: 'ui/Card.css',
-      annotations: 'ui/Card.annotations.svg',
+      // NOT a sibling — the studio keys annotations by the flat slug at the
+      // design root, and the hub must write the file the studio actually reads.
+      annotations: 'ui-card.annotations.svg',
     });
   });
 
@@ -537,6 +539,113 @@ describe('workspace agent, end to end against real git', () => {
       !existsSync(join(repo, '.design/ui-card.tsx')),
       'must not flatten an existing canvas'
     );
+    await agent.stop();
+  });
+
+  it('commits an edit ANOTHER process already wrote to disk (cell live pairing)', {
+    skip: gitOk ? false : 'git not available',
+  }, async () => {
+    // THE PAIRING RACE, as a test. Under DDR-213 the studio child's doc→file
+    // projector writes the same bytes from the same doc and usually gets there
+    // first, so the hub has nothing to write. It must still COMMIT: the cell
+    // owns this tenant's history, and the child's own autocommit is disabled.
+    // Before the fix this left the tree permanently dirty and `git log` empty.
+    const repo = tmp();
+    const agent = createWorkspaceAgent({ repoDir: repo, debounceMs: 5, log: silent() });
+    await agent.start();
+
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'export default () => <main>paired</main>;\n');
+
+    // The OTHER process wins the race: disk already holds the doc's bytes.
+    mkdirSync(join(repo, '.design'), { recursive: true });
+    writeFileSync(join(repo, '.design/home.tsx'), 'export default () => <main>paired</main>;\n');
+
+    const out = await agent.onDocumentStored({
+      documentName: 'ws/acme/main/home',
+      document: doc,
+      user: { name: 'Dana', email: 'dana@example.com' },
+    });
+    assert.deepEqual(out.written, [], 'the hub had nothing to write — the projector won');
+    assert.deepEqual(out.staged, ['home.tsx'], 'but it must still stage the lane for commit');
+
+    const commit = await agent.flush();
+    assert.equal(commit.ok, true, `expected a commit, got ${JSON.stringify(commit)}`);
+    const tracked = execFileSync('git', ['show', '--name-only', '--format=', 'HEAD'], {
+      cwd: repo,
+      encoding: 'utf8',
+    }).trim();
+    assert.equal(tracked, '.design/home.tsx');
+    const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: repo, encoding: 'utf8' });
+    assert.equal(dirty.trim(), '', 'the checkout must not be left dirty');
+    await agent.stop();
+  });
+
+  it('never commits a meta the write path refused to write', {
+    skip: gitOk ? false : 'git not available',
+  }, async () => {
+    // The commit gate must not be looser than the write gate. `filesForCanvas`
+    // refuses to write a `.meta.json` whose shared half does not parse; staging
+    // it anyway would commit unvalidated bytes into the tenant's history and on
+    // to their GitHub mirror — defeating the refusal. (Defender finding, 2026-08-06.)
+    const repo = tmp();
+    mkdirSync(join(repo, '.design'), { recursive: true });
+    writeFileSync(join(repo, '.design/home.tsx'), 'body\n');
+    writeFileSync(join(repo, '.design/home.meta.json'), '{"layout":{"anything":1}}\n');
+
+    const agent = createWorkspaceAgent({ repoDir: repo, debounceMs: 5, log: silent() });
+    await agent.start();
+
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'body\n'); // identical to disk — nothing to write
+    doc.getText('meta').insert(0, 'not json at all'); // the write path will refuse this
+
+    const out = await agent.onDocumentStored({
+      documentName: 'ws/acme/main/home',
+      document: doc,
+      user: null,
+    });
+    assert.ok(
+      !out.written.includes('home.meta.json'),
+      'the write path must still refuse an unparseable shared meta'
+    );
+    assert.ok(
+      !out.staged.includes('home.meta.json'),
+      'and the commit path must refuse it too — not route around the gate'
+    );
+    assert.ok(out.staged.includes('home.tsx'), 'the body lane is unaffected');
+    await agent.stop();
+  });
+
+  it('an unchanged lane produces no empty commit', {
+    skip: gitOk ? false : 'git not available',
+  }, async () => {
+    // The other half of the same change: now that we stage lanes we did not
+    // write, a re-store of identical bytes must NOT manufacture a commit.
+    const repo = tmp();
+    const agent = createWorkspaceAgent({ repoDir: repo, debounceMs: 5, log: silent() });
+    await agent.start();
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'x\n');
+    const store = () =>
+      agent.onDocumentStored({ documentName: 'ws/a/main/home', document: doc, user: null });
+
+    await store();
+    assert.equal((await agent.flush()).ok, true);
+    const first = execFileSync('git', ['rev-list', '--count', 'HEAD'], {
+      cwd: repo,
+      encoding: 'utf8',
+    }).trim();
+
+    await store(); // identical bytes, second time
+    const again = await agent.flush();
+    assert.equal(again.ok, false);
+    assert.equal(again.reason, 'nothing-to-commit');
+    const second = execFileSync('git', ['rev-list', '--count', 'HEAD'], {
+      cwd: repo,
+      encoding: 'utf8',
+    }).trim();
+    assert.equal(second, first, 'no empty commit was manufactured');
     await agent.stop();
   });
 

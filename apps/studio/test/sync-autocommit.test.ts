@@ -167,6 +167,53 @@ describe('committing, against a real repo', () => {
     expect((await log('%s')).length).toBe(1);
   });
 
+  test('a steady stream of notes cannot defer the commit forever', async () => {
+    // Quiescence batching resets the timer on every note, so without a ceiling
+    // anyone able to drive notes faster than `debounceMs` holds the project's
+    // history open indefinitely. In a cell that is reachable by the LOWEST role:
+    // a viewer holds `comment`, a comment updates the doc, the doc stores, and
+    // the hub notes on every store. Bounded now by `maxDebounceMs`.
+    const auto = createAutoCommit({
+      repoRoot: repo,
+      run: git,
+      debounceMs: 100, // never quiet: notes arrive every 20 ms, below this
+      maxDebounceMs: 300,
+      log: silent(),
+    });
+
+    write(REL, 'export default () => <main>held open</main>;\n');
+    const started = Date.now();
+    // 600 ms of chatter at 20 ms — six times the quiescence window, so the
+    // un-ceilinged version commits nothing at all in this span.
+    while (Date.now() - started < 600) {
+      auto.note(REL, ALICE);
+      await new Promise((r) => setTimeout(r, 20));
+    }
+
+    const subjects = await log('%s');
+    expect(subjects.length).toBe(2); // seed + the ceiling-forced autosave
+    auto.stop();
+  });
+
+  test('an unrelated STAGED entry cannot wedge the agent', async () => {
+    // The no-op probe asks "did OUR paths stage anything". Unscoped, a stray
+    // index entry answers yes, and `commit --only -- <our unchanged paths>`
+    // then exits non-zero forever — the agent re-queues but never re-arms, so
+    // it fails identically from then on while /health stays green. Routine
+    // since the commit set stopped being "files we just wrote" (cell pairing:
+    // the studio child's projector writes the bytes first).
+    write('stray.txt', 'staged by somebody else\n');
+    await git(['add', '--', 'stray.txt'], { cwd: repo });
+
+    const auto = createAutoCommit({ repoRoot: repo, run: git, debounceMs: 5, log: silent() });
+    auto.note(REL, ALICE); // unchanged bytes
+    const outcome = await auto.flush();
+    expect(outcome?.ok).toBe(false);
+    expect(outcome && !outcome.ok && outcome.reason).toBe('nothing-to-commit');
+    // And it must not have swept the stray file into a commit either.
+    expect((await log('%s')).length).toBe(1);
+  });
+
   test('only the NOTED files are staged — an unrelated dirty file is left alone', async () => {
     // `git add -A` in a workspace would sweep in whatever else is in the tree.
     // The cell must never commit something it wasn't told about.

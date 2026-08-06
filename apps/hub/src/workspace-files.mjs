@@ -110,13 +110,40 @@ export function defaultBodyPath(slug) {
   return `${slug}${BODY_EXT}`;
 }
 
-/** Sibling paths derived from a body path. */
+/**
+ * Sibling paths derived from a body path.
+ *
+ * `.meta.json` and `.css` really are SIBLINGS — `ui/Card.tsx` → `ui/Card.css`.
+ * The annotations sidecar is NOT, and that asymmetry is the studio's, not ours:
+ * it keys annotations by the flat canvas SLUG at the design root
+ * (`ui/Card.tsx` → `ui-card.annotations.svg`).
+ *
+ * Deriving it as a sibling made the hub write a file NOBODY READS, and — worse
+ * — commit that one while the real sidecar stayed untracked, so the junk path
+ * is what would reach the tenant's GitHub mirror.
+ *
+ * THE TWIN TO MATCH IS `slugFor()` in `apps/studio/sync/index.ts` — the writer
+ * that actually puts this file on disk — and `canvasSlug` reproduces it
+ * character for character. It is NOT quite `api.ts`'s `canvasSlugFromRel()`,
+ * which additionally `decodeURIComponent`s because its input is a URL
+ * parameter rather than a disk path. For any real on-disk name the three agree;
+ * they diverge only for a filename containing a literal `%`-hex sequence, where
+ * the HTTP lane would decode and the disk lanes would not. That divergence
+ * predates this function and lives between those two studio helpers — noted
+ * here so the next reader does not "fix" this one into disagreeing with the
+ * writer it exists to match.
+ */
 export function siblingPaths(bodyRel) {
   const stem = bodyRel.replace(/\.(tsx|html)$/i, '');
+  // `canvasSlug` strips leading dots, so an all-dots name (`..`, `.tsx`) slugs
+  // to the empty string and would put every such canvas on one shared, hidden
+  // `.annotations.svg`. Contained either way, but the stem keeps them distinct
+  // and keeps a dotfile out of the tenant's design root.
+  const slug = canvasSlug(bodyRel);
   return {
     meta: `${stem}.meta.json`,
     css: `${stem}.css`,
-    annotations: `${stem}.annotations.svg`,
+    annotations: `${slug || stem}.annotations.svg`,
   };
 }
 
@@ -182,6 +209,51 @@ export function filesForCanvas({ bodyRel, content, onDisk = {} }) {
     // safe answer: writing a partial or empty `.meta.json` over a good one
     // would drop the canvas's layout.
     if (merged !== null) put(sib.meta, merged, onDisk.meta ?? null);
+  }
+
+  return out;
+}
+
+/**
+ * Which of a canvas's lanes may be STAGED FOR COMMIT this pass.
+ *
+ * Not the same question as `filesForCanvas` ("what must I write?"), because
+ * under cell live pairing (DDR-213) the studio child's projector writes the
+ * same bytes from the same doc and usually wins the race — so the hub writes
+ * nothing and, if committing followed writing, would commit nothing. The
+ * tenant's work would sit on the cell's disk and never enter its history.
+ *
+ * It lives HERE, beside `filesForCanvas`, because the two must not drift: any
+ * gate the write path applies, the commit path has to apply too. The meta lane
+ * is the one with teeth — `filesForCanvas` refuses to write a `.meta.json`
+ * whose shared half did not parse, and staging it anyway would commit
+ * unvalidated bytes into the tenant's history and onward to their GitHub
+ * mirror, defeating the exact refusal the writer exists to make.
+ *
+ * Whether a staged lane is really a CHANGE is git's call, not ours: the caller
+ * stages these paths and `commitCycle` reports `nothing-to-commit` on an empty
+ * index, so an unchanged lane costs one `git add` and produces no empty commit.
+ *
+ * @returns {string[]} paths relative to the design root
+ */
+export function committableLanes({ bodyRel, content, onDisk = {} }) {
+  const sib = siblingPaths(bodyRel);
+  const out = [];
+
+  // Present in the doc AND already on disk — whoever put it there.
+  const take = (relPath, inDoc, onDiskText) => {
+    if (inDoc === null || inDoc === undefined) return;
+    if (onDiskText === null || onDiskText === undefined) return;
+    out.push(relPath);
+  };
+
+  take(bodyRel, content.body, onDisk.body ?? null);
+  take(sib.css, content.css, onDisk.css ?? null);
+  take(sib.annotations, content.annotations, onDisk.annotations ?? null);
+
+  if (content.meta !== null && content.meta !== undefined && onDisk.meta) {
+    // The SAME gate `filesForCanvas` applies before writing meta.
+    if (mergeSharedMetaIntoLocal(onDisk.meta, content.meta) !== null) out.push(sib.meta);
   }
 
   return out;

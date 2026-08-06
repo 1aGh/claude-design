@@ -1,7 +1,16 @@
 {
-  "generated": "2026-08-06T05:47:50.911Z",
+  "generated": "2026-08-06T21:38:12.685Z",
   "version": "0.55.0",
   "entries": [
+    {
+      "id": "cloud-projects-save-themselves",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Cloud projects save themselves",
+      "summary": "A project open in Maude Cloud now records every edit as you make it — from a browser tab or from the app — so there is nothing to save by hand. The browser panel that used to ask you to Save and Publish is now simply History, showing what was already kept. Drawn annotations are stored where they are read from again, so they survive a reload.",
+      "surface": "design-ui"
+    },
     {
       "id": "desktop-cloud-live-pairing",
       "version": null,

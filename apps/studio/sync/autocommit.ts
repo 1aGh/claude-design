@@ -32,6 +32,16 @@ import { withRepoLock } from '../git/repo-lock.ts';
 /** How long the tree must be quiet before a commit fires. */
 const DEFAULT_DEBOUNCE_MS = 3000;
 
+/**
+ * The ceiling on that quiescence — how long a PENDING batch may be deferred by
+ * a continuing stream of notes before it commits anyway. Without it, quiescence
+ * batching has no upper bound and a steady note cadence defers history forever
+ * (see `note`). Generous enough that ordinary typing still coalesces into one
+ * commit, small enough that a cell's ephemeral disk is never far ahead of its
+ * history.
+ */
+const DEFAULT_MAX_DEBOUNCE_MS = 15_000;
+
 export interface GitRunResult {
   code: number;
   stdout: string;
@@ -53,6 +63,12 @@ export interface AutoCommitOptions {
   run: GitRunner;
   /** Quiescence window. */
   debounceMs?: number;
+  /**
+   * Ceiling on that quiescence: a pending batch commits after at most this long
+   * from its first note, however many notes keep arriving. Bounds the
+   * "steady stream defers history forever" case — see `note`.
+   */
+  maxDebounceMs?: number;
   /** Committer identity — the machine, never the human. */
   bot?: EditAttribution;
   log?: Pick<Console, 'warn' | 'error' | 'log'>;
@@ -154,6 +170,7 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
     repoRoot,
     run,
     debounceMs = DEFAULT_DEBOUNCE_MS,
+    maxDebounceMs = DEFAULT_MAX_DEBOUNCE_MS,
     bot = DEFAULT_BOT,
     log = console,
   } = opts;
@@ -163,9 +180,13 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let inFlight: Promise<CommitOutcome | null> | null = null;
   let stopped = false;
+  /** When the currently-pending batch received its first note (see `note`). */
+  let batchStartedAt = 0;
 
   function note(relPath: string, who?: EditAttribution | null): void {
     if (stopped) return;
+    // Start of a batch — the clock the ceiling below is measured against.
+    if (touched.size === 0) batchStartedAt = Date.now();
     touched.add(relPath);
     // Last writer wins for attribution. A commit that coalesced two people's
     // edits can only name one author; the message body names them, and the
@@ -173,6 +194,23 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
     // that keeps this history readable.
     if (who) author = who;
     if (timer) clearTimeout(timer);
+    // QUIESCENCE, BUT WITH A CEILING. Resetting the timer on every note is what
+    // makes a typing session one commit instead of four hundred — and, alone,
+    // it means a steady stream of notes defers the commit forever. That is not
+    // hypothetical here: the hub notes on every stored document, Hocuspocus
+    // stores on its own ~2 s debounce, and anyone who can drive doc updates at
+    // a cadence under `debounceMs` — including a VIEWER, who deliberately holds
+    // the `comment` capability — can hold a project's history open indefinitely
+    // while `/health` stays green. Before the commit set stopped being "files
+    // we just wrote", a no-write store event returned before reaching here, so
+    // the reachable cadence was bounded by real edits.
+    //
+    // So: still coalesce, but never defer a pending batch past `maxDebounceMs`
+    // from its first note. Worst-case commit latency becomes bounded and small,
+    // and the batching behaviour for ordinary typing is unchanged (a human
+    // pauses long before the ceiling).
+    const sinceBatchStart = Date.now() - batchStartedAt;
+    const delay = Math.max(0, Math.min(debounceMs, maxDebounceMs - sinceBatchStart));
     timer = setTimeout(() => {
       timer = null;
       // `.catch` and not just `void`: a discarded rejection here is an
@@ -180,7 +218,7 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
       flush().catch((err) => {
         log.warn?.(`[autocommit] flush failed: ${err instanceof Error ? err.message : err}`);
       });
-    }, debounceMs);
+    }, delay);
   }
 
   async function flush(): Promise<CommitOutcome | null> {
@@ -242,12 +280,33 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
     const add = await run(['add', '--', ...files], { cwd: repoRoot });
     if (add.code !== 0) {
       log.warn?.(`[autocommit] git add failed: ${add.stderr.trim()}`);
+      // RE-QUEUE, exactly as the `commit` branch below does. `touched` was
+      // cleared by `flush()` before we got here, so returning without this
+      // drops the whole coalesced batch — including other people's edits in
+      // the same window — from history, permanently and silently.
+      // One bad pathspec is enough: `git add -- <path that vanished>` exits
+      // 128, and paths are now noted on the strength of a read taken up to
+      // `debounceMs` earlier, for files whose lifetime this process does not
+      // own (a canvas deleted inside the quiescence window).
+      for (const f of files) touched.add(f);
       return { ok: false, reason: 'git-failed', detail: add.stderr.trim(), files };
     }
 
     // Nothing staged ⇒ the write was a no-op (an echo, or identical bytes).
     // Not an error, and committing an empty change would be noise.
-    const staged = await run(['diff', '--cached', '--name-only'], { cwd: repoRoot });
+    //
+    // SCOPED TO `files`, and that pathspec is load-bearing. The question is
+    // "did OUR paths stage anything", and an unrelated entry sitting in the
+    // index answers it wrongly — the probe says yes, then `commit --only --
+    // <our unchanged paths>` exits non-zero with "no changes added to commit".
+    // `touched` re-queues but nothing re-arms the timer, so the agent wedges
+    // and fails identically forever while `/health` keeps answering 200.
+    // Reachable since the commit set stopped being "files we just wrote": a
+    // batch of exclusively-unchanged paths is now routine under cell pairing,
+    // where the studio child's projector writes the bytes first.
+    const staged = await run(['diff', '--cached', '--name-only', '--', ...files], {
+      cwd: repoRoot,
+    });
     if (staged.code === 0 && staged.stdout.trim() === '') {
       return { ok: false, reason: 'nothing-to-commit', files };
     }

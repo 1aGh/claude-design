@@ -144,7 +144,7 @@ Zero-regression bar (the `no-break-exhaustive-verify` discipline — this is a C
 - [x] All tasks completed
 - [x] `/flow:utils-verify` passes after each task
 - [x] Convergence property suite green with the flag ON
-- [ ] **Live cross-surface run: presence + edits cross both ways, reload loses nothing, exactly one committer** — the one remaining blocker. Needs a real cell + a desktop app + a browser; cannot be run from here.
+- [x] **Live cross-surface run: presence + edits cross both ways, reload loses nothing, exactly one committer** — run 2026-08-06 against a local cloud-faithful cell (split shell/canvas origins via `apps/cells/dev-edge.mjs`, two browser accounts, the desktop app). Presence + edits crossed both ways; an annotation survived a full cell restart; `git log` shows exactly one committer, `Maude Workspace <workspace@maude.local>`, with the editor carried as the git AUTHOR. **The run was not a formality — it found two real bugs, both fixed before this box was ticked** (see below).
 - [x] DDR-209 invariants preserved (loopback-only, hub sole committer) — asserted by test, not just by reading (`shared-doc-cell-pairing.test.ts`: the loopback matrix, the git-untouched edit cycle)
 - [x] DDR-064 pre-cutover checklist items closed or recorded (A1 moot/recorded · A4 + A6 implemented + tested · A7 implemented · comments hub→disk lane capped · provider advisories clean) — see DDR-213's table
 - [x] A DDR recorded for the C2 decision — [DDR-213](../archive/decisions/DDR-213-cell-pairs-with-itself-loopback-shared-doc.md), EXTENDS DDR-064 + DDR-209, C1 noted as the follow-up
@@ -156,6 +156,17 @@ Zero-regression bar (the `no-break-exhaustive-verify` discipline — this is a C
 - **Scope taken beyond the plan, deliberately:** shared-doc is now a hard *condition* of pairing (not just an accompanying flag) — without it the loopback provider would open a second doc per canvas, which is strictly worse than not pairing; `.claudeignore` / `_untrusted/` markers are suppressed in a cell (they would land in the tenant's repo and be mirrored to their GitHub); `sync/limits.ts` was extracted to break an import cycle the new persistence cap would otherwise have closed.
 - **Known consequence, not fixed here:** browser-originated edits are now attributed to the pairing token rather than to the member. The token is minted with no owner on purpose. Carrying the real editor across the loopback lane is follow-up work — and C1 fixes it for free. Recorded in DDR-213 § Consequences.
 - **Pre-existing reds, untouched:** `pnpm lint` (control characters in `apps/studio/bin/_smart-frames.test.mjs`) and `apps/hub/test/auth-hardening.test.mjs` were both already failing on `main` — verified by stashing this change.
+
+### The live cross-surface run (2026-08-06) — what it cost and what it caught
+
+The deferred manual gate was the whole point, and it earned its keep: **the feature was code-complete, test-green and wrong in production in two ways**, neither reachable by the unit suites because both live in the seam between two processes.
+
+1. **Paired edits were never committed.** `workspace-agent.mjs` staged for commit only the files the hub had itself written. Under pairing the studio child's projector writes the same bytes from the same doc and usually wins, so the hub wrote nothing, noted nothing, and never committed. "Exactly one committer" passed *vacuously* — there were ZERO. The tenant's work sat safely on the cell's disk and permanently out of its history, which is the one thing a cell owns on their behalf. Fixed by separating *what to write* from *what to commit* (a lane is committable when the doc carries it and disk has it, whoever wrote it) and letting git decide whether that is a real change.
+2. **The annotations sidecar was written to a path nothing reads.** The hub derived it as a true sibling (`ui/Hello.annotations.svg`); the studio keys it by the flat slug at the design root (`ui-hello.annotations.svg`). So the hub committed a junk file — the one that would reach the tenant's GitHub mirror — while the real sidecar stayed untracked.
+
+Both now have regression tests that were **verified to fail without the fix**. A third, smaller finding: the browser's Changes panel advertised Save/Publish and an "unsaved" count for work the hub had already committed, and told a cloud user to "save from your terminal"; the panel now withdraws to History wherever the server owns history.
+
+**Process lesson worth carrying:** a manual acceptance criterion left unchecked because it "needs real infrastructure" is not a formality to tick later — it is the only test that runs the real topology. Standing up a faithful local stand-in (both origins, real capability cookies, a real desktop peer) cost about one session and converted three production bugs into three commits. Two near-misses in that session are also instructive: a `<title>` marker used to prove annotation persistence was silently stripped by the annotation sanitizer and nearly read as data loss, and a stray `bun test` run from the repo root clobbered `dist/` with 14 MB dev bundles three separate times — the CLAUDE.md `dist/` guard is not paranoia.
 
 ---
 

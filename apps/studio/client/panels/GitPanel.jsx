@@ -155,8 +155,19 @@ export default function GitPanel({
   // checkboxes) — the developer commits and pushes from their terminal
   // (DDR-119). Native app keeps the full plain-words cycle.
   readOnly = false,
+  // THE SERVER ALREADY COMMITTED IT. In a cloud cell the hub owns this
+  // project's history and commits every edit as it lands (the studio child's
+  // own autocommit is disabled precisely so there is one committer) — so an
+  // "unsaved changes" list is not a to-do, it is a lie about work that is
+  // already saved, and Save / Publish offer to do a thing that has happened.
+  // The read-only variant of this panel used to answer that with "save and
+  // publish from your terminal", which is advice a browser user cannot take.
+  //
+  // History STAYS, and is the point: what the server committed is exactly what
+  // someone wants to look back at. Only the working-tree half goes.
+  historyOnly = false,
 }) {
-  const [tab, setTab] = useState('changes');
+  const [tab, setTab] = useState(historyOnly ? 'history' : 'changes');
   const [message, setMessage] = useState('');
   const [unchecked, setUnchecked] = useState(() => new Set()); // default = all checked
   const [expanded, setExpanded] = useState(() => new Set()); // unit keys with supporting files shown
@@ -443,13 +454,13 @@ export default function GitPanel({
     <aside
       className={'st-rpanel gp-panel' + (resizing ? ' is-resizing' : '')}
       style={width ? { width, flexBasis: width } : undefined}
-      aria-label="Changes"
+      aria-label={historyOnly ? 'History' : 'Changes'}
       data-testid="git-panel"
     >
       <div className="gp-head">
         <div className="gp-panel-hd">
-          <span className="gp-panel-title">Changes</span>
-          {count > 0 && <span className="gp-count">{count} unsaved</span>}
+          <span className="gp-panel-title">{historyOnly ? 'History' : 'Changes'}</span>
+          {!historyOnly && count > 0 && <span className="gp-count">{count} unsaved</span>}
           <span className="gp-spacer" />
           <span className="gp-draft" title="Your project and shared draft">
             <Icon name="folder" size={12} />
@@ -465,26 +476,28 @@ export default function GitPanel({
             ×
           </button>
         </div>
-        <div className="gp-tabs" role="tablist" aria-label="Changes and history">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'changes'}
-            className={'gp-tab' + (tab === 'changes' ? ' is-active' : '')}
-            onClick={() => setTab('changes')}
-          >
-            Changes
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'history'}
-            className={'gp-tab' + (tab === 'history' ? ' is-active' : '')}
-            onClick={openHistory}
-          >
-            History
-          </button>
-        </div>
+        {!historyOnly && (
+          <div className="gp-tabs" role="tablist" aria-label="Changes and history">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'changes'}
+              className={'gp-tab' + (tab === 'changes' ? ' is-active' : '')}
+              onClick={() => setTab('changes')}
+            >
+              Changes
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'history'}
+              className={'gp-tab' + (tab === 'history' ? ' is-active' : '')}
+              onClick={openHistory}
+            >
+              History
+            </button>
+          </div>
+        )}
       </div>
 
       {banner && (
@@ -530,7 +543,7 @@ export default function GitPanel({
         </div>
       )}
 
-      {tab === 'changes' ? (
+      {tab === 'changes' && !historyOnly ? (
         notRepo ? (
           <div className="gp-empty">
             <span className="gp-empty-glyph">

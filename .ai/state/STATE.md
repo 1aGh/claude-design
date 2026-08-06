@@ -3,9 +3,33 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** done — desktop ↔ cloud live pairing closed 2026-08-06
+**Status:** done — the pairing live-run gate closed 2026-08-06 (3 bugs found + fixed)
 **Active plan:** —
 **Active task:** —
+
+_2026-08-06:_ **The deferred live cross-surface run finally happened — and it was not a formality.**
+The last unchecked acceptance criterion on desktop ↔ cloud live pairing needed
+"a real cell + a desktop app + a browser", so a local stand-in was built with
+the fleet's actual topology: split shell/canvas origins through
+`apps/cells/dev-edge.mjs`, real capability cookies, two accounts, a linked
+desktop peer. The feature was code-complete and test-green, and **wrong in
+production in two ways**, both living in the seam between the cell's two
+processes where no unit test could see them. (1) Paired edits were never
+committed: the hub staged only files it had written itself, and under pairing
+the studio's projector always wins the race — so "exactly one committer" was
+passing *vacuously*, with zero. (2) The annotations sidecar was written as a
+canvas sibling while everything that reads it looks under the flat slug, so the
+hub committed a junk file — the one that would reach the tenant's GitHub mirror
+— and left the real one untracked. Both fixed, both with regression tests
+verified to fail without the fix. A third, smaller finding: the cloud browser's
+Changes panel offered Save/Publish and an "unsaved" count for work already
+committed, and told a browser user to save from their terminal; it now withdraws
+to History wherever the server owns history (desktop untouched — a hub-linked
+peer does NOT self-commit, so hiding it there would remove the only local way to
+save; verified rather than assumed). **The lesson worth keeping:** a manual
+acceptance criterion parked because it "needs real infrastructure" is the only
+test that runs the real topology — standing up the faithful stand-in cost one
+session and converted three production bugs into three commits.
 
 _2026-08-06:_ **Desktop ↔ cloud live pairing (C2) CLOSED + archived — a cell pairs with itself.**
 The studio child now opens a loopback, commit-disabled, shared-doc provider to

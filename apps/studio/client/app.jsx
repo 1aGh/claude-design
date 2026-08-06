@@ -156,7 +156,7 @@ const LAYERS_MODE_STORE = 'mdcc-layers-mode';
 // resizable width + a tab strip over the panels assigned to the slot; renders
 // the active panel (passed as children). Collapses to 0 width when nothing is
 // visibly open (it may still host an always-mounted hidden ChatPanel).
-function DockSlot({ side, width, open, ids, activeId, onPick, children }) {
+function DockSlot({ side, width, open, ids, activeId, onPick, children, labels = null }) {
   return (
     <div
       className={'st-dockslot st-dockslot--' + side + (open ? '' : ' is-collapsed')}
@@ -173,7 +173,7 @@ function DockSlot({ side, width, open, ids, activeId, onPick, children }) {
               className={'st-docktab' + (activeId === id ? ' is-active' : '')}
               onClick={() => onPick(id)}
             >
-              {(DOCK_PANELS.find((p) => p.id === id) || {}).label || id}
+              {labels?.[id] || (DOCK_PANELS.find((p) => p.id === id) || {}).label || id}
             </button>
           ))}
         </div>
@@ -3733,7 +3733,14 @@ function Menubar({
     { id: 'tree', label: 'Project Tree', shortcut: 'T', checked: sidebarOpen, disabled: false },
     {
       id: 'changes',
-      label: changesCount > 0 ? `Changes · ${changesCount} unsaved` : 'Changes',
+      // In a cell this panel is History (the hub already committed the work),
+      // so the menu names what it opens rather than an unsaved count there is
+      // no way — and no reason — to act on.
+      label: cloud
+        ? 'History'
+        : changesCount > 0
+          ? `Changes · ${changesCount} unsaved`
+          : 'Changes',
       shortcut: '⌘ ⇧ G',
       checked: changesOpen,
       disabled: false,
@@ -14019,6 +14026,11 @@ function App() {
     changes: changesOpen,
     assistant: assistantOpen,
   };
+  // Per-shell overrides for the dock tab strip. In a cell the `changes` panel
+  // IS the history (the hub commits server-side), so its tab must say so —
+  // otherwise the one visible word still promises a working-tree surface that
+  // panel no longer has.
+  const dockLabels = cfg.cloud ? { changes: 'History' } : null;
   const leftIds = idsForSide('left');
   const rightIds = idsForSide('right');
   const leftActive = leftIds.find((id) => panelIsOpen[id]) || null;
@@ -14083,6 +14095,20 @@ function App() {
           status={gitStatus && remoteSync ? { ...gitStatus, ...remoteSync } : gitStatus}
           project={project}
           readOnly={!isNativeApp() || viewerMode}
+          // A cloud cell commits every edit server-side as it lands, so the
+          // working-tree half of this panel describes work that is already
+          // saved. `cfg.cloud` is present exactly when the hub runs the
+          // workspace agent that owns this project's history, which is the
+          // same condition.
+          //
+          // PRESENTATION, NOT A CONTROL — nothing may come to depend on this.
+          // `/_api/git/commit` and `/_api/git/discard` are classified `edit` in
+          // the cell's route manifest and stay reachable by any member with a
+          // session; withdrawing the buttons removes an offer that would
+          // mislead, it does not remove a capability. The real gates are
+          // server-side (`projectReadOnly`, the manifest's role matrix), and
+          // they are unchanged by this flag.
+          historyOnly={!!cfg.cloud}
           resizing={resizingFor('changes')}
           onClose={() => setChangesOpen(false)}
           onCommit={gitCommit}
@@ -14330,6 +14356,7 @@ function App() {
               ids={leftIds}
               activeId={leftActive}
               onPick={togglePanel}
+              labels={dockLabels}
             >
               {leftHostsAssistant && (
                 <ChatPanel
@@ -14402,6 +14429,7 @@ function App() {
               ids={rightIds}
               activeId={rightActive}
               onPick={togglePanel}
+              labels={dockLabels}
             >
               {rightHostsAssistant && (
                 <ChatPanel
