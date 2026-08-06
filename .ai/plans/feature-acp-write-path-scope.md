@@ -26,14 +26,15 @@ As someone who opens a design project I did not write, I want Maude's assistant 
 - **B — resolve, never string-compare.** The verdict is computed on a **realpath-resolved** path (nearest existing ancestor for a file that does not exist yet), so `..`, `~`, and a symlink inside the project pointing out are all caught. `path.relative(root, target)` must be non-empty, not absolute, and not start with `..`.
 - **C — fail closed.** Path comes from `toolCall.locations[].path` (ACP-normalized absolute), cross-checked against `rawInput.file_path`. A write tool arriving with **no** resolvable location, or with locations and rawInput that disagree, is treated as out-of-project — it prompts. A multi-location write is auto-approved only if **every** location passes.
 - **D — an out-of-project write cannot be made permanent by one click.** The prompt's "always allow"-shaped options are filtered out for out-of-project writes, so consent is per-call. (Decision recorded below; it is the difference between a gate and a speed bump.)
+- **E — the scope is pinned to the session's project, not the open one.** Today `repoRoot` is unambiguous only because a bridge's lifetime *is* the project's lifetime (see the Addendum). The moment a session outlives a project switch, "the project" is two different things — so the gate resolves against the `repoRoot` the session was **created** with, carried on the session, never re-read from whatever project the window is showing now.
 - **Explicitly NOT in scope:** `Read` / `Grep` / `Glob` stay unscoped. This closes **write** egress, not read. Saying so out loud matters — it would be easy to read this plan as closing the trifecta, and it does not.
 
 ## Metadata
 
-- **Type**: Security hardening
-- **Complexity**: Medium
-- **App/Package**: `apps/studio` (`acp/bridge.ts`, client prompt copy), tests
-- **Affected Systems**: ACP permission surface (DDR-179 / 180 / 184 / 185 lineage)
+- **Type**: Security hardening + session-lifetime UX (see Addendum)
+- **Complexity**: Medium (write-scope) / Medium-High once the Addendum's session lifetime lands
+- **App/Package**: `apps/studio` (`acp/bridge.ts`, `acp/index.ts`, client prompt copy, `client/panels/RepoBranchSwitcher.jsx`), `apps/desktop/src-tauri` (`sidecar.rs`), tests
+- **Affected Systems**: ACP permission surface (DDR-179 / 180 / 184 / 185 lineage); ACP session lifetime (DDR-125 F2 + the cross-restart-resume RCA)
 - **Dependencies**: none new
 - **Mandatory**: this repo requires a `security-auditor` + `ethical-hacker` fan-out for **every** ACP-permission-surface change (stated in `bridge.ts:229-231`; DDR-185's first cut shipped real bypasses that only that pass caught). Plus a DDR.
 
@@ -51,6 +52,14 @@ As someone who opens a design project I did not write, I want Maude's assistant 
 - `apps/studio/test/acp-permission.test.ts` + `acp-permission-prompt.test.ts` — Why: the existing shape for testing this gate; new cases belong alongside.
 - `.ai/archive/decisions/DDR-185-*.md` (and the DDR-184 it extends) — Why: the addendum documents the bypasses found in the first cut of the allow-list; the same failure modes apply to a path check.
 - `.ai/logs/security-reviews/main-20260804-2200-attacker.md` — Why: A2's full chain, which this plan closes at the primitive.
+
+Addendum-only (read these before Task 8):
+
+- `apps/studio/acp/index.ts` — Why: the whole session-lifetime change. `bridges = new Map<string, AcpBridge>()` keyed by `ws.data.id` (138), `getOrCreateBridge` (160), `onOpen` (353), and `onClose` (440-448) which calls `bridge.stop()` the instant the socket dies. This socket-coupling IS the bug.
+- `apps/studio/acp/bridge.ts` — Why (Addendum lens): `sessionFor` (681-745) with its `loadSession`-then-`newSession` resume, `sessionStorePath` (`_chat/<id>.session.json`, 487 / 781), `transcriptPath` (485), and `appendTranscript` on **every** agent update (930) — the last one is what makes detached streaming recoverable without inventing a new buffer.
+- `apps/studio/client/panels/RepoBranchSwitcher.jsx` — Why: `switchDraft` (251), `createDraft` (279) and the local-merge fold (317) each call `window.location.reload()` unconditionally. That reload is what kills a running chat on a branch switch, and it is where the warning gate goes.
+- `apps/desktop/src-tauri/src/sidecar.rs` — Why: `switch_project` (415) kills the sidecar child and lets the supervisor respawn it at the new root. Every bridge in that process dies with it, so no server-side change alone can make a chat survive a desktop project switch.
+- `.ai/archive/decisions/DDR-125-*.md` — Why: names both the "N processes" cost of parallel chats (the ceiling Task 11 has to respect) and the cross-restart-resume gap this Addendum finishes closing.
 
 ### Files to Create
 
@@ -75,6 +84,11 @@ As someone who opens a design project I did not write, I want Maude's assistant 
 | "Always allow" on an out-of-project write | filtered out (per-call consent only) | otherwise one click restores the hole permanently |
 | `Read`/`Grep`/`Glob` | unchanged | out of scope, stated explicitly so nobody reads this as closing read egress |
 | `Bash(maude:*)` | audited, not changed here | see Task 5 — if a helper can write arbitrary paths, that is a separate finding, not a silent extension of this one |
+| Scope root for a long-lived session | the `repoRoot` **pinned at session creation** | Solution E — a session that survives a project switch must not inherit the new project's write scope |
+| Bridge lifetime | keyed by chat, not by socket; a grace TTL after the last socket detaches | a page reload is not a user intent to kill a running turn (Addendum) |
+| Desktop project switch | keep the origin project's sidecar alive instead of killing it | one server per open project keeps `repoRoot` (and therefore the gate) one-to-one — the alternative, one long-lived cross-project agent process, would dissolve the boundary this plan exists to draw |
+| Branch switch with a live turn | **warn + confirm**, do not silently reload | the worktree changes under the agent mid-turn; the honest v1 is to say so, not to pretend the turn is safe |
+| Permission request raised while detached | existing timeout → fail-closed deny, unchanged | nobody is looking; "no UI attached" must never read as consent |
 
 ---
 
@@ -127,6 +141,98 @@ Execute in order. Each task is atomic and testable.
 
 ---
 
+## Addendum: the ACP panel is project- and branch-agnostic
+
+> Requested 2026-08-07. Folded into this plan rather than split out, because the two changes meet at one line: **which `repoRoot` the write gate resolves against.** A gate written against "the open project" is correct only while a session cannot outlive one — the moment it can, that same gate silently hands project A's session write access to project B. Ship the pinning (Solution E) with the lifetime change or not at all.
+
+### What is actually true today (measured, not assumed)
+
+The user's intuition — *"the session runs per repo anyway"* — is **half right**, and the half that is wrong is the half that hurts:
+
+| | per repo, survives | dies |
+| --- | --- | --- |
+| Chat history (`<designRoot>/_chat/<id>.jsonl`) | ✅ appended on **every** agent update (`bridge.ts:930`), independent of any socket | |
+| The ACP session id (`_chat/<id>.session.json`) | ✅ persisted, and `sessionFor` (`bridge.ts:681`) tries `loadSession` before `newSession` | |
+| The **live** bridge + its `claude` child process | | ❌ keyed by `ws.data.id`; `onClose` → `bridge.stop()` (`acp/index.ts:440-448`) |
+| An **in-flight turn** | | ❌ killed mid-stream, no warning, no resume of *that* turn |
+
+So the *conversation* is per repo. The *running agent* is per WebSocket. Both switches break it, for different reasons:
+
+- **Branch switch** — `RepoBranchSwitcher.jsx` calls `window.location.reload()` unconditionally on switch (251), draft-create (279) and local-merge fold (317). The reload closes the socket → the bridge stops → the turn dies. Nothing warns. Reopening the chat replays history and can resume the session, so it *looks* like it merely lost its place; the work in flight is simply gone.
+- **Project switch** — `sidecar.rs:415 switch_project` kills the sidecar child outright and lets the supervisor respawn it at the new root. The **whole server process** goes, so every chat in project A dies, not just the visible one. No server-side fix reaches this; it needs the desktop shell to stop killing the process.
+
+### Requirement
+
+1. **Across projects: sessions keep running.** Switching to project B must not stop project A's turn. Switching back lands in the same chat, still streaming if it still is. Sessions stay strictly per repo — nothing migrates, each project's chats simply stay alive in their own scope.
+2. **Across branches: survive if we can, warn if we cannot.** Preferred: a branch switch does not kill the chat. Accepted floor for v1: if a chat is mid-turn, the switcher says so plainly (*"a chat is running — switching the draft will stop it"*) and requires an explicit confirm. Silently reloading is the one outcome that is not acceptable.
+3. **Neither may widen the write scope.** Solution E is the invariant: the gate follows the session's origin repo.
+
+### Hazards to design against (do not skip these)
+
+- **A branch switch moves the worktree under a live turn.** The agent read `foo.tsx` on `draft-a` and writes it back after checkout to `main` — a silent cross-branch clobber. Worse, this plan's own premise leans on `_history/` rollback, and the snapshot stack is per-canvas-slug with **no branch awareness**, so the "it's reversible" argument degrades exactly here. This is why branch is harder than project, and why warn-and-confirm is an honest floor rather than a cop-out.
+- **A detached bridge is a live agent with no UI attached.** Any `requestPermission` raised while nobody is watching must hit the existing timeout → fail-closed deny. "No client attached" must never be a path to auto-approval — that would re-open, from a new direction, exactly what Task 3 closes.
+- **Unbounded detached bridges leak processes.** DDR-125 already books "N processes" as the cost of parallel chats; detaching removes the natural reaper (socket close). A TTL and a ceiling are load-bearing, not polish.
+- **Re-attach must not double-render.** History hydration (transcript) plus a live stream tail is two sources for the same bytes; the seam needs a sequence marker, not a guess.
+- **App quit still kills everything** (`sidecar.rs kill_server`, DDR-166's SIGTERM-first path). Keep that — this Addendum extends session lifetime across *switches*, never across quit.
+
+### Options for the desktop project case (decide in Task 10, do not pre-bake)
+
+| Option | Effect | Cost |
+| --- | --- | --- |
+| **1. Detach bridge lifetime from the socket** (key by chat, grace TTL) | Fixes branch switch and every reload. Alone it does **not** fix desktop project switch. | Small, server-only. Prerequisite for the others. |
+| **2. Keep the origin project's sidecar alive on switch** (spawn/attach per project instead of kill-and-respawn) | Fixes the project case while keeping one `repoRoot` per server — the gate stays one-to-one. | Sidecar supervisor becomes a small pool: N ports, N processes, teardown + reap policy. |
+| **3. Move the agent out of the sidecar into a long-lived cross-project host** | Also fixes it. | **Recommended against** — one agent process spanning projects dissolves the per-project boundary this plan is drawing, and re-opens the scope question in the worst place. |
+
+Recommendation: **1 + 2**. 1 is worth landing on its own even if 2 slips — it is what makes the branch case survivable rather than merely warned about.
+
+### Task 8: DETACH the bridge from the socket
+
+- **Do**: Key `bridges` by chat identity rather than `ws.data.id`, and let a bridge outlive `onClose`. On close, detach the sink (stop sending to a dead socket) and start a grace timer; on a new socket for the same chat, re-attach and replay. Keep the `AiActivity` tracker's `endTurn()` semantics correct — a detached-but-running turn must still hold its banner, while a genuinely abandoned one must clear.
+- **Pattern**: the transcript is already the durable record (`bridge.ts:930` appends every update regardless of socket) — hydrate from it on re-attach and stream only the tail, rather than inventing a second buffer.
+- **Gotcha**: the seam. Mark the last transcript offset handed to the client and stream from there, or the user sees the last few seconds twice.
+- **Validate**: a bridge test that closes the socket mid-turn, re-opens, and asserts (a) the turn completed, (b) the client receives each update exactly once, (c) no orphaned bridge after the TTL.
+
+### Task 9: WARN before a branch switch stops a chat
+
+- **Do**: `RepoBranchSwitcher.jsx` asks the server whether any chat is mid-turn before the `window.location.reload()` in `switchDraft` / `createDraft` / the local-merge fold, and on a hit shows a confirm naming what stops. If Task 8 lands first, a *reload* no longer kills the chat — but a **checkout** still moves the ground under it, so the warning stays either way; only its wording changes ("will stop it" → "is editing files on this draft").
+- **Gotcha**: three call sites, not one. All three reload; all three need the gate.
+- **Validate**: client render test for both wordings + a manual pass with a live turn.
+
+### Task 10: KEEP the origin project's session alive across a desktop project switch
+
+- **Do**: Decide between Options 1+2 and 3 above (recommendation: 1+2), then make `sidecar.rs switch_project` stop being a kill. Under Option 2 it becomes spawn-or-attach: the origin sidecar stays up, the new project's comes up beside it, the webview navigates to the new one. Needs a reap policy (idle + no live chat ⇒ shut down) and a ceiling.
+- **Gotcha**: `switch_project` currently deletes the target's `_server.json` to force `wait_for_server` onto a fresh write. With a pool, that file is a *live* instance's state for a project that may already be running — deleting it must not orphan a healthy server. Loopback + `is_loopback_url` navigation guards (DDR-109) apply per instance.
+- **Gotcha**: every `_server.json` consumer assumes one instance per project, not one per app. Re-read the DDR-115 runtime-state taxonomy before adding a per-instance file.
+- **Validate**: switch A→B→A with a long turn running in A; the turn is still streaming on return. Plus: quit still tears every instance down (DDR-166).
+
+### Task 11: PIN the write scope to the session's project (the seam with Tasks 2-4)
+
+- **Do**: Carry the creating `repoRoot` on the session/bridge and have `writeTargetsInsideProject` resolve against **that**, never against a re-read of the currently-open project. A session whose origin project is no longer open keeps its original scope — it does not acquire the new one.
+- **Gotcha**: `newSessionParams` already sets `cwd: repoRoot` (`bridge.ts:410`) at creation, so the value exists; the risk is a later refactor reading `this.opts.repoRoot` from a bridge that has been re-pointed. Make the pinned value a distinct, readonly field with a comment saying why it must not be recomputed.
+- **Validate**: a test that runs a session created under root A while root B is the "open" project, and asserts a write into B **prompts** rather than auto-approving.
+
+### Task 12: SECURITY re-run on the lifetime change
+
+- **Do**: The mandatory `security-auditor` + `ethical-hacker` fan-out (Task 6) covers the lifetime diff too, briefed specifically on: a detached bridge's permission requests (must fail closed), whether a re-attach can bind a socket to *another* project's bridge, whether the sidecar pool lets a canvas from project A reach project B's origin (DDR-054 / DDR-123 — the canvas origin must never reach `/_ws/acp`, per instance), and process-exhaustion via repeated switches.
+- **Validate**: verdict `PASS` / `PASS WITH SUGGESTIONS`; any CRITICAL → back to execute.
+
+### Addendum acceptance criteria
+
+- [ ] A page reload (including a branch switch) does not kill a running chat — the turn completes and the client re-attaches without duplicated output
+- [ ] A branch switch with a live turn warns and requires confirmation at **all three** reload call sites
+- [ ] Switching desktop projects A→B→A leaves A's turn running; returning lands in the same chat
+- [ ] A session's write scope is the project it was **created** in, proven by a test with a different project open
+- [ ] A permission request raised while no socket is attached fails closed (deny), never auto-approves
+- [ ] Detached bridges are TTL-reaped and capped; app quit still tears everything down
+- [ ] Security fan-out covers the lifetime diff, not just the path gate
+
+### Explicitly not in the Addendum
+
+- Chats do **not** move between projects, and no chat becomes cross-project. "Project-agnostic" here means *the panel keeps working through a switch*, not *one session spanning repos* — the latter would undo Solution E.
+- No change to what survives an app **quit** beyond today's resume-from-`_chat/` behaviour.
+
+---
+
 ## Validation
 
 1. **Static + tests**: `pnpm lint`, `pnpm test`, `pnpm test:dev-server`
@@ -135,6 +241,7 @@ Execute in order. Each task is atomic and testable.
 4. **Security**: mandatory fan-out (Task 6)
 5. **E2E**: ACP desktop suite
 6. **Manual**: ask the panel to write outside the project and confirm the prompt names the resolved path
+7. **Addendum**: reload / branch-switch / project-switch survival + the pinned-scope test (see the Addendum's own criteria)
 
 ## Risks
 
@@ -143,6 +250,8 @@ Execute in order. Each task is atomic and testable.
 - **Prompt fatigue.** If a normal workflow writes outside the project more often than expected, people will click through. Task 1's evidence should tell us the real rate before shipping; if it is high, the scope rule is wrong, not the users.
 - **Windows path comparison** is not POSIX — case-insensitivity and short names are a real bypass class, and this repo ships a Windows build.
 - **Concurrent sessions on `~/git`** — stage only this feature's files; `scripts/check-import-coherence.sh` is a release gate.
+- **The Addendum can be split, the pinning cannot.** Tasks 8-12 are shippable after Tasks 1-7, but if the session lifetime lands **without** Task 11, the write gate quietly becomes wrong in the exact case it was built for. Either both, or neither.
+- **A live agent with no UI attached** is a new state this system has never had. Every fail-closed default (permission timeout, turn cancel, `MAX_PENDING_PERMISSIONS`) is now load-bearing in a situation it was not written for — re-read them rather than assuming they carry over.
 
 ## Follow-ups (out of scope, recorded)
 
