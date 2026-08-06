@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
   "permissions": {
     "allow": ["Read", "Edit", "Write", "Bash", "WebFetch", "WebSearch"],
     "deny": [
@@ -13,10 +16,6 @@
     "defaultMode": "bypassPermissions"
   },
   "enabledPlugins": {
-    "pixijs-skills@pixijs-skills": true,
-    "vercel@claude-plugins-official": true
-  },
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "pixijs-skills@pixijs-skills": true
   }
 }
