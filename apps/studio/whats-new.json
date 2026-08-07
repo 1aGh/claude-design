@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "cloud-connect-tells-you-what-happened",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Connecting a cloud project tells you what happened",
+      "summary": "The line you see after Connect is now live and true: it moves from Connecting, through Syncing 40 of 75, to Synced — and names any canvases that came down from the project. Every outcome says what to do next, so a refused connection tells you to reconnect instead of sitting on “syncing” forever.",
+      "surface": "design-ui"
+    },
+    {
       "id": "acp-turn-notifications",
       "version": null,
       "date": null,

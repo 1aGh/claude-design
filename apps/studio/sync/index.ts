@@ -1021,11 +1021,15 @@ export function createSyncRuntime(
       console.log(
         `[sync] ${linkedHub.url}: ${parts.join(' · ')} · shared-doc:${useSharedDoc ? 'on' : 'off'}`
       );
-      // The hub-vs-local picture, recorded for `_sync.json` and the UI. Computed
-      // once BEFORE providers were built — the hub-only documents are already in
-      // `canvases` and syncing by now, so re-asking here would put the same
-      // question twice and could disagree with the set actually attached.
-      mon.setRemoteGap(remoteDiff);
+      // What this run brought DOWN, recorded for `_sync.json` and the UI.
+      //
+      // This used to record `remoteDiff` under the name `remoteGap` — "what the
+      // project has that this machine does not". By the time it ran, that was
+      // false: the diff is taken BEFORE providers are built and recorded after
+      // the pull, so it named exactly the canvases that had just arrived and
+      // were sitting on disk. `pulled` is the same list under the name that is
+      // true, and it is the fact the user is told to act on.
+      mon.notePulled(pulled.map((t) => t.slug));
     });
   }
 

@@ -52,10 +52,24 @@ function makeMonitor(overrides = {}) {
 }
 
 describe('connection monitor', () => {
-  test('starts online and stays online when the provider connects', () => {
+  test('starts connecting, and goes online when the provider connects', () => {
+    // The seed used to be `online` — success asserted before a socket existed.
+    // See `sync-connect-honesty.test.ts` for why that mattered to a user.
     const { monitor } = makeMonitor();
+    expect(monitor.snapshot().state).toBe('connecting');
     monitor.noteProviderStatus('p1', 'connected');
     expect(monitor.snapshot().state).toBe('online');
+  });
+
+  test('a link nobody answers still escalates to offline', () => {
+    // The seed change must not create a state that waits forever: a provider
+    // that only ever reports 'connecting' has to reach the offline banner on
+    // the same grace clock as a link that dropped after being live.
+    const { clock, monitor } = makeMonitor();
+    monitor.noteProviderStatus('p1', 'connecting');
+    expect(monitor.snapshot().state).toBe('connecting');
+    clock.advance(30_000);
+    expect(monitor.snapshot().state).toBe('offline');
   });
 
   test('disconnect → stays connecting during grace, goes offline after graceMs', () => {
@@ -210,5 +224,35 @@ describe('connection monitor — per-doc states (DDR-102)', () => {
     clock.advance(10_000);
     monitor.noteSyncActivity('ui-a');
     expect(monitor.snapshot().lastSyncAt).toBe((first as number) + 10_000);
+  });
+});
+
+describe('what this run pulled down', () => {
+  // This field was `remoteGap`, "what the project has that this machine does
+  // not" — and it was recorded AFTER the pull, so it named exactly the
+  // canvases that had just arrived. `_sync.json` was observed listing two
+  // documents that were sitting on disk. The name now matches the fact.
+  test('records the canvases that arrived, with a true count', () => {
+    const { monitor } = makeMonitor();
+    monitor.notePulled(['ui-welcome', 'ui-how-to']);
+    expect(monitor.snapshot().pulled).toEqual({
+      names: ['ui-welcome', 'ui-how-to'],
+      count: 2,
+    });
+  });
+
+  test('a run that pulled nothing says nothing', () => {
+    const { monitor } = makeMonitor();
+    monitor.notePulled([]);
+    expect(monitor.snapshot().pulled).toBeUndefined();
+  });
+
+  test('the name list is capped but the count is not — a cap must not falsify a number', () => {
+    // Hub-controlled payload size (same reasoning as rejectedSlugs).
+    const { monitor } = makeMonitor();
+    monitor.notePulled(Array.from({ length: 50 }, (_, i) => `ui-${i}`));
+    const pulled = monitor.snapshot().pulled;
+    expect(pulled?.names).toHaveLength(20);
+    expect(pulled?.count).toBe(50);
   });
 });

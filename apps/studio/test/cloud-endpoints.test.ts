@@ -324,12 +324,19 @@ describe('localIdentityHint — only an exact, corroborated agreement is silent'
 });
 
 describe('connectOutcomeNote — what the rail says after Connect', () => {
-  test('syncing: a result, and where to watch it', () => {
+  test('no live payload yet: an in-flight state, not a claimed result', () => {
+    // This used to assert "Syncing with alligators — 12 canvases." and a hover
+    // pointing at the status bar. Both were wrong: the attach response reports
+    // that `runtime.start()` did not throw, which is an INTENTION, and the slot
+    // it sent people to was itself keying off `state` alone. See DDR-214 — the
+    // sentence now derives from the live payload, and this is only the fallback
+    // for the first render (and for a server too old to send one.)
     const n = connectOutcomeNote('alligators', { syncing: true, canvases: 12 });
-    expect(n.text).toBe('Syncing with alligators — 12 canvases.');
-    expect(n.title).toContain('hub sync');
+    expect(n.text).toBe('Connecting to alligators — 12 canvases…');
+    expect(n.title).toContain('updates as they settle');
+    expect(n.text).not.toContain('hub sync');
     expect(connectOutcomeNote('alligators', { syncing: true, canvases: 1 }).text).toContain(
-      '1 canvas.'
+      '1 canvas…'
     );
   });
 

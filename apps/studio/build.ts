@@ -24,7 +24,6 @@ import { browserslistToTargets, bundle as lcssBundle } from 'lightningcss';
 import { cloudStubPlugin } from './cloud-build.ts';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-const DIST = join(ROOT, 'dist');
 
 const ARGS = new Set(process.argv.slice(2));
 const FLAG_TARGET = process.argv.find((a) => a.startsWith('--target='))?.slice('--target='.length);
@@ -33,6 +32,34 @@ const MODE: 'dev' | 'release' | 'dry' = ARGS.has('--dry-run')
   : ARGS.has('--release')
     ? 'release'
     : 'dev';
+
+// DEV-ONLY override, so a test can build somewhere disposable.
+//
+// `test/bundle-smoke.test.ts` shells out to this script to prove the bundle
+// still parses — and, until this existed, wrote its unminified DEV output
+// straight over the COMMITTED release artifacts (14 MB where 2 MB ships). What
+// is committed is what ships, so a suite run silently staged a broken release.
+// CLAUDE.md recorded this as "observed, root cause unconfirmed"; it is this.
+//
+// REFUSED OUTSIDE DEV, and that guard is the whole point of the variable being
+// safe. DIST is the write target for every artifact — client bundle, styles,
+// dist/runtime/*, and the compiled server binary. One environment variable
+// reaching a release runner would send all of them to a scratch directory, exit
+// 0 with normal-looking size lines, and leave packaging to ship the COMMITTED
+// artifacts instead. `check-runtime-bundles.sh` would validate those stale
+// files and pass; `check-client-boots.mjs` would boot them and pass. Every gate
+// green, nothing built actually shipped — a silent downgrade primitive with no
+// diff and no red CI. This repo's doctrine is "what is committed is what ships"
+// AND "verify the built artifact"; an unguarded override severs the two.
+if (process.env.MAUDE_DIST_DIR && MODE !== 'dev') {
+  console.error(
+    `[build] MAUDE_DIST_DIR is a dev/test-only override and must not be set for a --${MODE} build.\n` +
+      `        Refusing to build: a release that writes elsewhere ships the previously committed\n` +
+      `        artifacts while every packaging gate stays green.`
+  );
+  process.exit(2);
+}
+const DIST = process.env.MAUDE_DIST_DIR || join(ROOT, 'dist');
 const WATCH = ARGS.has('--watch');
 /** Cloud Phase 27 D1 — build the CELL's variant (secret-bearing surfaces
  *  removed from the binary, not merely un-routed). `--cloud` with `--release`. */

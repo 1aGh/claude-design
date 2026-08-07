@@ -64,8 +64,11 @@ describe('the cloud shell offers nothing it cannot honour', () => {
     // `=== null`, not falsiness. `cloud` is undefined until `/_config` answers,
     // and treating unknown as "not cloud" mounted this bar for one frame in
     // every cloud tab — long enough to fire the one request the cell refuses.
-    expect(APP).toContain('{cloud === null ? <CloudBar /> : null}');
-    expect(APP).not.toContain('{cloud ? null : <CloudBar />}');
+    // Matched on the GUARD rather than the whole element, so adding a prop to
+    // CloudBar (DDR-214 drilled the live sync payload in) does not read as a
+    // regression in a rule that is entirely about `=== null`.
+    expect(APP).toMatch(/\{cloud === null \? <CloudBar[^>]*\/> : null\}/);
+    expect(APP).not.toMatch(/\{cloud \? null : <CloudBar/);
   });
 
   test('the local export queue does not hydrate before the shell is known', () => {

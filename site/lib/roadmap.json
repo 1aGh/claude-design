@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-07T09:35:59.216Z",
+  "generated": "2026-08-07T10:11:21.292Z",
   "currentPhase": null,
   "phases": [
     {
@@ -648,6 +648,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — this plan touches the Phase-23 media-intake stack (use-canvas-media-drop.tsx + annota...",
       "planPath": ".ai/plans/archive/feature-bulk-media-insert.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-cloud-connect-honest-status",
+      "title": "Feature: cloud connect tells the truth, live",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. Phase 1 is a prerequisite for Phase 2 and must not be skipped — rendering the current...",
+      "planPath": ".ai/plans/archive/feature-cloud-connect-honest-status.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1848,17 +1859,6 @@
       "summary": "The moodboard direction gates catch a disliked direction before the scaffold. They do not catch a scaffold that ran but produced silently-broken output — empty files trusted as written, a transpile...",
       "planPath": ".ai/plans/archive/setup-ds-round2-scaffold-integrity-and-devserver-fixes.md",
       "archived": true,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-cloud-connect-honest-status",
-      "title": "Feature: cloud connect tells the truth, live",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. Phase 1 is a prerequisite for Phase 2 and must not be skipped — rendering the current...",
-      "planPath": ".ai/plans/feature-cloud-connect-honest-status.md",
-      "archived": false,
       "phaseKey": null
     },
     {

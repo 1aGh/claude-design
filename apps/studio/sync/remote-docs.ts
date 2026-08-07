@@ -173,9 +173,15 @@ export function pullTargets(
 ): PullTarget[] {
   const rootResolved = resolve(designRoot);
   const out: PullTarget[] = [];
+  // One slug, one target. `slugFromDocName` lowercases, so a hub advertising
+  // `Foo`, `foo` and `ws/w/main/foo` yields three targets for ONE file — three
+  // providers on the same path, and a `pulled` count that overstates what
+  // arrived by a factor the hub chooses.
+  const seen = new Set<string>();
   for (const doc of hubOnly) {
     const slug = slugFromDocName(doc.name);
-    if (!slug) continue;
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
     const bodyAbs = join(designRoot, `${slug}.tsx`);
     const target = resolve(bodyAbs);
     if (target !== rootResolved && !target.startsWith(rootResolved + sep)) continue;

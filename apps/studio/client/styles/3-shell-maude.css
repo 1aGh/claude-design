@@ -2240,10 +2240,19 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 
 /* identity rail — sidebar footer */
 .gi-rail { position: relative; flex: 0 0 auto; margin-top: auto; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--border-default); display: flex; flex-direction: column; gap: var(--space-2); }
-.gi-rail-hint { font-size: var(--type-xs); color: var(--fg-2); padding: var(--space-1) var(--space-1); }
+/* Truncation the code already assumed: CloudBar.jsx documents `title` as "the
+   full sentence on hover (the rail truncates)" — and this rule did not exist,
+   so a long hub-supplied project name wrapped and grew, pushing the rail into
+   adjacent chrome. Its sibling .gi-rail-err has carried the same three
+   properties all along. `anywhere` so a single unbreakable 60-char token
+   cannot overflow horizontally either. */
+.gi-rail-hint { font-size: var(--type-xs); color: var(--fg-2); padding: var(--space-1) var(--space-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: anywhere; }
 .gi-rail-signin { width: 100%; justify-content: center; }
 .gi-rail-confirm { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-2); }
-.gi-rail-confirm .gi-rail-hint { flex: 1 1 100%; padding: 0; }
+/* …but the deep-link confirm strip is a paragraph that MUST wrap — it explains
+   both sides of a consent decision, and one ellipsised line would hide half of
+   what the person is agreeing to. */
+.gi-rail-confirm .gi-rail-hint { flex: 1 1 100%; padding: 0; white-space: normal; overflow: visible; }
 .gi-rail-err { font-size: var(--type-xs); color: var(--status-error); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gi-avatar { border-radius: var(--radius-pill); display: grid; place-items: center; font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--accent-fg); background: var(--accent); flex: 0 0 auto; }
 .gi-rail-account { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-1) var(--space-2); border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--fg-0); cursor: pointer; text-align: left; }

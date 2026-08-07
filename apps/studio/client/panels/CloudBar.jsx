@@ -14,6 +14,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { safeName, syncPresentation } from '../../sync/presentation.ts';
 import { invoke, isNativeApp, listen, openCloudUrl } from '../github.js';
 
 const api = async (path, init) => {
@@ -261,24 +262,56 @@ export function localIdentityHint({
  * Returns `{ text, title }` — `text` is the rail's one line, `title` the full
  * sentence on hover (the rail truncates).
  */
-export function connectOutcomeNote(project, sync) {
-  const name = project || 'the workspace';
+export function connectOutcomeNote(project, sync, live) {
+  // The project name and `sync.detail` both originate at the hub, and the
+  // fallback path below puts them in trusted app chrome uncapped — including a
+  // `title=` tooltip, where a newline renders. `safeName` strips control and
+  // bidi-override characters, collapses whitespace and bounds the length; the
+  // live path already went through it inside `syncPresentation`.
+  const name = safeName(project, 'the workspace');
+
+  // The LIVE payload wins whenever there is one.
+  //
+  // `sync` is the attach response, and it reports an intention: the supervisor
+  // answers `{ syncing: true }` as soon as `runtime.start()` did not throw and
+  // one local canvas qualified — before a socket, before a token was accepted,
+  // before a byte moved. Rendered once and never updated, it was the whole of
+  // the reported complaint ("vyskočí modal, pak vidím jen syncing canvases, ale
+  // reálně se nic nestane"). `live` comes off the `sync:status` bus that is
+  // already wired to this app, so the same sentence now MOVES: connecting →
+  // syncing 40/75 → synced. That motion is the feedback that was missing.
+  //
+  // Same rule as the status bar (`syncPresentation`), deliberately — the old
+  // hover text told the person to go look at that slot for the real answer,
+  // which only worked as long as the two agreed, and they did not.
+  if (live) {
+    const p = syncPresentation(live, { project: name });
+    if (p) {
+      const detail = p.names.length ? ` (${p.names.join(', ')})` : '';
+      return {
+        text: p.title,
+        title: `${p.title}${detail}${p.next ? ` — ${p.next}` : ''}`,
+      };
+    }
+  }
+
   if (sync?.syncing) {
     const n = sync.canvases ?? 0;
     return {
-      text: `Syncing with ${name} — ${n} canvas${n === 1 ? '' : 'es'}.`,
-      title: `This project’s canvases now sync with the ${name} workspace. Live status is in the “hub sync” slot in the status bar.`,
+      text: `Connecting to ${name} — ${n} canvas${n === 1 ? '' : 'es'}…`,
+      title: `Opening ${n} canvas${n === 1 ? '' : 'es'} against the ${name} workspace. This line updates as they settle.`,
     };
   }
   if (sync?.reason === 'nothing-syncable') {
     return {
       text: `Connected to ${name} — nothing to sync yet.`,
-      title: sync.detail || 'No canvases in this project are syncable yet.',
+      title: safeName(sync.detail, 'No canvases in this project are syncable yet.'),
     };
   }
+  const detail = safeName(sync?.detail, 'restart Maude to start syncing.');
   return {
-    text: `Connected to ${name} — ${sync?.detail ?? 'restart Maude to start syncing.'}`,
-    title: sync?.detail || 'Restart Maude to start syncing.',
+    text: `Connected to ${name} — ${detail}`,
+    title: detail,
   };
 }
 
@@ -336,14 +369,21 @@ function Icon({ name, size = 15 }) {
   );
 }
 
-export default function CloudBar() {
+export default function CloudBar({ syncStatus }) {
   const [state, setState] = useState('loading'); // loading | out | in
   const [email, setEmail] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [device, setDevice] = useState(null); // { userCode, verificationUrl, deviceCode }
   const [projects, setProjects] = useState(null);
   const [busy, setBusy] = useState('');
-  const [note, setNote] = useState(null); // { text, title } — connectOutcomeNote
+  // What the last Connect attached, NOT the sentence it produced.
+  //
+  // This used to hold the rendered `{ text, title }`, which is why the note was
+  // frozen: a string computed once at the moment the dialog closed could only
+  // ever describe that moment. Keeping the INPUTS and deriving the sentence on
+  // every render is the whole liveness mechanism — `syncStatus` arrives on the
+  // already-wired `sync:status` bus, so no polling and no second fetch.
+  const [connected, setConnected] = useState(null); // { project, sync }
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -355,6 +395,15 @@ export default function CloudBar() {
   const [pending, setPending] = useState(null); // { project, code } from maude://
   const railRef = useRef(null);
   const pollRef = useRef(null);
+
+  // Derived, not stored — so the sentence follows the link instead of freezing
+  // at the instant the confirm dialog closed. `syncStatus` is the live payload
+  // App already receives; when it is absent (older server, first render) the
+  // attach response is still the fallback and the note degrades to what it
+  // said before, never to nothing.
+  const note = connected
+    ? connectOutcomeNote(connected.project, connected.sync, syncStatus)
+    : null;
 
   useEffect(() => {
     api('/_api/cloud/status')
@@ -426,7 +475,7 @@ export default function CloudBar() {
     setBusy('');
     setPending(null);
     if (r.ok && r.json?.ok) {
-      setNote(connectOutcomeNote(r.json.project ?? pending.project, r.json.sync));
+      setConnected({ project: r.json.project ?? pending.project, sync: r.json.sync });
     } else {
       setError(r.json?.error || 'The workspace could not be connected.');
     }
@@ -503,7 +552,7 @@ export default function CloudBar() {
 
   async function connect(projectId) {
     setBusy(projectId);
-    setNote(null);
+    setConnected(null);
     setError('');
     const r = await api('/_api/cloud/attach', {
       method: 'POST',
@@ -512,7 +561,7 @@ export default function CloudBar() {
     });
     setBusy('');
     if (r.ok && r.json?.ok) {
-      setNote(connectOutcomeNote(r.json.project ?? projectId, r.json.sync));
+      setConnected({ project: r.json.project ?? projectId, sync: r.json.sync });
     } else {
       setError(r.json?.error || 'The workspace could not be connected.');
     }
@@ -705,8 +754,18 @@ export default function CloudBar() {
             <span className="gi-rail-login">{email ?? 'Maude Cloud'}</span>
             <span className="gi-rail-caret"><Icon name="chevron-up" size={13} /></span>
           </button>
+          {/* A live region: the sentence now CHANGES as the link settles, and a
+              screen-reader user has to hear that transition rather than only
+              whatever text happened to be there when they last tabbed past.
+              `polite` — it is progress, never an interruption. */}
           {note && (
-            <span className="gi-rail-hint" title={note.title} data-testid="cloud-connect-note">
+            <span
+              className="gi-rail-hint"
+              title={note.title}
+              role="status"
+              aria-live="polite"
+              data-testid="cloud-connect-note"
+            >
               {note.text}
             </span>
           )}

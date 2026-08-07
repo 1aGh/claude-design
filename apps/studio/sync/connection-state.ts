@@ -48,13 +48,21 @@ export interface SyncStatusSnapshot {
    *  for the true count). Treat as text, never HTML. */
   rejectedSlugs?: string[];
   /**
-   * Documents the PROJECT has that this machine does not, and therefore does
-   * not sync. Every other count here is drawn from the local canvas set, so
-   * none of them can express this gap — a peer opens a provider per local
-   * canvas and Yjs cannot enumerate the rest. Absent when the hub could not be
-   * asked (old hub, offline). Treat names as text, never HTML.
+   * Canvases this run brought DOWN from the project — documents that existed
+   * only on the hub and are now real local files.
+   *
+   * This field was briefly `remoteGap`, "what the project has that this machine
+   * does not". That name stopped being true the moment the pull landed: the
+   * diff is computed before providers are built and recorded after, so it
+   * enumerated exactly the documents that had just arrived. Observed live —
+   * `_sync.json` naming two canvases that were sitting on disk.
+   *
+   * "What arrived this run" is both true and the more useful fact: it is what
+   * the Synced state tells the user to go and open. Absent when the hub could
+   * not be asked (old hub, offline) or when nothing was pulled. Names are
+   * hub-controlled — treat as text, never HTML, and see the cap in `notePulled`.
    */
-  remoteGap?: { hubOnly: string[]; sharedCount: number };
+  pulled?: { names: string[]; count: number };
 }
 
 type TimerHandle = ReturnType<typeof setTimeout>;
@@ -83,8 +91,8 @@ export interface ConnectionMonitor {
   /** DDR-102 — real sync activity for a slug (reconcile done, hub-pushed flush
    *  applied): bumps `lastSyncAt` to now. */
   noteSyncActivity(slug: string): void;
-  /** Record the hub-vs-local document gap (see `remoteGap`). */
-  setRemoteGap(gap: { hubOnly: { name: string }[]; shared: string[] } | null): void;
+  /** Record the canvases this run pulled down from the project (see `pulled`). */
+  notePulled(slugs: readonly string[]): void;
   /** Current snapshot (defensive copy). */
   snapshot(): SyncStatusSnapshot;
   /** Tear down timers. */
@@ -110,7 +118,14 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
   // DDR-102 — per-doc states (pending/connected/auth-rejected).
   const docStates = new Map<string, DocSyncState>();
 
-  let state: SyncState = 'online';
+  // NOT born connected. The monitor used to start `online`, so from the instant
+  // a link was created — before a socket, before a token was accepted, before a
+  // byte moved — every surface reading `state` reported success. On a healthy
+  // fast connect that was harmless (the truth arrived milliseconds later); on a
+  // refused or unreachable one it was the whole bug: the user was shown the
+  // intention and read it as the result. `connecting` is the honest seed, and
+  // it is the state a link genuinely occupies until a provider says otherwise.
+  let state: SyncState = 'connecting';
   let queuedOps = 0;
   let lastSyncAt: number | null = null;
   let offlineSince: number | null = null;
@@ -121,8 +136,24 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
   let flashTimer: TimerHandle | null = null;
   let stopped = false;
 
-  /** Hub-vs-local document gap, once the hub has been asked. */
-  let remoteGap: SyncStatusSnapshot['remoteGap'];
+  /** Canvases pulled down from the project this run. */
+  let pulled: SyncStatusSnapshot['pulled'];
+
+  /**
+   * Start the clock at construction, not at the first provider event.
+   *
+   * `enterGrace` is reachable ONLY from `noteProviderStatus`, so a link where
+   * no provider ever reports — every provider rejected during boot, a hub that
+   * never completes an upgrade — would have sat in `connecting` forever and
+   * never reached the offline banner. Seeding `state` honestly is not enough on
+   * its own; something has to be counting from the moment the link exists.
+   */
+  function armInitialGrace(): void {
+    graceTimer = setTimer(() => {
+      graceTimer = null;
+      goOffline();
+    }, graceMs);
+  }
 
   function snapshot(): SyncStatusSnapshot {
     const docs = { synced: 0, pending: 0, rejected: 0 };
@@ -143,23 +174,27 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
       updatedAt: now(),
       docs,
       rejectedSlugs,
-      ...(remoteGap ? { remoteGap } : {}),
+      ...(pulled ? { pulled } : {}),
     };
   }
 
   /**
-   * Record the hub-vs-local document gap.
+   * Record the canvases this run pulled down from the project.
    *
-   * Capped like `rejectedSlugs`: this reaches a UI and a JSON file, and an
-   * unbounded list of hub-chosen names is a hub-controlled payload size.
-   * `null` clears it — an unreachable hub must not leave a stale alarm up.
+   * `names` is capped like `rejectedSlugs` — this reaches a UI and a JSON file,
+   * and an unbounded list of hub-chosen names is a hub-controlled payload size.
+   * `count` keeps the true total, so the cap never falsifies the number the
+   * user is shown. An empty list clears the field rather than recording a zero:
+   * a run that pulled nothing has nothing to say.
    */
-  function setRemoteGap(gap: { hubOnly: { name: string }[]; shared: string[] } | null): void {
-    remoteGap = gap
-      ? {
-          hubOnly: gap.hubOnly.slice(0, MAX_REJECTED_SLUGS).map((d) => d.name),
-          sharedCount: gap.shared.length,
-        }
+  function notePulled(slugs: readonly string[]): void {
+    // Every other mutator carries this guard; without it a late call could
+    // write `_sync.json` and broadcast for a monitor that has been torn down.
+    // Unreachable today (the sole caller checks `stopped` too) — kept so the
+    // invariant does not depend on the caller remembering it.
+    if (stopped) return;
+    pulled = slugs.length
+      ? { names: slugs.slice(0, MAX_REJECTED_SLUGS), count: slugs.length }
       : undefined;
     emit();
   }
@@ -212,15 +247,20 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
   }
 
   function enterGrace(): void {
-    // Already counting down or already offline — don't restart the clock.
-    if (state !== 'online') return;
+    // Already offline — stay there until a provider reports 'connected'.
+    if (state === 'offline' || state === 'offline-long') return;
+    // Already counting down — don't restart the clock. The guard used to be
+    // `state !== 'online'`; the timer, not the state, is what says whether a
+    // countdown is running, and with the `connecting` seed those are no longer
+    // the same question.
+    if (graceTimer !== null) return;
     state = 'connecting';
-    if (graceTimer !== null) clearTimer(graceTimer);
     graceTimer = setTimer(() => {
       graceTimer = null;
       goOffline();
     }, graceMs);
-    emit();
+    // No emit here — the sole caller emits once for the whole update, so a
+    // demotion that does not change `state` still reaches the readers.
   }
 
   function goOffline(): void {
@@ -235,19 +275,56 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
     emit();
   }
 
+  armInitialGrace();
+
   return {
     noteProviderStatus(providerId, status) {
       if (stopped) return;
+
+      // EMIT ONLY ON A REAL CHANGE.
+      //
+      // Every emit is a synchronous `_sync.json` write plus a WS broadcast to
+      // every open tab. Provider status is driven by the socket lifecycle,
+      // which the hub controls, and there is one provider per canvas — 75+ in
+      // the reported project. An unconditional emit here turns a flapping (or
+      // deliberately hostile) hub into a sustained disk-write and fan-out loop
+      // on the dev-server's main thread. The pre-existing code emitted only on
+      // a transition; adding the demotion below must not cost that property.
+      const prevStatus = providerStatuses.get(providerId);
       providerStatuses.set(providerId, status);
+      let changed = prevStatus !== status;
+
+      // A document whose socket is gone is not a synced document.
+      //
+      // `docs.synced` used to only ever RISE — nothing demoted a `connected`
+      // doc, so a hub that died left the last count frozen on screen, which is
+      // the most convincing form of the lie: it was true a moment ago. The
+      // provider id IS the slug (`index.ts` passes `canvas.slug`), so the
+      // monitor already knows which document just lost its socket.
+      //
+      // `auth-rejected` is deliberately NOT demoted. The hub gave an answer;
+      // losing the socket afterwards does not turn that answer back into
+      // "still trying", and letting it would hide a rotated credential behind
+      // a spinner.
+      if (status !== 'connected' && docStates.get(providerId) === 'connected') {
+        docStates.set(providerId, 'pending');
+        changed = true;
+      }
+
       const agg = aggregate();
       if (agg === 'connected') {
+        // goOnline() emits for the transition; otherwise only a real change
+        // (this provider's status moved, or a document was demoted) is news.
         if (state !== 'online') goOnline();
+        else if (changed) emit();
         return;
       }
       // Aggregate is connecting or disconnected → start (or continue) the
       // grace countdown. Once offline/offline-long we stay there until a
       // provider reports 'connected' again.
-      if (state === 'online') enterGrace();
+      const before = state;
+      enterGrace();
+      if (changed || state !== before) emit();
     },
 
     noteLocalEdit() {
@@ -276,7 +353,7 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
       emit();
     },
 
-    setRemoteGap,
+    notePulled,
 
     snapshot,
 

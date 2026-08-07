@@ -93,12 +93,13 @@ describe('cloud-attach — sign-in, picker, attach, deep-link decision (stubbed)
     await capture('picker with member + viewer rows');
     await member.click();
 
-    // The note reports an OUTCOME now (syncing / connected-but-…), never
-    // "restart the studio server" — a task naming something a desktop user
-    // cannot see. Which arm fires depends on what the fixture has to sync, so
-    // assert the shape: this project, and a state we told the truth about.
+    // The note reports an OUTCOME now (connecting / syncing / connected-but-…),
+    // never "restart the studio server" — a task naming something a desktop
+    // user cannot see. Which arm fires depends on what the fixture has to sync,
+    // so assert the shape: this project, and a state we told the truth about.
     await browser.waitUntil(
-      async () => /Syncing with|Connected to/.test(await (await $(tid('cloud-bar'))).getText()),
+      async () =>
+        /Connecting to|Syncing with|Connected to/.test(await (await $(tid('cloud-bar'))).getText()),
       { timeout: 20_000, timeoutMsg: 'the attach note never appeared' }
     );
     expect(await (await $(tid('cloud-bar'))).getText()).not.toContain('studio server');
@@ -148,7 +149,8 @@ describe('cloud-attach — sign-in, picker, attach, deep-link decision (stubbed)
 
     await connect.click();
     await browser.waitUntil(
-      async () => /Syncing with|Connected to/.test(await (await $(tid('cloud-bar'))).getText()),
+      async () =>
+        /Connecting to|Syncing with|Connected to/.test(await (await $(tid('cloud-bar'))).getText()),
       { timeout: 20_000, timeoutMsg: 'the deep-link attach note never appeared' }
     );
     await capture('attached via deep link');
@@ -207,5 +209,54 @@ describe('cloud-attach — sign-in, picker, attach, deep-link decision (stubbed)
     const cfg = JSON.parse(readFileSync(FIXTURE_CONFIG, 'utf8'));
     expect(cfg.linkedHub?.url).toContain('127.0.0.1');
     await capture('mismatched claim refused');
+  });
+
+  it('7 · the connect note reaches a TERMINAL state — it does not sit on "syncing" forever', async () => {
+    // The reported bug, as a scenario. The note used to be computed once, from
+    // the attach response, at the instant the confirm dialog closed: it said
+    // "Syncing with X — 75 canvases." and stayed there through every outcome,
+    // including a link that never connected at all. Nothing in the DOM ever
+    // changed again, which is exactly what "reálně se nic nestane" looked like.
+    //
+    // This stub has NO Yjs hub behind it — the control plane is faked and the
+    // WS upgrade goes nowhere. So the honest terminal state here is
+    // "unreachable", and reaching it is the proof the sentence is live: an
+    // intention-derived string could never have arrived at it.
+    await (await $(tid('cloud-account'))).click();
+    const member = await $(tid('cloud-project-stub-project'));
+    await member.waitForDisplayed({ timeout: 15_000 });
+    await member.click();
+
+    const note = await $(tid('cloud-connect-note'));
+    await note.waitForDisplayed({ timeout: 20_000 });
+    await capture('connect note, in flight');
+
+    // The grace window is 30s before a silent link is called offline, so allow
+    // for it plus the handshake attempts. Any of the four terminal shapes is a
+    // pass — which one depends on the fixture, and pinning that would make this
+    // a test of the fixture rather than of the pipeline.
+    await browser.waitUntil(
+      async () =>
+        /Synced with|unreachable|were refused by|nothing to sync yet/.test(await note.getText()),
+      { timeout: 60_000, timeoutMsg: 'the connect note never reached a terminal state' }
+    );
+    const text = await note.getText();
+    expect(text).not.toContain('Connecting to');
+
+    // And the terminal state names the move. `title` carries it (the rail
+    // truncates), so an empty one means the person was told a state and left to
+    // work out the next step themselves — the whole complaint.
+    const title = await note.getAttribute('title');
+    expect(title.length).toBeGreaterThan(text.length - 1);
+    expect(/—|resumes by itself|Reconnect|Open one|Create a canvas/.test(title)).toBe(true);
+    await capture('connect note, terminal state');
+  });
+
+  it('8 · the note is a live region, so the transition is heard and not only seen', async () => {
+    // The sentence CHANGES now. A screen-reader user who is not looking at the
+    // rail has to be told, or the liveness is a sighted-only feature.
+    const note = await $(tid('cloud-connect-note'));
+    expect(await note.getAttribute('aria-live')).toBe('polite');
+    expect(await note.getAttribute('role')).toBe('status');
   });
 });

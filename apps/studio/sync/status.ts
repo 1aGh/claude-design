@@ -79,7 +79,10 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
   const conflicts: SyncConflict[] = [];
 
   let snapshot: SyncStatusSnapshot = {
-    state: 'online',
+    // Same reason the monitor is seeded `connecting` (see connection-state.ts):
+    // this is the payload a reader gets BEFORE the first monitor snapshot lands,
+    // so seeding it `online` re-introduced the born-connected lie one layer out.
+    state: 'connecting',
     queuedOps: 0,
     lastSyncAt: null,
     offlineSince: null,
