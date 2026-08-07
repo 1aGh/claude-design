@@ -45,6 +45,7 @@ import { loadJournal, type SyncJournal } from './journal.ts';
 import { isLoopbackHost } from './loopback.ts';
 import { migrateSeed } from './migrate-seed.ts';
 import { createDocProjection, type DocProjection } from './projection.ts';
+import { describeRemoteDiff, diffRemoteDocs, fetchRemoteDocs, pullTargets } from './remote-docs.ts';
 import { createSyncStatusStore, type SyncStatusStore } from './status.ts';
 import { writeUntrustedMarkers } from './untrusted.ts';
 
@@ -424,7 +425,46 @@ export function createSyncRuntime(
     const scan = opts.canvases ? { canvases: opts.canvases, tsxCount: 0 } : await scanCanvases(ctx);
     // DDR-064 pre-cutover A4 + A6 — two files must never share a document, and
     // the pinned set must be bounded. See `admitCanvases`.
-    const canvases = admitCanvases(scan.canvases, useSharedDoc);
+    const localCanvases = admitCanvases(scan.canvases, useSharedDoc);
+
+    // PULL THE REST OF THE PROJECT DOWN.
+    //
+    // The scan above only sees this machine's disk, and Yjs cannot enumerate —
+    // so before this, a document that existed only on the hub was invisible to
+    // a peer forever. A desktop carrying 72 of a project's 75 canvases synced
+    // 72, reported "72/72 synced", and was accurate about the wrong universe.
+    // That is what "Open in Maude does nothing" was.
+    //
+    // A project you have access to is a project you get, in full and in both
+    // directions. Hub-only documents become real local files (flat under the
+    // design root — see `pullTargets` for why flat); local-only canvases go up
+    // as they always did. Best-effort: an older hub without the listing route,
+    // or an unreachable one, syncs exactly as before.
+    const remoteDocs = await fetchRemoteDocs(linkedHub.url, resolvedToken);
+    const remoteDiff = diffRemoteDocs(
+      localCanvases.map((c) => docNameFor(c.slug)),
+      remoteDocs
+    );
+    const pulled = pullTargets(
+      remoteDiff.hubOnly,
+      ctx.paths.designRoot,
+      path.join,
+      path.resolve,
+      path.sep
+    );
+    const pullNote = describeRemoteDiff(remoteDiff);
+    if (pullNote) console.log(`[sync] ${pullNote}`);
+    const canvases = [
+      ...localCanvases,
+      ...pulled.map((t) => ({
+        slug: t.slug,
+        html: t.bodyAbs,
+        comments: path.join(ctx.paths.commentsDir, `${t.slug}.json`),
+        annotations: path.join(ctx.paths.designRoot, `${t.slug}.annotations.svg`),
+        meta: t.bodyAbs.replace(/\.tsx$/i, '.meta.json'),
+        css: t.bodyAbs.replace(/\.tsx$/i, '.css'),
+      })),
+    ];
     // T4.5 (DDR-054 §3 F3) — every syncable canvas can receive hub-pushed
     // content, so the whole set is untrusted Claude-context. Mark it (writes
     // `_untrusted/INDEX.json` + a managed `.claudeignore` block; clears both
@@ -981,6 +1021,11 @@ export function createSyncRuntime(
       console.log(
         `[sync] ${linkedHub.url}: ${parts.join(' · ')} · shared-doc:${useSharedDoc ? 'on' : 'off'}`
       );
+      // The hub-vs-local picture, recorded for `_sync.json` and the UI. Computed
+      // once BEFORE providers were built — the hub-only documents are already in
+      // `canvases` and syncing by now, so re-asking here would put the same
+      // question twice and could disagree with the set actually attached.
+      mon.setRemoteGap(remoteDiff);
     });
   }
 

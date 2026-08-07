@@ -70,6 +70,7 @@ import { handleExportRoute, scheduleMirror, scheduleRevocationSweep } from './ce
 import { clientIpFor, parseTrustedProxies } from './client-ip.mjs';
 import { designRootFor } from './design-root.mjs';
 import { groupCanvases } from './doc-namespace.mjs';
+import { DOCUMENTS_PATH, handleDocumentsRoute } from './documents.mjs';
 import { seedFirstUserOnBoot } from './first-user.mjs';
 import { createGitRunner } from './git-runner.mjs';
 import { LOOPBACK_HOSTS, sanitizeForLog } from './log-safety.mjs';
@@ -648,6 +649,22 @@ export function createHub(config = {}) {
           checkRateLimit: rateLimit
             ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
             : undefined,
+        });
+        if (handled) bailFromOnRequest();
+      }
+      // A syncing peer asking what the PROJECT contains — see documents.mjs for
+      // why Yjs cannot answer this and why a peer must not need the admin
+      // secret to ask. Scope-bound to exactly the documents this token could
+      // already open over the wire.
+      if (authPath === DOCUMENTS_PATH) {
+        const handled = handleDocumentsRoute({
+          path: authPath,
+          method,
+          bearer: (request.headers?.authorization ?? '').replace(/^Bearer\s+/i, '').trim() || null,
+          verify: (token) => verifyToken(dataDir, token, secret),
+          matchesScope,
+          listDocuments: () => listCanvases(sqlitePath, peers),
+          respondJson: (status, payload) => respondAdminJson(response, status, payload),
         });
         if (handled) bailFromOnRequest();
       }

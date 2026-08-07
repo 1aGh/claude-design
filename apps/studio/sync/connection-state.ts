@@ -47,6 +47,14 @@ export interface SyncStatusSnapshot {
   /** DDR-102 — slugs currently auth-rejected, capped at 20 (see docs.rejected
    *  for the true count). Treat as text, never HTML. */
   rejectedSlugs?: string[];
+  /**
+   * Documents the PROJECT has that this machine does not, and therefore does
+   * not sync. Every other count here is drawn from the local canvas set, so
+   * none of them can express this gap — a peer opens a provider per local
+   * canvas and Yjs cannot enumerate the rest. Absent when the hub could not be
+   * asked (old hub, offline). Treat names as text, never HTML.
+   */
+  remoteGap?: { hubOnly: string[]; sharedCount: number };
 }
 
 type TimerHandle = ReturnType<typeof setTimeout>;
@@ -75,6 +83,8 @@ export interface ConnectionMonitor {
   /** DDR-102 — real sync activity for a slug (reconcile done, hub-pushed flush
    *  applied): bumps `lastSyncAt` to now. */
   noteSyncActivity(slug: string): void;
+  /** Record the hub-vs-local document gap (see `remoteGap`). */
+  setRemoteGap(gap: { hubOnly: { name: string }[]; shared: string[] } | null): void;
   /** Current snapshot (defensive copy). */
   snapshot(): SyncStatusSnapshot;
   /** Tear down timers. */
@@ -111,6 +121,9 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
   let flashTimer: TimerHandle | null = null;
   let stopped = false;
 
+  /** Hub-vs-local document gap, once the hub has been asked. */
+  let remoteGap: SyncStatusSnapshot['remoteGap'];
+
   function snapshot(): SyncStatusSnapshot {
     const docs = { synced: 0, pending: 0, rejected: 0 };
     const rejectedSlugs: string[] = [];
@@ -130,7 +143,25 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
       updatedAt: now(),
       docs,
       rejectedSlugs,
+      ...(remoteGap ? { remoteGap } : {}),
     };
+  }
+
+  /**
+   * Record the hub-vs-local document gap.
+   *
+   * Capped like `rejectedSlugs`: this reaches a UI and a JSON file, and an
+   * unbounded list of hub-chosen names is a hub-controlled payload size.
+   * `null` clears it — an unreachable hub must not leave a stale alarm up.
+   */
+  function setRemoteGap(gap: { hubOnly: { name: string }[]; shared: string[] } | null): void {
+    remoteGap = gap
+      ? {
+          hubOnly: gap.hubOnly.slice(0, MAX_REJECTED_SLUGS).map((d) => d.name),
+          sharedCount: gap.shared.length,
+        }
+      : undefined;
+    emit();
   }
 
   function emit(): void {
@@ -244,6 +275,8 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
       if (docStates.get(slug) === 'pending') docStates.set(slug, 'connected');
       emit();
     },
+
+    setRemoteGap,
 
     snapshot,
 
