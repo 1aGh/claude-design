@@ -31,6 +31,11 @@ import {
 
 const CANVAS = '/abs/Canvas.tsx';
 
+// Adversarial fixture (security review 2026-07-30) — a prompt embedding a
+// fake </AIPlaceholder> close tag + template-literal/env-var syntax, proving
+// the JSON.stringify escaping discipline (DDR-150 P1) holds under attack.
+const EVIL = '*/ `backtick` ${process.env.HOME} </AIPlaceholder> "q" \\';
+
 const SERIES = [
   "import { TransitionSeries } from '@remotion/transitions';",
   'const S1 = 90;',
@@ -568,8 +573,6 @@ describe('greenfield first drop (Task 20)', () => {
 });
 
 describe('AIPlaceholder insert + resolve (Tasks 21–22)', () => {
-  const EVIL = '*/ `backtick` ${process.env.HOME} </AIPlaceholder> "q" \\';
-
   test('prompt is JSON.stringified into the JSX (injection fixtures) and enumerates back', () => {
     const r = applyInsertClipAt(CANVAS, SERIES, 'a', {
       lane: 'storyline',
@@ -832,5 +835,84 @@ describe('layers model — set-text + move between layers', () => {
     expect(beats.some((c) => c.mediaSrc === 'b.mp4')).toBe(true);
     expect(cc.clips.filter((c) => c.tag === 'Sequence').length).toBe(0); // overlay row gone
     expect(back.source).toContain('const TOTAL = 270;'); // exact content end again
+  });
+
+  // Bug: issue #81 — an AI placeholder slate (no media src yet) was refused by
+  // both move verbs, so it could never leave the storyline it was dropped
+  // into. A placeholder has no <src> to graft, but it has a prompt + kind
+  // that can ride over unchanged.
+  test('AI placeholder beat → overlay layer keeps the prompt (no media src required)', () => {
+    const withPh = applyInsertClipAt(CANVAS, HARDCUT, 'a', {
+      lane: 'storyline',
+      index: 3,
+      durationInFrames: 60,
+      placeholder: { prompt: 'drone shot over Brno', kind: 'veo' },
+    });
+    const r = applyMoveClipToOverlay(
+      CANVAS,
+      withPh.source,
+      'a',
+      withPh.stableId as string,
+      undefined
+    );
+    const cc = enumerateClips(CANVAS, r.source, 'a');
+    const overlays = cc.clips.filter((c) => c.tag === 'Sequence');
+    expect(overlays.length).toBe(1);
+    expect(overlays[0]?.placeholder?.prompt).toBe('drone shot over Brno');
+    expect(overlays[0]?.mediaSrc).toBe(null);
+    const beats = cc.clips.filter((c) => c.kind === 'sequence' && c.tag !== 'Sequence');
+    expect(beats.length).toBe(3); // the placeholder beat left the storyline
+  });
+
+  test('AI placeholder overlay → storyline round-trips the prompt back into a beat', () => {
+    const withPh = applyInsertClipAt(CANVAS, HARDCUT, 'a', {
+      lane: 'overlay',
+      from: 0,
+      durationInFrames: 45,
+      placeholder: { prompt: 'sunset time-lapse', kind: 'image' },
+    });
+    const back = applyMoveClipToStoryline(
+      CANVAS,
+      withPh.source,
+      'a',
+      withPh.stableId as string,
+      undefined
+    );
+    const cc = enumerateClips(CANVAS, back.source, 'a');
+    const beats = cc.clips.filter((c) => c.kind === 'sequence' && c.tag !== 'Sequence');
+    expect(beats.some((c) => c.placeholder?.prompt === 'sunset time-lapse')).toBe(true);
+    expect(cc.clips.filter((c) => c.tag === 'Sequence').length).toBe(0); // overlay row gone
+  });
+
+  // Adversarial (security review 2026-08-07): the move path must go through
+  // the same JSON.stringify escaping as a fresh insert (DDR-150 P1) — prove
+  // it with the same EVIL fixture the insert/resolve suite uses above, not
+  // just infer it from code-path sharing.
+  test('AI placeholder move preserves EVIL-prompt escaping (F-A3 companion)', () => {
+    const withPh = applyInsertClipAt(CANVAS, HARDCUT, 'a', {
+      lane: 'storyline',
+      index: 3,
+      durationInFrames: 60,
+      placeholder: { prompt: EVIL, kind: 'veo' },
+    });
+    const moved = applyMoveClipToOverlay(
+      CANVAS,
+      withPh.source,
+      'a',
+      withPh.stableId as string,
+      undefined
+    );
+    expect(moved.source).toContain(`<span>{${JSON.stringify(EVIL)}}</span>`);
+    const back = applyMoveClipToStoryline(
+      CANVAS,
+      moved.source,
+      'a',
+      moved.stableId as string,
+      undefined
+    );
+    expect(back.source).toContain(`<span>{${JSON.stringify(EVIL)}}</span>`);
+    const cc = enumerateClips(CANVAS, back.source, 'a');
+    const beats = cc.clips.filter((c) => c.kind === 'sequence' && c.tag !== 'Sequence');
+    expect(beats.some((c) => c.placeholder?.prompt === EVIL)).toBe(true);
   });
 });

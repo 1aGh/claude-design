@@ -1802,26 +1802,51 @@ export function applyMoveClipToOverlay(
     });
   }
   const mediaStart = directMediaTagStart(source, clip);
-  if (mediaStart == null || !clip.mediaSrc || clip.durationInFrames == null) {
-    throw new CanvasEditError('only a media clip with a direct source can move between layers', {
-      canvas: canvasAbsPath,
-      id: stableId,
-    });
+  const isPlaceholder = clip.placeholder != null;
+  if (!isPlaceholder && (mediaStart == null || !clip.mediaSrc || clip.durationInFrames == null)) {
+    throw new CanvasEditError(
+      'only a media clip with a direct source, or an AI placeholder, can move between layers',
+      { canvas: canvasAbsPath, id: stableId }
+    );
+  }
+  if (isPlaceholder && clip.durationInFrames == null) {
+    throw new CanvasEditError(
+      'only a media clip with a direct source, or an AI placeholder, can move between layers',
+      { canvas: canvasAbsPath, id: stableId }
+    );
   }
   const start = clipAbsoluteStart(source, canvasAbsPath, artboardId, stableId);
-  const trim =
-    numAttrText(source, mediaStart, 'trimBefore') ??
-    numAttrText(source, mediaStart, 'startFrom') ??
-    0;
-  const rate = numAttrText(source, mediaStart, 'playbackRate') ?? 1;
-  const ins = applyInsertClipAt(canvasAbsPath, source, artboardId, {
-    lane: 'overlay',
-    from: start,
-    durationInFrames: clip.durationInFrames,
-    mediaTag: clip.mediaTag === 'Audio' ? 'Audio' : 'Video',
-    src: clip.mediaSrc,
-  });
-  let out = graftMediaAttrs(canvasAbsPath, ins.source, artboardId, ins.stableId, trim, rate);
+  // A placeholder slate has no media element to graft trim/rate onto — it
+  // rides over as-is (prompt + kind), never as media.
+  const ins = isPlaceholder
+    ? applyInsertClipAt(canvasAbsPath, source, artboardId, {
+        lane: 'overlay',
+        from: start,
+        durationInFrames: clip.durationInFrames as number,
+        placeholder: {
+          prompt: clip.placeholder?.prompt ?? '',
+          kind: clip.placeholder?.kind ?? 'veo',
+        },
+      })
+    : applyInsertClipAt(canvasAbsPath, source, artboardId, {
+        lane: 'overlay',
+        from: start,
+        durationInFrames: clip.durationInFrames as number,
+        mediaTag: clip.mediaTag === 'Audio' ? 'Audio' : 'Video',
+        src: clip.mediaSrc,
+      });
+  let out = isPlaceholder
+    ? ins.source
+    : graftMediaAttrs(
+        canvasAbsPath,
+        ins.source,
+        artboardId,
+        ins.stableId,
+        numAttrText(source, mediaStart as number, 'trimBefore') ??
+          numAttrText(source, mediaStart as number, 'startFrom') ??
+          0,
+        numAttrText(source, mediaStart as number, 'playbackRate') ?? 1
+      );
   const again = enumerateClips(canvasAbsPath, out, artboardId);
   const insertedHash = again.clips.find((c) => c.stableId === ins.stableId)?.contentHash ?? null;
   const original = again.clips.find(
@@ -1861,24 +1886,48 @@ export function applyMoveClipToStoryline(
     throw new CanvasEditError('already a storyline beat', { canvas: canvasAbsPath, id: stableId });
   }
   const mediaStart = directMediaTagStart(source, clip);
-  if (mediaStart == null || !clip.mediaSrc || clip.durationInFrames == null) {
-    throw new CanvasEditError('only a media clip with a direct source can move between layers', {
-      canvas: canvasAbsPath,
-      id: stableId,
-    });
+  const isPlaceholder = clip.placeholder != null;
+  if (!isPlaceholder && (mediaStart == null || !clip.mediaSrc || clip.durationInFrames == null)) {
+    throw new CanvasEditError(
+      'only a media clip with a direct source, or an AI placeholder, can move between layers',
+      { canvas: canvasAbsPath, id: stableId }
+    );
   }
-  const trim =
-    numAttrText(source, mediaStart, 'trimBefore') ??
-    numAttrText(source, mediaStart, 'startFrom') ??
-    0;
-  const rate = numAttrText(source, mediaStart, 'playbackRate') ?? 1;
-  const ins = applyInsertClipAt(canvasAbsPath, source, artboardId, {
-    lane: 'storyline',
-    durationInFrames: clip.durationInFrames,
-    mediaTag: clip.mediaTag === 'Audio' ? 'Audio' : 'Video',
-    src: clip.mediaSrc,
-  });
-  let out = graftMediaAttrs(canvasAbsPath, ins.source, artboardId, ins.stableId, trim, rate);
+  if (isPlaceholder && clip.durationInFrames == null) {
+    throw new CanvasEditError(
+      'only a media clip with a direct source, or an AI placeholder, can move between layers',
+      { canvas: canvasAbsPath, id: stableId }
+    );
+  }
+  // A placeholder slate has no media element to graft trim/rate onto — it
+  // rides over as-is (prompt + kind), never as media.
+  const ins = isPlaceholder
+    ? applyInsertClipAt(canvasAbsPath, source, artboardId, {
+        lane: 'storyline',
+        durationInFrames: clip.durationInFrames as number,
+        placeholder: {
+          prompt: clip.placeholder?.prompt ?? '',
+          kind: clip.placeholder?.kind ?? 'veo',
+        },
+      })
+    : applyInsertClipAt(canvasAbsPath, source, artboardId, {
+        lane: 'storyline',
+        durationInFrames: clip.durationInFrames as number,
+        mediaTag: clip.mediaTag === 'Audio' ? 'Audio' : 'Video',
+        src: clip.mediaSrc,
+      });
+  let out = isPlaceholder
+    ? ins.source
+    : graftMediaAttrs(
+        canvasAbsPath,
+        ins.source,
+        artboardId,
+        ins.stableId,
+        numAttrText(source, mediaStart as number, 'trimBefore') ??
+          numAttrText(source, mediaStart as number, 'startFrom') ??
+          0,
+        numAttrText(source, mediaStart as number, 'playbackRate') ?? 1
+      );
   const again = enumerateClips(canvasAbsPath, out, artboardId);
   const insertedHash = again.clips.find((c) => c.stableId === ins.stableId)?.contentHash ?? null;
   const original = again.clips.find(
