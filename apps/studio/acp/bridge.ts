@@ -734,6 +734,17 @@ export class AcpBridge {
     return this.lastUsage;
   }
 
+  /**
+   * feature-acp-turn-notifications Task 2 — count of permission + elicitation
+   * requests currently awaiting a human decision. `> 0` is the `awaiting-input`
+   * signal: the turn is technically still in-flight, but blocked on the user,
+   * not on the model — the case `PERMISSION_TIMEOUT_MS` exists to fail closed
+   * on if nobody is told in time.
+   */
+  get awaitingInputCount(): number {
+    return this.pendingPermissions.size + this.pendingElicitations.size;
+  }
+
   /** The session id of the most recent prompt (for the `connected` frame). */
   get sessionId(): string | null {
     return this.currentSession;

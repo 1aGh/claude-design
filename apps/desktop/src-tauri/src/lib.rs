@@ -16,6 +16,7 @@ mod crash_reporter;
 mod deep_link;
 mod keychain;
 mod menu;
+mod notify;
 mod oauth;
 mod prefs;
 mod server_json;
@@ -396,6 +397,11 @@ pub fn run() {
         // Auto-update (Phase 32 / Task 1) — config (endpoints + pubkey) is in
         // tauri.conf.json; the check/download/install loop lives in updater.rs.
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // feature-acp-turn-notifications — real OS notifications. Only our own
+        // narrow `send_notification` command is exposed to the webview (see notify.rs's
+        // doc comment on why: same "trusted core, narrow command" posture as
+        // the updater plugin above) — the plugin's own JS API is never used.
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             oauth::github_sign_in,
             oauth::github_open_verification,
@@ -420,6 +426,7 @@ pub fn run() {
             crash_reporter::list_crash_logs,
             crash_reporter::read_crash_log,
             deep_link::take_pending_deep_link,
+            notify::send_notification,
         ])
         .menu(menu::build_menu)
         .on_menu_event(|app, event| {
@@ -564,6 +571,11 @@ pub fn run() {
             // short delay, then every 4 h. On-focus checks are wired in
             // `on_window_event` below. No-op on a dev / unbundled build.
             updater::spawn_update_loop(handle.clone());
+
+            // 5. feature-acp-turn-notifications — poll every NON-current pooled
+            // instance and fire on a state transition. Started after
+            // `SidecarState` is managed (above) since it reads the pool.
+            notify::spawn_activity_poller(&handle);
 
             // NOTE: `maude://` deep-link handling is deferred to phase-29. It needs a
             // bundled .app + the `open?path=` route; the dev-mode deep-link plugin

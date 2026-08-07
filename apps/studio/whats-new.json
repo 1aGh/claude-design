@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "acp-turn-notifications",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Get notified when a background chat finishes",
+      "summary": "Maude now sends a real notification when a chat finishes or needs your input — even in a project you're not currently viewing. The notification never shows what was said, only which project needs you.",
+      "surface": "design-ui"
+    },
+    {
       "id": "cloud-projects-save-themselves",
       "version": "0.56.0",
       "date": "2026-08-06",

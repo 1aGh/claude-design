@@ -227,6 +227,13 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // untrusted canvas origin must never read (or write) the user's pasted
         // chat images; a GET here 403s at the gate, not 404 from the handler.
         '/_api/acp/attachment',
+        // feature-acp-turn-notifications Task 3 — the native shell's poller
+        // reads this to decide whether to notify for a non-visible project.
+        // MAIN-ORIGIN ONLY, same posture as /_api/acp/attachment right above:
+        // absent from CANVAS_SAFE_API + startCanvasServer's routes, so the
+        // untrusted canvas iframe origin must never learn ANY project's chat
+        // activity — including, per Decision D, its own.
+        '/_api/acp/activity',
         // Phase 4 (feature-whiteboard-annotation-improvements) — the sticker
         // catalogue + bundled sticker PNGs are MAIN-ORIGIN ONLY, same posture
         // as /_api/assets above: the StickerPicker is shell UI, absent from

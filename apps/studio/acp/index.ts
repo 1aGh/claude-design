@@ -21,7 +21,7 @@ import { buildStudioBrief } from './bootstrap-brief.ts';
 import { AcpBridge, type BridgeUsage } from './bridge.ts';
 import { isNativePluginContext, resolveSessionPlugins } from './plugin-bootstrap.ts';
 import { probeAcpAvailability } from './probe.ts';
-import { registerRunningChatsProbe } from './running.ts';
+import { registerActivityProbe, registerRunningChatsProbe } from './running.ts';
 import { readChatLinesAfter } from './transcript.ts';
 
 /**
@@ -666,6 +666,17 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
   // `running.ts` for why this isn't a `createHttp` parameter or client state.
   registerRunningChatsProbe(() =>
     [...bridges.values()].filter((e) => e.turnActive).map((e) => e.chatId)
+  );
+
+  // feature-acp-turn-notifications Task 2 — the richer per-chat snapshot the
+  // native shell's poller (notify.rs) reads. `awaiting-input` wins over
+  // `running`: a turn blocked on a permission/elicitation prompt is the more
+  // actionable of the two, and the one racing `PERMISSION_TIMEOUT_MS`.
+  registerActivityProbe(() =>
+    [...bridges.values()].map((e) => ({
+      chatId: e.chatId,
+      state: e.bridge.awaitingInputCount > 0 ? 'awaiting-input' : e.turnActive ? 'running' : 'idle',
+    }))
   );
 
   return {

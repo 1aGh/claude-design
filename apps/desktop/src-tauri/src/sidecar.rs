@@ -498,6 +498,13 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
                             .lock()
                             .expect("sidecar mutex poisoned")
                             .remove(&supervised_root);
+                        // feature-acp-turn-notifications — the FULL clear is
+                        // safe here (unlike shutdown_instance's reap path,
+                        // just below): reaching MAX_RESTARTS means the real,
+                        // trusted dev-server process genuinely crash-looped
+                        // 3+ times, not "an untrusted probe answered idle" —
+                        // see clear_project_fully's doc comment.
+                        crate::notify::clear_project_fully(&app, &supervised_root);
                         break;
                     }
                     eprintln!("[maude] respawning dev-server (attempt {attempt}/{MAX_RESTARTS})");
@@ -743,6 +750,14 @@ fn shutdown_instance(app: &AppHandle, root: &str) {
     if let Some(child) = child {
         terminate(child);
     }
+    // feature-acp-turn-notifications — clear ONLY the transition-detection
+    // state, not the notification budget: this is the reap-eviction path,
+    // driven by `has_running_chat`'s answer on the SAME untrusted
+    // `_server.json` an attacker already controls in the threat model this
+    // feature's own security review is about — a full clear here would let a
+    // compromised project reset its notification cap on demand by answering
+    // one probe "idle". See `clear_project_reaped`'s doc comment.
+    crate::notify::clear_project_reaped(app, root);
 }
 
 /// SIGTERM-then-SIGKILL a sidecar child (DDR-166).

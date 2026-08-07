@@ -17,7 +17,7 @@ import {
   startSignin,
 } from './acp/login-state.ts';
 import { probeAcpAvailabilityAuthed } from './acp/probe.ts';
-import { runningChats } from './acp/running.ts';
+import { activitySnapshot, runningChats } from './acp/running.ts';
 import {
   chatTranscriptSeq,
   deleteChat,
@@ -1334,7 +1334,7 @@ export function createHttp(
     // branch awareness, cannot undo), so this gates a confirm rather than
     // reloading silently. MAIN-ORIGIN ONLY, read-only, no chat CONTENT — just
     // how many are busy, so it says nothing the canvas origin could want.
-    '/_api/acp/running': () => {
+    '/_api/acp/running': (req: Request) => {
       if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
       const running = runningChats();
@@ -1342,6 +1342,22 @@ export function createHttp(
         { running: running.length, chats: running },
         { headers: { 'Cache-Control': 'no-store' } }
       );
+    },
+
+    // feature-acp-turn-notifications Task 3 — the native shell's poller reads
+    // this to decide whether to fire an OS notification for a NON-visible
+    // project (Decision C). A sibling of `/_api/acp/running` above rather than
+    // an extension of it — that route stays exactly as-is because the reaper's
+    // `has_running_chat` (sidecar.rs) already depends on its `{running,chats}`
+    // shape and has no reason to grow one. MAIN-ORIGIN ONLY, same gate, and —
+    // load-bearing (Decision D) — NEVER a chat title, message text, or any
+    // transcript content: just chat ids (opaque, already exposed by `running`
+    // above) and a three-value state. Anyone adding a field here should ask
+    // what it would look like rendered on a lock screen.
+    '/_api/acp/activity': (req: Request) => {
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      return Response.json(activitySnapshot(), { headers: { 'Cache-Control': 'no-store' } });
     },
 
     // Phase 31 — repo-level chat list + history (for the chat switcher +

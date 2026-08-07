@@ -38,3 +38,60 @@ export function runningChats(): string[] {
     return [];
   }
 }
+
+// feature-acp-turn-notifications Task 2 — a richer PULL registry alongside the
+// one above, not a replacement: `runningChats()` stays exactly as it is for
+// the branch-switch warning + the reaper's `has_running_chat` probe (Task 3
+// keeps `/_api/acp/running` unchanged for that reason). This one answers a
+// different question — "what SHOULD the shell tell the user" — which needs a
+// per-chat state, not just a busy/idle boolean, because a chat blocked on a
+// permission prompt is technically still `turnActive` in the ACP sense but is
+// the MORE actionable of the two (see bridge.ts's `awaitingInputCount`).
+export type ChatActivityState = 'running' | 'awaiting-input' | 'idle';
+
+export interface ChatActivity {
+  chatId: string;
+  state: ChatActivityState;
+}
+
+export interface ActivitySnapshot {
+  /** Bumped only when the snapshot's (chatId, state) set actually changes —
+   *  lets a poller skip re-deriving transitions on an unchanged read, without
+   *  needing wall-clock time (Workflow-script-style determinism isn't a
+   *  concern here, but a plain counter is simpler than a clock either way). */
+  seq: number;
+  chats: ChatActivity[];
+}
+
+type ActivityProbe = () => ChatActivity[];
+
+let activityProbe: ActivityProbe | null = null;
+let activitySeq = 0;
+let lastSnapshotKey = '';
+
+/** Registered once by `createAcp`, alongside `registerRunningChatsProbe`. */
+export function registerActivityProbe(fn: ActivityProbe): void {
+  activityProbe = fn;
+}
+
+/** Per-chat activity snapshot + a monotonic `seq`. Empty/unchanged-seq when no
+ *  ACP manager exists — never throws, same failure posture as `runningChats`. */
+export function activitySnapshot(): ActivitySnapshot {
+  let chats: ChatActivity[];
+  try {
+    chats = activityProbe?.() ?? [];
+  } catch {
+    chats = [];
+  }
+  // Order-independent key — chat enumeration order can shuffle between calls
+  // (Map iteration) without the underlying state having changed.
+  const key = [...chats]
+    .sort((a, b) => a.chatId.localeCompare(b.chatId))
+    .map((c) => `${c.chatId}:${c.state}`)
+    .join(',');
+  if (key !== lastSnapshotKey) {
+    lastSnapshotKey = key;
+    activitySeq++;
+  }
+  return { seq: activitySeq, chats };
+}

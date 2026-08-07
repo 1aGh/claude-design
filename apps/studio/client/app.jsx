@@ -21,6 +21,11 @@ import { GRID_KEYWORD_UNITS, parseTrackList, serializeTrackList } from '../grid-
 // canvas-cursors.ts above.
 import { PAPER_PRESETS, resolvePrintArtboard } from '../print/units.ts';
 import { sizingModeOf, sizingModePatch } from '../sizing-mode.ts';
+// The single "what is the hub link doing" rule, shared with the cloud rail's
+// connect note so the two surfaces can never disagree. Pure data + strings —
+// same "pull only pure logic into the client bundle" shape as the imports
+// above (a type-only SyncStatusSnapshot import that Bun erases).
+import { syncPresentation } from '../sync/presentation.ts';
 import { canvasUrl } from './canvas-url.js';
 import { TreeRowMenu, useRowMenu } from './tree-row-menu.jsx';
 import { useTreeDrag } from './use-tree-drag.js';
@@ -77,6 +82,7 @@ const Lu = ({ as: C, size = 14 }) => <C size={size} strokeWidth={1.75} style={{ 
 import { PhotoKnobs } from './photo-knobs.jsx';
 import {
   appIsFirstRun,
+  invoke,
   isNativeApp,
   onMenuReportBug,
   onUpdateReady,
@@ -203,14 +209,30 @@ const MDCC_VERSION = typeof __MDCC_VERSION__ !== 'undefined' ? __MDCC_VERSION__ 
 // handleAssistantAttention below (identical support/permission check +
 // try/catch, only the title/body differ). The in-app badge stays the
 // reliable signal if this silently fails for any reason.
+//
+// feature-acp-turn-notifications Task 6 — under Tauri, route through the
+// native `send_notification` command (notify.rs) instead of the Web `Notification` API.
+// This is the SAME native notifier the shell's cross-project poller uses for
+// every OTHER project, so the visible project now goes through the identical
+// OS-level path rather than a webview API whose behavior inside WKWebView was
+// never empirically confirmed (see Task 1's finding in the plan). Falls back
+// to the Web API on any failure — an older desktop build without the command,
+// or a plain browser tab — so the signal degrades rather than disappearing.
 function notifyDesktop(title, body) {
-  try {
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      new Notification(title, { body });
+  const webFallback = () => {
+    try {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification(title, { body });
+      }
+    } catch {
+      /* best-effort — the in-app badge is the reliable signal */
     }
-  } catch {
-    /* best-effort — the in-app badge is the reliable signal */
+  };
+  if (isNativeApp()) {
+    invoke('send_notification', { title, body }).catch(webFallback);
+    return;
   }
+  webFallback();
 }
 
 function readInitialTheme() {
@@ -2473,6 +2495,9 @@ function Sidebar({
   onMoveCanvas,
   onNewFolder,
   onDeleteFolder,
+  // Passed through to CloudBar only — the live `sync:status` payload that makes
+  // the connect note follow the link instead of freezing at attach time.
+  syncStatus,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
@@ -2846,7 +2871,7 @@ function Sidebar({
           Absent rather than disabled, because unlike the agent chat there is
           nothing here to explain — the capability is not missing, it is
           already satisfied. */}
-      {cloud === null ? <CloudBar /> : null}
+      {cloud === null ? <CloudBar syncStatus={syncStatus} /> : null}
       {/* Phase 28 (E3) — GitHub identity as a compact avatar docked at the BOTTOM:
           sign in, connected account + New/Pull/Share, sign out. Self-contained
           (owns its device-code + CreateProject dialogs). Renders nothing in browser. */}
@@ -4537,6 +4562,7 @@ function StatusBar({
   onToggleTheme,
   onClearSelected,
   syncStatus,
+  syncProject,
   changesCount = 0,
   unpushed = 0,
   changesOpen = false,
@@ -4559,32 +4585,21 @@ function StatusBar({
   // shapes: solo `{linked:false}` (hide), DDR-060 `{notSyncable,tsxCount,reason}`
   // (linked but 0 syncable), or the connection-state machine `{state,queuedOps,
   // flash,…}` (the common linked case the old notSyncable-only guard never
-  // showed — the "hub sync se neukazuje" bug). Map each to a label + dot tone.
+  // showed — the "hub sync se neukazuje" bug).
+  //
+  // The mapping used to live here, and it referenced `docs` ZERO times: it read
+  // `state` alone, so a link whose every document the hub had refused still
+  // showed a green dot and the word "synced". `syncPresentation` is now the one
+  // rule, shared with the cloud rail's connect note, so the two surfaces cannot
+  // give a person different answers about the same payload.
   const syncSlot = (() => {
-    if (!syncStatus || syncStatus.linked === false) return null;
-    if (syncStatus.notSyncable) {
-      return {
-        online: false,
-        label: `0 syncable${syncStatus.tsxCount > 0 ? ` · ${syncStatus.tsxCount} tsx` : ''}`,
-        title: syncStatus.reason || 'Linked to a hub, but no canvases are syncable.',
-      };
-    }
-    const q = syncStatus.queuedOps ?? 0;
-    const synced = syncStatus.state === 'online' || syncStatus.flash === 'synced';
-    if (synced) {
-      return {
-        online: true,
-        label: q > 0 ? `${q} ↑` : 'synced',
-        title: q > 0 ? `${q} edit(s) queued to push` : 'All changes synced to the hub',
-      };
-    }
+    const p = syncPresentation(syncStatus, { project: syncProject });
+    if (!p) return null;
+    const detail = p.names.length ? ` (${p.names.join(', ')})` : '';
     return {
-      online: false,
-      label: `${q} ↑`,
-      title:
-        syncStatus.state === 'connecting'
-          ? 'Connecting to the hub…'
-          : 'Offline — edits queued, will sync when the hub reconnects',
+      online: p.online,
+      label: p.label,
+      title: `${p.title}${detail}${p.next ? ` — ${p.next}` : ''}`,
     };
   })();
 
@@ -14087,6 +14102,7 @@ function App() {
           remoteSync={remoteSync}
           onGetLatest={gitGetLatest}
           canvasKinds={cfg?.canvasKinds}
+          syncStatus={syncStatus}
         />
       );
     if (id === 'changes')
@@ -15147,6 +15163,7 @@ function App() {
           onToggleTheme={toggleTheme}
           onClearSelected={clearSelected}
           syncStatus={syncStatus}
+          syncProject={cfg?.cloud?.projectName || project}
           changesCount={unsavedCount}
           unpushed={gitStatus?.unpushed || 0}
           changesOpen={changesOpen}

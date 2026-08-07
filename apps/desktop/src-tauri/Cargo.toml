@@ -61,3 +61,9 @@ getrandom = "0.2"
 # in release). See .ai/plans/feature-desktop-e2e-scenario-harness.md + the
 # `desktop-e2e` skill.
 tauri-plugin-wdio-webdriver = "1.2.0"
+# feature-acp-turn-notifications — a REAL OS notification, regardless of which
+# project's page is loaded or whether any page is loaded at all. The Web
+# `Notification` API inside the webview (app.jsx) can only ever cover the
+# project currently on screen; this is what closes the cross-project +
+# detached-chat gap (see notify.rs).
+tauri-plugin-notification = "2"
