@@ -117,6 +117,33 @@ export const SKIP_DIRS = new Set([
 ]);
 const HIDDEN_OK = new Set(['.ai', '.claude', '.design']);
 
+// feature-studio-file-preview — binary/media extensions the tree lists so a
+// DS's assets/{fonts,graphics,logos,photos,...} files show up (previously
+// only their parent folders did, via findFiles's dirsOut accounting). Kept as
+// an explicit enumerated list rather than a broad pattern so it can never
+// accidentally widen to swallow runtime JSON — findFiles already excludes
+// `_`-prefixed entries before this list is even consulted.
+const PREVIEW_ASSET_EXTS = [
+  '.svg',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.avif',
+  '.woff',
+  '.woff2',
+  '.ttf',
+  '.otf',
+  '.mp4',
+  '.webm',
+  '.mov',
+  '.mp3',
+  '.wav',
+  '.ogg',
+  '.m4a',
+];
+
 // ---------- File tree ----------
 
 /**
@@ -181,7 +208,31 @@ async function findFiles(
     if (e.isDirectory()) {
       dirsOut?.push(rel);
       out.push(...(await findFiles(full, rel, exts, dirsOut)));
-    } else if (exts.some((x) => e.name.toLowerCase().endsWith(x))) out.push(rel);
+    } else if (e.isFile() && exts.some((x) => e.name.toLowerCase().endsWith(x))) {
+      // feature-studio-file-preview security review — `e.isFile()` (not just
+      // "not a directory") excludes symlinks: a symlink Dirent is neither
+      // isDirectory() nor isFile(), so without this check a symlink dropped
+      // into an assets/ folder (e.g. pointing at ~/.ssh/id_rsa, named to fit
+      // an allowlisted extension) would be listed and, since this feature
+      // makes every listed row one-click-fetchable, served straight into the
+      // preview panel.
+      //
+      // A HARDLINK survives `isFile()` (hardlinks are, by design, ordinary
+      // files — same inode, indistinguishable from the "original" at the
+      // Dirent level), so it needs a second check: `nlink > 1` means this
+      // directory entry shares its inode with at least one other name
+      // somewhere on the filesystem. A design system's own assets are never
+      // legitimately multiply-linked, so excluding them closes the same
+      // one-click-disclosure path for a hardlink planted at, say, a
+      // teammate's readable dotfile.
+      try {
+        const st = await lstat(full);
+        if (st.nlink > 1) continue;
+      } catch {
+        continue;
+      }
+      out.push(rel);
+    }
   }
   return out;
 }
@@ -5268,15 +5319,29 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       const isDs = g.label === 'Design system' || /^system(\/|$)/.test(g.path);
       // Always include canvas sidecars (`.meta.json`, `.css`, `.registry.json`)
       // so the client can nest them under their primary `.tsx` / `.html`. DS
-      // groups additionally surface `.md` for README + SKILL docs.
+      // groups additionally surface `.md` for README + SKILL docs, plus
+      // PREVIEW_ASSET_EXTS (images/fonts/video/audio) so assets/ subfolders
+      // list their files instead of rendering as permanently-empty tree nodes
+      // (feature-studio-file-preview) — click-time behavior lives client-side
+      // in FileRow's previewKind() branch.
       // feature-file-tree-drag-drop-folders (Task 6) — `dirs` accumulates
       // every directory in this group (incl. empty ones) via the SAME
       // traversal, so a freshly `mkdir`'d folder with no files yet is still
       // representable in the tree.
       const dirs: string[] = [];
       const filePaths = isDs
-        ? await findFiles(groupAbs, groupRel, ['.tsx', '.html', '.md', '.css', '.json'], dirs)
-        : await findFiles(groupAbs, groupRel, ['.tsx', '.html', '.css', '.json'], dirs);
+        ? await findFiles(
+            groupAbs,
+            groupRel,
+            ['.tsx', '.html', '.md', '.css', '.json', ...PREVIEW_ASSET_EXTS],
+            dirs
+          )
+        : await findFiles(
+            groupAbs,
+            groupRel,
+            ['.tsx', '.html', '.css', '.json', ...PREVIEW_ASSET_EXTS],
+            dirs
+          );
       // DDR-093 — record each `.tsx` canvas's design system. canvasUrl() only
       // injects tokens for `.tsx`, so skip everything else. Path-owned DS wins
       // (system/<ds>/…); otherwise the sidecar's `meta.designSystem`, defaulting

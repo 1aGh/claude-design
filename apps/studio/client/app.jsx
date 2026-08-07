@@ -38,6 +38,7 @@ import OnboardingWizard from './panels/OnboardingWizard.jsx';
 import { ReadinessDialog } from './panels/ReadinessList.jsx';
 import IntroVideoDialog from './panels/IntroVideoDialog.jsx';
 import BrandUploadPanel from './panels/BrandUploadPanel.jsx';
+import { FilePreview, sanitizeDisplayText } from './panels/file-preview.jsx';
 import SetupChecklistDialog, { useSetupReadiness } from './panels/SetupChecklist.jsx';
 import TimelinePanel from './panels/TimelinePanel.jsx';
 import { parseCompTimeline } from './panels/timeline-parse.js';
@@ -189,6 +190,23 @@ function DockSlot({ side, width, open, ids, activeId, onPick, children, labels =
   );
 }
 const CANVAS_EXT_RE = /\.(tsx|html?)$/i;
+// feature-studio-file-preview — classifies a non-canvas tree row so FileRow
+// can open an inline preview instead of the old inert no-op. Kept in sync
+// with apps/studio/api.ts's PREVIEW_ASSET_EXTS (server won't list anything
+// outside this set anyway, but the client stays explicit rather than
+// assuming server-side filtering).
+const PREVIEW_KIND_RULES = [
+  [/\.md$/i, 'markdown'],
+  [/\.(css|json|txt|ya?ml)$/i, 'text'],
+  [/\.(svg|png|jpe?g|gif|webp|avif)$/i, 'image'],
+  [/\.(mp4|webm|mov)$/i, 'video'],
+  [/\.(mp3|wav|ogg|m4a)$/i, 'audio'],
+  [/\.(woff2?|ttf|otf)$/i, 'font'],
+];
+function previewKind(name) {
+  for (const [re, kind] of PREVIEW_KIND_RULES) if (re.test(name)) return kind;
+  return null;
+}
 // Shared testid-slug derivation (desktop-e2e skill convention: kebab-case,
 // designRoot-stripped, extension-stripped) — mirrors FileRow's inline
 // `canvas-row-<slug>` computation so DirRow / the row-menu trigger use the
@@ -2024,7 +2042,9 @@ function DsFolderRow({ name, dsName, depth, defaultOpen, active, onOpenSystem, c
 function FileRow({
   file,
   activePath,
+  previewPath,
   onOpen,
+  onPreview,
   onDelete,
   openCount: oc,
   depth,
@@ -2035,12 +2055,20 @@ function FileRow({
   drag,
   menu,
 }) {
-  const isSel = file.path === activePath;
+  // feature-studio-file-preview (a11y fix) — a previewed row must expose
+  // aria-selected too, or a screen-reader user gets no confirmation their
+  // click did anything (a11y-auditor finding: state never changed).
+  const isSel = file.path === activePath || file.path === previewPath;
   const isCanvas = CANVAS_EXT_RE.test(file.name);
-  // Non-canvas rows (PROJECT *.md, RUNTIME _active.json, ...) are display-only —
-  // clicking them doesn't open an iframe; we leave the click as no-op + cursor
-  // hint via `aria-disabled`.
-  const inert = !isCanvas;
+  // feature-studio-file-preview — RUNTIME rows (_active.json, _server.json, …)
+  // stay inert no matter their extension: they're gitignored process state,
+  // never user-facing content, and must not become previewable just because
+  // `.json` also matches the `text` preview kind (DDR-115 exclusion).
+  const pKind = !isCanvas && kind !== 'runtime' ? previewKind(file.name) : null;
+  // Non-canvas, non-previewable rows (RUNTIME files, unrecognized extensions)
+  // are display-only — clicking them doesn't open anything; we leave the
+  // click as no-op + cursor hint via `aria-disabled`.
+  const inert = !isCanvas && !pKind;
   const label = isCanvas ? displayName(file.name) : file.name;
   // Delete only real canvases in a deletable group (onDelete is undefined for the
   // DS group + runtime files); the server enforces the rest.
@@ -2087,7 +2115,8 @@ function FileRow({
       style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
       title={file.path + (oc ? ` — ${oc} open` : inert ? ' (file index only)' : '')}
       onClick={() => {
-        if (!inert) onOpen(file.path);
+        if (isCanvas) onOpen(file.path);
+        else if (pKind) onPreview?.(file.path);
       }}
       onContextMenu={
         canMove ? (e) => menu.openAt(e, { kind: 'file', path: file.path, dir: fileDir }) : undefined
@@ -2158,7 +2187,9 @@ function CanvasRow({
   depth,
   kind,
   activePath,
+  previewPath,
   onOpen,
+  onPreview,
   onDelete,
   openCount: oc,
   showHidden,
@@ -2182,7 +2213,9 @@ function CanvasRow({
       <FileRow
         file={primary}
         activePath={activePath}
+        previewPath={previewPath}
         onOpen={onOpen}
+        onPreview={onPreview}
         onDelete={onDelete}
         openCount={oc}
         depth={depth}
@@ -2282,7 +2315,9 @@ function CanvasRow({
             key={sc.path}
             file={sc}
             activePath={activePath}
+            previewPath={previewPath}
             onOpen={onOpen}
+            onPreview={onPreview}
             openCount={0}
             depth={depth + 1}
             kind={kind}
@@ -2296,7 +2331,9 @@ function CanvasRow({
 function Tree({
   node,
   activePath,
+  previewPath,
   onOpen,
+  onPreview,
   commentsByFile,
   depth = 1,
   kind,
@@ -2351,7 +2388,9 @@ function Tree({
             primary={entry.primary}
             sidecars={entry.sidecars}
             activePath={activePath}
+            previewPath={previewPath}
             onOpen={onOpen}
+            onPreview={onPreview}
             onDelete={onDelete}
             openCount={openCount(commentsByFile[entry.primary.path])}
             depth={depth}
@@ -2371,7 +2410,9 @@ function Tree({
             key={entry.primary.path}
             file={entry.primary}
             activePath={activePath}
+            previewPath={previewPath}
             onOpen={onOpen}
+            onPreview={onPreview}
             openCount={openCount(commentsByFile[entry.primary.path])}
             depth={depth}
             kind={kind}
@@ -2385,7 +2426,9 @@ function Tree({
           <Tree
             node={node[d]}
             activePath={activePath}
+            previewPath={previewPath}
             onOpen={onOpen}
+            onPreview={onPreview}
             commentsByFile={commentsByFile}
             depth={depth + 1}
             kind={kind}
@@ -2468,8 +2511,10 @@ function Sidebar({
   cloud,
   groups,
   activePath,
+  previewPath,
   activeDsName,
   onOpen,
+  onPreview,
   onOpenSystem,
   wsConnected,
   search,
@@ -2829,7 +2874,9 @@ function Sidebar({
                   <Tree
                     node={g.tree}
                     activePath={activePath}
+                    previewPath={previewPath}
                     onOpen={onOpen}
+                    onPreview={onPreview}
                     commentsByFile={commentsByFile}
                     depth={1}
                     kind={g.kind}
@@ -4205,10 +4252,38 @@ function Viewport({
   onIframeLoad,
   showQuickSetup,
   onStartQuickSetup,
+  previewPath,
 }) {
+  // feature-studio-file-preview (a11y fix) — a11y-auditor found the preview
+  // overlay gave keyboard/AT users no signal anything happened: the click
+  // stayed on the (unrelated) tree row, nothing was announced, and the
+  // scrollable region itself wasn't in the tab order. Moving focus onto the
+  // region on open covers all three: it's a real focus change (AT announces
+  // the new `role="region"` + its label), and a focused element with
+  // `overflow: auto` is keyboard-scrollable (arrow/Page keys) without a
+  // separate tabIndex fix.
+  const previewRef = useRef(null);
+  useEffect(() => {
+    if (previewPath) previewRef.current?.focus();
+  }, [previewPath]);
   return (
     <div className="viewport st-stage" data-tour="viewport">
-      {tabs.length === 0 && (
+      {previewPath && (
+        // feature-studio-file-preview — an overlay, not a tab: the canvas
+        // iframe (if any) stays mounted underneath so switching back to it
+        // is instant and never remounts. previewPath is intentionally never
+        // written into `tabs`/`activePath` (see App()'s onPreview).
+        <div
+          ref={previewRef}
+          className="st-file-preview-overlay"
+          role="region"
+          aria-label={`Preview: ${sanitizeDisplayText(basename(previewPath))}`}
+          tabIndex={0}
+        >
+          <FilePreview path={previewPath} kind={previewKind(basename(previewPath))} />
+        </div>
+      )}
+      {tabs.length === 0 && !previewPath && (
         <div className="st-empty">
           <div className="st-empty-brand">
             <span className="st-brand-mark">
@@ -9176,6 +9251,14 @@ function App() {
   const [project, setProject] = useState('Design');
   const [tabs, setTabs] = useState([]);
   const [activePath, setActivePath] = useState(null);
+  // feature-studio-file-preview — deliberately separate from `tabs`/
+  // `activePath`: a previewed file was never a canvas, so it must never
+  // trigger the WS `active`/`tabs` broadcasts, the compile-skeleton loading
+  // state, or iframe registration that openTab()/openSystem() drive.
+  const [previewPath, setPreviewPath] = useState(null);
+  const onPreview = useCallback((path) => {
+    setPreviewPath(path);
+  }, []);
   const [selected, setSelected] = useState(null);
   // Phase 12.3 — latest selection, readable from the (stale-closure) onMessage
   // handler so an HMR reload (triggered by a CSS/attr edit) can re-select the
@@ -11170,6 +11253,7 @@ function App() {
     });
     setActivePath(path);
     setFocusedCommentId(null);
+    setPreviewPath(null);
     // Canvas-compile skeleton — cleared by the iframe's dgn:'loaded' message,
     // the onLoad fallback timer (legacy .html), or a hard 15s cap.
     if (path !== SYSTEM_TAB) setLoadingPath(path);
@@ -14076,8 +14160,10 @@ function App() {
           readOnly={viewerMode}
           groups={groups}
           activePath={activePath}
+          previewPath={previewPath}
           activeDsName={activePath === SYSTEM_TAB ? (systemData?.ds?.name ?? null) : null}
           onOpen={openTab}
+          onPreview={onPreview}
           onOpenSystem={openSystem}
           wsConnected={wsConnected}
           search={search}
@@ -14419,6 +14505,7 @@ function App() {
                 isNativeApp() && !viewerMode && !!setupReadiness && !setupReadiness.ready
               }
               onStartQuickSetup={() => setQuickSetupOpen(true)}
+              previewPath={previewPath}
             />
           </div>
           {rightActive && (

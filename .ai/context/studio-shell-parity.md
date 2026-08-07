@@ -53,7 +53,7 @@
 | C6 | DirRow | nested dir expand/collapse (▾/▸), local state | T4 |
 | C7 | DsFolderRow | chevron toggles folder; click name → opens SystemView scoped to that DS; active highlight | T4/T6 |
 | C8 | FileRow open | click canvas (.tsx/.html) → opens it (replaces active); selected highlight + ▸ glyph | T4 |
-| C9 | FileRow inert | non-canvas rows (.md/.json/.css) display-only, `aria-disabled`, no open | T4 |
+| C9 | FileRow preview | non-canvas, non-runtime rows (.md/.css/.json/images/fonts/video/audio) open an inline preview (`FilePreview` overlay) on click, not a canvas tab; RUNTIME rows and genuinely unrecognized extensions stay `aria-disabled` no-op (feature-studio-file-preview) | T4 |
 | C10 | Runtime muted | runtime files styled muted, not deletable | T4 |
 | C11 | Open-count badge | canvas with open comments shows count badge | T4 |
 | C12 | Delete canvas | `tp-del` trash button (not DS, not runtime) → confirm → DELETE → tree refresh + reset active if open | T4 |
