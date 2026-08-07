@@ -3,9 +3,31 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** done — ACP turn notifications closed 2026-08-07 (native shell now owns the notify decision)
+**Status:** done — "a release reaches the fleet" closed 2026-08-07 (only a release tag rolls the cloud, and it proves which one)
 **Active plan:** —
 **Active task:** —
+
+_2026-08-07:_ **"A release reaches the fleet, and says which one it is" CLOSED + archived — tagging
+now deploys the cloud and proves it did.** v0.57.0 put a cell image tagged `v0.57.0` into production
+whose hub layer was built from v0.56.0, with every workflow green: `hub-image.yml` runs on tags
+only, so `maude-hub:latest` is rebuilt only at release time, and `cells-deploy` derived from it on
+any non-tag ref — so a branch push rebuilt the CELL from a hub that could not contain the change.
+The existence-based wait could not catch it (`:latest` always exists). **Only a release tag now
+builds or pushes a cell image**; a branch push runs the data-plane tests and `wrangler deploy` and
+nothing else — which removes the race, the stale derivation, and the same-tag-different-bytes
+generator at once. **And green now means a live cell answered on the released version**: the
+workflow polls a real tenant until `/health` reports the released version AND the client hash this
+run sealed into the image it pushed. The two are complementary, not redundant — the hash catches
+"same tag, different bytes", and only the version catches "the layer underneath is a release
+behind", because the stale image was internally self-consistent (DDR in the graph,
+`d_2152229760ff703da58e2d03`). The version is now readable in the Studio status bar, the hub admin
+header, `/health` and `/_config`; `apps/studio` + `apps/hub` join the release line (14 manifests),
+which is why `/health` had been reporting `0.0.0`. Two things the plan did not predict: a
+pre-existing gate (`config-projection.test.ts`) caught that `/_config` is an explicit client-side
+projection, so the version chip would have shipped permanently unrendered; and the tag run's hub
+wait was 10 min against a hub build measured at ~16 min, so it would have kept failing after the
+`:latest` fix — now 30 min, with the measurement in the comment. **The real proof is the next
+release**: if `cells-deploy` goes green while production is stale, the gate is wrong.
 
 _2026-08-07:_ **ACP turn notifications CLOSED + archived — the native shell now tells you when a
 chat finishes or needs input, even in a project you're not looking at.** The webview's own

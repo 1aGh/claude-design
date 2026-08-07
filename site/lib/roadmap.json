@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-07T10:11:21.292Z",
+  "generated": "2026-08-07T12:21:33.892Z",
   "currentPhase": null,
   "phases": [
     {
@@ -971,6 +971,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-release-reaches-the-fleet",
+      "title": "Feature: a release reaches the fleet, and says which one it is",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. Phase 1 must land before the next release — until it does, every release repeats the v...",
+      "planPath": ".ai/plans/archive/feature-release-reaches-the-fleet.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-remote-drafts-in-switcher",
       "title": "Feature: Surface remote branches (drafts) in the native draft switcher",
       "status": "done",
@@ -1033,6 +1044,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. The git engine layer (apps/studio/git/service.ts) is dense and security-reviewed — mir...",
       "planPath": ".ai/plans/archive/feature-ssh-remote-publish-and-pr-flow.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-studio-file-preview",
+      "title": "Feature: Preview for non-canvas files in the Studio file tree",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-studio-file-preview.md",
       "archived": true,
       "phaseKey": null
     },
