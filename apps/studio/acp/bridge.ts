@@ -147,6 +147,8 @@ export interface AcpBridgeOptions {
   onUsage?: (usage: BridgeUsage) => void;
   /** Override for `PERMISSION_TIMEOUT_MS` (tests only — production always gets the real default). */
   permissionTimeoutMs?: number;
+  /** Override for `CANCEL_ESCALATION_MS` (tests only — production always gets the real default). */
+  cancelEscalationMs?: number;
 }
 
 /**
@@ -561,6 +563,16 @@ export function newSessionParams(
 // the security control, so failing open would defeat the point.
 const PERMISSION_TIMEOUT_MS = 120_000;
 
+// SECURITY/RELIABILITY (issue-82) — how long cancel() waits for the
+// in-flight turn to actually END after asking the adapter cooperatively,
+// before forcing it to end itself. A wedged subprocess — or one that never
+// implemented `session/cancel` at all — must not be able to leave the Stop
+// button permanently inert (see `cancel()`'s doc comment). Bounded like
+// PERMISSION_TIMEOUT_MS/INITIALIZE_TIMEOUT_MS above: generous enough not to
+// misfire on a merely-slow cancel ack, short enough that Stop still feels
+// responsive.
+const CANCEL_ESCALATION_MS = 5_000;
+
 // SECURITY (ethical-hacker finding, retroactive review) — a single agent turn
 // can legitimately issue several tool calls back to back (a burst is normal
 // agent behavior, not a bug — e.g. prompt-injected content directing several
@@ -624,6 +636,32 @@ export class AcpBridge {
   // running establishSession() and stomping the single shared `replaying` flag.
   private sessionPromises = new Map<string, Promise<string>>();
   private currentSession: string | null = null; // the in-flight prompt's session
+  // issue-82 — every prompt() call currently racing a forced-cancellation
+  // (see `prompt()`), so cancel()/stop() can force ANY of them to settle
+  // when the adapter doesn't cooperate, instead of leaving one hanging
+  // forever. A Set, not a single field, on purpose (ethical-hacker finding):
+  // `handlePrompt` has no reentrancy guard, so a duplicate/replayed `prompt`
+  // frame for the same chat can start a SECOND overlapping turn on this
+  // bridge. A singleton field would be silently overwritten by the second
+  // turn's registration and then nulled by whichever turn settles first —
+  // even a normal, uncancelled completion — leaving an EARLIER, genuinely
+  // wedged turn permanently unescalatable and reopening this exact bug.
+  // Tracking every in-flight turn means cancel() always finds (and can
+  // force-end) whichever one is actually stuck, regardless of ordering.
+  private pendingTurns = new Set<{ reject: (err: Error) => void; settled: Promise<void> }>();
+  // issue-82 / ethical-hacker finding — set for good, synchronously, at the
+  // very top of `stop()`. `stop()` kills the subprocess but cannot make it
+  // die instantly (SIGTERM, not a synchronous severance of the ndjson
+  // stream), so a message the child had already started writing can still
+  // arrive and be dispatched afterward. Without this flag a
+  // `requestPermission`/`unstable_createElicitation` call landing in that
+  // window would register a fresh pending entry as if the session were
+  // still live — and a stale client `permission-response` could later
+  // resolve it as an "allow" against a session the user was told was
+  // closed. Checked at the top of both handlers below; never reset (a
+  // stopped bridge is torn out of the `bridges` map by `reap()` and never
+  // reused — see acp/index.ts).
+  private stopped = false;
   /** Sessions whose bootstrap brief already hit the transcript (audit record). */
   private briefLogged = new Set<string>();
   private starting: Promise<void> | null = null;
@@ -859,8 +897,31 @@ export class AcpBridge {
     }
   }
 
-  /** Spawn + handshake exactly once; concurrent callers share the same promise. */
+  /** Spawn + handshake exactly once; concurrent callers share the same promise.
+   *
+   * issue-82 follow-up (ethical-hacker finding on the fix itself) — once a
+   * bridge has been `stop()`'d, refuse to resurrect it rather than silently
+   * respawning. `stop()` is currently ONLY reached via `reap()` (which also
+   * deletes the bridge from `index.ts`'s map, so a fresh `AcpBridge` — with
+   * `stopped` correctly false — is created for the next turn) OR via THIS
+   * file's own cancel()-escalation path (`cancel()` calling `stop()` when a
+   * turn doesn't end in time), which does NOT go through `reap()` and leaves
+   * the SAME, now-permanently-`stopped` instance live in that map. Without
+   * this guard, a merely-slow (not malicious) turn that just misses
+   * `CANCEL_ESCALATION_MS` would respawn a working-looking subprocess whose
+   * `requestPermission`/`unstable_createElicitation` handlers silently
+   * auto-deny forever (the `stopped` check in both) — a hard-to-diagnose,
+   * silent regression of the permission gate with no visible error. Throwing
+   * here instead surfaces a clear, actionable error through the SAME
+   * try/catch every caller already has (`handlePrompt` etc.), so the failure
+   * is loud, not silent — the user is prompted to start a new chat, whose
+   * `getOrCreateEntry` makes a brand-new bridge with `stopped` unset. */
   async ensureStarted(): Promise<void> {
+    if (this.stopped) {
+      throw new Error(
+        'This AI editing session was stopped and cannot be reused — start a new chat.'
+      );
+    }
     if (this.conn) return;
     if (!this.starting) {
       this.starting = this.start().finally(() => {
@@ -1139,6 +1200,12 @@ export class AcpBridge {
         void this.appendTranscript({ role: 'agent', update: u }, seq);
       },
       requestPermission: (params: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
+        // issue-82 / ethical-hacker finding — a message the child had already
+        // started writing before `stop()` killed it can still be dispatched
+        // in the brief window before the process actually dies. Fail closed
+        // immediately rather than register a pending entry a stale client
+        // response could later resolve as "allow" against a torn-down session.
+        if (this.stopped) return Promise.resolve({ outcome: { outcome: 'cancelled' } });
         // Milestone B (retires DDR-125 F2's blanket auto-approve) — the
         // permission POLICY is now the selected session mode (sourced from
         // Claude Code itself): `bypassPermissions`/`dontAsk` short-circuit
@@ -1195,6 +1262,11 @@ export class AcpBridge {
       unstable_createElicitation: (
         params: CreateElicitationRequest
       ): Promise<CreateElicitationResponse> => {
+        // issue-82 / ethical-hacker finding — same fail-closed guard as
+        // `requestPermission` above, and for the same reason: a message
+        // already in flight from the child when `stop()` fires must not
+        // register a pending entry a stale client response could resolve.
+        if (this.stopped) return Promise.resolve({ action: 'decline' });
         // feature-acp-ask-user-question — mirrors requestPermission's shape
         // exactly. Fires for BOTH `AskUserQuestion` and any MCP-server
         // elicitation (see the plan's Research section) — the toolCallId/
@@ -1316,10 +1388,40 @@ export class AcpBridge {
       }
     }
     await this.appendTranscript({ role: 'user', text });
-    const response = await conn.prompt({
-      sessionId,
-      prompt: [{ type: 'text', text }],
+
+    // issue-82 — race the real adapter response against a forced rejection
+    // `cancel()`/`stop()` can trigger. `turn.settled` resolves the moment the
+    // RACE ITSELF is decided (security-auditor finding: resolving it only
+    // after the transcript-append below would let a slow disk write
+    // masquerade as a still-hanging turn and trigger a needless escalation
+    // even though the real response already won) — the append is bookkeeping
+    // on an already-settled outcome, not part of what `cancel()` waits on.
+    let resolveSettled!: () => void;
+    const settled = new Promise<void>((resolve) => {
+      resolveSettled = resolve;
     });
+    const turn: { reject: (err: Error) => void; settled: Promise<void> } = {
+      reject: () => {}, // replaced synchronously below before this can matter
+      settled,
+    };
+    const forced = new Promise<never>((_, reject) => {
+      turn.reject = reject;
+    });
+    let response: PromptResponse;
+    // `add` happens INSIDE the try (not before it) so a synchronous throw
+    // from `conn.prompt()` still reaches the `finally` and removes `turn` —
+    // otherwise it would leak in the Set forever, and a later cancel()
+    // calling `turn.reject()` on it would reject a `forced` promise nothing
+    // is racing anymore (an unhandled rejection).
+    try {
+      this.pendingTurns.add(turn);
+      const promptCall = conn.prompt({ sessionId, prompt: [{ type: 'text', text }] });
+      promptCall.catch(() => {}); // a forced-reject race must not surface as an unhandled rejection
+      response = await Promise.race([promptCall, forced]);
+    } finally {
+      this.pendingTurns.delete(turn);
+      resolveSettled();
+    }
     await this.appendTranscript({ role: 'stop', stopReason: response.stopReason });
     return { stopReason: response.stopReason };
   }
@@ -1548,24 +1650,72 @@ export class AcpBridge {
     }
   }
 
-  /** Cancel the in-flight turn (no-op if nothing is running). */
-  async cancel(): Promise<void> {
+  /** Deny pending permissions/elicitations, then fire the cooperative ACP
+   *  `session/cancel` request — WITHOUT waiting for it to settle. A wedged
+   *  or non-cooperating subprocess can leave this RPC unanswered forever (or
+   *  reject it immediately if `session/cancel` isn't even implemented);
+   *  either way this must never make a caller wait on it, so both
+   *  `cancel()`'s escalation and `stop()`'s teardown stay bounded no matter
+   *  what the adapter does with the request. */
+  private requestCancel(): void {
     this.denyAllPendingPermissions();
     this.declineAllPendingElicitations();
     if (this.conn && this.currentSession) {
-      try {
-        await this.conn.cancel({ sessionId: this.currentSession });
-      } catch {
-        /* turn may already have finished */
-      }
+      this.conn.cancel({ sessionId: this.currentSession }).catch(() => {
+        /* turn may already have finished, or the adapter doesn't implement cancel */
+      });
     }
   }
 
-  /** Tear down: cancel, kill the subprocess, drop all handles + sessions. */
+  /**
+   * Cancel the in-flight turn (no-op if nothing is running).
+   *
+   * Fires the cooperative ACP `session/cancel` request, but does not simply
+   * trust it: a wedged subprocess — or one that never implemented
+   * `session/cancel` at all — can leave the pending `prompt()` call
+   * unsettled forever, which used to mean Stop silently did nothing
+   * (issue-82): the client's turn loop never exits, `busy` stays true, and
+   * the Stop button stays visible but inert. Any turn that hasn't actually
+   * ended within `CANCEL_ESCALATION_MS` of asking is forced to end — reject
+   * its pending `prompt()` — so it always settles as an error the client
+   * surfaces, instead of hanging. If ANY turn needed forcing, the whole
+   * bridge (one subprocess serving every turn) is presumed wedged and torn
+   * down.
+   */
+  async cancel(): Promise<void> {
+    this.requestCancel();
+    const turns = [...this.pendingTurns];
+    if (turns.length === 0) return; // nothing in flight to escalate
+    const escalated = await Promise.all(
+      turns.map(async (turn) => {
+        const result = await withTimeout(
+          turn.settled,
+          this.opts.cancelEscalationMs ?? CANCEL_ESCALATION_MS
+        );
+        if (result !== TIMED_OUT) return false;
+        turn.reject(new Error('Cancelled — the agent did not respond in time and was stopped.'));
+        return true;
+      })
+    );
+    if (escalated.some(Boolean)) await this.stop();
+  }
+
+  /** Tear down: cancel, kill the subprocess, drop all handles + sessions.
+   *  Never blocks on the cooperative cancel ask (see `requestCancel`) — a
+   *  wedged subprocess must not be able to make `stop()` hang too. */
   async stop(): Promise<void> {
-    await this.cancel();
-    this.denyAllPendingPermissions(); // belt-and-suspenders — cancel() already does this
-    this.declineAllPendingElicitations(); // ditto
+    // Fail-closed from this instant on — see the `stopped` field comment.
+    this.stopped = true;
+    this.requestCancel();
+    // Any turn(s) still in flight — a direct stop() with no prior cancel(),
+    // or cancel()'s own escalation calling back in here. Force them to
+    // settle before the connection dies underneath them, so the client's
+    // turn loop always exits instead of awaiting a promise that can now
+    // never resolve.
+    for (const turn of this.pendingTurns) {
+      turn.reject(new Error('Stopped — the AI editing session was closed.'));
+    }
+    this.pendingTurns.clear();
     try {
       this.proc?.kill();
     } catch {
