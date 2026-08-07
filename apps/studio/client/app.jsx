@@ -20,6 +20,7 @@ import { GRID_KEYWORD_UNITS, parseTrackList, serializeTrackList } from '../grid-
 // Inspector's paper-preset picker, same "pull only pure math/data" shape as
 // canvas-cursors.ts above.
 import { PAPER_PRESETS, resolvePrintArtboard } from '../print/units.ts';
+import { resolveHeightCommit } from '../artboard-hug-commit.ts';
 import { sizingModeOf, sizingModePatch } from '../sizing-mode.ts';
 // The single "what is the hub link doing" rule, shared with the cloud rail's
 // connect note so the two surfaces can never disagree. Pure data + strings —
@@ -8148,10 +8149,16 @@ function ArtboardKnobs({
     onResizeArtboard?.(artboardId, resolved.widthPx, resolved.heightPx);
     onSetArtboardPrint?.(artboardId, next);
   };
-  const setHug = (nextFixed) => {
+  const setHug = (nextFixed, explicitHeight) => {
     if (!artboardId) return;
-    const freezeHeight = nextFixed && Number.isFinite(h) ? Math.round(h) : undefined;
+    const src = Number.isFinite(explicitHeight) ? explicitHeight : h;
+    const freezeHeight = nextFixed && Number.isFinite(src) ? Math.round(src) : undefined;
     onSetArtboardHug?.(artboardId, nextFixed, freezeHeight);
+  };
+  const commitHeight = (n) => {
+    const action = resolveHeightCommit(fixed, n);
+    if (action.kind === 'resize') commitSize(null, action.height);
+    else if (action.kind === 'promote-to-fixed') setHug(true, action.height);
   };
   const commitStyle = (patch) => {
     if (!artboardId) return;
@@ -8178,11 +8185,7 @@ function ArtboardKnobs({
           lead="H"
           steppers={false}
           scrub={fixed}
-          onCommit={(n) => {
-            // Hug — height is content-driven; ignore a typed value rather
-            // than silently switching modes.
-            if (fixed) commitSize(null, n);
-          }}
+          onCommit={commitHeight}
         />
       </div>
       <div style={{ padding: '0 12px 8px' }}>
