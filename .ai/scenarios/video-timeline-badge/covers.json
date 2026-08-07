@@ -1,0 +1,10 @@
+{
+  "web": [
+    "apps/studio/input-router.tsx",
+    "apps/studio/canvas-lib.tsx",
+    "apps/studio/canvas-shell.tsx",
+    "apps/studio/use-tool-mode.tsx",
+    "apps/studio/client/app.jsx",
+    "apps/studio/client/panels/TimelinePanel.jsx"
+  ]
+}
