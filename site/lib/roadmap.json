@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-06T22:14:47.739Z",
+  "generated": "2026-08-07T07:36:34.511Z",
   "currentPhase": null,
   "phases": [
     {
@@ -549,6 +549,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan continues the Phase 31 (DDR-123) native ACP chat panel and builds directly o...",
       "planPath": ".ai/plans/archive/feature-acp-slash-command-autocomplete.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-acp-write-path-scope",
+      "title": "Feature: ACP writes are project-scoped — every write outside the project asks",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-acp-write-path-scope.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1826,17 +1837,6 @@
       "summary": "The moodboard direction gates catch a disliked direction before the scaffold. They do not catch a scaffold that ran but produced silently-broken output — empty files trusted as written, a transpile...",
       "planPath": ".ai/plans/archive/setup-ds-round2-scaffold-integrity-and-devserver-fixes.md",
       "archived": true,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-acp-write-path-scope",
-      "title": "Feature: ACP writes are project-scoped — every write outside the project asks",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-acp-write-path-scope.md",
-      "archived": false,
       "phaseKey": null
     },
     {
