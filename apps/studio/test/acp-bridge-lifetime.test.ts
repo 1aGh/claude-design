@@ -28,6 +28,7 @@ import type { WsData } from '../ws.ts';
 
 const FIXTURE_SLOW = join(import.meta.dir, 'fixtures', 'mock-acp-agent-slow.mjs');
 const FIXTURE_PERM = join(import.meta.dir, 'fixtures', 'mock-acp-agent-permission.mjs');
+const FIXTURE_WEDGED = join(import.meta.dir, 'fixtures', 'mock-acp-agent-wedged.mjs');
 const TEST_ENV_KEYS = ['MAUDE_ACP_ADAPTER_ENTRY', 'MAUDE_ACP_RUNTIME', 'MAUDE_CLAUDE_BIN'];
 
 function useMockAgent(fixture: string) {
@@ -331,6 +332,111 @@ describe('bridge lifetime — the attach seq is client-supplied and must be boun
     expect(attached?.chat).not.toContain('.');
     acp.stopAll();
   }, 30000);
+});
+
+describe('cancel() must not hang forever on a non-cooperating agent (issue-82)', () => {
+  // The reported bug: "I clicked STOP and nothing happened. Probably stuck."
+  // The old cancel() just `await`ed the cooperative ACP `session/cancel`
+  // request with no bound — a wedged subprocess (or one that never
+  // implemented session/cancel at all, as here) left it, and the pending
+  // prompt() call, hanging forever. `bridge.cancel()` below must always
+  // return, and it must force the stuck turn to actually end.
+  test('cancel() escalates and force-ends the turn when the agent never responds', async () => {
+    useMockAgent(FIXTURE_WEDGED);
+    const ctx = freshCtx();
+    const bridge = new AcpBridge({
+      repoRoot: ctx.paths.repoRoot,
+      cancelEscalationMs: 200, // real default is 5s; keep the test fast
+      onUpdate: () => {},
+    });
+    try {
+      const promptPromise = bridge.prompt('go', 'c1');
+      // Let the turn actually reach the wedged conn.prompt() call — the same
+      // race a real Stop click lands in — before cancelling.
+      await until(() => (bridge.sessionId ? true : undefined));
+
+      // This is the assertion that matters: without the fix, this call never
+      // resolves and the test times out.
+      await bridge.cancel();
+
+      await expect(promptPromise).rejects.toThrow(/did not respond/);
+      // The subprocess was actually killed, not just the promise resolved —
+      // otherwise a "cancelled" chat could keep silently running/burning
+      // tokens in the background.
+      expect(bridge.connected).toBe(false);
+    } finally {
+      await bridge.stop();
+    }
+  }, 15000);
+
+  // Ethical-hacker finding on the first cut of this fix: `handlePrompt` has
+  // no reentrancy guard, so a duplicate/replayed `prompt` frame for the same
+  // chat can start a SECOND, overlapping turn on one bridge. A single shared
+  // "pending turn" field would be overwritten by that second turn and then
+  // nulled by whichever turn settles FIRST — even an ordinary, uncancelled
+  // completion — silently leaving an earlier, genuinely wedged turn
+  // permanently unescalatable and reopening this exact bug from a different
+  // angle. Pin that a normal turn finishing does not blind cancel() to a
+  // still-stuck one that started before it.
+  test('an overlapping turn finishing normally does not blind cancel() to an earlier wedged one', async () => {
+    useMockAgent(FIXTURE_WEDGED);
+    const ctx = freshCtx();
+    const bridge = new AcpBridge({
+      repoRoot: ctx.paths.repoRoot,
+      cancelEscalationMs: 200,
+      onUpdate: () => {},
+    });
+    try {
+      // Turn A — the fixture's FIRST session/prompt call, which wedges forever.
+      const turnA = bridge.prompt('go', 'c1');
+      await until(() => (bridge.sessionId ? true : undefined));
+
+      // Turn B — a second, overlapping call for the SAME chat while A is
+      // still in flight. The fixture resolves every call after the first
+      // quickly, so this settles normally with no cancellation involved.
+      const turnB = bridge.prompt('go again', 'c1');
+      await expect(turnB).resolves.toMatchObject({ stopReason: 'end_turn' });
+
+      // Turn B's ordinary completion must not have cleared turn A's
+      // escalation registration — cancel() must still find and force-end A.
+      await bridge.cancel();
+      await expect(turnA).rejects.toThrow(/did not respond/);
+      expect(bridge.connected).toBe(false);
+    } finally {
+      await bridge.stop();
+    }
+  }, 15000);
+
+  // A second-round ethical-hacker finding on THIS fix: cancel()'s escalation
+  // calls this.stop() directly, which does NOT go through index.ts's reap()
+  // (the only place that deletes a bridge from the `bridges` map). Without a
+  // guard, the SAME now-`stopped` instance would stay live and silently
+  // respawn a working-looking subprocess on the next prompt — except its
+  // requestPermission/unstable_createElicitation handlers auto-deny forever
+  // (the `stopped` check never resets), a silent permission-gate regression
+  // with no visible error. `ensureStarted()` must refuse to resurrect it.
+  test('after cancel() escalates and self-stops, the bridge refuses to silently respawn', async () => {
+    useMockAgent(FIXTURE_WEDGED);
+    const ctx = freshCtx();
+    const bridge = new AcpBridge({
+      repoRoot: ctx.paths.repoRoot,
+      cancelEscalationMs: 200,
+      onUpdate: () => {},
+    });
+    try {
+      const promptPromise = bridge.prompt('go', 'c1');
+      await until(() => (bridge.sessionId ? true : undefined));
+      await bridge.cancel(); // escalates → self-stop()
+      await expect(promptPromise).rejects.toThrow(/did not respond/);
+      expect(bridge.connected).toBe(false);
+
+      // The assertion that matters: a LOUD, immediate error — never a silent
+      // respawn into a permanently permission-denying session.
+      await expect(bridge.prompt('again', 'c1')).rejects.toThrow(/stopped and cannot be reused/);
+    } finally {
+      await bridge.stop();
+    }
+  }, 15000);
 });
 
 describe('set-mode is attachment-scoped too (ethical-hacker A2)', () => {
