@@ -1,5 +1,29 @@
 # @1agh/maude
 
+## 0.58.1
+
+### Patch Changes
+
+- d6dcbaf: An AI placeholder slate can now move between the storyline and an overlay layer, just like a real clip.
+
+  **Drag it out, drag it back in.** The "move to overlay" and "move to storyline" verbs used to require a clip to carry a real media source, so a not-yet-generated `<AIPlaceholder>` slate — the prompt-carrying stand-in you drop before the AI content exists — was refused every time and stayed stuck wherever it first landed. It now rides the move with its prompt and kind intact, in the storyline or a standalone overlay layer, and back again.
+
+- e3e5d6a: Typing a height for an artboard in the Inspector does something again.
+
+  Width worked; Height silently did nothing whenever the artboard was in Hug mode, where the height is a content-driven floor rather than an exact size — so the value you typed was simply dropped, with no message. A typed height now promotes the artboard to Fixed at that height: the same "freeze the height" write the Hug/Fixed toggle already performed, just seeded from your number instead of the last measured one. In Fixed mode it stays an ordinary resize, exactly as before.
+
+- e3e5d6a: A clip dropped onto the timeline keeps its own length instead of becoming three seconds.
+
+  Every drag-and-drop landed as a 3-second clip, whatever the source actually was, because the drop happened before anything had read the file's real duration and 3s was the fallback. The drop path now loads the media's metadata first and uses its true duration, so a 12-second take arrives as a 12-second clip and no longer has to be re-trimmed by hand.
+
+- e3e5d6a: Follow-ups to the v0.58.0 release-pipeline work, found by running it for real.
+
+  **A push to `main` now touches nothing in the cloud fleet.** v0.58.0 made cell image builds tag-only but kept the branch run's Worker deploy, on the reasoning that the Worker is not the image. It is not that simple: the config _names_ the container image, so deploying the Worker reconciles the container too — and on the release commit, which points at an image only the tag run builds, that failed after the Worker had already been uploaded. A branch push now runs the data-plane tests and stops.
+
+  **The post-deploy check reads the right field.** It looked for the served-bundle hash one level too deep in the health payload, so it could only ever time out — and it passed review because its own test fixture was written to the same wrong shape. The shape is now asserted where the payload is produced, not just mirrored in the test.
+
+  **A cell stops reporting its version as `0.0.0`.** The hub's manifest was never copied into the image, so the version lookup always failed quietly. It is staged now, and `/health` reports the real release on both fields.
+
 ## 0.58.0
 
 ### Minor Changes
