@@ -619,6 +619,34 @@
     border-radius: var(--radius-sm);
     overflow-x: auto;
   }
+  .chat-md-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+  }
+  .chat-md-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--type-xs);
+  }
+  .chat-md-table th,
+  .chat-md-table td {
+    padding: var(--space-2) var(--space-3);
+    text-align: left;
+    border-bottom: 1px solid var(--border-subtle);
+    white-space: pre-wrap;
+  }
+  .chat-md-table th {
+    background: var(--bg-2);
+    font-weight: 600;
+    color: var(--fg-0);
+  }
+  .chat-md-table td {
+    color: var(--fg-1);
+  }
+  .chat-md-table tbody tr:last-child td {
+    border-bottom: none;
+  }
   .chat-code code {
     font-family: var(--font-mono);
     font-size: var(--type-xs);

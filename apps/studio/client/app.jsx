@@ -2361,8 +2361,20 @@ function Tree({
   const files = node._files || [];
   // VS Code-style sidecar grouping. Canvas (`.tsx`/`.html`) becomes the primary
   // row; same-basename non-canvas files (`.meta.json`, `.css`, …) collapse
-  // under it. Orphans surface only when `showHidden` is on.
+  // under it. Meta/doc orphans (README.md, tokens.css, …) surface only when
+  // `showHidden` is on; media/asset orphans (images, fonts, video, audio —
+  // feature-studio-file-preview) are content the user asked to see by
+  // default, not sidecar noise, so they always render.
   const { canvases, orphans } = useMemo(() => groupBySidecar(files), [files]);
+  const { mediaOrphans, metaOrphans } = useMemo(() => {
+    const media = [];
+    const meta = [];
+    for (const entry of orphans) {
+      const k = previewKind(entry.primary.name);
+      (k === 'image' || k === 'video' || k === 'audio' || k === 'font' ? media : meta).push(entry);
+    }
+    return { mediaOrphans: media, metaOrphans: meta };
+  }, [orphans]);
   const hasSearch = !!(search && search.trim());
   // DS-folder lookup: only meaningful at the top level of a DS group. The
   // server emits `dsFolders: [{name, folder}, ...]` so the client knows which
@@ -2404,8 +2416,21 @@ function Tree({
           />
         );
       })}
+      {mediaOrphans.map((entry) => (
+        <FileRow
+          key={entry.primary.path}
+          file={entry.primary}
+          activePath={activePath}
+          previewPath={previewPath}
+          onOpen={onOpen}
+          onPreview={onPreview}
+          openCount={openCount(commentsByFile[entry.primary.path])}
+          depth={depth}
+          kind={kind}
+        />
+      ))}
       {showHidden &&
-        orphans.map((entry) => (
+        metaOrphans.map((entry) => (
           <FileRow
             key={entry.primary.path}
             file={entry.primary}
@@ -4642,6 +4667,7 @@ function StatusBar({
   unpushed = 0,
   changesOpen = false,
   onOpenChanges,
+  version,
 }) {
   const isSystem = activePath === SYSTEM_TAB;
   const text =
@@ -4761,6 +4787,19 @@ function StatusBar({
           <span className="lbl">hub sync</span>
           <span className="val" title={syncSlot.title}>
             {syncSlot.label}
+          </span>
+        </span>
+      )}
+
+      {/* Which release this is. Reading it used to mean probing production by
+          hand — and the desktop, the browser and a cloud tab all serve the same
+          client, so one slot covers all three. Absent on an older server that
+          omits `version` from /_config, exactly as `cloud` and `canvasToken`
+          already are. */}
+      {version && (
+        <span className="st-sb-slot st-sb-version" role="group" aria-label="Maude version">
+          <span className="val" data-testid="statusbar-version">
+            v{version}
           </span>
         </span>
       )}
@@ -9529,6 +9568,10 @@ function App() {
           // both of these went missing and the cloud studio rendered without
           // its chrome and with every canvas iframe unauthenticated.
           canvasToken: data.canvasToken,
+          // Which release this server is — rendered as the status-bar chip.
+          // Undefined on a server too old to report it, which is why the chip
+          // renders conditionally rather than printing `vundefined`.
+          version: data.version,
           // C2/C4 — `{ dashboardUrl, projectName, user, role }` when this is a
           // cloud tab. Its presence is what tells the shared client it is in a
           // browser tab on somebody else's machine; `user`/`role` are what let
@@ -15255,6 +15298,7 @@ function App() {
           unpushed={gitStatus?.unpushed || 0}
           changesOpen={changesOpen}
           onOpenChanges={gitStatus?.repo ? () => setChangesOpen(true) : undefined}
+          version={cfg?.version}
         />
       </div>
       {presentMode && (

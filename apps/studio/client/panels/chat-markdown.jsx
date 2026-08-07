@@ -1,8 +1,11 @@
-// Compact, XSS-safe markdown renderer for the ACP chat feed. Builds React nodes
-// directly (never innerHTML) so agent output can't inject markup. Covers the
-// subset a coding agent actually emits: fenced code blocks, headings, bullet +
-// numbered lists, bold / italic / inline code, and http(s) links. Anything else
-// falls through as plain (pre-wrapped) text. No new dependency.
+// Compact, XSS-safe markdown renderer for the ACP chat feed (and, since
+// feature-studio-file-preview, arbitrary repo .md files previewed in the
+// Files tree). Builds React nodes directly (never innerHTML) so neither
+// agent output nor untrusted file content can inject markup. Covers the
+// subset a coding agent actually emits plus GFM pipe tables (common in repo
+// docs): fenced code blocks, headings, bullet + numbered lists, pipe tables,
+// bold / italic / inline code, and http(s) links. Anything else falls
+// through as plain (pre-wrapped) text. No new dependency.
 
 function safeHref(url) {
   // Only allow http(s) — never javascript:/data:/etc.
@@ -45,6 +48,33 @@ function inline(text) {
   }
   if (last < text.length) out.push(text.slice(last));
   return out;
+}
+
+// GFM pipe tables: a header row, a separator row (---/:---/---:/:---:  per
+// column), then zero or more data rows — all lines containing at least one
+// unescaped `|`.
+const TABLE_ROW_RE = /\|/;
+const TABLE_SEP_CELL_RE = /^:?-+:?$/;
+
+function splitTableRow(line) {
+  let l = line.trim();
+  if (l.startsWith('|')) l = l.slice(1);
+  if (l.endsWith('|')) l = l.slice(0, -1);
+  // Split on `|` not preceded by `\` (an escaped pipe stays literal in a cell).
+  return l.split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, '|'));
+}
+
+function tableSeparatorAligns(line) {
+  const cells = splitTableRow(line);
+  if (!cells.length || !cells.every((c) => TABLE_SEP_CELL_RE.test(c))) return null;
+  return cells.map((c) => {
+    const left = c.startsWith(':');
+    const right = c.endsWith(':');
+    if (left && right) return 'center';
+    if (right) return 'right';
+    if (left) return 'left';
+    return null;
+  });
 }
 
 export function Markdown({ text }) {
@@ -106,6 +136,47 @@ export function Markdown({ text }) {
         )
       );
       continue;
+    }
+
+    // GFM pipe table: header row + a valid separator row immediately after.
+    if (TABLE_ROW_RE.test(line) && i + 1 < lines.length) {
+      const aligns = tableSeparatorAligns(lines[i + 1]);
+      if (aligns) {
+        const header = splitTableRow(line);
+        i += 2;
+        const rows = [];
+        while (i < lines.length && lines[i].trim() !== '' && TABLE_ROW_RE.test(lines[i])) {
+          rows.push(splitTableRow(lines[i]));
+          i++;
+        }
+        blocks.push(
+          <div key={key++} className="chat-md-table-wrap">
+            <table className="chat-md-table">
+              <thead>
+                <tr>
+                  {header.map((c, ci) => (
+                    <th key={ci} style={aligns[ci] ? { textAlign: aligns[ci] } : undefined}>
+                      {inline(c)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, ri) => (
+                  <tr key={ri}>
+                    {header.map((_, ci) => (
+                      <td key={ci} style={aligns[ci] ? { textAlign: aligns[ci] } : undefined}>
+                        {r[ci] !== undefined ? inline(r[ci]) : ''}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        continue;
+      }
     }
 
     // Blank line → paragraph separator.
