@@ -1058,9 +1058,29 @@ function ChatEmpty() {
   );
 }
 
-function QuickActions() {
+function QuickActions({ openComments = 0 }) {
   return (
     <div className="chat-quick">
+      {/* Issue #74 — the reporter asked for a button that IMPLEMENTS the
+          comments they already dropped on the canvas, not one that adds a new
+          one. `/design:edit` already owns the whole behaviour (edit.md §3: a
+          generic feedback string + open comments → iterate each as a scoped
+          edit, resolve each after it lands), so this is purely a shortcut to
+          the phrasing that triggers it. Shown only when there IS something to
+          implement — a permanently-disabled verb would just be noise.
+          Prefill, never fire blind: same rule as QUICK_ACTIONS above, so the
+          user can narrow the ask ("…but skip the one about the colour")
+          before sending. */}
+      {openComments > 0 ? (
+        <ThreadPrimitive.Suggestion
+          prompt="/design:edit fix open comments"
+          send={false}
+          className="btn btn--ghost btn--sm chat-qa chat-qa--comments"
+          data-testid="chat-qa-implement-comments"
+        >
+          {`✓ Implement ${openComments} comment${openComments === 1 ? '' : 's'}`}
+        </ThreadPrimitive.Suggestion>
+      ) : null}
       {QUICK_ACTIONS.map((a) => (
         <ThreadPrimitive.Suggestion
           key={a.label}
@@ -1495,6 +1515,7 @@ function ChatThread({
   activeCanvas,
   selected,
   designRel,
+  openComments,
   transcriptView,
   onSetTranscriptView,
   onPermissionRequest,
@@ -1735,7 +1756,7 @@ function ChatThread({
           ) : (
             <ErrorCard error={turnError} onRetry={retryLastTurn} />
           )}
-          <QuickActions />
+          <QuickActions openComments={openComments} />
           <Composer
             activeCanvas={activeCanvas}
             chatCtx={ctxDismissed ? null : chatCtx}
@@ -1766,6 +1787,7 @@ export default function ChatPanel({
   activeCanvas,
   selected,
   designRel,
+  openComments = 0,
   width,
   resizing,
   onClose,
@@ -2288,6 +2310,7 @@ export default function ChatPanel({
                 activeCanvas={activeCanvas}
                 selected={selected}
                 designRel={designRel}
+                openComments={openComments}
                 transcriptView={transcriptView}
                 onSetTranscriptView={setTranscriptView}
                 onPermissionRequest={onPermissionRequest}

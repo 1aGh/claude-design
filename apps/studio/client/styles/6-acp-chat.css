@@ -1235,6 +1235,18 @@
   .chat-qa {
     font-family: var(--font-mono);
   }
+  /* Issue #74 — the "Implement N comments" action. Its siblings are literal
+     slash commands (hence mono); this one is prose ABOUT the canvas's current
+     state and only appears when there is something to act on, so it reads as
+     the row's contextual action: proportional type + a light accent tint. */
+  .chat-qa--comments {
+    font-family: inherit;
+    border-color: var(--accent-muted);
+    color: var(--accent);
+  }
+  .chat-qa--comments:hover {
+    background: var(--accent-tint);
+  }
 
   /* Composer */
   .chat-composer {
