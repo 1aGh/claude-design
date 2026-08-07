@@ -12,6 +12,7 @@ import {
   hashArtifacts,
   identityForHealth,
   MANIFEST_NAME,
+  readStudioReleaseVersion,
   TRACKED_ARTIFACTS,
 } from '../src/bundle-identity.mjs';
 
@@ -120,6 +121,49 @@ test('an unsealed build reports null rather than claiming to be verified', () =>
     // is "checked and wrong". Collapsing them is how an unverified cell comes to
     // look verified.
     assert.equal(identityForHealth({ studioRoot: f.studio, manifestDir: f.root }).ok, null);
+  } finally {
+    f.cleanup();
+  }
+});
+
+// --- the release version, beside the hash -----------------------------------
+//
+// v0.57.0: a cell image tagged v0.57.0 shipped a hub layer built from v0.56.0.
+// The hash could not see it — the stale layer had sealed its OWN bundles, so
+// the manifest matched perfectly. A self-consistent wrong image. These assert
+// the second, non-redundant answer.
+
+test('the release version comes from the studio manifest the client is served from', () => {
+  const f = image();
+  try {
+    writeFileSync(join(f.studio, 'package.json'), JSON.stringify({ version: '0.58.0' }));
+    assert.equal(readStudioReleaseVersion(f.studio), '0.58.0');
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('a stale layer is visible in the version even when every hash matches', () => {
+  const f = image();
+  try {
+    // The image is sealed and untampered: identity is perfectly ok...
+    writeFileSync(join(f.studio, 'package.json'), JSON.stringify({ version: '0.56.0' }));
+    assert.equal(identityForHealth({ studioRoot: f.studio, manifestDir: f.root }).ok, true);
+    // ...and it is still the previous release. Only the version says so.
+    assert.notEqual(readStudioReleaseVersion(f.studio), '0.57.0');
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('an unreadable manifest is null, never a guess', () => {
+  const f = image();
+  try {
+    // Absent must stay distinguishable from wrong — the caller decides the
+    // fallback, so this must not invent one.
+    assert.equal(readStudioReleaseVersion(f.studio), null);
+    writeFileSync(join(f.studio, 'package.json'), '{ not json');
+    assert.equal(readStudioReleaseVersion(f.studio), null);
   } finally {
     f.cleanup();
   }

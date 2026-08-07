@@ -43,18 +43,42 @@ export interface WhatsNewFeed {
 let cache: WhatsNewFeed | null = null;
 
 /**
- * Read the installed maude version from the design plugin manifest.
- * `apps/studio/` → `plugins/design/.claude-plugin/plugin.json`.
- * That manifest ships in BOTH npm installs and marketplace-cache clones
- * (same rationale as build.ts `readPluginVersion`). Falls back to `dev`.
+ * Read the installed maude version.
+ *
+ * THE ONE resolution path (DDR-045: disk paths come from `paths.ts`). Everything
+ * that wants to name the running version — the What's New feed, `/_config`, the
+ * status-bar chip — calls this rather than growing a second answer that can
+ * disagree with the first.
+ *
+ * Two sources, in order:
+ *
+ *   1. the studio's OWN `package.json`. It rides the release line since the
+ *      fleet-verification change, and it is the only one of the two that is
+ *      staged into the cell image — a cloud tab asking "which version am I on"
+ *      gets an answer rather than `dev`.
+ *   2. `plugins/design/.claude-plugin/plugin.json`, which ships in BOTH npm
+ *      installs and marketplace-cache clones (same rationale as build.ts
+ *      `readPluginVersion`). Kept as the fallback so an older layout that lacks
+ *      a version-stamped studio manifest still resolves.
+ *
+ * Falls back to `dev` — a placeholder that is obviously not a release, never a
+ * plausible-looking wrong number.
  */
 export function resolveMaudeVersion(root: string = DEV_SERVER_ROOT): string {
-  const manifest = join(root, '..', '..', 'plugins', 'design', '.claude-plugin', 'plugin.json');
-  try {
-    const parsed = JSON.parse(readFileSync(manifest, 'utf8')) as { version?: unknown };
-    if (typeof parsed.version === 'string') return parsed.version;
-  } catch {
-    /* fall through */
+  const candidates = [
+    join(root, 'package.json'),
+    join(root, '..', '..', 'plugins', 'design', '.claude-plugin', 'plugin.json'),
+  ];
+  for (const manifest of candidates) {
+    try {
+      const parsed = JSON.parse(readFileSync(manifest, 'utf8')) as { version?: unknown };
+      // `0.0.0` is the private-workspace placeholder these manifests carried
+      // before they joined the release line. Treating it as an answer is how
+      // `/health` came to report `0.0.0` for months.
+      if (typeof parsed.version === 'string' && parsed.version !== '0.0.0') return parsed.version;
+    } catch {
+      /* try the next one */
+    }
   }
   return 'dev';
 }

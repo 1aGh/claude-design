@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "release-version-visible",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "title": "See which version of Maude you are running",
+      "summary": "The Studio status bar now shows the running version, and the hub admin header shows it beside the bundle hash — so you can tell what you are on without digging. In the cloud it is the same chip, because the cloud serves the same Studio.",
+      "surface": "design-ui"
+    },
+    {
       "id": "cloud-connect-tells-you-what-happened",
       "version": "0.57.0",
       "date": "2026-08-07",

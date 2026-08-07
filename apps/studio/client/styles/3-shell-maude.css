@@ -219,6 +219,10 @@
 .st-sb-changes.has-changes .st-sb-changes-dot { background: var(--status-warn); }
 .st-sb-changes.has-unpushed .st-sb-changes-dot { background: var(--accent); }
 
+/* The running release. Ambient, not a state to act on — so it sits at the same
+   weight as a slot label rather than at .val's foreground. No new tokens. */
+.st-sb-version .val { color: var(--fg-3); }
+
 /* ═══ Task 4 — body row · sidebar · tree · rail ═══════════════════════════════ */
 
 /* The body flex row replaces the legacy `.app` grid: rail | sidebar | main | rpanel. */

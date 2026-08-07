@@ -65,6 +65,7 @@ import {
   checkBundleIdentity,
   formatIdentityFailure,
   identityForHealth,
+  readStudioReleaseVersion,
 } from './bundle-identity.mjs';
 import { handleExportRoute, scheduleMirror, scheduleRevocationSweep } from './cell-ops.mjs';
 import { clientIpFor, parseTrustedProxies } from './client-ip.mjs';
@@ -1630,6 +1631,16 @@ function buildStatusPayload({
   return {
     ok: studioStatus ? studioStatus.ok && identity?.ok !== false : true,
     version: HUB_VERSION,
+    // WHICH RELEASE THIS IMAGE IS, beside the hash that says which BYTES it is.
+    // They are not redundant — see the header of bundle-identity.mjs. The hash
+    // catches "same tag, different bytes"; only the version catches "the layer
+    // underneath was built from the previous release", which is how a cell
+    // image tagged v0.57.0 shipped a v0.56.0 hub with every workflow green.
+    //
+    // Read from the studio manifest the client is served from, falling back to
+    // the hub's own — one release line, two layers, and a disagreement between
+    // them is itself the signal.
+    releaseVersion: releaseVersion(),
     uptimeMs: Date.now() - startedAt,
     port,
     // `dataDir` is a server filesystem path — only included for authenticated
@@ -1669,6 +1680,18 @@ function buildStatusPayload({
  * `MAUDE_IMAGE_MANIFEST_DIR` is where it wrote the seal. Both default to
  * layouts a dev checkout has, so this is inspectable locally.
  */
+/**
+ * The release line this image was cut from.
+ *
+ * `/health` is DELIBERATELY UNAUTHENTICATED — it is what an operator reads when
+ * auth is the thing that is broken. A release version is not a secret (the git
+ * tag is public, the npm package is public), so it belongs here. Nothing else
+ * was added while in there.
+ */
+function releaseVersion() {
+  return readStudioReleaseVersion(studioIdentityPaths().studioRoot) ?? HUB_VERSION;
+}
+
 function studioIdentityPaths(env = process.env) {
   const studioRoot = env.MAUDE_STUDIO_SRC ?? resolve(process.cwd(), '..', 'studio');
   return { studioRoot, manifestDir: env.MAUDE_IMAGE_MANIFEST_DIR ?? '/app' };

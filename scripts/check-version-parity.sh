@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Ensures package.json, every plugin's .claude-plugin/plugin.json, and every
-# per-platform sub-package (DDR-015) carry the same version. All files must
-# move together — the npm CLI, the Claude Code plugins, and the platform
-# binaries ship under one release line.
+# Ensures package.json, every plugin's .claude-plugin/plugin.json, every
+# per-platform sub-package (DDR-015), and the two app manifests a running
+# process reads its own version from (apps/studio, apps/hub) carry the same
+# version. All files must move together — the npm CLI, the Claude Code plugins,
+# the platform binaries, and the cloud fleet ship under one release line.
 #
 # Also enforces that the main package's `optionalDependencies` pin every
 # sub-package to that same version (otherwise npm won't fetch the matching
@@ -25,6 +26,14 @@ SUBPACKAGE_PATHS=(
   "$ROOT/packages/maude-linux-x64-musl/package.json"
   "$ROOT/packages/maude-linux-arm64-musl/package.json"
   "$ROOT/packages/maude-win32-x64/package.json"
+)
+# The app manifests a RUNNING process reads its own version from — the hub's
+# `readOwnVersion()` and the studio's `/_config`. They ship inside the release
+# image, so a drift here is a fleet that misreports which release it is, which
+# is exactly what the post-deploy gate in cells-deploy.yml asserts against.
+APP_MANIFEST_PATHS=(
+  "$ROOT/apps/studio/package.json"
+  "$ROOT/apps/hub/package.json"
 )
 
 if [ ! -f "$PKG_PATH" ]; then
@@ -59,6 +68,19 @@ for sub in "${SUBPACKAGE_PATHS[@]}"; do
     echo "error: version mismatch" >&2
     printf "  %-50s %s\n" "package.json:" "$PKG_VER" >&2
     printf "  %-50s %s\n" "$rel:" "$SUB_VER" >&2
+    mismatches=$((mismatches + 1))
+  fi
+done
+
+for app in "${APP_MANIFEST_PATHS[@]}"; do
+  # Absent on older branches, like the sub-packages above.
+  [ ! -f "$app" ] && continue
+  APP_VER=$(node -p "require('$app').version")
+  if [ "$PKG_VER" != "$APP_VER" ]; then
+    rel="${app#$ROOT/}"
+    echo "error: version mismatch" >&2
+    printf "  %-50s %s\n" "package.json:" "$PKG_VER" >&2
+    printf "  %-50s %s\n" "$rel:" "$APP_VER" >&2
     mismatches=$((mismatches + 1))
   fi
 done
@@ -142,6 +164,9 @@ for plugin in "${PLUGIN_PATHS[@]}"; do
 done
 for sub in "${SUBPACKAGE_PATHS[@]}"; do
   [ -f "$sub" ] && echo "  ${sub#$ROOT/}"
+done
+for app in "${APP_MANIFEST_PATHS[@]}"; do
+  [ -f "$app" ] && echo "  ${app#$ROOT/}"
 done
 [ -f "$TAURI_CONF_PATH" ] && echo "  apps/desktop/src-tauri/tauri.conf.json"
 [ -f "$CARGO_TOML_PATH" ] && echo "  apps/desktop/src-tauri/Cargo.toml"

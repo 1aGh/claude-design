@@ -213,12 +213,38 @@ function applyPlatformPosture(s) {
 
 function renderStatus(s, peers) {
   applyPlatformPosture(s);
+  renderRelease(s);
   $('s-uptime').textContent = formatDuration(s.uptimeMs);
   $('s-version').textContent = s.version;
   $('s-port').textContent = s.port;
   $('s-data').textContent = s.dataDir;
   $('s-tokens').textContent = `${s.tokenCount} (${s.authMode})`;
   $('s-peers').textContent = peers.peers.length;
+}
+
+/**
+ * The header's release stamp: which RELEASE, and which BYTES.
+ *
+ * Two answers because they fail on different things — the hash catches "same
+ * tag, different bytes", and only the version catches "the layer underneath is
+ * from the previous release" (the v0.57.0 deploy, whose image was internally
+ * self-consistent). The reasoning lives in apps/hub/src/bundle-identity.mjs.
+ *
+ * Both are optional: an older image omits `releaseVersion`, and a hub with no
+ * studio has no client to hash. An absent answer renders as nothing rather than
+ * as a guess — the element hides itself when empty.
+ */
+function renderRelease(s) {
+  const el = $('nav-hub-version');
+  if (!el) return;
+  const ver = s.releaseVersion || s.version;
+  const client = s.studio?.client?.artifacts?.['dist/client.bundle.js'];
+  el.textContent = ver ? (client ? `v${ver} · ${client}` : `v${ver}`) : '';
+  el.title = client
+    ? `release v${ver}, serving client.bundle.js ${client}`
+    : ver
+      ? `release v${ver}`
+      : '';
 }
 
 function updateCounts(peers, tokens, canvases, status) {

@@ -14,7 +14,9 @@
 #
 # After bumping, this script does NOT commit, tag, or push — review the diff,
 # then run:
-#   git commit -am "chore: release vX.Y.Z" && git tag vX.Y.Z && git push --follow-tags
+#   git commit -am "chore: release vX.Y.Z"
+#   git tag -a "vX.Y.Z" -m "vX.Y.Z"    # ANNOTATED — see the note at the bottom
+#   git push --follow-tags
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -37,6 +39,21 @@ SUBPACKAGE_PATHS=(
   "$ROOT/packages/maude-linux-x64-musl/package.json"
   "$ROOT/packages/maude-linux-arm64-musl/package.json"
   "$ROOT/packages/maude-win32-x64/package.json"
+)
+# The two app manifests that a RUNNING process reads its own version from.
+#
+# Both were pinned at 0.0.0 as private workspace packages, which is why the
+# hub's `/health` reported `0.0.0` — `readOwnVersion()` reads exactly this file,
+# and the image copies it in as its own package.json. A version nobody can read
+# off a live process is a version you have to reconstruct from CI logs, and
+# that is what made the v0.57.0 stale-hub deploy take hand-probing to diagnose.
+#
+# Nothing depends on the 0.0.0 literal: neither pnpm-lock.yaml nor either
+# bun.lock records a workspace root's own version (checked), and no package
+# references these by version range.
+APP_MANIFEST_PATHS=(
+  "$ROOT/apps/studio/package.json"
+  "$ROOT/apps/hub/package.json"
 )
 
 if [ $# -ne 1 ]; then
@@ -67,7 +84,7 @@ esac
 
 echo "$CURRENT → $NEW"
 
-PATHS_JOINED=$(printf "'%s'," "$PKG_PATH" "${PLUGIN_PATHS[@]}" "${SUBPACKAGE_PATHS[@]}" "$TAURI_CONF_PATH")
+PATHS_JOINED=$(printf "'%s'," "$PKG_PATH" "${PLUGIN_PATHS[@]}" "${SUBPACKAGE_PATHS[@]}" "${APP_MANIFEST_PATHS[@]}" "$TAURI_CONF_PATH")
 PATHS_JOINED="${PATHS_JOINED%,}"
 
 node -e "
@@ -203,4 +220,16 @@ fi
 
 echo ""
 echo "Review the diff, then:"
-echo "  git commit -am 'chore: release v$NEW' && git tag v$NEW && git push --follow-tags"
+echo "  git commit -am 'chore: release v$NEW'"
+echo "  git tag -a \"v$NEW\" -m \"v$NEW\""
+echo "  git push --follow-tags"
+echo ""
+# The annotated form is not a style preference. `git push --follow-tags` pushes
+# ANNOTATED tags only, so a lightweight `git tag v$NEW` stays local and NO
+# release workflow fires — the release looks done (main is pushed, the bump is
+# committed) and nothing is published or deployed. This printed the wrong form
+# for the whole life of the script while .ai/release-guide.md printed the right
+# one; two surfaces out of three said "lightweight", and that is how a release
+# reached main with the tag still sitting on the laptop.
+echo "  (annotated -a -m is required — 'git push --follow-tags' only pushes annotated"
+echo "   tags; a lightweight 'git tag v$NEW' silently stays local and nothing fires)"

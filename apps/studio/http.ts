@@ -1507,6 +1507,14 @@ export function createHttp(
         ...ctx.cfg,
         canvasOrigin: ctx.canvasOrigin,
         readOnly: projectReadOnly(req),
+        // WHICH RELEASE THIS IS. `/_config` reaches the browser in cloud mode,
+        // so the bar for adding a field here is "would I publish it" — and a
+        // version is the git tag, which is public. Nothing else rides along.
+        //
+        // Resolved through `resolveMaudeVersion`, the same function the What's
+        // New feed uses: one answer, so the chip in the status bar and the feed
+        // can never name different versions.
+        version: resolveMaudeVersion(),
         // Cloud Phase 27 (DDR-209) — the capability that opens the cookieless
         // canvas origin, minted per session by the proxy. Absent on a desktop,
         // where the canvas origin is loopback and needs none. `canvasUrl()`

@@ -175,7 +175,11 @@ pnpm version            # = bash scripts/changesets-version.sh
                         #   → re-runs scripts/check-version-parity.sh
 
 git commit -am "chore: release v$(node -p "require('./package.json').version")"
-git tag "v$(node -p "require('./package.json').version")"
+# ANNOTATED (-a -m) is required — `git push --follow-tags` only pushes annotated
+# tags. A lightweight `git tag vX.Y.Z` will silently stay local and no release
+# workflow ever fires.
+VER="v$(node -p "require('./package.json').version")"
+git tag -a "$VER" -m "$VER"
 git push --follow-tags
 ```
 

@@ -115,3 +115,23 @@ test('GET /admin/app.js returns JavaScript', async () => {
   const body = await res.text();
   assert.match(body, /maude-hub-secret/);
 });
+
+// The header's release stamp — feature-release-reaches-the-fleet.
+//
+// A wiring check, not a rendering one: the admin console is vanilla JS with no
+// DOM harness here, so this asserts that the element the operator reads exists
+// in the shell and that the script reads the fields that fill it. What each
+// field CATCHES is asserted in bundle-identity.test.mjs; what the fleet answers
+// is asserted by scripts/test/verify-fleet-release.test.mjs.
+test('the admin header carries a slot for the running release', async () => {
+  const html = await (await fetch(`http://127.0.0.1:${PORT}/admin`)).text();
+  assert.match(html, /id="nav-hub-version"/);
+
+  const js = await (await fetch(`http://127.0.0.1:${PORT}/admin/app.js`)).text();
+  // Both answers, because they fail on different things.
+  assert.match(js, /releaseVersion/);
+  assert.match(js, /dist\/client\.bundle\.js/);
+  // An absent answer must render as nothing, never as a guess.
+  const css = await (await fetch(`http://127.0.0.1:${PORT}/admin/style.css`)).text();
+  assert.match(css, /\.nav-brand-ver:empty\s*\{\s*display:\s*none/);
+});

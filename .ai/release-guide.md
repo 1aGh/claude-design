@@ -185,7 +185,9 @@ npm view @1agh/maude version                     # confirm npm sees the new root
 
 ### Verify the fleet actually rolled
 
-`cells-deploy` green means "image pushed + Worker deployed", not "your project answers on the new image" — the first request after the roll pays a cold start (rehydrate from R2; **minutes** for a GB-scale project), and a botched env derivation has already once produced a fleet that was green in CI and unusable in a browser (v30, `frame-ancestors` from the waking request's Host). So finish with the live checks:
+**Since v0.57.0, `cells-deploy` green means "a live cell answered with THIS release".** The workflow's last step polls a real tenant cell's `/health` until `releaseVersion` equals the tag it just deployed **and** the reported `client.bundle.js` hash equals the seal it read out of the image it pushed (`scripts/verify-fleet-release.sh`). The two are not redundant: the hash catches "same tag, different bytes", and only the version catches "the layer underneath was built from the previous release" — the v0.57.0 failure, whose image was internally self-consistent. Also since then, **only a release tag builds a cell image**; a push to `main` deploys the Worker and nothing else.
+
+That covers what used to be manual curl-ing. What it still cannot cover is the browser: a botched env derivation once produced a fleet that was green in CI and unusable in a browser (v30, `frame-ancestors` from the waking request's Host). So finish with the live checks — the first two are now belt-and-braces, the third is the one that matters:
 
 ```bash
 # The cell answers (repeat until 200 — cold start can take minutes):

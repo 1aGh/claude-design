@@ -12,6 +12,27 @@
 // operator comparing two cells wants to know whether they are running the same
 // bytes, and two cells can carry the same tag and different bytes.
 //
+// WHY IT ALSO REPORTS A VERSION NOW, AND WHY THAT IS NOT A RETREAT.
+//
+// The argument above is against a version REPLACING the hash. It is not an
+// argument against both, and v0.57.0 is the proof: a cell image tagged v0.57.0
+// went to production whose hub layer had been built from v0.56.0, and every
+// workflow was green. The hash could not catch it. The stale layer had staged
+// its OWN bundles, so its manifest was perfectly self-consistent — a
+// SELF-CONSISTENT WRONG IMAGE. Every artifact matched what the image recorded,
+// because the image recorded the wrong artifacts.
+//
+// So the two answer different questions, and a gate wants both:
+//
+//   hash    — "are these the bytes this image was sealed with?"
+//             catches substitution: same tag, different bytes.
+//   version — "which RELEASE are these bytes from?"
+//             catches derivation: the layer underneath is the previous release.
+//
+// Neither subsumes the other. `cells-deploy.yml`'s post-deploy gate asserts
+// both against the tag it just deployed, which is what makes "green" mean "the
+// fleet answers on the released version" rather than "an upload returned 0".
+//
 // WHAT IT CATCHES THAT NOTHING ELSE DOES. `dist/client.bundle.js` is REBUILT at
 // package time (see CLAUDE.md — the committed copy is NOT what ships), and
 // v0.51.1 shipped a desktop app that opened to a blank window because of it: no
@@ -138,6 +159,26 @@ export function formatIdentityFailure(result) {
     'Rebuild the image rather than editing the artifact in place.'
   );
   return lines.join('\n');
+}
+
+/**
+ * Which RELEASE the served client comes from.
+ *
+ * Read from the studio root's own `package.json` — the same root whose bytes
+ * `hashArtifacts` seals, so the version and the hash describe one thing rather
+ * than two that could drift apart. That manifest is staged into the image
+ * beside the client it describes; a dev checkout has it too.
+ *
+ * Returns null when there is no readable manifest. The caller decides what to
+ * fall back to — an absent version must stay distinguishable from a wrong one.
+ */
+export function readStudioReleaseVersion(studioRoot) {
+  try {
+    const parsed = JSON.parse(readFileSync(join(studioRoot, 'package.json'), 'utf8'));
+    return typeof parsed?.version === 'string' ? parsed.version : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The identity `/health` reports (D5). A tag is not an identity; a hash is. */

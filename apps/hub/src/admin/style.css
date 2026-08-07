@@ -314,6 +314,20 @@ button {
   font-size: var(--type-md);
   letter-spacing: var(--tracking-tight);
 }
+/* Which release this hub is, and which client bytes it serves — the two
+   answers that used to require probing production by hand. Ambient weight:
+   an operator looks for it, it does not announce itself. */
+.nav-brand-ver {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--fg-2);
+  margin-left: var(--space-2);
+}
+.nav-brand-ver:empty {
+  display: none;
+}
 .nav-brand-url {
   font-family: var(--font-mono);
   font-size: var(--type-xs);

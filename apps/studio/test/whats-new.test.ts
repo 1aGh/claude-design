@@ -23,8 +23,20 @@ describe('whats-new feed loader', () => {
     }
   });
 
-  test('resolveMaudeVersion reads the design plugin manifest', () => {
+  test('resolveMaudeVersion resolves a real release version', () => {
     expect(resolveMaudeVersion()).toMatch(/^\d+\.\d+\.\d+/);
+    // The studio's own manifest is preferred over the design plugin's (it is
+    // the one staged into the cell image), and `0.0.0` — the placeholder both
+    // carried before joining the release line — is never an answer.
+    expect(resolveMaudeVersion()).not.toBe('0.0.0');
+  });
+
+  test('an unversioned root falls through rather than reporting the placeholder', () => {
+    const root = mkdtempSync(join(tmpdir(), 'maude-ver-'));
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ version: '0.0.0' }));
+    // No plugin manifest above a tmpdir either, so this lands on `dev` — a
+    // value obviously not a release, rather than a plausible wrong number.
+    expect(resolveMaudeVersion(root)).toBe('dev');
   });
 
   test('a missing feed dir yields empty entries and never throws', () => {

@@ -18,6 +18,40 @@ name: Cell image + data plane
 # The cell image derives FROM the hub image, so this waits for `hub-image.yml`
 # to publish the tag it is built from.
 #
+# ONLY A RELEASE TAG BUILDS AN IMAGE (added after v0.57.0). A branch push runs
+# the data-plane tests and `wrangler deploy` — nothing else. The reasoning is
+# worth the paragraph, because "surely main should also build" is the obvious
+# instinct and it is what broke production:
+#
+#   A BRANCH RUN COULD NEVER ROLL THE FLEET. It pushes freshly-built bytes under
+#   whatever tag `wrangler.toml` ALREADY declares, and Cloudflare applies
+#   container env at instance START — a byte-identical container config is a
+#   no-op. So between releases, a branch image push deploys to nobody.
+#
+#   BUT IT COULD CORRUPT IT. Two runs, two different builds, one tag: exactly
+#   the "same tag, different bytes" hazard `apps/hub/src/bundle-identity.mjs`
+#   was written about after a rollback landed on a tag CI had overwritten.
+#
+#   AND IT DERIVED FROM A STALE HUB. `hub-image.yml` runs on tags only, so
+#   `maude-hub:latest` is only ever rebuilt at release time. A branch run
+#   deriving from `:latest` builds the CELL from the PREVIOUS release's hub —
+#   which is how v0.57.0 put a cell carrying a six-day-old hub layer into
+#   production with every workflow green. The "wait for the hub image" step
+#   cannot catch it: `docker manifest inspect` tests EXISTENCE, and `:latest`
+#   always exists, so the wait is satisfied instantly by the wrong image.
+#
+# Making the image build tag-only removes all three at once, and removes the
+# question of whether `:latest` is fresh from the fleet's supply chain entirely
+# — the fleet now only ever derives from `maude-hub:<release tag>`.
+#
+# `:latest` still LAGS for anyone pulling the hub image by hand between
+# releases (hub-image.yml remains tag-only). That is a documented cost, not an
+# oversight: nothing in the fleet reads it any more.
+#
+# The escape hatch for an urgent image fix is `workflow_dispatch`, which must
+# now name the hub image to derive from. The everyday path is a release —
+# `scripts/bump-version.sh` makes that one command.
+#
 # TOKEN SCOPE — the first run failed here, so it is written down. Rolling the
 # fleet needs MORE than deploying a Worker does:
 #
@@ -49,8 +83,12 @@ on:
   workflow_dispatch:
     inputs:
       hub_image:
-        description: 'Hub image to derive from (default: :latest)'
-        required: false
+        # REQUIRED for a manual run, and deliberately without a default. The
+        # default used to be `:latest`, which is the value that made a stale
+        # derivation possible — so the manual path now has to state which hub
+        # it means rather than inherit the answer that was wrong.
+        description: 'Hub image to derive from, e.g. ghcr.io/1agh/maude-hub:v0.57.0'
+        required: true
         default: ''
 
 permissions:
@@ -117,13 +155,18 @@ jobs:
 
       - name: Resolve the hub image to derive from
         id: hub
+        # NO `:latest` FALLBACK — see the header. Either this is a release tag
+        # (derive from that release's hub) or it is a manual run that said which
+        # hub it means. There is no third case that should produce an image.
+        if: ${{ github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' }}
         run: |
-          if [ -n "${{ inputs.hub_image }}" ]; then
-            HUB="${{ inputs.hub_image }}"
-          elif [ "${{ github.ref_type }}" = "tag" ]; then
+          if [ "${{ github.ref_type }}" = "tag" ]; then
             HUB="ghcr.io/1agh/maude-hub:${{ github.ref_name }}"
+          elif [ -n "${{ inputs.hub_image }}" ]; then
+            HUB="${{ inputs.hub_image }}"
           else
-            HUB="ghcr.io/1agh/maude-hub:latest"
+            echo "::error::a manual run must name the hub image to derive from (input: hub_image)"
+            exit 1
           fi
           echo "hub=$HUB" >> "$GITHUB_OUTPUT"
           echo "Deriving from: $HUB"
@@ -131,19 +174,35 @@ jobs:
       - name: Wait for the hub image to exist
         # hub-image.yml runs on the same tag; the cell image is FROM it, so a
         # race here would fail with an unhelpful "manifest unknown".
+        #
+        # Now that the tag is VERSION-PINNED, existence does imply freshness —
+        # `maude-hub:v0.57.0` cannot appear carrying v0.56.0's bytes. That was
+        # never true of `:latest`, which is why this wait proved nothing before.
+        #
+        # THE BUDGET IS MEASURED, NOT GUESSED. `hub-image.yml` builds
+        # linux/amd64 + linux/arm64 under QEMU: the v0.57.0 run took ~16 min.
+        # The old 40 × 15s = 10 min gave up SIX MINUTES before the image it was
+        # waiting for existed. 90 × 20s = 30 min leaves real headroom — waiting
+        # costs a runner minute, giving up costs a release.
+        if: ${{ steps.hub.outputs.hub != '' }}
         run: |
-          for i in $(seq 1 40); do
+          for i in $(seq 1 90); do
             if docker manifest inspect "${{ steps.hub.outputs.hub }}" >/dev/null 2>&1; then
               echo "hub image is available"; exit 0
             fi
-            echo "attempt $i: not yet"; sleep 15
+            echo "attempt $i: not yet"; sleep 20
           done
           echo "::error::the hub image never appeared — cannot build the cell image"
           exit 1
 
       - uses: docker/setup-buildx-action@v3
+        if: ${{ steps.hub.outputs.hub != '' }}
 
       - name: Build the cell image into the local daemon
+        # Gated on the resolve step having produced a hub: a branch push never
+        # builds an image (header). `github.ref_type == 'tag'` is named here as
+        # well as upstream so the guard is readable at the step that matters.
+        if: ${{ steps.hub.outputs.hub != '' && (github.ref_type == 'tag' || github.event_name == 'workflow_dispatch') }}
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -158,7 +217,40 @@ jobs:
           push: false
           tags: ${{ steps.image.outputs.image }}
 
+      - name: Record what this image sealed
+        id: sealed
+        # The image writes `/app/bundle-manifest.json` at build time (the E1
+        # seal — apps/hub/src/bundle-identity.mjs). Reading it HERE, out of the
+        # image this run just built, is what lets the post-deploy gate below
+        # compare the live fleet against THIS artifact rather than against a
+        # hash someone typed. `--entrypoint cat` because the image's entrypoint
+        # is tini and we want the file, not a server.
+        if: ${{ steps.hub.outputs.hub != '' && (github.ref_type == 'tag' || github.event_name == 'workflow_dispatch') }}
+        env:
+          # Through `env:`, never interpolated straight into the shell. The
+          # value comes from a `grep`/`sed` over apps/cells/wrangler.toml, and
+          # `${{ }}` splices text into the script BEFORE bash sees it — so a
+          # crafted image line would be executed rather than quoted. Low blast
+          # radius (it needs write access to a file that already names the image
+          # the fleet runs), but the mitigation is one line.
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          MANIFEST=$(docker run --rm --entrypoint cat "$IMAGE" /app/bundle-manifest.json)
+          # `/health` reports 12-char prefixes — long hashes in a health payload
+          # are noise that hides the answer — so compare on the same prefix.
+          CLIENT=$(echo "$MANIFEST" | jq -r '.artifacts["dist/client.bundle.js"] // empty' | cut -c1-12)
+          if [ -z "$CLIENT" ]; then
+            echo "::error::the built image has no sealed client hash — bundle-manifest.json is missing or malformed"
+            exit 1
+          fi
+          echo "client=$CLIENT" >> "$GITHUB_OUTPUT"
+          echo "This image serves client.bundle.js $CLIENT"
+
       - name: Push it to the Cloudflare registry
+        # Same gate as the build. This is the step that could produce two sets
+        # of bytes under one tag, which is the failure `bundle-identity.mjs`
+        # exists to detect after the fact — better not to generate it.
+        if: ${{ steps.hub.outputs.hub != '' && (github.ref_type == 'tag' || github.event_name == 'workflow_dispatch') }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.MAUDE_CONTAINERS_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -183,6 +275,10 @@ jobs:
       - name: Verify a cell answers
         # A deploy that returns 0 has uploaded a script. This asks the one
         # question that matters: does a real tenant's cell still serve?
+        #
+        # On a RELEASE TAG the next step asks a much harder question and this
+        # one would only delay it, so it runs on the other paths.
+        if: ${{ github.ref_type != 'tag' }}
         run: |
           URL="${{ vars.CELL_HEALTH_URL || 'https://alligators.cloud.maude.sh/health' }}"
           for i in $(seq 1 20); do
@@ -195,3 +291,44 @@ jobs:
           done
           echo "::error::no cell answered /health after the deploy"
           exit 1
+
+      - name: Verify the fleet is RUNNING this release
+        # GREEN MUST MEAN "THE FLEET ANSWERS ON THE RELEASED VERSION".
+        #
+        # Before this step, `cells-deploy` green meant "an image was pushed and
+        # a Worker was deployed" — both true during the v0.57.0 release, which
+        # put a cell carrying a six-day-old hub layer into production. Finding
+        # that out took hand-probing production, and the first probe was
+        # MISREAD: `GET /api/documents` → 401 reads like "exists, needs auth"
+        # but is the blanket answer for any unknown path. Nobody should need
+        # that trick, so the workflow does it, and it asserts TWO things:
+        #
+        #   releaseVersion — which RELEASE the running bytes are from. This is
+        #                    the one that catches a stale underlying layer: the
+        #                    v0.57.0 image was perfectly self-consistent, so a
+        #                    hash check alone would have passed it.
+        #   client hash    — WHICH BYTES, compared against the seal this run
+        #                    read out of the image it pushed. This catches "same
+        #                    tag, different bytes" (bundle-identity.mjs).
+        #
+        # Neither subsumes the other; they fail on different things.
+        #
+        # THE PROBE HOST IS A REAL TENANT CELL, deliberately. A synthetic or
+        # hub-level probe can be perfectly healthy while every tenant is broken,
+        # and a gate that passes while customers are down is worse than no gate.
+        # `CELL_HEALTH_URL` overrides it if that tenant is ever retired.
+        #
+        # THE BUDGET IS GENEROUS ON PURPOSE. The first request after a roll pays
+        # a cold start — rehydrate from R2, which the release guide warns is
+        # MINUTES on a GB-scale project. 60 × 20s = 20 min. A flaky gate is a
+        # gate someone disables, and this one is only useful if it is trusted.
+        # The loop itself lives in `scripts/verify-fleet-release.sh` so it can be
+        # tested against a stubbed responder (scripts/test/verify-fleet-release.test.mjs)
+        # rather than only proving itself on a real release.
+        if: ${{ github.ref_type == 'tag' }}
+        # Same rule as above: through `env:`, not spliced into the script.
+        env:
+          HEALTH_URL: ${{ vars.CELL_HEALTH_URL || 'https://alligators.cloud.maude.sh/health' }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          SEALED_CLIENT: ${{ steps.sealed.outputs.client }}
+        run: bash scripts/verify-fleet-release.sh "$HEALTH_URL" "$RELEASE_TAG" "$SEALED_CLIENT"

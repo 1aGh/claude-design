@@ -45,6 +45,18 @@ test('GET /health returns JSON with expected fields', async () => {
   assert.equal(body.authMode, 'dev');
 });
 
+test('/health names the RELEASE, beside the bytes', async () => {
+  const body = await (await fetch(`http://127.0.0.1:${PORT}/health`)).json();
+  // The field the post-deploy gate in cells-deploy.yml compares to the tag it
+  // just deployed. It must never be absent: a gate that reads `undefined` and
+  // keeps polling looks like a cold start, not like a stale image.
+  assert.equal(typeof body.releaseVersion, 'string');
+  assert.match(body.releaseVersion, /^\d+\.\d+\.\d+/);
+  // And it must not be the 0.0.0 placeholder the app manifests carried before
+  // they joined the release line — that is what made `/health` unreadable.
+  assert.notEqual(body.releaseVersion, '0.0.0');
+});
+
 test('tokenCount + authMode reflect token store state', async () => {
   addToken(dataDir, { label: 'alice' });
   addToken(dataDir, { label: 'bob' });
