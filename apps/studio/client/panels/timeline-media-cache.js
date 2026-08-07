@@ -80,7 +80,10 @@ export function stripBucket(widthPx) {
   return 7;
 }
 
-async function extractStrip(url, count) {
+/** Hidden <video>, loaded and waited on through `loadedmetadata`/`canplay` so
+ *  `.duration`/`.videoWidth`/`.videoHeight` are readable. Caller owns cleanup
+ *  (`video.remove()`) once done with it. */
+async function loadVideoMetadata(url, timeoutMs) {
   const video = document.createElement('video');
   video.muted = true;
   video.playsInline = true;
@@ -99,7 +102,7 @@ async function extractStrip(url, count) {
   }
   try {
     await new Promise((res, rej) => {
-      const to = setTimeout(() => rej(new Error('metadata timeout')), 8000);
+      const to = setTimeout(() => rej(new Error('metadata timeout')), timeoutMs);
       const ok = () => {
         clearTimeout(to);
         res();
@@ -114,6 +117,39 @@ async function extractStrip(url, count) {
     });
   } catch (err) {
     video.remove();
+    throw err;
+  }
+  return video;
+}
+
+/** Real duration (seconds) of a video/audio src, probed via a hidden <video>
+ *  element — never throws, resolves null on failure so callers (e.g. the
+ *  timeline drop handler) can fall back to a default duration cleanly. */
+export async function probeMediaDuration(url) {
+  let video;
+  try {
+    video = await loadVideoMetadata(url, 6000);
+  } catch {
+    return null;
+  }
+  const dur = video.duration;
+  video.remove();
+  return Number.isFinite(dur) && dur > 0 ? dur : null;
+}
+
+/** durationInFrames for a clip dropped on the timeline: the real probed
+ *  duration when available, else a fallback (probe failure, or synthetic
+ *  content with no inherent duration like a title/image). */
+export function durationFramesForDrop(fps, probedSeconds, fallbackSeconds = 3) {
+  const sec = Number.isFinite(probedSeconds) && probedSeconds > 0 ? probedSeconds : fallbackSeconds;
+  return Math.max(1, Math.round(fps * sec));
+}
+
+async function extractStrip(url, count) {
+  let video;
+  try {
+    video = await loadVideoMetadata(url, 8000);
+  } catch (err) {
     console.warn('[timeline] filmstrip extraction failed for', url, err?.message || err);
     throw err;
   }

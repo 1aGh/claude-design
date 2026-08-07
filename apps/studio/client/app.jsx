@@ -41,6 +41,7 @@ import BrandUploadPanel from './panels/BrandUploadPanel.jsx';
 import SetupChecklistDialog, { useSetupReadiness } from './panels/SetupChecklist.jsx';
 import TimelinePanel from './panels/TimelinePanel.jsx';
 import { parseCompTimeline } from './panels/timeline-parse.js';
+import { durationFramesForDrop, probeMediaDuration } from './panels/timeline-media-cache.js';
 import GenerateDialog from './generate-dialog.jsx';
 import RepoBranchSwitcher from './panels/RepoBranchSwitcher.jsx';
 import SettingsPanel from './panels/SettingsPanel.jsx';
@@ -14789,10 +14790,11 @@ function App() {
                   // fresh "New Cut" canvas only when no artboard opted in.
                   let upgraded = false;
                   for (const c of clips) {
+                    const probedSec = await probeMediaDuration(c.src).catch(() => null);
                     const body = {
                       canvas,
                       lane: c.mediaKind === 'audio' && upgraded ? 'audio' : 'storyline',
-                      durationInFrames: Math.round(fps * 3),
+                      durationInFrames: durationFramesForDrop(fps, probedSec),
                       mediaTag: c.mediaKind === 'audio' ? 'Audio' : 'Video',
                       src: c.src,
                     };
@@ -14863,6 +14865,12 @@ function App() {
                     continue;
                   }
                   const isAudio = mediaTag === 'Audio';
+                  // Video clips carry a real duration — probe it so the drop
+                  // lands at the clip's own length instead of a fixed 3s that
+                  // the user then has to drag out by hand. Images have no
+                  // inherent duration, so they keep the fallback.
+                  const probedSec =
+                    mediaTag === 'Video' ? await probeMediaDuration(up.path).catch(() => null) : null;
                   const body = { canvas, artboardId, mediaTag, src: up.path };
                   if (pos && (isAudio || pos.lane === 'audio')) {
                     body.lane = 'audio';
@@ -14875,7 +14883,7 @@ function App() {
                       body.index = slot;
                       slot += 1; // multiple files insert in order
                     }
-                    body.durationInFrames = Math.round(fps * 3);
+                    body.durationInFrames = durationFramesForDrop(fps, probedSec);
                   } else if (pos?.lane === 'overlay' && !isAudio) {
                     if ((timelineSequences || []).length === 0) {
                       // First clip of a greenfield comp = the BASE layer →
@@ -14885,14 +14893,14 @@ function App() {
                       body.lane = 'overlay';
                       body.from = Math.max(0, pos.frame ?? 0);
                     }
-                    body.durationInFrames = Math.round(fps * 3);
+                    body.durationInFrames = durationFramesForDrop(fps, probedSec);
                   } else if (!isAudio) {
                     // Default container rule: a video/image drop ANYWHERE on the
                     // timeline lands in the storyline (append = hard cut at the
                     // end; the caret gives it an index). The old lane-less
                     // append refused hard-cut series ("no transition to clone").
                     body.lane = 'storyline';
-                    body.durationInFrames = Math.round(fps * 3);
+                    body.durationInFrames = durationFramesForDrop(fps, probedSec);
                   } else {
                     // Audio without a caret → audio band, from the start.
                     body.lane = 'audio';
