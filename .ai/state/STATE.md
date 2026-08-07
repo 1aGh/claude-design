@@ -3,9 +3,30 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** done — the pairing live-run gate closed 2026-08-06 (3 bugs found + fixed)
+**Status:** done — ACP turn notifications closed 2026-08-07 (native shell now owns the notify decision)
 **Active plan:** —
 **Active task:** —
+
+_2026-08-07:_ **ACP turn notifications CLOSED + archived — the native shell now tells you when a
+chat finishes or needs input, even in a project you're not looking at.** The webview's own
+Notification path only ever knew about the project on screen and couldn't see a detached chat at
+all; the notify decision moved into the Tauri native shell instead (new `notify.rs` + a background
+poller over the sidecar pool + `tauri-plugin-notification`), fed by a new read-only per-chat
+activity endpoint (`/_api/acp/activity`, kept off both canvas-origin allowlists). No in-app
+settings toggle — macOS's own per-app Notification Center control covers it, deliberately, so
+there's no in-app switch a user could flip that also silently loses the awaiting-input signal.
+**Two rounds of security fan-out, and the second one mattered as much as the first**: the original
+pass found the poller re-trusts an untrusted `_server.json` with no spawn-time authentication and
+could otherwise fabricate an unbounded notification flood — mitigated with a per-project cap. The
+`/flow:done` closing re-review then found the MITIGATION itself had two real gaps (the cap could be
+reset via a normal, attacker-steerable pool-eviction cycle; the command surface had no cap at all)
+— both fixed this session, not just noted. The deeper fix (spawn-time authentication instead of
+re-trusting the file, which also affects a pre-existing pattern in `sidecar.rs`) is a named
+follow-up, not done here. Also incidentally fixed: a real `ReferenceError` bug in
+`/_api/acp/running` (a route handler referencing an undeclared `req`), caught by `cargo
+check`/`bun run typecheck`, not by inspection. Task 1's WKWebView measurement was never actually
+performed — no GUI in the execution environment — and is recorded as an honest open item rather
+than assumed away.
 
 _2026-08-06:_ **The deferred live cross-surface run finally happened — and it was not a formality.**
 The last unchecked acceptance criterion on desktop ↔ cloud live pairing needed
