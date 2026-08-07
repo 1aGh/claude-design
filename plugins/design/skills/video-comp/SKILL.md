@@ -39,7 +39,10 @@ video-comps that means:
 - `@maude/canvas-lib` — `DesignCanvas`, `DCSection`, `DCArtboard`, **`VideoComp`**.
 - `remotion` — `useCurrentFrame`, `useVideoConfig`, `interpolate`, `spring`,
   `Easing`, `random`, `AbsoluteFill`, `Sequence`, `Series`, `Loop`, `Freeze`,
-  `Img`, `Video`, `OffthreadVideo`, `Audio`, `staticFile`, `interpolateColors`.
+  `Img`, `OffthreadVideo`, `Audio`, `staticFile`, `interpolateColors`.
+- `@remotion/media` — `<Video>`, the audio-capable video element (see
+  "Audio in exports" below — **use this, not `remotion`'s `OffthreadVideo`,
+  whenever the clip's own audio must survive the export**).
 - `@remotion/transitions` — `TransitionSeries`, `linearTiming`, `springTiming`.
 - Transition **presentations** (each a separate import): `@remotion/transitions/fade`,
   `/slide`, `/wipe`, `/flip`, `/clock-wipe`, `/none`. (Exotic presentations like
@@ -141,9 +144,48 @@ import { slide } from '@remotion/transitions/slide';
 </TransitionSeries>
 ```
 
-- **Video/audio**: `<Video src="assets/clip.mp4" />` / `<OffthreadVideo>` /
+- **Video/audio**: `<Video src="assets/clip.mp4" />` (from `@remotion/media` —
+  see "Audio in exports" below) / `<OffthreadVideo>` (silent b-roll only) /
   `<Audio src="assets/music.mp3" volume={0.6} startFrom={30} />`. Sources are
   **always** relative `assets/…` paths (see below).
+
+## Audio in exports: `<Video>` from `@remotion/media`, NEVER `<OffthreadVideo>`
+
+MP4 export with audio goes through exactly one path — `renderMediaOnWeb`
+(`@remotion/web-renderer`) — and that path **does not support `OffthreadVideo`**.
+When a comp uses `OffthreadVideo` for a clip whose audio matters, the export
+**silently degrades** to the frame-step fallback: the resulting file has no
+audio track, but the job still reports `status: done`. The reason for the
+fallback goes only to the dev-server's stderr — nothing about it is written to
+the job record, so there is no artifact-level signal that anything went wrong.
+
+```tsx
+import { Video } from '@remotion/media';   // not OffthreadVideo from 'remotion'
+
+<Video src="assets/clip.mp4" trimBefore={30} trimAfter={120} volume={0.8} />
+```
+
+The props are a 1:1 swap with `OffthreadVideo` (`src`, `trimBefore`, `trimAfter`,
+`style`, `muted`, `playbackRate`, `volume`) — reach for `<Video>` whenever a
+clip's own audio needs to make it into the export; keep `OffthreadVideo` only
+for genuinely silent b-roll.
+
+**After every export that should have audio, verify the artifact, not the job
+status** — a `done` status proves the render finished, not that the file is
+correct:
+
+```sh
+ffprobe -v error -show_entries stream=codec_type -of csv=p=0 out.mp4
+```
+
+If `renderMediaOnWeb` hangs or fails even with `<Video>` on a complex comp
+(rare, but see "Export cost & reliability" below), compose audio separately
+and mux it in with `-c:v copy` so the picture stays bit-identical. For social
+delivery, target **−14 LUFS / true peak below −1 dBTP**. `loudnorm` in dynamic
+mode can compress loudness range without hitting the loudness target (e.g. LRA
+14.9 → 4.3 while still missing −14 LUFS) — when that happens, prefer plain
+`volume` + `alimiter` and dial the level by hand (the limiter's makeup gain
+means *lowering* `limit` raises perceived loudness, not the reverse).
 
 ## Make it hand-editable (DDR-150 — so the user can tweak it on the Timeline)
 
@@ -266,6 +308,28 @@ inspect, replace-media). Don't reach for a loop to shorten it.
     GIF is palette-quantized. Both render deterministically through the capture
     spine — **no native binaries, no user install**.
 
+**Exporting from a CLI/script instead of the ⌘E dialog:** a plain `curl` to
+`localhost:<port>` can fail with "fetch failed" — `_server.json` advertises
+`localhost`, but the server binds the IPv4 loopback `127.0.0.1`, and on macOS
+`localhost` can resolve to the IPv6 `::1` first. Call the API through
+`127.0.0.1` directly. Prefer the **non-blocking** `POST /_api/export-jobs`
+over the blocking `POST /_api/export` — a render kicked off through the
+blocking route keeps running orphaned (burning CPU) if the client disconnects,
+where a background job is tracked and can be checked/downloaded independently:
+
+```sh
+curl -X POST "http://127.0.0.1:<port>/_api/export-jobs" \
+  -H "Origin: http://127.0.0.1:<port>" -H "Content-Type: application/json" \
+  -d '{"format":"mp4","scope":"artboard","options":{"scale":1}}'
+# status:   GET /_api/export-jobs
+# download: GET /_api/export-jobs/download?id=<jobId>
+```
+
+**Cancelling a stuck render:** `kill <PID>` the specific `_video-playwright.mjs`
+process — never `pkill` by pattern on a shared machine. A pattern match can hit
+an unrelated headless-browser process (including the dev server's own) and take
+down more than the render you meant to stop.
+
 ## Pushing it — VFX & motion graphics (all frame-driven)
 
 Remotion + plain React/SVG/CSS goes *far* beyond stitch-and-title. Everything
@@ -307,18 +371,47 @@ runs on wall-clock, which the frame-stepping capture can't seek. Motion here is
 baked into a `data:` URI `background-image`, scrolled by a seeded-random offset each
 frame — never a live per-frame `<feTurbulence>` (that re-runs the filter every frame).
 
+### Recipe: translucent ghost / matte, no green screen
+
+Unlike everything above, this is **not** a Remotion-in-comp technique — it's an
+offline pre-process that bakes a finished asset, then drops into the comp like
+any other clip. CSS `opacity` over the whole clip does **not** work for "the
+figure is translucent, the background stays normal" — it dims everything and
+reads as a double exposure. Instead:
+
+1. **Per-frame person mask** — macOS Vision's `VNGeneratePersonSegmentationRequest`
+   (`.accurate` quality) runs on-device, free, and handles a distant subject too.
+2. **Reconstruct the plate behind the person** from neighboring frames where
+   that region isn't occluded. With camera motion, align candidate frames
+   first (`cv2.phaseCorrelate`), then `nanmedian` across them, then `cv2.inpaint`
+   any remaining holes.
+3. **Composite**: `out = src*(1-m) + (person*A + plate*(1-A))*m`, with
+   `A ≈ 0.45`. Feather the mask (~5 px) — an unfeathered edge reads as cut-out
+   paper, not a ghost.
+4. Bake the result to a clip and import it as a plain asset — this pipeline
+   runs outside the comp, not inside it.
+
+If the source is an iPhone `.mov`, it may carry more than one audio stream —
+use `-map 1:a:0` explicitly, or ffmpeg can fail decoding the spatial-audio
+track.
+
 ## Export cost & reliability (learned the hard way — 2026-07-10 dogfood)
 
 The capture spine screenshots every frame in Chromium, so **per-frame compositing
 cost is real** and a few limits bite:
 
-- **≤ ~28 s at 30 fps.** The video exporter hard-caps at `MAX_FRAMES = 900`
-  (`apps/studio/exporters/video.ts`) — 30 s @ 30 fps. A longer comp's **ending is
-  silently truncated**. Author within the cap (or drop fps); the `footage-director`
-  targets this. A 38 s cut lost its CTA+crest until trimmed to 24 beats / 867 frames.
-- **Prefer 1280×720 for heavy comps.** 1920×1080 frame-step encode hit memory
-  pressure and died mid-render (`addVideoFrame` on `undefined`, ~frame 190). 720p
-  renders reliably; scale up via `--option scale=2` if you need 1080p output.
+- **≤ 2 min at 30 fps by default.** The video exporter's `DEFAULT_MAX_FRAMES`
+  is `3600` (`apps/studio/exporters/video.ts`), with a `MAX_FRAMES_CEILING` of
+  `18000` reachable via `--option maxFrames=N`. A comp past the active cap's
+  **ending is silently truncated** — author within it (or pass `maxFrames`);
+  the `footage-director` targets this.
+- **`scale` defaults to 2×, not 1×.** A 1280×720 comp renders at 2560×1440
+  unless you opt out — this is an **opt-out**, not opt-in, and it costs real
+  time (roughly 2.3× slower per frame). Pass `--option scale=1` for native
+  resolution; only go to `scale=3` if you deliberately want an oversampled
+  render. 1920×1080 at scale 2+ can hit memory pressure and die mid-render
+  (`addVideoFrame` on `undefined`) — prefer 1280×720 at native scale for heavy
+  comps.
 - **Budget full-frame `mix-blend-mode` / `filter` layers.** Many *always-on*
   full-screen blend layers (grain `overlay`, grade `soft-light`, scanline `multiply`,
   …) force a per-frame GPU→CPU readback and **crash the capture renderer**
@@ -349,6 +442,27 @@ confirm the output changes. The motion-critic enforces this as a hard gate.
 `window.__maude_seek__(frame)` on the capture shell — open
 `_canvas-shell.html?canvas=…&hide-chrome=1`, `__maude_seek__(N)`, screenshot. Far
 cheaper than a multi-minute render when checking a specific beat / motion-graphic.
+
+Two conditions on that URL, or it comes back blank with a `Failed to fetch
+dynamically imported module` error that looks like a broken canvas rather than
+a bad call:
+
+1. **`?canvas=` must carry the `.tsx` extension** — the canvas-origin route
+   gate (`isCanvasSafeRoute` in `apps/studio/http.ts`) only serves paths whose
+   extension is on its allowlist.
+2. **The port must be the `canvasPort` from `_server.json`**, not the main
+   `port` — the shell is served from the segregated canvas origin, not the
+   main studio origin.
+
+```sh
+maude design screenshot --url \
+  "http://localhost:<canvasPort>/_canvas-shell.html?canvas=ui/…/Foo.tsx&hide-chrome=1" \
+  --full --out /tmp/x.png
+```
+
+If a canvas screenshot comes back empty, check both of the above before
+concluding the environment can't do it — an empty screenshot is far more often
+a malformed URL than a broken renderer.
 
 ## License note (surface once to the user)
 
