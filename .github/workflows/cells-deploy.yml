@@ -18,10 +18,10 @@ name: Cell image + data plane
 # The cell image derives FROM the hub image, so this waits for `hub-image.yml`
 # to publish the tag it is built from.
 #
-# ONLY A RELEASE TAG BUILDS AN IMAGE (added after v0.57.0). A branch push runs
-# the data-plane tests and `wrangler deploy` — nothing else. The reasoning is
-# worth the paragraph, because "surely main should also build" is the obvious
-# instinct and it is what broke production:
+# ONLY A RELEASE TAG TOUCHES THE FLEET (added after v0.57.0). A branch push runs
+# the data-plane tests and stops there. The reasoning is worth the paragraph,
+# because "surely main should also deploy" is the obvious instinct and it is
+# what broke production:
 #
 #   A BRANCH RUN COULD NEVER ROLL THE FLEET. It pushes freshly-built bytes under
 #   whatever tag `wrangler.toml` ALREADY declares, and Cloudflare applies
@@ -43,6 +43,20 @@ name: Cell image + data plane
 # Making the image build tag-only removes all three at once, and removes the
 # question of whether `:latest` is fresh from the fleet's supply chain entirely
 # — the fleet now only ever derives from `maude-hub:<release tag>`.
+#
+#   AND `wrangler deploy` IS A RELEASE OPERATION TOO — learned the hard way in
+#   v0.58.0. The first cut of this change kept the branch run's `wrangler
+#   deploy` on the theory that "the Worker is not the image". That is FALSE for
+#   this config: `wrangler.toml` NAMES the container image, so a deploy
+#   reconciles the container configuration as well as the Worker script. On the
+#   release commit — where the bump has already moved the tag to vX.Y.Z but only
+#   the tag run builds it — the branch run uploaded the Worker and then failed
+#   the rollout with IMAGE_REGISTRY_DOESNT_CONTAIN_IMAGE. Production was
+#   untouched (a rejected rollout changes nothing), but it left a half-state and
+#   a red run on every release, which is the "green means nothing" noise this
+#   workflow exists to delete. So the deploy is tag-gated too, and a branch push
+#   is now a TEST run: it proves the tenant mapping still holds and touches
+#   nothing.
 #
 # `:latest` still LAGS for anyone pulling the hub image by hand between
 # releases (hub-image.yml remains tag-only). That is a documented cost, not an
@@ -262,6 +276,11 @@ jobs:
         run: npx --yes wrangler@4 containers push "${{ steps.image.outputs.image }}"
 
       - name: Deploy the data plane
+        # Tag-gated for the same reason the image build is: `wrangler.toml` names
+        # the container image, so this reconciles the container configuration —
+        # it cannot succeed on a commit whose declared image only the tag run
+        # builds. See the header.
+        if: ${{ github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' }}
         working-directory: apps/cells
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.MAUDE_CONTAINERS_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
@@ -276,9 +295,10 @@ jobs:
         # A deploy that returns 0 has uploaded a script. This asks the one
         # question that matters: does a real tenant's cell still serve?
         #
-        # On a RELEASE TAG the next step asks a much harder question and this
-        # one would only delay it, so it runs on the other paths.
-        if: ${{ github.ref_type != 'tag' }}
+        # Only after a MANUAL deploy. A release tag gets the much harder check
+        # in the next step, and a branch push no longer deploys anything — so
+        # probing a cell there would assert nothing about this run.
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           URL="${{ vars.CELL_HEALTH_URL || 'https://alligators.cloud.maude.sh/health' }}"
           for i in $(seq 1 20); do

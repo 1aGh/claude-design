@@ -131,6 +131,22 @@ function parseJobs(text) {
 /** Everything guarding a step: its own `if` plus its job's. */
 const effectiveIf = (job, step) => `${job.if} ${step.if}`;
 
+/**
+ * A step's body with comment lines removed.
+ *
+ * These workflows carry long comment blocks BY DESIGN (a maintainer must not
+ * have to re-derive the v0.57.0 race from the git log), and those comments name
+ * the very commands these assertions look for — `wrangler deploy` appears in the
+ * install step's comment explaining why the deps are needed. Matching raw bodies
+ * flagged that comment as an ungated deploy. A detector that reads prose reports
+ * on prose.
+ */
+const commandText = (step) =>
+  step.body
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n');
+
 /** Does this guard restrict the step to a release-tag run? */
 const tagOnly = (guard) =>
   /ref_type\s*==\s*'tag'|startsWith\(github\.ref,\s*'refs\/tags\//.test(guard);
@@ -170,7 +186,7 @@ test('(a) pushing the cell image is reachable only on a release tag', () => {
   const pushes = [];
   for (const job of jobs) {
     for (const step of job.steps) {
-      if (/wrangler(@\d+)?\s+containers\s+push/.test(step.body)) pushes.push({ job, step });
+      if (/wrangler(@\d+)?\s+containers\s+push/.test(commandText(step))) pushes.push({ job, step });
     }
   }
   assert.ok(
@@ -181,6 +197,30 @@ test('(a) pushing the cell image is reachable only on a release tag', () => {
     assert.ok(
       tagOnly(effectiveIf(job, step)),
       `step "${step.name || '(unnamed)'}" in job "${job.id}" pushes an image with no release-tag guard — a branch push would overwrite the tag's bytes`
+    );
+  }
+});
+
+test('(a) deploying the data plane is reachable only on a release tag', () => {
+  // Learned in v0.58.0, after the first cut of this rule kept the branch run's
+  // `wrangler deploy` on the theory that "the Worker is not the image".
+  // `wrangler.toml` NAMES the container image, so a deploy reconciles the
+  // container configuration too — and on the release commit, where the bump has
+  // moved the tag to a version only the tag run builds, it fails with
+  // IMAGE_REGISTRY_DOESNT_CONTAIN_IMAGE after uploading the Worker. A half-state
+  // plus a red run on every release.
+  const jobs = parseJobs(read(CELLS));
+  const deploys = [];
+  for (const job of jobs) {
+    for (const step of job.steps) {
+      if (/wrangler(@\d+)?\s+deploy/.test(commandText(step))) deploys.push({ job, step });
+    }
+  }
+  assert.ok(deploys.length > 0, 'no `wrangler deploy` step found — has the workflow moved?');
+  for (const { job, step } of deploys) {
+    assert.ok(
+      tagOnly(effectiveIf(job, step)),
+      `step "${step.name || '(unnamed)'}" in job "${job.id}" deploys the data plane with no release-tag guard — on a release commit it reconciles a container image that only the tag run builds`
     );
   }
 });
