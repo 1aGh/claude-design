@@ -194,6 +194,16 @@ WORKDIR /app
 # better-sqlite3 binding); the JS bundle + admin assets come from the bundler.
 COPY --from=native /build/node_modules ./node_modules
 COPY --from=bundler /build/apps/hub/dist ./dist
+# The hub's own manifest, because `readOwnVersion()` in the bundle resolves
+# `../package.json` from /app/dist — i.e. THIS file. It was never staged, so
+# that read has always hit its `catch` and `/health` has always answered
+# `"version": "0.0.0"`. That looked like the manifest's placeholder value and
+# was diagnosed as such when apps/hub joined the release line; moving the value
+# was necessary and not sufficient, since the file the runtime reads was absent
+# either way. v0.58.0 shipped with `releaseVersion: "0.58.0"` (read from the
+# studio manifest, which IS staged) beside `version: "0.0.0"` — the exact
+# ambiguity the release-version work exists to remove.
+COPY --from=bundler /build/apps/hub/package.json ./package.json
 
 # ---- the canvas build sandbox (Cloud Phase 25 A1) ----
 #
