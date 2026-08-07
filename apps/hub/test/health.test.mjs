@@ -1,7 +1,7 @@
 // /health endpoint returns the documented JSON shape.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
@@ -55,6 +55,50 @@ test('/health names the RELEASE, beside the bytes', async () => {
   // And it must not be the 0.0.0 placeholder the app manifests carried before
   // they joined the release line — that is what made `/health` unreadable.
   assert.notEqual(body.releaseVersion, '0.0.0');
+});
+
+test('the client identity is a TOP-LEVEL field, not nested under studio', () => {
+  // THE SHAPE IS A CONTRACT, because a CI gate reads it with `jq`.
+  //
+  // `cells-deploy.yml`'s post-deploy gate shipped reading
+  // `.studio.client.artifacts[…]`, which is always absent — the payload builder
+  // spreads `{ client: identity }` as a SIBLING of `studio`. The gate could
+  // only ever time out, and it went green in review because the unit test's
+  // fixture was hand-written to match the same wrong assumption. Pinning it
+  // here, at the producer, is what stops a consumer from asserting its author's
+  // guess: this test reads the real builder's real output.
+  //
+  // Asserted against the source rather than a live payload because `client`
+  // only appears when a studio subprocess is attached, which a hub test does
+  // not have — and a gate whose shape is only checked when a studio happens to
+  // be up is the gate that let this through.
+  const src = readFileSync(new URL('../src/server.mjs', import.meta.url), 'utf8');
+  const payload = src.slice(src.indexOf('function buildStatusPayload'));
+  const body = payload.slice(0, payload.indexOf('\nfunction '));
+  const clientAt = body.indexOf('{ client: identity }');
+  assert.ok(clientAt > 0, '`client` is no longer spread as `{ client: identity }` — has it moved?');
+
+  // Where the `studio: { … }` literal actually ends, by BALANCING BRACES rather
+  // than guessing an indent. The first cut of this assertion searched for a
+  // closing brace at a fixed indent and matched the enclosing ternary's instead,
+  // so it failed on correct code — the same species of mistake as the bug it
+  // guards, one level up.
+  const studioAt = body.indexOf('studio: {');
+  assert.ok(studioAt > 0, 'no `studio: {` block — has the payload moved?');
+  let depth = 0;
+  let studioEnd = -1;
+  for (let i = body.indexOf('{', studioAt); i < body.length; i++) {
+    if (body[i] === '{') depth++;
+    else if (body[i] === '}' && --depth === 0) {
+      studioEnd = i;
+      break;
+    }
+  }
+  assert.ok(studioEnd > studioAt, 'could not find the end of the `studio` object');
+  assert.ok(
+    clientAt > studioEnd,
+    '`client` moved INSIDE `studio` — scripts/verify-fleet-release.sh reads it at the top level'
+  );
 });
 
 test('tokenCount + authMode reflect token store state', async () => {

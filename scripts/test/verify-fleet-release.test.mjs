@@ -28,11 +28,22 @@ const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'verify-fleet
 const VERSION = '0.58.0';
 const CLIENT = 'abc123def456';
 
+/**
+ * A `/health` payload, in the shape the server ACTUALLY emits.
+ *
+ * `client` is a SIBLING of `studio`, not a child of it. The first cut of this
+ * fixture nested it, the script read `.studio.client…` to match, and both
+ * agreed with each other and with nothing else — the gate could only ever time
+ * out, and it shipped green. Recorded here from a live cell
+ * (`alligators.cloud.maude.sh/health`, v0.58.0) rather than written from
+ * memory, and pinned at the producer by `apps/hub/test/health.test.mjs`.
+ */
 const health = (over = {}) => ({
   ok: true,
   version: VERSION,
   releaseVersion: VERSION,
-  studio: { ok: true, client: { ok: true, artifacts: { 'dist/client.bundle.js': CLIENT } } },
+  studio: { ok: true, state: 'ready', port: 4399, restarts: 0, lastExit: null },
+  client: { ok: true, artifacts: { 'dist/client.bundle.js': CLIENT } },
   ...over,
 });
 
@@ -111,7 +122,7 @@ test('a STALE HASH fails even when the version is right', async () => {
   await withResponder(
     [
       health({
-        studio: { client: { artifacts: { 'dist/client.bundle.js': 'ffffffffffff' } } },
+        client: { ok: true, artifacts: { 'dist/client.bundle.js': 'ffffffffffff' } },
       }),
     ],
     async (url) => {

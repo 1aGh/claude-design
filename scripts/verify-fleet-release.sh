@@ -45,7 +45,14 @@ for i in $(seq 1 "$ATTEMPTS"); do
     # older image that predates it) must not read as a value that merely
     # differs, or the log says "mismatch" about a cell that never reported.
     GOT_VER=$(printf '%s' "$BODY" | jq -r '.releaseVersion // "absent"' 2>/dev/null || echo 'unparseable')
-    GOT_CLIENT=$(printf '%s' "$BODY" | jq -r '.studio.client.artifacts["dist/client.bundle.js"] // "absent"' 2>/dev/null || echo 'unparseable')
+    # `.client`, TOP-LEVEL — not `.studio.client`. The payload builder spreads
+    # `{ client: identity }` as a sibling of `studio`, not inside it. The first
+    # cut of this script read `.studio.client…`, which is always absent, so the
+    # gate could only ever time out. It shipped green because the unit test's
+    # fixture was hand-written to the same wrong shape — a test that asserts the
+    # author's assumption instead of the server's output. `health.test.mjs` now
+    # pins the real shape at the producer so the two cannot drift apart again.
+    GOT_CLIENT=$(printf '%s' "$BODY" | jq -r '.client.artifacts["dist/client.bundle.js"] // "absent"' 2>/dev/null || echo 'unparseable')
     echo "attempt $i: releaseVersion=$GOT_VER client=$GOT_CLIENT"
     if [ "$GOT_VER" = "$WANT_VER" ] && [ "$GOT_CLIENT" = "$WANT_CLIENT" ]; then
       echo "the fleet is running $WANT_VER, serving the bytes this run built"
