@@ -2,7 +2,7 @@
   "version": "v0.58.0",
   "nodeRange": ">=20",
   "publishedDate": "2026-08-07",
-  "contributors": 2,
+  "contributors": 1,
   "plugins": {
     "design": {
       "commands": 24,

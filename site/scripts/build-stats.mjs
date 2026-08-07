@@ -107,12 +107,24 @@ const publishedDate =
 // `git shortlog -sne` honors .mailmap (collapses identities). We then drop bot
 // accounts (dependabot, renovate, etc.) so the count reflects humans.
 // Reads HEAD instead of `main` so the script works on feature branches too.
+//
+// NOT EVERY BOT SPELLS ITSELF `[bot]`. `maude-fixbot` does not, and because
+// this output is COMMITTED and diffed by a CI gate, that omission turned into a
+// recurring red `main`: the fixbot regenerates stats on its own branch, where it
+// IS an author, and writes `contributors: 2`; the squash-merge onto main is
+// authored by a human, so CI recomputes `1` and the drift check fails. It cost a
+// release pre-flight to diagnose, twice — the other session's attempted fix was
+// another regenerate, which just flipped it back.
+//
+// Matched on the identity line, so a human whose commit message happens to
+// mention a bot is unaffected.
+const BOT_IDENTITIES = /\[bot\]|(?:^|[\s<])maude-fixbot\b/i;
 const contributorsRaw = sh('git shortlog -sne HEAD');
 const contributors = contributorsRaw
   ? contributorsRaw
       .split('\n')
       .filter(Boolean)
-      .filter((line) => !/\[bot\]/i.test(line)).length
+      .filter((line) => !BOT_IDENTITIES.test(line)).length
   : 0;
 
 const stats = {
