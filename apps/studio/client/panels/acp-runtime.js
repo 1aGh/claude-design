@@ -123,6 +123,20 @@ export function applyUpdate(parts, toolIndex, u) {
 export function createAcpConnection() {
   let ws = null;
   let openPromise = null;
+  // ── The re-attach seam (Addendum Task 8) ──────────────────────────────────
+  // The chat this connection speaks for, and how far its history has been
+  // hydrated. Both are set by `bindChat()` BEFORE the socket opens, because the
+  // `attach` frame that carries them is sent from `onopen`.
+  //
+  // `hydratedSeq` is a transcript LINE NUMBER, not a message count — the server
+  // stamps every `update` with the line it occupies, so the two are directly
+  // comparable. Frames at or below it are things the panel already rendered
+  // from the HTTP hydration, and dropping them is what stops a reload from
+  // showing the last few seconds twice.
+  let attachedChatId = null;
+  let hydratedSeq = 0;
+  /** True when the server said we re-joined a turn that is STILL running. */
+  const attachedListeners = new Set();
   let turnHandler = null; // the in-flight run()'s frame sink
   const statusListeners = new Set();
   const status = { available: null, reason: undefined, ready: false };
@@ -240,6 +254,26 @@ export function createAcpConnection() {
   }
 
   function onFrame(frame) {
+    // ── The re-attach seam (Addendum Task 8) ────────────────────────────────
+    // Drop anything the panel already rendered from its HTTP hydration. The
+    // server replays the tail on `attach` and the live stream continues past
+    // it, so without this filter a reload mid-turn would show the overlap
+    // twice. Frames with no `seq` (every non-`update` frame) are unaffected.
+    if (typeof frame.seq === 'number') {
+      if (frame.seq <= hydratedSeq) return;
+      // Advance the marker as we consume, so a SECOND reconnect on the same
+      // page (a dropped socket, not a page reload) re-attaches from where the
+      // live stream actually got to rather than from the original hydration.
+      hydratedSeq = frame.seq;
+    }
+    if (frame.t === 'attached') {
+      for (const fn of attachedListeners) fn({ chat: frame.chat, running: !!frame.running });
+      // Re-joined a turn that is STILL running: restore the busy state, or the
+      // panel would look idle while the agent keeps working (and the composer
+      // would happily start a second, concurrent turn).
+      if (frame.running) setBusy(true);
+      return;
+    }
     if (frame.t === 'ready') {
       status.ready = true;
       status.available = frame.available;
@@ -274,7 +308,17 @@ export function createAcpConnection() {
     if (frame.t === 'permission-request') {
       pendingPermissions = [
         ...pendingPermissions,
-        { id: frame.id, toolCall: frame.toolCall, options: frame.options ?? [] },
+        {
+          id: frame.id,
+          toolCall: frame.toolCall,
+          options: frame.options ?? [],
+          // feature-acp-write-path-scope — present only when the server's
+          // write-path gate declined a write tool. `{ outOfProjectWrite,
+          // resolvedPaths, scopeRoot, reason }`; absent for every ordinary
+          // permission request, so PermissionPrompt's "outside the project"
+          // copy can't fire on one.
+          scope: frame.scope ?? null,
+        },
       ];
       emitPermissions();
       return;
@@ -329,7 +373,28 @@ export function createAcpConnection() {
       const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
       const sock = new WebSocket(`${scheme}://${location.host}${WS_PATH}`);
       ws = sock;
-      sock.onopen = () => resolve();
+      sock.onopen = () => {
+        // Addendum Task 8 — bind to this chat's (possibly still running) bridge
+        // and close the re-attach seam in the same frame. `hydratedSeq` is the
+        // transcript line the panel hydrated over HTTP; the server replays
+        // exactly what came after it. A reload mid-turn therefore rejoins the
+        // live stream with no hole and no doubled text.
+        //
+        // Sent unconditionally, including for a brand-new chat (seq 0, nothing
+        // to replay) — the attach is what registers the socket as a sink, so
+        // skipping it for new chats would leave them detached until the first
+        // prompt.
+        if (attachedChatId) {
+          try {
+            sock.send(
+              JSON.stringify({ t: 'attach', chat: attachedChatId, seq: hydratedSeq })
+            );
+          } catch {
+            /* the frame handlers below surface a dead socket */
+          }
+        }
+        resolve();
+      };
       sock.onerror = () => reject(new Error('Could not reach the Claude bridge.'));
       sock.onclose = () => {
         ws = null;
@@ -423,13 +488,37 @@ export function createAcpConnection() {
      * "resolved" frame; the turn just continues). A response for an id that's
      * no longer pending (already timed out, or a duplicate click) is a no-op.
      */
+    /**
+     * Bind this connection to a chat and tell it how far the panel already
+     * hydrated that chat's transcript over HTTP (`seq` — a transcript LINE
+     * number, from the `X-Maude-Chat-Seq` response header).
+     *
+     * Must be called BEFORE the socket opens: the `attach` frame is sent from
+     * `onopen`, and it is what registers this socket as a sink for the chat's
+     * (possibly still running) server-side bridge. Calling it later still
+     * works for a subsequent reconnect, it just misses the current one.
+     */
+    bindChat(chatId, seq = 0) {
+      attachedChatId = chatId || null;
+      hydratedSeq = Number.isFinite(seq) && seq > 0 ? Math.floor(seq) : 0;
+    },
+
+    /** Subscribe to `{ chat, running }` — fires once per successful attach.
+     *  `running: true` means this socket re-joined a LIVE turn. */
+    onAttached(fn) {
+      attachedListeners.add(fn);
+      return () => attachedListeners.delete(fn);
+    },
+
     async respondPermission(id, decision) {
       if (!pendingPermissions.some((p) => p.id === id)) return;
       pendingPermissions = pendingPermissions.filter((p) => p.id !== id);
       emitPermissions();
       try {
         await ensureOpen();
-        ws?.send(JSON.stringify({ t: 'permission-response', id, decision }));
+        // `chat` is echoed back from the request frame — a bridge is keyed by
+        // chat now, not by socket, so the response has to name which one.
+        ws?.send(JSON.stringify({ t: 'permission-response', id, chat: attachedChatId, decision }));
       } catch {
         /* socket unavailable — the bridge's own timeout will deny this request */
       }
@@ -446,7 +535,9 @@ export function createAcpConnection() {
       emitElicitations();
       try {
         await ensureOpen();
-        ws?.send(JSON.stringify({ t: 'elicitation-response', id, ...response }));
+        ws?.send(
+          JSON.stringify({ t: 'elicitation-response', id, chat: attachedChatId, ...response })
+        );
       } catch {
         /* socket unavailable — the bridge's own timeout will decline this request */
       }
@@ -532,7 +623,7 @@ export function createAcpConnection() {
       };
       const cancel = () => {
         try {
-          ws?.send(JSON.stringify({ t: 'cancel' }));
+          ws?.send(JSON.stringify({ t: 'cancel', chat: attachedChatId || undefined }));
         } catch {
           /* socket already gone */
         }

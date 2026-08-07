@@ -23,7 +23,7 @@ mod sidecar;
 mod updater;
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU32};
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Mutex;
 
 use tauri::{Emitter, Manager, RunEvent, WindowEvent};
@@ -505,10 +505,13 @@ pub fn run() {
             eprintln!("[maude] project root: {}", project_root.display());
 
             app.manage(SidecarState {
-                child: Mutex::new(None),
+                // Task 10 — a POOL, not a single child: switching projects now
+                // leaves the origin project's server (and its running chats)
+                // alive instead of killing it. See sidecar.rs's SidecarInstance.
+                instances: Mutex::new(std::collections::HashMap::new()),
                 shutting_down: AtomicBool::new(false),
-                restarts: AtomicU32::new(0),
                 project_root: Mutex::new(project_root.to_string_lossy().to_string()),
+                tick: AtomicU64::new(0),
             });
 
             // Clear any stale `_server.json` from a previous session BEFORE spawning,

@@ -22,6 +22,11 @@
 //   (3) `WebSearch`/`WebFetch` (DDR-185) are present as bare native tool names
 //       — no prefix-matching involved, so no source-of-truth guard needed the
 //       way the Bash rules need one.
+//   (4) NO WRITE TOOL is on this list (feature-acp-write-path-scope). This
+//       file used to assert the exact opposite — that Edit/Write/NotebookEdit
+//       WERE present — so read the test's own comment before "restoring" it.
+//       Write auto-approval moved into the bridge's path gate, which is the
+//       only place a per-call target path exists; see acp-write-scope.test.ts.
 
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
@@ -29,6 +34,7 @@ import { dirname, join } from 'node:path';
 
 import { MAUDE_DEFAULT_ALLOWED_TOOLS, newSessionParams } from '../acp/bridge.ts';
 import type { SdkPluginConfig } from '../acp/plugin-bootstrap.ts';
+import { WRITE_TOOL_NAMES } from '../acp/write-scope.ts';
 
 type Meta = {
   systemPrompt?: { append?: string };
@@ -73,9 +79,35 @@ describe('newSessionParams — allowedTools carrier shape (DDR-184)', () => {
 describe('MAUDE_DEFAULT_ALLOWED_TOOLS — source-of-truth guard (DDR-184 / DDR-062)', () => {
   const bashRules = MAUDE_DEFAULT_ALLOWED_TOOLS.filter((t) => t.startsWith('Bash'));
 
-  test('the canvas-editing file tools are all present', () => {
-    for (const t of ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'NotebookEdit']) {
+  test('the READ-ONLY file tools are present', () => {
+    for (const t of ['Read', 'Glob', 'Grep']) {
       expect(MAUDE_DEFAULT_ALLOWED_TOOLS).toContain(t);
+    }
+  });
+
+  test('NO write tool is name-allowed — they are path-gated instead (feature-acp-write-path-scope)', () => {
+    // This assertion is the whole point of the change, so it is worth being
+    // explicit about WHY it inverts what this file used to assert.
+    //
+    // A bare tool name on this list means the CLI approves the call itself and
+    // `requestPermission` is NEVER invoked — so a path condition cannot be
+    // attached to an entry here, at all. Auto-approving a write therefore had
+    // to be moved into the bridge's own gate (`classifyWrite` →
+    // `writeTargetsInsideProject`), where a per-call path exists. DDR-184's
+    // no-prompt-per-edit outcome is fully preserved for in-project writes; what
+    // changed is that a write to `~/.zshenv` now prompts instead of landing
+    // silently with no rollback.
+    //
+    // If someone "fixes" a re-prompting regression by putting Write back on this
+    // list, this test is what tells them they just reopened the hole.
+    for (const t of [...WRITE_TOOL_NAMES]) {
+      expect(MAUDE_DEFAULT_ALLOWED_TOOLS).not.toContain(t);
+    }
+    // Guard the shape too — an `Edit(...)`-style scoped entry would also bypass
+    // the bridge gate, and `not.toContain` on the bare name would miss it.
+    for (const t of MAUDE_DEFAULT_ALLOWED_TOOLS) {
+      const bare = t.replace(/\(.*$/, '');
+      expect(WRITE_TOOL_NAMES.has(bare)).toBe(false);
     }
   });
 
@@ -98,18 +130,34 @@ describe('MAUDE_DEFAULT_ALLOWED_TOOLS — source-of-truth guard (DDR-184 / DDR-0
     //   - `Bash(find:*)` must NEVER appear — `find -exec` is unrestricted
     //     command execution, not "mutation"; there is no verb substitute, it
     //     is simply cut.
-    expect(bashRules).toEqual([
-      'Bash(maude:*)',
-      'Bash(ls:*)',
-      'Bash(cat:*)',
-      'Bash(pwd:*)',
-      'Bash(head:*)',
-      'Bash(tail:*)',
-      'Bash(wc:*)',
-      'Bash(tree:*)',
-      'Bash(file:*)',
-      'Bash(stat:*)',
-    ]);
+    //   - the read-only fs verb group must NEVER appear — every one of them
+    //     accepts `>`, making the rule an arbitrary-write grant. See the
+    //     dedicated test below.
+    expect(bashRules).toEqual(['Bash(maude:*)']);
+  });
+
+  test('NO redirect-capable bare-command Bash rule — `cat > file` is an arbitrary write (F1)', () => {
+    // SECURITY (security-auditor F1, PoC'd live against claude 2.1.220). The
+    // read-only fs group (ls/cat/pwd/head/tail/wc/tree/file/stat) USED to be on
+    // this list, justified as adding no incremental READ capability. True, and
+    // beside the point: Claude Code's `Bash(<cmd>:*)` prefix rule does not
+    // reject shell redirection, so `cat > ~/.zshenv <<'EOF' … EOF` matched
+    // `Bash(cat:*)`, was self-approved by the CLI, never reached
+    // `requestPermission`, and wrote model-authored arbitrary content to an
+    // arbitrary path — with no write tool involved at all. That is the A2
+    // primitive the write-path gate exists to close, reachable by a CHEAPER
+    // route than the write tools themselves.
+    //
+    // Cut rather than patched (same call DDR-185 made for `find` and
+    // `agent-browser`): a prefix rule cannot inspect what follows the command
+    // name, so there is nothing to patch. If they come back, they must come
+    // back as a hardened `maude design` wrapper verb, which CAN reject `>`.
+    //
+    // This test is what makes re-adding any of them a loud failure rather than
+    // a silent reopening of the hole.
+    for (const verb of ['ls', 'cat', 'pwd', 'head', 'tail', 'wc', 'tree', 'file', 'stat']) {
+      expect(MAUDE_DEFAULT_ALLOWED_TOOLS).not.toContain(`Bash(${verb}:*)`);
+    }
   });
 
   test('the `maude` Bash rule is load-bearing on DDR-062: every design helper is a `maude design <verb>`', () => {

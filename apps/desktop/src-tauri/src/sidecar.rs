@@ -5,7 +5,7 @@
 // `--root <project>`. Loopback-only (DDR-109): the dev-server binds localhost.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -70,19 +70,63 @@ impl ServerLog {
     }
 }
 
-/// Managed state holding the live sidecar child + supervision flags.
+/// One running dev-server, keyed by the project root it serves.
+///
+/// feature-acp-write-path-scope Addendum, Task 10 — this used to be a single
+/// `child`, and `switch_project` KILLED it so the supervisor could respawn at
+/// the new root. That meant switching projects tore down the whole server
+/// process, so every chat in project A died — not just the visible one — and no
+/// server-side change could reach it.
+///
+/// Option 2 of the plan's table: keep the origin project's sidecar ALIVE and
+/// spawn-or-attach the new one beside it. Option 3 (one long-lived cross-project
+/// agent host) was recommended against and is not implemented: one agent process
+/// spanning projects would dissolve the per-project boundary the write gate
+/// draws, and re-open the scope question in the worst possible place. A pool
+/// keeps `repoRoot` — and therefore `AcpBridge`'s pinned `scopeRoot` — exactly
+/// one-to-one with a server.
+pub struct SidecarInstance {
+    pub child: Option<CommandChild>,
+    /// Respawn attempts for THIS instance (capped at MAX_RESTARTS). Per-instance
+    /// rather than global: one project's crash-looping server must not exhaust
+    /// another's restart budget.
+    pub restarts: u32,
+    /// Monotonic tick of when this instance was last the DISPLAYED project —
+    /// drives least-recently-shown eviction.
+    pub last_shown: u64,
+}
+
+/// Managed state holding the live sidecar pool + supervision flags.
 pub struct SidecarState {
-    pub child: Mutex<Option<CommandChild>>,
+    /// project root → its running dev-server. At most `MAX_INSTANCES` entries.
+    pub instances: Mutex<std::collections::HashMap<String, SidecarInstance>>,
     /// Set true on app quit so the supervisor does not respawn during shutdown.
     pub shutting_down: AtomicBool,
-    /// Respawn attempts so far (capped at MAX_RESTARTS).
-    pub restarts: AtomicU32,
-    /// Project root passed to the dev-server as `--root`. Mutable so the user can
-    /// switch projects in-process (File ▸ Open Project…) without restarting the app.
+    /// The project the webview is CURRENTLY showing. Every consumer that asks
+    /// "where are we" (export download URLs, the deep-link handler) means this
+    /// one — not "the only one", which it no longer is.
     pub project_root: Mutex<String>,
+    /// Source for `last_shown`. A counter, not a clock: `Instant`/`SystemTime`
+    /// would drag time handling into a comparison that only needs an ordering.
+    pub tick: AtomicU64,
 }
 
 const MAX_RESTARTS: u32 = 3;
+
+/// How many project servers may run at once.
+///
+/// The ceiling is load-bearing, not polish: each instance is a Bun process plus
+/// however many `claude` adapters its chats have spawned, and DDR-125 already
+/// books "N processes" as the cost of parallel chats WITHIN one project. Without
+/// a cap, a user clicking through ten recent projects would accumulate ten of
+/// those stacks. Small on purpose — the point is "switch back and your work is
+/// still running", which is a two-or-three-project habit, not a workspace.
+const MAX_INSTANCES: usize = 3;
+
+/// Milliseconds allowed for the "does this project still have a chat running?"
+/// probe before eviction proceeds anyway. Short: a wedged server must not be
+/// able to make itself un-evictable by never answering.
+const RUNNING_PROBE_TIMEOUT_MS: u64 = 1500;
 
 /// Resolve the user's real PATH by asking their login shell, so a Finder/Dock-
 /// launched `.app` can reach `claude` / `maude` even though it inherited the
@@ -184,8 +228,25 @@ fn stage_bundled_cli_link(app: &AppHandle) -> Option<PathBuf> {
 /// command's event stream; on unexpected termination (not a quit), respawns with
 /// linear backoff up to `MAX_RESTARTS`. Re-entrant: the respawn path calls back in.
 pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
+    let root = app
+        .state::<SidecarState>()
+        .project_root
+        .lock()
+        .expect("sidecar mutex poisoned")
+        .clone();
+    spawn_for(app, &root)
+}
+
+/// Spawn a dev-server for ONE project root and register it in the pool.
+///
+/// Takes the root EXPLICITLY rather than reading `project_root` (Task 10): with
+/// a pool, "the current project" and "the project this child serves" are no
+/// longer the same thing, and the supervisor in particular must respawn the root
+/// that actually died — not whichever project the user has since switched to.
+/// That aliasing was the bug the single-child design couldn't have.
+pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
     let state = app.state::<SidecarState>();
-    let project_root = state.project_root.lock().expect("sidecar mutex poisoned").clone();
+    let project_root = project_root.to_string();
 
     let mut command = app
         .shell()
@@ -349,9 +410,32 @@ pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
         child.pid(),
         project_root
     );
-    *state.child.lock().expect("sidecar mutex poisoned") = Some(child);
+    let displaced = {
+        let mut pool = state.instances.lock().expect("sidecar mutex poisoned");
+        let tick = state.tick.fetch_add(1, Ordering::SeqCst);
+        let entry = pool.entry(project_root.clone()).or_insert(SidecarInstance {
+            child: None,
+            restarts: 0,
+            last_shown: tick,
+        });
+        // CORRECTNESS (security-auditor A5) — `or_insert` overwrites an EXISTING
+        // entry's `child`, and the first cut did exactly that: a racing second
+        // `spawn_for` for the same root would drop a live CommandChild on the
+        // floor WITHOUT terminating it, orphaning a Bun server plus every
+        // `claude` adapter it had spawned. Take the old handle out and kill it
+        // below — outside the lock, since `terminate` sleeps for the SIGTERM
+        // grace period.
+        let displaced = entry.child.take();
+        entry.child = Some(child);
+        displaced
+    };
+    if let Some(old) = displaced {
+        eprintln!("[maude] replacing a live sidecar for {project_root} — terminating the old one");
+        terminate(old);
+    }
 
     let app = app.clone();
+    let supervised_root = project_root.clone();
     tauri::async_runtime::spawn(async move {
         // feature-bug-report-button (T4/1b) — mirror the sidecar's output into a
         // rotating file under the OS log dir (~/Library/Logs/<bundle-id> on
@@ -378,19 +462,47 @@ pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
                     eprintln!("[maude:server] error: {err}");
                 }
                 CommandEvent::Terminated(payload) => {
-                    eprintln!("[maude:server] terminated (code={:?})", payload.code);
+                    eprintln!(
+                        "[maude:server] terminated (code={:?}) — root {supervised_root}",
+                        payload.code
+                    );
                     let state = app.state::<SidecarState>();
                     if state.shutting_down.load(Ordering::SeqCst) {
                         break; // expected — app is quitting
                     }
-                    let attempt = state.restarts.fetch_add(1, Ordering::SeqCst) + 1;
+                    // Task 10 — respawn THIS root, not "the current project".
+                    // With a pool those diverge the moment the user switches,
+                    // and the old code would have resurrected project A's dead
+                    // server as a second copy of project B.
+                    //
+                    // An instance the pool no longer knows about was evicted or
+                    // shut down deliberately: let it stay dead.
+                    let attempt = {
+                        let mut pool = state.instances.lock().expect("sidecar mutex poisoned");
+                        match pool.get_mut(&supervised_root) {
+                            Some(inst) => {
+                                inst.restarts += 1;
+                                inst.child = None;
+                                inst.restarts
+                            }
+                            None => {
+                                eprintln!("[maude] {supervised_root} was retired — not respawning");
+                                break;
+                            }
+                        }
+                    };
                     if attempt > MAX_RESTARTS {
-                        eprintln!("[maude] sidecar gave up after {MAX_RESTARTS} restarts");
+                        eprintln!("[maude] sidecar gave up after {MAX_RESTARTS} restarts ({supervised_root})");
+                        state
+                            .instances
+                            .lock()
+                            .expect("sidecar mutex poisoned")
+                            .remove(&supervised_root);
                         break;
                     }
                     eprintln!("[maude] respawning dev-server (attempt {attempt}/{MAX_RESTARTS})");
                     tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
-                    if let Err(e) = spawn_server(&app) {
+                    if let Err(e) = spawn_for(&app, &supervised_root) {
                         eprintln!("[maude] respawn failed: {e}");
                     }
                     break; // a fresh task now drains the new child
@@ -414,21 +526,57 @@ pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
 /// root; we then re-navigate once the new `_server.json` lands.
 pub fn switch_project(app: &AppHandle, new_root: PathBuf) {
     let state = app.state::<SidecarState>();
-    *state.project_root.lock().expect("sidecar mutex poisoned") = new_root.to_string_lossy().to_string();
-    state.restarts.store(0, Ordering::SeqCst); // a deliberate switch is not a crash
+    let root = new_root.to_string_lossy().to_string();
+    *state.project_root.lock().expect("sidecar mutex poisoned") = root.clone();
     eprintln!("[maude] switching project → {}", new_root.display());
 
-    // Force `wait_for_server` to block on a FRESH write rather than a stale file
-    // from a previous session of the target project.
     let design_root = new_root.join(".design");
-    let _ = std::fs::remove_file(design_root.join("_server.json"));
 
-    // Kill the current child; the Terminated supervisor respawns it with the new root.
-    if let Some(child) = state.child.lock().expect("sidecar mutex poisoned").take() {
-        let _ = child.kill();
+    // SPAWN-OR-ATTACH (Task 10). This used to unconditionally kill the child and
+    // delete `_server.json` so the supervisor would respawn at the new root.
+    // Both halves are now wrong in the pool world:
+    //
+    //  • Killing tore down the WHOLE server process, so every chat in the
+    //    project we're leaving died — not just the visible one. Keeping it
+    //    alive is the entire point of this task.
+    //  • Deleting `_server.json` was safe when it could only ever be a stale
+    //    file from a previous app session. With a pool it may be a LIVE
+    //    instance's state for a project that is already running, and removing
+    //    it would orphan a healthy server (`wait_for_server` would then block
+    //    on a write that never comes, because that server already wrote it).
+    //    So it is deleted ONLY when we are actually about to spawn.
+    let already_running = {
+        let mut pool = state.instances.lock().expect("sidecar mutex poisoned");
+        let tick = state.tick.fetch_add(1, Ordering::SeqCst);
+        match pool.get_mut(&root) {
+            Some(inst) if inst.child.is_some() => {
+                inst.last_shown = tick;
+                // A deliberate return to this project is not evidence of a
+                // crash loop — give it its restart budget back.
+                inst.restarts = 0;
+                true
+            }
+            _ => false,
+        }
+    };
+
+    if already_running {
+        eprintln!("[maude] project already running — attaching to its live server");
+    } else {
+        let _ = std::fs::remove_file(design_root.join("_server.json"));
+        if let Err(e) = spawn_for(app, &root) {
+            eprintln!("[maude] switch: could not spawn dev-server: {e}");
+        }
     }
 
-    // Re-navigate once the new project's dev-server is up.
+    // Trim the pool AFTER the switch, so the project we just moved to (now the
+    // most-recently-shown) can never be the one evicted.
+    reap_instances(app);
+
+    // Re-navigate once the target project's dev-server is up. Unchanged for the
+    // spawn path; instant for the attach path, since `_server.json` is already
+    // there from the live instance. The DDR-109 loopback guard applies per
+    // instance exactly as before — a pool does not relax it.
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         match crate::server_json::wait_for_server(design_root, 120_000).await {
@@ -453,33 +601,194 @@ pub fn switch_project(app: &AppHandle, new_root: PathBuf) {
     });
 }
 
-/// Kill the sidecar (called on app quit). Flags shutdown first so the supervisor
-/// does not respawn. The dev-server cleans up its own `_server.json` on SIGTERM.
+/// Is a chat mid-turn in the project served at `design_root`?
+///
+/// Asks that instance's own dev-server (`/_api/acp/running`, added for the
+/// branch-switch warning). Any failure — no `_server.json`, refused connection,
+/// timeout, unparseable body — answers `false`, i.e. "evictable". That default
+/// is deliberate: a server we cannot talk to is not one whose running turns we
+/// can protect, and letting it veto its own eviction forever would turn a wedged
+/// process into an unkillable one.
+fn has_running_chat(design_root: &std::path::Path) -> bool {
+    let Some(base) = crate::server_json::read_server_url(design_root) else {
+        return false;
+    };
+    // SECURITY (security-auditor A1, HIGH) — `_server.json` lives under the
+    // (untrusted, DDR-054) PROJECT root, and `server_json.rs` says so explicitly:
+    // its `url` "originates from a file under the (potentially untrusted) project
+    // root, so the navigate target is validated rather than trusted (security
+    // review F3)". The first cut of this function passed that string straight
+    // into curl's argv, skipping the very guard the navigate site 25 lines above
+    // already applies. Two exploitable shapes, both reached by a prompt-injected
+    // session writing `_server.json` — which is IN-PROJECT and therefore
+    // auto-approved by the write gate this same feature added:
+    //   • `{"url":"http://attacker.tld"}` → an outbound beacon from the native
+    //     app, off the permission surface entirely.
+    //   • `{"url":"-K/path/to/attacker.conf"}` → the leading `-` makes curl read
+    //     it as `--config`, which can specify an arbitrary URL *and* an
+    //     arbitrary output file. Arbitrary outbound request + arbitrary write.
+    // Triggered whenever `reap_instances` probes that project.
+    //
+    // Parse and enforce loopback with the SAME `is_loopback_url` the navigate
+    // site uses — one rule, one place. A non-loopback or unparseable url ⇒
+    // "evictable", the same safe default as every other failure below.
+    let Ok(parsed) = base.parse::<tauri::Url>() else {
+        eprintln!("[maude] refusing to probe unparseable _server.json url: {base}");
+        return false;
+    };
+    if !crate::server_json::is_loopback_url(&parsed) {
+        eprintln!("[maude] refusing non-loopback _server.json url (DDR-109): {parsed}");
+        return false;
+    }
+    // Built from the parsed url's ORIGIN, never the raw string — so a leading
+    // `-` cannot survive to be read as a curl flag even if parsing somehow
+    // admitted it. Origin rather than Display: `Url`'s Display keeps whatever
+    // path the file supplied, so a `_server.json` carrying
+    // `http://localhost:4399/foo` would concatenate into `/foo_api/acp/running`
+    // and 404 — which this function reads as "busy", quietly making that project
+    // un-evictable. `ascii_serialization()` is scheme+host+port only, so the
+    // path we append is always the one we mean.
+    let url = format!("{}/_api/acp/running", parsed.origin().ascii_serialization());
+    // `curl` rather than a new HTTP crate: this is one loopback GET on a rare
+    // path, and it mirrors resolve_login_path's existing shell-out-to-a-system-
+    // binary pattern rather than adding a dependency for it.
+    let out = std::process::Command::new("curl")
+        .args([
+            "-s",
+            "--max-time",
+            &format!("{:.1}", RUNNING_PROBE_TIMEOUT_MS as f64 / 1000.0),
+            // `--` terminates option parsing: belt-and-braces alongside the
+            // loopback validation above, so no argv position can ever be
+            // reinterpreted as a flag (`-K` being the dangerous one).
+            "--",
+            &url,
+        ])
+        .output();
+    match out {
+        Ok(o) => {
+            let body = String::from_utf8_lossy(&o.stdout);
+            // `{"running":0,...}` ⇒ idle. Substring rather than a JSON parse:
+            // the shape is ours, one field, and a parse failure would have to
+            // fall back to this anyway.
+            !body.contains("\"running\":0")
+        }
+        Err(_) => false,
+    }
+}
+
+/// Enforce MAX_INSTANCES by shutting down the least-recently-shown IDLE project.
+///
+/// "Idle" means no chat is mid-turn — the reap policy the plan asks for. The
+/// currently-displayed project is never a candidate. If every non-displayed
+/// instance is busy, the pool is allowed to exceed the ceiling rather than kill
+/// a running turn: the ceiling exists to stop unbounded accumulation, and a user
+/// who has three projects genuinely working at once has made that choice
+/// explicitly. It re-trims on the next switch, once something goes idle.
+fn reap_instances(app: &AppHandle) {
+    let state = app.state::<SidecarState>();
+    let current = state.project_root.lock().expect("sidecar mutex poisoned").clone();
+    loop {
+        let candidates: Vec<String> = {
+            let pool = state.instances.lock().expect("sidecar mutex poisoned");
+            if pool.len() <= MAX_INSTANCES {
+                return;
+            }
+            let mut sorted: Vec<(String, u64)> = pool
+                .iter()
+                .filter(|(root, _)| **root != current)
+                .map(|(root, inst)| (root.clone(), inst.last_shown))
+                .collect();
+            sorted.sort_by_key(|(_, tick)| *tick);
+            sorted.into_iter().map(|(root, _)| root).collect()
+        };
+        // CORRECTNESS (security-auditor A2) — walk the WHOLE least-recently-shown
+        // list looking for an idle instance, rather than giving up at the first
+        // busy one. The first cut returned there, so a single long-running old
+        // project pinned the pool above MAX_INSTANCES indefinitely: the ceiling
+        // silently stopped being a ceiling, which is exactly the process
+        // accumulation this constant exists to prevent.
+        let mut evicted = false;
+        for root in candidates {
+            // Probed OUTSIDE the mutex — the curl is bounded but still slow
+            // enough that holding the pool lock across it would stall an
+            // unrelated switch.
+            if has_running_chat(&PathBuf::from(&root).join(".design")) {
+                eprintln!("[maude] not evicting {root} — a chat is still running");
+                continue;
+            }
+            eprintln!("[maude] pool over {MAX_INSTANCES} — shutting down idle project {root}");
+            shutdown_instance(app, &root);
+            evicted = true;
+            break;
+        }
+        // EVERY non-displayed instance is busy. Allow the overflow rather than
+        // kill a running turn — the ceiling exists to stop unbounded drift, and
+        // a user with three projects genuinely working at once chose that. The
+        // next switch re-trims once something goes idle.
+        if !evicted {
+            return;
+        }
+    }
+}
+
+/// Remove ONE instance from the pool and terminate its child. Removing it from
+/// the map first is what tells the supervisor task (which checks membership on
+/// `Terminated`) that this death was deliberate and must not be respawned.
+fn shutdown_instance(app: &AppHandle, root: &str) {
+    let state = app.state::<SidecarState>();
+    let child = {
+        let mut pool = state.instances.lock().expect("sidecar mutex poisoned");
+        pool.remove(root).and_then(|inst| inst.child)
+    };
+    if let Some(child) = child {
+        terminate(child);
+    }
+}
+
+/// SIGTERM-then-SIGKILL a sidecar child (DDR-166).
+///
+/// `CommandChild::kill()` alone sends SIGKILL (it wraps `std::process::Child::
+/// kill`), which the Bun sidecar's own `process.on('SIGTERM', shutdown)` handler
+/// (server.ts) never sees — so its cleanup never runs. That cleanup now matters
+/// MORE than when DDR-166 was written: besides reaping an in-flight claude-
+/// install / sign-in grandchild, `shutdown()` also calls `acp.stopAll()`, which
+/// is what stops the detached ACP bridges (Task 8) from outliving the server.
+/// A bare SIGKILL here would orphan every `claude` subprocess this instance had
+/// spawned. Security-review finding, extended.
+fn terminate(child: CommandChild) {
+    let pid = child.pid();
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
+        std::thread::sleep(Duration::from_millis(400));
+    }
+    let _ = child.kill();
+    eprintln!("[maude] dev-server sidecar terminated (pid {pid})");
+}
+
+/// Kill EVERY sidecar (called on app quit). Flags shutdown first so no
+/// supervisor respawns.
+///
+/// Task 10 — this used to kill "the" child; with a pool it must reach all of
+/// them, or switching projects during a session would leave orphaned Bun
+/// servers (and their `claude` subprocesses) alive after the app window closed.
+/// App quit is the ONE boundary the extended session lifetime deliberately does
+/// not survive: keeping a chat alive across a project or branch *switch* is the
+/// point; keeping it alive across a quit is an orphan.
 pub fn kill_server(app: &AppHandle) {
     if let Some(state) = app.try_state::<SidecarState>() {
         state.shutting_down.store(true, Ordering::SeqCst);
-        if let Some(child) = state.child.lock().expect("sidecar mutex poisoned").take() {
-            // DDR-166 — `CommandChild::kill()` alone sends SIGKILL (it wraps
-            // `std::process::Child::kill`), which the Bun sidecar's own
-            // `process.on('SIGTERM', shutdown)` handler (server.ts) never
-            // sees — so its cleanup (killing an in-flight claude-install/
-            // sign-in grandchild, per this DDR's own previously-unanswered
-            // "how does app-quit reach the grandchild" question) never runs.
-            // Security-review finding. Fix: SIGTERM first via the system
-            // `kill` (no new crate dependency — mirrors resolve_login_path's
-            // existing shell-out-to-a-system-binary pattern), a short bounded
-            // grace period for the handler to run, THEN the existing
-            // guaranteed-termination SIGKILL fallback either way.
-            let pid = child.pid();
-            #[cfg(unix)]
-            {
-                let _ = std::process::Command::new("kill")
-                    .args(["-TERM", &pid.to_string()])
-                    .status();
-                std::thread::sleep(Duration::from_millis(400));
-            }
-            let _ = child.kill();
-            eprintln!("[maude] dev-server sidecar killed on quit (pid {pid})");
+        let children: Vec<(String, CommandChild)> = {
+            let mut pool = state.instances.lock().expect("sidecar mutex poisoned");
+            pool.drain()
+                .filter_map(|(root, inst)| inst.child.map(|c| (root, c)))
+                .collect()
+        };
+        for (root, child) in children {
+            eprintln!("[maude] quitting — stopping dev-server for {root}");
+            terminate(child);
         }
     }
 }

@@ -1855,6 +1855,11 @@ export default function ChatPanel({
   const connsRef = useRef(new Map()); // chatId → connection
   const busyRef = useRef(new Map()); // chatId → busy (aggregated for the menubar)
   const hydratedRef = useRef(new Map()); // chatId → initial messages
+  // chatId → the transcript LINE the hydration above covered (the
+  // `X-Maude-Chat-Seq` response header). Handed to the connection's `attach`
+  // so the server replays only what the client missed — Addendum Task 8's
+  // re-attach seam. Absent/0 for a chat that was never hydrated (a new chat).
+  const hydratedSeqRef = useRef(new Map());
   const [openChatIds, setOpenChatIds] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [busyChats, setBusyChats] = useState({}); // reactive: chatId → busy (for the dot)
@@ -1872,6 +1877,13 @@ export default function ChatPanel({
       const existing = connsRef.current.get(chatId);
       if (existing) return existing;
       const conn = createAcpConnection();
+      // Addendum Task 8 — bind BEFORE anything can open the socket. The `attach`
+      // frame goes out from `onopen` and is what subscribes this socket to the
+      // chat's server-side bridge (which now outlives its socket, so it may
+      // already be mid-turn from before a reload). `hydratedSeqRef` holds the
+      // transcript line the history fetch covered, so the server replays exactly
+      // the gap — no duplicated tail, no hole.
+      conn.bindChat(chatId, hydratedSeqRef.current.get(chatId) || 0);
       connsRef.current.set(chatId, conn);
       // Agent-generated title (session_info_update — fires at turn-end, so a
       // fresh chat shows the client's "New chat" heuristic until the first
@@ -1949,7 +1961,12 @@ export default function ChatPanel({
         return;
       }
       fetch(`/_api/acp/chat?id=${encodeURIComponent(id)}`)
-        .then((r) => r.json())
+        .then(async (r) => {
+          // Capture the seam marker alongside the body — see hydratedSeqRef.
+          const seq = Number(r.headers.get('X-Maude-Chat-Seq') || 0);
+          hydratedSeqRef.current.set(id, Number.isFinite(seq) ? seq : 0);
+          return r.json();
+        })
         .then((msgs) => openChat(id, toThreadMessages(msgs)))
         .catch(() => {});
     },
@@ -1965,6 +1982,7 @@ export default function ChatPanel({
       connsRef.current.delete(id);
       busyRef.current.delete(id);
       hydratedRef.current.delete(id);
+      hydratedSeqRef.current.delete(id);
       setBusyChats((prev) => {
         const next = { ...prev };
         delete next[id];

@@ -735,6 +735,17 @@ async function shutdown() {
   // previously-unanswered "how does app-quit reach the grandchild" question.
   cancelSignin();
   cancelInstall();
+  // Addendum Task 8 — bridges now outlive their WebSocket, so socket-close is
+  // no longer the reaper it used to be. App quit / dev-server shutdown is the
+  // ONE lifetime boundary the detached model deliberately does NOT survive
+  // (DDR-166's SIGTERM-first path): extending a session across a project or
+  // branch *switch* is the point; extending it across a quit is not, and a
+  // surviving `claude` subprocess after quit would be an orphan.
+  try {
+    acp.stopAll();
+  } catch {
+    /* best-effort — the process is exiting either way */
+  }
   fsWatch.stop();
   try {
     gitWatch.stop();

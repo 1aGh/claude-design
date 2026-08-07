@@ -8,6 +8,7 @@
 // (env.ts): the child inherits the environment MINUS `ANTHROPIC_API_KEY`, so
 // auth precedence falls through to the user's Pro/Max subscription.
 
+import { readFileSync } from 'node:fs';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
@@ -31,6 +32,14 @@ import {
 import { scrubAgentEnv } from './env.ts';
 import type { SdkPluginConfig } from './plugin-bootstrap.ts';
 import { resolveAdapterEntry, resolveAgentRuntime, resolveClaudePath } from './probe.ts';
+import {
+  isWriteToolName,
+  looksLikeWriteToolCall,
+  pinScopeRoot,
+  resolveWriteTargets,
+  type WriteScopeVerdict,
+  writeTargetsInsideProject,
+} from './write-scope.ts';
 
 export interface AcpBridgeOptions {
   /** Absolute repo root the ACP session runs in (where `.design/` + the CLI operate). */
@@ -48,8 +57,17 @@ export interface AcpBridgeOptions {
    * serve). Carried on the readonly options so it survives an adapter re-spawn.
    */
   plugins?: SdkPluginConfig[];
-  /** Streamed `session/update` notifications relayed to the browser. */
-  onUpdate: (update: SessionUpdate) => void;
+  /**
+   * Streamed `session/update` notifications relayed to the browser.
+   *
+   * `seq` is the transcript line this update occupies — the re-attach seam
+   * (Addendum Task 8). A bridge outlives its socket now, so the client can
+   * hydrate history over HTTP and attach mid-stream; stamping every update with
+   * its transcript line is what lets the two sources be joined exactly instead
+   * of overlapping (duplicate output) or falling short (a hole mid-stream).
+   * See `acp/transcript.ts`'s "re-attach seam" section.
+   */
+  onUpdate: (update: SessionUpdate, seq: number) => void;
   /**
    * Informational transparency callback: fires whenever the agent asks for a
    * tool permission, REGARDLESS of how it's ultimately resolved. Kept
@@ -63,8 +81,23 @@ export interface AcpBridgeOptions {
    * (index.ts) forwards it to the browser as a `permission-request` frame.
    * The bridge awaits `resolvePermission(id, …)` before returning to the
    * adapter — nothing is pre-decided here.
+   *
+   * `req.options` is the bridge's own, possibly FILTERED copy — not the
+   * adapter's array verbatim. For an out-of-project write every `allow_always`
+   * option is stripped (feature-acp-write-path-scope Decision D: one click must
+   * not be able to make an out-of-project write permanent), and
+   * `resolvePermission` validates against the same filtered set, so a
+   * hand-crafted frame can't pin an option that was never offered.
+   *
+   * `scope` is present ONLY for a write tool the path gate refused to
+   * auto-approve — it is what lets the client say plainly that the target is
+   * outside the project and render the RESOLVED absolute path.
    */
-  onPermissionRequest?: (id: string, req: RequestPermissionRequest) => void;
+  onPermissionRequest?: (
+    id: string,
+    req: RequestPermissionRequest,
+    scope?: PermissionScopeInfo
+  ) => void;
   /**
    * The elicitation-form UI hook (feature-acp-ask-user-question) — fires once
    * per `unstable_createElicitation` call with a fresh nonce `id`, mirroring
@@ -116,6 +149,27 @@ export interface AcpBridgeOptions {
   permissionTimeoutMs?: number;
 }
 
+/**
+ * What the client needs to render an out-of-project write honestly
+ * (feature-acp-write-path-scope Task 4). Attached to a `permission-request`
+ * ONLY when the tool is a known write tool AND the path gate declined to
+ * auto-approve it — an ordinary prompt (Bash, an unknown MCP tool, …) carries
+ * no `scope` at all, so the client's "outside the project" copy can never fire
+ * on a request the gate never judged.
+ */
+export interface PermissionScopeInfo {
+  /** Always `true` when present — a discriminator the client can test directly. */
+  outOfProjectWrite: true;
+  /** The RESOLVED absolute path(s). Never the model's own string: `docs/../../../.zshenv`
+   *  reads as harmless in a prompt and its resolution does not (same lesson as
+   *  the deep-link modal's truncated project name). */
+  resolvedPaths: string[];
+  /** The pinned project root the paths were judged against — so the prompt can
+   *  say what "outside" means instead of asserting it. */
+  scopeRoot: string;
+  reason: WriteScopeVerdict['reason'];
+}
+
 /** The bridge's normalized shape of a `usage_update` notification. `rateLimit`
  *  is the RAW `_meta["_claude/rateLimit"]` payload (an `SDKRateLimitInfo`) —
  *  passed through opaque; `client/panels/acp-usage.js`'s `parseUsage` is
@@ -149,6 +203,21 @@ type Spawned = ReturnType<typeof Bun.spawn>;
 // shipped despite `_chat/` being gitignored — DDR-115) is rejected rather than
 // forwarded into the privileged `loadSession` ACP call.
 const VALID_SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+/** Raw non-empty line count of a transcript file — the re-attach seam's seed.
+ *  Deliberately duplicated from `transcript.ts`'s `chatTranscriptSeq` rather
+ *  than imported: importing would pull the transcript READER (and its
+ *  designRoot/chatId path convention) into the bridge, which knows only an
+ *  absolute file path. The two MUST count identically — raw non-empty lines,
+ *  never parsed lines, since a corrupt line would otherwise shift every later
+ *  seq and permanently desync the seam. */
+function countTranscriptLines(path: string): number {
+  try {
+    return readFileSync(path, 'utf8').split('\n').filter(Boolean).length;
+  } catch {
+    return 0; // no transcript yet — first turn of this chat
+  }
+}
 
 // `loadSession`'s replay can, in principle, never settle if the underlying
 // transport dies mid-call (adapter crash, a concurrent `stop()` from another
@@ -211,15 +280,58 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT
 // this list still routes through the real approve/deny gate (requestPermission →
 // PermissionPrompt) — arbitrary `Bash(curl …)`/`rm`, WebFetch, unknown MCP tools.
 //
-//  • File tools (Read/Edit/Write/Glob/Grep/NotebookEdit) — the canvas-editing
-//    surface. Auto-approving Edit/Write is the accepted residual: edits land in
-//    the served project (already the edit target) and are reversible via the
-//    `_history/` snapshot stack.
+//  • Read-only file tools (Read/Glob/Grep) — the canvas-READING surface.
+//    Deliberately unscoped; this list closes WRITE egress, not read (see the
+//    "Explicitly NOT in scope" note in feature-acp-write-path-scope).
+//  • The WRITE tools (Edit/Write/NotebookEdit) are NOT on this list — and their
+//    absence is load-bearing, not an oversight. A bare name here means the CLI
+//    approves the call ITSELF and `requestPermission` is never invoked, so a
+//    path condition cannot be expressed "next to" an allow-list entry; it can
+//    only be expressed by moving the decision. They are auto-approved instead by
+//    the PATH GATE in `requestPermission` below (`acp/write-scope.ts`), which
+//    grants exactly DDR-184's no-prompt-per-edit outcome for every write landing
+//    inside the session's pinned project root, and routes every other write to
+//    the real prompt.
+//
+//    IN-PROJECT IS NECESSARY, NOT SUFFICIENT. A resolved target under `.git/` or
+//    `.claude/` is genuinely inside the root and still prompts — see
+//    `EXECUTION_SENSITIVE_DIRS` in write-scope.ts. Writing `.git/hooks/pre-commit`
+//    is code execution at the next git operation (and this app runs git for the
+//    user), which needs no second tool call at all.
+//
+//    This corrects the justification this comment used to carry. It read: "Auto-
+//    approving Edit/Write is the accepted residual: edits land in the served
+//    project (already the edit target) and are reversible via the `_history/`
+//    snapshot stack." That was not merely incomplete, it was the WRONG CLAIM —
+//    nothing whatsoever constrained the target path, so neither half held. Edits
+//    did not have to land in the served project, and `_history/` snapshots only
+//    exist for canvases inside `<designRoot>`, so the rollback argument covers a
+//    subset of the project and nothing at all outside it — and `.git/hooks/` is
+//    the counterexample INSIDE the project, where the file is neither the edit
+//    target nor snapshotted. A write to `~/.zshenv`,
+//    `~/Library/LaunchAgents/*.plist` or another repo entirely was auto-approved
+//    silently, with no prompt and no rollback. That is the delivery primitive
+//    behind the A2 finding of the 2026-08-04 attacker pass; the gate closes the
+//    class, not the one env var A2 happened to name.
 //  • `Bash(maude:*)` — the SINGLE rule that covers the entire design-helper
 //    surface, because DDR-062 routes every helper through `maude design <verb>`
 //    (screenshot / draw-* / canvas-rects / probe-footage / …) and their own deps
 //    (agent-browser, playwright, svgo) run as CHILDREN of that one bash call, so
 //    they need no separate entry. Bash NOT starting with `maude` still prompts.
+//
+//    RESIDUAL, NAMED EXPLICITLY (do not let this read as exhaustive — that is
+//    the mistake the ⚠️ below exists to correct): this rule has the SAME
+//    redirection property that got the read-only fs group cut. `maude design
+//    slug foo > ~/.zshenv` matches the prefix, so a helper's stdout can be
+//    redirected anywhere. It is NOT cut, because `Bash(maude:*)` IS the design
+//    workflow (DDR-062) and removing it would put a prompt on every step of the
+//    thing DDR-184 exists to unblock — a materially different, larger decision
+//    than dropping nine convenience verbs. What redirection buys here is
+//    helper-CHOSEN stdout to an attacker-chosen path, which is weaker than the
+//    read-only group's `cat > file <<'EOF'` (model-authored arbitrary CONTENT),
+//    but it is not nothing, and it sits alongside the unscoped `--out` of
+//    BYPASS-2 and the `exec bun run` of BYPASS-1. Tracked as an open item in
+//    feature-acp-write-path-scope's Task 5 findings.
 //
 // DDR-185 widens this list with further, independently-justified groups
 // (never collapsed into "widen Bash generally" — see the DDR for the full
@@ -265,7 +377,43 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT
 //    reads those for the user's OWN manual terminal use — this wrapper's
 //    explicit env deletion is what stops that from leaking into the
 //    auto-approving ACP session specifically).
-//  • Read-only filesystem inspection (ls/cat/pwd/head/tail/wc/tree/file/stat)
+//  • Read-only filesystem inspection (ls/cat/pwd/head/tail/wc/tree/file/stat).
+//
+//    ⚠️ CORRECTION (security-auditor F1, 2026-08-07 — feature-acp-write-path-
+//    scope). The paragraph below calls this group "read-only" and argues it
+//    adds no incremental READ capability. The read argument is correct and
+//    BESIDE THE POINT: Claude Code's `Bash(<cmd>:*)` prefix rule does NOT
+//    reject shell redirection, and every verb in this group accepts `>`. So
+//    `cat > ~/.zshenv <<'EOF' … EOF` matches `Bash(cat:*)`, is self-approved by
+//    the CLI, never reaches `requestPermission`, and writes model-authored
+//    arbitrary content to an arbitrary path in ONE command — with no write tool
+//    involved at all. PoC'd live against claude 2.1.220 under
+//    `--permission-mode default`.
+//
+//    This group was therefore an UNRESTRICTED ARBITRARY WRITE surface, not a
+//    read surface, and CHEAPER than the write tools it sat beside — the path
+//    gate does not and cannot see it. **All nine entries are CUT**, mirroring
+//    how `find` and `agent-browser` were cut rather than patched in DDR-185's
+//    own security addendum, and for the identical reason: the residual is NOT
+//    fixable via prefix-matching, because the rule cannot inspect what follows
+//    the command name. `pwd` goes too — `pwd > file` redirects exactly like the
+//    rest, so "but pwd is harmless" is the same beside-the-point argument.
+//
+//    Cost, accepted deliberately: these verbs prompt again, which gives back
+//    part of DDR-185's friction win. That is the right trade — a write gate
+//    whose headline claim is defeated by `cat >` is worse than a prompt on
+//    `ls`. Read/Grep/Glob remain auto-approved, so the actual READ workflow the
+//    group existed to smooth is untouched; what returns is a prompt on the
+//    *convenience interface* to power already granted.
+//
+//    If someone wants them back: route them through a hardened `maude design`
+//    wrapper verb the way `agent-browser-safe` and `curl-local` already are
+//    (covered for free by `Bash(maude:*)`, zero Bash-surface widening) — a
+//    wrapper CAN reject redirection, a prefix rule cannot.
+//
+//    The original justification follows. Its reasoning about the READ surface
+//    was accurate and is why the group was added at all; it is kept so the next
+//    reader sees both what was argued and what it missed:
 //    — adds ~NO incremental read capability: Read/Grep/Glob above are
 //    ALREADY auto-approved with no path scoping at all (a pre-existing fact,
 //    not something this list changes), so these commands are a more
@@ -325,21 +473,13 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT
 // mid-workflow.
 export const MAUDE_DEFAULT_ALLOWED_TOOLS: readonly string[] = [
   'Read',
-  'Edit',
-  'Write',
   'Glob',
   'Grep',
-  'NotebookEdit',
+  // NO 'Edit' / 'Write' / 'NotebookEdit' — see the comment block above. They are
+  // scope-gated in `requestPermission`, not name-allowed here.
   'Bash(maude:*)',
-  'Bash(ls:*)',
-  'Bash(cat:*)',
-  'Bash(pwd:*)',
-  'Bash(head:*)',
-  'Bash(tail:*)',
-  'Bash(wc:*)',
-  'Bash(tree:*)',
-  'Bash(file:*)',
-  'Bash(stat:*)',
+  // The read-only fs verb group (ls/cat/pwd/head/tail/wc/tree/file/stat) was
+  // CUT — see the ⚠️ block above. Every one of them accepts `>`.
   'WebSearch',
   'WebFetch',
 ];
@@ -435,6 +575,11 @@ const PERMISSION_TIMEOUT_MS = 120_000;
 // never to a silent allow.
 export const MAX_PENDING_PERMISSIONS = 10;
 
+// feature-acp-write-path-scope — ceiling on the `toolCallId → toolName` cache
+// the write gate reads. See `rememberToolName` for the eviction policy and why
+// an eviction degrades safely.
+export const MAX_TRACKED_TOOL_NAMES = 256;
+
 // feature-acp-ask-user-question, SECURITY (ethical-hacker finding) — unlike a
 // permission request (one per tool call, rate-limited by how fast a model can
 // call tools), an elicitation can be issued directly by any connected MCP
@@ -484,6 +629,10 @@ export class AcpBridge {
   private starting: Promise<void> | null = null;
   /** Per-chat transcript file (`_chat/<id>.jsonl`); set per prompt. */
   private transcriptPath: string | null = null;
+  /** How many lines this chat's transcript holds — the re-attach seam's
+   *  counter. Seeded from disk in `setTranscriptPath`, incremented by every
+   *  append. See `acp/transcript.ts`'s "re-attach seam" section. */
+  private transcriptLines = 0;
   /** Sidecar persisting this chat's ACP sessionId across restarts (`_chat/<id>.session.json`). */
   private sessionStorePath: string | null = null;
   /** True while `conn.loadSession()` is replaying a resumed session's history
@@ -534,8 +683,41 @@ export class AcpBridge {
   // Milestone D — the last-seen usage snapshot, cached the same way lastModes/
   // lastConfigOptions are (mirrors the manager's latestCommands replay pattern).
   private lastUsage: BridgeUsage | null = null;
+  // feature-acp-write-path-scope Task 3 — `toolCallId → toolName`, harvested
+  // from the streamed `tool_call`/`tool_call_update` notifications'
+  // `_meta.claudeCode.toolName`. This is the ONLY channel the tool name arrives
+  // on: the adapter builds a permission request's `toolCall` inline as
+  // `{ toolCallId, rawInput, ...toolInfoFromToolUse(…) }` (acp-agent.js:2270-2286),
+  // and `toolInfoFromToolUse` returns title/kind/content/locations — no name.
+  // The adapter guarantees the ordering the gate depends on:
+  // `requestPermissionFromClient` awaits `ensureToolCallEmitted` BEFORE issuing
+  // the request, so the notification is always on the wire first. A miss simply
+  // fails closed to the prompt (see `classifyWrite`), so a future adapter that
+  // reorders these degrades to "the user is asked" — never to a silent allow.
+  private toolNames = new Map<string, string>();
+  /**
+   * SECURITY / Task 11 (Solution E) — the project root this session's writes are
+   * scoped to, realpath-resolved ONCE here and never recomputed.
+   *
+   * DO NOT replace reads of this with `this.opts.repoRoot`, and do not make it
+   * settable. Today a bridge's lifetime IS one project's lifetime, so the two
+   * are the same value and the distinction looks like ceremony. The moment a
+   * session outlives a project switch (the plan's Addendum — Tasks 8/10 make
+   * exactly that possible), "the project" becomes two different things, and a
+   * gate that re-reads the current one silently hands project A's session write
+   * access to project B. That is the one failure mode this whole feature exists
+   * to prevent, so the pin ships WITH the lifetime change, not after it.
+   */
+  private readonly scopeRoot: string;
 
-  constructor(private readonly opts: AcpBridgeOptions) {}
+  constructor(private readonly opts: AcpBridgeOptions) {
+    this.scopeRoot = pinScopeRoot(opts.repoRoot);
+  }
+
+  /** The pinned write-scope root (read-only) — exposed for tests + diagnostics. */
+  get writeScopeRoot(): string {
+    return this.scopeRoot;
+  }
 
   /** The last-advertised mode roster + current mode (read-only snapshot). */
   get modes(): SessionModeState | null {
@@ -562,7 +744,14 @@ export class AcpBridge {
   }
 
   setTranscriptPath(path: string | null): void {
+    if (path === this.transcriptPath) return;
     this.transcriptPath = path;
+    // Re-seed the seam's counter from what is already on disk, so a bridge that
+    // resumes a chat from a PRIOR process lifetime continues that transcript's
+    // numbering instead of restarting at 1 and colliding with lines the client
+    // already hydrated. Counted the same way `chatTranscriptSeq` counts (raw
+    // non-empty lines) — the two must not disagree or the seam desyncs.
+    this.transcriptLines = path ? countTranscriptLines(path) : 0;
   }
 
   setSessionStorePath(path: string | null): void {
@@ -868,6 +1057,11 @@ export class AcpBridge {
     const client: Client = {
       sessionUpdate: (params: SessionNotification) => {
         const u = params.update;
+        // feature-acp-write-path-scope — harvest `toolCallId → toolName` BEFORE
+        // any early return (in particular before the `replaying` guard below):
+        // this is the write gate's only source for the tool name, and it must
+        // never be skipped for a reason unrelated to permissions.
+        this.rememberToolName(u);
         // The command catalogue is chrome, not chat — surface it to the UI but
         // keep it out of the rendered turn + the persisted transcript.
         if (u.sessionUpdate === 'available_commands_update') {
@@ -926,8 +1120,12 @@ export class AcpBridge {
         // transcript and already rendered client-side, so forwarding/re-appending
         // it here would duplicate every message in the panel and the jsonl file.
         if (this.replaying) return;
-        this.opts.onUpdate(u);
-        void this.appendTranscript({ role: 'agent', update: u });
+        // Claim the transcript line FIRST, then hand the same number to both
+        // consumers. Deriving it separately in each would let them disagree,
+        // which is exactly the desync the seam exists to prevent.
+        const seq = ++this.transcriptLines;
+        this.opts.onUpdate(u, seq);
+        void this.appendTranscript({ role: 'agent', update: u }, seq);
       },
       requestPermission: (params: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
         // Milestone B (retires DDR-125 F2's blanket auto-approve) — the
@@ -938,6 +1136,18 @@ export class AcpBridge {
         // transparency callback (every request, however it resolves);
         // `onPermissionRequest` is the actual UI hook the client answers.
         this.opts.onPermission?.(params);
+        // feature-acp-write-path-scope Task 3 — THE WRITE-PATH GATE. This is the
+        // branch that replaces `Edit`/`Write`/`NotebookEdit`'s former presence on
+        // MAUDE_DEFAULT_ALLOWED_TOOLS. An in-project write short-circuits here
+        // with no pending entry, no client frame and no prompt — byte-for-byte
+        // the DDR-184 experience. Everything else falls through to the real gate
+        // that already exists; this deliberately does NOT build a parallel path.
+        const scope = this.classifyWrite(params);
+        if (scope.autoApprove) {
+          return Promise.resolve({
+            outcome: { outcome: 'selected', optionId: scope.autoApprove },
+          });
+        }
         // SECURITY (ethical-hacker finding) — bound queue depth before
         // registering a pending entry, mirroring the elicitation channel's
         // MAX_PENDING_ELICITATIONS cap. Deny immediately past the cap — safe
@@ -946,14 +1156,29 @@ export class AcpBridge {
           return Promise.resolve({ outcome: { outcome: 'cancelled' } });
         }
         const id = crypto.randomUUID();
-        const optionIds = new Set((params.options ?? []).map((o) => o.optionId));
+        // Decision D — an out-of-project write cannot be made permanent by one
+        // click. Strip every `allow_always` option BEFORE it is offered, so
+        // consent is per-call. Filtering here rather than client-side is what
+        // makes it a gate instead of a speed bump: `optionIds` below is built
+        // from the SAME filtered array, so a hand-crafted `permission-response`
+        // naming `allow_always` fails closed to `cancelled` (resolvePermission's
+        // existing DDR-125 F1 posture) rather than being honored.
+        // `reject_always` is deliberately left in place — it is the safe
+        // direction, and stripping it could remove the only reject option.
+        const offered = scope.stripAlways
+          ? (params.options ?? []).filter((o) => o.kind !== 'allow_always')
+          : (params.options ?? []);
+        const outgoing: RequestPermissionRequest = scope.stripAlways
+          ? { ...params, options: offered }
+          : params;
+        const optionIds = new Set(offered.map((o) => o.optionId));
         return new Promise<RequestPermissionResponse>((resolve) => {
           const timer = setTimeout(
             () => this.resolvePermission(id, 'cancelled'),
             this.opts.permissionTimeoutMs ?? PERMISSION_TIMEOUT_MS
           );
           this.pendingPermissions.set(id, { resolve, timer, optionIds });
-          this.opts.onPermissionRequest?.(id, params);
+          this.opts.onPermissionRequest?.(id, outgoing, scope.info);
         });
       },
       unstable_createElicitation: (
@@ -1102,6 +1327,121 @@ export class AcpBridge {
   }
 
   /**
+   * Record `toolCallId → toolName` from a streamed tool-call notification.
+   * See the `toolNames` field comment for why this is the only available source.
+   *
+   * Bounded FIFO: a long turn can issue many tool calls, and this map has no
+   * natural reaper (a tool call's permission request may never arrive at all).
+   * `Map` preserves insertion order, so evicting the first key drops the oldest.
+   * The cap is far above any realistic single turn's tool-call count, so an
+   * eviction in practice means a pathological turn — in which case the affected
+   * request fails closed to the prompt, which is the correct direction.
+   */
+  private rememberToolName(u: SessionUpdate): void {
+    if (u.sessionUpdate !== 'tool_call' && u.sessionUpdate !== 'tool_call_update') return;
+    // Read through a structural view rather than the SDK union: `_meta` is
+    // declared as an open `unknown`-valued record, and `claudeCode.toolName` is
+    // an adapter-INTERNAL convention (like the `_meta` payloads newSessionParams
+    // sends the other way), not part of the ACP schema.
+    const view = u as { toolCallId?: unknown; _meta?: { claudeCode?: { toolName?: unknown } } };
+    const id = view.toolCallId;
+    const name = view._meta?.claudeCode?.toolName;
+    if (typeof id !== 'string' || !id || typeof name !== 'string' || !name) return;
+    if (!this.toolNames.has(id) && this.toolNames.size >= MAX_TRACKED_TOOL_NAMES) {
+      const oldest = this.toolNames.keys().next().value;
+      if (oldest !== undefined) this.toolNames.delete(oldest);
+    }
+    this.toolNames.set(id, name);
+  }
+
+  /**
+   * The write-path decision for one permission request.
+   *
+   * Returns `{ autoApprove: optionId }` ONLY for a known write tool whose every
+   * resolved target lands inside the pinned scope root. Returns `{ info }` for a
+   * known write tool that did NOT pass (so the prompt can be honest about it),
+   * and `{}` for everything else — which is every non-write tool, and therefore
+   * the overwhelmingly common case. Nothing here can make a NON-write tool
+   * easier to approve; the only outcomes are "auto-approve this write" or
+   * "carry on to the prompt that already existed".
+   *
+   * Fail-closed points, all of which land on the prompt rather than on a grant:
+   *   • the tool name is unknown (notification missed / evicted / reordered);
+   *   • the name isn't a write tool;
+   *   • no target path could be extracted;
+   *   • `locations[]` and `rawInput` name different files;
+   *   • any target resolves outside the root;
+   *   • the agent offered no `allow_once`-shaped option.
+   *
+   * That last one is worth stating plainly: auto-approval deliberately uses the
+   * ONCE-only option and never falls back to `allow_always`. Selecting
+   * `allow_always` would make the adapter install a session-wide standing rule
+   * for the tool NAME (`{type:'addRules', rules:[{toolName}]}`, acp-agent.js) —
+   * i.e. it would silently restore the unscoped `Write` grant this whole change
+   * removes, from inside the code that removed it.
+   */
+  private classifyWrite(params: RequestPermissionRequest): {
+    autoApprove?: string;
+    info?: PermissionScopeInfo;
+    stripAlways?: boolean;
+  } {
+    const toolCallId = params.toolCall?.toolCallId;
+    const toolName = typeof toolCallId === 'string' ? this.toolNames.get(toolCallId) : undefined;
+    // SECURITY (security-auditor F2) — TWO different bars, deliberately.
+    //
+    //   `named`  — a confirmed write tool. The ONLY thing that can be granted.
+    //   `shaped` — it merely LOOKS like a write (kind:'edit' / a notebook_path)
+    //              because the name is unknown: a missed/evicted/reordered
+    //              `tool_call` notification. Never granted, but still warned
+    //              about honestly and still stripped of `allow_always`.
+    //
+    // Coupling BOTH to the strict name check (the first cut) meant an unknown
+    // name failed closed for the grant while failing OPEN for the hardening —
+    // Decision D silently defeated, and the card falling back to the model's own
+    // `Write docs/../../../.zshenv` headline. Granting is strict; warning is
+    // generous.
+    const named = isWriteToolName(toolName);
+    if (!named && !looksLikeWriteToolCall(params.toolCall)) return {};
+
+    const verdict = named
+      ? writeTargetsInsideProject(params.toolCall, this.scopeRoot, toolName)
+      : resolveWriteTargets(params.toolCall, this.scopeRoot);
+    if (!verdict.inside) {
+      return {
+        stripAlways: true,
+        info: {
+          outOfProjectWrite: true,
+          resolvedPaths: verdict.resolved,
+          scopeRoot: this.scopeRoot,
+          reason: verdict.reason,
+        },
+      };
+    }
+    // In-project but the name was never confirmed: no grant (that bar needs the
+    // name), and no `scope` either — the target IS inside, so "outside this
+    // project" would be a lie. It gets the ordinary card…
+    //
+    // …but STILL without `allow_always` (security-auditor F6). The two are
+    // separate concerns and the first cut wrongly tied them together: `info` is
+    // COPY (only truthful when the target is outside), `stripAlways` is a
+    // CONTROL (needed whenever the call is write-shaped, wherever it lands).
+    // Selecting `allow_always` makes the adapter install a `{type:'addRules',
+    // rules:[{toolName}]}` standing rule keyed by the tool NAME, which carries
+    // no path scope at all — so one click on an INSIDE-the-project card
+    // permanently permits every subsequent write by that tool, including
+    // out-of-project ones. The in-project-ness of the click is irrelevant to
+    // what the rule then allows; that is the whole hole.
+    if (!named) return { stripAlways: true };
+    const allowOnce = (params.options ?? []).find((o) => o.kind === 'allow_once');
+    // No once-only option on the table → fall through to the prompt. Not an
+    // `info` case (the write IS in-project, so that copy would be a lie), but
+    // still `stripAlways` — see F6 above: a name-keyed standing rule is unscoped
+    // no matter which card it was clicked from.
+    if (!allowOnce) return { stripAlways: true };
+    return { autoApprove: allowOnce.optionId };
+  }
+
+  /**
    * Settle a pending permission request (Milestone B). `decision` is either a
    * `PermissionOption.optionId` the agent offered, or the literal `'cancelled'`
    * (reject/deny — the timeout default and what a turn-cancel forces). A
@@ -1231,6 +1571,7 @@ export class AcpBridge {
     // otherwise get back a result tied to the connection we just tore down).
     this.sessionPromises.clear();
     this.briefLogged.clear();
+    this.toolNames.clear();
     this.currentSession = null;
   }
 
@@ -1246,9 +1587,16 @@ export class AcpBridge {
     }
   }
 
-  private async appendTranscript(entry: Record<string, unknown>): Promise<void> {
+  /** Append one transcript line. `claimedSeq` is passed by the update path,
+   *  which already claimed its line number so it could hand the SAME number to
+   *  the client (see the seam note there); every other caller claims here. */
+  private async appendTranscript(
+    entry: Record<string, unknown>,
+    claimedSeq?: number
+  ): Promise<void> {
     const path = this.transcriptPath;
     if (!path) return;
+    if (claimedSeq === undefined) this.transcriptLines += 1;
     try {
       await mkdir(dirname(path), { recursive: true });
       await appendFile(path, `${JSON.stringify({ ts: Date.now(), ...entry })}\n`);

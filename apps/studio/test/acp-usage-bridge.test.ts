@@ -130,6 +130,11 @@ describe('Acp manager — usage frame is cached + replayed on a fresh socket (Ta
       acp.onClose(b.ws);
     } finally {
       acp.onClose(a.ws);
+      // Task 8 — `onClose` DETACHES now; it no longer stops the bridge (that is
+      // the point: a page reload must not kill a running turn). So a test that
+      // relied on socket-close for teardown leaks the adapter subprocess for the
+      // whole DETACHED_TTL_MS. Tear down explicitly.
+      acp.stopAll();
       await new Promise((r) => setTimeout(r, 50));
     }
   }, 20000);

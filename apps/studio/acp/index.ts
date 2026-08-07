@@ -21,10 +21,15 @@ import { buildStudioBrief } from './bootstrap-brief.ts';
 import { AcpBridge, type BridgeUsage } from './bridge.ts';
 import { isNativePluginContext, resolveSessionPlugins } from './plugin-bootstrap.ts';
 import { probeAcpAvailability } from './probe.ts';
+import { registerRunningChatsProbe } from './running.ts';
+import { readChatLinesAfter } from './transcript.ts';
 
 /**
- * Browser → server frames: `{ t: 'prompt', text, chat?, model?, effort?, mode? }`,
- * `{ t: 'cancel' }`, `{ t: 'warm', chat?, model?, effort?, mode? }` (spawn +
+ * Browser → server frames: `{ t: 'attach', chat, seq }` (Addendum Task 8 — bind
+ * this socket to the chat's possibly-already-running bridge and replay the
+ * transcript lines after `seq`, which is what the client hydrated over HTTP),
+ * `{ t: 'prompt', text, chat?, model?, effort?, mode? }`,
+ * `{ t: 'cancel', chat? }`, `{ t: 'warm', chat?, model?, effort?, mode? }` (spawn +
  * create the session so the agent publishes its slash-command catalogue — no
  * prompt sent), `{ t: 'set-mode', chat?, modeId }`, `{ t: 'set-config', chat?,
  * configId, value }` (live change on an already-established session —
@@ -42,15 +47,41 @@ import { probeAcpAvailability } from './probe.ts';
  * (a pending elicitation settled via ANY path, including one the client never
  * initiated — timeout/cancel/stop — so the client can drop a now-dead pending
  * card instead of leaving it stuck), `usage` (context-window + cost +
- * rate-limit, Milestone D — cached + replayed on open), `turn-end`,
- * `permission`, `error`.
+ * rate-limit, Milestone D — cached + replayed on open), `attached` (the answer
+ * to `attach`: `{ chat, running }` — `running` tells a reloaded client it
+ * re-joined a LIVE turn, so it restores the busy state instead of looking idle
+ * while the agent keeps working), `turn-end`, `permission`, `error`.
+ * Every `update` frame carries a `seq` — its transcript line — so a client can
+ * join the live stream to the history it hydrated without duplicating or
+ * dropping output (see `transcript.ts`'s "re-attach seam").
  */
 export interface Acp {
   onOpen(ws: ServerWebSocket<WsData>): void;
   onMessage(ws: ServerWebSocket<WsData>, raw: string | Uint8Array): void;
   onClose(ws: ServerWebSocket<WsData>): void;
-  /** Live bridge count — for diagnostics / teardown assertions. */
+  /** Live bridge count — for diagnostics / teardown assertions. Counts
+   *  DETACHED bridges too, since those are exactly what needs watching now
+   *  (Addendum Task 8). */
   size(): number;
+  /**
+   * Chat ids with a turn in flight right now (Addendum Task 9).
+   *
+   * Drives the branch-switch warning. A `git checkout` moves the worktree under
+   * a running agent — it read `foo.tsx` on `draft-a` and writes it back after
+   * the checkout to `main`, a silent cross-branch clobber — and this plan's own
+   * premise leans on `_history/` rollback, whose snapshot stack is per-canvas-
+   * slug with NO branch awareness. So the "it's reversible" argument degrades
+   * exactly here. Task 8 means a reload no longer KILLS the chat, which makes
+   * the warning MORE necessary, not less: the turn now survives into a worktree
+   * that is no longer the one it was reasoning about.
+   */
+  runningChats(): string[];
+  /** Tear every bridge down, attached or not. The process is going away
+   *  (dev-server shutdown / app quit), which is the ONE case the detached
+   *  lifetime deliberately does not survive — see DDR-166's SIGTERM-first
+   *  path. Extending a session across a *switch* is the whole point; extending
+   *  it across a quit is not. */
+  stopAll(): void;
 }
 
 // RC5 (rca/issue-canvas-hmr-optimistic-update-consistency) — the ACP chat agent
@@ -134,10 +165,76 @@ export function createAgentActivityTracker(ctx: Context, ai: AiActivity): AgentA
   return { onUpdate, endTurn };
 }
 
+// ── Detached bridge lifetime (feature-acp-write-path-scope Addendum, Task 8) ──
+//
+// A bridge used to be keyed by `ws.data.id` and stopped the instant its socket
+// closed. That made a PAGE RELOAD a turn-killer: `RepoBranchSwitcher.jsx` calls
+// `window.location.reload()` unconditionally on a branch switch, so switching
+// drafts mid-turn silently killed the running agent — no warning, and the work
+// in flight simply gone (the conversation survived, because the transcript and
+// the ACP sessionId are both persisted, which is what made it LOOK like it had
+// merely lost its place).
+//
+// Bridges are now keyed by CHAT and outlive their socket. The client already
+// opens one WebSocket per open chat, so this is a lifetime change, not a
+// multiplexing one — each bridge still has exactly one chat and one in-flight
+// turn, and `AcpBridge.scopeRoot` stays one-to-one with a project.
+//
+// A detached bridge is a live agent with NOBODY watching — a state this system
+// has never had before, so the reapers below are load-bearing rather than
+// polish (DDR-125 already books "N processes" as the cost of parallel chats,
+// and detaching removes the natural reaper that socket-close used to be).
+/** How long a bridge survives with no socket attached before it is torn down. */
+export const DETACHED_TTL_MS = 5 * 60_000;
+/** Hard ceiling on a detached bridge's total lifetime. A detached bridge whose
+ *  turn is still running gets its TTL extended (killing a running turn because
+ *  the user reloaded is the bug we are fixing) — but not forever: a wedged turn
+ *  must not become an immortal subprocess. */
+export const MAX_DETACHED_LIFETIME_MS = 30 * 60_000;
+/** How many DETACHED bridges may exist at once. Past this, the
+ *  least-recently-active detached bridge is reaped immediately. */
+export const MAX_DETACHED_BRIDGES = 3;
+
+/**
+ * Hard ceiling on TOTAL bridges (attached + detached).
+ *
+ * SECURITY (security-auditor A3) — the first cut capped only the detached ones,
+ * reasoning that "attached bridges are bounded by how many chats the user has
+ * open, i.e. by an explicit human action". That was TRUE while bridges were
+ * keyed by `ws.data.id` (one socket, one bridge, and opening a socket is a human
+ * act) and stopped being true the moment they were keyed by CHAT: one socket can
+ * now mint an unbounded number of bridges just by sending `prompt`/`warm` frames
+ * with distinct `chat` values, each spawning its own adapter + `claude` process
+ * stack. The premise died with the re-keying and the comment outlived it.
+ *
+ * Generous — well past any real "how many chats do I have open" — because
+ * tripping it means something is wrong, not that someone is working hard.
+ */
+export const MAX_BRIDGES = 12;
+
+interface BridgeEntry {
+  chatId: string;
+  bridge: AcpBridge;
+  tracker: AgentActivityTracker | null;
+  /** Sockets currently receiving this chat's frames. Empty ⇒ detached. */
+  sinks: Set<ServerWebSocket<WsData>>;
+  /** True between prompt-start and turn-end. A detached bridge with a live turn
+   *  is the case this whole change exists to keep alive. */
+  turnActive: boolean;
+  /** When the last socket detached (0 while attached) — drives the TTL. */
+  detachedSince: number;
+  /** Last prompt/attach, for least-recently-active eviction. */
+  lastActive: number;
+  reapTimer: ReturnType<typeof setTimeout> | null;
+}
+
 export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
-  const bridges = new Map<string, AcpBridge>();
-  // RC5 — per-socket agent-activity tracker (see createAgentActivityTracker).
-  const trackers = new Map<string, AgentActivityTracker>();
+  /** chatId → entry. Keyed by CHAT, not by socket — see the block comment above. */
+  const bridges = new Map<string, BridgeEntry>();
+  /** ws.data.id → the chat ids that socket is attached to (one, in practice —
+   *  the client opens a socket per chat — but modelled as a set so a future
+   *  multiplexing client can't silently corrupt the detach bookkeeping). */
+  const wsChats = new Map<string, Set<string>>();
   // Latest slash-command catalogue seen from ANY bridge this process lifetime.
   // Replayed to a freshly-opened socket so the composer autocomplete is instant
   // on the second panel-open without re-warming. Not persisted (static list in
@@ -156,79 +253,260 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
     }
   }
 
-  /** Get-or-create the per-socket bridge, wiring its update/permission/command sinks. */
-  function getOrCreateBridge(ws: ServerWebSocket<WsData>): AcpBridge {
-    let bridge = bridges.get(ws.data.id);
-    if (!bridge) {
-      const tracker = aiActivity ? createAgentActivityTracker(ctx, aiActivity) : null;
-      if (tracker) trackers.set(ws.data.id, tracker);
-      bridge = new AcpBridge({
-        repoRoot: ctx.paths.repoRoot,
-        // Static, config-derived environment brief for every new session
-        // (feature-acp-context-hardening; see bootstrap-brief.ts guardrails).
-        studioBrief: buildStudioBrief({
-          designRel: ctx.paths.designRel,
-          projectLabel: ctx.projectLabel,
-          // DDR-143 — on the native/desktop path the `/design:*` commands are
-          // present in the session (auto-loaded or installed), so the brief states
-          // that plainly instead of hedging. (`/flow:*` is intentionally excluded
-          // from the chat for now — 2026-07-03.)
-          commandsAvailable: isNativePluginContext(),
-        }),
-        // DDR-143 — session-scoped `design` auto-load for the zero-install desktop
-        // path (`/flow` auto-load disabled for now — 2026-07-03). Empty on the
-        // power-user (already-installed) + web-serve no-op paths. Computed once
-        // here; carried on the readonly bridge options so it survives an adapter
-        // re-spawn (model/effort change).
-        plugins: resolveSessionPlugins(),
-        onUpdate: (update) => {
-          tracker?.onUpdate(update);
-          send(ws, { t: 'update', update });
-        },
-        onPermission: (req) => send(ws, { t: 'permission', toolCall: req.toolCall }),
-        onPermissionRequest: (id, req) =>
-          send(ws, { t: 'permission-request', id, toolCall: req.toolCall, options: req.options }),
-        onElicitationRequest: (id, req: CreateElicitationRequest) =>
-          send(ws, {
-            t: 'elicitation-request',
-            id,
-            message: req.message,
-            mode: req.mode,
-            // `req.mode === 'form'` is guaranteed by the bridge (it declines
-            // any other mode before ever calling onElicitationRequest — see
-            // the SECURITY comment in bridge.ts) — this ternary exists for
-            // TYPE narrowing (requestedSchema only exists on the form variant
-            // of the CreateElicitationRequest union), not as a runtime guard.
-            requestedSchema: req.mode === 'form' ? req.requestedSchema : undefined,
-            // Forwarded so the client can attribute the request to the actual
-            // tool call it's scoped to (when present) instead of a blanket
-            // "from Claude" label — ethical-hacker finding: `toolCallId` is
-            // present on `ElicitationSessionScope` and was being silently
-            // dropped, even though ElicitationPrompt.jsx had nothing else to
-            // disambiguate a built-in AskUserQuestion form from an arbitrary
-            // connected MCP server's form.
-            toolCallId: 'toolCallId' in req ? req.toolCallId : undefined,
-          }),
-        // A pending elicitation settled via ANY path, including one the
-        // client never initiated (a bridge-side timeout, cancel(), stop()) —
-        // tells the client to drop it from its own pending list even though
-        // it didn't send the `elicitation-response` itself. See the doc
-        // comment on `onElicitationSettled` in bridge.ts.
-        onElicitationSettled: (id) => send(ws, { t: 'elicitation-resolved', id }),
-        onCommands: (commands) => {
-          latestCommands = commands;
-          send(ws, { t: 'commands', commands });
-        },
-        onCaps: (modes, configOptions) => send(ws, { t: 'caps', modes, configOptions }),
-        onSessionInfo: (info) => send(ws, { t: 'session-info', ...info }),
-        onUsage: (usage) => {
-          latestUsage = usage;
-          send(ws, { t: 'usage', usage });
-        },
-      });
-      bridges.set(ws.data.id, bridge);
+  /**
+   * Fan a frame out to every socket attached to this chat.
+   *
+   * An entry with NO sinks is the detached case, and dropping the frame there
+   * is correct, not a gap: every agent update is already on disk in the
+   * transcript, and a re-attaching client replays exactly what it missed via
+   * the `attach` frame's seq. The transcript is the durable record; this is
+   * just the live tail.
+   */
+  function broadcast(entry: BridgeEntry, payload: unknown): void {
+    for (const ws of entry.sinks) send(ws, payload);
+  }
+
+  /** Tear a bridge down for good. Idempotent. */
+  function reap(entry: BridgeEntry): void {
+    if (entry.reapTimer) clearTimeout(entry.reapTimer);
+    entry.reapTimer = null;
+    bridges.delete(entry.chatId);
+    // The agent really is gone now, so any "Claude is editing …" banner it
+    // raised must clear — unlike on a mere detach, where the banner is still
+    // TRUE (a detached-but-running turn is still editing files).
+    entry.tracker?.endTurn();
+    void entry.bridge.stop();
+  }
+
+  /**
+   * Arm (or re-arm) the detached reaper. A detached bridge whose turn is still
+   * running gets extensions up to MAX_DETACHED_LIFETIME_MS — reloading a page
+   * must not kill a running turn — but a genuinely abandoned one is torn down
+   * on the first TTL. Re-attaching cancels the timer (see `attach`).
+   */
+  function armReap(entry: BridgeEntry): void {
+    if (entry.reapTimer) clearTimeout(entry.reapTimer);
+    entry.reapTimer = setTimeout(() => {
+      entry.reapTimer = null;
+      if (entry.sinks.size > 0) return; // re-attached in the meantime
+      const detachedFor = Date.now() - entry.detachedSince;
+      if (entry.turnActive && detachedFor < MAX_DETACHED_LIFETIME_MS) {
+        armReap(entry);
+        return;
+      }
+      reap(entry);
+    }, DETACHED_TTL_MS);
+  }
+
+  /** Keep the number of DETACHED bridges under the ceiling by reaping the
+   *  least-recently-active one. Idle bridges are sacrificed before busy ones —
+   *  a detached bridge with a live turn is the thing we are trying to protect,
+   *  so it is only evicted when nothing idle is left to take instead. */
+  function enforceDetachedCeiling(max: number = MAX_DETACHED_BRIDGES): void {
+    for (;;) {
+      const detached = [...bridges.values()].filter((e) => e.sinks.size === 0);
+      if (detached.length <= max) return;
+      detached.sort(
+        (a, b) => Number(a.turnActive) - Number(b.turnActive) || a.lastActive - b.lastActive
+      );
+      reap(detached[0]);
     }
-    return bridge;
+  }
+
+  /** Get-or-create the per-CHAT bridge, wiring its update/permission/command sinks. */
+  function getOrCreateEntry(chatId: string): BridgeEntry | null {
+    const existing = bridges.get(chatId);
+    if (existing) return existing;
+    // A3 — before minting a new bridge (and with it a `claude` process stack),
+    // make room by reaping detached ones; refuse outright if everything live is
+    // attached. Refusing is the safe direction: the user re-sends, versus the
+    // process table filling up.
+    if (bridges.size >= MAX_BRIDGES) {
+      enforceDetachedCeiling(0);
+      if (bridges.size >= MAX_BRIDGES) {
+        console.error(`[acp] refusing to create bridge for "${chatId}" — ${MAX_BRIDGES} live`);
+        return null;
+      }
+    }
+    const tracker = aiActivity ? createAgentActivityTracker(ctx, aiActivity) : null;
+    // Declared before the bridge so the callbacks below can close over it —
+    // they fan out to `entry.sinks`, which changes as sockets come and go,
+    // rather than capturing one socket the way the per-socket design did.
+    const entry: BridgeEntry = {
+      chatId,
+      // Filled in on the very next statement. The two-step exists because the
+      // bridge's callbacks close over `entry` (to reach `entry.sinks`, which
+      // changes as sockets attach and detach) — a chicken-and-egg the old
+      // per-socket design didn't have, since it captured one fixed `ws`.
+      // Safe: `new AcpBridge()` spawns nothing and fires no callback, so no
+      // reader can observe the placeholder.
+      bridge: null as unknown as AcpBridge,
+      tracker,
+      sinks: new Set(),
+      turnActive: false,
+      detachedSince: 0,
+      lastActive: Date.now(),
+      reapTimer: null,
+    };
+    entry.bridge = new AcpBridge({
+      repoRoot: ctx.paths.repoRoot,
+      // Static, config-derived environment brief for every new session
+      // (feature-acp-context-hardening; see bootstrap-brief.ts guardrails).
+      studioBrief: buildStudioBrief({
+        designRel: ctx.paths.designRel,
+        projectLabel: ctx.projectLabel,
+        // DDR-143 — on the native/desktop path the `/design:*` commands are
+        // present in the session (auto-loaded or installed), so the brief states
+        // that plainly instead of hedging. (`/flow:*` is intentionally excluded
+        // from the chat for now — 2026-07-03.)
+        commandsAvailable: isNativePluginContext(),
+      }),
+      // DDR-143 — session-scoped `design` auto-load for the zero-install desktop
+      // path (`/flow` auto-load disabled for now — 2026-07-03). Empty on the
+      // power-user (already-installed) + web-serve no-op paths. Computed once
+      // here; carried on the readonly bridge options so it survives an adapter
+      // re-spawn (model/effort change).
+      plugins: resolveSessionPlugins(),
+      onUpdate: (update, seq) => {
+        tracker?.onUpdate(update);
+        // `seq` is the update's transcript line — the re-attach seam. The
+        // client drops anything it already hydrated and keeps the rest, so a
+        // reload mid-stream neither duplicates nor drops output.
+        broadcast(entry, { t: 'update', update, seq });
+      },
+      onPermission: (req) => broadcast(entry, { t: 'permission', toolCall: req.toolCall }),
+      onPermissionRequest: (id, req, scope) =>
+        // NOTE (Addendum hazard): if this chat is DETACHED, `broadcast` is a
+        // no-op — nobody sees the request, and the bridge's own 120 s timeout
+        // denies it (`PERMISSION_TIMEOUT_MS` → `'cancelled'`). That is the
+        // intended outcome and it is load-bearing: "no UI attached" must
+        // never read as consent. Making detachment auto-approve would reopen,
+        // from a new direction, exactly what the write gate closes.
+        broadcast(entry, {
+          t: 'permission-request',
+          id,
+          // Echoed so the client can address its response back to the right
+          // chat now that a response frame has to name one.
+          chat: chatId,
+          toolCall: req.toolCall,
+          // Already filtered bridge-side for an out-of-project write (no
+          // `allow_always` — feature-acp-write-path-scope Decision D); the
+          // bridge validates a response against this SAME set, so the client
+          // is being shown the real option set, not a cosmetic subset.
+          options: req.options,
+          // Present ONLY when the write-path gate judged a write tool and
+          // declined it — carries the RESOLVED absolute path(s) so the card
+          // can name what will actually be written rather than echoing the
+          // model's own (possibly `../`-laden) string.
+          scope,
+        }),
+      onElicitationRequest: (id, req: CreateElicitationRequest) =>
+        // Same detached-bridge note as onPermissionRequest above: nobody
+        // watching ⇒ the bridge's own timeout declines it.
+        broadcast(entry, {
+          t: 'elicitation-request',
+          id,
+          chat: chatId,
+          message: req.message,
+          mode: req.mode,
+          // `req.mode === 'form'` is guaranteed by the bridge (it declines
+          // any other mode before ever calling onElicitationRequest — see
+          // the SECURITY comment in bridge.ts) — this ternary exists for
+          // TYPE narrowing (requestedSchema only exists on the form variant
+          // of the CreateElicitationRequest union), not as a runtime guard.
+          requestedSchema: req.mode === 'form' ? req.requestedSchema : undefined,
+          // Forwarded so the client can attribute the request to the actual
+          // tool call it's scoped to (when present) instead of a blanket
+          // "from Claude" label — ethical-hacker finding: `toolCallId` is
+          // present on `ElicitationSessionScope` and was being silently
+          // dropped, even though ElicitationPrompt.jsx had nothing else to
+          // disambiguate a built-in AskUserQuestion form from an arbitrary
+          // connected MCP server's form.
+          toolCallId: 'toolCallId' in req ? req.toolCallId : undefined,
+        }),
+      // A pending elicitation settled via ANY path, including one the
+      // client never initiated (a bridge-side timeout, cancel(), stop()) —
+      // tells the client to drop it from its own pending list even though
+      // it didn't send the `elicitation-response` itself. See the doc
+      // comment on `onElicitationSettled` in bridge.ts.
+      onElicitationSettled: (id) => broadcast(entry, { t: 'elicitation-resolved', id }),
+      onCommands: (commands) => {
+        latestCommands = commands;
+        broadcast(entry, { t: 'commands', commands });
+      },
+      onCaps: (modes, configOptions) => broadcast(entry, { t: 'caps', modes, configOptions }),
+      onSessionInfo: (info) => broadcast(entry, { t: 'session-info', ...info }),
+      onUsage: (usage) => {
+        latestUsage = usage;
+        broadcast(entry, { t: 'usage', usage });
+      },
+    });
+    bridges.set(chatId, entry);
+    return entry;
+  }
+
+  /**
+   * Bind `ws` to a chat's (possibly already-running) bridge.
+   *
+   * Called for every chat-addressed frame, not just the explicit `attach` — a
+   * client that sends `prompt` straight after connecting must not be treated as
+   * detached. Re-attaching cancels the reaper, which is what makes a page
+   * reload a no-op for a running turn instead of a kill.
+   */
+  function attach(ws: ServerWebSocket<WsData>, chatId: string): BridgeEntry | null {
+    const entry = getOrCreateEntry(chatId);
+    if (!entry) return null;
+    entry.sinks.add(ws);
+    entry.detachedSince = 0;
+    entry.lastActive = Date.now();
+    if (entry.reapTimer) {
+      clearTimeout(entry.reapTimer);
+      entry.reapTimer = null;
+    }
+    let chats = wsChats.get(ws.data.id);
+    if (!chats) {
+      chats = new Set();
+      wsChats.set(ws.data.id, chats);
+    }
+    chats.add(chatId);
+    return entry;
+  }
+
+  /**
+   * The entry a control frame (`cancel`, a permission/elicitation response,
+   * `set-mode`, `set-config`) is allowed to act on.
+   *
+   * SECURITY — the socket may only address a chat it is ATTACHED to. This is not
+   * incidental: before bridges were re-keyed by chat, every lookup was
+   * `bridges.get(ws.data.id)`, so a socket was *structurally* incapable of
+   * naming another socket's bridge. Re-keying moved the key into the FRAME, and
+   * a first cut resolved `chat` against the whole `bridges` map — which silently
+   * widened the surface so any socket could cancel another chat's turn, flip its
+   * mode/model, or answer its pending permission. The nonce ids make the last one
+   * impractical to hit blind, but "you'd have to guess a UUID" is a weaker
+   * guarantee than "the frame cannot name that bridge at all", and DDR-125 F1's
+   * posture is explicitly the latter: a loopback frame must not be able to pin a
+   * value it was never offered. Restoring the attachment requirement gets the
+   * pre-re-keying property back without giving up chat addressing.
+   *
+   * `prompt`/`warm` deliberately do NOT go through here — opening a chat IS an
+   * attach, and that is the feature.
+   *
+   * Falls back to the single attached chat when the frame names none (the
+   * real-world case: the client opens one socket per chat, and older clients
+   * send `cancel`/responses without a `chat`). Ambiguity ⇒ null, never a guess.
+   */
+  function entryForSocket(ws: ServerWebSocket<WsData>, chat?: string): BridgeEntry | null {
+    const chats = wsChats.get(ws.data.id);
+    if (!chats || chats.size === 0) return null;
+    if (chat) {
+      const id = sanitizeChatId(chat);
+      if (!chats.has(id)) return null; // not this socket's chat — refuse
+      return bridges.get(id) ?? null;
+    }
+    if (chats.size !== 1) return null;
+    const [only] = chats;
+    return bridges.get(only) ?? null;
   }
 
   // Chats are repo-level (NOT per-canvas) — `_chat/<chatId>.jsonl`. The id is
@@ -257,22 +535,43 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
     effort: string | null,
     modeId: string | null
   ): Promise<void> {
-    const bridge = getOrCreateBridge(ws);
+    const entry = attach(ws, sanitizeChatId(chatId));
+    if (!entry) {
+      send(ws, { t: 'error', message: 'Too many chats are open. Close one and try again.' });
+      return;
+    }
+    const { bridge } = entry;
     bridge.setTranscriptPath(transcriptPathFor(chatId));
     bridge.setSessionStorePath(sessionStorePathFor(chatId));
     bridge.setConfig(model, effort, modeId);
+    // Marks this bridge as worth keeping alive through a detach. Set BEFORE the
+    // first await, so a socket that closes during the spawn still counts as a
+    // live turn rather than an abandoned bridge.
+    entry.turnActive = true;
     try {
       await bridge.ensureStarted();
       const { stopReason } = await bridge.prompt(text, sanitizeChatId(chatId));
-      send(ws, { t: 'connected', sessionId: bridge.sessionId });
-      send(ws, { t: 'turn-end', stopReason });
+      broadcast(entry, { t: 'connected', sessionId: bridge.sessionId });
+      broadcast(entry, { t: 'turn-end', stopReason });
     } catch (err) {
-      send(ws, { t: 'error', message: err instanceof Error ? err.message : String(err) });
+      broadcast(entry, {
+        t: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
     } finally {
+      entry.turnActive = false;
+      entry.lastActive = Date.now();
       // RC5 — the turn is over (success, error, or cancel-induced stop): clear
       // every "Claude is editing …" banner this turn raised. The 30 s heartbeat
       // grace still covers a crashed dev-server round-trip.
-      trackers.get(ws.data.id)?.endTurn();
+      entry.tracker?.endTurn();
+      // The turn was the only reason a detached bridge was being kept alive; now
+      // that it's done, let the ordinary TTL run out rather than holding the
+      // subprocess indefinitely for a client that never came back.
+      if (entry.sinks.size === 0) {
+        if (!entry.detachedSince) entry.detachedSince = Date.now();
+        armReap(entry);
+      }
     }
   }
 
@@ -288,7 +587,9 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
     effort: string | null,
     modeId: string | null
   ): Promise<void> {
-    const bridge = getOrCreateBridge(ws);
+    const entry = attach(ws, sanitizeChatId(chatId));
+    if (!entry) return; // at the ceiling — warm-up is best-effort, stay silent
+    const { bridge } = entry;
     bridge.setSessionStorePath(sessionStorePathFor(chatId));
     bridge.setConfig(model, effort, modeId);
     try {
@@ -319,14 +620,24 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
   /** Live mode change on an already-established session (Task A2/A4). */
   async function handleSetMode(
     ws: ServerWebSocket<WsData>,
-    chatId: string,
+    chatId: string | undefined,
     modeId: string
   ): Promise<void> {
-    const bridge = bridges.get(ws.data.id);
-    if (!bridge) return;
+    // SECURITY (ethical-hacker A2) — via `entryForSocket`, NOT a raw
+    // `bridges.get`. This was the one control frame that escaped the
+    // attachment-scoping sweep, and it is the highest-value one to miss:
+    // `bypassPermissions` is an advertised mode, and per the plan's F5 it
+    // short-circuits adapter-side so `requestPermission` — and therefore the
+    // entire write gate — never runs. A raw lookup let any main-origin socket
+    // send `{t:'set-mode', chat:'<other-chat>', modeId:'bypassPermissions'}` and
+    // switch the gate off for a chat it was never attached to, including a
+    // DETACHED one with a live turn and no client watching.
+    const entry = entryForSocket(ws, chatId);
+    const bridge = entry?.bridge;
+    if (!entry || !bridge) return;
     if (!bridge.modes?.availableModes.some((m) => m.id === modeId)) return; // not advertised — reject silently
     try {
-      await bridge.setMode(sanitizeChatId(chatId), modeId);
+      await bridge.setMode(entry.chatId, modeId);
     } catch {
       /* best-effort — the picker just keeps showing the last-confirmed caps frame */
     }
@@ -339,7 +650,8 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
     configId: string,
     value: string
   ): Promise<void> {
-    const bridge = bridges.get(ws.data.id);
+    // Attachment-scoped via entryForSocket, same as handleSetMode above.
+    const bridge = entryForSocket(ws, chatId)?.bridge;
     if (!bridge) return;
     if (!optionOffers(bridge, configId, value)) return; // not advertised — reject silently
     try {
@@ -348,6 +660,13 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
       /* best-effort — see handleSetMode */
     }
   }
+
+  // Task 9 — let the HTTP layer ask whether a turn is in flight (the branch-
+  // switch warning). Registered as a PULL so the answer is always current; see
+  // `running.ts` for why this isn't a `createHttp` parameter or client state.
+  registerRunningChatsProbe(() =>
+    [...bridges.values()].filter((e) => e.turnActive).map((e) => e.chatId)
+  );
 
   return {
     onOpen(ws) {
@@ -398,16 +717,52 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
       const effort = typeof frame.effort === 'string' && frame.effort ? frame.effort : null;
       const modeId = typeof frame.mode === 'string' && frame.mode ? frame.mode : null;
 
-      if (frame.t === 'prompt' && typeof frame.text === 'string') {
+      if (frame.t === 'attach') {
+        // Addendum Task 8 — bind this socket to the chat's (possibly still
+        // running) bridge and close the re-attach seam.
+        //
+        // `frame.seq` is the transcript line the client hydrated up to over
+        // HTTP. Everything after it is what the client missed while it had no
+        // socket — a page reload's own load→connect gap, or a whole detached
+        // stretch. Replaying exactly that range is why a reload neither
+        // duplicates the last few seconds nor leaves a hole in them.
+        const safeChat = sanitizeChatId(chatId);
+        const entry = attach(ws, safeChat);
+        if (!entry) {
+          send(ws, { t: 'error', message: 'Too many chats are open. Close one and try again.' });
+          return;
+        }
+        const from = typeof frame.seq === 'number' && frame.seq >= 0 ? Math.floor(frame.seq) : 0;
+        for (const line of readChatLinesAfter(ctx.paths.designRoot, safeChat, from)) {
+          if (line.entry.role === 'agent' && line.entry.update) {
+            send(ws, { t: 'update', update: line.entry.update, seq: line.seq });
+          }
+        }
+        // Tells the client whether it re-joined a LIVE turn (so it can restore
+        // the busy state) rather than a finished one. Without this a reload
+        // mid-turn would look idle while the agent kept working.
+        send(ws, { t: 'attached', chat: safeChat, running: entry.turnActive });
+      } else if (frame.t === 'prompt' && typeof frame.text === 'string') {
         void handlePrompt(ws, frame.text, chatId, model, effort, modeId);
       } else if (frame.t === 'warm') {
         void handleWarm(ws, chatId, model, effort, modeId);
       } else if (frame.t === 'cancel') {
         // RC5 — a cancelled turn may never resolve prompt(); clear banners now.
-        trackers.get(ws.data.id)?.endTurn();
-        void bridges.get(ws.data.id)?.cancel();
+        const entry = entryForSocket(ws, typeof frame.chat === 'string' ? frame.chat : undefined);
+        entry?.tracker?.endTurn();
+        void entry?.bridge.cancel();
       } else if (frame.t === 'set-mode' && typeof frame.modeId === 'string' && frame.modeId) {
-        void handleSetMode(ws, chatId, frame.modeId);
+        // Pass the RAW frame.chat (undefined when absent), not the
+        // `'default'`-defaulted `chatId` — otherwise `entryForSocket` takes its
+        // named branch and requires `chats.has('default')`, never reaching the
+        // "fall back to the single attached chat" path its siblings use. Fails
+        // closed either way, but it silently broke mode-switching for a client
+        // that omits `chat`. Parity with cancel/permission-response.
+        void handleSetMode(
+          ws,
+          typeof frame.chat === 'string' ? frame.chat : undefined,
+          frame.modeId
+        );
       } else if (
         frame.t === 'set-config' &&
         typeof frame.configId === 'string' &&
@@ -424,7 +779,10 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
         // id, so a malformed decision here just denies, never allows blind.
         const decision =
           typeof frame.decision === 'string' && frame.decision ? frame.decision : 'cancelled';
-        bridges.get(ws.data.id)?.resolvePermission(frame.id, decision);
+        entryForSocket(
+          ws,
+          typeof frame.chat === 'string' ? frame.chat : undefined
+        )?.bridge.resolvePermission(frame.id, decision);
       } else if (frame.t === 'elicitation-response' && typeof frame.id === 'string' && frame.id) {
         // feature-acp-ask-user-question — the human's answer/skip/cancel for a
         // pending `elicitation-request`. `action`/`content` are forwarded
@@ -433,22 +791,49 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
         const action = typeof frame.action === 'string' ? frame.action : 'decline';
         const content =
           frame.content && typeof frame.content === 'object' ? frame.content : undefined;
-        bridges.get(ws.data.id)?.resolveElicitation(frame.id, { action, content });
+        entryForSocket(
+          ws,
+          typeof frame.chat === 'string' ? frame.chat : undefined
+        )?.bridge.resolveElicitation(frame.id, { action, content });
       }
     },
 
+    /**
+     * DETACH — no longer a teardown (Addendum Task 8).
+     *
+     * This used to call `bridge.stop()` immediately, which is what made a page
+     * reload kill a running turn. Now the socket is simply unsubscribed; the
+     * bridge keeps running and the reaper decides its fate. Deliberately NOT
+     * calling `tracker.endTurn()` either: a detached-but-running turn is still
+     * genuinely editing files, so clearing its "Claude is editing …" banner
+     * would be a lie. `reap()` clears it when the agent actually stops, and
+     * ai-activity's own 30 s heartbeat grace covers a hard crash.
+     */
     onClose(ws) {
-      trackers.get(ws.data.id)?.endTurn();
-      trackers.delete(ws.data.id);
-      const bridge = bridges.get(ws.data.id);
-      if (bridge) {
-        bridges.delete(ws.data.id);
-        void bridge.stop();
+      const chats = wsChats.get(ws.data.id);
+      wsChats.delete(ws.data.id);
+      if (!chats) return;
+      for (const chatId of chats) {
+        const entry = bridges.get(chatId);
+        if (!entry) continue;
+        entry.sinks.delete(ws);
+        if (entry.sinks.size > 0) continue; // still open in another window
+        entry.detachedSince = Date.now();
+        armReap(entry);
       }
+      enforceDetachedCeiling();
     },
 
     size() {
       return bridges.size;
+    },
+
+    runningChats() {
+      return [...bridges.values()].filter((e) => e.turnActive).map((e) => e.chatId);
+    },
+
+    stopAll() {
+      for (const entry of [...bridges.values()]) reap(entry);
     },
   };
 }

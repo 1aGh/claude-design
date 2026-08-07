@@ -75,7 +75,14 @@ describe('AcpBridge — permission approve/deny (Task B1)', () => {
       const promptPromise = bridge.prompt('hi', 'c1');
       const req = await until(() => (requests.length ? requests[0] : undefined));
       expect(req.toolCallTitle).toBe('Write file');
-      expect(req.optionIds).toEqual(['allow-once', 'allow-always', 'reject-once']);
+      // `allow-always` is ABSENT, and that is the point (feature-acp-write-path-
+      // scope Decision D + security-auditor F2). This fixture's tool call is
+      // `kind:'edit'` targeting `/tmp/x` — a write-shaped call landing OUTSIDE
+      // the bridge's project root — so the bridge strips every `allow_always`
+      // option before offering it, and validates any response against that same
+      // filtered set. Consent for an out-of-project write is per-call; one click
+      // must not be able to install a session-wide standing rule.
+      expect(req.optionIds).toEqual(['allow-once', 'reject-once']);
       expect(transparency.length).toBe(1); // transparency fires unconditionally too
 
       bridge.resolvePermission(req.id, 'allow-once');
@@ -191,7 +198,11 @@ describe('Acp manager — permission-request/-response frames (Task B2)', () => 
       const reqFrame = await until(() => a.frames.find((f) => f.t === 'permission-request'));
       expect(reqFrame.toolCall).toMatchObject({ title: 'Write file' });
       const options = reqFrame.options as Array<{ optionId: string }>;
-      expect(options.map((o) => o.optionId)).toEqual(['allow-once', 'allow-always', 'reject-once']);
+      // See the Task B1 test above — `allow-always` is stripped for this
+      // out-of-project write-shaped call, and the FRAME carries the filtered
+      // set, so the client is shown the real options rather than a cosmetic
+      // subset the server would then reject.
+      expect(options.map((o) => o.optionId)).toEqual(['allow-once', 'reject-once']);
 
       acp.onMessage(
         a.ws,
@@ -200,6 +211,11 @@ describe('Acp manager — permission-request/-response frames (Task B2)', () => 
       await until(() => a.frames.find((f) => f.t === 'turn-end'));
     } finally {
       acp.onClose(a.ws);
+      // Task 8 — `onClose` DETACHES now; it no longer stops the bridge (that is
+      // the point: a page reload must not kill a running turn). So a test that
+      // relied on socket-close for teardown leaks the adapter subprocess for the
+      // whole DETACHED_TTL_MS. Tear down explicitly.
+      acp.stopAll();
       await new Promise((r) => setTimeout(r, 50));
     }
   }, 20000);

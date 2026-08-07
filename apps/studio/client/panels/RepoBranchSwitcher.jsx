@@ -97,6 +97,30 @@ async function postJson(url, body, opts = {}) {
   }
 }
 
+/**
+ * Copy for the "a chat is mid-turn" confirm (Addendum Task 9). Pure + exported
+ * so the WORDING is unit-testable without rendering the switcher (which needs a
+ * native shim and three fetches on mount) — same rationale as
+ * PermissionPrompt.jsx's `pickDefaultAllow`/`describeOutOfProject`: on a safety
+ * prompt the affordance IS the control, so the words are worth a test.
+ *
+ * The wording is deliberately "is editing files on this branch", NOT "this will
+ * stop it". Before Task 8 the reload genuinely killed the turn and "will stop
+ * it" was true; now the bridge outlives its socket, so the turn KEEPS GOING —
+ * into a worktree that has moved under it. Saying "will stop it" would now be
+ * false in the reassuring direction, which is the worst way for a safety prompt
+ * to be wrong.
+ */
+export function chatGuardCopy({ count, branch, verb }) {
+  return {
+    title: count > 1 ? `${count} chats are working right now` : 'A chat is working right now',
+    body: `Claude is editing files on ${branch}. If you ${verb} now, those edits can land on the wrong branch — and Maude's History can't undo a cross-branch mix-up.`,
+    meta: 'Safest is to wait for the chat to finish, or stop it yourself first.',
+    confirm: 'Do it anyway',
+    cancel: 'Wait',
+  };
+}
+
 export default function RepoBranchSwitcher({ project, liveBranch, remoteSync, onGetLatest }) {
   const native = isNativeApp();
   const [status, setStatus] = useState(null); // { repo, branch }
@@ -115,6 +139,9 @@ export default function RepoBranchSwitcher({ project, liveBranch, remoteSync, on
   const [pulling, setPulling] = useState(false);
   // "Continue on <draft>?" nudge — dismissed for this session once the user opts out.
   const [resumeDismissed, setResumeDismissed] = useState(false);
+  // Task 9 — a pending branch change held back because a chat is mid-turn:
+  // `{ count, verb, action }`. Null when nothing is being confirmed.
+  const [chatGuard, setChatGuard] = useState(null);
 
   // Open the PR in the OS browser. A WKWebView anchor can't reach the default browser,
   // so native goes through the Tauri opener (github.com host-locked in Rust); an older
@@ -241,15 +268,64 @@ export default function RepoBranchSwitcher({ project, liveBranch, remoteSync, on
     catch { /* not a repo / offline — keep the prior list, never blank it */ }
   }
 
-  async function switchDraft(name, where) {
-    setOpen(false);
-    if (name === branch) return;
+  // ── Task 9: warn before a branch change moves the ground under a live turn ──
+  //
+  // THREE call sites reload, not one — `switchDraft`, `createDraft` and the
+  // local-merge fold in `foldDraft`. All three need the gate; missing one is the
+  // easy mistake here.
+  //
+  // Task 8 means the reload itself no longer KILLS the chat (the bridge outlives
+  // its socket now). That makes this warning MORE necessary, not less: the turn
+  // survives into a worktree that is no longer the one it was reasoning about.
+  // The agent read `foo.tsx` on this draft and will write it back after the
+  // checkout — a silent cross-branch clobber. And the "it's reversible" story
+  // this whole feature leans on degrades exactly here, because the `_history/`
+  // snapshot stack is per-canvas-slug with NO branch awareness.
+  //
+  // Asked of the SERVER, not of local chat state: a bridge can be running
+  // detached (post-reload, pre-re-attach) with no client that knows about it —
+  // precisely the case this warning is for.
+  async function chatsRunning() {
+    try {
+      const r = await fetch('/_api/acp/running');
+      if (!r.ok) return 0;
+      const j = await r.json();
+      return Number(j?.running) || 0;
+    } catch {
+      // Never block a branch switch because the probe failed — a switch the
+      // user asked for must not be hostage to an unrelated fetch error.
+      return 0;
+    }
+  }
+
+  /** Run `action` after an explicit confirm if a turn is in flight. Resolves
+   *  the pending action into state so the sheet below can render it; the sheet
+   *  calls back in on confirm. */
+  async function guardedByChat(action, verb) {
+    const n = await chatsRunning();
+    if (n === 0) {
+      action();
+      return;
+    }
+    setChatGuard({ count: n, verb, action });
+  }
+
+  // The raw action. Every caller goes through the guarded wrapper below — the
+  // warning has to happen BEFORE the checkout, since warning after the worktree
+  // already moved would be theatre.
+  async function doSwitchDraft(name, where) {
     setSwitching(name);
     setDownloading(where === 'remote'); // a remote-only branch is downloaded on switch
     setErr('');
     const r = await postJson('/_api/git/checkout', { name });
     if (r.ok && r.json?.ok) window.location.reload();
     else { setErr(r.json?.error || 'Could not switch.'); setSwitching(''); setDownloading(false); }
+  }
+
+  async function switchDraft(name, where) {
+    setOpen(false);
+    if (name === branch) return;
+    await guardedByChat(() => doSwitchDraft(name, where), `switch to “${name}”`);
   }
 
   // "Fetch remote branches" — fetch all remote heads so a teammate's new branch
@@ -271,13 +347,19 @@ export default function RepoBranchSwitcher({ project, liveBranch, remoteSync, on
     setRefreshing(false);
   }
 
-  async function createDraft() {
-    const name = slugify(draftName);
-    if (!name) return;
+  async function doCreateDraft(name) {
     setBusy(true); setErr('');
     const r = await postJson('/_api/git/branch', { name });
     if (r.ok && r.json?.ok) window.location.reload();
     else { setErr(r.json?.error || 'Could not create the draft.'); setBusy(false); }
+  }
+
+  // Call site 2 of 3 — creating a branch checks it out, so it moves the
+  // worktree exactly like a switch does.
+  async function createDraft() {
+    const name = slugify(draftName);
+    if (!name) return;
+    await guardedByChat(() => doCreateDraft(name), `create “${name}”`);
   }
 
   // "Get latest" from the dock nudge — pull the shared version's new commits. Reuses
@@ -297,7 +379,15 @@ export default function RepoBranchSwitcher({ project, liveBranch, remoteSync, on
   // opens a pull request (the merge happens on GitHub, post-review) — surface the PR
   // link and keep the sheet open. A local project merges directly (reload). A draft that
   // pushed but couldn't open a PR (no sign-in / non-github) shows a heads-up.
+  // Call site 3 of 3 — the LOCAL-merge path reloads (the GitHub-remote path
+  // opens a PR and stays put). Guarded as a whole rather than only around the
+  // reload: a merge landing under a running agent is the same hazard whether or
+  // not the page happens to reload afterward.
   async function foldDraft() {
+    await guardedByChat(doFoldDraft, `merge “${branch}” into ${sharedName}`);
+  }
+
+  async function doFoldDraft() {
     setFolding(branch);
     setErr('');
     const r = await postJson('/_api/git/fold', { name: branch }, { timeoutMs: 45000 });
@@ -339,6 +429,10 @@ export default function RepoBranchSwitcher({ project, liveBranch, remoteSync, on
   }
 
   const slug = slugify(draftName);
+  // Task 9 — the confirm's words, from the pure helper above so they stay testable.
+  const guardCopy = chatGuard
+    ? chatGuardCopy({ count: chatGuard.count, branch, verb: chatGuard.verb })
+    : null;
   const currentDraft = onShared ? null : branches.find((b) => b.current);
   // On the Shared version with a draft around? Offer to jump back to the most
   // recently-worked local draft. Maude shows whatever branch HEAD is, so after a
@@ -543,6 +637,51 @@ export default function RepoBranchSwitcher({ project, liveBranch, remoteSync, on
         )}
         {err && !open && !newDraft && !switching && <div className="rb-switcher-err" role="alert">{err}</div>}
       </div>
+
+      {/* Task 9 — a chat is mid-turn and the user asked for something that moves
+          the worktree. Silently reloading is the ONE outcome the Addendum calls
+          unacceptable, so this is an explicit confirm, not a toast. */}
+      {chatGuard && guardCopy && (
+        <div className="rb-scrim" role="presentation" onClick={() => setChatGuard(null)}>
+          <div
+            className="rb-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rb-chatguard-title"
+            aria-describedby="rb-chatguard-body"
+            data-testid="switcher-chat-guard"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => { if (e.key === 'Escape') setChatGuard(null); }}
+          >
+            <span className="rb-sheet-icon"><Icon name="draft" size={20} /></span>
+            <h2 className="rb-sheet-title" id="rb-chatguard-title">{guardCopy.title}</h2>
+            <p className="rb-sheet-body" id="rb-chatguard-body">{guardCopy.body}</p>
+            <p className="rb-sheet-meta">{guardCopy.meta}</p>
+            <div className="rb-sheet-actions">
+              <button
+                type="button"
+                className="btn btn--ghost"
+                data-testid="switcher-chat-guard-cancel"
+                onClick={() => setChatGuard(null)}
+              >
+                {guardCopy.cancel}
+              </button>
+              <button
+                type="button"
+                className="btn btn--danger"
+                data-testid="switcher-chat-guard-confirm"
+                onClick={() => {
+                  const { action } = chatGuard;
+                  setChatGuard(null);
+                  action();
+                }}
+              >
+                {guardCopy.confirm}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add-to-default confirm — the one modal in this surface. No 3-way merge UI.
           After a GitHub-remote fold it flips to a pull-request result view (DDR-162). */}

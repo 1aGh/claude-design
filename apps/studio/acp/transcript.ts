@@ -116,6 +116,70 @@ function readLines(file: string): Array<Record<string, unknown>> {
   }
 }
 
+// ── The re-attach seam (feature-acp-write-path-scope Addendum, Task 8) ───────
+//
+// A bridge now outlives its WebSocket, so a page reload (or a branch switch)
+// re-attaches to a chat that may have kept streaming while nobody was listening.
+// That gives the client TWO sources for the same bytes — the transcript it
+// hydrates over HTTP, and the live stream — and the seam between them needs a
+// marker, not a guess, or the user sees the last few seconds twice (or loses
+// them, if we guess the other way).
+//
+// The marker is the transcript's RAW line count. It works because the bridge
+// appends exactly one line per emitted update, so "line N" and "the Nth thing
+// the client should have seen" are the same number by construction.
+//
+// CRITICAL: these two helpers count/index RAW non-empty lines, deliberately NOT
+// `readLines()`, which silently drops unparseable lines. A single corrupt line
+// would otherwise shift every subsequent seq by one and permanently desync the
+// seam — replaying content the client already has, forever. A malformed line is
+// skipped from the RESULT here but still consumes its index.
+
+/** The chat's current sequence marker: how many transcript lines exist. `0` for
+ *  a chat with no transcript yet. Handed to the client as the `X-Maude-Chat-Seq`
+ *  header on the history fetch, and echoed back on `attach`. */
+export function chatTranscriptSeq(designRoot: string, chatId: string): number {
+  const file = join(chatDir(designRoot), `${chatId}.jsonl`);
+  if (!existsSync(file)) return 0;
+  try {
+    return readFileSync(file, 'utf8').split('\n').filter(Boolean).length;
+  } catch {
+    return 0;
+  }
+}
+
+/** Transcript lines strictly after `afterSeq`, each paired with its own 1-based
+ *  seq — what a re-attaching client missed while it had no socket. Bounded by
+ *  `limit` so a client that attaches with `seq: 0` against a long transcript
+ *  can't make the server serialize the whole history into WS frames (it already
+ *  hydrated that over HTTP; the replay exists for the gap, not for the archive). */
+export function readChatLinesAfter(
+  designRoot: string,
+  chatId: string,
+  afterSeq: number,
+  limit = 500
+): Array<{ seq: number; entry: Record<string, unknown> }> {
+  const file = join(chatDir(designRoot), `${chatId}.jsonl`);
+  if (!existsSync(file)) return [];
+  let raw: string[];
+  try {
+    raw = readFileSync(file, 'utf8').split('\n').filter(Boolean);
+  } catch {
+    return [];
+  }
+  const out: Array<{ seq: number; entry: Record<string, unknown> }> = [];
+  // Walk from the END so `limit` keeps the MOST RECENT lines — truncating the
+  // tail would drop precisely the streaming updates the re-attach is for.
+  for (let i = raw.length - 1; i >= afterSeq && out.length < limit; i--) {
+    try {
+      out.push({ seq: i + 1, entry: JSON.parse(raw[i]) as Record<string, unknown> });
+    } catch {
+      /* malformed line — skipped from the result, but its index is still spent */
+    }
+  }
+  return out.reverse();
+}
+
 /** First user line, truncated — the chat's display title. Context-attachment
  *  lines are stripped first, so a chat never titles itself `[maude-context …`
  *  (the 2026-07-03 dogfood finding). */

@@ -17,7 +17,14 @@ import {
   startSignin,
 } from './acp/login-state.ts';
 import { probeAcpAvailabilityAuthed } from './acp/probe.ts';
-import { deleteChat, listChats, readChatMessages, writeChatMeta } from './acp/transcript.ts';
+import { runningChats } from './acp/running.ts';
+import {
+  chatTranscriptSeq,
+  deleteChat,
+  listChats,
+  readChatMessages,
+  writeChatMeta,
+} from './acp/transcript.ts';
 import { type Api, ASSET_MAX_BYTES, ASSET_MAX_VIDEO_BYTES } from './api.ts';
 import { ImportAssetError, importSvg, SVG_MAX_BYTES } from './bin/_import-asset.mjs';
 import { ImportBrandError, importBrand } from './bin/_import-brand.mjs';
@@ -1319,6 +1326,24 @@ export function createHttp(
       return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
     },
 
+    // Addendum Task 9 — "is a chat mid-turn right now?", asked by
+    // RepoBranchSwitcher.jsx before any of its three `window.location.reload()`
+    // call sites. A `git checkout` moves the worktree under a running agent
+    // (read on `draft-a`, written back after the checkout to `main` — a silent
+    // cross-branch clobber that `_history/`, being per-canvas-slug with no
+    // branch awareness, cannot undo), so this gates a confirm rather than
+    // reloading silently. MAIN-ORIGIN ONLY, read-only, no chat CONTENT — just
+    // how many are busy, so it says nothing the canvas origin could want.
+    '/_api/acp/running': () => {
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const running = runningChats();
+      return Response.json(
+        { running: running.length, chats: running },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     // Phase 31 — repo-level chat list + history (for the chat switcher +
     // hydration). MAIN-ORIGIN ONLY. Read-only; ids are sanitized before disk.
     '/_api/acp/chats': () =>
@@ -1365,8 +1390,16 @@ export function createHttp(
         return Response.json(meta, { headers: { 'Cache-Control': 'no-store' } });
       }
       if (!id) return Response.json([], { headers: { 'Cache-Control': 'no-store' } });
+      // Addendum Task 8 — the re-attach seam. Read the sequence marker BEFORE
+      // the messages: a line appended between the two reads then shows up in
+      // neither, and the client's `attach` will replay it. Reading it after
+      // would risk the opposite (a line counted but not returned), which the
+      // client would silently drop as "already hydrated" — a hole in the feed.
+      // Shipped as a header rather than a body field so the response SHAPE
+      // stays the plain message array every existing consumer expects.
+      const seq = chatTranscriptSeq(ctx.paths.designRoot, id);
       return Response.json(readChatMessages(ctx.paths.designRoot, id), {
-        headers: { 'Cache-Control': 'no-store' },
+        headers: { 'Cache-Control': 'no-store', 'X-Maude-Chat-Seq': String(seq) },
       });
     },
 
