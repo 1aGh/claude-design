@@ -1,5 +1,59 @@
 # @1agh/maude
 
+## 0.58.0
+
+### Minor Changes
+
+- 981b3de: Maude tells you when a chat finishes or needs input — even in a project you're not looking at.
+
+  **A native notification now fires for a background project, not just the one on screen.** The desktop app polls every project it's keeping alive in the background (up to two others beyond the one you're viewing) and sends a real OS notification the moment a turn finishes or gets stuck waiting on you — including a chat that outlived its browser tab entirely. The notification never names the chat, its title, or anything it said: only the project's own folder name plus a fixed line ("Claude finished" / "Maude needs your input"), because a chat title is generated from whatever the model read, and a lock screen is the wrong place to show that.
+
+  **A permission or question prompt raised in a project you're not looking at now has a real chance of reaching you before it times out.** Previously that signal only ever showed up in the in-app badge — silent if the window wasn't focused, and invisible entirely for a chat with no open tab.
+
+  The visible project's own "you weren't looking" notification (window unfocused or the panel closed) now goes through the same native path under the desktop app, with a Web-notification fallback outside it — same policy as before, just routed through the OS reliably.
+
+  No new setting: turn Maude's notifications off from your OS's own per-app notification controls if you'd rather not get them — an in-app toggle risked becoming the one switch that silently loses the awaiting-input signal too.
+
+- 640b69d: ACP chat: writes are scoped to the project, and chats survive reloads and project switches.
+
+  **The assistant now asks before writing outside your project.** Editing anything inside the project is unchanged — no prompt, exactly as before. A write to somewhere else (a shell profile, a launch agent, another repo) now shows a permission card naming the _resolved_ absolute path, and that consent is per-call: there is no "always allow" on that path.
+
+  Being inside the project is necessary for the no-prompt path, but not sufficient. A handful of in-project files run code later without the assistant touching them again — `.git/` (a hook or a `core.*` config key), `.claude/`, `CLAUDE.md`, `.mcp.json`, `.envrc`, `.vscode/`, `.github/workflows/`, `node_modules/`, `package.json` and lockfiles — so those ask too, with a card that says the file is part of how the project _runs_.
+
+  As part of this, the read-only shell verbs (`ls`, `cat`, `head`, `tail`, `wc`, `tree`, `file`, `stat`, `pwd`) no longer run without asking: a permission rule matches the command name and cannot see what follows it, so `cat > ~/.zshenv` was an unrestricted write. `Read`, `Grep` and `Glob` are unaffected, so reading files is as frictionless as it was.
+
+  **A chat is no longer tied to its browser tab.** Reloading the page, switching branches, or switching projects used to kill a running turn silently. The agent now keeps working and the panel re-attaches to it, joining the live stream to the history it already has without repeating or dropping output. Switching to another project leaves the first one's chats running; switching back lands in the same conversation. Quitting the app still stops everything.
+
+  Switching branches while a chat is mid-turn now warns first — a checkout moves files under an agent that is actively editing them, and version history cannot undo a cross-branch mix-up.
+
+  This does not mean an ACP session can never write outside your project: `maude design <verb>` commands still run without prompting and can reach further. See the feature's decision record for the full, honest scope.
+
+- d4ca488: Click any file in the Studio file tree to preview it — not just canvases.
+
+  Markdown, CSS, JSON, and text files render inline (markdown formatted, everything else as plain text); images, video, and audio play natively; fonts get a live specimen. Design-system asset folders (`assets/fonts`, `assets/logos`, `assets/photos`, …) now list their actual files in the tree instead of showing up empty — click one to see it, no more guessing what's inside from the filename alone.
+
+### Patch Changes
+
+- ca4164c: Connecting a cloud project now tells you what is actually happening, and whether it worked.
+
+  **The sentence you get after Connect is live, and it is true.** It used to be written once, at the instant the confirm dialog closed, from a value that only meant "the sync runtime started without throwing" — not that a socket had opened, a token had been accepted, or a single byte had moved. It then sat there unchanged through every outcome, including a link that never connected at all. It now moves: _Connecting to alligators… → Syncing with alligators — 40 of 75 → Synced with alligators — all 75. 3 came down from the project on this connect._
+
+  **Every state says what to do next.** A hub that refused your canvases says so and tells you to reconnect, because a rotated credential never fixes itself. A hub that is unreachable says your edits are queued and safe, and that nothing needs doing. A project with nothing syncable tells you to make a canvas.
+
+  **The status bar and the connect note can no longer disagree.** They now read the same rule. Previously the status bar keyed off hub _reachability_ alone and never looked at the per-canvas counts — so a link where the hub had refused every single canvas still showed a green dot and the word "synced". Meanwhile the note's own hover text told you to go and check that status bar for the real answer.
+
+  Three underlying fixes make that possible: the connection monitor no longer starts life claiming to be online; the "synced" count can now fall when the hub goes away, instead of freezing at whatever it last reached; and the list of canvases pulled down from the project now names the ones that actually arrived, rather than the ones it was about to fetch.
+
+- daf9d6f: Tagging a release now deploys the cloud and proves it did — and you can see the running version without leaving the app.
+
+  **Only a release tag builds a cell image.** A push to `main` used to build one too, deriving it from `maude-hub:latest` — an image that is only ever rebuilt at release time. So the cell was built on the _previous_ release's hub, and every workflow went green anyway: v0.57.0 put a cell tagged `v0.57.0` into production carrying a six-day-old hub layer, and a route added after v0.56.0 was simply missing from the live fleet. A branch push now runs the data-plane tests and deploys the Worker, and nothing else. It could never roll the fleet in the first place, and the one thing it _could_ do was leave two different images under one tag.
+
+  **"Green" now means a live cell answered on the released version.** After deploying, the workflow polls a real tenant cell until it reports the version just released _and_ the exact client bytes this run built. The two catch different failures and neither replaces the other: the hash catches "same tag, different bytes", and only the version catches "the layer underneath is a release behind" — that stale image was internally self-consistent, so a hash check alone would have waved it straight through.
+
+  **The version is now something you can read.** It shows in the Studio status bar (desktop, browser, and cloud — they all serve the same client), in the hub admin header next to the bundle hash, and at `/health` as `releaseVersion`. Both app manifests join the release line, so the hub stops reporting itself as `0.0.0`.
+
+  **And the release instructions agree with each other.** Three of the four places that tell you how to tag printed a lightweight `git tag vX.Y.Z`, which `git push --follow-tags` silently ignores — the tag stays on your laptop and not one release workflow fires. They all print the annotated form now, and a test fails if any of them drifts back.
+
 ## 0.56.0
 
 ### Minor Changes
