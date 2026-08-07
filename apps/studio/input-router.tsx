@@ -446,6 +446,34 @@ export function yieldsToArtboardDrag(
   );
 }
 
+/**
+ * Click-phase counterpart to `yieldsToArtboardDrag` (issue-78). The onClick
+ * handler below suppresses the browser's native `click` for every gesture it
+ * already routed as `select` on the matching pointerdown, so a just-selected
+ * element's own click handler doesn't also fire. But an artboard-chrome
+ * control — e.g. the video-timeline badge (`.dc-artboard-video-badge`,
+ * DDR-148) rendered as a sibling of `.dc-artboard-body` — never goes through
+ * `select`; it's an interactive button that needs its own `onClick` to reach
+ * React. Without this exemption a bare click on it while in Move (or a
+ * Cmd/Ctrl+click from Browse/an annotation tool) is preventDefault +
+ * stopImmediatePropagation'd in the capture phase before React's delegated
+ * listener ever runs, so the button silently does nothing. Mirrors
+ * `yieldsToArtboardDrag`'s modifier gate: a held Cmd/Ctrl is reserved for
+ * deep-select and stays unexempted.
+ */
+export function yieldsClickToArtboardChrome(
+  wouldRouteKind: RouterAction['kind'] | null,
+  target: EventTarget | null,
+  modifiers: { metaKey: boolean; ctrlKey: boolean }
+): boolean {
+  return (
+    wouldRouteKind === 'select' &&
+    !modifiers.metaKey &&
+    !modifiers.ctrlKey &&
+    isArtboardDragChrome(target)
+  );
+}
+
 export function useInputRouter(opts: UseInputRouterOptions): void {
   const { hostRef, getActiveTool, isSpaceHeld, callbacks, enabled = true, claimableActions } = opts;
 
@@ -631,8 +659,18 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
                 ? 'context-menu'
                 : null;
       if (wouldRouteKind && (!claimableActions || claimableActions.has(wouldRouteKind))) {
+        // issue-78 — a bare click on an artboard-chrome control (the video-
+        // timeline badge) must still reach its own onClick; see
+        // yieldsClickToArtboardChrome for why. Mirrors the onPointerDown/
+        // onMouseDown pattern above: preventDefault always runs (so a forged
+        // chrome-alike element inside untrusted canvas content can't use this
+        // exemption to let its own native click default action — e.g. an
+        // <a>'s navigation or an <input type="file">'s picker — fire), but
+        // stopImmediatePropagation is skipped so the real chrome button's own
+        // React onClick still gets the (now-inert-by-default) event.
+        const yields = yieldsClickToArtboardChrome(wouldRouteKind, e.target, e);
         e.preventDefault();
-        e.stopImmediatePropagation();
+        if (!yields) e.stopImmediatePropagation();
       }
     };
 

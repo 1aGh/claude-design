@@ -10,6 +10,7 @@ import {
   isArtboardDragChrome,
   isEditableTarget,
   type Tool,
+  yieldsClickToArtboardChrome,
   yieldsToArtboardDrag,
 } from '../input-router.tsx';
 
@@ -549,6 +550,61 @@ describe('input-router / yieldsToArtboardDrag', () => {
   test('right-click (context-menu) on chrome → false — not a select at all', () => {
     const action = classify({ type: 'pointerdown', activeTool: 'move', button: 2 });
     expect(yieldsToArtboardDrag(action, chrome(), { metaKey: false, ctrlKey: false })).toBe(false);
+  });
+});
+
+// issue-78 — the actual regression: the router's capture-phase `click`
+// listener claimed every bare click while in the Move tool (and every
+// Cmd/Ctrl+click from Browse/annotation tools) and called
+// `stopImmediatePropagation()` unconditionally, unlike its pointerdown/
+// mousedown siblings above. That killed the native click on any artboard-
+// chrome control BEFORE React's delegated onClick ever ran — including the
+// video-timeline badge (`.dc-artboard-video-badge`, DDR-148), which sits
+// outside `.dc-artboard-body` as chrome. Clicking it did nothing.
+// `yieldsClickToArtboardChrome` is the decision the click handler now gates
+// its suppression on, mirroring `yieldsToArtboardDrag` above.
+describe('input-router / yieldsClickToArtboardChrome', () => {
+  const chrome = (): EventTarget =>
+    ({
+      closest: (sel: string) => (sel === '[data-dc-screen]' ? {} : null),
+    }) as unknown as EventTarget;
+  const body = (): EventTarget => ({ closest: () => ({}) }) as unknown as EventTarget; // matches every selector, incl. .dc-artboard-body
+
+  test('bare click on the video-timeline badge in Move tool (the reported bug) → true', () => {
+    expect(
+      yieldsClickToArtboardChrome('select', chrome(), { metaKey: false, ctrlKey: false })
+    ).toBe(true);
+  });
+
+  test('cmd+click on artboard chrome (deep-select, not a chrome control) → false', () => {
+    expect(yieldsClickToArtboardChrome('select', chrome(), { metaKey: true, ctrlKey: false })).toBe(
+      false
+    );
+  });
+
+  test('bare click on .dc-artboard-body content (not chrome) → false', () => {
+    expect(yieldsClickToArtboardChrome('select', body(), { metaKey: false, ctrlKey: false })).toBe(
+      false
+    );
+  });
+
+  test('bare click outside any artboard → false (nothing to yield to)', () => {
+    const outside = { closest: () => null } as unknown as EventTarget;
+    expect(yieldsClickToArtboardChrome('select', outside, { metaKey: false, ctrlKey: false })).toBe(
+      false
+    );
+  });
+
+  test('non-select routed kind (e.g. context-menu) on chrome → false', () => {
+    expect(
+      yieldsClickToArtboardChrome('context-menu', chrome(), { metaKey: false, ctrlKey: false })
+    ).toBe(false);
+  });
+
+  test('null routed kind on chrome → false', () => {
+    expect(yieldsClickToArtboardChrome(null, chrome(), { metaKey: false, ctrlKey: false })).toBe(
+      false
+    );
   });
 });
 
