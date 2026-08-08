@@ -11794,13 +11794,23 @@ function App() {
 
   // ----- Inbound messages from iframes -----
   useEffect(() => {
+    // Does this comment id belong to the canvas the user is actually looking
+    // at? Scopes the patch/delete relays below — see the SECURITY note there.
+    //
+    // The leading `!!activePath` is load-bearing, not defensive noise: with no
+    // active canvas the branches' `activeWin` is `null`, and `e.source` is also
+    // `null` for a message whose source context was discarded before dispatch —
+    // so `e.source === activeWin` can pass as `null === null`. This is the
+    // second conjunct that closes that path. Don't "simplify" it away.
+    const ownsActiveComment = (id) =>
+      !!activePath && (commentsByFile[activePath] || []).some((c) => c && c.id === id);
     function onMessage(e) {
       // Cross-origin hardening (DDR-054): only accept dgn control messages from
       // the canvas-content origin — the split origin when on, else our own origin
       // for the same-origin iframe. Drops spoofed messages from any other window.
-      // The handlers below relay to inert stores (comments / selection — the
-      // "safe to sync" set), so the blast radius was small, but unchecked inbound
-      // postMessage is a confused-deputy seam the F1 hardening should close.
+      // Every canvas iframe shares that origin, so the check below proves only
+      // "a canvas said this", NOT "the canvas the user is looking at said it" —
+      // each mutating branch additionally gates on `e.source === activeWin`.
       const expectedOrigin = cfg?.canvasOrigin || window.location.origin;
       if (e.origin !== expectedOrigin) return;
       const m = e.data;
@@ -12408,13 +12418,26 @@ function App() {
         // Phase 6 — iframe overlay finished composing. Relay through the
         // existing WS `comments-add` channel; server-side persistence +
         // broadcast back are identical to the legacy shell-composer flow.
+        //
+        // SECURITY — gated on `activeWin` and PINNED to `activePath`, the same
+        // shape as every other mutating branch in this handler. The origin
+        // check at the top passes for EVERY canvas iframe (they all share
+        // `canvasOrigin`), so without this a canvas sitting in a BACKGROUND
+        // tab could post comments onto any file it cared to name, with no user
+        // gesture. This handler's preamble waived that on the grounds that
+        // comments are an "inert store" — the ACP panel's one-click
+        // "Implement N comments" action retires that premise, because open
+        // comments are now a feed the agent acts on. `p.file` is ignored
+        // rather than validated: the active canvas is the only file the user
+        // can actually see themselves commenting on.
         const p = m.payload;
         const txt = String(p.text).trim();
-        if (txt) {
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin && txt && activePath && activePath !== SYSTEM_TAB) {
           wsSend({
             type: 'comments-add',
             payload: {
-              file: p.file,
+              file: activePath,
               selector: p.selector,
               index: p.index,
               dom_path: p.dom_path,
@@ -12428,10 +12451,21 @@ function App() {
         }
       } else if (m.dgn === 'comment-patch' && m.id && m.patch && typeof m.patch === 'object') {
         // Phase 6 — thread popover routes resolve / reopen through here.
-        wsSend({ type: 'comments-patch', id: m.id, patch: m.patch });
+        // SECURITY — same gate as comment-submit, plus an ownership check: a
+        // bare id would otherwise reach ANY comment in the project. Patch and
+        // delete change or remove somebody else's note, which is exactly why
+        // ws.ts refuses both for a viewer session; the iframe lane needs the
+        // matching restriction.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin && ownsActiveComment(m.id)) {
+          wsSend({ type: 'comments-patch', id: m.id, patch: m.patch });
+        }
       } else if (m.dgn === 'comment-delete' && m.id) {
-        wsSend({ type: 'comments-delete', id: m.id });
-        setFocusedCommentId((prev) => (prev === m.id ? null : prev));
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin && ownsActiveComment(m.id)) {
+          wsSend({ type: 'comments-delete', id: m.id });
+          setFocusedCommentId((prev) => (prev === m.id ? null : prev));
+        }
       } else if (m.dgn === 'comment-click' && m.id) {
         setFocusedCommentId(m.id);
       } else if (m.dgn === 'artboards' && typeof m.count === 'number') {
@@ -12518,27 +12552,48 @@ function App() {
       } else if (m.dgn === 'shell-shortcut') {
         // Same forwarding lane for the other shell chords (inspect.ts) — so
         // ⌘R / ⌘⇧I / ⌘⇧M / ⌘⇧E / ⌘⇧H behave identically wherever focus is.
-        if (m.id === 'reload') reloadActive();
-        else if (m.id === 'inspector') toggleRightPanel('inspector');
-        else if (m.id === 'assistant' && isNativeApp()) toggleRightPanel('assistant');
-        else if (m.id === 'comments') toggleRightPanel('comments');
-        else if (m.id === 'changes') toggleRightPanel('changes');
-        else if (m.id === 'timeline') toggleTimeline();
-        else if (m.id === 'export') setExportDialog({ mode: 'export' });
-        else if (m.id === 'handoff') setExportDialog({ mode: 'handoff' });
+        //
+        // SECURITY — every one of these is a chord the user pressed INSIDE the
+        // canvas they are looking at, so it gets the same `activeWin` gate as
+        // its siblings. Ungated, a background canvas could reload the active
+        // file out from under an edit or pop the Export/Handoff dialog on
+        // demand — a modal-timing primitive, and the mirror image of the
+        // present-enter branch that was already hardened against modal HIDING.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin) {
+          if (m.id === 'reload') reloadActive();
+          else if (m.id === 'inspector') toggleRightPanel('inspector');
+          else if (m.id === 'assistant' && isNativeApp()) toggleRightPanel('assistant');
+          else if (m.id === 'comments') toggleRightPanel('comments');
+          else if (m.id === 'changes') toggleRightPanel('changes');
+          else if (m.id === 'timeline') toggleTimeline();
+          else if (m.id === 'export') setExportDialog({ mode: 'export' });
+          else if (m.id === 'handoff') setExportDialog({ mode: 'handoff' });
+        }
       } else if (m.dgn === 'open-export') {
         // Plan C — the in-canvas toolbar / context menu route here so they open
         // the SAME shell Export dialog as the menubar (one look, all settings).
         // Carry the context-menu's scope hint (e.g. "Export selection").
-        setExportDialog({
-          mode: 'export',
-          scope: m.detail && typeof m.detail.scope === 'string' ? m.detail.scope : undefined,
-        });
+        //
+        // SECURITY — gated with `shell-shortcut` above rather than separately:
+        // both reach the same `setExportDialog`, so leaving this one open would
+        // hand back the capability the other now refuses.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin) {
+          setExportDialog({
+            mode: 'export',
+            scope: m.detail && typeof m.detail.scope === 'string' ? m.detail.scope : undefined,
+          });
+        }
       } else if (m.dgn === 'open-timeline-request') {
         // Artboard-chrome context menu's "Open Timeline" (video-comp artboards
         // only). Scope the Timeline to the right-clicked artboard, then open it.
-        if (typeof m.artboardId === 'string') setCanvasActiveArtboard(m.artboardId.slice(0, 120));
-        setTimelineOpen(true);
+        // SECURITY — same class: a context-menu action from the canvas in view.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source === activeWin) {
+          if (typeof m.artboardId === 'string') setCanvasActiveArtboard(m.artboardId.slice(0, 120));
+          setTimelineOpen(true);
+        }
       } else if (m.dgn === 'loaded' && m.file) {
         // iframe finished loading — drop the compile skeleton, push current
         // comments + carry over focused pin if any
@@ -14190,6 +14245,12 @@ function App() {
     (panelSide[id] || PANEL_SIDES_DEFAULTS[id]) === 'left' ? dragSide === 'sb' : dragSide === 'rp';
   const activeCanvasFile =
     activePath && activePath !== SYSTEM_TAB && /\.(tsx|html)$/i.test(activePath) ? activePath : null;
+  // Issue #74 — drives the chat panel's "Implement N comments" quick action.
+  // Canvas-wide on purpose: the verb operates on every open comment of the
+  // active canvas, so it is deliberately NOT scoped to the current selection.
+  const activeOpenComments = activeCanvasFile
+    ? openCount(commentsByFile[activeCanvasFile])
+    : 0;
 
   // Render a panel body by id (width undefined ⇒ fills the .st-dockslot wrapper,
   // which owns the resizable width). Assistant is handled separately below as an
@@ -14512,6 +14573,7 @@ function App() {
                   hidden={leftActive !== 'assistant'}
                   activeCanvas={activeCanvasFile}
                   selected={selected}
+                  openComments={activeOpenComments}
                   designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}
                   resizing={resizingFor('assistant')}
                   onClose={() => setAssistantOpen(false)}
@@ -14586,6 +14648,7 @@ function App() {
                   hidden={rightActive !== 'assistant'}
                   activeCanvas={activeCanvasFile}
                   selected={selected}
+                  openComments={activeOpenComments}
                   designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}
                   resizing={resizingFor('assistant')}
                   onClose={() => setAssistantOpen(false)}
