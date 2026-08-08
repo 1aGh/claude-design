@@ -144,7 +144,17 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
     if (stopped) return;
     // Skip our own file→doc import — the file is already current, re-projecting
     // would be a redundant write. (Migration seed is on disk already too.)
-    if (origin === ORIGINS.FILE_IMPORT || origin === ORIGINS.MIGRATION) return;
+    // DISK_PROJECTION is the `syncMeta.path` stamp — bookkeeping ABOUT the
+    // file, derived from where the file already is, so it can never make the
+    // file stale. (Its own doc comment promised this filterability; this is the
+    // step that needed it.)
+    if (
+      origin === ORIGINS.FILE_IMPORT ||
+      origin === ORIGINS.MIGRATION ||
+      origin === ORIGINS.DISK_PROJECTION
+    ) {
+      return;
+    }
     scheduleFlush();
   }
 

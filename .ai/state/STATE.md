@@ -3,9 +3,25 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** done — "a release reaches the fleet" closed 2026-08-07 (only a release tag rolls the cloud, and it proves which one)
+**Status:** done — "sync carries the path" closed 2026-08-08 (a project arrives whole, in the shape its author gave it)
 **Active plan:** —
 **Active task:** —
+
+_2026-08-08:_ **"Sync carries the path, so a project arrives whole" CLOSED + archived — a canvas now
+lands in the folder its author made, in both directions.** The document name is a flattened slug and
+`/`→`-` is not reversible, so BOTH receivers wrote the body flat at the design root — which is inside
+no `canvasGroups` entry, so the tree never listed it and it never synced onward. Each side's comment
+deferred to the other ("a flat file is trivially moved" / "a desktop peer will move it on its next
+sync"); neither was a mechanism, and on the live fleet three canvases sat on the hub with full bodies
+and appeared nowhere in the cloud while the desktop truthfully logged `76/76 synced`. **The path now
+travels in-band** (`syncMeta.path` — an existing, already-synced, never-materialised lane) through
+ONE validator both runtimes import (DDR-215), and is believed only because it slugs back to its own
+document. The adversarial review then found the part the design had ruled out by construction: **rule
+7 governs a path's IDENTITY, never its DESTINATION** — a legitimate path could still land on a local
+file the project excluded with `syncable: false`, on the served `tokensCssRel`, or through a
+committed symlink; and the FALLBACK reached the same places with nothing on the wire at all. Eight
+guards added, each verified by falsification. `defaultBodyPath` deleted rather than deprecated —
+leaving it would leave its false promise.
 
 _2026-08-07:_ **"A release reaches the fleet, and says which one it is" CLOSED + archived — tagging
 now deploys the cloud and proves it did.** v0.57.0 put a cell image tagged `v0.57.0` into production

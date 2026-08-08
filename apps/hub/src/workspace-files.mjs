@@ -37,10 +37,23 @@ export const DOC_TYPES = {
   css: 'css',
   meta: 'meta',
   annotations: 'annotations',
+  /** Sync-internal bookkeeping (Y.Map). Never written to disk — the agent reads
+   *  `path` out of it to learn where a canvas it has never seen belongs. */
+  syncMeta: 'syncMeta',
 };
 
-/** Extension of a canvas body. `.tsx` since Phase 3.6 made it the only format. */
-const BODY_EXT = '.tsx';
+// WHERE A CANVAS THE CHECKOUT HAS NEVER SEEN GOES is deliberately NOT decided
+// here any more. `defaultBodyPath()` used to answer it — flat, at the design
+// root — and its comment promised that "a desktop peer, which knows the real
+// path, will move it on its next sync". Nothing ever did: the studio's twin
+// comment deferred right back, and the two together described a hand-off that
+// did not exist. Worse, a file at the design root is inside no `canvasGroups`
+// entry, so the tree never listed it and it never synced onward.
+//
+// The answer now lives in `studio/sync/canvas-path.ts` (imported by
+// workspace-agent.mjs, copied into the image by the Dockerfile), where both
+// receivers share it — because two spellings of this decision is exactly how
+// the hand-off came to be imaginary.
 
 /**
  * Slug for a canvas path, relative to the design root.
@@ -98,19 +111,6 @@ export function indexCanvasPaths(relPaths) {
 }
 
 /**
- * Where a canvas's body goes when the checkout has never seen it.
- *
- * Flat, directly under the design root. A nested slug (`ui-foo`) cannot be
- * un-flattened without guessing, and guessing wrong scatters a tenant's files
- * into directories they never made. A desktop peer — which knows the real path
- * — will move it on its next sync; a flat file is trivially moved, an
- * invented directory tree is not.
- */
-export function defaultBodyPath(slug) {
-  return `${slug}${BODY_EXT}`;
-}
-
-/**
  * Sibling paths derived from a body path.
  *
  * `.meta.json` and `.css` really are SIBLINGS — `ui/Card.tsx` → `ui/Card.css`.
@@ -159,11 +159,17 @@ export function readDocContent(doc) {
     return t.length > 0 ? t : null;
   };
   const svg = doc.getMap(DOC_TYPES.annotations).get('svg');
+  // UNTRUSTED. `path` is whatever a peer put on the wire; the agent must put it
+  // through `validateCanvasPath` before it can become a directory. Surfaced
+  // here rather than read inline so the one place that reads a doc stays the
+  // one place that reads a doc.
+  const path = doc.getMap(DOC_TYPES.syncMeta).get('path');
   return {
     body: text(DOC_TYPES.html),
     css: text(DOC_TYPES.css),
     meta: text(DOC_TYPES.meta),
     annotations: typeof svg === 'string' && svg.length > 0 ? svg : null,
+    path: typeof path === 'string' && path.length > 0 ? path : null,
   };
 }
 

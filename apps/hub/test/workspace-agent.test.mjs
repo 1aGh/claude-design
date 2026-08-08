@@ -23,7 +23,6 @@ import {
   attributionFor,
   canvasSlug,
   DOC_TYPES,
-  defaultBodyPath,
   filesForCanvas,
   indexCanvasPaths,
   readDocContent,
@@ -132,8 +131,7 @@ describe('workspace-files (pure)', () => {
     assert.equal(a.get('ui-card'), 'ui-card.tsx'); // shorter wins
   });
 
-  it('places an unknown canvas flat, never in an invented directory', () => {
-    assert.equal(defaultBodyPath('ui-card'), 'ui-card.tsx');
+  it('derives the sidecars from the body path, with the annotations asymmetry', () => {
     assert.deepEqual(siblingPaths('ui/Card.tsx'), {
       meta: 'ui/Card.meta.json',
       css: 'ui/Card.css',
@@ -206,7 +204,7 @@ describe('workspace-files (pure)', () => {
     assert.equal(attributionFor({ name: 'u-1e166564e89d' }).name, 'u-1e166564e89d');
   });
 
-  it('reads the four synced lanes off a real Y.Doc', () => {
+  it('reads the synced lanes off a real Y.Doc', () => {
     const doc = new Y.Doc();
     doc.getText('html').insert(0, '<main/>');
     doc.getMap('annotations').set('svg', '<svg/>');
@@ -215,7 +213,25 @@ describe('workspace-files (pure)', () => {
       css: null,
       meta: null,
       annotations: '<svg/>',
+      // The sync-internal path lane. Absent here — an older peer omits it, and
+      // that is the normal case, not a degraded one.
+      path: null,
     });
+  });
+
+  it('surfaces syncMeta.path — untrusted, for the agent to validate', () => {
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, '<main/>');
+    doc.getMap('syncMeta').set('path', 'ui/2026/social/summer-camp.tsx');
+    assert.equal(readDocContent(doc).path, 'ui/2026/social/summer-camp.tsx');
+    // Never materialized: it is bookkeeping about the file, not part of it.
+    assert.ok(
+      !filesForCanvas({
+        bodyRel: 'ui/x.tsx',
+        content: readDocContent(doc),
+        onDisk: {},
+      }).some((w) => w.text.includes('summer-camp.tsx'))
+    );
   });
 });
 

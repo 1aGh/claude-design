@@ -5,6 +5,7 @@
 // on the hub and no local counter could ever show it.
 
 import { describe, expect, test } from 'bun:test';
+import { canvasSlugFromRel } from '../canvas-slug.ts';
 
 import {
   describeRemoteDiff,
@@ -135,7 +136,11 @@ describe('pulling hub-only documents down', () => {
     expect(slugFromDocName('ws/acme/main/ui-welcome')).toBe('ui-welcome');
   });
 
-  test('lands hub-only canvases flat under the design root', () => {
+  test('lands hub-only canvases where the tree can SEE them', () => {
+    // Flat, because a slug cannot be un-flattened — but inside the canvas group
+    // the slug came from, not at the design root. The tree and `scanCanvases`
+    // enumerate `canvasGroups`, so the old design-root target produced a file
+    // nobody could see and that never synced onward.
     const targets = pullTargets(
       [
         { name: 'ui-welcome', bytes: 1 },
@@ -147,12 +152,59 @@ describe('pulling hub-only documents down', () => {
       '/'
     );
     expect(targets.map((t) => t.bodyAbs)).toEqual([
-      '/p/.design/ui-welcome.tsx',
-      '/p/.design/ui-home.tsx',
+      '/p/.design/ui/welcome.tsx',
+      '/p/.design/ui/home.tsx',
     ]);
+    // …and each still slugs back to the document it came from. `ui/ui-welcome.tsx`
+    // would be visible AND a different document.
+    expect(canvasSlugFromRel('ui/welcome.tsx', '.design')).toBe('ui-welcome');
     // The wire name is kept — the provider must open the document the HUB has,
     // not a name re-derived from the local path.
     expect(targets[1].docName).toBe('ws/acme/main/ui-home');
+    // No path arrived, so nothing was believed.
+    expect(targets.every((t) => t.fromPath === false)).toBe(true);
+  });
+
+  test('uses the path a document carries, once it is known', () => {
+    // The listing cannot supply this — it carries names and byte counts only.
+    // The runtime re-resolves per document after that document has synced;
+    // `pathFor` is that hop, made testable.
+    const targets = pullTargets(
+      [{ name: 'ws/acme/main/ui-2026-social-summer-camp', bytes: 1 }],
+      '/p/.design',
+      join,
+      resolve,
+      '/',
+      {
+        designRel: '.design',
+        canvasGroups: [{ path: 'system' }, { path: 'ui' }],
+        pathFor: () => 'ui/2026/social/summer-camp.tsx',
+      }
+    );
+    expect(targets[0].bodyAbs).toBe('/p/.design/ui/2026/social/summer-camp.tsx');
+    expect(targets[0].fromPath).toBe(true);
+  });
+
+  test('a refused path degrades to the fallback and says why', () => {
+    const refusals: string[] = [];
+    const targets = pullTargets(
+      [{ name: 'ui-welcome', bytes: 1 }],
+      '/p/.design',
+      join,
+      resolve,
+      '/',
+      {
+        designRel: '.design',
+        canvasGroups: [{ path: 'ui' }],
+        // A perfectly well-formed path that simply is not this document's —
+        // the case rule 7 exists for.
+        pathFor: () => 'ui/somebody-elses-canvas.tsx',
+        onRefused: (slug, reason) => refusals.push(`${slug}: ${reason}`),
+      }
+    );
+    expect(targets[0].bodyAbs).toBe('/p/.design/ui/welcome.tsx');
+    expect(targets[0].fromPath).toBe(false);
+    expect(refusals.length).toBe(1);
   });
 
   test('a document NAME can never write outside the design root', () => {

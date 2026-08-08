@@ -1171,6 +1171,124 @@ describe('DDR-102 — auth-failure intelligence + boot summary', () => {
     }
   });
 
+  test('a successful re-probe clears the refusal, and the reconcile is a separate word', async () => {
+    // A REGRESSION GUARD, not a falsifier — this already held. It is here
+    // because the clear moved: it used to sit at the BOTTOM of the
+    // post-handshake path, below a reconcile that can throw into a rejection
+    // `settleWait` swallows, so a document that reconnected fine but failed to
+    // settle on disk would have kept telling the user to go fix a credential
+    // that was never the problem. The clear now runs on the handshake, and the
+    // reconcile reports separately (`pending` vs `connected`) and loudly.
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'a.html'), '<a/>');
+
+    const timers = fakeTimerQueue();
+    const origWarn = console.warn;
+    const origLog = console.log;
+    console.warn = () => {};
+    console.log = () => {};
+
+    let round = 0;
+    const factory = (args: { documentName: string; document?: Y.Doc }) => {
+      const document = args.document ?? new Y.Doc();
+      const first = round++ === 0;
+      return {
+        document,
+        onAuthFailed(cb: (info: { reason: string }) => void) {
+          if (first) queueMicrotask(() => cb({ reason: 'token not authorized' }));
+          return () => {};
+        },
+        onceSynced: () => (first ? new Promise<void>(() => {}) : Promise.resolve()),
+        destroy() {},
+      };
+    };
+
+    try {
+      const runtime = createSyncRuntime(ctx, {
+        providerFactory: factory,
+        auth: {
+          warnDebounceMs: 2_000,
+          reprobeMs: 300_000,
+          settleTimeoutMs: 15_000,
+          setTimer: timers.setTimer,
+          clearTimer: timers.clearTimer,
+        },
+      });
+      await runtime?.start();
+      await new Promise((res) => setTimeout(res, 10));
+      expect(runtime?.status().docs?.rejected).toBe(1);
+
+      timers.fire(300_000);
+      await new Promise((res) => setTimeout(res, 40));
+
+      expect(runtime?.status().docs?.rejected).toBe(0);
+      expect(runtime?.status().rejectedSlugs ?? []).toEqual([]);
+
+      await runtime?.stop();
+    } finally {
+      console.warn = origWarn;
+      console.log = origLog;
+    }
+  });
+
+  test('a new process never serves the previous one’s verdict, not even mid-boot', async () => {
+    // `_sync.json` is a file and `/_sync-status` returns whatever is in it. The
+    // first honest snapshot of a run is not written until every provider has
+    // been built — after a scan AND a listing fetch that waits up to 6 seconds.
+    // For that whole window the CLI and the browser banner were reading the
+    // LAST run's counters as current. So the window is what this asserts: the
+    // fetch is held open, and the file must ALREADY be clean.
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    const statusFile = join(ctx.paths.designRoot, '_sync.json');
+    writeFileSync(
+      statusFile,
+      JSON.stringify({
+        url,
+        canvases: 76,
+        state: 'online',
+        docs: { synced: 0, pending: 3, rejected: 73 },
+        rejectedSlugs: ['ui-a', 'ui-b'],
+      })
+    );
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'a.html'), '<a/>');
+
+    const realFetch = globalThis.fetch;
+    let releaseListing: () => void = () => {};
+    const listingReached = new Promise<void>((res) => {
+      globalThis.fetch = (async () => {
+        res();
+        await new Promise<void>((r) => {
+          releaseListing = r;
+        });
+        return new Response(JSON.stringify({ documents: [] }), { status: 200 });
+      }) as typeof fetch;
+    });
+
+    try {
+      const { factory } = inMemoryProviderFactory();
+      const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+      const booting = runtime?.start();
+      await listingReached;
+
+      // Mid-boot, with the listing still in flight — exactly where the stale
+      // file used to be authoritative.
+      const midBoot = JSON.parse(readFileSync(statusFile, 'utf8'));
+      expect(midBoot.docs.rejected).toBe(0);
+      expect(midBoot.rejectedSlugs ?? []).toEqual([]);
+      expect(midBoot.state).toBe('connecting');
+
+      releaseListing();
+      await booting;
+      await runtime?.stop();
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   test('boot summary prints AFTER settle with honest counts (not the premature N/N)', async () => {
     const url = 'https://hub.example.com';
     writeHubsConfig(url, 'mau_test');

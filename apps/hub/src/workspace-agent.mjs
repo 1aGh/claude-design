@@ -18,15 +18,21 @@
 // one, and does not spawn anything that could. The canvas body is a string
 // from a Y.Text to a file on disk and nothing in between ever looks inside it.
 
-import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-
 import { createAutoCommit } from '../../studio/sync/autocommit.ts';
+import { resolveCanvasBodyRel } from '../../studio/sync/canvas-path.ts';
 import { createGitRunner, ensureRepo, gitAvailable } from './git-runner.mjs';
 import {
   attributionFor,
   committableLanes,
-  defaultBodyPath,
   filesForCanvas,
   indexCanvasPaths,
   readDocContent,
@@ -72,6 +78,31 @@ function listFiles(dir, prefix = '', out = []) {
   return out;
 }
 
+/**
+ * `realpathSync`, but for a path that does not exist yet.
+ *
+ * `resolve()` below is purely LEXICAL — it never follows a symlink — while
+ * `atomicWrite`'s `mkdirSync(recursive: true)` traverses an existing one without
+ * complaint. While the only reachable target was `<designRoot>/<slug>.tsx` that
+ * only mattered for a symlinked design root (operator-controlled); now the peer
+ * chooses the directory, so a `.design/ui/etc -> /etc` symlink committed in the
+ * tenant's own repo would turn a document named `ui-etc-motd` into a write at
+ * `/etc/motd.tsx` with peer-controlled bytes. Walk up to the deepest ancestor
+ * that exists, resolve THAT, and re-attach the tail.
+ */
+function realpathOfDeepestExisting(p) {
+  let cur = p;
+  for (;;) {
+    try {
+      return join(realpathSync(cur), relative(cur, p));
+    } catch {
+      const parent = dirname(cur);
+      if (parent === cur) return p;
+      cur = parent;
+    }
+  }
+}
+
 function readIfPresent(abs) {
   try {
     return readFileSync(abs, 'utf8');
@@ -110,6 +141,52 @@ export function createWorkspaceAgent(opts) {
   let auto = null;
   let ready = false;
   let pathIndex = new Map();
+  /** Declared canvas groups, from the tenant's own `.design/config.json`. */
+  let canvasGroups = null;
+
+  /**
+   * The tenant's declared canvas groups, or null when they have not said.
+   *
+   * Read rather than assumed because the groups decide BOTH what an incoming
+   * path is allowed to be and where an un-pathed canvas lands, and a project
+   * that renamed `ui` to `screens` would otherwise have every fallback go to a
+   * directory it does not use. Never throws: a missing or unparseable config is
+   * the normal state of a fresh checkout, and `canvas-path.ts` has a documented
+   * default for exactly that.
+   */
+  function readCanvasGroups() {
+    try {
+      const raw = readFileSync(join(designRoot, 'config.json'), 'utf8');
+      const cfg = JSON.parse(raw);
+      const groups = cfg?.canvasGroups;
+      return Array.isArray(groups) && groups.length > 0 ? groups : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Design-root-relative paths that mean something other than "a canvas".
+   *
+   * `system` is a DEFAULT canvas group and `.css`/`.meta.json` are derived from
+   * the body path, so a document named `system-colors_and_type` carrying
+   * `system/colors_and_type.tsx` passes every rule and writes its css lane over
+   * `tokensCssRel` — the stylesheet the dev server serves. Rule 7 ties a path to
+   * its own DOCUMENT and says nothing about what already occupies it.
+   */
+  function readServedPaths() {
+    const out = new Set(['config.json']);
+    try {
+      const cfg = JSON.parse(readFileSync(join(designRoot, 'config.json'), 'utf8'));
+      if (typeof cfg?.tokensCssRel === 'string') out.add(cfg.tokensCssRel);
+      for (const ds of cfg?.designSystems ?? []) {
+        if (typeof ds?.tokensCssRel === 'string') out.add(ds.tokensCssRel);
+      }
+    } catch {
+      out.add('system/colors_and_type.css'); // the documented default
+    }
+    return out;
+  }
 
   /**
    * Resolve the checkout before accepting any document. Reports rather than
@@ -153,6 +230,7 @@ export function createWorkspaceAgent(opts) {
         return repo;
       }
       pathIndex = indexCanvasPaths(listFiles(designRoot));
+      canvasGroups = readCanvasGroups();
       auto = createAutoCommit({
         repoRoot: repoDir,
         run,
@@ -189,22 +267,69 @@ export function createWorkspaceAgent(opts) {
     }
 
     try {
-      const bodyRel = pathIndex.get(slug) ?? defaultBodyPath(slug);
+      const content = readDocContent(document);
+      // A fresh checkout has no config until the project's first sync brings
+      // one down, so this cannot be a boot-time-only read.
+      if (canvasGroups === null) canvasGroups = readCanvasGroups();
+
+      // WHERE THIS CANVAS GOES, in the only order that is safe.
+      //
+      //   1. The checkout, when it already holds a file for this slug. It wins
+      //      unconditionally: relocating an existing file on a remote peer's
+      //      say-so would let any peer move any other peer's work.
+      //   2. The document's own `syncMeta.path`, validated — the canvas the
+      //      checkout has never seen, which is the whole bug. See
+      //      studio/sync/canvas-path.ts; rule 7 (the path must slug back to
+      //      THIS document) is why a hostile path is self-defeating.
+      //   3. The fallback, which is flat but lands inside a canvas group, so an
+      //      un-pathed canvas from an older peer is at least visible.
+      //
+      // Step 2 is IMPORTED, never re-typed here — the Dockerfile copies that
+      // module in for the same reason it copies autocommit.ts: re-typing a
+      // guarantee is re-typing it without its tests.
+      const bodyRel =
+        pathIndex.get(slug) ??
+        resolveCanvasBodyRel({
+          path: content.path,
+          slug,
+          designRel,
+          canvasGroups,
+          onRefused: (reason) => log.warn?.(`[workspace] ignoring the path on ${slug} — ${reason}`),
+        }).rel;
       const sib = siblingPaths(bodyRel);
       const abs = (rel) => join(designRoot, rel);
+
+      // A remote path may not choose a location that means something else. Only
+      // applies when the CHECKOUT did not already decide (pathIndex wins above,
+      // and a file the tenant really has is theirs whatever it is called).
+      if (!pathIndex.has(slug)) {
+        const served = readServedPaths();
+        const collides = [bodyRel, sib.meta, sib.css].some((rel) => served.has(rel));
+        if (collides) {
+          log.error?.(`[workspace] refusing to write over a served project file: ${bodyRel}`);
+          return null;
+        }
+      }
 
       // Path containment. `slug` is already charset-constrained by the hub's
       // documentName regex, but this is the last point before a write and the
       // consequence of being wrong is writing outside the tenant's checkout.
+      const realRoot = realpathOfDeepestExisting(designRoot);
       for (const rel of [bodyRel, sib.meta, sib.css, sib.annotations]) {
         const target = resolve(abs(rel));
         if (target !== designRoot && !target.startsWith(designRoot + sep)) {
           log.error?.(`[workspace] refusing write outside the design root: ${rel}`);
           return null;
         }
+        // …and again through the symlinks, because the check above cannot see
+        // them and the peer now chooses the directory. See the helper.
+        const real = realpathOfDeepestExisting(target);
+        if (real !== realRoot && !real.startsWith(realRoot + sep)) {
+          log.error?.(`[workspace] refusing write through a symlink: ${rel}`);
+          return null;
+        }
       }
 
-      const content = readDocContent(document);
       const onDisk = {
         body: readIfPresent(abs(bodyRel)),
         meta: readIfPresent(abs(sib.meta)),

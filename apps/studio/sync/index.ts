@@ -17,7 +17,7 @@
 // the provider lib didn't install for some reason) prints a useful error
 // instead of crashing the dev-server boot.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -32,6 +32,7 @@ import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
 import { atomicWrite } from './atomic-write.ts';
 import { createAutoCommit } from './autocommit.ts';
 import { type CellPairing, resolveCellPairing, sanitizeForLog } from './cell-pairing.ts';
+import { canvasPathFromDoc, stampCanvasPath } from './codec.ts';
 import {
   type ConnectionMonitor,
   createConnectionMonitor,
@@ -44,8 +45,15 @@ import { getHubToken } from './hubs-config.ts';
 import { loadJournal, type SyncJournal } from './journal.ts';
 import { isLoopbackHost } from './loopback.ts';
 import { migrateSeed } from './migrate-seed.ts';
+import { ORIGINS } from './origins.ts';
 import { createDocProjection, type DocProjection } from './projection.ts';
-import { describeRemoteDiff, diffRemoteDocs, fetchRemoteDocs, pullTargets } from './remote-docs.ts';
+import {
+  describeRemoteDiff,
+  diffRemoteDocs,
+  fetchRemoteDocs,
+  pullTargets,
+  resolvePulledTarget,
+} from './remote-docs.ts';
 import { createSyncStatusStore, type SyncStatusStore } from './status.ts';
 import { writeUntrustedMarkers } from './untrusted.ts';
 
@@ -422,6 +430,22 @@ export function createSyncRuntime(
     if (started || stopped) return;
     started = true;
 
+    // A NEW PROCESS MUST NOT SERVE THE OLD ONE'S VERDICT.
+    //
+    // `_sync.json` is a file, and `/_sync-status` returns whatever is in it.
+    // The first honest snapshot of THIS run is not written until every provider
+    // has been constructed — after a scan and a 6-second listing fetch — and
+    // until then the endpoint, the CLI and the browser banner were all reading
+    // the last run's counters as if they were current. That is how a live fleet
+    // showed `0 synced · 73 rejected` for a process whose own log said
+    // `76/76 synced` against a hub that was accepting the credential: the
+    // rejections were real, and they were from a previous session.
+    //
+    // Per-document verdicts are NOT rehydratable — a verdict is about a
+    // handshake this process has not made yet. So the file is reset to the
+    // honest seed (`connecting`, nothing known) the moment the runtime starts.
+    resetPersistedStatus(ctx, linkedHub.url);
+
     const scan = opts.canvases ? { canvases: opts.canvases, tsxCount: 0 } : await scanCanvases(ctx);
     // DDR-064 pre-cutover A4 + A6 — two files must never share a document, and
     // the pinned set must be bounded. See `admitCanvases`.
@@ -445,25 +469,114 @@ export function createSyncRuntime(
       localCanvases.map((c) => docNameFor(c.slug)),
       remoteDocs
     );
+    // PROVISIONAL targets. The listing carries names and byte counts only — a
+    // document's own `syncMeta.path` lives INSIDE it, so every target here is
+    // the fallback, and each one is re-resolved in `handleSynced` once that
+    // document has actually synced. See `relocatePulled` below.
+    //
+    // A FRESH LINK HAS DECLARED NOTHING. A design root with no canvases of its
+    // own and no `config.json` is a folder somebody just pointed at a project.
+    // `config.json` is not synced, so such a peer has only the DEFAULT groups
+    // (`system`, `ui`) — and a project whose author calls their group `screens`
+    // would have every single incoming path refused as out-of-group and land
+    // flat and invisible. That is the empty-folder case, and it is the one this
+    // whole change exists for.
+    //
+    // So on that one boot, an undeclared group is accepted (rules 1-7 are
+    // untouched — a path still has to slug back to its own document), and the
+    // groups actually seen are then WRITTEN into a config.json, additively. The
+    // relaxation therefore applies once: the next boot has a config.
+    // EMPTINESS IS A FACT ABOUT THE FOLDER, not about the scan. `scanCanvases`
+    // walks only DECLARED groups and applies the syncable + sandbox gates, so a
+    // project with real work in it scans to zero whenever `syncTsx:false`, the
+    // sandbox is off, or its canvases sit in a group it never declared — and
+    // treating that as "a bare folder somebody just pointed at a project" would
+    // let a hub author a `config.json` into a project that had work in it.
+    let freshLink =
+      localCanvases.length === 0 && !existsSync(designConfigPath(ctx)) && designRootIsBare(ctx);
+    const learnedGroups = new Set<string>();
+    // True once THIS boot wrote the config. Until then an existing file is
+    // somebody's own declaration and is never touched; afterwards it is ours to
+    // extend as further groups arrive.
+    let ownsSeededConfig = false;
+    const noteLearnedGroup = (group: string): void => {
+      if (!freshLink || learnedGroups.has(group)) return;
+      learnedGroups.add(group);
+      if (existsSync(designConfigPath(ctx)) && !ownsSeededConfig) return;
+      if (seedProjectConfig(ctx, learnedGroups, ownsSeededConfig)) ownsSeededConfig = true;
+      // ONE GROUP, ONCE. `freshLink` was a `const`, so after the first config
+      // was written every FURTHER undeclared group was accepted and appended —
+      // the relaxation perpetuating itself instead of closing, and a hub free to
+      // plant an unbounded set of directories in a single session. The project
+      // has now declared itself; everything after this is checked against that
+      // declaration like any other boot.
+      freshLink = false;
+      pathOpts.allowUndeclaredGroup = false;
+    };
+    const pathOpts: {
+      designRel: string;
+      canvasGroups: Context['cfg']['canvasGroups'];
+      allowUndeclaredGroup: boolean;
+      onRefused: (slug: string, reason: string) => void;
+    } = {
+      designRel: ctx.paths.designRel,
+      canvasGroups: ctx.cfg.canvasGroups,
+      allowUndeclaredGroup: freshLink,
+      onRefused: (slug: string, reason: string) =>
+        console.warn(`[sync/${slug}] ignoring the path this document carries — ${reason}`),
+    };
     const pulled = pullTargets(
       remoteDiff.hubOnly,
       ctx.paths.designRoot,
       path.join,
       path.resolve,
-      path.sep
+      path.sep,
+      { ...pathOpts, realpath: realpathOfDeepestExisting }
     );
     const pullNote = describeRemoteDiff(remoteDiff);
     if (pullNote) console.log(`[sync] ${pullNote}`);
+    /** Descriptor paths for one slug at one body path. The sidecar rules live
+     *  here, once: `.meta.json`/`.css` are SIBLINGS of the body, while
+     *  `.annotations.svg` is keyed by the flat slug at the design root — the
+     *  asymmetry `workspace-files.mjs` documents, and which moving the body
+     *  must not quietly change. */
+    const descriptorFor = (slug: string, bodyAbs: string): CanvasDescriptor => ({
+      slug,
+      html: bodyAbs,
+      comments: path.join(ctx.paths.commentsDir, `${slug}.json`),
+      annotations: path.join(ctx.paths.designRoot, `${slug}.annotations.svg`),
+      meta: bodyAbs.replace(/\.tsx$/i, '.meta.json'),
+      css: bodyAbs.replace(/\.tsx$/i, '.css'),
+    });
+    // Which slugs came DOWN this run. Only these get their body path re-decided
+    // after their document syncs — a canvas already on this disk has its path
+    // from the disk, and letting the wire move it would be exactly the
+    // "a peer relocates another peer's work" hazard the hub refuses too.
+    // A PULL MAY NEVER TARGET A FILE THAT IS ALREADY ON THIS DISK.
+    //
+    // "Hub-only" means "no local DESCRIPTOR", which is not the same as "no local
+    // file": `scanCanvases` omits a canvas whose `.meta.json` says
+    // `syncable: false` (a security opt-out a hub must not be able to flip) and
+    // one the sandbox gate excluded. Such a canvas is classified hub-only and
+    // pulled, and its target — whether the fallback or a carried path — is the
+    // real file. Note the fallback collides on its own: `ui-card` falls back to
+    // `ui/card.tsx`, which IS `ui/Card.tsx` on a case-insensitive filesystem, so
+    // checking only the carried path would leave the same overwrite reachable
+    // with no path at all.
+    //
+    // Refusing the canvas is the conservative answer and the recoverable one:
+    // the project keeps the file it has, and the document is still on the hub.
+    //
+    // APPLIED TO THE FALLBACK TOO, not only to a carried path. The fallback is
+    // derived from the slug and the slug is derived from the path, so it lands
+    // in the same place: `system-colors_and_type` falls back to
+    // `system/colors_and_type.tsx` whether or not a path arrives. Checking only
+    // the carried path leaves every one of these reachable with no path at all.
+    const admittedPulls = pulled.filter((t) => admitPullTarget(ctx, t.slug, t.bodyAbs));
+    const pulledSlugs = new Set(admittedPulls.map((t) => t.slug));
     const canvases = [
       ...localCanvases,
-      ...pulled.map((t) => ({
-        slug: t.slug,
-        html: t.bodyAbs,
-        comments: path.join(ctx.paths.commentsDir, `${t.slug}.json`),
-        annotations: path.join(ctx.paths.designRoot, `${t.slug}.annotations.svg`),
-        meta: t.bodyAbs.replace(/\.tsx$/i, '.meta.json'),
-        css: t.bodyAbs.replace(/\.tsx$/i, '.css'),
-      })),
+      ...admittedPulls.map((t) => descriptorFor(t.slug, t.bodyAbs)),
     ];
     // T4.5 (DDR-054 §3 F3) — every syncable canvas can receive hub-pushed
     // content, so the whole set is untrusted Claude-context. Mark it (writes
@@ -476,7 +589,22 @@ export function createSyncRuntime(
     // into the tenant's repository, which the hub would then commit and mirror
     // to their GitHub — a change to somebody's repo that nobody asked for. The
     // canvases are no less untrusted; the audience for the marker is absent.
-    if (!cellPairing) writeUntrustedMarkers(ctx, canvases, linkedHub.url);
+    //
+    // MARKED AT THE PATH THE BODY ACTUALLY LANDS AT. A pulled canvas's target is
+    // provisional here — the listing carries no path, so every pulled entry is
+    // the fallback, and `relocatePulled` moves it once that document arrives.
+    // The markers used to be computed ONLY from this provisional set and never
+    // recomputed, so for a hub-only document carrying a nested path the
+    // `_untrusted/INDEX.json` + `.claudeignore` block named a file that is never
+    // created, while the genuinely hub-pushed body sat at the real path listed
+    // nowhere. That is the DDR-054 §3 F3 control pointing at a phantom.
+    //
+    // So it is written twice: once now (so the markers exist before any provider
+    // is built) and once after the pulls settle, from the final descriptors.
+    const markUntrusted = (): void => {
+      if (!cellPairing) writeUntrustedMarkers(ctx, canvases, linkedHub.url);
+    };
+    markUntrusted();
     if (canvases.length === 0) {
       // DDR-060 / 9.1-D — the silent early-return made linked mode look healthy
       // while syncing nothing (TSX-only projects: discovery admits .html only,
@@ -672,6 +800,26 @@ export function createSyncRuntime(
       }
     };
 
+    /**
+     * A HANDSHAKE THAT COMPLETED IS NOT A REJECTED DOCUMENT.
+     *
+     * `auth-rejected` is deliberately sticky — a dropped socket must not launder
+     * a rotated credential into a spinner. But the verdict is about the HUB'S
+     * ANSWER, and the hub has just given a different one: this document
+     * connected. Clearing it here, at the top of the post-handshake path, means
+     * a re-probe that succeeds clears the record even if the reconcile below
+     * then fails for a reason that has nothing to do with authentication — which
+     * is how `0 synced · 73 rejected` survived on a link the hub was accepting.
+     *
+     * A GENUINE rejection still says so: nothing clears until a handshake for
+     * that document actually completes.
+     */
+    const clearRejection = (slug: string): void => {
+      rejectedPermanent.delete(slug);
+      if (!rejectedReasons.delete(slug)) return;
+      console.log(`[sync/${slug}] the hub accepted this document — clearing its refusal.`);
+    };
+
     /** Post-handshake reconcile — shared by first connect and re-probe. */
     const handleSynced = async (
       canvas: CanvasDescriptor,
@@ -679,6 +827,11 @@ export function createSyncRuntime(
       provider: SyncProvider
     ): Promise<void> => {
       if (stopped) return;
+      clearRejection(canvas.slug);
+      // Not `connected` yet — the reconcile below is what makes that true. But
+      // no longer refused, and the difference is the whole point: `pending` says
+      // "still settling", `auth-rejected` says "go fix your credential".
+      mon.noteDocState(canvas.slug, 'pending');
       const projection = projections.get(canvas.slug);
       const agent = agents.get(canvas.slug);
       if (projection) {
@@ -728,10 +881,44 @@ export function createSyncRuntime(
           }
         }
       }
+      // The path travels back OUT. `syncMeta.path` is stamped from where this
+      // canvas actually is on THIS disk — never echoed from the wire — so the
+      // next peer to receive this document can place it, and a value some
+      // receiver refused is never laundered onward by being re-sent.
+      try {
+        const rel = path.relative(ctx.paths.designRoot, canvasPaths.html).split(path.sep).join('/');
+        if (rel && !rel.startsWith('..'))
+          stampCanvasPath(provider.document, rel, ORIGINS.DISK_PROJECTION);
+      } catch {
+        /* best-effort bookkeeping — never costs the canvas its sync */
+      }
+
       // DDR-102 — honest status: the handshake + reconcile completed.
       mon.noteDocState(canvas.slug, 'connected');
       mon.noteSyncActivity(canvas.slug);
-      rejectedReasons.delete(canvas.slug);
+    };
+
+    /**
+     * `handleSynced`, with the one guarantee its body cannot make for itself.
+     *
+     * Everything from `migrateSeed` to `agent.reconcile()` can throw, and the
+     * rejection was swallowed by `settleWait` — so a document whose reconcile
+     * failed never reached the `connected` line and sat on whatever its last
+     * verdict was, forever, with nothing on screen or in the log saying why.
+     * A reconcile failure is a real failure and is now LOUD; it leaves the
+     * document `pending` (set at the top of `handleSynced`), which is what it
+     * is: connected to the hub, not yet settled on disk.
+     */
+    const runHandleSynced = async (
+      canvas: CanvasDescriptor,
+      canvasPaths: import('./agent.ts').CanvasSyncPaths,
+      provider: SyncProvider
+    ): Promise<void> => {
+      try {
+        await handleSynced(canvas, canvasPaths, provider);
+      } catch (err) {
+        console.error(`[sync/${canvas.slug}] post-handshake reconcile failed:`, err);
+      }
     };
 
     /** onceSynced() with the boot-settle ceiling — never hangs the summary on
@@ -792,6 +979,84 @@ export function createSyncRuntime(
       return null;
     };
 
+    /**
+     * Re-decide where a PULLED canvas goes, now that its document has synced.
+     *
+     * The listing (`GET /api/documents`) carries names and byte counts only —
+     * the path lives INSIDE the document, so it cannot be known when the target
+     * is first computed. This runs in the gap: after the handshake, before
+     * anything is written. Nothing is on disk yet for a pulled canvas, so this
+     * is a decision rather than a move.
+     *
+     * Local canvases never reach here. Their path comes from this disk, and
+     * letting a remote value relocate them is the same hazard the hub refuses
+     * with `pathIndex` — a peer moving another peer's work.
+     */
+    const relocatePulled = (
+      canvas: CanvasDescriptor,
+      canvasPaths: import('./agent.ts').CanvasSyncPaths,
+      doc: Y.Doc
+    ): void => {
+      if (!pulledSlugs.has(canvas.slug)) return;
+      const resolved = resolvePulledTarget({
+        slug: canvas.slug,
+        path: canvasPathFromDoc(doc),
+        designRoot: ctx.paths.designRoot,
+        designRel: ctx.paths.designRel,
+        canvasGroups: ctx.cfg.canvasGroups,
+        join: path.join,
+        resolve: path.resolve,
+        sep: path.sep,
+        realpath: realpathOfDeepestExisting,
+        allowUndeclaredGroup: pathOpts.allowUndeclaredGroup,
+        onRefused: (reason) => pathOpts.onRefused(canvas.slug, reason),
+      });
+      if (!resolved) return;
+
+      // NEVER ONTO A FILE THAT ALREADY EXISTS.
+      //
+      // `relocatePulled`'s premise is that nothing is on disk for a pulled
+      // canvas — but "pulled" only means "no LOCAL DESCRIPTOR", and `scanCanvases`
+      // omits a canvas whose `.meta.json` says `syncable: false` (a security
+      // opt-out) or whose `.tsx` the sandbox gate excluded. Such a canvas is
+      // classified hub-only and pulled, and before this feature that was benign:
+      // the body landed flat at the design root, inside no canvas group, loaded
+      // by nothing. Honouring a remote path would land it on the real file and
+      // let a hub overwrite exactly the canvas the user opted OUT of syncing.
+      // The same admission the provisional target already passed, re-asked of
+      // the destination the document actually chose.
+      if (resolved.fromPath && !admitPullTarget(ctx, canvas.slug, resolved.bodyAbs)) return;
+      // The TOP-level component only — `canvasGroups` names a group, not every
+      // folder inside it (`ui/2026/social/x.tsx` declares `ui`). A body that
+      // landed at the design root has no group and teaches nothing.
+      const [group, ...rest] = path
+        .relative(ctx.paths.designRoot, resolved.bodyAbs)
+        .split(path.sep);
+      if (group && rest.length > 0) noteLearnedGroup(group);
+      if (resolved.bodyAbs === canvas.html) return;
+      const next = descriptorFor(canvas.slug, resolved.bodyAbs);
+      // Mutated in place: the descriptor and the paths object are already held
+      // by the status surfaces and by the setup closure below, and handing them
+      // a second object would leave half the runtime writing to the old path.
+      Object.assign(canvas, next);
+      canvasPaths.html = next.html;
+      canvasPaths.meta = next.meta;
+      canvasPaths.css = next.css;
+      console.log(
+        `[sync/${canvas.slug}] pulled into ${path.relative(ctx.paths.designRoot, next.html)}`
+      );
+      // RE-MARK NOW, not at the end of boot. The markers were computed from the
+      // provisional descriptor set and the descriptors are mutated in place
+      // here, so between this line and the end of boot the `_untrusted` index
+      // would name a file that does not exist while the hub-pushed body it
+      // exists to flag sits somewhere unlisted. Deferring the re-mark to the
+      // boot-settle handler leaves exactly that window open — and that handler
+      // is fire-and-forget, so a short-lived process never reaches it at all.
+      // One small write per relocation is the right price for a marker that is
+      // never wrong.
+      markUntrusted();
+    };
+
     const connectCanvas = async (
       canvas: CanvasDescriptor,
       canvasPaths: import('./agent.ts').CanvasSyncPaths,
@@ -806,10 +1071,16 @@ export function createSyncRuntime(
       });
       providers.set(canvas.slug, provider);
       // First-connect setup (agent/projection creation + doc-scoped wiring)
-      // MUST run before the onceSynced chain below — handleSynced resolves the
+      // MUST run before handleSynced — that function resolves the
       // agent/projection from the maps, and a test stub's onceSynced can
       // settle on the very next microtask.
-      setup?.(provider);
+      //
+      // For a PULLED canvas it must run AFTER the handshake instead, because
+      // the agent is constructed around a body path this peer cannot know until
+      // the document arrives. Ordering, not skipping: the two still happen in
+      // the same order relative to each other.
+      const deferSetup = !!setup && pulledSlugs.has(canvas.slug);
+      if (!deferSetup) setup?.(provider);
 
       // Task 8 — feed this provider's WS status into the offline monitor.
       if (provider.onStatus) {
@@ -834,7 +1105,13 @@ export function createSyncRuntime(
         awarenessDetaches.push(opts.registry.attachHubAwareness(canvas.slug, provider.awareness));
       }
       // Cold-start reconcile fires once the provider has hub state.
-      const synced = provider.onceSynced().then(() => handleSynced(canvas, canvasPaths, provider));
+      const synced = provider.onceSynced().then(() => {
+        if (deferSetup) {
+          relocatePulled(canvas, canvasPaths, provider.document);
+          setup?.(provider);
+        }
+        return runHandleSynced(canvas, canvasPaths, provider);
+      });
       bootWaits.push(settleWait(synced));
       return provider;
     };
@@ -1029,7 +1306,11 @@ export function createSyncRuntime(
       // the pull, so it named exactly the canvases that had just arrived and
       // were sitting on disk. `pulled` is the same list under the name that is
       // true, and it is the fact the user is told to act on.
-      mon.notePulled(pulled.map((t) => t.slug));
+      mon.notePulled(admittedPulls.map((t) => t.slug));
+      // Re-mark from the FINAL descriptors — `relocatePulled` mutates them in
+      // place after each handshake, and the markers are the one consumer that
+      // read them before that and would otherwise never read them again.
+      markUntrusted();
     });
   }
 
@@ -1396,6 +1677,198 @@ async function walk(
       // The `.css` sibling: `Foo.tsx` → `Foo.css` (absent for inline-CSS canvases).
       css: abs.replace(/\.(tsx|html)$/i, '.css'),
     });
+  }
+}
+
+/**
+ * Blank the persisted status for a process that has just started.
+ *
+ * Deliberately NOT a rehydration. Presentation state (which hub, how many
+ * canvases) is knowable up front; a per-document verdict is not — it is the
+ * outcome of a handshake this process has yet to make. Carrying one over is how
+ * a stale `auth-rejected` outlives the credential rotation that fixed it.
+ *
+ * Best-effort, like every other write to this file: a status that cannot be
+ * written must not stop a project from syncing.
+ */
+function resetPersistedStatus(ctx: Context, url: string): void {
+  try {
+    atomicWrite(
+      path.join(ctx.paths.designRoot, '_sync.json'),
+      `${JSON.stringify(
+        {
+          url,
+          canvases: 0,
+          conflicts: [],
+          state: 'connecting',
+          queuedOps: 0,
+          lastSyncAt: null,
+          offlineSince: null,
+          flash: null,
+          updatedAt: Date.now(),
+          docs: { synced: 0, pending: 0, rejected: 0 },
+        },
+        null,
+        2
+      )}\n`
+    );
+  } catch {
+    /* best-effort — see the doc comment */
+  }
+}
+
+/**
+ * May a pulled canvas be materialised at this path?
+ *
+ * Asked of the PROVISIONAL target and again of whatever the document's own
+ * `syncMeta.path` resolves to, because the two can be the same place: the
+ * fallback is derived from the slug and the slug from the path, so
+ * `system-colors_and_type` targets `system/colors_and_type.tsx` with or without
+ * a path on the wire. A guard on the carried path alone is a guard on the
+ * loudest half of the problem.
+ *
+ * Two refusals, both about what ALREADY occupies the location — which is
+ * precisely what rule 7 does not speak to. Rule 7 ties a path to its own
+ * DOCUMENT; it has nothing to say about the file already sitting there.
+ */
+function admitPullTarget(ctx: Context, slug: string, bodyAbs: string): boolean {
+  const rel = path.relative(ctx.paths.designRoot, bodyAbs);
+  // 1. A file that is already on this disk. "Hub-only" means "no local
+  //    DESCRIPTOR", not "no local file": `scanCanvases` omits a canvas whose
+  //    `.meta.json` says `syncable: false` — a security opt-out a hub must not
+  //    be able to flip — and one the TSX sandbox gate excluded. Such a canvas is
+  //    classified hub-only and pulled, and its target is the real file. Note
+  //    `existsSync` settles the case-insensitive collision for free: `ui/card.tsx`
+  //    IS `ui/Card.tsx` on macOS, and that is exactly how the fallback reaches a
+  //    file the project meant to keep out of the sync set.
+  if (existsSync(bodyAbs)) {
+    console.warn(
+      `[sync/${slug}] not pulling — ${rel} already exists on this machine and is not in ` +
+        "this project's sync set (a `syncable: false` sidecar, or the TSX sandbox gate). " +
+        'The local file is kept.'
+    );
+    return false;
+  }
+  // 2. A file that means something other than "a canvas". The `.css` and
+  //    `.meta.json` siblings are derived from the body path and `system` is a
+  //    DEFAULT canvas group, so `system-colors_and_type` writes its css lane
+  //    straight over `tokensCssRel` — the stylesheet the dev server serves.
+  if (collidesWithServedPaths(ctx, bodyAbs)) {
+    console.warn(`[sync/${slug}] not pulling — ${rel} would overwrite a served project file.`);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * True when the design root holds nothing but runtime state.
+ *
+ * The emptiness question the fresh-link relaxation actually needs to ask. It is
+ * NOT "did the scan find canvases": the scan walks declared groups only and
+ * applies the syncable + sandbox gates, so it returns zero for several projects
+ * that are anything but bare.
+ */
+function designRootIsBare(ctx: Context): boolean {
+  try {
+    return readdirSync(ctx.paths.designRoot).every(
+      (name) => name.startsWith('_') || name === '.git'
+    );
+  } catch {
+    // No design root at all is as bare as it gets.
+    return true;
+  }
+}
+
+/**
+ * True when a pulled body's sidecars would land on a file that means something
+ * other than "a canvas".
+ *
+ * `.css` and `.meta.json` are derived from the body path, and `system` is a
+ * DEFAULT canvas group — so a hub-chosen path inside it can put an attacker's
+ * css lane exactly where `tokensCssRel` is served from. Rule 7 ties a path to
+ * its own DOCUMENT; it says nothing about what already occupies that location.
+ */
+function collidesWithServedPaths(ctx: Context, bodyAbs: string): boolean {
+  const served = new Set<string>();
+  const add = (rel: unknown): void => {
+    if (typeof rel === 'string' && rel) served.add(path.resolve(ctx.paths.designRoot, rel));
+  };
+  add(ctx.cfg.tokensCssRel);
+  for (const ds of ctx.cfg.designSystems ?? []) add(ds?.tokensCssRel);
+  add('config.json');
+  const stem = bodyAbs.replace(/\.tsx$/i, '');
+  return [bodyAbs, `${stem}.css`, `${stem}.meta.json`].some((p) => served.has(path.resolve(p)));
+}
+
+/**
+ * `realpathSync`, but for a path that does not exist yet.
+ *
+ * `realpathSync` throws ENOENT on the file we are about to create, so walk up to
+ * the deepest ancestor that DOES exist, resolve that, and re-attach the tail.
+ * Any symlink already on the path is therefore followed, which is the whole
+ * point: `path.resolve` is lexical, and `mkdirSync(recursive: true)` traverses a
+ * symlinked directory without complaint.
+ */
+function realpathOfDeepestExisting(p: string): string {
+  let cur = p;
+  for (;;) {
+    try {
+      return path.join(realpathSync(cur), path.relative(cur, p));
+    } catch {
+      const parent = path.dirname(cur);
+      if (parent === cur) return p;
+      cur = parent;
+    }
+  }
+}
+
+/** `<designRoot>/config.json` — the project's own declaration of itself. */
+function designConfigPath(ctx: Context): string {
+  return path.join(ctx.paths.designRoot, 'config.json');
+}
+
+/**
+ * Give a freshly-linked, previously-empty folder a config of its own.
+ *
+ * A project pulled into a bare directory has no `config.json` (it is not part
+ * of the sync lane), so it runs on the DEFAULT canvas groups — and a project
+ * whose author calls their group `screens` would be listed by nothing. This
+ * writes what the pull actually brought down, so the next boot needs no
+ * relaxation and the tree lists the project it just received.
+ *
+ * ADDITIVE AND ONE-SHOT. It refuses outright if a config already exists — a
+ * user's own declaration is never edited by the sync runtime, and the caller's
+ * `freshLink` gate means this cannot run on a project that had canvases.
+ * Best-effort: a read-only design root costs the project its tidiness, never
+ * its sync.
+ */
+function seedProjectConfig(
+  ctx: Context,
+  learnedGroups: ReadonlySet<string>,
+  owned: boolean
+): boolean {
+  const file = designConfigPath(ctx);
+  if (existsSync(file) && !owned) return false;
+  const declared = (ctx.cfg.canvasGroups ?? []).map((g) => g.path);
+  const groups = [...declared, ...[...learnedGroups].filter((g) => !declared.includes(g))];
+  try {
+    atomicWrite(
+      file,
+      `${JSON.stringify(
+        {
+          name: ctx.cfg.name,
+          designRoot: ctx.paths.designRel,
+          canvasGroups: groups.map((p) => ({ label: p, path: p })),
+        },
+        null,
+        2
+      )}\n`
+    );
+    console.log(`[sync] wrote ${ctx.paths.designRel}/config.json (${groups.join(', ')}).`);
+    return true;
+  } catch (err) {
+    console.warn(`[sync] could not write ${ctx.paths.designRel}/config.json: ${String(err)}`);
+    return false;
   }
 }
 

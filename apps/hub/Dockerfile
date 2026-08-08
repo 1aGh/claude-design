@@ -50,6 +50,14 @@ COPY apps/hub ./
 # Bun strips their types at bundle time, so the Node runtime stage never sees TS.
 COPY apps/studio/sync/autocommit.ts /build/apps/studio/sync/autocommit.ts
 COPY apps/studio/git/repo-lock.ts /build/apps/studio/git/repo-lock.ts
+# Same rule again: where a synced canvas belongs on disk, and the eight rules
+# that decide whether an incoming `syncMeta.path` may be believed. A second
+# `.mjs` spelling of those rules would be a spelling without the traversal
+# corpus that gives them their value — and `canvas-slug.ts` comes with it
+# because rule 7 (the path must slug back to its own document) is only a check
+# at all while it calls the REAL slug function rather than a copy of it.
+COPY apps/studio/sync/canvas-path.ts /build/apps/studio/sync/canvas-path.ts
+COPY apps/studio/canvas-slug.ts /build/apps/studio/canvas-slug.ts
 # The mirror argv + push classifier, imported (never re-typed) by the cell's
 # mirror lane. Its tests assert the ABSENCE of any force flag — absence being
 # exactly what a later edit adds with nothing noticing — so a second copy here

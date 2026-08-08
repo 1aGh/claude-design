@@ -368,6 +368,48 @@ export function seededByFromDoc(doc: Y.Doc): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+/**
+ * Record WHERE this canvas lives, design-root-relative (`syncMeta.path`).
+ *
+ * The document name carries only the flattened slug, and `/`→`-` is not
+ * reversible — so a receiver that has never seen this canvas cannot know which
+ * folder it belongs in, and wrote it flat. This is the lane that fixes that.
+ *
+ * `syncMeta` is the right home rather than a new one: it is already per
+ * document, already synced, already optional on the wire (an older peer simply
+ * omits it), and — the part that matters here — NEVER MATERIALIZED TO DISK.
+ * `.meta.json` could not carry this: a canvas's own path is per-machine-ish
+ * bookkeeping about the sync lane, and putting it in the sidecar would both
+ * commit a redundant fact to the tenant's repo and put it under `.meta.json`'s
+ * shared-subset rules (META_LOCAL_KEYS governs a DIFFERENT lane and would not
+ * keep it off disk).
+ *
+ * Only ever called with a path the caller DERIVED from a real local file — not
+ * with a value read off the wire. Re-stamping something a receiver refused
+ * would launder an invalid path into the project on the next hop.
+ *
+ * Idempotent: an unchanged value writes nothing, so this can sit in the same
+ * transaction as every body apply without churning the wire.
+ */
+export function stampCanvasPath(doc: Y.Doc, rel: string, origin?: unknown): boolean {
+  const next = String(rel ?? '').replace(/\\/g, '/');
+  if (!next) return false;
+  const map = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta);
+  if (map.get('path') === next) return false;
+  doc.transact(() => {
+    map.set('path', next);
+  }, origin);
+  return true;
+}
+
+/** The doc-side path stamp, or null when no peer ever stamped one (an older
+ *  peer, or a document nobody has opened from a real local file). UNTRUSTED —
+ *  every caller must put it through `validateCanvasPath` (canvas-path.ts). */
+export function canvasPathFromDoc(doc: Y.Doc): string | null {
+  const v = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta).get('path');
+  return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
 /* ---------------------------------------------------------------- css */
 
 /** The synced canvas CSS string held in the doc, or null when unset/empty. */

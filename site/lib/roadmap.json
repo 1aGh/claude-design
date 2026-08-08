@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-07T14:12:20.902Z",
+  "generated": "2026-08-08T08:14:30.437Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1077,6 +1077,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to the canvas-origin split (DDR-054 — the in-iframe overlays are untrusted, treat them differently from the shell), the CSS la...",
       "planPath": ".ai/plans/archive/feature-studio-maude-ds-redesign.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-sync-carries-the-path",
+      "title": "Feature: sync carries the path, so a project arrives whole",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-sync-carries-the-path.md",
       "archived": true,
       "phaseKey": null
     },

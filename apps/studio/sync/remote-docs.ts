@@ -24,6 +24,8 @@
 // file outside the design root. That is not policy filtering, it is the
 // difference between writing your project and writing your filesystem.
 
+import { type CanvasGroupLike, resolveCanvasBodyRel } from './canvas-path.ts';
+
 /** One document as the hub reports it. */
 export interface RemoteDoc {
   name: string;
@@ -147,31 +149,66 @@ export function slugFromDocName(docName: string): string | null {
 export interface PullTarget {
   slug: string;
   docName: string;
-  /** Absolute path the body will be written to, flat under the design root. */
+  /** Absolute path the body will be written to. */
   bodyAbs: string;
+  /** True when the path came from the document's own `syncMeta.path` and was
+   *  accepted — false when it was absent or refused and the fallback applied. */
+  fromPath: boolean;
+}
+
+export interface PullTargetOptions {
+  /** Design root, relative to the repo root. Rule 7 of the path check. */
+  designRel?: string;
+  /** Declared canvas groups — the fallback places the body inside one. */
+  canvasGroups?: readonly CanvasGroupLike[];
+  /** Fresh-link relaxation — see `validateCanvasPath`. */
+  allowUndeclaredGroup?: boolean;
+  /**
+   * The document's own `syncMeta.path`, if it is already known.
+   *
+   * USUALLY NULL AT THIS POINT, and that is not an oversight. The listing
+   * (`GET /api/documents`) carries names and byte counts only — the path lives
+   * INSIDE the document, so it cannot be resolved until that document has
+   * synced. The runtime therefore calls this to get a provisional target, then
+   * `resolvePulledTarget` again per document once its doc is populated (see
+   * sync/index.ts). Tests pass it directly, which is the whole reason it is a
+   * parameter rather than a fetch.
+   */
+  pathFor?: (docName: string, slug: string) => string | null | undefined;
+  /** See `resolvePulledTarget`. */
+  realpath?: (p: string) => string;
+  /** Called with (slug, reason) when a PRESENT path is refused. */
+  onRefused?: (slug: string, reason: string) => void;
 }
 
 /**
  * Where a hub-only document lands on disk.
  *
- * FLAT, directly under the design root — the same convention the hub applies in
- * the mirror direction (`workspace-files.mjs defaultBodyPath`) and for the same
- * reason: a slug is lossy, `ui-card` cannot be un-flattened into `ui/Card.tsx`
- * without guessing, and guessing wrong scatters files into directories the user
- * never made. A flat file is trivially moved; an invented tree is not. Moving it
- * later does not break sync — both paths slug to the same document.
+ * It used to be FLAT, directly under the design root, because a slug is lossy —
+ * `ui-card` cannot be un-flattened into `ui/Card.tsx` without guessing, and
+ * guessing wrong scatters files into directories the user never made. The
+ * comment here said a flat file "is trivially moved"; the hub's twin said a
+ * desktop peer "will move it on its next sync". Neither was a mechanism, and
+ * nothing moved it — and a file at the design root is inside no canvas group,
+ * so the tree never listed it and `scanCanvases` never synced it onward.
  *
- * Returns only targets that resolve INSIDE the design root. A document name is
- * hub-controlled input, and this is the last point before a create.
+ * So the path now travels with the document (`syncMeta.path`) and is checked
+ * rather than trusted — see `sync/canvas-path.ts` for the eight rules and for
+ * why rule 7 is the one that makes it safe. Absent or refused, the fallback
+ * still applies, but inside a canvas group.
+ *
+ * Returns only targets that resolve INSIDE the design root. A document name and
+ * a document's path are both hub-controlled input, and this is the last point
+ * before a create — so the containment check stays even for a validated path.
  */
 export function pullTargets(
   hubOnly: readonly RemoteDoc[],
   designRoot: string,
   join: (...parts: string[]) => string,
   resolve: (p: string) => string,
-  sep: string
+  sep: string,
+  opts: PullTargetOptions = {}
 ): PullTarget[] {
-  const rootResolved = resolve(designRoot);
   const out: PullTarget[] = [];
   // One slug, one target. `slugFromDocName` lowercases, so a hub advertising
   // `Foo`, `foo` and `ws/w/main/foo` yields three targets for ONE file — three
@@ -182,10 +219,80 @@ export function pullTargets(
     const slug = slugFromDocName(doc.name);
     if (!slug || seen.has(slug)) continue;
     seen.add(slug);
-    const bodyAbs = join(designRoot, `${slug}.tsx`);
-    const target = resolve(bodyAbs);
-    if (target !== rootResolved && !target.startsWith(rootResolved + sep)) continue;
-    out.push({ slug, docName: doc.name, bodyAbs });
+    const target = resolvePulledTarget({
+      slug,
+      path: opts.pathFor?.(doc.name, slug) ?? null,
+      designRoot,
+      designRel: opts.designRel,
+      canvasGroups: opts.canvasGroups,
+      allowUndeclaredGroup: opts.allowUndeclaredGroup,
+      join,
+      resolve,
+      sep,
+      realpath: opts.realpath,
+      onRefused: opts.onRefused ? (reason) => opts.onRefused?.(slug, reason) : undefined,
+    });
+    if (!target) continue;
+    out.push({ slug, docName: doc.name, ...target });
   }
   return out;
+}
+
+/**
+ * One document's body path — the whole receiver-side decision, in one call.
+ *
+ * Separate from `pullTargets` because the runtime needs it TWICE: once from the
+ * listing (where no path is known yet, so every target is a fallback) and again
+ * per document once that document has synced and its `syncMeta.path` is
+ * readable. Both hops go through the same function, so "where does this canvas
+ * go" cannot have two answers.
+ *
+ * Returns null when even the containment check refuses — the only case in which
+ * a canvas is dropped rather than degraded.
+ */
+export function resolvePulledTarget(args: {
+  slug: string;
+  path: unknown;
+  designRoot: string;
+  designRel?: string;
+  canvasGroups?: readonly CanvasGroupLike[];
+  allowUndeclaredGroup?: boolean;
+  join: (...parts: string[]) => string;
+  resolve: (p: string) => string;
+  sep: string;
+  /**
+   * Resolve symlinks on the deepest EXISTING ancestor of a path.
+   *
+   * `resolve()` is purely lexical — it never follows a symlink — and the
+   * receivers create parent directories with `mkdirSync(recursive: true)`, which
+   * happily traverses one that already exists. While the only reachable target
+   * was `<designRoot>/<slug>.tsx` that only mattered for a symlinked design root
+   * (operator-controlled); now the sender picks the directory, so any symlink
+   * committed anywhere under a canvas group is a write-outside primitive.
+   * Injected rather than imported because this module is dependency-free.
+   */
+  realpath?: (p: string) => string;
+  onRefused?: (reason: string) => void;
+}): { bodyAbs: string; fromPath: boolean } | null {
+  const { rel, fromPath } = resolveCanvasBodyRel({
+    path: args.path,
+    slug: args.slug,
+    designRel: args.designRel,
+    canvasGroups: args.canvasGroups,
+    allowUndeclaredGroup: args.allowUndeclaredGroup,
+    onRefused: args.onRefused,
+  });
+  const bodyAbs = args.join(args.designRoot, rel);
+  // Belt and braces at a create. The validator already refuses everything that
+  // could escape lexically; this catches whatever a platform's own `resolve`
+  // makes of a string neither of us anticipated.
+  const rootResolved = args.resolve(args.designRoot);
+  const target = args.resolve(bodyAbs);
+  if (target !== rootResolved && !target.startsWith(rootResolved + args.sep)) return null;
+  if (args.realpath) {
+    const realRoot = args.realpath(rootResolved);
+    const realTarget = args.realpath(target);
+    if (realTarget !== realRoot && !realTarget.startsWith(realRoot + args.sep)) return null;
+  }
+  return { bodyAbs, fromPath };
 }
