@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "sync-carries-the-path",
-      "version": null,
-      "date": null,
+      "version": "0.58.2",
+      "date": "2026-08-08",
       "kind": "fix",
       "title": "Canvases arrive in the folder you made",
       "summary": "A canvas you create in a nested folder now shows up on your other machine — and in the cloud — in that same folder, instead of quietly landing somewhere the file tree never listed. Connecting a project to an empty folder brings the whole thing down with its structure intact.",
