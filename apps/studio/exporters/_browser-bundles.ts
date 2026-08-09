@@ -88,7 +88,6 @@ export function getEncodeLibBundle(): Promise<string> {
   // binary the latter is the virtual `/$bunfs/root`, so `Bun.build` fails with
   // "failed to open root directory: /$bunfs/root" (the mp4/gif export bug).
   const entry = path.join(DEV_SERVER_ROOT, 'exporters', 'video-encode-lib.ts');
-  const cachePath = path.join(tmpdir(), 'maude-video-encode-lib.mjs');
   encodeLibReady = (async () => {
     const built = await Bun.build({
       entrypoints: [entry],
@@ -102,8 +101,7 @@ export function getEncodeLibBundle(): Promise<string> {
     }
     const first = built.outputs[0];
     if (!first) throw new Error('encode-lib bundle produced no outputs');
-    await Bun.write(cachePath, await first.text());
-    return cachePath;
+    return writeHashedBundle(await first.text(), 'maude-video-encode-lib');
   })();
   return encodeLibReady;
 }
@@ -128,7 +126,6 @@ let webRendererLibReady: Promise<string> | null = null;
 export function getWebRendererBundle(): Promise<string> {
   if (webRendererLibReady) return webRendererLibReady;
   const entry = path.join(DEV_SERVER_ROOT, 'exporters', 'video-render-lib.ts');
-  const cachePath = path.join(tmpdir(), 'maude-video-render-lib.mjs');
   webRendererLibReady = (async () => {
     // Bun's `external` field is package-name PREFIX matched (runtime-bundle.ts's
     // comment on the same gotcha) — listing 'remotion' also externalizes deep
@@ -179,10 +176,27 @@ export function getWebRendererBundle(): Promise<string> {
     }
     const first = built.outputs[0];
     if (!first) throw new Error('web-renderer bundle produced no outputs');
-    await Bun.write(cachePath, await first.text());
-    return cachePath;
+    return writeHashedBundle(await first.text(), 'maude-video-render-lib');
   })();
   return webRendererLibReady;
+}
+
+/**
+ * Write a built browser bundle to a CONTENT-ADDRESSED temp path.
+ *
+ * These used to go to a fixed name (`maude-video-encode-lib.mjs`). Two Maude
+ * servers at different versions is a documented normal state in this repo — the
+ * desktop app and a terminal dev server — and they share one OS temp dir, so
+ * they raced to write that single path. The loser then injected the winner's
+ * bundle: an old shim could hand bytes to a newer lib, or vice versa. Nothing
+ * about that failure is legible from the outside; it looks like a corrupt
+ * export. Hashing the content makes a mismatched pair impossible to construct.
+ */
+async function writeHashedBundle(code: string, stem: string): Promise<string> {
+  const hash = new Bun.CryptoHasher('sha256').update(code).digest('hex').slice(0, 12);
+  const cachePath = path.join(tmpdir(), `${stem}.${hash}.mjs`);
+  if (!existsSync(cachePath)) await Bun.write(cachePath, code);
+  return cachePath;
 }
 
 /**

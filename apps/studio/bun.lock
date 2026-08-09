@@ -14,10 +14,10 @@
         "@mediabunny/aac-encoder": "1.50.7",
         "@mediabunny/flac-encoder": "1.50.7",
         "@mediabunny/mp3-encoder": "1.50.7",
-        "@remotion/media": "4.0.486",
-        "@remotion/player": "4.0.486",
-        "@remotion/transitions": "4.0.486",
-        "@remotion/web-renderer": "4.0.486",
+        "@remotion/media": "4.0.507",
+        "@remotion/player": "4.0.507",
+        "@remotion/transitions": "4.0.507",
+        "@remotion/web-renderer": "4.0.507",
         "dom-to-pptx": "^1.1.10",
         "dom-to-svg": "^0.12.2",
         "gifenc": "^1.0.3",
@@ -37,7 +37,7 @@
         "pptxgenjs": "^4.0.1",
         "react": "^19.2.7",
         "react-dom": "^19.2.7",
-        "remotion": "4.0.486",
+        "remotion": "4.0.507",
         "svgo": "^4.0.1",
         "y-protocols": "^1.0.7",
         "yjs": "^13.6.31",
@@ -323,19 +323,19 @@
 
     "@radix-ui/rect": ["@radix-ui/rect@1.1.2", "", {}, "sha512-xnXE7wG13PI+cxieVssYXlQJuYVRhH9NBoxt3KNwzghDIA69GMm7d4wXRouHIYjE+KvS6U/MsMO73NdS2MH9ZA=="],
 
-    "@remotion/licensing": ["@remotion/licensing@4.0.486", "", {}, "sha512-9viDTCmthh0LntxGQxKaArHPVW6wAc6FmoZfBNdIHfXoE9FCfhb+VXeJVhfx2Z6awPgu7vn93wstGBMussODOw=="],
+    "@remotion/licensing": ["@remotion/licensing@4.0.507", "", {}, "sha512-fdods4YD9c8Ww69wHdnmXpjx7W0rvct6B7gLb92cWsd+ITSUG3hKoh+NqSWXF0GK5bk8IFRmTtBAwJObxow9wA=="],
 
-    "@remotion/media": ["@remotion/media@4.0.486", "", { "dependencies": { "mediabunny": "1.50.3", "remotion": "4.0.486", "zod": "4.3.6" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-vRglyMIvLDuVkj6r1miIcWDoVOoTHsWig4dMLM+F6Z5Z9BxVC95Vtlu8HjrtAvpV6K0AZ1uK3RhXemI+HybvCQ=="],
+    "@remotion/media": ["@remotion/media@4.0.507", "", { "dependencies": { "mediabunny": "1.50.8", "remotion": "4.0.507", "zod": "4.4.3" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-PpSbLq0x2E/yZGHyYcGsFpUWcocy+w2uV64qcTgASSN3Vd2ZSwNAaAGrNCUD9nN3EUaHjsoqheL/o8cRTZZ06g=="],
 
-    "@remotion/paths": ["@remotion/paths@4.0.486", "", {}, "sha512-/qhmgyQ7/xUxbxnuqtZqfAjBzkV15Tvw73r0wKS82uVE+pBzlS14aucgoJcfksDv26VwCXn6BdHpUXUjXFCjhA=="],
+    "@remotion/paths": ["@remotion/paths@4.0.507", "", {}, "sha512-/2vXtdZDvpicamS30CmW+qYkA/yWhTUCk/5MysLExZYll8pqCR+BTlluRwpkfqhH0H4VJ4LwDoY1ZRd3MQ1HeQ=="],
 
-    "@remotion/player": ["@remotion/player@4.0.486", "", { "dependencies": { "remotion": "4.0.486" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-S8wh+bS695gidwXYNnCjwZzJG9oPzyYBFMjpO0rlTbrNc3naIKT8UP443J0opitP4g8VuXnoIKObF7JzAfpe5A=="],
+    "@remotion/player": ["@remotion/player@4.0.507", "", { "dependencies": { "remotion": "4.0.507" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-ZAunyyCfOXSYh5sZrp+vFxZlSPatg5evmh7fHVCndAOWBUPIDVjdUWEM2D4i132MsN6GXasXDByi+6H0H+IkhQ=="],
 
-    "@remotion/shapes": ["@remotion/shapes@4.0.486", "", { "dependencies": { "@remotion/paths": "4.0.486", "remotion": "4.0.486" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-k+2EiXVd6heKVnGACfSnFF5Ox46lvsq6RFtHvPc3CunSMJa04Ui1Z4vNQDcddCSXoHnT/+vht6bjZNlSk36OrQ=="],
+    "@remotion/shapes": ["@remotion/shapes@4.0.507", "", { "dependencies": { "@remotion/paths": "4.0.507", "remotion": "4.0.507" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-PinB0Va4FRdv9OeaoIxikPqius9XQj5S5xruQEg/Y1CX+1Eu9KOVXqPOrMgELjkfPLLQ0rA/I4gmKoVxhaoYDQ=="],
 
-    "@remotion/transitions": ["@remotion/transitions@4.0.486", "", { "dependencies": { "@remotion/paths": "4.0.486", "@remotion/shapes": "4.0.486", "remotion": "4.0.486" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-U7K21B2NsPie3AE4vrbX7Th46Nw1dFvjs5smYLjuYRaSWPO6vTbNbPQn+pQFXf/dzTjygTNUU9Co5s3oZZNz9A=="],
+    "@remotion/transitions": ["@remotion/transitions@4.0.507", "", { "dependencies": { "@remotion/paths": "4.0.507", "@remotion/shapes": "4.0.507", "remotion": "4.0.507" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-d0rtF2gVdSxR4Q35kjSSEdQ1ji0WoKFRaeoNgx/7NO13c/3gDSECAg9m2LoP+fN5pkZFdfL8z+yhM16rL7rWjg=="],
 
-    "@remotion/web-renderer": ["@remotion/web-renderer@4.0.486", "", { "dependencies": { "@mediabunny/aac-encoder": "1.50.3", "@mediabunny/flac-encoder": "1.50.3", "@mediabunny/mp3-encoder": "1.50.3", "@remotion/licensing": "4.0.486", "mediabunny": "1.50.3", "remotion": "4.0.486" }, "peerDependencies": { "react": ">=18.0.0", "react-dom": ">=18.0.0" } }, "sha512-RbG4qFmg6paFDDc/rNL/3hooDPEWPnHu8MtDJB5axD/TiXFsaNR009L9dP610b9hPGwlykIOooSlD7INzo0Gqw=="],
+    "@remotion/web-renderer": ["@remotion/web-renderer@4.0.507", "", { "dependencies": { "@mediabunny/aac-encoder": "1.50.8", "@mediabunny/flac-encoder": "1.50.8", "@mediabunny/mp3-encoder": "1.50.8", "@remotion/licensing": "4.0.507", "mediabunny": "1.50.8", "remotion": "4.0.507" }, "peerDependencies": { "react": ">=18.0.0", "react-dom": ">=18.0.0" } }, "sha512-fH8iZX1e0hmeJ+hPqn3RfqrDBNxMGsZZzfdyX2QpTDZ9F2kKqOkh0dQsRqaU8o+YoE8JNV/+FyYm4yyDAh9o6Q=="],
 
     "@stablelib/base64": ["@stablelib/base64@1.0.1", "", {}, "sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ=="],
 
@@ -757,7 +757,7 @@
 
     "readable-stream": ["readable-stream@4.7.0", "", { "dependencies": { "abort-controller": "^3.0.0", "buffer": "^6.0.3", "events": "^3.3.0", "process": "^0.11.10", "string_decoder": "^1.3.0" } }, "sha512-oIGGmcpTLwPga8Bn6/Z75SVaH1z5dUut2ibSyAMVhmUggWpmDn2dapB0n7f8nwaSiRtepAsfJyfXIO5DCVAODg=="],
 
-    "remotion": ["remotion@4.0.486", "", { "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-njrfAmfr+fJCr4NXY6hlbzWpIRkfnF0lPdRGZ4DkQao3/XRUtuB166GcVuaVnUpwa8NP+W+Q6TczOPveUpr0pw=="],
+    "remotion": ["remotion@4.0.507", "", { "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-g/NrnRZKJyh0isE+/0sIxKlgJl6BH5v/CJ35W4TGYR1obQZf60fHkf9CGxSBHJEw27dG1PJCgKT75YGfoCZ7tg=="],
 
     "require-from-string": ["require-from-string@2.0.2", "", {}, "sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw=="],
 
@@ -881,17 +881,11 @@
 
     "@pdf-lib/upng/pako": ["pako@1.0.11", "", {}, "sha512-4hLB8Py4zZce5s4yd9XzopqwVv/yGNhV1Bl8NTmCq1763HeK2+EwVTv+leGeL13Dnh2wfbqowVPXCIO0z4taYw=="],
 
-    "@remotion/media/mediabunny": ["mediabunny@1.50.3", "", { "dependencies": { "@types/dom-mediacapture-transform": "^0.1.11", "@types/dom-webcodecs": "0.1.13" } }, "sha512-lw6NjC6++/p6MzHC3u7RbkpM0dnukEQcAAXzZwXlmmx9y8n6132DXUMer2WaNn8RPuGgUpnemi/QIVNpEnONhQ=="],
+    "@remotion/web-renderer/@mediabunny/aac-encoder": ["@mediabunny/aac-encoder@1.50.8", "", { "peerDependencies": { "mediabunny": "^1.0.0" } }, "sha512-A5Se/LZd6RmYq/h36lBMSEsHvsyW8d0toR7FrAwpsFYbK+DVQYf90KiBT1Aw/mzLXx8/ypIOORJnd1sVZqOvJQ=="],
 
-    "@remotion/media/zod": ["zod@4.3.6", "", {}, "sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg=="],
+    "@remotion/web-renderer/@mediabunny/flac-encoder": ["@mediabunny/flac-encoder@1.50.8", "", { "peerDependencies": { "mediabunny": "^1.0.0" } }, "sha512-4cfN03SbEoQaG+eBeYFUAb1R1ALaAHzf43dXFzQTr/oO5ueqzTgBoG3coKrIvBaAMU7Vv36mrBKLX8bvTppdAQ=="],
 
-    "@remotion/web-renderer/@mediabunny/aac-encoder": ["@mediabunny/aac-encoder@1.50.3", "", { "peerDependencies": { "mediabunny": "^1.0.0" } }, "sha512-rVPnhJbn+7BUsu09sEl/bee/DkzmAc33oErJ250RPlCqrPndx61DSb2GLvVmmSx6L2LU2WyCnvJIMUrGPJEXPA=="],
-
-    "@remotion/web-renderer/@mediabunny/flac-encoder": ["@mediabunny/flac-encoder@1.50.3", "", { "peerDependencies": { "mediabunny": "^1.0.0" } }, "sha512-aIEHE3eQ+hG35rRvtNNYO6ufTiGkZpzgOBjcqK8CQuRAMtUY9/DzV12jj52L0nSj2zmBKXQQ6dWBWsusigV/dQ=="],
-
-    "@remotion/web-renderer/@mediabunny/mp3-encoder": ["@mediabunny/mp3-encoder@1.50.3", "", { "peerDependencies": { "mediabunny": "^1.0.0" } }, "sha512-dyjWOhG27+ctlejfjY4vFy0g8wzo0NCRTNQ/GNsCaHxWkduaq0GI2BWKXm6UFCsfnUKgtDWMEu4zOPl9fKpbsA=="],
-
-    "@remotion/web-renderer/mediabunny": ["mediabunny@1.50.3", "", { "dependencies": { "@types/dom-mediacapture-transform": "^0.1.11", "@types/dom-webcodecs": "0.1.13" } }, "sha512-lw6NjC6++/p6MzHC3u7RbkpM0dnukEQcAAXzZwXlmmx9y8n6132DXUMer2WaNn8RPuGgUpnemi/QIVNpEnONhQ=="],
+    "@remotion/web-renderer/@mediabunny/mp3-encoder": ["@mediabunny/mp3-encoder@1.50.8", "", { "peerDependencies": { "mediabunny": "^1.0.0" } }, "sha512-eBT/H30tTu8AmZXqZ5RTpJ9VmwVlwednajuOrrWp0GS6cbGXsGMQ60Qvr3ZMIE0QDiadlEzb8/ozR+doP+MC1g=="],
 
     "body-parser/content-type": ["content-type@2.0.0", "", {}, "sha512-j/O/d7GcZCyNl7/hwZAb606rzqkyvaDctLmckbxLzHvFBzTJHuGEdodATcP3yIRoDrLHkIATJuvzbFlp/ki2cQ=="],
 

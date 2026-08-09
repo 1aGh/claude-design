@@ -92,6 +92,12 @@ async function renderVideo(opts: RenderVideoOpts): Promise<RenderVideoResult> {
     isProduction: true,
     licenseKey: opts.licenseKey ?? 'free-license',
     logLevel: 'error',
+    // Remotion defaults this to 'medium', which yields the event loop every
+    // ~33 ms to keep a page interactive while it renders. Nobody is looking at
+    // this page — it is a headless capture Chromium with no UI — so the courtesy
+    // is pure overhead. 'disabled' is Remotion's documented setting for exactly
+    // this case (client-side rendering / page-responsiveness).
+    pageResponsiveness: 'disabled',
   });
   const blob = await result.getBlob();
   const buf = new Uint8Array(await blob.arrayBuffer());

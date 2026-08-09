@@ -25,7 +25,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { launchChromium } from './_pw-launch.mjs';
+import { assertRenderOutputSizeOk, launchChromium } from './_pw-launch.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, cur, i, all) => {
@@ -199,6 +199,19 @@ try {
         audioCodec: rendered.audioCodec,
       };
       const ms = Date.now() - t0;
+      // Same shape as the frame-step line, so the two paths are directly
+      // comparable — that comparison is the whole speed story (~45 s vs ~37 min
+      // on the same canvas, per RCA issue-mp4-audio-export-html5audio-silent-degrade).
+      console.log(
+        `MAUDE_TIMING ${JSON.stringify({
+          path: 'renderer',
+          frames: frameCount,
+          totalMs: ms,
+          msPerFrame: Math.round((ms / Math.max(1, frameCount)) * 10) / 10,
+          scale: deviceScaleFactor,
+          audioCodec: rendered.audioCodec,
+        })}`
+      );
       console.error(
         `✓ rendered ${rendered.container}/${rendered.videoCodec}` +
           `${rendered.audioCodec ? `+${rendered.audioCodec}` : ' (muted)'} → ${out} (${rendered.bytes} B) in ${ms}ms`
@@ -368,6 +381,11 @@ async function frameStepCapture({
   // frame is drawn down to the native artboard size (the "tiny resolution" bug:
   // scale was accepted but never applied to the encode). scale=2 → 960×540 comp
   // exports at 1920×1080. Even dims (H.264 requires width/height divisible by 2).
+  // The video path is the ONE capture path that holds a full-resolution surface
+  // across thousands of frames, and it was the only one with no output-size
+  // guard — _pdf-playwright.mjs has enforced this since it existed. A scale-3
+  // 1080p comp allocates ~74MB per frame here.
+  assertRenderOutputSizeOk(clip.width, clip.height, deviceScaleFactor, '_video-playwright');
   const outW = Math.max(2, Math.round((clip.width * deviceScaleFactor) / 2) * 2);
   const outH = Math.max(2, Math.round((clip.height * deviceScaleFactor) / 2) * 2);
 
@@ -398,16 +416,27 @@ async function frameStepCapture({
     console.error(`encoder: ${started.container} / ${started.codec} @ ${outW}×${outH}`);
   }
 
+  // Per-stage accumulators. "The export takes 15 minutes" was, for a long time,
+  // answerable only by guessing which stage owned the second — so every
+  // optimization was aimed at a suspicion. One line at the end fixes that.
+  const stageMs = { seek: 0, settle: 0, screenshot: 0, encode: 0 };
   for (let f = 0; f < frameCount; f += 1) {
+    const tSeek = Date.now();
     await seekFrame(page, f, fps, mode);
+    stageMs.seek += Date.now() - tSeek;
+    const tSettle = Date.now();
     await page.waitForTimeout(SETTLE_MS);
+    stageMs.settle += Date.now() - tSettle;
+    const tShot = Date.now();
     const shot = await page.screenshot({ clip });
+    stageMs.screenshot += Date.now() - tShot;
     if (dump) {
       const p = join(dump, `frame-${String(f).padStart(5, '0')}.png`);
       writeFileSync(p, shot);
       framePaths.push(p);
     }
     if (encoding) {
+      const tEnc = Date.now();
       const b64 = shot.toString('base64');
       await page.evaluate(
         async ({ b64, isGif }) => {
@@ -416,6 +445,11 @@ async function frameStepCapture({
         },
         { b64, isGif }
       );
+      // NB: this stage is the double CDP crossing — the screenshot bytes go out
+      // to node as base64 and straight back into the same page, to an encoder
+      // that lives in that page. Its share of the total is what decides whether
+      // transport work is worth doing at all.
+      stageMs.encode += Date.now() - tEnc;
     }
     // Machine-readable progress (stdout) — spawnShim parses `MAUDE_PROGRESS`
     // lines → onProgress → job.progress → the live bar in the Exports panel, so
@@ -424,6 +458,18 @@ async function frameStepCapture({
     // stdout the exporter reads. Human log stays throttled on stderr.
     console.log(`MAUDE_PROGRESS {"current":${f + 1},"total":${frameCount}}`);
     if (f % 30 === 0) console.error(`frame ${f + 1}/${frameCount}`);
+  }
+
+  // A seek that never landed means at least one encoded frame shows the wrong
+  // content. There is no way to tell WHICH from the outside and no way for the
+  // user to notice, so the export dies here rather than shipping a file that
+  // looks fine. Counted in-page by the seek bridge (video-comp.tsx).
+  const seekFailures = await page.evaluate(() => window.__maude_seek_failures__ ?? 0);
+  if (seekFailures > 0) {
+    throw new Error(
+      `${seekFailures} frame seek(s) never landed — the capture would contain stale ` +
+        'frames. Refusing to encode. This usually means the comp failed to mount.'
+    );
   }
 
   let result = { fps, frameCount, width: outW, height: outH, framePaths };
@@ -447,6 +493,19 @@ async function frameStepCapture({
   const ms = Date.now() - t0;
   console.error(
     `✓ captured ${frameCount} frames @ ${fps}fps (${clip.width}×${clip.height}) in ${ms}ms`
+  );
+  // Machine-readable, filtered out of stdoutLines by _runtime.ts (the adapters
+  // parse the LAST stdout line as their summary, so this must never be it).
+  console.log(
+    `MAUDE_TIMING ${JSON.stringify({
+      path: 'frame-step',
+      frames: frameCount,
+      totalMs: ms,
+      msPerFrame: Math.round((ms / Math.max(1, frameCount)) * 10) / 10,
+      stageMs,
+      scale: deviceScaleFactor,
+      out: { width: outW, height: outH },
+    })}`
   );
   // stdout = machine-readable summary for the exporter.
   console.log(JSON.stringify(result));
@@ -486,6 +545,10 @@ async function seekFrame(page, frame, fps, mode) {
     return;
   }
   // comp mode — the seek bridge pauses + seeks the Player and resolves post-paint.
+  // It now REJECTS when a seek never lands (video-comp.tsx), instead of resolving
+  // as if it had; that rejection propagates out of this evaluate and fails the
+  // export, which is the point — a stale frame is a valid-looking file with the
+  // wrong pixels, and no downstream check would ever catch it.
   // A comp with classic remotion <Video>/<OffthreadVideo> renders a real <video>
   // whose seek is ASYNC — 2 rAF isn't enough, so wait for every video to land on
   // its frame (`seeked` / readyState) before the screenshot, else a stale frame
@@ -494,7 +557,8 @@ async function seekFrame(page, frame, fps, mode) {
   // on (verified across mid-clip + mid-transition frames — DDR-148 addendum).
   await page.evaluate(async (frame) => {
     if (typeof window.__maude_seek__ === 'function') {
-      await window.__maude_seek__(frame);
+      // strict: a capture must never proceed on a seek that did not land.
+      await window.__maude_seek__(frame, { strict: true });
     }
     const vids = Array.from(document.querySelectorAll('video'));
     if (vids.length) {

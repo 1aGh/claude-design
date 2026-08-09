@@ -75,6 +75,12 @@ export interface SpawnShimOptions {
   signal?: AbortSignal;
   /** Fired for each `MAUDE_PROGRESS {"current":N,"total":M}` stdout line. */
   onProgress?: (update: { current: number; total: number }) => void;
+  /**
+   * Fired for the single `MAUDE_TIMING {…}` line a shim emits at the end.
+   * Per-stage costs, so "the export is slow" can be answered with a
+   * measurement instead of a guess about which stage owns the time.
+   */
+  onTiming?: (timing: Record<string, unknown>) => void;
 }
 
 export interface SpawnShimResult {
@@ -85,6 +91,10 @@ export interface SpawnShimResult {
 }
 
 const PROGRESS_LINE = /^MAUDE_PROGRESS (.+)$/;
+// Filtered here rather than in the adapters for a load-bearing reason: every
+// video adapter parses `stdoutLines.at(-1)` as its summary JSON, so a trailing
+// diagnostic line on stdout would break EVERY video export.
+const TIMING_LINE = /^MAUDE_TIMING (.+)$/;
 
 /**
  * Spawn a render shim (`bin/_{png,pdf,svg,html,pptx,video}-playwright.mjs`)
@@ -121,6 +131,15 @@ export async function spawnShim(args: string[], opts: SpawnShimOptions): Promise
   let buffer = '';
   const consumeLine = (line: string) => {
     if (!line) return;
+    const timing = TIMING_LINE.exec(line);
+    if (timing) {
+      try {
+        opts.onTiming?.(JSON.parse(timing[1]) as Record<string, unknown>);
+      } catch {
+        /* malformed timing line — diagnostics must never break an export */
+      }
+      return;
+    }
     const match = PROGRESS_LINE.exec(line);
     if (!match) {
       stdoutLines.push(line);

@@ -121,7 +121,18 @@ const api: MaudeEnc = {
     if (!codec) throw new Error('no encodable video codec available in this browser');
 
     const output = new Output({ format: outFormat, target: new BufferTarget() });
-    const source = new CanvasSource(canvas, { codec, bitrate: QUALITY_HIGH });
+    // `latencyMode: 'quality'` is pinned, not left to the default. Per WebCodecs
+    // §7.11 `realtime` explicitly permits the encoder to DROP frames to hit a
+    // bitrate/framerate target, while `quality` MUST NOT — and mediabunny flips
+    // MediaStream-driven sources to `realtime` automatically. We push frames
+    // through a CanvasSource so we are not in that case today, but a future
+    // refactor that routes through a stream would silently start dropping
+    // frames from an export with no error anywhere.
+    const source = new CanvasSource(canvas, {
+      codec,
+      bitrate: QUALITY_HIGH,
+      latencyMode: 'quality',
+    });
     output.addVideoTrack(source, { frameRate: fps });
     await output.start();
     const container = outFormat instanceof Mp4OutputFormat ? 'mp4' : 'webm';
@@ -132,6 +143,21 @@ const api: MaudeEnc = {
   async addVideoFrame(b64png) {
     if (!vstate) throw new Error('startVideo not called');
     const bmp = await decodeToBitmap(b64png);
+    // REJECT a mismatched frame instead of rescaling it. `drawImage` with
+    // explicit dimensions silently resamples anything that does not match the
+    // encoder canvas, so a capture whose clip drifted by a pixel produced an
+    // invisible resample seam rather than an error — the kind of defect that
+    // survives every check we have and shows up as "the export looks slightly
+    // off". Loud is the only useful behaviour here.
+    if (bmp.width !== vstate.canvas.width || bmp.height !== vstate.canvas.height) {
+      const got = `${bmp.width}×${bmp.height}`;
+      const want = `${vstate.canvas.width}×${vstate.canvas.height}`;
+      if ('close' in bmp) bmp.close();
+      throw new Error(
+        `frame ${vstate.frame} is ${got} but the encoder canvas is ${want} — ` +
+          'refusing to resample. The capture clip changed mid-export.'
+      );
+    }
     vstate.ctx.drawImage(bmp, 0, 0, vstate.canvas.width, vstate.canvas.height);
     if ('close' in bmp) bmp.close();
     await vstate.source.add(vstate.frame / vstate.fps, 1 / vstate.fps);

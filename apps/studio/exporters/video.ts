@@ -176,6 +176,13 @@ async function runVideo(
       // the fast one-pass renderer finishes before progress matters and reports
       // none until done (it exposes no per-frame hook) — acceptable.
       onProgress: hooks?.onProgress,
+      // One line per export naming where the time actually went, and which of
+      // the two capture paths ran. Previously neither was recoverable after the
+      // fact — "which path did this take?" needed a dig through the desktop
+      // app's stderr, if it was still there.
+      onTiming: (timing) => {
+        console.error(`⏱ ${format} export: ${JSON.stringify(timing)}`);
+      },
     });
     const body = new Uint8Array(readFileSync(outPath));
     // The container can differ from the request (mp4 → webm fallback when the

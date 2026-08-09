@@ -151,7 +151,7 @@ describe('video-comp seek bridge', () => {
     expect(a.seeks).toEqual([42, 42]);
   });
 
-  test('a Player ref that is not yet ready (null) does not throw', async () => {
+  test('a not-yet-ready Player is resilient in UI mode but still RECORDED', async () => {
     const w = window as unknown as SeekWindow;
     installMaudeSeekBridge();
     if (!w.__maudeVideoComps) w.__maudeVideoComps = new Map();
@@ -163,6 +163,28 @@ describe('video-comp seek bridge', () => {
       height: 360,
       ref: { current: null },
     });
+    // A live scrub of a still-mounting comp must not blow up the UI...
+    const before = w.__maude_seek_failures__ ?? 0;
     await expect(w.__maude_seek__?.(10)).resolves.toBeUndefined();
+    // ...but it is no longer silent: the capture shim reads this counter and
+    // refuses to encode, because a seek that never landed means a stale frame.
+    expect(w.__maude_seek_failures__ ?? 0).toBeGreaterThan(before);
+  });
+
+  test('capture mode (strict) throws instead of pretending the seek landed', async () => {
+    const w = window as unknown as SeekWindow;
+    installMaudeSeekBridge();
+    if (!w.__maudeVideoComps) w.__maudeVideoComps = new Map();
+    w.__maudeVideoComps.set('pending-strict', {
+      id: 'pending-strict',
+      fps: 30,
+      durationInFrames: 90,
+      width: 640,
+      height: 360,
+      ref: { current: null },
+    });
+    await expect(w.__maude_seek__?.(10, { strict: true })).rejects.toThrow(
+      /refusing to report a seek that did not happen/
+    );
   });
 });

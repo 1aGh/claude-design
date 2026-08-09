@@ -81,7 +81,20 @@ interface MaudeSeekWindow {
   __maudeVideoComps?: Map<string, CompEntry>;
   /** Seek every registered comp to `frame` (paused). Ordinary artboards fall
    *  back to a time-based WAAPI seek. Resolves once the frame has painted. */
-  __maude_seek__?: (frame: number, opts?: { fps?: number }) => Promise<void>;
+  __maude_seek__?: (
+    frame: number,
+    opts?: {
+      fps?: number;
+      /** Capture mode: throw when a seek never lands, instead of only counting it. */
+      strict?: boolean;
+    }
+  ) => Promise<void>;
+  /**
+   * Count of seeks that never landed. The capture shim reads this and refuses
+   * to ship the export rather than encoding a stale frame — a silent wrong
+   * frame is worse than a loud failure.
+   */
+  __maude_seek_failures__?: number;
   /** Serializable comp list for the capture shim / Timeline panel. */
   __maude_comps__?: () => CompSnapshot[];
   /**
@@ -140,6 +153,36 @@ function afterPaint(): Promise<void> {
   });
 }
 
+/** How many paint-spaced attempts a cold Player gets before a seek is a failure. */
+const SEEK_ATTEMPTS = 3;
+
+/**
+ * Seek one comp, giving a not-yet-mounted Player a bounded number of chances.
+ *
+ * Returns whether the seek actually landed. The retry replaces the old silent
+ * swallow: a Player that is genuinely mid-mount settles within a paint or two,
+ * and one that never settles is a real fault the caller must not paper over.
+ */
+async function seekEntryWithRetry(
+  ref: { current: { pause?: () => void; seekTo: (f: number) => void } | null },
+  frame: number
+): Promise<boolean> {
+  for (let attempt = 0; attempt < SEEK_ATTEMPTS; attempt += 1) {
+    try {
+      const player = ref.current;
+      if (player) {
+        player.pause?.();
+        player.seekTo(frame);
+        return true;
+      }
+    } catch {
+      /* fall through to the retry — the next paint may settle it */
+    }
+    if (attempt < SEEK_ATTEMPTS - 1) await afterPaint();
+  }
+  return false;
+}
+
 /**
  * Install the singleton seek bridge on `window`. Idempotent — the first
  * VideoComp to mount wins; later mounts reuse the same functions. The bridge
@@ -156,11 +199,32 @@ export function installMaudeSeekBridge(): void {
     if (entries.length > 0) {
       for (const e of entries) {
         const f = clamp(Math.round(frame), 0, Math.max(0, e.durationInFrames - 1));
-        try {
-          e.ref.current?.pause();
-          e.ref.current?.seekTo(f);
-        } catch {
-          /* Player not yet ready — a later seek settles it */
+        // This used to be a bare try/catch with an empty body and the comment
+        // "Player not yet ready — a later seek settles it". That made a seek
+        // that COMPLETELY FAILED resolve as success: `afterPaint()` proves a
+        // paint happened, not that the right content was in it. Serially it was
+        // benign — frame N+1 repaired frame N's miss, and only frame 0 was ever
+        // exposed — which is exactly why it survived. It is not benign the
+        // moment anything captures ranges in parallel: every range boundary is a
+        // first seek on a cold page, so "a later seek settles it" would be
+        // invoked once per worker instead of once per export, and a stale frame
+        // is a valid-looking file with wrong pixels, not a crash.
+        //
+        // So the hope becomes an explicit bounded retry, and exhausting it is a
+        // real failure the capture shim can see and refuse to ship.
+        if (!(await seekEntryWithRetry(e.ref, f))) {
+          // ALWAYS recorded, so the capture shim can refuse the export even on
+          // the non-strict path. Only THROWN under `strict`, which the shim
+          // passes: a live UI scrub of a still-mounting comp should stay
+          // resilient, but a capture must never proceed on a seek that did not
+          // happen. The old code did neither — it just resolved.
+          w.__maude_seek_failures__ = (w.__maude_seek_failures__ ?? 0) + 1;
+          if (opts?.strict) {
+            throw new Error(
+              `__maude_seek__: comp did not accept frame ${f} after ${SEEK_ATTEMPTS} attempts ` +
+                '(Player never became ready) — refusing to report a seek that did not happen'
+            );
+          }
         }
       }
       await afterPaint();
