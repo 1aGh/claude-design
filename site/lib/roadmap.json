@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-08T09:08:21.959Z",
+  "generated": "2026-08-09T17:12:07.676Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1892,6 +1892,17 @@
       "summary": "The moodboard direction gates catch a disliked direction before the scaffold. They do not catch a scaffold that ran but produced silently-broken output — empty files trusted as written, a transpile...",
       "planPath": ".ai/plans/archive/setup-ds-round2-scaffold-integrity-and-devserver-fixes.md",
       "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-fast-video-export",
+      "title": "Feature: Fast video export (858 frames in seconds, not 15 minutes)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-fast-video-export.md",
+      "archived": false,
       "phaseKey": null
     },
     {
