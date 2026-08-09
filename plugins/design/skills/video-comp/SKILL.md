@@ -39,10 +39,12 @@ video-comps that means:
 - `@maude/canvas-lib` — `DesignCanvas`, `DCSection`, `DCArtboard`, **`VideoComp`**.
 - `remotion` — `useCurrentFrame`, `useVideoConfig`, `interpolate`, `spring`,
   `Easing`, `random`, `AbsoluteFill`, `Sequence`, `Series`, `Loop`, `Freeze`,
-  `Img`, `OffthreadVideo`, `Audio`, `staticFile`, `interpolateColors`.
-- `@remotion/media` — `<Video>`, the audio-capable video element (see
-  "Audio in exports" below — **use this, not `remotion`'s `OffthreadVideo`,
-  whenever the clip's own audio must survive the export**).
+  `Img`, `staticFile`, `interpolateColors`.
+  **Never `Audio` or `OffthreadVideo` from here** — see "Audio in exports" below.
+- `@remotion/media` — **`<Video>` AND `<Audio>`**, the audio-capable media
+  elements. These are the only media elements the export path can render (see
+  "Audio in exports" below — this is not a preference, an export of a comp using
+  `remotion`'s versions loses its audio).
 - `@remotion/transitions` — `TransitionSeries`, `linearTiming`, `springTiming`.
 - Transition **presentations** (each a separate import): `@remotion/transitions/fade`,
   `/slide`, `/wipe`, `/flip`, `/clock-wipe`, `/none`. (Exotic presentations like
@@ -58,7 +60,8 @@ The Timeline's manual editor and the agent door speak the same per-clip props �
 when authoring or editing a comp, use exactly these spellings so the
 two-tokenizer contract (`enumerateClips` display + `timeline-parse.js`) holds:
 
-- **Speed**: `playbackRate={2}` on the media element (`<Video>`/`<OffthreadVideo>`/`<Audio>`).
+- **Speed**: `playbackRate={2}` on the media element (`<Video>`/`<Audio>`, both
+  from `@remotion/media`).
   The clip's `durationInFrames` = source frames ÷ rate. No speed ramps.
 - **In-point**: `trimBefore={N}` on the media element (source frames; `startFrom`
   is the legacy spelling — read both, always EMIT `trimBefore`).
@@ -144,31 +147,46 @@ import { slide } from '@remotion/transitions/slide';
 </TransitionSeries>
 ```
 
-- **Video/audio**: `<Video src="assets/clip.mp4" />` (from `@remotion/media` —
-  see "Audio in exports" below) / `<OffthreadVideo>` (silent b-roll only) /
-  `<Audio src="assets/music.mp3" volume={0.6} startFrom={30} />`. Sources are
+- **Video/audio**: `<Video src="assets/clip.mp4" />` and
+  `<Audio src="assets/music.mp3" volume={0.6} trimBefore={30} />` — **both from
+  `@remotion/media`**, see "Audio in exports" below. Sources are
   **always** relative `assets/…` paths (see below).
 
-## Audio in exports: `<Video>` from `@remotion/media`, NEVER `<OffthreadVideo>`
+## Audio in exports: BOTH `<Video>` and `<Audio>` come from `@remotion/media`
 
 MP4 export with audio goes through exactly one path — `renderMediaOnWeb`
-(`@remotion/web-renderer`) — and that path **does not support `OffthreadVideo`**.
-When a comp uses `OffthreadVideo` for a clip whose audio matters, the export
-**silently degrades** to the frame-step fallback: the resulting file has no
-audio track, but the job still reports `status: done`. The reason for the
-fallback goes only to the dev-server's stderr — nothing about it is written to
-the job record, so there is no artifact-level signal that anything went wrong.
+(`@remotion/web-renderer`) — and that path supports **only `@remotion/media`
+media elements**. Two elements from `remotion` are rejected outright:
+
+| Don't import from `remotion` | Import from `@remotion/media` | Why |
+| --- | --- | --- |
+| `OffthreadVideo` | `Video` | rejected by the renderer |
+| `Audio` | `Audio` | `remotion`'s `Audio` **IS** `Html5Audio`, rejected by the renderer |
 
 ```tsx
-import { Video } from '@remotion/media';   // not OffthreadVideo from 'remotion'
+import { Audio, Video } from '@remotion/media';   // ← both, always
 
 <Video src="assets/clip.mp4" trimBefore={30} trimAfter={120} volume={0.8} />
+<Audio src="assets/music.mp3" volume={0.6} trimBefore={30} />
 ```
 
-The props are a 1:1 swap with `OffthreadVideo` (`src`, `trimBefore`, `trimAfter`,
-`style`, `muted`, `playbackRate`, `volume`) — reach for `<Video>` whenever a
-clip's own audio needs to make it into the export; keep `OffthreadVideo` only
-for genuinely silent b-roll.
+Both are 1:1 prop swaps (`src`, `trimBefore`, `trimAfter`, `style`, `muted`,
+`playbackRate`, `volume` — including the function form of `volume`).
+
+**Pass `disallowFallbackToHtml5Audio` when the audio is essential.**
+`@remotion/media`'s `Audio` can itself fall back to `Html5Audio` under some
+conditions (see its `fallbackHtml5AudioProps`), which would reopen the exact
+failure this section exists to prevent.
+
+> **This cost a real user two full export cycles** (RCA
+> `issue-mp4-audio-export-html5audio-silent-degrade`). A 9:16 comp with a
+> saxophone bed exported **muted** four times while the job reported `done`; the
+> sibling 16:9 artboard in the same file was fine because it had no `<Audio>` at
+> all. The export also ran **~40× slower** (~37 min vs ~45 s) because the
+> rejection drops it onto the frame-step fallback. The export now **refuses**
+> this comp up front with the one-line fix rather than degrading silently, so a
+> comp authored against an older version of this page fails loudly instead of
+> quietly.
 
 **After every export that should have audio, verify the artifact, not the job
 status** — a `done` status proves the render finished, not that the file is
@@ -232,7 +250,8 @@ asked to stitch N dropped clips together, however many N is.
 
 ```tsx
 import { DesignCanvas, DCSection, DCArtboard, VideoComp } from '@maude/canvas-lib';
-import { AbsoluteFill, Audio, OffthreadVideo, interpolate, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion';
+import { Audio, Video } from '@remotion/media'; // NOT from 'remotion' — see "Audio in exports"
 import { TransitionSeries, linearTiming } from '@remotion/transitions';
 import { fade } from '@remotion/transitions/fade';
 
@@ -247,7 +266,7 @@ const Clip = ({ src, label }: { src: string; label: string }) => {
   const up = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: 'clamp' });
   return (
     <AbsoluteFill>
-      <OffthreadVideo src={src} />
+      <Video src={src} />
       <AbsoluteFill style={{ justifyContent: 'flex-end', padding: 48 }}>
         <div style={{ color: 'var(--fg-0)', fontSize: 40, fontWeight: 700, opacity: up }}>{label}</div>
       </AbsoluteFill>
@@ -337,10 +356,10 @@ below is a **pure function of `useCurrentFrame()`** (the iron law) — build it 
 hand from `interpolate`/`spring`/`random`; there is **no** effects library to
 import. Proven in the Alligators cinematic-cut dogfood (2026-07-10):
 
-- **Cinematic grade** — a CSS `filter` on the `<OffthreadVideo>` (`contrast`
+- **Cinematic grade** — a CSS `filter` on the `<Video>` (`contrast`
   `saturate` `brightness` `hue-rotate` `sepia`) + a teal/orange gradient wash div.
 - **Ken-Burns** — per-clip `transform: scale()/translate()` driven by clip progress.
-- **Slow-mo / speed ramp** — `<OffthreadVideo playbackRate={0.5} />` (deterministic).
+- **Slow-mo / speed ramp** — `<Video playbackRate={0.5} />` (deterministic).
 - **Impact camera shake** — `translate`/`rotate` by `random(\`seed${Math.floor(frame)}\`)`.
 - **Impact zoom-punch** — a quick `scale` spike over the first ~10 frames of a hit.
 - **Kinetic typography** — split text to `<span>`s, per-letter `spring({frame: frame - i*2})`
@@ -357,7 +376,7 @@ import. Proven in the Alligators cinematic-cut dogfood (2026-07-10):
 - **Light-leak sweep** — an animated radial gradient translated across, `screen` blend.
 - **VHS / archival treatment** — `repeating-linear-gradient` scanlines + a `REC ●`
   bug + a frame-derived timecode; makes low-res source footage read as *intentional*.
-- **Split-screen** — a flex row of N `<OffthreadVideo>` with a `clipPath` wipe-in.
+- **Split-screen** — a flex row of N `<Video>` with a `clipPath` wipe-in.
 - **Motion-graphic infographics** (Remotion's home turf):
   - **animated chalkboard play diagram** — an SVG route that draws itself via
     `strokeDasharray`/`strokeDashoffset`, with a ball-carrier dot walking the same

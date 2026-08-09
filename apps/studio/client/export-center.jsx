@@ -293,6 +293,10 @@ function etaLabel(job) {
 }
 
 function StatusPill({ job }) {
+  // A degraded export is `done` — the file is real — but it is NOT clean, and a
+  // plain "Ready" pill is exactly how a muted mp4 shipped unnoticed for four
+  // attempts (RCA issue-mp4-audio-export-html5audio-silent-degrade).
+  const degraded = job.status === 'done' && !!job.degraded;
   const statusText =
     job.status === 'queued'
       ? 'Queued'
@@ -301,14 +305,40 @@ function StatusPill({ job }) {
           ? `${job.progress.current} of ${job.progress.total}`
           : 'Rendering…'
         : job.status === 'done'
-          ? 'Ready'
+          ? degraded && job.degraded.audioDropped
+            ? 'Ready · no audio'
+            : degraded
+              ? 'Ready · degraded'
+              : 'Ready'
           : 'Failed';
   const eta = job.status === 'running' ? etaLabel(job) : null;
   return (
-    <span className={`st-export-pill st-export-pill--${job.status}`}>
+    <span
+      className={`st-export-pill st-export-pill--${job.status}${
+        degraded ? ' st-export-pill--degraded' : ''
+      }`}
+    >
       {statusText}
       {eta ? ` · ${eta}` : ''}
     </span>
+  );
+}
+
+/**
+ * The "your file is missing something" row. Rendered on a `done` job that came
+ * back degraded — in the panel row and in the completion toast, because the
+ * whole failure mode of this bug was that neither surface said anything.
+ */
+function DegradedNote({ degraded }) {
+  if (!degraded) return null;
+  return (
+    <div className="st-export-degraded" data-testid="export-degraded-note">
+      <span aria-hidden="true">⚠</span>{' '}
+      {degraded.audioDropped
+        ? 'Exported without audio.'
+        : 'Exported with reduced fidelity.'}
+      {degraded.remedy ? <div className="st-export-degraded__fix">{degraded.remedy}</div> : null}
+    </div>
   );
 }
 
@@ -350,8 +380,14 @@ export function ExportToast({ center }) {
         ×
       </button>
       <div className="st-toast-hd">
-        <span aria-hidden="true">{pending ? '⋯' : ok ? '⬇' : '⚠'}</span>
-        {pending ? 'Exporting…' : ok ? 'Export ready' : 'Export failed'}
+        <span aria-hidden="true">{pending ? '⋯' : ok && !job.degraded ? '⬇' : '⚠'}</span>
+        {pending
+          ? 'Exporting…'
+          : ok
+            ? job.degraded
+              ? 'Export ready — with a problem'
+              : 'Export ready'
+            : 'Export failed'}
       </div>
       <div className="st-toast-title">{jobLabel(job)}</div>
       {pending ? (
@@ -364,6 +400,7 @@ export function ExportToast({ center }) {
           {ok ? (job.filename ?? 'Ready to download.') : (job.error ?? 'Something went wrong.')}
         </div>
       )}
+      {ok && <DegradedNote degraded={job.degraded} />}
       {ok && (
         <div className="st-toast-actions">
           <button
@@ -437,6 +474,7 @@ export function ExportPanel({ center }) {
                   {(job.status === 'queued' || job.status === 'running') && (
                     <ProgressBar progress={job.progress} />
                   )}
+                  {job.status === 'done' && <DegradedNote degraded={job.degraded} />}
                   {job.status === 'done' && (
                     <div className="st-export-item__ft">
                       <span className="st-export-item__filename">{job.filename}</span>

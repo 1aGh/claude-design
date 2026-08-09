@@ -153,7 +153,10 @@ describe('/_api/canvas — POST round-trip', () => {
       expect(j.ok).toBe(true);
       const tsx = readFileSync(join(designRoot, 'ui', 'My Reel.tsx'), 'utf8');
       expect(tsx).toContain('<VideoComp component={Comp}');
-      expect(tsx).toContain('<OffthreadVideo src="assets/a.mp4" />');
+      // <Video> from @remotion/media, not <OffthreadVideo> — the renderer
+      // rejects the latter and the export loses its audio (RCA
+      // issue-mp4-audio-export-html5audio-silent-degrade).
+      expect(tsx).toContain('<Video src="assets/a.mp4" />');
       expect(tsx).toContain('<Audio src="assets/music.mp3" />');
       expect(tsx).toContain('name="clip-1"');
       const m = JSON.parse(readFileSync(join(designRoot, 'ui', 'My Reel.meta.json'), 'utf8'));

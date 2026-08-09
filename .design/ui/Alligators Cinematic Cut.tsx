@@ -2,7 +2,6 @@ import { DesignCanvas, DCSection, DCArtboard, VideoComp } from '@maude/canvas-li
 import {
   AbsoluteFill,
   Easing,
-  OffthreadVideo,
   Sequence,
   interpolate,
   random,
@@ -10,6 +9,10 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
+// <Video> from @remotion/media, not <Video> — only @remotion/media
+// elements survive the export's audio path (RCA
+// issue-mp4-audio-export-html5audio-silent-degrade).
+import { Video } from '@remotion/media';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Alligators Brno — CINEMATIC CUT  ·  Remotion max-potential showcase
@@ -97,7 +100,7 @@ const Clip = ({
           transform: `translate(${tx + j.x}px, ${j.y}px) scale(${kb * punchS}) rotate(${j.r}deg)`,
         }}
       >
-        <OffthreadVideo
+        <Video
           src={src}
           startFrom={startFrom}
           playbackRate={playbackRate}
@@ -210,7 +213,7 @@ const SplitThree = ({ clips }: { clips: { src: string; startFrom: number }[] }) 
     <AbsoluteFill style={{ display: 'flex', flexDirection: 'row', background: '#000' }}>
       {clips.map((c, i) => (
         <div key={i} style={{ position: 'relative', flex: 1, overflow: 'hidden', clipPath: `inset(0 0 ${100 - wipe}% 0)`, borderRight: i < 2 ? '2px solid #0b0b0b' : 'none' }}>
-          <OffthreadVideo src={c.src} startFrom={c.startFrom} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'contrast(1.18) saturate(0.7) brightness(0.92)' }} />
+          <Video src={c.src} startFrom={c.startFrom} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'contrast(1.18) saturate(0.7) brightness(0.92)' }} />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 60%, rgba(0,20,18,0.5))' }} />
         </div>
       ))}

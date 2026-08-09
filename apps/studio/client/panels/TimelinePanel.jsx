@@ -44,7 +44,7 @@ import { ContextMenuView } from '../../context-menu.tsx';
 function rowKind(seq) {
   if (seq.placeholder) return 'placeholder';
   const t = seq.mediaTag;
-  if (t === 'Video' || t === 'OffthreadVideo') return 'video';
+  if (t === 'Video' || t === 'OffthreadVideo' || t === 'MaudeVideo') return 'video';
   if (t === 'Img') return 'image';
   if (t === 'Audio') return 'audio';
   return 'jsx';
@@ -981,7 +981,7 @@ export default function TimelinePanel({
     // bare tag name as the clip's identity — "Clip N" beats "bca08b1e.mov";
     // the real src stays in the tooltip.
     const rawName =
-      ['Video', 'OffthreadVideo', 'Audio', 'Img'].includes(seq.label) && seq.mediaSrc
+      ['Video', 'OffthreadVideo', 'Audio', 'Img', 'MaudeVideo', 'MaudeAudio', 'MaudeImg'].includes(seq.label) && seq.mediaSrc
         ? String(seq.mediaSrc).split('/').pop()
         : seq.label;
     const isHashName = /^[a-f0-9]{6,16}\.\w+$/i.test(rawName || '');

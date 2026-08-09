@@ -30,6 +30,7 @@ import path from 'node:path';
 import type { Bus } from '../context.ts';
 import {
   type ExportContext,
+  type ExportDegradation,
   type ExportOptions,
   type ExportResult,
   type Format,
@@ -50,6 +51,8 @@ export interface ExportHistoryEntry {
   startedAt?: string;
   finishedAt?: string;
   error?: string;
+  /** Present when the export produced less than was asked for (e.g. muted mp4). */
+  degraded?: ExportDegradation;
 }
 
 export type ExportJobStatus = 'queued' | 'running' | 'done' | 'failed';
@@ -67,6 +70,13 @@ export interface ExportJob {
   filename?: string;
   contentType?: string;
   error?: string;
+  /**
+   * Set when the export finished but produced less than was asked for. `status`
+   * stays `done` (the file is real); this is what tells the UI, the WS
+   * subscriber and the history ledger that it is not a clean result.
+   * RCA `issue-mp4-audio-export-html5audio-silent-degrade`.
+   */
+  degraded?: ExportDegradation;
 }
 
 export interface EnqueueArgs {
@@ -252,6 +262,9 @@ export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQue
         startedAt: j.startedAt,
         finishedAt: j.finishedAt,
         error: j.error,
+        // A muted mp4 must not look like a clean one in the ledger either — the
+        // history entry is what a later session (or an agent) reads back.
+        degraded: j.degraded,
       }));
   }
 
@@ -329,6 +342,12 @@ export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQue
         job.finishedAt = new Date().toISOString();
         job.filename = res.filename;
         job.contentType = res.contentType;
+        // `done` + `degraded` is a real, deliberate combination: the file exists
+        // and is downloadable, but it is missing something that was asked for.
+        // Before this, the ONLY trace of a muted mp4 was a console.error line in
+        // the desktop app's stderr — see RCA
+        // issue-mp4-audio-export-html5audio-silent-degrade.
+        if (res.degraded) job.degraded = res.degraded;
         if (res.body.byteLength) {
           const dir = path.join(jobsDir, id);
           await mkdir(dir, { recursive: true });

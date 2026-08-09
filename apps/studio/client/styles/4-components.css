@@ -1399,6 +1399,27 @@
   background: color-mix(in oklab, var(--u-status-error) 18%, transparent);
   color: var(--u-status-error);
 }
+/* A degraded export is `done` but not clean — it must never read as success.
+   Overrides --done, so declaration order matters. */
+.st-export-pill--degraded {
+  background: color-mix(in oklab, var(--u-status-warning, var(--u-accent)) 18%, transparent);
+  color: var(--u-status-warning, var(--u-accent));
+}
+.st-export-degraded {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--u-status-warning, var(--u-accent));
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in oklab, var(--u-status-warning, var(--u-accent)) 10%, transparent);
+}
+.st-export-degraded__fix {
+  margin-top: 4px;
+  color: var(--u-fg-2);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
 .st-export-progress {
   position: relative;
   height: 4px;

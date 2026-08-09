@@ -1,13 +1,16 @@
 import { DesignCanvas, DCSection, DCArtboard, VideoComp } from '@maude/canvas-lib';
 import {
   AbsoluteFill,
-  Audio,
-  OffthreadVideo,
   interpolate,
   spring,
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
+// Media elements come from @remotion/media — `remotion`'s Audio IS Html5Audio,
+// which the export's audio renderer rejects (RCA
+// issue-mp4-audio-export-html5audio-silent-degrade). This file was the in-repo
+// casualty: Maude's own trailer could not export with sound.
+import { Audio, Video } from '@remotion/media';
 import { TransitionSeries, linearTiming } from '@remotion/transitions';
 import { fade } from '@remotion/transitions/fade';
 
@@ -224,7 +227,7 @@ const CloseLogo = () => {
   });
   return (
     <AbsoluteFill>
-      <OffthreadVideo src="assets/c34ec202.mov" startFrom={Math.round(53.5 * FPS)} style={{ ...cover, opacity: dim }} />
+      <Video src="assets/c34ec202.mov" startFrom={Math.round(53.5 * FPS)} style={{ ...cover, opacity: dim }} />
       <CanvasGrid opacity={0.12} />
       <Logo />
     </AbsoluteFill>
@@ -237,24 +240,24 @@ const Reel = () => (
   <AbsoluteFill style={{ background: 'var(--bg-0)' }}>
     <TransitionSeries>
       <TransitionSeries.Sequence name="open" durationInFrames={30}>
-        <OffthreadVideo src="assets/b409185a.mov" startFrom={Math.round(7.6 * FPS)} style={cover} />
+        <Video src="assets/b409185a.mov" startFrom={Math.round(7.6 * FPS)} style={cover} />
       </TransitionSeries.Sequence>
 
       <TransitionSeries.Sequence name="panel-reveal" durationInFrames={75} premountFor={24}>
         <AbsoluteFill>
-          <OffthreadVideo src="assets/b409185a.mov" startFrom={Math.round(10 * FPS)} style={cover} />
+          <Video src="assets/b409185a.mov" startFrom={Math.round(10 * FPS)} style={cover} />
           <CanvasGrid opacity={0.1} />
           <Title kicker="Maude" text="Photo Editor" />
         </AbsoluteFill>
       </TransitionSeries.Sequence>
 
       <TransitionSeries.Sequence name="kickoff" durationInFrames={70} premountFor={24}>
-        <OffthreadVideo src="assets/30783aa8.mov" startFrom={Math.round(24 * FPS)} style={cover} />
+        <Video src="assets/30783aa8.mov" startFrom={Math.round(24 * FPS)} style={cover} />
       </TransitionSeries.Sequence>
 
       <TransitionSeries.Sequence name="before-after" durationInFrames={100} premountFor={24}>
         <AbsoluteFill>
-          <OffthreadVideo src="assets/df1fd2f2.mov" startFrom={Math.round(16.3 * FPS)} style={cover} />
+          <Video src="assets/df1fd2f2.mov" startFrom={Math.round(16.3 * FPS)} style={cover} />
           <AccentPing />
           <Caption text="AI removes the background — automatically" />
         </AbsoluteFill>
@@ -264,12 +267,12 @@ const Reel = () => (
           beat — was a hard cut, now a gentle 10f crossfade. */}
       <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: 10 })} />
       <TransitionSeries.Sequence name="badge-proof" durationInFrames={70} premountFor={24}>
-        <OffthreadVideo src="assets/c34ec202.mov" startFrom={Math.round(15 * FPS)} style={cover} />
+        <Video src="assets/c34ec202.mov" startFrom={Math.round(15 * FPS)} style={cover} />
       </TransitionSeries.Sequence>
 
       <TransitionSeries.Sequence name="recrop-payoff" durationInFrames={90} premountFor={24}>
         <AbsoluteFill>
-          <OffthreadVideo src="assets/ac68f707.mov" startFrom={Math.round(56.5 * FPS)} style={cover} />
+          <Video src="assets/ac68f707.mov" startFrom={Math.round(56.5 * FPS)} style={cover} />
           <AccentPing />
           <Caption text="Done in seconds" />
         </AbsoluteFill>
@@ -279,11 +282,11 @@ const Reel = () => (
           was a hard cut, now a 12f crossfade. */}
       <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: 12 })} />
       <TransitionSeries.Sequence name="ready-handoff" durationInFrames={55} premountFor={24}>
-        <OffthreadVideo src="assets/df1fd2f2.mov" startFrom={Math.round(55 * FPS)} style={cover} />
+        <Video src="assets/df1fd2f2.mov" startFrom={Math.round(55 * FPS)} style={cover} />
       </TransitionSeries.Sequence>
 
       <TransitionSeries.Sequence name="manual-edit" durationInFrames={85} premountFor={24}>
-        <OffthreadVideo src="assets/c34ec202.mov" startFrom={Math.round(25.8 * FPS)} style={cover} />
+        <Video src="assets/c34ec202.mov" startFrom={Math.round(25.8 * FPS)} style={cover} />
       </TransitionSeries.Sequence>
 
       <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: 15 })} />

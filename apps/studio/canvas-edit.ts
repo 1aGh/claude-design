@@ -1641,7 +1641,21 @@ const CLIP_TAGS = new Set(['Sequence', 'Series.Sequence', 'TransitionSeries.Sequ
 /** Transition tags (occupy a slot between clips inside a TransitionSeries). */
 const TRANSITION_TAGS = new Set(['Series.Transition', 'TransitionSeries.Transition']);
 /** Media tags that carry a `src` (the replace-media + drop targets). */
-const MEDIA_TAGS = new Set(['Video', 'OffthreadVideo', 'Audio', 'Img', 'Image']);
+// `Maude*` spellings are the collision-avoidance ALIASES clip-ops emits when a
+// canvas already declares a component of that name (e.g. `export default
+// function Video()`). They are the same elements and must tokenize the same,
+// or the Timeline silently loses the clip's media (RCA
+// issue-mp4-audio-export-html5audio-silent-degrade follow-up).
+const MEDIA_TAGS = new Set([
+  'Video',
+  'OffthreadVideo',
+  'Audio',
+  'Img',
+  'Image',
+  'MaudeVideo',
+  'MaudeAudio',
+  'MaudeImg',
+]);
 /** Remotion/layout primitives that are structural, not their own timeline layer. */
 const LAYER_SKIP_TAGS = new Set([
   'AbsoluteFill',
@@ -4534,7 +4548,7 @@ export function assembleCompSource(
       const dur = Math.max(1, Math.round(c.durationInFrames ?? defDur));
       seqLines.push(
         `        <TransitionSeries.Sequence name="clip-${i + 1}" durationInFrames={${dur}}>`,
-        `          <OffthreadVideo src="${escapeAttr(c.src)}" />`,
+        `          <Video src="${escapeAttr(c.src)}" />`,
         `        </TransitionSeries.Sequence>`
       );
       cursor += dur;
@@ -4557,16 +4571,26 @@ export function assembleCompSource(
   // the cursor (with the historical defDur floor for degenerate inputs).
   const total = videos.length || audios.length ? Math.max(cursor, defDur) : fps * 5;
 
+  // Media elements come from @remotion/media, NEVER from 'remotion'. The export's
+  // only audio-capable path (renderMediaOnWeb) rejects `remotion`'s `Audio`
+  // (= Html5Audio) and `OffthreadVideo` outright, so a reel assembled with those
+  // exports MUTED — and ~40x slower, on the frame-step fallback. Every reel this
+  // function emits has a music bed by default, which made it the widest carrier
+  // of the bug. RCA issue-mp4-audio-export-html5audio-silent-degrade.
   const remotionImports = ['AbsoluteFill'];
-  if (videos.length) remotionImports.push('OffthreadVideo');
-  if (audios.length) remotionImports.push('Audio');
+  const mediaImports: string[] = [];
+  if (videos.length) mediaImports.push('Video');
+  if (audios.length) mediaImports.push('Audio');
   const transitionsImport = videos.length
     ? `import { TransitionSeries } from '@remotion/transitions';\n`
+    : '';
+  const mediaImport = mediaImports.length
+    ? `import { ${mediaImports.join(', ')} } from '@remotion/media';\n`
     : '';
 
   return [
     `import { DesignCanvas, DCSection, DCArtboard, VideoComp } from '@maude/canvas-lib';`,
-    `${transitionsImport}import { ${remotionImports.join(', ')} } from 'remotion';`,
+    `${transitionsImport}${mediaImport}import { ${remotionImports.join(', ')} } from 'remotion';`,
     ``,
     `const Comp = () => (`,
     `  <AbsoluteFill style={{ background: 'var(--bg-0)' }}>`,

@@ -20,6 +20,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { getEncodeLibBundle, getWebRendererBundle } from './_browser-bundles.ts';
+import { type ExportDegradation, hasAudioStream, remedyFor } from './degraded.ts';
+import { audioRefusalMessage, scanUnsupportedMedia } from './unsupported-media.ts';
 import { exportShimPath, runShim } from './_runtime.ts';
 import {
   canvasShellUrl,
@@ -65,6 +67,30 @@ async function runVideo(
     throw new Error(
       `${format} export needs an artboard target — make the artboard a video-comp or add motion`
     );
+  }
+
+  // Pre-flight the two elements the audio renderer rejects, BEFORE launching a
+  // browser (RCA issue-mp4-audio-export-html5audio-silent-degrade). This is
+  // decidable from source and always fails, so discovering it 37 minutes later
+  // via a muted file is pure waste. GIF is silent by format, so it is exempt.
+  let preStamped: ExportDegradation | undefined;
+  if (format !== 'gif' && options.allowUnsupportedMedia !== true) {
+    const canvasAbs = path.resolve(ctx.repoRoot, el.file);
+    for (const finding of scanUnsupportedMedia(canvasAbs)) {
+      if (finding.element === 'Audio' && options.audio !== false) {
+        // Refuse. A vanished music bed is worse than an export that did not run.
+        throw new Error(audioRefusalMessage(finding, el.file));
+      }
+      if (finding.element === 'OffthreadVideo') {
+        // Warn, don't refuse — <OffthreadVideo> is often legitimately silent
+        // b-roll, so blocking the export would be the wrong trade.
+        preStamped = {
+          audioDropped: true,
+          reason: `<OffthreadVideo> in ${el.file} is not supported by @remotion/web-renderer`,
+          remedy: remedyFor('OffthreadVideo'),
+        };
+      }
+    }
   }
 
   // gif has no renderMediaOnWeb container support (and no audio need — GIF is a
@@ -159,6 +185,9 @@ async function runVideo(
     // issue-video-mp4-rendermediaonweb-stack-overflow) — surfaced here so the
     // dropped audio isn't silent (job stderr / logs; a UI toast is a follow-up).
     let ext: string = format;
+    // A pre-flight finding stands unless the shim reports its own, more specific
+    // cause below — never let a clean-looking summary erase a known defect.
+    let degraded: ExportDegradation | undefined = preStamped;
     try {
       const lastLine = stdoutLines.at(-1) ?? '{}';
       const summary = JSON.parse(lastLine) as {
@@ -169,19 +198,44 @@ async function runVideo(
       };
       if (summary.container) ext = summary.container;
       if (summary.degraded) {
+        const reason = summary.fallbackReason ?? 'unknown';
         console.error(
           `⚠ ${format} export degraded: the audio renderer failed ` +
-            `(${summary.fallbackReason ?? 'unknown'}), so this file was captured ` +
+            `(${reason}), so this file was captured ` +
             'frame-by-frame and has no audio.'
         );
+        // This used to stop at the console.error above — the flags were parsed
+        // and then dropped on the floor, so `jobs.ts` set `done` with nothing to
+        // say otherwise and the user got a muted file with a green checkmark.
+        // RCA issue-mp4-audio-export-html5audio-silent-degrade.
+        degraded = {
+          audioDropped: summary.audioDropped !== false,
+          reason,
+          remedy: remedyFor(reason),
+        };
       }
     } catch {
       /* keep the requested ext */
     }
+    // Artifact-level backstop. Everything above trusts a report; this checks the
+    // bytes. The RCA's defining property was that every other signal said the
+    // export was fine — so the last word belongs to the file itself.
+    if (!degraded && wantAudio && format !== 'gif' && !hasAudioStream(body, ext)) {
+      degraded = {
+        audioDropped: true,
+        reason: `the produced ${ext} has no audio track, though audio was requested`,
+        remedy:
+          'Check that the comp mounts <Audio>/<Video> from @remotion/media — ' +
+          "elements imported from 'remotion' are dropped by the audio renderer.",
+      };
+      console.error(`⚠ ${format} export produced no audio track despite audio being requested.`);
+    }
+
     return {
       filename: `${el.canvasSlug}.${ext}`,
       contentType: CONTENT_TYPE[ext] ?? 'application/octet-stream',
       body,
+      degraded,
     };
   } finally {
     rmSync(tmp, { recursive: true, force: true });

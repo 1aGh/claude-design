@@ -341,16 +341,24 @@ export function applyInsertClipAt(
   }
   const dur = Math.max(1, Math.round(opts.durationInFrames));
   const srcTrim = (opts.src ?? '').trim();
-  const media =
+  const media: { tag: string; src: string; importName: string; specifier: string } | null =
     opts.mediaTag && INSERTABLE_MEDIA.has(opts.mediaTag) && srcTrim
-      ? { tag: opts.mediaTag, src: srcTrim }
+      ? { tag: opts.mediaTag, src: srcTrim, importName: opts.mediaTag, specifier: 'remotion' }
       : null;
   if (media) {
     assertContainedSrc(canvasAbsPath, media.src, artboardId ?? '');
-    // House spelling: <OffthreadVideo> for video (frame-accurate export, and it
-    // can never collide with a canvas component named `Video` — the brief-board
-    // upgrade bug where the emitted tag resolved to the canvas itself).
-    if (media.tag === 'Video') media.tag = 'OffthreadVideo';
+    // This used to rewrite <Video> → <OffthreadVideo> as "house spelling", to
+    // dodge a collision with a canvas component named `Video`. That trade was
+    // wrong in one direction nobody noticed: <OffthreadVideo> is rejected by
+    // @remotion/web-renderer, so the editor was silently converting the
+    // audio-capable element into the audio-killing one behind the author's
+    // back — every inserted clip exported muted (RCA
+    // issue-mp4-audio-export-html5audio-silent-degrade). The collision is real,
+    // so it is now solved where it belongs: in the import (see resolveMediaTag).
+    const resolved = resolveMediaTag(source, media.tag);
+    media.tag = resolved.emitTag;
+    media.importName = resolved.importName;
+    media.specifier = resolved.specifier;
   }
 
   const seqs = cc.clips.filter((c) => c.kind === 'sequence');
@@ -403,7 +411,7 @@ export function applyInsertClipAt(
       );
       ensureImportPublic(s2, source, 'TransitionSeries', '@remotion/transitions');
       if (opts.placeholder) ensureNamedImport(s2, source, 'AIPlaceholder', '@maude/canvas-lib');
-      if (media) ensureNamedImport(s2, source, media.tag, 'remotion');
+      if (media) ensureNamedImport(s2, source, media.importName, media.specifier);
       const out2 = s2.toString();
       assertParses(canvasAbsPath, out2, artboardId ?? '');
       assertCompSemantics(canvasAbsPath, out2);
@@ -426,7 +434,7 @@ export function applyInsertClipAt(
         ? `\n${indent}  <${media.tag} src="${escapeAttr(media.src)}" />\n${indent}`
         : '';
     if (opts.placeholder) ensureNamedImport(s, source, 'AIPlaceholder', '@maude/canvas-lib');
-    if (media) ensureNamedImport(s, source, media.tag, 'remotion');
+    if (media) ensureNamedImport(s, source, media.importName, media.specifier);
     const beatText = `<${seriesPrefix}.Sequence durationInFrames={${dur}}>${mediaText}</${seriesPrefix}.Sequence>`;
     if (index === 0) {
       // Head insert: B (T) before the first beat.
@@ -514,7 +522,7 @@ export function applyInsertClipAt(
         ? `\n${indent}  <${media.tag} src="${escapeAttr(media.src)}" />\n${indent}`
         : '';
   if (opts.placeholder) ensureNamedImport(s, source, 'AIPlaceholder', '@maude/canvas-lib');
-  if (media) ensureNamedImport(s, source, media.tag, 'remotion');
+  if (media) ensureNamedImport(s, source, media.importName, media.specifier);
   if (titleText) ensureNamedImport(s, source, 'AbsoluteFill', 'remotion');
   ensureNamedImport(s, source, 'Sequence', 'remotion');
   const clipText = `\n${indent}<Sequence from={${from}} durationInFrames={${dur}}>${mediaText}</Sequence>`;
@@ -549,7 +557,7 @@ export function applyInsertClipAt(
     s2.appendLeft(openStart, '<>');
     s2.appendRight(insertAt, `${clipText}\n${indent}</>`);
     if (opts.placeholder) ensureNamedImport(s2, source, 'AIPlaceholder', '@maude/canvas-lib');
-    if (media) ensureNamedImport(s2, source, media.tag, 'remotion');
+    if (media) ensureNamedImport(s2, source, media.importName, media.specifier);
     if (titleText) ensureNamedImport(s2, source, 'AbsoluteFill', 'remotion');
     ensureNamedImport(s2, source, 'Sequence', 'remotion');
     out = s2.toString();
@@ -675,7 +683,7 @@ function setTagAttr(
 function directMediaTagStart(
   source: string,
   clip: ClipInfo,
-  tags = ['Video', 'OffthreadVideo', 'Audio', 'Img']
+  tags = ['Video', 'OffthreadVideo', 'Audio', 'Img', 'MaudeVideo', 'MaudeAudio', 'MaudeImg']
 ): number | null {
   const span = source.slice(clip.start, clip.end);
   const m = span.match(new RegExp(`<(${tags.join('|')})\\b`));
@@ -737,7 +745,7 @@ export function applySetPlaybackRate(
   }
   const { clips } = enumerateClips(canvasAbsPath, source, artboardId);
   const { clip } = mustResolve(canvasAbsPath, clips, stableId, expectedHash);
-  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Audio']);
+  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Audio', 'MaudeVideo', 'MaudeAudio']);
   if (mediaStart == null) {
     throw new CanvasEditError(
       `clip "${stableId}" has no direct media element — speed applies to <Video>/<Audio> clips (shared/wrapper media would change every user)`,
@@ -780,7 +788,7 @@ export function applyTrimIn(
   const delta = Math.round(deltaFrames);
   const { clips } = enumerateClips(canvasAbsPath, source, artboardId);
   const { clip } = mustResolve(canvasAbsPath, clips, stableId, expectedHash);
-  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Audio']);
+  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Audio', 'MaudeVideo', 'MaudeAudio']);
   if (mediaStart == null) {
     throw new CanvasEditError(
       `clip "${stableId}" has no direct media element — in-point trim applies to media clips`,
@@ -843,7 +851,7 @@ export function applyClipAudio(
 ): { source: string } {
   const { clips } = enumerateClips(canvasAbsPath, source, artboardId);
   const { clip } = mustResolve(canvasAbsPath, clips, stableId, expectedHash);
-  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Audio']);
+  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Audio', 'MaudeVideo', 'MaudeAudio']);
   if (mediaStart == null) {
     throw new CanvasEditError(`clip "${stableId}" has no direct media element to set audio on`, {
       canvas: canvasAbsPath,
@@ -882,7 +890,7 @@ export function applyDetachAudio(
 ): { source: string; audioStableId: string | null } {
   const cc = enumerateClips(canvasAbsPath, source, artboardId);
   const { clip } = mustResolve(canvasAbsPath, cc.clips, stableId, expectedHash);
-  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo']);
+  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'MaudeVideo']);
   if (mediaStart == null || !clip.mediaSrc) {
     throw new CanvasEditError(
       `clip "${stableId}" has no direct video media with a literal src to detach`,
@@ -1038,7 +1046,7 @@ export function applyClipGrade(
 ): { source: string; filter: string } {
   const { clips } = enumerateClips(canvasAbsPath, source, artboardId);
   const { clip } = mustResolve(canvasAbsPath, clips, stableId, expectedHash);
-  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Img']);
+  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Img', 'MaudeVideo', 'MaudeImg']);
   if (mediaStart == null) {
     throw new CanvasEditError(`clip "${stableId}" has no direct media element to grade`, {
       canvas: canvasAbsPath,
@@ -1096,7 +1104,7 @@ export function applyClipFraming(
 ): { source: string } {
   const { clips } = enumerateClips(canvasAbsPath, source, artboardId);
   const { clip } = mustResolve(canvasAbsPath, clips, stableId, expectedHash);
-  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Img']);
+  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Img', 'MaudeVideo', 'MaudeImg']);
   if (mediaStart == null) {
     throw new CanvasEditError(`clip "${stableId}" has no direct media element to frame`, {
       canvas: canvasAbsPath,
@@ -1410,6 +1418,44 @@ export function applySplitClip(
 
 /** Ensure `name` is among the named imports from `specifier` (extends an
  *  existing import line, else adds one after the last import). */
+/**
+ * Where an inserted media element must come from.
+ *
+ * `Video` and `Audio` MUST resolve to `@remotion/media` — those are the only
+ * media elements `@remotion/web-renderer` can render, and importing them from
+ * `remotion` (where `Audio` IS `Html5Audio`) makes the export drop its audio
+ * track and fall back to a ~40× slower capture. RCA
+ * `issue-mp4-audio-export-html5audio-silent-degrade`.
+ */
+const MEDIA_SPECIFIER: Record<string, string> = {
+  Video: '@remotion/media',
+  Audio: '@remotion/media',
+  Img: 'remotion',
+  OffthreadVideo: 'remotion',
+};
+
+/**
+ * Import an inserted media element from the right package, aliasing it when the
+ * canvas already declares a component of that name.
+ *
+ * The collision is real — a canvas with its own `const Video = …` would have the
+ * emitted `<Video>` resolve to itself. The old fix was to emit
+ * `<OffthreadVideo>` instead, which silently cost the audio track. Aliasing
+ * keeps the collision solved AND the audio intact. Returns the tag to emit.
+ */
+function resolveMediaTag(
+  source: string,
+  tag: string
+): { emitTag: string; importName: string; specifier: string } {
+  const specifier = MEDIA_SPECIFIER[tag] ?? 'remotion';
+  const declaresLocally = new RegExp(
+    `(?:const|let|var|function|class)\\s+${tag}\\b|\\b${tag}\\s*[:=]\\s*\\(`
+  ).test(source);
+  if (!declaresLocally) return { emitTag: tag, importName: tag, specifier };
+  const alias = `Maude${tag}`;
+  return { emitTag: alias, importName: `${tag} as ${alias}`, specifier };
+}
+
 function ensureNamedImport(s: MagicString, source: string, name: string, specifier: string): void {
   const esc = specifier.replace(/[/]/g, '\\/');
   const line = source.match(new RegExp(`import \\{([^}]*)\\} from ['"]${esc}['"]`));

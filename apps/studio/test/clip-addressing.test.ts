@@ -708,7 +708,12 @@ describe('assembleCompSource — refs → comp (DDR-150 P4 Task 12)', () => {
     ]);
     expect(tsx).toContain('<Audio src="assets/music.mp3" />');
     expect(tsx).toContain(`import { TransitionSeries } from '@remotion/transitions';`);
-    expect(tsx).toContain(`import { AbsoluteFill, OffthreadVideo, Audio } from 'remotion';`);
+    // Media elements MUST come from @remotion/media — importing them from
+    // 'remotion' is what made every assembled reel export muted (RCA
+    // issue-mp4-audio-export-html5audio-silent-degrade).
+    expect(tsx).toContain(`import { Video, Audio } from '@remotion/media';`);
+    expect(tsx).toContain(`import { AbsoluteFill } from 'remotion';`);
+    expect(tsx).not.toContain(`Audio } from 'remotion'`);
     // total driven by the video clip's duration (audio doesn't extend it).
     expect(enumerateClips('/abs/R.tsx', tsx, 'reel').durationInFrames).toBe(90);
   });

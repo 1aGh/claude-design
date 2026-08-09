@@ -2,12 +2,15 @@ import { DesignCanvas, DCSection, DCArtboard, VideoComp } from '@maude/canvas-li
 import {
   AbsoluteFill,
   Easing,
-  OffthreadVideo,
   interpolate,
   spring,
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
+// <Video> from @remotion/media, not <Video> — only @remotion/media
+// elements survive the export's audio path (RCA
+// issue-mp4-audio-export-html5audio-silent-degrade).
+import { Video } from '@remotion/media';
 import { TransitionSeries, linearTiming } from '@remotion/transitions';
 import { fade } from '@remotion/transitions/fade';
 
@@ -69,7 +72,7 @@ const Clip = ({ src, startFrom }: { src: string; startFrom: number }) => {
   return (
     <AbsoluteFill style={{ overflow: 'hidden', background: '#000' }}>
       <div style={{ position: 'absolute', inset: 0, transform: `scale(${scale})` }}>
-        <OffthreadVideo
+        <Video
           src={src}
           startFrom={startFrom}
           style={{

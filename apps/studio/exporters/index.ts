@@ -9,6 +9,7 @@
 import path from 'node:path';
 
 import * as canva from './canva.ts';
+import type { ExportDegradation } from './degraded.ts';
 import * as html from './html.ts';
 import * as pdf from './pdf.ts';
 import * as png from './png.ts';
@@ -72,7 +73,11 @@ export interface ExportResult {
   contentType: string;
   /** Payload bytes. T1 stubs return zero-byte placeholders. */
   body: Uint8Array;
+  /** Set when the export succeeded but produced less than was asked for. */
+  degraded?: ExportDegradation;
 }
+
+export type { ExportDegradation } from './degraded.ts';
 
 /** Progress + cancellation hooks threaded through to the shim-spawning layer. */
 export interface ExportHooks {

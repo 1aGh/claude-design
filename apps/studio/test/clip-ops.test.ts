@@ -755,7 +755,11 @@ describe('applyEnsureVideoComp — kind="video" artboard upgrade', () => {
     expect(r.source).toContain('<VideoComp component={VideoCut}');
     expect(r.source).toContain('width={1280} height={800}');
     expect(r.source).toMatch(/import \{[^}]*AbsoluteFill[^}]*\} from 'remotion';/);
-    expect(r.source).toContain('<OffthreadVideo src="assets/x.mp4" />');
+    // The canvas declares `export default function Video()`, so the inserted
+    // media element is ALIASED to dodge the collision — it is no longer
+    // rewritten to <OffthreadVideo>, which silently cost the audio track.
+    expect(r.source).toContain('<MaudeVideo src="assets/x.mp4" />');
+    expect(r.source).toContain(`import { Video as MaudeVideo } from '@remotion/media';`);
     const cc = enumerateClips('/abs/Video.tsx', r.source, 'brief');
     expect(cc.compName).toBe('VideoCut');
     expect(cc.clips.length).toBe(1);

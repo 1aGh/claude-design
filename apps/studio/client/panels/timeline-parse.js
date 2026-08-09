@@ -123,7 +123,7 @@ export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
   if (usages.length) {
     const target =
       (selectedArtboardId && usages.find((u) => u.artboardId === selectedArtboardId)) ||
-      usages.find((u) => /<(?:Audio|OffthreadVideo|Video)\b/.test(u.body)) ||
+      usages.find((u) => /<(?:Maude)?(?:Audio|OffthreadVideo|Video)\b/.test(u.body)) ||
       usages.find((u) => u.duration != null && u.duration === totalFrames) ||
       usages[0];
     scope = target.body;
@@ -162,7 +162,7 @@ export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
       const lm = after.match(/<([A-Z][A-Za-z0-9]*)\b/);
       // Media child sniff (badge + replace affordance): the first
       // <Video|OffthreadVideo|Audio|Img src="…"> DIRECTLY inside the clip body.
-      const mm = after.match(/<(Video|OffthreadVideo|Audio|Img)\b[^>]*src=["']([^"']+)["']/);
+      const mm = after.match(/<(?:Maude)?(Video|OffthreadVideo|Audio|Img)\b[^>]*src=["']([^"']+)["']/);
       const nameM = attrs.match(/name=["']([^"']+)["']/);
       items.push({
         type: 'seq',
@@ -241,7 +241,7 @@ export function parseCompTimeline(source, totalFrames, selectedArtboardId) {
   // every clip span. Remotion renders it from frame 0 for the whole comp, so
   // show it as a read-only overlay row (`loose: true` — no clip ops; it has no
   // enumerator identity). Dogfood 2026-07-30: these were invisible before.
-  for (const lm of scope.matchAll(/<(OffthreadVideo|Video|Img)\b([^>]*?)\/?>/g)) {
+  for (const lm of scope.matchAll(/<(?:Maude)?(OffthreadVideo|Video|Img)\b([^>]*?)\/?>/g)) {
     const at = lm.index ?? 0;
     if (clipSpans.some(([s2, e2]) => at >= s2 && at <= e2)) continue;
     const srcM = lm[2].match(/src=["']([^"']+)["']/);
