@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-09T17:12:07.676Z",
+  "generated": "2026-08-09T18:53:10.912Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1896,7 +1896,7 @@
     },
     {
       "id": "feature-fast-video-export",
-      "title": "Feature: Fast video export (858 frames in seconds, not 15 minutes)",
+      "title": "Feature: Fast, correct video export",
       "status": "planned",
       "shipTarget": null,
       "date": null,

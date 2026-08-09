@@ -207,6 +207,57 @@ Neither candidate this plan weighed was right. Not `compId === null`; not the re
 
 ---
 
+## Measured findings (2026-08-09, M-series mac)
+
+### GPU / hardware encode — the spike, answered
+
+`VideoEncoder.isConfigSupported({ codec: 'avc1.640028', 1920×1080, hardwareAcceleration: … })`, plus
+median-of-8 `page.screenshot` at 1920×1080:
+
+| engine | h264 prefer-hardware | PNG | JPEG q90 |
+| --- | --- | --- | --- |
+| **`chrome-headless-shell` (what we ship today)** | **false** | 51 ms / 187 KB | 33 ms / 43 KB |
+| `chrome-headless-shell --enable-gpu` | true | 34 ms / 84 KB | 33 ms / 43 KB |
+| full Chromium (new headless) | true | 49 ms / 84 KB | 17 ms / 43 KB |
+| system Google Chrome `--enable-gpu` | true | 34 ms / 84 KB | 17 ms / 43 KB |
+
+- **The research was right**: today's engine is the ONE configuration that cannot reach a hardware
+  encoder. `chrome-headless-shell` forces ANGLE/SwiftShader, so Chromium reports
+  `ACCELERATED_VIDEO_ENCODE` disabled. `--enable-gpu` flips it.
+- **Shipped as `MAUDE_CAPTURE_GPU=1`, off by default, deliberately.** With the GPU the same page
+  rasterizes to a materially different PNG (84 KB vs 187 KB) — a **visual change to every export**.
+  That is not something to smuggle into a design tool behind a perf flag. And encode is not the
+  bottleneck anyway: ~50 ms of a ~1050 ms frame.
+- **A trap worth recording**: probing with `avc1.42001f` returns `supported: false` at 1080p in every
+  engine — Baseline **level 3.1** caps at 720p. That reads as "no H.264 in headless" and is purely a
+  wrong probe string. Use `avc1.640028` (High, level 4.0).
+- Per WebCodecs §7.9 a `true` here proves availability, not use; a `false` does prove absence.
+
+### Encoded-segment concat — the falsification spike, SURVIVED
+
+Two 30-frame MP4 segments encoded in-page (keyframe forced on each segment's frame 0), demuxed via
+`EncodedPacketSink`, re-muxed into one `Output` through `EncodedVideoPacketSource` with the second
+segment's packet timestamps shifted:
+
+```json
+{ "ok": true, "codec": "avc", "frames": 60, "encodersConstructedDuringJoin": 0 }
+```
+
+`encodersConstructedDuringJoin: 0` is the load-bearing number — the join is a true **re-encode-free
+remux**, so BUILDER's segment-parallel design is viable in mediabunny rather than hypothetical.
+
+**What the spike did NOT prove** — these stay as gates, unchanged:
+- Both segments came from ONE encoder config in ONE page. BREAKER's objection — N workers each running
+  `getFirstEncodableVideoCodec` under different memory pressure and resolving different
+  codecs/containers — is untouched by this. **Negotiate once in the parent** remains mandatory.
+- Frame count is right; frame 30 being **pixel-identical** to segment B's frame 0 was not verified.
+- The per-segment rate-control pulse at boundaries was not measured.
+
+**Decision: viable, not yet built.** Parallel capture stays behind BREAKER's held dissent — the
+frame-purity contract + lint for agent-generated comps, clip equality, memory-derived worker count,
+and the recorded under-load determinism runs. Those are a feature's worth of work, and the spike's job
+was to decide whether that work is worth starting. It is.
+
 ## Cut from Rev 1
 
 | Cut | Why |

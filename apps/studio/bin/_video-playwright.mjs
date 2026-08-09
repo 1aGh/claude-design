@@ -71,7 +71,25 @@ const licenseKey = licenseKeyArg || 'free-license';
 /** Wait a real turn of the event loop + a frame so a seek settles before shot. */
 const SETTLE_MS = 16;
 
-const browser = await launchChromium();
+// GPU opt-in, measured not assumed (2026-08-09, M-series mac, 1920x1080):
+//
+//   config                        h264 prefer-hardware   png        jpeg q90
+//   headless-shell (default)      FALSE                  51ms/187KB 33ms/43KB
+//   headless-shell --enable-gpu   true                   34ms/84KB  33ms/43KB
+//   full chromium / real Chrome   true                   34-49ms    17-33ms
+//
+// So today's engine is the ONE configuration that cannot reach a hardware
+// encoder at all — `chrome-headless-shell` forces ANGLE/SwiftShader, and
+// Chromium then reports ACCELERATED_VIDEO_ENCODE as disabled. `--enable-gpu`
+// flips that.
+//
+// It is NOT on by default, deliberately: with the GPU the same page rasterizes
+// to a materially different PNG (84KB vs 187KB), i.e. it is a VISUAL change to
+// every export, and encode is not the bottleneck anyway (~50ms of a ~1050ms
+// frame — see the MAUDE_TIMING line). Changing how a design tool renders is not
+// something to smuggle in behind a perf flag. Opt in with MAUDE_CAPTURE_GPU=1.
+const gpuArgs = process.env.MAUDE_CAPTURE_GPU === '1' ? ['--enable-gpu', '--ignore-gpu-blocklist'] : [];
+const browser = await launchChromium(gpuArgs.length ? { args: gpuArgs } : undefined);
 try {
   const ctx = await browser.newContext({
     viewport: { width: 1440, height: 900 },
